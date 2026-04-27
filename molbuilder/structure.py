@@ -1,19 +1,59 @@
-"""Structure dataclass + writers for XYZ / PDB / PySCF / ASE.
+"""Structure dataclass + readers / writers for XYZ / PDB / PySCF / ASE.
 
 The :class:`Structure` is the lingua franca between builders (peptide,
 nucleic) and consumers (file writers, downstream analysis).  Every
 builder returns one of these; every output format is just a method on
 it.  Adding a new format means adding one method here, not touching the
 builders.
+
+Loading external geometry into the package goes through the inverse
+``from_xyz`` / ``from_pdb`` classmethods (or the top-level
+``molbuilder.load`` convenience function), which means an XYZ or PDB
+exported by a different tool can be fed straight into the SIESTA
+pipeline without re-building it from scratch.
 """
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from io import StringIO
+from pathlib import Path
 from typing import List, Optional, Sequence, Union
 
 import numpy as np
+
+
+# --------------------------------------------------------------------- #
+#  Source-resolver helper                                               #
+# --------------------------------------------------------------------- #
+
+
+def _resolve_source(source: Union[str, Path]) -> str:
+    """Return the textual content for a file path or for raw text.
+
+    Accepts:
+      * a :class:`pathlib.Path` -> always read from disk.
+      * a string that names an existing file -> read from disk.
+      * any other string (multi-line content, or a non-existent name)
+        -> treated as the file content directly.
+
+    The "treat as text" fallback is what lets callers pass a string
+    they pulled out of an HTTP request body or a blob storage object.
+    """
+    if isinstance(source, Path):
+        return source.read_text()
+    if isinstance(source, str):
+        # A real file path won't contain newlines and will exist on disk.
+        # Anything else is text.  We deliberately don't accept paths
+        # with newlines -- ambiguous and not a real filesystem path.
+        if "\n" not in source and os.path.isfile(source):
+            with open(source, "r") as fh:
+                return fh.read()
+        return source
+    raise TypeError(
+        f"source must be str or Path, got {type(source).__name__}"
+    )
 
 
 # ---------------------------------------------------------------------- #
@@ -95,6 +135,140 @@ class Structure:
 
     def __repr__(self) -> str:
         return self.summary()
+
+    # ------------------------------------------------------------------ #
+    #  Input: XYZ                                                         #
+    # ------------------------------------------------------------------ #
+
+    @classmethod
+    def from_xyz(cls, source: Union[str, Path], *,
+                 title: Optional[str] = None) -> "Structure":
+        """Load a Structure from an XYZ file path or XYZ text content.
+
+        Standard xmol layout is expected::
+
+            N
+            <comment / title>
+            <El>  x  y  z
+            ...   (N atom lines)
+
+        Extra trailing whitespace and blank lines after the N atoms
+        are ignored.  XYZ stores no atom names / residues, so all
+        atoms come back tagged as residue 1 ("MOL", chain "A") and
+        atom names default to the element symbol.
+        """
+        text = _resolve_source(source)
+        lines = text.splitlines()
+        if len(lines) < 2:
+            raise ValueError("XYZ too short: need header + comment + atoms")
+        try:
+            n = int(lines[0].strip())
+        except ValueError as e:
+            raise ValueError(
+                f"first line of XYZ must be an integer atom count; got "
+                f"{lines[0]!r}"
+            ) from e
+        if n < 0:
+            raise ValueError(f"negative atom count in XYZ: {n}")
+        elements: List[str] = []
+        positions: List[List[float]] = []
+        for raw in lines[2:2 + n]:
+            parts = raw.split()
+            if len(parts) < 4:
+                raise ValueError(
+                    f"malformed XYZ atom line (need 'El x y z'): {raw!r}"
+                )
+            elements.append(parts[0])
+            positions.append([float(parts[1]), float(parts[2]), float(parts[3])])
+        if len(elements) != n:
+            raise ValueError(
+                f"XYZ header says {n} atoms but only {len(elements)} found"
+            )
+        comment = lines[1].strip() if len(lines) >= 2 else ""
+        return cls(
+            elements=elements,
+            positions=np.asarray(positions, dtype=float),
+            title=(title if title is not None else comment),
+        )
+
+    # ------------------------------------------------------------------ #
+    #  Input: PDB                                                         #
+    # ------------------------------------------------------------------ #
+
+    @classmethod
+    def from_pdb(cls, source: Union[str, Path], *,
+                 title: Optional[str] = None) -> "Structure":
+        """Load a Structure from a PDB file path or PDB text content.
+
+        Reads ATOM and HETATM records.  Other record types (HEADER,
+        REMARK, CONECT, etc.) are ignored.  Multi-MODEL files: only
+        the first MODEL is read; this is what most viewers show by
+        default for a relaxation trajectory.
+        """
+        text = _resolve_source(source)
+
+        elements: List[str] = []
+        positions: List[List[float]] = []
+        atom_names: List[str] = []
+        residue_ids: List[int] = []
+        residue_names: List[str] = []
+        chain_ids: List[str] = []
+
+        seen_model = False
+        pdb_title = ""
+        for line in text.splitlines():
+            rec = line[:6]
+            if rec.startswith("TITLE"):
+                # PDB TITLE records use cols 11-80 for the actual title
+                pdb_title += line[10:].strip() + " "
+                continue
+            if rec.startswith("MODEL"):
+                if seen_model:
+                    break          # only first MODEL block
+                seen_model = True
+                continue
+            if rec.startswith("ENDMDL"):
+                break
+            if not (line.startswith("ATOM  ") or line.startswith("HETATM")):
+                continue
+            atom_name = line[12:16].strip()
+            res_name  = line[17:20].strip() or "MOL"
+            chain_id  = line[21:22].strip() or "A"
+            try:
+                res_id = int(line[22:26])
+                x = float(line[30:38])
+                y = float(line[38:46])
+                z = float(line[46:54])
+            except ValueError:
+                continue
+            element = line[76:78].strip()
+            if not element:
+                # Fall back to the leading alphabetic chars of the atom name.
+                # Single-char element ambiguity (e.g. 'CA' = calcium vs.
+                # alpha carbon) is resolved by PDB convention: protein
+                # backbone atoms use the second column for the element,
+                # so 'CA' on a protein is C; we honour that by taking the
+                # first letter only when the element column is empty.
+                element = "".join(c for c in atom_name if c.isalpha())[:1].upper()
+            elements.append(element)
+            positions.append([x, y, z])
+            atom_names.append(atom_name)
+            residue_ids.append(res_id)
+            residue_names.append(res_name)
+            chain_ids.append(chain_id)
+
+        if not elements:
+            raise ValueError("no ATOM/HETATM records found in PDB input")
+
+        return cls(
+            elements=elements,
+            positions=np.asarray(positions, dtype=float),
+            atom_names=atom_names,
+            residue_ids=residue_ids,
+            residue_names=residue_names,
+            chain_ids=chain_ids,
+            title=(title if title is not None else pdb_title.strip()),
+        )
 
     # ------------------------------------------------------------------ #
     #  Output: XYZ                                                        #

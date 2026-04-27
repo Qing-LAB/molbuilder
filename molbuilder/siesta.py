@@ -608,35 +608,57 @@ def render_fdf(struct: Structure, config: Optional[Config] = None,
 
 
 # --------------------------------------------------------------------- #
-#  XYZ-file convenience wrapper                                         #
+#  File -> (Structure, cell) loader                                     #
 # --------------------------------------------------------------------- #
 
 
-def _struct_from_xyz(xyz_path: str) -> Tuple[Structure, Optional[np.ndarray]]:
-    """Read an XYZ via ASE and return (Structure, cell_or_None)."""
-    atoms = _ase_read(xyz_path)
-    elements = [a.symbol for a in atoms]
-    positions = atoms.get_positions()
-    cell = atoms.cell.array if hasattr(atoms.cell, "array") else atoms.cell
-    cell = np.asarray(cell, dtype=float)
-    return (
-        Structure(elements=elements, positions=positions, title=Path(xyz_path).stem),
-        cell if cell.any() else None,
+def _struct_from_file(path: str) -> Tuple[Structure, Optional[np.ndarray]]:
+    """Read an XYZ or PDB and return ``(Structure, cell_or_None)``.
+
+    Format is detected from the file extension.  XYZ files may carry
+    a periodic cell in the comment line (ASE's extended XYZ format);
+    if present, it is returned alongside the structure so the caller
+    can preserve it in the FDF.  PDB has no native cell concept here,
+    so the cell is always ``None``.
+    """
+    p = Path(path)
+    ext = p.suffix.lower()
+    if ext == ".pdb":
+        return Structure.from_pdb(p), None
+    if ext in (".xyz", ""):
+        # Use ASE for XYZ -- it understands extended-XYZ headers and
+        # gives us the lattice when present, which our hand-rolled
+        # parser doesn't.
+        atoms = _ase_read(path)
+        elements = [a.symbol for a in atoms]
+        positions = atoms.get_positions()
+        cell = atoms.cell.array if hasattr(atoms.cell, "array") else atoms.cell
+        cell = np.asarray(cell, dtype=float)
+        return (
+            Structure(elements=elements, positions=positions, title=p.stem),
+            cell if cell.any() else None,
+        )
+    raise ValueError(
+        f"unsupported input extension {ext!r}; expected .xyz or .pdb"
     )
 
 
+# Kept for backwards compatibility with code that imported _struct_from_xyz
+_struct_from_xyz = _struct_from_file
+
+
 def convert(
-    xyz_path: str,
+    input_path: str,
     fdf_path: str,
     config: Optional[Config] = None,
 ) -> dict:
-    """Read an XYZ, write an FDF, optionally copy pseudopotentials.
+    """Read an XYZ or PDB file, write an FDF, optionally copy psml files.
 
     Returns a summary dict with keys: ``fdf``, ``n_atoms``, ``species``,
     ``missing_psml``.
     """
     cfg = config or Config()
-    struct, cell = _struct_from_xyz(xyz_path)
+    struct, cell = _struct_from_file(input_path)
 
     species = (list(cfg.species_order) if cfg.species_order
                else _detect_species(struct.elements))

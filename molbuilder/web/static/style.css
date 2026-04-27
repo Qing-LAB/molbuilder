@@ -69,6 +69,23 @@ header .tagline {
 }
 .nucleic-row select option:disabled { color: #aaa; }
 
+.load-row {
+    margin-top: 10px; padding-top: 8px;
+    border-top: 1px dashed #e3e3e3;
+    font-size: 0.9rem;
+}
+.load-row summary { cursor: pointer; color: #2563a8; }
+.load-row .hint { margin: 6px 0; color: #555; font-size: 0.88rem; }
+.load-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.load-controls input[type="file"] { font: inherit; }
+.load-controls button {
+    padding: 5px 12px; font: inherit;
+    background: #fff; border: 1px solid #ccc; border-radius: 4px;
+    cursor: pointer;
+}
+.load-controls button:disabled { color: #aaa; cursor: default; }
+.load-controls button:not(:disabled):hover { background: #eee; }
+
 .status { margin-top: 8px; font-size: 0.9rem; min-height: 1.2em; color: #555; }
 .status.error { color: #b21515; }
 .status.ok { color: #1d7a3a; }

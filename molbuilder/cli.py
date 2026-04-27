@@ -87,14 +87,18 @@ def _parse_kgrid(s: str):
 def _add_fdf_parser(sub) -> argparse.ArgumentParser:
     p = sub.add_parser(
         "fdf",
-        help="convert an XYZ to a SIESTA .fdf input + copy psml files",
+        help="convert XYZ / PDB to a SIESTA .fdf input + copy psml files",
         description=(
-            "Convert an XYZ file into a SIESTA .fdf input, optionally "
-            "copying matching <Element>.psml files from a flat library."
+            "Convert an XYZ or PDB structure file into a SIESTA .fdf "
+            "input, optionally copying matching <Element>.psml files "
+            "from a flat library.  Format is auto-detected from the "
+            "input file's extension."
         ),
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,
     )
-    p.add_argument("xyz", help="input XYZ file")
+    p.add_argument("input",
+                   metavar="input",
+                   help="input structure file (.xyz or .pdb)")
     p.add_argument("fdf", help="output .fdf file")
 
     g = p.add_argument_group("system")
@@ -200,7 +204,7 @@ def _run_fdf(args: argparse.Namespace) -> int:
         species_order=(args.species_order.split(",")
                        if args.species_order else None),
     )
-    summary = convert(args.xyz, args.fdf, cfg)
+    summary = convert(args.input, args.fdf, cfg)
     print(f"Wrote {summary['fdf']}: {summary['n_atoms']} atoms, "
           f"{len(summary['species'])} species "
           f"({', '.join(summary['species'])})", file=sys.stderr)

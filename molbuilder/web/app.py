@@ -131,6 +131,69 @@ def create_app() -> Flask:
             "system_label": cfg.system_label,
         })
 
+    # ----------------------------------------------------------------
+    # Load an existing XYZ / PDB into the viewer
+    # ----------------------------------------------------------------
+    @app.route("/api/load", methods=["POST"])
+    def api_load():
+        """Accept either:
+          * multipart/form-data with a single file field "file", or
+          * JSON {"text": "...", "format": "xyz"|"pdb"|"auto",
+                  "filename": "<optional>"}
+        Returns the same JSON shape as /api/build so the front end can
+        treat the result identically.
+        """
+        text: str = ""
+        fmt: str = "auto"
+        filename: str = ""
+        if "file" in request.files:
+            f = request.files["file"]
+            filename = f.filename or ""
+            text = f.read().decode("utf-8", errors="replace")
+        else:
+            body = request.get_json(silent=True) or {}
+            text = body.get("text") or ""
+            fmt = (body.get("format") or "auto").lower()
+            filename = body.get("filename") or ""
+
+        if not text.strip():
+            return jsonify({"ok": False, "error": "empty input"}), 400
+
+        if fmt == "auto":
+            ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+            if ext in ("xyz", "pdb"):
+                fmt = ext
+            else:
+                # Sniff: PDB lines start with ATOM/HETATM/HEADER/TITLE,
+                # XYZ first line is an atom count.
+                first = text.lstrip().splitlines()[0] if text.strip() else ""
+                fmt = "xyz" if first.strip().isdigit() else "pdb"
+
+        try:
+            if fmt == "xyz":
+                struct = Structure.from_xyz(text, title=filename or None)
+            elif fmt == "pdb":
+                struct = Structure.from_pdb(text, title=filename or None)
+            else:
+                return jsonify({"ok": False,
+                                "error": f"unknown format {fmt!r}; "
+                                         "expected xyz or pdb"}), 400
+        except Exception as exc:
+            return jsonify({"ok": False,
+                            "error": f"could not parse {fmt}: {exc}"}), 400
+
+        return jsonify({
+            "ok": True,
+            "xyz": struct.to_xyz(),
+            "pdb": struct.to_pdb(),
+            "n_atoms": struct.n_atoms,
+            "n_residues": struct.n_residues,
+            "summary": struct.summary(),
+            "title": struct.title or (filename or fmt),
+            "elements": list(struct.elements),
+            "source_format": fmt,
+        })
+
     @app.route("/api/health")
     def api_health():
         return jsonify({"ok": True, "version": _molbuilder_version()})

@@ -118,6 +118,63 @@ def main() -> None:
     assert body["ok"] is False
     print("  /api/fdf without xyz -> error (correct)")
 
+    # ---- /api/load : XYZ via JSON body -----------------------------
+    r = client.post("/api/load",
+                    json={"text": xyz_pep, "filename": "peptide.xyz"})
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["source_format"] == "xyz"
+    assert body["n_atoms"] >= 38
+    print(f"  /api/load xyz (json): {body['n_atoms']} atoms")
+
+    # ---- /api/load : PDB via JSON body -----------------------------
+    pep_pdb = client.post("/api/build",
+                          json={"kind": "peptide", "input": "AC"}
+                          ).get_json()["pdb"]
+    r = client.post("/api/load",
+                    json={"text": pep_pdb, "filename": "ac.pdb"})
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["source_format"] == "pdb"
+    print(f"  /api/load pdb (json): {body['n_atoms']} atoms")
+
+    # ---- /api/load : sniffing without extension --------------------
+    r = client.post("/api/load", json={"text": xyz_pep, "filename": ""})
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["source_format"] == "xyz"
+    print("  /api/load xyz (sniffed without extension): ok")
+
+    # ---- /api/load : multipart upload ------------------------------
+    import io
+    from werkzeug.datastructures import FileStorage
+    fs = FileStorage(stream=io.BytesIO(xyz_pep.encode()),
+                     filename="upload.xyz",
+                     content_type="chemical/x-xyz")
+    r = client.post("/api/load",
+                    data={"file": fs}, content_type="multipart/form-data")
+    body = r.get_json()
+    assert body["ok"] is True, body
+    assert body["source_format"] == "xyz"
+    print(f"  /api/load xyz (multipart): {body['n_atoms']} atoms")
+
+    # ---- /api/load : empty -> error -------------------------------
+    r = client.post("/api/load", json={"text": ""})
+    body = r.get_json()
+    assert body["ok"] is False
+    print("  /api/load with empty body -> error (correct)")
+
+    # ---- /api/load -> /api/fdf chain ------------------------------
+    r = client.post("/api/load",
+                    json={"text": xyz_pep, "filename": "p.xyz"})
+    loaded = r.get_json()
+    r = client.post("/api/fdf",
+                    json={"xyz": loaded["xyz"], "params": {"system_label": "lp"}})
+    body = r.get_json()
+    assert body["ok"] is True
+    assert "SystemLabel       lp" in body["fdf"]
+    print("  /api/load -> /api/fdf chain works end-to-end")
+
     print("OK -- all endpoints exercised.")
 
 

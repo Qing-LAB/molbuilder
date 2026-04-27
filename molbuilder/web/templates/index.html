@@ -69,6 +69,20 @@
   </div>
 
   <div id="build-status" class="status"></div>
+
+  <details class="load-row">
+    <summary>&hellip; or load an existing <code>.xyz</code> / <code>.pdb</code> file</summary>
+    <p class="hint">
+      Skip the build step and start from a structure you already have
+      (e.g. one written out by a previous SIESTA / VMD / PyMOL session).
+      The loaded geometry feeds the viewer and the FDF generator below.
+    </p>
+    <div class="load-controls">
+      <input id="load-file" type="file" accept=".xyz,.pdb,chemical/x-xyz,chemical/x-pdb">
+      <button id="load-btn" disabled>Load file</button>
+      <span id="load-status" class="status"></span>
+    </div>
+  </details>
 </section>
 
 <!-- ============================================================ -->

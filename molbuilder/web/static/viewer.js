@@ -99,21 +99,57 @@
                 setStatus("build-status", r.error || "Build failed.", "error");
                 return;
             }
-            state.xyz = r.xyz;
-            state.pdb = r.pdb;
-            state.title = r.title;
-            $("info-title").textContent     = r.title;
-            $("info-atoms").textContent     = r.n_atoms;
-            $("info-residues").textContent  = r.n_residues || "—";
-            $("info-formula").textContent   = formula(r.elements);
-            $("dl-xyz").disabled = false;
-            $("dl-pdb").disabled = false;
-            $("generate-fdf").disabled = false;
-            renderStructure();
+            applyStructureResult(r);
             setStatus("build-status",
                 `Built ${r.n_atoms}-atom structure.`, "ok");
         } catch (e) {
             setStatus("build-status", "Network error: " + e.message, "error");
+        }
+    });
+
+    // Take a structure response (either /api/build or /api/load) and
+    // populate the viewer + info panel + enable the FDF section.
+    function applyStructureResult(r) {
+        state.xyz = r.xyz;
+        state.pdb = r.pdb;
+        state.title = r.title;
+        $("info-title").textContent     = r.title;
+        $("info-atoms").textContent     = r.n_atoms;
+        $("info-residues").textContent  = r.n_residues || "—";
+        $("info-formula").textContent   = formula(r.elements);
+        $("dl-xyz").disabled = false;
+        $("dl-pdb").disabled = false;
+        $("generate-fdf").disabled = false;
+        renderStructure();
+    }
+
+    // ----- Load existing .xyz / .pdb ----------------------------------
+    $("load-file").addEventListener("change", () => {
+        $("load-btn").disabled = !$("load-file").files.length;
+        setStatus("load-status", "");
+    });
+    $("load-btn").addEventListener("click", async () => {
+        const files = $("load-file").files;
+        if (!files.length) {
+            setStatus("load-status", "Pick a file first.", "error"); return;
+        }
+        const file = files[0];
+        setStatus("load-status", `Loading ${file.name}…`);
+        const fd = new FormData();
+        fd.append("file", file);
+        try {
+            const r = await fetch("/api/load", { method: "POST", body: fd })
+                            .then(x => x.json());
+            if (!r.ok) {
+                setStatus("load-status", r.error || "Load failed.", "error");
+                return;
+            }
+            applyStructureResult(r);
+            setStatus("load-status",
+                `Loaded ${r.n_atoms}-atom ${r.source_format.toUpperCase()} from ${file.name}.`,
+                "ok");
+        } catch (e) {
+            setStatus("load-status", "Network error: " + e.message, "error");
         }
     });
 
