@@ -1,0 +1,176 @@
+/* molbuilder web UI -- minimal, scientific look. */
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                 system-ui, sans-serif;
+    color: #1c1c1c;
+    background: #f6f7f8;
+    line-height: 1.45;
+}
+
+header {
+    padding: 18px 24px 10px;
+    border-bottom: 1px solid #e3e3e3;
+    background: #fff;
+}
+header h1 { margin: 0; font-size: 1.4rem; font-weight: 600; }
+header .tagline {
+    margin: 6px 0 0;
+    color: #555;
+    font-size: 0.92rem;
+}
+
+.card {
+    background: #fff;
+    border: 1px solid #e3e3e3;
+    border-radius: 6px;
+    margin: 14px 24px;
+    padding: 14px 18px 18px;
+}
+.card h2 {
+    margin: 0 0 10px;
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: #2a2a2a;
+}
+.card h2 small { color: #888; font-weight: 400; }
+
+/* ---- Build row -------------------------------------------------- */
+
+.build-row {
+    display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+}
+.build-row label { display: inline-flex; gap: 6px; align-items: center; }
+.build-row select,
+.build-row input[type="text"] {
+    padding: 5px 8px; font: inherit;
+    border: 1px solid #ccc; border-radius: 4px;
+}
+.build-row input[type="text"] { min-width: 320px; flex: 1; }
+.build-row button {
+    padding: 5px 14px; font: inherit; cursor: pointer;
+    border: 1px solid #777; background: #fff; border-radius: 4px;
+}
+.build-row button:hover { background: #eee; }
+
+.nucleic-row {
+    display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+    margin-top: 8px; padding-top: 8px;
+    border-top: 1px dashed #e3e3e3;
+    font-size: 0.9rem;
+}
+.nucleic-row label { display: inline-flex; gap: 6px; align-items: center; }
+.nucleic-row select {
+    padding: 4px 6px; font: inherit;
+    border: 1px solid #ccc; border-radius: 4px;
+}
+.nucleic-row select option:disabled { color: #aaa; }
+
+.status { margin-top: 8px; font-size: 0.9rem; min-height: 1.2em; color: #555; }
+.status.error { color: #b21515; }
+.status.ok { color: #1d7a3a; }
+
+/* ---- Viewer ---------------------------------------------------- */
+
+.viewer-row {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: 14px;
+}
+#viewer {
+    width: 100%;
+    height: 480px;
+    border: 1px solid #d8d8d8;
+    background: #fff;
+    border-radius: 4px;
+    position: relative;
+}
+.info-panel {
+    display: flex; flex-direction: column; gap: 8px;
+    font-size: 0.92rem;
+}
+.info-panel dl {
+    margin: 0;
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    column-gap: 8px;
+    row-gap: 2px;
+}
+.info-panel dt { color: #666; }
+.info-panel dd { margin: 0; font-family: ui-monospace, Menlo, Consolas, monospace; }
+
+fieldset {
+    border: 1px solid #d8d8d8;
+    border-radius: 4px;
+    padding: 6px 10px 8px;
+    margin: 0;
+}
+fieldset legend { font-weight: 600; padding: 0 4px; font-size: 0.85rem; color: #444; }
+fieldset label { display: block; margin: 4px 0; font-size: 0.85rem; }
+fieldset select, fieldset input[type="number"], fieldset input[type="text"],
+fieldset input[type="range"] {
+    width: 100%; margin-top: 2px; font: inherit;
+    padding: 3px 6px; border: 1px solid #ccc; border-radius: 3px;
+}
+fieldset input[type="checkbox"] { width: auto; margin-right: 4px; }
+fieldset button.dl-btn {
+    padding: 3px 10px; font-size: 0.85rem; cursor: pointer;
+    border: 1px solid #888; background: #fff; border-radius: 3px;
+    margin-right: 4px;
+}
+fieldset button.dl-btn:disabled { color: #aaa; cursor: not-allowed; }
+
+/* ---- FDF parameter grid ---------------------------------------- */
+
+.hint { color: #555; font-size: 0.9rem; margin: 4px 0 12px; }
+.param-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+}
+.param-grid label {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    column-gap: 6px;
+    align-items: center;
+    margin: 3px 0;
+}
+.param-grid label input,
+.param-grid label select { max-width: 130px; }
+
+.fdf-actions { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
+.fdf-actions button {
+    padding: 5px 14px; cursor: pointer; font: inherit;
+    border: 1px solid #777; background: #fff; border-radius: 4px;
+}
+.fdf-actions button:disabled { color: #aaa; cursor: not-allowed; }
+.fdf-actions button:hover:not(:disabled) { background: #eee; }
+
+.fdf-output {
+    margin-top: 12px;
+    padding: 12px;
+    background: #1d1f21;
+    color: #c5c8c6;
+    font-family: ui-monospace, Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+    border-radius: 4px;
+    max-height: 360px;
+    overflow: auto;
+    white-space: pre;
+}
+
+footer {
+    padding: 14px 24px;
+    color: #777;
+    font-size: 0.82rem;
+}
+footer a { color: #777; text-decoration: none; }
+footer a:hover { text-decoration: underline; }
+
+@media (max-width: 900px) {
+    .viewer-row { grid-template-columns: 1fr; }
+    .info-panel { flex-direction: row; flex-wrap: wrap; }
+}

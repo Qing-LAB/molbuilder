@@ -1,0 +1,321 @@
+/* molbuilder web UI client.
+ *
+ * Three concerns:
+ *   1. POST /api/build with the user's input -> get back XYZ + meta.
+ *   2. Render the XYZ in 3Dmol with style controls.
+ *   3. POST /api/fdf with the XYZ + form values -> get back FDF text,
+ *      offer it as a Blob download.
+ */
+(function () {
+    "use strict";
+
+    const $ = (id) => document.getElementById(id);
+
+    // ----- State ------------------------------------------------------
+    const state = {
+        xyz: null,            // last successful build's XYZ string
+        pdb: null,
+        title: null,
+        labels: [],           // 3Dmol label objects so we can clear them
+        fdf: null,
+    };
+
+    const viewer = $3Dmol.createViewer("viewer", {
+        backgroundColor: "white",
+        defaultcolors: $3Dmol.elementColors.Jmol,
+    });
+
+    // ----- Status helpers --------------------------------------------
+    function setStatus(elId, msg, kind) {
+        const el = $(elId);
+        el.textContent = msg;
+        el.className = "status" + (kind ? " " + kind : "");
+    }
+
+    function placeholderFor(kind) {
+        switch (kind) {
+            case "peptide": return "ARNDC  or  AR[SEP]C";
+            case "dna":     return "ATGCATGCAT";
+            case "rna":     return "AUGCAUGCAU";
+            case "smiles":  return "c1ccccc1   or  Sc1ccc(S)cc1";
+            case "name":    return "benzene   or  1,4-benzenedithiol";
+            default:        return "";
+        }
+    }
+
+    function toggleNucleicOptions() {
+        const k = $("kind").value;
+        $("nucleic-options").hidden = !(k === "dna" || k === "rna");
+        // RNA's natural form is A; flip the default when switching
+        if (k === "rna" && $("form").value === "B") $("form").value = "A";
+        if (k === "dna" && $("form").value === "A") $("form").value = "B";
+    }
+    $("kind").addEventListener("change", (e) => {
+        $("input-text").placeholder = placeholderFor(e.target.value);
+        toggleNucleicOptions();
+    });
+    $("input-text").placeholder = placeholderFor($("kind").value);
+    toggleNucleicOptions();
+    $("input-text").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") $("build-btn").click();
+    });
+
+    // Detect installed backends and grey out unavailable ones in the
+    // dropdown.  This is a one-shot fetch on page load.
+    fetch("/api/backends").then(r => r.json()).then(r => {
+        if (!r || !r.ok) return;
+        const sel = $("backend");
+        for (const opt of sel.options) {
+            const name = opt.value;
+            if (name === "auto") continue;
+            opt.disabled = !r.available[name];
+            if (!r.available[name]) {
+                opt.text = opt.text + "  (not installed)";
+            }
+        }
+    }).catch(() => { /* /api/backends optional */ });
+
+    // ----- 1. Build ---------------------------------------------------
+    $("build-btn").addEventListener("click", async () => {
+        const kind = $("kind").value;
+        const input = $("input-text").value.trim();
+        if (!input) { setStatus("build-status", "Enter a sequence first.", "error"); return; }
+        setStatus("build-status", "Building…");
+
+        const body = { kind, input };
+        if (kind === "dna" || kind === "rna") {
+            body.backend  = $("backend").value;
+            body.form     = $("form").value;
+            body.terminal = $("terminal").value;
+            body.protonate_phosphates = $("protonate-phosphates").checked;
+        }
+        try {
+            const r = await fetch("/api/build", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            }).then(x => x.json());
+            if (!r.ok) {
+                setStatus("build-status", r.error || "Build failed.", "error");
+                return;
+            }
+            state.xyz = r.xyz;
+            state.pdb = r.pdb;
+            state.title = r.title;
+            $("info-title").textContent     = r.title;
+            $("info-atoms").textContent     = r.n_atoms;
+            $("info-residues").textContent  = r.n_residues || "—";
+            $("info-formula").textContent   = formula(r.elements);
+            $("dl-xyz").disabled = false;
+            $("dl-pdb").disabled = false;
+            $("generate-fdf").disabled = false;
+            renderStructure();
+            setStatus("build-status",
+                `Built ${r.n_atoms}-atom structure.`, "ok");
+        } catch (e) {
+            setStatus("build-status", "Network error: " + e.message, "error");
+        }
+    });
+
+    function formula(elements) {
+        if (!elements || !elements.length) return "—";
+        const counts = {};
+        elements.forEach(e => counts[e] = (counts[e] || 0) + 1);
+        const order = ["C", "H", "N", "O", "P", "S"];
+        const parts = [];
+        order.forEach(e => {
+            if (counts[e]) {
+                parts.push(counts[e] > 1 ? `${e}${counts[e]}` : e);
+                delete counts[e];
+            }
+        });
+        Object.keys(counts).sort().forEach(e => {
+            parts.push(counts[e] > 1 ? `${e}${counts[e]}` : e);
+        });
+        return parts.join("");
+    }
+
+    // ----- 2. Render --------------------------------------------------
+    function styleSpec() {
+        const rep = $("rep").value;
+        const scale = parseFloat($("radius").value) || 1.0;
+        switch (rep) {
+            case "sphere":
+                return { sphere: { scale: 1.0 * scale } };
+            case "stick":
+                return { stick: { radius: 0.16 * scale },
+                         sphere: { scale: 0.18 * scale } };
+            case "line":
+                return { line: { linewidth: 1 + 2 * scale } };
+            case "ballstick":
+            default:
+                return { stick: { radius: 0.12 * scale },
+                         sphere: { scale: 0.32 * scale } };
+        }
+    }
+
+    function clearLabels() {
+        for (const l of state.labels) viewer.removeLabel(l);
+        state.labels = [];
+    }
+
+    function drawLabels() {
+        clearLabels();
+        if (!$("show-labels").checked || !state.xyz) {
+            viewer.render(); return;
+        }
+        const lines = state.xyz.split("\n");
+        const n = parseInt(lines[0], 10);
+        for (let i = 0; i < n; i++) {
+            const parts = (lines[i + 2] || "").trim().split(/\s+/);
+            if (parts.length < 4) continue;
+            const x = parseFloat(parts[1]),
+                  y = parseFloat(parts[2]),
+                  z = parseFloat(parts[3]);
+            const lbl = viewer.addLabel(String(i + 1), {
+                position: { x, y, z },
+                backgroundColor: "black",
+                backgroundOpacity: 0.55,
+                fontColor: "white",
+                fontSize: 9,
+                inFront: true,
+                showBackground: true,
+            });
+            state.labels.push(lbl);
+        }
+        viewer.render();
+    }
+
+    function applyStyle() {
+        viewer.setStyle({}, styleSpec());
+        viewer.render();
+    }
+
+    function renderStructure() {
+        viewer.removeAllModels();
+        viewer.removeAllLabels();
+        state.labels = [];
+        if (!state.xyz) return;
+        viewer.addModel(state.xyz, "xyz");
+        applyStyle();
+        viewer.zoomTo();
+        drawLabels();
+    }
+
+    $("rep").addEventListener("change", applyStyle);
+    $("radius").addEventListener("input", applyStyle);
+    $("show-labels").addEventListener("change", drawLabels);
+    $("bg").addEventListener("change", (e) => {
+        viewer.setBackgroundColor(e.target.value);
+        viewer.render();
+    });
+
+    // ----- Downloads --------------------------------------------------
+    function downloadAs(text, filename, mime = "text/plain") {
+        const blob = new Blob([text], { type: mime });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+    }
+
+    $("dl-xyz").addEventListener("click", () => {
+        if (!state.xyz) return;
+        downloadAs(state.xyz, safeName(state.title) + ".xyz",
+                   "chemical/x-xyz");
+    });
+    $("dl-pdb").addEventListener("click", () => {
+        if (!state.pdb) return;
+        downloadAs(state.pdb, safeName(state.title) + ".pdb",
+                   "chemical/x-pdb");
+    });
+
+    function safeName(s) {
+        return (s || "molecule").replace(/[^A-Za-z0-9._-]+/g, "_");
+    }
+
+    // ----- 3. Generate FDF -------------------------------------------
+    $("generate-fdf").addEventListener("click", async () => {
+        if (!state.xyz) {
+            setStatus("fdf-status", "Build a structure first.", "error");
+            return;
+        }
+        setStatus("fdf-status", "Rendering FDF…");
+        const params = collectFdfParams();
+        try {
+            const r = await fetch("/api/fdf", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ xyz: state.xyz, params }),
+            }).then(x => x.json());
+            if (!r.ok) {
+                setStatus("fdf-status", r.error || "FDF render failed.", "error");
+                return;
+            }
+            state.fdf = r.fdf;
+            $("fdf-output").textContent = r.fdf;
+            $("fdf-output").hidden = false;
+            $("dl-fdf").disabled = false;
+            setStatus("fdf-status",
+                `OK — ${r.fdf.split("\n").length} lines, label "${r.system_label}".`,
+                "ok");
+        } catch (e) {
+            setStatus("fdf-status", "Network error: " + e.message, "error");
+        }
+    });
+
+    $("dl-fdf").addEventListener("click", () => {
+        if (!state.fdf) return;
+        const label = ($("p-system-label").value.trim() || "siesta").replace(
+            /[^A-Za-z0-9._-]+/g, "_");
+        downloadAs(state.fdf, label + ".fdf");
+    });
+
+    function collectFdfParams() {
+        const num  = (id) => parseFloat($(id).value);
+        const int  = (id) => parseInt($(id).value, 10);
+        const bool = (id) => $(id).checked;
+        return {
+            system_name:            $("p-system-name").value.trim(),
+            system_label:           $("p-system-label").value.trim(),
+
+            // Basis & grid
+            basis_size:             $("p-basis").value,
+            mesh_cutoff:            num("p-mesh-cutoff"),
+            pao_energy_shift:       num("p-pao-energy-shift"),
+
+            // XC
+            xc_functional:          $("p-xc-functional").value,
+            xc_authors:             $("p-xc-authors").value.trim(),
+
+            // SCF
+            solution_method:        $("p-solution-method").value,
+            mixing_weight:          num("p-mixing-weight"),
+            pulay_history:          int("p-pulay-history"),
+            dm_tolerance:           num("p-dm-tolerance"),
+            dm_energy_tolerance:    num("p-dm-energy-tolerance"),
+            max_scf_iter:           int("p-max-scf-iter"),
+            electronic_temperature: num("p-temperature"),
+
+            // k-grid
+            kgrid:                  [int("p-kx"), int("p-ky"), int("p-kz")],
+
+            // Relaxation
+            relax_type:             $("p-relax").value,
+            relax_steps:            int("p-relax-steps"),
+            relax_force_tol:        num("p-force-tol"),
+            relax_max_displ:        num("p-max-displ"),
+
+            // Output + positioning + comments
+            write_coor_xmol:        bool("p-write-coor-xmol"),
+            write_md_history:       bool("p-write-md-history"),
+            write_hs:               bool("p-write-hs"),
+            wrap_into_cell:         bool("p-wrap-into-cell"),
+            center_in_vacuum:       bool("p-center-in-vacuum"),
+            verbose_comments:       bool("p-verbose-comments"),
+        };
+    }
+})();

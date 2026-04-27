@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "molbuilder"
+version = "0.2.0"
+description = "Build 3-D molecules from sequences / SMILES / names; emit SIESTA / PySCF / ASE input."
+readme = "README.md"
+requires-python = ">=3.9"
+authors = [{ name = "Quan Qing", email = "qqing@asu.edu" }]
+license = { text = "MIT" }
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Chemistry",
+]
+dependencies = [
+    "numpy>=1.24",
+    "ase>=3.22",                 # XYZ I/O + atomic-number table for siesta module
+    "PeptideBuilder>=1.1",       # peptide backbone geometry
+    "biopython>=1.81",           # required by PeptideBuilder
+]
+
+[project.optional-dependencies]
+# Hydrogen addition on peptides + SMILES building
+rdkit = ["rdkit>=2023.9"]
+
+# Common-name lookup
+name = ["pubchempy>=1.0"]
+
+# Browser UI
+web = ["flask>=3.0"]
+
+# Everything in one bundle
+all = [
+    "rdkit>=2023.9",
+    "pubchempy>=1.0",
+    "flask>=3.0",
+]
+
+[project.scripts]
+molbuilder = "molbuilder.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["molbuilder*"]
+
+[tool.setuptools.package-data]
+molbuilder = ["web/templates/*.html", "web/static/*.css", "web/static/*.js"]
