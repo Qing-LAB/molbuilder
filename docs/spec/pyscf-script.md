@@ -204,6 +204,28 @@ half-written final step while a run is still going.
 The emitter `flush()`es after each end-marker so the file's last
 complete byte is always at a step boundary.
 
+### Initial-state preview block (step 0)
+
+The emitter writes **step 0 immediately at instantiation**, before
+the first SCF runs.  Step 0 is the *initial-state preview*: it
+carries the molecule's coordinates, but `energy (eV): None`,
+`max_force (eV/Ang): None`, an empty `forces` section, and an
+empty `scf_history`.  A `kind: initial_preview` line distinguishes
+it from real opt-step blocks.
+
+Why: molwatch must be able to render the molecular structure the
+moment a user loads the log -- they should not have to wait for the
+first SCF to finish.  Without this preview block, a user pointing
+molwatch at a freshly-started run sees nothing for tens of seconds
+or longer (the first SCF is the slowest, by far).
+
+Real opt-step blocks therefore start at step 1.  The first opt
+step's geometry (in PySCF/geomeTRIC, `calc_new` is called with the
+initial coordinates first) coincides with step 0's geometry; this
+is intentional duplication, not a bug, and lets molwatch's plots
+show their first energy/force data point at index 1 while index 0
+just renders the molecule.
+
 ### Hook wiring
 
 The emitter is driven by two hooks on existing PySCF / geomeTRIC
