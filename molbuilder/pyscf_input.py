@@ -118,6 +118,8 @@ class PySCFConfig:
     log_file: bool = True               # write <job>.log
     save_optimized_xyz: bool = True
     save_initial_xyz: bool = True
+    write_trajectory: bool = True       # stream geomeTRIC's <job>_geom_optim.xyz
+                                        # so moldyn_view can watch it live
 
     # ---------------- Runtime ----------------
     max_memory_mb: int = 4000           # passed to gto.M(max_memory=)
@@ -214,6 +216,12 @@ def render_script(struct: Structure,
         out.append(f"    {label}_initial.xyz      -- input coordinates")
     if cfg.save_optimized_xyz and cfg.optimize:
         out.append(f"    {label}_optimized.xyz    -- final relaxed coords")
+    if cfg.optimize and cfg.write_trajectory and cfg.optimizer == "geometric":
+        out.append(f"    {label}_geom_optim.xyz   -- streaming optim trajectory")
+        out.append("                                  (multi-frame XYZ, one frame")
+        out.append("                                   per step; readable live by")
+        out.append("                                   moldyn_view).")
+        out.append(f"    {label}_geom.log         -- geomeTRIC's optimizer log")
     out.append("")
     out.append("Dependencies:")
     out.append("    pip install pyscf")
@@ -397,6 +405,13 @@ def render_script(struct: Structure,
         out.append(f"    convergence_energy    = {cfg.geom_conv_energy:.1e},")
         out.append(f"    convergence_grms      = {cfg.geom_conv_grms:.1e},")
         out.append(f"    convergence_gmax      = {cfg.geom_conv_gmax:.1e},")
+        if cfg.write_trajectory and cfg.optimizer == "geometric":
+            if v:
+                out.append("    # geomeTRIC writes a multi-frame XYZ to")
+                out.append("    #     <JOB>_geom_optim.xyz")
+                out.append("    # with one frame per accepted step.  moldyn_view")
+                out.append("    # tails this file live, frame-by-frame.")
+            out.append('    prefix                = JOB + "_geom",')
         out.append(")")
         out.append('print(f"Final energy: {mf.e_tot:.8f} Hartree")')
     else:

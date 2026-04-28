@@ -301,6 +301,9 @@ def _add_pyscf_parser(sub) -> argparse.ArgumentParser:
                    help="0 silent, 4 info, 5 debug")
     g.add_argument("--no-chkfile",  action="store_true")
     g.add_argument("--no-log-file", action="store_true")
+    g.add_argument("--no-trajectory", action="store_true",
+                   help="don't ask geomeTRIC to stream <job>_geom_optim.xyz "
+                        "(disables the moldyn_view live-streaming source)")
     g.add_argument("--no-verbose-comments", action="store_true",
                    help="strip the inline tuning hints from the script")
     return p
@@ -341,8 +344,9 @@ def _run_pyscf(args: argparse.Namespace) -> int:
         max_memory_mb = args.max_memory,
         threads       = args.threads,
         verbose       = args.verbose,
-        chkfile       = not args.no_chkfile,
-        log_file      = not args.no_log_file,
+        chkfile          = not args.no_chkfile,
+        log_file         = not args.no_log_file,
+        write_trajectory = not args.no_trajectory,
         verbose_comments = not args.no_verbose_comments,
     )
     summary = convert(args.input, args.py, cfg)
