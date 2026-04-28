@@ -218,9 +218,15 @@ def render_script(struct: Structure,
     out.append("Dependencies:")
     out.append("    pip install pyscf")
     if cfg.optimize and cfg.optimizer == "geometric":
-        out.append("    pip install geometric    # optimizer (recommended)")
+        out.append("    pip install geometric           # optimizer")
+    if cfg.optimize and cfg.optimizer == "berny":
+        out.append("    pip install pyberny             # optimizer")
     if cfg.dispersion or (cfg.preopt and cfg.preopt_dispersion):
-        out.append("    pip install pyscf-dispersion  # D3/D3BJ/D4 (PySCF >= 2.4)")
+        out.append("    pip install pyscf-dispersion    # D3/D3BJ/D4 corrections")
+    out.append("")
+    out.append("Or in one shot (full molbuilder runtime stack):")
+    out.append("    pip install -r requirements-runtime.txt")
+    out.append("    # or:  pip install 'molbuilder[runtime]'")
     out.append('"""')
     out.append("")
 
@@ -241,14 +247,28 @@ def render_script(struct: Structure,
     out.append("from pyscf import gto, scf, dft")
     if cfg.optimize:
         if cfg.optimizer == "geometric":
-            out.append("from pyscf.geomopt.geometric_solver import optimize")
+            opt_pkg = "geometric"
+            opt_module = "pyscf.geomopt.geometric_solver"
         elif cfg.optimizer == "berny":
-            out.append("from pyscf.geomopt.berny_solver import optimize")
+            opt_pkg = "pyberny"
+            opt_module = "pyscf.geomopt.berny_solver"
         else:
             raise ValueError(
                 f"unknown optimizer {cfg.optimizer!r}; "
                 f"expected 'geometric' or 'berny'"
             )
+        # Wrap the optimizer import in a try/except so missing-dep gives
+        # a one-line actionable message instead of a 6-frame traceback.
+        out.append("try:")
+        out.append(f"    from {opt_module} import optimize")
+        out.append("except ImportError as _exc:")
+        out.append("    raise SystemExit(")
+        out.append(f'        "molbuilder PySCF script needs the {opt_pkg} '
+                   'optimizer package.\\n"')
+        out.append(f'        "Install with:  pip install {opt_pkg}\\n"')
+        out.append('        "Or:  pip install -r requirements-runtime.txt\\n"')
+        out.append('        f"(import error: {_exc})"')
+        out.append("    )")
     if cfg.solvent:
         out.append("from pyscf.solvent import pcm")
     out.append("")

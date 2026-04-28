@@ -40,11 +40,39 @@ test = [
     "pyflakes>=3",
 ]
 
-# Everything in one bundle
+# Tools needed to *execute* the SIESTA / PySCF input files molbuilder
+# generates -- as opposed to building structures with molbuilder itself.
+# Mirrors requirements-runtime.txt so either workflow works:
+#     pip install -e ".[runtime]"
+#     pip install -r requirements-runtime.txt
+# Note: SIESTA (Fortran), AmberTools (tleap), and 3DNA are NOT
+# pip-installable -- see requirements-runtime.txt header for conda /
+# manual install instructions.
+runtime = [
+    "pyscf>=2.4",
+    "geometric>=1.0",
+    "pyberny>=0.6",
+    "pyscf-dispersion>=1.0",
+    "sisl>=0.14",
+]
+
+# Everything molbuilder itself can use (build-time deps only).
 all = [
     "rdkit>=2023.9",
     "pubchempy>=1.0",
     "flask>=3.0",
+]
+
+# Build-time + runtime in one go.
+full = [
+    "rdkit>=2023.9",
+    "pubchempy>=1.0",
+    "flask>=3.0",
+    "pyscf>=2.4",
+    "geometric>=1.0",
+    "pyberny>=0.6",
+    "pyscf-dispersion>=1.0",
+    "sisl>=0.14",
 ]
 
 [project.scripts]

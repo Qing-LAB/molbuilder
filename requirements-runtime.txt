@@ -1,0 +1,67 @@
+# Runtime dependencies for *executing* the SIESTA / PySCF input files
+# molbuilder generates.  These are NOT needed to run molbuilder itself
+# (which only needs numpy + ase + the optional rdkit/peptidebuilder
+# stacks for building structures); they're needed to take the .fdf or
+# .py file molbuilder writes and actually run the calculation.
+#
+# Install pick-and-mix.  All-pip:
+#
+#     pip install -r requirements-runtime.txt
+#
+# Or via the pyproject extra:
+#
+#     pip install -e ".[runtime]"
+#
+# Or, on conda (recommended for sisl + the SIESTA toolchain):
+#
+#     conda install -c conda-forge pyscf geometric pyscf-dispersion sisl ase
+#     pip install pyberny
+#
+# What this file does NOT cover -- these are NOT pip-installable, see
+# the project README for install instructions:
+#
+#   - SIESTA itself (Fortran)         -- conda install -c conda-forge siesta
+#                                        or download from https://siesta-project.org
+#   - AmberTools (tleap)              -- conda install -c conda-forge ambertools
+#   - 3DNA (fiber, for canonical helices) -- manual download from x3dna.org
+#   - PSML pseudopotentials           -- download from pseudo-dojo.org
+#                                        and point molbuilder at the directory
+#                                        with `--psml-lib /path/to/psml-lib`
+
+# ---- Core scientific stack ------------------------------------------
+# numpy + ase are already hard deps of molbuilder, listed here so this
+# file works as a standalone runtime install on a bare environment.
+numpy>=1.24
+ase>=3.22
+
+# ---- PySCF: quantum-chemistry engine + optimizers + dispersion ------
+
+# PySCF itself.  The molbuilder-generated `.py` script imports
+# `pyscf.gto`, `pyscf.scf`, `pyscf.dft`, and (when optimizing)
+# `pyscf.geomopt.geometric_solver`.
+#   - 2.4+ for the `mf.disp = "d3bj"` attribute API
+pyscf>=2.4
+
+# geomeTRIC -- the optimizer molbuilder defaults to (cfg.optimizer="geometric").
+# Note the PyPI distribution is named `geometric`, not `geomeTRIC`.
+#   * Lee-Ping Wang's translation-rotation-invariant internal-coordinate
+#     optimizer; robust on biomolecules and big steps.
+geometric>=1.0
+
+# Berny -- alternative optimizer (cfg.optimizer="berny").  Cheaper to
+# install (no compiled deps), less robust on flexible systems.
+pyberny>=0.6
+
+# Dispersion corrections (D3 / D3BJ / D4) for DFT.  Required when the
+# generated script sets `mf.disp = "d3bj"` etc.  Without it pyscf 2.4+
+# silently falls back to no-correction (or warns, depending on version).
+pyscf-dispersion>=1.0
+
+# ---- SIESTA Python tooling ------------------------------------------
+
+# sisl -- Nick Papior's library for parsing SIESTA outputs (.HSX, .DM,
+# .bands, .ANI trajectories) and building inputs programmatically.
+# Pure-Python; pip works fine, conda-forge mirror also available.
+#   * The molbuilder-generated `.fdf` is human-readable and SIESTA-ready;
+#     sisl is for what comes after the run.
+sisl>=0.14
