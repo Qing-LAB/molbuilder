@@ -24,7 +24,7 @@ File presence depends on the cfg flags listed in the second column.
 | --- | --- | --- |
 | `<job>.log` | `cfg.log_file` (default `True`) | the verbose PySCF log for **all stages** (pre-opt + production); appended, never truncated mid-run |
 | `<job>.chk` | `cfg.chkfile` (default `True`) | PySCF checkpoint (DM, mol, energies) |
-| `<job>_initial.xyz` | `cfg.save_initial_xyz` (default `True`) | input geometry, written at end of script |
+| `<job>_initial.xyz` | `cfg.save_initial_xyz` (default `True`) | the user's actual input geometry, snapshotted **immediately after** `gto.M(...)` builds the original molecule — *before* any optimization runs. |
 | `<job>_optimized.xyz` | `cfg.save_optimized_xyz` AND `cfg.optimize` | final relaxed geometry, written at end of script |
 | `<job>_geom_optim.xyz` | `cfg.optimize` AND `cfg.write_trajectory` AND `cfg.optimizer == "geometric"` | streaming production-stage trajectory, multi-frame XYZ with `Iteration K Energy E` comment lines, **one frame per accepted geometry step** |
 | `<job>_geom.log` | same as above | geomeTRIC's own log for the production stage |
@@ -103,6 +103,38 @@ molwatch at.
   contract.
 - `cfg.optimize=False` produces a single-point script: `mf.kernel()`
   is called, no `optimize(...)`, no trajectory files.
+
+### Pre-opt failure must not kill the production run
+
+The pre-opt stage exists to clean up obvious geometry sins before
+the expensive functional starts.  By design it doesn't have to
+fully converge — its convergence threshold is intentionally looser
+than the production stage.
+
+The pre-opt `optimize(mf1, ...)` call therefore **MUST** pass
+`assert_convergence=False`.  Without it, PySCF raises
+`RuntimeError` if pre-opt hits its `maxsteps` without converging,
+and the production stage never runs.
+
+The production-stage `optimize(mf, ...)` call **MUST NOT** set
+`assert_convergence` (so the default True applies).  We DO want to
+hear about real production-run failures — those affect the data the
+user is trusting.
+
+## Spin / method compatibility
+
+PySCF's `RKS` and `RHF` are restricted methods that assume
+`mol.spin == 0` (closed-shell).  Setting `cfg.spin != 0` with a
+restricted method is a physics error: PySCF will raise at SCF setup,
+but only after the user has invoked Python.
+
+The generator **MUST** raise `ValueError` at script-generation time
+if `cfg.method` is `RKS` or `RHF` AND `cfg.spin != 0`, with a
+message that points the user at `UKS` / `UHF`.
+
+For `UKS` / `UHF`, any `cfg.spin >= 0` is accepted.  The user is
+responsible for matching `cfg.spin` to the actual multiplicity of
+the system.
 
 ---
 

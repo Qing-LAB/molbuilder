@@ -121,6 +121,13 @@ def _add_fdf_parser(sub) -> argparse.ArgumentParser:
     g.add_argument("--xc-authors",    default="PBE")
 
     g = p.add_argument_group("SCF")
+    g.add_argument("--spin-polarized", action="store_true",
+                   help="open-shell DFT; REQUIRED for radicals, "
+                        "transition metals, triplet systems, etc.  "
+                        "Without it SIESTA assumes closed-shell.")
+    g.add_argument("--spin-total", type=float, default=None,
+                   help="target total spin moment (mu_B = unpaired "
+                        "electrons); only emitted when --spin-polarized")
     g.add_argument("--mixing-weight",       type=float, default=0.02)
     g.add_argument("--pulay-history",       type=int,   default=3)
     g.add_argument("--dm-tolerance",        type=float, default=1e-5)
@@ -208,6 +215,8 @@ def _run_fdf(args: argparse.Namespace) -> int:
         center_in_vacuum=not args.no_center_in_vacuum,
         species_order=(args.species_order.split(",")
                        if args.species_order else None),
+        spin_polarized=args.spin_polarized,
+        spin_total=args.spin_total,
     )
     summary = convert(args.input, args.fdf, cfg)
     print(f"Wrote {summary['fdf']}: {summary['n_atoms']} atoms, "

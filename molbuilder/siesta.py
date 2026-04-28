@@ -148,6 +148,16 @@ class SiestaConfig:
     # neutral even if the heuristic would have flagged it).
     net_charge: Optional[int] = None
 
+    # Spin polarisation.  Default off (closed-shell DFT).  Set True for
+    # any system with unpaired electrons (radicals, transition metals,
+    # certain charged biomolecules) -- without it SIESTA assumes
+    # spin-restricted and silently produces a wrong electronic
+    # structure for open-shell systems.
+    spin_polarized: bool = False
+    # Optional: total spin moment in units of Bohr magnetons (=
+    # number of unpaired electrons).  None lets SIESTA decide.
+    spin_total: Optional[float] = None
+
 
 # Backwards-compatible alias.  External code that imports `Config` from
 # this module keeps working; new code should prefer `SiestaConfig` so it
@@ -502,6 +512,31 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             "# warm-start; SIESTA silently ignores if no file exists.",
         ]
         out.append("DM.UseSaveDM      true")
+
+    # ---- Spin polarisation ---------------------------------------
+    # SIESTA's default is spin-restricted (no SpinPolarized line ->
+    # closed-shell DFT).  For radicals, transition metals, or any
+    # open-shell system the user MUST set spin_polarized=True or the
+    # electronic structure is silently wrong.  When set, we emit
+    # SpinPolarized true and (optionally) SpinTotal so SIESTA's
+    # initial guess targets the correct multiplicity.
+    if cfg.spin_polarized:
+        if v: out += [
+            "",
+            "# SpinPolarized: open-shell DFT (collinear).  Required for",
+            "# any system with unpaired electrons.  SIESTA's default is",
+            "# closed-shell -- omitting this for a radical / transition-",
+            "# metal / triplet system gives the wrong electronic state.",
+        ]
+        out.append("SpinPolarized     true")
+        if cfg.spin_total is not None:
+            if v: out += [
+                "# SpinTotal: target total spin moment in mu_B (= number",
+                "# of unpaired electrons).  Helps SIESTA's initial guess",
+                "# converge to the right multiplicity; without it SIESTA",
+                "# may settle into a wrong spin state.",
+            ]
+            out.append(f"SpinTotal         {cfg.spin_total}")
 
     # ---- NetCharge -----------------------------------------------
     # Either user-specified (cfg.net_charge != None) or auto-detected

@@ -178,6 +178,17 @@ def render_script(struct: Structure,
             f"unsupported method {cfg.method!r}; "
             f"expected RKS/UKS/RHF/UHF"
         )
+    # PySCF's RKS / RHF assume closed-shell (mol.spin == 0).  Setting
+    # spin != 0 with a restricted method is silently wrong physics:
+    # PySCF will raise at SCF-time, but only after the user has
+    # invoked Python.  Catch it at script-generation time instead.
+    if method_class in ("RKS", "RHF") and cfg.spin != 0:
+        raise ValueError(
+            f"method={cfg.method!r} (restricted) is incompatible with "
+            f"spin={cfg.spin} (which is 2S, the # unpaired electrons). "
+            f"For an open-shell system, switch to method='UKS' "
+            f"(or 'UHF') and keep your spin value."
+        )
     is_dft = method_class.endswith("KS")
     label = cfg.job_name
     v = cfg.verbose_comments
@@ -287,6 +298,11 @@ def render_script(struct: Structure,
     out.append(f'JOB = "{label}"')
     out.append("")
 
+    # ---- _save_xyz helper, defined EARLY so _initial.xyz can be
+    # captured *before* any optimization mutates `mol` ------------
+    if cfg.save_initial_xyz or cfg.save_optimized_xyz:
+        out += _emit_save_helper(v)
+
     # ------------------------------------------------------------- molecule
     if v:
         out.append("# ============================================================")
@@ -317,10 +333,13 @@ def render_script(struct: Structure,
     out.append(")")
     out.append('print(f"Built mol: {mol.natm} atoms, {mol.nelectron} electrons, '
                f'charge={charge:+d}")')
-    # Note: _initial.xyz is written at the end of the script along with
-    # _optimized.xyz -- mol's atom coordinates aren't mutated by
-    # optimize() (which returns a new mol_eq), so a single save block
-    # at the end captures both the input and the optimized geometry.
+    # Capture the user's actual input geometry NOW, before pre-opt
+    # has a chance to modify it.  Otherwise _initial.xyz would end up
+    # being the post-pre-opt geometry (since later we set mol = mol_pre).
+    if cfg.save_initial_xyz:
+        if v:
+            out.append("# Snapshot the input geometry before any optimization runs.")
+        out.append('_save_xyz(mol, JOB + "_initial.xyz", "Initial geometry (input)")')
     out.append("")
 
     # ------------------------------------------------------------- preopt
@@ -428,10 +447,11 @@ def render_script(struct: Structure,
     out.append("")
 
     # ------------------------------------------------------------- save
-    out += _emit_save_helper(v)
-    if cfg.save_initial_xyz:
-        out.append('_save_xyz(mol,    JOB + "_initial.xyz",   "Initial geometry")')
+    # _save_xyz is defined early in the script (before mol is built),
+    # and _initial.xyz was captured immediately after gto.M().  Here
+    # we only write the FINAL geometry.
     if cfg.save_optimized_xyz and cfg.optimize:
+        out.append("")
         out.append('_save_xyz(mol_eq, JOB + "_optimized.xyz", '
                    '"Optimized geometry (PySCF)")')
     out.append("")
@@ -464,7 +484,9 @@ def _emit_preopt_block(cfg: PySCFConfig, charge: int, v: bool) -> List[str]:
     out.append('print("\\n=== Stage: pre-optimization ===")')
     out.append("mol_pre = mol.copy()")
     out.append(f'mol_pre.basis = "{cfg.preopt_basis}"')
-    out.append("mol_pre.build()")
+    # dump_input=False: the original mol.build() already echoed the
+    # input file into <JOB>.log; we don't need a second copy.
+    out.append("mol_pre.build(dump_input=False)")
     # Pre-opt always uses DFT (a hybrid + cheap basis is the point of
     # having a warm-up).  Mirror RKS/UKS choice from the production run.
     out.append(f'mf1 = dft.{cfg.method.upper().replace("HF", "KS")}(mol_pre)')
@@ -480,6 +502,12 @@ def _emit_preopt_block(cfg: PySCFConfig, charge: int, v: bool) -> List[str]:
     out.append("    mf1,")
     out.append(f"    maxsteps          = {cfg.preopt_max_steps},")
     out.append(f"    convergence_grms  = {cfg.preopt_grms:.1e},")
+    if v:
+        out.append("    # assert_convergence=False so a partial pre-opt (which is")
+        out.append("    # GOOD ENOUGH by design) doesn't kill the production run.")
+        out.append("    # Production-stage optimize() keeps assert_convergence=True")
+        out.append("    # because there we DO want to know if the run failed.")
+    out.append("    assert_convergence = False,")
     if cfg.write_trajectory and cfg.optimizer == "geometric":
         if v:
             out.append("    # Pre-opt has its own trajectory file:")
@@ -500,6 +528,7 @@ def _emit_preopt_block(cfg: PySCFConfig, charge: int, v: bool) -> List[str]:
     if cfg.basis != cfg.preopt_basis:
         if v:
             out.append("# Production basis differs from pre-opt; rebuild internals.")
+            out.append("# dump_input=False so we don't echo the input file a 3rd time.")
         out.append(f'mol.basis = "{cfg.basis}"')
         out.append("mol.build(dump_input=False)")
     out.append("")

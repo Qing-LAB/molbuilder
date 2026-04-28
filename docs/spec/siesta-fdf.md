@@ -71,6 +71,27 @@ is emitted, with verbose-mode comments explaining the source
 ("user-specified" or "auto (phosphate protonation)") and what SIESTA
 will do with it.
 
+## Spin contract
+
+SIESTA's default is spin-restricted (no `SpinPolarized` line emitted
+→ closed-shell DFT).  Open-shell systems (radicals, transition
+metals, triplets) **silently produce wrong electronic structure**
+without spin polarisation.
+
+* `cfg.spin_polarized=False` (default): no `SpinPolarized` block.
+* `cfg.spin_polarized=True`: emit `SpinPolarized true`.
+* `cfg.spin_total` (float, optional): when set together with
+  `spin_polarized=True`, emit `SpinTotal <value>` so SIESTA's
+  initial guess targets the right multiplicity.  When set with
+  `spin_polarized=False`, the value is ignored (no `SpinTotal`
+  line) — `SpinTotal` is meaningless without polarisation.
+
+There is no equivalent of PySCF's "method=RKS validation": SIESTA
+can be told `SpinPolarized true` regardless of basis or method, so
+the only correctness rule is that the user MUST set it for any
+open-shell system.  Document this loudly in the FDF when the user
+passes `--spin-polarized`.
+
 ## Cell-padding auto-bump (charged systems)
 
 When `cell is None` (auto-vacuum mode) AND the resolved charge is
