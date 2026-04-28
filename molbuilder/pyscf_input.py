@@ -217,11 +217,14 @@ def render_script(struct: Structure,
     if cfg.save_optimized_xyz and cfg.optimize:
         out.append(f"    {label}_optimized.xyz    -- final relaxed coords")
     if cfg.optimize and cfg.write_trajectory and cfg.optimizer == "geometric":
-        out.append(f"    {label}_geom_optim.xyz   -- streaming optim trajectory")
+        if cfg.preopt:
+            out.append(f"    {label}_preopt_optim.xyz -- pre-opt streaming trajectory")
+            out.append(f"    {label}_preopt.log       -- geomeTRIC's pre-opt log")
+        out.append(f"    {label}_geom_optim.xyz   -- main streaming trajectory")
         out.append("                                  (multi-frame XYZ, one frame")
         out.append("                                   per step; readable live by")
         out.append("                                   molwatch).")
-        out.append(f"    {label}_geom.log         -- geomeTRIC's optimizer log")
+        out.append(f"    {label}_geom.log         -- geomeTRIC's main-opt log")
     out.append("")
     out.append("Dependencies:")
     out.append("    pip install pyscf")
@@ -477,24 +480,28 @@ def _emit_preopt_block(cfg: PySCFConfig, charge: int, v: bool) -> List[str]:
     out.append("    mf1,")
     out.append(f"    maxsteps          = {cfg.preopt_max_steps},")
     out.append(f"    convergence_grms  = {cfg.preopt_grms:.1e},")
+    if cfg.write_trajectory and cfg.optimizer == "geometric":
+        if v:
+            out.append("    # Pre-opt has its own trajectory file:")
+            out.append("    #   <JOB>_preopt_optim.xyz")
+            out.append("    # so molwatch can watch either stage live.")
+        out.append('    prefix            = JOB + "_preopt",')
     out.append(")")
-    out.append('print("Pre-opt done; rebuilding mol with production basis.")')
+    out.append('print("Pre-opt done; carrying optimised geometry into the main run.")')
     out.append("")
-    out.append("# Carry pre-opt coordinates into the production-basis molecule.")
-    out.append("# We rebuild mol so the basis can change between stages.")
-    out.append("_coords = mol_pre.atom_coords(unit='Ang')")
-    out.append("_atoms = [(mol_pre.atom_symbol(i), tuple(_coords[i]))")
-    out.append("          for i in range(mol_pre.natm)]")
-    out.append("mol = gto.M(")
-    out.append("    atom       = _atoms,")
-    out.append(f'    basis      = "{cfg.basis}",')
-    out.append(f"    charge     = {charge},")
-    out.append(f"    spin       = {cfg.spin},")
-    out.append(f"    symmetry   = {cfg.symmetry},")
-    out.append(f"    verbose    = {cfg.verbose},")
-    out.append(f"    max_memory = {cfg.max_memory_mb},")
-    out.append("    unit       = 'Ang',")
-    out.append(")")
+    if v:
+        out.append("# Reuse mol_pre as the production-stage molecule.  This is")
+        out.append("# important: a fresh `gto.M(..., output=JOB+'.log')` call")
+        out.append("# would open the .log in 'w' mode and TRUNCATE the pre-opt")
+        out.append("# log entries we just wrote.  By reusing mol_pre we keep")
+        out.append("# the same open file handle (mol_pre.stdout) so production-")
+        out.append("# stage SCFs append cleanly to the existing log.")
+    out.append("mol = mol_pre")
+    if cfg.basis != cfg.preopt_basis:
+        if v:
+            out.append("# Production basis differs from pre-opt; rebuild internals.")
+        out.append(f'mol.basis = "{cfg.basis}"')
+        out.append("mol.build(dump_input=False)")
     out.append("")
     return out
 

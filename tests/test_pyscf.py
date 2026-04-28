@@ -102,6 +102,57 @@ def test_preopt_block_emitted_when_enabled(h2o):
     assert "mf1 = dft.RKS(mol_pre)" in text
 
 
+def test_preopt_does_not_rebuild_mol_via_gto_M(h2o):
+    """Regression: pre-opt must NOT regenerate the production mol via
+    `gto.M(...)` because that opens <JOB>.log in 'w' mode and wipes the
+    pre-opt log entries.  We reuse mol_pre instead."""
+    text = render_script(h2o, PySCFConfig(preopt=True))
+    # The post-preopt rebuild block should NOT contain a fresh gto.M
+    # CALL (as opposed to a comment mentioning it) between pre-opt's
+    # optimize() and the production mf setup.
+    after_preopt = text.split("Pre-opt done")[1]
+    before_main_mf = after_preopt.split("mf = ")[0]
+    code_lines = [ln for ln in before_main_mf.splitlines()
+                  if not ln.lstrip().startswith("#")]
+    code_only = "\n".join(code_lines)
+    assert "gto.M(" not in code_only, (
+        "post-preopt rebuild uses gto.M(...) which truncates <JOB>.log; "
+        "should reuse mol_pre instead"
+    )
+    # And the mol = mol_pre line should be there.
+    assert "mol = mol_pre" in code_only
+
+
+def test_preopt_writes_its_own_trajectory_when_enabled(h2o):
+    """When write_trajectory + preopt + geometric, pre-opt's optimize()
+    must also pass prefix=JOB+'_preopt' so molwatch can watch the pre-
+    opt stage's streaming trajectory file."""
+    text = render_script(h2o,
+                         PySCFConfig(preopt=True, write_trajectory=True))
+    assert 'prefix            = JOB + "_preopt"' in text
+    # Production stage still uses _geom prefix.
+    assert 'prefix                = JOB + "_geom"' in text
+
+
+def test_preopt_basis_change_triggers_rebuild(h2o):
+    """If the production basis differs from the pre-opt basis, mol must
+    have its basis swapped and rebuilt; otherwise no rebuild needed."""
+    # Same basis -> no rebuild
+    same = render_script(h2o, PySCFConfig(preopt=True,
+                                          basis="def2-SVP",
+                                          preopt_basis="def2-SVP"))
+    after_same = same.split("mol = mol_pre")[1].split("mf = ")[0]
+    assert "mol.build" not in after_same
+
+    # Different basis -> rebuild
+    diff = render_script(h2o, PySCFConfig(preopt=True,
+                                          basis="def2-TZVP",
+                                          preopt_basis="def2-SVP"))
+    after_diff = diff.split("mol = mol_pre")[1].split("mf = ")[0]
+    assert 'mol.basis = "def2-TZVP"' in after_diff
+    assert "mol.build(dump_input=False)" in after_diff
+
+
 def test_dispersion_can_be_disabled(h2o):
     text = render_script(h2o, PySCFConfig(dispersion=None))
     assert "mf.disp" not in text
