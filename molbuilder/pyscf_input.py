@@ -119,7 +119,7 @@ class PySCFConfig:
     save_optimized_xyz: bool = True
     save_initial_xyz: bool = True
     write_trajectory: bool = True       # stream geomeTRIC's <job>_geom_optim.xyz
-                                        # so moldyn_view can watch it live
+                                        # so molwatch can watch it live
 
     # ---------------- Runtime ----------------
     max_memory_mb: int = 4000           # passed to gto.M(max_memory=)
@@ -220,7 +220,7 @@ def render_script(struct: Structure,
         out.append(f"    {label}_geom_optim.xyz   -- streaming optim trajectory")
         out.append("                                  (multi-frame XYZ, one frame")
         out.append("                                   per step; readable live by")
-        out.append("                                   moldyn_view).")
+        out.append("                                   molwatch).")
         out.append(f"    {label}_geom.log         -- geomeTRIC's optimizer log")
     out.append("")
     out.append("Dependencies:")
@@ -409,7 +409,7 @@ def render_script(struct: Structure,
             if v:
                 out.append("    # geomeTRIC writes a multi-frame XYZ to")
                 out.append("    #     <JOB>_geom_optim.xyz")
-                out.append("    # with one frame per accepted step.  moldyn_view")
+                out.append("    # with one frame per accepted step.  molwatch")
                 out.append("    # tails this file live, frame-by-frame.")
             out.append('    prefix                = JOB + "_geom",')
         out.append(")")

@@ -303,7 +303,7 @@ def _add_pyscf_parser(sub) -> argparse.ArgumentParser:
     g.add_argument("--no-log-file", action="store_true")
     g.add_argument("--no-trajectory", action="store_true",
                    help="don't ask geomeTRIC to stream <job>_geom_optim.xyz "
-                        "(disables the moldyn_view live-streaming source)")
+                        "(disables the molwatch live-streaming source)")
     g.add_argument("--no-verbose-comments", action="store_true",
                    help="strip the inline tuning hints from the script")
     return p
