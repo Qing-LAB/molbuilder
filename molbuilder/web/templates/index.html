@@ -18,281 +18,300 @@
 </header>
 
 <!-- ============================================================ -->
-<!-- 1. Build                                                      -->
+<!--  Two-column layout:                                           -->
+<!--    LEFT  (col-controls): build/load + generate-input forms    -->
+<!--    RIGHT (col-viewer):   sticky 3-D viewer + style/download   -->
 <!-- ============================================================ -->
-<section class="card">
-  <h2>1. Build the molecule</h2>
-  <div class="build-row">
-    <label>Input type:
-      <select id="kind">
-        <option value="peptide">Peptide (1-letter, e.g. ARNDC)</option>
-        <option value="dna">DNA (1-letter, e.g. ATGCATGC)</option>
-        <option value="rna">RNA (1-letter, e.g. AUGCAUGC)</option>
-        <option value="smiles">SMILES (e.g. c1ccccc1)</option>
-        <option value="name">Name (e.g. benzene, caffeine)</option>
-      </select>
-    </label>
-    <input id="input-text" type="text" placeholder="ARNDC"
-           autocomplete="off" autofocus>
-    <button id="build-btn">Build</button>
-  </div>
+<main class="app-grid">
 
-  <!-- Extra knobs that only apply to DNA / RNA -->
-  <div id="nucleic-options" class="nucleic-row" hidden>
-    <label>Backend
-      <select id="backend">
-        <option value="auto" selected>auto</option>
-        <option value="rdkit">rdkit  (always works, not helical)</option>
-        <option value="amber">amber  (AmberTools tleap, extended chain)</option>
-      </select>
-    </label>
-    <label>Helix form
-      <select id="form">
-        <option value="B" selected>B</option>
-        <option value="A">A</option>
-        <option value="Z">Z (3DNA only)</option>
-      </select>
-    </label>
-    <label>Termini
-      <select id="terminal">
-        <option value="OH" selected>5'-OH / 3'-OH</option>
-        <option value="5P">5'-phosphate</option>
-        <option value="3P">3'-phosphate</option>
-        <option value="PP">both phosphates</option>
-      </select>
-    </label>
-    <label title="Add an H to each deprotonated non-bridging phosphate oxygen so the molecule is neutral.&#10;Default ON for DFT convenience (no NetCharge needed, smaller vacuum cell sufficient).&#10;Uncheck to keep tleap's deprotonated state -- the FDF generator will then auto-set NetCharge accordingly.">
-      <input id="protonate-phosphates" type="checkbox" checked>
-      Neutralise phosphates (add H)
-    </label>
-    <span id="backend-hint" class="status"></span>
-  </div>
+  <!-- ===================== Controls column ===================== -->
+  <div class="col col-controls">
 
-  <div id="build-status" class="status"></div>
-
-  <details class="load-row">
-    <summary>&hellip; or load an existing <code>.xyz</code> / <code>.pdb</code> file</summary>
-    <p class="hint">
-      Skip the build step and start from a structure you already have
-      (e.g. one written out by a previous SIESTA / VMD / PyMOL session).
-      The loaded geometry feeds the viewer and the FDF generator below.
-    </p>
-    <div class="load-controls">
-      <input id="load-file" type="file" accept=".xyz,.pdb,chemical/x-xyz,chemical/x-pdb">
-      <button id="load-btn" disabled>Load file</button>
-      <span id="load-status" class="status"></span>
-    </div>
-  </details>
-</section>
-
-<!-- ============================================================ -->
-<!-- 2. View                                                       -->
-<!-- ============================================================ -->
-<section class="card">
-  <h2>2. Inspect</h2>
-  <div class="viewer-row">
-    <div id="viewer"></div>
-    <aside class="info-panel">
-      <dl>
-        <dt>Title</dt>           <dd id="info-title">&mdash;</dd>
-        <dt>Atoms</dt>           <dd id="info-atoms">&mdash;</dd>
-        <dt>Residues</dt>        <dd id="info-residues">&mdash;</dd>
-        <dt>Formula</dt>         <dd id="info-formula">&mdash;</dd>
-      </dl>
-
-      <fieldset>
-        <legend>Style</legend>
-        <label>Representation
-          <select id="rep">
-            <option value="ballstick" selected>ball &amp; stick</option>
-            <option value="sphere">sphere (CPK)</option>
-            <option value="stick">stick</option>
-            <option value="line">line</option>
+    <!-- ---------- 1. Build / Load ---------- -->
+    <section class="card">
+      <h2>1. Build / Load</h2>
+      <div class="build-row">
+        <label>Input type:
+          <select id="kind">
+            <option value="peptide">Peptide (1-letter, e.g. ARNDC)</option>
+            <option value="dna">DNA (1-letter, e.g. ATGCATGC)</option>
+            <option value="rna">RNA (1-letter, e.g. AUGCAUGC)</option>
+            <option value="smiles">SMILES (e.g. c1ccccc1)</option>
+            <option value="name">Name (e.g. benzene, caffeine)</option>
           </select>
         </label>
-        <label>Atom radius
-          <input id="radius" type="range" min="0.2" max="2.0" step="0.05" value="1.0">
-        </label>
-        <label>Background
-          <select id="bg">
-            <option value="white" selected>white</option>
-            <option value="0xeeeeee">light grey</option>
-            <option value="black">black</option>
+        <input id="input-text" type="text" placeholder="ARNDC"
+               autocomplete="off" autofocus>
+        <button id="build-btn">Build</button>
+      </div>
+
+      <!-- Extra knobs that only apply to DNA / RNA -->
+      <div id="nucleic-options" class="nucleic-row" hidden>
+        <label>Backend
+          <select id="backend">
+            <option value="auto" selected>auto</option>
+            <option value="rdkit">rdkit  (always works, not helical)</option>
+            <option value="amber">amber  (AmberTools tleap, extended chain)</option>
           </select>
         </label>
-        <label><input type="checkbox" id="show-labels"> Show atom indices</label>
-      </fieldset>
+        <label>Helix form
+          <select id="form">
+            <option value="B" selected>B</option>
+            <option value="A">A</option>
+            <option value="Z">Z (3DNA only)</option>
+          </select>
+        </label>
+        <label>Termini
+          <select id="terminal">
+            <option value="OH" selected>5'-OH / 3'-OH</option>
+            <option value="5P">5'-phosphate</option>
+            <option value="3P">3'-phosphate</option>
+            <option value="PP">both phosphates</option>
+          </select>
+        </label>
+        <label title="Add an H to each deprotonated non-bridging phosphate oxygen so the molecule is neutral.&#10;Default ON for DFT convenience (no NetCharge needed, smaller vacuum cell sufficient).&#10;Uncheck to keep tleap's deprotonated state -- the FDF generator will then auto-set NetCharge accordingly.">
+          <input id="protonate-phosphates" type="checkbox" checked>
+          Neutralise phosphates (add H)
+        </label>
+        <span id="backend-hint" class="status"></span>
+      </div>
 
-      <fieldset>
-        <legend>Download</legend>
-        <button class="dl-btn" id="dl-xyz" disabled>.xyz</button>
-        <button class="dl-btn" id="dl-pdb" disabled>.pdb</button>
-      </fieldset>
-    </aside>
+      <div id="build-status" class="status"></div>
+
+      <details class="load-row">
+        <summary>&hellip; or load an existing <code>.xyz</code> / <code>.pdb</code> file</summary>
+        <p class="hint">
+          Skip the build step and start from a structure you already have
+          (e.g. one written out by a previous SIESTA / VMD / PyMOL session).
+          The loaded geometry feeds the viewer and the input generator below.
+        </p>
+        <div class="load-controls">
+          <input id="load-file" type="file" accept=".xyz,.pdb,chemical/x-xyz,chemical/x-pdb">
+          <button id="load-btn" disabled>Load file</button>
+          <span id="load-status" class="status"></span>
+        </div>
+      </details>
+    </section>
+
+    <!-- ---------- 2. Generate input ---------- -->
+    <section class="card" id="fdf-card">
+      <h2>2. Generate SIESTA <code>.fdf</code> input
+        <small>(optional)</small>
+      </h2>
+      <p class="hint">
+        Defaults reproduce a standard small-system DFT setup
+        (DZP basis, 300 Ry mesh, GGA-PBE, SCF-only or CG relaxation).
+        Tweak whatever you need; everything not shown stays at the SIESTA
+        default.
+      </p>
+
+      <div class="param-grid">
+        <fieldset>
+          <legend>System</legend>
+          <label>SystemName       <input id="p-system-name"  value="siesta_run"></label>
+          <label>SystemLabel      <input id="p-system-label" value="siesta"></label>
+        </fieldset>
+
+        <fieldset title="Basis set and real-space mesh resolution.">
+          <legend>Basis &amp; grid</legend>
+          <label title="Orbital basis quality (SZ &lt; DZP &lt; TZP).&#10;DZP is recommended for production work.">
+            Basis size
+            <select id="p-basis">
+              <option>SZ</option><option>SZP</option>
+              <option>DZ</option><option selected>DZP</option>
+              <option>TZP</option>
+            </select>
+          </label>
+          <label title="Real-space mesh cutoff (Ry).&#10;Range 200-500. Higher = better forces, slower (cubic in cutoff).&#10;Increase if forces are noisy.">
+            MeshCutoff (Ry)
+            <input id="p-mesh-cutoff" type="number" value="300" step="25">
+          </label>
+          <label title="Controls how diffuse the PAOs are (Ry).&#10;Range 0.001-0.05. Smaller = more accurate, slower.">
+            PAO.EnergyShift (Ry)
+            <input id="p-pao-energy-shift" type="number" value="0.02" step="0.005">
+          </label>
+        </fieldset>
+
+        <fieldset title="Exchange-correlation functional.">
+          <legend>Exchange-correlation</legend>
+          <label title="GGA recommended for most systems.&#10;LDA underestimates band gaps. VDW for dispersion-dominated systems.">
+            XC.functional
+            <select id="p-xc-functional">
+              <option selected>GGA</option><option>LDA</option>
+              <option>VDW</option>
+            </select>
+          </label>
+          <label title="Parametrisation: PBE (standard GGA), BLYP, PW92 (LDA), DRSLL (vdW).">
+            XC.authors
+            <input id="p-xc-authors" value="PBE">
+          </label>
+        </fieldset>
+
+        <fieldset title="Self-consistent-field cycle parameters.">
+          <legend>SCF</legend>
+          <label title="diagon: standard. OMM: order-N, for &gt; 500 atoms. transiesta: non-equilibrium transport.">
+            SolutionMethod
+            <select id="p-solution-method">
+              <option selected>diagon</option><option>OMM</option>
+              <option>transiesta</option>
+            </select>
+          </label>
+          <label title="DM mixing weight (0.001-0.5).&#10;Smaller = stable but slow. Larger = aggressive, may oscillate.&#10;Metals: 0.005-0.02. Insulators: 0.05-0.10.">
+            MixingWeight
+            <input id="p-mixing-weight" type="number" step="0.005" value="0.02">
+          </label>
+          <label title="# of SCF iterations kept for Pulay mixing (2-10).&#10;3 is fine usually; 5-8 for hard cases.">
+            PulayHistory
+            <input id="p-pulay-history" type="number" step="1" value="3">
+          </label>
+          <label title="DM convergence threshold.&#10;1e-5 standard. 1e-6 for accurate forces / band structure.">
+            DM.Tolerance
+            <input id="p-dm-tolerance" type="number" step="1e-6" value="1e-5">
+          </label>
+          <label title="Redundant energy-based SCF guard (eV).">
+            DM.Energy.Tol (eV)
+            <input id="p-dm-energy-tolerance" type="number" step="1e-5" value="1e-4">
+          </label>
+          <label title="SCF iteration cap. 200-500 typical.">
+            MaxSCFIter
+            <input id="p-max-scf-iter" type="number" step="50" value="500">
+          </label>
+          <label title="Fermi-Dirac smearing.&#10;300 K (default) for most systems. 1000-2000 K helps SCF for metals. &lt; 100 K for accurate band-edge properties.">
+            T_elec (K)
+            <input id="p-temperature" type="number" step="50" value="300">
+          </label>
+        </fieldset>
+
+        <fieldset title="Monkhorst-Pack k-point sampling.&#10;Vacuum/molecule: 1x1x1 (Gamma only). Periodic 3D: 4x4x4 to 8x8x8. 2D slab: kx*ky*1.">
+          <legend>k-grid (Monkhorst-Pack)</legend>
+          <label><span>k<sub>x</sub></span>  <input id="p-kx" type="number" min="1" max="32" value="1"></label>
+          <label><span>k<sub>y</sub></span>  <input id="p-ky" type="number" min="1" max="32" value="1"></label>
+          <label><span>k<sub>z</sub></span>  <input id="p-kz" type="number" min="1" max="32" value="1"></label>
+        </fieldset>
+
+        <fieldset title="Geometry optimisation algorithm and convergence.">
+          <legend>Relaxation</legend>
+          <label title="CG: standard, robust. Broyden: often faster on flat regions. FIRE: good for big systems. MD: real molecular dynamics.">
+            MD.TypeOfRun
+            <select id="p-relax">
+              <option value="CG"   selected>CG</option>
+              <option value="MD">MD</option>
+              <option value="Broyden">Broyden</option>
+              <option value="FIRE">FIRE</option>
+              <option value="none">none (single point)</option>
+            </select>
+          </label>
+          <label title="Maximum CG/relax iterations.">
+            MD.NumCGsteps
+            <input id="p-relax-steps" type="number" value="200">
+          </label>
+          <label title="Convergence threshold on the maximum atomic force (eV/Ang).&#10;0.04 SIESTA default (loose). 0.02 production. 0.01 properties. 0.005 phonons.">
+            Force tol (eV/&Aring;)
+            <input id="p-force-tol" type="number" step="0.005" value="0.02">
+          </label>
+          <label title="Maximum atom displacement per relaxation step (Ang).&#10;0.05 cautious / near-converged. 0.10-0.20 fast / far from minimum.">
+            Max displ (&Aring;)
+            <input id="p-max-displ" type="number" step="0.01" value="0.05">
+          </label>
+        </fieldset>
+
+        <fieldset title="Output flags + cell positioning options.">
+          <legend>Output &amp; positioning</legend>
+          <label title=".xyz at every relaxation step (movie viewer)">
+            <input id="p-write-coor-xmol" type="checkbox" checked>
+            Write CoorXmol (.xyz per step)
+          </label>
+          <label title="Write trajectory to .ANI for xcrysden / vmd / OVITO.">
+            <input id="p-write-md-history" type="checkbox" checked>
+            Write MD history (.ANI)
+          </label>
+          <label title="Write H + S matrices.&#10;Required for TranSIESTA / DOS / transport calculations.">
+            <input id="p-write-hs" type="checkbox">
+            Write HS (transport / DOS)
+          </label>
+          <label title="When a periodic cell is given, fold atoms whose fractional coordinates fall outside [0, 1) back into the unit cell.">
+            <input id="p-wrap-into-cell" type="checkbox" checked>
+            Wrap atoms into cell (PBC)
+          </label>
+          <label title="In the auto-vacuum case, place the bounding-box midpoint at the cell centre.">
+            <input id="p-center-in-vacuum" type="checkbox" checked>
+            Centre molecule in vacuum
+          </label>
+          <label title="Strip the inline help comments from the FDF.">
+            <input id="p-verbose-comments" type="checkbox" checked>
+            Verbose comments / tuning hints
+          </label>
+        </fieldset>
+      </div>
+
+      <div class="fdf-actions">
+        <button id="generate-fdf" disabled>Generate .fdf</button>
+        <button class="dl-btn" id="dl-fdf" disabled>Download .fdf</button>
+        <span id="fdf-status" class="status"></span>
+      </div>
+
+      <pre id="fdf-output" class="fdf-output" hidden></pre>
+    </section>
   </div>
-</section>
 
-<!-- ============================================================ -->
-<!-- 3. SIESTA fdf                                                 -->
-<!-- ============================================================ -->
-<section class="card" id="fdf-card">
-  <h2>3. Generate SIESTA <code>.fdf</code> input
-    <small>(optional)</small>
-  </h2>
-  <p class="hint">
-    Defaults reproduce a standard small-system DFT setup
-    (DZP basis, 300 Ry mesh, GGA-PBE, SCF-only or CG relaxation).
-    Tweak whatever you need; everything not shown stays at the SIESTA
-    default.
-  </p>
+  <!-- ===================== Viewer column (sticky) ===================== -->
+  <aside class="col col-viewer">
+    <section class="card card-viewer">
+      <div class="viewer-header">
+        <h2>Inspect</h2>
+        <div class="viewer-info">
+          <span class="title" id="info-title">no structure built</span>
+          <span class="meta">
+            <b id="info-atoms">&mdash;</b> atoms
+            <span class="sep">&middot;</span>
+            <b id="info-residues">&mdash;</b> residues
+            <span class="sep">&middot;</span>
+            <code id="info-formula">&mdash;</code>
+          </span>
+        </div>
+      </div>
 
-  <div class="param-grid">
-    <fieldset>
-      <legend>System</legend>
-      <label>SystemName       <input id="p-system-name"  value="siesta_run"></label>
-      <label>SystemLabel      <input id="p-system-label" value="siesta"></label>
-    </fieldset>
+      <div class="viewer-wrap" id="viewer-wrap">
+        <div id="viewer"></div>
+        <div class="resize-hint" aria-hidden="true">drag corner to resize</div>
+      </div>
 
-    <fieldset title="Basis set and real-space mesh resolution.">
-      <legend>Basis &amp; grid</legend>
-      <label title="Orbital basis quality (SZ &lt; DZP &lt; TZP).&#10;DZP is recommended for production work.">
-        Basis size
-        <select id="p-basis">
-          <option>SZ</option><option>SZP</option>
-          <option>DZ</option><option selected>DZP</option>
-          <option>TZP</option>
-        </select>
-      </label>
-      <label title="Real-space mesh cutoff (Ry).&#10;Range 200-500. Higher = better forces, slower (cubic in cutoff).&#10;Increase if forces are noisy.">
-        MeshCutoff (Ry)
-        <input id="p-mesh-cutoff" type="number" value="300" step="25">
-      </label>
-      <label title="Controls how diffuse the PAOs are (Ry).&#10;Range 0.001-0.05. Smaller = more accurate, slower.">
-        PAO.EnergyShift (Ry)
-        <input id="p-pao-energy-shift" type="number" value="0.02" step="0.005">
-      </label>
-    </fieldset>
+      <div class="viewer-controls">
+        <details>
+          <summary>Style</summary>
+          <div class="control-row">
+            <label>Rep
+              <select id="rep">
+                <option value="ballstick" selected>ball &amp; stick</option>
+                <option value="sphere">sphere (CPK)</option>
+                <option value="stick">stick</option>
+                <option value="line">line</option>
+              </select>
+            </label>
+            <label>Atom radius
+              <input id="radius" type="range" min="0.2" max="2.0" step="0.05" value="1.0">
+            </label>
+            <label>Background
+              <select id="bg">
+                <option value="white" selected>white</option>
+                <option value="0xeeeeee">light grey</option>
+                <option value="black">black</option>
+              </select>
+            </label>
+            <label><input type="checkbox" id="show-labels"> Atom indices</label>
+          </div>
+        </details>
 
-    <fieldset title="Exchange-correlation functional.">
-      <legend>Exchange-correlation</legend>
-      <label title="GGA recommended for most systems.&#10;LDA underestimates band gaps. VDW for dispersion-dominated systems.">
-        XC.functional
-        <select id="p-xc-functional">
-          <option selected>GGA</option><option>LDA</option>
-          <option>VDW</option>
-        </select>
-      </label>
-      <label title="Parametrisation: PBE (standard GGA), BLYP, PW92 (LDA), DRSLL (vdW).">
-        XC.authors
-        <input id="p-xc-authors" value="PBE">
-      </label>
-    </fieldset>
+        <div class="control-row download-row">
+          <span class="dl-label">Download:</span>
+          <button class="dl-btn" id="dl-xyz" disabled>.xyz</button>
+          <button class="dl-btn" id="dl-pdb" disabled>.pdb</button>
+        </div>
+      </div>
+    </section>
+  </aside>
 
-    <fieldset title="Self-consistent-field cycle parameters.">
-      <legend>SCF</legend>
-      <label title="diagon: standard. OMM: order-N, for &gt; 500 atoms. transiesta: non-equilibrium transport.">
-        SolutionMethod
-        <select id="p-solution-method">
-          <option selected>diagon</option><option>OMM</option>
-          <option>transiesta</option>
-        </select>
-      </label>
-      <label title="DM mixing weight (0.001-0.5).&#10;Smaller = stable but slow. Larger = aggressive, may oscillate.&#10;Metals: 0.005-0.02. Insulators: 0.05-0.10.">
-        MixingWeight
-        <input id="p-mixing-weight" type="number" step="0.005" value="0.02">
-      </label>
-      <label title="# of SCF iterations kept for Pulay mixing (2-10).&#10;3 is fine usually; 5-8 for hard cases.">
-        PulayHistory
-        <input id="p-pulay-history" type="number" step="1" value="3">
-      </label>
-      <label title="DM convergence threshold.&#10;1e-5 standard. 1e-6 for accurate forces / band structure.">
-        DM.Tolerance
-        <input id="p-dm-tolerance" type="number" step="1e-6" value="1e-5">
-      </label>
-      <label title="Redundant energy-based SCF guard (eV).">
-        DM.Energy.Tol (eV)
-        <input id="p-dm-energy-tolerance" type="number" step="1e-5" value="1e-4">
-      </label>
-      <label title="SCF iteration cap. 200-500 typical.">
-        MaxSCFIter
-        <input id="p-max-scf-iter" type="number" step="50" value="500">
-      </label>
-      <label title="Fermi-Dirac smearing.&#10;300 K (default) for most systems. 1000-2000 K helps SCF for metals. &lt; 100 K for accurate band-edge properties.">
-        T_elec (K)
-        <input id="p-temperature" type="number" step="50" value="300">
-      </label>
-    </fieldset>
-
-    <fieldset title="Monkhorst-Pack k-point sampling.&#10;Vacuum/molecule: 1x1x1 (Gamma only). Periodic 3D: 4x4x4 to 8x8x8. 2D slab: kx*ky*1.">
-      <legend>k-grid (Monkhorst-Pack)</legend>
-      <label><span>k<sub>x</sub></span>  <input id="p-kx" type="number" min="1" max="32" value="1"></label>
-      <label><span>k<sub>y</sub></span>  <input id="p-ky" type="number" min="1" max="32" value="1"></label>
-      <label><span>k<sub>z</sub></span>  <input id="p-kz" type="number" min="1" max="32" value="1"></label>
-    </fieldset>
-
-    <fieldset title="Geometry optimisation algorithm and convergence.">
-      <legend>Relaxation</legend>
-      <label title="CG: standard, robust. Broyden: often faster on flat regions. FIRE: good for big systems. MD: real molecular dynamics.">
-        MD.TypeOfRun
-        <select id="p-relax">
-          <option value="CG"   selected>CG</option>
-          <option value="MD">MD</option>
-          <option value="Broyden">Broyden</option>
-          <option value="FIRE">FIRE</option>
-          <option value="none">none (single point)</option>
-        </select>
-      </label>
-      <label title="Maximum CG/relax iterations.">
-        MD.NumCGsteps
-        <input id="p-relax-steps" type="number" value="200">
-      </label>
-      <label title="Convergence threshold on the maximum atomic force (eV/Ang).&#10;0.04 SIESTA default (loose). 0.02 production. 0.01 properties. 0.005 phonons.">
-        Force tol (eV/&Aring;)
-        <input id="p-force-tol" type="number" step="0.005" value="0.02">
-      </label>
-      <label title="Maximum atom displacement per relaxation step (Ang).&#10;0.05 cautious / near-converged. 0.10-0.20 fast / far from minimum.">
-        Max displ (&Aring;)
-        <input id="p-max-displ" type="number" step="0.01" value="0.05">
-      </label>
-    </fieldset>
-
-    <fieldset title="Output flags + cell positioning options.">
-      <legend>Output &amp; positioning</legend>
-      <label title=".xyz at every relaxation step (movie viewer)">
-        <input id="p-write-coor-xmol" type="checkbox" checked>
-        Write CoorXmol (.xyz per step)
-      </label>
-      <label title="Write trajectory to .ANI for xcrysden / vmd / OVITO.">
-        <input id="p-write-md-history" type="checkbox" checked>
-        Write MD history (.ANI)
-      </label>
-      <label title="Write H + S matrices.&#10;Required for TranSIESTA / DOS / transport calculations.">
-        <input id="p-write-hs" type="checkbox">
-        Write HS (transport / DOS)
-      </label>
-      <label title="When a periodic cell is given, fold atoms whose fractional coordinates fall outside [0, 1) back into the unit cell.">
-        <input id="p-wrap-into-cell" type="checkbox" checked>
-        Wrap atoms into cell (PBC)
-      </label>
-      <label title="In the auto-vacuum case, place the bounding-box midpoint at the cell centre.">
-        <input id="p-center-in-vacuum" type="checkbox" checked>
-        Centre molecule in vacuum
-      </label>
-      <label title="Strip the inline help comments from the FDF.">
-        <input id="p-verbose-comments" type="checkbox" checked>
-        Verbose comments / tuning hints
-      </label>
-    </fieldset>
-  </div>
-
-  <div class="fdf-actions">
-    <button id="generate-fdf" disabled>Generate .fdf</button>
-    <button class="dl-btn" id="dl-fdf" disabled>Download .fdf</button>
-    <span id="fdf-status" class="status"></span>
-  </div>
-
-  <pre id="fdf-output" class="fdf-output" hidden></pre>
-</section>
+</main>
 
 <footer>
   <p>molbuilder &middot; <a href="/api/health">/api/health</a></p>

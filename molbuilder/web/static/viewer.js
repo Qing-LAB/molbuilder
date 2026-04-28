@@ -25,6 +25,20 @@
         defaultcolors: $3Dmol.elementColors.Jmol,
     });
 
+    // Keep the 3Dmol canvas in sync with the user-resizable container.
+    // 3Dmol's WebGL context doesn't auto-track its parent box; we have
+    // to call viewer.resize() whenever the container's dimensions change
+    // (CSS resize handle, window resize, layout reflow).
+    function syncViewerSize() {
+        viewer.resize();
+        viewer.render();
+    }
+    const wrapEl = $("viewer-wrap");
+    if (wrapEl && typeof ResizeObserver !== "undefined") {
+        new ResizeObserver(syncViewerSize).observe(wrapEl);
+    }
+    window.addEventListener("resize", syncViewerSize);
+
     // ----- Status helpers --------------------------------------------
     function setStatus(elId, msg, kind) {
         const el = $(elId);
