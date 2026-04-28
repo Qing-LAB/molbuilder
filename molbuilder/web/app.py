@@ -29,6 +29,7 @@ from .. import (
     build_peptide, build_rna,
 )
 from ..siesta import Config, render_fdf
+from ..pyscf_input import PySCFConfig, render_script
 from ..structure import Structure
 
 
@@ -194,6 +195,41 @@ def create_app() -> Flask:
             "source_format": fmt,
         })
 
+    # ----------------------------------------------------------------
+    # Render a PySCF script from a structure (sent as XYZ) + parameters
+    # ----------------------------------------------------------------
+    @app.route("/api/pyscf", methods=["POST"])
+    def api_pyscf():
+        body = request.get_json(silent=True) or {}
+        xyz_text = body.get("xyz")
+        params: Dict[str, Any] = body.get("params") or {}
+        if not xyz_text:
+            return jsonify({"ok": False, "error": "no xyz provided"}), 400
+
+        try:
+            struct = _xyz_to_structure(xyz_text)
+        except Exception as exc:
+            return jsonify({"ok": False,
+                            "error": f"could not parse xyz: {exc}"}), 400
+
+        try:
+            cfg = _pyscf_config_from_params(params)
+        except Exception as exc:
+            return jsonify({"ok": False,
+                            "error": f"bad parameters: {exc}"}), 400
+
+        try:
+            script = render_script(struct, cfg)
+        except Exception as exc:
+            return jsonify({"ok": False,
+                            "error": f"render failed: {exc}"}), 500
+
+        return jsonify({
+            "ok": True,
+            "script": script,
+            "job_name": cfg.job_name,
+        })
+
     @app.route("/api/health")
     def api_health():
         return jsonify({"ok": True, "version": _molbuilder_version()})
@@ -253,3 +289,22 @@ def _config_from_params(params: Dict[str, Any]) -> Config:
         else:
             kwargs[k] = v
     return Config(**kwargs)
+
+
+def _pyscf_config_from_params(params: Dict[str, Any]) -> PySCFConfig:
+    """Build a PySCFConfig from a dict, picking only fields it knows."""
+    valid = {f.name for f in fields(PySCFConfig)}
+    kwargs = {}
+    for k, v in params.items():
+        if k not in valid:
+            continue
+        # Empty string from the form means "leave default / None".
+        if v == "" and k in ("solvent", "auxbasis", "dispersion"):
+            kwargs[k] = None
+            continue
+        # JS sends "none" for "no dispersion"
+        if k == "dispersion" and isinstance(v, str) and v.lower() == "none":
+            kwargs[k] = None
+            continue
+        kwargs[k] = v
+    return PySCFConfig(**kwargs)

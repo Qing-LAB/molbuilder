@@ -1,0 +1,556 @@
+"""molbuilder.pyscf_input -- generate a runnable PySCF script for
+molecule relaxation / single-point work.
+
+Mirrors the molbuilder.siesta module:
+
+    PySCFConfig      -- dataclass holding every parameter
+    render_script    -- format an in-memory Structure as a Python script
+    convert          -- read XYZ/PDB, write .py, return summary
+
+The generated script is fully self-contained: build mole -> SCF ->
+(optional) pre-optimization -> main optimization -> save outputs.
+The user runs it with `python <script>.py`.
+
+We default to B3LYP+D3BJ/def2-SVP with density fitting -- the modern
+production default for organic chemistry / biomolecule work in PySCF.
+The optional pre-optimization stage uses the cheaper PBE/def2-SVP to
+fix bad bond lengths before the hybrid functional sees them.
+
+Module name: this lives at ``molbuilder/pyscf_input.py`` so an
+``import pyscf`` inside the generated user script is unambiguous (the
+file name avoids any possibility that ``pyscf`` resolves to our local
+module instead of the actual PySCF library).
+"""
+
+from __future__ import annotations
+
+import sys
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import List, Optional, Tuple
+
+import numpy as np
+
+from .structure import Structure
+
+
+# --------------------------------------------------------------------- #
+#  Solvent presets (dielectric constants at 25 deg C)                  #
+# --------------------------------------------------------------------- #
+
+
+_SOLVENTS = {
+    "water":      78.3553,
+    "methanol":   32.613,
+    "ethanol":    24.852,
+    "acetone":    20.493,
+    "dmso":       46.826,
+    "thf":        7.4257,
+    "chloroform": 4.7113,
+    "toluene":    2.3741,
+    "hexane":     1.8819,
+}
+
+
+# --------------------------------------------------------------------- #
+#  Config                                                               #
+# --------------------------------------------------------------------- #
+
+
+@dataclass
+class PySCFConfig:
+    """All PySCF parameters in one place.
+
+    Defaults are tuned for "build a small/medium molecule and relax it":
+
+        * B3LYP+D3BJ/def2-SVP  (modern hybrid, dispersion-corrected)
+        * Density fitting on (def2-universal-jkfit auto-selected)
+        * geomeTRIC optimizer with maxsteps=200, grms=3e-4 Ha/Bohr
+        * Closed-shell RKS (spin=0); change to UKS for radicals
+        * NetCharge auto-detected from phosphate protonation state
+        * Pre-optimization stage off by default; opt-in for systems
+          where the builder geometry is rough (long ssDNA, large
+          peptides) so PBE/def2-SVP can clean it up before B3LYP runs.
+    """
+
+    # ---------------- System ----------------
+    job_name: str = "pyscf_relax"
+    charge: Optional[int] = None        # None -> auto from phosphates
+    spin: int = 0                       # PySCF convention: 2S, NOT 2S+1
+    symmetry: bool = False              # True is faster but rarely matches
+                                        # builder-output geometry exactly
+
+    # ---------------- Method (main run) ----------------
+    method: str = "RKS"                 # "RKS" / "UKS" / "RHF" / "UHF"
+    functional: str = "B3LYP"
+    basis: str = "def2-SVP"
+    auxbasis: Optional[str] = None      # None -> let density_fit() pick
+    density_fit: bool = True
+    dispersion: Optional[str] = "d3bj"  # None / "d3" / "d3bj" / "d4"
+
+    # ---------------- Solvent (optional) ----------------
+    solvent: Optional[str] = None       # None or one of _SOLVENTS keys
+    solvent_method: str = "IEF-PCM"     # "IEF-PCM" / "C-PCM" / "COSMO"
+
+    # ---------------- SCF ----------------
+    scf_conv_tol: float = 1e-9          # Hartree
+    scf_max_cycle: int = 100
+    scf_init_guess: str = "minao"       # "minao" / "atom" / "1e" / "huckel"
+    grid_level: int = 3                 # DFT integration grid (0-9; 3=default)
+    level_shift: float = 0.0            # Hartree; 0.1-0.3 helps for hard SCF
+
+    # ---------------- Pre-optimization (optional warm-up) ----------------
+    preopt: bool = False
+    preopt_functional: str = "PBE"
+    preopt_basis: str = "def2-SVP"
+    preopt_density_fit: bool = True
+    preopt_dispersion: Optional[str] = None
+    preopt_max_steps: int = 50
+    preopt_grms: float = 1.0e-3         # Ha/Bohr; 3x looser than main
+
+    # ---------------- Main optimization ----------------
+    optimize: bool = True
+    optimizer: str = "geometric"        # "geometric" or "berny"
+    geom_max_steps: int = 200
+    geom_conv_energy: float = 1.0e-6    # Hartree
+    geom_conv_grms: float = 3.0e-4      # Ha/Bohr
+    geom_conv_gmax: float = 4.5e-4      # Ha/Bohr
+
+    # ---------------- Output ----------------
+    chkfile: bool = True                # write <job>.chk (DM, mol, energies)
+    log_file: bool = True               # write <job>.log
+    save_optimized_xyz: bool = True
+    save_initial_xyz: bool = True
+
+    # ---------------- Runtime ----------------
+    max_memory_mb: int = 4000           # passed to gto.M(max_memory=)
+    threads: Optional[int] = None       # None -> inherit OMP_NUM_THREADS
+    verbose: int = 4                    # 0 silent, 4 info, 5 debug
+
+    # ---------------- Comments ----------------
+    verbose_comments: bool = True       # inline tuning hints + troubleshooting
+
+
+# --------------------------------------------------------------------- #
+#  Renderer                                                             #
+# --------------------------------------------------------------------- #
+
+
+def _atoms_block(struct: Structure, indent: str = "    ") -> str:
+    """Format atoms as PySCF's multi-line `atom=` string (Angstrom)."""
+    lines = []
+    for el, (x, y, z) in zip(struct.elements, struct.positions):
+        lines.append(f"{indent}{el:<2s}  {x:14.8f}  {y:14.8f}  {z:14.8f}")
+    return "\n".join(lines)
+
+
+def _resolve_charge(struct: Structure, cfg: PySCFConfig) -> int:
+    """Use cfg.charge if given, else auto-detect from phosphate protonation."""
+    if cfg.charge is not None:
+        return int(cfg.charge)
+    from .chemistry import formal_charge_from_phosphates
+    return formal_charge_from_phosphates(struct)
+
+
+def render_script(struct: Structure,
+                  config: Optional[PySCFConfig] = None) -> str:
+    """Format a Structure as a runnable PySCF script (Python text).
+
+    The result is what you'd write by hand if you knew exactly what
+    every PySCF knob does -- with verbose comments turned on by
+    default so you can read the file as documentation of the choices.
+    """
+    cfg = config or PySCFConfig()
+    charge = _resolve_charge(struct, cfg)
+    method_class = cfg.method.upper()
+    if method_class not in ("RKS", "UKS", "RHF", "UHF"):
+        raise ValueError(
+            f"unsupported method {cfg.method!r}; "
+            f"expected RKS/UKS/RHF/UHF"
+        )
+    is_dft = method_class.endswith("KS")
+    label = cfg.job_name
+    v = cfg.verbose_comments
+
+    out: List[str] = []
+    # ------------------------------------------------------------- header
+    summary_line = (f"{struct.n_atoms} atoms, charge={charge:+d}, "
+                    f"spin={cfg.spin} (2S)")
+    out.append('"""PySCF input script generated by molbuilder.')
+    out.append("")
+    out.append(f"System    : {struct.title or 'untitled'}")
+    out.append(f"Atoms     : {summary_line}")
+    out.append(f"Method    : {method_class} / "
+               f"{cfg.functional if is_dft else 'HF'}")
+    out.append(f"Basis     : {cfg.basis}")
+    if cfg.preopt:
+        out.append(f"Pre-opt   : {cfg.preopt_functional} / {cfg.preopt_basis} "
+                   f"({cfg.preopt_max_steps} steps max, looser tol)")
+    if cfg.optimize:
+        out.append(f"Optimizer : {cfg.optimizer} "
+                   f"(maxsteps={cfg.geom_max_steps}, "
+                   f"grms={cfg.geom_conv_grms:.0e} Ha/Bohr)")
+    if cfg.solvent:
+        out.append(f"Solvent   : {cfg.solvent} ({cfg.solvent_method}, "
+                   f"eps={_SOLVENTS.get(cfg.solvent, '?')})")
+    out.append("")
+    out.append("Run with:")
+    out.append(f"    python {label}.py")
+    out.append("")
+    out.append("Outputs:")
+    if cfg.log_file:
+        out.append(f"    {label}.log              -- pyscf verbose log")
+    if cfg.chkfile:
+        out.append(f"    {label}.chk              -- checkpoint (DM, mol)")
+    if cfg.save_initial_xyz:
+        out.append(f"    {label}_initial.xyz      -- input coordinates")
+    if cfg.save_optimized_xyz and cfg.optimize:
+        out.append(f"    {label}_optimized.xyz    -- final relaxed coords")
+    out.append("")
+    out.append("Dependencies:")
+    out.append("    pip install pyscf")
+    if cfg.optimize and cfg.optimizer == "geometric":
+        out.append("    pip install geometric    # optimizer (recommended)")
+    if cfg.dispersion or (cfg.preopt and cfg.preopt_dispersion):
+        out.append("    pip install pyscf-dispersion  # D3/D3BJ/D4 (PySCF >= 2.4)")
+    out.append('"""')
+    out.append("")
+
+    # ------------------------------------------------------------- imports
+    out.append("import os")
+    out.append("import sys")
+    out.append("import time")
+    out.append("")
+    if cfg.threads is not None:
+        if v:
+            out.append("# Pin BLAS thread count BEFORE importing pyscf so")
+            out.append("# the BLAS/OpenMP runtime sees this preference at init.")
+            out.append("# Set in os.environ rather than via pyscf.lib.num_threads()")
+            out.append("# because some BLAS libraries (MKL, OpenBLAS) only honour")
+            out.append("# OMP_NUM_THREADS when read at process start.")
+        out.append(f'os.environ.setdefault("OMP_NUM_THREADS", "{cfg.threads}")')
+        out.append(f'os.environ.setdefault("MKL_NUM_THREADS", "{cfg.threads}")')
+        out.append("")
+    out.append("import numpy as np")
+    out.append("from pyscf import gto, scf, dft, lib")
+    if cfg.optimize:
+        if cfg.optimizer == "geometric":
+            out.append("from pyscf.geomopt.geometric_solver import optimize")
+        elif cfg.optimizer == "berny":
+            out.append("from pyscf.geomopt.berny_solver import optimize")
+        else:
+            raise ValueError(
+                f"unknown optimizer {cfg.optimizer!r}; "
+                f"expected 'geometric' or 'berny'"
+            )
+    if cfg.solvent:
+        out.append("from pyscf.solvent import pcm")
+    out.append("")
+    out.append("t0 = time.time()")
+    out.append(f'JOB = "{label}"')
+    out.append("")
+
+    # ------------------------------------------------------------- molecule
+    if v:
+        out.append("# ============================================================")
+        out.append("#  1. Build the molecule")
+        out.append("# ============================================================")
+        out.append("# spin = 2S, NOT 2S+1.  Closed shell -> spin = 0.  Doublet ->")
+        out.append("# spin = 1, triplet -> spin = 2 (with method='UKS').")
+        out.append("# charge is auto-detected from phosphate protonation when")
+        out.append("# molbuilder builds DNA/RNA; override by setting cfg.charge.")
+        out.append("# symmetry=True can give a 2-10x speedup for symmetric systems")
+        out.append("# but is sensitive to numerical drift in builder geometry --")
+        out.append("# leave False unless you know your atoms sit on the symmetry")
+        out.append("# elements exactly.")
+        out.append("# max_memory is a soft hint to PySCF in MB; raise for big jobs.")
+    out.append("mol = gto.M(")
+    out.append("    atom = '''")
+    out.append(_atoms_block(struct))
+    out.append("    ''',")
+    out.append(f'    basis      = "{cfg.basis}",')
+    out.append(f"    charge     = {charge},")
+    out.append(f"    spin       = {cfg.spin},")
+    out.append(f"    symmetry   = {cfg.symmetry},")
+    out.append(f"    verbose    = {cfg.verbose},")
+    if cfg.log_file:
+        out.append(f'    output     = JOB + ".log",')
+    out.append(f"    max_memory = {cfg.max_memory_mb},   # MB")
+    out.append("    unit       = 'Ang',")
+    out.append(")")
+    out.append('print(f"Built mol: {mol.natm} atoms, {mol.nelectron} electrons, '
+               f'charge={charge:+d}")')
+    if cfg.save_initial_xyz:
+        out.append("")
+        out.append("# Save the input coordinates as XYZ (handy for visual diffing")
+        out.append("# against the optimized geometry later).")
+        out.append("_save_xyz(mol, JOB + '_initial.xyz', 'Initial geometry') "
+                   "if False else None  # placeholder, helper defined below")
+    out.append("")
+
+    # ------------------------------------------------------------- preopt
+    if cfg.preopt and cfg.optimize:
+        out += _emit_preopt_block(cfg, charge, v)
+
+    # ------------------------------------------------------------- main scf
+    out.append("# ============================================================")
+    if cfg.preopt and cfg.optimize:
+        out.append("#  3. Main run -- production functional / basis")
+    else:
+        out.append("#  2. SCF setup")
+    out.append("# ============================================================")
+    if v:
+        out.append("# DFT functional: B3LYP is the modern default for organic /")
+        out.append("# biomolecule chemistry.  PBE0 is a faster hybrid alternative;")
+        out.append("# wB97X-D / wB97M-V are more accurate range-separated hybrids.")
+        out.append("# Pure GGAs (PBE, BLYP) are 2-3x faster than hybrids but miss")
+        out.append("# self-interaction-error effects (band gaps, anion binding).")
+        out.append("#")
+        out.append("# Density fitting (RIJK / RIJ) is essentially free accuracy:")
+        out.append("# usually the SCF iteration cost drops 5-10x with negligible")
+        out.append("# total-energy error (< 0.1 kcal/mol for organic systems).")
+        out.append("#")
+        out.append("# Dispersion (D3BJ / D4) is also nearly free and matters")
+        out.append("# greatly for biomolecules (stacking, vdW, hydrogen bonds).")
+    out.append(f"mf = {('dft' if is_dft else 'scf')}.{method_class}(mol)")
+    if is_dft:
+        out.append(f'mf.xc = "{cfg.functional}"')
+        out.append(f"mf.grids.level = {cfg.grid_level}")
+    if cfg.density_fit:
+        if cfg.auxbasis:
+            out.append(f'mf = mf.density_fit(auxbasis="{cfg.auxbasis}")')
+        else:
+            out.append("mf = mf.density_fit()")
+    if cfg.dispersion and is_dft:
+        out.append(f'mf.disp = "{cfg.dispersion}"')
+    if cfg.solvent:
+        eps = _SOLVENTS.get(cfg.solvent.lower())
+        if eps is None:
+            raise ValueError(
+                f"unknown solvent {cfg.solvent!r}; "
+                f"valid: {sorted(_SOLVENTS)}"
+            )
+        out.append("# PCM solvation -- continuum model (cheaper than ddCOSMO).")
+        out.append("mf = pcm.PCM(mf)")
+        out.append(f'mf.with_solvent.method = "{cfg.solvent_method}"')
+        out.append(f"mf.with_solvent.eps = {eps}    "
+                   f"# {cfg.solvent} dielectric")
+    out.append("")
+    if v:
+        out.append("# SCF convergence parameters.  Tighten if forces look noisy")
+        out.append("# (1e-10) or DFT energies drift across geometry steps.")
+        out.append("# level_shift > 0 helps for hard cases (open-shell metals,")
+        out.append("# diffuse anions); 0.1-0.3 is typical when needed.")
+    out.append(f"mf.conv_tol  = {cfg.scf_conv_tol:.0e}")
+    out.append(f"mf.max_cycle = {cfg.scf_max_cycle}")
+    out.append(f'mf.init_guess = "{cfg.scf_init_guess}"')
+    if cfg.level_shift:
+        out.append(f"mf.level_shift = {cfg.level_shift}")
+    if cfg.chkfile:
+        out.append(f'mf.chkfile = JOB + ".chk"')
+    out.append("")
+
+    # ------------------------------------------------------------- run
+    if cfg.optimize:
+        if v:
+            out.append("# ============================================================")
+            out.append("#  4. Geometry optimization")
+            out.append("# ============================================================")
+            out.append("# geomeTRIC is the recommended optimizer (translation-")
+            out.append("# rotation-invariant internal coords, robust on large")
+            out.append("# steps).  Berny is built into PySCF, fewer dependencies,")
+            out.append("# but less robust on flexible biomolecules.")
+            out.append("#")
+            out.append("# Convergence thresholds (Ha, Ha/Bohr):")
+            out.append("#   energy 1e-6     standard")
+            out.append("#   grms   3e-4     Ha/Bohr  (~ 0.015 eV/Ang)")
+            out.append("#   gmax   4.5e-4   Ha/Bohr  (~ 0.023 eV/Ang)")
+            out.append("# Loosen by 3-10x for screening; tighten 10x for phonons.")
+        out.append('print("\\n=== Stage: production optimization ===")')
+        out.append("mol_eq = optimize(")
+        out.append("    mf,")
+        out.append(f"    maxsteps              = {cfg.geom_max_steps},")
+        out.append(f"    convergence_energy    = {cfg.geom_conv_energy:.1e},")
+        out.append(f"    convergence_grms      = {cfg.geom_conv_grms:.1e},")
+        out.append(f"    convergence_gmax      = {cfg.geom_conv_gmax:.1e},")
+        out.append(")")
+        out.append('print(f"Final energy: {mf.e_tot:.8f} Hartree")')
+    else:
+        if v:
+            out.append("# ============================================================")
+            out.append("#  4. Single-point SCF (no optimization)")
+            out.append("# ============================================================")
+        out.append("e = mf.kernel()")
+        out.append('print(f"Total energy: {e:.8f} Hartree")')
+        out.append("mol_eq = mol")
+    out.append("")
+
+    # ------------------------------------------------------------- save
+    out += _emit_save_helper(v)
+    if cfg.save_initial_xyz:
+        out.append('_save_xyz(mol,    JOB + "_initial.xyz",   "Initial geometry")')
+    if cfg.save_optimized_xyz and cfg.optimize:
+        out.append('_save_xyz(mol_eq, JOB + "_optimized.xyz", '
+                   '"Optimized geometry (PySCF)")')
+    out.append("")
+    out.append('print(f"\\nJob complete in {time.time() - t0:.1f} s")')
+
+    # ------------------------------------------------------------- hints
+    if v:
+        out += _emit_troubleshooting_block(cfg)
+
+    return "\n".join(out) + "\n"
+
+
+def _emit_preopt_block(cfg: PySCFConfig, charge: int, v: bool) -> List[str]:
+    """Stage 1: cheap geometry warm-up before the production functional."""
+    out: List[str] = []
+    out.append("# ============================================================")
+    out.append("#  2. Pre-optimization  (cheap warm-up: PBE/def2-SVP)")
+    out.append("# ============================================================")
+    if v:
+        out.append("# Why pre-optimize: hybrid functionals (B3LYP, M06-2X) are")
+        out.append("# much more sensitive to bad starting geometry than pure GGAs")
+        out.append("# (PBE).  A handful of cheap PBE/def2-SVP geometry steps fix")
+        out.append("# the worst bond-length errors from the builder, so the main")
+        out.append("# stage starts from a clean structure.")
+        out.append("# This typically costs 5-15% of the production-stage time.")
+        out.append("#")
+        out.append("# We don't fully converge here -- the looser grms tolerance")
+        out.append("# (1e-3 Ha/Bohr vs 3e-4 in main) means we stop as soon as the")
+        out.append("# geometry is reasonable.")
+    out.append('print("\\n=== Stage: pre-optimization ===")')
+    out.append("mol_pre = mol.copy()")
+    out.append(f'mol_pre.basis = "{cfg.preopt_basis}"')
+    out.append("mol_pre.build()")
+    is_pre_dft = True   # we always use DFT for preopt by design
+    out.append(f'mf1 = dft.{cfg.method.upper().replace("HF", "KS")}(mol_pre)')
+    out.append(f'mf1.xc = "{cfg.preopt_functional}"')
+    if cfg.preopt_density_fit:
+        out.append("mf1 = mf1.density_fit()")
+    if cfg.preopt_dispersion:
+        out.append(f'mf1.disp = "{cfg.preopt_dispersion}"')
+    out.append(f"mf1.conv_tol  = {cfg.scf_conv_tol:.0e}")
+    out.append(f"mf1.max_cycle = {cfg.scf_max_cycle}")
+    out.append("")
+    out.append("mol_pre = optimize(")
+    out.append("    mf1,")
+    out.append(f"    maxsteps          = {cfg.preopt_max_steps},")
+    out.append(f"    convergence_grms  = {cfg.preopt_grms:.1e},")
+    out.append(")")
+    out.append('print("Pre-opt done; rebuilding mol with production basis.")')
+    out.append("")
+    out.append("# Carry pre-opt coordinates into the production-basis molecule.")
+    out.append("# We rebuild mol so the basis can change between stages.")
+    out.append("_coords = mol_pre.atom_coords(unit='Ang')")
+    out.append("_atoms = [(mol_pre.atom_symbol(i), tuple(_coords[i]))")
+    out.append("          for i in range(mol_pre.natm)]")
+    out.append("mol = gto.M(")
+    out.append("    atom       = _atoms,")
+    out.append(f'    basis      = "{cfg.basis}",')
+    out.append(f"    charge     = {charge},")
+    out.append(f"    spin       = {cfg.spin},")
+    out.append(f"    symmetry   = {cfg.symmetry},")
+    out.append(f"    verbose    = {cfg.verbose},")
+    out.append(f"    max_memory = {cfg.max_memory_mb},")
+    out.append("    unit       = 'Ang',")
+    out.append(")")
+    out.append("")
+    return out
+
+
+def _emit_save_helper(v: bool) -> List[str]:
+    """Inline XYZ writer that doesn't require ase / pyscf.tools."""
+    out: List[str] = []
+    out.append("# ============================================================")
+    out.append("#  5. Save outputs")
+    out.append("# ============================================================")
+    if v:
+        out.append("# Inline XYZ writer (Angstrom).  Avoids depending on ase or")
+        out.append("# pyscf.tools.molden, both of which add startup cost.")
+    out.append("def _save_xyz(mol_obj, path, comment='generated by molbuilder'):")
+    out.append("    coords = mol_obj.atom_coords(unit='Ang')")
+    out.append("    with open(path, 'w') as fh:")
+    out.append('        fh.write(f"{mol_obj.natm}\\n{comment}\\n")')
+    out.append("        for i in range(mol_obj.natm):")
+    out.append("            sym = mol_obj.atom_symbol(i)")
+    out.append("            x, y, z = coords[i]")
+    out.append('            fh.write(f"{sym:<2s}  {x:14.8f}  '
+               '{y:14.8f}  {z:14.8f}\\n")')
+    out.append("    print(f'Wrote {path}')")
+    out.append("")
+    return out
+
+
+def _emit_troubleshooting_block(cfg: PySCFConfig) -> List[str]:
+    out: List[str] = []
+    out.append("")
+    out.append("# ============================================================")
+    out.append("# TROUBLESHOOTING / TUNING HINTS")
+    out.append("# ============================================================")
+    out.append("#")
+    out.append("# SCF won't converge:")
+    out.append("#   * mf.level_shift = 0.2          (Hartree, lifts virtuals)")
+    out.append("#   * mf.max_cycle = 300")
+    out.append("#   * mf.init_guess = 'atom'        (more diffuse start)")
+    out.append("#   * mf.diis_space = 12            (default 8)")
+    out.append("#   * mf.damp = 0.3                 (start, then 0)")
+    out.append("#")
+    out.append("# Open-shell / radical:")
+    out.append("#   * cfg.method='UKS', cfg.spin=N  (N = 2S, # unpaired electrons)")
+    out.append("#   * after SCF: mf.stability_analysis()")
+    out.append("#")
+    out.append("# Forces look noisy / anisotropic:")
+    out.append("#   * cfg.grid_level = 5            (denser DFT grid)")
+    out.append("#   * cfg.scf_conv_tol = 1e-10      (tighter SCF)")
+    out.append("#")
+    out.append("# Job too slow:")
+    out.append("#   * cfg.basis = 'def2-SVP' (already)")
+    out.append("#   * cfg.density_fit = True (already)")
+    out.append("#   * functional = 'PBE'            (pure GGA, 2-3x faster)")
+    out.append("#   * raise OMP_NUM_THREADS / MKL_NUM_THREADS")
+    out.append("#")
+    out.append("# Geometry optimization oscillates:")
+    out.append("#   * cfg.geom_max_steps += 100")
+    out.append("#   * cfg.geom_conv_grms = 1e-3     (looser)")
+    out.append("#   * Switch optimizer 'geometric' -> 'berny' for stiff systems")
+    out.append("#")
+    out.append("# Charged / open-shell anions need diffuse functions:")
+    out.append("#   * cfg.basis = 'aug-cc-pVDZ' or 'def2-SVPD'")
+    out.append("#   * cfg.scf_conv_tol = 1e-10")
+    return out
+
+
+# --------------------------------------------------------------------- #
+#  File-level convenience wrapper                                       #
+# --------------------------------------------------------------------- #
+
+
+def convert(input_path: str,
+            py_path: str,
+            config: Optional[PySCFConfig] = None) -> dict:
+    """Read an XYZ or PDB, write a runnable PySCF script.
+
+    Returns a summary dict: ``{py, n_atoms, charge, label}``.
+    """
+    cfg = config or PySCFConfig()
+    p = Path(input_path)
+    ext = p.suffix.lower()
+    if ext == ".pdb":
+        struct = Structure.from_pdb(p)
+    elif ext in (".xyz", ""):
+        struct = Structure.from_xyz(p)
+    else:
+        raise ValueError(
+            f"unsupported input extension {ext!r}; expected .xyz or .pdb"
+        )
+    text = render_script(struct, cfg)
+    out_p = Path(py_path)
+    out_p.parent.mkdir(parents=True, exist_ok=True)
+    out_p.write_text(text)
+    return {
+        "py":      str(out_p),
+        "n_atoms": struct.n_atoms,
+        "charge":  _resolve_charge(struct, cfg),
+        "label":   cfg.job_name,
+    }

@@ -93,11 +93,24 @@
       </details>
     </section>
 
-    <!-- ---------- 2. Generate input ---------- -->
-    <section class="card" id="fdf-card">
-      <h2>2. Generate SIESTA <code>.fdf</code> input
-        <small>(optional)</small>
-      </h2>
+    <!-- ---------- 2. Generate input (tabbed: SIESTA | PySCF) ---------- -->
+    <section class="card" id="generate-card">
+      <h2>2. Generate input <small>(optional)</small></h2>
+
+      <div class="tabs" role="tablist" aria-label="Generate-input engine">
+        <button class="tab-btn active" role="tab"
+                aria-selected="true" data-tab="siesta">
+          SIESTA <code>.fdf</code>
+        </button>
+        <button class="tab-btn" role="tab"
+                aria-selected="false" data-tab="pyscf">
+          PySCF script
+        </button>
+      </div>
+
+      <!-- ============ SIESTA tab panel ============ -->
+      <div class="tab-panel" id="tab-siesta" role="tabpanel"
+           aria-labelledby="tab-siesta-btn">
       <p class="hint">
         Defaults reproduce a standard small-system DFT setup
         (DZP basis, 300 Ry mesh, GGA-PBE, SCF-only or CG relaxation).
@@ -251,6 +264,199 @@
       </div>
 
       <pre id="fdf-output" class="fdf-output" hidden></pre>
+      </div><!-- /#tab-siesta -->
+
+      <!-- ============ PySCF tab panel ============ -->
+      <div class="tab-panel" id="tab-pyscf" role="tabpanel"
+           aria-labelledby="tab-pyscf-btn" hidden>
+      <p class="hint">
+        Generates a self-contained Python script that builds the molecule
+        with PySCF, runs SCF, and (by default) optimises the geometry.
+        Defaults: B3LYP+D3BJ / def2-SVP with density fitting and the
+        geomeTRIC optimizer &mdash; the modern hybrid-DFT default for
+        organics and biomolecules.
+      </p>
+
+      <div class="param-grid">
+        <fieldset>
+          <legend>System</legend>
+          <label title="Used for output filenames (.log, .chk, _optimized.xyz).">
+            Job name        <input id="py-job-name" value="pyscf_relax">
+          </label>
+          <label title="Net charge.&#10;Leave blank to auto-detect from phosphate protonation state (the same logic used for SIESTA's NetCharge).&#10;Set explicitly for systems with charged side chains (Asp, Glu, Lys, Arg, ...) the heuristic doesn't see.">
+            Charge          <input id="py-charge" type="number" placeholder="auto">
+          </label>
+          <label title="Spin convention in PySCF is 2S, NOT 2S+1.&#10;Closed shell -> 0.  Doublet radical -> 1 (also flip method to UKS).  Triplet -> 2.">
+            Spin (2S)       <input id="py-spin" type="number" value="0" min="0">
+          </label>
+          <label title="Use point-group symmetry to speed up SCF.&#10;Off by default because builder geometry rarely sits on the symmetry elements exactly; bad symmetry detection causes hard SCF crashes.">
+            <input id="py-symmetry" type="checkbox"> Use point-group symmetry
+          </label>
+        </fieldset>
+
+        <fieldset title="Production-stage method.">
+          <legend>Method</legend>
+          <label title="RKS = restricted Kohn-Sham (closed shell, default).&#10;UKS = unrestricted (radicals, magnetic systems).&#10;RHF/UHF = Hartree-Fock baselines.">
+            Method
+            <select id="py-method">
+              <option value="RKS" selected>RKS (closed-shell DFT)</option>
+              <option value="UKS">UKS (open-shell DFT)</option>
+              <option value="RHF">RHF (closed-shell HF)</option>
+              <option value="UHF">UHF (open-shell HF)</option>
+            </select>
+          </label>
+          <label title="DFT functional name (PySCF / libxc).&#10;B3LYP: hybrid GGA, decades of validation for organics.&#10;PBE: pure GGA, faster, no self-interaction-error fix.&#10;PBE0 / M06-2X / wB97X-D: alternative hybrids.">
+            Functional
+            <input id="py-functional" value="B3LYP">
+          </label>
+          <label title="Atomic basis set.&#10;def2-SVP: smallest you'd publish with (production minimum).&#10;def2-TZVP: accurate, ~3x slower.&#10;cc-pVDZ / aug-cc-pVDZ: Dunning family; aug-* for anions / weak interactions.">
+            Basis
+            <input id="py-basis" value="def2-SVP">
+          </label>
+          <label title="Dispersion correction: D3 with Becke-Johnson damping is the modern default; nearly free, big improvement for biomolecules.">
+            Dispersion
+            <select id="py-dispersion">
+              <option value="d3bj" selected>D3BJ</option>
+              <option value="d3">D3 (zero damping)</option>
+              <option value="d4">D4</option>
+              <option value="none">none</option>
+            </select>
+          </label>
+          <label title="Density fitting (RIJK).&#10;5-10x SCF speedup with negligible accuracy loss for organics.&#10;Recommend ON unless you need exact 4-index integrals.">
+            <input id="py-density-fit" type="checkbox" checked>
+            Density fitting (RI)
+          </label>
+        </fieldset>
+
+        <fieldset title="Self-consistent-field cycle parameters.">
+          <legend>SCF</legend>
+          <label title="Density-matrix convergence threshold (Hartree).&#10;1e-9 standard. 1e-10 for accurate forces or anion / diffuse calculations.">
+            conv_tol         <input id="py-scf-conv-tol" type="number" value="1e-9" step="1e-10">
+          </label>
+          <label title="Maximum SCF iterations.&#10;100 plenty for closed-shell organics. 200-300 for hard cases.">
+            max_cycle        <input id="py-scf-max-cycle" type="number" value="100" min="20" step="20">
+          </label>
+          <label title="Initial guess for the density matrix.&#10;minao: superposition of atomic orbitals (default).&#10;atom: superposition of atomic densities (more diffuse).&#10;1e: 1-electron Hamiltonian.&#10;huckel: extended Huckel.">
+            init_guess
+            <select id="py-init-guess">
+              <option selected>minao</option>
+              <option>atom</option>
+              <option>1e</option>
+              <option>huckel</option>
+            </select>
+          </label>
+          <label title="DFT integration grid level (0-9).&#10;3: PySCF default. 5: tight (use for accurate forces / phonons).">
+            grid_level       <input id="py-grid-level" type="number" value="3" min="0" max="9">
+          </label>
+          <label title="Level shift on virtual orbitals (Hartree).&#10;0 default.  0.1-0.3 helps when SCF oscillates (open-shell metals, hard radicals).">
+            level_shift      <input id="py-level-shift" type="number" value="0.0" step="0.1">
+          </label>
+        </fieldset>
+
+        <fieldset title="Optional: cheap PBE/def2-SVP warm-up before the production functional.">
+          <legend>Pre-optimization (optional)</legend>
+          <label title="Run a quick PBE/def2-SVP geometry pass before the main run.&#10;Useful for builder-output structures (especially long ssDNA / large peptides) where the hybrid functional would otherwise spend its first 5-10 steps fixing bond lengths.&#10;Off by default; cost is 5-15% of production-stage time.">
+            <input id="py-preopt" type="checkbox"> Enable pre-optimization
+          </label>
+          <label title="Cheap functional for the warm-up.&#10;PBE: pure GGA, robust SCF.&#10;BLYP / BP86: alternative pure GGAs.">
+            preopt functional <input id="py-preopt-functional" value="PBE">
+          </label>
+          <label title="Pre-opt basis (typically same or smaller than the main basis).">
+            preopt basis    <input id="py-preopt-basis" value="def2-SVP">
+          </label>
+          <label title="Maximum pre-opt geometry steps.&#10;50 is plenty -- we don't fully converge here.">
+            preopt steps    <input id="py-preopt-max-steps" type="number" value="50" step="10">
+          </label>
+          <label title="Pre-opt convergence on max gradient (Ha/Bohr).&#10;1e-3 default = ~0.05 eV/Ang, 3x looser than main.">
+            preopt grms     <input id="py-preopt-grms" type="number" value="1e-3" step="1e-4">
+          </label>
+        </fieldset>
+
+        <fieldset title="Production-stage geometry optimization.">
+          <legend>Optimization</legend>
+          <label title="Disable for a single-point energy / properties run.">
+            <input id="py-optimize" type="checkbox" checked> Optimize geometry
+          </label>
+          <label title="geomeTRIC: translation-rotation-invariant internal coordinates, robust on big steps.  Recommended.&#10;Berny: built into PySCF, fewer dependencies, less robust on flexible biomolecules.">
+            optimizer
+            <select id="py-optimizer">
+              <option value="geometric" selected>geomeTRIC</option>
+              <option value="berny">Berny</option>
+            </select>
+          </label>
+          <label title="Maximum optimization steps.&#10;200 is generous; well-behaved organics converge in 30-100.">
+            max_steps        <input id="py-geom-max-steps" type="number" value="200" step="50">
+          </label>
+          <label title="Energy convergence between consecutive steps (Hartree).">
+            conv_energy      <input id="py-geom-conv-energy" type="number" value="1e-6" step="1e-7">
+          </label>
+          <label title="RMS gradient threshold (Ha/Bohr) -- ~ 0.015 eV/Ang.&#10;3e-4 standard.  1e-4 for accurate forces / phonons.  1e-3 for screening.">
+            conv_grms        <input id="py-geom-conv-grms" type="number" value="3e-4" step="1e-4">
+          </label>
+          <label title="Max gradient threshold (Ha/Bohr).">
+            conv_gmax        <input id="py-geom-conv-gmax" type="number" value="4.5e-4" step="1e-4">
+          </label>
+        </fieldset>
+
+        <fieldset title="Optional implicit solvation (PCM-family models).">
+          <legend>Solvent (optional)</legend>
+          <label title="Implicit solvent.  Leave 'none' for gas phase.">
+            solvent
+            <select id="py-solvent">
+              <option value="" selected>none (gas phase)</option>
+              <option value="water">water</option>
+              <option value="methanol">methanol</option>
+              <option value="ethanol">ethanol</option>
+              <option value="acetone">acetone</option>
+              <option value="dmso">DMSO</option>
+              <option value="thf">THF</option>
+              <option value="chloroform">chloroform</option>
+              <option value="toluene">toluene</option>
+              <option value="hexane">hexane</option>
+            </select>
+          </label>
+          <label title="PCM flavour.  IEF-PCM is the modern default.">
+            method
+            <select id="py-solvent-method">
+              <option selected>IEF-PCM</option>
+              <option>C-PCM</option>
+              <option>COSMO</option>
+            </select>
+          </label>
+        </fieldset>
+
+        <fieldset title="Runtime / output options.">
+          <legend>Runtime &amp; output</legend>
+          <label title="Memory hint to PySCF in MB (max_memory).">
+            max memory (MB) <input id="py-max-memory" type="number" value="4000" step="500">
+          </label>
+          <label title="Pin OMP_NUM_THREADS in the script header.&#10;Leave blank to inherit from the launching shell.">
+            threads         <input id="py-threads" type="number" placeholder="env">
+          </label>
+          <label title="PySCF verbosity level.&#10;0 silent. 4 info (default). 5 debug.">
+            verbose         <input id="py-verbose" type="number" value="4" min="0" max="9">
+          </label>
+          <label title="Write the .chk checkpoint (DM, mol object, energies).&#10;Required for restarts and many post-SCF analyses.">
+            <input id="py-chkfile" type="checkbox" checked> Write .chk
+          </label>
+          <label title="Write a per-job .log file (recommended for any non-trivial run).">
+            <input id="py-log-file" type="checkbox" checked> Write .log
+          </label>
+          <label title="Strip the inline tuning hints from the generated script.">
+            <input id="py-verbose-comments" type="checkbox" checked>
+            Verbose comments / tuning hints
+          </label>
+        </fieldset>
+      </div>
+
+      <div class="fdf-actions">
+        <button id="generate-pyscf" disabled>Generate .py</button>
+        <button class="dl-btn" id="dl-pyscf" disabled>Download .py</button>
+        <span id="pyscf-status" class="status"></span>
+      </div>
+
+      <pre id="pyscf-output" class="fdf-output" hidden></pre>
+      </div><!-- /#tab-pyscf -->
     </section>
   </div>
 

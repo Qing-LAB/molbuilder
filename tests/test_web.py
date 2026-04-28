@@ -175,6 +175,91 @@ def main() -> None:
     assert "SystemLabel       lp" in body["fdf"]
     print("  /api/load -> /api/fdf chain works end-to-end")
 
+    # ---- index page must include the tab markup -----------------
+    r = client.get("/")
+    body = r.data.decode()
+    for needle in (
+        'class="tabs"',
+        'data-tab="siesta"',
+        'data-tab="pyscf"',
+        'id="tab-siesta"',
+        'id="tab-pyscf"',
+        'id="generate-pyscf"',
+    ):
+        assert needle in body, f"missing {needle!r} in index.html"
+    print("  / includes SIESTA/PySCF tab markup")
+
+    # ---- /api/pyscf : default params ----------------------------
+    r = client.post("/api/pyscf", json={"xyz": xyz_pep, "params": {}})
+    body = r.get_json()
+    assert body["ok"] is True, body
+    assert "from pyscf import gto, scf, dft, lib" in body["script"]
+    assert 'mf.xc = "B3LYP"' in body["script"]
+    assert "mol_eq = optimize(" in body["script"]
+    print(f"  /api/pyscf default: {body['script'].count(chr(10))} lines, "
+          f"job={body['job_name']!r}")
+
+    # Verify the script we got back is syntactically valid Python
+    compile(body["script"], "<api/pyscf default>", "exec")
+
+    # ---- /api/pyscf : custom params ----------------------------
+    r = client.post("/api/pyscf", json={
+        "xyz": xyz_pep,
+        "params": {
+            "job_name":  "my_pep",
+            "method":    "UKS",
+            "spin":      1,
+            "charge":    -1,
+            "functional": "PBE0",
+            "basis":     "def2-TZVP",
+            "preopt":    True,
+            "optimize":  False,
+            "dispersion": "d4",
+            "solvent":   "water",
+            "verbose_comments": False,
+        }
+    })
+    body = r.get_json()
+    assert body["ok"] is True, body
+    script = body["script"]
+    assert 'JOB = "my_pep"' in script
+    assert "mf = dft.UKS(mol)" in script
+    assert "spin       = 1" in script
+    assert "charge     = -1" in script
+    assert 'mf.xc = "PBE0"' in script
+    assert 'basis      = "def2-TZVP"' in script
+    assert "mol_eq = optimize(" not in script           # opt off
+    assert 'mf.disp = "d4"' in script
+    assert "mf = pcm.PCM(mf)" in script
+    assert "TROUBLESHOOTING" not in script              # verbose off
+    print("  /api/pyscf custom: UKS / PBE0 / def2-TZVP / D4 / water / no-opt")
+
+    # ---- /api/pyscf : auto-detect charge from phosphates -------
+    # Strip the H-on-OP atoms from the DNA xyz so detection sees a charge.
+    # Easier path: hand-craft a 7-atom diester missing both HOPs.
+    dna_xyz_strip = (
+        "7\n"
+        "deprotonated diester\n"
+        "C  -2.5  0.0  0.0\n"
+        "O  -1.4  0.0  0.0\n"
+        "P   0.0  0.0  0.0\n"
+        "O   0.0  1.5  0.0\n"
+        "O   0.0 -0.8  1.3\n"
+        "O   1.4  0.0  0.0\n"
+        "C   2.5  0.0  0.0\n"
+    )
+    r = client.post("/api/pyscf", json={"xyz": dna_xyz_strip, "params": {}})
+    body = r.get_json()
+    assert body["ok"] is True
+    assert "charge     = -1" in body["script"]
+    print("  /api/pyscf auto-charge: detects -1 from deprotonated phosphate")
+
+    # ---- /api/pyscf : missing xyz -------------------------------
+    r = client.post("/api/pyscf", json={"params": {}})
+    body = r.get_json()
+    assert body["ok"] is False
+    print("  /api/pyscf without xyz -> error (correct)")
+
     print("OK -- all endpoints exercised.")
 
 

@@ -6,7 +6,8 @@ Subcommands:
     molbuilder rna AUGCAUGCAU --out file.xyz
     molbuilder smiles "c1ccccc1" --out benzene.xyz
     molbuilder name "1,4-benzenedithiol" --out bdt.xyz
-    molbuilder fdf in.xyz out.fdf --psml-lib /opt/psml --kgrid 4x4x1
+    molbuilder fdf   in.xyz out.fdf --psml-lib /opt/psml --kgrid 4x4x1
+    molbuilder pyscf in.xyz out.py --functional B3LYP --preopt
     molbuilder serve --port 8000
 """
 
@@ -216,6 +217,141 @@ def _run_fdf(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------- #
+#  pyscf subcommand (XYZ / PDB -> runnable PySCF script)                #
+# --------------------------------------------------------------------- #
+
+
+def _add_pyscf_parser(sub) -> argparse.ArgumentParser:
+    p = sub.add_parser(
+        "pyscf",
+        help="convert XYZ / PDB to a runnable PySCF script",
+        description=(
+            "Convert an XYZ or PDB structure file into a self-contained "
+            "PySCF Python script that builds the molecule, runs SCF, "
+            "and (by default) optimises the geometry.  Defaults reproduce "
+            "a modern hybrid-DFT setup: B3LYP+D3BJ / def2-SVP with density "
+            "fitting and the geomeTRIC optimizer."
+        ),
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+    )
+    p.add_argument("input", help="input structure file (.xyz or .pdb)")
+    p.add_argument("py",    help="output .py script")
+
+    g = p.add_argument_group("system")
+    g.add_argument("--job-name",  default="pyscf_relax")
+    g.add_argument("--charge",    type=int, default=None,
+                   help="net charge (default: auto-detect from phosphates)")
+    g.add_argument("--spin",      type=int, default=0,
+                   help="2S, NOT 2S+1; 0 = closed shell, 1 = doublet, ...")
+    g.add_argument("--symmetry",  action="store_true")
+
+    g = p.add_argument_group("method (production stage)")
+    g.add_argument("--method",     default="RKS",
+                   choices=["RKS", "UKS", "RHF", "UHF"])
+    g.add_argument("--functional", default="B3LYP")
+    g.add_argument("--basis",      default="def2-SVP")
+    g.add_argument("--auxbasis",   default=None)
+    g.add_argument("--no-density-fit", action="store_true")
+    g.add_argument("--dispersion", default="d3bj",
+                   help="d3, d3bj, d4, or 'none' to disable")
+
+    g = p.add_argument_group("solvent (optional PCM)")
+    g.add_argument("--solvent",        default=None,
+                   help="water / methanol / dmso / chloroform / ...")
+    g.add_argument("--solvent-method", default="IEF-PCM")
+
+    g = p.add_argument_group("SCF")
+    g.add_argument("--scf-conv-tol",  type=float, default=1e-9)
+    g.add_argument("--scf-max-cycle", type=int,   default=100)
+    g.add_argument("--scf-init-guess", default="minao",
+                   choices=["minao", "atom", "1e", "huckel"])
+    g.add_argument("--grid-level",   type=int,   default=3,
+                   help="DFT integration grid (0-9; 3 = default, 5 = tight)")
+    g.add_argument("--level-shift",  type=float, default=0.0,
+                   help="Hartree; 0.1-0.3 helps for hard SCF")
+
+    g = p.add_argument_group("pre-optimization (optional cheap warm-up)")
+    g.add_argument("--preopt", action="store_true",
+                   help="run a cheap PBE/def2-SVP pre-opt before main run")
+    g.add_argument("--preopt-functional", default="PBE")
+    g.add_argument("--preopt-basis",      default="def2-SVP")
+    g.add_argument("--preopt-max-steps",  type=int,   default=50)
+    g.add_argument("--preopt-grms",       type=float, default=1e-3)
+
+    g = p.add_argument_group("main optimization")
+    g.add_argument("--no-optimize",  action="store_true",
+                   help="single-point only, no geometry optimization")
+    g.add_argument("--optimizer",    default="geometric",
+                   choices=["geometric", "berny"])
+    g.add_argument("--geom-max-steps",   type=int,   default=200)
+    g.add_argument("--geom-conv-energy", type=float, default=1e-6)
+    g.add_argument("--geom-conv-grms",   type=float, default=3e-4)
+    g.add_argument("--geom-conv-gmax",   type=float, default=4.5e-4)
+
+    g = p.add_argument_group("runtime / output")
+    g.add_argument("--max-memory",  type=int, default=4000,
+                   help="MB hint for PySCF's max_memory")
+    g.add_argument("--threads",     type=int, default=None,
+                   help="OMP_NUM_THREADS pin; default = inherit env")
+    g.add_argument("--verbose",     type=int, default=4,
+                   help="0 silent, 4 info, 5 debug")
+    g.add_argument("--no-chkfile",  action="store_true")
+    g.add_argument("--no-log-file", action="store_true")
+    g.add_argument("--no-verbose-comments", action="store_true",
+                   help="strip the inline tuning hints from the script")
+    return p
+
+
+def _run_pyscf(args: argparse.Namespace) -> int:
+    from .pyscf_input import PySCFConfig, convert
+    disp = None if (args.dispersion or "").lower() in ("none", "") else args.dispersion
+    cfg = PySCFConfig(
+        job_name      = args.job_name,
+        charge        = args.charge,
+        spin          = args.spin,
+        symmetry      = args.symmetry,
+        method        = args.method,
+        functional    = args.functional,
+        basis         = args.basis,
+        auxbasis      = args.auxbasis,
+        density_fit   = not args.no_density_fit,
+        dispersion    = disp,
+        solvent       = args.solvent,
+        solvent_method = args.solvent_method,
+        scf_conv_tol  = args.scf_conv_tol,
+        scf_max_cycle = args.scf_max_cycle,
+        scf_init_guess = args.scf_init_guess,
+        grid_level    = args.grid_level,
+        level_shift   = args.level_shift,
+        preopt        = args.preopt,
+        preopt_functional = args.preopt_functional,
+        preopt_basis  = args.preopt_basis,
+        preopt_max_steps = args.preopt_max_steps,
+        preopt_grms   = args.preopt_grms,
+        optimize      = not args.no_optimize,
+        optimizer     = args.optimizer,
+        geom_max_steps = args.geom_max_steps,
+        geom_conv_energy = args.geom_conv_energy,
+        geom_conv_grms = args.geom_conv_grms,
+        geom_conv_gmax = args.geom_conv_gmax,
+        max_memory_mb = args.max_memory,
+        threads       = args.threads,
+        verbose       = args.verbose,
+        chkfile       = not args.no_chkfile,
+        log_file      = not args.no_log_file,
+        verbose_comments = not args.no_verbose_comments,
+    )
+    summary = convert(args.input, args.py, cfg)
+    print(f"Wrote {summary['py']}: "
+          f"{summary['n_atoms']} atoms, "
+          f"charge={summary['charge']:+d}, "
+          f"label={summary['label']!r}",
+          file=sys.stderr)
+    print(f"Run with:  python {summary['py']}", file=sys.stderr)
+    return 0
+
+
+# --------------------------------------------------------------------- #
 #  serve subcommand (Flask web UI)                                      #
 # --------------------------------------------------------------------- #
 
@@ -266,6 +402,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     _add_build_parser(sub, "name",    "build a molecule from common/IUPAC name (PubChem)")
 
     _add_fdf_parser(sub)
+    _add_pyscf_parser(sub)
     _add_serve_parser(sub)
 
     args = p.parse_args(argv)
@@ -296,6 +433,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     if args.kind == "fdf":
         return _run_fdf(args)
+
+    if args.kind == "pyscf":
+        return _run_pyscf(args)
 
     if args.kind == "serve":
         return _run_serve(args)

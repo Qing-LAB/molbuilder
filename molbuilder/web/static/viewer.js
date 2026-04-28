@@ -18,6 +18,7 @@
         title: null,
         labels: [],           // 3Dmol label objects so we can clear them
         fdf: null,
+        pyscf: null,
     };
 
     const viewer = $3Dmol.createViewer("viewer", {
@@ -134,8 +135,24 @@
         $("dl-xyz").disabled = false;
         $("dl-pdb").disabled = false;
         $("generate-fdf").disabled = false;
+        $("generate-pyscf").disabled = false;
         renderStructure();
     }
+
+    // ----- Tabs (SIESTA / PySCF) -------------------------------------
+    document.querySelectorAll(".tab-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const target = btn.dataset.tab;
+            document.querySelectorAll(".tab-btn").forEach(b => {
+                const active = (b === btn);
+                b.classList.toggle("active", active);
+                b.setAttribute("aria-selected", active ? "true" : "false");
+            });
+            document.querySelectorAll(".tab-panel").forEach(p => {
+                p.hidden = (p.id !== "tab-" + target);
+            });
+        });
+    });
 
     // ----- Load existing .xyz / .pdb ----------------------------------
     $("load-file").addEventListener("change", () => {
@@ -367,5 +384,112 @@
             center_in_vacuum:       bool("p-center-in-vacuum"),
             verbose_comments:       bool("p-verbose-comments"),
         };
+    }
+
+    // ----- 4. Generate PySCF script -----------------------------------
+    $("generate-pyscf").addEventListener("click", async () => {
+        if (!state.xyz) {
+            setStatus("pyscf-status", "Build a structure first.", "error");
+            return;
+        }
+        setStatus("pyscf-status", "Rendering PySCF script…");
+        const params = collectPyscfParams();
+        try {
+            const r = await fetch("/api/pyscf", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ xyz: state.xyz, params }),
+            }).then(x => x.json());
+            if (!r.ok) {
+                setStatus("pyscf-status",
+                    r.error || "PySCF render failed.", "error");
+                return;
+            }
+            state.pyscf = r.script;
+            $("pyscf-output").textContent = r.script;
+            $("pyscf-output").hidden = false;
+            $("dl-pyscf").disabled = false;
+            setStatus("pyscf-status",
+                `OK — ${r.script.split("\n").length} lines, job "${r.job_name}".`,
+                "ok");
+        } catch (e) {
+            setStatus("pyscf-status", "Network error: " + e.message, "error");
+        }
+    });
+
+    $("dl-pyscf").addEventListener("click", () => {
+        if (!state.pyscf) return;
+        const label = ($("py-job-name").value.trim() || "pyscf_relax")
+            .replace(/[^A-Za-z0-9._-]+/g, "_");
+        downloadAs(state.pyscf, label + ".py", "text/x-python");
+    });
+
+    function collectPyscfParams() {
+        const str  = (id) => $(id).value;
+        const trim = (id) => $(id).value.trim();
+        const num  = (id) => {
+            const v = $(id).value.trim();
+            return v === "" ? null : parseFloat(v);
+        };
+        const int  = (id) => {
+            const v = $(id).value.trim();
+            return v === "" ? null : parseInt(v, 10);
+        };
+        const bool = (id) => $(id).checked;
+        const params = {
+            // System
+            job_name:           trim("py-job-name") || "pyscf_relax",
+            charge:             int("py-charge"),       // null -> auto-detect
+            spin:               int("py-spin")  || 0,
+            symmetry:           bool("py-symmetry"),
+
+            // Method
+            method:             str("py-method"),
+            functional:         trim("py-functional"),
+            basis:              trim("py-basis"),
+            dispersion:         str("py-dispersion"),   // "none" -> server maps to null
+            density_fit:        bool("py-density-fit"),
+
+            // SCF
+            scf_conv_tol:       num("py-scf-conv-tol"),
+            scf_max_cycle:      int("py-scf-max-cycle"),
+            scf_init_guess:     str("py-init-guess"),
+            grid_level:         int("py-grid-level"),
+            level_shift:        num("py-level-shift"),
+
+            // Pre-opt
+            preopt:             bool("py-preopt"),
+            preopt_functional:  trim("py-preopt-functional"),
+            preopt_basis:       trim("py-preopt-basis"),
+            preopt_max_steps:   int("py-preopt-max-steps"),
+            preopt_grms:        num("py-preopt-grms"),
+
+            // Main opt
+            optimize:           bool("py-optimize"),
+            optimizer:          str("py-optimizer"),
+            geom_max_steps:     int("py-geom-max-steps"),
+            geom_conv_energy:   num("py-geom-conv-energy"),
+            geom_conv_grms:     num("py-geom-conv-grms"),
+            geom_conv_gmax:     num("py-geom-conv-gmax"),
+
+            // Solvent
+            solvent:            str("py-solvent"),      // "" -> server maps to null
+            solvent_method:     str("py-solvent-method"),
+
+            // Runtime / output
+            max_memory_mb:      int("py-max-memory"),
+            threads:            int("py-threads"),
+            verbose:            int("py-verbose"),
+            chkfile:            bool("py-chkfile"),
+            log_file:           bool("py-log-file"),
+            verbose_comments:   bool("py-verbose-comments"),
+        };
+        // Drop null-valued keys so the server-side dataclass uses its
+        // declared default rather than getting None where it expects an
+        // int / float.
+        Object.keys(params).forEach(k => {
+            if (params[k] === null) delete params[k];
+        });
+        return params;
     }
 })();
