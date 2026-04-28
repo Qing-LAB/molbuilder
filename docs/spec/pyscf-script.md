@@ -30,6 +30,7 @@ File presence depends on the cfg flags listed in the second column.
 | `<job>_geom.log` | same as above | geomeTRIC's own log for the production stage |
 | `<job>_preopt_optim.xyz` | `cfg.preopt` AND `cfg.write_trajectory` AND `cfg.optimizer == "geometric"` | streaming pre-opt-stage trajectory, same format |
 | `<job>_preopt.log` | same as above | geomeTRIC's own log for the pre-opt stage |
+| `<job>.molwatch.log` | `cfg.molwatch_log` (default `True`) AND `cfg.optimize` AND `cfg.optimizer == "geometric"` | unified per-step trajectory log written **alongside** the standard outputs (additive). One marker-delimited block per accepted opt step containing coordinates, total energy (eV), per-atom forces (eV/Å), max force (eV/Å), and the SCF cycle history for that step. Single-file input for molwatch. |
 
 The script's header docstring "Outputs:" block must list **exactly**
 the set of files this table promises for the active config — no
@@ -135,6 +136,91 @@ message that points the user at `UKS` / `UHF`.
 For `UKS` / `UHF`, any `cfg.spin >= 0` is accepted.  The user is
 responsible for matching `cfg.spin` to the actual multiplicity of
 the system.
+
+---
+
+## Unified molwatch log contract
+
+`<job>.molwatch.log` is an **additive** file: emission of every
+other standard output file (`.log`, `.chk`, `_geom_optim.xyz`,
+`_geom.qdata.txt`, ...) is unaffected by `cfg.molwatch_log`.
+Setting `cfg.molwatch_log = False` simply suppresses the additional
+file; nothing else changes.
+
+### Format
+
+Each step is one marker-delimited block.  Markers are literal
+strings the parser locates by prefix match — no positional
+fragility, no dependency on column widths.
+
+```
+# molwatch trajectory log v1
+# generator: molbuilder/pyscf_input
+# engine: pyscf
+# job: <job_name>
+# units: energy=eV, force=eV/Ang, coords=Ang
+# created: <ISO8601 local timestamp>
+
+==== molwatch step 0 begin ====
+step_index: 0
+n_atoms:    <K>
+coordinates (Ang):
+   <element>   <x>   <y>   <z>
+   ...
+energy (eV): <E>
+forces (eV/Ang):
+   <element>  <fx>  <fy>  <fz>
+   ...
+max_force (eV/Ang): <Fmax>
+scf_history begin
+#  cycle    energy(eV)    delta_E(eV)    gnorm(eV/Ang)    ddm
+       <c>     <e>           <de>           <g>            <d>
+   ...
+scf_history end
+==== molwatch step 0 end ====
+```
+
+### Unit conventions
+
+The emitter performs all unit conversions at write time so the file
+is unit-self-consistent and the molwatch parser does **zero**
+conversion:
+
+- coordinates: Angstrom
+- energy: eV (Hartree → eV via 27.211386245988)
+- forces, gradient norm: eV/Å (Hartree/Bohr → eV/Å via 51.42208619)
+- ddm: dimensionless
+
+The header `# units:` line documents this.
+
+### Live-tail safety
+
+The `==== molwatch step <N> begin ====` / `==== ... end ====`
+bracketing makes torn-EOF detection trivial: a block with `begin`
+but no matching `end` is the in-flight current step and must be
+dropped on parse.  This guarantees molwatch never displays a
+half-written final step while a run is still going.
+
+The emitter `flush()`es after each end-marker so the file's last
+complete byte is always at a step boundary.
+
+### Hook wiring
+
+The emitter is driven by two hooks on existing PySCF / geomeTRIC
+extension points — no monkey-patching:
+
+- `mf.callback = _molwatch.scf_cycle_hook` — fires per SCF cycle
+  with `cycle`, `e_tot`, `last_hf_e`, `norm_gorb`, `norm_ddm` in
+  the `envs` dict.  The hook accumulates a per-cycle list,
+  resetting on `cycle == 0` (which marks a fresh SCF run).
+- `optimize(..., callback=_molwatch.opt_step_hook)` — fires per
+  accepted opt step with `mol`, `energy`, `gradients` in `envs`.
+  The hook flushes one block to the file using the SCF cycles
+  accumulated since the previous opt step.
+
+These extension points are documented in PySCF's geometric_solver
+(`callback=` kwarg on `optimize()`) and in the SCF kernel
+(`mf.callback`).  No fragile internals are touched.
 
 ---
 
