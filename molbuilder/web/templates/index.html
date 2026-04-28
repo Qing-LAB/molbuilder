@@ -201,6 +201,18 @@
           </label>
         </fieldset>
 
+        <fieldset title="Spin polarisation.&#10;SIESTA's default is closed-shell.  REQUIRED for radicals, transition metals, triplets, etc. -- without it the electronic structure is silently wrong for open-shell systems.">
+          <legend>Spin</legend>
+          <label title="Open-shell DFT (collinear).  Required for any system with unpaired electrons.">
+            <input id="p-spin-polarized" type="checkbox">
+            Spin polarized (open-shell)
+          </label>
+          <label title="Total spin moment in Bohr magnetons (= number of unpaired electrons).&#10;Helps SIESTA's initial guess converge to the right multiplicity.&#10;Leave blank for SIESTA's default (auto).">
+            SpinTotal (&mu;<sub>B</sub>)
+            <input id="p-spin-total" type="number" step="0.5" placeholder="auto">
+          </label>
+        </fieldset>
+
         <fieldset title="Monkhorst-Pack k-point sampling.&#10;Vacuum/molecule: 1x1x1 (Gamma only). Periodic 3D: 4x4x4 to 8x8x8. 2D slab: kx*ky*1.">
           <legend>k-grid (Monkhorst-Pack)</legend>
           <label><span>k<sub>x</sub></span>  <input id="p-kx" type="number" min="1" max="32" value="1"></label>

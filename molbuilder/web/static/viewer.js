@@ -169,6 +169,133 @@
         });
     });
 
+    // ----- Parameter compatibility rules -----------------------------
+    //
+    // When one input's value makes another field meaningless or
+    // forbidden (e.g. method=RKS forces spin=0), the dependent field
+    // gets disabled with a "(locked: ...)" hint explaining why.  The
+    // hints update live as the user changes options.
+    //
+    // Each rule is a function that reads triggering inputs and calls
+    // setLock(elementId, lockReason | null) to toggle the lock state.
+    // setLock(id, null) unlocks; setLock(id, "<text>") locks + hint.
+
+    function setLock(elId, reason) {
+        const el = $(elId);
+        if (!el) return;
+        const label = el.closest("label");
+        // Find or create the .lock-reason span as the last child of
+        // the enclosing <label>.
+        let hint = label && label.querySelector(":scope > .lock-reason");
+        if (!hint && label) {
+            hint = document.createElement("span");
+            hint.className = "lock-reason";
+            hint.hidden = true;
+            label.appendChild(hint);
+        }
+        if (reason === null) {
+            el.disabled = false;
+            if (label) label.classList.remove("is-locked");
+            if (hint)  hint.hidden = true;
+        } else {
+            el.disabled = true;
+            if (label) label.classList.add("is-locked");
+            if (hint) {
+                hint.textContent = reason;
+                hint.hidden = false;
+            }
+        }
+    }
+
+    // ---- PySCF rules -------------------------------------------------
+    function applyPyscfCompatibility() {
+        // Method <-> Spin: restricted methods (RKS/RHF) require spin=0.
+        const method = $("py-method") ? $("py-method").value : null;
+        const restricted = (method === "RKS" || method === "RHF");
+        if (restricted) {
+            $("py-spin").value = "0";
+            setLock("py-spin",
+                "Restricted methods (RKS/RHF) require spin=0. Switch to "
+                + "UKS/UHF for open-shell systems.");
+        } else {
+            setLock("py-spin", null);
+        }
+
+        // optimize=false -> entire optimization + pre-opt sections moot.
+        const optimize = $("py-optimize") && $("py-optimize").checked;
+        const optReason = optimize ? null
+            : "Geometry optimization is disabled (set 'Optimize geometry' on).";
+        ["py-optimizer", "py-geom-max-steps",
+         "py-geom-conv-energy", "py-geom-conv-grms",
+         "py-geom-conv-gmax"].forEach(id => setLock(id, optReason));
+
+        // Pre-opt fields: depend on optimize=true AND preopt=true.
+        const preopt = $("py-preopt") && $("py-preopt").checked;
+        let preoptReason;
+        if (!optimize) {
+            preoptReason = "Geometry optimization is disabled.";
+        } else if (!preopt) {
+            preoptReason =
+                "Pre-optimization is disabled (tick 'Enable pre-optimization').";
+        } else {
+            preoptReason = null;
+        }
+        ["py-preopt-functional", "py-preopt-basis",
+         "py-preopt-max-steps", "py-preopt-grms"].forEach(id =>
+            setLock(id, preoptReason));
+        // The 'Enable pre-optimization' checkbox itself depends only on optimize.
+        setLock("py-preopt", optimize ? null
+                                       : "Geometry optimization is disabled.");
+
+        // Solvent <-> solvent_method: method only meaningful when a
+        // solvent is selected.
+        const solv = $("py-solvent") && $("py-solvent").value;
+        setLock("py-solvent-method",
+                (!solv || solv === "")
+                    ? "No solvent selected (gas phase)."
+                    : null);
+    }
+
+    // ---- SIESTA rules ------------------------------------------------
+    function applySiestaCompatibility() {
+        // SpinTotal only meaningful when SpinPolarized is on.
+        const spinPol = $("p-spin-polarized")
+            && $("p-spin-polarized").checked;
+        setLock("p-spin-total",
+                spinPol ? null
+                        : "Tick 'Spin polarized' first; SpinTotal is "
+                          + "ignored without spin polarisation.");
+
+        // Relaxation type "none" -> per-step relaxation params moot.
+        const relax = $("p-relax") && $("p-relax").value;
+        const noneReason =
+            (relax === "none")
+                ? "Single-point only (no MD block emitted in the FDF)."
+                : null;
+        ["p-relax-steps", "p-force-tol", "p-max-displ"]
+            .forEach(id => setLock(id, noneReason));
+    }
+
+    function applyCompatibility() {
+        applyPyscfCompatibility();
+        applySiestaCompatibility();
+    }
+
+    // Wire change events for every input that triggers a rule.  We
+    // listen on `change` rather than `input` so rapid typing in a
+    // number field doesn't thrash the DOM; the rules only depend on
+    // dropdown values and checkbox states anyway.
+    [
+        "py-method", "py-optimize", "py-preopt", "py-solvent",
+        "p-spin-polarized", "p-relax",
+    ].forEach(id => {
+        const el = $(id);
+        if (el) el.addEventListener("change", applyCompatibility);
+    });
+
+    // Initial state on page load.
+    applyCompatibility();
+
     // ----- Load existing .xyz / .pdb ----------------------------------
     $("load-file").addEventListener("change", () => {
         $("load-btn").disabled = !$("load-file").files.length;
@@ -381,6 +508,11 @@
             dm_energy_tolerance:    num("p-dm-energy-tolerance"),
             max_scf_iter:           int("p-max-scf-iter"),
             electronic_temperature: num("p-temperature"),
+
+            // Spin
+            spin_polarized:         bool("p-spin-polarized"),
+            spin_total:             $("p-spin-total").value === ""
+                                    ? null : num("p-spin-total"),
 
             // k-grid
             kgrid:                  [int("p-kx"), int("p-ky"), int("p-kz")],

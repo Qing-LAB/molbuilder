@@ -138,6 +138,40 @@ The HTML page:
   buttons, so the user can't accidentally download text from the
   previous structure.
 
+## Front-end compatibility rules
+
+The UI prevents the user from submitting parameter combinations that
+would produce an invalid or wrong-physics config.  Rules are
+implemented in `viewer.js::applyCompatibility()`, run on page load
+and on `change` of any trigger input.  Each locked field gets
+`disabled` plus a `.lock-reason` hint span explaining why.
+
+### PySCF tab
+
+| trigger                | dependent           | lock condition                                       |
+| ---                    | ---                 | ---                                                  |
+| `method ∈ {RKS, RHF}`  | `spin`              | force `spin = 0`; lock with hint about UKS/UHF       |
+| `optimize = false`     | optimizer, geom_*, preopt | lock everything in Optimization + Pre-opt sections |
+| `optimize = false`     | preopt (checkbox)   | lock the checkbox itself                             |
+| `optimize = true` AND `preopt = false` | preopt_*  | lock with "Pre-opt is disabled"                     |
+| `solvent = ""`         | solvent_method      | lock with "No solvent selected (gas phase)"          |
+
+### SIESTA tab
+
+| trigger                  | dependent                        | lock condition                            |
+| ---                      | ---                              | ---                                       |
+| `spin_polarized = false` | spin_total                       | lock; SpinTotal is meaningless without polarisation |
+| `relax_type = "none"`    | relax_steps, force_tol, max_displ | lock; no MD block emitted in the FDF      |
+
+### Defence in depth
+
+The server does NOT trust the UI.  Even if a malicious or buggy
+client submits an invalid combination (e.g. RKS + spin=1), the
+server catches it via the same validation that the spec requires
+(see `pyscf-script.md::"Spin / method compatibility"`).  The UI
+rules exist to give the user fast, in-place feedback; the server
+rules exist to protect the data.
+
 ## Forbidden patterns
 
 The Flask app must NOT:
@@ -151,6 +185,9 @@ The Flask app must NOT:
    to a non-loopback host.
 3. Echo unsanitised user input as HTML — every dynamic insertion
    uses `textContent` (not `innerHTML`).
+4. Trust the UI's compatibility-locking to validate inputs — the
+   server-side validation (e.g. `render_script` raising on
+   RKS+spin≠0) is the source of truth for correctness.
 
 ## Test reference
 

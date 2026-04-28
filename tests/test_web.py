@@ -42,6 +42,34 @@ def test_index_page_has_tab_markup(web_client):
         assert needle in body, f"missing {needle!r} in index.html"
 
 
+def test_index_page_has_siesta_spin_fields(web_client):
+    """Spec: SIESTA tab must expose spin_polarized + spin_total."""
+    body = web_client.get("/").data.decode()
+    for needle in (
+        'id="p-spin-polarized"',
+        'id="p-spin-total"',
+        'Spin polarized',     # legend / label
+    ):
+        assert needle in body, f"missing {needle!r} in index.html"
+
+
+def test_viewer_js_has_compatibility_engine(web_client):
+    """Spec: viewer.js must include the parameter-compatibility logic
+    (otherwise the UI would let users build a malformed config)."""
+    js = web_client.get("/static/viewer.js").data.decode()
+    for needle in (
+        "applyCompatibility",
+        "applyPyscfCompatibility",
+        "applySiestaCompatibility",
+        "setLock",
+        # Each compatibility rule must be present:
+        '"RKS" || method === "RHF"',  # method <-> spin
+        "py-preopt-functional",        # preopt fields locked
+        "p-spin-total",                # SIESTA spin_total lock
+    ):
+        assert needle in js, f"missing {needle!r} in viewer.js"
+
+
 def test_health_endpoint(web_client):
     r = web_client.get("/api/health")
     assert r.status_code == 200

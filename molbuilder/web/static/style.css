@@ -409,6 +409,37 @@ button.primary:disabled,
     .viewer-wrap { height: 420px; }
 }
 
+/* ---- Compatibility-locked fields ----
+ *
+ * When one form field's value makes another field meaningless or
+ * forbidden (e.g. method=RKS forces spin=0), the dependent field
+ * gets `disabled` plus a `.lock-reason` hint span explaining why.
+ */
+fieldset label.is-locked {
+    opacity: 0.55;
+    transition: opacity 120ms;
+}
+fieldset input:disabled,
+fieldset select:disabled {
+    cursor: not-allowed;
+    background: var(--bg-fieldset);
+    color: var(--text-muted);
+}
+.lock-reason {
+    display: block;
+    margin-top: 2px;
+    font-size: 0.78rem;
+    color: var(--accent);
+    font-style: italic;
+    line-height: 1.35;
+}
+.lock-reason::before {
+    content: "↳ ";
+    color: var(--text-muted);
+    font-style: normal;
+}
+.lock-reason[hidden] { display: none; }
+
 /* ---- Tabs (SIESTA / PySCF) ---- */
 
 .tabs {
