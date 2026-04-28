@@ -11,12 +11,9 @@ other.
 from __future__ import annotations
 
 import math
-import os
-import sys
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import numpy as np
+import pytest
 
 from molbuilder.chemistry import (
     formal_charge_from_phosphates,
@@ -55,47 +52,54 @@ def _diester(*, op1_h: bool, op2_h: bool) -> Structure:
     )
 
 
-def test_charge_fully_deprotonated() -> None:
+# --------------------------------------------------------------------- #
+#  Charge detection                                                     #
+# --------------------------------------------------------------------- #
+
+
+def test_charge_fully_deprotonated():
     s = _diester(op1_h=False, op2_h=False)
     assert formal_charge_from_phosphates(s) == -1
 
 
-def test_charge_fully_protonated() -> None:
+def test_charge_fully_protonated():
     s = _diester(op1_h=True, op2_h=True)
     assert formal_charge_from_phosphates(s) == 0
 
 
-def test_charge_partially_protonated() -> None:
-    s = _diester(op1_h=True, op2_h=False)
-    assert formal_charge_from_phosphates(s) == 0
-    s = _diester(op1_h=False, op2_h=True)
+@pytest.mark.parametrize("op1_h, op2_h", [(True, False), (False, True)])
+def test_charge_partially_protonated(op1_h, op2_h):
+    """Either OP1-H or OP2-H present (not both) -> formally neutral."""
+    s = _diester(op1_h=op1_h, op2_h=op2_h)
     assert formal_charge_from_phosphates(s) == 0
 
 
-def test_protonate_idempotent_when_already_neutral() -> None:
+# --------------------------------------------------------------------- #
+#  Protonation                                                          #
+# --------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("op1_h, op2_h", [(True, False), (False, True)])
+def test_protonate_idempotent_when_already_neutral(op1_h, op2_h):
     """Already-neutral phosphate must NOT have an extra H tacked on."""
-    s = _diester(op1_h=True, op2_h=False)
+    s = _diester(op1_h=op1_h, op2_h=op2_h)
     n_before = s.n_atoms
     s2, n = protonate_phosphate_oxygens(s)
-    assert n == 0, f"expected 0 H added, got {n}"
-    assert s2.n_atoms == n_before
-    # idempotent across mirror state too
-    s = _diester(op1_h=False, op2_h=True)
-    s2, n = protonate_phosphate_oxygens(s)
     assert n == 0
+    assert s2.n_atoms == n_before
 
 
-def test_protonate_adds_one_H_for_charge_minus_one() -> None:
+def test_protonate_adds_one_H_for_charge_minus_one():
     s = _diester(op1_h=False, op2_h=False)
     s2, n = protonate_phosphate_oxygens(s)
     assert n == 1
     assert formal_charge_from_phosphates(s2) == 0
     # Idempotent: a second pass is a no-op
-    s3, n2 = protonate_phosphate_oxygens(s2)
+    _, n2 = protonate_phosphate_oxygens(s2)
     assert n2 == 0
 
 
-def test_protonate_geometry() -> None:
+def test_protonate_geometry():
     """The new H sits at 0.96 A from its O at 109.47 deg from P-O axis."""
     s = _diester(op1_h=False, op2_h=False)
     s2, _ = protonate_phosphate_oxygens(s)
@@ -103,17 +107,15 @@ def test_protonate_geometry() -> None:
     # The implicit P=O is OP1 (alphabetically first); H goes on OP2 (idx 4).
     op2_pos = s2.positions[4]
     h_pos   = s2.positions[-1]
-    # Bond length
     d = float(np.linalg.norm(h_pos - op2_pos))
     assert abs(d - 0.96) < 0.01, f"O-H = {d:.3f} A"
-    # Angle P-O-H
     v_op = p_pos - op2_pos; v_op /= np.linalg.norm(v_op)
     v_oh = h_pos  - op2_pos; v_oh /= np.linalg.norm(v_oh)
     ang = math.degrees(math.acos(float(np.dot(v_op, v_oh))))
     assert abs(ang - 109.47) < 0.5, f"P-O-H angle = {ang:.2f} deg"
 
 
-def test_terminal_phosphate_dianion() -> None:
+def test_terminal_phosphate_dianion():
     """3 non-bridging Os, all bare -> charge -2, protonate adds 2 H."""
     elements = ["C", "O", "P", "O", "O", "O"]
     positions = np.array([
@@ -128,7 +130,7 @@ def test_terminal_phosphate_dianion() -> None:
     assert formal_charge_from_phosphates(s2) == 0
 
 
-def test_no_phosphate_no_op() -> None:
+def test_no_phosphate_no_op():
     """Peptide-like structure (no P) is unchanged."""
     elements = ["C", "C", "N", "O", "H"]
     positions = np.array([[0,0,0],[1.5,0,0],[2.0,1.0,0],[1.5,-1,0],[0,-1,0]],
@@ -136,36 +138,12 @@ def test_no_phosphate_no_op() -> None:
     s = Structure(elements=elements, positions=positions,
                   atom_names=["C","C","N","O","H"])
     assert formal_charge_from_phosphates(s) == 0
-    s2, n = protonate_phosphate_oxygens(s)
+    _, n = protonate_phosphate_oxygens(s)
     assert n == 0
 
 
-def test_empty_structure() -> None:
+def test_empty_structure():
     s = Structure(elements=[], positions=np.zeros((0, 3)))
     assert formal_charge_from_phosphates(s) == 0
-    s2, n = protonate_phosphate_oxygens(s)
+    _, n = protonate_phosphate_oxygens(s)
     assert n == 0
-
-
-def main() -> None:
-    failures = []
-    for name in sorted(globals()):
-        if not name.startswith("test_"):
-            continue
-        fn = globals()[name]
-        try:
-            fn()
-            print(f"  ok   {name}")
-        except AssertionError as e:
-            print(f"  FAIL {name}: {e}")
-            failures.append(name)
-        except Exception as e:
-            print(f"  ERR  {name}: {type(e).__name__}: {e}")
-            failures.append(name)
-    if failures:
-        sys.exit(f"FAILED: {failures}")
-    print("OK -- all chemistry tests passed.")
-
-
-if __name__ == "__main__":
-    main()

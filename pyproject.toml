@@ -33,6 +33,13 @@ name = ["pubchempy>=1.0"]
 # Browser UI
 web = ["flask>=3.0"]
 
+# Test runner + static-analysis tools.  Install with:
+#     pip install -e ".[test]"
+test = [
+    "pytest>=7",
+    "pyflakes>=3",
+]
+
 # Everything in one bundle
 all = [
     "rdkit>=2023.9",
@@ -48,3 +55,12 @@ include = ["molbuilder*"]
 
 [tool.setuptools.package-data]
 molbuilder = ["web/templates/*.html", "web/static/*.css", "web/static/*.js"]
+
+[tool.pytest.ini_options]
+# pythonpath lets pytest import the in-tree molbuilder/ package without
+# requiring `pip install -e .` first.  testpaths keeps `pytest` (no args)
+# scoped to the tests/ folder.
+minversion   = "7.0"
+testpaths    = ["tests"]
+pythonpath   = ["."]
+addopts      = "-ra"

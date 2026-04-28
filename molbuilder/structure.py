@@ -204,6 +204,25 @@ class Structure:
         REMARK, CONECT, etc.) are ignored.  Multi-MODEL files: only
         the first MODEL is read; this is what most viewers show by
         default for a relaxation trajectory.
+
+        TER records are honoured as polymer-chain boundaries.  Two
+        common situations a naive parser gets wrong:
+
+          * a homemade PDB exporter that omits the chain-id column
+            entirely (col 22 blank) and relies on TER alone to mark
+            chain boundaries;
+          * a file that reuses the same chain-id letter across TERs
+            (e.g. all 'A') for what are logically separate polymers.
+
+        We track a segment counter (incremented on each TER) and tag
+        every atom with `(chain_letter, segment)`.  After the parse:
+          - a chain letter unique to one segment passes through as-is,
+            preserving back-compat for well-formed PDBs;
+          - a chain letter spanning multiple segments is disambiguated
+            by appending the segment index, so the resulting chain ids
+            are unique;
+          - a blank chain-id column ('_' internally) becomes 'A' when
+            unambiguous, '_<n>' when it spans multiple TER segments.
         """
         text = _resolve_source(source)
 
@@ -212,10 +231,13 @@ class Structure:
         atom_names: List[str] = []
         residue_ids: List[int] = []
         residue_names: List[str] = []
-        chain_ids: List[str] = []
+        raw_chain_letters: List[str] = []
+        atom_segments: List[int] = []
 
         seen_model = False
         pdb_title = ""
+        segment_index = 0
+
         for line in text.splitlines():
             rec = line[:6]
             if rec.startswith("TITLE"):
@@ -229,11 +251,20 @@ class Structure:
                 continue
             if rec.startswith("ENDMDL"):
                 break
+            if rec.startswith("TER"):
+                # Polymer-chain boundary: bump segment so reused chain
+                # letters across TERs end up in distinct logical chains.
+                # Multiple consecutive TERs are harmless -- each just
+                # bumps the counter without affecting an empty segment.
+                segment_index += 1
+                continue
             if not (line.startswith("ATOM  ") or line.startswith("HETATM")):
                 continue
             atom_name = line[12:16].strip()
             res_name  = line[17:20].strip() or "MOL"
-            chain_id  = line[21:22].strip() or "A"
+            # '_' is our internal placeholder for "chain-id column was
+            # blank in the file"; it never appears in well-formed PDBs.
+            chain_letter = line[21:22].strip() or "_"
             try:
                 res_id = int(line[22:26])
                 x = float(line[30:38])
@@ -255,10 +286,31 @@ class Structure:
             atom_names.append(atom_name)
             residue_ids.append(res_id)
             residue_names.append(res_name)
-            chain_ids.append(chain_id)
+            raw_chain_letters.append(chain_letter)
+            atom_segments.append(segment_index)
 
         if not elements:
             raise ValueError("no ATOM/HETATM records found in PDB input")
+
+        # Disambiguation pass.  A chain letter that appears in only one
+        # segment passes through unchanged (preserves back-compat with
+        # well-formed PDBs); a letter that spans multiple segments has
+        # the segment index appended so the resulting ids are unique.
+        # Empty chain-id columns ('_' placeholder) map to 'A' in the
+        # unambiguous case (matches the previous parser's behaviour).
+        letter_segments: dict = {}
+        for letter, seg in zip(raw_chain_letters, atom_segments):
+            letter_segments.setdefault(letter, set()).add(seg)
+        needs_disambig = {l for l, segs in letter_segments.items()
+                          if len(segs) > 1}
+
+        chain_ids: List[str] = []
+        for letter, seg in zip(raw_chain_letters, atom_segments):
+            if letter in needs_disambig:
+                # e.g. "A0", "A1", or "_0", "_1" for blank columns
+                chain_ids.append(f"{letter}{seg}")
+            else:
+                chain_ids.append("A" if letter == "_" else letter)
 
         return cls(
             elements=elements,

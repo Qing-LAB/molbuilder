@@ -1,9 +1,9 @@
-"""Tests for Structure.from_xyz / from_pdb and molbuilder.load.
+"""Structure.from_xyz / from_pdb and the top-level molbuilder.load().
 
 Verifies that:
-  * a Structure round-trips through XYZ (lossless for elements + positions)
-  * a Structure round-trips through PDB (lossless for atom names,
-    residue ids, residue names, chain ids, in addition to positions)
+  * Structure round-trips through XYZ (lossless for elements + positions)
+  * Structure round-trips through PDB (lossless for atom names,
+    residue ids, residue names, chain ids, plus positions)
   * the top-level molbuilder.load() detects format from extension
   * loaded structures feed render_fdf without further preparation
   * malformed inputs raise informative errors
@@ -11,13 +11,8 @@ Verifies that:
 
 from __future__ import annotations
 
-import os
-import sys
-import tempfile
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import numpy as np
+import pytest
 
 import molbuilder
 from molbuilder.structure import Structure
@@ -28,7 +23,7 @@ from molbuilder.structure import Structure
 # --------------------------------------------------------------------- #
 
 
-def test_from_xyz_text() -> None:
+def test_from_xyz_text():
     text = (
         "3\n"
         "water-like\n"
@@ -43,38 +38,29 @@ def test_from_xyz_text() -> None:
     np.testing.assert_allclose(s.positions[1], [0.957, 0.0, 0.0])
 
 
-def test_from_xyz_path(tmp_path_str: str) -> None:
+def test_from_xyz_path(tmp_path):
     s = molbuilder.build_peptide("ARNDC")
-    p = os.path.join(tmp_path_str, "pep.xyz")
-    s.to_xyz(p)
-    s2 = Structure.from_xyz(p)
+    p = tmp_path / "pep.xyz"
+    s.to_xyz(str(p))
+    s2 = Structure.from_xyz(str(p))
     assert s2.n_atoms == s.n_atoms
     np.testing.assert_allclose(s2.positions, s.positions, atol=1e-4)
     assert s2.elements == list(s.elements)
 
 
-def test_from_xyz_empty_raises() -> None:
-    try:
+def test_from_xyz_empty_raises():
+    with pytest.raises(ValueError):
         Structure.from_xyz("")
-    except ValueError:
-        return
-    assert False, "expected ValueError"
 
 
-def test_from_xyz_bad_header_raises() -> None:
-    try:
+def test_from_xyz_bad_header_raises():
+    with pytest.raises(ValueError):
         Structure.from_xyz("not-a-number\ncomment\nH 0 0 0\n")
-    except ValueError:
-        return
-    assert False, "expected ValueError"
 
 
-def test_from_xyz_short_atom_line_raises() -> None:
-    try:
+def test_from_xyz_short_atom_line_raises():
+    with pytest.raises(ValueError):
         Structure.from_xyz("1\nshort\nH 0.0\n")
-    except ValueError:
-        return
-    assert False, "expected ValueError"
 
 
 # --------------------------------------------------------------------- #
@@ -82,7 +68,7 @@ def test_from_xyz_short_atom_line_raises() -> None:
 # --------------------------------------------------------------------- #
 
 
-def test_from_pdb_text(tmp_path_str: str) -> None:
+def test_from_pdb_text():
     """A PDB written by molbuilder must round-trip without losing the
     residue-level metadata that the writer puts there."""
     s = molbuilder.build_peptide("ARNDC")
@@ -90,29 +76,25 @@ def test_from_pdb_text(tmp_path_str: str) -> None:
     s2 = Structure.from_pdb(pdb)
     assert s2.n_atoms == s.n_atoms
     np.testing.assert_allclose(s2.positions, s.positions, atol=1e-3)
-    # Residue metadata should survive the round trip
-    assert s2.atom_names == list(s.atom_names)
-    assert s2.residue_ids == list(s.residue_ids)
+    assert s2.atom_names    == list(s.atom_names)
+    assert s2.residue_ids   == list(s.residue_ids)
     assert s2.residue_names == list(s.residue_names)
 
 
-def test_from_pdb_path(tmp_path_str: str) -> None:
+def test_from_pdb_path(tmp_path):
     s = molbuilder.build_peptide("ARNDC")
-    p = os.path.join(tmp_path_str, "pep.pdb")
-    s.to_pdb(p)
-    s2 = Structure.from_pdb(p)
+    p = tmp_path / "pep.pdb"
+    s.to_pdb(str(p))
+    s2 = Structure.from_pdb(str(p))
     assert s2.n_atoms == s.n_atoms
 
 
-def test_from_pdb_no_atoms_raises() -> None:
-    try:
+def test_from_pdb_no_atoms_raises():
+    with pytest.raises(ValueError):
         Structure.from_pdb("HEADER    something\nEND\n")
-    except ValueError:
-        return
-    assert False, "expected ValueError"
 
 
-def test_from_pdb_first_model_only() -> None:
+def test_from_pdb_first_model_only():
     """If multiple MODEL blocks are present, only the first is read."""
     pdb = (
         "MODEL        1\n"
@@ -132,14 +114,14 @@ def test_from_pdb_first_model_only() -> None:
 # --------------------------------------------------------------------- #
 
 
-def test_load_dispatches_by_extension(tmp_path_str: str) -> None:
+def test_load_dispatches_by_extension(tmp_path):
     s = molbuilder.build_peptide("AC")
-    xyz_p = os.path.join(tmp_path_str, "x.xyz")
-    pdb_p = os.path.join(tmp_path_str, "y.pdb")
-    s.to_xyz(xyz_p)
-    s.to_pdb(pdb_p)
-    sx = molbuilder.load(xyz_p)
-    sp = molbuilder.load(pdb_p)
+    xyz_p = tmp_path / "x.xyz"
+    pdb_p = tmp_path / "y.pdb"
+    s.to_xyz(str(xyz_p))
+    s.to_pdb(str(pdb_p))
+    sx = molbuilder.load(str(xyz_p))
+    sp = molbuilder.load(str(pdb_p))
     assert sx.n_atoms == s.n_atoms
     assert sp.n_atoms == s.n_atoms
     # PDB carries residue info; XYZ does not.
@@ -147,15 +129,11 @@ def test_load_dispatches_by_extension(tmp_path_str: str) -> None:
     assert sx.atom_names == list(sx.elements)   # default-filled to elements
 
 
-def test_load_unknown_extension_raises(tmp_path_str: str) -> None:
-    p = os.path.join(tmp_path_str, "thing.txt")
-    with open(p, "w") as fh:
-        fh.write("hello\n")
-    try:
-        molbuilder.load(p)
-    except ValueError:
-        return
-    assert False, "expected ValueError for unknown extension"
+def test_load_unknown_extension_raises(tmp_path):
+    p = tmp_path / "thing.txt"
+    p.write_text("hello\n")
+    with pytest.raises(ValueError):
+        molbuilder.load(str(p))
 
 
 # --------------------------------------------------------------------- #
@@ -163,49 +141,16 @@ def test_load_unknown_extension_raises(tmp_path_str: str) -> None:
 # --------------------------------------------------------------------- #
 
 
-def test_loaded_structure_renders_fdf(tmp_path_str: str) -> None:
+def test_loaded_structure_renders_fdf(tmp_path):
     """The whole point: load an existing file and feed it to render_fdf."""
-    from molbuilder.siesta import Config, convert
+    from molbuilder.siesta import SiestaConfig, convert
     s = molbuilder.build_peptide("AC")
-    pdb_p = os.path.join(tmp_path_str, "ac.pdb")
-    s.to_pdb(pdb_p)
-    fdf_p = os.path.join(tmp_path_str, "ac.fdf")
-    summary = convert(pdb_p, fdf_p, Config(verbose_comments=False,
-                                           system_label="ac"))
+    pdb_p = tmp_path / "ac.pdb"
+    s.to_pdb(str(pdb_p))
+    fdf_p = tmp_path / "ac.fdf"
+    summary = convert(str(pdb_p), str(fdf_p),
+                      SiestaConfig(verbose_comments=False, system_label="ac"))
     assert summary["n_atoms"] == s.n_atoms
-    fdf_text = open(fdf_p).read()
+    fdf_text = fdf_p.read_text()
     assert "%block AtomicCoordinatesAndAtomicSpecies" in fdf_text
     assert "SystemLabel       ac" in fdf_text
-
-
-# --------------------------------------------------------------------- #
-#  Test runner with a simple tempdir fixture                            #
-# --------------------------------------------------------------------- #
-
-
-def main() -> None:
-    failures = []
-    with tempfile.TemporaryDirectory() as tmp:
-        for name in sorted(globals()):
-            if not name.startswith("test_"):
-                continue
-            fn = globals()[name]
-            try:
-                if "tmp_path_str" in fn.__code__.co_varnames:
-                    fn(tmp)
-                else:
-                    fn()
-                print(f"  ok   {name}")
-            except AssertionError as e:
-                print(f"  FAIL {name}: {e}")
-                failures.append(name)
-            except Exception as e:
-                print(f"  ERR  {name}: {type(e).__name__}: {e}")
-                failures.append(name)
-    if failures:
-        sys.exit(f"FAILED: {failures}")
-    print("OK -- load + from_xyz + from_pdb all pass.")
-
-
-if __name__ == "__main__":
-    main()

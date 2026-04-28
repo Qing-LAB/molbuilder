@@ -2,51 +2,40 @@
 
 from __future__ import annotations
 
-import os, sys, tempfile
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 import numpy as np
+import pytest
 
 from molbuilder.structure import Structure
 
 
-def main() -> None:
-    # Tiny H2O
-    s = Structure(
-        elements=["O", "H", "H"],
-        positions=np.array([
-            [0.000, 0.000, 0.000],
-            [0.957, 0.000, 0.000],
-            [-0.240, 0.927, 0.000],
-        ]),
-        atom_names=["O", "H1", "H2"],
-        residue_ids=[1, 1, 1],
-        residue_names=["HOH", "HOH", "HOH"],
-        chain_ids=["A", "A", "A"],
-        title="water",
-    )
+def test_basic_construction(water_structure):
+    s = water_structure
     assert s.n_atoms == 3
     assert s.n_residues == 1
     assert "H2O" in s.summary()
 
-    # XYZ round-trip
-    xyz = s.to_xyz()
-    assert xyz.startswith("3\n")
-    assert "O" in xyz and "H" in xyz
-    with tempfile.TemporaryDirectory() as d:
-        p = os.path.join(d, "out.xyz")
-        s.to_xyz(p)
-        assert open(p).read() == xyz
 
-    # PDB
+def test_to_xyz_round_trip_to_disk(water_structure, tmp_path):
+    s = water_structure
+    text = s.to_xyz()
+    assert text.startswith("3\n")
+    assert "O" in text and "H" in text
+    p = tmp_path / "out.xyz"
+    s.to_xyz(str(p))
+    assert p.read_text() == text
+
+
+def test_to_pdb_basic_structure(water_structure):
+    s = water_structure
     pdb = s.to_pdb()
     assert pdb.startswith("TITLE")
     assert "ATOM" in pdb
     assert "HOH" in pdb
     assert "END" in pdb
 
-    # PySCF list form
+
+def test_to_pyscf_list_form(water_structure):
+    s = water_structure
     py = s.to_pyscf()
     assert py == [
         ("O", (0.0, 0.0, 0.0)),
@@ -54,31 +43,28 @@ def main() -> None:
         ("H", (-0.240, 0.927, 0.0)),
     ]
 
-    # PySCF string form
+
+def test_to_pyscf_string_form(water_structure):
+    s = water_structure
     py_str = s.to_pyscf(as_string=True)
     assert "O " in py_str and "H " in py_str
     assert py_str.count("\n") == 2  # 3 lines, 2 newlines
 
-    # ASE (optional dep)
-    try:
-        atoms = s.to_ase()
-        assert len(atoms) == 3
-        assert list(atoms.get_chemical_symbols()) == ["O", "H", "H"]
-    except ImportError:
-        print("  (skip: ASE not installed)")
 
-    # Translate / center
-    s2 = s.centered()
-    assert np.allclose(s2.positions.mean(axis=0), 0.0, atol=1e-9)
+def test_to_ase_optional_dep(water_structure):
+    """ASE is a hard dep of molbuilder.siesta; assert if installed."""
+    pytest.importorskip("ase")
+    atoms = water_structure.to_ase()
+    assert len(atoms) == 3
+    assert list(atoms.get_chemical_symbols()) == ["O", "H", "H"]
 
-    # Concat + renumbering
-    s_cat = Structure.concat([s, s])
+
+def test_centered_centroid_at_origin(water_structure):
+    s2 = water_structure.centered()
+    np.testing.assert_allclose(s2.positions.mean(axis=0), 0.0, atol=1e-9)
+
+
+def test_concat_renumbers_residues(water_structure):
+    s_cat = Structure.concat([water_structure, water_structure])
     assert s_cat.n_atoms == 6
-    # residue ids should be 1, 1, 1, 2, 2, 2
     assert s_cat.residue_ids == [1, 1, 1, 2, 2, 2]
-
-    print("OK -- Structure + XYZ + PDB + PySCF + ASE + concat all pass.")
-
-
-if __name__ == "__main__":
-    main()

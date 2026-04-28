@@ -1,0 +1,12 @@
+TITLE     PDB with blank chain id column (col 22) and TER between polymers
+ATOM      1  N   ALA     1       0.000   0.000   0.000  1.00  0.00           N
+ATOM      2  CA  ALA     1       1.460   0.000   0.000  1.00  0.00           C
+ATOM      3  C   ALA     1       2.000   1.420   0.000  1.00  0.00           C
+ATOM      4  O   ALA     1       1.260   2.400   0.000  1.00  0.00           O
+TER       5      ALA     1
+ATOM      6  N   GLY     1       5.000   0.000   0.000  1.00  0.00           N
+ATOM      7  CA  GLY     1       6.460   0.000   0.000  1.00  0.00           C
+ATOM      8  C   GLY     1       7.000   1.420   0.000  1.00  0.00           C
+ATOM      9  O   GLY     1       6.260   2.400   0.000  1.00  0.00           O
+TER      10      GLY     1
+END

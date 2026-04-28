@@ -1,63 +1,63 @@
-"""Peptide builder smoke test.
+"""Peptide builder smoke tests.
 
-Skipped if PeptideBuilder isn't installed in the test environment.
+Skipped cleanly if PeptideBuilder isn't installed in the test
+environment.  The protonation tests additionally need OpenBabel or
+RDKit; they soft-skip with a warning if neither is available.
 """
 
 from __future__ import annotations
 
-import os, sys
+import pytest
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+molbuilder = pytest.importorskip("molbuilder")
+build_peptide = pytest.importorskip("molbuilder").build_peptide
 
 
-def main() -> None:
-    try:
-        from molbuilder import build_peptide
-    except ImportError as e:
-        print(f"SKIP -- PeptideBuilder/biopython not installed ({e})")
-        return
+@pytest.fixture
+def heavy_only_arndc():
+    """ARNDC built without protonation -- 38 heavy atoms."""
+    return build_peptide("ARNDC", add_hydrogens=False)
 
-    # First: heavy-atom-only build (no protonation).  ARNDC = 38 heavies.
-    s_heavy = build_peptide("ARNDC", add_hydrogens=False)
-    assert s_heavy.n_residues == 5
-    assert sorted(set(s_heavy.residue_names)) == ["ALA", "ARG", "ASN", "ASP", "CYS"]
-    assert s_heavy.n_atoms == 38, s_heavy.n_atoms          # 5 + 11 + 8 + 8 + 6
-    assert "H" not in s_heavy.elements
 
-    # Output formats round-trip on the heavy-atom version
-    xyz = s_heavy.to_xyz()
-    assert int(xyz.splitlines()[0]) == s_heavy.n_atoms
-    pdb = s_heavy.to_pdb()
-    assert pdb.count("ATOM") == s_heavy.n_atoms
-    py = s_heavy.to_pyscf()
-    assert len(py) == s_heavy.n_atoms
+def test_heavy_atom_count(heavy_only_arndc):
+    s = heavy_only_arndc
+    assert s.n_residues == 5
+    assert sorted(set(s.residue_names)) == ["ALA", "ARG", "ASN", "ASP", "CYS"]
+    assert s.n_atoms == 38   # 5 + 11 + 8 + 8 + 6
+    assert "H" not in s.elements
 
-    # Now: full protonation.  Should add ~30 hydrogens for ARNDC.
+
+def test_xyz_round_trip(heavy_only_arndc):
+    s = heavy_only_arndc
+    xyz = s.to_xyz()
+    assert int(xyz.splitlines()[0]) == s.n_atoms
+
+
+def test_pdb_atom_count(heavy_only_arndc):
+    s = heavy_only_arndc
+    pdb = s.to_pdb()
+    assert pdb.count("ATOM") == s.n_atoms
+
+
+def test_pyscf_listing(heavy_only_arndc):
+    s = heavy_only_arndc
+    py = s.to_pyscf()
+    assert len(py) == s.n_atoms
+
+
+def test_full_protonation_keeps_heavy_atom_counts(heavy_only_arndc):
+    """build_peptide(...) with default add_hydrogens=True should keep
+    the same heavy-atom counts but add explicit Hs."""
     s_full = build_peptide("ARNDC")
     if "H" not in s_full.elements:
-        print("  (warn: no protonation backend installed -- "
-              "install openbabel or rdkit)")
-    else:
-        n_h = s_full.elements.count("H")
-        assert n_h >= 25, n_h
-        # Sanity: same heavy-atom count
-        assert s_full.elements.count("C") == s_heavy.elements.count("C")
-        assert s_full.elements.count("N") == s_heavy.elements.count("N")
-        assert s_full.elements.count("O") == s_heavy.elements.count("O")
-        print(f"  protonation OK: added {n_h} hydrogens "
-              f"(total {s_full.n_atoms} atoms)")
-
-    # Modified residue: phosphoserine via [SEP] escape
-    s2 = build_peptide("AR[SEP]C", add_hydrogens=False)
-    assert "SEP" in s2.residue_names, s2.residue_names
-    # SEP adds a phosphate (P + 3 O)
-    assert s2.elements.count("P") == 1
-    assert "P"  in s2.elements
-
-    print(f"OK -- build_peptide('ARNDC', add_hydrogens=False) = "
-          f"{s_heavy.n_atoms} heavy atoms; "
-          f"build_peptide('AR[SEP]C') has phosphate group attached.")
+        pytest.skip("no protonation backend installed (openbabel/rdkit)")
+    n_h = s_full.elements.count("H")
+    assert n_h >= 25
+    for el in ("C", "N", "O"):
+        assert s_full.elements.count(el) == heavy_only_arndc.elements.count(el)
 
 
-if __name__ == "__main__":
-    main()
+def test_modified_residue_phosphoserine():
+    s = build_peptide("AR[SEP]C", add_hydrogens=False)
+    assert "SEP" in s.residue_names
+    assert s.elements.count("P") == 1
