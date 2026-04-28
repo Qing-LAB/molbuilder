@@ -1,50 +1,123 @@
-/* molbuilder web UI -- minimal, scientific look. */
+/* molbuilder web UI -- dark theme.
+ *
+ * The whole stylesheet uses CSS custom properties so a future light
+ * theme is one variable block away.  Keep visuals subtle (this is a
+ * scientist-facing tool) -- no harsh gradients, no animations beyond
+ * 120 ms hover transitions.
+ */
+
+:root {
+    /* ---- Surfaces ---- */
+    --bg-page:        #14171c;     /* body */
+    --bg-card:        #1d2128;     /* cards */
+    --bg-card-hover:  #232831;
+    --bg-input:       #262b33;     /* form controls */
+    --bg-input-focus: #2c323b;
+    --bg-fieldset:    #1f242c;
+    --bg-code:        #0f1217;     /* fdf / py preview block */
+
+    /* ---- Borders ---- */
+    --border-strong: #3a3f48;
+    --border-soft:   #2c313a;
+    --border-dashed: #2c313a;
+
+    /* ---- Text ---- */
+    --text-primary:   #e6e9ef;
+    --text-secondary: #a8aebb;
+    --text-muted:     #6c7280;
+    --text-mono:      #b8c4d6;
+
+    /* ---- Accents ---- */
+    --accent:        #6ba6ff;       /* primary cool blue */
+    --accent-hover:  #8ab8ff;
+    --accent-strong: #4a8de0;
+    --accent-bg:     rgba(107, 166, 255, 0.10);
+    --accent-glow:   rgba(107, 166, 255, 0.25);
+    --success:       #4ade80;
+    --error:         #f87171;
+    --warning:       #fbbf24;
+
+    /* ---- Shadows ---- */
+    --shadow-card:   0 1px 0 rgba(255, 255, 255, 0.02) inset,
+                     0 4px 12px rgba(0, 0, 0, 0.30);
+    --shadow-input:  0 0 0 3px var(--accent-glow);
+
+    /* ---- Layout ---- */
+    --radius:        7px;
+    --radius-sm:     4px;
+    --gap:           14px;
+}
 
 * { box-sizing: border-box; }
+
+html, body { height: 100%; }
 
 body {
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
-                 system-ui, sans-serif;
-    color: #1c1c1c;
-    background: #f4f5f7;
-    line-height: 1.45;
+                 system-ui, "Inter", sans-serif;
+    color: var(--text-primary);
+    background: var(--bg-page);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
 }
+
+/* ---- Header ---- */
 
 header {
-    padding: 16px 24px 12px;
-    border-bottom: 1px solid #e3e3e3;
-    background: #fff;
+    padding: 18px 28px 14px;
+    background: linear-gradient(180deg,
+                                rgba(107, 166, 255, 0.05) 0%,
+                                rgba(107, 166, 255, 0.00) 100%),
+                var(--bg-card);
+    border-bottom: 1px solid var(--border-strong);
 }
-header h1 { margin: 0; font-size: 1.4rem; font-weight: 600; }
+header h1 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+}
 header .tagline {
     margin: 6px 0 0;
-    color: #555;
+    color: var(--text-secondary);
     font-size: 0.92rem;
 }
+header code {
+    background: var(--accent-bg);
+    color: var(--accent-hover);
+    padding: 1px 6px;
+    border-radius: 3px;
+    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 0.85em;
+}
 
-/* ---- App grid: controls on the left, sticky viewer on the right ---- */
+/* ---- App grid ---- */
 
 .app-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(380px, 660px);
-    gap: 16px;
-    margin: 16px 24px;
+    gap: var(--gap);
+    margin: var(--gap) 24px;
     align-items: start;
 }
 
 .col {
     display: flex; flex-direction: column;
-    gap: 14px;
+    gap: var(--gap);
     min-width: 0;
 }
 
 .col-viewer {
     position: sticky;
-    top: 16px;
+    top: var(--gap);
     align-self: start;
-    max-height: calc(100vh - 32px);
+    max-height: calc(100vh - 2 * var(--gap));
     overflow-y: auto;
+    /* Subtle scrollbar in dark theme */
+    scrollbar-color: var(--border-strong) transparent;
+    scrollbar-width: thin;
 }
 
 @media (max-width: 1100px) {
@@ -56,78 +129,176 @@ header .tagline {
     }
 }
 
+@media (max-width: 640px) {
+    .app-grid { margin: 10px; gap: 10px; }
+    header { padding: 14px 16px 10px; }
+}
+
 /* ---- Cards ---- */
 
 .card {
-    background: #fff;
-    border: 1px solid #e3e3e3;
-    border-radius: 7px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
     padding: 14px 18px 18px;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+    box-shadow: var(--shadow-card);
 }
 .col .card { margin: 0; }
 
 .card h2 {
     margin: 0 0 10px;
-    font-size: 1.05rem;
+    font-size: 1.02rem;
     font-weight: 600;
-    color: #2a2a2a;
+    color: var(--text-primary);
+    letter-spacing: -0.005em;
 }
-.card h2 small { color: #888; font-weight: 400; }
+.card h2 small { color: var(--text-muted); font-weight: 400; }
+.card h2 code {
+    background: var(--accent-bg);
+    color: var(--accent-hover);
+    padding: 0 5px;
+    border-radius: 3px;
+    font-size: 0.86em;
+    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+/* ---- Form controls (shared) ---- */
+
+input[type="text"],
+input[type="number"],
+input[type="file"],
+select,
+textarea {
+    font: inherit;
+    color: var(--text-primary);
+    background: var(--bg-input);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    padding: 5px 8px;
+    transition: border-color 120ms, background 120ms, box-shadow 120ms;
+}
+input[type="text"]:hover,
+input[type="number"]:hover,
+select:hover {
+    border-color: var(--accent-strong);
+}
+input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: var(--bg-input-focus);
+    box-shadow: var(--shadow-input);
+}
+input[type="checkbox"] {
+    accent-color: var(--accent);
+    width: auto;
+    margin-right: 4px;
+    cursor: pointer;
+}
+input[type="range"] {
+    accent-color: var(--accent);
+    background: transparent;
+    height: 18px;
+}
+input[type="file"] {
+    padding: 4px 6px;
+    cursor: pointer;
+    color: var(--text-secondary);
+}
+input::placeholder { color: var(--text-muted); }
+
+/* Buttons -- generic + primary */
+button {
+    font: inherit;
+    color: var(--text-primary);
+    background: var(--bg-input);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    padding: 5px 14px;
+    cursor: pointer;
+    transition: background 120ms, border-color 120ms, color 120ms;
+}
+button:hover:not(:disabled) {
+    background: var(--bg-card-hover);
+    border-color: var(--accent-strong);
+}
+button:disabled {
+    color: var(--text-muted);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+button.primary,
+.build-row button,
+#generate-fdf,
+#generate-pyscf {
+    background: var(--accent-strong);
+    border-color: var(--accent-strong);
+    color: #ffffff;
+    font-weight: 500;
+}
+button.primary:hover:not(:disabled),
+.build-row button:hover:not(:disabled),
+#generate-fdf:hover:not(:disabled),
+#generate-pyscf:hover:not(:disabled) {
+    background: var(--accent);
+    border-color: var(--accent);
+}
+button.primary:disabled,
+#generate-fdf:disabled,
+#generate-pyscf:disabled {
+    background: var(--bg-input);
+    border-color: var(--border-strong);
+    color: var(--text-muted);
+}
 
 /* ---- Build row ---- */
 
 .build-row {
     display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
 }
-.build-row label { display: inline-flex; gap: 6px; align-items: center; }
-.build-row select,
-.build-row input[type="text"] {
-    padding: 5px 8px; font: inherit;
-    border: 1px solid #ccc; border-radius: 4px;
+.build-row label {
+    display: inline-flex; gap: 6px; align-items: center;
+    font-size: 0.92rem;
+    color: var(--text-secondary);
 }
-.build-row input[type="text"] { min-width: 240px; flex: 1; }
-.build-row button {
-    padding: 5px 16px; font: inherit; cursor: pointer;
-    border: 1px solid #2563a8; background: #2563a8; color: #fff;
-    border-radius: 4px;
-    transition: background 0.12s;
-}
-.build-row button:hover { background: #1c4d80; }
+.build-row input[type="text"] { min-width: 220px; flex: 1; }
 
 .nucleic-row {
-    display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
-    margin-top: 8px; padding-top: 8px;
-    border-top: 1px dashed #e3e3e3;
-    font-size: 0.9rem;
+    display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
+    margin-top: 10px; padding-top: 10px;
+    border-top: 1px dashed var(--border-dashed);
+    font-size: 0.88rem;
+    color: var(--text-secondary);
 }
 .nucleic-row label { display: inline-flex; gap: 6px; align-items: center; }
-.nucleic-row select {
-    padding: 4px 6px; font: inherit;
-    border: 1px solid #ccc; border-radius: 4px;
-}
-.nucleic-row select option:disabled { color: #aaa; }
 
 .load-row {
     margin-top: 10px; padding-top: 8px;
-    border-top: 1px dashed #e3e3e3;
-    font-size: 0.9rem;
+    border-top: 1px dashed var(--border-dashed);
+    font-size: 0.88rem;
+    color: var(--text-secondary);
 }
-.load-row summary { cursor: pointer; color: #2563a8; }
-.load-row .hint { margin: 6px 0; color: #555; font-size: 0.88rem; }
-.load-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.load-controls input[type="file"] { font: inherit; }
-.load-controls button {
-    padding: 5px 12px; font: inherit;
-    background: #fff; border: 1px solid #ccc; border-radius: 4px;
+.load-row > summary {
     cursor: pointer;
+    color: var(--accent);
+    list-style: revert;
+    user-select: none;
 }
-.load-controls button:disabled { color: #aaa; cursor: default; }
-.load-controls button:not(:disabled):hover { background: #eee; }
+.load-row > summary:hover { color: var(--accent-hover); }
+.load-row .hint { margin: 6px 0; color: var(--text-secondary); }
+.load-controls {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+}
 
-.status { margin-top: 8px; font-size: 0.9rem; min-height: 1.2em; color: #555; }
-.status.error { color: #b21515; }
-.status.ok { color: #1d7a3a; }
+/* ---- Status messages ---- */
+
+.status {
+    margin-top: 8px;
+    font-size: 0.88rem;
+    min-height: 1.2em;
+    color: var(--text-secondary);
+}
+.status.error { color: var(--error); }
+.status.ok    { color: var(--success); }
 
 /* ---- Viewer card ---- */
 
@@ -137,37 +308,37 @@ header .tagline {
 }
 
 .viewer-header {
-    display: flex; flex-direction: column; gap: 4px;
+    display: flex; flex-direction: column; gap: 6px;
 }
 .viewer-info {
-    display: flex; flex-wrap: wrap; gap: 6px 12px;
-    font-size: 0.88rem; color: #555;
+    display: flex; flex-wrap: wrap; gap: 6px 14px;
+    font-size: 0.86rem;
+    color: var(--text-secondary);
     align-items: baseline;
 }
 .viewer-info .title {
-    font-weight: 600; color: #2a2a2a;
+    font-weight: 600;
+    color: var(--text-primary);
     word-break: break-all;
 }
 .viewer-info .meta {
     display: inline-flex; gap: 6px; align-items: baseline;
     flex-wrap: wrap;
 }
-.viewer-info .sep { color: #ccc; }
+.viewer-info .sep { color: var(--border-strong); }
 .viewer-info code {
-    font-family: ui-monospace, Menlo, Consolas, monospace;
-    color: #2a2a2a;
-    background: #f4f5f7;
-    padding: 0 4px;
+    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    color: var(--text-mono);
+    background: var(--bg-input);
+    padding: 1px 6px;
     border-radius: 3px;
+    border: 1px solid var(--border-soft);
 }
 
-/* Resizable viewer container.
-   * `resize: both` adds a native bottom-right drag handle in modern
-     browsers (Chrome / Safari / Firefox).
-   * `min-*` keeps the canvas usable; `max-width: 100%` keeps it
-     inside the column when shrunk.
-   * The 3Dmol canvas needs explicit `viewer.resize()` whenever its
-     parent box changes -- the JS attaches a ResizeObserver. */
+/* Resizable viewer container -- 3Dmol canvas lives inside.
+ * We deliberately render the canvas with its own background so the
+ * dark UI doesn't shine through (chemistry viewers are usually nicer
+ * against a neutral bg). */
 .viewer-wrap {
     width: 100%;
     height: 480px;
@@ -176,67 +347,63 @@ header .tagline {
     max-width: 100%;
     resize: both;
     overflow: hidden;
-    border: 1px solid #d0d3d6;
-    border-radius: 5px;
-    background: #fff;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: #ffffff;
     position: relative;
+    box-shadow: var(--shadow-card);
 }
-#viewer {
-    width: 100%; height: 100%;
-    position: relative;
-}
+#viewer { width: 100%; height: 100%; position: relative; }
+
 .resize-hint {
     position: absolute;
     bottom: 2px; right: 16px;
     font-size: 0.7rem;
-    color: #b9bcc0;
+    color: rgba(0, 0, 0, 0.35);
     pointer-events: none;
     user-select: none;
     font-style: italic;
+    background: rgba(255, 255, 255, 0.75);
+    padding: 0 4px;
+    border-radius: 2px;
 }
 
-/* Compact viewer controls below the canvas */
 .viewer-controls {
     display: flex; flex-direction: column;
-    gap: 4px;
+    gap: 2px;
     font-size: 0.88rem;
 }
-.viewer-controls details { padding: 0; }
 .viewer-controls details summary {
-    cursor: pointer; color: #2563a8;
+    cursor: pointer;
+    color: var(--accent);
     padding: 4px 0;
+    user-select: none;
     list-style: revert;
 }
+.viewer-controls details summary:hover { color: var(--accent-hover); }
 .viewer-controls .control-row {
     display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
     padding: 8px 0 4px;
     font-size: 0.85rem;
-    color: #444;
+    color: var(--text-secondary);
 }
 .viewer-controls .control-row label {
     display: inline-flex; align-items: center; gap: 5px;
 }
-.viewer-controls .control-row select,
-.viewer-controls .control-row input[type="text"],
-.viewer-controls .control-row input[type="number"] {
-    padding: 2px 5px; font: inherit; font-size: 0.85rem;
-    border: 1px solid #ccc; border-radius: 3px;
-}
 .viewer-controls .control-row input[type="range"] {
-    width: 90px; vertical-align: middle;
+    width: 100px; vertical-align: middle;
 }
 .viewer-controls .download-row {
-    border-top: 1px dashed #e3e3e3;
+    border-top: 1px dashed var(--border-dashed);
     padding-top: 8px;
 }
-.viewer-controls .dl-label { color: #555; margin-right: 4px; }
-.viewer-controls .download-row button {
-    padding: 4px 14px; font: inherit; cursor: pointer;
-    border: 1px solid #888; background: #fff; border-radius: 3px;
-    font-size: 0.85rem;
+.viewer-controls .dl-label {
+    color: var(--text-muted);
+    margin-right: 4px;
 }
-.viewer-controls .download-row button:disabled { color: #aaa; cursor: not-allowed; }
-.viewer-controls .download-row button:hover:not(:disabled) { background: #f0f0f0; }
+.viewer-controls .download-row button {
+    padding: 4px 14px; font-size: 0.85rem;
+}
 
 @media (max-width: 1100px) {
     .viewer-wrap { height: 420px; }
@@ -245,108 +412,173 @@ header .tagline {
 /* ---- Tabs (SIESTA / PySCF) ---- */
 
 .tabs {
-    display: flex; gap: 2px;
-    margin: 6px 0 14px;
-    border-bottom: 1px solid #d8d8d8;
+    display: flex;
+    gap: 4px;
+    margin: 4px 0 14px;
+    border-bottom: 1px solid var(--border-strong);
+    padding: 0 2px;
 }
 .tab-btn {
-    padding: 8px 16px;
-    font: inherit; font-size: 0.95rem; font-weight: 500;
-    color: #666;
+    padding: 8px 18px;
+    font: inherit;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: var(--text-secondary);
     background: transparent;
     border: none;
     border-bottom: 2px solid transparent;
     cursor: pointer;
-    margin-bottom: -1px;          /* overlap the .tabs border-bottom */
-    transition: color 0.12s, border-color 0.12s;
+    margin-bottom: -1px;
+    border-radius: 0;
+    transition: color 120ms, border-color 120ms, background 120ms;
 }
-.tab-btn:hover { color: #2563a8; }
+.tab-btn:hover {
+    color: var(--text-primary);
+    background: var(--bg-card-hover);
+}
 .tab-btn.active {
-    color: #2563a8;
-    border-bottom-color: #2563a8;
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    background: transparent;
 }
 .tab-btn code {
-    font-family: ui-monospace, Menlo, Consolas, monospace;
-    font-size: 0.88em;
+    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 0.86em;
     color: inherit;
     background: transparent;
+    padding: 0;
 }
 .tab-panel[hidden] { display: none; }
 
-/* ---- Fieldsets in the parameter forms ---- */
+/* ---- Fieldsets in parameter forms ---- */
 
 fieldset {
-    border: 1px solid #d8d8d8;
-    border-radius: 5px;
-    padding: 6px 10px 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px 10px;
     margin: 0;
-    background: #fcfcfc;
+    background: var(--bg-fieldset);
+    min-width: 0;     /* allow grid items to shrink below content width */
 }
 fieldset legend {
     font-weight: 600;
-    padding: 0 4px;
+    padding: 0 6px;
     font-size: 0.85rem;
-    color: #444;
+    color: var(--accent);
+    letter-spacing: 0.01em;
 }
-fieldset label { display: block; margin: 4px 0; font-size: 0.85rem; }
-fieldset select, fieldset input[type="number"], fieldset input[type="text"],
-fieldset input[type="range"] {
-    width: 100%; margin-top: 2px; font: inherit;
-    padding: 3px 6px; border: 1px solid #ccc; border-radius: 3px;
+
+/* Default fieldset label style: stack name above input.  This is the
+ * key fix for the PySCF-tab overflow: with side-by-side layout, long
+ * label names like "preopt functional" pushed inputs out of the column.
+ * Stacked is also more responsive on narrow viewports. */
+fieldset label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 6px 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    min-width: 0;
 }
-fieldset input[type="checkbox"] { width: auto; margin-right: 4px; }
+fieldset label > input,
+fieldset label > select {
+    width: 100%;
+    margin-top: 1px;
+    max-width: none;
+    min-width: 0;
+}
+/* Inline checkboxes -- keep their existing horizontal layout */
+fieldset label > input[type="checkbox"] {
+    width: auto;
+    align-self: flex-start;
+}
+fieldset label:has(> input[type="checkbox"]) {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+}
 
-/* ---- FDF parameter grid ---- */
+/* ---- Param grid (the big SIESTA / PySCF parameter blocks) ---- */
 
-.hint { color: #555; font-size: 0.9rem; margin: 4px 0 12px; }
+.hint {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin: 4px 0 12px;
+    line-height: 1.55;
+}
+
 .param-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
     gap: 10px;
 }
-.param-grid label {
-    display: grid;
-    grid-template-columns: max-content 1fr;
-    column-gap: 6px;
-    align-items: center;
-    margin: 3px 0;
-}
-.param-grid label input,
-.param-grid label select { max-width: 130px; }
 
-.fdf-actions { display: flex; gap: 8px; align-items: center; margin-top: 12px; }
-.fdf-actions button {
-    padding: 5px 14px; cursor: pointer; font: inherit;
-    border: 1px solid #2563a8; background: #2563a8; color: #fff;
-    border-radius: 4px;
+/* The k-grid fieldset has 3 tiny inputs that look better stacked
+   vertically -- already the default with our new label rule. */
+
+/* ---- FDF / PySCF action row + output ---- */
+
+.fdf-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: 14px;
+    flex-wrap: wrap;
 }
-.fdf-actions button:disabled { background: #b9c5d4; border-color: #b9c5d4; cursor: not-allowed; }
-.fdf-actions button:hover:not(:disabled) { background: #1c4d80; }
-.fdf-actions .dl-btn {
-    background: #fff; color: #2563a8;
-}
-.fdf-actions .dl-btn:disabled { background: #fff; color: #aaa; border-color: #ccc; }
-.fdf-actions .dl-btn:hover:not(:disabled) { background: #eef3f9; }
 
 .fdf-output {
     margin-top: 12px;
-    padding: 12px;
-    background: #1d1f21;
-    color: #c5c8c6;
-    font-family: ui-monospace, Menlo, Consolas, monospace;
+    padding: 12px 14px;
+    background: var(--bg-code);
+    color: var(--text-mono);
+    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
     font-size: 0.82rem;
-    border-radius: 4px;
+    line-height: 1.45;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
     max-height: 360px;
     overflow: auto;
     white-space: pre;
+    /* Match scrollbar treatment to the rest of the dark UI */
+    scrollbar-color: var(--border-strong) transparent;
+    scrollbar-width: thin;
 }
 
 /* ---- Footer ---- */
 
 footer {
-    padding: 14px 24px;
-    color: #777;
+    padding: 16px 28px;
+    color: var(--text-muted);
     font-size: 0.82rem;
+    text-align: right;
 }
-footer a { color: #777; text-decoration: none; }
-footer a:hover { text-decoration: underline; }
+footer a {
+    color: var(--text-muted);
+    text-decoration: none;
+    border-bottom: 1px dotted var(--border-strong);
+}
+footer a:hover {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
+/* ---- Scrollbars (webkit) ---- */
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 5px;
+    border: 2px solid var(--bg-page);
+}
+::-webkit-scrollbar-thumb:hover { background: #4a5160; }
+
+/* ---- Tooltips (use the native title= attribute, but soften with
+ *      a default cursor when inputs have one) ---- */
+
+label[title], fieldset[title], summary[title] {
+    cursor: help;
+}
+label[title] > input,
+label[title] > select { cursor: auto; }
