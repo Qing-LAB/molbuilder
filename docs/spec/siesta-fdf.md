@@ -2,7 +2,30 @@
 
 **Module**: `molbuilder/siesta.py` &nbsp;·&nbsp; **Tests**:
 `tests/test_smiles_and_siesta.py`, `tests/test_review_fixes.py`,
-`tests/test_pyscf.py` (cross-engine charge handling)
+`tests/test_pyscf.py` (cross-engine charge handling),
+`tests/test_molwatch_preview.py` (sibling `.molwatch.log` output)
+
+## Sibling outputs
+
+Alongside the `<name>.fdf` file, `convert(...)` also writes
+`<name>.molwatch.log` by default (`cfg.write_molwatch_log = True`).
+That sibling log carries one *initial-state preview block* (step 0)
+containing the molecule's coordinates, with no energy / forces /
+SCF data, and a `kind: initial_preview` marker line.
+
+Purpose: molwatch can render the structure the moment the user
+loads it, before SIESTA has produced any of its own output.  The
+preview file is static (one block, never updated); for live updates
+during a SIESTA run the user points molwatch at the SIESTA `.out`
+file instead.  Both files share the same job stem so they live next
+to each other and are easy to find from one another.
+
+Set `cfg.write_molwatch_log = False` to suppress the sibling file.
+
+The format spec for `.molwatch.log` is documented in
+`docs/spec/pyscf-script.md` (the format itself is engine-agnostic;
+the `# engine:` header line distinguishes who wrote it).
+
 
 The emitter takes a `Structure` (or an XYZ/PDB file path) and writes
 a SIESTA-runnable `.fdf` text.  It also optionally copies matching

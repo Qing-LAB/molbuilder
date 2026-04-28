@@ -131,6 +131,11 @@ class SiestaConfig:
     write_coor_xmol: bool = True         # .xyz of every relaxation step
     write_md_history: bool = True        # .ANI trajectory file
     write_hs: bool = False               # H + S matrices (TranSIESTA / DOS)
+    write_molwatch_log: bool = True      # write <job>.molwatch.log alongside the
+                                         # .fdf with the initial geometry as a
+                                         # preview block, so molwatch can render
+                                         # the structure immediately -- before
+                                         # SIESTA has produced any output.
 
     # Pseudopotentials
     psml_lib: Optional[str] = None
@@ -755,5 +760,21 @@ def convert(
                   file=sys.stderr)
         else:
             summary["missing_psml"] = copy_pseudopotentials(species, lib, fdf_p.parent)
+
+    # Drop a preview <fdf-stem>.molwatch.log next to the .fdf so molwatch
+    # can render the initial geometry the moment the user loads it -- no
+    # waiting for SIESTA to write its first outcoor block.  The file is
+    # static (one preview block, no live updates); for live updates while
+    # SIESTA is running, point molwatch at the .out file instead.
+    if cfg.write_molwatch_log:
+        from ._molwatch_log import write_initial_preview
+        mw_path = fdf_p.with_suffix(".molwatch.log")
+        write_initial_preview(
+            struct,
+            mw_path,
+            job=fdf_p.stem,
+            engine="siesta",
+        )
+        summary["molwatch_log"] = str(mw_path)
 
     return summary
