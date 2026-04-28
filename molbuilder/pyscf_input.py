@@ -24,12 +24,9 @@ module instead of the actual PySCF library).
 
 from __future__ import annotations
 
-import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
-
-import numpy as np
+from typing import List, Optional
 
 from .structure import Structure
 
@@ -145,7 +142,18 @@ def _atoms_block(struct: Structure, indent: str = "    ") -> str:
 
 
 def _resolve_charge(struct: Structure, cfg: PySCFConfig) -> int:
-    """Use cfg.charge if given, else auto-detect from phosphate protonation."""
+    """Resolve the molecule's net charge.
+
+    Order of precedence:
+      1. cfg.charge explicit override (including 0, which disables
+         auto-detection).
+      2. phosphate-protonation heuristic via
+         :func:`molbuilder.chemistry.formal_charge_from_phosphates`.
+
+    The heuristic only counts deprotonated phosphate non-bridging
+    oxygens; charged side chains (Asp, Glu, Lys, Arg, His) are NOT
+    detected and the user must override with cfg.charge for those.
+    """
     if cfg.charge is not None:
         return int(cfg.charge)
     from .chemistry import formal_charge_from_phosphates
@@ -218,7 +226,6 @@ def render_script(struct: Structure,
 
     # ------------------------------------------------------------- imports
     out.append("import os")
-    out.append("import sys")
     out.append("import time")
     out.append("")
     if cfg.threads is not None:
@@ -231,8 +238,7 @@ def render_script(struct: Structure,
         out.append(f'os.environ.setdefault("OMP_NUM_THREADS", "{cfg.threads}")')
         out.append(f'os.environ.setdefault("MKL_NUM_THREADS", "{cfg.threads}")')
         out.append("")
-    out.append("import numpy as np")
-    out.append("from pyscf import gto, scf, dft, lib")
+    out.append("from pyscf import gto, scf, dft")
     if cfg.optimize:
         if cfg.optimizer == "geometric":
             out.append("from pyscf.geomopt.geometric_solver import optimize")
@@ -274,18 +280,16 @@ def render_script(struct: Structure,
     out.append(f"    symmetry   = {cfg.symmetry},")
     out.append(f"    verbose    = {cfg.verbose},")
     if cfg.log_file:
-        out.append(f'    output     = JOB + ".log",')
+        out.append('    output     = JOB + ".log",')
     out.append(f"    max_memory = {cfg.max_memory_mb},   # MB")
     out.append("    unit       = 'Ang',")
     out.append(")")
     out.append('print(f"Built mol: {mol.natm} atoms, {mol.nelectron} electrons, '
                f'charge={charge:+d}")')
-    if cfg.save_initial_xyz:
-        out.append("")
-        out.append("# Save the input coordinates as XYZ (handy for visual diffing")
-        out.append("# against the optimized geometry later).")
-        out.append("_save_xyz(mol, JOB + '_initial.xyz', 'Initial geometry') "
-                   "if False else None  # placeholder, helper defined below")
+    # Note: _initial.xyz is written at the end of the script along with
+    # _optimized.xyz -- mol's atom coordinates aren't mutated by
+    # optimize() (which returns a new mol_eq), so a single save block
+    # at the end captures both the input and the optimized geometry.
     out.append("")
 
     # ------------------------------------------------------------- preopt
@@ -347,7 +351,7 @@ def render_script(struct: Structure,
     if cfg.level_shift:
         out.append(f"mf.level_shift = {cfg.level_shift}")
     if cfg.chkfile:
-        out.append(f'mf.chkfile = JOB + ".chk"')
+        out.append('mf.chkfile = JOB + ".chk"')
     out.append("")
 
     # ------------------------------------------------------------- run
@@ -423,7 +427,8 @@ def _emit_preopt_block(cfg: PySCFConfig, charge: int, v: bool) -> List[str]:
     out.append("mol_pre = mol.copy()")
     out.append(f'mol_pre.basis = "{cfg.preopt_basis}"')
     out.append("mol_pre.build()")
-    is_pre_dft = True   # we always use DFT for preopt by design
+    # Pre-opt always uses DFT (a hybrid + cheap basis is the point of
+    # having a warm-up).  Mirror RKS/UKS choice from the production run.
     out.append(f'mf1 = dft.{cfg.method.upper().replace("HF", "KS")}(mol_pre)')
     out.append(f'mf1.xc = "{cfg.preopt_functional}"')
     if cfg.preopt_density_fit:

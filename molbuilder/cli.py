@@ -35,7 +35,7 @@ def _emit(struct: Structure, args: argparse.Namespace) -> None:
         struct.to_pdb(args.pdb)
         print(f"wrote {struct.n_atoms} atoms to {args.pdb}", file=sys.stderr)
         wrote_anything = True
-    if args.pyscf:
+    if args.pyscf_atom_block:
         print(struct.to_pyscf(as_string=True))
         wrote_anything = True
     if not wrote_anything:
@@ -48,7 +48,11 @@ def _add_build_parser(sub, name: str, help_: str) -> argparse.ArgumentParser:
     s.add_argument("input", help="sequence / SMILES / name to build")
     s.add_argument("--out", help="write .xyz file to this path")
     s.add_argument("--pdb", help="write .pdb file to this path")
-    s.add_argument("--pyscf", action="store_true",
+    # NB: --pyscf-atom-block emits just the atom list (the gto.M `atom=`
+    # block).  The full runnable PySCF script is the `pyscf` subcommand:
+    #   molbuilder pyscf in.xyz out.py
+    s.add_argument("--pyscf-atom-block", "--pyscf", action="store_true",
+                   dest="pyscf_atom_block",
                    help="print PySCF-format atom block to stdout")
     s.add_argument("--title", help="optional title")
     if name in ("dna", "rna"):
@@ -168,8 +172,8 @@ def _add_fdf_parser(sub) -> argparse.ArgumentParser:
 
 
 def _run_fdf(args: argparse.Namespace) -> int:
-    from .siesta import Config, convert
-    cfg = Config(
+    from .siesta import SiestaConfig, convert
+    cfg = SiestaConfig(
         system_name=args.system_name,
         system_label=args.system_label,
         cell_padding=args.cell_padding,

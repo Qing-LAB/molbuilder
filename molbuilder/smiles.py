@@ -80,11 +80,20 @@ def build_from_smiles(
 
     if optimize:
         # MMFF94s preferred; fall back to UFF if MMFF can't parameterise.
+        # RDKit return convention for MMFFOptimizeMolecule:
+        #     0  = converged
+        #     1  = max-iter exceeded (still produced valid coords)
+        #    -1  = MMFF could not parameterise the molecule
+        # We treat 0 and 1 both as "MMFF was useful"; only fall back to
+        # UFF when MMFF is unable to handle the chemistry (-1) or raises.
+        mmff_ok = False
         try:
-            if AllChem.MMFFOptimizeMolecule(mol, mmffVariant="MMFF94s",
-                                            maxIters=400) == 1:
-                AllChem.UFFOptimizeMolecule(mol, maxIters=400)
+            rc = AllChem.MMFFOptimizeMolecule(mol, mmffVariant="MMFF94s",
+                                              maxIters=400)
+            mmff_ok = (rc != -1)
         except Exception:
+            mmff_ok = False
+        if not mmff_ok:
             try:
                 AllChem.UFFOptimizeMolecule(mol, maxIters=400)
             except Exception:

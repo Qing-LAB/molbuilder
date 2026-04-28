@@ -165,7 +165,7 @@ def test_load_unknown_extension_raises(tmp_path_str: str) -> None:
 
 def test_loaded_structure_renders_fdf(tmp_path_str: str) -> None:
     """The whole point: load an existing file and feed it to render_fdf."""
-    from molbuilder.siesta import Config, render_fdf, convert
+    from molbuilder.siesta import Config, convert
     s = molbuilder.build_peptide("AC")
     pdb_p = os.path.join(tmp_path_str, "ac.pdb")
     s.to_pdb(pdb_p)

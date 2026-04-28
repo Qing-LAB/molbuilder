@@ -33,7 +33,9 @@ def _import_peptidebuilder():
     """Lazy import so users who only build DNA don't need PeptideBuilder."""
     try:
         import PeptideBuilder
-        from Bio.PDB import PPBuilder  # noqa: F401  (sanity check)
+        # PeptideBuilder declares Bio.PDB as a dep and imports it eagerly
+        # at module load, so importing PeptideBuilder is sufficient as a
+        # combined probe -- no need for a redundant Bio.PDB import here.
         return PeptideBuilder
     except ImportError as exc:  # pragma: no cover
         raise ImportError(
@@ -109,8 +111,14 @@ def build_peptide(
                 rid = res.get_id()[1]
                 rname = parent_codes[rid - 1]
                 for atom in res:
-                    elements.append(atom.element.title() if len(atom.element) > 1
-                                    else atom.element.upper())
+                    # BioPython sometimes returns the element field with
+                    # leading whitespace (e.g. " C" for backbone carbon).
+                    # Strip first, otherwise downstream species detection
+                    # in the FDF / pyscf modules sees " C" as a separate
+                    # element from "C" and emits a malformed input.
+                    el_raw = atom.element.strip()
+                    elements.append(el_raw.title() if len(el_raw) > 1
+                                    else el_raw.upper())
                     positions.append(tuple(float(c) for c in atom.coord))
                     atom_names.append(atom.get_name())
                     residue_ids.append(rid)

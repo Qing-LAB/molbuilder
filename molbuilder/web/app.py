@@ -18,8 +18,7 @@ The page itself lives in templates/index.html and static/viewer.js.
 
 from __future__ import annotations
 
-import io
-from dataclasses import asdict, fields
+from dataclasses import fields
 from typing import Any, Dict
 
 from flask import Flask, jsonify, render_template, request
@@ -28,9 +27,14 @@ from .. import (
     build_dna, build_from_name, build_from_smiles,
     build_peptide, build_rna,
 )
-from ..siesta import Config, render_fdf
+from ..siesta import SiestaConfig, render_fdf
 from ..pyscf_input import PySCFConfig, render_script
 from ..structure import Structure
+
+
+# Cap multipart-upload size for /api/load.  10 MB is plenty for any
+# realistic chemistry-sized PDB (10k atoms ~= 1 MB at 80 bytes/line).
+_MAX_UPLOAD_MB = 10
 
 
 # Handle re-export differences between flask versions for ASGI/WSGI users.
@@ -46,6 +50,7 @@ _BUILDERS = {
 def create_app() -> Flask:
     app = Flask(__name__)
     app.config["JSON_SORT_KEYS"] = False
+    app.config["MAX_CONTENT_LENGTH"] = _MAX_UPLOAD_MB * 1024 * 1024
 
     @app.route("/")
     def index():
@@ -253,32 +258,15 @@ def _molbuilder_version() -> str:
 
 
 def _xyz_to_structure(xyz_text: str) -> Structure:
-    """Lightweight XYZ parser; we wrote the XYZ ourselves so the format
-    is well-defined."""
-    lines = xyz_text.splitlines()
-    if len(lines) < 2:
-        raise ValueError("XYZ too short")
-    n = int(lines[0].strip())
-    atoms = []
-    for raw in lines[2:2 + n]:
-        parts = raw.split()
-        if len(parts) < 4:
-            continue
-        atoms.append((parts[0], float(parts[1]), float(parts[2]), float(parts[3])))
-    if len(atoms) != n:
-        raise ValueError(f"expected {n} atoms, got {len(atoms)}")
-
-    import numpy as np
-    return Structure(
-        elements=[a[0] for a in atoms],
-        positions=np.array([[a[1], a[2], a[3]] for a in atoms]),
-        title=(lines[1].strip() or "from-browser"),
-    )
+    """Thin wrapper that delegates to Structure.from_xyz so the web
+    layer doesn't carry its own parser.  Kept as a function for
+    backwards compatibility with code that imported it."""
+    return Structure.from_xyz(xyz_text, title="from-browser")
 
 
-def _config_from_params(params: Dict[str, Any]) -> Config:
-    """Build a Config from a dict, picking only fields it knows about."""
-    valid = {f.name for f in fields(Config)}
+def _config_from_params(params: Dict[str, Any]) -> SiestaConfig:
+    """Build a SiestaConfig from a dict, picking only fields it knows."""
+    valid = {f.name for f in fields(SiestaConfig)}
     kwargs = {}
     for k, v in params.items():
         if k not in valid:
@@ -286,9 +274,12 @@ def _config_from_params(params: Dict[str, Any]) -> Config:
         # kgrid arrives as [a, b, c]
         if k == "kgrid" and isinstance(v, (list, tuple)) and len(v) == 3:
             kwargs[k] = (int(v[0]), int(v[1]), int(v[2]))
+        # net_charge: empty string from the form means "auto-detect"
+        elif k == "net_charge" and (v == "" or v is None):
+            continue
         else:
             kwargs[k] = v
-    return Config(**kwargs)
+    return SiestaConfig(**kwargs)
 
 
 def _pyscf_config_from_params(params: Dict[str, Any]) -> PySCFConfig:

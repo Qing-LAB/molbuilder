@@ -124,10 +124,16 @@
 
     // Take a structure response (either /api/build or /api/load) and
     // populate the viewer + info panel + enable the FDF section.
+    // A new structure invalidates any previously-generated FDF / PySCF
+    // outputs -- we clear those and disable their download buttons so
+    // the user can't accidentally download stale text from the prior
+    // structure.
     function applyStructureResult(r) {
         state.xyz = r.xyz;
         state.pdb = r.pdb;
         state.title = r.title;
+        state.fdf = null;
+        state.pyscf = null;
         $("info-title").textContent     = r.title;
         $("info-atoms").textContent     = r.n_atoms;
         $("info-residues").textContent  = r.n_residues || "—";
@@ -136,6 +142,15 @@
         $("dl-pdb").disabled = false;
         $("generate-fdf").disabled = false;
         $("generate-pyscf").disabled = false;
+        // Stale outputs / status / download buttons -> reset
+        $("dl-fdf").disabled = true;
+        $("dl-pyscf").disabled = true;
+        $("fdf-output").hidden = true;
+        $("fdf-output").textContent = "";
+        $("pyscf-output").hidden = true;
+        $("pyscf-output").textContent = "";
+        setStatus("fdf-status", "");
+        setStatus("pyscf-status", "");
         renderStructure();
     }
 

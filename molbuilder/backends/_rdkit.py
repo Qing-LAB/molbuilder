@@ -40,11 +40,11 @@ _FLAVOR = {
 
 
 def is_available() -> bool:
-    try:
-        import rdkit  # noqa: F401
-        return True
-    except ImportError:
-        return False
+    # importlib.util.find_spec checks the module's installability without
+    # actually executing its top-level code -- faster than `import rdkit`
+    # on every call and pyflakes-clean.
+    import importlib.util
+    return importlib.util.find_spec("rdkit") is not None
 
 
 def build(kind: str, sequence: str, form: str, terminal: str,

@@ -1,13 +1,14 @@
 """SIESTA .fdf input generator.
 
-Takes a Structure (or an XYZ file path) and emits a .fdf input file
+Takes a Structure (or an XYZ/PDB file path) and emits a .fdf input file
 ready to drop into a SIESTA run, with optional auto-copy of PSML
 pseudopotentials from a flat library on disk.
 
 Public API:
-    Config            -- dataclass holding every FDF parameter
+    SiestaConfig      -- dataclass holding every FDF parameter
+    Config            -- backwards-compat alias for SiestaConfig
     render_fdf(...)   -- format an in-memory Structure as FDF text
-    convert(...)      -- read XYZ, write FDF, optionally copy psml
+    convert(...)      -- read XYZ/PDB, write FDF, optionally copy psml
     copy_pseudopotentials(...) -- standalone psml copy helper
 
 The CLI lives in :mod:`molbuilder.cli` as the ``fdf`` subcommand.
@@ -40,7 +41,7 @@ from .structure import Structure
 
 
 @dataclass
-class Config:
+class SiestaConfig:
     """All FDF parameters in one place.
 
     Defaults follow current SIESTA best-practice for a small / medium
@@ -138,6 +139,21 @@ class Config:
     # Misc -- pin the species order if you want a specific layout
     species_order: Optional[Sequence[str]] = None
 
+    # Net charge.  When None (default), render_fdf auto-detects from the
+    # phosphate protonation state via formal_charge_from_phosphates.  Set
+    # an explicit integer to override -- needed for any system whose net
+    # charge comes from groups other than phosphates (carboxylates,
+    # protonated amines, sulfonates, etc., which the heuristic does NOT
+    # detect).  An explicit 0 disables auto-detection (treats system as
+    # neutral even if the heuristic would have flagged it).
+    net_charge: Optional[int] = None
+
+
+# Backwards-compatible alias.  External code that imports `Config` from
+# this module keeps working; new code should prefer `SiestaConfig` so it
+# can coexist with PySCFConfig / future engine configs in the same file.
+Config = SiestaConfig
+
 
 # --------------------------------------------------------------------- #
 #  Helpers                                                              #
@@ -225,7 +241,7 @@ def copy_pseudopotentials(species: Sequence[str], lib: Path,
 # --------------------------------------------------------------------- #
 
 
-def render_fdf(struct: Structure, config: Optional[Config] = None,
+def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
                *, cell: Optional[np.ndarray] = None) -> str:
     """Format a Structure as SIESTA .fdf text.
 
@@ -239,10 +255,29 @@ def render_fdf(struct: Structure, config: Optional[Config] = None,
     a user-supplied cell typically goes with a known atom frame
     (e.g. crystallographic positions).
     """
-    cfg = config or Config()
+    cfg = config or SiestaConfig()
     species = (list(cfg.species_order) if cfg.species_order
                else _detect_species(struct.elements))
     species_index = {s: i + 1 for i, s in enumerate(species)}
+
+    # ---------- net charge: explicit override or auto-detect ----------
+    if cfg.net_charge is not None:
+        auto_charge = int(cfg.net_charge)
+        charge_source = "user-specified"
+    else:
+        from .chemistry import formal_charge_from_phosphates
+        auto_charge = formal_charge_from_phosphates(struct)
+        charge_source = "auto (phosphate protonation)"
+
+    # For charged systems in vacuum, the SIESTA-recommended padding is
+    # >=25 A on each face to suppress image-image Coulomb interactions.
+    # If the user is on the auto-vacuum path (cell=None) and hasn't
+    # already bumped cell_padding past that, raise it for them.
+    effective_padding = cfg.cell_padding
+    auto_bumped_padding = False
+    if cell is None and auto_charge != 0 and cfg.cell_padding < 25.0:
+        effective_padding = 25.0
+        auto_bumped_padding = True
 
     # Validate every element has a species index
     for el in struct.elements:
@@ -275,16 +310,21 @@ def render_fdf(struct: Structure, config: Optional[Config] = None,
     positions = np.asarray(struct.positions, dtype=float)
     if cell is None:
         ext   = positions.max(axis=0) - positions.min(axis=0)
-        sizes = ext + 2 * cfg.cell_padding
+        sizes = ext + 2 * effective_padding
         cell  = np.diag(sizes)
         if cfg.center_in_vacuum:
             center_now    = (positions.max(axis=0) + positions.min(axis=0)) / 2.0
             center_target = sizes / 2.0
             positions = positions + (center_target - center_now)
+        bump_note = (
+            f"; padding auto-bumped from {cfg.cell_padding} -> "
+            f"{effective_padding} A because NetCharge != 0"
+            if auto_bumped_padding else ""
+        )
         cell_note = (
             f"# (auto-generated orthorhombic vacuum cell "
             f"{sizes[0]:.2f} x {sizes[1]:.2f} x {sizes[2]:.2f} A; "
-            f"cell_padding = {cfg.cell_padding} A on each face; "
+            f"cell_padding = {effective_padding} A on each face{bump_note}; "
             f"atoms centred)"
         )
     else:
@@ -299,7 +339,7 @@ def render_fdf(struct: Structure, config: Optional[Config] = None,
         if cfg.wrap_into_cell:
             positions, n_wrapped = _wrap_into_cell(positions, cell)
             cell_note = (
-                f"# (using user-supplied lattice;"
+                "# (using user-supplied lattice;"
                 + (f" {n_wrapped} atom(s) wrapped into the unit cell)"
                    if n_wrapped else " all atoms already inside the cell)")
             )
@@ -463,24 +503,22 @@ def render_fdf(struct: Structure, config: Optional[Config] = None,
         ]
         out.append("DM.UseSaveDM      true")
 
-    # ---- NetCharge (auto-detected) -------------------------------
-    # If the structure has unprotonated phosphate oxygens it carries
-    # a non-zero formal charge; we MUST tell SIESTA, otherwise it
-    # quietly assumes 0 and adds compensating electrons to neutralise,
-    # which gives the wrong electronic structure.
-    from .chemistry import formal_charge_from_phosphates
-    auto_charge = formal_charge_from_phosphates(struct)
+    # ---- NetCharge -----------------------------------------------
+    # Either user-specified (cfg.net_charge != None) or auto-detected
+    # from phosphate protonation state.  SIESTA defaults to neutral and
+    # silently adds compensating electrons; we MUST set NetCharge for
+    # any non-zero charge or the electronic structure is wrong.
     if auto_charge != 0:
         if v: out += [
             "",
-            f"# NetCharge: detected {auto_charge:+d} from {abs(auto_charge)} "
-            "deprotonated phosphate oxygen(s).",
-            "# Note: SIESTA will add a uniform compensating background charge",
+            f"# NetCharge: {auto_charge:+d} ({charge_source}).",
+            "# Note: SIESTA adds a uniform compensating background charge",
             "# for periodic-cell consistency.  For vacuum calcs of charged",
-            "# molecules, use a larger cell_padding (>= 25 A) to suppress",
-            "# image-image Coulomb interactions.  To get a neutral system",
-            "# instead, build with build_dna(..., protonate_phosphates=True)",
-            "# (CLI: --protonate-phosphates) or add explicit counter-ions.",
+            "# molecules use cell_padding >= 25 A (we already auto-bump to",
+            "# 25 A in the auto-vacuum case) to suppress image-image",
+            "# Coulomb interactions.  To make a neutral system instead,",
+            "# either build with protonate_phosphates=True or pass a",
+            "# Config(net_charge=0) override.",
         ]
         out.append(f"NetCharge       {auto_charge:+d}")
     out.append("")
@@ -650,14 +688,14 @@ _struct_from_xyz = _struct_from_file
 def convert(
     input_path: str,
     fdf_path: str,
-    config: Optional[Config] = None,
+    config: Optional["SiestaConfig"] = None,
 ) -> dict:
     """Read an XYZ or PDB file, write an FDF, optionally copy psml files.
 
     Returns a summary dict with keys: ``fdf``, ``n_atoms``, ``species``,
     ``missing_psml``.
     """
-    cfg = config or Config()
+    cfg = config or SiestaConfig()
     struct, cell = _struct_from_file(input_path)
 
     species = (list(cfg.species_order) if cfg.species_order

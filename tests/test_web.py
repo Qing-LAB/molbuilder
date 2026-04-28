@@ -6,7 +6,6 @@ Exercises both /api/build (every kind we ship) and /api/fdf, plus the
 
 from __future__ import annotations
 
-import json
 import os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -110,7 +109,7 @@ def main() -> None:
     assert "4 0 0 0.0"                in fdf
     assert "MD.TypeOfRun"         not in fdf, "relax_type=none must drop MD block"
     assert "MaxSCFIterations  1000"   in fdf
-    print(f"  /api/fdf custom: TZP / 450 Ry / BLYP / kgrid 4x4x1 / no relax")
+    print("  /api/fdf custom: TZP / 450 Ry / BLYP / kgrid 4x4x1 / no relax")
 
     # ---- /api/fdf : missing xyz -----------------------------------
     r = client.post("/api/fdf", json={"params": {}})
@@ -193,7 +192,7 @@ def main() -> None:
     r = client.post("/api/pyscf", json={"xyz": xyz_pep, "params": {}})
     body = r.get_json()
     assert body["ok"] is True, body
-    assert "from pyscf import gto, scf, dft, lib" in body["script"]
+    assert "from pyscf import gto, scf, dft" in body["script"]
     assert 'mf.xc = "B3LYP"' in body["script"]
     assert "mol_eq = optimize(" in body["script"]
     print(f"  /api/pyscf default: {body['script'].count(chr(10))} lines, "

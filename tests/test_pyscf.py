@@ -46,7 +46,7 @@ def test_default_render_compiles() -> None:
     # Must contain the structural sections
     for needle in (
         "import os",
-        "from pyscf import gto, scf, dft, lib",
+        "from pyscf import gto, scf, dft",
         "from pyscf.geomopt.geometric_solver import optimize",
         "mol = gto.M(",
         "mf = dft.RKS(mol)",

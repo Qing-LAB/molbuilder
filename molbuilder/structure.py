@@ -16,7 +16,7 @@ pipeline without re-building it from scratch.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from io import StringIO
 from pathlib import Path
 from typing import List, Optional, Sequence, Union
@@ -305,15 +305,21 @@ class Structure:
             el   = self.elements[i]
             name = self.atom_names[i]
             res  = self.residue_names[i]
-            chn  = self.chain_ids[i]
+            chn  = (self.chain_ids[i] or "A")[:1]    # PDB chain id is 1 char
             rid  = self.residue_ids[i]
             x, y, z = self.positions[i]
             # PDB ATOM record: cols are fixed-width.  Atom-name field has
             # the quirk that 1- and 2-letter element symbols start in
             # column 14, while 3-4-letter names start in column 13.
             atname = name if len(name) >= 4 else f" {name:<3s}"
+            # PDB serial column is 5 chars (cols 7-11).  Per spec, beyond
+            # 99999 we wrap to "*****" rather than overflow the field.
+            serial = i + 1
+            serial_str = f"{serial:5d}" if serial <= 99999 else "*****"
+            # Residue id is 4 chars (cols 23-26) -- same wrap rule.
+            rid_str = f"{rid:4d}" if rid <= 9999 else "****"
             buf.write(
-                f"ATOM  {i + 1:5d} {atname:<4s} {res:>3s} {chn}{rid:4d}    "
+                f"ATOM  {serial_str} {atname:<4s} {res:>3s} {chn}{rid_str}    "
                 f"{x:8.3f}{y:8.3f}{z:8.3f}  1.00  0.00          {el:>2s}\n"
             )
         buf.write("END\n")

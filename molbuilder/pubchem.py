@@ -25,13 +25,31 @@ def _import_pubchempy():
     return pcp
 
 
-def smiles_for_name(name: str) -> str:
+def smiles_for_name(name: str, *, timeout: float = 30.0) -> str:
     """Look up the canonical SMILES for a name in PubChem.
 
-    Raises ValueError if the name doesn't resolve.
+    Raises ValueError if the name doesn't resolve, or RuntimeError if
+    the PubChem call doesn't complete within ``timeout`` seconds.
+
+    PubChemPy uses ``requests`` internally without exposing a per-call
+    timeout, so we set the global socket timeout for the duration of
+    the lookup and restore it afterwards.  Crude but effective.
     """
+    import socket
     pcp = _import_pubchempy()
-    compounds = pcp.get_compounds(name, "name")
+    prev_timeout = socket.getdefaulttimeout()
+    socket.setdefaulttimeout(timeout)
+    try:
+        try:
+            compounds = pcp.get_compounds(name, "name")
+        except (socket.timeout, OSError) as exc:
+            raise RuntimeError(
+                f"PubChem lookup for {name!r} did not complete within "
+                f"{timeout} s ({exc}).  Check network or pass a known "
+                f"SMILES via build_from_smiles() instead."
+            ) from exc
+    finally:
+        socket.setdefaulttimeout(prev_timeout)
     if not compounds:
         raise ValueError(f"PubChem returned no compounds for name {name!r}")
     smi = (compounds[0].canonical_smiles

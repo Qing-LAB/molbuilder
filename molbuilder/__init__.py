@@ -34,7 +34,7 @@ from .structure import Structure
 from .peptide import build_peptide
 from .nucleic import build_dna, build_rna
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 __all__ = [
     "Structure",

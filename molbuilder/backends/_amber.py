@@ -87,10 +87,18 @@ savepdb m {pdb_path}
 quit
 """)
 
-        result = subprocess.run(
-            ["tleap", "-f", in_path],
-            capture_output=True, text=True, cwd=workdir,
-        )
+        try:
+            result = subprocess.run(
+                ["tleap", "-f", in_path],
+                capture_output=True, text=True, cwd=workdir,
+                timeout=120,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                "tleap did not finish within 120 s -- likely hung or "
+                "stuck on a slow filesystem.  Try shorter sequence, or "
+                "run tleap by hand to diagnose."
+            ) from exc
         # tleap returns 0 even on some errors; check the actual output instead.
         if not os.path.isfile(pdb_path):
             raise RuntimeError(
