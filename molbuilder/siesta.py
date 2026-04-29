@@ -596,27 +596,35 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
 
     # ---- Parallel execution (MPI) -------------------------------
     # Always emit explicit values so the FDF behaves the same across
-    # SIESTA versions (some defaults have flipped between 4.0 / 4.1
-    # / MaX-1.x).  Without an explicit `Diag.ParallelOverK .false.`,
-    # a Gamma-only run on N>1 MPI ranks can hit
+    # SIESTA versions and across system sizes.  Without an explicit
+    # `BlockSize`, SIESTA auto-picks one as `ceil(Norb / Nrank)`,
+    # which is fine for distributing the orbital matrix but is
+    # *also* used elsewhere in the pipeline -- including a per-atom
+    # distribution step right before mesh setup.  When the system
+    # is small (e.g., a 14-atom molecule -> Norb~134, auto-picked
+    # BlockSize=34 with 4 MPI ranks), the auto value is much larger
+    # than the atom count, and that earlier step bails with
     #     propor: ERROR: IMAX = 0
-    # because SIESTA tries to distribute the single k-point across
-    # all ranks.
+    # An explicit smaller BlockSize keeps every distribution step
+    # well-conditioned regardless of system size.
     out.append("# --- Parallel execution (MPI) ---")
     if v: out += [
         "# These settings matter only with `mpirun -np N siesta`",
         "# (single-rank runs ignore them).",
         "#",
-        "# BlockSize: ScaLAPACK orbital-block size for the parallel",
-        "# diagonaliser.  Range 1-32, default 8.  Lower if you see",
+        "# BlockSize: global block size used for ScaLAPACK orbital",
+        "# distribution AND for several per-atom / per-projector",
+        "# distribution passes earlier in the pipeline.  Range 1-32,",
+        "# default 8.  Without it, SIESTA auto-picks ceil(Norb/Nrank)",
+        "# which works for the orbital matrix but can be too large",
+        "# for the small per-atom passes on small systems, giving:",
         "#     propor: ERROR: IMAX = 0",
-        "# on a small system with many MPI ranks.",
+        "# Lower to 4 or 1 if it still fails on a tiny system.",
         "#",
-        "# Diag.ParallelOverK: parallelise over k-points (.true.) or",
-        "# over orbitals (.false.).  MUST be .false. for 1x1x1 (Gamma-",
-        "# only) k-grids, otherwise SIESTA tries to distribute 1",
-        "# k-point across N ranks and bails with IMAX = 0.  This file",
-        "# auto-selected based on the kgrid above.",
+        "# Diag.ParallelOverK: parallelise the diagonaliser over",
+        "# k-points (.true.) or over orbitals (.false.).  Auto-",
+        "# selected here from the kgrid above: .false. for 1x1x1",
+        "# (molecule / vacuum), .true. for multi-k periodic runs.",
     ]
     out.append(f"BlockSize          {cfg.parallel_block_size}")
     if cfg.parallel_over_k is None:
@@ -719,12 +727,18 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             "#   * tighten DM.Energy.Tolerance to 1e-5 eV",
             "#",
             "# 'propor: ERROR: IMAX = 0' on parallel run:",
-            "#   * verify Diag.ParallelOverK is .false. for 1x1x1",
-            "#     (Gamma-only / vacuum / molecule) k-grids",
-            "#   * lower BlockSize to 4 or 1 if the matrix is small",
-            "#     (small molecule + many MPI ranks)",
-            "#   * run on fewer MPI ranks -- 1-2 are often fastest for",
-            "#     molecules under ~50 atoms",
+            "#   * caused by SIESTA's auto-picked BlockSize (which",
+            "#     scales with Norb / Nrank) being too large for an",
+            "#     unrelated per-atom distribution step earlier in",
+            "#     the pipeline.  Setting BlockSize explicitly above",
+            "#     overrides the auto-choice -- if it still fails,",
+            "#     drop BlockSize to 4 or 1.",
+            "#   * for 1x1x1 (Gamma) k-grids, also confirm that",
+            "#     Diag.ParallelOverK is .false. (we set it above",
+            "#     based on the kgrid).",
+            "#   * single-rank `siesta` (no mpirun) is often fastest",
+            "#     for molecules under ~50 atoms anyway, since",
+            "#     ScaLAPACK overhead dominates.",
         ]
         if cfg.relax_type and cfg.relax_type.lower() != "none":
             out += [
