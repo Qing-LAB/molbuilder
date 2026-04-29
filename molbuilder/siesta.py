@@ -137,6 +137,19 @@ class SiestaConfig:
                                          # the structure immediately -- before
                                          # SIESTA has produced any output.
 
+    # ---------------- Parallel execution (MPI) ----------------
+    # Only matter when running `mpirun -np N siesta`; single-rank runs
+    # ignore them.  Defaults below avoid the most common parallel
+    # failure mode: `propor: ERROR: IMAX = 0` on small Gamma-only
+    # systems with N MPI ranks (caused by SIESTA trying to parallelise
+    # 1 k-point across N ranks and giving N-1 ranks nothing to do).
+    parallel_block_size: int = 8         # ScaLAPACK orbital block size
+    parallel_over_k: Optional[bool] = None
+                                         # None -> auto: False if k-grid is
+                                         # 1x1x1 (Gamma; molecule/vacuum),
+                                         # True otherwise (periodic crystal
+                                         # with multiple k-points).
+
     # Pseudopotentials
     psml_lib: Optional[str] = None
     copy_psml: bool = True
@@ -581,6 +594,38 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     out.append("%endblock kgrid_Monkhorst_Pack")
     out.append("")
 
+    # ---- Parallel execution (MPI) -------------------------------
+    # Always emit explicit values so the FDF behaves the same across
+    # SIESTA versions (some defaults have flipped between 4.0 / 4.1
+    # / MaX-1.x).  Without an explicit `Diag.ParallelOverK .false.`,
+    # a Gamma-only run on N>1 MPI ranks can hit
+    #     propor: ERROR: IMAX = 0
+    # because SIESTA tries to distribute the single k-point across
+    # all ranks.
+    out.append("# --- Parallel execution (MPI) ---")
+    if v: out += [
+        "# These settings matter only with `mpirun -np N siesta`",
+        "# (single-rank runs ignore them).",
+        "#",
+        "# BlockSize: ScaLAPACK orbital-block size for the parallel",
+        "# diagonaliser.  Range 1-32, default 8.  Lower if you see",
+        "#     propor: ERROR: IMAX = 0",
+        "# on a small system with many MPI ranks.",
+        "#",
+        "# Diag.ParallelOverK: parallelise over k-points (.true.) or",
+        "# over orbitals (.false.).  MUST be .false. for 1x1x1 (Gamma-",
+        "# only) k-grids, otherwise SIESTA tries to distribute 1",
+        "# k-point across N ranks and bails with IMAX = 0.  This file",
+        "# auto-selected based on the kgrid above.",
+    ]
+    out.append(f"BlockSize          {cfg.parallel_block_size}")
+    if cfg.parallel_over_k is None:
+        over_k = (kx, ky, kz) != (1, 1, 1)
+    else:
+        over_k = bool(cfg.parallel_over_k)
+    out.append(f"Diag.ParallelOverK {'.true.' if over_k else '.false.'}")
+    out.append("")
+
     # Relaxation
     if cfg.relax_type and cfg.relax_type.lower() != "none":
         out.append("# --- Geometry optimisation ---")
@@ -672,6 +717,14 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             "#   * lower DM.MixingWeight to 0.005",
             "#   * raise DM.NumberPulay to 6",
             "#   * tighten DM.Energy.Tolerance to 1e-5 eV",
+            "#",
+            "# 'propor: ERROR: IMAX = 0' on parallel run:",
+            "#   * verify Diag.ParallelOverK is .false. for 1x1x1",
+            "#     (Gamma-only / vacuum / molecule) k-grids",
+            "#   * lower BlockSize to 4 or 1 if the matrix is small",
+            "#     (small molecule + many MPI ranks)",
+            "#   * run on fewer MPI ranks -- 1-2 are often fastest for",
+            "#     molecules under ~50 atoms",
         ]
         if cfg.relax_type and cfg.relax_type.lower() != "none":
             out += [
