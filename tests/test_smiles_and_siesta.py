@@ -63,6 +63,63 @@ def test_render_fdf_dna_4mer():
         assert f" {el}\n" in fdf, el
 
 
+def test_block_size_auto_pick_rule():
+    """The auto-picked BlockSize must satisfy ``BlockSize <= n_atoms``
+    (otherwise SIESTA's per-atom distribution pass hits propor IMAX=0
+    on multi-rank MPI runs)."""
+    from molbuilder.siesta import _auto_block_size
+    # Known thresholds: each step at a power-of-2 boundary.
+    assert _auto_block_size(2)  == 1
+    assert _auto_block_size(3)  == 1
+    assert _auto_block_size(4)  == 2
+    assert _auto_block_size(7)  == 2
+    assert _auto_block_size(8)  == 4
+    assert _auto_block_size(15) == 4
+    assert _auto_block_size(16) == 8
+    assert _auto_block_size(50) == 8
+    assert _auto_block_size(500) == 8
+    # Invariant: BlockSize must never exceed n_atoms (the trigger
+    # condition for `propor: ERROR: IMAX = 0`).
+    for n in range(1, 64):
+        assert _auto_block_size(n) <= n, n
+
+
+def test_fdf_emits_explicit_blocksize_and_paralleloverk(tmp_path):
+    """Generated FDF must always carry an explicit BlockSize and
+    Diag.ParallelOverK -- relying on SIESTA defaults is non-portable
+    (the defaults differ between 4.0 / 4.1 / MaX-1.x builds and have
+    caused real `propor: IMAX = 0` failures)."""
+    import numpy as np
+    from molbuilder.structure import Structure
+    s = Structure(
+        elements=["H", "H"],
+        positions=np.array([[0, 0, 0], [0.74, 0, 0]]),
+        title="h2",
+    )
+    text = render_fdf(s, SiestaConfig(system_label="h2"))
+    # Both lines must appear, regardless of system size.
+    import re
+    assert re.search(r"^BlockSize\s+\d+", text, re.MULTILINE)
+    assert re.search(r"^Diag\.ParallelOverK\s+\.(true|false)\.",
+                     text, re.MULTILINE)
+
+
+def test_paralleloverk_auto_from_kgrid(tmp_path):
+    """1x1x1 k-grid -> Diag.ParallelOverK .false. (parallelise the
+    diagonaliser over orbitals).  Multi-k -> .true."""
+    import numpy as np
+    from molbuilder.structure import Structure
+    s = Structure(
+        elements=["H", "H"],
+        positions=np.array([[0, 0, 0], [0.74, 0, 0]]),
+        title="h2",
+    )
+    gamma = render_fdf(s, SiestaConfig(system_label="h2", kgrid=(1, 1, 1)))
+    assert "Diag.ParallelOverK .false." in gamma
+    multi = render_fdf(s, SiestaConfig(system_label="h2", kgrid=(4, 4, 4)))
+    assert "Diag.ParallelOverK .true." in multi
+
+
 def test_convert_xyz_to_fdf(tmp_path):
     """End-to-end XYZ -> FDF round-trip."""
     dna = molbuilder.build_dna("ATGC")

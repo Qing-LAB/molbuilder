@@ -140,10 +140,19 @@ class SiestaConfig:
     # ---------------- Parallel execution (MPI) ----------------
     # Only matter when running `mpirun -np N siesta`; single-rank runs
     # ignore them.  Defaults below avoid the most common parallel
-    # failure mode: `propor: ERROR: IMAX = 0` on small Gamma-only
-    # systems with N MPI ranks (caused by SIESTA trying to parallelise
-    # 1 k-point across N ranks and giving N-1 ranks nothing to do).
-    parallel_block_size: int = 8         # ScaLAPACK orbital block size
+    # failure mode -- `propor: ERROR: IMAX = 0` -- by overriding
+    # SIESTA's auto-picked BlockSize, which can be too coarse for
+    # the per-atom distribution pass on small molecules.
+    parallel_block_size: Optional[int] = None
+                                         # None -> auto: pick a power-of-2
+                                         # block size based on n_atoms (see
+                                         # _auto_block_size below).  Set an
+                                         # explicit int to override (8 is a
+                                         # safe value for most molecules at
+                                         # typical 1-8 MPI rank counts; raise
+                                         # to 16-32 for >1000 atoms / >=16
+                                         # ranks to recover ScaLAPACK
+                                         # efficiency).
     parallel_over_k: Optional[bool] = None
                                          # None -> auto: False if k-grid is
                                          # 1x1x1 (Gamma; molecule/vacuum),
@@ -186,6 +195,27 @@ Config = SiestaConfig
 # --------------------------------------------------------------------- #
 #  Helpers                                                              #
 # --------------------------------------------------------------------- #
+
+
+def _auto_block_size(n_atoms: int) -> int:
+    """Pick a SIESTA ``BlockSize`` that's safe across typical 1-8 MPI
+    rank counts for a structure of this many atoms.
+
+    The constraint that triggers ``propor: ERROR: IMAX = 0`` is
+    ``BlockSize > n_atoms`` -- when the BlockSize exceeds the atom
+    count, SIESTA's per-atom distribution pass ends up with one
+    partial block and 3+ ranks idle, and ``propor`` reports IMAX = 0.
+
+    Returning a power of 2 that's at most ``n_atoms / 2`` guarantees
+    at least 2 atom blocks exist, so even on 1 rank the count is
+    well-defined.  Capped at 8 because larger values give negligible
+    performance benefit on the structures molbuilder typically
+    generates (peptides / DNA up to a few hundred atoms).
+    """
+    if n_atoms >= 16:  return 8
+    if n_atoms >= 8:   return 4
+    if n_atoms >= 4:   return 2
+    return 1
 
 
 def _detect_species(elements: Iterable[str]) -> List[str]:
@@ -614,19 +644,31 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         "#",
         "# BlockSize: global block size used for ScaLAPACK orbital",
         "# distribution AND for several per-atom / per-projector",
-        "# distribution passes earlier in the pipeline.  Range 1-32,",
-        "# default 8.  Without it, SIESTA auto-picks ceil(Norb/Nrank)",
-        "# which works for the orbital matrix but can be too large",
-        "# for the small per-atom passes on small systems, giving:",
+        "# distribution passes earlier in the pipeline.  Without it",
+        "# SIESTA auto-picks ceil(Norb / Nrank), which works for the",
+        "# orbital matrix but can be too large for the small per-atom",
+        "# passes on small molecules, giving:",
         "#     propor: ERROR: IMAX = 0",
-        "# Lower to 4 or 1 if it still fails on a tiny system.",
+        "# molbuilder picks a power-of-2 BlockSize from n_atoms:",
+        "#   n_atoms >= 16  ->  BlockSize 8   (typical molecules)",
+        "#   n_atoms >=  8  ->  BlockSize 4",
+        "#   n_atoms >=  4  ->  BlockSize 2",
+        "#   smaller        ->  BlockSize 1",
+        "# This is conservative and rank-count-agnostic.  For >1000-",
+        "# atom systems on >=16 MPI ranks, raising to 16 or 32 helps",
+        "# ScaLAPACK efficiency by a few percent (override via",
+        "# cfg.parallel_block_size = 16).",
         "#",
         "# Diag.ParallelOverK: parallelise the diagonaliser over",
         "# k-points (.true.) or over orbitals (.false.).  Auto-",
         "# selected here from the kgrid above: .false. for 1x1x1",
         "# (molecule / vacuum), .true. for multi-k periodic runs.",
     ]
-    out.append(f"BlockSize          {cfg.parallel_block_size}")
+    if cfg.parallel_block_size is None:
+        block_size = _auto_block_size(struct.n_atoms)
+    else:
+        block_size = int(cfg.parallel_block_size)
+    out.append(f"BlockSize          {block_size}")
     if cfg.parallel_over_k is None:
         over_k = (kx, ky, kz) != (1, 1, 1)
     else:
