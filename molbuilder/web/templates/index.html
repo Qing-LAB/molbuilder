@@ -201,6 +201,22 @@
           </label>
         </fieldset>
 
+        <fieldset title="MPI parallel-execution settings.&#10;Only matter when running `mpirun -np N siesta`; single-rank runs ignore them.&#10;The auto-picked default avoids the `propor: ERROR: IMAX = 0` failure mode on small molecules.">
+          <legend>Parallel execution</legend>
+          <label title="ScaLAPACK orbital block size, also used for several per-atom distribution passes.&#10;Auto-picked from the structure (BlockSize <= n_atoms): 8 for >=16 atoms, 4 for 8-15, 2 for 4-7, 1 below.&#10;Override here if you want a specific value (e.g., 16 or 32 for a >1000-atom system on >=16 ranks).&#10;Lower (4 or 1) if `propor: ERROR: IMAX = 0` still appears after the auto-pick.">
+            BlockSize
+            <input id="p-block-size" type="number" min="1" max="64" step="1" placeholder="auto">
+          </label>
+          <label title="Diagonalize across k-points (.true.) or across orbitals (.false.).&#10;MUST be .false. for 1x1x1 (Gamma) k-grids -- otherwise SIESTA tries to distribute 1 k-point across N ranks and fails.&#10;Auto-selected from the k-grid: false for 1x1x1, true for multi-k.">
+            ParallelOverK
+            <select id="p-parallel-over-k">
+              <option value="auto" selected>auto (from k-grid)</option>
+              <option value="false">false (orbital-parallel)</option>
+              <option value="true">true (k-parallel)</option>
+            </select>
+          </label>
+        </fieldset>
+
         <fieldset title="Spin polarisation.&#10;SIESTA's default is closed-shell.  REQUIRED for radicals, transition metals, triplets, etc. -- without it the electronic structure is silently wrong for open-shell systems.">
           <legend>Spin</legend>
           <label title="Open-shell DFT (collinear).  Required for any system with unpaired electrons.">

@@ -128,6 +128,18 @@
     // outputs -- we clear those and disable their download buttons so
     // the user can't accidentally download stale text from the prior
     // structure.
+    /* Compute the BlockSize molbuilder's backend would auto-pick for a
+       structure of n_atoms.  Mirrors `_auto_block_size` in
+       molbuilder/siesta.py -- if either side changes the rule, the
+       other must follow.  Used only to label the BlockSize textbox's
+       placeholder; the actual value still comes from the backend. */
+    function autoBlockSize(n) {
+        if (n >= 16) return 8;
+        if (n >= 8)  return 4;
+        if (n >= 4)  return 2;
+        return 1;
+    }
+
     function applyStructureResult(r) {
         state.xyz = r.xyz;
         state.pdb = r.pdb;
@@ -138,6 +150,11 @@
         $("info-atoms").textContent     = r.n_atoms;
         $("info-residues").textContent  = r.n_residues || "—";
         $("info-formula").textContent   = formula(r.elements);
+        // Update the BlockSize textbox's placeholder to show the
+        // auto-picked value for this structure.  Empty input still
+        // means "use auto"; the placeholder just makes it visible.
+        $("p-block-size").placeholder =
+            "auto (" + autoBlockSize(r.n_atoms) + ", n=" + r.n_atoms + ")";
         $("dl-xyz").disabled = false;
         $("dl-pdb").disabled = false;
         $("generate-fdf").disabled = false;
@@ -516,6 +533,15 @@
 
             // k-grid
             kgrid:                  [int("p-kx"), int("p-ky"), int("p-kz")],
+
+            // Parallel execution -- empty BlockSize / "auto" ParallelOverK
+            // mean "let the backend auto-pick", which is the recommended
+            // path; the textbox is here only for power users who want a
+            // specific value.
+            parallel_block_size:    ($("p-block-size").value === ""
+                                    ? null : int("p-block-size")),
+            parallel_over_k:        ($("p-parallel-over-k").value === "auto"
+                                    ? null : $("p-parallel-over-k").value === "true"),
 
             // Relaxation
             relax_type:             $("p-relax").value,
