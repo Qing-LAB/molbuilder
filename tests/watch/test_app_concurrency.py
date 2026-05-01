@@ -15,6 +15,7 @@ from typing import Any, Dict
 import pytest
 
 from molbuilder.web.blueprints import watch as app_module
+from molbuilder.frame import Trajectory
 from molbuilder.parsers.base import TrajectoryParser
 
 
@@ -37,19 +38,13 @@ class SlowParser(TrajectoryParser):
         return True   # not used in these tests
 
     @classmethod
-    def parse(cls, path: str) -> Dict[str, Any]:
+    def parse(cls, path: str) -> Trajectory:
         cls.parse_started.set()
         cls.release.wait(timeout=5.0)
-        return {
-            "frames":        [],
-            "lattice":       None,
-            "iterations":    [],
-            "energies":      [],
-            "max_forces":    [],
-            "forces":        [],
-            "source_format": cls.name,
-            "_marker":       path,
-        }
+        # Empty Trajectory is fine -- these tests only care about the
+        # state machinery (lock dropping, stale-result rejection),
+        # not parser output content.
+        return Trajectory(source_format=cls.name, frames=[], lattice=None)
 
 
 @pytest.fixture(autouse=True)

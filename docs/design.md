@@ -108,12 +108,33 @@ class Frame:
                                                   # assume a fixed key set.
 ```
 
-A trajectory is `List[Frame]` plus a small format-level header
-(`source_format`, optionally a single shared `lattice` if constant
-across frames). Whether to introduce a `Trajectory` wrapper dataclass
-on top of the bare list is deferred until Phase 3 — by then the web
-adapter and CLI subcommands will have shown whether they want a real
-type or are happy with the bare list.
+A trajectory is wrapped in a minimal `Trajectory` dataclass that
+carries `source_format`, the list of frames, and an optional shared
+`lattice` (the cell when constant across frames):
+
+```python
+@dataclass
+class Trajectory:
+    source_format: str                          # "siesta" / "pyscf" / "molwatch" / ...
+    frames:        List[Frame]
+    lattice:       Optional[np.ndarray] = None  # (3, 3) Ang, or None
+```
+
+The wrapper exists for two reasons.  First, `source_format` is a
+file-level string that the molwatch unified-log parser pulls from the
+`# engine:` header — a `.molwatch.log` written by a SIESTA run keeps
+`source_format="siesta"` even though the parser class is
+`MolwatchLogParser`.  An `Iterator[Frame]` alone has no slot for
+that.  Second, every current parser produces a single shared lattice
+(or none) rather than per-frame lattices; lifting that onto the
+trajectory matches the data and avoids redundant per-frame copies.
+Per-frame `Frame.lattice` is preserved for variable-cell trajectories
+that no current parser produces; today every parser sets
+`Frame.lattice = None` and puts the cell on `Trajectory.lattice`.
+
+`Trajectory` supports `len()`, iteration, and indexing so simple
+callers can treat it as a frame list.  Phase 3 may grow it (analysis
+methods, on-disk serialization); Phase 2 keeps it minimal.
 
 Parser interface (`parsers/base.py`):
 
@@ -125,12 +146,18 @@ class TrajectoryParser(ABC):
     @classmethod
     def can_parse(cls, path: str) -> bool: ...
     @classmethod
-    def parse(cls, path: str) -> Iterator[Frame]: ...
+    def parse(cls, path: str) -> Trajectory: ...
 ```
 
-Streaming parsers `yield` lazily; bulk parsers can yield from a list.
 The dispatch (`detect_parser`) and registry shape are unchanged from
 the molwatch implementation.
+
+Web layer / legacy adapter: the JS client still consumes the molwatch
+v1 dict shape, so
+`molbuilder/parsers/__init__.py:trajectory_to_legacy_dict` flattens a
+`Trajectory` back to the historical dict at the `/api/watch/load`
+boundary.  Phase 3 redesigns the JSON to surface Trajectory directly;
+the adapter goes away then.
 
 ### Domain verbs (L2)
 
@@ -139,7 +166,7 @@ the molwatch implementation.
 | Build | `builders/peptide.py`, `builders/nucleic.py`, `builders/smiles.py`, `builders/pubchem.py` | sequence / SMILES / name + builder backend | `Structure` |
 | Build (backends) | `builders/backends/_amber.py`, `_rdkit.py`, `_threedna.py` | builder request | `Structure` (or `BackendUnavailable`) |
 | Generate | `generators/siesta.py:render_fdf`, `generators/pyscf.py:render_script` | `Structure` + `Config` | string (the .fdf or .py text) |
-| Parse | `parsers/molwatch_log.py`, `parsers/siesta.py`, `parsers/pyscf.py` | trajectory file path | `Iterator[Frame]` |
+| Parse | `parsers/molwatch_log.py`, `parsers/siesta.py`, `parsers/pyscf.py` | trajectory file path | `Trajectory` (i.e. `(source_format, List[Frame], lattice)`) |
 | Validate | `validation.py:validate_geometry` | `Structure`, `Config` | `List[Issue]` |
 | Write log | `trajectory_log/format.py` | `Frame` (or initial `Structure`) | appends a block to `.molwatch.log` |
 
@@ -397,8 +424,9 @@ These are load-bearing. Don't violate without updating this document.
 ### 1. The dataclass is the lingua franca
 
 Every builder yields a `Structure`. Every generator consumes a
-`Structure` + a `Config`. Every parser yields `Iterator[Frame]`. Every
-validator returns `List[Issue]`. Field metadata — label, type, default,
+`Structure` + a `Config`. Every parser returns a `Trajectory` (a
+thin wrapper over `List[Frame]` plus `source_format` + optional
+shared `lattice`). Every validator returns `List[Issue]`. Field metadata — label, type, default,
 range, validator, UI hint — lives on the dataclass field, **not** in
 parallel registries in the CLI or web layers.
 
@@ -535,6 +563,7 @@ These have been considered and rejected; do not reintroduce them.
 | 2026-05-01 | Parser output type is `Frame` (Structure + per-step physics), **not** `Structure` directly. Parsers yield `Iterator[Frame]`. | `Structure` is geometry + PDB metadata; parser dicts carry energies / forces / lattice / scf_history that have no slot on `Structure`. Promoting parsers to yield `Structure` would silently drop everything except positions. A sibling `Frame` keeps both paths clean. |
 | 2026-05-01 | Post-merge web routes are namespaced `/api/build/*` and `/api/watch/*` via Flask Blueprints. | Both pre-merge apps define `POST /api/load` for unrelated payloads (XYZ/PDB → Structure vs trajectory file → frames). Blueprints are Flask's native URL-prefix mechanism; no custom router needed. |
 | 2026-05-01 | Phase 1 / commit 3 landed: `siesta`, `pyscf`, `molwatch_log` promoted from single files to subpackages with re-exporting `__init__.py` (commit `e34ede7`). | Re-exports keep external imports stable; subpackages create slots for the parser modules arriving in commit 4. |
+| 2026-05-01 | Phase 2: introduce a minimal `Trajectory(source_format, frames, lattice)` wrapper alongside `Frame`; parsers return `Trajectory` (not `Iterator[Frame]` directly). | `source_format` and the shared lattice are file-level metadata that don't fit on any single Frame; the molwatch unified-log parser specifically needs `source_format` from the file's `# engine:` header rather than from the parser class name. The "Trajectory deferred to Phase 3" open question resolves to "yes, minimally, in Phase 2." Phase 3 may grow it (analysis methods, on-disk serialization). |
 | 2026-05-01 | Configs are L1 nouns: `SiestaConfig` and `PySCFConfig` move out of `siesta/input.py` / `pyscf/input.py` (where they currently live next to the generators) into `config/siesta.py` and `config/pyscf.py`. | Configs are pure data carrying field metadata that the CLI, web form, and validators all introspect. Generators are L2 verbs that operate on configs. Keeping configs L1 lets validation and form-schema generation read them without dragging in the file-emission code. Re-exports preserve external imports. |
 | 2026-05-01 | `parsers/` is a flat package (one `<format>.py` per parser sibling-to-`base.py`), not a per-format split where each engine subpackage owns its own parser. | The per-format split (`siesta/parser.py` next to `siesta/input.py`) co-locates modules that share no imports, no state, and run in opposite directions of the data flow. A flat `parsers/` directory has higher internal cohesion. |
 | 2026-05-01 | `backends/` moves under `builders/`. | Backends only serve builders; they have no callers outside the build path and shouldn't sit at the top level. |
@@ -587,7 +616,7 @@ molbuilder/
       molwatch_emitter.py  # extracted; pasted into generated script via inspect.getsource()
   parsers/
     __init__.py            # registry + detect_parser
-    base.py                # TrajectoryParser ABC; parse() -> Iterator[Frame]
+    base.py                # TrajectoryParser ABC; parse() -> Trajectory
     molwatch_log.py
     siesta.py
     pyscf.py
@@ -668,7 +697,7 @@ older paths are not deprecated — they are the public surface.
 | 1 / commit 4 | `_inbound_molwatch/parsers/` moved to `molbuilder/parsers/` (flat layout: one `<format>.py` per parser); parser tests lifted to `tests/watch/`; `_inbound_molwatch/tests/conftest.py` merged into `tests/conftest.py` (it's a `sys.path` hack, not a copy-target) | next |
 | 1 / commit 5 | Watch web app moved to `molbuilder/web/blueprints/watch.py` (split route group, not a separate app); `molbuilder watch serve` CLI subcommand added; web routes namespaced `/api/build/*` and `/api/watch/*` via Flask Blueprints; `flask` lifted to core dependency; `molwatch` console-script shim added | pending |
 | 1 / commit 6 | `_inbound_molwatch/` deleted; remaining `docs/spec/` files merged into `docs/spec/`; `pyproject.toml` / `requirements.txt` from the subtree dropped | pending |
-| 2 | `Frame` dataclass introduced (`molbuilder/frame.py`); parsers refactored to yield `Iterator[Frame]`; molwatch's ad-hoc list-of-lists frame rep removed; web adapter at `/api/watch/load` flattens `Frame` lists back to the existing JSON shape so the JS client doesn't have to move yet | not started |
+| 2 | `Frame` and minimal `Trajectory(source_format, frames, lattice)` dataclasses added at `molbuilder/frame.py`; parsers' `parse(path)` now returns `Trajectory`; the legacy molwatch v1 dict shape produced by `molbuilder/parsers/__init__.py:trajectory_to_legacy_dict` so `/api/watch/load` keeps the same JSON the JS client expects | **done** |
 | 2.5 | 3DNA backend added at `builders/backends/_threedna.py`; registered in dispatch; CLI / web `--backend` extended | not started |
 | 2.6 | `Issue` dataclass added (`issues.py`); `validation.py` wired into `render_fdf` / `render_script`; per-field metadata lifted onto `Structure`, `SiestaConfig`, `PySCFConfig` via `dataclasses.field(metadata=...)`; validators read ranges + `validate=` callables from the metadata. **This is when principles #1 and #6 become load-bearing.** | not started |
 | 2.7 | Layering-compliance commit: `SiestaConfig` / `PySCFConfig` split out into `molbuilder/config/` (re-exports preserve external imports); `molwatch_log/` renamed to `trajectory_log/` (re-exports preserved); `backends/` moved under `builders/`. No behavior change. | not started |
@@ -979,10 +1008,11 @@ may match on; only the Python module name changes.
   (current) to Server-Sent Events. SSE is the right shape for "stream
   while the calculation runs" and removes a per-poll re-parse cost on
   large logs. Phase 3 territory; not a Phase 1/2 blocker.
-- Whether `Trajectory` becomes a real dataclass on top of `List[Frame]`
-  once Phase 2 lands. Defer the call until Phase 3 — by then we'll know
-  whether the web adapter and CLI subcommands actually want a wrapper
-  type or are happy with the bare list + format header.
+- Whether `Trajectory` should grow analysis methods (RMSD, principal
+  axes, dipole moment time series) versus staying as a thin
+  `(source_format, frames, lattice)` wrapper.  Phase 2 landed it as
+  the thin shape; revisit if Phase 3's web redesign or new CLI
+  subcommands want richer ergonomics.
 - Whether a non-trivial CP2K / ORCA generator + parser arrives before
   v1.0. If yes, the `generators/` and `parsers/` flat layouts already
   accommodate it; if no, the abstraction is fine as-is.

@@ -26,6 +26,10 @@ import os
 import re
 from typing import Any, Dict, List, Optional
 
+import numpy as np
+
+from ..frame import Frame, Trajectory
+from ..structure import Structure
 from .base import TrajectoryParser
 
 
@@ -124,8 +128,11 @@ class PySCFParser(TrajectoryParser):
             return False
 
     @classmethod
-    def parse(cls, path: str) -> Dict[str, Any]:
-        frames: List[List[List[Any]]] = []
+    def parse(cls, path: str) -> Trajectory:
+        # The inner loop still builds parallel lists for parsing
+        # convenience; we zip them into Frame objects just before
+        # returning, so the per-frame construction lives in one place.
+        frames_raw: List[List[List[Any]]] = []
         energies: List[Optional[float]] = []
         iterations: List[int] = []
 
@@ -150,7 +157,7 @@ class PySCFParser(TrajectoryParser):
                 else:
                     # Comment line we don't recognise; record the frame
                     # but with unknown step / energy.
-                    step_idx = len(frames)
+                    step_idx = len(frames_raw)
                     energy_eV = None
 
                 atoms: List[List[Any]] = []
@@ -178,14 +185,14 @@ class PySCFParser(TrajectoryParser):
                     # Last frame is mid-write; drop it so the JS slider
                     # never sees a torn frame.
                     break
-                frames.append(atoms)
+                frames_raw.append(atoms)
                 energies.append(energy_eV)
                 iterations.append(step_idx)
 
         # Optional: pull max-force per step from the companion .qdata.
         # geomeTRIC writes `<prefix>.qdata`, where this file is named
         # `<prefix>_optim.xyz`.  Same prefix, so derive it:
-        max_forces = cls._read_qdata_forces(path, len(frames))
+        max_forces = cls._read_qdata_forces(path, len(frames_raw))
 
         # PySCF's main .log has the SCF iteration tables (one block per
         # geom-opt step's electronic problem).  Surface this as
@@ -193,16 +200,33 @@ class PySCFParser(TrajectoryParser):
         # geom-opt step.
         scf_history = cls._read_scf_history(path)
 
-        return {
-            "frames":        frames,
-            "lattice":       None,            # geomeTRIC traj has no cell
-            "iterations":    iterations or list(range(len(frames))),
-            "energies":      energies,
-            "max_forces":    max_forces,
-            "forces":        [[] for _ in frames],
-            "scf_history":   scf_history,
-            "source_format": cls.name,
-        }
+        # Zip the parallel lists into Frame objects.  geomeTRIC
+        # trajectories carry no per-atom forces (Frame.forces=None) and
+        # no cell (Trajectory.lattice=None).
+        if not iterations:
+            iterations = list(range(len(frames_raw)))
+        frames: List[Frame] = []
+        for i, atoms in enumerate(frames_raw):
+            elements  = [row[0] for row in atoms]
+            positions = np.array([row[1:4] for row in atoms], dtype=float)
+            struct = Structure(elements=elements, positions=positions)
+            scf_for_step = (scf_history[i]
+                            if i < len(scf_history) and scf_history[i]
+                            else None)
+            frames.append(Frame(
+                structure   = struct,
+                step_index  = iterations[i],
+                energy      = energies[i],
+                forces      = None,
+                max_force   = max_forces[i] if i < len(max_forces) else None,
+                scf_history = scf_for_step,
+            ))
+
+        return Trajectory(
+            source_format = cls.name,
+            frames        = frames,
+            lattice       = None,           # geomeTRIC traj has no cell
+        )
 
     # ------------------------------------------------------------- #
     #  qdata-companion helper                                        #

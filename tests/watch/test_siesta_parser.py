@@ -13,6 +13,7 @@ import math
 
 import pytest
 
+from molbuilder.parsers import trajectory_to_legacy_dict
 from molbuilder.parsers.siesta import SiestaParser
 
 
@@ -140,12 +141,12 @@ def test_can_parse_siesta_v5_banner(tmp_path):
 
 
 def test_torn_frame_dropped_at_eof(siesta_path):
-    result = SiestaParser.parse(siesta_path)
+    result = trajectory_to_legacy_dict(SiestaParser.parse(siesta_path))
     assert len(result["frames"]) == 2
 
 
 def test_frame_coordinates(siesta_path):
-    result = SiestaParser.parse(siesta_path)
+    result = trajectory_to_legacy_dict(SiestaParser.parse(siesta_path))
     assert result["frames"][0] == [
         ["C", 1.0, 2.0, 3.0],
         ["H", 4.0, 5.0, 6.0],
@@ -157,25 +158,25 @@ def test_frame_coordinates(siesta_path):
 
 
 def test_energies(siesta_path):
-    result = SiestaParser.parse(siesta_path)
+    result = trajectory_to_legacy_dict(SiestaParser.parse(siesta_path))
     assert math.isclose(result["energies"][0], -100.1234)
     assert math.isclose(result["energies"][1], -101.5678)
 
 
 def test_max_forces_skip_constrained_line(siesta_path):
-    result = SiestaParser.parse(siesta_path)
+    result = trajectory_to_legacy_dict(SiestaParser.parse(siesta_path))
     assert math.isclose(result["max_forces"][0], 1.234567)
     assert math.isclose(result["max_forces"][1], 0.987654)
 
 
 def test_per_atom_forces(siesta_path):
-    result = SiestaParser.parse(siesta_path)
+    result = trajectory_to_legacy_dict(SiestaParser.parse(siesta_path))
     assert result["forces"][0] == [[0.10, 0.20, 0.30], [0.40, 0.50, 0.60]]
     assert result["forces"][1] == [[0.05, 0.06, 0.07], [0.08, 0.09, 0.10]]
 
 
 def test_lattice_captured(siesta_path):
-    result = SiestaParser.parse(siesta_path)
+    result = trajectory_to_legacy_dict(SiestaParser.parse(siesta_path))
     assert result["lattice"] == [
         [10.0,  0.0,  0.0],
         [ 0.0, 10.0,  0.0],
@@ -184,12 +185,12 @@ def test_lattice_captured(siesta_path):
 
 
 def test_iterations(siesta_path):
-    result = SiestaParser.parse(siesta_path)
+    result = trajectory_to_legacy_dict(SiestaParser.parse(siesta_path))
     assert result["iterations"] == [0, 1]
 
 
 def test_source_format_tag(siesta_path):
-    result = SiestaParser.parse(siesta_path)
+    result = trajectory_to_legacy_dict(SiestaParser.parse(siesta_path))
     assert result["source_format"] == "siesta"
 
 
@@ -198,14 +199,14 @@ def test_scf_history_default_empty(tmp_path):
     yield scf_history=[]."""
     p = tmp_path / "noisy.out"
     p.write_text("Welcome to SIESTA\nredata: blah\n")
-    result = SiestaParser.parse(str(p))
+    result = trajectory_to_legacy_dict(SiestaParser.parse(str(p)))
     assert result["scf_history"] == []
 
 
 def test_scf_history_collects_per_cycle(siesta_path):
     """The SAMPLE has one scf: line per CG step, so each step's
     history list has length 1."""
-    result = SiestaParser.parse(siesta_path)
+    result = trajectory_to_legacy_dict(SiestaParser.parse(siesta_path))
     runs = result["scf_history"]
     # Two CG steps in SAMPLE; each has exactly one scf: line.
     assert len(runs) == 2
@@ -214,7 +215,7 @@ def test_scf_history_collects_per_cycle(siesta_path):
 
 def test_scf_history_per_cycle_keys(siesta_path):
     """Each per-cycle entry must have the SIESTA key set."""
-    runs = SiestaParser.parse(siesta_path)["scf_history"]
+    runs = trajectory_to_legacy_dict(SiestaParser.parse(siesta_path))["scf_history"]
     expected = {"cycle", "energy", "delta_E", "dHmax", "dDmax"}
     for run in runs:
         for entry in run:
@@ -223,23 +224,43 @@ def test_scf_history_per_cycle_keys(siesta_path):
 
 def test_scf_history_real_multi_cycle_run(tmp_path):
     """A SIESTA-style run with multiple SCF iterations within one CG
-    step splits correctly: iscf=1 marks each new run boundary."""
+    step splits correctly: iscf=1 marks each new run boundary.
+
+    Each CG step needs its own outcoor block to emit a Frame, since
+    Phase 2 attaches scf_history per-Frame (no Frame -> no scf
+    history).  The realistic SIESTA stream is "SCF -> outcoor -> SCF
+    -> outcoor -> ..."; we follow that here.
+    """
+    # Real SIESTA stream: outcoor (geometry for the step) -> SCF
+    # iterations on that geometry -> next outcoor (post-CG-move
+    # geometry) -> next SCF -> ...  We follow that order here so
+    # commit() at the next outcoor attaches the just-finished SCF
+    # to the correct Frame.
     sample = (
         "Welcome to SIESTA\n"
         "redata: prelude\n"
-        # First CG step: 3 SCF iterations
+        # First CG step: outcoor first (the geometry), then 3 SCF
+        # iterations that converge on that geometry.
+        "outcoor: Atomic coordinates (Ang):\n"
+        "   1.0  2.0  3.0   1   1  C\n"
+        "\n"
         "   scf:    1   -100.0   -100.5   -100.5   0.10  -1.0   0.5\n"
         "   scf:    2   -100.4   -100.7   -100.7   0.05  -1.0   0.1\n"
         "   scf:    3   -100.45  -100.71  -100.71  0.01  -1.0   0.01\n"
         "SCF Convergence by DM+H criterion\n"
-        # Second CG step: iscf restarts at 1
+        # Second CG step: outcoor + 2 SCF iterations.  The next
+        # outcoor (or EOF) is what commits step 0; iscf==1 of run 2
+        # starts a fresh SCF that lands on Frame 1 at commit time.
+        "outcoor: Atomic coordinates (Ang):\n"
+        "   1.1  2.1  3.1   1   1  C\n"
+        "\n"
         "   scf:    1   -101.0   -101.2   -101.2   0.08  -1.0   0.4\n"
         "   scf:    2   -101.1   -101.3   -101.3   0.02  -1.0   0.05\n"
         "SCF Convergence by DM+H criterion\n"
     )
     p = tmp_path / "multi.out"
     p.write_text(sample)
-    runs = SiestaParser.parse(str(p))["scf_history"]
+    runs = trajectory_to_legacy_dict(SiestaParser.parse(str(p)))["scf_history"]
     assert len(runs) == 2
     assert len(runs[0]) == 3
     assert len(runs[1]) == 2
@@ -272,7 +293,7 @@ def test_stray_max_line_outside_force_block_ignored(tmp_path):
     )
     p = tmp_path / "stray.out"
     p.write_text(sample)
-    result = SiestaParser.parse(str(p))
+    result = trajectory_to_legacy_dict(SiestaParser.parse(str(p)))
     # One frame, no max-force -- the stray 9.999 mustn't have been
     # attributed to it.
     assert len(result["frames"]) == 1
@@ -281,5 +302,5 @@ def test_stray_max_line_outside_force_block_ignored(tmp_path):
 
 def test_json_safe_no_nan(siesta_path):
     """Result must serialise with strict JSON (no NaN)."""
-    result = SiestaParser.parse(siesta_path)
+    result = trajectory_to_legacy_dict(SiestaParser.parse(siesta_path))
     json.dumps(result, allow_nan=False)
