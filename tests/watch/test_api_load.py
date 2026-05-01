@@ -12,7 +12,8 @@ import io
 
 import pytest
 
-import app as app_module
+from molbuilder.web.app import create_app
+from molbuilder.web.blueprints import watch as app_module
 
 
 _SIESTA_HEAD = (
@@ -27,7 +28,7 @@ _SIESTA_HEAD = (
 
 @pytest.fixture
 def client():
-    return app_module.app.test_client()
+    return create_app().test_client()
 
 
 @pytest.fixture(autouse=True)
@@ -50,7 +51,7 @@ def _reset_app_state():
 def test_load_by_json_path(client, tmp_path):
     p = tmp_path / "run.out"
     p.write_text(_SIESTA_HEAD)
-    r = client.post("/api/load", json={"path": str(p)})
+    r = client.post("/api/watch/load", json={"path": str(p)})
     body = r.get_json()
     assert body["ok"] is True
     assert body["uploaded"] is False
@@ -58,14 +59,14 @@ def test_load_by_json_path(client, tmp_path):
 
 
 def test_load_by_json_path_missing_file(client, tmp_path):
-    r = client.post("/api/load", json={"path": str(tmp_path / "nope.out")})
+    r = client.post("/api/watch/load", json={"path": str(tmp_path / "nope.out")})
     body = r.get_json()
     assert r.status_code == 404
     assert body["ok"] is False
 
 
 def test_load_by_json_path_empty(client):
-    r = client.post("/api/load", json={"path": ""})
+    r = client.post("/api/watch/load", json={"path": ""})
     body = r.get_json()
     assert r.status_code == 400
     assert body["ok"] is False
@@ -80,7 +81,7 @@ def test_load_by_multipart(client):
     fd = {
         "file": (io.BytesIO(_SIESTA_HEAD.encode()), "run.out"),
     }
-    r = client.post("/api/load",
+    r = client.post("/api/watch/load",
                     data=fd,
                     content_type="multipart/form-data")
     body = r.get_json()
@@ -97,7 +98,7 @@ def test_load_by_multipart_unrecognised_format(client):
         "file": (io.BytesIO(b"junk content nothing recognises\n"),
                  "garbage.txt"),
     }
-    r = client.post("/api/load",
+    r = client.post("/api/watch/load",
                     data=fd,
                     content_type="multipart/form-data")
     assert r.status_code == 400
@@ -109,14 +110,14 @@ def test_load_by_multipart_replaces_previous_upload(client, tmp_path):
     """A second upload must clean up the previous temp file (best-effort
     -- we just check that _last_temp_upload moves to the new path)."""
     a = io.BytesIO(_SIESTA_HEAD.encode())
-    client.post("/api/load",
+    client.post("/api/watch/load",
                 data={"file": (a, "first.out")},
                 content_type="multipart/form-data")
     first_temp = app_module._last_temp_upload
     assert first_temp is not None
 
     b = io.BytesIO(_SIESTA_HEAD.encode())
-    client.post("/api/load",
+    client.post("/api/watch/load",
                 data={"file": (b, "second.out")},
                 content_type="multipart/form-data")
     second_temp = app_module._last_temp_upload
@@ -129,11 +130,11 @@ def test_load_by_multipart_persists_path_for_data_polls(client):
     The temp file lingers (we don't delete it on the same request) so
     the existing _refresh_if_changed machinery handles it normally."""
     fd = {"file": (io.BytesIO(_SIESTA_HEAD.encode()), "polled.out")}
-    client.post("/api/load",
+    client.post("/api/watch/load",
                 data=fd,
                 content_type="multipart/form-data")
 
-    r = client.get("/api/data")
+    r = client.get("/api/watch/data")
     body = r.get_json()
     assert body["ok"] is True
     assert body["uploaded"] is True

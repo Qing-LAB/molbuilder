@@ -21,6 +21,7 @@ dependencies = [
     "ase>=3.22",                 # XYZ I/O + atomic-number table for siesta module
     "PeptideBuilder>=1.1",       # peptide backbone geometry
     "biopython>=1.81",           # required by PeptideBuilder
+    "flask>=3.0",                # bundled web UI (build + watch); core post-merge
 ]
 
 [project.optional-dependencies]
@@ -30,7 +31,8 @@ rdkit = ["rdkit>=2023.9"]
 # Common-name lookup
 name = ["pubchempy>=1.0"]
 
-# Browser UI
+# Browser UI -- kept for back-compat; flask is now in core dependencies
+# above, so `pip install molbuilder` already pulls it in.
 web = ["flask>=3.0"]
 
 # Test runner + static-analysis tools.  Install with:
@@ -77,12 +79,20 @@ full = [
 
 [project.scripts]
 molbuilder = "molbuilder.cli:main"
+# Back-compat shim: pre-merge users had a separate `molwatch` console
+# script.  After the merge, `molbuilder watch serve` is the canonical
+# entry point; `molwatch` is a thin wrapper that calls the same code.
+molwatch   = "molbuilder.cli:_run_watch_serve_entrypoint"
 
 [tool.setuptools.packages.find]
 include = ["molbuilder*"]
 
 [tool.setuptools.package-data]
-molbuilder = ["web/templates/*.html", "web/static/*.css", "web/static/*.js"]
+molbuilder = [
+    "web/templates/*.html",
+    "web/static/*.css", "web/static/*.js",
+    "web/static/watch/*.css", "web/static/watch/*.js",
+]
 
 [tool.pytest.ini_options]
 # pythonpath lets pytest import the in-tree molbuilder/ package without

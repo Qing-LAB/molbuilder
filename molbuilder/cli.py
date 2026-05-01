@@ -399,6 +399,74 @@ def _run_serve(args: argparse.Namespace) -> int:
 
 
 # --------------------------------------------------------------------- #
+#  watch subcommand group (live trajectory viewer)                      #
+# --------------------------------------------------------------------- #
+
+
+def _add_watch_parser(sub) -> argparse.ArgumentParser:
+    p = sub.add_parser(
+        "watch",
+        help="live trajectory viewer (Flask + 3Dmol.js)",
+        description=(
+            "Live trajectory viewer for SIESTA / PySCF / .molwatch.log. "
+            "Currently only the `serve` subsubcommand is implemented; "
+            "`parse` and `tail` (JSON-on-stdout shell tools) land in "
+            "Phase 5."
+        ),
+    )
+    wsub = p.add_subparsers(dest="watch_cmd", required=True)
+
+    serve = wsub.add_parser(
+        "serve",
+        help="start the browser UI (single Flask app, build + watch tabs)",
+        description=(
+            "Start a Flask server that serves the molbuilder web UI. "
+            "The server hosts BOTH halves: the build page at / and the "
+            "watch page at /watch.  /api/watch/load reads any file the "
+            "server can access, so non-loopback --host bindings emit a "
+            "loud security warning."
+        ),
+    )
+    serve.add_argument("--host", default="127.0.0.1")
+    serve.add_argument("--port", type=int, default=5000)
+    serve.add_argument("--debug", action="store_true")
+    return p
+
+
+def _run_watch_serve(args: argparse.Namespace) -> int:
+    from .web.app import create_app
+    from .web.blueprints.watch import warn_if_remote
+    warn_if_remote(args.host)
+    app = create_app()
+    print(f"molbuilder web UI starting at http://{args.host}:{args.port}",
+          file=sys.stderr)
+    print(f"  build page:  http://{args.host}:{args.port}/", file=sys.stderr)
+    print(f"  watch page:  http://{args.host}:{args.port}/watch",
+          file=sys.stderr)
+    app.run(host=args.host, port=args.port, debug=args.debug, threaded=True)
+    return 0
+
+
+def _run_watch_serve_entrypoint() -> int:
+    """Console-script shim for the legacy `molwatch` entry point.
+
+    Equivalent to `molbuilder watch serve` with the same default args.
+    Kept for backwards compatibility with users / scripts that still
+    invoke `molwatch` directly after the molbuilder + molwatch merge.
+    """
+    parser = argparse.ArgumentParser(
+        prog="molwatch",
+        description=("Compatibility shim for `molbuilder watch serve`. "
+                     "Starts the unified molbuilder web UI."),
+    )
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=5000)
+    parser.add_argument("--debug", action="store_true")
+    args = parser.parse_args()
+    return _run_watch_serve(args)
+
+
+# --------------------------------------------------------------------- #
 #  Top-level dispatch                                                   #
 # --------------------------------------------------------------------- #
 
@@ -421,6 +489,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     _add_fdf_parser(sub)
     _add_pyscf_parser(sub)
     _add_serve_parser(sub)
+    _add_watch_parser(sub)
 
     args = p.parse_args(argv)
 
@@ -456,6 +525,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     if args.kind == "serve":
         return _run_serve(args)
+
+    if args.kind == "watch":
+        if args.watch_cmd == "serve":
+            return _run_watch_serve(args)
+        p.error(f"unknown watch subcommand {args.watch_cmd!r}")  # pragma: no cover
 
     p.error(f"unknown subcommand {args.kind!r}")  # pragma: no cover
 

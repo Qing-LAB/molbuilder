@@ -1,48 +1,43 @@
-"""molwatch -- live trajectory viewer for SIESTA / PySCF / future.
+"""Watch blueprint -- live trajectory viewer for SIESTA / PySCF / future.
 
-A small Flask server that watches an output file (SIESTA .out,
-geomeTRIC's <prefix>_optim.xyz, etc.) while the calculation is still
-running and serves it to a 3Dmol.js browser viewer that updates while
-new frames are being written.
+Routes (registered with no url_prefix; each carries its own full path):
 
-Usage
------
-    python app.py                         # http://127.0.0.1:5000
-    python app.py --port 8080 --host 0.0.0.0
+    GET  /watch                browser UI page
+    GET  /api/watch/formats    parser registry summary
+    POST /api/watch/load       JSON {"path": "..."} or multipart upload
+    GET  /api/watch/data       poll for changes (mtime-based)
 
-Open the page, paste an absolute path to the output file, and click
-*Load*.  The page polls the server roughly every 15 seconds; when the
-file's mtime advances the parser re-runs and the viewer + plots
-refresh.
+The user opens /watch, paste an absolute path to the output file, and
+clicks *Load*.  The page polls /api/watch/data roughly every 15
+seconds; when the file's mtime advances the parser re-runs and the
+viewer + plots refresh.
 
-Format support is plugin-style: see ``parsers/`` for the registered
-parsers and ``parsers/__init__.py`` for the auto-detection registry.
+Format support is plugin-style: see ``molbuilder/parsers/`` for the
+registered parsers and the auto-detection registry.
+
+State model: a single global "current file" dict guarded by a Lock.
+This is intentional -- the watch app is single-user / single-tab by
+design (see docs/design.md "Watch -- live trajectory viewer").
 """
 
 from __future__ import annotations
 
-import argparse
 import os
 import tempfile
 import time
 from threading import Lock
 from typing import Any, Dict, Optional, Tuple
 
-from flask import Flask, jsonify, render_template, request
+from flask import Blueprint, jsonify, render_template, request
 
-from parsers import (
+from molbuilder.parsers import (
     UnknownFormatError,
     detect_parser,
     parser_summary,
 )
 
 
-app = Flask(__name__)
-# /api/load accepts EITHER a JSON {"path": "..."} body (live-watching
-# mode) OR a multipart upload (file-picker fallback when the user
-# clicks Load without typing a path).  50 MB is a generous cap for
-# realistic SIESTA / PySCF logs while still bounding memory.
-app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024   # 50 MB
+bp = Blueprint("watch", __name__)
 
 # Single global "current file" state.  A single user / single tab is
 # the expected usage so a plain dict + lock is enough; no need for
@@ -110,18 +105,18 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         return dict(_state), None
 
 
-@app.route("/")
-def index():
-    return render_template("index.html")
+@bp.route("/watch")
+def watch_page():
+    return render_template("watch.html")
 
 
-@app.route("/api/formats")
+@bp.route("/api/watch/formats")
 def api_formats():
     """Lightweight: lists registered parsers + their human labels."""
     return jsonify({"ok": True, "formats": parser_summary()})
 
 
-@app.route("/api/load", methods=["POST"])
+@bp.route("/api/watch/load", methods=["POST"])
 def api_load():
     """Two body shapes:
 
@@ -237,7 +232,7 @@ def _api_load_multipart(uploaded_file):
     })
 
 
-@app.route("/api/data")
+@bp.route("/api/watch/data")
 def api_data():
     """Return the parsed payload, or just an mtime if nothing changed."""
     client_mtime = request.args.get("mtime", type=float)
@@ -262,31 +257,20 @@ def api_data():
 _LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="molwatch -- live SIESTA / PySCF trajectory viewer."
-    )
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=5000)
-    parser.add_argument("--debug", action="store_true")
-    args = parser.parse_args()
-
-    # Loud warning when binding to non-loopback.  /api/load reads any
-    # file the server can access, so exposing it on a network interface
-    # is effectively a remote arbitrary-file-read endpoint.
-    if args.host not in _LOCAL_HOSTS:
-        import sys as _sys
-        print(f"WARNING: --host={args.host} exposes /api/load to the network.",
-              file=_sys.stderr)
-        print("         The endpoint reads ANY local file the server can",
-              file=_sys.stderr)
-        print("         access.  Only do this on a trusted single-user",
-              file=_sys.stderr)
-        print("         machine, or add a reverse-proxy with auth in front.",
-              file=_sys.stderr)
-
-    app.run(host=args.host, port=args.port, debug=args.debug, threaded=True)
-
-
-if __name__ == "__main__":
-    main()
+def warn_if_remote(host: str) -> None:
+    """Emit a stderr warning when the watch app is bound to a non-loopback
+    interface.  /api/watch/load reads any file the server can access, so
+    exposing it on a network interface is effectively a remote
+    arbitrary-file-read endpoint.  Called from molbuilder.cli when the
+    user starts the watch server with a non-loopback --host."""
+    if host in _LOCAL_HOSTS:
+        return
+    import sys as _sys
+    print(f"WARNING: --host={host} exposes /api/watch/load to the network.",
+          file=_sys.stderr)
+    print("         The endpoint reads ANY local file the server can",
+          file=_sys.stderr)
+    print("         access.  Only do this on a trusted single-user",
+          file=_sys.stderr)
+    print("         machine, or add a reverse-proxy with auth in front.",
+          file=_sys.stderr)
