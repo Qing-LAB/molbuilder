@@ -1,0 +1,460 @@
+/* molwatch -- dark theme.
+ *
+ * Single :root block for design tokens.  Layout uses a viewport-
+ * relative `--viewer-height` so the 3D viewer and the controls
+ * aside stay the same height (controls scroll internally if their
+ * tab content overflows).  This is what keeps the parameter panel
+ * from pushing the plot rows off-screen.
+ */
+
+:root {
+    /* Surfaces (deeper page bg → cards stand out more clearly) */
+    --bg-page:        #10141a;
+    --bg-card:        #1a1f27;
+    --bg-card-hover:  #232830;
+    --bg-card-elev:   #232a35;
+    --bg-input:       #232831;
+    --bg-input-focus: #2a303a;
+    --bg-fieldset:    #1c2229;
+
+    /* Borders */
+    --border-strong:  #353c47;
+    --border-soft:    #262d38;
+
+    /* Text */
+    --text-primary:   #e8ebf1;
+    --text-secondary: #a8aebb;
+    --text-muted:     #6c7380;
+    --text-mono:      #b8c4d6;
+
+    /* Accents + status */
+    --accent:         #6ba6ff;
+    --accent-hover:   #8ab8ff;
+    --accent-strong:  #4a8de0;
+    --accent-bg:      rgba(107, 166, 255, 0.10);
+    --accent-glow:    rgba(107, 166, 255, 0.25);
+    --success:        #4ade80;
+    --error:          #f87171;
+    --warning:        #fbbf24;
+
+    /* Geometry tokens */
+    --radius:         8px;
+    --radius-sm:      5px;
+    --gap:            14px;
+
+    /* Shadows: a single soft drop shadow for elevated surfaces. */
+    --shadow-card:    0 1px 0 rgba(255, 255, 255, 0.025) inset,
+                      0 6px 18px rgba(0, 0, 0, 0.32);
+    --shadow-soft:    0 1px 0 rgba(255, 255, 255, 0.02) inset,
+                      0 2px 6px rgba(0, 0, 0, 0.25);
+
+    /* The single source of truth for the height of the viewer +
+       controls row.  `clamp` makes it responsive to viewport: never
+       below 360px, never above 500px, around 52% of viewport height
+       in between.  Updating this one variable rescales both columns
+       in lockstep. */
+    --viewer-height:  clamp(360px, 52vh, 500px);
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                 system-ui, "Inter", sans-serif;
+    color: var(--text-primary);
+    background: var(--bg-page);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+/* ---- Header / loader bar ---- */
+
+header {
+    padding: 14px 22px 12px;
+    border-bottom: 1px solid var(--border-strong);
+    background: linear-gradient(180deg,
+                                rgba(107, 166, 255, 0.05) 0%,
+                                rgba(107, 166, 255, 0.00) 100%),
+                var(--bg-card);
+}
+
+header h1 {
+    margin: 0 0 8px;
+    font-size: 1.15rem;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    color: var(--text-primary);
+}
+header h1 .tag {
+    font-weight: 400;
+    color: var(--text-muted);
+    font-size: 0.85em;
+    margin-left: 8px;
+}
+
+.loader {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+.loader label {
+    font-size: 0.92rem;
+    color: var(--text-secondary);
+}
+.loader input[type="text"] {
+    padding: 5px 10px;
+    font: inherit;
+    color: var(--text-primary);
+    background: var(--bg-input);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    min-width: 380px;
+    transition: border-color 120ms, background 120ms, box-shadow 120ms;
+}
+.loader input[type="text"]:hover { border-color: var(--accent-strong); }
+.loader input[type="text"]:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: var(--bg-input-focus);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+.loader button {
+    padding: 5px 16px;
+    font: inherit;
+    cursor: pointer;
+    color: #fff;
+    background: var(--accent-strong);
+    border: 1px solid var(--accent-strong);
+    border-radius: var(--radius-sm);
+    transition: background 120ms, border-color 120ms;
+    font-weight: 500;
+}
+.loader button:hover { background: var(--accent); border-color: var(--accent); }
+
+.status {
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    margin-left: 4px;
+    /* Multi-line error messages render with their newlines preserved. */
+    white-space: pre-line;
+    line-height: 1.4;
+}
+.status.error { color: var(--error); }
+.status.ok    { color: var(--success); }
+
+/* ---- Main layout ---- */
+
+main {
+    padding: var(--gap) 22px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap);
+}
+
+/*
+ * Viewer row: fixed-height viewer + a controls aside that's locked
+ * to the same height.  align-items: start prevents the aside from
+ * stretching to the viewer's height — any extra height triggers the
+ * aside's internal scroll instead of pushing the plots row down.
+ */
+.viewer-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 290px;
+    gap: var(--gap);
+    align-items: start;
+}
+
+#viewer {
+    width: 100%;
+    height: var(--viewer-height);
+    border: 1px solid var(--border-strong);
+    background: #fff;            /* viewer canvas keeps white for clarity */
+    position: relative;
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+}
+
+/* ---- Controls aside (tabbed) ---- */
+
+.controls {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    height: var(--viewer-height);
+    background: var(--bg-card);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow-card);
+}
+
+.frame-strip {
+    padding: 10px 14px 12px;
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--bg-card-elev);
+}
+.frame-strip-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+.frame-counter {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+}
+.frame-counter b {
+    color: var(--text-primary);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+.frame-strip-buttons {
+    display: inline-flex;
+    gap: 4px;
+}
+.frame-strip-buttons button {
+    width: 30px;
+    padding: 3px 0;
+    font-size: 0.85rem;
+    text-align: center;
+}
+
+.control-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border-soft);
+    background: var(--bg-card);
+}
+.ctab {
+    flex: 1;
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    padding: 8px 6px;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: color 120ms, border-color 120ms, background 120ms;
+}
+.ctab:hover { color: var(--text-primary); background: var(--bg-card-hover); }
+.ctab.is-active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    background: var(--accent-bg);
+}
+
+.ctab-panel {
+    display: none;
+    padding: 12px 14px 14px;
+    overflow-y: auto;
+    flex: 1;          /* fills the remaining height of .controls */
+}
+.ctab-panel.is-active { display: block; }
+
+.ctab-panel label {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin: 0 0 10px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    min-width: 0;
+}
+.ctab-panel label.check {
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;     /* checkbox + label text flush left */
+    gap: 8px;
+    margin: 8px 0;
+    cursor: pointer;
+    user-select: none;
+}
+/* Stretch text inputs / numeric inputs / selects to the panel width,
+   but NOT checkboxes -- those keep their natural ~13px square so the
+   following label text sits immediately to the right of the box. */
+.ctab-panel label > input:not([type="checkbox"]),
+.ctab-panel label > select {
+    width: 100%;
+}
+.ctab-panel label.check > input[type="checkbox"] {
+    flex: 0 0 auto;                   /* don't grow / shrink */
+}
+.ctab-panel .row-with-readout {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.ctab-panel .row-with-readout > input { flex: 1; }
+.ctab-panel .readout {
+    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 0.82rem;
+    color: var(--text-mono);
+    min-width: 28px;
+    text-align: right;
+}
+.ctab-panel .hint {
+    margin: 6px 0 0;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+.ctab-panel .panel-sep {
+    border: 0;
+    border-top: 1px solid var(--border-soft);
+    margin: 14px 0 12px;
+}
+.ctab-panel .full-btn {
+    width: 100%;
+    padding: 7px 10px;
+    background: var(--accent-bg);
+    border-color: var(--accent-strong);
+    color: var(--accent);
+    font-weight: 500;
+}
+.ctab-panel .full-btn:hover:not(:disabled) {
+    background: var(--accent-strong);
+    color: #fff;
+    border-color: var(--accent);
+}
+.ctab-panel .full-btn:disabled {
+    background: transparent;
+}
+
+/* ---- Form controls (shared) ---- */
+
+input[type="text"],
+input[type="number"],
+select {
+    font: inherit;
+    color: var(--text-primary);
+    background: var(--bg-input);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    padding: 4px 8px;
+    transition: border-color 120ms, background 120ms, box-shadow 120ms;
+}
+input:hover:not([type="checkbox"]):not([type="range"]),
+select:hover {
+    border-color: var(--accent-strong);
+}
+input:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: var(--bg-input-focus);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+input[type="checkbox"] {
+    accent-color: var(--accent);
+    cursor: pointer;
+    margin: 0;
+}
+input[type="range"] {
+    accent-color: var(--accent);
+    width: 100%;
+    background: transparent;
+    cursor: pointer;
+}
+
+button {
+    font: inherit;
+    cursor: pointer;
+    color: var(--text-primary);
+    background: var(--bg-input);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    padding: 4px 12px;
+    transition: background 120ms, border-color 120ms, color 120ms;
+}
+button:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--accent-strong);
+    color: var(--text-primary);
+}
+button:disabled {
+    color: var(--text-muted);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* ---- Plots row ---- */
+
+.plots-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--gap);
+}
+.plot {
+    /* Slightly more compact than before so the dashboard fits a 1080p
+       laptop screen without scrolling. */
+    height: clamp(220px, 28vh, 300px);
+    border: 1px solid var(--border-strong);
+    background: var(--bg-card);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-soft);
+}
+
+/* ---- SCF-progress panel (engine-agnostic) ---- */
+
+.scf-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.scf-banner {
+    background: var(--bg-card);
+    border: 1px solid var(--border-strong);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 9px 14px;
+    font-size: 0.92rem;
+    display: flex;
+    gap: 12px;
+    align-items: baseline;
+    flex-wrap: wrap;
+    box-shadow: var(--shadow-soft);
+}
+.scf-banner strong { color: var(--accent); font-weight: 600; }
+.scf-status {
+    color: var(--text-secondary);
+    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 0.85rem;
+}
+.scf-plots {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: var(--gap);
+}
+.scf-plots .plot { height: clamp(180px, 22vh, 230px); }
+
+/* ---- Responsive breakpoints ---- */
+
+@media (max-width: 980px) {
+    /* Stack viewer above controls; controls expand to natural height. */
+    .viewer-row { grid-template-columns: 1fr; }
+    .controls   { height: auto; max-height: 60vh; }
+    .plots-row  { grid-template-columns: 1fr; }
+    .scf-plots  { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+    .loader input[type="text"] { min-width: 0; flex: 1; }
+    main, header { padding-left: 12px; padding-right: 12px; }
+    :root { --viewer-height: clamp(280px, 50vh, 380px); }
+}
+
+/* ---- Scrollbars ---- */
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 5px;
+    border: 2px solid var(--bg-page);
+}
+::-webkit-scrollbar-thumb:hover { background: #4a5160; }

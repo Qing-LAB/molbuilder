@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>molwatch &mdash; live trajectory viewer</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js"></script>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+</head>
+<body>
+<header>
+  <h1>
+    molwatch
+    <span class="tag">live trajectory viewer &mdash; SIESTA &middot; PySCF / geomeTRIC</span>
+  </h1>
+  <div class="loader">
+    <label for="path-input">Output file:</label>
+    <input id="path-input" type="text"
+           placeholder="/abs/path/to/job.molwatch.log  or  /abs/path/to/run.out"
+           size="60" autofocus
+           title="Type an absolute path for live polling, or leave empty
+and click Load to pick a file (one-shot view, no live updates).
+
+Preferred for molbuilder-generated runs:
+  <job>.molwatch.log  -- single-file unified log; for PySCF runs
+                         it streams every opt step, for SIESTA runs
+                         it carries an initial-geometry preview.
+
+Engine-native files (also supported):
+  run.out  /  siesta.log         -- SIESTA's main output
+  <job>_geom_optim.xyz           -- geomeTRIC's streaming trajectory">
+    <!-- Hidden file picker; shown only when Load is clicked with an
+         empty path-input.  Picker-selected files are uploaded as
+         multipart and parsed once (no polling, since the browser
+         doesn't expose the file's filesystem path). -->
+    <input id="file-picker" type="file" hidden
+           accept=".out,.log,.xyz,.ANI,text/plain,chemical/x-xyz">
+    <button id="load-btn">Load</button>
+    <span id="status" class="status">No file loaded.</span>
+  </div>
+</header>
+
+<main>
+  <section class="viewer-row">
+    <div id="viewer"></div>
+
+    <aside class="controls">
+      <!-- Always-visible frame strip: the slider is the most-used
+           control, so it sits above the tabs and is reachable
+           regardless of which tab panel is open. -->
+      <div class="frame-strip">
+        <div class="frame-strip-row">
+          <span class="frame-counter">Frame
+            <b id="frame-idx">0</b> / <b id="frame-tot">0</b>
+          </span>
+          <span class="frame-strip-buttons">
+            <button id="prev" title="Previous frame">&lsaquo;</button>
+            <button id="play" title="Play">&#9654;</button>
+            <button id="pause" title="Pause">&#9208;</button>
+            <button id="next" title="Next frame">&rsaquo;</button>
+          </span>
+        </div>
+        <input id="frame-slider" type="range"
+               min="0" max="0" value="0" step="1"
+               aria-label="Frame slider">
+      </div>
+
+      <!-- Three tab panels condense the previous stacked fieldsets;
+           only one is visible at a time so the controls aside never
+           outgrows the viewer height. -->
+      <nav class="control-tabs" role="tablist">
+        <button class="ctab is-active" data-tab="style"    role="tab">Style</button>
+        <button class="ctab"           data-tab="overlays" role="tab">Overlays</button>
+        <button class="ctab"           data-tab="playback" role="tab">Playback</button>
+      </nav>
+
+      <div class="ctab-panel is-active" data-panel="style" role="tabpanel">
+        <label>Representation
+          <select id="rep">
+            <option value="stick" selected>stick</option>
+            <option value="ballstick">ball &amp; stick</option>
+            <option value="sphere">sphere (CPK)</option>
+            <option value="line">line</option>
+          </select>
+        </label>
+
+        <label>Atom radius scale
+          <input id="radius" type="range" min="0.2" max="2.5" step="0.05" value="1.0">
+        </label>
+
+        <label>Color scheme
+          <select id="colorscheme">
+            <option value="Jmol" selected>Jmol (CPK)</option>
+            <option value="rasmol">Rasmol</option>
+            <option value="default">3Dmol default</option>
+          </select>
+        </label>
+
+        <label>Background
+          <select id="bg">
+            <option value="white" selected>white</option>
+            <option value="0xeeeeee">light grey</option>
+            <option value="black">black</option>
+          </select>
+        </label>
+
+        <label class="check"><input type="checkbox" id="show-cell" checked>
+          Show unit cell</label>
+      </div>
+
+      <div class="ctab-panel" data-panel="overlays" role="tabpanel">
+        <label class="check"><input type="checkbox" id="show-indices">
+          Show atom indices</label>
+        <label class="check"><input type="checkbox" id="show-forces">
+          Show force vectors</label>
+        <label>Arrow length scale (&Aring; per eV/&Aring;)
+          <span class="row-with-readout">
+            <input id="force-scale" type="range" min="0.1" max="5.0" step="0.1" value="1.0">
+            <span id="force-scale-val" class="readout">1.0</span>
+          </span>
+        </label>
+        <label>Hide |F| smaller than (eV/&Aring;)
+          <input id="force-min" type="number" min="0" max="10" step="0.05" value="0.05">
+        </label>
+        <label class="check"><input type="checkbox" id="highlight-max" checked>
+          Highlight largest force</label>
+      </div>
+
+      <div class="ctab-panel" data-panel="playback" role="tabpanel">
+        <label>Speed (ms / frame)
+          <input id="speed" type="number" min="20" max="3000" step="20" value="150">
+        </label>
+        <label class="check"><input type="checkbox" id="loop" checked>
+          Loop playback</label>
+        <p class="hint">Use the buttons and slider above to scrub frames.</p>
+
+        <hr class="panel-sep">
+
+        <button id="save-frame" class="full-btn"
+          title="Download the currently displayed frame as a standard .xyz file (Angstrom).&#10;Useful for handing the relaxed structure to the next step (tunneling-gap construction, transport calc, etc.)."
+          disabled>
+          Save current frame as XYZ
+        </button>
+        <p class="hint">Exports frame N's coordinates so you can use the
+          relaxed structure as input to the next step (e.g., dropping the
+          molecule into a tunneling gap as a bridge).</p>
+      </div>
+    </aside>
+  </section>
+
+  <section class="plots-row">
+    <div id="energy-plot" class="plot"></div>
+    <div id="force-plot" class="plot"></div>
+  </section>
+
+  <!-- Engine-agnostic SCF-iteration progress for the most recent
+       opt step.  Hidden when the loaded file has no scf_history
+       (e.g. SIESTA whose `scf:` lines weren't yet captured, or a
+       PySCF run whose .log wasn't found next to the trajectory).
+       The banner title and the residual axis adapt to the engine
+       at render time -- see renderScfProgress() in viewer.js. -->
+  <section class="scf-row" id="scf-section" hidden>
+    <div class="scf-banner">
+      <strong id="scf-title">SCF progress</strong>
+      <span id="scf-status" class="scf-status"></span>
+    </div>
+    <div class="scf-plots">
+      <div id="scf-energy-plot" class="plot"></div>
+      <div id="scf-gnorm-plot"  class="plot"></div>
+    </div>
+  </section>
+</main>
+
+<script src="{{ url_for('static', filename='viewer.js') }}"></script>
+</body>
+</html>
