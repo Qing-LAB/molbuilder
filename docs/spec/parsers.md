@@ -1,10 +1,12 @@
 # Spec — parser plug-in interface
 
-**Modules**: `parsers/base.py`, `parsers/molwatch_log.py`,
-`parsers/siesta.py`, `parsers/pyscf.py`, `parsers/__init__.py`
-&nbsp;·&nbsp; **Tests**: `tests/test_molwatch_log_parser.py`,
-`tests/test_siesta_parser.py`, `tests/test_pyscf_parser.py`,
-`tests/test_registry.py`
+**Modules**: `molbuilder/parsers/base.py`,
+`molbuilder/parsers/molwatch_log.py`,
+`molbuilder/parsers/siesta.py`, `molbuilder/parsers/pyscf.py`,
+`molbuilder/parsers/__init__.py`
+&nbsp;·&nbsp; **Tests**: `tests/watch/test_molwatch_log_parser.py`,
+`tests/watch/test_siesta_parser.py`, `tests/watch/test_pyscf_parser.py`,
+`tests/watch/test_registry.py`
 
 ## TrajectoryParser interface
 
@@ -127,7 +129,7 @@ bug:
 
 ## molwatch unified-log parser specifics
 
-`parsers/molwatch_log.py`:
+`molbuilder/parsers/molwatch_log.py`:
 
 * `name="molwatch"`, `label="molwatch unified log (.molwatch.log)"`,
   `hint="the unified per-step log emitted by molbuilder-generated
@@ -213,7 +215,7 @@ will simply not render the residual axis for those runs.
 
 ## SIESTA parser specifics
 
-`parsers/siesta.py`:
+`molbuilder/parsers/siesta.py`:
 
 * `name="siesta"`, `label="SIESTA .out / .log"`, `hint="the main
   SIESTA run output (run.out, siesta.log, etc.)"`.
@@ -254,7 +256,7 @@ will simply not render the residual axis for those runs.
 
 ## PySCF / geomeTRIC parser specifics
 
-`parsers/pyscf.py`:
+`molbuilder/parsers/pyscf.py`:
 
 * `name="pyscf"`, `label="XYZ trajectory (PySCF / geomeTRIC /
   generic multi-frame XYZ)"`, `hint="a multi-frame XYZ trajectory
@@ -299,7 +301,7 @@ will simply not render the residual axis for those runs.
 
 ## Detection order and debugging
 
-When the user submits a path, `app.py` calls `detect_parser(path)`
+When the user submits a path, `web/blueprints/watch.py` calls `detect_parser(path)`
 which iterates `PARSERS` in registration order, calling each
 parser's `can_parse(path)` and returning the **first** parser whose
 detector returns `True`.  Order is intentional: more-specific
@@ -411,10 +413,11 @@ parser claimed a borderline file, the fix is one of:
   filename or by additional content checks; add those checks to
   the detector for whichever parser shouldn't claim it.
 
-## Registry contract (`parsers/__init__.py`)
+## Registry contract (`molbuilder/parsers/__init__.py`)
 
 ```python
 PARSERS: List[Type[TrajectoryParser]] = [
+    MolwatchLogParser,
     SiestaParser,
     PySCFParser,
 ]
@@ -423,7 +426,7 @@ def detect_parser(path) -> Type[TrajectoryParser]:
     """First parser whose can_parse(path) is True wins."""
 
 def parser_summary() -> List[dict]:
-    """[{name, label, hint}, ...] — feeds /api/formats."""
+    """[{name, label, hint}, ...] — feeds /api/watch/formats."""
 ```
 
 * Order matters: more-specific format markers go first so a permissive
@@ -439,10 +442,10 @@ def parser_summary() -> List[dict]:
 
 Two steps:
 
-1. Drop a new `parsers/<name>.py` defining `<Name>Parser` that
-   subclasses `TrajectoryParser` and implements `can_parse` + `parse`
-   per this spec.
-2. Add the class to `PARSERS` in `parsers/__init__.py`.
+1. Drop a new `molbuilder/parsers/<name>.py` defining `<Name>Parser`
+   that subclasses `TrajectoryParser` and implements `can_parse` +
+   `parse` per this spec.
+2. Add the class to `PARSERS` in `molbuilder/parsers/__init__.py`.
 
 The Flask app + front-end pick it up automatically with no other
 changes.

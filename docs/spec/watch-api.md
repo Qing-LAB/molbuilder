@@ -1,29 +1,34 @@
-# Spec — Flask endpoints
+# Spec — Watch HTTP endpoints
 
-**Module**: `app.py` &nbsp;·&nbsp; **Tests**: `tests/test_api_load.py`,
-`tests/test_app_concurrency.py`, `tests/test_registry.py`
+**Module**: `molbuilder/web/blueprints/watch.py`
+&nbsp;·&nbsp; **Tests**: `tests/watch/test_api_load.py`,
+`tests/watch/test_app_concurrency.py`,
+`tests/watch/test_registry.py`
 
-The Flask app exposes a small JSON API that the front-end consumes,
-plus the `/` HTML page.  All endpoints are JSON in / JSON out, except
-`/api/load` which also accepts multipart for the file-picker upload
-mode.
+The watch Blueprint contributes the watch-side route group to the
+unified molbuilder Flask app.  All endpoints are JSON in / JSON out
+except `/api/watch/load`, which also accepts multipart for the
+file-picker upload mode.
+
+The build-side route group (`/`, `/api/build`, `/api/fdf`,
+`/api/watch/load`, `/api/pyscf`, `/api/backends`, `/api/health`) is
+specified separately in [`web-api.md`](web-api.md).
 
 ## Endpoints
 
-| route          | method | body                          | success                          | error |
-| ---            | ---    | ---                           | ---                              | ---   |
-| `/`            | GET    | —                             | HTML (Jinja2)                    | —     |
-| `/api/health`  | GET    | —                             | `{ok: true, version}`            | —     |
-| `/api/formats` | GET    | —                             | `{ok, formats: [...]}`           | —     |
-| `/api/load`    | POST   | json `{path}` OR multipart    | structure JSON (see below)       | 400, 404, 413, 500 |
-| `/api/data`    | GET    | optional `?mtime=<float>`     | structure JSON or "unchanged"    | various |
+| route                | method | body                          | success                          | error |
+| ---                  | ---    | ---                           | ---                              | ---   |
+| `/watch`             | GET    | —                             | HTML (Jinja2)                    | —     |
+| `/api/watch/formats` | GET    | —                             | `{ok, formats: [...]}`           | —     |
+| `/api/watch/load`    | POST   | json `{path}` OR multipart    | structure JSON (see below)       | 400, 404, 413, 500 |
+| `/api/watch/data`    | GET    | optional `?mtime=<float>`     | structure JSON or "unchanged"    | various |
 
 ## Request body cap
 
 `MAX_CONTENT_LENGTH = 50 MiB`.  Realistic SIESTA logs go up to ~10s
 of MB; 50 MiB is generous.  Larger bodies → HTTP 413 automatically.
 
-## `/api/formats` response
+## `/api/watch/formats` response
 
 ```json
 {
@@ -37,7 +42,7 @@ of MB; 50 MiB is generous.  Larger bodies → HTTP 413 automatically.
 
 Mirrors `parsers.parser_summary()`.
 
-## `/api/load` modes
+## `/api/watch/load` modes
 
 ### Mode A — JSON path (live-watching)
 
@@ -51,7 +56,7 @@ Server side:
 2. Resolve via `os.path.abspath(os.path.expanduser(path))`.
 3. Reject non-existent file with HTTP 404.
 4. `detect_parser(path)`; reject unsupported with HTTP 400 (the error
-   body uses the multi-line message from `parsers/__init__.py`).
+   body uses the multi-line message from `molbuilder/parsers/__init__.py`).
 5. Replace `_state` (path / parser) atomically; force a re-parse on
    the next refresh.
 
@@ -98,7 +103,7 @@ Server side:
 { "ok": false, "error": "<multi-line human-readable>" }
 ```
 
-## `/api/data`
+## `/api/watch/data`
 
 Polled by the front-end every ~15 s.  Optional `?mtime=<float>`
 short-circuits when nothing changed.
@@ -130,7 +135,7 @@ briefly to commit.  Three guarantees:
 
 1. A long parse (multi-MB log) doesn't block other concurrent
    requests for its duration.
-2. If a `/api/load` swaps the active file mid-parse, the stale
+2. If a `/api/watch/load` swaps the active file mid-parse, the stale
    parse result is dropped on the floor instead of clobbering the
    new state.  Tested by `test_stale_parse_doesnt_clobber_swapped_state`.
 3. Cheap path (mtime unchanged) returns the cached state under a
@@ -141,8 +146,8 @@ briefly to commit.  Three guarantees:
 * Default bind is `127.0.0.1` (loopback only).
 * When `--host` is set to anything other than `127.0.0.1` /
   `localhost` / `::1`, the CLI prints a loud stderr warning that
-  `/api/load` reads any local file the server can access.
-* Browser CORS provides a default CSRF mitigation: `/api/load`
+  `/api/watch/load` reads any local file the server can access.
+* Browser CORS provides a default CSRF mitigation: `/api/watch/load`
   requires `Content-Type: application/json` for the path mode, which
   triggers a CORS preflight that the default Flask response (no
   `Access-Control-Allow-Origin` header) fails.  Form-style
@@ -156,7 +161,9 @@ The Flask app must NOT:
 
 1. Hold the global lock during a parse — see "Concurrency contract".
 2. Default `--host 0.0.0.0` — that exposes arbitrary file read to
-   anyone on the network.
+   anyone on the network.  The `molbuilder watch serve` CLI emits
+   a stderr warning when bound non-loopback (see
+   `molbuilder/web/blueprints/watch.py:warn_if_remote`).
 3. Return parser-specific keys outside of `data` — the JSON shape
    is uniform across formats; format-specific fields go inside
    `data` (parser's responsibility).
