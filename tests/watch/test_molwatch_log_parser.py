@@ -18,6 +18,7 @@ import math
 
 import pytest
 
+from molbuilder.parsers import trajectory_to_legacy_dict
 from molbuilder.parsers.molwatch_log import MolwatchLogParser
 
 
@@ -102,12 +103,12 @@ def test_can_parse_rejects_non_molwatch(tmp_path):
 def test_torn_final_block_dropped(mw_path):
     """A block with `begin` but no `end` is dropped silently --
     so molwatch never shows a half-written final step."""
-    result = MolwatchLogParser.parse(mw_path)
+    result = trajectory_to_legacy_dict(MolwatchLogParser.parse(mw_path))
     assert len(result["frames"]) == 2
 
 
 def test_frame_coordinates(mw_path):
-    result = MolwatchLogParser.parse(mw_path)
+    result = trajectory_to_legacy_dict(MolwatchLogParser.parse(mw_path))
     assert result["frames"][0] == [
         ["O",  0.0,     0.0,   0.0],
         ["H",  0.957,   0.0,   0.0],
@@ -117,19 +118,19 @@ def test_frame_coordinates(mw_path):
 
 
 def test_energies(mw_path):
-    result = MolwatchLogParser.parse(mw_path)
+    result = trajectory_to_legacy_dict(MolwatchLogParser.parse(mw_path))
     assert math.isclose(result["energies"][0], -76.123456)
     assert math.isclose(result["energies"][1], -76.20)
 
 
 def test_max_forces(mw_path):
-    result = MolwatchLogParser.parse(mw_path)
+    result = trajectory_to_legacy_dict(MolwatchLogParser.parse(mw_path))
     assert math.isclose(result["max_forces"][0], 0.00240)
     assert math.isclose(result["max_forces"][1], 0.000224)
 
 
 def test_per_atom_forces(mw_path):
-    result = MolwatchLogParser.parse(mw_path)
+    result = trajectory_to_legacy_dict(MolwatchLogParser.parse(mw_path))
     assert result["forces"][0] == [
         [-0.001, -0.002, 0.0],
         [ 0.0005, 0.001, 0.0],
@@ -140,25 +141,25 @@ def test_per_atom_forces(mw_path):
 def test_iterations(mw_path):
     """`iterations` mirrors the per-block `step_index` from the
     `==== molwatch step <N> ====` markers, in encounter order."""
-    result = MolwatchLogParser.parse(mw_path)
+    result = trajectory_to_legacy_dict(MolwatchLogParser.parse(mw_path))
     assert result["iterations"] == [0, 1]
 
 
 def test_lattice_is_none(mw_path):
     """molwatch logs are for molecules; lattice is always None."""
-    result = MolwatchLogParser.parse(mw_path)
+    result = trajectory_to_legacy_dict(MolwatchLogParser.parse(mw_path))
     assert result["lattice"] is None
 
 
 def test_source_format_from_engine_header(mw_path):
     """The `# engine: pyscf` header maps into result["source_format"]."""
-    result = MolwatchLogParser.parse(mw_path)
+    result = trajectory_to_legacy_dict(MolwatchLogParser.parse(mw_path))
     assert result["source_format"] == "pyscf"
 
 
 def test_scf_history_per_step(mw_path):
     """Two step blocks; each carries its own scf_history list."""
-    result = MolwatchLogParser.parse(mw_path)
+    result = trajectory_to_legacy_dict(MolwatchLogParser.parse(mw_path))
     runs = result["scf_history"]
     assert len(runs) == 2
     assert len(runs[0]) == 3
@@ -167,7 +168,7 @@ def test_scf_history_per_step(mw_path):
 
 def test_scf_cycle_keys(mw_path):
     """Every per-cycle entry has the unified key set."""
-    result = MolwatchLogParser.parse(mw_path)
+    result = trajectory_to_legacy_dict(MolwatchLogParser.parse(mw_path))
     expected = {"cycle", "energy", "delta_E", "gnorm", "ddm"}
     for run in result["scf_history"]:
         for entry in run:
@@ -177,7 +178,7 @@ def test_scf_cycle_keys(mw_path):
 def test_scf_none_residuals_round_trip(mw_path):
     """A residual written as the literal 'None' becomes JSON null --
     not a string, not NaN."""
-    result = MolwatchLogParser.parse(mw_path)
+    result = trajectory_to_legacy_dict(MolwatchLogParser.parse(mw_path))
     last_cycle = result["scf_history"][1][1]
     assert last_cycle["gnorm"] is None
     assert last_cycle["ddm"] is None
@@ -186,7 +187,7 @@ def test_scf_none_residuals_round_trip(mw_path):
 def test_json_strict_safe(mw_path):
     """Result must serialise with allow_nan=False -- the molwatch /api/data
     endpoint uses strict JSON so a NaN slipping through is a contract bug."""
-    result = MolwatchLogParser.parse(mw_path)
+    result = trajectory_to_legacy_dict(MolwatchLogParser.parse(mw_path))
     json.dumps(result, allow_nan=False)
 
 
@@ -194,7 +195,7 @@ def test_index_aligned_arrays(mw_path):
     """Per-step lists must be index-aligned with frames -- the front-end
     walks them in lockstep via the slider, so a length mismatch is a
     spec violation."""
-    result = MolwatchLogParser.parse(mw_path)
+    result = trajectory_to_legacy_dict(MolwatchLogParser.parse(mw_path))
     n = len(result["frames"])
     assert n == len(result["energies"])
     assert n == len(result["max_forces"])
@@ -226,7 +227,7 @@ def test_engine_default_when_header_missing(tmp_path):
     )
     p = tmp_path / "noeng.molwatch.log"
     p.write_text(sample_no_engine)
-    result = MolwatchLogParser.parse(str(p))
+    result = trajectory_to_legacy_dict(MolwatchLogParser.parse(str(p)))
     assert result["source_format"] == "molwatch"
     assert len(result["frames"]) == 1
     # An empty scf_history is allowed (no cycles in this synthetic block).

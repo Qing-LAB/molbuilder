@@ -50,6 +50,10 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional
 
+import numpy as np
+
+from ..frame import Frame, Trajectory
+from ..structure import Structure
 from .base import TrajectoryParser
 
 
@@ -87,14 +91,9 @@ class MolwatchLogParser(TrajectoryParser):
         return any(_HEADER_RE.match(line) for line in head)
 
     @classmethod
-    def parse(cls, path: str) -> Dict[str, Any]:
+    def parse(cls, path: str) -> Trajectory:
         engine = "molwatch"
-        frames: List[List[List[Any]]] = []
-        energies: List[Optional[float]] = []
-        max_forces: List[Optional[float]] = []
-        forces_per_frame: List[List[List[float]]] = []
-        iterations: List[int] = []
-        scf_history: List[List[Dict[str, Any]]] = []
+        frames: List[Frame] = []
 
         # In-block accumulators; commit only on a matching `end` marker.
         in_block = False
@@ -145,15 +144,29 @@ class MolwatchLogParser(TrajectoryParser):
                 m_end = _END_RE.search(line)
                 if m_end and in_block:
                     if block_frame:
-                        frames.append(block_frame)
-                        energies.append(block_energy)
-                        forces_per_frame.append(block_forces)
-                        max_forces.append(block_max_force)
-                        scf_history.append(block_scf)
-                        iterations.append(
-                            block_idx if block_idx is not None
-                            else len(frames) - 1
-                        )
+                        elements  = [row[0] for row in block_frame]
+                        positions = np.array([row[1:4] for row in block_frame],
+                                             dtype=float)
+                        struct = Structure(elements=elements,
+                                           positions=positions)
+                        forces_arr = (np.asarray(block_forces, dtype=float)
+                                      if block_forces else None)
+                        idx = (block_idx if block_idx is not None
+                               else len(frames))
+                        frames.append(Frame(
+                            structure   = struct,
+                            step_index  = idx,
+                            energy      = block_energy,
+                            forces      = forces_arr,
+                            max_force   = block_max_force,
+                            # Always a list (possibly empty) -- the
+                            # .molwatch.log format always carries an
+                            # scf_history block per step, even if it's
+                            # empty (e.g. for an initial-state preview
+                            # block).  None is reserved for parsers
+                            # that genuinely have no SCF data source.
+                            scf_history = list(block_scf),
+                        ))
                     _reset_block()
                     continue
 
@@ -248,13 +261,8 @@ class MolwatchLogParser(TrajectoryParser):
 
         # Torn final block at EOF: drop it (in_block True, no `end` seen).
 
-        return {
-            "frames":        frames,
-            "lattice":       None,
-            "iterations":    iterations,
-            "energies":      energies,
-            "max_forces":    max_forces,
-            "forces":        forces_per_frame,
-            "scf_history":   scf_history,
-            "source_format": engine,
-        }
+        return Trajectory(
+            source_format = engine,
+            frames        = frames,
+            lattice       = None,
+        )

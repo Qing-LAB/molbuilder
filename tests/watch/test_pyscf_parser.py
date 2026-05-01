@@ -13,6 +13,7 @@ import math
 
 import pytest
 
+from molbuilder.parsers import trajectory_to_legacy_dict
 from molbuilder.parsers.pyscf import PySCFParser
 
 
@@ -104,21 +105,21 @@ def test_parse_xyz_without_geometric_comment_yields_none_energy(tmp_path):
         '3\nframe 1 from ASE\n'
         'O 0.01 0 0\nH 0.967 0 0\nH -0.229 0.927 0\n'
     )
-    result = PySCFParser.parse(str(p))
+    result = trajectory_to_legacy_dict(PySCFParser.parse(str(p)))
     assert len(result["frames"]) == 2
     assert result["energies"] == [None, None]
     assert result["frames"][0][0] == ["O", 0.0, 0.0, 0.0]
 
 
 def test_torn_frame_dropped(pyscf_traj_path):
-    result = PySCFParser.parse(pyscf_traj_path)
+    result = trajectory_to_legacy_dict(PySCFParser.parse(pyscf_traj_path))
     assert len(result["frames"]) == 2
 
 
 def test_energy_units_converted_to_ev(pyscf_traj_path):
     """Hartree in the file -> eV in the result.  -76.4267520 Hartree
     is approximately -2079.7745 eV."""
-    result = PySCFParser.parse(pyscf_traj_path)
+    result = trajectory_to_legacy_dict(PySCFParser.parse(pyscf_traj_path))
     expected_eV_0 = -76.42675200 * 27.211386245988
     expected_eV_1 = -76.43012345 * 27.211386245988
     assert math.isclose(result["energies"][0], expected_eV_0, rel_tol=1e-6)
@@ -126,29 +127,29 @@ def test_energy_units_converted_to_ev(pyscf_traj_path):
 
 
 def test_iteration_indices(pyscf_traj_path):
-    result = PySCFParser.parse(pyscf_traj_path)
+    result = trajectory_to_legacy_dict(PySCFParser.parse(pyscf_traj_path))
     assert result["iterations"] == [0, 1]
 
 
 def test_frame_coordinates(pyscf_traj_path):
-    result = PySCFParser.parse(pyscf_traj_path)
+    result = trajectory_to_legacy_dict(PySCFParser.parse(pyscf_traj_path))
     assert result["frames"][0][0] == ["O", 0.0, 0.0, 0.0]
     assert result["frames"][1][1] == ["H", 0.9575, 0.0005, 0.0]
 
 
 def test_no_lattice_for_pyscf(pyscf_traj_path):
-    result = PySCFParser.parse(pyscf_traj_path)
+    result = trajectory_to_legacy_dict(PySCFParser.parse(pyscf_traj_path))
     assert result["lattice"] is None
 
 
 def test_source_format_tag(pyscf_traj_path):
-    result = PySCFParser.parse(pyscf_traj_path)
+    result = trajectory_to_legacy_dict(PySCFParser.parse(pyscf_traj_path))
     assert result["source_format"] == "pyscf"
 
 
 def test_max_forces_none_without_qdata(pyscf_traj_path):
     """No companion .qdata -> max_forces is all None (placeholders)."""
-    result = PySCFParser.parse(pyscf_traj_path)
+    result = trajectory_to_legacy_dict(PySCFParser.parse(pyscf_traj_path))
     assert all(f is None for f in result["max_forces"])
     assert len(result["max_forces"]) == len(result["frames"])
 
@@ -169,7 +170,7 @@ def test_qdata_provides_max_forces(tmp_path):
         "ENERGY -76.4301234\n"
         "GRADIENT 0.0005 0.0006 0.0007 0.0008 0.0009 0.0010 0.0011 0.0012 0.0013\n"
     )
-    result = PySCFParser.parse(str(traj))
+    result = trajectory_to_legacy_dict(PySCFParser.parse(str(traj)))
     # Per-atom |F| for frame 0:
     #   atom1 = sqrt(0.001^2+0.002^2+0.003^2) ~= 0.003742
     #   atom2 = sqrt(0.004^2+0.005^2+0.006^2) ~= 0.008775
@@ -181,7 +182,7 @@ def test_qdata_provides_max_forces(tmp_path):
 
 
 def test_json_safe(pyscf_traj_path):
-    result = PySCFParser.parse(pyscf_traj_path)
+    result = trajectory_to_legacy_dict(PySCFParser.parse(pyscf_traj_path))
     json.dumps(result, allow_nan=False)
 
 
@@ -214,7 +215,7 @@ def test_scf_history_parses_two_runs(tmp_path):
     traj.write_text(SAMPLE)
     log  = tmp_path / "myjob.log"          # NOTE: no _geom suffix
     log.write_text(_SCF_LOG_SAMPLE)
-    result = PySCFParser.parse(str(traj))
+    result = trajectory_to_legacy_dict(PySCFParser.parse(str(traj)))
     assert "scf_history" in result
     runs = result["scf_history"]
     assert len(runs) == 2
@@ -233,7 +234,7 @@ def test_scf_history_units_converted(tmp_path):
     traj.write_text(SAMPLE)
     log  = tmp_path / "myjob.log"
     log.write_text(_SCF_LOG_SAMPLE)
-    runs = PySCFParser.parse(str(traj))["scf_history"]
+    runs = trajectory_to_legacy_dict(PySCFParser.parse(str(traj)))["scf_history"]
     HA_BOHR_TO_EV_ANG = 27.211386245988 / 0.5291772108
     # cycle 0 |g|=5.0 Ha/Bohr -> ... eV/A
     assert math.isclose(runs[0][0]["gnorm"], 5.0 * HA_BOHR_TO_EV_ANG)
@@ -241,7 +242,7 @@ def test_scf_history_units_converted(tmp_path):
 
 def test_scf_history_empty_when_log_absent(pyscf_traj_path):
     """No <prefix>.log next to the trajectory -> scf_history = []."""
-    result = PySCFParser.parse(pyscf_traj_path)
+    result = trajectory_to_legacy_dict(PySCFParser.parse(pyscf_traj_path))
     assert result["scf_history"] == []
 
 
@@ -253,7 +254,7 @@ def test_scf_history_per_cycle_keys(tmp_path):
     traj.write_text(SAMPLE)
     log  = tmp_path / "myjob.log"
     log.write_text(_SCF_LOG_SAMPLE)
-    runs = PySCFParser.parse(str(traj))["scf_history"]
+    runs = trajectory_to_legacy_dict(PySCFParser.parse(str(traj)))["scf_history"]
     expected = {"cycle", "energy", "delta_E", "gnorm", "ddm"}
     for run in runs:
         for entry in run:

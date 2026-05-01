@@ -20,8 +20,40 @@ class TrajectoryParser(ABC):
     def can_parse(cls, path: str) -> bool: ...
 
     @classmethod @abstractmethod
-    def parse(cls, path: str) -> Dict[str, Any]: ...
+    def parse(cls, path: str) -> Trajectory: ...
 ```
+
+`Trajectory` is the parser output type defined in
+`molbuilder/frame.py`:
+
+```python
+@dataclass
+class Trajectory:
+    source_format: str                          # "siesta" / "pyscf" / "molwatch" / ...
+    frames:        List[Frame]                  # one Frame per geom-opt / MD step
+    lattice:       Optional[np.ndarray] = None  # (3, 3) Ang shared cell, or None
+```
+
+`Frame` (also in `molbuilder/frame.py`) wraps a `Structure` and adds
+per-step physics:
+
+```python
+@dataclass
+class Frame:
+    structure:    Structure                          # geometry of this step
+    step_index:   int                                # 0-based; preview frame is 0
+    energy:       Optional[float]            = None  # eV
+    forces:       Optional[np.ndarray]       = None  # (N, 3) eV/Ang, or None
+    max_force:    Optional[float]            = None  # eV/Ang
+    lattice:      Optional[np.ndarray]       = None  # (3, 3) per-frame; None today
+    scf_history:  Optional[List[Dict[str, float]]] = None
+```
+
+The historical molwatch v1 JSON dict shape (the "Return shape" below)
+is produced by `molbuilder.parsers.trajectory_to_legacy_dict(traj)`,
+which the watch web layer applies at the `/api/watch/load` boundary.
+The dict shape is the contract with the existing 3Dmol.js client;
+Phase 3 will redesign it to surface `Trajectory` directly.
 
 ### `can_parse`
 
@@ -38,8 +70,16 @@ class TrajectoryParser(ABC):
 * Re-callable: the Flask app calls it on every mtime change.
 * Tolerant of in-progress files: torn frames at EOF are dropped, a
   partial step that has coordinates but no energy yet stores
-  energy as `None`.
-* Returns a dict with a fixed schema:
+  `Frame.energy = None`.
+* Returns a `Trajectory`.  Per-step data lives on `Frame`s
+  (`Frame.energy` / `Frame.forces` / `Frame.max_force` /
+  `Frame.scf_history`); file-level metadata lives on the wrapping
+  `Trajectory` (`Trajectory.source_format` / `Trajectory.lattice`).
+
+The web boundary's
+`molbuilder.parsers.trajectory_to_legacy_dict(traj)` adapter turns a
+`Trajectory` into the legacy molwatch v1 JSON dict shape used by the
+3Dmol.js client:
 
 ```python
 {
@@ -50,9 +90,20 @@ class TrajectoryParser(ABC):
     "iterations":  List[int],                    # length matches frames
     "lattice":     Optional[List[List[float]]],  # 3x3 Ang or None
     "scf_history": List[List[Dict[str, float]]], # see below
-    "source_format": str,                        # the parser's `name`
+    "source_format": str,                        # = Trajectory.source_format
 }
 ```
+
+The adapter's `None` / `[]` mapping rules:
+
+* `Frame.forces is None`      → that step's `forces` entry is `[]`
+* `Frame.scf_history is None` → that step's `scf_history` entry is `[]`
+* If **every** frame's `scf_history is None` (parser tracks no SCF
+  data for any step — e.g. PySCF run with no `.log`, SIESTA file
+  with no `scf:` lines), the top-level `scf_history` collapses to
+  `[]` rather than `[[], [], ...]`.  An empty per-step
+  `scf_history = []` (intentional, e.g. a molwatch preview block)
+  is preserved as `[]` in the output.
 
 ### `scf_history` schema
 

@@ -12,8 +12,9 @@ references a specific parser by name.
 from __future__ import annotations
 
 import os
-from typing import List, Type
+from typing import Any, Dict, List, Type
 
+from ..frame import Frame, Trajectory
 from .base import TrajectoryParser
 from .molwatch_log import MolwatchLogParser
 from .siesta import SiestaParser
@@ -133,10 +134,90 @@ def parser_summary() -> List[dict]:
     ]
 
 
+def trajectory_to_legacy_dict(traj: Trajectory) -> Dict[str, Any]:
+    """Adapter: build the molwatch v1 JSON dict from a Trajectory.
+
+    The watch web layer (``molbuilder/web/blueprints/watch.py``) calls
+    this to keep returning the same JSON shape the existing 3Dmol.js
+    client consumes.  Phase 3 will redesign the JSON to surface
+    Trajectory directly; this adapter goes away then.
+
+    Output shape:
+
+      {
+        "frames":      [ [[el, x, y, z], ...], ... ],
+        "energies":    [ float | null, ... ],
+        "max_forces":  [ float | null, ... ],
+        "forces":      [ [[fx, fy, fz], ...] | [], ... ],
+        "iterations":  [ int, ... ],
+        "lattice":     [[ax, ay, az], ...] | null,
+        "scf_history": [ [ {cycle, energy, delta_E, ...}, ... ], ... ],
+        "source_format": "siesta" | "pyscf" | "molwatch" | ...,
+      }
+
+    None / empty-list mapping (matches the legacy parsers' output):
+      Frame.forces      = None  ->  forces      = []
+      Frame.scf_history = None  ->  scf_history = []
+      Trajectory.lattice = None ->  lattice     = null
+      Frame.energy / max_force unset stays as None -> JSON null.
+    """
+    out_frames:     List[List[List[Any]]] = []
+    out_energies:   List[Any] = []
+    out_max_forces: List[Any] = []
+    out_forces:     List[List[List[float]]] = []
+    out_iterations: List[int] = []
+    out_scf:        List[List[Dict[str, Any]]] = []
+
+    for f in traj.frames:
+        atom_rows: List[List[Any]] = []
+        for el, pos in zip(f.structure.elements, f.structure.positions):
+            atom_rows.append([el, float(pos[0]), float(pos[1]), float(pos[2])])
+        out_frames.append(atom_rows)
+
+        out_energies.append(f.energy)
+        out_max_forces.append(f.max_force)
+        if f.forces is not None:
+            out_forces.append([[float(v) for v in row] for row in f.forces])
+        else:
+            out_forces.append([])
+        out_iterations.append(f.step_index)
+        out_scf.append(f.scf_history if f.scf_history is not None else [])
+
+    # Legacy shape quirk: when no parser tracks SCF data for ANY
+    # frame (PySCF .log absent, SIESTA had no `scf:` lines), the
+    # original parsers returned a top-level empty list -- not
+    # [[], [], ...].  We collapse to that shape only when EVERY
+    # frame's scf_history is None (the parser-says-no-scf-data
+    # signal); a frame with `scf_history=[]` is intentional (e.g. a
+    # molwatch preview block carries an empty SCF section) and
+    # stays as [] in the output.
+    if traj.frames and all(f.scf_history is None for f in traj.frames):
+        out_scf = []
+
+    if traj.lattice is not None:
+        lattice_out: Any = [list(row) for row in traj.lattice.tolist()]
+    else:
+        lattice_out = None
+
+    return {
+        "frames":        out_frames,
+        "lattice":       lattice_out,
+        "iterations":    out_iterations,
+        "energies":      out_energies,
+        "max_forces":    out_max_forces,
+        "forces":        out_forces,
+        "scf_history":   out_scf,
+        "source_format": traj.source_format,
+    }
+
+
 __all__ = [
     "PARSERS",
+    "Frame",
+    "Trajectory",
     "TrajectoryParser",
     "UnknownFormatError",
     "detect_parser",
     "parser_summary",
+    "trajectory_to_legacy_dict",
 ]

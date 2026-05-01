@@ -21,6 +21,7 @@ import pytest
 
 import molbuilder
 from molbuilder.molwatch_log import write_initial_preview
+from molbuilder.parsers import trajectory_to_legacy_dict
 from molbuilder.pyscf import PySCFConfig, render_script
 from molbuilder.siesta import SiestaConfig, convert
 from molbuilder.structure import Structure
@@ -235,7 +236,7 @@ def test_molwatch_can_parse_siesta_preview(tmp_path):
     p = tmp_path / "preview.molwatch.log"
     write_initial_preview(s, p, job="h2", engine="siesta")
     assert MolwatchLogParser.can_parse(str(p))
-    result = MolwatchLogParser.parse(str(p))
+    result = trajectory_to_legacy_dict(MolwatchLogParser.parse(str(p)))
     assert len(result["frames"]) == 1
     assert result["frames"][0] == [["H", 0.0, 0.0, 0.0],
                                    ["H", 0.74, 0.0, 0.0]]

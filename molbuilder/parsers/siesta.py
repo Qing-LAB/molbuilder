@@ -24,6 +24,10 @@ from __future__ import annotations
 import re
 from typing import Any, Dict, List, Optional
 
+import numpy as np
+
+from ..frame import Frame, Trajectory
+from ..structure import Structure
 from .base import TrajectoryParser
 
 
@@ -104,20 +108,17 @@ class SiestaParser(TrajectoryParser):
         return prefix_hits >= cls._PREFIX_THRESHOLD
 
     @classmethod
-    def parse(cls, path: str) -> Dict[str, Any]:
-        frames: List[List[List[Any]]] = []
-        energies: List[Optional[float]] = []
-        max_forces: List[Optional[float]] = []
-        forces_per_frame: List[List[List[float]]] = []
+    def parse(cls, path: str) -> Trajectory:
+        frames: List[Frame] = []
         lattice: Optional[List[List[float]]] = None
         pending_lattice: Optional[List[List[float]]] = None
 
-        # SCF iteration history.  One inner list per CG/MD step's SCF
-        # run; each entry a per-cycle dict matching the schema in
+        # SCF iteration history accumulator for the current step.  Each
+        # entry is a per-cycle dict matching the schema in
         # docs/spec/parsers.md.  SIESTA's column set differs from
         # PySCF (dHmax / dDmax instead of |g| / |ddm|); the UI picks
         # the right residual to plot based on which keys are present.
-        scf_history: List[List[Dict[str, float]]] = []
+        # Flushed onto Frame.scf_history at commit() time, then reset.
         current_scf: List[Dict[str, float]] = []
         prev_E_KS: Optional[float] = None
 
@@ -133,20 +134,39 @@ class SiestaParser(TrajectoryParser):
 
         def commit() -> None:
             nonlocal step_frame, step_energy, step_max_force, step_forces
+            nonlocal current_scf, prev_E_KS
             if not step_frame:
                 step_frame = None
                 step_energy = None
                 step_max_force = None
                 step_forces = []
+                # Don't reset current_scf here -- a torn frame at EOF
+                # has no Frame to attach to, but otherwise current_scf
+                # may legitimately belong to a NOT-YET-committed frame
+                # (SCF runs *before* outcoor in SIESTA's stream, so
+                # commit() bailing on an empty step_frame at the start
+                # of a run is normal).
                 return
-            frames.append(step_frame)
-            energies.append(step_energy)
-            max_forces.append(step_max_force)
-            forces_per_frame.append(step_forces)
+            elements  = [row[0] for row in step_frame]
+            positions = np.array([row[1:4] for row in step_frame],
+                                 dtype=float)
+            struct = Structure(elements=elements, positions=positions)
+            forces_arr = (np.asarray(step_forces, dtype=float)
+                          if step_forces else None)
+            frames.append(Frame(
+                structure   = struct,
+                step_index  = len(frames),
+                energy      = step_energy,
+                forces      = forces_arr,
+                max_force   = step_max_force,
+                scf_history = list(current_scf) if current_scf else None,
+            ))
             step_frame = None
             step_energy = None
             step_max_force = None
             step_forces = []
+            current_scf = []
+            prev_E_KS = None
 
         with open(path, "r", errors="replace") as fh:
             for raw in fh:
@@ -212,9 +232,17 @@ class SiestaParser(TrajectoryParser):
                     e_ks  = float(m_scf.group(3))
                     dDmax = float(m_scf.group(5))
                     dHmax = float(m_scf.group(7))
-                    if iscf == 1 and current_scf:
-                        scf_history.append(current_scf)
-                        current_scf = []
+                    # iscf==1 starts a new SCF run.  In the legacy
+                    # parallel-list parser, this was the cue to flush
+                    # the previous current_scf into a separate
+                    # scf_history list; in the Frame refactor the
+                    # previous step's SCF was already attached to its
+                    # Frame at commit() time (which happens between
+                    # SCF runs, when the outcoor block arrives), so
+                    # current_scf is already empty here.  We just
+                    # reset prev_E_KS so the new run's first delta_E
+                    # comes out as 0.0.
+                    if iscf == 1:
                         prev_E_KS = None
                     delta_E = (e_ks - prev_E_KS) if prev_E_KS is not None else 0.0
                     current_scf.append({
@@ -267,20 +295,16 @@ class SiestaParser(TrajectoryParser):
                         pass
                     continue
 
-        # End-of-file: drop torn frames, then flush.
+        # End-of-file: drop torn frames, then flush.  The SIESTA stream
+        # is "SCF -> outcoor -> SCF -> outcoor -> ...", so a torn
+        # outcoor at EOF means the current_scf belongs to a step we
+        # can't materialize -- drop it with the frame.
         if state == "in_coords":
             step_frame = None
         commit()
-        if current_scf:
-            scf_history.append(current_scf)
 
-        return {
-            "frames":        frames,
-            "lattice":       lattice,
-            "iterations":    list(range(len(frames))),
-            "energies":      energies,
-            "max_forces":    max_forces,
-            "forces":        forces_per_frame,
-            "scf_history":   scf_history,
-            "source_format": cls.name,
-        }
+        return Trajectory(
+            source_format = cls.name,
+            frames        = frames,
+            lattice       = lattice,
+        )
