@@ -72,6 +72,8 @@ A Flask web UI wraps the same core, plus a 3Dmol.js viewer.
 
 ## Spec index
 
+### Build side (sequence / SMILES / name → Structure → SIESTA / PySCF input)
+
 | spec | covers |
 | --- | --- |
 | [`structure.md`](structure.md)         | Structure dataclass, XYZ/PDB I/O, format detection |
@@ -79,8 +81,16 @@ A Flask web UI wraps the same core, plus a 3Dmol.js viewer.
 | [`builders.md`](builders.md)           | peptide / DNA / RNA / SMILES / name builders |
 | [`siesta-fdf.md`](siesta-fdf.md)       | SIESTA `.fdf` emitter |
 | [`pyscf-script.md`](pyscf-script.md)   | PySCF runnable-script emitter |
-| [`web-api.md`](web-api.md)             | Flask endpoints + UI contract |
+| [`web-api.md`](web-api.md)             | build-side Flask endpoints + UI contract |
 | [`cli.md`](cli.md)                     | command-line surface |
+
+### Watch side (trajectory file → live 3Dmol viewer + plots)
+
+| spec | covers |
+| --- | --- |
+| [`parsers.md`](parsers.md)             | `TrajectoryParser` plug-in interface; per-engine parser specifics; auto-detection contract; `.molwatch.log v1` format |
+| [`watch-api.md`](watch-api.md)         | watch-side Flask endpoints (`/watch`, `/api/watch/*`) |
+| [`watch-ui.md`](watch-ui.md)           | watch-side front-end behaviour (3Dmol viewer + Plotly plots + control panels) |
 
 ## Versioning
 

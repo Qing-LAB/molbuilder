@@ -1,11 +1,15 @@
-# Spec — front-end behaviour
+# Spec — Watch front-end behaviour
 
-**Modules**: `templates/index.html`, `static/viewer.js`,
-`static/style.css` &nbsp;·&nbsp; **Tests**: `tests/test_api_load.py`
+**Modules**: `molbuilder/web/templates/watch.html`,
+`molbuilder/web/static/watch/viewer.js`,
+`molbuilder/web/static/watch/style.css`
+&nbsp;·&nbsp; **Tests**: `tests/watch/test_api_load.py`
 (integration via `index_page_has_*` checks)
 
-The HTML page is a single-file dashboard.  No SPA framework, no
-build step — vanilla JS + 3Dmol.js + Plotly.
+Served at the `/watch` route by the unified molbuilder Flask app
+(see [`watch-api.md`](watch-api.md) for the route map).  The HTML
+page is a single-file dashboard.  No SPA framework, no build step —
+vanilla JS + 3Dmol.js + Plotly.
 
 ## Page layout
 
@@ -89,12 +93,12 @@ for clarity / publication-readiness.
 The Load button has two behaviours, branching on the path field's
 content:
 
-* **Path field has text**: POST `{path}` as JSON to `/api/load`.
+* **Path field has text**: POST `{path}` as JSON to `/api/watch/load`.
   Server reads from disk; the front-end starts a polling timer at
   15 s intervals.  This is the live-watching mode.
 * **Path field empty**: trigger the hidden `<input type="file">`.
   When the user picks a file, upload it as `multipart/form-data` to
-  `/api/load`.  The path field updates to `(uploaded) <filename>`
+  `/api/watch/load`.  The path field updates to `(uploaded) <filename>`
   for clarity.  Polling timer is **stopped** because uploaded files
   don't change on disk.
 
@@ -103,7 +107,7 @@ Pressing Enter in the path input triggers Load.
 ## Polling
 
 * Active polling timer interval: `POLL_MS` (default 15 000).
-* Each tick: `GET /api/data?mtime=<state.mtime>`.
+* Each tick: `GET /api/watch/data?mtime=<state.mtime>`.
 * Server-side: if mtime unchanged, returns `{changed: false}` and
   the front-end refreshes only the "Up to date — N frames" status
   text.
@@ -129,7 +133,7 @@ state = {
 }
 ```
 
-* On a successful `/api/load`, `state.data / mtime / format / label`
+* On a successful `/api/watch/load`, `state.data / mtime / format / label`
   are replaced atomically.  Stale FDF / PySCF outputs from a
   previous load are cleared.
 * `state.currentFrame` is preserved across refreshes when the user
@@ -156,5 +160,5 @@ The front-end must NOT:
    `https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js`.
 3. Continue polling after an upload — uploaded files don't change
    on disk, the timer would burn requests for nothing.
-4. Retry a failed `/api/load` automatically.  User clicks Load
+4. Retry a failed `/api/watch/load` automatically.  User clicks Load
    again to retry.
