@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .structure import Structure
+    from ..structure import Structure
 
 
 def write_initial_preview(

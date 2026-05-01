@@ -28,7 +28,7 @@ from .. import (
     build_peptide, build_rna,
 )
 from ..siesta import SiestaConfig, render_fdf
-from ..pyscf_input import PySCFConfig, render_script
+from ..pyscf import PySCFConfig, render_script
 from ..structure import Structure
 
 

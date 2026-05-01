@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from molbuilder.pyscf_input import PySCFConfig, render_script
+from molbuilder.pyscf import PySCFConfig, render_script
 from molbuilder.siesta import SiestaConfig, render_fdf
 from molbuilder.structure import Structure
 

@@ -14,12 +14,12 @@ import numpy as np
 import pytest
 
 import molbuilder
-from molbuilder.pyscf_input import (
+from molbuilder.pyscf import (
     PySCFConfig,
     render_script,
     convert,
-    _SOLVENTS,
 )
+from molbuilder.pyscf.input import _SOLVENTS
 from molbuilder.structure import Structure
 
 

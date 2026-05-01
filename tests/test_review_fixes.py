@@ -82,7 +82,7 @@ def test_s2_siesta_net_charge_overrides_auto_detect(deprotonated_diester):
 
 
 def test_s2_pyscf_charge_override():
-    from molbuilder.pyscf_input import PySCFConfig, render_script
+    from molbuilder.pyscf import PySCFConfig, render_script
     s = Structure(
         elements=["O", "H"],
         positions=np.array([[0,0,0],[0.957,0,0]]),

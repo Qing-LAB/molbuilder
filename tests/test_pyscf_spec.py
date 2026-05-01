@@ -19,7 +19,7 @@ import re
 import numpy as np
 import pytest
 
-from molbuilder.pyscf_input import PySCFConfig, render_script
+from molbuilder.pyscf import PySCFConfig, render_script
 from molbuilder.structure import Structure
 
 

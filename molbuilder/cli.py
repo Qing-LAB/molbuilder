@@ -319,7 +319,7 @@ def _add_pyscf_parser(sub) -> argparse.ArgumentParser:
 
 
 def _run_pyscf(args: argparse.Namespace) -> int:
-    from .pyscf_input import PySCFConfig, convert
+    from .pyscf import PySCFConfig, convert
     disp = None if (args.dispersion or "").lower() in ("none", "") else args.dispersion
     cfg = PySCFConfig(
         job_name      = args.job_name,
