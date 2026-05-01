@@ -1,9 +1,14 @@
 # molbuilder — design specification
 
-This directory is the contract for what molbuilder must do.  Every
+This directory is the *test contract* for what molbuilder must do.  Every
 feature has a focused spec file; every claim a spec makes must be
 testable, and the test must reference the spec rather than the
 implementation it tests.
+
+For project-level design (mission, architecture, principles, merge plan,
+roadmap, scientific gap list, decisions log), see
+[`../design.md`](../design.md).  This directory is the lower, per-component
+layer of documentation; `design.md` sits above it.
 
 ## Why this exists
 

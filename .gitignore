@@ -45,3 +45,16 @@ htmlcov/
 
 # But keep example fixtures if any are ever committed under tests/data/
 !tests/data/**
+
+# 3DNA archive / extracted tree if a user drops it next to the package
+# during local install.  3DNA is distributed under a non-commercial-use
+# license and must be downloaded directly from x3dna.org by the user
+# (registration + license acceptance required).  These patterns are here
+# both for dev hygiene and as a structural guard against accidentally
+# committing the archive into the molbuilder repo, which would drag the
+# molbuilder release under 3DNA's restricted terms.  See
+# docs/design.md § "3DNA (canonical helix builder)".
+x3dna-*.tar.gz
+x3dna-*.zip
+x3dna-v*/
+
