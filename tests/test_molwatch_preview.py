@@ -20,8 +20,8 @@ import numpy as np
 import pytest
 
 import molbuilder
-from molbuilder._molwatch_log import write_initial_preview
-from molbuilder.pyscf_input import PySCFConfig, render_script
+from molbuilder.molwatch_log import write_initial_preview
+from molbuilder.pyscf import PySCFConfig, render_script
 from molbuilder.siesta import SiestaConfig, convert
 from molbuilder.structure import Structure
 

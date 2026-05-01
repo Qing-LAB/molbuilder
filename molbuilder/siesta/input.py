@@ -32,7 +32,7 @@ except ImportError as exc:  # pragma: no cover
         "molbuilder.siesta needs ASE; install with `pip install ase`"
     ) from exc
 
-from .structure import Structure
+from ..structure import Structure
 
 
 # --------------------------------------------------------------------- #
@@ -323,7 +323,7 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         auto_charge = int(cfg.net_charge)
         charge_source = "user-specified"
     else:
-        from .chemistry import formal_charge_from_phosphates
+        from ..chemistry import formal_charge_from_phosphates
         auto_charge = formal_charge_from_phosphates(struct)
         charge_source = "auto (phosphate protonation)"
 
@@ -876,7 +876,7 @@ def convert(
     # static (one preview block, no live updates); for live updates while
     # SIESTA is running, point molwatch at the .out file instead.
     if cfg.write_molwatch_log:
-        from ._molwatch_log import write_initial_preview
+        from ..molwatch_log import write_initial_preview
         mw_path = fdf_p.with_suffix(".molwatch.log")
         write_initial_preview(
             struct,

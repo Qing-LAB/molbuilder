@@ -28,7 +28,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-from .structure import Structure
+from ..structure import Structure
 
 
 # --------------------------------------------------------------------- #
@@ -164,7 +164,7 @@ def _resolve_charge(struct: Structure, cfg: PySCFConfig) -> int:
     """
     if cfg.charge is not None:
         return int(cfg.charge)
-    from .chemistry import formal_charge_from_phosphates
+    from ..chemistry import formal_charge_from_phosphates
     return formal_charge_from_phosphates(struct)
 
 
