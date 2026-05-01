@@ -225,9 +225,7 @@ def test_molwatch_can_parse_siesta_preview(tmp_path):
     molwatch's MolwatchLogParser, exposing the initial geometry as
     frame 0 with null energy and empty forces.  This is the cross-repo
     contract: molbuilder writes, molwatch reads."""
-    pytest.importorskip("parsers.molwatch_log",
-                        reason="molwatch package not on PYTHONPATH")
-    from parsers.molwatch_log import MolwatchLogParser  # type: ignore
+    from molbuilder.parsers.molwatch_log import MolwatchLogParser
 
     s = Structure(
         elements=["H", "H"],

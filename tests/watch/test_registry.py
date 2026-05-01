@@ -8,14 +8,14 @@ from __future__ import annotations
 
 import pytest
 
-from parsers import (
+from molbuilder.parsers import (
     PARSERS,
     UnknownFormatError,
     detect_parser,
     parser_summary,
 )
-from parsers.siesta import SiestaParser
-from parsers.pyscf  import PySCFParser
+from molbuilder.parsers.siesta import SiestaParser
+from molbuilder.parsers.pyscf  import PySCFParser
 
 
 _SIESTA_HEAD = (
