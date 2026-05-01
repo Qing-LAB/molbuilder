@@ -14,8 +14,8 @@ from typing import Any, Dict
 
 import pytest
 
-import app as app_module
-from parsers.base import TrajectoryParser
+from molbuilder.web.blueprints import watch as app_module
+from molbuilder.parsers.base import TrajectoryParser
 
 
 # ----------------------------------------------------------------- #

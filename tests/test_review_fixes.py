@@ -169,9 +169,17 @@ def test_t3_protonate_noop_on_peptide():
 
 
 def test_s6_web_app_caps_upload_size(web_client):
+    """The unified Flask app caps uploads at 50 MB.
+
+    Pre-merge the build app capped at 10 MB and the watch app at 50 MB.
+    Flask's MAX_CONTENT_LENGTH is a single global setting, so the merged
+    app uses the larger of the two so /api/watch/load can accept
+    realistic SIESTA / PySCF logs.  The /api/load endpoint still
+    rejects oversize uploads -- just at the 50 MB threshold now.
+    """
     app_cfg = web_client.application.config
-    assert app_cfg.get("MAX_CONTENT_LENGTH") == 10 * 1024 * 1024
-    big = "x" * (11 * 1024 * 1024)   # 11 MB > 10 MB cap
+    assert app_cfg.get("MAX_CONTENT_LENGTH") == 50 * 1024 * 1024
+    big = "x" * (51 * 1024 * 1024)   # 51 MB > 50 MB cap
     r = web_client.post("/api/load",
                         json={"text": big, "filename": "big.xyz"})
     assert r.status_code == 413

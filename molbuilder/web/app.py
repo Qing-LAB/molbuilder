@@ -32,9 +32,11 @@ from ..pyscf import PySCFConfig, render_script
 from ..structure import Structure
 
 
-# Cap multipart-upload size for /api/load.  10 MB is plenty for any
-# realistic chemistry-sized PDB (10k atoms ~= 1 MB at 80 bytes/line).
-_MAX_UPLOAD_MB = 10
+# Cap multipart-upload size for /api/load.  Build side only needs ~10 MB
+# (a 10k-atom PDB is ~1 MB at 80 bytes/line); the watch side accepts
+# trajectory log uploads up to 50 MB.  Flask's MAX_CONTENT_LENGTH is a
+# single global cap on the app, so we use the larger of the two.
+_MAX_UPLOAD_MB = 50
 
 
 # Handle re-export differences between flask versions for ASGI/WSGI users.
@@ -51,6 +53,13 @@ def create_app() -> Flask:
     app = Flask(__name__)
     app.config["JSON_SORT_KEYS"] = False
     app.config["MAX_CONTENT_LENGTH"] = _MAX_UPLOAD_MB * 1024 * 1024
+
+    # Watch routes live on a Blueprint so the watch and build halves of
+    # the merged UI share one Flask instance.  See
+    # web/blueprints/watch.py for the full route map (/watch page +
+    # /api/watch/{formats,load,data}).
+    from .blueprints.watch import bp as watch_bp
+    app.register_blueprint(watch_bp)
 
     @app.route("/")
     def index():

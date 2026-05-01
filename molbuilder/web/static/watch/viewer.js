@@ -522,8 +522,8 @@
     async function pollOnce() {
         try {
             const url = state.mtime !== null
-                ? "/api/data?mtime=" + encodeURIComponent(state.mtime)
-                : "/api/data";
+                ? "/api/watch/data?mtime=" + encodeURIComponent(state.mtime)
+                : "/api/watch/data";
             const r = await fetch(url).then(x => x.json());
             if (!r.ok) {
                 setStatus(r.error || "Server error.", "error");
@@ -643,7 +643,7 @@
         const fd = new FormData();
         fd.append("file", file);
         try {
-            const r = await fetch("/api/load", { method: "POST", body: fd })
+            const r = await fetch("/api/watch/load", { method: "POST", body: fd })
                             .then(x => x.json());
             if (!r.ok) {
                 setStatus(r.error || "Upload failed.", "error");
@@ -678,7 +678,7 @@
         pause();
         setStatus("Loading\u2026", "");
         try {
-            const r = await fetch("/api/load", {
+            const r = await fetch("/api/watch/load", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ path: path }),
