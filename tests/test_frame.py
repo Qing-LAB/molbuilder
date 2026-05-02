@@ -111,6 +111,100 @@ def test_siesta_trajectory_lattice(tmp_path):
     assert all(f.lattice is None for f in traj.frames)
 
 
+# --------------------------------------------------------------------- #
+#  Frame.scf_history: None vs []                                         #
+#                                                                        #
+#  Phase 2 introduced a deliberate distinction:                          #
+#    None  = the parser tracks no SCF data for this run at all           #
+#            (e.g. PySCF .log absent, SIESTA file with no scf: lines).   #
+#    []    = the parser DID track scf data for this step but there      #
+#            were no cycles to record (e.g. a molwatch initial-state     #
+#            preview block, which by spec carries an empty SCF section). #
+#                                                                        #
+#  trajectory_to_legacy_dict at the web boundary collapses an "all       #
+#  None" trajectory back to a top-level [], preserving the legacy JSON   #
+#  shape that the JS client uses to decide whether to hide the SCF       #
+#  panel.  These tests pin both sides of the contract.                   #
+# --------------------------------------------------------------------- #
+
+
+_PREVIEW_LOG = """\
+# molwatch trajectory log v1
+# engine: siesta
+# job: h2
+
+==== molwatch step 0 begin ====
+step_index: 0
+n_atoms: 1
+kind: initial_preview
+coordinates (Ang):
+   H      0.00000000      0.00000000      0.00000000
+energy (eV): None
+forces (eV/Ang):
+   H      0.00000000      0.00000000      0.00000000
+max_force (eV/Ang): None
+scf_history begin
+scf_history end
+==== molwatch step 0 end ====
+"""
+
+
+def test_molwatch_preview_block_has_empty_scf_not_none(tmp_path):
+    """A preview block carries an scf_history section that is
+    intentionally empty.  The molwatch parser must record `[]`, not
+    `None` -- the file IS tracking SCF data; it just has no cycles
+    yet."""
+    p = tmp_path / "preview.molwatch.log"
+    p.write_text(_PREVIEW_LOG)
+    traj = MolwatchLogParser.parse(str(p))
+    assert len(traj) == 1
+    assert traj[0].scf_history == []          # intentional empty
+    assert traj[0].scf_history is not None    # not the None signal
+
+
+def test_pyscf_no_log_yields_scf_history_none(tmp_path):
+    """A PySCF trajectory with no companion .log should mark every
+    Frame's scf_history as None -- the parser has no SCF data
+    source, not "scf data with no cycles"."""
+    from molbuilder.parsers.pyscf import PySCFParser
+    sample = (
+        "1\nIteration 0 Energy   -0.5\nH 0.0 0.0 0.0\n"
+        "1\nIteration 1 Energy   -0.6\nH 0.01 0.0 0.0\n"
+    )
+    p = tmp_path / "no_log_geom_optim.xyz"
+    p.write_text(sample)
+    traj = PySCFParser.parse(str(p))
+    assert all(f.scf_history is None for f in traj.frames)
+
+
+def test_legacy_adapter_collapses_all_none_to_top_level_empty(tmp_path):
+    """When every Frame's scf_history is None, trajectory_to_legacy_dict
+    collapses the per-frame [[], [], ...] to a top-level [] -- the
+    legacy JS client uses this signal to hide the SCF panel."""
+    from molbuilder.parsers import trajectory_to_legacy_dict
+    from molbuilder.parsers.pyscf import PySCFParser
+    sample = (
+        "1\nIteration 0 Energy   -0.5\nH 0.0 0.0 0.0\n"
+        "1\nIteration 1 Energy   -0.6\nH 0.01 0.0 0.0\n"
+    )
+    p = tmp_path / "no_log_geom_optim.xyz"
+    p.write_text(sample)
+    legacy = trajectory_to_legacy_dict(PySCFParser.parse(str(p)))
+    assert legacy["scf_history"] == []        # collapsed
+    assert legacy["frames"] != []             # frames still present
+
+
+def test_legacy_adapter_keeps_per_frame_empty_lists(tmp_path):
+    """Contrast: when frames legitimately carry empty scf_history (the
+    preview block case), the adapter does NOT collapse -- per-frame
+    `[]` entries are preserved."""
+    from molbuilder.parsers import trajectory_to_legacy_dict
+    p = tmp_path / "preview.molwatch.log"
+    p.write_text(_PREVIEW_LOG)
+    legacy = trajectory_to_legacy_dict(MolwatchLogParser.parse(str(p)))
+    assert legacy["scf_history"] == [[]]      # preserved, NOT collapsed
+
+
 def test_frame_post_init_coerces_list_inputs():
     """Frame accepts forces / lattice as plain lists; __post_init__
     upgrades them to ndarrays so downstream code sees consistent

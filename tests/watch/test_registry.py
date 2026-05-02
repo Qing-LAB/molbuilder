@@ -14,6 +14,7 @@ from molbuilder.parsers import (
     detect_parser,
     parser_summary,
 )
+from molbuilder.parsers.molwatch_log import MolwatchLogParser
 from molbuilder.parsers.siesta import SiestaParser
 from molbuilder.parsers.pyscf  import PySCFParser
 
@@ -124,3 +125,52 @@ def test_summary_shape():
     for entry in s:
         assert "name" in entry and "label" in entry
         assert "hint" in entry
+
+
+# --------------------------------------------------------------------- #
+#  Precedence on an ambiguous file                                       #
+#                                                                        #
+#  The dispatch order in PARSERS exists for a reason: a file that       #
+#  satisfies more than one parser's can_parse should be claimed by the  #
+#  most-specific one.  We test the property (molwatch unified-log wins  #
+#  when the unambiguous header is present) rather than the              #
+#  implementation ("first in list").  If the registration order changes #
+#  but the property holds, the test still passes.                       #
+# --------------------------------------------------------------------- #
+
+
+def test_precedence_molwatch_log_wins_over_siesta(tmp_path):
+    """A .molwatch.log file emitted by molbuilder for a SIESTA run
+    contains the unambiguous `# molwatch trajectory log` header -- but
+    its `# engine: siesta` line could also match SIESTA detection
+    heuristics in a borderline case.  The molwatch parser MUST claim
+    the file regardless of dispatch order.
+    """
+    sample = (
+        "# molwatch trajectory log v1\n"
+        "# engine: siesta\n"
+        # Lines that could also nudge the SIESTA detector if it ran first:
+        "# generator: molbuilder/pyscf_input\n"
+        "siesta: System type\n"
+        "siesta: Atomic forces\n"
+        "siesta: System type\n"
+        "redata: blah\n"
+        "redata: more\n"
+        "\n"
+        "==== molwatch step 0 begin ====\n"
+        "step_index: 0\n"
+        "n_atoms: 1\n"
+        "coordinates (Ang):\n"
+        "   H      0.00000000      0.00000000      0.00000000\n"
+        "energy (eV): -1.0\n"
+        "max_force (eV/Ang): None\n"
+        "scf_history begin\n"
+        "scf_history end\n"
+        "==== molwatch step 0 end ====\n"
+    )
+    p = tmp_path / "siesta.molwatch.log"
+    p.write_text(sample)
+    # Both parsers happen to accept this file; molwatch wins because the
+    # unified-log header is the most-specific match.
+    assert MolwatchLogParser.can_parse(str(p)) is True
+    assert detect_parser(str(p)) is MolwatchLogParser
