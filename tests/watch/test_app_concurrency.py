@@ -121,10 +121,19 @@ def test_concurrent_polls_dont_serialize_on_parse(tmp_path):
     primed_state, _ = app_module._refresh_if_changed()
     assert primed_state is not None
 
-    # Now bump mtime by touching the file -> the next call will reparse.
+    # Now force the next call to reparse.  Naively rewriting the file
+    # to bump its mtime is filesystem-resolution-dependent (ext4 with
+    # relatime, some NFS configs, and Windows FAT all snap mtime to
+    # whole-second boundaries) -- two writes inside the same second
+    # leave mtime unchanged, the refresh hits the cheap path, and
+    # SlowParser.parse never runs.  Resetting the cached mtime to
+    # None forces _refresh_if_changed down the parse path
+    # unconditionally (None != any float), independent of FS quirks.
     SlowParser.release.clear()
     SlowParser.parse_started.clear()
     file_a.write_text("Welcome to SIESTA -- A (modified)\n")
+    with app_module._lock:
+        app_module._state["mtime"] = None
 
     timings = {}
 
