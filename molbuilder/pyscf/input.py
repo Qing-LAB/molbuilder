@@ -24,7 +24,7 @@ module instead of the actual PySCF library).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
@@ -90,11 +90,29 @@ class PySCFConfig:
     solvent_method: str = "IEF-PCM"     # "IEF-PCM" / "C-PCM" / "COSMO"
 
     # ---------------- SCF ----------------
-    scf_conv_tol: float = 1e-9          # Hartree
-    scf_max_cycle: int = 100
+    scf_conv_tol: float = field(default=1e-9, metadata={
+        "label": "scf.conv_tol", "unit": "Hartree",
+        "range": (1e-12, 1e-4),
+        "tier":  "advanced",
+    })
+    scf_max_cycle: int = field(default=100, metadata={
+        "label": "scf.max_cycle",
+        "range": (10, 1000),
+        "tier":  "advanced",
+    })
     scf_init_guess: str = "minao"       # "minao" / "atom" / "1e" / "huckel"
-    grid_level: int = 3                 # DFT integration grid (0-9; 3=default)
-    level_shift: float = 0.0            # Hartree; 0.1-0.3 helps for hard SCF
+    grid_level: int = field(default=3, metadata={
+        "label": "DFT grid level",
+        "range": (0, 9),
+        "tier":  "advanced",
+        "help":  "0=coarse (rapid testing), 3=default, 5=tight, 9=ultra",
+    })
+    level_shift: float = field(default=0.0, metadata={
+        "label": "Level shift", "unit": "Hartree",
+        "range": (0.0, 1.0),
+        "tier":  "advanced",
+        "help":  "0.1-0.3 helps hard SCFs; 0 if SCF converges cleanly",
+    })
 
     # ---------------- Pre-optimization (optional warm-up) ----------------
     preopt: bool = False
@@ -108,7 +126,11 @@ class PySCFConfig:
     # ---------------- Main optimization ----------------
     optimize: bool = True
     optimizer: str = "geometric"        # "geometric" or "berny"
-    geom_max_steps: int = 200
+    geom_max_steps: int = field(default=200, metadata={
+        "label": "geom max steps",
+        "range": (1, 10000),
+        "tier":  "advanced",
+    })
     geom_conv_energy: float = 1.0e-6    # Hartree
     geom_conv_grms: float = 3.0e-4      # Ha/Bohr
     geom_conv_gmax: float = 4.5e-4      # Ha/Bohr
@@ -128,9 +150,18 @@ class PySCFConfig:
                                         # this is purely an additional file.
 
     # ---------------- Runtime ----------------
-    max_memory_mb: int = 4000           # passed to gto.M(max_memory=)
+    max_memory_mb: int = field(default=4000, metadata={
+        "label": "max_memory", "unit": "MB",
+        "range": (100, 1_000_000),
+        "tier":  "advanced",
+    })
     threads: Optional[int] = None       # None -> inherit OMP_NUM_THREADS
-    verbose: int = 4                    # 0 silent, 4 info, 5 debug
+    verbose: int = field(default=4, metadata={
+        "label": "PySCF verbose",
+        "range": (0, 9),
+        "tier":  "advanced",
+        "help":  "0 silent, 4 info, 5 debug",
+    })
 
     # ---------------- Comments ----------------
     verbose_comments: bool = True       # inline tuning hints + troubleshooting
@@ -198,6 +229,15 @@ def render_script(struct: Structure,
     is_dft = method_class.endswith("KS")
     label = cfg.job_name
     v = cfg.verbose_comments
+
+    # ---------- pre-emission validation (Phase 2.6) ----------
+    # PySCF doesn't have a meaningful cell here (the script builds a
+    # gas-phase or PCM-solvent molecule), so we skip the cell-side
+    # checks and run only the structure / config-side validators.
+    # Warnings print to stderr; errors raise ValidationError before
+    # any script text is emitted.
+    from ..validation import validate, report
+    report(validate(struct, cfg))
 
     out: List[str] = []
     # ------------------------------------------------------------- header

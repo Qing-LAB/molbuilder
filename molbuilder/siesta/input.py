@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import shutil
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, List, Optional, Sequence, Tuple
 
@@ -70,24 +70,64 @@ class SiestaConfig:
     system_label: str = "siesta"
 
     # Cell handling for non-periodic XYZ files
-    cell_padding: float = 15.0
+    cell_padding: float = field(default=15.0, metadata={
+        "label": "Cell padding", "unit": "Å",
+        "range": (5.0, 50.0),
+        "tier":  "basic",
+        "help":  "vacuum padding around the molecule on each face of the auto-cell",
+    })
 
     # Basis
     basis_size: str = "DZP"
-    pao_energy_shift: float = 0.02       # Ry, controls PAO diffuseness
+    pao_energy_shift: float = field(default=0.02, metadata={
+        "label": "PAO.EnergyShift", "unit": "Ry",
+        "range": (0.001, 0.1),
+        "tier":  "advanced",
+        "help":  "smaller = more diffuse / more accurate; production work uses 0.005-0.01",
+    })
 
     # XC
     xc_functional: str = "GGA"
     xc_authors: str = "PBE"
 
     # SCF
-    mesh_cutoff: float = 300.0           # Ry
-    mixing_weight: float = 0.02          # SIESTA tutorial default for relax
-    pulay_history: int = 3
-    dm_tolerance: float = 1e-5
-    dm_energy_tolerance: float = 1e-4    # eV, redundant SCF guard
-    max_scf_iter: int = 500
-    electronic_temperature: float = 300.0  # K
+    mesh_cutoff: float = field(default=300.0, metadata={
+        "label": "MeshCutoff", "unit": "Ry",
+        "range": (50.0, 1000.0),
+        "tier":  "basic",
+        "help":  "real-space integration grid; 200-300 typical, 400+ for tight basis",
+    })
+    mixing_weight: float = field(default=0.02, metadata={
+        "label": "DM.MixingWeight",
+        "range": (0.001, 0.5),
+        "tier":  "advanced",
+        "help":  "smaller = more conservative SCF; lower if oscillating",
+    })
+    pulay_history: int = field(default=3, metadata={
+        "label": "DM.NumberPulay",
+        "range": (0, 20),
+        "tier":  "advanced",
+    })
+    dm_tolerance: float = field(default=1e-5, metadata={
+        "label": "DM.Tolerance",
+        "range": (1e-8, 1e-3),
+        "tier":  "advanced",
+    })
+    dm_energy_tolerance: float = field(default=1e-4, metadata={
+        "label": "DM.Energy.Tolerance", "unit": "eV",
+        "range": (1e-8, 1e-1),
+        "tier":  "advanced",
+    })
+    max_scf_iter: int = field(default=500, metadata={
+        "label": "MaxSCFIterations",
+        "range": (10, 5000),
+        "tier":  "advanced",
+    })
+    electronic_temperature: float = field(default=300.0, metadata={
+        "label": "ElectronicTemperature", "unit": "K",
+        "range": (0.0, 5000.0),
+        "tier":  "advanced",
+    })
     solution_method: str = "diagon"      # default; OMM for very large systems
 
     # k-grid
@@ -95,9 +135,21 @@ class SiestaConfig:
 
     # Relaxation; relax_type="none" disables the MD block entirely
     relax_type: str = "CG"
-    relax_steps: int = 200
-    relax_force_tol: float = 0.02        # eV / Ang
-    relax_max_displ: float = 0.05        # Ang
+    relax_steps: int = field(default=200, metadata={
+        "label": "MD.Steps",
+        "range": (1, 10000),
+        "tier":  "advanced",
+    })
+    relax_force_tol: float = field(default=0.02, metadata={
+        "label": "MD.MaxForceTol", "unit": "eV/Å",
+        "range": (0.001, 0.5),
+        "tier":  "advanced",
+    })
+    relax_max_displ: float = field(default=0.05, metadata={
+        "label": "MD.MaxCGDispl", "unit": "Å",
+        "range": (0.001, 0.5),
+        "tier":  "advanced",
+    })
 
     # SCF / MD continuation flags (free insurance for restartable jobs)
     use_save_dm: bool = True
@@ -403,6 +455,23 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             )
         else:
             cell_note = "# (using user-supplied lattice; wrap_into_cell=False)"
+
+    # ---------- pre-emission validation (Phase 2.6) ----------
+    # By now `cell` and `positions` are final; run the validation pass
+    # before any FDF text is generated so error-severity issues block
+    # emission cleanly.  Warnings print to stderr but the run proceeds.
+    # See molbuilder.validation and docs/design.md for the check list.
+    from ..validation import validate, report
+    validation_struct = Structure(
+        elements      = list(struct.elements),
+        positions     = positions,
+        atom_names    = list(struct.atom_names),
+        residue_ids   = list(struct.residue_ids),
+        residue_names = list(struct.residue_names),
+        chain_ids     = list(struct.chain_ids),
+        title         = struct.title,
+    )
+    report(validate(validation_struct, cfg, cell=cell))
 
     out: List[str] = []
 
