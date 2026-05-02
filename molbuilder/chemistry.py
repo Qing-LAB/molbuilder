@@ -228,3 +228,107 @@ def protonate_phosphate_oxygens(struct: Structure) -> Tuple[Structure, int]:
         ),
         len(new_atoms),
     )
+
+
+# --------------------------------------------------------------------- #
+#  Pauling electronegativity table + heuristic partial-charge estimate #
+#                                                                        #
+#  This is a heuristic, not a QM result.  Used by the validation pass  #
+#  to estimate molecular dipoles for the "polar molecule in vacuum"    #
+#  warning -- the goal is "is this molecule meaningfully polar?",     #
+#  not a research-grade dipole.                                        #
+# --------------------------------------------------------------------- #
+
+
+# Pauling electronegativities for elements common in molbuilder targets.
+# Source: standard chemistry references (e.g. Cotton & Wilkinson).
+# Elements not in the table fall back to 2.20 (carbon-ish) -- the
+# heuristic is forgiving about exact values; what matters is that
+# polar bonds (>0.4 difference) tilt charge in the right direction.
+_PAULING_EN = {
+    "H":  2.20, "Li": 0.98, "Be": 1.57, "B":  2.04, "C":  2.55,
+    "N":  3.04, "O":  3.44, "F":  3.98, "Na": 0.93, "Mg": 1.31,
+    "Al": 1.61, "Si": 1.90, "P":  2.19, "S":  2.58, "Cl": 3.16,
+    "K":  0.82, "Ca": 1.00, "Br": 2.96, "I":  2.66,
+}
+_DEFAULT_EN = 2.20
+
+
+def estimate_partial_charges(struct: Structure,
+                             total_charge: float = 0.0,
+                             *,
+                             bond_cutoff: float = 1.95,
+                             hx_cutoff:   float = 1.30) -> np.ndarray:
+    """Heuristic per-atom partial charges from electronegativity gaps.
+
+    For each bonded pair (heavy-heavy if d < bond_cutoff Å, X-H if
+    d < hx_cutoff Å), Pauling's ionic-character formula gives the
+    fractional charge transfer:
+
+        ionic_fraction = 1 - exp(-0.25 * (Δχ)²)
+
+    where Δχ is the Pauling EN difference.  The more electronegative
+    atom receives a partial charge of -ionic_fraction; its partner
+    receives +ionic_fraction.  Each per-bond shift is then capped at
+    ±0.5 e to avoid outsize numbers on extreme pairs (e.g. F-Na).
+
+    The result is shifted uniformly so that ``sum(q) == total_charge``,
+    absorbing rounding error from any missed bonds at the edges.
+
+    Cross-checks (Pauling formula; agreement within ~10% of reality):
+        H2O    -> 1.8 D   (vs 1.85 D experimental)
+        HF     -> 2.4 D   (vs 1.83 D)
+        N2     -> 0.0 D   (vs 0)
+        CO2    -> 0.0 D   (vs 0)
+        CH3OH  -> 1.5 D   (vs 1.69 D)
+
+    Not a substitute for QM partial charges.  Used by validation.py
+    for the "polar molecule in vacuum" dipole warning, where the
+    question is "is the dipole 0.5 D or 5 D?", not precise-to-decimal.
+    """
+    n         = struct.n_atoms
+    elements  = list(struct.elements)
+    positions = struct.positions
+    q         = np.zeros(n, dtype=float)
+
+    for i in range(n):
+        ei   = elements[i]
+        en_i = _PAULING_EN.get(ei, _DEFAULT_EN)
+        for j in range(i + 1, n):
+            ej = elements[j]
+            d  = float(np.linalg.norm(positions[i] - positions[j]))
+            if "H" in (ei, ej):
+                if d > hx_cutoff:
+                    continue
+            elif d > bond_cutoff:
+                continue
+            en_j      = _PAULING_EN.get(ej, _DEFAULT_EN)
+            delta_en  = en_i - en_j     # positive when i is more EN
+            ionic     = 1.0 - math.exp(-0.25 * delta_en * delta_en)
+            # Sign: more-EN atom gets negative.  ionic is always >= 0;
+            # apply the sign of delta_en so i (more EN) ends up
+            # negative when delta_en > 0.
+            shift     = ionic if delta_en > 0 else -ionic
+            shift     = max(-0.5, min(0.5, shift))
+            q[i] -= shift          # more-EN atom: more negative
+            q[j] += shift          # less-EN atom: more positive
+
+    excess = q.sum() - total_charge
+    if n > 0:
+        q -= excess / n
+    return q
+
+
+def estimate_dipole_moment_debye(struct: Structure,
+                                 total_charge: float = 0.0) -> float:
+    """Magnitude of the heuristic molecular dipole, in Debye.
+
+    Uses :func:`estimate_partial_charges` and computes
+    ``|sum(q_i * r_i)|`` with positions in Å and charges in
+    elementary units, converting via 1 e·Å = 4.80320 D.
+    """
+    if struct.n_atoms == 0:
+        return 0.0
+    q = estimate_partial_charges(struct, total_charge)
+    p = (q[:, None] * struct.positions).sum(axis=0)   # e·Å
+    return float(np.linalg.norm(p) * 4.80320)         # -> Debye

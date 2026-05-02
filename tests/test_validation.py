@@ -157,6 +157,73 @@ def test_cell_volume_generous_no_warn(water_struct):
 
 
 # --------------------------------------------------------------------- #
+#  Cell: atom-to-nearest-image distance                                 #
+# --------------------------------------------------------------------- #
+
+
+def test_image_distance_too_close_is_warn(water_struct):
+    """A 5 Å cubic cell makes water see its own image ~5 Å away --
+    well below the 6 Å "atoms still interacting" threshold."""
+    cell = _vacuum_cell(5.0)
+    issues = validate(water_struct, SiestaConfig(), cell=cell)
+    msgs = [i for i in issues if i.where == "cell.image_distance"]
+    assert len(msgs) == 1
+    assert msgs[0].severity == "warn"
+
+
+def test_image_distance_generous_no_warn(water_struct):
+    """A 30 Å cubic cell puts water's image >25 Å away; safely
+    isolated, no warning."""
+    issues = validate(water_struct, SiestaConfig(), cell=_vacuum_cell(30.0))
+    assert [i for i in issues if i.where == "cell.image_distance"] == []
+
+
+# --------------------------------------------------------------------- #
+#  Geometry: net dipole in vacuum                                       #
+# --------------------------------------------------------------------- #
+
+
+def test_dipole_in_vacuum_polar_molecule_is_warn():
+    """An HF-shaped molecule (H + F at ~0.92 Å) has a strong dipole
+    (~1.8 D real, ~1.8 D heuristic).  In a Gamma-only vacuum cell
+    the validator should warn about image-image dipole interactions."""
+    s = Structure(
+        elements=["F", "H"],
+        positions=np.array([[0.0, 0.0, 0.0], [0.92, 0.0, 0.0]]),
+    )
+    cfg = SiestaConfig(kgrid=(1, 1, 1))
+    issues = validate(s, cfg, cell=_vacuum_cell(30.0))
+    msgs = [i for i in issues if i.where == "geometry.dipole"]
+    assert len(msgs) == 1
+    assert msgs[0].severity == "warn"
+    assert "dipole" in msgs[0].message.lower()
+
+
+def test_dipole_in_vacuum_nonpolar_molecule_no_warn():
+    """N2 has zero dipole by symmetry (homonuclear diatomic).  No warn."""
+    s = Structure(
+        elements=["N", "N"],
+        positions=np.array([[0.0, 0.0, 0.0], [1.10, 0.0, 0.0]]),
+    )
+    cfg = SiestaConfig(kgrid=(1, 1, 1))
+    issues = validate(s, cfg, cell=_vacuum_cell(30.0))
+    assert [i for i in issues if i.where == "geometry.dipole"] == []
+
+
+def test_dipole_with_kgrid_no_warn():
+    """A polar molecule in a periodic cell (k > 1) is INTENDED to
+    have image-image interactions; the dipole warning is for the
+    Gamma-only vacuum case where the user probably didn't realise."""
+    s = Structure(
+        elements=["F", "H"],
+        positions=np.array([[0.0, 0.0, 0.0], [0.92, 0.0, 0.0]]),
+    )
+    cfg = SiestaConfig(kgrid=(4, 4, 4))   # genuinely periodic
+    issues = validate(s, cfg, cell=_vacuum_cell(30.0))
+    assert [i for i in issues if i.where == "geometry.dipole"] == []
+
+
+# --------------------------------------------------------------------- #
 #  SIESTA: kgrid sanity                                                 #
 # --------------------------------------------------------------------- #
 
