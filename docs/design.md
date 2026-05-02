@@ -161,6 +161,13 @@ the adapter goes away then.
 
 ### Domain verbs (L2)
 
+> **Module paths in this table reflect the post-2.7 target layout.**
+> Today (Phase 2.7 not yet started) the actual paths are
+> `molbuilder/peptide.py`, `molbuilder/nucleic.py`, `molbuilder/backends/`,
+> `molbuilder/siesta/input.py`, `molbuilder/pyscf/input.py`, and
+> `molbuilder/molwatch_log/format.py`.  The verbs themselves and their
+> consume/yield contracts are accurate now.
+
 | Verb | Module | Consumes | Yields |
 |---|---|---|---|
 | Build | `builders/peptide.py`, `builders/nucleic.py`, `builders/smiles.py`, `builders/pubchem.py` | sequence / SMILES / name + builder backend | `Structure` |
@@ -219,6 +226,13 @@ Pipe contract:
 - Status / progress / warnings always go to stderr.
 
 Web routes:
+
+> **Build-side namespacing under `/api/build/*` is the target shape;
+> today the build routes live at their pre-merge paths** (`/api/build`,
+> `/api/fdf`, `/api/load`, `/api/pyscf`, `/api/backends`, `/api/health`)
+> and the JS client consumes them as such.  The watch blueprint IS
+> mounted at `/api/watch/*` already.  Build-side namespacing waits
+> on the Phase 3 UI redesign so the JS client can move in one shot.
 
 ```
 GET  /                              # tabbed UI shell
@@ -578,6 +592,17 @@ These have been considered and rejected; do not reintroduce them.
 ---
 
 ## Post-merge package layout
+
+> **This is the post-2.7 target layout.**  Today (Phase 2.7 not yet
+> started) `config/`, `generators/`, `builders/`, and
+> `trajectory_log/` do **not** exist as their own subpackages.  The
+> configs still live at the head of `molbuilder/siesta/input.py` and
+> `molbuilder/pyscf/input.py`; backends live at `molbuilder/backends/`
+> (top-level, not under `builders/`); the trajectory-log writer is at
+> `molbuilder/molwatch_log/`.  Phase 2.7 is the layering-compliance
+> commit that moves them into the layout below; until then,
+> re-export shims keep external imports stable but the on-disk
+> shape is the pre-2.7 one.
 
 ```
 molbuilder/
