@@ -5,30 +5,36 @@ and returns a :class:`~molbuilder.structure.Structure`.
 
     Backend   | DNA  | RNA  | helix-shape   | install
     ----------+------+------+---------------+-----------------------------
-    rdkit     |  yes |  yes | folded        | already a dep
+    threedna  |  yes |  yes | canonical     | x3dna.org (license-gated;
+              |      |      | (B/A/Z/A-RNA) |  unpack tarball at repo root
+              |      |      |               |  OR set $X3DNA)
     amber     |  yes |  yes | extended      | conda ambertools  (tleap)
+    rdkit     |  yes |  yes | folded        | already a dep
 
-  * rdkit produces correct chemistry / connectivity but the embedded
-    conformer is whatever ETKDG decides -- not a helix.  Fine for
-    short oligos that DFT will fully optimise; bad for 10+ mers.
+  * threedna shells out to 3DNA's ``fiber`` for canonical helical
+    geometry -- the only backend that produces a true B/A/Z helix.
+    See ``_threedna.py`` for the detection chain (in-tree directory
+    -> $X3DNA env -> fiber on PATH).  3DNA is non-commercial-use
+    licensed and not pip/conda-installable; molbuilder does not
+    auto-fetch it.
   * amber drives AmberTools' ``tleap`` with a ``sequence { ... }``
     macro; output is chemically clean (Amber OL15 / OL3 force-field
     topology) in extended conformation.  AmberTools 23+ removed the
     original ``nab`` fiber builder; this is the closest in-AmberTools
     replacement.
-
-For canonical B-form / A-form 3-D coordinates -- the only thing
-neither backend provides -- install 3DNA externally and use its
-``fiber`` command.  A 3DNA backend isn't wired up yet but would slot
-in here as ``_threedna.py``.
+  * rdkit produces correct chemistry / connectivity but the embedded
+    conformer is whatever ETKDG decides -- not a helix.  Fine for
+    short oligos that DFT will fully optimise; bad for 10+ mers.
 
 (There used to be an in-house "fiber" chain-grow backend; it has been
 removed because it produced incorrect 5'-end chemistry and could not
-enforce the tetrahedral phosphate-bridge geometry.  Use ``rdkit`` or
-``amber`` instead.)
+enforce the tetrahedral phosphate-bridge geometry.  Use ``threedna``,
+``amber``, or ``rdkit`` instead.)
 
 ``BackendUnavailable`` is raised when the user picks a backend whose
-external dependency isn't installed (e.g. ``amber`` without ``tleap``).
+external dependency isn't installed (e.g. ``amber`` without ``tleap``,
+or ``threedna`` without an x3dna install reachable via the detection
+chain).
 """
 
 from __future__ import annotations
@@ -48,24 +54,38 @@ class BackendUnavailable(RuntimeError):
 def _load_backends() -> Dict[str, Callable]:
     """Lazy-load each backend module so a missing dep doesn't break
     the whole package."""
-    from . import _amber, _rdkit
+    from . import _amber, _rdkit, _threedna
     return {
-        "rdkit": _rdkit.build,
-        "amber": _amber.build,
+        "threedna": _threedna.build,
+        "amber":    _amber.build,
+        "rdkit":    _rdkit.build,
     }
 
 
 def available_backends() -> Dict[str, bool]:
     """Map of backend-name -> whether it's runnable on this machine.
 
-    'rdkit' is True if rdkit imports.
+    'threedna' is True if a 3DNA install is reachable via the
+        detection chain (in-tree directory -> $X3DNA env -> fiber
+        on PATH).
     'amber' is True if ``tleap`` is on PATH.
+    'rdkit' is True if rdkit imports.
     """
-    from . import _amber, _rdkit
+    from . import _amber, _rdkit, _threedna
     return {
-        "rdkit": _rdkit.is_available(),
-        "amber": _amber.is_available(),
+        "threedna": _threedna.is_available(),
+        "amber":    _amber.is_available(),
+        "rdkit":    _rdkit.is_available(),
     }
+
+
+# Auto-detect order: best geometry first.  3DNA produces canonical
+# helices, AmberTools an extended chain (correct chemistry, not a
+# helix), RDKit a folded conformer (correct chemistry, no helix
+# discipline at all).  When --backend auto is requested, dispatch
+# falls through this list cleanly: each missing backend is skipped,
+# the first available one runs, no error if at least one is present.
+_AUTO_ORDER = ["threedna", "amber", "rdkit"]
 
 
 def dispatch(kind: str, sequence: str, *,
@@ -77,18 +97,17 @@ def dispatch(kind: str, sequence: str, *,
     backends = _load_backends()
 
     if backend == "auto":
-        # Prefer the AmberTools backend (correct chemistry + extended
-        # geometry); fall back to RDKit (folded conformer, still valid
-        # chemistry) if AmberTools isn't installed.
-        order = ["amber", "rdkit"]
         avail = available_backends()
-        for name in order:
+        for name in _AUTO_ORDER:
             if avail.get(name):
                 return backends[name](kind, sequence, form, terminal, title)
         raise BackendUnavailable(
             "No nucleic-acid backend available.  Either:\n"
-            "  - `pip install rdkit`  (chemistry-only, folded conformer),\n"
-            "  - `conda install -c conda-forge ambertools`  (extended chain)."
+            "  - install 3DNA (best geometry; download from http://x3dna.org/\n"
+            "    after accepting the non-commercial license, then unpack\n"
+            "    at the repo root or set $X3DNA),\n"
+            "  - `conda install -c conda-forge ambertools`  (extended chain),\n"
+            "  - `pip install rdkit`  (folded conformer, chemistry-only)."
         )
 
     if backend not in backends:
