@@ -195,7 +195,9 @@ def _protonate_openbabel(struct: Structure, ob) -> Structure:
     obconv.ReadString(mol, struct.to_pdb())
     mol.AddHydrogens()
     out = obconv.WriteString(mol)
-    return _structure_from_pdb_string(out, title=struct.title)
+    return _drop_overlapping_hydrogens(
+        _structure_from_pdb_string(out, title=struct.title)
+    )
 
 
 def _protonate_rdkit(struct: Structure, Chem, AllChem) -> Structure:
@@ -211,7 +213,50 @@ def _protonate_rdkit(struct: Structure, Chem, AllChem) -> Structure:
         return struct
     mol = Chem.AddHs(mol, addCoords=True)
     pdb_out = Chem.MolToPDBBlock(mol)
-    return _structure_from_pdb_string(pdb_out, title=struct.title)
+    return _drop_overlapping_hydrogens(
+        _structure_from_pdb_string(pdb_out, title=struct.title)
+    )
+
+
+def _drop_overlapping_hydrogens(struct: Structure) -> Structure:
+    """Remove H atoms that overlap (< 0.05 Å) with any other atom.
+
+    Both protonation paths (OpenBabel's AddHydrogens and RDKit's
+    AddHs(addCoords=True)) occasionally fail to compute positions for
+    ambiguous-valence Hs (most often the N-terminal -NH3+ extras and
+    the second backbone-amine H of a free N-terminus); the H ends up
+    at the same coordinates as its anchor heavy atom or another
+    template atom.  These Hs are guaranteed broken (no real H sits
+    < 0.05 Å from another atom) and a downstream validator flags them
+    as zero-distance pairs that abort the run.  Drop them at the
+    source so the caller gets a clean structure.
+
+    Heavy atoms are never removed.
+    """
+    pos      = struct.positions
+    elements = struct.elements
+    n        = len(pos)
+    keep     = np.ones(n, dtype=bool)
+    for i in range(n):
+        if elements[i] != "H":
+            continue
+        for j in range(n):
+            if i == j:
+                continue
+            if float(np.linalg.norm(pos[i] - pos[j])) < 0.05:
+                keep[i] = False
+                break
+    if keep.all():
+        return struct
+    return Structure(
+        elements      = [e for k, e in zip(keep, elements)             if k],
+        positions     = pos[keep],
+        atom_names    = [a for k, a in zip(keep, struct.atom_names)    if k],
+        residue_ids   = [r for k, r in zip(keep, struct.residue_ids)   if k],
+        residue_names = [n for k, n in zip(keep, struct.residue_names) if k],
+        chain_ids     = [c for k, c in zip(keep, struct.chain_ids)     if k],
+        title         = struct.title,
+    )
 
 
 def _structure_from_pdb_string(pdb: str, *, title: str) -> Structure:
