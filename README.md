@@ -37,10 +37,14 @@ computing properties.
 ## Browser UI
 
 ```bash
-molbuilder serve --port 8000
+molbuilder serve --port 8000          # build page at /
+molbuilder watch serve --port 8000    # same app; watch page at /watch
 ```
 
-Then open `http://127.0.0.1:8000`:
+Both subcommands start the same Flask server.  The unified UI has
+two halves:
+
+**Build** at `http://127.0.0.1:8000/`
 
 1.  Pick an input type (peptide / DNA / RNA / SMILES / name) and type a sequence.
 2.  Press *Build* — the structure renders in a 3Dmol.js viewer with style controls
@@ -49,6 +53,24 @@ Then open `http://127.0.0.1:8000`:
 3.  Optionally fill in the SIESTA parameter form (basis, mesh cutoff, XC, SCF, k-grid,
     relaxation), click *Generate .fdf*, see the FDF inline and download it.
 
+**Watch** at `http://127.0.0.1:8000/watch`
+
+Live trajectory viewer for SIESTA / PySCF runs that are still
+producing output.  Point it at the engine's output file (or upload
+a finished one) and the page renders:
+
+- the molecular geometry, frame-by-frame, in a 3Dmol viewer
+  (slider / play / pause / step controls);
+- total energy and max-force vs step (Plotly);
+- per-cycle SCF convergence (energy + residual norm) for the
+  active step.
+
+Auto-detected formats: `<job>.molwatch.log` (the unified log
+molbuilder emits — preferred), SIESTA stdout (`run.out` /
+`siesta.log`), or geomeTRIC's `<job>_geom_optim.xyz`.  The page
+re-parses on file mtime change, so a still-running calculation
+streams new frames into the open tab.
+
 The web app does **not** bundle pseudopotentials — copy your psml files to the run
 directory yourself, or use `molbuilder fdf ... --psml-lib /path/to/lib` on the
 command line, which copies matching `<Element>.psml` files next to the `.fdf`.
@@ -56,12 +78,15 @@ command line, which copies matching `<Element>.psml` files next to the `.fdf`.
 ## Install
 
 ```bash
-pip install -e .                      # core only (peptide / DNA / RNA / FDF)
+pip install -e .                      # core: peptide/DNA/RNA/FDF/PySCF/web
 pip install -e ".[rdkit]"             # adds H-protonation + SMILES
 pip install -e ".[name]"              # adds PubChem name lookup
-pip install -e ".[web]"               # adds Flask web UI
 pip install -e ".[all]"               # everything
 ```
+
+`flask` is in core dependencies (the build + watch web UI is part of
+the toolkit, not a build-time extra).  The `[web]` extra is kept as a
+no-op for back-compat.
 
 Conda alternative for the heaviest dep:
 
@@ -82,7 +107,9 @@ molbuilder smiles "c1ccccc1" --out benzene.xyz
 molbuilder name "1,4-benzenedithiol" --pdb bdt.pdb
 
 molbuilder fdf in.xyz out.fdf --psml-lib /opt/psml --kgrid 4x4x1 --mesh-cutoff 400
-molbuilder serve --port 8000
+molbuilder pyscf in.xyz out.py --functional B3LYP --preopt
+molbuilder serve --port 8000             # build + watch UI
+molbuilder watch serve --port 8000       # same; lands on the watch page
 ```
 
 ## Sequence syntax
@@ -133,50 +160,87 @@ Modified residues currently supported (extend in
 ```
 molbuilder/
   __init__.py            # public API
-  structure.py           # Structure dataclass + 4 writers
+  structure.py           # Structure dataclass + readers / writers
+  frame.py               # Frame + Trajectory (parser output types)
+  issues.py              # Issue + ValidationError
+  validation.py          # pre-emission validation pass
+  chemistry.py           # element table, charge / dipole helpers
   residues.py            # 1-letter parser + bracket escapes + modified residues
   peptide.py             # PeptideBuilder wrapper + auto-protonation
-  templates.py           # embedded nucleotide templates
-  nucleic.py             # B-form / A-form helical assembler
+  nucleic.py             # DNA / RNA polymer builder
   smiles.py              # RDKit-based build_from_smiles
   pubchem.py             # PubChem-based build_from_name
-  siesta.py              # XYZ -> .fdf converter + psml copy
+  siesta/
+    input.py             # SiestaConfig + render_fdf + convert
+  pyscf/
+    input.py             # PySCFConfig + render_script + convert
+  molwatch_log/
+    format.py            # writer for .molwatch.log v1
+  parsers/
+    base.py              # TrajectoryParser ABC; parse() -> Trajectory
+    molwatch_log.py      # parser for the unified .molwatch.log
+    siesta.py            # parser for SIESTA stdout
+    pyscf.py             # parser for geomeTRIC _optim.xyz + .qdata + .log
+  backends/
+    _amber.py            # tleap-driven (extended chain)
+    _rdkit.py            # ETKDG embedded conformer (folded for >6mers)
+    _threedna.py         # 3DNA fiber-driven canonical helix
+    _common.py
   cli.py                 # `molbuilder <subcommand>`
   web/
     __init__.py
-    app.py               # Flask app: /api/build, /api/fdf, /
-    templates/index.html
-    static/viewer.js
-    static/style.css
+    app.py               # build routes (/, /api/build, /api/fdf, ...)
+    blueprints/
+      watch.py           # watch routes (/watch, /api/watch/*)
+    templates/
+      index.html         # build page
+      watch.html         # watch page
+    static/
+      viewer.js          # build viewer
+      style.css
+      watch/             # watch viewer assets
+        viewer.js
+        style.css
 tests/
-  test_residues.py       test_structure.py
-  test_peptide.py        test_nucleic.py
-  test_smiles_and_siesta.py
-  test_web.py            # end-to-end Flask test
+  test_residues.py       test_structure.py    test_frame.py
+  test_peptide.py        test_nucleic.py      test_chemistry.py
+  test_smiles_and_siesta.py                   test_pyscf.py
+  test_pyscf_spec.py     test_molwatch_preview.py
+  test_load.py           test_pdb_ter.py      test_review_fixes.py
+  test_output_correctness.py
+  test_validation.py     test_backends.py
+  test_cli.py            test_pubchem.py      test_science_gaps.py
+  test_web.py            # build-side Flask
+  watch/                 # watch-side parser + Flask
+    test_registry.py     test_molwatch_log_parser.py
+    test_siesta_parser.py  test_pyscf_parser.py
+    test_api_load.py     test_app_concurrency.py
 ```
 
 ## Nucleic-acid backends
 
-DNA / RNA building goes through one of two pluggable backends.  Pick
-the right trade-off for your use case:
+DNA / RNA building goes through one of three pluggable backends.
+Pick the right trade-off for your use case:
 
 | Backend | Install | Shape | Notes |
 |---|---|---|---|
+| `threedna` | download from http://x3dna.org/ (registration + non-commercial license; molbuilder cannot fetch) | canonical B/A/Z helix | Drives 3DNA's `fiber` for true B-form / A-form / Z-form DNA and A-form RNA helices.  Detection chain: unpack the tarball at the molbuilder repo root (gitignored) and the backend lights up automatically; otherwise `$X3DNA` env var, otherwise `fiber` on PATH.  Heavy-atom output (no hydrogens — protonate post-build for DFT). |
+| `amber` | `conda install -c conda-forge ambertools` (~1.5 GB) | extended chain | Drives AmberTools `tleap` with a `sequence { ... }` macro. Backbone topology follows the Amber OL15 (DNA) / OL3 (RNA) force field; chain comes out extended (not pre-coiled). AmberTools 23+ removed the original `nab` fiber builder, so `tleap` is the closest in-AmberTools alternative. |
 | `rdkit` | already a dep | folded conformer | Chemistry / connectivity correct (proper backbone, all hydrogens). 3-D shape is whatever ETKDG embeds and UFF cleans up -- a folded clump for anything > ~6mer, *not* a B-form helix. Fine for short oligos that DFT will fully relax. |
-| `amber` | `conda install -c conda-forge ambertools` (~1.5 GB) | extended chain | Drives AmberTools `tleap` with a `sequence { ... }` macro. Backbone topology follows the Amber OL15 (DNA) / OL3 (RNA) force field; chain comes out extended (not pre-coiled). AmberTools 23+ removed the original `nab` fiber builder, so `tleap` is the closest in-AmberTools alternative. For a *true* B-form / A-form helical starting geometry you'll want 3DNA's `fiber` instead. |
 
-`backend="auto"` (default) tries `amber` first and falls back to
-`rdkit` if `tleap` isn't on PATH.
+`backend="auto"` (default) tries `threedna` first, falls back to
+`amber`, then to `rdkit`.  3DNA's restrictive license is why molbuilder
+doesn't bundle or auto-fetch it; see `docs/design.md` § "3DNA
+(canonical helix builder)" for the full install + license contract.
 
 ## Limits / TODOs (v0.2)
 
 * **Single-stranded DNA / RNA only.** Double helices need a complementary
   strand placed on a Watson-Crick offset; straightforward addition.
-* **No canonical-helix backend bundled.** Both shipped backends produce
-  chemically correct but non-helical 3-D structures. If you need a
-  proper B/A/Z-form starting geometry, install 3DNA externally and use
-  its `fiber` command (a 3DNA wrapper backend would slot cleanly into
-  `molbuilder/backends/`).
+* **3DNA helix backend is heavy-atom-only.**  When the `threedna`
+  backend is reachable it produces canonical B/A/Z helices, but
+  `fiber`'s PDB output has no hydrogens.  Run the result through a
+  protonation step (OpenBabel or RDKit) before feeding it to DFT.
 * **No bond detection / connectivity output.** PDB records are
   ATOM-only; downstream tools that need CONECT must derive bonds from
   distances or from a force field.
