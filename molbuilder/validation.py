@@ -27,12 +27,39 @@ from __future__ import annotations
 
 import sys
 from dataclasses import fields, is_dataclass
-from typing import List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple, Type
 
 import numpy as np
 
 from .issues import Issue, ValidationError
 from .structure import Structure
+
+
+# --------------------------------------------------------------------- #
+#  Engine-validator registry                                            #
+#                                                                        #
+#  Type-keyed dispatch.  Each engine config class registers an          #
+#  engine-specific validator; `validate()` looks it up by              #
+#  isinstance().  Adding a new engine is a `_ENGINE_VALIDATORS[T] = fn` #
+#  line, not a string-compare in `validate()`.                          #
+# --------------------------------------------------------------------- #
+
+
+_ENGINE_VALIDATORS: Dict[Type, Callable[[Structure, object, Optional[np.ndarray]], List[Issue]]] = {}
+
+
+def _register_engine_validator(cfg_cls: Type):
+    """Decorator: register a validator for a specific config class.
+
+    The validator receives (struct, cfg, cell) and returns a list of
+    Issues.  ``cell`` may be None for engines that don't have a
+    periodic cell concept (PySCF gas-phase / PCM); each registered
+    validator decides what to do with it.
+    """
+    def deco(fn):
+        _ENGINE_VALIDATORS[cfg_cls] = fn
+        return fn
+    return deco
 
 
 # --------------------------------------------------------------------- #
@@ -65,11 +92,14 @@ def validate(struct: Structure, cfg, *,
     issues += _validate_geometry(struct, cell)
     issues += _validate_config_metadata(cfg)
 
-    cls_name = type(cfg).__name__
-    if cls_name == "SiestaConfig":
-        issues += _validate_siesta(struct, cfg, cell)
-    elif cls_name == "PySCFConfig":
-        issues += _validate_pyscf(struct, cfg)
+    # Engine-specific dispatch via the registry.  isinstance() picks
+    # up subclasses too, so a future engine config that subclasses
+    # an existing one inherits its validator unless it registers its
+    # own.
+    for cfg_cls, fn in _ENGINE_VALIDATORS.items():
+        if isinstance(cfg, cfg_cls):
+            issues += fn(struct, cfg, cell)
+            break
     return issues
 
 
@@ -158,7 +188,63 @@ def _validate_geometry(struct: Structure,
                 "cell.volume",
             ))
 
+    # Atom-to-nearest-image (PBC minimum-image distance).
+    # For each atom, find the closest image of any OTHER atom under
+    # the lattice translations spanning the 27 nearest cells.  When
+    # this is < 6 Å (a generous "atoms close enough to interact"
+    # threshold; below the typical electronic exchange-correlation
+    # cutoff), warn -- the user is likely seeing image-image overlap.
+    if n >= 2:
+        try:
+            inv = np.linalg.inv(cell)
+        except np.linalg.LinAlgError:
+            inv = None
+        if inv is not None:
+            min_image = _min_image_distance(pos, cell, inv)
+            if min_image < 6.0:
+                issues.append(Issue(
+                    "warn",
+                    f"min atom-to-nearest-image distance is "
+                    f"{min_image:.2f} Å -- molecule images interact through "
+                    f"the periodic boundary; increase cell vectors or "
+                    f"cell_padding so this exceeds ~6 Å",
+                    "cell.image_distance",
+                ))
+
     return issues
+
+
+def _min_image_distance(positions: np.ndarray,
+                        cell: np.ndarray,
+                        inv:  np.ndarray) -> float:
+    """Closest distance between any atom and any atom in a NEIGHBOURING
+    cell (translation != (0, 0, 0)).
+
+    The zero-translation case is excluded entirely: in-cell distances
+    are real bonds, not images.  We only care about how close the
+    molecule sits to its periodic copies.
+
+    For each atom i, distance to (atom j shifted by t) is computed
+    over all 26 non-identity lattice translations and over all atoms
+    j (including j == i, which is "this atom seeing its own copy").
+    """
+    n = positions.shape[0]
+    if n == 0:
+        return float("inf")
+    # 26 non-identity translations spanning the immediate neighbour shell.
+    shifts = [(a, b, c)
+              for a in (-1, 0, 1) for b in (-1, 0, 1) for c in (-1, 0, 1)
+              if (a, b, c) != (0, 0, 0)]
+    translations = np.asarray(shifts, dtype=float) @ cell   # (26, 3)
+    best = float("inf")
+    for i in range(n):
+        # Vector from atom i to every (atom j + every non-zero translation):
+        deltas = (positions[None, :, :] + translations[:, None, :]
+                  - positions[i, None, None, :])
+        d = float(np.linalg.norm(deltas, axis=2).min())
+        if d < best:
+            best = d
+    return best
 
 
 # --------------------------------------------------------------------- #
@@ -175,7 +261,6 @@ def _validate_config_metadata(cfg) -> List[Issue]:
     issues: List[Issue] = []
     if not is_dataclass(cfg):
         return issues
-    cls_name = type(cfg).__name__
     for f in fields(cfg):
         meta = f.metadata or {}
         value = getattr(cfg, f.name)
@@ -219,6 +304,13 @@ def _validate_config_metadata(cfg) -> List[Issue]:
 
 def _validate_siesta(struct: Structure, cfg,
                      cell: Optional[np.ndarray]) -> List[Issue]:
+    """SIESTA-specific checks.
+
+    Registered with the engine-validator dispatch at module bottom
+    (the decorator is applied after the SiestaConfig type is
+    importable -- avoids the import cycle between validation.py and
+    siesta/input.py at definition time).
+    """
     issues: List[Issue] = []
 
     # Spin.Total set without spin polarised: SIESTA silently ignores it.
@@ -259,6 +351,40 @@ def _validate_siesta(struct: Structure, cfg,
                 f"config.kgrid",
             ))
 
+    # Net dipole > 1 D in vacuum (no dipole correction).  Image-image
+    # dipole interactions in PBC shift molecular energies by an amount
+    # that scales with the dipole magnitude squared and inversely with
+    # the cell size.  We use a heuristic EN-based partial-charge
+    # estimate (see chemistry.estimate_dipole_moment_debye) -- not a
+    # research-grade dipole, but enough to flag "polar molecule in a
+    # finite vacuum cell" and recommend a larger cell or an explicit
+    # dipole correction.
+    #
+    # Triggered only when the cell looks like the auto-vacuum case:
+    # all kgrid axes == 1 (Gamma-only sampling, no PBC physics
+    # intended).  A genuine periodic crystal with k>1 is meant to
+    # carry image-image interactions and shouldn't trip this warning.
+    if all(k == 1 for k in cfg.kgrid) and len(struct.positions) > 0:
+        try:
+            from .chemistry import (estimate_dipole_moment_debye,
+                                    formal_charge_from_phosphates)
+            net_charge = (cfg.net_charge if cfg.net_charge is not None
+                          else formal_charge_from_phosphates(struct))
+            dipole = estimate_dipole_moment_debye(struct,
+                                                  total_charge=float(net_charge))
+        except Exception:
+            dipole = 0.0
+        if dipole > 1.0:
+            issues.append(Issue(
+                "warn",
+                f"estimated net dipole = {dipole:.1f} D in a vacuum cell "
+                f"with no dipole correction -- image-image dipole "
+                f"interactions will shift energies; consider a larger "
+                f"cell_padding or enable SIESTA's SlabDipoleCorrection "
+                f"(estimate from EN-based partial charges; rough +/- 50%)",
+                "geometry.dipole",
+            ))
+
     # Atoms outside [0, 1) fractional coords with wrap_into_cell=False
     # mean the visualiser will see the molecule in the neighbour cell.
     if not cfg.wrap_into_cell and len(struct.positions) > 0:
@@ -287,7 +413,11 @@ def _validate_siesta(struct: Structure, cfg,
 # --------------------------------------------------------------------- #
 
 
-def _validate_pyscf(struct: Structure, cfg) -> List[Issue]:
+def _validate_pyscf(struct: Structure, cfg,
+                    cell: Optional[np.ndarray] = None) -> List[Issue]:
+    """PySCF-specific checks.  ``cell`` is unused (PySCF jobs are gas-
+    phase or PCM-solvent here); accepted for signature uniformity
+    with the engine-validator registry."""
     issues: List[Issue] = []
 
     # spin = 2S; must be a non-negative integer.  PySCFConfig exposes
@@ -315,6 +445,39 @@ def _validate_pyscf(struct: Structure, cfg) -> List[Issue]:
         ))
 
     return issues
+
+
+# --------------------------------------------------------------------- #
+#  Engine-validator registration                                        #
+#                                                                        #
+#  Done at module bottom rather than via decorators on _validate_siesta #
+#  / _validate_pyscf because the config classes import from this        #
+#  module in some code paths (lift would create an import cycle).  A   #
+#  late lookup in this module is fine; both engines' renderers import  #
+#  validation.py before they call validate(), so by then the registry  #
+#  is populated.                                                        #
+# --------------------------------------------------------------------- #
+
+
+def _register_default_engines() -> None:
+    """Late binding to avoid an import cycle: SiestaConfig /
+    PySCFConfig live in modules that themselves import from
+    validation.  Importing them here at module-import time would loop;
+    importing inside a function called from validate() is safe because
+    by then both modules are fully loaded."""
+    try:
+        from .siesta import SiestaConfig
+        _ENGINE_VALIDATORS[SiestaConfig] = _validate_siesta
+    except ImportError:
+        pass
+    try:
+        from .pyscf import PySCFConfig
+        _ENGINE_VALIDATORS[PySCFConfig] = _validate_pyscf
+    except ImportError:
+        pass
+
+
+_register_default_engines()
 
 
 __all__ = ["validate", "report"]
