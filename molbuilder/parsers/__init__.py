@@ -1,4 +1,4 @@
-"""molwatch parser registry.
+"""Trajectory parser registry.
 
 Adding support for a new output format is two steps:
   1. drop a new ``foo.py`` module here that defines a ``FooParser``
@@ -139,8 +139,7 @@ def trajectory_to_legacy_dict(traj: Trajectory) -> Dict[str, Any]:
 
     The watch web layer (``molbuilder/web/blueprints/watch.py``) calls
     this to keep returning the same JSON shape the existing 3Dmol.js
-    client consumes.  Phase 3 will redesign the JSON to surface
-    Trajectory directly; this adapter goes away then.
+    client consumes.
 
     Output shape:
 

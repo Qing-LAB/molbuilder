@@ -19,8 +19,7 @@ draws those as gaps in the trace.
 
 The watch web layer adapts a Trajectory back to the original molwatch
 v1 JSON shape via :func:`molbuilder.parsers.trajectory_to_legacy_dict`
-so the existing 3Dmol.js client doesn't have to move during the merge.
-Phase 3 will redesign the JSON shape to surface Trajectory directly.
+so the existing 3Dmol.js client keeps working unchanged.
 """
 
 from __future__ import annotations

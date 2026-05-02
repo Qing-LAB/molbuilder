@@ -1,7 +1,7 @@
 """CLI surface smoke tests.
 
 Tests against the current argparse-based CLI in ``molbuilder/cli.py``.
-The Phase 5 click conversion will rewrite the implementation; these
+A future click conversion will rewrite the implementation; these
 tests are written to survive that rewrite by exercising the user-
 visible interface only:
 

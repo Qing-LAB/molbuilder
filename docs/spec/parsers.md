@@ -52,8 +52,7 @@ class Frame:
 The historical molwatch v1 JSON dict shape (the "Return shape" below)
 is produced by `molbuilder.parsers.trajectory_to_legacy_dict(traj)`,
 which the watch web layer applies at the `/api/watch/load` boundary.
-The dict shape is the contract with the existing 3Dmol.js client;
-Phase 3 will redesign it to surface `Trajectory` directly.
+The dict shape is the contract with the existing 3Dmol.js client.
 
 ### `can_parse`
 

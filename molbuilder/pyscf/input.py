@@ -1,7 +1,7 @@
-"""molbuilder.pyscf_input -- generate a runnable PySCF script for
+"""molbuilder.pyscf.input -- generate a runnable PySCF script for
 molecule relaxation / single-point work.
 
-Mirrors the molbuilder.siesta module:
+Mirrors the molbuilder.siesta.input module:
 
     PySCFConfig      -- dataclass holding every parameter
     render_script    -- format an in-memory Structure as a Python script
@@ -16,7 +16,7 @@ production default for organic chemistry / biomolecule work in PySCF.
 The optional pre-optimization stage uses the cheaper PBE/def2-SVP to
 fix bad bond lengths before the hybrid functional sees them.
 
-Module name: this lives at ``molbuilder/pyscf_input.py`` so an
+Module name: this lives at ``molbuilder/pyscf/input.py`` so an
 ``import pyscf`` inside the generated user script is unambiguous (the
 file name avoids any possibility that ``pyscf`` resolves to our local
 module instead of the actual PySCF library).
@@ -230,7 +230,7 @@ def render_script(struct: Structure,
     label = cfg.job_name
     v = cfg.verbose_comments
 
-    # ---------- pre-emission validation (Phase 2.6) ----------
+    # ---------- pre-emission validation ----------
     # PySCF doesn't have a meaningful cell here (the script builds a
     # gas-phase or PCM-solvent molecule), so we skip the cell-side
     # checks and run only the structure / config-side validators.

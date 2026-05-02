@@ -456,7 +456,7 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         else:
             cell_note = "# (using user-supplied lattice; wrap_into_cell=False)"
 
-    # ---------- pre-emission validation (Phase 2.6) ----------
+    # ---------- pre-emission validation ----------
     # By now `cell` and `positions` are final; run the validation pass
     # before any FDF text is generated so error-severity issues block
     # emission cleanly.  Warnings print to stderr but the run proceeds.

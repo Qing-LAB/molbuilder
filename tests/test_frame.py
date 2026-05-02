@@ -1,10 +1,10 @@
 """Frame and Trajectory dataclass smoke tests.
 
-These tests exercise the parsers' new primary API (Iterator[Frame]
-via Trajectory) directly, without going through the legacy-dict
+These tests exercise the parsers' primary API (Iterator[Frame] via
+Trajectory) directly, without going through the legacy-dict
 adapter.  Most of the existing parser tests in tests/watch/ assert
-on the legacy dict shape via trajectory_to_legacy_dict; this file is
-the explicit Frame-shape coverage for Phase 2.
+on the legacy dict shape via trajectory_to_legacy_dict; this file
+is the explicit Frame-shape coverage.
 
 Spec: docs/design.md "Frame and Trajectory (parser output type)".
 """
@@ -114,7 +114,7 @@ def test_siesta_trajectory_lattice(tmp_path):
 # --------------------------------------------------------------------- #
 #  Frame.scf_history: None vs []                                         #
 #                                                                        #
-#  Phase 2 introduced a deliberate distinction:                          #
+#  The two values are NOT interchangeable:                              #
 #    None  = the parser tracks no SCF data for this run at all           #
 #            (e.g. PySCF .log absent, SIESTA file with no scf: lines).   #
 #    []    = the parser DID track scf data for this step but there      #
