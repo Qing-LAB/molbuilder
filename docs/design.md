@@ -564,6 +564,7 @@ These have been considered and rejected; do not reintroduce them.
 | 2026-05-01 | Post-merge web routes are namespaced `/api/build/*` and `/api/watch/*` via Flask Blueprints. | Both pre-merge apps define `POST /api/load` for unrelated payloads (XYZ/PDB → Structure vs trajectory file → frames). Blueprints are Flask's native URL-prefix mechanism; no custom router needed. |
 | 2026-05-01 | Phase 1 / commit 3 landed: `siesta`, `pyscf`, `molwatch_log` promoted from single files to subpackages with re-exporting `__init__.py` (commit `e34ede7`). | Re-exports keep external imports stable; subpackages create slots for the parser modules arriving in commit 4. |
 | 2026-05-01 | Phase 2: introduce a minimal `Trajectory(source_format, frames, lattice)` wrapper alongside `Frame`; parsers return `Trajectory` (not `Iterator[Frame]` directly). | `source_format` and the shared lattice are file-level metadata that don't fit on any single Frame; the molwatch unified-log parser specifically needs `source_format` from the file's `# engine:` header rather than from the parser class name. The "Trajectory deferred to Phase 3" open question resolves to "yes, minimally, in Phase 2." Phase 3 may grow it (analysis methods, on-disk serialization). |
+| 2026-05-02 | Phase 2.5: 3DNA backend's detection chain is `in-tree > $X3DNA > PATH` (not "all three preconditions must hold simultaneously"). | The pre-implementation spec said `is_available()` must require `fiber` on PATH AND `$X3DNA` env var AND the config dir, all simultaneously. In practice the user wanted "expand the tarball at the repo root and it just works"; that's a one-step path that doesn't require shell config. The chain accommodates that *and* the canonical env-var install *and* a PATH-only install, with the same completeness check (`bin/fiber` + `config/`) applied to each candidate root. |
 | 2026-05-01 | Configs are L1 nouns: `SiestaConfig` and `PySCFConfig` move out of `siesta/input.py` / `pyscf/input.py` (where they currently live next to the generators) into `config/siesta.py` and `config/pyscf.py`. | Configs are pure data carrying field metadata that the CLI, web form, and validators all introspect. Generators are L2 verbs that operate on configs. Keeping configs L1 lets validation and form-schema generation read them without dragging in the file-emission code. Re-exports preserve external imports. |
 | 2026-05-01 | `parsers/` is a flat package (one `<format>.py` per parser sibling-to-`base.py`), not a per-format split where each engine subpackage owns its own parser. | The per-format split (`siesta/parser.py` next to `siesta/input.py`) co-locates modules that share no imports, no state, and run in opposite directions of the data flow. A flat `parsers/` directory has higher internal cohesion. |
 | 2026-05-01 | `backends/` moves under `builders/`. | Backends only serve builders; they have no callers outside the build path and shouldn't sit at the top level. |
@@ -698,7 +699,7 @@ older paths are not deprecated — they are the public surface.
 | 1 / commit 5 | Watch web app moved to `molbuilder/web/blueprints/watch.py` (split route group, not a separate app); `molbuilder watch serve` CLI subcommand added; web routes namespaced `/api/build/*` and `/api/watch/*` via Flask Blueprints; `flask` lifted to core dependency; `molwatch` console-script shim added | pending |
 | 1 / commit 6 | `_inbound_molwatch/` deleted; remaining `docs/spec/` files merged into `docs/spec/`; `pyproject.toml` / `requirements.txt` from the subtree dropped | pending |
 | 2 | `Frame` and minimal `Trajectory(source_format, frames, lattice)` dataclasses added at `molbuilder/frame.py`; parsers' `parse(path)` now returns `Trajectory`; the legacy molwatch v1 dict shape produced by `molbuilder/parsers/__init__.py:trajectory_to_legacy_dict` so `/api/watch/load` keeps the same JSON the JS client expects | **done** |
-| 2.5 | 3DNA backend added at `builders/backends/_threedna.py`; registered in dispatch; CLI / web `--backend` extended | not started |
+| 2.5 | 3DNA backend added at `molbuilder/backends/_threedna.py` (will move to `builders/backends/` in Phase 2.7); detection chain `in-tree > $X3DNA > PATH`; registered in dispatch with auto-order `threedna > amber > rdkit`; CLI's `--backend` choice list extended | **done** |
 | 2.6 | `Issue` dataclass added (`issues.py`); `validation.py` wired into `render_fdf` / `render_script`; per-field metadata lifted onto `Structure`, `SiestaConfig`, `PySCFConfig` via `dataclasses.field(metadata=...)`; validators read ranges + `validate=` callables from the metadata. **This is when principles #1 and #6 become load-bearing.** | not started |
 | 2.7 | Layering-compliance commit: `SiestaConfig` / `PySCFConfig` split out into `molbuilder/config/` (re-exports preserve external imports); `molwatch_log/` renamed to `trajectory_log/` (re-exports preserved); `backends/` moved under `builders/`. No behavior change. | not started |
 | 3 | Web UI redesigned: Build tab + Watch tab; shared 3Dmol viewer, style controls; clean styling pass; "Watch this run" handoff. Open question: SSE / WebSocket vs the current 15s mtime polling. | not started |
@@ -838,29 +839,56 @@ geometry — the only thing the existing `rdkit` (folded conformer) and
 
 #### Backend implementation
 
-**Backend file:** `molbuilder/builders/backends/_threedna.py`, mirroring the shape of
-`_amber.py`: shell out to `fiber`, parse the output PDB into `Structure`,
-run the backbone-connectivity self-check (`_common.verify_backbone_connectivity`).
+**Backend file:** `molbuilder/backends/_threedna.py` (will move under
+`builders/backends/` in Phase 2.7), mirroring the shape of `_amber.py`:
+shell out to `fiber`, parse the output PDB into `Structure`, run the
+backbone-connectivity self-check
+(`_common.verify_backbone_connectivity`).
 
-**Detection (`is_available()`):** must return True only when **all** of:
+**Detection chain.** First hit wins; `is_available()` returns True iff
+any source resolves to a *complete* install (i.e. both `bin/fiber`
+executable AND `config/` directory present). The chain is:
 
-1. `fiber` is on `PATH` (`shutil.which("fiber") is not None`);
-2. `X3DNA` environment variable is set (`os.environ.get("X3DNA")`);
-3. the directory `$X3DNA/config/atomic_*.par` exists (3DNA's geometry
-   parameter files; without them `fiber` fails at runtime with cryptic
-   errors). A fast `os.path.isdir(os.path.join(os.environ["X3DNA"], "config"))`
-   check is sufficient — the absence of the config directory is the
-   clearest signal that `X3DNA` points at the wrong place.
+1. **In-tree** — glob `<repo_root>/x3dna-v*/`, where `<repo_root>` is
+   one level above the molbuilder package. The user can simply unpack
+   the 3DNA tarball at the repo root (gitignored — see `.gitignore`)
+   and the backend lights up automatically. Easiest path for a dev
+   install; useless for a wheel install (site-packages has no
+   meaningful "next-to-package" location), so the env-var fallback
+   exists.
+2. **`$X3DNA` env var** — the canonical 3DNA install convention. Set
+   `export X3DNA=$HOME/opt/x3dna-v2.4` and we use it.
+3. **`fiber` on `PATH`** — last resort; we derive `X3DNA` root from
+   `shutil.which("fiber")` (assumes the standard `$X3DNA/bin/`
+   layout). Useful when the user has a system install that doesn't
+   bother with the env var.
 
-If any of those fails, `is_available()` returns False **and**
-`BackendUnavailable` is raised with the canonical error message below.
+For **each** candidate root the backend verifies *completeness*:
+`bin/fiber` is a regular file with the executable bit set, AND
+`config/` exists as a directory (it holds 3DNA's atomic-parameter PDB
+templates; without them `fiber` fails at runtime with cryptic
+errors). The completeness check filters out the easy
+foot-gun where `$X3DNA` points at a half-extracted tarball or a
+sibling directory.
+
+When `fiber` is shelled out, the resolved root is injected into the
+subprocess environment as `X3DNA` (and prepended to `PATH`)
+regardless of the calling shell's setup, so 3DNA's auxiliary scripts
+resolve their config files correctly even when the user found the
+install via the in-tree or PATH path rather than the env var.
+
+If the entire chain fails, `is_available()` returns False **and**
+`BackendUnavailable` is raised on explicit `--backend threedna`
+requests, with the canonical error message below.
 
 **Required error message contract.** When the user explicitly requests
 `--backend threedna` (or any equivalent in the web UI / Python API)
 and the backend is unavailable, the raised `BackendUnavailable`
 message must include all of:
 
-- which precondition failed (PATH / env var / config dir);
+- which sources were checked (the three resolution strategies above —
+  in-tree glob, `$X3DNA` env var, `fiber` on PATH — and their current
+  values, so the user can see exactly what fell through);
 - the URL `http://x3dna.org/` and an explicit "register and accept the
   license to download — molbuilder cannot fetch this for you";
 - a one-line reminder that 3DNA is non-commercial-use only;
@@ -870,12 +898,18 @@ Example of the required shape (final wording lives in the implementation,
 keep this contract in sync):
 
 ```
-3DNA is not available: $X3DNA is set but $X3DNA/config/ does not exist
-(extraction is incomplete or X3DNA points at the wrong directory).
+3DNA is not available.  Tried, in order:
+  1. in-tree   : no match for /path/to/repo/x3dna-v*
+                 (unpack the 3DNA tarball at the repo root and this
+                 lights up automatically)
+  2. $X3DNA    : (unset)
+                 (must point at a directory containing bin/fiber + config/)
+  3. fiber on PATH: (not on PATH)
 
-3DNA must be downloaded directly from http://x3dna.org/ after registering
-and accepting the license — molbuilder cannot fetch it for you. The
-license is non-commercial-use only; do not redistribute the archive.
+3DNA must be downloaded directly from http://x3dna.org/ after
+registering and accepting the license — molbuilder cannot fetch it
+for you.  The license is non-commercial-use only; do not redistribute
+the archive.
 
 If you don't need a canonical helix, the `amber` (extended chain) and
 `rdkit` (folded conformer) backends remain available.
@@ -899,17 +933,45 @@ web UI's `<select>` options must include the new value. The web UI's
 "download from x3dna.org / non-commercial" guidance — not a bare
 HTTP 500.
 
-**Tests must cover:** `is_available()` returns False with each of the
-three precondition failures (PATH missing, env var missing, config
-dir missing) without raising; explicit `--backend threedna` request
-produces a `BackendUnavailable` containing both the URL and the
-non-commercial license note; `auto` falls through silently when 3DNA
-is unavailable.
+**Tests must cover:** `is_available()` returns False with each
+detection-chain step missing (no in-tree dir, env unset, fiber off
+PATH) without raising; an env-var path that points at an incomplete
+install (no `config/`) is rejected; explicit `--backend threedna`
+request when nothing is reachable produces a `BackendUnavailable`
+containing the URL, the non-commercial license note, and the named
+fallback backends; `auto` falls through silently when 3DNA is
+unavailable; when an install IS reachable the build produces a
+chemically plausible Structure (P present, expected base residues,
+backbone connectivity passing); A-form and B-form coordinates differ
+(the form flag actually plumbs through to fiber); RNA build uses U
+not T (the `-rna` flag is set).
 
 #### 3DNA installation
 
-3DNA is distributed by the Olson lab (Columbia, x3dna.org). The canonical
-install on Linux / macOS:
+3DNA is distributed by the Olson lab (Columbia, x3dna.org).  Two install
+shapes work; pick whichever matches how you use molbuilder.
+
+**Option A — in-tree (recommended for dev / editable installs).** Unpack
+the tarball at the molbuilder repo root.  The detection chain's first
+step globs `<repo_root>/x3dna-v*/` and verifies completeness, so no
+shell config or env var is needed:
+
+```bash
+cd /path/to/molbuilder              # the repo root, alongside pyproject.toml
+tar -xzf x3dna-v2.4-<platform>.tar.gz
+ls x3dna-v2.4/bin/fiber             # smoke check
+python -c "from molbuilder.backends import available_backends; \
+           print(available_backends())"
+# expected: {'threedna': True, 'amber': ..., 'rdkit': ...}
+```
+
+The `x3dna-v*/` directory is gitignored (see `.gitignore`) — both for
+hygiene and to make it structurally hard for someone to accidentally
+commit the 3DNA archive into a public-facing molbuilder release.
+
+**Option B — system install with `$X3DNA` env var (canonical).** This
+is the install path the 3DNA upstream documents; the second step in
+the detection chain picks it up:
 
 ```bash
 tar -xzf x3dna-v2.4-<platform>.tar.gz -C ~/opt
@@ -919,7 +981,11 @@ fiber -h
 fiber -seq=ATCG /tmp/probe.pdb && head /tmp/probe.pdb
 ```
 
-The `X3DNA` environment variable is required by 3DNA's auxiliary scripts.
+The `X3DNA` environment variable is required by 3DNA's auxiliary
+scripts; molbuilder's `_threedna.py` injects it into the subprocess
+environment automatically when shelling out, so the env var only needs
+to be set in the user's shell when they want to invoke 3DNA tools
+directly outside molbuilder.
 
 ##### Windows install (project-specific)
 

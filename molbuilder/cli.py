@@ -57,8 +57,9 @@ def _add_build_parser(sub, name: str, help_: str) -> argparse.ArgumentParser:
     s.add_argument("--title", help="optional title")
     if name in ("dna", "rna"):
         s.add_argument("--backend", default="auto",
-                       choices=["auto", "rdkit", "amber"],
-                       help="builder backend (default: auto-detect)")
+                       choices=["auto", "rdkit", "amber", "threedna"],
+                       help="builder backend (default: auto-detect; "
+                            "auto-order is threedna > amber > rdkit)")
         s.add_argument("--form", default=None,
                        choices=["B", "A", "Z"],
                        help="helix form (B for DNA, A for RNA by default)")
