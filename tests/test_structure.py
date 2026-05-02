@@ -68,3 +68,33 @@ def test_concat_renumbers_residues(water_structure):
     s_cat = Structure.concat([water_structure, water_structure])
     assert s_cat.n_atoms == 6
     assert s_cat.residue_ids == [1, 1, 1, 2, 2, 2]
+
+
+# --------------------------------------------------------------------- #
+#  Round-trip identity through writers / readers                        #
+#                                                                        #
+#  Loose round-trips (write to disk, read back) only cover I/O glue;    #
+#  identity round-trips (back-construct a Structure from the writer's   #
+#  output, compare element + position arrays) pin the contract that    #
+#  XYZ / PDB writers don't drop or reorder data on a single hop.       #
+# --------------------------------------------------------------------- #
+
+
+def test_xyz_round_trip_identity(water_structure):
+    s = water_structure
+    s2 = Structure.from_xyz(s.to_xyz())
+    assert s2.elements == s.elements
+    np.testing.assert_allclose(s2.positions, s.positions, atol=1e-6)
+
+
+def test_pdb_round_trip_identity(water_structure):
+    """PDB carries more metadata than XYZ (atom_names / residue_names /
+    chain_ids); the identity round-trip should preserve it all."""
+    s = water_structure
+    s2 = Structure.from_pdb(s.to_pdb())
+    assert s2.elements == s.elements
+    np.testing.assert_allclose(s2.positions, s.positions, atol=1e-3)
+    # PDB metadata that XYZ would have dropped:
+    assert s2.atom_names    == s.atom_names
+    assert s2.residue_names == s.residue_names
+    assert s2.chain_ids     == s.chain_ids

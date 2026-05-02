@@ -133,33 +133,42 @@ def test_concurrent_polls_dont_serialize_on_parse(tmp_path):
         app_module._refresh_if_changed()
         timings["slow"] = time.time() - t0
 
+    fast_acquired = threading.Event()
+
     def fast_caller():
         # Wait until the slow parse has begun, then immediately poll.
         SlowParser.parse_started.wait(timeout=2.0)
-        # Force an mtime read that matches cached -> fast path.
-        # (It will re-snapshot under the lock and return cached state.)
-        t0 = time.time()
         # We can't easily make this hit the cache-equal branch (mtime
-        # advanced), but we CAN measure that this call doesn't block on
-        # the lock for the duration of the slow parse.
+        # advanced), but we CAN measure that this call doesn't block
+        # on the lock for the duration of the slow parse.
+        t0 = time.time()
         with app_module._lock:
             pass
         timings["fast"] = time.time() - t0
+        fast_acquired.set()
 
     t_slow = threading.Thread(target=slow_caller)
     t_fast = threading.Thread(target=fast_caller)
     t_slow.start()
     t_fast.start()
 
-    # Hold the slow parse for ~0.4 s, then release.
-    time.sleep(0.4)
+    # Wait for the fast caller to actually finish its lock-grab (proof
+    # of liveness during the slow parse) before releasing the slow
+    # parser.  Replaces the previous `time.sleep(0.4)` -- that was a
+    # hard timing assumption that got flaky on slow CI runners and
+    # racy on fast machines.  The 2 s timeout is generous; a real
+    # liveness bug would block forever.
+    assert fast_acquired.wait(timeout=2.0), (
+        "fast caller never finished -- the lock was held throughout "
+        "the slow parse, which is the bug this test is guarding."
+    )
     SlowParser.release.set()
 
     t_slow.join(timeout=5.0)
     t_fast.join(timeout=5.0)
-    # The fast caller should have grabbed the lock briefly even while
-    # the slow parser was blocked.  If we held the lock during parse,
-    # this would have been > 0.4 s.
+    # The fast caller's lock-grab must have been quick -- if we'd
+    # held the lock during parse, this would be on the order of the
+    # slow-parse duration.
     assert timings["fast"] < 0.2, (
         f"fast caller blocked for {timings['fast']:.2f} s -- lock was "
         f"held during parse"
