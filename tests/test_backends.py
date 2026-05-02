@@ -6,8 +6,7 @@ contract:
 
   * ``available_backends()`` returns one bool per registered backend.
   * ``dispatch(backend="auto")`` picks the first available in the
-    documented order (amber > rdkit; threedna will land first in
-    Phase 2.5).
+    documented order (threedna > amber > rdkit).
   * ``dispatch(backend="<name>")`` calls that backend exclusively;
     no fallback.
   * Unknown backend names raise ``ValueError``.

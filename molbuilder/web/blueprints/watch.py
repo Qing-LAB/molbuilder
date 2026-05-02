@@ -92,9 +92,8 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
             return dict(_state), None
 
     # ---- Parse OUTSIDE the lock ---------------------------------
-    # Parsers return a Trajectory; the JS client still consumes the
-    # legacy molwatch v1 dict shape, so we adapt at the boundary.
-    # Phase 3 redesigns the JSON; this adapter call goes away then.
+    # Parsers return a Trajectory; the JS client consumes the legacy
+    # molwatch v1 dict shape, so we adapt at the boundary.
     try:
         traj = parser_cls.parse(path)
         new_data = trajectory_to_legacy_dict(traj)

@@ -411,8 +411,8 @@ def _add_watch_parser(sub) -> argparse.ArgumentParser:
         description=(
             "Live trajectory viewer for SIESTA / PySCF / .molwatch.log. "
             "Currently only the `serve` subsubcommand is implemented; "
-            "`parse` and `tail` (JSON-on-stdout shell tools) land in "
-            "Phase 5."
+            "`parse` and `tail` (JSON-on-stdout shell tools) are not "
+            "yet wired up."
         ),
     )
     wsub = p.add_subparsers(dest="watch_cmd", required=True)

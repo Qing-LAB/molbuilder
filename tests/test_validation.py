@@ -388,9 +388,9 @@ def test_report_emits_warnings_even_when_also_raising():
 # --------------------------------------------------------------------- #
 #  Generic config-metadata pass                                         #
 #                                                                        #
-#  Today no production config field carries metadata yet -- that lands #
-#  in commit 2.6b.  We exercise the metadata-reading code with a        #
-#  synthetic dataclass to pin the contract before configs grow it.     #
+#  These tests pin the metadata-reading contract using a synthetic     #
+#  dataclass so the test stays focused on the reading code itself.     #
+#  Production-config coverage lives further down.                      #
 # --------------------------------------------------------------------- #
 
 

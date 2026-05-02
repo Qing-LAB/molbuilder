@@ -226,8 +226,8 @@ def test_scf_history_real_multi_cycle_run(tmp_path):
     """A SIESTA-style run with multiple SCF iterations within one CG
     step splits correctly: iscf=1 marks each new run boundary.
 
-    Each CG step needs its own outcoor block to emit a Frame, since
-    Phase 2 attaches scf_history per-Frame (no Frame -> no scf
+    Each CG step needs its own outcoor block to emit a Frame; the
+    parser attaches scf_history per-Frame (no Frame -> no scf
     history).  The realistic SIESTA stream is "SCF -> outcoor -> SCF
     -> outcoor -> ..."; we follow that here.
     """

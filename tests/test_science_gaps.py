@@ -5,11 +5,11 @@ PySCF science gaps".  Today the tests below are marked
 ``@pytest.mark.xfail`` because the fixes haven't landed -- the gap
 list was confirmed unfixed in the 2026-05-01 audit.
 
-When Phase 6 (scientific polish) lands a fix, the corresponding
-test flips from xfail to pass; that's the signal that the fix
-worked.  If a fix later regresses, the test fails (xfail->pass
-becomes pass->fail), which is the regression-prevention property
-this file provides.
+When a fix for one of these gaps lands, the corresponding test
+flips from xfail to pass; that's the signal that the fix worked.
+If a fix later regresses, the test fails normally (the marker is
+gone by then), which is the regression-prevention property this
+file provides.
 
 Each test asserts on the GENERATED OUTPUT, not on internal config
 state -- that way a refactor of how the config is plumbed into the

@@ -13,13 +13,12 @@ for that step.
 lattice)` -- the format-level metadata that doesn't fit on any single
 frame.  Parsers' `parse(path)` returns a Trajectory.
 
-The design doc (docs/design.md) discussed deferring Trajectory to
-Phase 3, but the molwatch unified-log parser surfaces a
+The molwatch unified-log parser surfaces a
 `source_format` from the FILE's `# engine:` header -- it can differ
 from the parser class's `cls.name` -- so the parser interface needs
 *something* that carries that string alongside the frames.  The
-minimal Trajectory below resolves the open question for Phase 2;
-Phase 3 may grow it (analysis methods, on-disk serialization, etc.).
+minimal Trajectory below resolves that need without committing to a
+richer trajectory type now.
 """
 
 from __future__ import annotations
