@@ -783,6 +783,8 @@ The validator pulls per-field rules from the `Config` field metadata
 | min atom-atom distance < 0.3 Å | error | Atoms on top of each other; SCF will diverge |
 | min atom-atom distance 0.3 – 0.7 Å | warn | Likely broken structure (failed protonation, bad backend output) |
 | H/heavy ratio < 0.3 | warn | Heavy-atom skeleton — wrong electron count for DFT; user may have intentionally opted out of H-add (e.g. `build_dna(..., add_hydrogens=False)`) for hand-processing, hence warn not error |
+| polymer residue listing reversed (structural 5' end ≠ residue_ids[0]) | warn | Every backend builds 5'→3' (lowest residue_id at 5' end). A reversed listing breaks downstream orientation-sensitive code (terminal-phosphate stripping, FDF residue numbering); likely a backend regression |
+| polymer has multiple residues with no preceding O3'-P bridge (single-chain input) | warn | Disconnected backbone or unintended branching — single-chain input expected one 5' end |
 | atom-to-nearest-image distance < 2 × cell_padding (vacuum case) | warn | Image-image interaction; suggest larger padding |
 | cell volume / atom-bounding-volume < 3 | warn | Cell suspiciously tight |
 | cell determinant ≤ 0 | error | Left-handed or degenerate cell |
@@ -1218,6 +1220,27 @@ In `_threedna.py`:
    5'-P / 3'-OH or 5'-OH / 3'-OH respectively.
 4. **Z-form is poly-d(GC) only; RNA is A-form only.** Mismatches
    are warned at dispatch (see `build()`).
+
+### 5'/3' directionality on user input
+
+Bare letters (`"ATGC"`) follow biology convention: 5' on the left, 3'
+on the right. `parse_dna_sequence` / `parse_rna_sequence` also accept
+optional end-labels:
+
+  * `"5'-ATGC-3'"` — explicit 5'→3', identical to bare.
+  * `"3'-CGTA-5'"` — reverse-direction; the parser reverses the
+    residue list so the backend (which always builds 5'→3') produces
+    a polymer matching the user's stated direction.
+  * `"5'-ATGC-5'"` / `"3'-ATGC-3'"` / `"5'-ATGC"` / `"ATGC-3'"` —
+    self-contradictory or one-sided; ValueError.
+
+Whitespace, internal dashes, and mixed punctuation between the labels
+and the body are tolerated (`"5'  -  ATGC  -  3'"` parses cleanly).
+
+The orientation validator (above) catches the case where the
+*structural* 5' end (the residue with no incoming O3'-P bridge) doesn't
+match `residue_ids[0]` — this is what protects against a future backend
+that lists residues 3'→5' rather than 5'→3'.
 
 ### How a regression in any of this would surface
 

@@ -203,17 +203,79 @@ def parse_peptide_sequence(sequence: str) -> List[str]:
     )
 
 
+# Optional 5'/3' directionality labels on nucleic-acid input.  Bare
+# letters ("ATGC") follow biology convention: 5' on the left, 3' on
+# the right.  Explicit labels ("5'-ATGC-3'") confirm intent without
+# changing behaviour.  Reverse-direction input ("3'-CGTA-5'") is
+# normalised by reversing the body so backends -- which all build
+# 5'->3' internally -- produce a polymer matching the user's stated
+# direction.  One-sided or self-contradictory labels raise.
+import re as _re
+
+_DIR_PREFIX_RE = _re.compile(r"^\s*([35])'\s*-?\s*")
+_DIR_SUFFIX_RE = _re.compile(r"\s*-?\s*([35])'\s*$")
+
+
+def _strip_directionality(seq: str) -> tuple:
+    """Pull off optional 5'/3' end-labels from a nucleic-acid sequence.
+
+    Returns ``(body, direction)`` where ``direction`` is one of:
+      * ``None``     -- bare letters; assume 5'->3' (biology default).
+      * ``"5to3"``   -- explicit 5'-...-3'.  Same effect as bare.
+      * ``"3to5"``   -- explicit 3'-...-5'.  Caller should reverse the
+                        parsed residue list before handing to a backend.
+    Raises ValueError on:
+      * one-sided labels ("5'-ATGC" or "ATGC-3'");
+      * matching labels at both ends ("5'-ATGC-5'" / "3'-ATGC-3'").
+    """
+    pre = _DIR_PREFIX_RE.match(seq)
+    suf = _DIR_SUFFIX_RE.search(seq)
+    if pre is None and suf is None:
+        return seq, None
+    if pre is None or suf is None:
+        raise ValueError(
+            f"One-sided directionality label in {seq!r}: both ends must "
+            f"be labelled or neither (write '5'-ATGC-3'', '3'-CGTA-5'', "
+            f"or just 'ATGC' for the implicit 5'->3' default)"
+        )
+    pre_d, suf_d = pre.group(1), suf.group(1)
+    if pre_d == suf_d:
+        raise ValueError(
+            f"Self-contradictory directionality in {seq!r}: both ends "
+            f"labelled {pre_d}' (a polymer has one 5' end and one 3' end, "
+            f"not two of the same)"
+        )
+    # Trim from end-of-prefix to start-of-suffix.  search() with $ in
+    # the pattern guarantees suf.start() is past the end of the body.
+    body = seq[pre.end():suf.start()].strip().strip("-").strip()
+    return body, f"{pre_d}to{suf_d}"
+
+
 def parse_dna_sequence(sequence: str) -> List[str]:
-    """1-letter DNA sequence (A/T/G/C, case-insensitive)."""
-    return _parse(
-        sequence, DNA_ONE_TO_THREE, set(DNA_THREE_TO_ONE),
+    """1-letter DNA sequence (A/T/G/C, case-insensitive).
+
+    Optional 5'/3' end-labels are accepted: ``"5'-ATGC-3'"`` (explicit
+    5'->3', same as bare ``"ATGC"``) or ``"3'-CGTA-5'"`` (reverse-
+    direction; the residue list is reversed so the resulting polymer
+    matches the user's stated direction).
+    """
+    body, direction = _strip_directionality(sequence)
+    codes = _parse(
+        body, DNA_ONE_TO_THREE, set(DNA_THREE_TO_ONE),
         None, "DNA base",
     )
+    return list(reversed(codes)) if direction == "3to5" else codes
 
 
 def parse_rna_sequence(sequence: str) -> List[str]:
-    """1-letter RNA sequence (A/U/G/C, case-insensitive)."""
-    return _parse(
-        sequence, RNA_ONE_TO_THREE, set(RNA_THREE_TO_ONE),
+    """1-letter RNA sequence (A/U/G/C, case-insensitive).
+
+    Accepts the same optional 5'/3' end-labels as
+    :func:`parse_dna_sequence`.
+    """
+    body, direction = _strip_directionality(sequence)
+    codes = _parse(
+        body, RNA_ONE_TO_THREE, set(RNA_THREE_TO_ONE),
         None, "RNA base",
     )
+    return list(reversed(codes)) if direction == "3to5" else codes

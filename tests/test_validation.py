@@ -162,6 +162,59 @@ def test_h_ratio_organic_no_warn():
     assert [i for i in issues if i.where == "geometry.h_ratio"] == []
 
 
+def test_polymer_orientation_normal_chain_no_warn():
+    """A clean 4-mer DNA chain with 5'->3' residue ordering must not
+    trip the orientation validator."""
+    from molbuilder.backends import available_backends
+    if not available_backends().get("threedna"):
+        pytest.skip("threedna backend not installed")
+    from molbuilder import build_dna
+    s = build_dna("ATGC", backend="threedna")
+    issues = validate(s, SiestaConfig())
+    assert [i for i in issues if i.where == "polymer.orientation"] == []
+
+
+def test_polymer_orientation_reversed_listing_warns():
+    """If a backend (or a user-loaded PDB) lists residues 3'->5', the
+    structural 5' end (no incoming O3'-P bridge) won't match
+    residue_ids[0], so the validator must warn.
+
+    Build a normal chain, then flip residue_ids so the highest-numbered
+    residue ends up at index 0.  Atom positions stay the same -- only
+    the ID listing is reversed."""
+    from molbuilder.backends import available_backends
+    if not available_backends().get("threedna"):
+        pytest.skip("threedna backend not installed")
+    from molbuilder import build_dna
+    s = build_dna("ATGC", backend="threedna")
+    rid_max = max(s.residue_ids)
+    rid_min = min(s.residue_ids)
+    # Map r -> (rid_max + rid_min - r) so 1->4, 2->3, 3->2, 4->1.
+    flipped = [rid_max + rid_min - r for r in s.residue_ids]
+    s_rev = type(s)(
+        elements=list(s.elements), positions=s.positions.copy(),
+        atom_names=list(s.atom_names), residue_ids=flipped,
+        residue_names=list(s.residue_names),
+        chain_ids=list(s.chain_ids), title=s.title,
+    )
+    issues = validate(s_rev, SiestaConfig())
+    orient = [i for i in issues if i.where == "polymer.orientation"]
+    assert len(orient) == 1, (
+        f"expected one orientation warn, got: {orient}"
+    )
+    assert orient[0].severity == "warn"
+
+
+def test_polymer_orientation_no_phosphorus_silent():
+    """A peptide (no P, no O3') must not trigger the polymer-orientation
+    check -- it's not a nucleic acid."""
+    pytest.importorskip("PeptideBuilder")
+    from molbuilder import build_peptide
+    s = build_peptide("ARNDC")
+    issues = validate(s, SiestaConfig())
+    assert [i for i in issues if i.where == "polymer.orientation"] == []
+
+
 def test_h_ratio_runs_after_layer2_protonation():
     """The user contract: validation runs at FDF/PySCF emission time,
     AFTER any add_hydrogens step at build time.  An X3DNA-built ATGC
