@@ -105,3 +105,49 @@ def test_dna_add_hydrogens_false_returns_heavy_skeleton():
     # nothing on the bases or sugars -- nowhere near a simulation-
     # ready ratio.
     assert n_h <= 5, f"expected heavy-atom skeleton, got {n_h} H"
+
+
+def test_threedna_strips_5prime_phosphate_for_terminal_oh():
+    """fiber always emits a 5'-phosphate; for terminal='OH' we must
+    strip it so the chain count matches the user's request and the
+    other backends.
+
+    Pinning: a single dA nucleotide with terminal='OH' must be
+    deoxyadenosine (no P), and a 4-mer must have 3 phosphate groups
+    (the 3 internal bridges), not 4."""
+    if not available_backends().get("threedna"):
+        pytest.skip("threedna backend not installed")
+
+    # Single nucleotide -- pre-fix had 1 phosphate (the spurious 5'-P);
+    # post-fix has 0 (it's a free deoxyadenosine).
+    s_a = build_dna("A", backend="threedna", terminal="OH",
+                    add_hydrogens=False, protonate_phosphates=False)
+    assert s_a.elements.count("P") == 0, (
+        f"single dA with terminal=OH should have 0 phosphates, "
+        f"got {s_a.elements.count('P')}"
+    )
+
+    # 4-mer -- pre-fix had 4 phosphates, post-fix has 3 (only the
+    # internal A-T, T-G, G-C bridges).
+    s_atgc = build_dna("ATGC", backend="threedna", terminal="OH",
+                       add_hydrogens=False, protonate_phosphates=False)
+    assert s_atgc.elements.count("P") == 3, (
+        f"ATGC with terminal=OH should have 3 phosphate bridges, "
+        f"got {s_atgc.elements.count('P')}"
+    )
+
+    # 5'-terminal residue should now start at O5' (not P).  fiber
+    # writes residues in 5'->3' order, so residue_ids[0] is the 5'-end.
+    first_rid = s_atgc.residue_ids[0]
+    first_res_atom_names = {
+        s_atgc.atom_names[i] for i in range(s_atgc.n_atoms)
+        if s_atgc.residue_ids[i] == first_rid
+    }
+    assert "P" not in first_res_atom_names, (
+        f"5'-terminal residue should not contain P after strip; "
+        f"atoms: {sorted(first_res_atom_names)}"
+    )
+    assert "O5'" in first_res_atom_names, (
+        f"5'-terminal residue should retain O5' as a free hydroxyl; "
+        f"atoms: {sorted(first_res_atom_names)}"
+    )
