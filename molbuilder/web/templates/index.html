@@ -11,8 +11,35 @@
      SRI hash from this exact file (e.g. via openssl dgst -sha384) and
      add `integrity="sha384-..." crossorigin="anonymous"` here. -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js"></script>
+<style>
+/* Shared top nav between Build (this page, /) and Watch (/watch).
+   Identical block in templates/watch.html -- if you change one, change
+   both (or extract to a shared .css). */
+.app-tabs {
+  display: flex; align-items: stretch;
+  background: #1a1a1a; border-bottom: 1px solid #333;
+  font: 14px/1.4 system-ui, sans-serif;
+}
+.app-tabs .brand {
+  padding: 0.6rem 1rem; color: #888; font-weight: 600; letter-spacing: 0.5px;
+}
+.app-tab {
+  display: inline-block; padding: 0.6rem 1.2rem;
+  color: #aaa; text-decoration: none;
+  border-bottom: 2px solid transparent;
+  transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.app-tab:hover { color: #fff; background: #222; }
+.app-tab.is-active { color: #fff; border-bottom-color: #4a9eff; }
+</style>
 </head>
 <body>
+
+<nav class="app-tabs" role="tablist" aria-label="molbuilder sections">
+  <span class="brand">molbuilder</span>
+  <a href="/"      class="app-tab is-active" role="tab" aria-current="page">Build</a>
+  <a href="/watch" class="app-tab"           role="tab">Watch</a>
+</nav>
 
 <header>
   <h1>molbuilder</h1>
