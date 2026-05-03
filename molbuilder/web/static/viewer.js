@@ -147,6 +147,7 @@
             body.backend  = $("backend").value;
             body.form     = $("form").value;
             body.terminal = $("terminal").value;
+            body.add_hydrogens        = $("add-hydrogens").checked;
             body.protonate_phosphates = $("protonate-phosphates").checked;
         }
         try {
@@ -167,8 +168,20 @@
             const via = r.backend_used
                 ? ` via ${labelFor(r.backend_used)}`
                 : "";
-            setStatus("build-status",
-                `Built ${r.n_atoms}-atom structure${via}.`, "ok");
+            const built = `Built ${r.n_atoms}-atom structure${via}.`;
+            // Surface validation warnings from build-time geometry
+            // checks (most importantly H/heavy ratio when the user
+            // opted out of add_hydrogens for an X3DNA build).  Errors
+            // would have come back as r.ok === false above; here we
+            // only see warnings.
+            const warns = (r.issues || []).filter(i => i.severity === "warn");
+            if (warns.length) {
+                const tail = warns.map(i => i.message).join(" • ");
+                setStatus("build-status",
+                    `${built}  ⚠ ${tail}`, "warn");
+            } else {
+                setStatus("build-status", built, "ok");
+            }
         } catch (e) {
             setStatus("build-status", "Network error: " + e.message, "error");
         }
@@ -537,9 +550,15 @@
             $("fdf-output").textContent = r.fdf;
             $("fdf-output").hidden = false;
             $("dl-fdf").disabled = false;
-            setStatus("fdf-status",
-                `OK — ${r.fdf.split("\n").length} lines, label "${r.system_label}".`,
-                "ok");
+            const fdfMsg = `OK — ${r.fdf.split("\n").length} lines, label "${r.system_label}".`;
+            const fdfWarns = (r.issues || []).filter(i => i.severity === "warn");
+            if (fdfWarns.length) {
+                setStatus("fdf-status",
+                    `${fdfMsg}  ⚠ ${fdfWarns.map(i => i.message).join(" • ")}`,
+                    "warn");
+            } else {
+                setStatus("fdf-status", fdfMsg, "ok");
+            }
         } catch (e) {
             setStatus("fdf-status", "Network error: " + e.message, "error");
         }
@@ -634,9 +653,15 @@
             $("pyscf-output").textContent = r.script;
             $("pyscf-output").hidden = false;
             $("dl-pyscf").disabled = false;
-            setStatus("pyscf-status",
-                `OK — ${r.script.split("\n").length} lines, job "${r.job_name}".`,
-                "ok");
+            const pyMsg = `OK — ${r.script.split("\n").length} lines, job "${r.job_name}".`;
+            const pyWarns = (r.issues || []).filter(i => i.severity === "warn");
+            if (pyWarns.length) {
+                setStatus("pyscf-status",
+                    `${pyMsg}  ⚠ ${pyWarns.map(i => i.message).join(" • ")}`,
+                    "warn");
+            } else {
+                setStatus("pyscf-status", pyMsg, "ok");
+            }
         } catch (e) {
             setStatus("pyscf-status", "Network error: " + e.message, "error");
         }

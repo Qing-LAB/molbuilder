@@ -89,7 +89,7 @@ def validate(struct: Structure, cfg, *,
     specific checks.  Callers can sort / filter as they please.
     """
     issues: List[Issue] = []
-    issues += _validate_geometry(struct, cell)
+    issues += validate_geometry(struct, cell)
     issues += _validate_config_metadata(cfg)
 
     # Engine-specific dispatch via the registry.  isinstance() picks
@@ -128,8 +128,18 @@ def report(issues: List[Issue], *,
 # --------------------------------------------------------------------- #
 
 
-def _validate_geometry(struct: Structure,
-                       cell: Optional[np.ndarray]) -> List[Issue]:
+def validate_geometry(struct: Structure,
+                      cell: Optional[np.ndarray] = None) -> List[Issue]:
+    """Run only the geometry-side checks (no config / engine dispatch).
+
+    Useful for surfaces that don't have a cfg yet -- e.g. the web
+    Build page wants to flag a heavy-atom-only structure as soon as
+    the user clicks Build, before they even pick SIESTA vs PySCF.
+
+    Cell-dependent checks (volume / image distance / determinant) are
+    skipped when ``cell is None``; the always-applicable checks
+    (min atom distance, H/heavy ratio) still run.
+    """
     issues: List[Issue] = []
     pos = struct.positions
     n   = len(pos)

@@ -114,6 +114,68 @@ def test_build_dna_response_includes_backend_used(web_client):
     assert body["backend_used"] in ("threedna", "amber", "rdkit"), body
 
 
+def test_index_page_lists_add_hydrogens_checkbox(web_client):
+    """The Add hydrogens opt-out lives next to Neutralise phosphates
+    in the nucleic-options block.  Default ON for simulation-readiness."""
+    body = web_client.get("/").data.decode()
+    assert 'id="add-hydrogens"' in body
+    # Default checked: the input element should carry the `checked`
+    # attribute (HTML allows it as a bare boolean attr).
+    import re
+    m = re.search(r'<input[^>]*id="add-hydrogens"[^>]*>', body)
+    assert m and "checked" in m.group(0), (
+        f"add-hydrogens checkbox should be default-checked: {m.group(0) if m else None}"
+    )
+
+
+def test_build_response_carries_validation_issues(web_client):
+    """When the user opts out of add_hydrogens (e.g., to inspect the
+    X3DNA heavy-atom skeleton), the build response must include the
+    h_ratio warn issue so the UI can flag it before the user clicks
+    Generate FDF / PySCF."""
+    from molbuilder.backends import available_backends
+    if not available_backends().get("threedna"):
+        pytest.skip("threedna backend not installed")
+    r = web_client.post("/api/build/molecule",
+                        json={"kind": "dna", "input": "ATGC",
+                              "backend": "threedna",
+                              "add_hydrogens": False,
+                              "protonate_phosphates": False})
+    body = r.get_json()
+    assert body["ok"] is True
+    issues = body.get("issues") or []
+    h_ratio_warns = [i for i in issues
+                     if i["severity"] == "warn" and i["where"] == "geometry.h_ratio"]
+    assert len(h_ratio_warns) == 1, (
+        f"expected one h_ratio warn for heavy-atom skeleton, got: {issues}"
+    )
+
+
+def test_build_response_no_issues_when_protonated(web_client):
+    """The flip side: the default path (add_hydrogens=True) produces a
+    healthy structure and the response carries no warnings."""
+    r = web_client.post("/api/build/molecule",
+                        json={"kind": "peptide", "input": "ARNDC"})
+    body = r.get_json()
+    assert body["ok"] is True
+    issues = body.get("issues") or []
+    h_ratio_warns = [i for i in issues if i["where"] == "geometry.h_ratio"]
+    assert h_ratio_warns == [], (
+        f"protonated peptide should not warn on h_ratio; got: {h_ratio_warns}"
+    )
+
+
+def test_fdf_response_includes_validation_issues(web_client, peptide_xyz):
+    """/api/build/fdf returns the validation issue list alongside the
+    rendered text so the UI can show warnings to the user.  For a clean
+    peptide the list is empty; this just pins the response shape."""
+    r = web_client.post("/api/build/fdf",
+                        json={"xyz": peptide_xyz, "params": {}})
+    body = r.get_json()
+    assert body["ok"] is True
+    assert "issues" in body and isinstance(body["issues"], list)
+
+
 def test_both_pages_serve_with_shared_tab_nav(web_client):
     """The unified UI puts a shared tab nav at the top of every page so
     a user can flip between Build (/) and Watch (/watch) without
