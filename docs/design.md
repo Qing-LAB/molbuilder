@@ -1095,6 +1095,154 @@ PATH / env-var so they know exactly what to fix.
 
 ---
 
+## Tool limitations and the H-placement design
+
+Each backend has known quirks; molbuilder compensates so the
+`build_dna` / `build_rna` API contract is consistent across them.
+This section documents what each tool gets wrong, what we do about
+it, and *why* the code is shaped the way it is so the next person
+to touch it doesn't unwind the workarounds.
+
+### What each backend produces, raw
+
+| backend | helical shape | H atoms | terminal phosphate | residue names |
+|---|---|---|---|---|
+| `threedna` (X3DNA fiber) | canonical B/A/Z | **none** (heavy-only) | **always 5'-P** (ignores request) | DA / DT / DG / DC |
+| `amber` (AmberTools tleap) | extended chain | included | honors request | DA5 / DT / DG / DC3 (5'/3' suffixes) |
+| `rdkit` | folded conformer | included via `Chem.AddHs(mol)` | none (single nucleoside fragments) | molecule-level (no per-residue) |
+
+The X3DNA path is the one that needs the most repair work.
+
+### Hydrogen addition: OpenBabel preferred, RDKit fallback
+
+Implementation in `chemistry.add_hydrogens(struct)`. Detection chain:
+**OpenBabel → RDKit → warning**.
+
+#### Why OpenBabel first
+
+- **`OBMol.AddHydrogens()` is geometric.** It places H along sp3 /
+  sp2 / sp vectors directly from each parent atom's hybridization
+  and existing neighbours. There is no "give up and place at
+  parent coordinates" failure mode.
+- On standard biomolecules (DA/DT/DG/DC, 20 amino acids) the
+  residue-template chemistry is mature and battle-tested (25+ years
+  of cheminformatics use; what AutoDock and most MD prep pipelines
+  use under the hood).
+- It doesn't reorder atoms.
+- **Verified on the X3DNA → ATGC test case:** OpenBabel produces
+  the canonical `5 O-H + 37 C-H + 8 N-H` breakdown, matching
+  Amber-tleap and RDKit-via-SMILES exactly. All Watson-Crick H-bond
+  donors (A.N6-H₂, T.N3-H, G.N1-H + G.N2-H₂, C.N4-H₂) are present.
+
+#### Why RDKit is the fallback (and what it gets wrong)
+
+- **Bond-order perception from PDB residue templates is correct.**
+  When given a heavy-atom-only PDB with standard residue names,
+  `Chem.MolFromPDBBlock` perceives bond orders correctly.
+- BUT `Chem.AddHs(mol, addCoords=True)` has a known limitation:
+  for sites where the heavy-atom geometry doesn't uniquely
+  constrain H placement — typically **exocyclic -NH₂ amines on
+  nucleic acid bases** (A.N6, G.N2, C.N4) and **peptide N-terminal
+  -NH₃⁺** — the addCoords flag sometimes leaves H atoms **at their
+  parent atom's coordinates** (zero-distance "ghost H").
+- For a typical ATGC chain, this loses 4 H out of 50 — exactly the
+  Watson-Crick H-bond donors. Structurally crippled for any
+  H-bonding chemistry.
+- The SMILES path doesn't have this issue (`build_peptide` and the
+  `rdkit` nucleic backend reach the SMILES path); only PDB-parse
+  then AddHs has it. The X3DNA path lands here.
+- We keep RDKit as the fallback because it's already a dep, the
+  failure mode is bounded (peptide ambiguous H, nucleic exocyclic
+  amines), and `_drop_overlapping_hydrogens` cleans up the ghosts
+  so downstream validators don't see zero-distance pairs.
+
+#### Why not AmberTools `reduce`
+
+`reduce` is the gold standard for protein protonation (His tautomer
+selection, Asn/Gln side-chain flips). For DNA it's not better than
+OpenBabel and adds:
+
+- A subprocess + temp-file round trip (vs in-process OpenBabel).
+- A different deployment story (it's bundled with AmberTools, but
+  invoking it shells out — harder to reason about than a Python
+  call).
+
+We have AmberTools as a transitive dep already (the `amber` nucleic
+backend uses `tleap`), so `reduce` would not add a dependency. We
+still don't use it because keeping H-placement uniform across
+peptide and nucleic builds — same function, same code path,
+in-process — is more important than the marginal protein-side
+correctness `reduce` would add. The peptide builder is currently
+satisfied by OpenBabel; if and when we hit a peptide tautomer case
+that OpenBabel mishandles, `reduce` becomes a candidate third
+engine in the chain.
+
+#### `_drop_overlapping_hydrogens` post-pass
+
+Removes H atoms < 0.05 Å from any other atom. Threshold rationale:
+the shortest physical X-H bond (H-F at ~0.92 Å) is far above 0.05 Å,
+so a H within 0.05 Å of another atom is unambiguously a placement
+artifact.
+
+- **What this catches:** RDKit `addCoords=True` ghost H at
+  ambiguous-valence sites (the defining failure mode); rare
+  OpenBabel duplicates at tautomeric sites.
+- **What this does NOT do:** re-place the ghost H at sensible
+  positions. That's the smarter remediation but requires
+  hybridization perception (already in `_adjacency`) plus
+  open-valence vector computation (new code). Worth doing only if
+  RDKit becomes the primary engine; with OpenBabel preferred, the
+  drop is a safety net, not a load-bearing path.
+- **What this never touches:** heavy atoms. Two heavy atoms within
+  0.05 Å are a broken structure that the validator should error on,
+  not silently fix.
+
+### X3DNA `fiber` quirks and how we compensate
+
+In `_threedna.py`:
+
+1. **Heavy-atom output → routed through `chemistry.add_hydrogens`**
+   at the `nucleic.build_dna`/`build_rna` layer. The
+   `_maybe_add_hydrogens` shim short-circuits via the H/heavy ≥ 0.3
+   ratio gate, so amber- and rdkit-built structures (which already
+   have H) skip the round-trip cleanly.
+2. **Mandatory 5'-terminal phosphate → `_strip_5prime_phosphate`.**
+   Removes atoms named in `_PHOSPHATE_ATOM_NAMES` (covers both
+   modern OPx and legacy OxP naming) from the 5'-terminal residue
+   when `terminal in ('OH', '3P')`. The bridging O5' stays as part
+   of the sugar; H is added later by `chemistry.add_hydrogens`.
+3. **3'-phosphate cannot be added → warn.** fiber's output is
+   5'-P / 3'-OH; we can strip the 5', but not synthesize a 3'.
+   `terminal in ('PP', '3P')` warns the request will be served as
+   5'-P / 3'-OH or 5'-OH / 3'-OH respectively.
+4. **Z-form is poly-d(GC) only; RNA is A-form only.** Mismatches
+   are warned at dispatch (see `build()`).
+
+### How a regression in any of this would surface
+
+Tests that pin the current behavior (`tests/test_nucleic.py`):
+
+- `test_dna_default_protonation_yields_simulation_ready_h_count`
+  — asserts H/heavy ≥ 0.55 across all installed backends. Catches
+  the case where the X3DNA path silently falls through to "no H
+  added" (e.g., both OpenBabel and RDKit uninstalled, or the
+  H/heavy ratio gate misfires).
+- `test_dna_atgc_protonation_chemistry_matches_across_backends`
+  — pins the canonical anchor-element breakdown
+  (5 O-H / 37 C-H / 8 N-H). Catches the RDKit-fallback regression
+  where Watson-Crick H atoms get dropped.
+- `test_threedna_strips_5prime_phosphate_for_terminal_oh` — pins
+  P count = 0 for a single nucleotide, P count = 3 for ATGC.
+  Catches a regression in the strip helper or a fiber-output
+  format change that defeats the atom-name match.
+- `test_dna_add_hydrogens_false_returns_heavy_skeleton` — pins
+  that the kwarg is honored (≤ 5 H on the fiber-skeleton path).
+
+If any of these red, the protonation contract has drifted; don't
+"fix" by adjusting the test thresholds — re-derive what changed.
+
+---
+
 ## File format spec
 
 `.molwatch.log v1` — single source of truth post-merge:
