@@ -69,9 +69,10 @@ body {
     text-rendering: optimizeLegibility;
 }
 
-/* ---- Header / loader bar ---- */
+/* ---- Banner (header) and loader bar (below the menu) ---- */
 
-header {
+header,
+.loader-bar {
     padding: 14px 22px 12px;
     border-bottom: 1px solid var(--border-strong);
     background: linear-gradient(180deg,
@@ -81,17 +82,16 @@ header {
 }
 
 header h1 {
-    margin: 0 0 8px;
-    font-size: 1.15rem;
+    margin: 0;
+    font-size: 1.5rem;
     font-weight: 600;
-    letter-spacing: -0.005em;
+    letter-spacing: -0.01em;
     color: var(--text-primary);
 }
-header h1 .tag {
-    font-weight: 400;
-    color: var(--text-muted);
-    font-size: 0.85em;
-    margin-left: 8px;
+header .tagline {
+    margin: 6px 0 0;
+    color: var(--text-secondary);
+    font-size: 0.92rem;
 }
 
 .loader {
@@ -444,7 +444,7 @@ button:disabled {
 }
 @media (max-width: 640px) {
     .loader input[type="text"] { min-width: 0; flex: 1; }
-    main, header { padding-left: 12px; padding-right: 12px; }
+    main, header, .loader-bar { padding-left: 12px; padding-right: 12px; }
     :root { --viewer-height: clamp(280px, 50vh, 380px); }
 }
 
