@@ -1,6 +1,6 @@
 # Spec — generated PySCF script
 
-**File**: `molbuilder/pyscf_input.py` &nbsp;·&nbsp; **Module under test**: `tests/test_pyscf.py`
+**File**: `molbuilder/pyscf/input.py` (`PySCFConfig` lives at `molbuilder/config/pyscf.py`) &nbsp;·&nbsp; **Module under test**: `tests/test_pyscf.py`
 
 This document is the contract for the runnable Python script
 `render_script(struct, cfg)` produces.  Tests must verify the spec;

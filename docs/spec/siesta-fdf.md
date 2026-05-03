@@ -1,6 +1,6 @@
 # Spec — SIESTA `.fdf` emitter
 
-**Module**: `molbuilder/siesta.py` &nbsp;·&nbsp; **Tests**:
+**Module**: `molbuilder/siesta/input.py` (`SiestaConfig` lives at `molbuilder/config/siesta.py`) &nbsp;·&nbsp; **Tests**:
 `tests/test_smiles_and_siesta.py`, `tests/test_review_fixes.py`,
 `tests/test_pyscf.py` (cross-engine charge handling),
 `tests/test_molwatch_preview.py` (sibling `.molwatch.log` output)
