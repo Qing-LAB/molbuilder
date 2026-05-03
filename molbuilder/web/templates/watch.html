@@ -12,20 +12,30 @@
    both (or extract to a shared .css). */
 .app-tabs {
   display: flex; align-items: stretch;
-  background: #1a1a1a; border-bottom: 1px solid #333;
-  font: 14px/1.4 system-ui, sans-serif;
+  background: #141414; border-bottom: 1px solid #2a2a2a;
+  font: 15px/1.4 system-ui, sans-serif;
 }
 .app-tabs .brand {
-  padding: 0.6rem 1rem; color: #888; font-weight: 600; letter-spacing: 0.5px;
+  padding: 0.75rem 1.2rem;
+  color: #6a6a6a; font-weight: 700; letter-spacing: 0.6px;
+  text-transform: uppercase; font-size: 12px;
+  align-self: center;
 }
 .app-tab {
-  display: inline-block; padding: 0.6rem 1.2rem;
-  color: #aaa; text-decoration: none;
-  border-bottom: 2px solid transparent;
-  transition: color 0.12s, border-color 0.12s, background 0.12s;
+  display: inline-block; padding: 0.75rem 1.6rem;
+  color: #777;                            /* inactive: dimmer */
+  text-decoration: none;
+  font-weight: 500;
+  border-bottom: 4px solid transparent;   /* reserve underline space */
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
 }
-.app-tab:hover { color: #fff; background: #222; }
-.app-tab.is-active { color: #fff; border-bottom-color: #4a9eff; }
+.app-tab:hover { color: #ddd; background: #1c1c1c; }
+.app-tab.is-active {
+  color: #fff;                            /* active: brightest */
+  background: #2a2a2a;                    /* filled, "raised" */
+  border-bottom-color: #4a9eff;           /* 4px blue accent */
+  font-weight: 700;
+}
 </style>
 </head>
 <body>
