@@ -21,6 +21,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
+from . import chemistry
 from .residues import (
     MODIFIED_RESIDUES,
     AA_THREE_TO_ONE,
@@ -142,161 +143,9 @@ def build_peptide(
         struct = _patch_residue(struct, rid, patches[rid])
 
     if add_hydrogens:
-        struct = _add_hydrogens(struct)
+        struct = chemistry.add_hydrogens(struct)
 
     return struct
-
-
-# ---------------------------------------------------------------------- #
-#  Hydrogen addition                                                     #
-# ---------------------------------------------------------------------- #
-
-
-def _add_hydrogens(struct: Structure) -> Structure:
-    """Protonate using whichever of (OpenBabel, RDKit) is installed.
-
-    Falls back to the heavy-atom-only structure with a warning if
-    neither is available.
-    """
-    # ---- try OpenBabel first (fastest, doesn't reorder atoms) --------
-    try:
-        from openbabel import openbabel as ob
-    except ImportError:
-        ob = None
-
-    if ob is not None:
-        return _protonate_openbabel(struct, ob)
-
-    # ---- fall back to RDKit ------------------------------------------
-    try:
-        from rdkit import Chem
-        from rdkit.Chem import AllChem
-    except ImportError:
-        Chem = None  # type: ignore
-
-    if Chem is not None:
-        return _protonate_rdkit(struct, Chem, AllChem)
-
-    import warnings
-    warnings.warn(
-        "Cannot add hydrogens: neither OpenBabel (`pip install openbabel`) "
-        "nor RDKit (`conda install -c conda-forge rdkit`) is installed.  "
-        "Returning a HEAVY-ATOM-ONLY structure -- protonate before running "
-        "any quantum-chemistry calculation.",
-        RuntimeWarning, stacklevel=3,
-    )
-    return struct
-
-
-def _protonate_openbabel(struct: Structure, ob) -> Structure:
-    obconv = ob.OBConversion()
-    obconv.SetInAndOutFormats("pdb", "pdb")
-    mol = ob.OBMol()
-    obconv.ReadString(mol, struct.to_pdb())
-    mol.AddHydrogens()
-    out = obconv.WriteString(mol)
-    return _drop_overlapping_hydrogens(
-        _structure_from_pdb_string(out, title=struct.title)
-    )
-
-
-def _protonate_rdkit(struct: Structure, Chem, AllChem) -> Structure:
-    mol = Chem.MolFromPDBBlock(struct.to_pdb(), removeHs=False, sanitize=False)
-    if mol is None:
-        # RDKit can choke on partial / unusual PDBs -- return as-is.
-        import warnings
-        warnings.warn(
-            "RDKit failed to parse the heavy-atom PDB; returning "
-            "heavy-atom-only structure.  Try installing OpenBabel.",
-            RuntimeWarning, stacklevel=3,
-        )
-        return struct
-    mol = Chem.AddHs(mol, addCoords=True)
-    pdb_out = Chem.MolToPDBBlock(mol)
-    return _drop_overlapping_hydrogens(
-        _structure_from_pdb_string(pdb_out, title=struct.title)
-    )
-
-
-def _drop_overlapping_hydrogens(struct: Structure) -> Structure:
-    """Remove H atoms that overlap (< 0.05 Å) with any other atom.
-
-    Both protonation paths (OpenBabel's AddHydrogens and RDKit's
-    AddHs(addCoords=True)) occasionally fail to compute positions for
-    ambiguous-valence Hs (most often the N-terminal -NH3+ extras and
-    the second backbone-amine H of a free N-terminus); the H ends up
-    at the same coordinates as its anchor heavy atom or another
-    template atom.  These Hs are guaranteed broken (no real H sits
-    < 0.05 Å from another atom) and a downstream validator flags them
-    as zero-distance pairs that abort the run.  Drop them at the
-    source so the caller gets a clean structure.
-
-    Heavy atoms are never removed.
-    """
-    pos      = struct.positions
-    elements = struct.elements
-    n        = len(pos)
-    keep     = np.ones(n, dtype=bool)
-    for i in range(n):
-        if elements[i] != "H":
-            continue
-        for j in range(n):
-            if i == j:
-                continue
-            if float(np.linalg.norm(pos[i] - pos[j])) < 0.05:
-                keep[i] = False
-                break
-    if keep.all():
-        return struct
-    return Structure(
-        elements      = [e for k, e in zip(keep, elements)             if k],
-        positions     = pos[keep],
-        atom_names    = [a for k, a in zip(keep, struct.atom_names)    if k],
-        residue_ids   = [r for k, r in zip(keep, struct.residue_ids)   if k],
-        residue_names = [n for k, n in zip(keep, struct.residue_names) if k],
-        chain_ids     = [c for k, c in zip(keep, struct.chain_ids)     if k],
-        title         = struct.title,
-    )
-
-
-def _structure_from_pdb_string(pdb: str, *, title: str) -> Structure:
-    elements:      List[str] = []
-    positions:     List[Tuple[float, float, float]] = []
-    atom_names:    List[str] = []
-    residue_ids:   List[int] = []
-    residue_names: List[str] = []
-    chain_ids:     List[str] = []
-    for line in pdb.splitlines():
-        if not line.startswith(("ATOM  ", "HETATM")):
-            continue
-        # Fixed-width PDB columns
-        atom_name = line[12:16].strip()
-        res_name  = line[17:20].strip()
-        chain_id  = line[21:22].strip() or "A"
-        try:
-            res_id = int(line[22:26])
-            x = float(line[30:38]); y = float(line[38:46]); z = float(line[46:54])
-        except ValueError:
-            continue
-        element = line[76:78].strip()
-        if not element:
-            # Some writers omit the element column; fall back to atom name
-            element = "".join(c for c in atom_name if c.isalpha())[:1].upper()
-        elements.append(element)
-        positions.append((x, y, z))
-        atom_names.append(atom_name)
-        residue_ids.append(res_id)
-        residue_names.append(res_name)
-        chain_ids.append(chain_id)
-    return Structure(
-        elements=elements,
-        positions=np.asarray(positions, dtype=float),
-        atom_names=atom_names,
-        residue_ids=residue_ids,
-        residue_names=residue_names,
-        chain_ids=chain_ids,
-        title=title,
-    )
 
 
 # ---------------------------------------------------------------------- #

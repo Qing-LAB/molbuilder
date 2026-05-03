@@ -231,6 +231,147 @@ def protonate_phosphate_oxygens(struct: Structure) -> Tuple[Structure, int]:
 
 
 # --------------------------------------------------------------------- #
+#  Hydrogen addition (OpenBabel / RDKit)                                #
+#                                                                       #
+#  Single source of truth for adding explicit hydrogens to a heavy-     #
+#  atom skeleton.  Used by:                                             #
+#    - peptide.build_peptide        (PeptideBuilder gives heavy atoms)  #
+#    - nucleic.build_dna / build_rna (X3DNA's `fiber` is heavy-only;    #
+#                                     amber / rdkit backends handle     #
+#                                     their own H but go through this   #
+#                                     for a no-op / consistent path)    #
+#                                                                       #
+#  Strategy: prefer OpenBabel (faster, doesn't reorder atoms), fall     #
+#  back to RDKit's AddHs(addCoords=True), warn if neither is            #
+#  installed.  Both engines place H along the correct sp3-tetrahedral / #
+#  sp2-planar / sp-linear vectors based on perceived bond orders --     #
+#  the geometry is correct, not just the count.                         #
+# --------------------------------------------------------------------- #
+
+
+def add_hydrogens(struct: Structure) -> Structure:
+    """Add explicit H atoms to ``struct`` using OpenBabel or RDKit.
+
+    Both engines place H with correct geometry (sp3 tetrahedral,
+    sp2 planar, sp linear) based on perceived bond orders from the
+    PDB residue templates.  OpenBabel is preferred because it
+    doesn't reorder atoms; RDKit is the fallback.
+
+    Falls back to the heavy-atom-only structure with a warning if
+    neither library is installed -- callers using this for DFT prep
+    should surface that warning prominently (the user's structure is
+    not simulation-ready without H).
+
+    The post-pass ``_drop_overlapping_hydrogens`` removes any H that
+    landed within 0.05 Å of another atom (a known artifact of
+    AddHs(addCoords=True) for ambiguous-valence sites such as the
+    N-terminal -NH3+ of a free peptide).
+    """
+    # ---- try OpenBabel first (fastest, doesn't reorder atoms) --------
+    try:
+        from openbabel import openbabel as ob
+    except ImportError:
+        ob = None
+
+    if ob is not None:
+        return _protonate_openbabel(struct, ob)
+
+    # ---- fall back to RDKit ------------------------------------------
+    try:
+        from rdkit import Chem
+    except ImportError:
+        Chem = None  # type: ignore
+
+    if Chem is not None:
+        return _protonate_rdkit(struct, Chem)
+
+    import warnings
+    warnings.warn(
+        "Cannot add hydrogens: neither OpenBabel (`pip install openbabel`) "
+        "nor RDKit (`conda install -c conda-forge rdkit`) is installed.  "
+        "Returning a HEAVY-ATOM-ONLY structure -- protonate before running "
+        "any quantum-chemistry calculation.",
+        RuntimeWarning, stacklevel=3,
+    )
+    return struct
+
+
+def _protonate_openbabel(struct: Structure, ob) -> Structure:
+    obconv = ob.OBConversion()
+    obconv.SetInAndOutFormats("pdb", "pdb")
+    mol = ob.OBMol()
+    obconv.ReadString(mol, struct.to_pdb())
+    mol.AddHydrogens()
+    out = obconv.WriteString(mol)
+    return _drop_overlapping_hydrogens(
+        Structure.from_pdb(out, title=struct.title)
+    )
+
+
+def _protonate_rdkit(struct: Structure, Chem) -> Structure:
+    mol = Chem.MolFromPDBBlock(struct.to_pdb(), removeHs=False, sanitize=False)
+    if mol is None:
+        # RDKit can choke on partial / unusual PDBs -- return as-is.
+        import warnings
+        warnings.warn(
+            "RDKit failed to parse the heavy-atom PDB; returning "
+            "heavy-atom-only structure.  Try installing OpenBabel.",
+            RuntimeWarning, stacklevel=3,
+        )
+        return struct
+    mol = Chem.AddHs(mol, addCoords=True)
+    pdb_out = Chem.MolToPDBBlock(mol)
+    return _drop_overlapping_hydrogens(
+        Structure.from_pdb(pdb_out, title=struct.title)
+    )
+
+
+def _drop_overlapping_hydrogens(struct: Structure) -> Structure:
+    """Remove H atoms that overlap (< 0.05 Å) with any other atom.
+
+    Both protonation paths (OpenBabel's AddHydrogens and RDKit's
+    AddHs(addCoords=True)) occasionally fail to compute positions for
+    ambiguous-valence Hs (most often the N-terminal -NH3+ extras and
+    the second backbone-amine H of a free N-terminus); the H ends up
+    at the same coordinates as its anchor heavy atom or another
+    template atom.  These Hs are guaranteed broken (no real H sits
+    < 0.05 Å from another atom) and a downstream validator flags them
+    as zero-distance pairs that abort the run.  Drop them at the
+    source so the caller gets a clean structure.
+
+    Heavy atoms are never removed.
+    """
+    pos      = struct.positions
+    elements = struct.elements
+    n        = len(pos)
+    keep     = np.ones(n, dtype=bool)
+    for i in range(n):
+        if elements[i] != "H":
+            continue
+        for j in range(n):
+            if i == j:
+                continue
+            if float(np.linalg.norm(pos[i] - pos[j])) < 0.05:
+                keep[i] = False
+                break
+    if keep.all():
+        return struct
+    return Structure(
+        elements      = [e for k, e in zip(keep, elements)             if k],
+        positions     = pos[keep],
+        atom_names    = ([a for k, a in zip(keep, struct.atom_names)    if k]
+                         if struct.atom_names    is not None else None),
+        residue_ids   = ([r for k, r in zip(keep, struct.residue_ids)   if k]
+                         if struct.residue_ids   is not None else None),
+        residue_names = ([n for k, n in zip(keep, struct.residue_names) if k]
+                         if struct.residue_names is not None else None),
+        chain_ids     = ([c for k, c in zip(keep, struct.chain_ids)     if k]
+                         if struct.chain_ids     is not None else None),
+        title         = struct.title,
+    )
+
+
+# --------------------------------------------------------------------- #
 #  Pauling electronegativity table + heuristic partial-charge estimate #
 #                                                                        #
 #  This is a heuristic, not a QM result.  Used by the validation pass  #
