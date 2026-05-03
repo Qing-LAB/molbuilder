@@ -76,6 +76,44 @@ def test_health_endpoint(web_client):
     assert r.get_json()["ok"] is True
 
 
+def test_backends_endpoint_exposes_auto_resolution(web_client):
+    """The dropdown labels its `auto` option with the resolved backend
+    so the user knows which one would actually run.  /api/backends has
+    to expose both the per-backend availability map and the resolved
+    auto pick (which may be None when no backend is installed)."""
+    r = web_client.get("/api/backends")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True
+    assert isinstance(body["available"], dict)
+    assert set(body["available"]) >= {"threedna", "amber", "rdkit"}
+    # auto_name is a string from {threedna, amber, rdkit} or None
+    assert body["auto_name"] in (None, "threedna", "amber", "rdkit")
+
+
+def test_index_page_lists_threedna_in_backend_dropdown(web_client):
+    """3DNA is the highest-quality DNA / RNA backend (canonical B/A/Z
+    helix).  It must appear as an explicit choice in the dropdown so
+    users with x3dna installed can pick it -- and so users without it
+    get the (not installed) suffix the JS adds at page load."""
+    body = web_client.get("/").data.decode()
+    assert 'value="threedna"' in body, (
+        "Backend dropdown should list threedna explicitly"
+    )
+
+
+def test_build_dna_response_includes_backend_used(web_client):
+    """The user picked `auto`; the response has to surface which
+    backend ran so they know whether they got a canonical helix
+    (3DNA), an extended chain (Amber), or a folded conformer (RDKit)."""
+    r = web_client.post("/api/build/molecule",
+                        json={"kind": "dna", "input": "ATGC",
+                              "backend": "auto"})
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["backend_used"] in ("threedna", "amber", "rdkit"), body
+
+
 def test_both_pages_serve_with_shared_tab_nav(web_client):
     """The unified UI puts a shared tab nav at the top of every page so
     a user can flip between Build (/) and Watch (/watch) without

@@ -299,6 +299,7 @@ button.primary:disabled,
 }
 .status.error { color: var(--error); }
 .status.ok    { color: var(--success); }
+.status.warn  { color: #d8a64b; }
 
 /* ---- Viewer card ---- */
 

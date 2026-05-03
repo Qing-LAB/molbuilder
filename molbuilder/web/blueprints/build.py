@@ -84,16 +84,26 @@ def api_build_molecule():
                                  f"valid: {sorted(_BUILDERS)}"}), 400
     if not text:
         return jsonify({"ok": False, "error": "empty input"}), 400
+    backend_used: str | None = None
     try:
         # DNA / RNA accept extra knobs (backend / form / terminal).
         if kind in ("dna", "rna"):
+            requested = body.get("backend", "auto")
             kwargs = {
-                "backend":  body.get("backend",  "auto"),
+                "backend":  requested,
                 "form":     body.get("form",     "B" if kind == "dna" else "A"),
                 "terminal": body.get("terminal", "OH"),
                 "protonate_phosphates":
                     bool(body.get("protonate_phosphates", True)),
             }
+            # Resolve "auto" before the build so the UI can display
+            # which backend actually ran -- this matches dispatch()'s
+            # selection logic exactly (see auto_backend_name docstring).
+            if requested == "auto":
+                from molbuilder.backends import auto_backend_name
+                backend_used = auto_backend_name()
+            else:
+                backend_used = requested
             struct = _BUILDERS[kind](text, **kwargs)
         else:
             struct = _BUILDERS[kind](text)
@@ -112,6 +122,7 @@ def api_build_molecule():
         "summary": struct.summary(),
         "title": struct.title or kind,
         "elements": list(struct.elements),
+        "backend_used": backend_used,
     })
 
 

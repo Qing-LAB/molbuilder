@@ -75,18 +75,51 @@
         if (e.key === "Enter") $("build-btn").click();
     });
 
-    // Detect installed backends and grey out unavailable ones in the
-    // dropdown.  This is a one-shot fetch on page load.
+    // Detect installed backends, grey out unavailable ones in the
+    // dropdown, label the "auto" option with the resolved backend
+    // name so the user sees what would actually run, and surface a
+    // visible warning in #backend-hint when 3DNA (the highest-quality
+    // backend) isn't installed.  One-shot fetch on page load.
     fetch("/api/backends").then(r => r.json()).then(r => {
         if (!r || !r.ok) return;
         const sel = $("backend");
         for (const opt of sel.options) {
             const name = opt.value;
-            if (name === "auto") continue;
+            if (name === "auto") {
+                if (r.auto_name) {
+                    opt.text = `auto  (→ ${r.auto_name})`;
+                } else {
+                    opt.text = "auto  (no backend installed)";
+                    opt.disabled = true;
+                }
+                continue;
+            }
             opt.disabled = !r.available[name];
             if (!r.available[name]) {
                 opt.text = opt.text + "  (not installed)";
             }
+        }
+        // Hint line below the dropdown -- always present so the user
+        // can read what's installed without expanding the dropdown.
+        const hint = $("backend-hint");
+        if (hint) {
+            const parts = [];
+            if (r.auto_name) {
+                parts.push(`auto → <b>${r.auto_name}</b>`);
+            } else {
+                parts.push("no nucleic-acid backend is installed");
+            }
+            if (!r.available.threedna) {
+                parts.push(
+                    "3DNA not detected (canonical B/A/Z helices unavailable; " +
+                    'install from <a href="http://x3dna.org/" target="_blank" rel="noopener">x3dna.org</a> ' +
+                    "to enable)"
+                );
+            }
+            hint.innerHTML = parts.join(" &middot; ");
+            hint.className = r.auto_name && r.available.threedna
+                ? "status ok"
+                : "status warn";
         }
     }).catch(() => { /* /api/backends optional */ });
 
@@ -115,8 +148,13 @@
                 return;
             }
             applyStructureResult(r);
+            // Include the backend that ran -- users picking "auto"
+            // need to know whether they got 3DNA, Amber, or RDKit
+            // because the geometry differs substantially (canonical
+            // helix vs extended chain vs folded conformer).
+            const via = r.backend_used ? ` via ${r.backend_used}` : "";
             setStatus("build-status",
-                `Built ${r.n_atoms}-atom structure.`, "ok");
+                `Built ${r.n_atoms}-atom structure${via}.`, "ok");
         } catch (e) {
             setStatus("build-status", "Network error: " + e.message, "error");
         }

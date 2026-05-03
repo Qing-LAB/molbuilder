@@ -58,7 +58,15 @@ def create_app() -> Flask:
 
     @app.route("/api/backends")
     def api_backends():
-        from ..backends import available_backends
-        return jsonify({"ok": True, "available": available_backends()})
+        # `auto_name` is what dispatch(backend="auto") would pick on
+        # this machine -- exposed so the UI can label the dropdown's
+        # "auto" option with the resolved backend, and surface a
+        # warning when the preferred (3DNA) backend isn't installed.
+        from ..backends import auto_backend_name, available_backends
+        return jsonify({
+            "ok": True,
+            "available": available_backends(),
+            "auto_name": auto_backend_name(),
+        })
 
     return app
