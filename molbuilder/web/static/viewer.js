@@ -50,8 +50,10 @@
     function placeholderFor(kind) {
         switch (kind) {
             case "peptide": return "ARNDC  or  AR[SEP]C";
-            case "dna":     return "ATGCATGCAT";
-            case "rna":     return "AUGCAUGCAU";
+            // Sequences are read 5'->3' by default; explicit
+            // 5'-...-3' or 3'-...-5' labels are accepted.
+            case "dna":     return "ATGCATGCAT  or  5'-ATGC-3'";
+            case "rna":     return "AUGCAUGCAU  or  5'-AUGC-3'";
             case "smiles":  return "c1ccccc1   or  Sc1ccc(S)cc1";
             case "name":    return "benzene   or  1,4-benzenedithiol";
             default:        return "";

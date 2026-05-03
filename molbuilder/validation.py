@@ -194,6 +194,8 @@ def validate_geometry(struct: Structure,
                 "geometry.h_ratio",
             ))
 
+    issues += _check_polymer_orientation(struct)
+
     if cell is None:
         return issues
 
@@ -281,6 +283,86 @@ def _min_image_distance(positions: np.ndarray,
         if d < best:
             best = d
     return best
+
+
+# --------------------------------------------------------------------- #
+#  Polymer orientation                                                  #
+#                                                                       #
+#  For nucleic acids, every backend builds residues 5' -> 3' (lowest    #
+#  residue_id at the 5' end).  If a future backend (or a user-loaded    #
+#  PDB from an external tool) lists residues 3' -> 5', the polymer is  #
+#  chemically the same but the residue listing is reversed -- which     #
+#  silently breaks any downstream code that infers orientation from    #
+#  residue_ids[0] (CIF / PDB writers, web "Watch this run" handoff,    #
+#  the X3DNA 5'-phosphate strip in `_threedna._strip_5prime_phosphate`).#
+#                                                                       #
+#  This check looks at the actual P-O3' bridges to find the structural  #
+#  5' end (the residue with NO incoming bridge) and warns when it       #
+#  doesn't match the lowest-numbered residue.                          #
+# --------------------------------------------------------------------- #
+
+
+def _check_polymer_orientation(struct: Structure) -> List[Issue]:
+    if struct.residue_ids is None or struct.atom_names is None:
+        return []
+    # Locate P and O3' positions per residue.  If neither is present
+    # this isn't a nucleic-acid polymer (or it's a heavy-atom-only
+    # build with no backbone atoms named) -- silently skip.
+    P_pos:  Dict[int, np.ndarray] = {}
+    O3_pos: Dict[int, np.ndarray] = {}
+    for i in range(struct.n_atoms):
+        rid = struct.residue_ids[i]
+        nm  = struct.atom_names[i]
+        if nm == "P":
+            P_pos[rid] = struct.positions[i]
+        elif nm == "O3'":
+            O3_pos[rid] = struct.positions[i]
+    if not P_pos and not O3_pos:
+        return []
+
+    rids = sorted(set(struct.residue_ids))
+    # has_predecessor[r] = True if residue r's P bonds to residue (r-1)'s O3'.
+    has_predecessor = set()
+    for r in rids:
+        if r in P_pos and (r - 1) in O3_pos:
+            d = float(np.linalg.norm(P_pos[r] - O3_pos[r - 1]))
+            if d < 1.8:                                # bridged
+                has_predecessor.add(r)
+
+    five_prime_ends = [r for r in rids if r not in has_predecessor]
+    if not five_prime_ends:
+        # cyclic polymer -- nothing to orient against
+        return []
+    if len(five_prime_ends) > 1:
+        # Multiple chains, branched, or multiple disconnected pieces.
+        # If the structure has a single chain_id this is a polymer
+        # integrity issue worth surfacing; multi-chain inputs (e.g.,
+        # a duplex) get a pass.
+        if struct.chain_ids is not None and len(set(struct.chain_ids)) <= 1:
+            return [Issue(
+                "warn",
+                f"polymer has {len(five_prime_ends)} residues with no "
+                f"preceding O3'-P bridge (residues {five_prime_ends}); "
+                f"single-chain input expected exactly one 5' end.  "
+                f"Possible disconnected backbone or unintended branching.",
+                "polymer.orientation",
+            )]
+        return []
+
+    # Exactly one 5' end -- it should be the lowest-numbered residue
+    # (every backend builds 5' -> 3', so residue_ids[0] = 5' terminus).
+    if five_prime_ends[0] != rids[0]:
+        return [Issue(
+            "warn",
+            f"residue listing appears reversed: structural 5' end is "
+            f"residue {five_prime_ends[0]} but residue_ids start at "
+            f"{rids[0]}.  Backends should list 5' -> 3' (lowest residue_id "
+            f"at the 5' end); a mismatch breaks downstream orientation-"
+            f"sensitive code (terminal-phosphate stripping, FDF residue "
+            f"numbering).  Likely a backend regression.",
+            "polymer.orientation",
+        )]
+    return []
 
 
 # --------------------------------------------------------------------- #
