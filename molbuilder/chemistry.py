@@ -231,43 +231,97 @@ def protonate_phosphate_oxygens(struct: Structure) -> Tuple[Structure, int]:
 
 
 # --------------------------------------------------------------------- #
-#  Hydrogen addition (OpenBabel / RDKit)                                #
+#  Hydrogen addition: tool comparison + design rationale                #
+#  ===================================================                  #
 #                                                                       #
-#  Single source of truth for adding explicit hydrogens to a heavy-     #
-#  atom skeleton.  Used by:                                             #
-#    - peptide.build_peptide        (PeptideBuilder gives heavy atoms)  #
-#    - nucleic.build_dna / build_rna (X3DNA's `fiber` is heavy-only;    #
-#                                     amber / rdkit backends handle     #
-#                                     their own H but go through this   #
-#                                     for a no-op / consistent path)    #
+#  Single source of truth for adding explicit H atoms to a heavy-atom   #
+#  skeleton.  Used by:                                                  #
+#    - peptide.build_peptide        (PeptideBuilder emits heavy-only)   #
+#    - nucleic.build_dna/build_rna  (X3DNA's `fiber` is heavy-only;     #
+#                                    amber/rdkit produce H themselves   #
+#                                    and skip this via the H/heavy>=0.3 #
+#                                    gate in nucleic._maybe_add_hydrogens)
 #                                                                       #
-#  Strategy: prefer OpenBabel (faster, doesn't reorder atoms), fall     #
-#  back to RDKit's AddHs(addCoords=True), warn if neither is            #
-#  installed.  Both engines place H along the correct sp3-tetrahedral / #
-#  sp2-planar / sp-linear vectors based on perceived bond orders --     #
-#  the geometry is correct, not just the count.                         #
+#  Why two engines, in this order                                       #
+#  -------------------------------                                      #
+#  Both OpenBabel and RDKit place H along correct sp3-tetrahedral /     #
+#  sp2-planar / sp-linear vectors based on perceived bond orders.       #
+#  They differ in how they handle ambiguous-valence sites (typically    #
+#  exocyclic NH2 amines on nucleic acid bases and -NH3+ at peptide      #
+#  N-termini):                                                          #
+#                                                                       #
+#  OpenBabel `OBMol.AddHydrogens()` (preferred):                        #
+#    - Geometric H placement directly from each parent's hybridization  #
+#      and existing neighbours.  No "give up" failure mode.             #
+#    - On standard biomolecules (DA/DT/DG/DC, 20 amino acids) the       #
+#      residue-template chemistry is mature and battle-tested.          #
+#    - Doesn't reorder atoms, so PDB indices are preserved.             #
+#    - Verified: X3DNA fiber heavy-skeleton -> AddHydrogens produces    #
+#      the canonical 5 O-H + 37 C-H + 8 N-H breakdown for ATGC,         #
+#      matching Amber-tleap and RDKit-via-SMILES exactly.               #
+#                                                                       #
+#  RDKit `Chem.AddHs(mol, addCoords=True)` (fallback):                  #
+#    - Bond-order perception from PDB residue templates is correct      #
+#      (this is well-tested).                                           #
+#    - BUT for sites where the heavy-atom geometry doesn't constrain    #
+#      H placement uniquely -- exocyclic -NH2 on bases (A.N6, G.N2,     #
+#      C.N4), peptide N-terminal -NH3+ -- the addCoords=True flag       #
+#      sometimes leaves H atoms AT THEIR PARENT'S COORDINATES (zero    #
+#      distance "ghost H").  This is a known RDKit limitation when     #
+#      placing H from a heavy-atom-only PDB.                            #
+#    - For DNA bases this strips Watson-Crick H-bond donors (4 H short  #
+#      out of 50 on an ATGC chain pre-OpenBabel -- the bug that         #
+#      motivated the fallback ordering).                                #
+#    - SMILES-construct path doesn't have this issue; only PDB-parse    #
+#      then AddHs has it.  build_peptide and the rdkit nucleic backend  #
+#      reach the SMILES path; the X3DNA path lands here.                #
+#                                                                       #
+#  Why not AmberTools `reduce`                                          #
+#    - It's the gold standard for protein protonation (His tautomers,   #
+#      Asn/Gln flips), but for DNA it's not better than OpenBabel and   #
+#      requires shelling out + a temp-file round trip.  We already      #
+#      have AmberTools as a transitive dep for the amber-tleap          #
+#      backend; using `reduce` here wouldn't add a new dep but would    #
+#      make this code path harder to reason about (subprocess vs        #
+#      in-process).  Sticking with OpenBabel keeps the H-placement      #
+#      logic uniform across peptide and nucleic flows.                  #
+#                                                                       #
+#  Why _drop_overlapping_hydrogens after each engine                    #
+#    - Both engines (different reasons) can produce H at zero distance  #
+#      from an anchor.  RDKit: addCoords ghost-H artifact above.        #
+#      OpenBabel: rare, but multiple H written at the same coord for    #
+#      tautomeric or ill-defined sites.  Keeping the post-pass means    #
+#      the caller never sees the broken structure; downstream           #
+#      validators don't have to special-case zero-distance pairs.       #
+#    - Trade-off: for the RDKit path on nucleic acid bases, the drop    #
+#      ALSO removes the legitimate-but-poorly-placed Watson-Crick H,    #
+#      which is why OpenBabel is preferred-first.  Re-PLACING the       #
+#      ghost H (rather than dropping) would be a smarter remediation    #
+#      but is substantial new code and unnecessary as long as           #
+#      OpenBabel is the primary engine.                                 #
 # --------------------------------------------------------------------- #
 
 
 def add_hydrogens(struct: Structure) -> Structure:
-    """Add explicit H atoms to ``struct`` using OpenBabel or RDKit.
+    """Add explicit H atoms to ``struct`` with correct sp3 / sp2 / sp
+    geometry.
 
-    Both engines place H with correct geometry (sp3 tetrahedral,
-    sp2 planar, sp linear) based on perceived bond orders from the
-    PDB residue templates.  OpenBabel is preferred because it
-    doesn't reorder atoms; RDKit is the fallback.
+    Detection chain (first installed engine wins):
+      1. OpenBabel ``OBMol.AddHydrogens()`` -- preferred.  Geometric H
+         placement; doesn't fail on ambiguous-valence amine sites.
+      2. RDKit ``Chem.AddHs(mol, addCoords=True)`` -- fallback.  Works
+         well for SMILES-constructed molecules; for PDB-parsed inputs
+         (heavy-atom only) it can leave exocyclic -NH2 H at parent
+         coordinates.  See module-header comment for the full caveat.
+      3. Neither: emit a RuntimeWarning and return the heavy-atom-only
+         structure.  Callers should surface the warning since DFT will
+         compute the wrong electron count.
 
-    Falls back to the heavy-atom-only structure with a warning if
-    neither library is installed -- callers using this for DFT prep
-    should surface that warning prominently (the user's structure is
-    not simulation-ready without H).
-
-    The post-pass ``_drop_overlapping_hydrogens`` removes any H that
-    landed within 0.05 Å of another atom (a known artifact of
-    AddHs(addCoords=True) for ambiguous-valence sites such as the
-    N-terminal -NH3+ of a free peptide).
+    Both engines emit a final pass through ``_drop_overlapping_hydrogens``
+    to strip any H that ended up sitting on another atom (the addCoords
+    ghost-H artifact and rare OpenBabel duplicates).
     """
-    # ---- try OpenBabel first (fastest, doesn't reorder atoms) --------
+    # ---- try OpenBabel first (no ghost-coord failure mode) ----------
     try:
         from openbabel import openbabel as ob
     except ImportError:
@@ -287,16 +341,27 @@ def add_hydrogens(struct: Structure) -> Structure:
 
     import warnings
     warnings.warn(
-        "Cannot add hydrogens: neither OpenBabel (`pip install openbabel`) "
-        "nor RDKit (`conda install -c conda-forge rdkit`) is installed.  "
-        "Returning a HEAVY-ATOM-ONLY structure -- protonate before running "
-        "any quantum-chemistry calculation.",
+        "Cannot add hydrogens: neither OpenBabel (`conda install -c "
+        "conda-forge openbabel`) nor RDKit (`conda install -c conda-forge "
+        "rdkit`) is installed.  Returning a HEAVY-ATOM-ONLY structure -- "
+        "DFT will compute the wrong electron count.  Install OpenBabel "
+        "for canonical biomolecule protonation; RDKit also works for "
+        "SMILES-constructed inputs but has a known ambiguous-valence "
+        "ghost-coord artifact for PDB-parsed nucleic-acid bases.",
         RuntimeWarning, stacklevel=3,
     )
     return struct
 
 
 def _protonate_openbabel(struct: Structure, ob) -> Structure:
+    """Geometric H placement via OBMol.AddHydrogens().
+
+    OpenBabel's path: PDB -> OBMol (with bond perception from residue
+    templates) -> AddHydrogens (geometric placement using sp3/sp2/sp
+    vectors and existing neighbours) -> PDB.  Round-trip preserves
+    atom order; placement is robust on ambiguous-valence amines that
+    bite RDKit's PDB-then-AddHs path.
+    """
     obconv = ob.OBConversion()
     obconv.SetInAndOutFormats("pdb", "pdb")
     mol = ob.OBMol()
@@ -309,6 +374,17 @@ def _protonate_openbabel(struct: Structure, ob) -> Structure:
 
 
 def _protonate_rdkit(struct: Structure, Chem) -> Structure:
+    """Fallback H placement via Chem.AddHs(mol, addCoords=True).
+
+    Caveat (see module-header comment): for PDB-parsed inputs with
+    ambiguous-valence sites (exocyclic -NH2 on bases, peptide
+    N-terminal -NH3+), AddHs(addCoords=True) can leave H at parent
+    coordinates.  ``_drop_overlapping_hydrogens`` removes those
+    ghosts -- which is correct for peptides (the dropped H were
+    extras, not load-bearing) but loses 4 Watson-Crick H on a typical
+    DNA chain.  Use OpenBabel-first ordering to avoid landing here
+    for nucleic-acid inputs.
+    """
     mol = Chem.MolFromPDBBlock(struct.to_pdb(), removeHs=False, sanitize=False)
     if mol is None:
         # RDKit can choke on partial / unusual PDBs -- return as-is.
@@ -329,15 +405,30 @@ def _protonate_rdkit(struct: Structure, Chem) -> Structure:
 def _drop_overlapping_hydrogens(struct: Structure) -> Structure:
     """Remove H atoms that overlap (< 0.05 Å) with any other atom.
 
-    Both protonation paths (OpenBabel's AddHydrogens and RDKit's
-    AddHs(addCoords=True)) occasionally fail to compute positions for
-    ambiguous-valence Hs (most often the N-terminal -NH3+ extras and
-    the second backbone-amine H of a free N-terminus); the H ends up
-    at the same coordinates as its anchor heavy atom or another
-    template atom.  These Hs are guaranteed broken (no real H sits
-    < 0.05 Å from another atom) and a downstream validator flags them
-    as zero-distance pairs that abort the run.  Drop them at the
-    source so the caller gets a clean structure.
+    Why 0.05 Å: a real X-H bond is always > 0.9 Å (the shortest
+    physical X-H bond, H-F, is ~0.92 Å; C-H ~1.1 Å; N-H/O-H ~1.0 Å).
+    A H within 0.05 Å of another atom is unambiguously a placement
+    artifact -- typically a "ghost H" written at its parent atom's
+    coordinates because the engine couldn't compute a real position.
+
+    What this catches:
+      * RDKit ``AddHs(addCoords=True)`` ghost H at ambiguous-valence
+        sites (exocyclic -NH2 on nucleic-acid bases, peptide N-terminal
+        -NH3+ extras).  The DEFINING failure mode of the RDKit fallback
+        path; OpenBabel doesn't produce these.
+      * Rare OpenBabel duplicates at tautomeric sites.
+
+    What this does NOT do (and why):
+      * Re-PLACE the ghost H at a sensible position.  That's the
+        smarter remediation, but it requires hybridization perception
+        (already in `_adjacency`) plus open-valence vector computation
+        (new code).  Worth doing only if RDKit becomes the primary
+        engine; with OpenBabel preferred, the drop is a safety net,
+        not a load-bearing path.
+      * Touch heavy atoms.  Only H-element atoms are candidates for
+        removal; a heavy atom < 0.05 Å from another heavy atom is a
+        broken structure that the validator should error on, not
+        something we silently fix.
 
     Heavy atoms are never removed.
     """

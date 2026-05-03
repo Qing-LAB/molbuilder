@@ -5,7 +5,45 @@ geometry from sequence -- the only thing the existing ``rdkit``
 (folded conformer) and ``amber`` (extended chain) backends do not
 provide.
 
-Detection chain (first hit wins):
+Tool limitations (and how this module compensates)
+--------------------------------------------------
+``fiber`` is fast, well-validated for canonical helical geometry, and
+the de-facto standard for fiber-diffraction-derived starting
+coordinates.  It also has two long-standing quirks that the user
+will hit:
+
+  1. **Heavy-atom output.**  ``fiber`` writes deoxyribose, base, and
+     phosphate heavy atoms only -- no H on bases, sugars, or phosphate
+     oxygens.  H atoms are needed for any DFT / MD calculation: the
+     electron count is wrong without them, and Watson-Crick H-bonding
+     can't form.  We compensate by routing every X3DNA build through
+     ``chemistry.add_hydrogens`` (OpenBabel-first, RDKit-fallback) at
+     the ``nucleic.build_dna``/``build_rna`` layer.  See
+     ``molbuilder/chemistry.py`` for the H-add tool comparison.
+
+  2. **5'-terminal phosphate is mandatory.**  ``fiber`` always emits
+     a 5'-phosphate group on the first residue, regardless of any
+     flag we pass (``-single`` controls duplex vs single-strand, not
+     terminal phosphorylation).  An "ATGC" oligo with the user's
+     ``terminal="OH"`` request comes back with 4 phosphate groups
+     instead of the chemically-correct 3 (the three internal A-T,
+     T-G, G-C bridges).  ``_strip_5prime_phosphate`` post-processes
+     the parsed Structure to remove the spurious P + OP1 + OP2 from
+     the 5'-terminal residue when ``terminal in ('OH', '3P')``.  The
+     bridging O5' atom stays; H is added later by chemistry.add_hydrogens.
+
+  3. **3'-phosphate cannot be added.**  fiber's output has 5'-P / 3'-OH;
+     we can strip the 5'-P, but adding a 3'-P would require re-running
+     chemistry from scratch.  ``terminal in ('PP', '3P')`` warn that
+     the request will be served as 5'-P / 3'-OH or 5'-OH / 3'-OH
+     respectively.
+
+  4. **Form constraints.**  fiber's ``-z`` flag (Z-DNA) only works
+     for poly-d(GC) sequences; ``-rna`` only produces A-form RNA.
+     Mismatches are warned by the dispatcher above (see ``build()``).
+
+Detection chain (first hit wins)
+--------------------------------
 
   1. **In-tree** -- look for ``<repo_root>/x3dna-v*/`` next to the
      molbuilder package.  This is the easiest path for a dev install:

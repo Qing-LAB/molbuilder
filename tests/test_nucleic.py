@@ -107,6 +107,44 @@ def test_dna_add_hydrogens_false_returns_heavy_skeleton():
     assert n_h <= 5, f"expected heavy-atom skeleton, got {n_h} H"
 
 
+@pytest.mark.parametrize("backend", _BACKENDS)
+def test_dna_atgc_protonation_chemistry_matches_across_backends(backend):
+    """Pin that every backend produces the same protonation chemistry for
+    a canonical ATGC chain: 5 O-H (3 phosphate + 5'-OH + 3'-OH), 37 C-H
+    (sugar CH/CH2 + base CH + thymine methyl), 8 N-H (Watson-Crick base-
+    pairing donors: A.N6-H2, T.N3-H, G.N1-H + G.N2-H2, C.N4-H2).
+
+    Pre-fix the X3DNA path went through RDKit's PDB-bond-perception, which
+    failed to compute coords for ambiguous-valence base amines; the
+    `_drop_overlapping_hydrogens` post-pass then removed them as ghost
+    atoms and the chain came back missing 3 N-H + 1 C-H -- structurally
+    crippled for Watson-Crick H-bonding.  OpenBabel's geometric H-add
+    avoids the ghost-coord failure mode, so X3DNA + OpenBabel matches
+    Amber-tleap and RDKit-via-SMILES exactly."""
+    if not available_backends()[backend]:
+        pytest.skip(f"backend {backend!r} not installed on this machine")
+    s = build_dna("ATGC", backend=backend)
+    by_anchor = {"O": 0, "C": 0, "N": 0}
+    pos = s.positions
+    for i in range(s.n_atoms):
+        if s.elements[i] != "H":
+            continue
+        # closest non-H neighbour
+        best_d, best_j = 99.0, -1
+        for j in range(s.n_atoms):
+            if i == j or s.elements[j] == "H":
+                continue
+            d = float(np.linalg.norm(pos[i] - pos[j]))
+            if d < best_d:
+                best_d, best_j = d, j
+        if best_j >= 0 and s.elements[best_j] in by_anchor:
+            by_anchor[s.elements[best_j]] += 1
+    assert by_anchor == {"O": 5, "C": 37, "N": 8}, (
+        f"{backend}: H anchor breakdown is {by_anchor}, expected "
+        f"{{'O': 5, 'C': 37, 'N': 8}} -- Watson-Crick H may be missing"
+    )
+
+
 def test_threedna_strips_5prime_phosphate_for_terminal_oh():
     """fiber always emits a 5'-phosphate; for terminal='OH' we must
     strip it so the chain count matches the user's request and the
