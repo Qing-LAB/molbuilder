@@ -88,6 +88,20 @@ def available_backends() -> Dict[str, bool]:
 _AUTO_ORDER = ["threedna", "amber", "rdkit"]
 
 
+def auto_backend_name() -> str | None:
+    """Which backend ``dispatch(backend='auto')`` would pick on this
+    machine, or ``None`` if no backend is available.
+
+    Pure read-only -- doesn't run any backend.  Useful for surfacing
+    the resolved choice in CLIs and the web UI before/after a build.
+    """
+    avail = available_backends()
+    for name in _AUTO_ORDER:
+        if avail.get(name):
+            return name
+    return None
+
+
 def dispatch(kind: str, sequence: str, *,
              backend: str = "auto",
              form: str = "B",
@@ -97,18 +111,17 @@ def dispatch(kind: str, sequence: str, *,
     backends = _load_backends()
 
     if backend == "auto":
-        avail = available_backends()
-        for name in _AUTO_ORDER:
-            if avail.get(name):
-                return backends[name](kind, sequence, form, terminal, title)
-        raise BackendUnavailable(
-            "No nucleic-acid backend available.  Either:\n"
-            "  - install 3DNA (best geometry; download from http://x3dna.org/\n"
-            "    after accepting the non-commercial license, then unpack\n"
-            "    at the repo root or set $X3DNA),\n"
-            "  - `conda install -c conda-forge ambertools`  (extended chain),\n"
-            "  - `pip install rdkit`  (folded conformer, chemistry-only)."
-        )
+        chosen = auto_backend_name()
+        if chosen is None:
+            raise BackendUnavailable(
+                "No nucleic-acid backend available.  Either:\n"
+                "  - install 3DNA (best geometry; download from http://x3dna.org/\n"
+                "    after accepting the non-commercial license, then unpack\n"
+                "    at the repo root or set $X3DNA),\n"
+                "  - `conda install -c conda-forge ambertools`  (extended chain),\n"
+                "  - `pip install rdkit`  (folded conformer, chemistry-only)."
+            )
+        return backends[chosen](kind, sequence, form, terminal, title)
 
     if backend not in backends:
         raise ValueError(
@@ -119,4 +132,7 @@ def dispatch(kind: str, sequence: str, *,
     return backends[backend](kind, sequence, form, terminal, title)
 
 
-__all__ = ["BackendUnavailable", "available_backends", "dispatch"]
+__all__ = [
+    "BackendUnavailable", "auto_backend_name",
+    "available_backends", "dispatch",
+]
