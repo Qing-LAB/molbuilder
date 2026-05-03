@@ -49,9 +49,24 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
+
 from ...structure import Structure
 from ._common import (parse_pdb_to_structure, select_chain,
                       verify_backbone_connectivity)
+
+
+# Atom names that constitute the 5'-terminal phosphate group in fiber's
+# PDB output.  The bridging O5' is part of the sugar and is NOT in this
+# set -- after the strip it becomes a free hydroxyl oxygen, ready to
+# accept an H from chemistry.add_hydrogens().  We accept both modern
+# (OP1/OP2/OP3) and legacy (O1P/O2P/O3P) PDB naming conventions to be
+# robust against fiber-version drift.
+_PHOSPHATE_ATOM_NAMES = {
+    "P", "OP1", "OP2", "OP3", "O1P", "O2P", "O3P",
+    # Sometimes phosphate H's appear in protonated outputs:
+    "HOP1", "HOP2", "HOP3", "H1P", "H2P", "H3P",
+}
 
 
 # --------------------------------------------------------------------- #
@@ -187,12 +202,18 @@ def build(kind: str, sequence: str, form: str, terminal: str,
     if not seq:
         raise ValueError("Empty sequence")
 
-    if terminal not in ("OH",):
+    # fiber's default output is 5'-phosphate / 3'-OH regardless of the
+    # `-single` flag; we post-process below to honour the requested
+    # terminal state.  We can strip the 5'-phosphate (turning fiber's
+    # 5'-P into the requested 5'-OH) but cannot add a 3'-phosphate
+    # without rerunning chemistry, so PP / 3P warn for the missing 3'.
+    if terminal in ("PP", "3P"):
         import warnings
         warnings.warn(
-            f"3DNA backend currently emits the fiber-default terminus "
-            f"(5'-OH / 3'-OH); requested terminal={terminal!r} ignored.  "
-            f"For phosphorylated termini, post-process the .pdb by hand.",
+            f"3DNA backend cannot add a 3'-terminal phosphate "
+            f"(fiber emits 5'-P / 3'-OH).  Requested terminal={terminal!r} "
+            f"will be served as 5'-P / 3'-OH.  For a 3'-phosphate, "
+            f"post-process the structure with an external tool.",
             RuntimeWarning, stacklevel=4,
         )
 
@@ -249,6 +270,13 @@ def build(kind: str, sequence: str, form: str, terminal: str,
     if len(chains) > 1:
         struct = select_chain(struct, chains[0])
 
+    # Strip the spurious 5'-terminal phosphate when the user asked for
+    # a 5'-OH (terminal in OH / 3P).  Done AFTER select_chain so the
+    # 5'-terminal residue is unambiguous.  See `_PHOSPHATE_ATOM_NAMES`
+    # for the exact atom set we remove.
+    if terminal in ("OH", "3P"):
+        struct = _strip_5prime_phosphate(struct)
+
     err = verify_backbone_connectivity(struct, kind, max_O3_P=1.80)
     if err is not None:
         raise RuntimeError(
@@ -257,6 +285,61 @@ def build(kind: str, sequence: str, form: str, terminal: str,
             f"file mismatch ($X3DNA={found.root})."
         )
     return struct
+
+
+# --------------------------------------------------------------------- #
+#  5'-terminal phosphate strip                                          #
+# --------------------------------------------------------------------- #
+
+
+def _strip_5prime_phosphate(struct: Structure) -> Structure:
+    """Remove the 5'-terminal phosphate group from fiber's PDB output.
+
+    fiber always emits a 5'-phosphate regardless of any flag we pass.
+    For canonical 5'-OH ends (the dominant case for short oligos in
+    DFT prep), strip the phosphate so the chain starts with a free
+    O5'-H hydroxyl.  The bridging O5' stays -- it's part of the
+    sugar; the H is added downstream by chemistry.add_hydrogens().
+
+    The 5'-terminal residue is the first residue of the chain in
+    PDB listing order.  fiber writes residues in 5'->3' order, so
+    `residue_ids[0]` (paired with `chain_ids[0]`) identifies it.
+    """
+    if struct.residue_ids is None or struct.atom_names is None:
+        # Defensive: fiber always populates these, but if a caller
+        # ever feeds a stripped Structure, do nothing rather than
+        # crash.
+        return struct
+
+    first_rid   = struct.residue_ids[0]
+    first_chain = (struct.chain_ids[0]
+                   if struct.chain_ids is not None else None)
+
+    keep = np.ones(struct.n_atoms, dtype=bool)
+    for i in range(struct.n_atoms):
+        if struct.residue_ids[i] != first_rid:
+            continue
+        if first_chain is not None and struct.chain_ids[i] != first_chain:
+            continue
+        if struct.atom_names[i] in _PHOSPHATE_ATOM_NAMES:
+            keep[i] = False
+
+    if keep.all():
+        return struct          # no 5'-phosphate found (already OH)
+
+    return Structure(
+        elements      = [e for k, e in zip(keep, struct.elements)      if k],
+        positions     = struct.positions[keep],
+        atom_names    = ([a for k, a in zip(keep, struct.atom_names)    if k]
+                         if struct.atom_names    is not None else None),
+        residue_ids   = ([r for k, r in zip(keep, struct.residue_ids)   if k]
+                         if struct.residue_ids   is not None else None),
+        residue_names = ([n for k, n in zip(keep, struct.residue_names) if k]
+                         if struct.residue_names is not None else None),
+        chain_ids     = ([c for k, c in zip(keep, struct.chain_ids)     if k]
+                         if struct.chain_ids     is not None else None),
+        title         = struct.title,
+    )
 
 
 # --------------------------------------------------------------------- #
