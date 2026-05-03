@@ -53,9 +53,18 @@ from molbuilder import (
 )
 from molbuilder.config.pyscf  import PySCFConfig
 from molbuilder.config.siesta import SiestaConfig
+from molbuilder.issues import Issue, ValidationError
 from molbuilder.pyscf  import render_script
 from molbuilder.siesta import render_fdf
 from molbuilder.structure import Structure
+from molbuilder.validation import validate, validate_geometry
+
+
+def _issues_to_json(issues):
+    """Serialise List[Issue] for the JSON wire.  The web client reads
+    `issues[].severity / message / where` to decide how to display."""
+    return [{"severity": i.severity, "message": i.message, "where": i.where}
+            for i in issues]
 
 
 bp = Blueprint("build", __name__)
@@ -93,6 +102,11 @@ def api_build_molecule():
                 "backend":  requested,
                 "form":     body.get("form",     "B" if kind == "dna" else "A"),
                 "terminal": body.get("terminal", "OH"),
+                # Default ON: simulation-ready output for any backend.
+                # User can opt out (e.g., to inspect X3DNA's heavy-atom
+                # skeleton) via the web checkbox.
+                "add_hydrogens":
+                    bool(body.get("add_hydrogens", True)),
                 "protonate_phosphates":
                     bool(body.get("protonate_phosphates", True)),
             }
@@ -113,6 +127,11 @@ def api_build_molecule():
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
+    # Geometry-only validation at build time -- no cfg yet (the user
+    # hasn't picked SIESTA vs PySCF).  Surfaces the H/heavy-ratio warn
+    # for a heavy-atom skeleton before they even click Generate.
+    issues = validate_geometry(struct)
+
     return jsonify({
         "ok": True,
         "xyz": struct.to_xyz(),
@@ -123,6 +142,7 @@ def api_build_molecule():
         "title": struct.title or kind,
         "elements": list(struct.elements),
         "backend_used": backend_used,
+        "issues": _issues_to_json(issues),
     })
 
 
@@ -208,8 +228,19 @@ def api_build_fdf():
         return jsonify({"ok": False,
                         "error": f"bad parameters: {exc}"}), 400
 
+    # Validate before render so the web layer gets a structured copy
+    # of the issues.  render_fdf will validate again and write warnings
+    # to stderr / raise on errors -- we keep that for CLI/library
+    # callers; here we want the issues as JSON for the UI.
+    issues = validate(struct, cfg)
     try:
         fdf = render_fdf(struct, cfg)
+    except ValidationError as exc:
+        return jsonify({
+            "ok": False,
+            "error": str(exc),
+            "issues": _issues_to_json(exc.issues),
+        }), 400
     except Exception as exc:
         return jsonify({"ok": False,
                         "error": f"render failed: {exc}"}), 500
@@ -218,6 +249,7 @@ def api_build_fdf():
         "ok": True,
         "fdf": fdf,
         "system_label": cfg.system_label,
+        "issues": _issues_to_json(issues),
     })
 
 
@@ -241,8 +273,15 @@ def api_build_pyscf():
         return jsonify({"ok": False,
                         "error": f"bad parameters: {exc}"}), 400
 
+    issues = validate(struct, cfg)
     try:
         script = render_script(struct, cfg)
+    except ValidationError as exc:
+        return jsonify({
+            "ok": False,
+            "error": str(exc),
+            "issues": _issues_to_json(exc.issues),
+        }), 400
     except Exception as exc:
         return jsonify({"ok": False,
                         "error": f"render failed: {exc}"}), 500
@@ -251,6 +290,7 @@ def api_build_pyscf():
         "ok": True,
         "script": script,
         "job_name": cfg.job_name,
+        "issues": _issues_to_json(issues),
     })
 
 
