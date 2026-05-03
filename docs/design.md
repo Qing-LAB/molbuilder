@@ -167,8 +167,6 @@ the adapter goes away then.
 >   * builders -- still `molbuilder/peptide.py`,
 >     `molbuilder/nucleic.py`, `molbuilder/smiles.py`,
 >     `molbuilder/pubchem.py` (top-level, not under `builders/`).
->   * builder backends -- still `molbuilder/backends/_amber.py` etc.
->     (not under `builders/backends/`).
 >   * generators -- still `molbuilder/siesta/input.py` and
 >     `molbuilder/pyscf/input.py` (the renderers; not under
 >     `generators/`).
@@ -600,17 +598,19 @@ These have been considered and rejected; do not reintroduce them.
 
 ## Post-merge package layout
 
-> **This is the post-2.7 target layout.**  Phase 2.7 is rolling
-> out incrementally.  Done so far:
->   * `config/` exists; `SiestaConfig` and `PySCFConfig` live there
+> **This is the post-2.7 target layout.**  Phase 2.7 done so far:
+>   * `config/` -- `SiestaConfig` and `PySCFConfig` live there
 >     (re-exported from the engine packages for back-compat).
->   * `trajectory_log/` exists (renamed from `molwatch_log/`); the
->     old name is preserved as a back-compat shim.
-> Still to land:
+>   * `trajectory_log/` -- renamed from `molwatch_log/`; the old
+>     name is preserved as a back-compat shim.
+>   * `builders/backends/` -- the per-tool nucleic-acid backends
+>     moved under a new `builders/` package; `molbuilder.backends`
+>     is preserved as a back-compat shim.
+> Still pending:
 >   * `generators/` -- the SIESTA / PySCF emitters still live at
 >     `molbuilder/siesta/input.py` and `molbuilder/pyscf/input.py`.
->   * `builders/` -- the build verbs (peptide / nucleic / smiles /
->     pubchem) and `backends/` are still at the top level.
+>   * The build verbs (peptide / nucleic / smiles / pubchem) still
+>     live at the top level rather than under `builders/`.
 > Re-export shims keep external imports stable while the layout
 > moves; until then,
 > re-export shims keep external imports stable but the on-disk

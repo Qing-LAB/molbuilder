@@ -36,7 +36,7 @@ from typing import List, Optional
 
 import numpy as np
 
-from ..structure import Structure
+from ...structure import Structure
 from ._common import (parse_pdb_to_structure, select_chain,
                       verify_backbone_connectivity)
 

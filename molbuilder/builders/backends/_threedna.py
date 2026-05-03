@@ -49,7 +49,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
-from ..structure import Structure
+from ...structure import Structure
 from ._common import (parse_pdb_to_structure, select_chain,
                       verify_backbone_connectivity)
 
@@ -84,9 +84,9 @@ def _find_in_tree() -> Optional[_Threedna]:
     """Look for an x3dna-v*/ directory at the repo root (one level
     above the molbuilder package).  Works for dev / editable installs
     where the user has unpacked the tarball next to the source."""
-    # _threedna.py -> repo_root/molbuilder/backends/_threedna.py
-    # parent.parent.parent = repo_root
-    repo_root = Path(__file__).resolve().parent.parent.parent
+    # _threedna.py -> repo_root/molbuilder/builders/backends/_threedna.py
+    # parent.parent.parent.parent = repo_root
+    repo_root = Path(__file__).resolve().parent.parent.parent.parent
     for candidate in sorted(repo_root.glob("x3dna-v*")):
         if candidate.is_dir() and _looks_complete(str(candidate)):
             return _Threedna(
@@ -274,7 +274,7 @@ def _unavailable_message() -> str:
       * a one-line non-commercial-license reminder;
       * the names of the fallback backends (amber, rdkit).
     """
-    repo_root = Path(__file__).resolve().parent.parent.parent
+    repo_root = Path(__file__).resolve().parent.parent.parent.parent
     in_tree_glob = repo_root / "x3dna-v*"
     env_root = os.environ.get("X3DNA", "(unset)")
     fiber_path = shutil.which("fiber") or "(not on PATH)"

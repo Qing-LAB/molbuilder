@@ -6,7 +6,7 @@ from typing import Optional
 
 import numpy as np
 
-from ..structure import Structure
+from ...structure import Structure
 
 
 def rdkit_mol_to_structure(mol, *, title: Optional[str] = None) -> Structure:
