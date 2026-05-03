@@ -782,6 +782,7 @@ The validator pulls per-field rules from the `Config` field metadata
 |---|---|---|
 | min atom-atom distance < 0.3 Å | error | Atoms on top of each other; SCF will diverge |
 | min atom-atom distance 0.3 – 0.7 Å | warn | Likely broken structure (failed protonation, bad backend output) |
+| H/heavy ratio < 0.3 | warn | Heavy-atom skeleton — wrong electron count for DFT; user may have intentionally opted out of H-add (e.g. `build_dna(..., add_hydrogens=False)`) for hand-processing, hence warn not error |
 | atom-to-nearest-image distance < 2 × cell_padding (vacuum case) | warn | Image-image interaction; suggest larger padding |
 | cell volume / atom-bounding-volume < 3 | warn | Cell suspiciously tight |
 | cell determinant ≤ 0 | error | Left-handed or degenerate cell |
