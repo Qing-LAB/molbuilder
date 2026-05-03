@@ -1,9 +1,9 @@
 /* molbuilder web UI client.
  *
  * Three concerns:
- *   1. POST /api/build with the user's input -> get back XYZ + meta.
+ *   1. POST /api/build/molecule with the user's input -> get back XYZ + meta.
  *   2. Render the XYZ in 3Dmol with style controls.
- *   3. POST /api/fdf with the XYZ + form values -> get back FDF text,
+ *   3. POST /api/build/fdf with the XYZ + form values -> get back FDF text,
  *      offer it as a Blob download.
  */
 (function () {
@@ -105,7 +105,7 @@
             body.protonate_phosphates = $("protonate-phosphates").checked;
         }
         try {
-            const r = await fetch("/api/build", {
+            const r = await fetch("/api/build/molecule", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(body),
@@ -122,7 +122,7 @@
         }
     });
 
-    // Take a structure response (either /api/build or /api/load) and
+    // Take a structure response (either /api/build/molecule or /api/build/load) and
     // populate the viewer + info panel + enable the FDF section.
     // A new structure invalidates any previously-generated FDF / PySCF
     // outputs -- we clear those and disable their download buttons so
@@ -328,7 +328,7 @@
         const fd = new FormData();
         fd.append("file", file);
         try {
-            const r = await fetch("/api/load", { method: "POST", body: fd })
+            const r = await fetch("/api/build/load", { method: "POST", body: fd })
                             .then(x => x.json());
             if (!r.ok) {
                 setStatus("load-status", r.error || "Load failed.", "error");
@@ -472,7 +472,7 @@
         setStatus("fdf-status", "Rendering FDF…");
         const params = collectFdfParams();
         try {
-            const r = await fetch("/api/fdf", {
+            const r = await fetch("/api/build/fdf", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ xyz: state.xyz, params }),
@@ -568,7 +568,7 @@
         setStatus("pyscf-status", "Rendering PySCF script…");
         const params = collectPyscfParams();
         try {
-            const r = await fetch("/api/pyscf", {
+            const r = await fetch("/api/build/pyscf", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ xyz: state.xyz, params }),

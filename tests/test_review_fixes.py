@@ -174,13 +174,13 @@ def test_s6_web_app_caps_upload_size(web_client):
     Pre-merge the build app capped at 10 MB and the watch app at 50 MB.
     Flask's MAX_CONTENT_LENGTH is a single global setting, so the merged
     app uses the larger of the two so /api/watch/load can accept
-    realistic SIESTA / PySCF logs.  The /api/load endpoint still
+    realistic SIESTA / PySCF logs.  The /api/build/load endpoint still
     rejects oversize uploads -- just at the 50 MB threshold now.
     """
     app_cfg = web_client.application.config
     assert app_cfg.get("MAX_CONTENT_LENGTH") == 50 * 1024 * 1024
     big = "x" * (51 * 1024 * 1024)   # 51 MB > 50 MB cap
-    r = web_client.post("/api/load",
+    r = web_client.post("/api/build/load",
                         json={"text": big, "filename": "big.xyz"})
     assert r.status_code == 413
 
@@ -192,7 +192,7 @@ def test_s6_web_app_caps_upload_size(web_client):
 
 def test_t5_web_uses_canonical_xyz_parser():
     pytest.importorskip("flask")
-    from molbuilder.web.app import _xyz_to_structure
+    from molbuilder.web.blueprints.build import _xyz_to_structure
     text = (
         "2\n"
         "h2\n"
