@@ -170,22 +170,28 @@ molbuilder/
   nucleic.py             # DNA / RNA polymer builder
   smiles.py              # RDKit-based build_from_smiles
   pubchem.py             # PubChem-based build_from_name
+  config/
+    siesta.py            # SiestaConfig
+    pyscf.py             # PySCFConfig
   siesta/
-    input.py             # SiestaConfig + render_fdf + convert
+    input.py             # render_fdf + convert (re-exports SiestaConfig)
   pyscf/
-    input.py             # PySCFConfig + render_script + convert
-  molwatch_log/
+    input.py             # render_script + convert (re-exports PySCFConfig)
+  trajectory_log/
     format.py            # writer for .molwatch.log v1
+                         # (molbuilder/molwatch_log/ is a back-compat shim)
   parsers/
     base.py              # TrajectoryParser ABC; parse() -> Trajectory
     molwatch_log.py      # parser for the unified .molwatch.log
     siesta.py            # parser for SIESTA stdout
     pyscf.py             # parser for geomeTRIC _optim.xyz + .qdata + .log
-  backends/
-    _amber.py            # tleap-driven (extended chain)
-    _rdkit.py            # ETKDG embedded conformer (folded for >6mers)
-    _threedna.py         # 3DNA fiber-driven canonical helix
-    _common.py
+  builders/
+    backends/
+      _amber.py          # tleap-driven (extended chain)
+      _rdkit.py          # ETKDG embedded conformer (folded for >6mers)
+      _threedna.py       # 3DNA fiber-driven canonical helix
+      _common.py
+    # (molbuilder/backends/ is a back-compat shim re-exporting the above)
   cli.py                 # `molbuilder <subcommand>`
   web/
     __init__.py

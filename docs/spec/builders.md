@@ -1,7 +1,7 @@
 # Spec — builders
 
 **Modules**: `molbuilder/peptide.py`, `molbuilder/nucleic.py`,
-`molbuilder/smiles.py`, `molbuilder/pubchem.py`, `molbuilder/backends/*`
+`molbuilder/smiles.py`, `molbuilder/pubchem.py`, `molbuilder/builders/backends/*`
 &nbsp;·&nbsp; **Tests**: `tests/test_peptide.py`, `tests/test_nucleic.py`,
 `tests/test_smiles_and_siesta.py`, `tests/test_residues.py`
 
