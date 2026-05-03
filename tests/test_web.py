@@ -76,6 +76,29 @@ def test_health_endpoint(web_client):
     assert r.get_json()["ok"] is True
 
 
+def test_both_pages_serve_with_shared_tab_nav(web_client):
+    """The unified UI puts a shared tab nav at the top of every page so
+    a user can flip between Build (/) and Watch (/watch) without
+    leaving the app.  The active tab matches the current page; both
+    tab links point at the canonical paths."""
+    for path, active in [("/", "Build"), ("/watch", "Watch")]:
+        r = web_client.get(path)
+        assert r.status_code == 200, f"{path} returned {r.status_code}"
+        html = r.get_data(as_text=True)
+        # Both tab links present
+        assert 'href="/"' in html, f"{path}: missing Build tab link"
+        assert 'href="/watch"' in html, f"{path}: missing Watch tab link"
+        # Active state on the current page
+        if active == "Build":
+            assert 'href="/"      class="app-tab is-active"' in html, (
+                "/ should mark Build active"
+            )
+        else:
+            assert 'href="/watch" class="app-tab is-active"' in html, (
+                "/watch should mark Watch active"
+            )
+
+
 # --------------------------------------------------------------------- #
 #  /api/build/molecule                                                         #
 # --------------------------------------------------------------------- #
