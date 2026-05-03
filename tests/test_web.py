@@ -90,7 +90,7 @@ def test_both_pages_serve_with_shared_tab_nav(web_client):
         assert 'href="/watch"' in html, f"{path}: missing Watch tab link"
         # Active state on the current page
         if active == "Build":
-            assert 'href="/"      class="app-tab is-active"' in html, (
+            assert 'href="/" class="app-tab is-active"' in html, (
                 "/ should mark Build active"
             )
         else:

@@ -12,53 +12,48 @@
      add `integrity="sha384-..." crossorigin="anonymous"` here. -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js"></script>
 <style>
-/* Shared top nav between Build (this page, /) and Watch (/watch).
-   Identical block in templates/watch.html -- if you change one, change
-   both (or extract to a shared .css). */
+/* Shared menu bar between Build (this page, /) and Watch (/watch).
+   Sits BELOW the banner on each page so the title/tagline is the
+   primary identity and the tabs are unambiguously a mode switcher.
+   Identical block in templates/watch.html -- if you change one,
+   change both (or extract to a shared .css). */
 .app-tabs {
   display: flex; align-items: stretch;
   background: #141414; border-bottom: 1px solid #2a2a2a;
   font: 15px/1.4 system-ui, sans-serif;
 }
-.app-tabs .brand {
-  padding: 0.75rem 1.2rem;
-  color: #6a6a6a; font-weight: 700; letter-spacing: 0.6px;
-  text-transform: uppercase; font-size: 12px;
-  align-self: center;
-}
 .app-tab {
-  display: inline-block; padding: 0.75rem 1.6rem;
-  color: #777;                            /* inactive: dimmer */
-  text-decoration: none;
+  padding: 0.75rem 1.6rem;
+  color: #777;
   font-weight: 500;
-  border-bottom: 4px solid transparent;   /* reserve underline space */
+  text-decoration: none;
+  border-bottom: 4px solid transparent;
   transition: color 0.12s, background 0.12s, border-color 0.12s;
 }
 .app-tab:hover { color: #ddd; background: #1c1c1c; }
 .app-tab.is-active {
-  color: #fff;                            /* active: brightest */
-  background: #2a2a2a;                    /* filled, "raised" */
-  border-bottom-color: #4a9eff;           /* 4px blue accent */
+  color: #fff;
+  background: #2a2a2a;
+  border-bottom-color: #4a9eff;
   font-weight: 700;
 }
 </style>
 </head>
 <body>
 
-<nav class="app-tabs" role="tablist" aria-label="molbuilder sections">
-  <span class="brand">molbuilder</span>
-  <a href="/"      class="app-tab is-active" role="tab" aria-current="page">Build</a>
-  <a href="/watch" class="app-tab"           role="tab">Watch</a>
-</nav>
-
 <header>
   <h1>molbuilder</h1>
   <p class="tagline">
     Build a 3-D molecule from a peptide / DNA / RNA sequence,
     a SMILES string, or a chemical name &mdash; and turn it into a
-    SIESTA <code>.fdf</code> input.
+    SIESTA <code>.fdf</code> or PySCF input.
   </p>
 </header>
+
+<nav class="app-tabs" role="tablist" aria-label="molbuilder sections">
+  <a href="/" class="app-tab is-active" role="tab" aria-current="page">Build</a>
+  <a href="/watch" class="app-tab" role="tab">Watch</a>
+</nav>
 
 <!-- ============================================================ -->
 <!--  Two-column layout:                                           -->
