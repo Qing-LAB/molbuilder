@@ -705,6 +705,29 @@
         if (e.key === "Enter") $("load-btn").click();
     });
 
+    // Honour the "Watch this run" handoff from the Build page:
+    // /watch?path=<system_label>.molwatch.log pre-fills the input
+    // with the predicted log filename.  We do NOT auto-trigger Load
+    // because the user typically still needs to prepend the absolute
+    // path of the directory where they'll run the calculation -- the
+    // browser-side server has no way to know that.  Surface a hint
+    // in the status banner so they know what to do next.
+    (function applyHandoff() {
+        const params = new URLSearchParams(window.location.search);
+        const path = params.get("path");
+        if (!path) return;
+        $("path-input").value = path;
+        setStatus(
+            `Path pre-filled from Build (${path}).  Edit to add the absolute ` +
+            `directory you'll run in, then press Enter or click Load.`,
+            "warn",
+        );
+        // Move focus into the input and select the filename so the
+        // user can type the prefix without manual selection.
+        $("path-input").focus();
+        try { $("path-input").setSelectionRange(0, 0); } catch (e) { /* ok */ }
+    })();
+
     $("frame-slider").addEventListener("input", (e) => {
         showFrame(parseInt(e.target.value, 10));
     });

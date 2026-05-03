@@ -165,6 +165,54 @@ def test_build_response_no_issues_when_protonated(web_client):
     )
 
 
+def test_index_page_has_watch_handoff_buttons(web_client):
+    """Phase 3d: every Generate flow gets a 'Watch this run' button
+    that opens /watch with a pre-filled molwatch.log path.  The button
+    is disabled at page load (Generate hasn't run yet) and enabled by
+    viewer.js after a successful render."""
+    body = web_client.get("/").data.decode()
+    for needle in ('id="watch-fdf"', 'id="watch-pyscf"'):
+        assert needle in body, f"missing {needle!r} on Build page"
+    # Both should be `disabled` on initial render -- we don't want a
+    # dead-link click before Generate has produced a label.
+    import re
+    for btn_id in ("watch-fdf", "watch-pyscf"):
+        m = re.search(rf'<button[^>]*id="{btn_id}"[^>]*>', body)
+        assert m and "disabled" in m.group(0), (
+            f"{btn_id} should be disabled on initial load: "
+            f"{m.group(0) if m else None}"
+        )
+
+
+def test_viewer_js_wires_watch_handoff(web_client):
+    """The viewer.js bundle must (a) enable each watch button after
+    a successful Generate, (b) navigate to /watch?path=<label>.molwatch.log
+    on click, and (c) read system_label / job_name from the response
+    into the state object so the click handler has a label to use."""
+    js = web_client.get("/static/viewer.js").data.decode()
+    for needle in (
+        'state.fdf_label = r.system_label',
+        'state.pyscf_label = r.job_name',
+        '$("watch-fdf").disabled = false',
+        '$("watch-pyscf").disabled = false',
+        # Use raw double-quotes -- JS uses double-quoted /watch URL.
+        '/watch?path=',
+    ):
+        assert needle in js, f"missing {needle!r} in viewer.js"
+
+
+def test_watch_viewer_js_honours_path_url_param(web_client):
+    """The watch page must read ?path=... from the URL and pre-fill the
+    input.  That's the receiving half of the Build -> Watch handoff."""
+    js = web_client.get("/static/watch/viewer.js").data.decode()
+    for needle in (
+        'URLSearchParams',
+        'params.get("path")',
+        '$("path-input").value = path',
+    ):
+        assert needle in js, f"missing {needle!r} in watch/viewer.js"
+
+
 def test_fdf_response_includes_validation_issues(web_client, peptide_xyz):
     """/api/build/fdf returns the validation issue list alongside the
     rendered text so the UI can show warnings to the user.  For a clean
