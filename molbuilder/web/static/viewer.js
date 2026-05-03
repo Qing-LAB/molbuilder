@@ -75,11 +75,23 @@
         if (e.key === "Enter") $("build-btn").click();
     });
 
+    // Map the canonical (lowercase) backend identifier returned by
+    // /api/backends to the user-facing label.  X3DNA is the product
+    // name from x3dna.org -- not "3DNA" or "threedna".  Used for the
+    // dropdown's "auto" relabel, the hint line, and the post-build
+    // "via <name>" message.
+    const BACKEND_LABEL = {
+        threedna: "X3DNA",
+        amber:    "Amber",
+        rdkit:    "RDKit",
+    };
+    const labelFor = (name) => BACKEND_LABEL[name] || name;
+
     // Detect installed backends, grey out unavailable ones in the
     // dropdown, label the "auto" option with the resolved backend
     // name so the user sees what would actually run, and surface a
-    // visible warning in #backend-hint when 3DNA (the highest-quality
-    // backend) isn't installed.  One-shot fetch on page load.
+    // visible warning in #backend-hint when X3DNA (the highest-
+    // quality backend) isn't installed.  One-shot fetch on page load.
     fetch("/api/backends").then(r => r.json()).then(r => {
         if (!r || !r.ok) return;
         const sel = $("backend");
@@ -87,7 +99,7 @@
             const name = opt.value;
             if (name === "auto") {
                 if (r.auto_name) {
-                    opt.text = `auto  (→ ${r.auto_name})`;
+                    opt.text = `auto  (→ ${labelFor(r.auto_name)})`;
                 } else {
                     opt.text = "auto  (no backend installed)";
                     opt.disabled = true;
@@ -105,13 +117,13 @@
         if (hint) {
             const parts = [];
             if (r.auto_name) {
-                parts.push(`auto → <b>${r.auto_name}</b>`);
+                parts.push(`auto → <b>${labelFor(r.auto_name)}</b>`);
             } else {
                 parts.push("no nucleic-acid backend is installed");
             }
             if (!r.available.threedna) {
                 parts.push(
-                    "3DNA not detected (canonical B/A/Z helices unavailable; " +
+                    "X3DNA not detected (canonical B/A/Z helices unavailable; " +
                     'install from <a href="http://x3dna.org/" target="_blank" rel="noopener">x3dna.org</a> ' +
                     "to enable)"
                 );
@@ -149,10 +161,12 @@
             }
             applyStructureResult(r);
             // Include the backend that ran -- users picking "auto"
-            // need to know whether they got 3DNA, Amber, or RDKit
+            // need to know whether they got X3DNA, Amber, or RDKit
             // because the geometry differs substantially (canonical
             // helix vs extended chain vs folded conformer).
-            const via = r.backend_used ? ` via ${r.backend_used}` : "";
+            const via = r.backend_used
+                ? ` via ${labelFor(r.backend_used)}`
+                : "";
             setStatus("build-status",
                 `Built ${r.n_atoms}-atom structure${via}.`, "ok");
         } catch (e) {
