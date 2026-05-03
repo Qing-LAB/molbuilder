@@ -158,6 +158,32 @@ def _validate_geometry(struct: Structure,
                 "geometry.min_distance",
             ))
 
+    # H/heavy ratio.  Heavy-atom-only skeletons (typically X3DNA's `fiber`
+    # output with `add_hydrogens=False`, or a hand-loaded heavy-atom PDB)
+    # produce the wrong total electron count in DFT and are missing the
+    # Watson-Crick / hydrogen-bond donors that hold the chemistry together.
+    # Typical organic molecules sit at H/heavy ~ 0.6-1.5; nucleic acids
+    # ~ 0.6.  A ratio below 0.3 is unambiguously a heavy-atom skeleton.
+    #
+    # **Severity: warn, not error.**  The user may legitimately want to
+    # inspect or hand-process the heavy-atom skeleton (e.g., feed it to
+    # an external protonator with different residue assumptions).  The
+    # warning surfaces the issue prominently so they don't accidentally
+    # ship a broken structure to a calculation.
+    if n >= 1:
+        n_h     = sum(1 for e in struct.elements if e == "H")
+        n_heavy = sum(1 for e in struct.elements if e != "H")
+        if n_heavy > 0 and (n_h / n_heavy) < 0.3:
+            issues.append(Issue(
+                "warn",
+                f"H/heavy ratio is {n_h}/{n_heavy}={n_h/n_heavy:.2f} -- "
+                f"structure looks like a heavy-atom skeleton (typical "
+                f"organic molecules: H/heavy ~ 0.6-1.5).  DFT will "
+                f"compute the wrong electron count without explicit H. "
+                f"Did you mean to add hydrogens?",
+                "geometry.h_ratio",
+            ))
+
     if cell is None:
         return issues
 
