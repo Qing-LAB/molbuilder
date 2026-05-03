@@ -232,12 +232,12 @@ Pipe contract:
 
 Web routes:
 
-> **Build-side namespacing under `/api/build/*` is the target shape;
-> today the build routes live at their pre-merge paths** (`/api/build`,
-> `/api/fdf`, `/api/load`, `/api/pyscf`, `/api/backends`, `/api/health`)
-> and the JS client consumes them as such.  The watch blueprint IS
-> mounted at `/api/watch/*` already.  Build-side namespacing waits
-> on the Phase 3 UI redesign so the JS client can move in one shot.
+> **Both halves are now namespaced.**  Build routes live at
+> `/api/build/{molecule,load,fdf,pyscf}` (the verb-builder endpoint
+> is `molecule` rather than per-kind sub-routes; per-kind splitting
+> can come later if useful).  Watch routes at `/api/watch/*`.
+> The two top-level routes shared between tabs (`/api/health`,
+> `/api/backends`) stay un-namespaced.
 
 ```
 GET  /                              # tabbed UI shell

@@ -77,12 +77,12 @@ def test_health_endpoint(web_client):
 
 
 # --------------------------------------------------------------------- #
-#  /api/build                                                           #
+#  /api/build/molecule                                                         #
 # --------------------------------------------------------------------- #
 
 
 def test_build_peptide(web_client):
-    r = web_client.post("/api/build", json={"kind": "peptide", "input": "ARNDC"})
+    r = web_client.post("/api/build/molecule", json={"kind": "peptide", "input": "ARNDC"})
     body = r.get_json()
     assert body["ok"] is True
     assert body["n_atoms"] >= 38
@@ -90,21 +90,21 @@ def test_build_peptide(web_client):
 
 
 def test_build_dna(web_client):
-    r = web_client.post("/api/build", json={"kind": "dna", "input": "ATGC"})
+    r = web_client.post("/api/build/molecule", json={"kind": "dna", "input": "ATGC"})
     body = r.get_json()
     assert body["ok"] is True
     assert body["n_residues"] == 4
 
 
 def test_build_rna(web_client):
-    r = web_client.post("/api/build", json={"kind": "rna", "input": "AUGC"})
+    r = web_client.post("/api/build/molecule", json={"kind": "rna", "input": "AUGC"})
     body = r.get_json()
     assert body["ok"] is True
     assert "P" in body["elements"]
 
 
 def test_build_smiles_optional(web_client):
-    r = web_client.post("/api/build",
+    r = web_client.post("/api/build/molecule",
                         json={"kind": "smiles", "input": "c1ccccc1"})
     body = r.get_json()
     if not body.get("ok"):
@@ -113,7 +113,7 @@ def test_build_smiles_optional(web_client):
 
 
 def test_build_bad_input_returns_clear_error(web_client):
-    r = web_client.post("/api/build",
+    r = web_client.post("/api/build/molecule",
                         json={"kind": "peptide", "input": "AXXC"})
     body = r.get_json()
     assert body["ok"] is False
@@ -121,20 +121,20 @@ def test_build_bad_input_returns_clear_error(web_client):
 
 
 # --------------------------------------------------------------------- #
-#  /api/fdf                                                             #
+#  /api/build/fdf                                                         #
 # --------------------------------------------------------------------- #
 
 
 @pytest.fixture
 def peptide_xyz(web_client):
     """xyz string of an ARNDC peptide via the build endpoint."""
-    r = web_client.post("/api/build",
+    r = web_client.post("/api/build/molecule",
                         json={"kind": "peptide", "input": "ARNDC"})
     return r.get_json()["xyz"]
 
 
 def test_fdf_default_params(web_client, peptide_xyz):
-    r = web_client.post("/api/fdf", json={"xyz": peptide_xyz, "params": {}})
+    r = web_client.post("/api/build/fdf", json={"xyz": peptide_xyz, "params": {}})
     body = r.get_json()
     assert body["ok"] is True
     assert "SystemName" in body["fdf"]
@@ -142,7 +142,7 @@ def test_fdf_default_params(web_client, peptide_xyz):
 
 
 def test_fdf_custom_params(web_client, peptide_xyz):
-    r = web_client.post("/api/fdf", json={
+    r = web_client.post("/api/build/fdf", json={
         "xyz": peptide_xyz,
         "params": {
             "system_name":   "my_pep", "system_label": "pep",
@@ -167,18 +167,18 @@ def test_fdf_custom_params(web_client, peptide_xyz):
 
 
 def test_fdf_missing_xyz_returns_error(web_client):
-    r = web_client.post("/api/fdf", json={"params": {}})
+    r = web_client.post("/api/build/fdf", json={"params": {}})
     body = r.get_json()
     assert body["ok"] is False
 
 
 # --------------------------------------------------------------------- #
-#  /api/load                                                            #
+#  /api/build/load                                                         #
 # --------------------------------------------------------------------- #
 
 
 def test_load_xyz_via_json(web_client, peptide_xyz):
-    r = web_client.post("/api/load",
+    r = web_client.post("/api/build/load",
                         json={"text": peptide_xyz, "filename": "peptide.xyz"})
     body = r.get_json()
     assert body["ok"] is True
@@ -187,10 +187,10 @@ def test_load_xyz_via_json(web_client, peptide_xyz):
 
 
 def test_load_pdb_via_json(web_client):
-    pep_pdb = web_client.post("/api/build",
+    pep_pdb = web_client.post("/api/build/molecule",
                               json={"kind": "peptide", "input": "AC"}
                               ).get_json()["pdb"]
-    r = web_client.post("/api/load",
+    r = web_client.post("/api/build/load",
                         json={"text": pep_pdb, "filename": "ac.pdb"})
     body = r.get_json()
     assert body["ok"] is True
@@ -199,7 +199,7 @@ def test_load_pdb_via_json(web_client):
 
 def test_load_xyz_format_sniff(web_client, peptide_xyz):
     """No extension on the filename -> sniff format from the content."""
-    r = web_client.post("/api/load",
+    r = web_client.post("/api/build/load",
                         json={"text": peptide_xyz, "filename": ""})
     body = r.get_json()
     assert body["ok"] is True
@@ -211,7 +211,7 @@ def test_load_multipart(web_client, peptide_xyz):
     fs = FileStorage(stream=io.BytesIO(peptide_xyz.encode()),
                      filename="upload.xyz",
                      content_type="chemical/x-xyz")
-    r = web_client.post("/api/load",
+    r = web_client.post("/api/build/load",
                        data={"file": fs}, content_type="multipart/form-data")
     body = r.get_json()
     assert body["ok"] is True
@@ -219,16 +219,16 @@ def test_load_multipart(web_client, peptide_xyz):
 
 
 def test_load_empty_returns_error(web_client):
-    r = web_client.post("/api/load", json={"text": ""})
+    r = web_client.post("/api/build/load", json={"text": ""})
     body = r.get_json()
     assert body["ok"] is False
 
 
 def test_load_then_fdf_chain(web_client, peptide_xyz):
-    loaded = web_client.post("/api/load",
+    loaded = web_client.post("/api/build/load",
                              json={"text": peptide_xyz, "filename": "p.xyz"}
                              ).get_json()
-    r = web_client.post("/api/fdf",
+    r = web_client.post("/api/build/fdf",
                         json={"xyz": loaded["xyz"],
                               "params": {"system_label": "lp"}})
     body = r.get_json()
@@ -237,12 +237,12 @@ def test_load_then_fdf_chain(web_client, peptide_xyz):
 
 
 # --------------------------------------------------------------------- #
-#  /api/pyscf                                                           #
+#  /api/build/pyscf                                                         #
 # --------------------------------------------------------------------- #
 
 
 def test_pyscf_default_params(web_client, peptide_xyz):
-    r = web_client.post("/api/pyscf",
+    r = web_client.post("/api/build/pyscf",
                         json={"xyz": peptide_xyz, "params": {}})
     body = r.get_json()
     assert body["ok"] is True
@@ -253,7 +253,7 @@ def test_pyscf_default_params(web_client, peptide_xyz):
 
 
 def test_pyscf_custom_params(web_client, peptide_xyz):
-    r = web_client.post("/api/pyscf", json={
+    r = web_client.post("/api/build/pyscf", json={
         "xyz": peptide_xyz,
         "params": {
             "job_name":         "my_pep",
@@ -297,13 +297,13 @@ def test_pyscf_auto_charge_from_phosphates(web_client):
         "O   1.4  0.0  0.0\n"
         "C   2.5  0.0  0.0\n"
     )
-    r = web_client.post("/api/pyscf", json={"xyz": xyz, "params": {}})
+    r = web_client.post("/api/build/pyscf", json={"xyz": xyz, "params": {}})
     body = r.get_json()
     assert body["ok"] is True
     assert "charge     = -1" in body["script"]
 
 
 def test_pyscf_missing_xyz_returns_error(web_client):
-    r = web_client.post("/api/pyscf", json={"params": {}})
+    r = web_client.post("/api/build/pyscf", json={"params": {}})
     body = r.get_json()
     assert body["ok"] is False
