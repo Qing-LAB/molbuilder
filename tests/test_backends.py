@@ -54,7 +54,7 @@ def test_dispatch_explicit_backend_calls_only_that_one(monkeypatch):
 
     # Patch the loader, not the modules, so we exercise the real
     # registry plumbing.
-    from molbuilder import backends
+    from molbuilder.builders import backends
     monkeypatch.setattr(
         backends, "_load_backends",
         lambda: {"amber": fake_amber_build, "rdkit": fake_rdkit_build},
@@ -71,7 +71,7 @@ def test_dispatch_auto_prefers_amber_then_rdkit(monkeypatch):
     docstring; reflected here so a future re-ordering shows up.
     """
     calls = []
-    from molbuilder import backends
+    from molbuilder.builders import backends
     monkeypatch.setattr(
         backends, "_load_backends",
         lambda: {
@@ -90,7 +90,7 @@ def test_dispatch_auto_prefers_amber_then_rdkit(monkeypatch):
 
 def test_dispatch_auto_falls_through_when_amber_unavailable(monkeypatch):
     calls = []
-    from molbuilder import backends
+    from molbuilder.builders import backends
     monkeypatch.setattr(
         backends, "_load_backends",
         lambda: {
@@ -110,7 +110,7 @@ def test_dispatch_auto_falls_through_when_amber_unavailable(monkeypatch):
 def test_dispatch_auto_raises_when_nothing_available(monkeypatch):
     """No backends installed -> a single, helpful BackendUnavailable
     pointing at both install commands.  No backend silently runs."""
-    from molbuilder import backends
+    from molbuilder.builders import backends
     monkeypatch.setattr(
         backends, "_load_backends",
         lambda: {"amber": lambda *a, **k: None, "rdkit": lambda *a, **k: None},
@@ -250,7 +250,7 @@ def test_dispatch_auto_falls_through_threedna_silently(monkeypatch):
     it cleanly and try amber.  No BackendUnavailable, no warning --
     just a quiet fall-through."""
     captured = []
-    from molbuilder import backends
+    from molbuilder.builders import backends
     monkeypatch.setattr(
         backends, "_load_backends",
         lambda: {

@@ -18,7 +18,7 @@ from __future__ import annotations
 import warnings
 from typing import Optional
 
-from ..structure import Structure
+from ...structure import Structure
 from ._common import rdkit_mol_to_structure
 
 
