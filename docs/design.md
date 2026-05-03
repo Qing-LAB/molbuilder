@@ -259,7 +259,7 @@ POST /api/build/validate            # → Issue list JSON
 # Watch blueprint (mounted at /api/watch)
 GET  /api/watch/formats             # registered parsers
 POST /api/watch/load                # trajectory file → Frame list JSON
-GET  /api/watch/data                # poll (Phase 3 may add SSE)
+GET  /api/watch/data                # browser-driven polling (~15s)
 ```
 
 ### Field metadata as the unifier
@@ -380,9 +380,13 @@ parser drops the torn block and returns the complete frames preceding
 it. Next refresh picks up the now-complete block plus whatever came
 after.
 
-Phase 3 may replace polling with Server-Sent Events for lower-latency
-updates on fast-moving runs. Listed as an open question; not a
-Phase 1/2 blocker.
+The polling model is intentional: the server has authoritative
+knowledge of the file state and decides what to deliver, while the
+browser is just a viewer.  SSE / push-style alternatives were
+considered and dismissed -- they only help if change *detection* is
+sub-second, which would require a background filesystem watcher
+(inotify-style).  For SCF steps that take seconds-to-minutes, the
+15s polling latency is rarely the bottleneck.
 
 ### State model — single user, single file
 
@@ -593,6 +597,7 @@ These have been considered and rejected; do not reintroduce them.
 | 2026-05-01 | CLI uses click + a ~30-line dataclass→click-options bridge. We do not write our own argument parser, registry, or coercion layer on top of click. | Don't reinvent wheels; don't reintroduce the custom CLI framework that was previously deleted. The bridge reads `field.metadata` and emits `click.option` decorators; click handles the rest. |
 | 2026-05-01 | Web routing uses Flask Blueprints, not a hand-rolled router. | Blueprints are Flask's native URL-prefix primitive; we don't reinvent it. |
 | 2026-05-01 | Do not introduce ASE-backed parsers in Phase 1 or 2. | The existing molwatch parsers work and are well-understood; switching would change behavior subtly. Revisit if maintenance cost grows; until then, keep the parsers we have. |
+| 2026-05-03 | Watch viewer stays on browser-driven mtime polling; SSE / push-style alternatives are not pursued. | The server has authoritative knowledge of the file state.  An SSE swap would only pay off if paired with sub-second change detection (background watcher / inotify), and SCF runs are slow enough that the 15s poll latency is rarely the bottleneck.  Polling is the right shape for "server tells browser what's available." |
 
 ---
 
@@ -1109,10 +1114,6 @@ may match on; only the Python module name changes.
 
 - Frequency / thermochemistry support in the PySCF script (post-relax
   Hessian + RRHO). Lower priority than the science gap list above.
-- Whether the watch viewer should switch from 15s mtime polling
-  (current) to Server-Sent Events. SSE is the right shape for "stream
-  while the calculation runs" and removes a per-poll re-parse cost on
-  large logs. Phase 3 territory; not a Phase 1/2 blocker.
 - Whether `Trajectory` should grow analysis methods (RMSD, principal
   axes, dipole moment time series) versus staying as a thin
   `(source_format, frames, lattice)` wrapper.  Phase 2 landed it as
