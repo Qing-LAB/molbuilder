@@ -742,7 +742,7 @@ def convert(
     # static (one preview block, no live updates); for live updates while
     # SIESTA is running, point molwatch at the .out file instead.
     if cfg.write_molwatch_log:
-        from ..molwatch_log import write_initial_preview
+        from ..trajectory_log import write_initial_preview
         mw_path = fdf_p.with_suffix(".molwatch.log")
         write_initial_preview(
             struct,

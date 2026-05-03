@@ -172,8 +172,6 @@ the adapter goes away then.
 >   * generators -- still `molbuilder/siesta/input.py` and
 >     `molbuilder/pyscf/input.py` (the renderers; not under
 >     `generators/`).
->   * trajectory-log writer -- still `molbuilder/molwatch_log/format.py`
->     (not yet renamed to `trajectory_log/`).
 > The verbs themselves and their consume/yield contracts are accurate
 > now.
 
@@ -606,12 +604,13 @@ These have been considered and rejected; do not reintroduce them.
 > out incrementally.  Done so far:
 >   * `config/` exists; `SiestaConfig` and `PySCFConfig` live there
 >     (re-exported from the engine packages for back-compat).
+>   * `trajectory_log/` exists (renamed from `molwatch_log/`); the
+>     old name is preserved as a back-compat shim.
 > Still to land:
 >   * `generators/` -- the SIESTA / PySCF emitters still live at
 >     `molbuilder/siesta/input.py` and `molbuilder/pyscf/input.py`.
 >   * `builders/` -- the build verbs (peptide / nucleic / smiles /
 >     pubchem) and `backends/` are still at the top level.
->   * `trajectory_log/` -- still named `molbuilder/molwatch_log/`.
 > Re-export shims keep external imports stable while the layout
 > moves; until then,
 > re-export shims keep external imports stable but the on-disk
