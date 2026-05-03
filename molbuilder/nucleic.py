@@ -25,6 +25,7 @@ def build_dna(
     backend: str = "auto",
     form: str = "B",
     terminal: str = "OH",
+    add_hydrogens: bool = True,
     protonate_phosphates: bool = True,
     title: Optional[str] = None,
 ) -> Structure:
@@ -36,16 +37,24 @@ def build_dna(
         DNA sequence (``"ATGCATGC"``).  Whitespace is ignored.
     backend
         ``"auto"`` (default) -- pick the best installed backend
-        (``amber`` > ``rdkit``).  Force one with
-        ``"amber"`` / ``"rdkit"``.
+        (``threedna`` > ``amber`` > ``rdkit``).  Force one with
+        ``"threedna"`` / ``"amber"`` / ``"rdkit"``.
     form
         Helical form: ``"B"`` (default), ``"A"``, or ``"Z"``.
-        Only the ``amber`` backend respects the form argument;
-        ``rdkit`` always returns its own embedded conformer.
-        ``"Z"`` requires 3DNA externally.
+        ``threedna`` honours all three; ``amber`` ignores form (always
+        extended); ``rdkit`` always returns its own embedded conformer.
     terminal
         Terminal-phosphate state: ``"OH"`` (default; both ends -OH),
         ``"5P"``, ``"3P"``, or ``"PP"``.
+    add_hydrogens
+        If True (default), add explicit hydrogens via
+        :func:`chemistry.add_hydrogens` (OpenBabel preferred, RDKit
+        fallback).  Critical for X3DNA, whose ``fiber`` output is a
+        heavy-atom skeleton -- DFT will compute the wrong electron
+        count without H.  Amber and RDKit backends already produce
+        H-complete structures, so this is a no-op for them.  Set
+        False to keep the heavy-atom skeleton; you'll need to
+        protonate it before any quantum-chemistry calculation.
     protonate_phosphates
         If True (default), add an H to each deprotonated non-bridging
         phosphate oxygen so the molecule is formally **neutral**.
@@ -67,6 +76,7 @@ def build_dna(
         "dna", cleaned,
         backend=backend, form=form, terminal=terminal, title=title,
     )
+    struct = _maybe_add_hydrogens(struct, add_hydrogens)
     return _maybe_protonate(struct, protonate_phosphates)
 
 
@@ -76,6 +86,7 @@ def build_rna(
     backend: str = "auto",
     form: str = "A",
     terminal: str = "OH",
+    add_hydrogens: bool = True,
     protonate_phosphates: bool = True,
     title: Optional[str] = None,
 ) -> Structure:
@@ -90,7 +101,25 @@ def build_rna(
         "rna", cleaned,
         backend=backend, form=form, terminal=terminal, title=title,
     )
+    struct = _maybe_add_hydrogens(struct, add_hydrogens)
     return _maybe_protonate(struct, protonate_phosphates)
+
+
+def _maybe_add_hydrogens(struct: Structure, add: bool) -> Structure:
+    """Run chemistry.add_hydrogens if the user wants H, but skip the
+    round-trip when the structure already has a sensible H count
+    (Amber/RDKit backends produce H-complete output)."""
+    if not add:
+        return struct
+    n_h     = sum(1 for e in struct.elements if e == "H")
+    n_heavy = sum(1 for e in struct.elements if e != "H")
+    # Heuristic threshold: organic molecules sit at H/heavy ~ 0.6-1.5.
+    # 0.3 catches X3DNA's heavy-atom skeleton (~0 H) without triggering
+    # on already-protonated Amber / RDKit output.
+    if n_heavy and (n_h / n_heavy) >= 0.3:
+        return struct
+    from .chemistry import add_hydrogens as _add_hydrogens
+    return _add_hydrogens(struct)
 
 
 def _maybe_protonate(struct: Structure, protonate: bool) -> Structure:

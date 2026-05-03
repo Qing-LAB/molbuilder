@@ -66,3 +66,42 @@ def test_rna_4mer_has_phosphorus(backend):
     r = build_rna("AUGC", backend=backend,
                   form=("A" if backend != "rdkit" else "B"))
     assert "P" in r.elements
+
+
+# --------------------------------------------------------------------- #
+#  Hydrogen completeness across backends (X3DNA's `fiber` is a heavy-   #
+#  atom skeleton; the build_dna/build_rna add_hydrogens kwarg is the    #
+#  contract that all backends produce simulation-ready output).         #
+# --------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("backend", _BACKENDS)
+def test_dna_default_protonation_yields_simulation_ready_h_count(backend):
+    """All backends, with default kwargs, must produce a structure with
+    H/heavy >= 0.6 -- typical organic ratio.  Pre-fix this failed on
+    threedna (H/heavy ~ 0.05 because fiber emits heavy atoms only)."""
+    if not available_backends()[backend]:
+        pytest.skip(f"backend {backend!r} not installed on this machine")
+    s = build_dna("ATGC", backend=backend)
+    n_h     = sum(1 for e in s.elements if e == "H")
+    n_heavy = sum(1 for e in s.elements if e != "H")
+    ratio = n_h / n_heavy
+    assert ratio >= 0.55, (
+        f"{backend}: H/heavy={ratio:.2f} -- structure missing hydrogens, "
+        f"DFT will compute the wrong electron count"
+    )
+
+
+def test_dna_add_hydrogens_false_returns_heavy_skeleton():
+    """The kwarg has to be honored: explicitly opting out skips the
+    H-add step.  Useful when the user wants to inspect the fiber
+    output directly or feed an external protonator."""
+    if not available_backends().get("threedna"):
+        pytest.skip("threedna backend not installed")
+    s = build_dna("ATGC", backend="threedna",
+                  add_hydrogens=False, protonate_phosphates=False)
+    n_h = sum(1 for e in s.elements if e == "H")
+    # X3DNA fiber emits a few H on the terminal phosphate / 3'-OH but
+    # nothing on the bases or sugars -- nowhere near a simulation-
+    # ready ratio.
+    assert n_h <= 5, f"expected heavy-atom skeleton, got {n_h} H"
