@@ -226,9 +226,11 @@
         $("dl-pdb").disabled = false;
         $("generate-fdf").disabled = false;
         $("generate-pyscf").disabled = false;
-        // Stale outputs / status / download buttons -> reset
+        // Stale outputs / status / download / handoff buttons -> reset
         $("dl-fdf").disabled = true;
         $("dl-pyscf").disabled = true;
+        $("watch-fdf").disabled = true;
+        $("watch-pyscf").disabled = true;
         $("fdf-output").hidden = true;
         $("fdf-output").textContent = "";
         $("pyscf-output").hidden = true;
@@ -549,9 +551,11 @@
                 return;
             }
             state.fdf = r.fdf;
+            state.fdf_label = r.system_label;
             $("fdf-output").textContent = r.fdf;
             $("fdf-output").hidden = false;
             $("dl-fdf").disabled = false;
+            $("watch-fdf").disabled = false;
             const fdfMsg = `OK — ${r.fdf.split("\n").length} lines, label "${r.system_label}".`;
             const fdfWarns = (r.issues || []).filter(i => i.severity === "warn");
             if (fdfWarns.length) {
@@ -571,6 +575,16 @@
         const label = ($("p-system-label").value.trim() || "siesta").replace(
             /[^A-Za-z0-9._-]+/g, "_");
         downloadAs(state.fdf, label + ".fdf");
+    });
+
+    // Watch this run -- open /watch with the predicted molwatch.log
+    // filename pre-filled.  The user edits the path to absolute (the
+    // server doesn't know where they'll run the calculation), then
+    // clicks Load on the Watch tab.
+    $("watch-fdf").addEventListener("click", () => {
+        if (!state.fdf_label) return;
+        const path = `${state.fdf_label}.molwatch.log`;
+        window.open(`/watch?path=${encodeURIComponent(path)}`, "_blank");
     });
 
     function collectFdfParams() {
@@ -652,9 +666,11 @@
                 return;
             }
             state.pyscf = r.script;
+            state.pyscf_label = r.job_name;
             $("pyscf-output").textContent = r.script;
             $("pyscf-output").hidden = false;
             $("dl-pyscf").disabled = false;
+            $("watch-pyscf").disabled = false;
             const pyMsg = `OK — ${r.script.split("\n").length} lines, job "${r.job_name}".`;
             const pyWarns = (r.issues || []).filter(i => i.severity === "warn");
             if (pyWarns.length) {
@@ -674,6 +690,12 @@
         const label = ($("py-job-name").value.trim() || "pyscf_relax")
             .replace(/[^A-Za-z0-9._-]+/g, "_");
         downloadAs(state.pyscf, label + ".py", "text/x-python");
+    });
+
+    $("watch-pyscf").addEventListener("click", () => {
+        if (!state.pyscf_label) return;
+        const path = `${state.pyscf_label}.molwatch.log`;
+        window.open(`/watch?path=${encodeURIComponent(path)}`, "_blank");
     });
 
     function collectPyscfParams() {
