@@ -162,11 +162,20 @@ the adapter goes away then.
 ### Domain verbs (L2)
 
 > **Module paths in this table reflect the post-2.7 target layout.**
-> Today (Phase 2.7 not yet started) the actual paths are
-> `molbuilder/peptide.py`, `molbuilder/nucleic.py`, `molbuilder/backends/`,
-> `molbuilder/siesta/input.py`, `molbuilder/pyscf/input.py`, and
-> `molbuilder/molwatch_log/format.py`.  The verbs themselves and their
-> consume/yield contracts are accurate now.
+> Phase 2.7 is rolling out incrementally; these paths still differ
+> from the on-disk reality:
+>   * builders -- still `molbuilder/peptide.py`,
+>     `molbuilder/nucleic.py`, `molbuilder/smiles.py`,
+>     `molbuilder/pubchem.py` (top-level, not under `builders/`).
+>   * builder backends -- still `molbuilder/backends/_amber.py` etc.
+>     (not under `builders/backends/`).
+>   * generators -- still `molbuilder/siesta/input.py` and
+>     `molbuilder/pyscf/input.py` (the renderers; not under
+>     `generators/`).
+>   * trajectory-log writer -- still `molbuilder/molwatch_log/format.py`
+>     (not yet renamed to `trajectory_log/`).
+> The verbs themselves and their consume/yield contracts are accurate
+> now.
 
 | Verb | Module | Consumes | Yields |
 |---|---|---|---|
@@ -593,14 +602,18 @@ These have been considered and rejected; do not reintroduce them.
 
 ## Post-merge package layout
 
-> **This is the post-2.7 target layout.**  Today (Phase 2.7 not yet
-> started) `config/`, `generators/`, `builders/`, and
-> `trajectory_log/` do **not** exist as their own subpackages.  The
-> configs still live at the head of `molbuilder/siesta/input.py` and
-> `molbuilder/pyscf/input.py`; backends live at `molbuilder/backends/`
-> (top-level, not under `builders/`); the trajectory-log writer is at
-> `molbuilder/molwatch_log/`.  Phase 2.7 is the layering-compliance
-> commit that moves them into the layout below; until then,
+> **This is the post-2.7 target layout.**  Phase 2.7 is rolling
+> out incrementally.  Done so far:
+>   * `config/` exists; `SiestaConfig` and `PySCFConfig` live there
+>     (re-exported from the engine packages for back-compat).
+> Still to land:
+>   * `generators/` -- the SIESTA / PySCF emitters still live at
+>     `molbuilder/siesta/input.py` and `molbuilder/pyscf/input.py`.
+>   * `builders/` -- the build verbs (peptide / nucleic / smiles /
+>     pubchem) and `backends/` are still at the top level.
+>   * `trajectory_log/` -- still named `molbuilder/molwatch_log/`.
+> Re-export shims keep external imports stable while the layout
+> moves; until then,
 > re-export shims keep external imports stable but the on-disk
 > shape is the pre-2.7 one.
 
