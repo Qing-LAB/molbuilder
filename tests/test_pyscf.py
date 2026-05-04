@@ -134,6 +134,64 @@ def test_preopt_writes_its_own_trajectory_when_enabled(h2o):
     assert 'prefix                = JOB + "_geom"' in text
 
 
+def test_molwatch_log_instantiated_before_preopt(h2o):
+    """Critical UX guarantee: with preopt=True the user shouldn't have
+    to wait for preopt to finish before .molwatch.log appears.  Preopt
+    can take hours on a real molecule; the Watch tab needs SOMETHING
+    to load from second one.
+
+    Pin the source ordering: `_molwatch = _MolwatchEmitter(...)` must
+    appear BEFORE `mol_pre = optimize(mf1, ...)`.  Both callbacks
+    (mf1.callback for SCF, optimize(callback=...) for opt steps) must
+    also wire into the preopt stage so steps stream from the start."""
+    text = render_script(h2o, PySCFConfig(preopt=True))
+    inst_at      = text.find('_molwatch = _MolwatchEmitter(JOB')
+    preopt_at    = text.find("mol_pre = optimize(")
+    prod_at      = text.find("mol_eq = optimize(")
+    mf1_callback = text.find("mf1.callback = _molwatch.scf_cycle_hook")
+    mf_callback  = text.find("mf.callback = _molwatch.scf_cycle_hook")
+    preopt_step  = text.find("callback          = _molwatch.opt_step_hook")
+    prod_step    = text.find("callback              = _molwatch.opt_step_hook")
+    # Every position must be present (>= 0) and in the right order.
+    for name, off in [
+        ("_molwatch instantiation", inst_at),
+        ("mol_pre = optimize(",     preopt_at),
+        ("mol_eq = optimize(",      prod_at),
+        ("mf1.callback wiring",     mf1_callback),
+        ("mf.callback wiring",      mf_callback),
+        ("preopt opt_step callback", preopt_step),
+        ("production opt_step callback", prod_step),
+    ]:
+        assert off >= 0, f"missing in script: {name}"
+    # Order:
+    #   inst (creates .molwatch.log immediately)
+    #     < mf1.callback wiring (preopt SCF hook)
+    #       < preopt optimize( ... callback=opt_step_hook ... )
+    #         < mf.callback wiring (production SCF hook, post-rebind)
+    #           < production optimize( ... callback=opt_step_hook ... )
+    # `preopt_step` and `prod_step` lie INSIDE their respective
+    # optimize() argument lists, so they fall between the opening
+    # `optimize(` of one stage and the opening `optimize(` of the next.
+    assert inst_at < mf1_callback < preopt_at < preopt_step < mf_callback < prod_at < prod_step, (
+        "molwatch wiring is out of order; expected "
+        "inst < mf1_cb < preopt_at < preopt_step < mf_cb < prod_at < prod_step.  "
+        f"Got: inst={inst_at}, mf1_cb={mf1_callback}, preopt_at={preopt_at}, "
+        f"preopt_step={preopt_step}, mf_cb={mf_callback}, prod_at={prod_at}, "
+        f"prod_step={prod_step}"
+    )
+
+
+def test_molwatch_log_instantiation_skipped_when_optimizer_is_berny(h2o):
+    """The molwatch log emitter requires the geomeTRIC `callback=` API.
+    Berny doesn't expose an equivalent hook, so we skip emission when
+    optimizer != 'geometric' rather than emit an unwired class."""
+    text = render_script(h2o,
+                         PySCFConfig(optimize=True, optimizer="berny",
+                                     molwatch_log=True))
+    assert "_MolwatchEmitter" not in text
+    assert ".molwatch.log" not in text or text.count(".molwatch.log") <= 1
+
+
 def test_preopt_basis_change_triggers_rebuild(h2o):
     """If the production basis differs from the pre-opt basis, mol must
     have its basis swapped and rebuilt; otherwise no rebuild needed."""

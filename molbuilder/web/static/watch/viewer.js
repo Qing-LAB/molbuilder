@@ -406,12 +406,31 @@
             section.hidden = true;
             return;
         }
+
+        // Walk backwards to find the most recent NON-EMPTY SCF run.
+        // The initial-preview block (now emitted before preopt starts,
+        // so the file is non-empty from the very first second) carries
+        // an intentionally empty `scf_history begin / end` pair -- no
+        // SCF has run yet at preview time.  Same shape can appear for
+        // any opt step whose SCF detail wasn't captured.  Without this
+        // walk, history[length-1] = [] and `current[0].gnorm` throws.
+        let current = null, stepIdx = history.length - 1;
+        for (let i = history.length - 1; i >= 0; i--) {
+            if (history[i] && history[i].length > 0) {
+                current = history[i];
+                stepIdx = i;
+                break;
+            }
+        }
+        if (current === null) {
+            // No step has SCF detail yet (e.g., file contains only
+            // the initial preview).  Hide the SCF panel until the
+            // first real SCF block lands.
+            section.hidden = true;
+            return;
+        }
         section.hidden = false;
 
-        // The most recent SCF run = the step currently converging
-        // (or just converged).
-        const current  = history[history.length - 1];
-        const stepIdx  = history.length - 1;
         const cycles   = current.map(c => c.cycle);
         const energies = current.map(c => c.energy);
 
