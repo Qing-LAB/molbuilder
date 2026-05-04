@@ -38,6 +38,127 @@ from .structure import Structure
 # --------------------------------------------------------------------- #
 
 
+# --------------------------------------------------------------------- #
+#  add_dataclass_options: dataclass field metadata -> click.option      #
+# --------------------------------------------------------------------- #
+
+
+def add_dataclass_options(cls, *,
+                          prefix: str = "",
+                          tier: Optional[str] = None,
+                          skip: Iterable[str] = ()):
+    """Decorator factory: convert a dataclass's fields into click.option
+    decorators on the wrapped command function.
+
+    Field-to-option mapping
+    -----------------------
+    * field name ``foo_bar`` -> ``--<prefix>foo-bar``
+    * field metadata ``"help"`` -> click help text
+    * default = field.default (or None for fields with default_factory
+      that doesn't trivially serialise)
+    * type:
+        - ``bool``           -> ``is_flag=True``  (with --foo / --no-foo
+                                pair if default is False / True)
+        - ``int``            -> ``type=int``
+        - ``float``          -> ``type=float``
+        - ``str`` / Optional[str] -> ``type=str``
+        - everything else    -> ``type=str`` (user gets to pass strings)
+
+    The ``tier`` filter accepts only fields whose metadata["tier"]
+    matches (or any field if metadata["tier"] is unset).  Default
+    None -> include all.  ``skip`` is an iterable of field names to
+    exclude (useful when the command already has those options
+    defined manually).
+
+    Returns a decorator that, when applied to a function, stacks
+    @click.option for each kept field on it.  The wrapped function
+    receives the field values as kwargs (same names as the dataclass
+    fields).
+
+    Example
+    -------
+    >>> @cli.command()
+    ... @add_dataclass_options(SiestaConfig, skip=("psml_lib", "copy_psml"))
+    ... def cmd_demo(**fields):
+    ...     cfg = SiestaConfig(**fields)
+    ...     ...
+
+    Why this exists
+    ---------------
+    The fdf / pyscf subcommands today maintain ~50 click.option
+    lines each that mirror SiestaConfig / PySCFConfig fields.  Every
+    time a new field lands (e.g. gap #10 added diis_space + damp),
+    the field has to be added in three places: the dataclass, the
+    generator, and the CLI option list.  This helper is the path
+    out of that maintenance tax: a future subcommand or a refactored
+    cmd_fdf / cmd_pyscf reads field metadata directly.
+    """
+    import dataclasses
+    import typing
+
+    skip_set = set(skip)
+    # `fld.type` may be a string when the dataclass module uses
+    # `from __future__ import annotations`.  Resolve once via
+    # get_type_hints so the field-by-field logic below sees real
+    # types (bool / int / float / Optional[str] / ...) instead of
+    # strings.  Fall back gracefully for runtime-only annotations
+    # the resolver can't evaluate.
+    try:
+        resolved_hints = typing.get_type_hints(cls)
+    except Exception:
+        resolved_hints = {}
+
+    def deco(f):
+        for fld in dataclasses.fields(cls):
+            if fld.name in skip_set:
+                continue
+            if tier is not None and fld.metadata.get("tier") != tier:
+                continue
+
+            flag = "--" + prefix + fld.name.replace("_", "-")
+            help_text = fld.metadata.get("help") or fld.metadata.get("label") or ""
+
+            ann = resolved_hints.get(fld.name, fld.type)
+            # Walk Optional[X] / Union[X, None]
+            origin = typing.get_origin(ann)
+            args   = typing.get_args(ann)
+            if origin is typing.Union and type(None) in args:
+                inner = next((a for a in args if a is not type(None)), str)
+                py_t  = inner
+            else:
+                py_t = ann
+
+            # Default: the dataclass field default; MISSING -> None.
+            default = (fld.default
+                       if fld.default is not dataclasses.MISSING
+                       else None)
+
+            if py_t is bool:
+                # Generate --foo / --no-foo pair so the user can flip
+                # either direction regardless of the default.
+                neg_flag = "--no-" + prefix + fld.name.replace("_", "-")
+                f = click.option(f"{flag}/{neg_flag}",
+                                 fld.name,
+                                 default=bool(default),
+                                 help=help_text)(f)
+            elif py_t is int:
+                f = click.option(flag, fld.name, type=int,
+                                 default=default, show_default=True,
+                                 help=help_text)(f)
+            elif py_t is float:
+                f = click.option(flag, fld.name, type=float,
+                                 default=default, show_default=True,
+                                 help=help_text)(f)
+            else:
+                # str / Optional[str] / unknown -- accept as a string
+                # and let the dataclass __post_init__ / call site coerce.
+                f = click.option(flag, fld.name, type=str,
+                                 default=default, show_default=(default is not None),
+                                 help=help_text)(f)
+        return f
+    return deco
+
+
 @contextlib.contextmanager
 def _resolve_input_path(path: str) -> Iterator[str]:
     """Yield a real file path the rest of the pipeline can ``.read()``.
