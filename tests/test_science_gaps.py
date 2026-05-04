@@ -194,12 +194,6 @@ def test_gap_4_pyscf_uks_emits_stability_analysis(methyl_radical):
 # --------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    reason="design.md gap #5: SiestaConfig.pao_energy_shift defaults "
-           "to 0.02 Ry; production work uses 0.005-0.01 Ry. Tighten "
-           "default to 0.01 Ry.",
-    strict=True,
-)
 def test_gap_5_siesta_pao_energy_shift_default_is_tight():
     """The default PAO.EnergyShift should be 0.01 Ry or tighter.
     0.02 Ry produces under-converged PAO basis tails for most
