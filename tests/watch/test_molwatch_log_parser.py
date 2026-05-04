@@ -291,6 +291,106 @@ def test_wall_time_field_round_trip(tmp_path):
     assert wt[1] - wt[0] == pytest.approx(13.948, abs=0.001)
 
 
+def test_run_state_finished_when_concluded_marker_present(tmp_path):
+    """When the writer emits ``# concluded: <ISO>`` (atexit hook on
+    normal script exit), the parser must surface
+    Trajectory.run_state == "finished".  This is the user-facing
+    "is the run done?" signal -- authoritative, not heuristic."""
+    sample = (
+        "# molwatch trajectory log v1\n"
+        "# engine: pyscf\n"
+        "# created: 2026-04-25T11:00:00\n"
+        "\n"
+        "==== molwatch step 0 begin ====\n"
+        "step_index: 0\n"
+        "n_atoms: 1\n"
+        "coordinates (Ang):\n"
+        "   H  0.0  0.0  0.0\n"
+        "energy (eV): -0.5\n"
+        "forces (eV/Ang):\n"
+        "max_force (eV/Ang): 0.0\n"
+        "scf_history begin\n"
+        "scf_history end\n"
+        "==== molwatch step 0 end ====\n"
+        "\n"
+        "# concluded: 2026-04-25T11:23:45\n"
+    )
+    p = tmp_path / "done.molwatch.log"
+    p.write_text(sample)
+    traj = MolwatchLogParser.parse(str(p))
+    assert traj.run_state == "finished"
+    assert traj.error_message is None
+
+
+def test_run_state_error_when_error_marker_present(tmp_path):
+    """``# error: <msg>`` written by the excepthook means the script
+    raised an uncaught exception.  Error has priority over the
+    co-emitted ``# concluded:`` line (atexit fires after excepthook,
+    so both appear; the parser keeps the error)."""
+    sample = (
+        "# molwatch trajectory log v1\n"
+        "# engine: pyscf\n"
+        "# created: 2026-04-25T11:00:00\n"
+        "\n"
+        "==== molwatch step 0 begin ====\n"
+        "step_index: 0\n"
+        "n_atoms: 1\n"
+        "coordinates (Ang):\n"
+        "   H  0.0  0.0  0.0\n"
+        "energy (eV): -0.5\n"
+        "forces (eV/Ang):\n"
+        "max_force (eV/Ang): 0.0\n"
+        "scf_history begin\n"
+        "scf_history end\n"
+        "==== molwatch step 0 end ====\n"
+        "\n"
+        "# error: ValueError: bad geometry\n"
+        "# concluded: 2026-04-25T11:23:45\n"
+    )
+    p = tmp_path / "err.molwatch.log"
+    p.write_text(sample)
+    traj = MolwatchLogParser.parse(str(p))
+    assert traj.run_state == "error"
+    assert "ValueError" in traj.error_message
+    assert "bad geometry" in traj.error_message
+
+
+def test_run_state_ongoing_when_no_marker(mw_path):
+    """No ``# concluded:`` and no ``# error:`` -> run is treated as
+    ongoing.  This is the SAFE default: don't claim "finished" when
+    we can't see the marker (the writer might have been SIGKILL'd)."""
+    traj = MolwatchLogParser.parse(mw_path)
+    assert traj.run_state == "ongoing"
+    assert traj.error_message is None
+
+
+def test_run_state_propagates_to_legacy_dict(tmp_path):
+    """The watch web layer reads `run_state` and `error_message` out
+    of the legacy dict to drive the UI badge.  Pin the round-trip."""
+    sample = (
+        "# molwatch trajectory log v1\n"
+        "# engine: pyscf\n"
+        "==== molwatch step 0 begin ====\n"
+        "step_index: 0\n"
+        "n_atoms: 1\n"
+        "coordinates (Ang):\n"
+        "   H  0.0  0.0  0.0\n"
+        "energy (eV): None\n"
+        "forces (eV/Ang):\n"
+        "max_force (eV/Ang): None\n"
+        "scf_history begin\n"
+        "scf_history end\n"
+        "==== molwatch step 0 end ====\n"
+        "# error: RuntimeError: SCF did not converge\n"
+        "# concluded: 2026-04-25T11:23:45\n"
+    )
+    p = tmp_path / "rt.molwatch.log"
+    p.write_text(sample)
+    result = trajectory_to_legacy_dict(MolwatchLogParser.parse(str(p)))
+    assert result["run_state"] == "error"
+    assert "RuntimeError" in result["error_message"]
+
+
 def test_wall_time_absent_in_old_logs(mw_path):
     """The SAMPLE log has no `wall_time:` lines (it's older than the
     field).  Parser must fall back to None for each frame and the

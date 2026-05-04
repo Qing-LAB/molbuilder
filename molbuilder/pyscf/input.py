@@ -745,6 +745,34 @@ def _emit_molwatch_emitter(v: bool) -> List[str]:
     # (see emit_scf_callback_wiring below).
     out.append('_molwatch = _MolwatchEmitter(JOB + ".molwatch.log", JOB, mol)')
     out.append("")
+    # Run-state markers.  The watch UI reads these to render a binary
+    # "Finished / Ongoing / Error" badge -- authoritative when present,
+    # not a stall heuristic (long-iteration runs would false-positive).
+    #
+    # Strategy: install excepthook to capture uncaught exceptions, then
+    # an atexit hook that always runs (clean exit OR exception OR Ctrl-C)
+    # to write the conclusion line.  SIGKILL / power loss leaves the
+    # file without markers, which correctly reads as "ongoing" -- the
+    # process didn't have a chance to finalize.
+    out.append("import atexit as _mw_atexit")
+    out.append("import sys as _mw_sys")
+    out.append("_molwatch_run = {'error': None}")
+    out.append("def _molwatch_excepthook(exc_type, exc_value, exc_tb):")
+    out.append("    _molwatch_run['error'] = f'{exc_type.__name__}: {exc_value}'")
+    out.append("    _mw_sys.__excepthook__(exc_type, exc_value, exc_tb)")
+    out.append("_mw_sys.excepthook = _molwatch_excepthook")
+    out.append("def _molwatch_finalize():")
+    out.append("    try:")
+    out.append("        with open(_molwatch.path, 'a') as _fh:")
+    out.append("            _ts = _mw_time.strftime('%Y-%m-%dT%H:%M:%S')")
+    out.append("            if _molwatch_run['error']:")
+    out.append("                _msg = _molwatch_run['error'].replace(chr(10), ' ')")
+    out.append("                _fh.write(f'# error: {_msg}\\n')")
+    out.append("            _fh.write(f'# concluded: {_ts}\\n')")
+    out.append("    except Exception:")
+    out.append("        pass    # don't break the user's exit on a logging issue")
+    out.append("_mw_atexit.register(_molwatch_finalize)")
+    out.append("")
     return out
 
 

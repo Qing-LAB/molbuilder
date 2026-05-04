@@ -448,6 +448,53 @@ button:disabled {
     :root { --viewer-height: clamp(280px, 50vh, 380px); }
 }
 
+/* ---- Run-state badge: fixed prominent indicator above the viewer.
+   High-contrast colours per state so the user has ONE obvious place
+   to read "is the run finished or still going?".  Three states map
+   to red / amber / green; "blank" is the pre-load placeholder. ---- */
+
+.run-state {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 12px;
+    margin: 12px 22px 0;
+    padding: 10px 16px;
+    border-radius: 6px;
+    font-size: 1.0rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+.run-state-label {
+    text-transform: uppercase;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+}
+.run-state-detail {
+    font-weight: 400;
+    font-size: 0.92rem;
+    opacity: 0.95;
+}
+
+/* Three states.  Colours chosen for accessibility on the white-bg
+   theme the viewer sits on. */
+.run-state.run-state-finished {
+    background: #d8f5d0;             /* light green */
+    color:      #1f5e1f;
+    border:     1px solid #6db66d;
+}
+.run-state.run-state-ongoing {
+    background: #fff3c4;             /* amber */
+    color:      #6b4a00;
+    border:     1px solid #d8a64b;
+}
+.run-state.run-state-error {
+    background: #ffd6d6;             /* red */
+    color:      #6b1f1f;
+    border:     1px solid #d65151;
+}
+.run-state.run-state-blank { display: none; }
+
 /* ---- Scrollbars ---- */
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }

@@ -78,6 +78,17 @@ Engine-native files (also supported):
 </section>
 
 <main>
+  <!-- Fixed-position run-state badge.  One obvious location for the
+       "is the simulation finished or still running?" signal -- not
+       buried in the bottom status banner.  Three states + initial-
+       blank; populated by viewer.js after the first /api/watch/load
+       response lands.  Authoritative when the writer emitted
+       end-of-run markers; defaults to "ongoing" otherwise. -->
+  <div id="run-state-badge" class="run-state run-state-blank" hidden>
+    <span class="run-state-label" id="run-state-label"></span>
+    <span class="run-state-detail" id="run-state-detail"></span>
+  </div>
+
   <section class="viewer-row">
     <div id="viewer"></div>
 
