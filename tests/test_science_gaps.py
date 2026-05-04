@@ -350,6 +350,69 @@ def test_gap_8_ecp_user_override_disables():
     )
 
 
+@pytest.mark.parametrize("basis", [
+    "def2-SVP", "def2_SVP", "def2svp",          # SVP variants
+    "def2-TZVP", "def2_TZVP", "def2tzvp",        # TZVP variants
+    "DEF2-SVP", "Def2-TZVP",                     # case variants
+])
+def test_gap_8_ecp_skipped_for_all_def2_spellings(basis):
+    """All three PySCF-equivalent def2 spellings (hyphen / underscore /
+    no separator) must skip the ECP auto-emit -- def2's own ECP is
+    bundled with the basis, an extra `ecp = "lanl2dz"` would double-
+    count.  Pre-fix the prefix check required the hyphen; the
+    underscore and no-separator forms slipped through and emitted
+    a spurious lanl2dz on top of def2's own ECP."""
+    pt = Structure(
+        elements=["Pt", "C", "C"],
+        positions=np.array([[0.0,0,0],[2,0,0],[-2,0,0]]),
+    )
+    cfg = PySCFConfig(job_name="pt", basis=basis,
+                      preopt=False, density_fit=False, dispersion=None)
+    script = render_script(pt, cfg)
+    assert not re.search(r"^\s*ecp\s*=", script, re.MULTILINE), (
+        f"basis={basis!r} (a def2 family member) bundles its own ECP; "
+        f"emitting an additional ecp= would double-count"
+    )
+
+
+def test_gap_8_dict_ecp_emits_as_python_dict_literal():
+    """Per-element ECP control is a real use case for mixed light /
+    heavy systems: the user passes ``cfg.ecp = {"Pt": "lanl2dz",
+    "Au": "stuttgart"}``.  Pre-fix the f-string stuffed the dict's
+    repr inside a string literal, producing
+    ``ecp = "{'Pt': 'lanl2dz'}"`` -- which PySCF rejects as an
+    unknown ECP NAME.  Post-fix the dict is emitted as a real
+    Python dict literal so PySCF sees it as the per-element form."""
+    pt = Structure(
+        elements=["Pt", "Au", "C"],
+        positions=np.array([[0.0,0,0],[2,0,0],[-2,0,0]]),
+    )
+    cfg = PySCFConfig(job_name="pt", basis="cc-pVDZ",
+                      preopt=False, density_fit=False, dispersion=None)
+    cfg.ecp = {"Pt": "lanl2dz", "Au": "stuttgart"}
+    script = render_script(pt, cfg)
+
+    # Find the ecp = ... line (only one).  Must open with `{`, not `"`.
+    ecp_lines = [ln for ln in script.splitlines()
+                 if re.match(r"\s*ecp\s*=", ln)]
+    assert len(ecp_lines) == 1, f"expected exactly one ecp= line, got {ecp_lines}"
+    ecp_line = ecp_lines[0]
+
+    # Must be a dict literal: the value starts with `{` (Python dict),
+    # not `"` (string).  Pre-fix the line was: ecp = "{'Pt': 'lanl2dz'}",
+    assert re.search(r"ecp\s*=\s*\{", ecp_line), (
+        f"dict ecp must emit as a Python dict literal; got: {ecp_line!r}"
+    )
+    assert not re.search(r'ecp\s*=\s*"', ecp_line), (
+        f"dict ecp must NOT be wrapped in quotes; got: {ecp_line!r}"
+    )
+    # Both keys present, regardless of repr quote style.
+    assert "Pt" in ecp_line and "lanl2dz" in ecp_line
+    assert "Au" in ecp_line and "stuttgart" in ecp_line
+    # Round-trip: the script must compile cleanly with the dict literal.
+    compile(script, "<gen>", "exec")
+
+
 # --------------------------------------------------------------------- #
 #  Gap 9: save_optimized_xyz writes mol_eq, mf.e_tot may not match     #
 #                                                                        #
