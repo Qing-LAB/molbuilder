@@ -228,6 +228,82 @@ def test_stdin_pdb_sniffs_correctly(monkeypatch, tmp_path):
 
 
 # --------------------------------------------------------------------- #
+#  Phase 5c: validate subcommand (Issue JSON to stdout)                 #
+# --------------------------------------------------------------------- #
+
+
+def _write_xyz(path, text):
+    path.write_text(text)
+    return str(path)
+
+
+def test_validate_clean_water_returns_no_errors(capsys, tmp_path):
+    """Geometry-only validation on a clean structure: 0 errors, JSON
+    payload with the expected shape, exit 0."""
+    import json
+    xyz = "3\nh2o\nO 0 0 0\nH 0.957 0 0\nH -0.24 0.927 0\n"
+    rc = cli.main(["validate", _write_xyz(tmp_path / "h2o.xyz", xyz)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    body = json.loads(out)
+    assert body["n_errors"] == 0
+    # The h_ratio validator runs on every structure -- water at 2:1
+    # H/heavy is well above the 0.3 warn threshold.
+    assert not any(i["where"] == "geometry.h_ratio" for i in body["issues"])
+    assert body["engine"] is None
+
+
+def test_validate_skeleton_warns_on_h_ratio(capsys, tmp_path):
+    """A heavy-atom skeleton (ratio ~ 0) must surface the h_ratio
+    warn issue in the JSON payload."""
+    import json
+    xyz = "3\nskeleton\nC 0 0 0\nN 1.5 0 0\nO 3.0 0 0\n"
+    rc = cli.main(["validate", _write_xyz(tmp_path / "sk.xyz", xyz)])
+    assert rc == 0     # warnings don't stop the run
+    body = json.loads(capsys.readouterr().out)
+    h_warns = [i for i in body["issues"]
+               if i["severity"] == "warn" and i["where"] == "geometry.h_ratio"]
+    assert len(h_warns) == 1
+
+
+def test_validate_exit_on_error_returns_2(monkeypatch, capsys, tmp_path):
+    """--exit-on-error makes the command non-zero when any error-severity
+    issue fires.  Synthesise a structure with two atoms < 0.3 A apart,
+    which the min_distance check flags as error."""
+    import json
+    xyz = "2\nbroken\nO 0 0 0\nH 0.1 0 0\n"   # 0.1 A < 0.3 -> error
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["validate", _write_xyz(tmp_path / "bad.xyz", xyz),
+                  "--exit-on-error"])
+    assert exc.value.code == 2
+    out = capsys.readouterr().out
+    body = json.loads(out)
+    assert body["n_errors"] >= 1
+
+
+def test_validate_engine_siesta_runs_config_checks(capsys, tmp_path):
+    """--engine siesta runs the SIESTA-side validators (the same set
+    render_fdf would run before emitting), not just geometry checks."""
+    import json
+    xyz = "3\nh2o\nO 0 0 0\nH 0.957 0 0\nH -0.24 0.927 0\n"
+    rc = cli.main(["validate", _write_xyz(tmp_path / "h2o.xyz", xyz),
+                   "--engine", "siesta"])
+    assert rc == 0
+    body = json.loads(capsys.readouterr().out)
+    assert body["engine"] == "siesta"
+
+
+def test_validate_pretty_json_indents(capsys, tmp_path):
+    xyz = "3\nh2o\nO 0 0 0\nH 0.957 0 0\nH -0.24 0.927 0\n"
+    rc = cli.main(["validate", _write_xyz(tmp_path / "h2o.xyz", xyz),
+                   "--pretty"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    # Pretty-printed JSON uses newlines + 2-space indent.
+    assert "\n  " in out
+
+
+# --------------------------------------------------------------------- #
 #  watch serve subcommand wiring                                         #
 # --------------------------------------------------------------------- #
 
