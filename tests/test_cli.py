@@ -178,6 +178,56 @@ def test_pyscf_atom_block_emits_to_stdout(monkeypatch, capsys, tmp_path):
 
 
 # --------------------------------------------------------------------- #
+#  Phase 5b: stdin support (`fdf - out.fdf`, `pyscf - out.py`)          #
+# --------------------------------------------------------------------- #
+
+
+def test_fdf_reads_xyz_from_stdin(monkeypatch, tmp_path):
+    """``molbuilder fdf - out.fdf`` reads stdin, sniffs XYZ vs PDB
+    from the first non-blank line, writes to a temp file, and feeds
+    that into the standard convert() pipeline.  Without this you
+    can't pipe ``molbuilder dna ATGC | molbuilder fdf -``."""
+    import io
+    xyz = "2\nh2 stdin\nH 0 0 0\nH 0.74 0 0\n"
+    monkeypatch.setattr("sys.stdin", io.StringIO(xyz))
+    out_fdf = tmp_path / "h2.fdf"
+    rc = cli.main(["fdf", "-", str(out_fdf),
+                   "--no-copy-psml", "--no-write-md-history"])
+    assert rc == 0
+    assert out_fdf.exists() and out_fdf.stat().st_size > 0
+    text = out_fdf.read_text()
+    assert "NumberOfAtoms" in text
+
+
+def test_pyscf_reads_xyz_from_stdin(monkeypatch, tmp_path):
+    """Same Unix-pipe support on the pyscf subcommand."""
+    import io
+    xyz = "2\nh2 stdin\nH 0 0 0\nH 0.74 0 0\n"
+    monkeypatch.setattr("sys.stdin", io.StringIO(xyz))
+    out_py = tmp_path / "h2.py"
+    rc = cli.main(["pyscf", "-", str(out_py), "--no-optimize",
+                   "--no-density-fit"])
+    assert rc == 0
+    assert out_py.exists() and out_py.stat().st_size > 0
+
+
+def test_stdin_pdb_sniffs_correctly(monkeypatch, tmp_path):
+    """Stdin sniff: a first line that isn't an integer is treated as
+    PDB (HEADER / TITLE / ATOM / HETATM all qualify)."""
+    import io
+    pdb = (
+        "ATOM      1  H   MOL A   1       0.000   0.000   0.000  1.00  0.00           H\n"
+        "ATOM      2  H   MOL A   1       0.740   0.000   0.000  1.00  0.00           H\n"
+        "END\n"
+    )
+    monkeypatch.setattr("sys.stdin", io.StringIO(pdb))
+    out_fdf = tmp_path / "h2.fdf"
+    rc = cli.main(["fdf", "-", str(out_fdf),
+                   "--no-copy-psml", "--no-write-md-history"])
+    assert rc == 0
+
+
+# --------------------------------------------------------------------- #
 #  watch serve subcommand wiring                                         #
 # --------------------------------------------------------------------- #
 

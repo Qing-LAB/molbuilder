@@ -22,12 +22,59 @@ patch the package attribute, so we re-resolve at call time.
 
 from __future__ import annotations
 
+import contextlib
+import os
 import sys
-from typing import Optional, Sequence
+import tempfile
+from typing import Iterator, Optional, Sequence
 
 import click
 
 from .structure import Structure
+
+
+# --------------------------------------------------------------------- #
+#  stdin support                                                        #
+# --------------------------------------------------------------------- #
+
+
+@contextlib.contextmanager
+def _resolve_input_path(path: str) -> Iterator[str]:
+    """Yield a real file path the rest of the pipeline can ``.read()``.
+
+    If ``path`` is the literal ``"-"`` (Unix stdin convention), drain
+    stdin, sniff XYZ vs PDB from the first non-blank line, write to a
+    temp file with the right extension, and yield the temp path.  The
+    temp file is removed on context exit.
+
+    Sniff rule:
+      * first non-blank line is an integer (atom count) -> XYZ
+      * anything else -> PDB
+    Both sniff branches handle the realistic stdin sources -- a
+    ``molbuilder dna ATGC`` upstream pipes XYZ; a hand-cat'd PDB
+    starts with HEADER / TITLE / REMARK / ATOM / HETATM.
+    """
+    if path != "-":
+        yield path
+        return
+    text = sys.stdin.read()
+    first = ""
+    for line in text.splitlines():
+        if line.strip():
+            first = line.strip()
+            break
+    ext = ".xyz" if first.isdigit() else ".pdb"
+    with tempfile.NamedTemporaryFile(mode="w", suffix=ext, delete=False,
+                                     prefix="molbuilder_stdin_") as f:
+        f.write(text)
+        tmp = f.name
+    try:
+        yield tmp
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
 
 
 # --------------------------------------------------------------------- #
@@ -313,7 +360,8 @@ def cmd_fdf(input_path, fdf_path,
         spin_polarized=spin_polarized,
         spin_total=spin_total,
     )
-    summary = convert(input_path, fdf_path, cfg)
+    with _resolve_input_path(input_path) as resolved_input:
+        summary = convert(resolved_input, fdf_path, cfg)
     click.echo(
         f"Wrote {summary['fdf']}: {summary['n_atoms']} atoms, "
         f"{len(summary['species'])} species "
@@ -447,7 +495,8 @@ def cmd_pyscf(input_path, py_path,
         write_trajectory = not no_trajectory,
         verbose_comments = not no_verbose_comments,
     )
-    summary = convert(input_path, py_path, cfg)
+    with _resolve_input_path(input_path) as resolved_input:
+        summary = convert(resolved_input, py_path, cfg)
     click.echo(
         f"Wrote {summary['py']}: "
         f"{summary['n_atoms']} atoms, "
