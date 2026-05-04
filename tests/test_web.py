@@ -114,17 +114,27 @@ def test_build_dna_response_includes_backend_used(web_client):
     assert body["backend_used"] in ("threedna", "amber", "rdkit"), body
 
 
-def test_index_page_lists_add_hydrogens_checkbox(web_client):
-    """The Add hydrogens opt-out lives next to Neutralise phosphates
-    in the nucleic-options block.  Default ON for simulation-readiness."""
+def test_index_page_lists_add_hydrogens_select(web_client):
+    """The add_hydrogens control is a tri-state select (auto/on/off)
+    in the nucleic-options block, NOT a bool checkbox -- the H/heavy
+    threshold heuristic is size-dependent and explicit on/off control
+    is the user's escape hatch when auto misclassifies."""
     body = web_client.get("/").data.decode()
     assert 'id="add-hydrogens"' in body
-    # Default checked: the input element should carry the `checked`
-    # attribute (HTML allows it as a bare boolean attr).
     import re
-    m = re.search(r'<input[^>]*id="add-hydrogens"[^>]*>', body)
-    assert m and "checked" in m.group(0), (
-        f"add-hydrogens checkbox should be default-checked: {m.group(0) if m else None}"
+    m = re.search(r'<select[^>]*id="add-hydrogens"[^>]*>(.*?)</select>',
+                  body, re.S)
+    assert m, "add-hydrogens should be a <select> (tri-state), not a checkbox"
+    options = m.group(1)
+    for value in ("auto", "on", "off"):
+        assert f'value="{value}"' in options, (
+            f"add-hydrogens select missing option {value!r}"
+        )
+    # auto must be the default-selected option (the "I don't want to
+    # think about it" path stays unchanged from the bool-True default).
+    auto_opt = re.search(r'<option[^>]*value="auto"[^>]*>', options)
+    assert auto_opt and "selected" in auto_opt.group(0), (
+        f"auto should be default-selected: {auto_opt.group(0) if auto_opt else None}"
     )
 
 

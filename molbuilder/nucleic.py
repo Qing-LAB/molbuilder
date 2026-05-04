@@ -25,7 +25,7 @@ def build_dna(
     backend: str = "auto",
     form: str = "B",
     terminal: str = "OH",
-    add_hydrogens: bool = True,
+    add_hydrogens: "bool | str" = "auto",
     protonate_phosphates: bool = True,
     title: Optional[str] = None,
 ) -> Structure:
@@ -47,14 +47,25 @@ def build_dna(
         Terminal-phosphate state: ``"OH"`` (default; both ends -OH),
         ``"5P"``, ``"3P"``, or ``"PP"``.
     add_hydrogens
-        If True (default), add explicit hydrogens via
-        :func:`chemistry.add_hydrogens` (OpenBabel preferred, RDKit
-        fallback).  Critical for X3DNA, whose ``fiber`` output is a
-        heavy-atom skeleton -- DFT will compute the wrong electron
-        count without H.  Amber and RDKit backends already produce
-        H-complete structures, so this is a no-op for them.  Set
-        False to keep the heavy-atom skeleton; you'll need to
-        protonate it before any quantum-chemistry calculation.
+        Tri-state H-addition control:
+
+          * ``"auto"`` (default) -- heuristic: skip if H/heavy >= 0.5,
+            else add via :func:`chemistry.add_hydrogens` (OpenBabel
+            preferred, RDKit fallback).  Works well for the canonical
+            backends (X3DNA's heavy skeleton -> add; amber/rdkit
+            H-complete output -> skip) but the 0.5 cutoff is a
+            heuristic and should not be load-bearing for a user who
+            knows what they want.
+          * ``"on"`` -- always run ``chemistry.add_hydrogens``.  Use
+            when you've loaded a partially-protonated structure that
+            the heuristic might mis-classify, or when you want to
+            guarantee H-completeness regardless of backend.
+          * ``"off"`` -- never add.  Use when you want to inspect the
+            heavy-atom skeleton or hand off to an external protonator.
+
+        ``True`` (legacy) is normalised to ``"auto"``; ``False`` to
+        ``"off"``.  No silent change of behaviour for callers using
+        the previous bool API.
     protonate_phosphates
         If True (default), add an H to each deprotonated non-bridging
         phosphate oxygen so the molecule is formally **neutral**.
@@ -86,7 +97,7 @@ def build_rna(
     backend: str = "auto",
     form: str = "A",
     terminal: str = "OH",
-    add_hydrogens: bool = True,
+    add_hydrogens: "bool | str" = "auto",
     protonate_phosphates: bool = True,
     title: Optional[str] = None,
 ) -> Structure:
@@ -105,28 +116,59 @@ def build_rna(
     return _maybe_protonate(struct, protonate_phosphates)
 
 
-def _maybe_add_hydrogens(struct: Structure, add: bool) -> Structure:
-    """Run chemistry.add_hydrogens if the user wants H, but skip the
-    round-trip when the structure already has a sensible H count
-    (Amber/RDKit backends produce H-complete output).
+def _normalise_h_mode(value: "bool | str") -> str:
+    """Map the user's ``add_hydrogens`` argument to {auto, on, off}.
 
-    Threshold rationale: organic molecules sit at H/heavy ~ 0.6-1.5;
-    nucleic acids ~ 0.6; peptides ~ 0.7-0.9.  We gate at 0.5 so:
-
-      * X3DNA fiber's near-zero-H output         (ratio ~0.05) -> add
-      * a partially-protonated user input        (ratio ~0.4)  -> add
-      * fully-built amber tleap output           (ratio ~0.63) -> skip
-      * fully-built rdkit nucleic SMILES output  (ratio ~0.72) -> skip
-
-    Pre-fix the gate was at 0.3, which silently skipped partial cases
-    (a user-loaded structure missing N-H or amine H would slip through
-    with no auto-fix).  The Layer-1 h_ratio validator uses < 0.3 -- so
-    a structure between 0.3 and 0.5 would have been doubly missed.
-    Widening to 0.5 closes that gap without false-positive-ing on any
-    canonical backend output.
+    Accepts the modern string API (``"auto"`` / ``"on"`` / ``"off"``)
+    plus the legacy bool API (True -> "auto", False -> "off") for
+    back-compat with callers written before the tri-state landed.
+    Raises ValueError on anything else.
     """
-    if not add:
+    if value is True:
+        return "auto"
+    if value is False:
+        return "off"
+    if isinstance(value, str) and value.lower() in ("auto", "on", "off"):
+        return value.lower()
+    raise ValueError(
+        f"add_hydrogens must be 'auto'/'on'/'off' (or bool); "
+        f"got {value!r}"
+    )
+
+
+def _maybe_add_hydrogens(struct: Structure,
+                         mode: "bool | str") -> Structure:
+    """Apply chemistry.add_hydrogens based on the user's ``mode``.
+
+    Tri-state semantics (see ``build_dna`` for the user-facing kwarg):
+
+      * ``"off"``  -- return ``struct`` unchanged.
+      * ``"on"``   -- always call :func:`chemistry.add_hydrogens`,
+                      regardless of how many H the structure already
+                      carries.
+      * ``"auto"`` -- size-aware heuristic:
+                        skip if H/heavy >= 0.5 (canonical backend
+                        output: amber 0.63, rdkit 0.72 -- already
+                        complete);
+                        otherwise add (X3DNA's fiber-skeleton at
+                        ratio ~0.05 lands here, as does a partially-
+                        protonated user-loaded structure).
+
+    Heuristic caveat: H/heavy depends on molecular size and chemistry
+    -- small organics sit at ratio ~1-4, large polymers at ~0.6-0.8,
+    metal complexes can be much lower without being broken.  The
+    heuristic IS NOT a correctness check; it's a default for the
+    common case where the user doesn't want to think about it.  When
+    the structure lands in the gray zone (~0.3-0.6), prefer ``"on"``
+    or ``"off"`` over ``"auto"`` so the decision is explicit.
+    """
+    norm = _normalise_h_mode(mode)
+    if norm == "off":
         return struct
+    if norm == "on":
+        from .chemistry import add_hydrogens as _add_hydrogens
+        return _add_hydrogens(struct)
+    # auto
     n_h     = sum(1 for e in struct.elements if e == "H")
     n_heavy = sum(1 for e in struct.elements if e != "H")
     if n_heavy and (n_h / n_heavy) >= 0.5:
