@@ -396,6 +396,19 @@ def render_script(struct: Structure,
                 out.append("    # the SCF cycles captured since the previous step.")
             out.append("    callback              = _molwatch.opt_step_hook,")
         out.append(")")
+        # Re-evaluate at the relaxed geometry so the printed energy
+        # is unambiguously the converged SCF at mol_eq's coordinates
+        # (gap #9).  optimize() leaves mf with the LAST line-search
+        # SCF, which may not be at mol_eq exactly -- the difference
+        # is small (mHa) but matters when comparing reaction energies
+        # across runs.  One extra SCF, cheap relative to the opt.
+        if v:
+            out.append("# Re-evaluate at the relaxed geometry: optimize() leaves")
+            out.append("# mf bound to the last line-search SCF, not necessarily")
+            out.append("# the SCF AT mol_eq.  Rerun kernel() so mf.e_tot is the")
+            out.append("# energy at the saved coordinates.")
+        out.append("mf.mol = mol_eq")
+        out.append("mf.kernel()")
         out.append('print(f"Final energy: {mf.e_tot:.8f} Hartree")')
     else:
         if v:

@@ -865,9 +865,15 @@ triple (generator change + validation rule + spec test) in Phase 6.
    may be silently ignored on old builds. Document the targeted range.
 8. **No ECP support for non-def2 bases.** A user with a Pt/Pd structure
    on cc-pVDZ needs a manual `ecp = {...}` block. Lower priority.
-9. **`save_optimized_xyz` writes from `mol_eq` (correct), but `mf.e_tot`
+9. ~~**`save_optimized_xyz` writes from `mol_eq` (correct), but `mf.e_tot`
    may not match `mol_eq`'s geometry for non-converged opts.** Probably
-   a non-issue in practice; flag for awareness.
+   a non-issue in practice; flag for awareness.~~
+   **Fixed:** generator now emits `mf.mol = mol_eq; mf.kernel()` after
+   `optimize()` returns, so the printed final energy is unambiguously
+   the converged SCF at mol_eq's coordinates.  One extra SCF, cheap
+   relative to the optimisation.  Test
+   `test_gap_9_pyscf_reevaluates_energy_at_optimized_geom` flipped
+   from xfail to passing.
 10. **No `mf.diis_space` / `mf.damp` in `PySCFConfig`.** Hard-SCF
     troubleshooting requires editing the generated script. Mentioned in
     the troubleshooting block; could be exposed as config fields.
