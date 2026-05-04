@@ -68,11 +68,6 @@ def methyl_radical():
 # --------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    reason="design.md gap #1: SiestaConfig emits 'SpinTotal' (not real); "
-           "should be 'Spin.Total' under 'Spin.Fix true'",
-    strict=True,
-)
 def test_gap_1_siesta_emits_spin_total_with_dot(h2):
     """When spin_total is set, the FDF must contain `Spin.Total` (the
     real keyword) and `Spin.Fix true`, not the bogus single-token
@@ -100,12 +95,6 @@ def test_gap_1_siesta_emits_spin_total_with_dot(h2):
 # --------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    reason="design.md gap #2: SiestaConfig hardcodes the v4-era "
-           "'SpinPolarized true'; should detect SIESTA version or "
-           "emit the v5 single-line 'Spin polarized'",
-    strict=True,
-)
 def test_gap_2_siesta_emits_v5_spin_block(h2):
     """A modern (v5) SIESTA prefers a single-line `Spin polarized`
     declaration over the v4-era `SpinPolarized true`.  The test

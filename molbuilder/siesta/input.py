@@ -447,29 +447,45 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         out.append("DM.UseSaveDM      true")
 
     # ---- Spin polarisation ---------------------------------------
-    # SIESTA's default is spin-restricted (no SpinPolarized line ->
-    # closed-shell DFT).  For radicals, transition metals, or any
-    # open-shell system the user MUST set spin_polarized=True or the
-    # electronic structure is silently wrong.  When set, we emit
-    # SpinPolarized true and (optionally) SpinTotal so SIESTA's
-    # initial guess targets the correct multiplicity.
+    # Targeted SIESTA version range: 4.1 -- 5.x.
+    #
+    # v5 introduced a unified `Spin <option>` keyword that supersedes
+    # the older `SpinPolarized true` form.  Recognised options
+    # include `non-polarized`, `polarized`, `non-collinear`, `spin-orbit`.
+    # The single-line `Spin polarized` form is what current docs
+    # recommend; v4 back-compat keepers still accept `SpinPolarized
+    # true` but the v5 manual marks it deprecated (gap #2).
+    #
+    # The total-spin pin requires TWO lines, not one (gap #1):
+    #   `Spin.Fix true`           -- enable the constraint (otherwise
+    #                                Spin.Total below is silently ignored)
+    #   `Spin.Total <value>`      -- target total spin moment in mu_B
+    # Pre-fix the generator emitted a single `SpinTotal <v>` token
+    # which is NOT a real SIESTA keyword -- the parser silently
+    # ignored it and the user got the spin-unrestricted ground state
+    # despite asking for a constrained multiplicity.
     if cfg.spin_polarized:
         if v: out += [
             "",
-            "# SpinPolarized: open-shell DFT (collinear).  Required for",
+            "# Spin polarized: open-shell DFT (collinear).  Required for",
             "# any system with unpaired electrons.  SIESTA's default is",
             "# closed-shell -- omitting this for a radical / transition-",
             "# metal / triplet system gives the wrong electronic state.",
+            "# v5 form (single line); v4 SpinPolarized true is back-compat",
+            "# accepted but deprecated in v5+.",
         ]
-        out.append("SpinPolarized     true")
+        out.append("Spin polarized")
         if cfg.spin_total is not None:
             if v: out += [
-                "# SpinTotal: target total spin moment in mu_B (= number",
-                "# of unpaired electrons).  Helps SIESTA's initial guess",
-                "# converge to the right multiplicity; without it SIESTA",
-                "# may settle into a wrong spin state.",
+                "# Spin.Fix + Spin.Total: target total spin moment in mu_B",
+                "# (= number of unpaired electrons).  Spin.Fix true MUST",
+                "# accompany Spin.Total or the constraint is silently ignored.",
+                "# Helps SIESTA's initial guess converge to the right",
+                "# multiplicity; without it SIESTA may settle into a wrong",
+                "# spin state.",
             ]
-            out.append(f"SpinTotal         {cfg.spin_total}")
+            out.append("Spin.Fix          true")
+            out.append(f"Spin.Total        {cfg.spin_total}")
 
     # ---- NetCharge -----------------------------------------------
     # Either user-specified (cfg.net_charge != None) or auto-detected
