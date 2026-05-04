@@ -304,6 +304,121 @@ def test_validate_pretty_json_indents(capsys, tmp_path):
 
 
 # --------------------------------------------------------------------- #
+#  Phase 5e: add_dataclass_options decorator                            #
+# --------------------------------------------------------------------- #
+
+
+def test_add_dataclass_options_generates_click_flags(tmp_path, capsys):
+    """The dataclass->click bridge maps field metadata onto click.option
+    decorators: snake_case -> kebab-case flag, type from annotation,
+    default from field default, help from metadata.  bool fields get
+    a --foo / --no-foo pair.  Verify on a synthetic dataclass."""
+    import click as _click
+    import dataclasses
+
+    @dataclasses.dataclass
+    class _Cfg:
+        n_iter:   int   = dataclasses.field(default=10,
+                                            metadata={"help": "iter count"})
+        eps:      float = dataclasses.field(default=1e-3,
+                                            metadata={"help": "tol"})
+        verbose:  bool  = dataclasses.field(default=True,
+                                            metadata={"help": "loud or quiet"})
+        label:    str   = "default-label"
+
+    seen = {}
+
+    @_click.command()
+    @cli.add_dataclass_options(_Cfg)  # the helper
+    def demo(**kw):
+        seen.update(kw)
+
+    from click.testing import CliRunner
+    runner = CliRunner()
+    res = runner.invoke(demo, ["--n-iter", "20", "--eps", "1e-5",
+                               "--no-verbose", "--label", "custom"])
+    assert res.exit_code == 0, res.output
+    assert seen == {"n_iter": 20, "eps": 1e-5, "verbose": False,
+                    "label": "custom"}
+
+
+def test_add_dataclass_options_skip_filters_fields(tmp_path):
+    """`skip=` excludes named fields -- the corresponding click options
+    don't appear on the command, so the underlying function doesn't
+    receive them.  Used when a command already has those options
+    defined manually (cf. cmd_fdf today)."""
+    import click as _click
+    import dataclasses
+
+    @dataclasses.dataclass
+    class _Cfg:
+        a: int = 1
+        b: int = 2
+
+    @_click.command()
+    @cli.add_dataclass_options(_Cfg, skip=("b",))
+    def demo(**kw):
+        return kw
+
+    from click.testing import CliRunner
+    runner = CliRunner()
+    res = runner.invoke(demo, ["--b", "5"])
+    # "--b" was skipped, so click rejects it as an unknown option.
+    assert res.exit_code != 0
+    assert "no such option" in res.output.lower() or "unrecognized" in res.output.lower()
+
+
+def test_add_dataclass_options_tier_filters_advanced_only():
+    """`tier="advanced"` keeps only fields whose metadata["tier"] is
+    "advanced" -- the path to splitting basic vs advanced flag groups."""
+    import click as _click
+    import dataclasses
+
+    @dataclasses.dataclass
+    class _Cfg:
+        basic_a: int = dataclasses.field(default=1, metadata={"tier": "basic"})
+        adv_b:   int = dataclasses.field(default=2, metadata={"tier": "advanced"})
+        adv_c:   int = dataclasses.field(default=3, metadata={"tier": "advanced"})
+
+    @_click.command()
+    @cli.add_dataclass_options(_Cfg, tier="advanced")
+    def demo(**kw):
+        return kw
+
+    from click.testing import CliRunner
+    runner = CliRunner()
+    # basic_a should be absent
+    res = runner.invoke(demo, ["--basic-a", "10"])
+    assert res.exit_code != 0
+    # adv_b should be present
+    res = runner.invoke(demo, ["--adv-b", "20", "--adv-c", "30"])
+    assert res.exit_code == 0
+
+
+def test_add_dataclass_options_works_on_real_pyscf_config():
+    """End-to-end: the helper applies cleanly to PySCFConfig (real
+    dataclass with mixed field types and metadata).  The generated
+    --diis-space option lands as int with default 8 and a help line."""
+    import click as _click
+    from molbuilder.config.pyscf import PySCFConfig
+
+    @_click.command()
+    @cli.add_dataclass_options(PySCFConfig)
+    def demo(**kw):
+        return kw
+
+    from click.testing import CliRunner
+    runner = CliRunner()
+    res = runner.invoke(demo, ["--help"])
+    assert res.exit_code == 0
+    out = res.output
+    # The PySCFConfig fields land as kebab-case flags:
+    for flag in ("--diis-space", "--damp", "--scf-conv-tol",
+                 "--functional", "--basis"):
+        assert flag in out, f"missing {flag} in --help output"
+
+
+# --------------------------------------------------------------------- #
 #  Phase 5d: watch parse / tail subcommands                             #
 # --------------------------------------------------------------------- #
 
