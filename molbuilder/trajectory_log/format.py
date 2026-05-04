@@ -63,7 +63,9 @@ def write_initial_preview(
     elements = list(struct.elements)
     positions = struct.positions  # (N, 3) array-like in Angstrom
     n = len(elements)
-    timestamp = time.strftime("%Y-%m-%dT%H:%M:%S")
+    now_epoch = time.time()
+    timestamp = time.strftime("%Y-%m-%dT%H:%M:%S",
+                              time.localtime(now_epoch))
     lines: list[str] = [
         "# molwatch trajectory log v1",
         f"# generator: {generator}",
@@ -75,6 +77,10 @@ def write_initial_preview(
         "==== molwatch step 0 begin ====",
         "step_index: 0",
         "kind: initial_preview",
+        # Unix epoch seconds.  Used by the watch UI to render
+        # "Started 2h 15m ago, last frame 30s ago" without timezone
+        # gymnastics.  Same units as `time.time()` everywhere.
+        f"wall_time: {now_epoch:.3f}",
         f"n_atoms: {n}",
         "coordinates (Ang):",
     ]

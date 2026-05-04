@@ -240,3 +240,64 @@ def test_registry_dispatches_to_molwatch_parser(mw_path):
     misread our format."""
     from molbuilder.parsers import detect_parser
     assert detect_parser(mw_path) is MolwatchLogParser
+
+
+def test_wall_time_field_round_trip(tmp_path):
+    """When step blocks carry `wall_time: <unix epoch>`, the parser
+    must surface it on Frame.wall_time and the legacy dict must expose
+    it as `wall_times[i]` index-aligned with frames.  Used by the
+    Watch UI to render "Started 2h 15m ago, last step 30s ago"."""
+    sample = (
+        "# molwatch trajectory log v1\n"
+        "# engine: pyscf\n"
+        "# created: 2026-04-25T11:00:00\n"
+        "\n"
+        "==== molwatch step 0 begin ====\n"
+        "step_index: 0\n"
+        "kind: initial_preview\n"
+        "wall_time: 1777864027.425\n"
+        "n_atoms: 1\n"
+        "coordinates (Ang):\n"
+        "   H  0.0  0.0  0.0\n"
+        "energy (eV): None\n"
+        "forces (eV/Ang):\n"
+        "max_force (eV/Ang): None\n"
+        "scf_history begin\n"
+        "scf_history end\n"
+        "==== molwatch step 0 end ====\n"
+        "\n"
+        "==== molwatch step 1 begin ====\n"
+        "step_index: 1\n"
+        "wall_time: 1777864041.373\n"
+        "n_atoms: 1\n"
+        "coordinates (Ang):\n"
+        "   H  0.01  0.0  0.0\n"
+        "energy (eV): -0.5\n"
+        "forces (eV/Ang):\n"
+        "   H  0.0  0.0  0.0\n"
+        "max_force (eV/Ang): 0.0\n"
+        "scf_history begin\n"
+        "scf_history end\n"
+        "==== molwatch step 1 end ====\n"
+    )
+    p = tmp_path / "wt.molwatch.log"
+    p.write_text(sample)
+    result = trajectory_to_legacy_dict(MolwatchLogParser.parse(str(p)))
+    wt = result["wall_times"]
+    assert len(wt) == 2 and len(wt) == len(result["frames"])
+    assert wt[0] == pytest.approx(1777864027.425)
+    assert wt[1] == pytest.approx(1777864041.373)
+    # 13.948 seconds of "simulation" in the synthetic file
+    assert wt[1] - wt[0] == pytest.approx(13.948, abs=0.001)
+
+
+def test_wall_time_absent_in_old_logs(mw_path):
+    """The SAMPLE log has no `wall_time:` lines (it's older than the
+    field).  Parser must fall back to None for each frame and the
+    legacy dict's `wall_times` list must be all-None index-aligned
+    with frames -- otherwise the watch UI's optional-elapsed code path
+    breaks."""
+    result = trajectory_to_legacy_dict(MolwatchLogParser.parse(mw_path))
+    wt = result["wall_times"]
+    assert len(wt) == len(result["frames"])
+    assert all(v is None for v in wt)

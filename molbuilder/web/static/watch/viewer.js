@@ -563,6 +563,18 @@
         }
     }
 
+    // Compact "1h 23m" / "12m 5s" / "45s" formatter for elapsed seconds.
+    // Hours-and-minutes for long runs; minutes-and-seconds for medium;
+    // bare seconds for short.  Negative inputs (clock skew between
+    // server and the file's wall_time) are clamped to 0.
+    function fmtElapsed(secs) {
+        if (!Number.isFinite(secs) || secs < 0) secs = 0;
+        secs = Math.floor(secs);
+        if (secs < 60)   return secs + "s";
+        if (secs < 3600) return Math.floor(secs/60) + "m " + (secs%60) + "s";
+        return Math.floor(secs/3600) + "h " + Math.floor((secs%3600)/60) + "m";
+    }
+
     function applyNewData(r) {
         const wasAtEnd = !state.data
             || state.currentFrame >= state.data.frames.length - 1;
@@ -590,8 +602,30 @@
         makePlots();
 
         const ts = new Date(r.mtime * 1000).toLocaleTimeString();
+        // Elapsed simulation time -- the latency-of-progress signal a
+        // researcher actually wants while staring at a long run.
+        // wall_times[] is per-frame Unix epoch; we report (a) total
+        // sim time = last_wall - first_wall, and (b) staleness =
+        // (now - last_wall) so the user knows whether the run is
+        // still actively writing or has stalled.  Falls back silently
+        // when wall_times is absent (older logs / non-molwatch
+        // formats).
+        const wt = state.data.wall_times || [];
+        const firstWall = wt.find(v => Number.isFinite(v));
+        let lastWall = null;
+        for (let i = wt.length - 1; i >= 0; i--) {
+            if (Number.isFinite(wt[i])) { lastWall = wt[i]; break; }
+        }
+        let elapsedTail = "";
+        if (firstWall != null && lastWall != null) {
+            const elapsed = lastWall - firstWall;
+            const stale   = (Date.now() / 1000) - lastWall;
+            elapsedTail = " \u2014 sim time " + fmtElapsed(elapsed)
+                        + ", last frame " + fmtElapsed(stale) + " ago";
+        }
         setStatus(
-            "Loaded " + n + " " + state.label + " frames \u2014 mtime " + ts + ".",
+            "Loaded " + n + " " + state.label + " frames \u2014 mtime " + ts
+              + elapsedTail + ".",
             "ok"
         );
     }
