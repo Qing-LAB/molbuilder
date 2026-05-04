@@ -617,6 +617,127 @@ def cmd_watch():
     """Live trajectory viewer for SIESTA / PySCF / .molwatch.log."""
 
 
+@cmd_watch.command("parse",
+                   short_help="parse a trajectory file; print frame JSON")
+@click.argument("input_path", metavar="input")
+@click.option("--frames-only", is_flag=True,
+              help="emit only the per-frame energy / max_force / wall_time "
+                   "table; skip per-atom coordinates (smaller payload)")
+@click.option("--pretty", is_flag=True,
+              help="indent the JSON output (default is one-payload-per-line)")
+def cmd_watch_parse(input_path, frames_only, pretty):
+    """Parse a SIESTA / PySCF / .molwatch.log file and emit the
+    Trajectory as JSON to stdout.  One-shot, parses to EOF then exits.
+
+    Same parser the watch web UI uses internally; this is the
+    shell-friendly surface of it (issue #81).  Pipeable:
+
+        molbuilder watch parse run.molwatch.log | jq '.frames[-1]'
+        molbuilder watch parse - < run.out --frames-only | grep error
+    """
+    import json
+    from .parsers import detect_parser, trajectory_to_legacy_dict, UnknownFormatError
+
+    with _resolve_input_path(input_path) as resolved:
+        try:
+            parser = detect_parser(resolved)
+        except UnknownFormatError as e:
+            click.echo(f"Error: {e}", err=True)
+            sys.exit(2)
+        traj = parser.parse(resolved)
+
+    payload = trajectory_to_legacy_dict(traj)
+    if frames_only:
+        # Drop the heavy per-atom arrays; keep the per-frame summary
+        # (iteration index, energy, max_force, wall_time).  Useful for
+        # piping a long trajectory into jq / grep without slurping
+        # megabytes of coordinates.
+        payload = {
+            "source_format": payload["source_format"],
+            "run_state":     payload["run_state"],
+            "error_message": payload["error_message"],
+            "iterations":    payload["iterations"],
+            "energies":      payload["energies"],
+            "max_forces":    payload["max_forces"],
+            "wall_times":    payload["wall_times"],
+        }
+    click.echo(json.dumps(payload, indent=2 if pretty else None))
+
+
+@cmd_watch.command("tail",
+                   short_help="poll a growing log; emit one JSON line per new frame")
+@click.argument("input_path", metavar="input")
+@click.option("--poll-ms", type=int, default=1000, show_default=True,
+              help="poll interval in milliseconds")
+@click.option("--max-frames", type=int, default=None,
+              help="exit after emitting this many new frames (for tests)")
+def cmd_watch_tail(input_path, poll_ms, max_frames):
+    """Poll a still-growing trajectory; emit one JSON line per new
+    frame as it lands.  The watch web UI does the same on a 15s
+    timer; this is the shell-line surface of it (issue #81).
+
+    The output is newline-delimited JSON (NDJSON): each line is a
+    self-contained JSON object describing one frame.  Pipeable:
+
+        molbuilder watch tail run.molwatch.log | jq '.energy'
+        molbuilder watch tail run.out | head -5
+
+    Loop ends when the run finishes (run_state becomes 'finished'
+    or 'error') or after --max-frames frames, whichever comes first.
+    Ctrl-C also exits cleanly.
+    """
+    import json
+    import time
+    from .parsers import detect_parser, trajectory_to_legacy_dict, UnknownFormatError
+
+    if input_path == "-":
+        click.echo("Error: stdin not supported for `watch tail` "
+                   "(needs a real file to poll)", err=True)
+        sys.exit(2)
+
+    last_n = 0
+    last_state = "ongoing"
+    emitted = 0
+    poll_s = poll_ms / 1000.0
+    try:
+        while True:
+            try:
+                parser = detect_parser(input_path)
+            except UnknownFormatError:
+                # Tolerate transient empty-file states at the very start
+                # of a run -- the writer may not have flushed enough
+                # bytes for the format to be detectable yet.
+                time.sleep(poll_s)
+                continue
+            try:
+                traj = parser.parse(input_path)
+            except Exception:
+                time.sleep(poll_s)
+                continue
+
+            payload = trajectory_to_legacy_dict(traj)
+            n = len(payload["frames"])
+            for i in range(last_n, n):
+                line = {
+                    "step":       payload["iterations"][i],
+                    "energy":     payload["energies"][i],
+                    "max_force":  payload["max_forces"][i],
+                    "wall_time":  payload["wall_times"][i],
+                    "n_atoms":    len(payload["frames"][i]),
+                }
+                click.echo(json.dumps(line))
+                emitted += 1
+                if max_frames is not None and emitted >= max_frames:
+                    return
+            last_n = n
+            last_state = payload["run_state"]
+            if last_state in ("finished", "error"):
+                return
+            time.sleep(poll_s)
+    except KeyboardInterrupt:
+        return
+
+
 @cmd_watch.command("serve",
                    short_help="start the browser UI (build + watch tabs)")
 @click.option("--host",  default="127.0.0.1", show_default=True)

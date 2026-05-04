@@ -304,6 +304,111 @@ def test_validate_pretty_json_indents(capsys, tmp_path):
 
 
 # --------------------------------------------------------------------- #
+#  Phase 5d: watch parse / tail subcommands                             #
+# --------------------------------------------------------------------- #
+
+
+_MW_LOG = """\
+# molwatch trajectory log v1
+# engine: pyscf
+# created: 2026-04-25T11:00:00
+
+==== molwatch step 0 begin ====
+step_index: 0
+kind: initial_preview
+wall_time: 1700000000.0
+n_atoms: 2
+coordinates (Ang):
+   H  0.0  0.0  0.0
+   H  0.74 0.0  0.0
+energy (eV): None
+forces (eV/Ang):
+max_force (eV/Ang): None
+scf_history begin
+scf_history end
+==== molwatch step 0 end ====
+
+==== molwatch step 1 begin ====
+step_index: 1
+wall_time: 1700000005.0
+n_atoms: 2
+coordinates (Ang):
+   H  0.0  0.0  0.0
+   H  0.75 0.0  0.0
+energy (eV): -32.5
+forces (eV/Ang):
+   H  0.0 0.0 0.0
+   H  0.0 0.0 0.0
+max_force (eV/Ang): 0.0
+scf_history begin
+scf_history end
+==== molwatch step 1 end ====
+
+# concluded: 2026-04-25T11:00:05
+"""
+
+
+def test_watch_parse_emits_full_trajectory_json(capsys, tmp_path):
+    """`watch parse` reads a .molwatch.log and dumps the parsed
+    trajectory as JSON: per-frame coords, energies, max_forces,
+    wall_times, run_state."""
+    import json
+    p = tmp_path / "run.molwatch.log"
+    p.write_text(_MW_LOG)
+    rc = cli.main(["watch", "parse", str(p)])
+    assert rc == 0
+    out = capsys.readouterr().out
+    body = json.loads(out)
+    assert body["source_format"] == "pyscf"
+    assert body["run_state"]     == "finished"
+    assert len(body["frames"])   == 2
+    assert body["energies"]      == [None, -32.5]
+
+
+def test_watch_parse_frames_only_drops_atom_arrays(capsys, tmp_path):
+    """--frames-only emits the per-frame summary without the heavy
+    coordinates / forces arrays.  Useful for piping a long trajectory
+    into jq / grep without slurping megabytes of coordinates."""
+    import json
+    p = tmp_path / "run.molwatch.log"
+    p.write_text(_MW_LOG)
+    rc = cli.main(["watch", "parse", str(p), "--frames-only"])
+    assert rc == 0
+    body = json.loads(capsys.readouterr().out)
+    assert "frames"  not in body
+    assert "forces"  not in body
+    assert body["energies"]   == [None, -32.5]
+    assert body["wall_times"] == [1700000000.0, 1700000005.0]
+
+
+def test_watch_tail_emits_ndjson_one_per_frame(capsys, tmp_path):
+    """`watch tail` emits NDJSON: one JSON object per line, one line
+    per new frame.  Stops when the run is concluded.  This file is
+    already finished, so we get all 2 frames immediately."""
+    import json
+    p = tmp_path / "run.molwatch.log"
+    p.write_text(_MW_LOG)
+    rc = cli.main(["watch", "tail", str(p), "--poll-ms", "10",
+                   "--max-frames", "10"])
+    assert rc == 0
+    out = capsys.readouterr().out.strip()
+    # NDJSON: one JSON object per line.
+    lines = [json.loads(ln) for ln in out.splitlines() if ln]
+    assert len(lines) == 2
+    assert lines[0]["step"]   == 0
+    assert lines[1]["step"]   == 1
+    assert lines[1]["energy"] == -32.5
+
+
+def test_watch_tail_rejects_stdin(capsys):
+    """`watch tail` needs a real file to poll -- stdin can't be
+    re-read.  Reject with an explicit error rather than hanging."""
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["watch", "tail", "-"])
+    assert exc.value.code == 2
+
+
+# --------------------------------------------------------------------- #
 #  watch serve subcommand wiring                                         #
 # --------------------------------------------------------------------- #
 
