@@ -813,10 +813,19 @@ triple (generator change + validation rule + spec test) in Phase 6.
 2. **`SpinPolarized true` (line ~579 in pre-split file) is the v4-era
    keyword.** SIESTA v5 prefers single-line `Spin polarized`. Either
    feature-detect or document the targeted SIESTA version range.
-3. **No SIESTA dispersion-correction emission.** For organic /
+3. ~~**No SIESTA dispersion-correction emission.** For organic /
    biomolecule work without a vdW-aware functional, plain PBE / B3LYP
    underbinds. Add a commented-out `%block MM.Potentials` (D2/D3
-   empirical) template when the chosen XC is non-dispersive.
+   empirical) template when the chosen XC is non-dispersive.~~
+   **Fixed:** SIESTA generator now emits a commented Grimme-D2
+   template via `_emit_dispersion_template` when
+   `cfg.xc_functional.upper() != "VDW"`.  Verbose mode adds the
+   "what under-binds" rationale + the alternative "switch to VDW
+   XC" recipe; non-verbose still emits the bare template stub.
+   Skipped when the user already chose a vdW-aware XC (otherwise
+   the block would double-count).  Tests:
+   `test_gap_3_siesta_emits_dispersion_template_for_pbe` (xfail
+   flipped) + `test_gap_3_dispersion_template_suppressed_for_vdw_xc`.
 4. ~~**`mf.stability_analysis()` is not auto-emitted for UKS / UHF.**
    Open-shell SCFs can converge to broken-symmetry saddles; without a
    stability check the user gets a non-variational answer with no

@@ -353,6 +353,25 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     out.append(f"XC.authors    {cfg.xc_authors}")
     out.append("")
 
+    # Dispersion-correction template for non-vdW XC (gap #3).
+    #
+    # Non-dispersive XC (PBE / BLYP / LDA / hybrids without explicit
+    # dispersion) systematically under-binds vdW-dominated systems --
+    # DNA stacking by 5-10 kcal/mol per pair, peptide folding, molecular
+    # crystals' lattice constants too long by 0.1-0.3 A, surface
+    # adsorption energies off by an order of magnitude.  PBE on a
+    # biomolecule looks converged but the chemistry is wrong.
+    #
+    # We emit a COMMENTED template (don't auto-impose chemistry) so
+    # the user sees the option exists and can uncomment when it
+    # matters for their system.  Skipped when XC.functional is
+    # already a vdW-aware functional (XC.functional VDW + DRSLL /
+    # KBM / LMKLL): the non-local correlation lives in the functional
+    # itself, and an additional MM.Potentials block would double-count.
+    if cfg.xc_functional.upper() != "VDW":
+        out += _emit_dispersion_template(cfg.xc_authors, v)
+        out.append("")
+
     # SCF
     out.append("# --- SCF ---")
     if v: out += [
@@ -663,6 +682,54 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
 # --------------------------------------------------------------------- #
 #  File -> (Structure, cell) loader                                     #
 # --------------------------------------------------------------------- #
+
+
+def _emit_dispersion_template(xc_authors: str, v: bool) -> List[str]:
+    """Commented-out Grimme-D2 dispersion-correction template emitted
+    when XC.functional is non-vdW (PBE / BLYP / hybrids).  See gap #3
+    in docs/design.md.
+
+    The template is commented so the default behaviour is unchanged
+    (the user opts in by uncommenting).  Parameter values are
+    placeholders -- per-species C6 / R0 come from the Grimme-D2 table
+    (Grimme 2006, J. Comput. Chem. 27, 1787); for biomolecule-typical
+    species (C, N, O, H, P, S) the 21-pair grid is small enough to
+    paste in by hand once you've decided you want it.
+    """
+    out: List[str] = []
+    out.append("# --- Dispersion correction (commented template) ---")
+    if v:
+        out += [
+            f"# {xc_authors} is a non-dispersive XC: long-range vdW",
+            "# (C6/r^6) is missing.  Organic / biomolecule consequences:",
+            "#   * DNA stacking under-bound by 5-10 kcal/mol per pair",
+            "#   * peptide folding favours wrong conformers",
+            "#   * molecular crystals: lattice constants too long by 0.1-0.3 A",
+            "#   * surface adsorption (benzene/graphite, etc.) off ~10x",
+            "# Two ways to fix.  Pick ONE:",
+            "#",
+            "# 1) Switch to a vdW-aware XC (cheapest correctness):",
+            "#      XC.functional VDW",
+            "#      XC.authors    DRSLL    (or KBM, LMKLL, BH, VV)",
+            "#    The non-local correlation lives in the functional;",
+            "#    no MM.Potentials block needed.",
+            "#",
+            "# 2) Add Grimme-D2 empirical dispersion ON TOP of the",
+            "#    current XC (cheap, additive, no XC change).  Fill in",
+            "#    one row per atom-species pair from Grimme-D2 tables.",
+            "#    Uncomment to enable:",
+        ]
+    out += [
+        "# %block MM.Potentials",
+        "#   # species_i  species_j  type     C6 (Eh*Bohr^6)  R0 (Bohr)",
+        "#   #   C           C         Grimme   1.75            1.452",
+        "#   #   C           H         Grimme   ...             ...",
+        "#   #   N           N         Grimme   ...             ...",
+        "#   # See SIESTA manual sec. 5.20 (MM.Potentials) and Grimme",
+        "#   # (2006) Tables 1+2 for C6 / R0 per species.",
+        "# %endblock MM.Potentials",
+    ]
+    return out
 
 
 def _struct_from_file(path: str) -> Tuple[Structure, Optional[np.ndarray]]:
