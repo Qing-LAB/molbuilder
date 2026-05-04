@@ -192,6 +192,20 @@ def test_molwatch_log_instantiation_skipped_when_optimizer_is_berny(h2o):
     assert ".molwatch.log" not in text or text.count(".molwatch.log") <= 1
 
 
+def test_stability_analysis_skipped_for_closed_shell(h2o):
+    """Closed-shell scripts (RKS / RHF) shouldn't carry a
+    `mf.stability_analysis()` call -- closed-shell stability is
+    rarely the user's concern and the call adds noise to a tutorial
+    script that's already dense.  Open-shell coverage is in
+    test_science_gaps.test_gap_4_pyscf_uks_emits_stability_analysis."""
+    text = render_script(h2o, PySCFConfig(method="RKS"))
+    code_lines = [ln for ln in text.splitlines()
+                  if not ln.lstrip().startswith("#")]
+    assert not any("stability_analysis" in ln for ln in code_lines), (
+        "RKS script should not emit a non-commented stability_analysis call"
+    )
+
+
 def test_preopt_basis_change_triggers_rebuild(h2o):
     """If the production basis differs from the pre-opt basis, mol must
     have its basis swapped and rebuilt; otherwise no rebuild needed."""

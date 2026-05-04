@@ -817,10 +817,15 @@ triple (generator change + validation rule + spec test) in Phase 6.
    biomolecule work without a vdW-aware functional, plain PBE / B3LYP
    underbinds. Add a commented-out `%block MM.Potentials` (D2/D3
    empirical) template when the chosen XC is non-dispersive.
-4. **`mf.stability_analysis()` is not auto-emitted for UKS / UHF.**
+4. ~~**`mf.stability_analysis()` is not auto-emitted for UKS / UHF.**
    Open-shell SCFs can converge to broken-symmetry saddles; without a
    stability check the user gets a non-variational answer with no
-   warning. Auto-emit when `method` starts with `U`.
+   warning. Auto-emit when `method` starts with `U`.~~ **Fixed:**
+   PySCF generator now emits a `mf.stability_analysis()` call after
+   the SCF/optimize stage when `method_class.startswith("U")`. The
+   xfail is flipped to a passing test
+   (`test_gap_4_pyscf_uks_emits_stability_analysis`); a complementary
+   test pins that closed-shell scripts don't carry the call.
 5. **`PAO.EnergyShift 0.02 Ry` default is loose.** Production SIESTA
    work typically uses 0.005 – 0.01 Ry. Tighten the default to 0.01 Ry.
 6. **No post-processing block in either generator.** Add a commented-out

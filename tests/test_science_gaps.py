@@ -158,12 +158,6 @@ def test_gap_3_siesta_emits_dispersion_template_for_pbe(h2):
 # --------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    reason="design.md gap #4: open-shell scripts (UKS/UHF) need a "
-           "stability_analysis() call after SCF -- broken-symmetry "
-           "saddles otherwise produce silently-wrong energies",
-    strict=True,
-)
 def test_gap_4_pyscf_uks_emits_stability_analysis(methyl_radical):
     """UKS / UHF can converge to broken-symmetry saddles.  The
     generated script must call `mf.stability_analysis()` after the

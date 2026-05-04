@@ -407,6 +407,42 @@ def render_script(struct: Structure,
         out.append("mol_eq = mol")
     out.append("")
 
+    # ------------------------------------------------------------- stability
+    # Open-shell stability check (UKS / UHF only).
+    #
+    # Why: open-shell SCFs can converge to broken-symmetry SADDLE
+    # points -- the energy looks converged but the wavefunction is
+    # not the variational minimum.  PySCF's stability_analysis()
+    # examines internal (orbital rotation) and external (real ->
+    # complex / restricted -> unrestricted) instabilities and prints
+    # a warning if found, with new MO coefficients to restart from.
+    #
+    # We do NOT auto-rerun the SCF when an instability is reported --
+    # we surface the warning to the user and let them decide whether
+    # to take the suggested step.  Real-world advice: if stability
+    # warns, restart with `mf.kernel(dm0=mf.make_rdm1(mo_coeff,
+    # mf.mo_occ))` after replacing mo_coeff with the new vectors;
+    # the cost is one extra SCF, the alternative is silently shipping
+    # a non-variational answer.
+    #
+    # We don't emit this for RKS / RHF: closed-shell stability is
+    # mostly a singlet -> triplet check that's rarely the user's
+    # concern (and the call is no-op cheap but adds noise to a
+    # tutorial script that's already dense).
+    if method_class.startswith("U"):
+        if v:
+            out.append("# ============================================================")
+            out.append("#  4b. Open-shell stability check")
+            out.append("# ============================================================")
+            out.append("# Catches broken-symmetry saddles in UKS / UHF: a result")
+            out.append("# that LOOKS converged but isn't the variational minimum.")
+            out.append("# stability_analysis() prints a warning + suggested MOs")
+            out.append("# if an instability is found.  See PySCF's docs for")
+            out.append("# rerunning from the suggested vectors.")
+        out.append('print("\\n=== Stage: stability analysis ===")')
+        out.append("mf.stability_analysis()")
+        out.append("")
+
     # ------------------------------------------------------------- save
     # _save_xyz is defined early in the script (before mol is built),
     # and _initial.xyz was captured immediately after gto.M().  Here
