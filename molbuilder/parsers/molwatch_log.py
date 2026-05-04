@@ -103,12 +103,14 @@ class MolwatchLogParser(TrajectoryParser):
         block_forces: List[List[float]] = []
         block_max_force: Optional[float] = None
         block_scf: List[Dict[str, Any]] = []
+        block_wall_time: Optional[float] = None
         # Sub-states inside a block:
         sub = "scan"   # "scan" | "in_coords" | "in_forces" | "in_scf"
 
         def _reset_block() -> None:
             nonlocal in_block, block_idx, block_frame, block_energy
             nonlocal block_forces, block_max_force, block_scf, sub
+            nonlocal block_wall_time
             in_block        = False
             block_idx       = None
             block_frame     = []
@@ -116,6 +118,7 @@ class MolwatchLogParser(TrajectoryParser):
             block_forces    = []
             block_max_force = None
             block_scf       = []
+            block_wall_time = None
             sub             = "scan"
 
         with open(path, "r", errors="replace") as fh:
@@ -166,6 +169,7 @@ class MolwatchLogParser(TrajectoryParser):
                             # block).  None is reserved for parsers
                             # that genuinely have no SCF data source.
                             scf_history = list(block_scf),
+                            wall_time   = block_wall_time,
                         ))
                     _reset_block()
                     continue
@@ -253,6 +257,17 @@ class MolwatchLogParser(TrajectoryParser):
                     continue
                 if stripped.startswith("max_force (eV/Ang):"):
                     block_max_force = _maybe_float(
+                        stripped.split(":", 1)[1].strip()
+                    )
+                    continue
+                if stripped.startswith("wall_time:"):
+                    # Unix epoch seconds emitted by both the SIESTA-side
+                    # write_initial_preview helper and the inlined PySCF
+                    # _MolwatchEmitter.  Optional -- older logs (and a
+                    # log torn before the wall_time line) parse fine
+                    # with block_wall_time = None, just no elapsed-time
+                    # display in the UI.
+                    block_wall_time = _maybe_float(
                         stripped.split(":", 1)[1].strip()
                     )
                     continue

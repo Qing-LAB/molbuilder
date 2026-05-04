@@ -166,6 +166,7 @@ def trajectory_to_legacy_dict(traj: Trajectory) -> Dict[str, Any]:
     out_forces:     List[List[List[float]]] = []
     out_iterations: List[int] = []
     out_scf:        List[List[Dict[str, Any]]] = []
+    out_wall_times: List[Any] = []
 
     for f in traj.frames:
         atom_rows: List[List[Any]] = []
@@ -181,6 +182,7 @@ def trajectory_to_legacy_dict(traj: Trajectory) -> Dict[str, Any]:
             out_forces.append([])
         out_iterations.append(f.step_index)
         out_scf.append(f.scf_history if f.scf_history is not None else [])
+        out_wall_times.append(f.wall_time)
 
     # Legacy shape quirk: when no parser tracks SCF data for ANY
     # frame (PySCF .log absent, SIESTA had no `scf:` lines), the
@@ -206,6 +208,7 @@ def trajectory_to_legacy_dict(traj: Trajectory) -> Dict[str, Any]:
         "max_forces":    out_max_forces,
         "forces":        out_forces,
         "scf_history":   out_scf,
+        "wall_times":    out_wall_times,
         "source_format": traj.source_format,
     }
 

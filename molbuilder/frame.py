@@ -63,6 +63,14 @@ class Frame:
                       Consumers must not assume a fixed key set.
                       None when the parser couldn't find SCF data
                       (e.g. PySCF .log absent).
+      wall_time    -- Unix epoch seconds when the engine wrote this
+                      step.  None for parsers / formats that don't
+                      surface a per-step timestamp (geomeTRIC's
+                      _geom_optim.xyz, SIESTA's run.out without the
+                      molwatch.log sibling).  Used by the watch UI to
+                      show "Started 2h 15m ago, last step 30s ago" --
+                      the latency-of-progress signal a researcher
+                      actually wants when staring at a long run.
     """
     structure:    Structure
     step_index:   int
@@ -71,6 +79,7 @@ class Frame:
     max_force:    Optional[float]                 = None
     lattice:      Optional[np.ndarray]            = None
     scf_history:  Optional[List[Dict[str, float]]] = None
+    wall_time:    Optional[float]                 = None
 
     def __post_init__(self) -> None:
         # Be tolerant about input -- parsers may pass plain lists for
