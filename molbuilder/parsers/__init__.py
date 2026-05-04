@@ -210,6 +210,10 @@ def trajectory_to_legacy_dict(traj: Trajectory) -> Dict[str, Any]:
         "scf_history":   out_scf,
         "wall_times":    out_wall_times,
         "source_format": traj.source_format,
+        # Run-state markers from end-of-run detection.  See
+        # Trajectory.run_state docstring.
+        "run_state":     traj.run_state,
+        "error_message": traj.error_message,
     }
 
 

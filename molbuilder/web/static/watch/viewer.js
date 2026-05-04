@@ -602,30 +602,64 @@
         makePlots();
 
         const ts = new Date(r.mtime * 1000).toLocaleTimeString();
-        // Elapsed simulation time -- the latency-of-progress signal a
-        // researcher actually wants while staring at a long run.
-        // wall_times[] is per-frame Unix epoch; we report (a) total
-        // sim time = last_wall - first_wall, and (b) staleness =
-        // (now - last_wall) so the user knows whether the run is
-        // still actively writing or has stalled.  Falls back silently
-        // when wall_times is absent (older logs / non-molwatch
-        // formats).
+        // Elapsed simulation time -- wall_times[] is per-frame Unix
+        // epoch.  Total sim time = last_wall - first_wall.  Falls
+        // back silently when wall_times is absent.
         const wt = state.data.wall_times || [];
         const firstWall = wt.find(v => Number.isFinite(v));
         let lastWall = null;
         for (let i = wt.length - 1; i >= 0; i--) {
             if (Number.isFinite(wt[i])) { lastWall = wt[i]; break; }
         }
-        let elapsedTail = "";
+        let elapsed = null;
         if (firstWall != null && lastWall != null) {
-            const elapsed = lastWall - firstWall;
-            const stale   = (Date.now() / 1000) - lastWall;
-            elapsedTail = " \u2014 sim time " + fmtElapsed(elapsed)
-                        + ", last frame " + fmtElapsed(stale) + " ago";
+            elapsed = lastWall - firstWall;
         }
+
+        // Run-state badge: authoritative when the writer emitted
+        // explicit end-of-run markers (PySCF .molwatch.log:
+        // "# concluded:" / "# error:"; SIESTA .out: ">> End of run").
+        // Defaults to "ongoing" when neither is present.  The badge
+        // is the user's primary "is this finished?" signal -- ONE
+        // location instead of inferring from various places.
+        const runState  = (state.data.run_state || "ongoing").toLowerCase();
+        const errMsg    = state.data.error_message || "";
+        const badge     = $("run-state-badge");
+        const badgeLab  = $("run-state-label");
+        const badgeDet  = $("run-state-detail");
+        if (badge) {
+            badge.classList.remove(
+                "run-state-blank", "run-state-finished",
+                "run-state-ongoing", "run-state-error",
+            );
+            badge.hidden = false;
+            const elapsedTxt = (elapsed != null)
+                ? "total " + fmtElapsed(elapsed)
+                : "";
+            if (runState === "finished") {
+                badge.classList.add("run-state-finished");
+                badgeLab.textContent = "Finished";
+                badgeDet.textContent = elapsedTxt;
+            } else if (runState === "error") {
+                badge.classList.add("run-state-error");
+                badgeLab.textContent = "Error";
+                badgeDet.textContent = errMsg
+                    ? errMsg + (elapsedTxt ? " \u2014 " + elapsedTxt : "")
+                    : elapsedTxt;
+            } else {
+                badge.classList.add("run-state-ongoing");
+                badgeLab.textContent = "Ongoing";
+                badgeDet.textContent = (elapsed != null)
+                    ? "sim time " + fmtElapsed(elapsed)
+                    : "";
+            }
+        }
+
+        // Bottom status banner keeps the diagnostic detail (mtime,
+        // frame count) -- the badge above is the user-facing state,
+        // this is the technical readout.
         setStatus(
-            "Loaded " + n + " " + state.label + " frames \u2014 mtime " + ts
-              + elapsedTail + ".",
+            "Loaded " + n + " " + state.label + " frames \u2014 mtime " + ts + ".",
             "ok"
         );
     }

@@ -57,10 +57,16 @@ from ..structure import Structure
 from .base import TrajectoryParser
 
 
-_BEGIN_RE = re.compile(r"====\s*molwatch\s+step\s+(\d+)\s+begin\s*====")
-_END_RE   = re.compile(r"====\s*molwatch\s+step\s+(\d+)\s+end\s*====")
+_BEGIN_RE  = re.compile(r"====\s*molwatch\s+step\s+(\d+)\s+begin\s*====")
+_END_RE    = re.compile(r"====\s*molwatch\s+step\s+(\d+)\s+end\s*====")
 _HEADER_RE = re.compile(r"^#\s*molwatch\s+trajectory\s+log", re.IGNORECASE)
 _ENGINE_RE = re.compile(r"^#\s*engine:\s*(\S+)", re.IGNORECASE)
+# Run-state markers, written by the inlined PySCF emitter via
+# atexit/excepthook hooks.  Both lines may appear at the FOOTER of
+# a log (atexit fires after the last step block).  When neither is
+# present the run is treated as ongoing.
+_CONCLUDED_RE = re.compile(r"^#\s*concluded:\s*(.+)$", re.IGNORECASE)
+_ERROR_RE     = re.compile(r"^#\s*error:\s*(.+)$",     re.IGNORECASE)
 
 
 def _maybe_float(token: str) -> Optional[float]:
@@ -94,6 +100,10 @@ class MolwatchLogParser(TrajectoryParser):
     def parse(cls, path: str) -> Trajectory:
         engine = "molwatch"
         frames: List[Frame] = []
+        # Run-state markers default to "ongoing" -- only flip when the
+        # writer emitted explicit `# concluded:` / `# error:` lines.
+        run_state: str = "ongoing"
+        error_message: Optional[str] = None
 
         # In-block accumulators; commit only on a matching `end` marker.
         in_block = False
@@ -126,8 +136,21 @@ class MolwatchLogParser(TrajectoryParser):
                 line = raw.rstrip("\n")
                 stripped = line.strip()
 
-                # ---- header lines (only meaningful before the first block) ----
+                # ---- header / footer lines (only meaningful outside a block)
                 if not in_block:
+                    m_err = _ERROR_RE.match(line)
+                    if m_err:
+                        # Error has priority over concluded; the writer
+                        # emits "# error:" then "# concluded:" so a clean
+                        # parse of both should land on "error".
+                        error_message = m_err.group(1).strip()
+                        run_state = "error"
+                        continue
+                    m_done = _CONCLUDED_RE.match(line)
+                    if m_done:
+                        if run_state != "error":
+                            run_state = "finished"
+                        continue
                     m_eng = _ENGINE_RE.match(line)
                     if m_eng:
                         engine = m_eng.group(1)
@@ -280,4 +303,6 @@ class MolwatchLogParser(TrajectoryParser):
             source_format = engine,
             frames        = frames,
             lattice       = None,
+            run_state     = run_state,
+            error_message = error_message,
         )

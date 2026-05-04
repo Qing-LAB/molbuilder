@@ -112,6 +112,12 @@ class SiestaParser(TrajectoryParser):
         frames: List[Frame] = []
         lattice: Optional[List[List[float]]] = None
         pending_lattice: Optional[List[List[float]]] = None
+        # Run-state detection: SIESTA writes ">> End of run:  <date>"
+        # at end of a successful run; any other shutdown leaves no
+        # such marker.  No equivalent for "error" state on SIESTA's
+        # native output -- common abort patterns vary across versions
+        # -- so we only differentiate finished vs ongoing here.
+        run_state: str = "ongoing"
 
         # SCF iteration history accumulator for the current step.  Each
         # entry is a per-cycle dict matching the schema in
@@ -172,6 +178,14 @@ class SiestaParser(TrajectoryParser):
             for raw in fh:
                 line = raw.rstrip("\n")
                 stripped = line.strip()
+
+                # SIESTA's clean-exit marker: ">> End of run: <date>".
+                # Always written at the very end of a successful run;
+                # absent when SIESTA aborts.  Detect anywhere outside
+                # a coords block (it's a free-form line, not nested).
+                if stripped.startswith(">> End of run"):
+                    run_state = "finished"
+                    continue
 
                 if state == "in_coords":
                     if not stripped:
@@ -307,4 +321,5 @@ class SiestaParser(TrajectoryParser):
             source_format = cls.name,
             frames        = frames,
             lattice       = lattice,
+            run_state     = run_state,
         )

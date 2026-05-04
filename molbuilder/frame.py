@@ -108,10 +108,23 @@ class Trajectory:
                        cell; per-frame lattice (Frame.lattice) is
                        reserved for variable-cell trajectories that
                        no current parser produces.
+      run_state     -- "finished" | "ongoing" | "error".  Authoritative
+                       when the writer emitted explicit end-of-run
+                       markers (`# concluded:` / `# error:` in
+                       .molwatch.log; `>> End of run` in SIESTA's .out).
+                       Defaults to "ongoing" when no marker found --
+                       better to under-claim than to misclassify a
+                       slow run as stalled.  Long iteration times
+                       (some DFT steps take hours) make any stall
+                       heuristic unreliable, so we go marker-only.
+      error_message -- one-line error description when run_state ==
+                       "error", else None.
     """
     source_format: str
     frames:        List[Frame]
     lattice:       Optional[np.ndarray] = None
+    run_state:     str                  = "ongoing"
+    error_message: Optional[str]        = None
 
     def __post_init__(self) -> None:
         if self.lattice is not None and not isinstance(self.lattice, np.ndarray):
