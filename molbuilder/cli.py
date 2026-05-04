@@ -508,6 +508,89 @@ def cmd_pyscf(input_path, py_path,
 
 
 # --------------------------------------------------------------------- #
+#  validate subcommand (geometry + optional config preflight, JSON out) #
+# --------------------------------------------------------------------- #
+
+
+@cli.command("validate",
+             short_help="run validation checks on a structure; print Issue JSON")
+@click.argument("input_path", metavar="input")
+@click.option("--engine", default=None,
+              type=click.Choice(["siesta", "pyscf"]),
+              help="run engine-specific config checks too (default: "
+                   "structure-only geometry checks)")
+@click.option("--exit-on-error", is_flag=True,
+              help="exit 2 when any error-severity Issue is found "
+                   "(useful in CI / shell preflight loops)")
+@click.option("--pretty", is_flag=True,
+              help="indent the JSON output (default is one-issue-per-line "
+                   "compact form, easier to grep in shell pipelines)")
+def cmd_validate(input_path, engine, exit_on_error, pretty):
+    """Run molbuilder's validation suite on a structure file.
+
+    Reads an XYZ or PDB (or `-` for stdin), runs the geometry checks
+    (min atom distance, h_ratio, polymer orientation, image distance,
+    cell volume) plus optional engine-specific config checks, and
+    emits the resulting Issue list as JSON to stdout.
+
+    Exit code with --exit-on-error: 0 if no errors, 2 if any error.
+    Without the flag: always 0 (warnings don't stop the run).
+
+    Pipeline-friendly:
+
+        molbuilder dna ATGC | molbuilder validate -
+
+        molbuilder validate run.xyz --engine siesta --exit-on-error \\
+            && molbuilder fdf run.xyz run.fdf
+    """
+    import json
+    from .validation import validate, validate_geometry
+
+    with _resolve_input_path(input_path) as resolved:
+        struct, _cell = _struct_for_validate(resolved)
+
+    if engine == "siesta":
+        from .config.siesta import SiestaConfig
+        issues = validate(struct, SiestaConfig(), cell=_cell)
+    elif engine == "pyscf":
+        from .config.pyscf import PySCFConfig
+        issues = validate(struct, PySCFConfig())
+    else:
+        # Default: geometry-only.  No config to validate against.
+        issues = validate_geometry(struct, cell=_cell)
+
+    payload = {
+        "input": input_path,
+        "engine": engine,
+        "n_issues": len(issues),
+        "n_errors": sum(1 for i in issues if i.severity == "error"),
+        "n_warnings": sum(1 for i in issues if i.severity == "warn"),
+        "issues": [
+            {"severity": i.severity, "message": i.message, "where": i.where}
+            for i in issues
+        ],
+    }
+    if pretty:
+        click.echo(json.dumps(payload, indent=2))
+    else:
+        click.echo(json.dumps(payload))
+
+    if exit_on_error and payload["n_errors"] > 0:
+        sys.exit(2)
+
+
+def _struct_for_validate(path):
+    """Read either XYZ or PDB; return (Structure, optional cell array).
+
+    A small wrapper around the SIESTA-side _struct_from_file so the
+    validate command supports the same extended-XYZ + PDB inputs as
+    the fdf / pyscf pipelines.
+    """
+    from .siesta.input import _struct_from_file
+    return _struct_from_file(path)
+
+
+# --------------------------------------------------------------------- #
 #  serve subcommand (Flask web UI)                                      #
 # --------------------------------------------------------------------- #
 
