@@ -328,11 +328,6 @@ def test_gap_8_pyscf_emits_ecp_for_heavy_atoms_with_non_def2():
 # --------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    reason="design.md gap #9: PySCF script reports mf.e_tot without "
-           "a re-evaluation guard at mol_eq's geometry",
-    strict=True,
-)
 def test_gap_9_pyscf_reevaluates_energy_at_optimized_geom(h2):
     """The generated script should re-evaluate mf at mol_eq's
     geometry before reporting the final energy -- otherwise a
