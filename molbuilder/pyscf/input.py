@@ -64,6 +64,56 @@ def _atoms_block(struct: Structure, indent: str = "    ") -> str:
     return "\n".join(lines)
 
 
+# Atomic-number lookup for the ECP heuristic.  Only need to identify
+# heavy-atom presence (Z > 36 == above Kr); a partial table is enough.
+# ase.data has a comprehensive table but we want molbuilder's pyscf
+# generator to stay light on imports for the no-ase install path.
+_ATOMIC_NUMBER = {
+    "H":  1, "He":  2, "Li":  3, "Be":  4, "B":   5, "C":   6, "N":   7,
+    "O":  8, "F":   9, "Ne": 10, "Na": 11, "Mg": 12, "Al": 13, "Si": 14,
+    "P": 15, "S":  16, "Cl": 17, "Ar": 18, "K":  19, "Ca": 20, "Sc": 21,
+    "Ti": 22, "V": 23, "Cr": 24, "Mn": 25, "Fe": 26, "Co": 27, "Ni": 28,
+    "Cu": 29, "Zn": 30, "Ga": 31, "Ge": 32, "As": 33, "Se": 34, "Br": 35,
+    "Kr": 36,
+    # Z > 36 (need ECP for non-def2 bases):
+    "Rb": 37, "Sr": 38, "Y": 39, "Zr": 40, "Nb": 41, "Mo": 42, "Tc": 43,
+    "Ru": 44, "Rh": 45, "Pd": 46, "Ag": 47, "Cd": 48, "In": 49, "Sn": 50,
+    "Sb": 51, "Te": 52, "I":  53, "Xe": 54, "Cs": 55, "Ba": 56, "La": 57,
+    "Hf": 72, "Ta": 73, "W":  74, "Re": 75, "Os": 76, "Ir": 77, "Pt": 78,
+    "Au": 79, "Hg": 80, "Tl": 81, "Pb": 82, "Bi": 83, "Po": 84,
+}
+
+
+def _resolve_ecp(struct: Structure, cfg: PySCFConfig) -> Optional[str]:
+    """Decide whether and which ECP to emit in the gto.M() call.
+
+    Logic:
+      * cfg.ecp is an explicit string (e.g. "lanl2dz")
+            -> use it (user override)
+      * cfg.ecp is the empty string ""
+            -> disabled (user opted out)
+      * cfg.ecp is None (default, "auto")
+            -> emit "lanl2dz" if heavy atoms present AND basis is
+               not a def2-* family member (def2 bundles its own ECP);
+               otherwise None.
+
+    Why "lanl2dz" as the auto default: it's the workhorse ECP for
+    transition metals on cc-pVDZ-class bases, has been the textbook
+    default since the 1980s, and is shipped with PySCF directly
+    (no extra basis-set library install).  Stuttgart RSC / SBKJC
+    are alternatives the user can pick via cfg.ecp = "stuttgart".
+    """
+    if cfg.ecp == "":
+        return None        # explicitly disabled
+    if cfg.ecp is not None:
+        return cfg.ecp     # explicit user choice
+    # Auto-detect.  Skip when basis is def2-* (it bundles ECP).
+    if cfg.basis.lower().startswith("def2-"):
+        return None
+    has_heavy = any(_ATOMIC_NUMBER.get(el, 0) > 36 for el in struct.elements)
+    return "lanl2dz" if has_heavy else None
+
+
 def _resolve_charge(struct: Structure, cfg: PySCFConfig) -> int:
     """Resolve the molecule's net charge.
 
@@ -253,11 +303,27 @@ def render_script(struct: Structure,
         out.append("# leave False unless you know your atoms sit on the symmetry")
         out.append("# elements exactly.")
         out.append("# max_memory is a soft hint to PySCF in MB; raise for big jobs.")
+    # Effective Core Potential resolution (gap #8).  Heavy atoms
+    # (Z > 36) on a non-def2 basis need an explicit ECP -- both for
+    # cost (Pt has 78 electrons; treating the inner 60 as a pseudo-
+    # potential is dramatic speedup) AND correctness (DFT without
+    # scalar-relativistic ECPs gets Pt-Pt bond lengths and Au gaps
+    # wrong by ~1 eV / ~0.1 A).  def2-* basis families bundle the
+    # SBKJC / def2-ECP automatically, so we skip auto-emit there.
+    ecp_chosen = _resolve_ecp(struct, cfg)
+    if ecp_chosen and v:
+        out += [
+            f"# Heavy atom(s) detected on a non-def2 basis -> using",
+            f"# `ecp = \"{ecp_chosen}\"` for scalar-relativistic core",
+            f"# replacement.  Override via cfg.ecp = '<name>' or '' to disable.",
+        ]
     out.append("mol = gto.M(")
     out.append("    atom = '''")
     out.append(_atoms_block(struct))
     out.append("    ''',")
     out.append(f'    basis      = "{cfg.basis}",')
+    if ecp_chosen:
+        out.append(f'    ecp        = "{ecp_chosen}",')
     out.append(f"    charge     = {charge},")
     out.append(f"    spin       = {cfg.spin},")
     out.append(f"    symmetry   = {cfg.symmetry},")
