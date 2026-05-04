@@ -467,6 +467,38 @@ def render_script(struct: Structure,
     out.append("")
     out.append('print(f"\\nJob complete in {time.time() - t0:.1f} s")')
 
+    # Post-processing hook (gap #6).  Commented call templates for
+    # the follow-ups users typically want after a relaxation.
+    # Default-disabled so the script's behaviour is unchanged;
+    # uncomment to enable.
+    out.append("")
+    out.append("# === Post-processing hook (commented templates) ===")
+    if v:
+        out += [
+            "# Common follow-ups on the converged density at mol_eq.",
+            "# All four use the already-built mf object; no extra SCF",
+            "# (PySCF re-uses the converged density matrix) -- the cost",
+            "# is one matrix multiply per analysis.  Enable any subset.",
+        ]
+    out += [
+        "#",
+        "# 1. Mulliken population (per-atom partial charges):",
+        "# pop, chg = mf.mulliken_pop()",
+        "# print('Mulliken charges:', chg)",
+        "#",
+        "# 2. Dipole moment (Debye):",
+        "# dip = mf.dip_moment(unit='Debye')",
+        "# print(f'Dipole moment: {dip}')",
+        "#",
+        "# 3. Full SCF analyze() report (energies, gaps, populations):",
+        "# mf.analyze()",
+        "#",
+        "# 4. NPA / NBO charges (cleaner than Mulliken; needs nbo wrap):",
+        "# from pyscf import lo",
+        "# c_nao = lo.orth.lowdin(mol_eq.intor('int1e_ovlp'))",
+        "# # ... see PySCF docs for full NPA / NBO recipe",
+    ]
+
     # ------------------------------------------------------------- hints
     if v:
         out += _emit_troubleshooting_block(cfg)

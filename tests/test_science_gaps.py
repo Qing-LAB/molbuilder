@@ -209,11 +209,6 @@ def test_gap_5_siesta_pao_energy_shift_default_is_tight():
 # --------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    reason="design.md gap #6: no `# --- Post-processing hook ---` "
-           "placeholder at end of FDF or PySCF script",
-    strict=True,
-)
 def test_gap_6_siesta_emits_post_processing_hook(h2):
     """Generated FDF must end with a commented-out post-processing
     block (BandLines, PDOS, etc.) so a user knows where to add
@@ -225,10 +220,6 @@ def test_gap_6_siesta_emits_post_processing_hook(h2):
     )
 
 
-@pytest.mark.xfail(
-    reason="design.md gap #6: no post-processing hook in PySCF script",
-    strict=True,
-)
 def test_gap_6_pyscf_emits_post_processing_hook(h2):
     """Generated PySCF script must include a commented-out
     post-processing block (analyze, mulliken_pop, dip_moment, etc.)
