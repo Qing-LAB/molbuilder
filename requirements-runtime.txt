@@ -22,6 +22,13 @@
 #
 #   - SIESTA itself (Fortran)         -- conda install -c conda-forge siesta
 #                                        or download from https://siesta-project.org
+#                                        Targeted version range: SIESTA 4.1 -- 5.x.
+#                                        Older builds (4.0 and earlier) may
+#                                        reject v5-form keywords (`Spin polarized`,
+#                                        `Spin.Total` + `Spin.Fix`) the generator
+#                                        emits.  v5 still accepts v4 forms for
+#                                        back-compat but flags them as
+#                                        deprecated.
 #   - AmberTools (tleap)              -- conda install -c conda-forge ambertools
 #   - 3DNA (fiber, for canonical helices) -- manual download from x3dna.org
 #   - PSML pseudopotentials           -- download from pseudo-dojo.org

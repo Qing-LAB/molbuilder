@@ -870,9 +870,16 @@ triple (generator change + validation rule + spec test) in Phase 6.
    `test_gap_6_siesta_emits_post_processing_hook` and
    `test_gap_6_pyscf_emits_post_processing_hook` flipped from xfail
    to passing.
-7. **No SIESTA minimum version pinned.** `requirements-runtime.txt`
+7. ~~**No SIESTA minimum version pinned.** `requirements-runtime.txt`
    doesn't declare a minimum; emitted keywords like `DM.Energy.Tolerance`
-   may be silently ignored on old builds. Document the targeted range.
+   may be silently ignored on old builds. Document the targeted range.~~
+   **Fixed:** `requirements-runtime.txt` now documents the targeted
+   SIESTA version range (4.1 -- 5.x) inline with the conda install
+   pointer, with a specific note that older builds (4.0 and earlier)
+   may reject the v5-form keywords (`Spin polarized`, `Spin.Total` +
+   `Spin.Fix`).  Test
+   `test_gap_7_requirements_documents_siesta_version_range` flipped
+   from xfail to passing.
 8. **No ECP support for non-def2 bases.** A user with a Pt/Pd structure
    on cc-pVDZ needs a manual `ecp = {...}` block. Lower priority.
 9. ~~**`save_optimized_xyz` writes from `mol_eq` (correct), but `mf.e_tot`
