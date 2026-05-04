@@ -22,6 +22,7 @@ dependencies = [
     "PeptideBuilder>=1.1",       # peptide backbone geometry
     "biopython>=1.81",           # required by PeptideBuilder
     "flask>=3.0",                # bundled web UI (build + watch); core post-merge
+    "click>=8.1",                # CLI plumbing for `molbuilder ...` subcommands
 ]
 
 [project.optional-dependencies]
