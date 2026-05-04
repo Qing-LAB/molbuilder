@@ -149,7 +149,10 @@
             body.backend  = $("backend").value;
             body.form     = $("form").value;
             body.terminal = $("terminal").value;
-            body.add_hydrogens        = $("add-hydrogens").checked;
+            // Tri-state add_hydrogens select: "auto" / "on" / "off".
+            // Sent as a string; the build endpoint also accepts bool
+            // for legacy callers but the form posts the string form.
+            body.add_hydrogens        = $("add-hydrogens").value;
             body.protonate_phosphates = $("protonate-phosphates").checked;
         }
         try {

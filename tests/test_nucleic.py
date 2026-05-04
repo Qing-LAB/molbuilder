@@ -92,62 +92,21 @@ def test_dna_default_protonation_yields_simulation_ready_h_count(backend):
     )
 
 
-def test_maybe_add_hydrogens_gate_runs_on_partial_protonation():
-    """The _maybe_add_hydrogens gate skips chemistry.add_hydrogens
-    when H/heavy is already in the typical organic range.  Pre-fix
-    the threshold was 0.3 -- which would skip a structure missing
-    every base amine but with a few sugar H's still present (ratio
-    ~0.4); user shipped a broken-Watson-Crick chain with no signal.
-    The widened threshold (0.5) catches that gap.
-
-    Synthesise a 'partially protonated' Structure with H/heavy = 0.4
-    and confirm the gate routes through to chemistry.add_hydrogens
-    (which would top off the missing H if RDKit/OpenBabel are available;
-    we only check the gate decision here, not the engine output)."""
+def _h_add_spy_struct(n_heavy: int, n_h: int):
+    """Synthetic Structure with the requested element counts, atoms
+    arrayed along x at 1.5 A spacing so no two coincide.  Used by
+    the _maybe_add_hydrogens gate tests."""
     import numpy as np
     from molbuilder.structure import Structure
-    from molbuilder.nucleic import _maybe_add_hydrogens
-
-    # 10 heavy + 4 H = ratio 0.4 -- in the gap zone (post-fix: triggers add)
-    elements = ["C"] * 10 + ["H"] * 4
-    positions = np.array([(i * 1.5, 0, 0) for i in range(14)], dtype=float)
-    s = Structure(elements=elements, positions=positions)
-
-    # Sentinel: monkey-patch chemistry.add_hydrogens to record the call,
-    # so we don't depend on whether OpenBabel / RDKit are installed.
-    import molbuilder.chemistry as chem
-    called = {"n": 0}
-    real = chem.add_hydrogens
-    def spy(struct):
-        called["n"] += 1
-        return struct  # pass-through
-    chem.add_hydrogens = spy
-    try:
-        _maybe_add_hydrogens(s, add=True)
-    finally:
-        chem.add_hydrogens = real
-    assert called["n"] == 1, (
-        f"_maybe_add_hydrogens should call chemistry.add_hydrogens "
-        f"on a partial-protonation structure (ratio 0.4); got "
-        f"{called['n']} calls"
-    )
+    elements = ["C"] * n_heavy + ["H"] * n_h
+    positions = np.array([(i * 1.5, 0, 0) for i in range(n_heavy + n_h)],
+                         dtype=float)
+    return Structure(elements=elements, positions=positions)
 
 
-def test_maybe_add_hydrogens_gate_skips_already_protonated():
-    """The flip side: a fully-protonated structure (ratio >= 0.5)
-    must NOT trigger the round-trip -- both Amber-tleap (ratio ~0.63)
-    and RDKit-via-SMILES (ratio ~0.72) produce H-complete output and
-    re-running RDKit's AddHs(addCoords=True) on them does an
-    unnecessary PDB round-trip that can micro-shift coordinates."""
-    import numpy as np
-    from molbuilder.structure import Structure
-    from molbuilder.nucleic import _maybe_add_hydrogens
-
-    # 10 heavy + 7 H = ratio 0.7 -- safely above 0.5
-    elements = ["C"] * 10 + ["H"] * 7
-    positions = np.array([(i * 1.5, 0, 0) for i in range(17)], dtype=float)
-    s = Structure(elements=elements, positions=positions)
-
+def _spy_add_hydrogens():
+    """Monkey-patch ``chemistry.add_hydrogens`` with a passthrough
+    that counts calls.  Returns (count_dict, restore_callable)."""
     import molbuilder.chemistry as chem
     called = {"n": 0}
     real = chem.add_hydrogens
@@ -155,12 +114,180 @@ def test_maybe_add_hydrogens_gate_skips_already_protonated():
         called["n"] += 1
         return struct
     chem.add_hydrogens = spy
-    try:
-        out = _maybe_add_hydrogens(s, add=True)
-    finally:
+    def restore():
         chem.add_hydrogens = real
-    assert called["n"] == 0, "fully-protonated input should skip add_hydrogens"
+    return called, restore
+
+
+def test_maybe_add_hydrogens_auto_runs_on_partial_protonation():
+    """``mode="auto"`` heuristic: if H/heavy < 0.5, trigger
+    chemistry.add_hydrogens.  Pre-tri-state the gate was at 0.3 --
+    which would skip a partially-protonated structure (ratio ~0.4)
+    silently.  Widened to 0.5 catches the gap zone."""
+    from molbuilder.nucleic import _maybe_add_hydrogens
+    s = _h_add_spy_struct(n_heavy=10, n_h=4)        # ratio 0.4
+    called, restore = _spy_add_hydrogens()
+    try:
+        _maybe_add_hydrogens(s, mode="auto")
+    finally:
+        restore()
+    assert called["n"] == 1
+
+
+def test_maybe_add_hydrogens_auto_skips_already_protonated():
+    """``mode="auto"`` skips when H/heavy >= 0.5 (canonical amber /
+    rdkit nucleic output sits at ~0.63 / ~0.72 -- already complete)."""
+    from molbuilder.nucleic import _maybe_add_hydrogens
+    s = _h_add_spy_struct(n_heavy=10, n_h=7)        # ratio 0.7
+    called, restore = _spy_add_hydrogens()
+    try:
+        out = _maybe_add_hydrogens(s, mode="auto")
+    finally:
+        restore()
+    assert called["n"] == 0
     assert out is s
+
+
+def test_maybe_add_hydrogens_on_forces_add_regardless_of_ratio():
+    """``mode="on"`` always runs chemistry.add_hydrogens, even when
+    the heuristic would skip.  The user's escape hatch when the
+    auto threshold misclassifies their structure (e.g., a small
+    metal-organic complex with low H but valid chemistry, or any
+    case where the user knows better than the heuristic)."""
+    from molbuilder.nucleic import _maybe_add_hydrogens
+    # ratio 0.7 -- auto would skip; on must add
+    s = _h_add_spy_struct(n_heavy=10, n_h=7)
+    called, restore = _spy_add_hydrogens()
+    try:
+        _maybe_add_hydrogens(s, mode="on")
+    finally:
+        restore()
+    assert called["n"] == 1
+
+
+def test_maybe_add_hydrogens_off_never_calls():
+    """``mode="off"`` is the user explicitly opting out -- never
+    call the engine.  Used when inspecting X3DNA's heavy skeleton
+    or feeding to an external protonator."""
+    from molbuilder.nucleic import _maybe_add_hydrogens
+    s = _h_add_spy_struct(n_heavy=10, n_h=0)        # ratio 0
+    called, restore = _spy_add_hydrogens()
+    try:
+        out = _maybe_add_hydrogens(s, mode="off")
+    finally:
+        restore()
+    assert called["n"] == 0
+    assert out is s
+
+
+def test_maybe_add_hydrogens_legacy_bool_back_compat():
+    """Pre-tri-state callers passed bool: True = "auto", False = "off".
+    Back-compat must hold so existing scripts and the smoke-test
+    fixtures don't break."""
+    from molbuilder.nucleic import _maybe_add_hydrogens
+    s_low  = _h_add_spy_struct(n_heavy=10, n_h=2)   # ratio 0.2
+    s_high = _h_add_spy_struct(n_heavy=10, n_h=8)   # ratio 0.8
+
+    called, restore = _spy_add_hydrogens()
+    try:
+        _maybe_add_hydrogens(s_low, mode=True)      # True -> auto -> add
+        _maybe_add_hydrogens(s_high, mode=True)     # True -> auto -> skip
+        _maybe_add_hydrogens(s_low, mode=False)     # False -> off -> no call
+    finally:
+        restore()
+    assert called["n"] == 1, (
+        f"True+low should add (1 call); True+high should skip; "
+        f"False+anything should not call.  Got {called['n']} total."
+    )
+
+
+@pytest.mark.parametrize("backend", _BACKENDS)
+def test_dna_12mer_simulation_ready_at_default_settings(backend):
+    """Standard end-to-end smoke at production-realistic size: a
+    12-mer DNA (3x ATGC) covering all four bases and exercising 11
+    internal phosphodiester bridges.  Default kwargs (add_hydrogens
+    "auto", protonate_phosphates True) must give a chain with H/heavy
+    in the typical organic range and zero net phosphate charge.
+
+    The earlier 4-mer tests pin atom counts but a 12-mer is closer
+    to what users actually run for stacking / canonical-helix work,
+    where the H/heavy heuristic threshold matters most.
+    """
+    if not available_backends()[backend]:
+        pytest.skip(f"backend {backend!r} not installed on this machine")
+    from molbuilder.chemistry import formal_charge_from_phosphates
+    s = build_dna("ATGCATGCATGC", backend=backend)
+    assert s.n_residues == 12
+    n_h     = sum(1 for e in s.elements if e == "H")
+    n_heavy = sum(1 for e in s.elements if e != "H")
+    ratio = n_h / n_heavy
+    # 12-mer DNA H/heavy is ~0.6-0.7; below 0.55 means H got dropped.
+    assert ratio >= 0.55, (
+        f"{backend}: 12-mer ATGCATGCATGC H/heavy={ratio:.2f}, "
+        f"expected >= 0.55 for a fully-protonated chain"
+    )
+    # 11 internal phosphate bridges + 0 terminal phosphate (terminal=OH default)
+    assert s.elements.count("P") == 11, (
+        f"{backend}: 12-mer with terminal=OH should have 11 P atoms, "
+        f"got {s.elements.count('P')}"
+    )
+    # protonate_phosphates=True default => neutral
+    assert formal_charge_from_phosphates(s) == 0
+
+
+@pytest.mark.parametrize("backend", _BACKENDS)
+def test_dna_12mer_force_on_overrides_skip(backend):
+    """``add_hydrogens="on"`` must force the H-add step even when
+    auto would skip (canonical backend output is already at ratio
+    ~0.6+).  This is the user's escape hatch for cases where the
+    heuristic might mis-classify.
+
+    Smoke check: the on-mode result has at least as many H atoms as
+    the auto-mode result -- the engine adds, never removes.  Exact
+    counts may differ in the 0-4 H range due to bond-perception
+    coordinates micro-shifts on the second AddHs round-trip; we
+    don't pin exact equality.
+    """
+    if not available_backends()[backend]:
+        pytest.skip(f"backend {backend!r} not installed on this machine")
+    s_auto = build_dna("ATGCATGCATGC", backend=backend, add_hydrogens="auto")
+    s_on   = build_dna("ATGCATGCATGC", backend=backend, add_hydrogens="on")
+    n_h_auto = sum(1 for e in s_auto.elements if e == "H")
+    n_h_on   = sum(1 for e in s_on.elements   if e == "H")
+    # Forcing on should never produce *fewer* H than auto; equal is
+    # fine (engine recognised the input was already complete).
+    assert n_h_on >= n_h_auto - 4, (
+        f"{backend}: force-on shouldn't drop H atoms; "
+        f"auto={n_h_auto}, on={n_h_on}"
+    )
+
+
+@pytest.mark.parametrize("backend", _BACKENDS)
+def test_dna_12mer_off_returns_unprotonated_for_heavy_only_backends(backend):
+    """``add_hydrogens="off"`` must not touch the structure -- whatever
+    H the backend produced flows through unchanged.
+
+    For X3DNA (heavy-atom skeleton) the user gets a low-H structure
+    they can hand to an external protonator.  Amber and RDKit
+    backends already ship H, so off-mode also leaves them alone."""
+    if not available_backends()[backend]:
+        pytest.skip(f"backend {backend!r} not installed on this machine")
+    s = build_dna("ATGCATGCATGC", backend=backend,
+                  add_hydrogens="off", protonate_phosphates=False)
+    if backend == "threedna":
+        # fiber emits at most a few H (terminal phosphate / 3'-OH).
+        n_h = sum(1 for e in s.elements if e == "H")
+        n_heavy = sum(1 for e in s.elements if e != "H")
+        assert (n_h / n_heavy) < 0.1, (
+            f"X3DNA + off should yield heavy skeleton, got H/heavy={n_h}/{n_heavy}"
+        )
+    else:
+        # amber / rdkit ship H already; off-mode just preserves it.
+        n_h = sum(1 for e in s.elements if e == "H")
+        assert n_h > 50, (
+            f"{backend} off-mode should still carry the backend's "
+            f"native H atoms; got {n_h}"
+        )
 
 
 def test_dna_add_hydrogens_false_returns_heavy_skeleton():

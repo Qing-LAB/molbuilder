@@ -94,19 +94,32 @@ def api_build_molecule():
     if not text:
         return jsonify({"ok": False, "error": "empty input"}), 400
     backend_used: str | None = None
+    h_mode_used: str | None = None
     try:
         # DNA / RNA accept extra knobs (backend / form / terminal).
         if kind in ("dna", "rna"):
             requested = body.get("backend", "auto")
+            # add_hydrogens is tri-state: auto / on / off.  The web
+            # form sends a string ("auto" by default).  We accept
+            # bool too for back-compat with older client code.
+            h_mode_raw = body.get("add_hydrogens", "auto")
+            if isinstance(h_mode_raw, bool):
+                h_mode_used = "auto" if h_mode_raw else "off"
+            else:
+                h_mode_used = str(h_mode_raw).lower()
+                if h_mode_used not in ("auto", "on", "off"):
+                    return jsonify({
+                        "ok": False,
+                        "error": (
+                            f"add_hydrogens must be 'auto'/'on'/'off' "
+                            f"(or bool); got {h_mode_raw!r}"
+                        ),
+                    }), 400
             kwargs = {
                 "backend":  requested,
                 "form":     body.get("form",     "B" if kind == "dna" else "A"),
                 "terminal": body.get("terminal", "OH"),
-                # Default ON: simulation-ready output for any backend.
-                # User can opt out (e.g., to inspect X3DNA's heavy-atom
-                # skeleton) via the web checkbox.
-                "add_hydrogens":
-                    bool(body.get("add_hydrogens", True)),
+                "add_hydrogens": h_mode_used,
                 "protonate_phosphates":
                     bool(body.get("protonate_phosphates", True)),
             }
@@ -142,6 +155,11 @@ def api_build_molecule():
         "title": struct.title or kind,
         "elements": list(struct.elements),
         "backend_used": backend_used,
+        # Tri-state H-add decision actually used (echoes the request,
+        # or "auto" when not explicitly requested).  None for non-
+        # nucleic builds (peptide/SMILES/name) where the kwarg
+        # doesn't apply.
+        "add_hydrogens_mode": h_mode_used,
         "issues": _issues_to_json(issues),
     })
 

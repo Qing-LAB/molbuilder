@@ -108,9 +108,13 @@
             <option value="PP">both phosphates</option>
           </select>
         </label>
-        <label title="Add explicit hydrogens via OpenBabel (preferred) or RDKit.&#10;Required for any DFT calculation -- without H the electron count is wrong.&#10;Default ON.  Uncheck only if you want to inspect or hand-process X3DNA's heavy-atom skeleton (you must protonate before running SIESTA / PySCF).">
-          <input id="add-hydrogens" type="checkbox" checked>
-          Add hydrogens (recommended)
+        <label title="Tri-state hydrogen-addition control.&#10;auto: heuristic -- skip if H/heavy >= 0.5, else add (works for canonical backends but the threshold is size-dependent; see docs).&#10;on:   force add via OpenBabel/RDKit regardless of current H count.&#10;off:  don't add -- useful for inspecting X3DNA's heavy skeleton or feeding an external protonator.">
+          Add hydrogens
+          <select id="add-hydrogens">
+            <option value="auto" selected>auto (heuristic)</option>
+            <option value="on">on (force add)</option>
+            <option value="off">off (skeleton)</option>
+          </select>
         </label>
         <label title="Add an H to each deprotonated non-bridging phosphate oxygen so the molecule is neutral.&#10;Default ON for DFT convenience (no NetCharge needed, smaller vacuum cell sufficient).&#10;Uncheck to keep tleap's deprotonated state -- the FDF generator will then auto-set NetCharge accordingly.">
           <input id="protonate-phosphates" type="checkbox" checked>
