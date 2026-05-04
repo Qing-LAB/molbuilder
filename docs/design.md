@@ -880,8 +880,17 @@ triple (generator change + validation rule + spec test) in Phase 6.
    `Spin.Fix`).  Test
    `test_gap_7_requirements_documents_siesta_version_range` flipped
    from xfail to passing.
-8. **No ECP support for non-def2 bases.** A user with a Pt/Pd structure
-   on cc-pVDZ needs a manual `ecp = {...}` block. Lower priority.
+8. ~~**No ECP support for non-def2 bases.** A user with a Pt/Pd structure
+   on cc-pVDZ needs a manual `ecp = {...}` block. Lower priority.~~
+   **Fixed:** PySCFConfig grows `ecp: Optional[str] = None` (auto-detect).
+   Generator emits `ecp = "lanl2dz"` in the `gto.M(...)` call when
+   the structure has heavy atoms (Z > 36) AND the basis is not a
+   def2-* family member (def2-* bundles its own ECP and would
+   double-count).  Override via `cfg.ecp = '<name>'` to force a
+   different ECP; set `cfg.ecp = ""` to disable auto-emit entirely.
+   Tests `test_gap_8_pyscf_emits_ecp_for_heavy_atoms_with_non_def2`
+   (xfail flipped) plus three complementary tests pinning the
+   def2-skip / light-atoms-skip / user-disable paths.
 9. ~~**`save_optimized_xyz` writes from `mol_eq` (correct), but `mf.e_tot`
    may not match `mol_eq`'s geometry for non-converged opts.** Probably
    a non-issue in practice; flag for awareness.~~

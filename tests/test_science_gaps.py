@@ -269,11 +269,6 @@ def test_gap_7_requirements_documents_siesta_version_range():
 # --------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    reason="design.md gap #8: PySCF script with cc-pVDZ + heavy atoms "
-           "doesn't auto-emit an ECP block; users currently hand-edit",
-    strict=True,
-)
 def test_gap_8_pyscf_emits_ecp_for_heavy_atoms_with_non_def2():
     """A structure containing transition metals (Pt here) on a basis
     that's NOT def2-* must auto-emit an ECP definition; otherwise
@@ -299,6 +294,59 @@ def test_gap_8_pyscf_emits_ecp_for_heavy_atoms_with_non_def2():
     script = render_script(pt_complex, cfg)
     assert "ecp" in script.lower(), (
         "Heavy-atom (Pt) calculation on cc-pVDZ needs an ECP block."
+    )
+
+
+def test_gap_8_ecp_skipped_for_def2_basis():
+    """def2-* basis families bundle their own ECP for Z > 36, so an
+    extra `ecp = "lanl2dz"` would double-count.  Auto-emit must be
+    suppressed when basis is def2-*."""
+    pt = Structure(
+        elements=["Pt", "C", "C"],
+        positions=np.array([[0.0,0,0],[2,0,0],[-2,0,0]]),
+        title="pt",
+    )
+    cfg = PySCFConfig(job_name="pt", basis="def2-SVP",
+                      preopt=False, density_fit=False, dispersion=None)
+    script = render_script(pt, cfg)
+    # The token "ecp" appears in user-facing comments / docstrings;
+    # what we want to suppress is the kwarg line `    ecp        = "..."`,
+    # which lives inside the gto.M(...) call.
+    assert not re.search(r"^\s*ecp\s*=", script, re.MULTILINE), (
+        "def2-* basis bundles its own ECP; auto-emitting another "
+        "would double-count"
+    )
+
+
+def test_gap_8_ecp_skipped_for_light_atoms_only():
+    """No heavy atoms -> no ECP needed regardless of basis choice."""
+    h2o = Structure(
+        elements=["O", "H", "H"],
+        positions=np.array([[0,0,0],[0.96,0,0],[-0.24,0.93,0]]),
+        title="h2o",
+    )
+    cfg = PySCFConfig(job_name="h2o", basis="cc-pVDZ",
+                      preopt=False, density_fit=False, dispersion=None)
+    script = render_script(h2o, cfg)
+    assert not re.search(r"^\s*ecp\s*=", script, re.MULTILINE), (
+        "Light-atom-only molecule on cc-pVDZ should not get an ECP"
+    )
+
+
+def test_gap_8_ecp_user_override_disables():
+    """`cfg.ecp = ""` is the explicit opt-out for power users who
+    want to provide their own ECP-and-basis block in a hand-edit
+    of the script."""
+    pt = Structure(
+        elements=["Pt"],
+        positions=np.array([[0.0,0,0]]),
+        title="pt",
+    )
+    cfg = PySCFConfig(job_name="pt", basis="cc-pVDZ", ecp="",
+                      preopt=False, density_fit=False, dispersion=None)
+    script = render_script(pt, cfg)
+    assert not re.search(r"^\s*ecp\s*=", script, re.MULTILINE), (
+        "cfg.ecp = '' must suppress the auto-emit"
     )
 
 

@@ -40,6 +40,12 @@ class PySCFConfig:
     auxbasis: Optional[str] = None      # None -> let density_fit() pick
     density_fit: bool = True
     dispersion: Optional[str] = "d3bj"  # None / "d3" / "d3bj" / "d4"
+    # Effective Core Potential (gap #8).  None = auto: emit
+    # ecp="lanl2dz" when heavy atoms (Z > 36) are present AND the
+    # basis is non-def2 (def2-* families bundle their own ECP).
+    # Set to a name string ("lanl2dz", "stuttgart", "def2", ...) to
+    # force a specific ECP; set to "" to disable auto-emit.
+    ecp: Optional[str] = None
 
     # ---------------- Solvent (optional) ----------------
     solvent: Optional[str] = None       # None or one of _SOLVENTS keys
