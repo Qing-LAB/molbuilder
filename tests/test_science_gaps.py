@@ -123,11 +123,6 @@ def test_gap_2_siesta_emits_v5_spin_block(h2):
 # --------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    reason="design.md gap #3: no commented-out vdW / D2-D3 template "
-           "block in the FDF when XC is non-dispersive (PBE / B3LYP)",
-    strict=True,
-)
 def test_gap_3_siesta_emits_dispersion_template_for_pbe(h2):
     """When the chosen XC is non-dispersive (default PBE), the
     generated FDF must contain a commented-out dispersion-correction
@@ -151,6 +146,23 @@ def test_gap_3_siesta_emits_dispersion_template_for_pbe(h2):
         "%block MM.Potentials" in fdf
         or re.search(r"^\s*MM\.Potentials\s+", fdf, re.MULTILINE)
     ), "FDF needs a commented `%block MM.Potentials` D2/D3 template for non-vdW XC."
+
+
+def test_gap_3_dispersion_template_suppressed_for_vdw_xc(h2):
+    """The flip side: when the user already picked a vdW-aware XC
+    (XC.functional VDW + DRSLL/KBM/...), the non-local correlation
+    is in the functional itself.  An MM.Potentials block on top
+    would double-count -- so the template MUST NOT appear."""
+    cfg = SiestaConfig(
+        system_label="h2",
+        xc_functional="VDW",
+        xc_authors="DRSLL",
+    )
+    fdf = render_fdf(h2, cfg)
+    assert "MM.Potentials" not in fdf, (
+        "vdW XC already includes dispersion; emitting an MM.Potentials "
+        "template would double-count and confuse the user"
+    )
 
 
 # --------------------------------------------------------------------- #
