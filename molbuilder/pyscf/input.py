@@ -106,9 +106,15 @@ def _resolve_ecp(struct: Structure, cfg: PySCFConfig) -> Optional[str]:
     if cfg.ecp == "":
         return None        # explicitly disabled
     if cfg.ecp is not None:
-        return cfg.ecp     # explicit user choice
-    # Auto-detect.  Skip when basis is def2-* (it bundles ECP).
-    if cfg.basis.lower().startswith("def2-"):
+        return cfg.ecp     # explicit user choice (str or per-element dict)
+    # Auto-detect.  Skip when basis is in the def2 family (it bundles ECP).
+    # PySCF accepts three equivalent spellings:
+    #   "def2-SVP"   "def2_SVP"   "def2svp"
+    # All three resolve to the same internal table.  Match on the bare
+    # "def2" prefix so the underscore / no-separator forms aren't
+    # mis-classified as non-def2 and an extra ecp= gets emitted on
+    # top of the bundled one (silent double-count).
+    if cfg.basis.lower().startswith("def2"):
         return None
     has_heavy = any(_ATOMIC_NUMBER.get(el, 0) > 36 for el in struct.elements)
     return "lanl2dz" if has_heavy else None
@@ -323,7 +329,15 @@ def render_script(struct: Structure,
     out.append("    ''',")
     out.append(f'    basis      = "{cfg.basis}",')
     if ecp_chosen:
-        out.append(f'    ecp        = "{ecp_chosen}",')
+        # ECP can be either a string ("lanl2dz") or a per-element dict
+        # ({"Pt": "lanl2dz", "Au": "stuttgart"}) -- both are valid PySCF
+        # gto.M() inputs.  String -> emit as quoted literal; dict ->
+        # emit as a Python dict-literal so PySCF sees it as a dict, not
+        # a string-with-braces (which it would reject as an unknown name).
+        if isinstance(ecp_chosen, dict):
+            out.append(f'    ecp        = {ecp_chosen!r},')
+        else:
+            out.append(f'    ecp        = "{ecp_chosen}",')
     out.append(f"    charge     = {charge},")
     out.append(f"    spin       = {cfg.spin},")
     out.append(f"    symmetry   = {cfg.symmetry},")

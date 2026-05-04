@@ -42,10 +42,12 @@ class PySCFConfig:
     dispersion: Optional[str] = "d3bj"  # None / "d3" / "d3bj" / "d4"
     # Effective Core Potential (gap #8).  None = auto: emit
     # ecp="lanl2dz" when heavy atoms (Z > 36) are present AND the
-    # basis is non-def2 (def2-* families bundle their own ECP).
-    # Set to a name string ("lanl2dz", "stuttgart", "def2", ...) to
-    # force a specific ECP; set to "" to disable auto-emit.
-    ecp: Optional[str] = None
+    # basis is not in the def2 family (def2-SVP / def2_SVP / def2svp
+    # all bundle their own ECP).  Set to a name string ("lanl2dz",
+    # "stuttgart", "def2", ...) to force a specific ECP; pass a dict
+    # ({"Pt": "lanl2dz", "Au": "stuttgart"}) for per-element control.
+    # Set to "" to disable auto-emit.
+    ecp: "str | dict | None" = None
 
     # ---------------- Solvent (optional) ----------------
     solvent: Optional[str] = None       # None or one of _SOLVENTS keys
