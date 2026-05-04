@@ -347,6 +347,13 @@ def render_script(struct: Structure,
     out.append(f'mf.init_guess = "{cfg.scf_init_guess}"')
     if cfg.level_shift:
         out.append(f"mf.level_shift = {cfg.level_shift}")
+    # Hard-SCF troubleshooting knobs (gap #10).  Only emit when
+    # bumped from PySCF defaults so tutorial scripts stay clean
+    # for the easy-converge path.
+    if cfg.diis_space != 8:
+        out.append(f"mf.diis_space = {cfg.diis_space}")
+    if cfg.damp:
+        out.append(f"mf.damp = {cfg.damp}")
     if cfg.chkfile:
         out.append('mf.chkfile = JOB + ".chk"')
 

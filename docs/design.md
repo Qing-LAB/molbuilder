@@ -891,9 +891,18 @@ triple (generator change + validation rule + spec test) in Phase 6.
    relative to the optimisation.  Test
    `test_gap_9_pyscf_reevaluates_energy_at_optimized_geom` flipped
    from xfail to passing.
-10. **No `mf.diis_space` / `mf.damp` in `PySCFConfig`.** Hard-SCF
+10. ~~**No `mf.diis_space` / `mf.damp` in `PySCFConfig`.** Hard-SCF
     troubleshooting requires editing the generated script. Mentioned in
-    the troubleshooting block; could be exposed as config fields.
+    the troubleshooting block; could be exposed as config fields.~~
+    **Fixed:** `PySCFConfig.diis_space` (default 8 = PySCF's default;
+    bump to 12-20 for oscillating SCFs) and `PySCFConfig.damp`
+    (default 0; 0.3-0.5 helps when DIIS alone isn't enough) are
+    now first-class fields with metadata.  Generator emits
+    `mf.diis_space = N` / `mf.damp = X` only when bumped from
+    defaults so easy-converge scripts stay clean.  Tests
+    `test_gap_10_pyscf_config_exposes_diis_space_and_damp` (xfail
+    flipped) and `test_gap_10_diis_damp_emitted_only_when_tuned`
+    pin the field presence + the conditional emission.
 
 ### Generated-output style requirements
 
