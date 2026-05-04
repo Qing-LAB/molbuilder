@@ -108,15 +108,28 @@ def build_rna(
 def _maybe_add_hydrogens(struct: Structure, add: bool) -> Structure:
     """Run chemistry.add_hydrogens if the user wants H, but skip the
     round-trip when the structure already has a sensible H count
-    (Amber/RDKit backends produce H-complete output)."""
+    (Amber/RDKit backends produce H-complete output).
+
+    Threshold rationale: organic molecules sit at H/heavy ~ 0.6-1.5;
+    nucleic acids ~ 0.6; peptides ~ 0.7-0.9.  We gate at 0.5 so:
+
+      * X3DNA fiber's near-zero-H output         (ratio ~0.05) -> add
+      * a partially-protonated user input        (ratio ~0.4)  -> add
+      * fully-built amber tleap output           (ratio ~0.63) -> skip
+      * fully-built rdkit nucleic SMILES output  (ratio ~0.72) -> skip
+
+    Pre-fix the gate was at 0.3, which silently skipped partial cases
+    (a user-loaded structure missing N-H or amine H would slip through
+    with no auto-fix).  The Layer-1 h_ratio validator uses < 0.3 -- so
+    a structure between 0.3 and 0.5 would have been doubly missed.
+    Widening to 0.5 closes that gap without false-positive-ing on any
+    canonical backend output.
+    """
     if not add:
         return struct
     n_h     = sum(1 for e in struct.elements if e == "H")
     n_heavy = sum(1 for e in struct.elements if e != "H")
-    # Heuristic threshold: organic molecules sit at H/heavy ~ 0.6-1.5.
-    # 0.3 catches X3DNA's heavy-atom skeleton (~0 H) without triggering
-    # on already-protonated Amber / RDKit output.
-    if n_heavy and (n_h / n_heavy) >= 0.3:
+    if n_heavy and (n_h / n_heavy) >= 0.5:
         return struct
     from .chemistry import add_hydrogens as _add_hydrogens
     return _add_hydrogens(struct)

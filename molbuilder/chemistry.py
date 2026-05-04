@@ -431,16 +431,23 @@ def _drop_overlapping_hydrogens(struct: Structure) -> Structure:
         something we silently fix.
 
     Heavy atoms are never removed.
+
+    H-H ghost pair handling: when two H atoms land at identical
+    coordinates (rare, but possible for tautomer-ambiguous sites),
+    a naive symmetric pass would mark BOTH as overlapping and drop
+    them both -- removing real protons.  We track ``already_dropped``
+    so once an H is flagged, it can't cause its peer to be flagged
+    too.  Net effect on an H-H ghost pair: drop one, keep the other.
     """
     pos      = struct.positions
     elements = struct.elements
     n        = len(pos)
     keep     = np.ones(n, dtype=bool)
     for i in range(n):
-        if elements[i] != "H":
+        if elements[i] != "H" or not keep[i]:
             continue
         for j in range(n):
-            if i == j:
+            if i == j or not keep[j]:
                 continue
             if float(np.linalg.norm(pos[i] - pos[j])) < 0.05:
                 keep[i] = False

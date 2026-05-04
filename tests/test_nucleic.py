@@ -92,6 +92,77 @@ def test_dna_default_protonation_yields_simulation_ready_h_count(backend):
     )
 
 
+def test_maybe_add_hydrogens_gate_runs_on_partial_protonation():
+    """The _maybe_add_hydrogens gate skips chemistry.add_hydrogens
+    when H/heavy is already in the typical organic range.  Pre-fix
+    the threshold was 0.3 -- which would skip a structure missing
+    every base amine but with a few sugar H's still present (ratio
+    ~0.4); user shipped a broken-Watson-Crick chain with no signal.
+    The widened threshold (0.5) catches that gap.
+
+    Synthesise a 'partially protonated' Structure with H/heavy = 0.4
+    and confirm the gate routes through to chemistry.add_hydrogens
+    (which would top off the missing H if RDKit/OpenBabel are available;
+    we only check the gate decision here, not the engine output)."""
+    import numpy as np
+    from molbuilder.structure import Structure
+    from molbuilder.nucleic import _maybe_add_hydrogens
+
+    # 10 heavy + 4 H = ratio 0.4 -- in the gap zone (post-fix: triggers add)
+    elements = ["C"] * 10 + ["H"] * 4
+    positions = np.array([(i * 1.5, 0, 0) for i in range(14)], dtype=float)
+    s = Structure(elements=elements, positions=positions)
+
+    # Sentinel: monkey-patch chemistry.add_hydrogens to record the call,
+    # so we don't depend on whether OpenBabel / RDKit are installed.
+    import molbuilder.chemistry as chem
+    called = {"n": 0}
+    real = chem.add_hydrogens
+    def spy(struct):
+        called["n"] += 1
+        return struct  # pass-through
+    chem.add_hydrogens = spy
+    try:
+        _maybe_add_hydrogens(s, add=True)
+    finally:
+        chem.add_hydrogens = real
+    assert called["n"] == 1, (
+        f"_maybe_add_hydrogens should call chemistry.add_hydrogens "
+        f"on a partial-protonation structure (ratio 0.4); got "
+        f"{called['n']} calls"
+    )
+
+
+def test_maybe_add_hydrogens_gate_skips_already_protonated():
+    """The flip side: a fully-protonated structure (ratio >= 0.5)
+    must NOT trigger the round-trip -- both Amber-tleap (ratio ~0.63)
+    and RDKit-via-SMILES (ratio ~0.72) produce H-complete output and
+    re-running RDKit's AddHs(addCoords=True) on them does an
+    unnecessary PDB round-trip that can micro-shift coordinates."""
+    import numpy as np
+    from molbuilder.structure import Structure
+    from molbuilder.nucleic import _maybe_add_hydrogens
+
+    # 10 heavy + 7 H = ratio 0.7 -- safely above 0.5
+    elements = ["C"] * 10 + ["H"] * 7
+    positions = np.array([(i * 1.5, 0, 0) for i in range(17)], dtype=float)
+    s = Structure(elements=elements, positions=positions)
+
+    import molbuilder.chemistry as chem
+    called = {"n": 0}
+    real = chem.add_hydrogens
+    def spy(struct):
+        called["n"] += 1
+        return struct
+    chem.add_hydrogens = spy
+    try:
+        out = _maybe_add_hydrogens(s, add=True)
+    finally:
+        chem.add_hydrogens = real
+    assert called["n"] == 0, "fully-protonated input should skip add_hydrogens"
+    assert out is s
+
+
 def test_dna_add_hydrogens_false_returns_heavy_skeleton():
     """The kwarg has to be honored: explicitly opting out skips the
     H-add step.  Useful when the user wants to inspect the fiber
