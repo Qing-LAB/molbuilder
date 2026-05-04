@@ -338,11 +338,6 @@ def test_gap_9_pyscf_reevaluates_energy_at_optimized_geom(h2):
 # --------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    reason="design.md gap #10: PySCFConfig has no diis_space / damp "
-           "fields; hard-SCF troubleshooting requires script-editing",
-    strict=True,
-)
 def test_gap_10_pyscf_config_exposes_diis_space_and_damp():
     """PySCFConfig should expose diis_space and damp as fields so
     users with hard-converging SCFs can tune them through the
@@ -358,3 +353,31 @@ def test_gap_10_pyscf_config_exposes_diis_space_and_damp():
         "PySCFConfig.damp missing -- hard-SCF troubleshooting knob "
         "isn't exposed."
     )
+
+
+def test_gap_10_diis_damp_emitted_only_when_tuned(h2):
+    """Defaults (diis_space=8, damp=0) should NOT appear in the
+    generated script -- they match PySCF's own defaults and adding
+    them is just noise.  Bumping either MUST surface as a
+    `mf.diis_space = N` / `mf.damp = X` line."""
+    def live_lines(text, needle):
+        # Filter commented-out lines (the troubleshooting block at
+        # end of script mentions both knobs as hints in `#` lines).
+        return [ln for ln in text.splitlines()
+                if needle in ln and not ln.lstrip().startswith("#")]
+
+    cfg_default = PySCFConfig(job_name="h2", preopt=False,
+                              density_fit=False, dispersion=None)
+    s_default = render_script(h2, cfg_default)
+    assert live_lines(s_default, "mf.diis_space") == []
+    assert live_lines(s_default, "mf.damp")       == []
+
+    # Hard-SCF case: both bumped to typical troubleshooting values
+    cfg_hard = PySCFConfig(job_name="h2", preopt=False,
+                           density_fit=False, dispersion=None,
+                           diis_space=16, damp=0.4)
+    s_hard = render_script(h2, cfg_hard)
+    live_diis = live_lines(s_hard, "mf.diis_space = 16")
+    live_damp = live_lines(s_hard, "mf.damp = 0.4")
+    assert live_diis, "mf.diis_space = 16 must appear as live code"
+    assert live_damp, "mf.damp = 0.4 must appear as live code"

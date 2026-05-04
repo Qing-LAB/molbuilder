@@ -69,6 +69,21 @@ class PySCFConfig:
         "tier":  "advanced",
         "help":  "0.1-0.3 helps hard SCFs; 0 if SCF converges cleanly",
     })
+    # Hard-SCF troubleshooting knobs (gap #10).  Both default to
+    # PySCF's own defaults so behaviour is unchanged for the
+    # easy-converge case; bump them when SCF oscillates.
+    diis_space: int = field(default=8, metadata={
+        "label": "mf.diis_space",
+        "range": (4, 20),
+        "tier":  "advanced",
+        "help":  "DIIS subspace size; bump to 12-20 for oscillating SCFs",
+    })
+    damp: float = field(default=0.0, metadata={
+        "label": "mf.damp",
+        "range": (0.0, 0.9),
+        "tier":  "advanced",
+        "help":  "Roothaan damping factor; 0.3-0.5 helps when DIIS alone isn't enough",
+    })
 
     # ---------------- Pre-optimization (optional warm-up) ----------------
     preopt: bool = False
