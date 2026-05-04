@@ -278,6 +278,17 @@ def render_script(struct: Structure,
         out.append('_save_xyz(mol, JOB + "_initial.xyz", "Initial geometry (input)")')
     out.append("")
 
+    # ---------------- Unified molwatch log emitter (early, additive) ------
+    # Defined and instantiated NOW -- before preopt -- so the log file
+    # (header + initial-preview block) exists the moment the script
+    # starts running.  Preopt can take hours on a real molecule; we
+    # don't want the Watch tab staring at "no file to load" the whole
+    # time.  SCF cycle hooks are wired per-stage at each mf object
+    # below (mf1 for preopt, mf for production).  The opt-step hook
+    # is wired at each `optimize(...)` call.
+    if cfg.optimize and cfg.molwatch_log and cfg.optimizer == "geometric":
+        out += _emit_molwatch_emitter(v)
+
     # ------------------------------------------------------------- preopt
     if cfg.preopt and cfg.optimize:
         out += _emit_preopt_block(cfg, charge, v)
@@ -338,13 +349,14 @@ def render_script(struct: Structure,
         out.append(f"mf.level_shift = {cfg.level_shift}")
     if cfg.chkfile:
         out.append('mf.chkfile = JOB + ".chk"')
-    out.append("")
 
-    # ---------------- Unified molwatch log emitter (optional, additive) ---
-    # Defined here so its hooks are wired BEFORE optimize() runs but AFTER
-    # mf has its final form (post-pre-opt rebind, density fitting, etc.).
+    # Wire the production-mf SCF callback so per-cycle SCF history
+    # is captured for production opt steps.  The emitter itself was
+    # instantiated earlier (before preopt); we just attach the hook
+    # here once mf is in its final form.
     if cfg.optimize and cfg.molwatch_log and cfg.optimizer == "geometric":
-        out += _emit_molwatch_emitter(v)
+        out.append(_emit_molwatch_callback_wire("mf"))
+    out.append("")
 
     # ------------------------------------------------------------- run
     if cfg.optimize:
@@ -446,6 +458,12 @@ def _emit_preopt_block(cfg: PySCFConfig, charge: int, v: bool) -> List[str]:
         out.append(f'mf1.disp = "{cfg.preopt_dispersion}"')
     out.append(f"mf1.conv_tol  = {cfg.scf_conv_tol:.0e}")
     out.append(f"mf1.max_cycle = {cfg.scf_max_cycle}")
+    # Wire the preopt SCF callback so the molwatch log captures preopt
+    # SCF history too -- otherwise the user only sees a single block per
+    # preopt opt step with empty scf_history (and the "Watch tab can't
+    # see anything until preopt finishes" UX bug returns at SCF granularity).
+    if cfg.molwatch_log and cfg.optimizer == "geometric":
+        out.append(_emit_molwatch_callback_wire("mf1"))
     out.append("")
     out.append("mol_pre = optimize(")
     out.append("    mf1,")
@@ -463,6 +481,13 @@ def _emit_preopt_block(cfg: PySCFConfig, charge: int, v: bool) -> List[str]:
             out.append("    #   <JOB>_preopt_optim.xyz")
             out.append("    # so molwatch can watch either stage live.")
         out.append('    prefix            = JOB + "_preopt",')
+    if cfg.molwatch_log and cfg.optimizer == "geometric":
+        if v:
+            out.append("    # Stream preopt opt steps to <JOB>.molwatch.log so")
+            out.append("    # the Watch tab shows progress from frame 1 onwards")
+            out.append("    # rather than waiting for the (potentially long) preopt")
+            out.append("    # to finish before the first step is logged.")
+        out.append("    callback          = _molwatch.opt_step_hook,")
     out.append(")")
     out.append('print("Pre-opt done; carrying optimised geometry into the main run.")')
     out.append("")
@@ -487,12 +512,21 @@ def _emit_preopt_block(cfg: PySCFConfig, charge: int, v: bool) -> List[str]:
 def _emit_molwatch_emitter(v: bool) -> List[str]:
     """Inline streaming writer for ``<JOB>.molwatch.log``.
 
-    The emitter is wired in two places:
+    The emitter is instantiated **early** -- BEFORE preopt -- so the
+    log file (header + initial-preview block) exists from the moment
+    the script starts running.  Preopt can take hours on a real
+    molecule; without this ordering the Watch tab would have no file
+    to load until preopt finishes, defeating the "live trajectory"
+    promise.
 
-      * ``mf.callback = _molwatch.scf_cycle_hook``  (per SCF cycle)
-      * ``optimize(..., callback=_molwatch.opt_step_hook)`` (per opt step)
+    Hooks are wired separately at each stage:
 
-    Each opt step it flushes one block to the unified log.  Block layout
+      * ``mf1.callback = _molwatch.scf_cycle_hook``  (preopt SCF cycles)
+      * ``optimize(mf1, ..., callback=_molwatch.opt_step_hook)`` (preopt steps)
+      * ``mf.callback = _molwatch.scf_cycle_hook``   (production SCF cycles)
+      * ``optimize(mf,  ..., callback=_molwatch.opt_step_hook)`` (production steps)
+
+    Each opt step flushes one block to the unified log.  Block layout
     is heavily marker-based so a downstream parser can locate every
     field by string match -- no positional fragility:
 
@@ -664,10 +698,24 @@ def _emit_molwatch_emitter(v: bool) -> List[str]:
     out.append("            fh.flush()")
     out.append("        self._step += 1")
     out.append("")
+    # Instantiate as early as possible (BEFORE preopt) so the log
+    # file -- with header + initial-preview block -- exists the
+    # moment the script starts running.  Otherwise a long preopt
+    # (which can take hours on a real molecule) would mean the user
+    # has nothing to load on the Watch tab until preopt finishes.
+    # The SCF callback is wired separately at each stage's mf object
+    # (see emit_scf_callback_wiring below).
     out.append('_molwatch = _MolwatchEmitter(JOB + ".molwatch.log", JOB, mol)')
-    out.append("mf.callback = _molwatch.scf_cycle_hook")
     out.append("")
     return out
+
+
+def _emit_molwatch_callback_wire(mf_var: str) -> str:
+    """One-line snippet that wires a per-cycle SCF callback to the
+    given mean-field object.  Used at both stages so the molwatch
+    log captures SCF iterations from preopt and production runs
+    alike."""
+    return f"{mf_var}.callback = _molwatch.scf_cycle_hook"
 
 
 def _emit_save_helper(v: bool) -> List[str]:
