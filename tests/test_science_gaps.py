@@ -247,12 +247,6 @@ def test_gap_6_pyscf_emits_post_processing_hook(h2):
 # --------------------------------------------------------------------- #
 
 
-@pytest.mark.xfail(
-    reason="design.md gap #7: requirements-runtime.txt doesn't "
-           "document the SIESTA version range targeted by the "
-           "emitted keywords",
-    strict=True,
-)
 def test_gap_7_requirements_documents_siesta_version_range():
     """requirements-runtime.txt should mention the SIESTA version
     range targeted by the FDF emission -- emitted keywords like
