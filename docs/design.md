@@ -856,10 +856,20 @@ triple (generator change + validation rule + spec test) in Phase 6.
    for phonon / vibrational work; loosen back to 0.02 for screening.
    Test `test_gap_5_siesta_pao_energy_shift_default_is_tight` flipped
    from xfail to passing.
-6. **No post-processing block in either generator.** Add a commented-out
+6. ~~**No post-processing block in either generator.** Add a commented-out
    `# --- Post-processing hook ---` placeholder to both with 2-3 common
    follow-ups (SIESTA: `BandLines` / `PDOS`; PySCF: `analyze()` /
-   `mulliken_pop()` / `dip_moment()`).
+   `mulliken_pop()` / `dip_moment()`).~~ **Fixed:**
+   * SIESTA generator emits a `# === Post-processing hook (commented
+     templates) ===` block at end of FDF with four templates:
+     `WriteMullikenPop`, `%block BandLines`, `%block ProjectedDensityOfStates`,
+     `SaveRho` / `SaveDeltaRho` / `SaveElectrostaticPotential`.
+   * PySCF generator emits an analogous block with `mulliken_pop`,
+     `dip_moment`, `mf.analyze()`, and a Lowdin / NPA pointer.
+   Both default-disabled (commented).  Tests
+   `test_gap_6_siesta_emits_post_processing_hook` and
+   `test_gap_6_pyscf_emits_post_processing_hook` flipped from xfail
+   to passing.
 7. **No SIESTA minimum version pinned.** `requirements-runtime.txt`
    doesn't declare a minimum; emitted keywords like `DM.Energy.Tolerance`
    may be silently ignored on old builds. Document the targeted range.

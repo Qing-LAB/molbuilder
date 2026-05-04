@@ -692,6 +692,44 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
                 "#   * switch MD.TypeOfRun to Broyden (often robust on",
                 "#     flat regions) or FIRE (better for >100 atoms)",
             ]
+
+    # Post-processing hook (gap #6).  Commented templates for the
+    # follow-up analyses users typically want after a successful
+    # relaxation.  Default-disabled so the script's behaviour is
+    # unchanged; uncomment + tune to enable.
+    out.append("")
+    out.append("# === Post-processing hook (commented templates) ===")
+    if v:
+        out += [
+            "# Common follow-ups after a successful relaxation.  All",
+            "# four are independent: enable any subset.  Each block",
+            "# adds at most one extra (cheap) SCF or one parsing pass",
+            "# over the saved DM, so the cost is negligible compared",
+            "# to the optimisation that just ran.",
+        ]
+    out += [
+        "#",
+        "# 1. Mulliken population analysis (per-atom charge breakdown):",
+        "# WriteMullikenPop    1     # 0=off, 1=atom, 2=atom+orbital",
+        "#",
+        "# 2. Band structure along high-symmetry path (set kgrid > 1):",
+        "# %block BandLines",
+        "#    1   0.0  0.0  0.0   \\Gamma",
+        "#   30   0.5  0.0  0.0   X",
+        "#   30   0.5  0.5  0.0   M",
+        "#   30   0.0  0.0  0.0   \\Gamma",
+        "# %endblock BandLines",
+        "#",
+        "# 3. Projected DOS (per-orbital DOS, energy window in eV):",
+        "# %block ProjectedDensityOfStates",
+        "#   -10.0  5.0  0.05  500  eV",
+        "# %endblock ProjectedDensityOfStates",
+        "#",
+        "# 4. Charge-density grid (volumetric file for visualisation):",
+        "# SaveRho             true",
+        "# SaveDeltaRho        true",
+        "# SaveElectrostaticPotential  true",
+    ]
     return "\n".join(out) + "\n"
 
 
