@@ -49,11 +49,20 @@ class SiestaConfig:
 
     # Basis
     basis_size: str = "DZP"
-    pao_energy_shift: float = field(default=0.02, metadata={
+    pao_energy_shift: float = field(default=0.01, metadata={
         "label": "PAO.EnergyShift", "unit": "Ry",
         "range": (0.001, 0.1),
         "tier":  "advanced",
-        "help":  "smaller = more diffuse / more accurate; production work uses 0.005-0.01",
+        # Default tightened from 0.02 -> 0.01 Ry (gap #5).  SIESTA's
+        # own internal default (0.02) is fine for screening / quick
+        # scans but produces under-converged PAO tails for production
+        # work; the SIESTA manual itself recommends 0.001-0.01 Ry for
+        # "well-converged" calculations.  0.01 is the production-side
+        # of "well-converged" -- ~2x slower than 0.02 but bond
+        # energies converge to within a few meV instead of tens.
+        # Loosen back to 0.02 only for screening; tighten to 0.005
+        # for phonon / vibrational work.
+        "help":  "smaller = more diffuse / more accurate; production work uses 0.005-0.01 Ry",
     })
 
     # XC

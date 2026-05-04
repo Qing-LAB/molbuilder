@@ -847,8 +847,15 @@ triple (generator change + validation rule + spec test) in Phase 6.
    xfail is flipped to a passing test
    (`test_gap_4_pyscf_uks_emits_stability_analysis`); a complementary
    test pins that closed-shell scripts don't carry the call.
-5. **`PAO.EnergyShift 0.02 Ry` default is loose.** Production SIESTA
-   work typically uses 0.005 – 0.01 Ry. Tighten the default to 0.01 Ry.
+5. ~~**`PAO.EnergyShift 0.02 Ry` default is loose.** Production SIESTA
+   work typically uses 0.005 – 0.01 Ry. Tighten the default to 0.01 Ry.~~
+   **Fixed:** `SiestaConfig.pao_energy_shift` default is now 0.01 Ry
+   (was 0.02; SIESTA's own default).  ~2x slower SCF for far better
+   PAO-tail convergence -- production-side of "well-converged" per
+   the SIESTA manual's 0.001-0.01 recommendation.  Tighten to 0.005
+   for phonon / vibrational work; loosen back to 0.02 for screening.
+   Test `test_gap_5_siesta_pao_energy_shift_default_is_tight` flipped
+   from xfail to passing.
 6. **No post-processing block in either generator.** Add a commented-out
    `# --- Post-processing hook ---` placeholder to both with 2-3 common
    follow-ups (SIESTA: `BandLines` / `PDOS`; PySCF: `analyze()` /
