@@ -147,3 +147,68 @@ def test_empty_structure():
     assert formal_charge_from_phosphates(s) == 0
     _, n = protonate_phosphate_oxygens(s)
     assert n == 0
+
+
+# --------------------------------------------------------------------- #
+#  _drop_overlapping_hydrogens: ghost-H removal                         #
+# --------------------------------------------------------------------- #
+
+
+def test_drop_overlapping_hydrogens_h_on_heavy_drops_only_the_h():
+    """The dominant failure mode: an H placed at its parent heavy
+    atom's coordinates by RDKit's AddHs(addCoords=True).  The ghost
+    H is dropped; the heavy atom stays."""
+    from molbuilder.chemistry import _drop_overlapping_hydrogens
+    s = Structure(
+        elements=["C", "H", "H"],
+        positions=np.array([
+            [0.0, 0.0, 0.0],     # heavy C
+            [0.0, 0.0, 0.0],     # ghost H (zero distance from C)
+            [1.10, 0.0, 0.0],    # real C-H bond
+        ], dtype=float),
+    )
+    out = _drop_overlapping_hydrogens(s)
+    assert out.elements == ["C", "H"], out.elements
+    # The kept H must be the one at 1.10 A, not the ghost.
+    assert float(out.positions[1, 0]) == pytest.approx(1.10)
+
+
+def test_drop_overlapping_hydrogens_h_h_pair_keeps_one():
+    """Pre-fix: a symmetric pass marked BOTH H atoms of an H-H ghost
+    pair as overlapping (each saw the other within 0.05 A) and dropped
+    them both -- silently removing real protons.  The fix tracks
+    which atoms are already-marked-dropped so the second H can't
+    cause the first to be dropped.  Net effect: one H survives."""
+    from molbuilder.chemistry import _drop_overlapping_hydrogens
+    s = Structure(
+        elements=["O", "H", "H"],
+        positions=np.array([
+            [0.00, 0.0, 0.0],    # parent O
+            [0.96, 0.0, 0.0],    # H1
+            [0.96, 0.0, 0.0],    # H2 -- ghost copy of H1 (zero distance)
+        ], dtype=float),
+    )
+    out = _drop_overlapping_hydrogens(s)
+    # Pre-fix: 0 H survived.  Post-fix: exactly 1 H survives.
+    assert out.elements.count("H") == 1, (
+        f"H-H ghost pair: expected 1 H to survive, got {out.elements}"
+    )
+    # The O is never touched (heavy atoms are not candidates).
+    assert "O" in out.elements
+
+
+def test_drop_overlapping_hydrogens_no_overlap_returns_struct_unchanged():
+    """Identity case: no ghosts, no removals -- the function should
+    return the original Structure object (cheap shortcut)."""
+    from molbuilder.chemistry import _drop_overlapping_hydrogens
+    s = Structure(
+        elements=["O", "H", "H"],
+        positions=np.array([
+            [0.000, 0.000, 0.000],
+            [0.957, 0.000, 0.000],
+            [-0.24, 0.927, 0.000],
+        ], dtype=float),
+    )
+    out = _drop_overlapping_hydrogens(s)
+    # Same object (the function returns `struct` early when keep.all()).
+    assert out is s
