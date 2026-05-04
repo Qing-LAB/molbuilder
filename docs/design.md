@@ -805,14 +805,26 @@ Identified during the 2026-05-01 design review. All ten confirmed
 present and unfixed in the audit on the same date. Each lands as the
 triple (generator change + validation rule + spec test) in Phase 6.
 
-1. **`SpinTotal` keyword in FDF (`generators/siesta.py`, line ~587 in
+1. ~~**`SpinTotal` keyword in FDF (`generators/siesta.py`, line ~587 in
    pre-split file) is probably not a real SIESTA keyword.** SIESTA uses
    `Spin.Fix true` + `Spin.Total <v>`. Verify against the SIESTA manual
    for the targeted version range and fix the emission. (Currently
-   silently ignored by SIESTA's fdf parser on a value mismatch.)
-2. **`SpinPolarized true` (line ~579 in pre-split file) is the v4-era
+   silently ignored by SIESTA's fdf parser on a value mismatch.)~~
+   **Fixed:** generator now emits `Spin.Fix true` + `Spin.Total <v>`
+   as a paired two-line block.  Test
+   `test_gap_1_siesta_emits_spin_total_with_dot` flipped from xfail
+   to passing; `test_c2_spin_total_emits_dotted_form_with_fix`
+   pins the new form + asserts `SpinTotal ` (legacy bogus token)
+   never appears.
+2. ~~**`SpinPolarized true` (line ~579 in pre-split file) is the v4-era
    keyword.** SIESTA v5 prefers single-line `Spin polarized`. Either
-   feature-detect or document the targeted SIESTA version range.
+   feature-detect or document the targeted SIESTA version range.~~
+   **Fixed:** generator emits the v5 single-line `Spin polarized`.
+   Targeted SIESTA range now documented in the spin block's verbose
+   comments (4.1 -- 5.x; v4 back-compat accepted but deprecated in v5+).
+   Test `test_gap_2_siesta_emits_v5_spin_block` flipped to passing;
+   `test_c2_spin_polarized_emits_v5_form` pins the v5 form + asserts
+   `SpinPolarized` (legacy v4 token) never appears.
 3. ~~**No SIESTA dispersion-correction emission.** For organic /
    biomolecule work without a vdW-aware functional, plain PBE / B3LYP
    underbinds. Add a commented-out `%block MM.Potentials` (D2/D3

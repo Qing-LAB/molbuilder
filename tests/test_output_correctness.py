@@ -71,33 +71,54 @@ def test_c1_initial_xyz_save_helper_defined_early(small_struct):
 # --------------------------------------------------------------------- #
 
 
-def test_c2_default_no_spinpolarized_block(small_struct):
-    """Default closed-shell: no SpinPolarized block in the FDF."""
+def test_c2_default_no_spin_block(small_struct):
+    """Default closed-shell: no Spin block in the FDF."""
     fdf = render_fdf(small_struct, SiestaConfig(verbose_comments=False))
+    # Don't match "Spin." (which is part of comments / other tokens) --
+    # match the keyword line specifically.
+    import re
+    assert not re.search(r"^\s*Spin\s+polarized\s*$", fdf, re.MULTILINE)
+    assert not re.search(r"^\s*Spin\.Fix",            fdf, re.MULTILINE)
+    # And the legacy bogus tokens must NEVER appear (gap #1+#2).
+    assert "SpinPolarized" not in fdf
+    assert "SpinTotal " not in fdf
+
+
+def test_c2_spin_polarized_emits_v5_form(small_struct):
+    """Open-shell: emit `Spin polarized` (v5 single-line form), NOT
+    the v4-era `SpinPolarized true` (gap #2)."""
+    import re
+    fdf = render_fdf(small_struct,
+                     SiestaConfig(spin_polarized=True, verbose_comments=False))
+    assert re.search(r"^\s*Spin\s+polarized\s*$", fdf, re.MULTILINE)
+    # The legacy v4 form should be absent.
     assert "SpinPolarized" not in fdf
 
 
-def test_c2_spin_polarized_emits_block(small_struct):
+def test_c2_spin_total_emits_dotted_form_with_fix(small_struct):
+    """SIESTA's total-spin pin is a TWO-line block (gap #1):
+        Spin.Fix    true
+        Spin.Total  <v>
+    The bogus single-token `SpinTotal <v>` (silently ignored by SIESTA)
+    must be gone, and Spin.Fix must always accompany Spin.Total or
+    SIESTA ignores the constraint."""
+    import re
+
+    # spin_total set but spin_polarized off -> no Spin.Total emitted
     fdf = render_fdf(small_struct,
-                     SiestaConfig(spin_polarized=True, verbose_comments=False))
-    assert "SpinPolarized     true" in fdf
+                     SiestaConfig(spin_total=1.0, verbose_comments=False))
+    assert "Spin.Total" not in fdf
+    assert "SpinTotal"  not in fdf      # legacy bogus form
 
-
-def test_c2_spin_total_emitted_only_with_polarized(small_struct):
-    """SpinTotal is only meaningful when SpinPolarized is on."""
-    # spin_total set but spin_polarized off -> no SpinTotal in output
-    fdf = render_fdf(small_struct,
-                     SiestaConfig(spin_total=1.0,
-                                  verbose_comments=False))
-    assert "SpinTotal" not in fdf
-
-    # both set -> emit both
+    # both set -> emit Spin.Fix true + Spin.Total <v>
     fdf = render_fdf(small_struct,
                      SiestaConfig(spin_polarized=True,
                                   spin_total=2.0,
                                   verbose_comments=False))
-    assert "SpinPolarized     true" in fdf
-    assert "SpinTotal         2.0" in fdf
+    assert re.search(r"^\s*Spin\.Fix\s+true\s*$",  fdf, re.MULTILINE)
+    assert re.search(r"^\s*Spin\.Total\s+2\.0\s*$", fdf, re.MULTILINE)
+    # No SpinTotal anywhere (legacy form must be gone everywhere).
+    assert "SpinTotal " not in fdf
 
 
 # --------------------------------------------------------------------- #
