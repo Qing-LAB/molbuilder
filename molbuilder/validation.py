@@ -562,6 +562,46 @@ def _validate_pyscf(struct: Structure, cfg,
             "config.method",
         ))
 
+    # Inverse case: UKS / UHF with spin = 0 is almost always a mistake.
+    # The unrestricted formalism on a closed-shell system runs at ~2x
+    # the SCF cost (separate alpha / beta blocks), is more numerically
+    # fragile (broken-symmetry saddle points are reachable), and gives
+    # the same answer as RKS / RHF unless the user specifically wanted
+    # broken-symmetry (e.g. anti-ferromagnetic singlet).  Warn so the
+    # default-of-RKS user who flipped to UKS to "be safe" is told it's
+    # the wrong default-of-safe.
+    if cfg.spin == 0 and method in ("UKS", "UHF"):
+        issues.append(Issue(
+            "warn",
+            f"method = {method} (unrestricted) with spin = 0 (closed shell) "
+            f"runs the unrestricted formalism at ~2x the SCF cost of the "
+            f"corresponding R{method[1:]}; switch to R{method[1:]} unless you "
+            f"specifically want a broken-symmetry singlet "
+            f"(e.g. anti-ferromagnetic system)",
+            "config.method",
+        ))
+
+    # Hybrid functional (B3LYP, PBE0, M06-2X, wB97X) with grid_level < 4:
+    # forces become noisy at the ~1e-4 Ha/Bohr scale the optimizer
+    # cares about.  The molecule WILL relax, but the "converged" forces
+    # may have a noisy floor that prevents tight convergence.  Warn but
+    # allow -- the user may be doing screening at level 3 deliberately.
+    grid_level = getattr(cfg, "grid_level", None)
+    functional = (getattr(cfg, "functional", "") or "").upper()
+    is_hybrid = any(functional.startswith(p) for p in (
+        "B3", "PBE0", "M06", "WB97", "BHANDH", "X3LYP", "TPSS0", "MN15",
+    ))
+    if grid_level is not None and grid_level < 4 and is_hybrid:
+        issues.append(Issue(
+            "warn",
+            f"grid_level = {grid_level} with a hybrid functional "
+            f"({functional}): hybrid-DFT forces are noisy at this grid "
+            f"density (forces look ~1e-4 Ha/Bohr noise floor).  Bump to "
+            f"grid_level = 4 for production geometry optimisation; level "
+            f"3 is fine for energies / screening only",
+            "config.grid_level",
+        ))
+
     return issues
 
 

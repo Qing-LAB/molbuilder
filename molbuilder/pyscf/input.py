@@ -298,7 +298,7 @@ def render_script(struct: Structure,
     # ------------------------------------------------------------- molecule
     if v:
         out.append("# ============================================================")
-        out.append("#  1. Build the molecule")
+        out.append("#  Build the molecule")
         out.append("# ============================================================")
         out.append("# spin = 2S, NOT 2S+1.  Closed shell -> spin = 0.  Doublet ->")
         out.append("# spin = 1, triplet -> spin = 2 (with method='UKS').")
@@ -376,9 +376,9 @@ def render_script(struct: Structure,
     # ------------------------------------------------------------- main scf
     out.append("# ============================================================")
     if cfg.preopt and cfg.optimize:
-        out.append("#  3. Main run -- production functional / basis")
+        out.append("#  Main run -- production functional / basis")
     else:
-        out.append("#  2. SCF setup")
+        out.append("#  SCF setup")
     out.append("# ============================================================")
     if v:
         out.append("# DFT functional: B3LYP is the modern default for organic /")
@@ -449,7 +449,7 @@ def render_script(struct: Structure,
     if cfg.optimize:
         if v:
             out.append("# ============================================================")
-            out.append("#  4. Geometry optimization")
+            out.append("#  Geometry optimization")
             out.append("# ============================================================")
             out.append("# geomeTRIC is the recommended optimizer (translation-")
             out.append("# rotation-invariant internal coords, robust on large")
@@ -500,7 +500,7 @@ def render_script(struct: Structure,
     else:
         if v:
             out.append("# ============================================================")
-            out.append("#  4. Single-point SCF (no optimization)")
+            out.append("#  Single-point SCF (no optimization)")
             out.append("# ============================================================")
         out.append("e = mf.kernel()")
         out.append('print(f"Total energy: {e:.8f} Hartree")')
@@ -532,7 +532,7 @@ def render_script(struct: Structure,
     if method_class.startswith("U"):
         if v:
             out.append("# ============================================================")
-            out.append("#  4b. Open-shell stability check")
+            out.append("#  Open-shell stability check")
             out.append("# ============================================================")
             out.append("# Catches broken-symmetry saddles in UKS / UHF: a result")
             out.append("# that LOOKS converged but isn't the variational minimum.")
@@ -597,7 +597,7 @@ def _emit_preopt_block(cfg: PySCFConfig, charge: int, v: bool) -> List[str]:
     """Stage 1: cheap geometry warm-up before the production functional."""
     out: List[str] = []
     out.append("# ============================================================")
-    out.append("#  2. Pre-optimization  (cheap warm-up: PBE/def2-SVP)")
+    out.append("#  Pre-optimization  (cheap warm-up: PBE/def2-SVP)")
     out.append("# ============================================================")
     if v:
         out.append("# Why pre-optimize: hybrid functionals (B3LYP, M06-2X) are")
@@ -920,7 +920,7 @@ def _emit_save_helper(v: bool) -> List[str]:
     """Inline XYZ writer that doesn't require ase / pyscf.tools."""
     out: List[str] = []
     out.append("# ============================================================")
-    out.append("#  5. Save outputs")
+    out.append("#  Helper: XYZ writer (defined early so initial-geom snapshot works)")
     out.append("# ============================================================")
     if v:
         out.append("# Inline XYZ writer (Angstrom).  Avoids depending on ase or")

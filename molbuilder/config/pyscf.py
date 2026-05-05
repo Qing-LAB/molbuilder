@@ -65,11 +65,17 @@ class PySCFConfig:
         "tier":  "advanced",
     })
     scf_init_guess: str = "minao"       # "minao" / "atom" / "1e" / "huckel"
-    grid_level: int = field(default=3, metadata={
+    grid_level: int = field(default=4, metadata={
         "label": "DFT grid level",
         "range": (0, 9),
         "tier":  "advanced",
-        "help":  "0=coarse (rapid testing), 3=default, 5=tight, 9=ultra",
+        # Default tightened from 3 -> 4: hybrid functionals (B3LYP /
+        # PBE0 / M06-2X / wB97X-D, all our typical defaults) have
+        # noisy forces at level 3.  Level 4 makes the SCF + force
+        # noise floor low enough for tight geometry optimisation.
+        # Loosen back to 3 for screening; tighten to 5 for vibrational
+        # / phonon work.  Validator warns when level < 4 with hybrid.
+        "help":  "0=coarse, 3=screening, 4=default (hybrid-friendly), 5=tight, 9=ultra",
     })
     level_shift: float = field(default=0.0, metadata={
         "label": "Level shift", "unit": "Hartree",
