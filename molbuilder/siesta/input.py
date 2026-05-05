@@ -444,7 +444,7 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             "# DM.UseSaveDM: read .DM from previous run if present.  Free",
             "# warm-start; SIESTA silently ignores if no file exists.",
         ]
-        out.append("DM.UseSaveDM      true")
+        out.append("DM.UseSaveDM      .true.")
 
     # ---- Spin polarisation ---------------------------------------
     # Targeted SIESTA version range: 4.1 -- 5.x.
@@ -484,7 +484,7 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
                 "# multiplicity; without it SIESTA may settle into a wrong",
                 "# spin state.",
             ]
-            out.append("Spin.Fix          true")
+            out.append("Spin.Fix          .true.")
             out.append(f"Spin.Total        {cfg.spin_total}")
 
     # ---- NetCharge -----------------------------------------------
@@ -577,9 +577,30 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     out.append(f"Diag.ParallelOverK {'.true.' if over_k else '.false.'}")
     out.append("")
 
-    # Relaxation
+    # Relaxation / dynamics.  SIESTA uses different step-count and
+    # displacement-cap keywords per MD.TypeOfRun -- emitting the wrong
+    # one is silently ignored, so we branch here on relax_kind.
+    #   CG      -> MD.NumCGsteps      + MD.MaxCGDispl
+    #   Broyden -> MD.NumBroydenSteps + MD.MaxDispl
+    #   FIRE    -> MD.NumFIRESteps    + MD.MaxDispl
+    #   Verlet  -> MD.FinalTimeStep   + MD.InitialTemperature  (NVE)
+    #   Nose    -> MD.FinalTimeStep   + MD.InitialTemperature  (NVT)
     if cfg.relax_type and cfg.relax_type.lower() != "none":
-        out.append("# --- Geometry optimisation ---")
+        relax_kind = cfg.relax_type.strip().upper()
+        is_md = relax_kind in ("VERLET", "NOSE")
+        _STEP_KW = {
+            "CG":      "MD.NumCGsteps",
+            "BROYDEN": "MD.NumBroydenSteps",
+            "FIRE":    "MD.NumFIRESteps",
+            "VERLET":  "MD.FinalTimeStep",
+            "NOSE":    "MD.FinalTimeStep",
+        }
+        step_kw = _STEP_KW.get(relax_kind, "MD.NumCGsteps")
+        # Displacement-cap keyword: CG uses its own; Broyden / FIRE
+        # share MD.MaxDispl.  Not applicable to Verlet / Nose dynamics.
+        displ_kw = "MD.MaxCGDispl" if relax_kind == "CG" else "MD.MaxDispl"
+
+        out.append("# --- Geometry optimisation / dynamics ---")
         if v: out += [
             "# MD.TypeOfRun valid values:",
             "#   CG       Conjugate Gradients geometry optimisation (robust default)",
@@ -589,37 +610,70 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             "#   Nose     Nose-Hoover NVT molecular dynamics (constant temperature)",
         ]
         out.append(f"MD.TypeOfRun {cfg.relax_type}")
+
         if v: out += [
             "",
-            "# MD.NumCGsteps: maximum # of relaxation steps.  Typical run",
-            "# converges in 30-150; 200+ is a safety cap.",
+            f"# {step_kw}: number of {'MD time' if is_md else 'relaxation'} steps."
+            f"  Relaxation runs typically",
+            "# converge in 30-150; 200+ is a safety cap.  MD runs scale",
+            "# with the timescale you want sampled (steps * dt).",
         ]
-        out.append(f"MD.NumCGsteps {cfg.relax_steps}")
-        if v: out += [
-            "",
-            "# MD.MaxForceTol: convergence threshold on max atomic force.",
-            "# Range 0.005 - 0.05 eV/Ang.",
-            "#   0.04    SIESTA default (loose)",
-            "#   0.02    typical production",
-            "#   0.01    accurate properties",
-            "#   0.005   vibrational analysis / phonons",
-        ]
-        out.append(f"MD.MaxForceTol {cfg.relax_force_tol} eV/Ang")
-        if v: out += [
-            "",
-            "# MD.MaxCGDispl: maximum atom displacement per step (Ang).",
-            "# Smaller = cautious + stable.  0.05 is safe for nearly-converged",
-            "# structures; 0.10-0.20 is fine far from the minimum.",
-        ]
-        out.append(f"MD.MaxCGDispl {cfg.relax_max_displ} Ang")
+        out.append(f"{step_kw} {cfg.relax_steps}")
+
+        if not is_md:
+            # Force-based convergence + displacement cap apply only to
+            # the relaxation modes; SIESTA silently ignores them in
+            # Verlet / Nose dynamics.
+            if v: out += [
+                "",
+                "# MD.MaxForceTol: convergence threshold on max atomic force.",
+                "# Range 0.005 - 0.05 eV/Ang.",
+                "#   0.04    SIESTA default (loose)",
+                "#   0.02    typical production",
+                "#   0.01    accurate properties",
+                "#   0.005   vibrational analysis / phonons",
+            ]
+            out.append(f"MD.MaxForceTol {cfg.relax_force_tol} eV/Ang")
+            if v: out += [
+                "",
+                f"# {displ_kw}: maximum atom displacement per step (Ang).",
+                "# Smaller = cautious + stable.  0.05 is safe for nearly-converged",
+                "# structures; 0.10-0.20 is fine far from the minimum.",
+            ]
+            out.append(f"{displ_kw} {cfg.relax_max_displ} Ang")
+        else:
+            # Verlet / Nose dynamics need an initial-velocity seed; without
+            # MD.InitialTemperature SIESTA starts with zero velocities,
+            # producing a steepest-descent-like trajectory mislabelled as
+            # MD.  Use 300 K as a pragmatic default (room temperature,
+            # standard for biomolecular MD); the user can override by
+            # editing this line, or set MD.TargetTemperature for Nose.
+            if v: out += [
+                "",
+                "# MD.InitialTemperature: initial atomic-velocity seed (K).",
+                "# Without this, SIESTA starts at 0 K -- not real dynamics.",
+                "# For Nose-Hoover NVT also set MD.TargetTemperature.",
+            ]
+            out.append("MD.InitialTemperature 300.0 K")
+            if v: out += [
+                "",
+                "# MD.LengthTimeStep: integration timestep (fs).",
+                "# 1.0 fs is SIESTA's default and works for systems without H;",
+                "# bonded H typically needs 0.5 fs for stable energy conservation.",
+            ]
+            out.append("MD.LengthTimeStep 1.0 fs")
+
         if cfg.use_save_cg or cfg.use_save_xv:
             if v: out += [
                 "",
                 "# MD.UseSaveCG / UseSaveXV: read .CG / .XV from previous run",
                 "# if present.  Restart-friendly for long jobs.",
             ]
-            if cfg.use_save_cg: out.append("MD.UseSaveCG      true")
-            if cfg.use_save_xv: out.append("MD.UseSaveXV      true")
+            if cfg.use_save_cg and not is_md:
+                # MD.UseSaveCG is CG-only; Broyden / FIRE / dynamics modes
+                # ignore it.  Only emit when meaningful.
+                out.append("MD.UseSaveCG      .true.")
+            if cfg.use_save_xv: out.append("MD.UseSaveXV      .true.")
         out.append("")
 
     # Output
@@ -631,12 +685,12 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         "# WriteMDhistory   trajectory to .ANI (xcrysden / vmd / OVITO)",
         "# WriteHS          H + S matrices, needed for TranSIESTA / DOS",
     ]
-    out.append(f"WriteForces        {'true' if cfg.write_forces else 'false'}")
-    out.append(f"WriteCoorStep      {'true' if cfg.write_coor_step else 'false'}")
-    out.append(f"WriteCoorXmol      {'true' if cfg.write_coor_xmol else 'false'}")
-    out.append(f"WriteMDhistory     {'true' if cfg.write_md_history else 'false'}")
+    out.append(f"WriteForces        {'.true.' if cfg.write_forces else '.false.'}")
+    out.append(f"WriteCoorStep      {'.true.' if cfg.write_coor_step else '.false.'}")
+    out.append(f"WriteCoorXmol      {'.true.' if cfg.write_coor_xmol else '.false.'}")
+    out.append(f"WriteMDhistory     {'.true.' if cfg.write_md_history else '.false.'}")
     if cfg.write_hs:
-        out.append("WriteHS            true")
+        out.append("WriteHS            .true.")
 
     # Troubleshooting block at the end (verbose mode only).  We only
     # emit the relaxation-specific tips when an MD block is actually
@@ -728,9 +782,9 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         "# %endblock ProjectedDensityOfStates",
         "#",
         "# 4. Charge-density grid (volumetric file for visualisation):",
-        "# SaveRho             true",
-        "# SaveDeltaRho        true",
-        "# SaveElectrostaticPotential  true",
+        "# SaveRho             .true.",
+        "# SaveDeltaRho        .true.",
+        "# SaveElectrostaticPotential  .true.",
     ]
     return "\n".join(out) + "\n"
 

@@ -112,22 +112,32 @@ class SiestaConfig:
     # k-grid
     kgrid: Tuple[int, int, int] = (1, 1, 1)
 
-    # Relaxation; relax_type="none" disables the MD block entirely
+    # Relaxation; relax_type="none" disables the MD block entirely.
+    # The actual SIESTA keyword for step count and max-displacement
+    # depends on relax_type -- see siesta/input.py:render_fdf for the
+    # full mapping (CG -> MD.NumCGsteps + MD.MaxCGDispl;
+    # Broyden / FIRE -> MD.NumBroydenSteps / MD.NumFIRESteps + MD.MaxDispl;
+    # Verlet / Nose -> MD.FinalTimeStep + MD.InitialTemperature).  The
+    # labels below are therefore generic; per-engine help text lives
+    # in the FDF's verbose comments.
     relax_type: str = "CG"
     relax_steps: int = field(default=200, metadata={
-        "label": "MD.Steps",
+        "label": "MD step count",
         "range": (1, 10000),
         "tier":  "advanced",
+        "help":  "max relaxation steps (CG/Broyden/FIRE) or MD time steps (Verlet/Nose)",
     })
     relax_force_tol: float = field(default=0.02, metadata={
         "label": "MD.MaxForceTol", "unit": "eV/Å",
         "range": (0.001, 0.5),
         "tier":  "advanced",
+        "help":  "force-tol stop criterion (CG/Broyden/FIRE only; ignored in Verlet/Nose)",
     })
     relax_max_displ: float = field(default=0.05, metadata={
-        "label": "MD.MaxCGDispl", "unit": "Å",
+        "label": "MD max-displ", "unit": "Å",
         "range": (0.001, 0.5),
         "tier":  "advanced",
+        "help":  "displacement cap per step (MD.MaxCGDispl for CG, MD.MaxDispl otherwise)",
     })
 
     # SCF / MD continuation flags (free insurance for restartable jobs)

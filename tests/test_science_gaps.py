@@ -70,8 +70,8 @@ def methyl_radical():
 
 def test_gap_1_siesta_emits_spin_total_with_dot(h2):
     """When spin_total is set, the FDF must contain `Spin.Total` (the
-    real keyword) and `Spin.Fix true`, not the bogus single-token
-    `SpinTotal`."""
+    real keyword) and `Spin.Fix .true.` (canonical SIESTA boolean),
+    not the bogus single-token `SpinTotal`."""
     cfg = SiestaConfig(
         system_label="h2",
         spin_polarized=True,
@@ -83,8 +83,11 @@ def test_gap_1_siesta_emits_spin_total_with_dot(h2):
         "FDF must emit `Spin.Total <v>` (with the dot) -- "
         "see SIESTA manual Spin section."
     )
-    assert re.search(r"^\s*Spin\.Fix\s+true", fdf, re.MULTILINE), (
-        "FDF must emit `Spin.Fix true` to enable the total-spin pin."
+    # Accept either bare `true` or canonical `.true.` -- SIESTA's
+    # parser treats them as synonyms; we now emit the canonical form
+    # to match the rest of the FDF (Diag.ParallelOverK, WriteForces, ...).
+    assert re.search(r"^\s*Spin\.Fix\s+\.?true\.?", fdf, re.MULTILINE), (
+        "FDF must emit `Spin.Fix .true.` to enable the total-spin pin."
     )
     # And the legacy bogus form must be GONE:
     assert "SpinTotal " not in fdf, "FDF still emits the bogus SpinTotal token"
