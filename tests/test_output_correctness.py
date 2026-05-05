@@ -97,7 +97,7 @@ def test_c2_spin_polarized_emits_v5_form(small_struct):
 
 def test_c2_spin_total_emits_dotted_form_with_fix(small_struct):
     """SIESTA's total-spin pin is a TWO-line block (gap #1):
-        Spin.Fix    true
+        Spin.Fix    .true.
         Spin.Total  <v>
     The bogus single-token `SpinTotal <v>` (silently ignored by SIESTA)
     must be gone, and Spin.Fix must always accompany Spin.Total or
@@ -110,12 +110,14 @@ def test_c2_spin_total_emits_dotted_form_with_fix(small_struct):
     assert "Spin.Total" not in fdf
     assert "SpinTotal"  not in fdf      # legacy bogus form
 
-    # both set -> emit Spin.Fix true + Spin.Total <v>
+    # both set -> emit Spin.Fix .true. + Spin.Total <v>.  Canonical
+    # SIESTA boolean form (.true./.false.); the bare `true` synonym
+    # was retired so the file matches the rest of the FDF.
     fdf = render_fdf(small_struct,
                      SiestaConfig(spin_polarized=True,
                                   spin_total=2.0,
                                   verbose_comments=False))
-    assert re.search(r"^\s*Spin\.Fix\s+true\s*$",  fdf, re.MULTILINE)
+    assert re.search(r"^\s*Spin\.Fix\s+\.true\.\s*$", fdf, re.MULTILINE)
     assert re.search(r"^\s*Spin\.Total\s+2\.0\s*$", fdf, re.MULTILINE)
     # No SpinTotal anywhere (legacy form must be gone everywhere).
     assert "SpinTotal " not in fdf
