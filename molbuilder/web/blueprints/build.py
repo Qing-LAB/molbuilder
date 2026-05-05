@@ -53,7 +53,7 @@ from molbuilder import (
 )
 from molbuilder.config.pyscf  import PySCFConfig
 from molbuilder.config.siesta import SiestaConfig
-from molbuilder.issues import Issue, ValidationError
+from molbuilder.issues import ValidationError
 from molbuilder.pyscf  import render_script
 from molbuilder.siesta import render_fdf
 from molbuilder.structure import Structure
@@ -127,7 +127,10 @@ def api_build_molecule():
             # which backend actually ran -- this matches dispatch()'s
             # selection logic exactly (see auto_backend_name docstring).
             if requested == "auto":
-                from molbuilder.backends import auto_backend_name
+                # Use the canonical path (the back-compat shim at
+                # molbuilder.backends is for external callers; in-tree
+                # code goes direct to builders.backends).
+                from molbuilder.builders.backends import auto_backend_name
                 backend_used = auto_backend_name()
             else:
                 backend_used = requested

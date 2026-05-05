@@ -27,4 +27,9 @@ from molbuilder.builders.backends import _threedna as _threedna
 __all__ = [
     "BackendUnavailable", "auto_backend_name",
     "available_backends", "dispatch",
+    # Per-engine submodules are part of the shim's public surface
+    # (existing tests do `from molbuilder.backends import _amber`).
+    # Listing them in __all__ also tells linters the imports above
+    # are intentional re-exports, not dead code.
+    "_amber", "_common", "_rdkit", "_threedna",
 ]

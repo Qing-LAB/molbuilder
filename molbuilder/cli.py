@@ -26,7 +26,7 @@ import contextlib
 import os
 import sys
 import tempfile
-from typing import Iterator, Optional, Sequence
+from typing import Iterable, Iterator, Optional, Sequence
 
 import click
 
@@ -302,17 +302,13 @@ def _build_options(*, nucleic: bool):
     return deco
 
 
-def _emit_built(struct, out, pdb, pyscf_atom_block):
-    _emit(struct, out=out, pdb=pdb, pyscf_atom_block=pyscf_atom_block)
-
-
 @cli.command("peptide", short_help="build a polypeptide from sequence")
 @_build_options(nucleic=False)
 def cmd_peptide(sequence, out, pdb, pyscf_atom_block, title):
     """Build a polypeptide from a 1-letter sequence (with [SEP] etc)."""
     from molbuilder import build_peptide
     s = build_peptide(sequence, title=title)
-    _emit_built(s, out, pdb, pyscf_atom_block)
+    _emit(s, out=out, pdb=pdb, pyscf_atom_block=pyscf_atom_block)
 
 
 @cli.command("dna", short_help="build ssDNA from sequence (B-form)")
@@ -326,7 +322,7 @@ def cmd_dna(sequence, out, pdb, pyscf_atom_block, title,
     if form is not None:
         kwargs["form"] = form
     s = build_dna(sequence, **kwargs)
-    _emit_built(s, out, pdb, pyscf_atom_block)
+    _emit(s, out=out, pdb=pdb, pyscf_atom_block=pyscf_atom_block)
 
 
 @cli.command("rna", short_help="build ssRNA from sequence (A-form)")
@@ -340,7 +336,7 @@ def cmd_rna(sequence, out, pdb, pyscf_atom_block, title,
     if form is not None:
         kwargs["form"] = form
     s = build_rna(sequence, **kwargs)
-    _emit_built(s, out, pdb, pyscf_atom_block)
+    _emit(s, out=out, pdb=pdb, pyscf_atom_block=pyscf_atom_block)
 
 
 @cli.command("smiles", short_help="build a molecule from SMILES (RDKit)")
@@ -349,7 +345,7 @@ def cmd_smiles(sequence, out, pdb, pyscf_atom_block, title):
     """Build a molecule from a SMILES string (needs rdkit)."""
     from molbuilder import build_from_smiles
     s = build_from_smiles(sequence, title=title)
-    _emit_built(s, out, pdb, pyscf_atom_block)
+    _emit(s, out=out, pdb=pdb, pyscf_atom_block=pyscf_atom_block)
 
 
 @cli.command("name", short_help="build a molecule from common/IUPAC name (PubChem)")
@@ -358,7 +354,7 @@ def cmd_name(sequence, out, pdb, pyscf_atom_block, title):
     """Build a molecule from a common or IUPAC name (needs pubchempy)."""
     from molbuilder import build_from_name
     s = build_from_name(sequence, title=title)
-    _emit_built(s, out, pdb, pyscf_atom_block)
+    _emit(s, out=out, pdb=pdb, pyscf_atom_block=pyscf_atom_block)
 
 
 # --------------------------------------------------------------------- #
