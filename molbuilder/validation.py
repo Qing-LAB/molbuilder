@@ -443,29 +443,55 @@ def _validate_siesta(struct: Structure, cfg,
     if cell is None:
         return issues
 
-    # k-grid vs cell extent: vacuum direction with k != 1 is wasted;
-    # periodic direction (extent > 10 Å) with k == 1 is under-converged.
+    # k-grid vs cell extent: distinguish three cases per axis:
+    #   * vacuum direction (atoms span < 85% of axis) -> k=1 correct,
+    #     k>1 wasted
+    #   * periodic direction (atoms span > 85% of axis) -> k=1
+    #     under-converged when other axes are sampled
+    #   * indeterminate (no atoms or single-axis tiny molecule) ->
+    #     fall back to the cell-extent heuristic
+    #
+    # Pre-fix the heuristic used cell-extent alone, which mis-flagged
+    # vacuum-padded long axes (e.g. a 12-mer DNA in an 80 Å cell with
+    # kgrid (4, 4, 1) along the molecular axis is correct vacuum, not
+    # periodic).  Atoms spanning < 85% of an axis means there's
+    # vacuum padding at the ends -> the user opted for vacuum on
+    # that axis, k=1 is right.
     diag_lengths = [float(np.linalg.norm(cell[i])) for i in range(3)]
+    if struct.n_atoms > 0:
+        atom_extent = struct.positions.max(axis=0) - struct.positions.min(axis=0)
+    else:
+        atom_extent = np.zeros(3)
     for axis, (k, length) in enumerate(zip(cfg.kgrid, diag_lengths)):
-        if k != 1 and length < 10.0:
+        # Span ratio: how much of the cell axis the atoms cover.
+        # Near 1.0 -> atoms reach edge -> periodic intent.
+        # Near 0.0 -> atoms cluster, edges are vacuum -> vacuum intent.
+        span_ratio = (atom_extent[axis] / length) if length > 0 else 0.0
+        is_periodic_axis = span_ratio > 0.85
+
+        if k != 1 and not is_periodic_axis and length >= 5.0:
+            # User asked for k-points on a vacuum-padded axis; rare
+            # and almost always wasted cost.  Don't warn for tiny
+            # cells (length < 5 Å) where the heuristic is unreliable.
             issues.append(Issue(
                 "warn",
                 f"kgrid[{axis}] = {k} along an axis of {length:.1f} Å "
-                f"(< 10 Å, looks like vacuum); k-points along a vacuum "
-                f"direction add cost without improving accuracy",
+                f"where atoms span only {atom_extent[axis]:.1f} Å "
+                f"({span_ratio*100:.0f}%); this looks like a vacuum-padded "
+                f"axis -- k>1 there adds cost without improving accuracy",
                 "config.kgrid",
             ))
-        elif k == 1 and length > 10.0 and any(kk > 1 for kk in cfg.kgrid):
-            # The any-other-axis-has-k>1 guard limits this warning to
-            # mixed-PBC systems (slabs / wires) where one axis is
-            # genuinely periodic and the user might have forgotten to
-            # set k>1 on another periodic axis.  A pure vacuum (all
-            # k=1) shouldn't trigger.
+        elif k == 1 and is_periodic_axis and any(kk > 1 for kk in cfg.kgrid):
+            # An axis where atoms span the full extent (slab / wire /
+            # crystal direction) with k=1 while another axis is
+            # sampled -- almost always a forgotten k-grid value.
             issues.append(Issue(
                 "warn",
-                f"kgrid[{axis}] = 1 along an axis of {length:.1f} Å "
-                f"(> 10 Å, looks periodic) while another axis uses "
-                f"k > 1; likely under-converged sampling on this axis",
+                f"kgrid[{axis}] = 1 along an axis where atoms span "
+                f"{atom_extent[axis]:.1f} of {length:.1f} Å "
+                f"({span_ratio*100:.0f}%, looks periodic) while "
+                f"another axis uses k > 1; likely under-converged "
+                f"sampling on this axis",
                 "config.kgrid",
             ))
 
