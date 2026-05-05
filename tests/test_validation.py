@@ -587,6 +587,74 @@ def test_pyscf_grid_level_above_range_warns(water_struct):
 
 
 # --------------------------------------------------------------------- #
+#  Method / functional / grid_level cross-check rules                  #
+# --------------------------------------------------------------------- #
+
+
+def test_pyscf_uks_with_spin_zero_warns(water_struct):
+    """UKS / UHF with spin = 0 runs the unrestricted formalism on a
+    closed-shell system at ~2x the SCF cost.  Almost always a user
+    mistake (default-of-RKS user flipped to UKS to "be safe").  Warn
+    so the user knows."""
+    cfg = PySCFConfig(method="UKS", spin=0)
+    issues = validate(water_struct, cfg)
+    method_warns = [i for i in issues
+                    if i.severity == "warn" and i.where == "config.method"]
+    assert len(method_warns) == 1
+    assert "UKS" in method_warns[0].message
+    assert "RKS" in method_warns[0].message
+
+
+def test_pyscf_rks_with_spin_zero_no_warn(water_struct):
+    """The flip side: RKS + spin=0 is the conventional closed-shell
+    setup; no warning."""
+    cfg = PySCFConfig(method="RKS", spin=0)
+    issues = validate(water_struct, cfg)
+    assert [i for i in issues if i.where == "config.method"] == []
+
+
+def test_pyscf_uks_with_spin_nonzero_no_warn():
+    """UKS + spin > 0 is correct open-shell; no warning."""
+    s = Structure(elements=["C","H","H","H"],
+                  positions=np.array([[0,0,0],[1.08,0,0],[-0.54,0.94,0],[-0.54,-0.94,0]]))
+    cfg = PySCFConfig(method="UKS", spin=1)
+    issues = validate(s, cfg)
+    assert [i for i in issues if i.where == "config.method"] == []
+
+
+def test_pyscf_grid_level_3_with_hybrid_warns(water_struct):
+    """Hybrid functionals (B3LYP / PBE0 / M06-2X / wB97X) at grid_level
+    < 4 give noisy forces.  The user can override but should know."""
+    cfg = PySCFConfig(method="RKS", spin=0, functional="B3LYP", grid_level=3)
+    issues = validate(water_struct, cfg)
+    grid_warns = [i for i in issues if i.where == "config.grid_level"
+                  and i.severity == "warn"
+                  and "hybrid" in i.message.lower()]
+    assert len(grid_warns) == 1
+
+
+def test_pyscf_grid_level_3_with_pure_gga_no_warn(water_struct):
+    """Pure GGAs (PBE / BLYP / TPSS) don't have the noisy-force issue
+    at grid_level 3.  The validator must not warn here."""
+    cfg = PySCFConfig(method="RKS", spin=0, functional="PBE", grid_level=3)
+    issues = validate(water_struct, cfg)
+    grid_warns = [i for i in issues if i.where == "config.grid_level"
+                  and "hybrid" in i.message.lower()]
+    assert grid_warns == []
+
+
+def test_pyscf_default_grid_level_is_hybrid_safe():
+    """Default grid_level should be >= 4 so the default
+    `B3LYP + def2-SVP + density_fit + d3bj` recipe doesn't trip the
+    hybrid-grid warning on its own defaults."""
+    cfg = PySCFConfig()
+    assert cfg.grid_level >= 4, (
+        f"PySCFConfig.grid_level default = {cfg.grid_level}; should be "
+        f">= 4 so the default hybrid recipe doesn't self-warn"
+    )
+
+
+# --------------------------------------------------------------------- #
 #  Wire-in: render_fdf and render_script call validate()                #
 # --------------------------------------------------------------------- #
 
