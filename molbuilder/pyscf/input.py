@@ -616,8 +616,13 @@ def _emit_preopt_block(cfg: PySCFConfig, charge: int, v: bool) -> List[str]:
     # dump_input=False: the original mol.build() already echoed the
     # input file into <JOB>.log; we don't need a second copy.
     out.append("mol_pre.build(dump_input=False)")
-    # Pre-opt always uses DFT (a hybrid + cheap basis is the point of
-    # having a warm-up).  Mirror RKS/UKS choice from the production run.
+    # Pre-opt always uses DFT (a cheap functional + small basis is the
+    # whole point of the warm-up).  We mirror the RESTRICTED-vs-
+    # UNRESTRICTED choice from the production method (RHF/RKS -> RKS,
+    # UHF/UKS -> UKS) but force the dft module regardless: even when
+    # the production run is plain HF, the pre-opt switches to a DFT
+    # functional (cfg.preopt_functional, default PBE) to clean up the
+    # geometry quickly.
     out.append(f'mf1 = dft.{cfg.method.upper().replace("HF", "KS")}(mol_pre)')
     out.append(f'mf1.xc = "{cfg.preopt_functional}"')
     if cfg.preopt_density_fit:
