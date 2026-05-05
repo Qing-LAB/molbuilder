@@ -103,3 +103,6 @@ minversion   = "7.0"
 testpaths    = ["tests"]
 pythonpath   = ["."]
 addopts      = "-ra"
+markers      = [
+    "smoke: end-to-end smoke tests that subprocess-run a generated script (slow; require pyscf)",
+]
