@@ -31,11 +31,77 @@ neighbour).
 from __future__ import annotations
 
 import math
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import numpy as np
 
 from .structure import Structure
+
+
+# Charged amino-acid side chains at physiological pH (7.4).  Used by
+# `expected_pH7_peptide_charge()` to estimate the net charge of a
+# peptide for the validator's "you built a neutral peptide but it
+# would be charged at pH 7" hint.
+#
+# Histidine is intentionally skipped: pKa ~6 means it's roughly half-
+# protonated at pH 7, and its protonation state is sequence- and
+# environment-dependent (usually neutral N-tau-H tautomer in
+# proteins).  Cys and Tyr have side-chain pKa > 8, so they're
+# neutral at pH 7 -- not counted.
+_CHARGED_RESIDUES_PH7 = {
+    "ASP": -1, "GLU": -1,                       # acidic
+    "LYS":  1, "ARG":  1,                       # basic
+}
+
+# Standard (and modified) amino-acid 3-letter codes that come out of
+# molbuilder's peptide builder.  Used to detect "is this a peptide"
+# for the protonation hint.
+_AMINO_ACID_RESIDUE_NAMES = frozenset({
+    "ALA","ARG","ASN","ASP","CYS","GLN","GLU","GLY","HIS","ILE",
+    "LEU","LYS","MET","PHE","PRO","SER","THR","TRP","TYR","VAL",
+    # Modified residues we support
+    "SEP","TPO","PTR","MLY","M3L","ALY",
+})
+
+
+def expected_pH7_peptide_charge(struct: Structure) -> Optional[int]:
+    """Estimate net peptide charge at physiological pH (7.4).
+
+    Returns
+    -------
+    int    Estimated charge from charged side chains.  Asp/Glu
+           contribute -1 each; Lys/Arg contribute +1 each.  N- and
+           C-termini cancel each other for a free peptide.  His /
+           Cys / Tyr are intentionally skipped (His ambiguous; the
+           others have pKa > 8).
+    None   The structure doesn't look like a peptide (no recognised
+           amino-acid residue names).  For nucleic acids use
+           ``formal_charge_from_phosphates`` instead.
+
+    Used by validators to surface the gap between
+    ``cfg.charge = 0`` (default neutral build) and the physiological
+    charge state the user often actually wants.  Never raises; never
+    silently mutates the input.
+    """
+    if struct.residue_names is None or struct.residue_ids is None:
+        return None
+    # Collect one residue-name per residue id (atoms in the same
+    # residue contribute to the count once, not per atom).
+    seen: dict[int, str] = {}
+    for rid, rname in zip(struct.residue_ids, struct.residue_names):
+        if rid not in seen:
+            seen[rid] = rname
+    # Confirm we're looking at a peptide: at least one standard AA
+    # residue name must appear.
+    aa_present = sum(1 for n in seen.values()
+                     if n in _AMINO_ACID_RESIDUE_NAMES)
+    if aa_present == 0:
+        return None
+    # Sum the side-chain contributions.
+    charge = 0
+    for name in seen.values():
+        charge += _CHARGED_RESIDUES_PH7.get(name, 0)
+    return charge
 
 
 # Bond cutoffs used for proximity-based adjacency.  Wide enough to

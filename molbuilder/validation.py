@@ -420,6 +420,46 @@ def _validate_config_metadata(cfg) -> List[Issue]:
 # --------------------------------------------------------------------- #
 
 
+def _check_peptide_protonation(struct: Structure,
+                               cfg_charge) -> List[Issue]:
+    """Hint at the gap between gas-phase neutral build and
+    physiological charge state for peptides with charged side chains.
+
+    PeptideBuilder + AddHs produces a neutral molecule by default
+    (Asp / Glu protonated, Lys / Arg uncharged amines).  At pH 7 the
+    charged side chains carry a net charge.  Most users don't realise
+    the script is silently using the gas-phase neutral form.
+
+    Triggered only when:
+      * the structure looks like a peptide (has standard amino-acid
+        residue names);
+      * the estimated pH-7 charge is non-zero;
+      * the user hasn't explicitly set cfg.charge to a non-zero
+        value (None or 0 means "auto / default neutral").
+
+    Severity: warn (not error).  The neutral build may be exactly
+    what the user wants -- the surface emits SIESTA / PySCF input
+    that runs without modification.  This warning surfaces the
+    INFORMATION gap, not a bug.
+    """
+    from .chemistry import expected_pH7_peptide_charge
+    expected = expected_pH7_peptide_charge(struct)
+    if expected is None or expected == 0:
+        return []
+    if cfg_charge not in (None, 0):
+        return []
+    return [Issue(
+        "warn",
+        f"peptide has charged side chains (estimated charge at "
+        f"pH 7.4: {expected:+d}) but cfg.charge = 0; the script "
+        f"will build the gas-phase neutral form (Asp/Glu protonated, "
+        f"Lys/Arg neutral).  For physiological-state runs set "
+        f"cfg.charge = {expected} (and adjust spin / basis: open "
+        f"shells need diffuse functions like aug-cc-pVDZ for anions)",
+        "config.charge",
+    )]
+
+
 def _validate_siesta(struct: Structure, cfg,
                      cell: Optional[np.ndarray]) -> List[Issue]:
     """SIESTA-specific checks.
@@ -430,6 +470,10 @@ def _validate_siesta(struct: Structure, cfg,
     siesta/input.py at definition time).
     """
     issues: List[Issue] = []
+
+    # Peptide protonation hint -- same as PySCF side; see
+    # _check_peptide_protonation for the full rationale.
+    issues += _check_peptide_protonation(struct, getattr(cfg, "net_charge", None))
 
     # Spin.Total set without spin polarised: SIESTA silently ignores it.
     if cfg.spin_total is not None and not cfg.spin_polarized:
@@ -587,6 +631,13 @@ def _validate_pyscf(struct: Structure, cfg,
             f"electronic structure)",
             "config.method",
         ))
+
+    # Peptide protonation: PeptideBuilder + AddHs builds the gas-phase
+    # NEUTRAL form (Asp / Glu protonated, Lys / Arg neutral, etc.).
+    # For sequences containing charged side chains, the physiological
+    # charge differs.  Surface the gap so the user knows the script
+    # is using neutral defaults; they can override with cfg.charge.
+    issues += _check_peptide_protonation(struct, getattr(cfg, "charge", None))
 
     # Inverse case: UKS / UHF with spin = 0 is almost always a mistake.
     # The unrestricted formalism on a closed-shell system runs at ~2x
