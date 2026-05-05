@@ -400,6 +400,12 @@ def cmd_name(sequence, out, pdb, pyscf_atom_block, title):
 @click.option("--relax-steps", type=int,   default=200, show_default=True)
 @click.option("--force-tol",   type=float, default=0.02, show_default=True)
 @click.option("--max-displ",   type=float, default=0.05, show_default=True)
+# net charge override (matches `pyscf --charge`); None -> auto-detect
+# from phosphate protonation state via formal_charge_from_phosphates.
+@click.option("--net-charge",  type=int, default=None,
+              help="net charge (default: auto-detect from phosphates; "
+                   "set explicitly for non-DNA charged systems "
+                   "such as carboxylates / amines / sulfonates)")
 # output
 @click.option("--no-write-forces",     is_flag=True)
 @click.option("--no-write-coor-step",  is_flag=True)
@@ -432,7 +438,7 @@ def cmd_fdf(input_path, fdf_path,
             mixing_weight, pulay_history, dm_tolerance, dm_energy_tolerance,
             max_scf_iter, temperature, solution_method,
             kgrid,
-            relax, relax_steps, force_tol, max_displ,
+            relax, relax_steps, force_tol, max_displ, net_charge,
             no_write_forces, no_write_coor_step, no_write_coor_xmol,
             no_write_md_history, write_hs, no_use_save,
             psml_lib, no_copy_psml,
@@ -461,6 +467,7 @@ def cmd_fdf(input_path, fdf_path,
         relax_steps=relax_steps,
         relax_force_tol=force_tol,
         relax_max_displ=max_displ,
+        net_charge=net_charge,
         use_save_dm=not no_use_save,
         use_save_cg=not no_use_save,
         use_save_xv=not no_use_save,
@@ -527,8 +534,8 @@ def cmd_fdf(input_path, fdf_path,
 @click.option("--scf-max-cycle",  type=int,   default=100,   show_default=True)
 @click.option("--scf-init-guess", default="minao", show_default=True,
               type=click.Choice(["minao", "atom", "1e", "huckel"]))
-@click.option("--grid-level",     type=int, default=3, show_default=True,
-              help="DFT integration grid (0-9; 3 = default, 5 = tight)")
+@click.option("--grid-level",     type=int, default=4, show_default=True,
+              help="DFT integration grid (0-9; 4 = default for hybrids, 5 = tight)")
 @click.option("--level-shift",    type=float, default=0.0, show_default=True,
               help="Hartree; 0.1-0.3 helps for hard SCF")
 # pre-optimization
