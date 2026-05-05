@@ -346,26 +346,58 @@ def test_dipole_with_kgrid_no_warn():
 # --------------------------------------------------------------------- #
 
 
-def test_kgrid_along_vacuum_is_warn(water_struct):
-    """kgrid != 1 along an axis < 10 Å (vacuum direction) is wasted."""
-    cell = np.diag([5.0, 30.0, 30.0])    # x = vacuum (5 Å), yz = periodic
-    cfg = SiestaConfig(kgrid=(4, 4, 1))   # k > 1 along the 5 Å axis
-    issues = validate(water_struct, cfg, cell=cell)
+def _slab_struct(extent_x: float, n_atoms: int = 8):
+    """Synthetic slab: atoms spanning `extent_x` along x with tight
+    spacing on y/z.  Used to test the kgrid 'atoms span the axis'
+    detection without rebuilding a real periodic structure."""
+    xs = np.linspace(0.0, extent_x, n_atoms)
+    pos = np.column_stack([xs, np.zeros(n_atoms), np.zeros(n_atoms)])
+    return Structure(elements=["C"] * n_atoms, positions=pos)
+
+
+def test_kgrid_along_vacuum_is_warn():
+    """kgrid > 1 on an axis where atoms span only a small fraction of
+    the cell (vacuum-padded axis) is wasted -- pre-fix the heuristic
+    used cell-extent only; post-fix it checks atom-extent / cell-extent."""
+    s = _slab_struct(extent_x=2.0)         # atoms confined to 2 Å
+    cell = np.diag([5.0, 30.0, 30.0])
+    cfg = SiestaConfig(kgrid=(4, 4, 1))    # k=4 on the 5 Å vacuum axis
+    issues = validate(s, cfg, cell=cell)
     msgs = [i for i in issues if i.where == "config.kgrid"]
-    # The 5 Å axis should produce a warning; the 30 Å axis with k=4 is fine.
     assert any("kgrid[0]" in i.message for i in msgs)
 
 
-def test_kgrid_one_on_periodic_axis_is_warn(water_struct):
-    """k == 1 along a > 10 Å axis WHEN another axis has k > 1 means the
-    user probably forgot one direction.  All-Gamma must NOT trigger
-    (a molecule in vacuum legitimately uses 1x1x1)."""
-    cell = np.diag([20.0, 20.0, 20.0])
-    cfg = SiestaConfig(kgrid=(4, 1, 1))
-    issues = validate(water_struct, cfg, cell=cell)
+def test_kgrid_one_on_periodic_axis_is_warn():
+    """k == 1 along an axis that atoms ACTUALLY span (>=85%), when
+    another axis has k > 1, is the slab-with-forgotten-axis case."""
+    s = _slab_struct(extent_x=18.0)        # atoms span 18 of 20 Å (90%)
+    cell = np.diag([20.0, 4.0, 4.0])
+    cfg = SiestaConfig(kgrid=(1, 4, 1))
+    issues = validate(s, cfg, cell=cell)
     msgs = [i for i in issues if i.where == "config.kgrid"]
-    # axis 1 and 2 are both > 10 Å with k=1 while axis 0 has k=4.
-    assert any("kgrid[1]" in i.message for i in msgs)
+    assert any("kgrid[0]" in i.message for i in msgs)
+
+
+def test_kgrid_long_vacuum_padded_axis_no_false_positive():
+    """The pre-fix bug: a long axis (> 10 Å) with k=1 used to trigger
+    the 'looks periodic' warning regardless of whether atoms actually
+    spanned the axis.  A 12-mer DNA in an 80 Å vacuum cell with kgrid
+    (4, 4, 1) along the molecule's long axis is correct vacuum, NOT
+    under-sampled.  Post-fix this case must NOT warn on axis 2."""
+    # Atoms span only 30 of 80 Å along z (~38% of the axis).
+    s = _slab_struct(extent_x=30.0)
+    pos = np.column_stack([np.zeros(8), np.zeros(8),
+                           np.linspace(0.0, 30.0, 8)])
+    s = Structure(elements=["C"] * 8, positions=pos)
+    cell = np.diag([10.0, 10.0, 80.0])     # 80 Å cell, 30 Å of atoms
+    cfg = SiestaConfig(kgrid=(4, 4, 1))    # k=1 on the long-but-vacuum axis
+    issues = validate(s, cfg, cell=cell)
+    msgs = [i for i in issues if i.where == "config.kgrid"]
+    # axes 0/1: atoms span 0 of 10 Å -> vacuum -> k=4 should WARN
+    # axis 2:   atoms span 30 of 80 Å -> 37% -> vacuum -> k=1 OK, no warn
+    assert not any("kgrid[2]" in i.message for i in msgs), (
+        f"axis 2 (38%-spanned) should not warn; got {[i.message for i in msgs]}"
+    )
 
 
 def test_all_gamma_in_vacuum_no_warn(water_struct):
