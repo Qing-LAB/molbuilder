@@ -193,6 +193,13 @@ def test_pyscf_generated_script_runs_and_produces_preview(tmp_path):
         write_trajectory=False,
     )
     text = render_script(s, cfg)
+    # Sanity: the script we're about to subprocess-run actually does
+    # contain the geomeTRIC convergence kwargs.  PySCF's
+    # geometric_solver.optimize() forwards **kwargs into geomeTRIC's
+    # OptParams, which accepts these exact lowercase keys.  The
+    # subprocess.run(check=True) below would surface any TypeError.
+    for kw in ("convergence_energy", "convergence_grms", "convergence_gmax"):
+        assert kw in text, f"expected geomeTRIC kwarg {kw!r} in generated script"
     script = tmp_path / "prev_e2e.py"
     script.write_text(text)
     subprocess.run([sys.executable, str(script)],
@@ -209,11 +216,64 @@ def test_pyscf_generated_script_runs_and_produces_preview(tmp_path):
     assert "energy (eV): None" in first_block
     assert "max_force (eV/Ang): None" in first_block
     # Subsequent step (step 1) is a real opt iter with real numbers.
+    # The hook reads the geomeTRIC envs dict via key 'gradients' (PLURAL
+    # -- the singular 'gradient' is wrong; verified by direct probe of
+    # the envs keyset emitted by pyscf.geomopt.geometric_solver).  If
+    # this assert fails it usually means the key changed in geomeTRIC.
     assert "==== molwatch step 1 begin ====" in txt
     second = txt.split("==== molwatch step 1 begin ====", 1)[1]
     second = second.split("==== molwatch step 1 end ====", 1)[0]
     assert "energy (eV): None" not in second
     assert re.search(r"energy \(eV\):\s*-?\d+\.\d+", second)
+
+
+def test_pyscf_geomtric_accepts_nondefault_convergence_kwargs(tmp_path):
+    """Regression: TIER 2 #8 from the deep code review claimed the
+    geomeTRIC convergence_energy / convergence_grms / convergence_gmax
+    kwargs raise TypeError on pyscf>=2.4.  In fact PySCF's
+    ``geometric_solver.optimize()`` forwards ``**kwargs`` straight into
+    geomeTRIC's ``OptParams``, which accepts those exact lowercase
+    keys.  This test pins that contract: a generated script with
+    *non-default* convergence values must run end-to-end without
+    TypeError.  If a future PySCF / geomeTRIC release renames or
+    rejects these kwargs, this test catches it.
+    """
+    pytest.importorskip("pyscf")
+    pytest.importorskip("geometric")
+
+    s = Structure(
+        elements=["H", "H"],
+        positions=np.array([[0, 0, 0], [0.74, 0, 0]]),
+        title="h2",
+    )
+    # Non-default convergence triple -- the actual values aren't the
+    # point; the point is that they're forwarded into the optimize()
+    # call without TypeError.
+    cfg = PySCFConfig(
+        job_name="conv_kw",
+        preopt=False,
+        log_file=False,
+        geom_max_steps=1,
+        geom_conv_energy=5e-6,
+        geom_conv_grms=8e-4,
+        geom_conv_gmax=1e-3,
+        basis="STO-3G",
+        dispersion=None,
+        density_fit=False,
+        write_trajectory=False,
+    )
+    text = render_script(s, cfg)
+    # The non-default values must reach the generated script.
+    assert "convergence_energy    = 5.0e-06," in text
+    assert "convergence_grms      = 8.0e-04," in text
+    assert "convergence_gmax      = 1.0e-03," in text
+    script = tmp_path / "conv_kw.py"
+    script.write_text(text)
+    # subprocess.run(check=True) -- if optimize() rejected any of the
+    # kwargs we'd get a non-zero exit and CalledProcessError here.
+    subprocess.run([sys.executable, str(script)],
+                   cwd=str(tmp_path), check=True,
+                   capture_output=True, timeout=120)
 
 
 # --------------------------------------------------------------------- #

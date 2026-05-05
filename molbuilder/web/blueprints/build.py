@@ -25,6 +25,14 @@ JSON shape:
                                    "n_atoms": N, "summary": "...",
                                    "title": "...", "elements": [...]}
 
+      DNA / RNA tri-state add_hydrogens semantics:
+        "auto"  (default) -- backend-aware: 3DNA gets H, AmberTools/3DNA-fiber
+                             keeps the backend's existing H placement.
+        "on"              -- always invoke chemistry.add_hydrogens.
+        "off"              -- skip H addition entirely.
+        true              -- back-compat alias for "auto" (NOT "on").
+        false             -- back-compat alias for "off".
+
   /api/build/load     -- body: multipart with "file" field
                          OR JSON {"text": "...", "format": "auto"|"xyz"|"pdb",
                                   "filename": "<optional>"}

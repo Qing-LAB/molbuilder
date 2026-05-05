@@ -446,6 +446,11 @@ def _check_peptide_protonation(struct: Structure,
     expected = expected_pH7_peptide_charge(struct)
     if expected is None or expected == 0:
         return []
+    # cfg_charge None -> auto-detection path; cfg_charge == 0 -> the
+    # user explicitly forced neutral.  Both paths produce the same
+    # gas-phase build, so both deserve the warning telling them about
+    # the side-chain mismatch.  An explicit non-zero cfg_charge means
+    # the user already accounted for this -- skip the warning.
     if cfg_charge not in (None, 0):
         return []
     return [Issue(
