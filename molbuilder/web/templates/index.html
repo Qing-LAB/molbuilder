@@ -62,11 +62,8 @@
 <!-- ============================================================ -->
 <main class="app-grid">
 
-  <!-- ===================== Controls column ===================== -->
-  <div class="col col-controls">
-
     <!-- ---------- 1. Build / Load ---------- -->
-    <section class="card">
+    <section class="card card-build">
       <h2>1. Build / Load</h2>
       <div class="build-row">
         <label>Input type:
@@ -138,10 +135,69 @@
           <span id="load-status" class="status"></span>
         </div>
       </details>
-    </section>
+    </section><!-- /.card-build -->
 
-    <!-- ---------- 2. Generate input (tabbed: SIESTA | PySCF) ---------- -->
-    <section class="card" id="generate-card">
+    <!-- Viewer aside is injected here in the DOM order so it lands
+         between Build and Generate at narrow widths. -->
+
+  <!-- ===================== Viewer column (sticky on wide; between cards on narrow) ===================== -->
+  <aside class="col col-viewer">
+    <section class="card card-viewer">
+      <div class="viewer-header">
+        <h2>Inspect</h2>
+        <div class="viewer-info">
+          <span class="title" id="info-title">no structure built</span>
+          <span class="meta">
+            <b id="info-atoms">&mdash;</b> atoms
+            <span class="sep">&middot;</span>
+            <b id="info-residues">&mdash;</b> residues
+            <span class="sep">&middot;</span>
+            <code id="info-formula">&mdash;</code>
+          </span>
+        </div>
+      </div>
+
+      <div class="viewer-wrap" id="viewer-wrap">
+        <div id="viewer"></div>
+        <div class="resize-hint" aria-hidden="true">drag corner to resize</div>
+      </div>
+
+      <div class="viewer-controls">
+        <details>
+          <summary>Style</summary>
+          <div class="control-row">
+            <label>Rep
+              <select id="rep">
+                <option value="ballstick" selected>ball &amp; stick</option>
+                <option value="sphere">sphere (CPK)</option>
+                <option value="stick">stick</option>
+                <option value="line">line</option>
+              </select>
+            </label>
+            <label>Atom radius
+              <input id="radius" type="range" min="0.2" max="2.0" step="0.05" value="1.0">
+            </label>
+            <label>Background
+              <select id="bg">
+                <option value="white" selected>white</option>
+                <option value="0xeeeeee">light grey</option>
+                <option value="black">black</option>
+              </select>
+            </label>
+            <label><input type="checkbox" id="show-labels"> Atom indices</label>
+          </div>
+        </details>
+
+        <div class="control-row download-row">
+          <span class="dl-label">Download:</span>
+          <button class="dl-btn" id="dl-xyz" disabled>.xyz</button>
+          <button class="dl-btn" id="dl-pdb" disabled>.pdb</button>
+        </div>
+      </div>
+    </section>
+  </aside>
+
+  <section class="card" id="generate-card">
       <h2>2. Generate input <small>(optional)</small></h2>
 
       <div class="tabs" role="tablist" aria-label="Generate-input engine">
@@ -186,9 +242,9 @@
             MeshCutoff (Ry)
             <input id="p-mesh-cutoff" type="number" value="300" step="25" min="50">
           </label>
-          <label title="Controls how diffuse the PAOs are (Ry).&#10;Range 0.001-0.05. Smaller = more accurate, slower.">
+          <label title="Controls how diffuse the PAOs are (Ry).&#10;0.01: production default (tighter than SIESTA's built-in 0.02; needed for accurate bond energies).&#10;0.02: fast screening.  0.005: phonons / vibrational analysis.&#10;Smaller = more diffuse orbitals = more accurate, slower.">
             PAO.EnergyShift (Ry)
-            <input id="p-pao-energy-shift" type="number" value="0.02" step="0.005" min="0.0001" max="0.5">
+            <input id="p-pao-energy-shift" type="number" value="0.01" step="0.005" min="0.001" max="0.1">
           </label>
         </fieldset>
 
@@ -209,31 +265,31 @@
 
         <fieldset title="Self-consistent-field cycle parameters.">
           <legend>SCF</legend>
-          <label title="diagon: standard. OMM: order-N, for &gt; 500 atoms. transiesta: non-equilibrium transport.">
+          <label title="diagon: standard full diagonalization.&#10;OMM: orbital-minimization, order-N, for > 500 atoms.&#10;transiesta: non-equilibrium Green's function transport (requires TranSIESTA build).">
             SolutionMethod
             <select id="p-solution-method">
               <option selected>diagon</option><option>OMM</option>
               <option>transiesta</option>
             </select>
           </label>
-          <label title="DM mixing weight (0.001-0.5).&#10;Smaller = stable but slow. Larger = aggressive, may oscillate.&#10;Metals: 0.005-0.02. Insulators: 0.05-0.10.">
-            MixingWeight
+          <label title="DM mixing weight (0.001-0.5).&#10;Smaller = stable but slow. Larger = aggressive, may oscillate.&#10;Insulators: 0.05-0.10. Metals / hard SCF: 0.005-0.02.">
+            DM.MixingWeight
             <input id="p-mixing-weight" type="number" step="0.005" value="0.02" min="0.0001" max="1.0">
           </label>
-          <label title="# of SCF iterations kept for Pulay mixing (2-10).&#10;3 is fine usually; 5-8 for hard cases.">
-            PulayHistory
-            <input id="p-pulay-history" type="number" step="1" value="3" min="1" max="50">
+          <label title="Number of previous DM iterates kept for Pulay (DIIS) mixing.&#10;3 adequate for most systems. 5-8 for hard cases (metals, charged open-shell).">
+            DM.NumberPulay
+            <input id="p-pulay-history" type="number" step="1" value="3" min="1" max="20">
           </label>
-          <label title="DM convergence threshold.&#10;1e-5 standard. 1e-6 for accurate forces / band structure.">
+          <label title="DM convergence threshold.&#10;1e-5 standard. 1e-6 for accurate forces or band structure.">
             DM.Tolerance
             <input id="p-dm-tolerance" type="number" step="1e-6" value="1e-5">
           </label>
-          <label title="Redundant energy-based SCF guard (eV).">
-            DM.Energy.Tol (eV)
+          <label title="Energy-based SCF convergence guard (eV).&#10;Acts as a secondary criterion alongside DM.Tolerance.">
+            DM.Energy.Tolerance (eV)
             <input id="p-dm-energy-tolerance" type="number" step="1e-5" value="1e-4">
           </label>
-          <label title="SCF iteration cap. 200-500 typical.">
-            MaxSCFIter
+          <label title="SCF iteration cap.&#10;500 is generous; most systems converge in < 100 per geometry step.">
+            MaxSCFIterations
             <input id="p-max-scf-iter" type="number" step="50" value="500" min="10">
           </label>
           <label title="Fermi-Dirac smearing.&#10;300 K (default) for most systems. 1000-2000 K helps SCF for metals. &lt; 100 K for accurate band-edge properties.">
@@ -279,13 +335,14 @@
 
         <fieldset title="Geometry optimisation algorithm and convergence.">
           <legend>Relaxation</legend>
-          <label title="CG: standard, robust. Broyden: often faster on flat regions. FIRE: good for big systems. MD: real molecular dynamics.">
+          <label title="Geometry optimisation algorithm or dynamics type.&#10;CG: conjugate-gradient (robust default for small-medium systems).&#10;Broyden: BFGS-like, often faster on flat surfaces.&#10;FIRE: fast inertial relaxation, good for large systems.&#10;Verlet: velocity-Verlet NVE molecular dynamics (constant energy).&#10;Nose: Nose-Hoover NVT dynamics (constant temperature -- also set MD.InitialTemperature).&#10;none: single-point SCF, no relaxation.">
             MD.TypeOfRun
             <select id="p-relax">
-              <option value="CG"   selected>CG</option>
-              <option value="MD">MD</option>
-              <option value="Broyden">Broyden</option>
-              <option value="FIRE">FIRE</option>
+              <option value="CG"      selected>CG (conjugate gradient)</option>
+              <option value="Broyden">Broyden (BFGS-like)</option>
+              <option value="FIRE">FIRE (fast inertial)</option>
+              <option value="Verlet">Verlet (NVE dynamics)</option>
+              <option value="Nose">Nose (NVT, Nose-Hoover)</option>
               <option value="none">none (single point)</option>
             </select>
           </label>
@@ -335,12 +392,9 @@
       <div class="fdf-actions">
         <button id="generate-fdf" disabled>Generate .fdf</button>
         <button class="dl-btn" id="dl-fdf" disabled>Download .fdf</button>
-        <button class="dl-btn" id="watch-fdf" disabled
-          title="Open the Watch tab pre-filled with the predicted &lt;label&gt;.molwatch.log filename.&#10;You'll need to prepend the absolute path of the directory where you run SIESTA before clicking Load.">
-          Watch this run &raquo;
-        </button>
         <span id="fdf-status" class="status"></span>
       </div>
+      <p class="hint">After generating, switch to the <strong>Watch</strong> tab (top nav) to load and monitor the run live.</p>
 
       <pre id="fdf-output" class="fdf-output" hidden></pre>
       </div><!-- /#tab-siesta -->
@@ -424,8 +478,8 @@
               <option>huckel</option>
             </select>
           </label>
-          <label title="DFT integration grid level (0-9).&#10;3: PySCF default. 5: tight (use for accurate forces / phonons).">
-            grid_level       <input id="py-grid-level" type="number" value="3" min="0" max="9">
+          <label title="DFT integration grid level (0-9).&#10;3: coarse screening. 4: production default (hybrid-friendly; noise floor low enough for tight geom opt). 5: tight (vibrational / phonons). 9: ultra.&#10;Hybrid functionals (B3LYP, PBE0, M06-2X) need at least level 4 for reliable forces.">
+            grid_level       <input id="py-grid-level" type="number" value="4" min="0" max="9">
           </label>
           <label title="Level shift on virtual orbitals (Hartree).&#10;0 default.  0.1-0.3 helps when SCF oscillates (open-shell metals, hard radicals).">
             level_shift      <input id="py-level-shift" type="number" value="0.0" step="0.1">
@@ -531,74 +585,13 @@
       <div class="fdf-actions">
         <button id="generate-pyscf" disabled>Generate .py</button>
         <button class="dl-btn" id="dl-pyscf" disabled>Download .py</button>
-        <button class="dl-btn" id="watch-pyscf" disabled
-          title="Open the Watch tab pre-filled with the predicted &lt;job&gt;.molwatch.log filename.&#10;You'll need to prepend the absolute path of the directory where you run the PySCF script before clicking Load.">
-          Watch this run &raquo;
-        </button>
         <span id="pyscf-status" class="status"></span>
       </div>
+      <p class="hint">After generating, switch to the <strong>Watch</strong> tab (top nav) to load and monitor the run live.</p>
 
       <pre id="pyscf-output" class="fdf-output" hidden></pre>
       </div><!-- /#tab-pyscf -->
     </section>
-  </div>
-
-  <!-- ===================== Viewer column (sticky) ===================== -->
-  <aside class="col col-viewer">
-    <section class="card card-viewer">
-      <div class="viewer-header">
-        <h2>Inspect</h2>
-        <div class="viewer-info">
-          <span class="title" id="info-title">no structure built</span>
-          <span class="meta">
-            <b id="info-atoms">&mdash;</b> atoms
-            <span class="sep">&middot;</span>
-            <b id="info-residues">&mdash;</b> residues
-            <span class="sep">&middot;</span>
-            <code id="info-formula">&mdash;</code>
-          </span>
-        </div>
-      </div>
-
-      <div class="viewer-wrap" id="viewer-wrap">
-        <div id="viewer"></div>
-        <div class="resize-hint" aria-hidden="true">drag corner to resize</div>
-      </div>
-
-      <div class="viewer-controls">
-        <details>
-          <summary>Style</summary>
-          <div class="control-row">
-            <label>Rep
-              <select id="rep">
-                <option value="ballstick" selected>ball &amp; stick</option>
-                <option value="sphere">sphere (CPK)</option>
-                <option value="stick">stick</option>
-                <option value="line">line</option>
-              </select>
-            </label>
-            <label>Atom radius
-              <input id="radius" type="range" min="0.2" max="2.0" step="0.05" value="1.0">
-            </label>
-            <label>Background
-              <select id="bg">
-                <option value="white" selected>white</option>
-                <option value="0xeeeeee">light grey</option>
-                <option value="black">black</option>
-              </select>
-            </label>
-            <label><input type="checkbox" id="show-labels"> Atom indices</label>
-          </div>
-        </details>
-
-        <div class="control-row download-row">
-          <span class="dl-label">Download:</span>
-          <button class="dl-btn" id="dl-xyz" disabled>.xyz</button>
-          <button class="dl-btn" id="dl-pdb" disabled>.pdb</button>
-        </div>
-      </div>
-    </section>
-  </aside>
 
 </main>
 

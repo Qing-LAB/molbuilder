@@ -581,10 +581,12 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     if cfg.relax_type and cfg.relax_type.lower() != "none":
         out.append("# --- Geometry optimisation ---")
         if v: out += [
-            "# MD.TypeOfRun:  CG       Conjugate Gradients (robust default)",
-            "#                Broyden  often faster on flat surfaces",
-            "#                FIRE     fast for big systems",
-            "#                MD       real molecular dynamics (Nose-Hoover etc.)",
+            "# MD.TypeOfRun valid values:",
+            "#   CG       Conjugate Gradients geometry optimisation (robust default)",
+            "#   Broyden  Broyden (BFGS-like), often faster on flat energy surfaces",
+            "#   FIRE     Fast Inertial Relaxation Engine, good for large systems",
+            "#   Verlet   velocity-Verlet NVE molecular dynamics (constant energy)",
+            "#   Nose     Nose-Hoover NVT molecular dynamics (constant temperature)",
         ]
         out.append(f"MD.TypeOfRun {cfg.relax_type}")
         if v: out += [

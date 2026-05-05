@@ -95,13 +95,24 @@ header code {
 
 /* ---- App grid ---- */
 
+/* Three direct children: .card-build (top-left), .col-viewer (right,
+   spanning both rows), #generate-card (bottom-left).  This ordering
+   ensures that at narrow widths (single column) the 3-D viewer sits
+   between the Build card and the Generate card, matching the visual
+   hierarchy: build → inspect → configure output. */
 .app-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(380px, 660px);
+    grid-template-rows: auto auto;
     gap: var(--gap);
     margin: var(--gap) 24px;
     align-items: start;
 }
+
+/* Explicit placements on wide screens */
+.card-build   { grid-column: 1; grid-row: 1; }
+.col-viewer   { grid-column: 2; grid-row: 1 / span 2; }
+#generate-card { grid-column: 1; grid-row: 2; }
 
 .col {
     display: flex; flex-direction: column;
@@ -120,13 +131,18 @@ header code {
     scrollbar-width: thin;
 }
 
+/* .app-grid direct children that are plain .card (not col-viewer) */
+.app-grid > .card { margin: 0; }
+
 @media (max-width: 1100px) {
-    .app-grid { grid-template-columns: 1fr; }
-    .col-viewer {
-        position: static;
-        max-height: none;
-        overflow: visible;
+    .app-grid {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto;
     }
+    /* Explicit rows: build → viewer → generate */
+    .card-build    { grid-column: 1; grid-row: 1; }
+    .col-viewer    { grid-column: 1; grid-row: 2; position: static; max-height: none; overflow: visible; }
+    #generate-card { grid-column: 1; grid-row: 3; }
 }
 
 @media (max-width: 640px) {
@@ -143,7 +159,7 @@ header code {
     padding: 14px 18px 18px;
     box-shadow: var(--shadow-card);
 }
-.col .card { margin: 0; }
+.col .card { margin: 0; }    /* card inside col-viewer */
 
 .card h2 {
     margin: 0 0 10px;
