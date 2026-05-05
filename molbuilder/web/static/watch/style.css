@@ -8,23 +8,27 @@
  */
 
 :root {
-    /* Surfaces (deeper page bg → cards stand out more clearly) */
-    --bg-page:        #10141a;
-    --bg-card:        #1a1f27;
-    --bg-card-hover:  #232830;
+    /* Design tokens — kept in sync with molbuilder/web/static/style.css
+       so both pages feel like a single application. */
+
+    /* Surfaces */
+    --bg-page:        #14171c;
+    --bg-card:        #1d2128;
+    --bg-card-hover:  #232831;
     --bg-card-elev:   #232a35;
-    --bg-input:       #232831;
-    --bg-input-focus: #2a303a;
-    --bg-fieldset:    #1c2229;
+    --bg-input:       #262b33;
+    --bg-input-focus: #2c323b;
+    --bg-fieldset:    #1f242c;
 
     /* Borders */
-    --border-strong:  #353c47;
-    --border-soft:    #262d38;
+    --border-strong:  #3a3f48;
+    --border-soft:    #2c313a;
+    --border-dashed:  #2c313a;
 
     /* Text */
-    --text-primary:   #e8ebf1;
+    --text-primary:   #e6e9ef;
     --text-secondary: #a8aebb;
-    --text-muted:     #6c7380;
+    --text-muted:     #6c7280;
     --text-mono:      #b8c4d6;
 
     /* Accents + status */
@@ -38,13 +42,13 @@
     --warning:        #fbbf24;
 
     /* Geometry tokens */
-    --radius:         8px;
-    --radius-sm:      5px;
+    --radius:         7px;
+    --radius-sm:      4px;
     --gap:            14px;
 
-    /* Shadows: a single soft drop shadow for elevated surfaces. */
-    --shadow-card:    0 1px 0 rgba(255, 255, 255, 0.025) inset,
-                      0 6px 18px rgba(0, 0, 0, 0.32);
+    /* Shadows */
+    --shadow-card:    0 1px 0 rgba(255, 255, 255, 0.02) inset,
+                      0 4px 12px rgba(0, 0, 0, 0.30);
     --shadow-soft:    0 1px 0 rgba(255, 255, 255, 0.02) inset,
                       0 2px 6px rgba(0, 0, 0, 0.25);
 
@@ -154,6 +158,21 @@ main {
     gap: var(--gap);
 }
 
+/* Card — matches builder's .card exactly (same bg, border, radius, shadow). */
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    padding: 14px 18px 18px;
+    box-shadow: var(--shadow-card);
+}
+
+/* The viewer card has no extra padding on its inner grid so the 3Dmol
+   canvas can sit flush against the card's padded edges. */
+.viewer-card {
+    padding: 14px 14px 14px;
+}
+
 /*
  * Viewer row: fixed-height viewer + a controls aside that's locked
  * to the same height.  align-items: start prevents the aside from
@@ -171,9 +190,9 @@ main {
     width: 100%;
     height: var(--viewer-height);
     border: 1px solid var(--border-strong);
-    background: #fff;            /* viewer canvas keeps white for clarity */
+    background: #ffffff;         /* same white bg as builder's viewer-wrap */
     position: relative;
-    border-radius: var(--radius);
+    border-radius: var(--radius-sm);   /* matches builder's .viewer-wrap */
     overflow: hidden;
     box-shadow: var(--shadow-card);
 }
@@ -458,7 +477,7 @@ button:disabled {
     align-items: baseline;
     justify-content: center;
     gap: 12px;
-    margin: 12px 22px 0;
+    margin: 0 0 0;        /* sits inside main's gap; no extra side margin */
     padding: 10px 16px;
     border-radius: 6px;
     font-size: 1.0rem;

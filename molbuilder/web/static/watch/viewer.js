@@ -940,4 +940,20 @@
         });
     };
     window.addEventListener("resize", _onResize, { passive: true });
+
+    // ----- Persist file path across Build ↔ Watch navigation -----
+    // Navigating to /build and back is a full page reload; save the
+    // path-input value so the user doesn't have to retype the path.
+    const WATCH_PATH_KEY = "watch-path";
+    const pathEl = $("path-input");
+    const savedPath = sessionStorage.getItem(WATCH_PATH_KEY);
+    if (savedPath && !pathEl.value) {
+        pathEl.value = savedPath;
+    }
+    pathEl.addEventListener("input", () => {
+        sessionStorage.setItem(WATCH_PATH_KEY, pathEl.value);
+    });
+    window.addEventListener("pagehide", () => {
+        sessionStorage.setItem(WATCH_PATH_KEY, pathEl.value);
+    });
 })();
