@@ -81,9 +81,9 @@ def detect_parser(path: str) -> Type[TrajectoryParser]:
         stem = base[:-len(".fdf")]
         lines.append("")
         lines.append(
-            f"That looks like a SIESTA INPUT file (.fdf), not the "
-            f"output.  SIESTA writes its output to wherever you "
-            f"redirected stdout, typically:"
+            "That looks like a SIESTA INPUT file (.fdf), not the "
+            "output.  SIESTA writes its output to wherever you "
+            "redirected stdout, typically:"
         )
         lines.append(f"    mpirun siesta < {base} > {stem}.out")
         lines.append(

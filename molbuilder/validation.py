@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import sys
 from dataclasses import fields, is_dataclass
-from typing import Callable, Dict, List, Optional, Tuple, Type
+from typing import Callable, Dict, List, Optional, Type
 
 import numpy as np
 
@@ -453,7 +453,7 @@ def _validate_siesta(struct: Structure, cfg,
                 f"kgrid[{axis}] = {k} along an axis of {length:.1f} Å "
                 f"(< 10 Å, looks like vacuum); k-points along a vacuum "
                 f"direction add cost without improving accuracy",
-                f"config.kgrid",
+                "config.kgrid",
             ))
         elif k == 1 and length > 10.0 and any(kk > 1 for kk in cfg.kgrid):
             # The any-other-axis-has-k>1 guard limits this warning to
@@ -466,7 +466,7 @@ def _validate_siesta(struct: Structure, cfg,
                 f"kgrid[{axis}] = 1 along an axis of {length:.1f} Å "
                 f"(> 10 Å, looks periodic) while another axis uses "
                 f"k > 1; likely under-converged sampling on this axis",
-                f"config.kgrid",
+                "config.kgrid",
             ))
 
     # Net dipole > 1 D in vacuum (no dipole correction).  Image-image

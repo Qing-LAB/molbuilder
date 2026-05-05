@@ -319,9 +319,9 @@ def render_script(struct: Structure,
     ecp_chosen = _resolve_ecp(struct, cfg)
     if ecp_chosen and v:
         out += [
-            f"# Heavy atom(s) detected on a non-def2 basis -> using",
-            f"# `ecp = \"{ecp_chosen}\"` for scalar-relativistic core",
-            f"# replacement.  Override via cfg.ecp = '<name>' or '' to disable.",
+            "# Heavy atom(s) detected on a non-def2 basis -> using",
+            f'# `ecp = "{ecp_chosen}"` for scalar-relativistic core',
+            "# replacement.  Override via cfg.ecp = '<name>' or '' to disable.",
         ]
     out.append("mol = gto.M(")
     out.append("    atom = '''")

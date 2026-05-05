@@ -36,7 +36,7 @@ from ..structure import Structure
 # the generator below.  External callers can import it from either
 # molbuilder.config.siesta (the canonical location) or from
 # molbuilder.siesta (re-exported by siesta/__init__.py).
-from ..config.siesta import Config, SiestaConfig
+from ..config.siesta import SiestaConfig
 
 
 
@@ -815,10 +815,6 @@ def _struct_from_file(path: str) -> Tuple[Structure, Optional[np.ndarray]]:
     raise ValueError(
         f"unsupported input extension {ext!r}; expected .xyz or .pdb"
     )
-
-
-# Kept for backwards compatibility with code that imported _struct_from_xyz
-_struct_from_xyz = _struct_from_file
 
 
 def convert(
