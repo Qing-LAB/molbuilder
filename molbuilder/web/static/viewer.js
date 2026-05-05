@@ -552,7 +552,6 @@
                 return;
             }
             state.fdf = r.fdf;
-            state.fdf_label = r.system_label;
             $("fdf-output").textContent = r.fdf;
             $("fdf-output").hidden = false;
             $("dl-fdf").disabled = false;
@@ -656,7 +655,6 @@
                 return;
             }
             state.pyscf = r.script;
-            state.pyscf_label = r.job_name;
             $("pyscf-output").textContent = r.script;
             $("pyscf-output").hidden = false;
             $("dl-pyscf").disabled = false;
