@@ -675,6 +675,81 @@ def test_pyscf_grid_level_3_with_pure_gga_no_warn(water_struct):
     assert grid_warns == []
 
 
+# --------------------------------------------------------------------- #
+#  Peptide protonation: warn when neutral build vs charged side chains  #
+# --------------------------------------------------------------------- #
+
+
+def _peptide_struct(residue_names):
+    """Synthetic peptide: one CA atom per residue, no actual chemistry,
+    just enough metadata for the validator's residue-name check."""
+    n = len(residue_names)
+    pos = np.column_stack([np.arange(n) * 3.8, np.zeros(n), np.zeros(n)])
+    return Structure(
+        elements=["C"] * n,
+        positions=pos,
+        atom_names=["CA"] * n,
+        residue_ids=list(range(1, n + 1)),
+        residue_names=list(residue_names),
+    )
+
+
+def test_peptide_with_asp_glu_warns_on_zero_charge():
+    """ARNDCEQGHI has 1 Arg(+1), 1 Asp(-1), 1 Glu(-1), 1 His (skipped),
+    others neutral.  Expected pH-7 charge = -1.  cfg.charge = 0
+    (default) should warn."""
+    s = _peptide_struct(["ALA","ARG","ASN","ASP","CYS","GLU","GLN","GLY","HIS","ILE"])
+    cfg = PySCFConfig()  # charge default = None -> auto-detect -> 0 for non-nucleic
+    issues = validate(s, cfg)
+    msgs = [i for i in issues if i.where == "config.charge"]
+    assert len(msgs) == 1
+    assert "-1" in msgs[0].message
+    assert "neutral" in msgs[0].message.lower()
+
+
+def test_peptide_with_explicit_charge_no_warn():
+    """When the user explicitly sets cfg.charge = -1, the validator
+    treats them as having opted in and stays silent."""
+    s = _peptide_struct(["ALA","ARG","ASP","GLU","GLY"])
+    cfg = PySCFConfig(charge=-1)
+    issues = validate(s, cfg)
+    assert [i for i in issues if i.where == "config.charge"] == []
+
+
+def test_peptide_neutral_residues_no_warn():
+    """A peptide of only neutral side chains (G, A, V, L, I) has
+    estimated pH-7 charge = 0.  No warning."""
+    s = _peptide_struct(["GLY","ALA","VAL","LEU","ILE"])
+    cfg = PySCFConfig()
+    issues = validate(s, cfg)
+    assert [i for i in issues if i.where == "config.charge"] == []
+
+
+def test_non_peptide_skips_protonation_check():
+    """A nucleic-acid structure (no AA residue names) shouldn't trigger
+    the peptide protonation check at all -- expected_pH7_peptide_charge
+    returns None for non-peptides."""
+    n = 5
+    pos = np.column_stack([np.arange(n) * 3.0, np.zeros(n), np.zeros(n)])
+    s = Structure(elements=["C"] * n, positions=pos,
+                  residue_names=["DA","DT","DG","DC","DA"],
+                  residue_ids=list(range(1, n + 1)))
+    cfg = PySCFConfig()
+    issues = validate(s, cfg)
+    assert [i for i in issues if i.where == "config.charge"] == []
+
+
+def test_siesta_peptide_protonation_warn(water_struct):
+    """Same hint fires under the SIESTA validator (it's an engine-
+    independent property of the structure + charge config)."""
+    s = _peptide_struct(["ALA","LYS","ASP","ASP","GLY"])  # +1 -2 = -1
+    cfg = SiestaConfig(net_charge=None)   # auto -> 0 for non-nucleic
+    issues = validate(s, cfg)
+    msgs = [i for i in issues if i.where == "config.charge"]
+    assert len(msgs) == 1
+    assert "-1" in msgs[0].message
+
+
 def test_pyscf_default_grid_level_is_hybrid_safe():
     """Default grid_level should be >= 4 so the default
     `B3LYP + def2-SVP + density_fit + d3bj` recipe doesn't trip the
