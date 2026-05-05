@@ -512,10 +512,10 @@ def render_script(struct: Structure,
     #
     # Why: open-shell SCFs can converge to broken-symmetry SADDLE
     # points -- the energy looks converged but the wavefunction is
-    # not the variational minimum.  PySCF's stability_analysis()
-    # examines internal (orbital rotation) and external (real ->
-    # complex / restricted -> unrestricted) instabilities and prints
-    # a warning if found, with new MO coefficients to restart from.
+    # not the variational minimum.  PySCF's mf.stability() examines
+    # internal (orbital rotation) and external (real -> complex /
+    # restricted -> unrestricted) instabilities and prints a warning
+    # if found, with new MO coefficients to restart from.
     #
     # We do NOT auto-rerun the SCF when an instability is reported --
     # we surface the warning to the user and let them decide whether
@@ -536,11 +536,11 @@ def render_script(struct: Structure,
             out.append("# ============================================================")
             out.append("# Catches broken-symmetry saddles in UKS / UHF: a result")
             out.append("# that LOOKS converged but isn't the variational minimum.")
-            out.append("# stability_analysis() prints a warning + suggested MOs")
+            out.append("# mf.stability() prints a warning + suggested MOs")
             out.append("# if an instability is found.  See PySCF's docs for")
             out.append("# rerunning from the suggested vectors.")
         out.append('print("\\n=== Stage: stability analysis ===")')
-        out.append("mf.stability_analysis()")
+        out.append("mf.stability()")
         out.append("")
 
     # ------------------------------------------------------------- save
@@ -955,7 +955,7 @@ def _emit_troubleshooting_block(cfg: PySCFConfig) -> List[str]:
     out.append("#")
     out.append("# Open-shell / radical:")
     out.append("#   * cfg.method='UKS', cfg.spin=N  (N = 2S, # unpaired electrons)")
-    out.append("#   * after SCF: mf.stability_analysis()")
+    out.append("#   * after SCF: mf.stability()")
     out.append("#")
     out.append("# Forces look noisy / anisotropic:")
     out.append("#   * cfg.grid_level = 5            (denser DFT grid)")

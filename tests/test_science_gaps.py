@@ -158,16 +158,21 @@ def test_gap_3_dispersion_template_suppressed_for_vdw_xc(h2):
 
 
 # --------------------------------------------------------------------- #
-#  Gap 4: mf.stability_analysis() not auto-emitted for UKS / UHF        #
+#  Gap 4: mf.stability() not auto-emitted for UKS / UHF                 #
 # --------------------------------------------------------------------- #
 
 
 def test_gap_4_pyscf_uks_emits_stability_analysis(methyl_radical):
     """UKS / UHF can converge to broken-symmetry saddles.  The
-    generated script must call `mf.stability_analysis()` after the
-    SCF so the user sees a warning when this happens.  The check is
-    on the generated source -- not just a reference in a comment
-    block; the call must be live code."""
+    generated script must call `mf.stability()` after the SCF so the
+    user sees a warning when this happens.  The check is on the
+    generated source -- not just a reference in a comment block; the
+    call must be live code.
+
+    Method name note: PySCF 2.x exposes the stability check as
+    `mf.stability()` (no `_analysis` suffix); the older `stability_analysis`
+    name does not exist on RKS / UKS objects in 2.x, so calling it
+    raises AttributeError."""
     cfg = PySCFConfig(
         job_name="ch3",
         method="UKS",
@@ -180,15 +185,23 @@ def test_gap_4_pyscf_uks_emits_stability_analysis(methyl_radical):
     script = render_script(methyl_radical, cfg)
     # A *commented* mention in the troubleshooting block isn't enough;
     # the fix should emit live code.  Look for the call OUTSIDE comment
-    # context.  We use a regex that matches the call at the start of
-    # a non-comment line.
+    # context.
     matches = [
         ln for ln in script.splitlines()
-        if "stability_analysis" in ln and not ln.lstrip().startswith("#")
+        if "mf.stability(" in ln and not ln.lstrip().startswith("#")
     ]
     assert matches, (
         "UKS script must contain a non-commented "
-        "`mf.stability_analysis()` call after SCF."
+        "`mf.stability()` call after SCF."
+    )
+    # The retired API (`stability_analysis`) must not appear as live code.
+    bad = [
+        ln for ln in script.splitlines()
+        if "stability_analysis" in ln and not ln.lstrip().startswith("#")
+    ]
+    assert not bad, (
+        f"PySCF 2.x renamed the API to mf.stability(); "
+        f"`stability_analysis` should not be emitted as live code: {bad}"
     )
 
 
