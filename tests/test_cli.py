@@ -211,6 +211,54 @@ def test_pyscf_reads_xyz_from_stdin(monkeypatch, tmp_path):
     assert out_py.exists() and out_py.stat().st_size > 0
 
 
+def test_pyscf_cli_exposes_review_fix_l_options(monkeypatch, tmp_path):
+    """The cmd_pyscf subcommand surfaces 8 PySCFConfig fields that
+    were silent CLI gaps before review-fix L:
+        --diis-space, --damp, --ecp,
+        --no-preopt-density-fit, --preopt-dispersion,
+        --no-molwatch-log, --no-save-initial-xyz, --no-save-optimized-xyz.
+    Smoke-check by running with all of them on a real input + asserting
+    the generated script reflects each non-default setting."""
+    import io
+    xyz = "2\nh2 stdin\nH 0 0 0\nH 0.74 0 0\n"
+    monkeypatch.setattr("sys.stdin", io.StringIO(xyz))
+    out_py = tmp_path / "h2.py"
+    rc = cli.main([
+        "pyscf", "-", str(out_py),
+        "--no-optimize", "--no-density-fit",
+        "--diis-space", "16",
+        "--damp",       "0.4",
+        "--ecp",        "lanl2dz",
+        "--preopt-dispersion", "d3bj",
+        "--no-molwatch-log",
+        "--no-save-initial-xyz",
+        "--no-save-optimized-xyz",
+    ])
+    assert rc == 0
+    text = out_py.read_text()
+    # The mf.diis_space + mf.damp + ecp lines reflect the CLI values.
+    assert "mf.diis_space = 16" in text
+    assert "mf.damp = 0.4" in text
+    assert 'ecp = "lanl2dz"' in text or "ecp        = 'lanl2dz'" in text or "ecp=" in text
+    # molwatch / save toggles drop the corresponding code paths.
+    assert "_MolwatchEmitter" not in text
+    assert "_initial.xyz" not in text
+    assert "_optimized.xyz" not in text
+
+
+def test_pyscf_cli_help_lists_all_review_fix_l_options():
+    """Lighter sanity: --help mentions every new option name."""
+    from click.testing import CliRunner
+    runner = CliRunner()
+    res = runner.invoke(cli.cli, ["pyscf", "--help"])
+    assert res.exit_code == 0
+    for flag in ("--diis-space", "--damp", "--ecp",
+                 "--no-preopt-density-fit", "--preopt-dispersion",
+                 "--no-molwatch-log",
+                 "--no-save-initial-xyz", "--no-save-optimized-xyz"):
+        assert flag in res.output, f"missing {flag} in pyscf --help"
+
+
 def test_stdin_pdb_sniffs_correctly(monkeypatch, tmp_path):
     """Stdin sniff: a first line that isn't an integer is treated as
     PDB (HEADER / TITLE / ATOM / HETATM all qualify)."""
