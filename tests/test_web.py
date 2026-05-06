@@ -286,6 +286,108 @@ def test_fdf_default_params(web_client, peptide_xyz):
     assert "ChemicalSpeciesLabel" in body["fdf"]
 
 
+# --------------------------------------------------------------------- #
+#  /api/build/preflight (live validation hint endpoint)                 #
+# --------------------------------------------------------------------- #
+
+
+def test_preflight_returns_issues_for_siesta(web_client, peptide_xyz):
+    """Validation-only endpoint runs validate(struct, cfg) without
+    rendering FDF text.  Setting spin_total without spin_polarized
+    is the canonical SIESTA-side validator trigger -- SIESTA would
+    silently ignore the total-spin pin -- and the validator emits a
+    warn that should round-trip through the preflight endpoint."""
+    r = web_client.post("/api/build/preflight", json={
+        "xyz": peptide_xyz,
+        "engine": "siesta",
+        "params": {"spin_total": 1.0},
+    })
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True
+    issues = body["issues"]
+    assert isinstance(issues, list)
+    assert any(i["severity"] == "warn"
+               and "spin_total" in (i["where"] or "")
+               for i in issues), f"expected spin_total warn; got {issues}"
+    # Each entry has the JSON shape the UI expects.
+    for i in issues:
+        assert set(i.keys()) >= {"severity", "message", "where"}
+
+
+def test_preflight_returns_issues_for_pyscf(web_client, peptide_xyz):
+    """Symmetric coverage on the PySCF side: the validator catches the
+    UKS-with-spin-0 mistake (review-fix A) and the preflight surfaces
+    it without producing the ~20 KB script body."""
+    r = web_client.post("/api/build/preflight", json={
+        "xyz": peptide_xyz,
+        "engine": "pyscf",
+        "params": {"method": "UKS", "spin": 0},
+    })
+    body = r.get_json()
+    assert body["ok"] is True
+    issues = body["issues"]
+    assert any(i["severity"] == "warn"
+               and "method" in (i["where"] or "")
+               for i in issues), f"expected method warn; got {issues}"
+
+
+def test_preflight_rejects_bad_engine(web_client, peptide_xyz):
+    r = web_client.post("/api/build/preflight", json={
+        "xyz": peptide_xyz,
+        "engine": "qchem",   # not supported
+        "params": {},
+    })
+    assert r.status_code == 400
+    assert r.get_json()["ok"] is False
+
+
+def test_preflight_bad_params_returned_as_error_issue(web_client, peptide_xyz):
+    """When the params dict can't be coerced into a valid config
+    (e.g. kgrid with non-numeric entries that fail the int() cast),
+    preflight returns a single error-severity issue with where='config'
+    rather than HTTP 400.  This lets the UI render the same panel for
+    the parse-failure case without a separate code path."""
+    r = web_client.post("/api/build/preflight", json={
+        "xyz": peptide_xyz,
+        "engine": "siesta",
+        # kgrid coercion does int(v[i]) -- a non-numeric string here
+        # raises ValueError in _siesta_config_from_params, which the
+        # endpoint catches as a config-parse error.
+        "params": {"kgrid": ["x", "y", "z"]},
+    })
+    body = r.get_json()
+    # ok=True so the UI can keep showing the panel; the actual
+    # problem surfaces as an error-severity Issue.
+    assert body["ok"] is True
+    err = [i for i in body["issues"] if i["severity"] == "error"]
+    assert err, f"expected an error issue for bad params; got {body['issues']}"
+    assert err[0]["where"] == "config"
+
+
+def test_index_page_has_issues_panels(web_client):
+    """The structured issues panels added in the validation-hints
+    refresh must be present in the rendered Build page so viewer.js
+    has a target for renderIssues()."""
+    body = web_client.get("/").data.decode()
+    for needle in ('id="fdf-issues"', 'id="pyscf-issues"',
+                   'class="issues-panel"'):
+        assert needle in body, f"missing {needle!r} in index.html"
+
+
+def test_viewer_js_wires_live_preflight(web_client):
+    """viewer.js must wire the issues-panel rendering, debounced
+    preflight, and form-input listener that triggers it on edit."""
+    js = web_client.get("/static/viewer.js").data.decode()
+    for needle in (
+        "function renderIssues(",
+        "function refreshPreflight(",
+        "/api/build/preflight",
+        "refreshPreflightDebounced",
+    ):
+        assert needle in js, f"missing {needle!r} in viewer.js"
+
+
 def test_fdf_custom_params(web_client, peptide_xyz):
     r = web_client.post("/api/build/fdf", json={
         "xyz": peptide_xyz,

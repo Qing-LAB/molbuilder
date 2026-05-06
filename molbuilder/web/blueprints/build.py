@@ -323,6 +323,67 @@ def api_build_pyscf():
     })
 
 
+@bp.route("/api/build/preflight", methods=["POST"])
+def api_build_preflight():
+    """Cheap validation-only endpoint for the live UI hint panel.
+
+    Body: ``{"xyz": "<text>", "engine": "siesta"|"pyscf",
+             "params": {<config dict>}}``
+
+    Returns ``{"ok": True, "issues": [{"severity", "message",
+    "where"}, ...]}``; on bad input returns ``{"ok": False, "error":
+    ...}`` with HTTP 400.
+
+    Rationale: the build form has many knobs whose interactions
+    matter (k-grid vs vacuum padding, hybrid functional vs grid
+    level, charged peptide without explicit charge override, ...).
+    Pre-existing UX surfaced these only after the user clicked
+    Generate, jamming them into a single status line.  This endpoint
+    runs ``validate(struct, cfg)`` without rendering FDF / PySCF
+    text -- much cheaper -- so the UI can call it on debounced form
+    input and update a structured issues panel live.
+    """
+    body = request.get_json(silent=True) or {}
+    xyz_text = body.get("xyz")
+    engine = (body.get("engine") or "").strip().lower()
+    params: Dict[str, Any] = body.get("params") or {}
+
+    if not xyz_text:
+        return jsonify({"ok": False, "error": "no xyz provided"}), 400
+    if engine not in ("siesta", "pyscf"):
+        return jsonify({
+            "ok": False,
+            "error": f"engine must be 'siesta' or 'pyscf'; got {engine!r}",
+        }), 400
+
+    try:
+        struct = _xyz_to_structure(xyz_text)
+    except Exception as exc:
+        return jsonify({"ok": False,
+                        "error": f"could not parse xyz: {exc}"}), 400
+
+    try:
+        if engine == "siesta":
+            cfg = _siesta_config_from_params(params)
+        else:
+            cfg = _pyscf_config_from_params(params)
+    except Exception as exc:
+        # Bad params surface as a single error-severity issue so the
+        # UI can display the same panel for the "your config doesn't
+        # parse" case without a separate code path.
+        return jsonify({
+            "ok": True,
+            "issues": [{"severity": "error",
+                        "message": f"bad parameters: {exc}",
+                        "where":   "config"}],
+        })
+
+    return jsonify({
+        "ok": True,
+        "issues": _issues_to_json(validate(struct, cfg)),
+    })
+
+
 # --------------------------------------------------------------------- #
 #  Helpers                                                              #
 # --------------------------------------------------------------------- #

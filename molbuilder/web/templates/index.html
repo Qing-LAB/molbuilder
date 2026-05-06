@@ -394,6 +394,12 @@
         <button class="dl-btn" id="dl-fdf" disabled>Download .fdf</button>
         <span id="fdf-status" class="status"></span>
       </div>
+      <!-- Validation issues panel (live preflight + post-Generate).
+           Hidden when there are no issues; populated by viewer.js's
+           renderIssues() helper.  Each <li> carries a `data-severity`
+           attribute that drives the colour + icon. -->
+      <ul id="fdf-issues" class="issues-panel" hidden
+          aria-label="SIESTA configuration validation issues"></ul>
       <p class="hint">After generating, switch to the <strong>Watch</strong> tab (top nav) to load and monitor the run live.</p>
 
       <pre id="fdf-output" class="fdf-output" hidden></pre>
@@ -587,6 +593,8 @@
         <button class="dl-btn" id="dl-pyscf" disabled>Download .py</button>
         <span id="pyscf-status" class="status"></span>
       </div>
+      <ul id="pyscf-issues" class="issues-panel" hidden
+          aria-label="PySCF configuration validation issues"></ul>
       <p class="hint">After generating, switch to the <strong>Watch</strong> tab (top nav) to load and monitor the run live.</p>
 
       <pre id="pyscf-output" class="fdf-output" hidden></pre>

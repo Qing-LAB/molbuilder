@@ -47,6 +47,90 @@
         el.className = "status" + (kind ? " " + kind : "");
     }
 
+    // Render a structured issues panel from a list of {severity,
+    // message, where} dicts.  Hides the panel when there are no
+    // issues; otherwise emits one <li class="issue-item"
+    // data-severity="..."> per issue, with the where-tag floated to
+    // the right.  Used both by the live preflight loop and by the
+    // post-Generate response handler.
+    function renderIssues(panelId, issues) {
+        const ul = $(panelId);
+        if (!ul) return;
+        ul.innerHTML = "";
+        const list = (issues || []).filter(Boolean);
+        if (!list.length) {
+            ul.hidden = true;
+            return;
+        }
+        for (const i of list) {
+            const li = document.createElement("li");
+            li.className = "issue-item";
+            li.setAttribute("data-severity", i.severity || "info");
+            const msg = document.createElement("span");
+            msg.className = "issue-msg";
+            msg.textContent = i.message || "";
+            li.appendChild(msg);
+            if (i.where) {
+                const tag = document.createElement("span");
+                tag.className = "issue-where";
+                tag.textContent = i.where;
+                li.appendChild(tag);
+            }
+            ul.appendChild(li);
+        }
+        ul.hidden = false;
+    }
+
+    function clearIssues(panelId) {
+        const ul = $(panelId);
+        if (!ul) return;
+        ul.innerHTML = "";
+        ul.hidden = true;
+    }
+
+    // Debounce helper -- collapses a burst of form-input events into
+    // a single call after `wait` ms of quiet.  Used to throttle the
+    // live /api/build/preflight calls so dragging a slider doesn't
+    // spam the endpoint.
+    function debounce(fn, wait) {
+        let t = null;
+        return function (...args) {
+            if (t) clearTimeout(t);
+            t = setTimeout(() => fn.apply(this, args), wait);
+        };
+    }
+
+    // Live preflight: when the user has already built a structure
+    // (state.xyz exists) and they tweak any tab's params, hit
+    // /api/build/preflight to refresh the issues panel before they
+    // click Generate.  No-op until the first successful build, so a
+    // user who just landed on the page and is fiddling with form
+    // defaults doesn't see warnings that haven't been earned yet.
+    async function refreshPreflight(engine) {
+        if (!state.xyz) return;
+        const params = (engine === "siesta")
+            ? collectFdfParams()
+            : collectPyscfParams();
+        const panelId = (engine === "siesta") ? "fdf-issues" : "pyscf-issues";
+        try {
+            const r = await fetch("/api/build/preflight", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ xyz: state.xyz, engine, params }),
+            }).then(x => x.json());
+            if (r.ok) renderIssues(panelId, r.issues);
+        } catch (e) {
+            // Network error during preflight is not surfaced -- the
+            // panel stays in its previous state.  The Generate path
+            // (which gets the same issues from the render endpoint)
+            // is the canonical source of truth.
+        }
+    }
+    const refreshPreflightDebounced = {
+        siesta: debounce(() => refreshPreflight("siesta"), 250),
+        pyscf:  debounce(() => refreshPreflight("pyscf"),  250),
+    };
+
     function placeholderFor(kind) {
         switch (kind) {
             case "peptide": return "ARNDC  or  AR[SEP]C";
@@ -238,6 +322,13 @@
         $("pyscf-output").textContent = "";
         setStatus("fdf-status", "");
         setStatus("pyscf-status", "");
+        // A new structure invalidates the previous run's issue panels;
+        // refresh both with a preflight tick so the user sees only
+        // issues against the new geometry + current params.
+        clearIssues("fdf-issues");
+        clearIssues("pyscf-issues");
+        refreshPreflightDebounced.siesta();
+        refreshPreflightDebounced.pyscf();
         renderStructure();
     }
 
@@ -556,14 +647,15 @@
             $("fdf-output").hidden = false;
             $("dl-fdf").disabled = false;
             const fdfMsg = `OK — ${r.fdf.split("\n").length} lines, label "${r.system_label}".`;
-            const fdfWarns = (r.issues || []).filter(i => i.severity === "warn");
-            if (fdfWarns.length) {
-                setStatus("fdf-status",
-                    `${fdfMsg}  ⚠ ${fdfWarns.map(i => i.message).join(" • ")}`,
-                    "warn");
-            } else {
-                setStatus("fdf-status", fdfMsg, "ok");
-            }
+            // Status line stays terse ("OK -- ... lines").  The
+            // structured issues panel below the action row carries
+            // the per-issue detail; setStatus's `warn` colour fades
+            // in only when there's at least one warning to draw the
+            // eye downward to the panel.
+            const issues = r.issues || [];
+            renderIssues("fdf-issues", issues);
+            setStatus("fdf-status", fdfMsg,
+                      issues.some(i => i.severity === "warn") ? "warn" : "ok");
         } catch (e) {
             setStatus("fdf-status", "Network error: " + e.message, "error");
         }
@@ -659,14 +751,10 @@
             $("pyscf-output").hidden = false;
             $("dl-pyscf").disabled = false;
             const pyMsg = `OK — ${r.script.split("\n").length} lines, job "${r.job_name}".`;
-            const pyWarns = (r.issues || []).filter(i => i.severity === "warn");
-            if (pyWarns.length) {
-                setStatus("pyscf-status",
-                    `${pyMsg}  ⚠ ${pyWarns.map(i => i.message).join(" • ")}`,
-                    "warn");
-            } else {
-                setStatus("pyscf-status", pyMsg, "ok");
-            }
+            const issues = r.issues || [];
+            renderIssues("pyscf-issues", issues);
+            setStatus("pyscf-status", pyMsg,
+                      issues.some(i => i.severity === "warn") ? "warn" : "ok");
         } catch (e) {
             setStatus("pyscf-status", "Network error: " + e.message, "error");
         }
@@ -809,4 +897,21 @@
 
     restoreFormState();
     window.addEventListener("pagehide", saveFormState);
+
+    // Wire each engine-scoped form input to the debounced preflight
+    // refresh so the issues panel updates live as the user adjusts
+    // settings.  p-* IDs feed SIESTA's panel; py-* IDs feed PySCF's.
+    // No-op until the user has built a structure (state.xyz set) --
+    // see refreshPreflight().
+    FORM_IDS.forEach(id => {
+        const el = $(id);
+        if (!el) return;
+        const which = id.startsWith("p-")  ? "siesta"
+                    : id.startsWith("py-") ? "pyscf"
+                                           : null;
+        if (!which) return;
+        const event = (el.type === "checkbox" || el.tagName === "SELECT")
+            ? "change" : "input";
+        el.addEventListener(event, () => refreshPreflightDebounced[which]());
+    });
 })();
