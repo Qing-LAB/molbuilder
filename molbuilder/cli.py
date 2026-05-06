@@ -538,13 +538,34 @@ def cmd_fdf(input_path, fdf_path,
               help="DFT integration grid (0-9; 4 = default for hybrids, 5 = tight)")
 @click.option("--level-shift",    type=float, default=0.0, show_default=True,
               help="Hartree; 0.1-0.3 helps for hard SCF")
+# Hard-SCF troubleshooting knobs (gap #10 / TIER 2 #16).  Both default
+# to PySCF's own defaults so behaviour is unchanged for the easy-
+# converge case; bump them when SCF oscillates.
+@click.option("--diis-space", type=int, default=8, show_default=True,
+              help="DIIS subspace size; bump to 12-20 for oscillating SCFs")
+@click.option("--damp",       type=float, default=0.0, show_default=True,
+              help="Roothaan damping factor; 0.3-0.5 helps when DIIS alone isn't enough")
+# ECP (effective core potential).  Default None means auto -- emit
+# lanl2dz when heavy atoms (Z>36) are present AND basis isn't def2-*.
+# Pass an explicit name ("lanl2dz" / "stuttgart" / "def2") to force,
+# or "" / "none" to disable auto-emit.  Per-element dicts aren't
+# accessible from the CLI; use the Python API for that.
+@click.option("--ecp", default=None,
+              help="effective core potential (e.g. 'lanl2dz'); "
+                   "default = auto for heavy atoms on non-def2 bases; "
+                   "pass 'none' to disable auto-emit")
 # pre-optimization
 @click.option("--preopt", is_flag=True,
               help="run a cheap PBE/def2-SVP pre-opt before main run")
-@click.option("--preopt-functional", default="PBE",      show_default=True)
-@click.option("--preopt-basis",      default="def2-SVP", show_default=True)
-@click.option("--preopt-max-steps",  type=int,   default=50,   show_default=True)
-@click.option("--preopt-grms",       type=float, default=1e-3, show_default=True)
+@click.option("--preopt-functional",  default="PBE",      show_default=True)
+@click.option("--preopt-basis",       default="def2-SVP", show_default=True)
+@click.option("--no-preopt-density-fit", is_flag=True,
+              help="disable density fitting on the pre-opt SCF")
+@click.option("--preopt-dispersion",  default=None,
+              help="dispersion correction on the pre-opt mf "
+                   "(d3 / d3bj / d4); default off")
+@click.option("--preopt-max-steps",   type=int,   default=50,   show_default=True)
+@click.option("--preopt-grms",        type=float, default=1e-3, show_default=True)
 # main optimization
 @click.option("--no-optimize", is_flag=True,
               help="single-point only, no geometry optimization")
@@ -565,6 +586,14 @@ def cmd_fdf(input_path, fdf_path,
 @click.option("--no-log-file",        is_flag=True)
 @click.option("--no-trajectory",      is_flag=True,
               help="don't ask geomeTRIC to stream <job>_geom_optim.xyz")
+@click.option("--no-molwatch-log",    is_flag=True,
+              help="don't write the additive <job>.molwatch.log "
+                   "(self-contained per-step coords/energy/forces "
+                   "log consumed by molwatch)")
+@click.option("--no-save-initial-xyz",  is_flag=True,
+              help="don't snapshot the input geometry to <job>_initial.xyz")
+@click.option("--no-save-optimized-xyz", is_flag=True,
+              help="don't write the relaxed geometry to <job>_optimized.xyz")
 @click.option("--no-verbose-comments", is_flag=True,
               help="strip the inline tuning hints from the script")
 def cmd_pyscf(input_path, py_path,
@@ -572,16 +601,30 @@ def cmd_pyscf(input_path, py_path,
               method, functional, basis, auxbasis, no_density_fit, dispersion,
               solvent, solvent_method,
               scf_conv_tol, scf_max_cycle, scf_init_guess,
-              grid_level, level_shift,
+              grid_level, level_shift, diis_space, damp, ecp,
               preopt, preopt_functional, preopt_basis,
+              no_preopt_density_fit, preopt_dispersion,
               preopt_max_steps, preopt_grms,
               no_optimize, optimizer,
               geom_max_steps, geom_conv_energy, geom_conv_grms, geom_conv_gmax,
               max_memory, threads, verbose,
-              no_chkfile, no_log_file, no_trajectory, no_verbose_comments):
+              no_chkfile, no_log_file, no_trajectory, no_molwatch_log,
+              no_save_initial_xyz, no_save_optimized_xyz,
+              no_verbose_comments):
     """Convert an XYZ or PDB structure into a runnable PySCF script."""
     from .pyscf import PySCFConfig, convert
     disp = None if (dispersion or "").lower() in ("none", "") else dispersion
+    # ECP "" / "none" -> disabled (PySCFConfig.ecp == "" means
+    # explicitly disabled; None means auto-detect).  Anything else
+    # passes through verbatim.
+    if ecp is None:
+        ecp_val = None
+    elif ecp.lower() in ("none", ""):
+        ecp_val = ""
+    else:
+        ecp_val = ecp
+    preopt_disp = (None if (preopt_dispersion or "").lower() in ("none", "")
+                   else preopt_dispersion)
     cfg = PySCFConfig(
         job_name      = job_name,
         charge        = charge,
@@ -593,6 +636,7 @@ def cmd_pyscf(input_path, py_path,
         auxbasis      = auxbasis,
         density_fit   = not no_density_fit,
         dispersion    = disp,
+        ecp           = ecp_val,
         solvent       = solvent,
         solvent_method = solvent_method,
         scf_conv_tol  = scf_conv_tol,
@@ -600,9 +644,13 @@ def cmd_pyscf(input_path, py_path,
         scf_init_guess = scf_init_guess,
         grid_level    = grid_level,
         level_shift   = level_shift,
+        diis_space    = diis_space,
+        damp          = damp,
         preopt        = preopt,
         preopt_functional = preopt_functional,
         preopt_basis  = preopt_basis,
+        preopt_density_fit = not no_preopt_density_fit,
+        preopt_dispersion  = preopt_disp,
         preopt_max_steps = preopt_max_steps,
         preopt_grms   = preopt_grms,
         optimize      = not no_optimize,
@@ -616,7 +664,10 @@ def cmd_pyscf(input_path, py_path,
         verbose       = verbose,
         chkfile          = not no_chkfile,
         log_file         = not no_log_file,
+        save_initial_xyz   = not no_save_initial_xyz,
+        save_optimized_xyz = not no_save_optimized_xyz,
         write_trajectory = not no_trajectory,
+        molwatch_log     = not no_molwatch_log,
         verbose_comments = not no_verbose_comments,
     )
     with _resolve_input_path(input_path) as resolved_input:
