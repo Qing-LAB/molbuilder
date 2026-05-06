@@ -241,7 +241,7 @@ def test_pyscf_cli_exposes_review_fix_l_options(monkeypatch, tmp_path):
     assert "mf.damp = 0.4" in text
     assert 'ecp = "lanl2dz"' in text or "ecp        = 'lanl2dz'" in text or "ecp=" in text
     # molwatch / save toggles drop the corresponding code paths.
-    assert "_MolwatchEmitter" not in text
+    assert "MolwatchEmitter" not in text
     assert "_initial.xyz" not in text
     assert "_optimized.xyz" not in text
 

@@ -706,35 +706,18 @@ def _emit_molwatch_emitter(v: bool) -> List[str]:
       * ``mf.callback = _molwatch.scf_cycle_hook``   (production SCF cycles)
       * ``optimize(mf,  ..., callback=_molwatch.opt_step_hook)`` (production steps)
 
-    Each opt step flushes one block to the unified log.  Block layout
-    is heavily marker-based so a downstream parser can locate every
-    field by string match -- no positional fragility:
-
-        ==== molwatch step <N> begin ====
-        step_index: <N>
-        n_atoms:    <K>
-        coordinates (Ang):
-           <element>   <x>   <y>   <z>
-           ...
-        energy (eV): <E>
-        forces (eV/Ang):
-           <element>  <fx>  <fy>  <fz>
-           ...
-        max_force (eV/Ang): <Fmax>
-        scf_history begin
-        #  cycle    energy(eV)    delta_E(eV)    gnorm(eV/Ang)    ddm
-              ...
-        scf_history end
-        ==== molwatch step <N> end ====
-
-    Tolerant to truncation: a torn final block (begin without end) is
-    dropped on parse, so molwatch can tail a still-running job.
-
-    Standard PySCF / geomeTRIC outputs (<JOB>.log, <JOB>_geom_optim.xyz,
-    <JOB>_geom.qdata.txt) are still written -- this file is purely
-    additive.  If the user prefers not to have it, set
-    ``cfg.molwatch_log = False`` at script-generation time.
+    Block layout, parser tolerance, and other contract details are
+    documented on the source class
+    :class:`molbuilder.trajectory_log.emitter.MolwatchEmitter`.
+    The class source is inlined here verbatim via :func:`inspect.getsource`
+    so the generated script stays self-contained (no molbuilder runtime
+    dependency on the user's machine) while keeping a single source of
+    truth that's directly testable as a real Python module.
     """
+    import inspect
+
+    from ..trajectory_log.emitter import MolwatchEmitter
+
     out: List[str] = []
     out.append("")
     out.append("# ============================================================")
@@ -747,138 +730,22 @@ def _emit_molwatch_emitter(v: bool) -> List[str]:
         out.append("# (no sibling-file discovery needed) and shows trajectory +")
         out.append("# energy + force + per-cycle SCF residual plots.")
         out.append("#")
+        out.append("# Source of truth: molbuilder.trajectory_log.emitter -- the")
+        out.append("# class below is inlined verbatim from there at script-")
+        out.append("# generation time so this script stays self-contained.  Do")
+        out.append("# NOT edit the inline copy; edit the module and regenerate.")
+        out.append("#")
         out.append("# All standard PySCF/geomeTRIC outputs are kept untouched;")
         out.append("# this is purely additional.  Disable via cfg.molwatch_log =")
         out.append("# False at generation time if you don't want it.")
     out.append("import time as _mw_time")
     out.append("import numpy as _mw_np")
     out.append("")
-    out.append("class _MolwatchEmitter:")
-    out.append('    """Streams <JOB>.molwatch.log with one marker-delimited')
-    out.append("    block per opt step.  See molbuilder spec for the format.")
-    out.append('    """')
-    out.append("    HARTREE_TO_EV          = 27.211386245988")
-    out.append("    HARTREE_BOHR_TO_EV_ANG = 51.42208619")
-    out.append("")
-    out.append("    def __init__(self, path, job, mol):")
-    out.append("        self.path = path")
-    out.append("        self.job  = job")
-    out.append("        self._scf_buf   = []   # per-cycle dicts; reset each new SCF")
-    out.append("        self._step      = 0    # log block counter; step 0 reserved for preview")
-    out.append("        with open(self.path, 'w') as fh:")
-    out.append('            fh.write("# molwatch trajectory log v1\\n")')
-    out.append('            fh.write("# generator: molbuilder/pyscf_input\\n")')
-    out.append('            fh.write("# engine: pyscf\\n")')
-    out.append('            fh.write(f"# job: {self.job}\\n")')
-    out.append('            fh.write("# units: energy=eV, force=eV/Ang, coords=Ang\\n")')
-    out.append('            fh.write(f"# created: {_mw_time.strftime(\'%Y-%m-%dT%H:%M:%S\')}\\n")')
-    out.append('            fh.write("\\n")')
-    out.append("        # Step 0: initial-state preview, written BEFORE any SCF runs.")
-    out.append("        # Carries coordinates only; energy / forces / scf_history are")
-    out.append("        # null because none have been computed yet.  This guarantees")
-    out.append("        # molwatch can render the molecule the moment a user loads the")
-    out.append("        # log -- they don't have to wait for the first SCF to finish.")
-    out.append("        self._write_initial_preview(mol)")
-    out.append("")
-    out.append("    def _write_initial_preview(self, mol):")
-    out.append("        coords_A = mol.atom_coords(unit='Ang')")
-    out.append("        elements = [mol.atom_symbol(i) for i in range(mol.natm)]")
-    out.append("        idx = self._step")
-    out.append("        with open(self.path, 'a') as fh:")
-    out.append('            fh.write(f"==== molwatch step {idx} begin ====\\n")')
-    out.append('            fh.write(f"step_index: {idx}\\n")')
-    out.append('            fh.write("kind: initial_preview\\n")')
-    out.append('            fh.write(f"wall_time: {_mw_time.time():.3f}\\n")')
-    out.append('            fh.write(f"n_atoms: {mol.natm}\\n")')
-    out.append('            fh.write("coordinates (Ang):\\n")')
-    out.append("            for i, el in enumerate(elements):")
-    out.append("                x, y, z = coords_A[i]")
-    out.append('                fh.write(f"   {el:<2s}  {x:14.8f}  {y:14.8f}  {z:14.8f}\\n")')
-    out.append('            fh.write("energy (eV): None\\n")')
-    out.append('            fh.write("forces (eV/Ang):\\n")')
-    out.append('            fh.write("max_force (eV/Ang): None\\n")')
-    out.append('            fh.write("scf_history begin\\n")')
-    out.append('            fh.write("scf_history end\\n")')
-    out.append('            fh.write(f"==== molwatch step {idx} end ====\\n")')
-    out.append('            fh.write("\\n")')
-    out.append("            fh.flush()")
-    out.append("        self._step += 1")
-    out.append("")
-    out.append("    # ----- SCF cycle hook (wired to mf.callback) -----")
-    out.append("    def scf_cycle_hook(self, envs):")
-    out.append("        cycle = envs.get('cycle', None)        # 0-indexed in PySCF")
-    out.append("        if cycle is None:")
-    out.append("            return")
-    out.append("        if cycle == 0:")
-    out.append("            # New SCF run starts: clear cycle buffer")
-    out.append("            self._scf_buf = []")
-    out.append("        e_tot     = envs.get('e_tot', None)")
-    out.append("        last_e    = envs.get('last_hf_e', None)")
-    out.append("        norm_gorb = envs.get('norm_gorb', None)")
-    out.append("        norm_ddm  = envs.get('norm_ddm', None)")
-    out.append("        if e_tot is None:")
-    out.append("            return")
-    out.append("        e_eV    = float(e_tot)  * self.HARTREE_TO_EV")
-    out.append("        dE_eV   = (float(e_tot) - float(last_e)) * self.HARTREE_TO_EV \\")
-    out.append("                  if last_e is not None else 0.0")
-    out.append("        g_eV_A  = (float(norm_gorb) * self.HARTREE_BOHR_TO_EV_ANG) \\")
-    out.append("                  if norm_gorb is not None else None")
-    out.append("        ddm     = float(norm_ddm) if norm_ddm is not None else None")
-    out.append("        self._scf_buf.append({")
-    out.append("            'cycle':   int(cycle) + 1,        # 1-indexed in our log")
-    out.append("            'energy':  e_eV,")
-    out.append("            'delta_E': dE_eV,")
-    out.append("            'gnorm':   g_eV_A,")
-    out.append("            'ddm':     ddm,")
-    out.append("        })")
-    out.append("")
-    out.append("    # ----- opt step hook (wired to optimize(callback=...)) -----")
-    out.append("    def opt_step_hook(self, envs):")
-    out.append("        mol      = envs.get('mol')")
-    out.append("        energy   = envs.get('energy')")
-    out.append("        gradient = envs.get('gradients')")
-    out.append("        if mol is None or energy is None or gradient is None:")
-    out.append("            return")
-    out.append("        coords_A = mol.atom_coords(unit='Ang')")
-    out.append("        elements = [mol.atom_symbol(i) for i in range(mol.natm)]")
-    out.append("        e_eV     = float(energy) * self.HARTREE_TO_EV")
-    out.append("        F        = -_mw_np.asarray(gradient).reshape(-1, 3) \\")
-    out.append("                      * self.HARTREE_BOHR_TO_EV_ANG  # eV/Ang")
-    out.append("        f_mag    = _mw_np.sqrt((F * F).sum(axis=1))")
-    out.append("        max_f    = float(f_mag.max()) if f_mag.size else 0.0")
-    out.append("        scf      = list(self._scf_buf)")
-    out.append("        idx      = self._step")
-    out.append("        with open(self.path, 'a') as fh:")
-    out.append('            fh.write(f"==== molwatch step {idx} begin ====\\n")')
-    out.append('            fh.write(f"step_index: {idx}\\n")')
-    out.append('            fh.write(f"wall_time: {_mw_time.time():.3f}\\n")')
-    out.append('            fh.write(f"n_atoms: {mol.natm}\\n")')
-    out.append('            fh.write("coordinates (Ang):\\n")')
-    out.append("            for i, el in enumerate(elements):")
-    out.append("                x, y, z = coords_A[i]")
-    out.append('                fh.write(f"   {el:<2s}  {x:14.8f}  {y:14.8f}  {z:14.8f}\\n")')
-    out.append('            fh.write(f"energy (eV): {e_eV:.8f}\\n")')
-    out.append('            fh.write("forces (eV/Ang):\\n")')
-    out.append("            for i, el in enumerate(elements):")
-    out.append("                fx, fy, fz = F[i]")
-    out.append('                fh.write(f"   {el:<2s}  {fx:14.8f}  {fy:14.8f}  {fz:14.8f}\\n")')
-    out.append('            fh.write(f"max_force (eV/Ang): {max_f:.8f}\\n")')
-    out.append('            fh.write("scf_history begin\\n")')
-    out.append('            fh.write("#  cycle      energy(eV)         delta_E(eV)        gnorm(eV/Ang)            ddm\\n")')
-    out.append("            for c in scf:")
-    out.append("                g_str = (f\"{c['gnorm']:.8e}\" if c['gnorm'] is not None")
-    out.append("                         else 'None')")
-    out.append("                d_str = (f\"{c['ddm']:.8e}\" if c['ddm'] is not None")
-    out.append("                         else 'None')")
-    out.append("                fh.write(")
-    out.append('                    f"   {c[\'cycle\']:5d}   {c[\'energy\']:18.8f}'
-               '  {c[\'delta_E\']:18.8f}  {g_str:>20s}  {d_str:>16s}\\n"')
-    out.append("                )")
-    out.append('            fh.write("scf_history end\\n")')
-    out.append('            fh.write(f"==== molwatch step {idx} end ====\\n")')
-    out.append('            fh.write("\\n")')
-    out.append("            fh.flush()")
-    out.append("        self._step += 1")
+    # Inline the class definition itself.  inspect.getsource includes
+    # the leading `class MolwatchEmitter:` line and full body, properly
+    # indented.  The script's globals supply `_mw_time` and `_mw_np`,
+    # which the methods reference at call time.
+    out.append(inspect.getsource(MolwatchEmitter).rstrip())
     out.append("")
     # Instantiate as early as possible (BEFORE preopt) so the log
     # file -- with header + initial-preview block -- exists the
@@ -887,7 +754,7 @@ def _emit_molwatch_emitter(v: bool) -> List[str]:
     # has nothing to load on the Watch tab until preopt finishes.
     # The SCF callback is wired separately at each stage's mf object
     # (see emit_scf_callback_wiring below).
-    out.append('_molwatch = _MolwatchEmitter(JOB + ".molwatch.log", JOB, mol)')
+    out.append('_molwatch = MolwatchEmitter(JOB + ".molwatch.log", JOB, mol)')
     out.append("")
     # Run-state markers.  The watch UI reads these to render a binary
     # "Finished / Ongoing / Error" badge -- authoritative when present,
