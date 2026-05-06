@@ -1,0 +1,17 @@
+# Default to LF line endings on checkout for all text files.  This
+# avoids the WSL/Windows mixed-checkout warning storm we'd otherwise
+# get on every `git status` after the molwatch tree was merged in
+# from a CRLF-normalised checkout.
+* text=auto eol=lf
+
+# Always-binary patterns -- never get the LF treatment.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.zip  binary
+*.gz   binary
+*.tar  binary
+*.psml binary
