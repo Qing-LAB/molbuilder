@@ -317,6 +317,72 @@ button.primary:disabled,
 .status.ok    { color: var(--success); }
 .status.warn  { color: #d8a64b; }
 
+/* ---- Validation issues panel ----
+ * Replaces the older one-line "⚠ msg1 • msg2" status concatenation
+ * with a structured per-issue list so warnings are scannable.  Each
+ * <li> carries a data-severity attribute (warn/error/info) that picks
+ * the left-bar accent colour and the leading glyph.  Populated by
+ * renderIssues() in viewer.js, both from the live preflight endpoint
+ * and from the post-Generate response. */
+.issues-panel {
+    list-style: none;
+    margin: 8px 0 0 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.88rem;
+}
+.issues-panel .issue-item {
+    padding: 6px 10px 6px 12px;
+    border-radius: 4px;
+    border-left: 3px solid var(--border-soft);
+    background: var(--bg-input);
+    color: var(--text-secondary);
+    line-height: 1.4;
+    display: flex;
+    gap: 8px;
+    align-items: baseline;
+}
+.issues-panel .issue-item::before {
+    flex: 0 0 auto;
+    font-weight: 700;
+    /* Default glyph -- per-severity overrides below. */
+    content: "•";
+}
+.issues-panel .issue-item[data-severity="warn"] {
+    border-left-color: #d8a64b;
+    color: #e8c98c;
+}
+.issues-panel .issue-item[data-severity="warn"]::before {
+    content: "⚠";
+    color: #d8a64b;
+}
+.issues-panel .issue-item[data-severity="error"] {
+    border-left-color: var(--error);
+    color: #ffb1b1;
+}
+.issues-panel .issue-item[data-severity="error"]::before {
+    content: "✗";
+    color: var(--error);
+}
+.issues-panel .issue-item[data-severity="info"] {
+    border-left-color: #4a9eff;
+    color: var(--text-secondary);
+}
+.issues-panel .issue-item[data-severity="info"]::before {
+    content: "i";
+    color: #4a9eff;
+}
+.issues-panel .issue-where {
+    flex: 0 0 auto;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.78rem;
+    opacity: 0.65;
+    margin-left: auto;
+    padding-left: 12px;
+}
+
 /* ---- Viewer card ---- */
 
 .card-viewer {
