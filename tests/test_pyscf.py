@@ -59,6 +59,29 @@ def test_default_render_compiles(h2o):
         assert needle in text, f"missing {needle!r}"
 
 
+def test_hf_render_omits_dft_import(h2o):
+    """Pure-HF runs (method=RHF/UHF, no preopt) don't touch the dft
+    module; the `from pyscf import ... dft` should drop out so the
+    script reads `from pyscf import gto, scf` instead.  Pre-opt always
+    uses DFT (cheap warm-up), so even an HF production run keeps the
+    dft import when preopt=True.
+
+    Tier 2 #13 from the deep code review."""
+    text = render_script(h2o, PySCFConfig(method="RHF", preopt=False))
+    compile(text, "<rendered>", "exec")
+    assert "from pyscf import gto, scf" in text
+    assert "from pyscf import gto, scf, dft" not in text
+    # Sanity: HF script doesn't accidentally use dft.* anywhere.
+    assert "dft." not in text or all(
+        ln.lstrip().startswith("#") for ln in text.splitlines() if "dft." in ln
+    ), "HF script should not reference dft.* in live code"
+
+    # With preopt=True the pre-opt block forces DFT regardless of the
+    # production method (preopt is always a cheap functional warm-up).
+    text2 = render_script(h2o, PySCFConfig(method="RHF", preopt=True))
+    assert "from pyscf import gto, scf, dft" in text2
+
+
 def test_atom_block_format(h2o):
     text = render_script(h2o, PySCFConfig(verbose_comments=False))
     assert re.search(r"^\s*O\s+0\.00000000\s+0\.00000000\s+0\.00000000",

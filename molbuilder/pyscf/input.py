@@ -258,7 +258,14 @@ def render_script(struct: Structure,
         out.append(f'os.environ.setdefault("OMP_NUM_THREADS", "{cfg.threads}")')
         out.append(f'os.environ.setdefault("MKL_NUM_THREADS", "{cfg.threads}")')
         out.append("")
-    out.append("from pyscf import gto, scf, dft")
+    # Import only what the script actually uses.  HF runs (method=RHF/UHF)
+    # never touch the dft module; DFT runs (RKS/UKS, the default) need it
+    # for both the production mf object and -- when preopt is enabled --
+    # the always-DFT pre-opt warm-up.
+    if is_dft or cfg.preopt:
+        out.append("from pyscf import gto, scf, dft")
+    else:
+        out.append("from pyscf import gto, scf")
     if cfg.optimize:
         if cfg.optimizer == "geometric":
             opt_pkg = "geometric"
