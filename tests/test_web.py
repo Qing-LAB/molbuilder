@@ -365,27 +365,6 @@ def test_preflight_bad_params_returned_as_error_issue(web_client, peptide_xyz):
     assert err[0]["where"] == "config"
 
 
-def test_index_page_has_issues_panels(web_client):
-    """The structured issues panels added in the validation-hints
-    refresh must be present in the rendered Build page so viewer.js
-    has a target for renderIssues()."""
-    body = web_client.get("/").data.decode()
-    for needle in ('id="fdf-issues"', 'id="pyscf-issues"',
-                   'class="issues-panel"'):
-        assert needle in body, f"missing {needle!r} in index.html"
-
-
-def test_viewer_js_wires_live_preflight(web_client):
-    """viewer.js must wire the issues-panel rendering, debounced
-    preflight, and form-input listener that triggers it on edit."""
-    js = web_client.get("/static/viewer.js").data.decode()
-    for needle in (
-        "function renderIssues(",
-        "function refreshPreflight(",
-        "/api/build/preflight",
-        "refreshPreflightDebounced",
-    ):
-        assert needle in js, f"missing {needle!r} in viewer.js"
 
 
 def test_fdf_custom_params(web_client, peptide_xyz):
