@@ -913,6 +913,21 @@ triple (generator change + validation rule + spec test) in Phase 6.
     flipped) and `test_gap_10_diis_damp_emitted_only_when_tuned`
     pin the field presence + the conditional emission.
 
+### Pinned false positive from the 2026-05-05 deep code review
+
+The 22-item review on the post-merge branch landed eleven targeted
+fix commits (review-fixes A-M, plus the dead-handoff cleanup); see
+`git log --oneline --grep "review-fix"` for the chain.  One item was
+a false positive worth documenting so it doesn't resurface:
+
+- **TIER 2 #8 (geomeTRIC `convergence_*` kwargs raise TypeError)**
+  was wrong.  Direct probe + the H₂ smoke test both confirm PySCF's
+  `geometric_solver.optimize()` forwards `**kwargs` into geomeTRIC's
+  `OptParams`, which accepts those exact lowercase keys.  Pinned by
+  `test_pyscf_geomtric_accepts_nondefault_convergence_kwargs`
+  (review-fix K) so any future PySCF / geomeTRIC API change actually
+  breaking this contract is caught.
+
 ### Generated-output style requirements
 
 - **Verbose-comments mode** (default ON) emits inline tuning hints next
