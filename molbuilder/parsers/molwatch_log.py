@@ -286,7 +286,7 @@ class MolwatchLogParser(TrajectoryParser):
                 if stripped.startswith("wall_time:"):
                     # Unix epoch seconds emitted by both the SIESTA-side
                     # write_initial_preview helper and the inlined PySCF
-                    # _MolwatchEmitter.  Optional -- older logs (and a
+                    # MolwatchEmitter.  Optional -- older logs (and a
                     # log torn before the wall_time line) parse fine
                     # with block_wall_time = None, just no elapsed-time
                     # display in the UI.

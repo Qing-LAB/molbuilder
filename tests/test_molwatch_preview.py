@@ -147,7 +147,7 @@ def test_siesta_convert_respects_disable_flag(tmp_path):
 
 
 def test_pyscf_generated_script_emits_preview_block_text():
-    """The generated script's _MolwatchEmitter writes an initial-state
+    """The generated script's MolwatchEmitter writes an initial-state
     preview as its first action -- so the .molwatch.log has step 0
     available before the first SCF runs."""
     s = Structure(
@@ -162,7 +162,7 @@ def test_pyscf_generated_script_emits_preview_block_text():
     assert "kind: initial_preview" in text
     # The preview block is emitted before optimize() is called -- the
     # class instantiation line must appear before the optimize(...) call.
-    inst_pos = text.index("_MolwatchEmitter(")
+    inst_pos = text.index("MolwatchEmitter(")
     opt_pos = text.index("mol_eq = optimize(")
     assert inst_pos < opt_pos
 

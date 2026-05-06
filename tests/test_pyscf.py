@@ -209,12 +209,12 @@ def test_molwatch_log_instantiated_before_preopt(h2o):
     can take hours on a real molecule; the Watch tab needs SOMETHING
     to load from second one.
 
-    Pin the source ordering: `_molwatch = _MolwatchEmitter(...)` must
+    Pin the source ordering: `_molwatch = MolwatchEmitter(...)` must
     appear BEFORE `mol_pre = optimize(mf1, ...)`.  Both callbacks
     (mf1.callback for SCF, optimize(callback=...) for opt steps) must
     also wire into the preopt stage so steps stream from the start."""
     text = render_script(h2o, PySCFConfig(preopt=True))
-    inst_at      = text.find('_molwatch = _MolwatchEmitter(JOB')
+    inst_at      = text.find('_molwatch = MolwatchEmitter(JOB')
     preopt_at    = text.find("mol_pre = optimize(")
     prod_at      = text.find("mol_eq = optimize(")
     mf1_callback = text.find("mf1.callback = _molwatch.scf_cycle_hook")
@@ -257,7 +257,7 @@ def test_molwatch_log_instantiation_skipped_when_optimizer_is_berny(h2o):
     text = render_script(h2o,
                          PySCFConfig(optimize=True, optimizer="berny",
                                      molwatch_log=True))
-    assert "_MolwatchEmitter" not in text
+    assert "MolwatchEmitter" not in text
     assert ".molwatch.log" not in text or text.count(".molwatch.log") <= 1
 
 
