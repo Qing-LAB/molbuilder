@@ -90,6 +90,52 @@ def test_atom_block_format(h2o):
                      text, re.M)
 
 
+def test_geometric_optparams_accepts_pyscf_optimize_kwargs():
+    """Pin the PySCF/geomeTRIC API contract that the generator depends on.
+
+    The generated script calls::
+
+        optimize(mf,
+                 convergence_energy = 1e-6,
+                 convergence_grms   = 3e-4,
+                 convergence_gmax   = 4.5e-4,
+                 maxsteps           = N,
+                 callback           = ...)
+
+    PySCF's ``geometric_solver.optimize(method, **kwargs)`` forwards
+    ``**kwargs`` into geomeTRIC's ``OptParams(**kwargs)`` constructor,
+    which accepts the lowercase ``convergence_*`` keys and stores them
+    on the instance as ``Convergence_*`` (capital C).  TIER 2 #8 of
+    the 2026-05-05 review claimed the kwargs raise ``TypeError`` --
+    they don't, but the only way to be sure (and stay sure across
+    PySCF / geomeTRIC version bumps) is to introspect the actual API.
+
+    Probe ``OptParams`` directly with our exact key names + sentinel
+    values, then read the canonical attributes back.  No subprocess,
+    no dependency on PySCF -- if either side renames or rejects the
+    keys, this fails at unit-test time with a clean message rather
+    than letting a generated script crash at user runtime.
+    """
+    pytest.importorskip("geometric")
+    from geometric.optimize import OptParams
+
+    # Sentinel values picked to be unmistakable in error messages.
+    p = OptParams(convergence_energy=1.234e-6,
+                  convergence_grms  =5.678e-4,
+                  convergence_gmax  =9.012e-4)
+    assert p.Convergence_energy == 1.234e-6, (
+        "geomeTRIC OptParams stopped honouring `convergence_energy`; "
+        "molbuilder's generated script will silently use the default "
+        "or crash at runtime"
+    )
+    assert p.Convergence_grms == 5.678e-4, (
+        "geomeTRIC OptParams stopped honouring `convergence_grms`"
+    )
+    assert p.Convergence_gmax == 9.012e-4, (
+        "geomeTRIC OptParams stopped honouring `convergence_gmax`"
+    )
+
+
 # --------------------------------------------------------------------- #
 #  Charge handling                                                      #
 # --------------------------------------------------------------------- #

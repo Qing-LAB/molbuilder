@@ -921,12 +921,16 @@ fix commits (review-fixes A-M, plus the dead-handoff cleanup); see
 a false positive worth documenting so it doesn't resurface:
 
 - **TIER 2 #8 (geomeTRIC `convergence_*` kwargs raise TypeError)**
-  was wrong.  Direct probe + the H₂ smoke test both confirm PySCF's
-  `geometric_solver.optimize()` forwards `**kwargs` into geomeTRIC's
-  `OptParams`, which accepts those exact lowercase keys.  Pinned by
-  `test_pyscf_geomtric_accepts_nondefault_convergence_kwargs`
-  (review-fix K) so any future PySCF / geomeTRIC API change actually
-  breaking this contract is caught.
+  was wrong.  PySCF's `geometric_solver.optimize(method, **kwargs)`
+  forwards `**kwargs` into `geometric.optimize.OptParams(**kwargs)`,
+  which accepts the lowercase keys `convergence_energy` /
+  `convergence_grms` / `convergence_gmax` and stores them as the
+  capitalized `Convergence_*` attributes.  The contract is pinned
+  by introspection (no subprocess, no PySCF dependency) in
+  `test_geometric_optparams_accepts_pyscf_optimize_kwargs` --
+  that test fails at unit-test time if either side ever renames
+  or rejects the keys, so a regression surfaces cleanly instead
+  of crashing at user runtime.
 
 ### Generated-output style requirements
 
