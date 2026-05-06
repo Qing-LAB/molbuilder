@@ -74,33 +74,18 @@
      * van-der-Waals radius, so per-element size differences only become
      * visible at a non-tiny scale.  Defaults below are tuned so that
      * Au / S / C / H look visibly different in every mode that draws
-     * atoms.  The user's "radius scale" slider multiplies these. */
+     * atoms.  The user's "radius scale" slider multiplies these.
+     *
+     * Sizing math lives in molbuilder/web/static/lib/mol-style.js so
+     * the Build and Watch viewers stay in lock-step on representation
+     * numerics.  The Watch tab additionally exposes a `colorscheme`
+     * select, which we forward through the shared helper. */
     function styleSpec() {
-        const rep = $("rep").value;
-        const scale = parseFloat($("radius").value) || 1.0;
-        const cs = $("colorscheme").value;
-
-        switch (rep) {
-            case "sphere":
-                // True CPK: full vdW radius per element.
-                return { sphere: { scale: 1.0 * scale, colorscheme: cs } };
-            case "line":
-                return { line: { linewidth: 1 + 2 * scale, colorscheme: cs } };
-            case "ballstick":
-                // Balls scale with vdW radius, sticks are a fixed thickness.
-                return {
-                    stick:  { radius: 0.12 * scale,             colorscheme: cs },
-                    sphere: { scale:  0.32 * scale,             colorscheme: cs },
-                };
-            case "stick":
-            default:
-                // Plain licorice has no per-element size; tack on tiny
-                // spheres so the user can still tell Au from H.
-                return {
-                    stick:  { radius: 0.16 * scale,             colorscheme: cs },
-                    sphere: { scale:  0.18 * scale,             colorscheme: cs },
-                };
-        }
+        return molbuilder.style.spec({
+            rep:         $("rep").value,
+            scale:       parseFloat($("radius").value),
+            colorscheme: $("colorscheme").value,
+        });
     }
 
     function applyStyle() {

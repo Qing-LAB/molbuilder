@@ -523,22 +523,17 @@
     }
 
     // ----- 2. Render --------------------------------------------------
+    // Sizing math lives in molbuilder/web/static/lib/mol-style.js so the
+    // Build and Watch viewers stay in lock-step on representation
+    // numerics.  The Build form has no colorscheme picker -- pass null
+    // and 3Dmol falls back to the viewer-level Jmol defaults set at
+    // createViewer() time above.
     function styleSpec() {
-        const rep = $("rep").value;
-        const scale = parseFloat($("radius").value) || 1.0;
-        switch (rep) {
-            case "sphere":
-                return { sphere: { scale: 1.0 * scale } };
-            case "stick":
-                return { stick: { radius: 0.16 * scale },
-                         sphere: { scale: 0.18 * scale } };
-            case "line":
-                return { line: { linewidth: 1 + 2 * scale } };
-            case "ballstick":
-            default:
-                return { stick: { radius: 0.12 * scale },
-                         sphere: { scale: 0.32 * scale } };
-        }
+        return molbuilder.style.spec({
+            rep:         $("rep").value,
+            scale:       parseFloat($("radius").value),
+            colorscheme: null,
+        });
     }
 
     function clearLabels() {
