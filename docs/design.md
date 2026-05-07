@@ -14,17 +14,18 @@ the same PR as the code change.
 ## Mission
 
 molbuilder builds 3-D molecular structures from sequence / SMILES / name
-input, generates SIESTA and PySCF input files for those structures, and
-provides a live trajectory viewer that monitors the resulting calculations.
+input, modifies them into derived geometries (e.g. metal-molecule-metal
+nanojunctions), generates SIESTA and PySCF input files for those structures,
+and provides a live trajectory viewer that monitors the resulting calculations.
 
 The package is a single, internally-coherent toolkit covering the full
 pipeline:
 
 ```
-sequence ──► Structure ──► SIESTA .fdf  ──► siesta ──┐
-                       └─► PySCF .py    ──► python  ─┴──► .molwatch.log
-                                                                 │
-                                              ◄──── live watch ──┘
+sequence ──► Structure ──► (modify) ──► SIESTA .fdf  ──► siesta ──┐
+                                    └─► PySCF .py    ──► python  ─┴──► .molwatch.log
+                                                                              │
+                                                           ◄──── live watch ──┘
 ```
 
 Both halves were initially separate repos (`Qing-LAB/molbuilder` for the
@@ -32,6 +33,21 @@ build side, `Qing-LAB/molwatch` for the watch side). They are being merged
 into `molbuilder` because they share a single file-format contract
 (`.molwatch.log v1`), a single core dataclass (`Structure`), and the same
 Flask + 3Dmol.js stack. See "Merge plan" below.
+
+**Per-feature specs** (sole sources of truth for their respective surfaces;
+this document points to them):
+
+| Feature | Spec |
+|---|---|
+| Build tab (web UI) + `/api/build/*` | `docs/spec/web-api.md` |
+| Watch tab (web UI) + `/api/watch/*` | `docs/spec/watch-ui.md`, `docs/spec/watch-api.md` |
+| **Modify tab** (web UI) + `/api/modify/*` + `molbuilder modify` CLI | **`docs/spec/modify-tab.md`** |
+| SIESTA FDF generator | `docs/spec/siesta-fdf.md` |
+| PySCF script generator | `docs/spec/pyscf-script.md` |
+| `Structure` dataclass | `docs/spec/structure.md` |
+| Builder backends (peptide / dna / rna / smiles / name) | `docs/spec/builders.md` |
+| Parser plugins (siesta / pyscf / molwatch_log) | `docs/spec/parsers.md` |
+| Top-level CLI shape | `docs/spec/cli.md` |
 
 ---
 
