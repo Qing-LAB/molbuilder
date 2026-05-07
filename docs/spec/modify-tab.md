@@ -124,6 +124,38 @@ user toggles a panel into **single-electrode mode** (rare); each
 single-mode panel adds one slab with `contact_distance` (anchor-to-
 closest-layer) instead of `gap`.
 
+### 2.1 Tilted molecules
+
+The `--orient-axis` operation accepts an `--angle θ` parameter (degrees,
+default 0) that **tilts** the anchor pair away from the target axis by
+θ° in a fixed default plane (xz for `--axis z`).  The anchor-pair
+midpoint stays at the origin; only the orientation changes.
+
+When a tilted molecule then has electrodes added in **pair mode**:
+
+* The two electrodes are **always collinear along z**, regardless of
+  molecule tilt.  This is intentional and matches real junction
+  geometry: metal contacts are crystallographic, the molecule fits
+  whatever pose works between them.
+* `gap` is the z-distance between the closest layer of the +z slab
+  and the closest layer of the -z slab -- still measured along z,
+  not along the molecule's tilted axis.
+* The anchor-pair midpoint's xy coordinates determine where the
+  slabs sit laterally.  Both slabs are centred on
+  `(mid.x + offset[0], mid.y + offset[1])` so a tilt that swings the
+  top anchor off-axis does NOT swing the top electrode along with
+  it -- the electrode stays where the molecule's lateral centre is.
+* The tilt direction can be redirected with `rotate_around_axis`
+  (`--rotate z:90` to spin the tilt from xz-plane into yz-plane,
+  for example).
+
+If you want the slabs to follow the anchor positions instead of the
+midpoint -- e.g. for a non-canonical junction where each contact is
+rigidly attached to one anchor -- use single-mode `--electrode`
+twice with the same `contact_distance` and the appropriate
+`+z=N` / `-z=N` anchors.  In that case each slab anchors directly
+to its own atom, picking up any lateral offset the tilt introduced.
+
 ---
 
 ## 3. Architecture

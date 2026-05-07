@@ -820,14 +820,15 @@ def _parse_two_ints_csv(value, flag):
 
 
 def _parse_size3(size_str, flag):
-    """``"3x3x2"`` -> ``(3, 3, 2)``."""
+    """``"3x3x2"`` -> ``(3, 3, 2)``.  Tolerates whitespace around the
+    individual integer fields."""
     parts = size_str.split("x")
     if len(parts) != 3:
         raise click.BadParameter(
             f"{flag}: size {size_str!r} must be 'MxNxL' (three integers separated by 'x')"
         )
     try:
-        return tuple(int(p) for p in parts)
+        return tuple(int(p.strip()) for p in parts)
     except ValueError:
         raise click.BadParameter(
             f"{flag}: size {size_str!r} components must be integers"
@@ -855,7 +856,9 @@ def _parse_electrode_spec(spec):
             f"--electrode {spec!r}: missing '@gap=...' or '@contact=...' "
             f"section.  See `molbuilder modify --help` for the format."
         )
-    main_parts = main.split(":")
+    # Strip whitespace on every parsed field so e.g. ``+z = 3`` (with
+    # spaces) and ``Au : 111 : 3x3x2`` are accepted gracefully.
+    main_parts = [p.strip() for p in main.split(":")]
     if len(main_parts) != 3:
         raise click.BadParameter(
             f"--electrode {spec!r}: expected ELEM:PLANE:MxNxL before '@'; "
@@ -872,6 +875,9 @@ def _parse_electrode_spec(spec):
             f"'@{keyval}:'."
         )
     key, has_eq, val = keyval.partition("=")
+    key = key.strip().lower()                   # R3: case-insensitive
+    val = val.strip()
+    rest = rest.strip()
     if not has_eq:
         raise click.BadParameter(
             f"--electrode {spec!r}: '@{keyval}' must be '@gap=NUM' or "
@@ -904,13 +910,15 @@ def _parse_electrode_spec(spec):
     if key == "contact":
         # Single mode: trailing field is "+z=N" or "-z=N"
         side, has_eq2, anchor_str = rest.partition("=")
+        side = side.strip()
+        anchor_str = anchor_str.strip()
         if not has_eq2 or side not in ("+z", "-z"):
             raise click.BadParameter(
                 f"--electrode {spec!r}: '@contact=' (single mode) requires "
                 f"the trailing field to be '+z=N' or '-z=N'; got {rest!r}"
             )
         try:
-            anchor = int(anchor_str.strip())
+            anchor = int(anchor_str)
         except ValueError:
             raise click.BadParameter(
                 f"--electrode {spec!r}: anchor {anchor_str!r} must be an integer"
@@ -929,21 +937,10 @@ def _parse_electrode_spec(spec):
 
 def _struct_to_text(struct, fmt):
     """Serialise a Structure to a string in the requested format.
-    Used for stdout output (output_path == '-')."""
-    import os as _os
-    import tempfile as _tempfile
-    suffix = ".pdb" if fmt == "pdb" else ".xyz"
-    fd, path = _tempfile.mkstemp(suffix=suffix)
-    _os.close(fd)
-    try:
-        if fmt == "pdb":
-            struct.to_pdb(path)
-        else:
-            struct.to_xyz(path)
-        with open(path) as f:
-            return f.read()
-    finally:
-        _os.unlink(path)
+    Used for stdout output (output_path == '-').  Both ``Structure.to_xyz``
+    and ``Structure.to_pdb`` return the formatted text directly when
+    called without a path; we just pick the right one."""
+    return struct.to_pdb() if fmt == "pdb" else struct.to_xyz()
 
 
 def _infer_output_format(path):
@@ -969,9 +966,10 @@ def _infer_output_format(path):
 @click.option("--orient-axis", default=None, metavar="A0,A1",
               help="rotate so the vector from atom A0 to atom A1 forms "
                    "--angle (degrees, default 0) with --axis")
-@click.option("--rotate", default=None, metavar="AXIS:ANGLE",
+@click.option("--rotate", multiple=True, metavar="AXIS:ANGLE",
               help="rotate every atom around AXIS (x/y/z) by ANGLE "
-                   "degrees, e.g. 'z:90'")
+                   "degrees, e.g. 'z:90'.  Single-instance per call: "
+                   "passing --rotate twice is rejected.")
 @click.option("--electrode", multiple=True,
               metavar="ELEM:PLANE:MxNxL@KEY=VAL:ANCHOR",
               help="add an FCC electrode.  PAIR (default): "
@@ -1056,11 +1054,21 @@ def cmd_modify(input_path, output_path,
         delete_atoms, orient_along_axis, rotate_around_axis,
     )
 
+    # Reject duplicate --rotate (single-instance flag despite multiple=True
+    # which is only used to detect repeats).
+    if len(rotate) > 1:
+        raise click.UsageError(
+            f"--rotate is single-instance per call; got {len(rotate)} "
+            f"values: {list(rotate)!r}.  Apply rotations one at a time "
+            f"and chain via stdin/stdout pipes."
+        )
+    rotate_value = rotate[0] if rotate else None
+
     # Operation-type mutex: exactly one of the four types per call.
     op_types = {
         "--delete":      bool(delete),
         "--orient-axis": orient_axis is not None,
-        "--rotate":      rotate is not None,
+        "--rotate":      rotate_value is not None,
         "--electrode":   bool(electrode),
     }
     given = [k for k, v in op_types.items() if v]
@@ -1077,6 +1085,31 @@ def cmd_modify(input_path, output_path,
             f"mixing TYPES requires separate calls (use '-' to chain)."
         )
 
+    # Sub-option warnings: catch "ignored sub-option" cases up front so the
+    # user notices before they expect them to take effect.
+    _ORIENT_DEFAULTS = {"axis": "z", "angle": 0.0, "center": "midpoint"}
+    if not op_types["--orient-axis"]:
+        for name, default in _ORIENT_DEFAULTS.items():
+            if locals()[name] != default:
+                click.echo(
+                    f"warning: --{name} is a sub-option of --orient-axis; "
+                    f"value {locals()[name]!r} is ignored without --orient-axis.",
+                    err=True,
+                )
+    _ELECTRODE_NONDEFAULTS = (
+        ("orthogonal",        orthogonal,        False),
+        ("electrode-offset",  electrode_offset,  "0,0"),
+        ("lattice-constant",  lattice_constant,  None),
+    )
+    if not op_types["--electrode"]:
+        for name, value, default in _ELECTRODE_NONDEFAULTS:
+            if value != default:
+                click.echo(
+                    f"warning: --{name} is a sub-option of --electrode; "
+                    f"value {value!r} is ignored without --electrode.",
+                    err=True,
+                )
+
     with _resolve_input_path(input_path) as resolved:
         struct, _cell = _struct_for_validate(resolved)
     n_in = struct.n_atoms
@@ -1092,11 +1125,13 @@ def cmd_modify(input_path, output_path,
                                         angle=angle, center=center)
 
         elif op_types["--rotate"]:
-            ax, _sep, ang_str = rotate.partition(":")
+            ax, _sep, ang_str = rotate_value.partition(":")
+            ax = ax.strip()
+            ang_str = ang_str.strip()
             if not _sep or ax not in ("x", "y", "z"):
                 raise click.BadParameter(
                     f"--rotate must be 'AXIS:ANGLE' with AXIS in x/y/z; "
-                    f"got {rotate!r}"
+                    f"got {rotate_value!r}"
                 )
             try:
                 ang = float(ang_str)

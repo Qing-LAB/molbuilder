@@ -612,6 +612,19 @@ def test_symmetric_electrodes_rejects_too_small_gap(linear_dimer):
                                   anchor_indices=(5, 0), gap=1.0)
 
 
+def test_symmetric_electrodes_rejects_reversed_anchor_order(linear_dimer):
+    """T1 (post-static-review): pass anchors in (a_top, a_bot) order
+    where a_top has LOWER z than a_bot.  Without validation the math
+    silently produces overlapping slabs -- now caught at the API
+    boundary with a descriptive ValueError."""
+    oriented = orient_along_axis(linear_dimer, (0, 5), axis="z")
+    # After orient: atom 5 is on +z, atom 0 on -z.  Reversed:
+    with pytest.raises(ValueError, match="lower than the labelled bottom"):
+        add_symmetric_electrodes(oriented, "Au", "111", (2, 2, 1),
+                                  anchor_indices=(0, 5),    # ← swapped
+                                  gap=7.0)
+
+
 def test_symmetric_electrodes_handles_tilted_molecule():
     """For a tilted molecule (anchor pair NOT along z), gap is still
     measured along z and the slabs are collinear along z, centred on

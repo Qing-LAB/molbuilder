@@ -37,6 +37,9 @@ Geometry conventions for the nanojunction workflow:
 
 from __future__ import annotations
 
+import json as _json
+import os as _os
+from pathlib import Path as _Path
 from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -350,9 +353,6 @@ def rotate_around_axis(
 # parallel data file (``bcc_lattice.json`` / ``hcp_lattice.json``) and a
 # sibling ``add_electrode_slab_bcc`` / ``..._hcp`` function rather than
 # overloading this one.  Same closed-list rule applies.
-import json as _json
-import os as _os
-from pathlib import Path as _Path
 
 
 def _data_dir_candidates() -> List[_Path]:
@@ -748,6 +748,18 @@ def add_symmetric_electrodes(
             )
     p_top = struct.positions[a_top]
     p_bot = struct.positions[a_bot]
+    # Enforce the (top, bot) convention: top must have higher z than bot.
+    # Without this check the math produces overlapping slabs when the user
+    # accidentally swaps the order.
+    if p_top[2] < p_bot[2]:
+        raise ValueError(
+            f"anchor_indices=(a_top={a_top}, a_bot={a_bot}) but the "
+            f"labelled top anchor sits at z={p_top[2]:.3f} which is lower "
+            f"than the labelled bottom at z={p_bot[2]:.3f}.  Pass "
+            f"(top, bot) where positions[top].z > positions[bot].z, or "
+            f"orient the molecule with `orient_along_axis(..., "
+            f"center='midpoint')` first to put the +z anchor on +z."
+        )
     mid = 0.5 * (p_top + p_bot)
     anchor_sep_z = abs(p_top[2] - p_bot[2])
     contact = (gap - anchor_sep_z) / 2.0

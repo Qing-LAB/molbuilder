@@ -703,6 +703,89 @@ def test_modify_rotate_only(tmp_path):
         assert abs(c[0]) < 1e-6   # x ~ 0 after 90° spin
 
 
+@pytest.mark.parametrize("axis,angle,probe", [
+    # T2 (post-static-review): --rotate works for x and y axes too.
+    # BDT-stub starts with all atoms in the y=0, z=0 plane along x.
+    # Rotating around x by 90° leaves the x-axis line on x (no change in y/z).
+    ("x", 90.0, "stay_on_x"),
+    # Rotating around y by 90° takes x-axis line → -z direction.
+    ("y", 90.0, "x_to_minus_z"),
+])
+def test_modify_rotate_x_and_y(tmp_path, axis, angle, probe):
+    inp  = tmp_path / "in.xyz"
+    outp = tmp_path / "out.xyz"
+    inp.write_text(_bdt_stub_xyz())
+    rc = cli.main(["modify", str(inp), str(outp),
+                   "--rotate", f"{axis}:{angle}"])
+    assert rc == 0
+    import re
+    lines = outp.read_text().splitlines()[2:]
+    s_atoms = [l for l in lines if l.lstrip().startswith("S")]
+    s_pos = [list(map(float, re.split(r"\s+", l.strip())[1:4])) for l in s_atoms]
+    if probe == "stay_on_x":
+        # Rotating around x leaves x unchanged; y and z remain ~0.
+        for c in s_pos:
+            assert abs(c[1]) < 1e-6 and abs(c[2]) < 1e-6
+    elif probe == "x_to_minus_z":
+        # Rotating around y by +90° takes (x, 0, 0) -> (0, 0, -x).
+        for c in s_pos:
+            assert abs(c[0]) < 1e-6 and abs(c[1]) < 1e-6
+        # The S at x=0 stays at z=0; the S at x=5 ends up at z=-5.
+        z_values = sorted(c[2] for c in s_pos)
+        assert np.isclose(z_values[0], -5.0, atol=1e-6)
+        assert np.isclose(z_values[1],  0.0, atol=1e-6)
+
+
+def test_modify_rotate_rejects_duplicate_flags(tmp_path):
+    """T2 (post-static-review): two --rotate flags in one call are a
+    UsageError instead of click silently overriding to the last value."""
+    inp  = tmp_path / "in.xyz"
+    outp = tmp_path / "out.xyz"
+    inp.write_text(_bdt_stub_xyz())
+    with pytest.raises(SystemExit):
+        cli.main(["modify", str(inp), str(outp),
+                  "--rotate", "z:90", "--rotate", "x:30"])
+
+
+@pytest.mark.parametrize("axis,angle", [
+    # T3 (post-static-review): --orient-axis combined with non-z axis
+    # plus an angle, end-to-end through the CLI.
+    ("x", 0.0),
+    ("y", 0.0),
+    ("x", 30.0),
+    ("y", 45.0),
+])
+def test_modify_orient_with_axis_and_angle(tmp_path, axis, angle):
+    inp  = tmp_path / "in.xyz"
+    outp = tmp_path / "out.xyz"
+    inp.write_text(_bdt_stub_xyz())
+    rc = cli.main(["modify", str(inp), str(outp),
+                   "--orient-axis", "0,3",
+                   "--axis", axis, "--angle", str(angle)])
+    assert rc == 0
+    # Result should have non-zero atoms; the geometry is unit-tested in
+    # tests/test_modify.py -- here we just verify the flags reach
+    # orient_along_axis and the file is written.
+    text = outp.read_text()
+    assert int(text.splitlines()[0]) == 4
+
+
+def test_modify_warns_when_orient_suboptions_unused(tmp_path, capsys):
+    """D2 (post-static-review): --axis / --angle / --center used without
+    --orient-axis emit a warning to stderr instead of being silently
+    ignored."""
+    inp  = tmp_path / "in.xyz"
+    outp = tmp_path / "out.xyz"
+    inp.write_text(_bdt_stub_xyz())
+    rc = cli.main(["modify", str(inp), str(outp),
+                   "--delete", "1",
+                   "--angle", "30"])     # --angle without --orient-axis
+    assert rc == 0
+    err = capsys.readouterr().err
+    assert "warning" in err.lower()
+    assert "--angle" in err
+
+
 def test_modify_electrode_pair_mode_one_call(tmp_path):
     """Pair mode: one --electrode flag, two slabs (one +z, one -z),
     @gap= sets electrode-to-electrode distance."""
