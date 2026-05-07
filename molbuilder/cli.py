@@ -766,6 +766,395 @@ def _struct_for_validate(path):
 
 
 # --------------------------------------------------------------------- #
+#  modify subcommand (XYZ/PDB structure editor; nanojunction builder)   #
+# --------------------------------------------------------------------- #
+
+
+def _parse_index_csv(values, flag):
+    """``--delete 12,13 --delete 7`` -> ``[12, 13, 7]``.  Flag is the
+    name used in error messages."""
+    out: list = []
+    for v in values or ():
+        for tok in v.split(","):
+            tok = tok.strip()
+            if not tok:
+                continue
+            try:
+                out.append(int(tok))
+            except ValueError:
+                raise click.BadParameter(
+                    f"{flag} expects comma-separated integers; "
+                    f"got {tok!r}"
+                )
+    return out
+
+
+def _parse_xy_csv(value, flag):
+    """``"0.5,-0.3"`` -> ``(0.5, -0.3)``."""
+    parts = value.split(",")
+    if len(parts) != 2:
+        raise click.BadParameter(
+            f"{flag} expects 'dx,dy' (two floats, comma-separated); got {value!r}"
+        )
+    try:
+        return float(parts[0].strip()), float(parts[1].strip())
+    except ValueError:
+        raise click.BadParameter(
+            f"{flag} entries must be floats; got {value!r}"
+        )
+
+
+def _parse_two_ints_csv(value, flag):
+    """``"3,5"`` -> ``(3, 5)``."""
+    parts = value.split(",")
+    if len(parts) != 2:
+        raise click.BadParameter(
+            f"{flag} expects two comma-separated integers; got {value!r}"
+        )
+    try:
+        return int(parts[0].strip()), int(parts[1].strip())
+    except ValueError:
+        raise click.BadParameter(
+            f"{flag} entries must be integers; got {value!r}"
+        )
+
+
+def _parse_size3(size_str, flag):
+    """``"3x3x2"`` -> ``(3, 3, 2)``."""
+    parts = size_str.split("x")
+    if len(parts) != 3:
+        raise click.BadParameter(
+            f"{flag}: size {size_str!r} must be 'MxNxL' (three integers separated by 'x')"
+        )
+    try:
+        return tuple(int(p) for p in parts)
+    except ValueError:
+        raise click.BadParameter(
+            f"{flag}: size {size_str!r} components must be integers"
+        )
+
+
+def _parse_electrode_spec(spec):
+    """Parse one ``--electrode`` value into a kwargs dict.
+
+    Two modes, distinguished by the ``@key=`` substring:
+
+      * **Pair (default):** ``ELEM:PLANE:MxNxL@gap=GAP:ATOP,ABOT``.
+        Two anchors after the trailing colon, comma-separated.
+        ``GAP`` is the total electrode-to-electrode distance.
+      * **Single (rare):** ``ELEM:PLANE:MxNxL@contact=DIST:+z=N`` or
+        ``ELEM:PLANE:MxNxL@contact=DIST:-z=N``.  ``DIST`` is the
+        anchor-to-closest-layer distance for the chosen side.
+
+    Returns a dict with key ``"mode"`` set to ``"pair"`` or
+    ``"single"`` and the appropriate fields.
+    """
+    main, sep, after_at = spec.partition("@")
+    if not sep or not after_at:
+        raise click.BadParameter(
+            f"--electrode {spec!r}: missing '@gap=...' or '@contact=...' "
+            f"section.  See `molbuilder modify --help` for the format."
+        )
+    main_parts = main.split(":")
+    if len(main_parts) != 3:
+        raise click.BadParameter(
+            f"--electrode {spec!r}: expected ELEM:PLANE:MxNxL before '@'; "
+            f"got {main_parts!r}"
+        )
+    element, plane, size_str = main_parts
+    size = _parse_size3(size_str, f"--electrode {spec!r}")
+
+    # The @-section is "key=val:rest".  Split on the first colon.
+    keyval, has_colon, rest = after_at.partition(":")
+    if not has_colon or not rest:
+        raise click.BadParameter(
+            f"--electrode {spec!r}: missing trailing anchor section after "
+            f"'@{keyval}:'."
+        )
+    key, has_eq, val = keyval.partition("=")
+    if not has_eq:
+        raise click.BadParameter(
+            f"--electrode {spec!r}: '@{keyval}' must be '@gap=NUM' or "
+            f"'@contact=NUM' (key=value form)"
+        )
+    try:
+        distance = float(val)
+    except ValueError:
+        raise click.BadParameter(
+            f"--electrode {spec!r}: distance {val!r} after '@{key}=' must be a float"
+        )
+
+    if key == "gap":
+        # Pair mode: trailing field is "ATOP,ABOT"
+        if "," not in rest:
+            raise click.BadParameter(
+                f"--electrode {spec!r}: '@gap=' (pair mode) requires the "
+                f"trailing field to be 'ATOP,ABOT' (two anchor indices); "
+                f"got {rest!r}"
+            )
+        anchor_top, anchor_bot = _parse_two_ints_csv(
+            rest, f"--electrode {spec!r}"
+        )
+        return {
+            "mode": "pair",
+            "element": element, "plane": plane, "size": size,
+            "gap": distance,
+            "anchor_top": anchor_top, "anchor_bot": anchor_bot,
+        }
+    if key == "contact":
+        # Single mode: trailing field is "+z=N" or "-z=N"
+        side, has_eq2, anchor_str = rest.partition("=")
+        if not has_eq2 or side not in ("+z", "-z"):
+            raise click.BadParameter(
+                f"--electrode {spec!r}: '@contact=' (single mode) requires "
+                f"the trailing field to be '+z=N' or '-z=N'; got {rest!r}"
+            )
+        try:
+            anchor = int(anchor_str.strip())
+        except ValueError:
+            raise click.BadParameter(
+                f"--electrode {spec!r}: anchor {anchor_str!r} must be an integer"
+            )
+        return {
+            "mode": "single",
+            "element": element, "plane": plane, "size": size,
+            "contact_distance": distance,
+            "side": side, "anchor": anchor,
+        }
+    raise click.BadParameter(
+        f"--electrode {spec!r}: unknown key {key!r}; expected 'gap' (pair) "
+        f"or 'contact' (single)"
+    )
+
+
+def _struct_to_text(struct, fmt):
+    """Serialise a Structure to a string in the requested format.
+    Used for stdout output (output_path == '-')."""
+    import os as _os
+    import tempfile as _tempfile
+    suffix = ".pdb" if fmt == "pdb" else ".xyz"
+    fd, path = _tempfile.mkstemp(suffix=suffix)
+    _os.close(fd)
+    try:
+        if fmt == "pdb":
+            struct.to_pdb(path)
+        else:
+            struct.to_xyz(path)
+        with open(path) as f:
+            return f.read()
+    finally:
+        _os.unlink(path)
+
+
+def _infer_output_format(path):
+    """Default output format from the file extension; xyz fallback."""
+    p = str(path).lower()
+    if p.endswith(".pdb"):
+        return "pdb"
+    return "xyz"
+
+
+@cli.command("modify",
+             short_help="edit a structure: one operation per call "
+                        "(delete / orient / rotate / electrode)")
+@click.argument("input_path",  metavar="input")
+@click.argument("output_path", metavar="output")
+# Operation flags -- exactly one TYPE must be present per call (delete,
+# orient, rotate, or electrode).  Multiple instances of the same TYPE
+# are allowed where geometrically meaningful (delete: flatten;
+# electrode: apply each in order).
+@click.option("--delete", multiple=True, metavar="INDICES",
+              help="comma-separated atom indices to delete (0-based); "
+                   "may be repeated, all entries flattened into one pass")
+@click.option("--orient-axis", default=None, metavar="A0,A1",
+              help="rotate so the vector from atom A0 to atom A1 forms "
+                   "--angle (degrees, default 0) with --axis")
+@click.option("--rotate", default=None, metavar="AXIS:ANGLE",
+              help="rotate every atom around AXIS (x/y/z) by ANGLE "
+                   "degrees, e.g. 'z:90'")
+@click.option("--electrode", multiple=True,
+              metavar="ELEM:PLANE:MxNxL@KEY=VAL:ANCHOR",
+              help="add an FCC electrode.  PAIR (default): "
+                   "'Au:111:3x3x2@gap=8.5:3,0' -- gap is electrode-to-"
+                   "electrode distance, anchors are (top, bot).  SINGLE "
+                   "(rare): 'Au:111:3x3x2@contact=2.4:+z=3' -- contact is "
+                   "anchor-to-closest-layer distance.  Repeat for stepped "
+                   "contacts; mixing pair and single is allowed.")
+# Sub-options for --orient-axis
+@click.option("--axis", default="z", show_default=True,
+              type=click.Choice(["x", "y", "z"]),
+              help="target axis for --orient-axis")
+@click.option("--angle", type=float, default=0.0, show_default=True,
+              help="tilt angle (degrees) between anchor pair vector and "
+                   "--axis after orient.  Default 0 = exactly aligned. "
+                   "Tilt happens in xz-plane for --axis z, xy-plane for "
+                   "--axis x, yz-plane for --axis y.")
+@click.option("--center", default="midpoint", show_default=True,
+              type=click.Choice(["first", "midpoint", "none"]),
+              help="how to translate the structure after rotation")
+# Sub-options for --electrode (apply uniformly to every --electrode in
+# the call; for asymmetric cases, use multiple `molbuilder modify`
+# invocations through a stdin/stdout pipe)
+@click.option("--orthogonal", is_flag=True,
+              help="use ASE's orthogonal supercell (only meaningful for "
+                   "fcc(111))")
+@click.option("--electrode-offset", default="0,0", metavar="DX,DY",
+              show_default=True,
+              help="lateral (Δx, Δy) shift in Å applied to every "
+                   "--electrode slab in this call")
+@click.option("--lattice-constant", type=float, default=None,
+              help="override the lattice constant (Å) for every "
+                   "--electrode in this call; default uses the value "
+                   "from molbuilder/data/fcc_lattice.json")
+# Universal
+@click.option("--output-format",
+              type=click.Choice(["xyz", "pdb"]), default=None,
+              help="output file format (default: infer from extension; "
+                   "stdout always xyz unless explicitly set)")
+def cmd_modify(input_path, output_path,
+               delete, orient_axis, rotate, electrode,
+               axis, angle, center,
+               orthogonal, electrode_offset, lattice_constant,
+               output_format):
+    """Edit a structure: one operation TYPE per CLI call.  The operation
+    types are mutually exclusive; chain calls via stdin/stdout pipes
+    (`-` for input or output) for multi-step workflows.
+
+    Operation types:
+
+      --delete INDICES         drop atoms (multi-instance: flatten)
+      --orient-axis A0,A1      rotate anchor pair onto --axis
+      --rotate AXIS:ANGLE      spin every atom around AXIS
+      --electrode SPEC         add an FCC electrode (multi-instance allowed)
+
+    Examples -- canonical Au-bdt-Au junction in a 3-step pipe:
+
+        # input: relaxed BDT geometry with 4 atoms (S-C-C-S)
+        molbuilder modify bdt.xyz - --orient-axis 0,3 --center midpoint |
+          molbuilder modify - junction.xyz \\
+              --electrode Au:111:3x3x2@gap=9.0:3,0
+
+    Stepped 3×3 + 4×4 contact, both sides, in one electrode call:
+
+        molbuilder modify oriented.xyz junction.xyz \\
+            --electrode Au:111:3x3x1@gap=9.0:3,0 \\
+            --electrode Au:111:4x4x1@gap=14.0:3,0
+
+    Asymmetric junction (Au top, Cu bottom) -- two single-mode calls:
+
+        molbuilder modify oriented.xyz step1.xyz \\
+            --electrode Au:111:3x3x2@contact=2.4:+z=3
+        molbuilder modify step1.xyz junction.xyz \\
+            --electrode Cu:111:3x3x2@contact=2.0:-z=0
+
+    See docs/spec/modify-tab.md for the full per-(plane, orthogonal)
+    constraint table; ASE's own error message bubbles up if the
+    requested (m, n) doesn't satisfy the chosen cell shape.
+    """
+    from .modify import (
+        add_electrode_slab, add_symmetric_electrodes,
+        delete_atoms, orient_along_axis, rotate_around_axis,
+    )
+
+    # Operation-type mutex: exactly one of the four types per call.
+    op_types = {
+        "--delete":      bool(delete),
+        "--orient-axis": orient_axis is not None,
+        "--rotate":      rotate is not None,
+        "--electrode":   bool(electrode),
+    }
+    given = [k for k, v in op_types.items() if v]
+    if not given:
+        raise click.UsageError(
+            "exactly one of --delete, --orient-axis, --rotate, --electrode "
+            "is required.  Run separate `molbuilder modify` invocations "
+            "for multiple operation types (use '-' for stdin/stdout to chain)."
+        )
+    if len(given) > 1:
+        raise click.UsageError(
+            f"only one operation TYPE per call; got {given!r}.  "
+            f"Within --delete and --electrode multiple instances are fine; "
+            f"mixing TYPES requires separate calls (use '-' to chain)."
+        )
+
+    with _resolve_input_path(input_path) as resolved:
+        struct, _cell = _struct_for_validate(resolved)
+    n_in = struct.n_atoms
+
+    try:
+        if op_types["--delete"]:
+            indices = _parse_index_csv(delete, "--delete")
+            struct = delete_atoms(struct, indices)
+
+        elif op_types["--orient-axis"]:
+            anchors = _parse_two_ints_csv(orient_axis, "--orient-axis")
+            struct = orient_along_axis(struct, anchors, axis=axis,
+                                        angle=angle, center=center)
+
+        elif op_types["--rotate"]:
+            ax, _sep, ang_str = rotate.partition(":")
+            if not _sep or ax not in ("x", "y", "z"):
+                raise click.BadParameter(
+                    f"--rotate must be 'AXIS:ANGLE' with AXIS in x/y/z; "
+                    f"got {rotate!r}"
+                )
+            try:
+                ang = float(ang_str)
+            except ValueError:
+                raise click.BadParameter(
+                    f"--rotate angle {ang_str!r} must be a float"
+                )
+            struct = rotate_around_axis(struct, axis=ax, angle=ang)
+
+        else:  # electrode
+            offset_xy = _parse_xy_csv(electrode_offset, "--electrode-offset")
+            for spec_str in electrode:
+                spec = _parse_electrode_spec(spec_str)
+                if spec["mode"] == "pair":
+                    struct = add_symmetric_electrodes(
+                        struct,
+                        element=spec["element"],
+                        plane=spec["plane"],
+                        size=spec["size"],
+                        anchor_indices=(spec["anchor_top"], spec["anchor_bot"]),
+                        gap=spec["gap"],
+                        orthogonal=orthogonal,
+                        offset=offset_xy,
+                        lattice_constant=lattice_constant,
+                    )
+                else:  # single
+                    struct = add_electrode_slab(
+                        struct,
+                        element=spec["element"],
+                        plane=spec["plane"],
+                        size=spec["size"],
+                        anchor_index=spec["anchor"],
+                        contact_distance=spec["contact_distance"],
+                        side=spec["side"],
+                        orthogonal=orthogonal,
+                        offset=offset_xy,
+                        lattice_constant=lattice_constant,
+                    )
+    except (ValueError, IndexError) as exc:
+        raise click.ClickException(str(exc)) from exc
+
+    fmt = output_format or (
+        "xyz" if str(output_path) == "-" else _infer_output_format(output_path)
+    )
+    if str(output_path) == "-":
+        click.echo(_struct_to_text(struct, fmt), nl=False)
+    else:
+        if fmt == "pdb":
+            struct.to_pdb(output_path)
+        else:
+            struct.to_xyz(output_path)
+        click.echo(
+            f"Wrote {output_path}: {struct.n_atoms} atoms (input had {n_in})",
+            err=True,
+        )
+
+
+# --------------------------------------------------------------------- #
 #  serve subcommand (Flask web UI)                                      #
 # --------------------------------------------------------------------- #
 
@@ -964,6 +1353,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         # bad type conversion -- argparse would exit(2) on all of these.
         click.echo(f"Error: {e.format_message()}", err=True)
         sys.exit(2)
+    except click.ClickException as e:
+        # Domain-level error raised by a subcommand (e.g. ASE rejecting
+        # an electrode slab; an unsupported element).  Print the
+        # message and exit with the exception's exit_code (default 1).
+        click.echo(f"Error: {e.format_message()}", err=True)
+        sys.exit(e.exit_code)
     except click.Abort:
         sys.exit(1)
     rc = rc or 0

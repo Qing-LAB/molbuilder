@@ -177,27 +177,48 @@ def orient_along_axis(
     struct: Structure,
     anchor_indices: Tuple[int, int],
     axis: str = "z",
-    center: str = "first",
+    *,
+    angle: float = 0.0,
+    center: str = "midpoint",
 ) -> Structure:
     """Return a new ``Structure`` rotated so the vector from the first
-    anchor atom to the second points along the given axis.
+    anchor atom to the second forms angle ``angle`` (degrees) with the
+    given target axis.
 
     Parameters
     ----------
     anchor_indices
         ``(a0, a1)`` -- two distinct atom indices.  The vector
-        ``positions[a1] - positions[a0]`` becomes the new +``axis`` direction.
+        ``positions[a1] - positions[a0]`` is rotated to point at angle
+        ``angle`` from the +``axis`` direction.
     axis
         Target axis: "x", "y", or "z" (default).
+    angle
+        Tilt angle in **degrees** between the anchor pair vector and
+        the target axis after rotation.  Default ``0.0`` puts the
+        anchor pair exactly along the target axis (the canonical
+        molecular-junction case).  Non-zero values tilt the molecule
+        by that many degrees in a fixed default plane:
+
+          * ``axis="z"`` -> tilt happens in the **xz-plane** (anchor
+            pair vector becomes ``(sin θ * d, 0, cos θ * d)``);
+          * ``axis="x"`` -> tilt in the **xy-plane**
+            (``(cos θ * d, sin θ * d, 0)``);
+          * ``axis="y"`` -> tilt in the **yz-plane**
+            (``(0, cos θ * d, sin θ * d)``).
+
+        For any other tilt direction, follow this call with
+        :func:`rotate_around_axis` to spin the tilted molecule around
+        the target axis.
     center
         How to translate the structure after rotation:
 
-        * ``"first"`` (default): place ``a0`` at the origin.  The molecular
-          axis runs from origin to ``+axis * |a1 - a0|``.  Best when the
-          molecule is later capped by an electrode at one end.
-        * ``"midpoint"``: place the midpoint of ``a0`` and ``a1`` at the
-          origin.  Best for symmetric junctions where electrodes flank
-          the molecule on both ±axis sides.
+        * ``"midpoint"`` (default): place the midpoint of ``a0`` and
+          ``a1`` at the origin.  This is what pair-mode electrode
+          construction relies on -- the gap is centred on the
+          molecule's anchor-pair midpoint.
+        * ``"first"``: place ``a0`` at the origin.  The anchor pair
+          extends from origin to ``(angle-rotated unit vector) * |d|``.
         * ``"none"``: leave translation unchanged after rotation; only
           rotate.  Use when the caller will translate explicitly.
     """
@@ -225,7 +246,17 @@ def orient_along_axis(
             "anchor atoms are coincident; cannot define an orientation axis"
         )
 
-    R = _rotation_matrix_from_a_to_b(direction, _AXIS_VECTORS[axis])
+    # Build the target unit vector, accounting for the requested tilt.
+    theta_rad = np.radians(float(angle))
+    sin_t, cos_t = np.sin(theta_rad), np.cos(theta_rad)
+    if axis == "z":
+        target = np.array([sin_t, 0.0, cos_t])
+    elif axis == "x":
+        target = np.array([cos_t, sin_t, 0.0])
+    else:  # axis == "y"
+        target = np.array([0.0, cos_t, sin_t])
+
+    R = _rotation_matrix_from_a_to_b(direction, target)
     new_pos = struct.positions @ R.T
 
     if center == "first":
@@ -238,6 +269,56 @@ def orient_along_axis(
     return Structure(
         elements=list(struct.elements),
         positions=new_pos,
+        atom_names=list(struct.atom_names),
+        residue_ids=list(struct.residue_ids),
+        residue_names=list(struct.residue_names),
+        chain_ids=list(struct.chain_ids),
+        title=struct.title,
+    )
+
+
+def rotate_around_axis(
+    struct: Structure,
+    axis: str = "z",
+    angle: float = 0.0,
+) -> Structure:
+    """Rotate every atom by ``angle`` degrees around the given axis,
+    which passes through the origin.
+
+    Useful after :func:`orient_along_axis` to spin a tilted molecule
+    around the transport axis to a different azimuth -- e.g. to tilt
+    the molecule in the yz-plane instead of the default xz-plane.
+
+    Parameters
+    ----------
+    axis
+        Rotation axis: "x", "y", or "z" (default).  Passes through
+        the origin -- callers wanting rotation around a different
+        point should translate first / after.
+    angle
+        Rotation angle in **degrees**.  Right-hand rule (positive
+        angle = counter-clockwise when looking down the axis from +
+        toward origin).  Default ``0.0`` is a no-op.
+    """
+    if axis not in _AXIS_VECTORS:
+        raise ValueError(f"axis must be 'x', 'y', or 'z'; got {axis!r}")
+    theta_rad = np.radians(float(angle))
+    c, s = np.cos(theta_rad), np.sin(theta_rad)
+    if axis == "z":
+        R = np.array([[ c, -s, 0.0],
+                      [ s,  c, 0.0],
+                      [0.0, 0.0, 1.0]])
+    elif axis == "x":
+        R = np.array([[1.0, 0.0, 0.0],
+                      [0.0,  c,  -s],
+                      [0.0,  s,   c]])
+    else:  # y
+        R = np.array([[ c, 0.0,  s],
+                      [0.0, 1.0, 0.0],
+                      [-s, 0.0,  c]])
+    return Structure(
+        elements=list(struct.elements),
+        positions=struct.positions @ R.T,
         atom_names=list(struct.atom_names),
         residue_ids=list(struct.residue_ids),
         residue_names=list(struct.residue_names),
@@ -414,28 +495,29 @@ def add_electrode_slab(
     size: Tuple[int, int, int],
     anchor_index: int,
     *,
-    gap: float = 2.0,
+    contact_distance: float = 2.4,
     side: str = "+z",
     orthogonal: bool = False,
     offset: Tuple[float, float] = (0.0, 0.0),
     lattice_constant: Optional[float] = None,
     inter_layer_offset: Optional[float] = None,
 ) -> Structure:
-    """Append a uniform stack of FCC crystal layers as one electrode.
+    """Append a single FCC electrode slab on one side of an anchor atom.
+
+    Single-electrode primitive.  For the canonical pair-electrode
+    junction, use :func:`add_symmetric_electrodes` (it takes
+    ``gap`` = electrode-to-electrode distance, the meaningful junction
+    parameter) instead of calling this twice.
 
     The slab is built by ASE's ``fcc{100,110,111}`` builder with
     ``size=(m, n, n_layers)`` where every layer has the same lateral
-    ``(m, n)`` -- there is no per-layer size variation (cropping is
-    avoided entirely).  If the user wants a stepped contact (e.g.
-    "3×3 close, 4×4 further out"), they call this function twice with
-    different ``(size, gap)`` and let the caller delete unwanted atoms
-    with ``delete_atoms`` afterwards.
+    ``(m, n)`` (uniform across layers).
 
     The whole slab is translated so:
 
       * The slab's lateral centroid sits at ``(anchor.x + offset[0],
         anchor.y + offset[1])``.
-      * The closest layer's z is ``anchor.z + sign * gap``
+      * The closest layer's z is ``anchor.z + sign * contact_distance``
         (sign = +1 for ``side="+z"``, -1 for ``"-z"``); subsequent
         layers extend outward at the slab's natural inter-layer
         spacing.
@@ -455,9 +537,12 @@ def add_electrode_slab(
         ``struct`` unchanged.
     anchor_index
         Atom whose (x, y, z) defines the electrode placement reference.
-    gap
-        Distance (Å) from the anchor along the side direction to the
-        closest layer's z plane.
+    contact_distance
+        Distance (Å) from the anchor atom along the side direction to
+        the closest electrode layer's z plane.  Default 2.4 Å (a
+        typical Au-S contact distance).  Single-electrode-only param
+        -- the pair version uses ``gap`` (electrode-to-electrode
+        distance) and computes contact distances internally.
     side
         ``"+z"`` (default) or ``"-z"``.
     orthogonal
@@ -480,7 +565,6 @@ def add_electrode_slab(
         anchor sits at a bridge site (between two surface atoms),
         a hollow site (in a 3-fold hollow on fcc(111)), or wherever
         the user wants the molecule-surface contact point to fall.
-        Slider in the Modify UI; user-tuned per call.
     lattice_constant
         Override the value loaded from
         ``molbuilder/data/fcc_lattice.json`` (Å).
@@ -561,11 +645,11 @@ def add_electrode_slab(
     # constant + plane).
     sign = +1.0 if side == "+z" else -1.0
     if side == "+z":
-        metal_pos[:, 2] += (anchor[2] + gap) - z_min
+        metal_pos[:, 2] += (anchor[2] + contact_distance) - z_min
     else:
         # Mirror across the closest-layer z so the stack extends -z.
         z_in = metal_pos[:, 2] - z_min
-        metal_pos[:, 2] = anchor[2] - gap - z_in
+        metal_pos[:, 2] = anchor[2] - contact_distance - z_in
 
     # Optional per-layer-spacing override (rare; pulls layers together
     # or pushes them further out for strained-distance studies).
@@ -579,7 +663,7 @@ def add_electrode_slab(
             natural_spacing = abs(z_layers_precise[1] - z_layers_precise[0])
             if natural_spacing > 1e-9:
                 scale = inter_layer_offset / natural_spacing
-                closest_z = anchor[2] + sign * gap
+                closest_z = anchor[2] + sign * contact_distance
                 metal_pos[:, 2] = closest_z + (metal_pos[:, 2] - closest_z) * scale
 
     # Assemble metadata for the new metal atoms.
@@ -608,35 +692,106 @@ def add_symmetric_electrodes(
     size: Tuple[int, int, int],
     anchor_indices: Tuple[int, int],
     *,
-    gap: float = 2.0,
+    gap: float = 8.0,
     orthogonal: bool = False,
     offset: Tuple[float, float] = (0.0, 0.0),
     lattice_constant: Optional[float] = None,
 ) -> Structure:
-    """Add the same electrode stack on both ±z sides of the molecule.
+    """Add a symmetric pair of FCC electrodes -- one on +z, one on -z --
+    flanking the molecule's anchor pair.
 
-    ``anchor_indices = (a0, a1)`` are the same two atoms used for
-    ``orient_along_axis``: ``a0`` is the bottom anchor (``-z`` electrode
-    grows away from it), ``a1`` is the top anchor (``+z`` electrode).
-    Both electrodes use the same ``size``, ``element``, ``plane``,
-    ``orthogonal``, ``offset``, and ``gap`` -- the common case for SAM
-    and single-molecule junction work.  For asymmetric junctions
-    (different size / offset per side, or stepped contacts), call
-    :func:`add_electrode_slab` twice with different parameters.
+    Geometry:
+
+      mid    = 0.5 * (positions[a_top] + positions[a_bot])
+      gap    = electrode-to-electrode distance (closest layer to closest
+               layer), measured along z
+      top closest layer at  z = mid.z + gap/2
+      bot closest layer at  z = mid.z - gap/2
+      both slabs lateral-centred on (mid.x + offset[0], mid.y + offset[1])
+
+    The two electrodes are **collinear along z**, even when the anchor
+    pair vector is tilted off the z-axis.  This matches real junction
+    geometry where the metal contacts are crystallographic and the
+    molecule fits in whatever pose it wants between them.
+
+    ``gap`` here is the **canonical "junction gap"** -- the empty z-space
+    between the two electrodes.  Internally each side gets the
+    contact distance ``(gap - anchor_separation_z) / 2``, where
+    ``anchor_separation_z = abs(positions[a_top].z - positions[a_bot].z)``.
+    If the gap is smaller than the anchor pair's z-extent, this raises
+    ``ValueError`` so the user adjusts before getting an overlapping
+    structure.
+
+    Parameters
+    ----------
+    anchor_indices
+        ``(a_top, a_bot)`` -- the +z anchor first, the -z anchor second.
+        After ``orient_along_axis(..., center="midpoint")`` the +z
+        anchor is the one with the larger z coordinate.
+    gap
+        Total junction gap (Å), electrode-to-electrode along z.  Default
+        8.0 Å is a typical value for thiol-anchored small molecules.
+    orthogonal, offset, lattice_constant
+        Same as :func:`add_electrode_slab`; applied to both sides.
+
+    For asymmetric junctions (different size / metal / offset per side,
+    or stepped contacts), call :func:`add_electrode_slab` twice with
+    different parameters.
     """
-    a0, a1 = int(anchor_indices[0]), int(anchor_indices[1])
-    # Bottom (-z) first, then top (+z).  Both calls take the same
-    # ``struct`` reference and chain through.
-    out = add_electrode_slab(struct, element, plane, size, a0,
-                              gap=gap, side="-z",
-                              orthogonal=orthogonal,
-                              offset=offset,
-                              lattice_constant=lattice_constant)
-    out = add_electrode_slab(out, element, plane, size, a1,
-                              gap=gap, side="+z",
-                              orthogonal=orthogonal,
-                              offset=offset,
-                              lattice_constant=lattice_constant)
+    a_top, a_bot = int(anchor_indices[0]), int(anchor_indices[1])
+    if a_top == a_bot:
+        raise ValueError("anchor_indices must be two distinct atoms")
+    for i in (a_top, a_bot):
+        if not (0 <= i < struct.n_atoms):
+            raise IndexError(
+                f"anchor index {i} out of range for {struct.n_atoms}-atom structure"
+            )
+    p_top = struct.positions[a_top]
+    p_bot = struct.positions[a_bot]
+    mid = 0.5 * (p_top + p_bot)
+    anchor_sep_z = abs(p_top[2] - p_bot[2])
+    contact = (gap - anchor_sep_z) / 2.0
+    if contact <= 0.0:
+        raise ValueError(
+            f"gap = {gap:.3f} Å is smaller than the anchor pair's z-extent "
+            f"({anchor_sep_z:.3f} Å); the electrodes would overlap the "
+            f"molecule.  Increase gap, or re-orient the molecule with a "
+            f"smaller tilt angle so the anchor pair is more z-aligned."
+        )
+
+    # We can't just call add_electrode_slab with each anchor because that
+    # would lateral-centre each slab on its own anchor (which differs in
+    # x, y for a tilted molecule).  We want both slabs centred on the
+    # ANCHOR-PAIR MIDPOINT in xy, collinear along z.
+    #
+    # Equivalent trick: make a synthetic anchor at (mid.x, mid.y, p_*.z)
+    # for each side and call add_electrode_slab.  But that requires a
+    # real atom -- so instead we replicate the placement math here.
+
+    # Use add_electrode_slab via the actual top/bot anchors, with an
+    # offset that compensates for the lateral difference between the
+    # anchor and the desired (mid.x, mid.y).
+    delta_top_xy = (
+        mid[0] - p_top[0] + offset[0],
+        mid[1] - p_top[1] + offset[1],
+    )
+    delta_bot_xy = (
+        mid[0] - p_bot[0] + offset[0],
+        mid[1] - p_bot[1] + offset[1],
+    )
+
+    out = add_electrode_slab(
+        struct, element, plane, size, a_bot,
+        contact_distance=contact, side="-z",
+        orthogonal=orthogonal, offset=delta_bot_xy,
+        lattice_constant=lattice_constant,
+    )
+    out = add_electrode_slab(
+        out, element, plane, size, a_top,
+        contact_distance=contact, side="+z",
+        orthogonal=orthogonal, offset=delta_top_xy,
+        lattice_constant=lattice_constant,
+    )
     return out
 
 
@@ -644,6 +799,7 @@ __all__ = [
     "delete_atoms",
     "add_atom",
     "orient_along_axis",
+    "rotate_around_axis",
     "add_electrode_slab",
     "add_symmetric_electrodes",
     "SUPPORTED_FCC_ELEMENTS",

@@ -106,16 +106,23 @@ Walkthrough for the canonical Au-thiol-Au workflow:
 5. User re-selects the two S atoms (now the anchor pair).
 6. User clicks **Orient along z**.  Backend rotates the structure so the
    S–S vector is on +z; viewer re-centres.
-7. User picks **Electrode +z** (panel 1), sets element=Au, plane=111,
-   primitive cell, m=3, n=3, n_layers=2, gap=2.0 Å, offset=(0, 0).
-   Adds another panel for the same side with m=4, n=4, n_layers=1,
-   gap=2.0 + 2.355 (one inter-layer spacing further out) for the
-   stepped 3×3 → 4×4 outer layer.  Mirror of both for **Electrode -z**.
-8. Backend builds the four FCC-Au slabs (one per panel) and places
-   them ±z.  Viewer shows the full junction (~70 atoms).
+7. User opens the **Electrode** panel (default = pair mode).  Picks
+   element=Au, plane=111, primitive cell, m=3, n=3, n_layers=2, gap=9.0 Å
+   (electrode-to-electrode distance), offset=(0, 0).  One panel = one
+   pair of slabs (top + bottom) added in one shot.  For a stepped
+   3×3 + 4×4 contact, the user adds a second pair-mode panel with
+   m=4, n=4, n_layers=1 and a larger gap.
+8. Backend builds the FCC-Au slabs and places them ±z, both
+   lateral-centred on the anchor-pair midpoint.  Viewer shows the
+   full junction.
 9. User clicks **Send to Build tab** → Build tab opens with this
    structure pre-loaded; user clicks Generate .fdf / Generate .py as
    normal.
+
+For an asymmetric junction (different metal / size on each side), the
+user toggles a panel into **single-electrode mode** (rare); each
+single-mode panel adds one slab with `contact_distance` (anchor-to-
+closest-layer) instead of `gap`.
 
 ---
 
@@ -171,9 +178,11 @@ molbuilder/
 ├── modify.py                          ◄── pure functions (M1)
 │   ├── delete_atoms(struct, indices)
 │   ├── add_atom(struct, element, anchor_index, offset)
-│   ├── orient_along_axis(struct, anchor_indices, axis="z", center="first")
+│   ├── orient_along_axis(struct, anchor_indices, axis="z",
+│   │                     *, angle=0.0, center="midpoint")
+│   ├── rotate_around_axis(struct, axis="z", angle=0.0)
 │   ├── add_electrode_slab(struct, element, plane, size, anchor_index,
-│   │                      *, gap, side, orthogonal, offset,
+│   │                      *, contact_distance, side, orthogonal, offset,
 │   │                      lattice_constant, inter_layer_offset)
 │   └── add_symmetric_electrodes(struct, element, plane, size,
 │                                anchor_indices, *, gap, orthogonal,
@@ -246,15 +255,40 @@ inherits from the anchor.
 orient_along_axis(struct: Structure,
                   anchor_indices: Tuple[int, int],
                   axis: str = "z",
-                  center: str = "first") -> Structure
+                  *, angle: float = 0.0,
+                  center: str = "midpoint") -> Structure
 ```
 
-Rotate so the vector `pos[a1] - pos[a0]` is parallel to the chosen
-axis (Rodrigues formula).  `center`:
+Rotate so the vector `pos[a1] - pos[a0]` forms `angle` (degrees) with
+the chosen target axis.  Default `angle=0.0` puts the anchor pair
+exactly along the axis (canonical case).  Non-zero `angle` tilts the
+molecule by that many degrees in a fixed plane:
 
-* `"first"` (default): translate so `a0` is at the origin.
-* `"midpoint"`: translate so the midpoint of `(a0, a1)` is at the origin.
+* `axis="z"` -> tilt in the **xz-plane** (anchor pair vector becomes
+  `(sin θ * d, 0, cos θ * d)`)
+* `axis="x"` -> tilt in the **xy-plane**
+* `axis="y"` -> tilt in the **yz-plane**
+
+For tilt directions outside the default plane, follow this with
+`rotate_around_axis` to spin around the target axis.
+
+`center` (default `"midpoint"`):
+
+* `"midpoint"`: translate so the midpoint of `(a0, a1)` lands at the
+  origin -- required for pair-mode `add_symmetric_electrodes` to
+  work cleanly (the gap is centred on the anchor-pair midpoint).
+* `"first"`: translate so `a0` is at the origin.
 * `"none"`: rotation only, no translation.
+
+```python
+rotate_around_axis(struct: Structure,
+                   axis: str = "z",
+                   angle: float = 0.0) -> Structure
+```
+
+Rotate every atom by `angle` (degrees, right-hand rule) around the
+named axis through the origin.  Useful for redirecting a tilted
+molecule's azimuth after `orient_along_axis(angle=...)`.
 
 ```python
 add_electrode_slab(struct: Structure,
@@ -262,7 +296,7 @@ add_electrode_slab(struct: Structure,
                    plane: str,                            # "100" / "110" / "111"
                    size: Tuple[int, int, int],            # (m, n, n_layers); uniform
                    anchor_index: int,
-                   *, gap: float = 2.0,
+                   *, contact_distance: float = 2.4,
                    side: str = "+z",                      # or "-z"
                    orthogonal: bool = False,
                    offset: Tuple[float, float] = (0.0, 0.0),
@@ -270,57 +304,112 @@ add_electrode_slab(struct: Structure,
                    inter_layer_offset: float | None = None) -> Structure
 ```
 
-Build a uniform FCC slab via ASE's `fcc{100,110,111}` with `m × n`
-in-plane repeats and `n_layers` layers, all of identical size.
-Translate so the slab's lateral centroid sits at
-`(anchor.x + offset[0], anchor.y + offset[1])` and the closest
-layer's z is `anchor.z ± gap`.  For a stepped contact (different
-(m, n) at different distances) call this twice with different
-`(size, gap)`.
+**Single-electrode primitive.**  Build a uniform FCC slab via ASE's
+`fcc{100,110,111}` with `m × n` in-plane repeats and `n_layers`
+layers, all of identical size.  Translate so the slab's lateral
+centroid sits at `(anchor.x + offset[0], anchor.y + offset[1])` and
+the closest layer's z is `anchor.z ± contact_distance` (sign per
+`side`).  For pair junctions, prefer `add_symmetric_electrodes`
+which takes `gap` (electrode-to-electrode distance) directly.
 
 ```python
 add_symmetric_electrodes(struct: Structure,
                          element: str, plane: str,
                          size: Tuple[int, int, int],
                          anchor_indices: Tuple[int, int],
-                         *, gap: float = 2.0,
+                         *, gap: float = 8.0,
                          orthogonal: bool = False,
                          offset: Tuple[float, float] = (0.0, 0.0),
                          lattice_constant: float | None = None) -> Structure
 ```
 
-Convenience: one call adds the same stack on both ±z sides; the
-`offset` is applied symmetrically (same Δx, Δy on both top and
-bottom slabs).  For asymmetric junctions (different size / offset /
-gap per side, or stepped contacts) call `add_electrode_slab`
-directly twice or four times.
+**Pair-electrode primitive.**  `anchor_indices = (a_top, a_bot)` --
+the +z anchor first, the -z anchor second.  Computes
+`mid = 0.5 * (positions[a_top] + positions[a_bot])`, then places the
+two slabs collinear along z at `mid.z ± gap/2`, both lateral-centred
+on `(mid.x + offset[0], mid.y + offset[1])`.  For a tilted molecule
+(anchor pair off-z), the two electrodes still lie collinear along z;
+the molecule fits its tilted geometry between them.
+
+`gap` is the canonical **junction gap** -- the empty z-space between
+the two electrodes.  Internally, each side gets the per-side contact
+distance `(gap - anchor_separation_z) / 2`.  If `gap` is smaller than
+the anchor pair's z-extent, raises `ValueError` (the electrodes would
+overlap the molecule).
+
+For asymmetric junctions (different size / offset / metal per side,
+or stepped contacts), call `add_electrode_slab` directly per side.
 
 ### 4.2 CLI subcommand (`molbuilder modify`)
 
-Pipe-friendly, chainable flags so a junction can be built in one
-command line per principle #2:
+**One operation TYPE per call.**  Chain calls via stdin/stdout
+(`-` as input or output path) for multi-step workflows.  Mixing
+operation TYPES in a single call is rejected.
+
+Operation types:
+
+| Flag | Purpose | Multi-instance? |
+|---|---|---|
+| `--delete INDICES` | drop atoms (0-based) | yes -- flatten |
+| `--orient-axis A0,A1` | rotate anchor pair onto `--axis`; `--angle θ` tilts θ°; `--center` controls translation | no |
+| `--rotate AXIS:ANGLE` | spin every atom around AXIS by ANGLE° | no |
+| `--electrode SPEC` | add one or two FCC slabs (see spec format below) | yes -- apply in order |
+
+`--electrode` spec format -- two modes distinguished by the
+`@key=val` substring:
+
+* **Pair (default):** `ELEM:PLANE:MxNxL@gap=GAP:ATOP,ABOT`
+  -- `gap` = total electrode-to-electrode distance (Å); `ATOP,ABOT`
+  are the +z and -z anchor indices.  Single flag, two slabs.
+* **Single (rare):** `ELEM:PLANE:MxNxL@contact=DIST:+z=N` or
+  `:-z=N` -- `contact` = anchor-to-closest-layer distance (Å); the
+  `±z=N` field gives side and anchor index.
+
+Call-level flags (apply uniformly to every `--electrode` in this call):
+
+| Flag | Effect |
+|---|---|
+| `--orthogonal` | use ASE's orthogonal supercell (only meaningful for fcc(111)) |
+| `--electrode-offset Δx,Δy` | lateral shift in Å applied to every slab's centroid |
+| `--lattice-constant Å` | override the value from `molbuilder/data/fcc_lattice.json` |
+
+Pipeline example -- canonical Au-bdt-Au junction:
 
 ```bash
-molbuilder modify in.xyz out.xyz \
-    --delete 12,13              # drop atoms 12 and 13
-    --orient-axis 5,9           # put atoms 5,9 on z (a0 at origin)
-    --electrode +z Au:111:3x3x2@2.0 \
-    --electrode +z Au:111:4x4x1@4.355 \
-    --electrode -z Au:111:3x3x2@2.0 \
-    --electrode -z Au:111:4x4x1@4.355
+# Three-step pipe: orient, then pair-mode electrode, then write the file
+molbuilder modify bdt.xyz - --orient-axis 0,3 |
+  molbuilder modify - junction.xyz \
+      --electrode Au:111:3x3x2@gap=9.0:3,0
 ```
 
-Format of `--electrode` value: `<element>:<plane>:<m>x<n>x<n_layers>@<gap>`
-(uniform per call; for stepped contacts pass `--electrode` multiple
-times for the same side with different `(size, gap)`).  `+z` / `-z`
-chooses the side.  Optional flags `--orthogonal` /
-`--electrode-offset Δx,Δy` apply to the next `--electrode` value;
-`--add` is omitted for now (slider-driven add-atom is UI-only and
-rarely useful from a script).
+Stepped 3×3 + 4×4 contact, both sides, in one electrode call:
 
-`--delete`, `--orient-axis`, and `--electrode` are applied **in order**
-so a single command line corresponds to the user's UI sequence.  Stdin
-support (`-` as input path) follows the existing pattern in `cmd_fdf`.
+```bash
+molbuilder modify oriented.xyz junction.xyz \
+    --electrode Au:111:3x3x1@gap=9.0:3,0  \
+    --electrode Au:111:4x4x1@gap=14.0:3,0
+```
+
+Asymmetric junction (Au top, Cu bottom) via two single-mode calls:
+
+```bash
+molbuilder modify oriented.xyz step1.xyz \
+    --electrode Au:111:3x3x2@contact=2.4:+z=3
+molbuilder modify step1.xyz junction.xyz \
+    --electrode Cu:111:3x3x2@contact=2.0:-z=0
+```
+
+Tilt the molecule 30° in the xz-plane (still anchor pair midpoint
+at origin), then spin 90° around z to redirect the tilt into yz:
+
+```bash
+molbuilder modify oriented.xyz - --orient-axis 0,3 --angle 30 |
+  molbuilder modify - tilted.xyz --rotate z:90
+```
+
+Stdin (`-` as input) and stdout (`-` as output) follow the existing
+pattern in `cmd_fdf` / `cmd_pyscf`.  Output is XYZ by default; pass
+`--output-format pdb` to write PDB instead.
 
 ### 4.3 Web blueprint (`/api/modify/*`)
 
@@ -334,8 +423,9 @@ op-specific args; respond with `{"ok": bool, "xyz": <new>, "n_atoms": int,
 | `POST /api/modify/delete` | `{xyz, indices: List[int]}` | `delete_atoms` |
 | `POST /api/modify/add_atom` | `{xyz, element, anchor_index, offset: [dx,dy,dz]}` | `add_atom` |
 | `POST /api/modify/orient` | `{xyz, anchors: [a0,a1], axis?, center?}` | `orient_along_axis` |
-| `POST /api/modify/electrode` | `{xyz, element, plane, size:[m,n,n_layers], anchor_index, gap, side, orthogonal, offset:[dx,dy], lattice_constant?, inter_layer_offset?}` | `add_electrode_slab` |
-| `POST /api/modify/symmetric_electrodes` | `{xyz, element, plane, size:[m,n,n_layers], anchors:[a0,a1], gap, orthogonal, offset:[dx,dy], lattice_constant?}` | `add_symmetric_electrodes` |
+| `POST /api/modify/rotate` | `{xyz, axis, angle}` | `rotate_around_axis` |
+| `POST /api/modify/electrode` | `{xyz, element, plane, size:[m,n,n_layers], anchor_index, contact_distance, side, orthogonal, offset:[dx,dy], lattice_constant?, inter_layer_offset?}` | `add_electrode_slab` (single mode) |
+| `POST /api/modify/symmetric_electrodes` | `{xyz, element, plane, size:[m,n,n_layers], anchors:[a_top,a_bot], gap, orthogonal, offset:[dx,dy], lattice_constant?}` | `add_symmetric_electrodes` (pair mode; `gap` = electrode-to-electrode distance) |
 
 All ops run `validate_geometry(struct)` against the **result** structure
 and return any warnings in `issues: [...]` (same shape as `/api/build/fdf`).

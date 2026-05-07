@@ -36,6 +36,7 @@ from molbuilder import cli
 _SUBCOMMANDS = [
     "peptide", "dna", "rna", "smiles", "name",
     "fdf", "pyscf",
+    "modify",
     "serve", "watch",
 ]
 
@@ -593,3 +594,208 @@ def test_watch_serve_calls_create_app(monkeypatch):
     assert captured["host"] == "127.0.0.1"
     assert captured["port"] == 5050
     assert captured["threaded"] is True
+
+
+# --------------------------------------------------------------------- #
+#  modify subcommand                                                     #
+# --------------------------------------------------------------------- #
+
+
+def _bdt_stub_xyz():
+    """Tiny "BDT-like" 4-atom XYZ string -- two S anchors at the ends,
+    two C in the middle.  Useful for end-to-end junction tests."""
+    return (
+        "4\n"
+        "bdt-stub\n"
+        "S  0.000  0.000  0.000\n"
+        "C  1.500  0.000  0.000\n"
+        "C  3.500  0.000  0.000\n"
+        "S  5.000  0.000  0.000\n"
+    )
+
+
+def test_modify_no_op_is_error(tmp_path):
+    """`molbuilder modify` with zero op flags is a UsageError."""
+    inp  = tmp_path / "in.xyz"
+    outp = tmp_path / "out.xyz"
+    inp.write_text(_bdt_stub_xyz())
+    with pytest.raises(SystemExit):
+        cli.main(["modify", str(inp), str(outp)])
+
+
+def test_modify_two_op_types_is_error(tmp_path):
+    """Mixing operation TYPES in one call is a UsageError; user must
+    chain via stdin/stdout pipes for multi-step workflows."""
+    inp  = tmp_path / "in.xyz"
+    outp = tmp_path / "out.xyz"
+    inp.write_text(_bdt_stub_xyz())
+    with pytest.raises(SystemExit):
+        cli.main(["modify", str(inp), str(outp),
+                  "--delete", "1",
+                  "--orient-axis", "0,3"])
+
+
+def test_modify_delete_only(tmp_path):
+    inp  = tmp_path / "in.xyz"
+    outp = tmp_path / "out.xyz"
+    inp.write_text(_bdt_stub_xyz())
+    rc = cli.main(["modify", str(inp), str(outp), "--delete", "1,2"])
+    assert rc == 0
+    text = outp.read_text()
+    assert text.startswith("2\n"), f"expected 2-atom output; got:\n{text}"
+    assert text.count(" S ") == 2 or text.count("S ") >= 2
+
+
+def test_modify_orient_only(tmp_path):
+    """Default --center='midpoint' since the redesign."""
+    inp  = tmp_path / "in.xyz"
+    outp = tmp_path / "out.xyz"
+    inp.write_text(_bdt_stub_xyz())
+    rc = cli.main(["modify", str(inp), str(outp),
+                   "--orient-axis", "0,3"])
+    assert rc == 0
+    import re
+    lines = outp.read_text().splitlines()[2:]
+    s_atoms = [l for l in lines if l.lstrip().startswith("S")]
+    assert len(s_atoms) == 2
+    coords = [list(map(float, re.split(r"\s+", l.strip())[1:4])) for l in s_atoms]
+    for c in coords:
+        assert abs(c[0]) < 1e-6 and abs(c[1]) < 1e-6
+    # Default midpoint => +z and -z symmetric
+    assert abs(coords[0][2] + coords[1][2]) < 1e-6
+
+
+def test_modify_orient_with_angle_tilts_in_xz(tmp_path):
+    """--angle 30 tilts the anchor pair 30° from z in the xz-plane."""
+    inp  = tmp_path / "in.xyz"
+    outp = tmp_path / "out.xyz"
+    inp.write_text(_bdt_stub_xyz())
+    rc = cli.main(["modify", str(inp), str(outp),
+                   "--orient-axis", "0,3", "--angle", "30"])
+    assert rc == 0
+    import re
+    import numpy as np
+    lines = outp.read_text().splitlines()[2:]
+    s_atoms = [l for l in lines if l.lstrip().startswith("S")]
+    s_pos = [list(map(float, re.split(r"\s+", l.strip())[1:4])) for l in s_atoms]
+    # Anchor pair vector should be (sin(30°)·d, 0, cos(30°)·d) -- y component zero
+    for c in s_pos:
+        assert abs(c[1]) < 1e-6
+    diff = np.array(s_pos[1]) - np.array(s_pos[0])
+    angle_from_z = np.degrees(np.arctan2(diff[0], diff[2]))
+    assert abs(angle_from_z - 30.0) < 1e-3 or abs(angle_from_z + 30.0) < 1e-3
+
+
+def test_modify_rotate_only(tmp_path):
+    """--rotate spins the structure around the named axis."""
+    inp  = tmp_path / "in.xyz"
+    outp = tmp_path / "out.xyz"
+    inp.write_text(_bdt_stub_xyz())
+    rc = cli.main(["modify", str(inp), str(outp), "--rotate", "z:90"])
+    assert rc == 0
+    # After 90° around z, the original x-axis line of S atoms should
+    # become a y-axis line.
+    import re
+    lines = outp.read_text().splitlines()[2:]
+    s_atoms = [l for l in lines if l.lstrip().startswith("S")]
+    s_pos = [list(map(float, re.split(r"\s+", l.strip())[1:4])) for l in s_atoms]
+    for c in s_pos:
+        assert abs(c[0]) < 1e-6   # x ~ 0 after 90° spin
+
+
+def test_modify_electrode_pair_mode_one_call(tmp_path):
+    """Pair mode: one --electrode flag, two slabs (one +z, one -z),
+    @gap= sets electrode-to-electrode distance."""
+    inp  = tmp_path / "in.xyz"
+    oriented = tmp_path / "oriented.xyz"
+    outp = tmp_path / "junction.xyz"
+    inp.write_text(_bdt_stub_xyz())
+    cli.main(["modify", str(inp), str(oriented), "--orient-axis", "0,3"])
+    rc = cli.main(["modify", str(oriented), str(outp),
+                   "--electrode", "Au:111:3x3x2@gap=9.0:3,0"])
+    assert rc == 0
+    text = outp.read_text()
+    # 4 molecule atoms + 9 atoms/layer × 2 layers × 2 sides = 4 + 36
+    n = int(text.splitlines()[0])
+    assert n == 4 + 36
+
+
+def test_modify_electrode_single_mode(tmp_path):
+    """Single mode: @contact= and ±z=N -- one slab on the named side."""
+    inp  = tmp_path / "in.xyz"
+    oriented = tmp_path / "oriented.xyz"
+    outp = tmp_path / "out.xyz"
+    inp.write_text(_bdt_stub_xyz())
+    cli.main(["modify", str(inp), str(oriented), "--orient-axis", "0,3"])
+    rc = cli.main(["modify", str(oriented), str(outp),
+                   "--electrode", "Au:111:3x3x2@contact=2.4:+z=3"])
+    assert rc == 0
+    text = outp.read_text()
+    n = int(text.splitlines()[0])
+    # 4 molecule + 9 × 2 layers (one side only) = 4 + 18
+    assert n == 4 + 18
+
+
+def test_modify_electrode_stepped_two_pair_specs(tmp_path):
+    """Stepped 3×3 close + 4×4 far on both sides -- two --electrode flags
+    in one call (both pair-mode, geometrically independent)."""
+    inp  = tmp_path / "in.xyz"
+    oriented = tmp_path / "oriented.xyz"
+    outp = tmp_path / "out.xyz"
+    inp.write_text(_bdt_stub_xyz())
+    cli.main(["modify", str(inp), str(oriented), "--orient-axis", "0,3"])
+    rc = cli.main(["modify", str(oriented), str(outp),
+                   "--electrode", "Au:111:3x3x1@gap=9.0:3,0",
+                   "--electrode", "Au:111:4x4x1@gap=14.0:3,0"])
+    assert rc == 0
+    text = outp.read_text()
+    n = int(text.splitlines()[0])
+    # 4 molecule + (9 + 16) × 2 sides = 4 + 50
+    assert n == 4 + 50
+
+
+def test_modify_electrode_bad_spec_raises(tmp_path):
+    """Malformed --electrode value triggers a BadParameter."""
+    inp  = tmp_path / "in.xyz"
+    outp = tmp_path / "out.xyz"
+    inp.write_text(_bdt_stub_xyz())
+    with pytest.raises(SystemExit):
+        cli.main(["modify", str(inp), str(outp),
+                  "--electrode", "garbage_no_colons"])
+
+
+def test_modify_electrode_orthogonal_111_odd_n_rejected(tmp_path):
+    """--orthogonal + fcc(111) with odd second axis is rejected by ASE;
+    bubbles up as a non-zero exit."""
+    inp  = tmp_path / "in.xyz"
+    oriented = tmp_path / "oriented.xyz"
+    outp = tmp_path / "out.xyz"
+    inp.write_text(_bdt_stub_xyz())
+    cli.main(["modify", str(inp), str(oriented), "--orient-axis", "0,3"])
+    with pytest.raises(SystemExit):
+        cli.main(["modify", str(oriented), str(outp),
+                  "--orthogonal",
+                  "--electrode", "Au:111:3x3x2@gap=9.0:3,0"])
+
+
+def test_modify_stdin_stdout_pipe(tmp_path, monkeypatch, capsys):
+    """`-` for input/output enables piping.  Verify that writing to '-'
+    produces XYZ on stdout, and reading from '-' parses it back."""
+    import io
+    inp = tmp_path / "in.xyz"
+    outp = tmp_path / "out.xyz"
+    inp.write_text(_bdt_stub_xyz())
+    # Step 1: read file, write to stdout
+    rc = cli.main(["modify", str(inp), "-", "--delete", "1"])
+    assert rc == 0
+    captured = capsys.readouterr()
+    stdout_xyz = captured.out
+    assert stdout_xyz.startswith("3\n"), (
+        f"expected 3-atom XYZ on stdout; got:\n{stdout_xyz!r}"
+    )
+    # Step 2: feed that text in via stdin to a second invocation
+    monkeypatch.setattr("sys.stdin", io.StringIO(stdout_xyz))
+    rc = cli.main(["modify", "-", str(outp), "--orient-axis", "0,2"])
+    assert rc == 0
+    final = outp.read_text()
+    assert final.startswith("3\n")

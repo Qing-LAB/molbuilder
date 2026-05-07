@@ -20,6 +20,7 @@ from molbuilder.modify import (
     add_symmetric_electrodes,
     delete_atoms,
     orient_along_axis,
+    rotate_around_axis,
 )
 from molbuilder.structure import Structure
 
@@ -139,35 +140,68 @@ def test_add_atom_rejects_bad_anchor(linear_dimer):
 # --------------------------------------------------------------------- #
 
 
-def test_orient_places_a0_at_origin_a1_on_z(linear_dimer):
+def test_orient_default_midpoint_centers_anchors_symmetrically(linear_dimer):
+    """Default ``center="midpoint"``: anchors land symmetrically on +z and -z."""
     out = orient_along_axis(linear_dimer, anchor_indices=(0, 5), axis="z")
-    a0 = out.positions[0]
-    a1 = out.positions[5]
-    assert np.allclose(a0, [0.0, 0.0, 0.0], atol=1e-10)
-    assert abs(a1[0]) < 1e-10
-    assert abs(a1[1]) < 1e-10
-    assert a1[2] > 0
-    original_dist = np.linalg.norm(linear_dimer.positions[5] - linear_dimer.positions[0])
-    assert np.isclose(a1[2], original_dist)
-
-
-def test_orient_midpoint_centers_anchors_symmetrically(linear_dimer):
-    out = orient_along_axis(linear_dimer, (0, 5), axis="z", center="midpoint")
     a0 = out.positions[0]
     a1 = out.positions[5]
     assert np.allclose(0.5 * (a0 + a1), [0.0, 0.0, 0.0], atol=1e-10)
     assert np.isclose(a0[2], -a1[2])
     assert all(abs(p) < 1e-10 for p in (a0[0], a0[1], a1[0], a1[1]))
+    # Anchor pair length is preserved.
+    original_dist = np.linalg.norm(linear_dimer.positions[5] - linear_dimer.positions[0])
+    assert np.isclose(a1[2] - a0[2], original_dist)
 
 
-def test_orient_none_center_keeps_translation(linear_dimer):
-    out = orient_along_axis(linear_dimer, (0, 5), axis="z", center="none")
+def test_orient_first_center_places_a0_at_origin(linear_dimer):
+    out = orient_along_axis(linear_dimer, anchor_indices=(0, 5),
+                             axis="z", center="first")
+    a0 = out.positions[0]
+    a1 = out.positions[5]
+    assert np.allclose(a0, [0.0, 0.0, 0.0], atol=1e-10)
+    assert a1[2] > 0
+    assert abs(a1[0]) < 1e-10 and abs(a1[1]) < 1e-10
+
+
+def test_orient_none_center_no_translation(linear_dimer):
+    """center='none' rotates only.  After identity rotation of an
+    already-on-x dimer toward x, atom 0 stays at the origin."""
+    out = orient_along_axis(linear_dimer, (0, 5), axis="x", center="none")
     assert np.allclose(out.positions[0], [0.0, 0.0, 0.0], atol=1e-10)
 
 
 def test_orient_along_x_axis(linear_dimer):
     out = orient_along_axis(linear_dimer, (0, 5), axis="x")
-    assert np.allclose(out.positions[:, 0], linear_dimer.positions[:, 0], atol=1e-10)
+    # Default center='midpoint': anchor pair lies along x, midpoint at origin
+    a0 = out.positions[0]
+    a1 = out.positions[5]
+    assert abs(a0[1]) < 1e-10 and abs(a0[2]) < 1e-10
+    assert abs(a1[1]) < 1e-10 and abs(a1[2]) < 1e-10
+    assert np.isclose(a0[0], -a1[0])
+
+
+def test_orient_with_angle_tilts_in_xz_plane(linear_dimer):
+    """angle=30: anchor pair lies in xz-plane at 30° from z.
+    Midpoint at origin (default center)."""
+    out = orient_along_axis(linear_dimer, (0, 5), axis="z", angle=30.0)
+    a0 = out.positions[0]
+    a1 = out.positions[5]
+    d = np.linalg.norm(linear_dimer.positions[5] - linear_dimer.positions[0])
+    # Anchor pair vector should be (sin(30°)*d, 0, cos(30°)*d)
+    diff = a1 - a0
+    expected = np.array([np.sin(np.radians(30)) * d, 0.0,
+                         np.cos(np.radians(30)) * d])
+    assert np.allclose(diff, expected, atol=1e-9)
+    # Midpoint at origin
+    mid = 0.5 * (a0 + a1)
+    assert np.allclose(mid, 0, atol=1e-9)
+
+
+def test_orient_angle_zero_matches_default(linear_dimer):
+    """angle=0 (default) gives the same result as omitting angle."""
+    out_default = orient_along_axis(linear_dimer, (0, 5), axis="z")
+    out_zero    = orient_along_axis(linear_dimer, (0, 5), axis="z", angle=0.0)
+    assert np.allclose(out_default.positions, out_zero.positions, atol=1e-12)
 
 
 def test_orient_handles_antiparallel_case():
@@ -200,6 +234,71 @@ def test_orient_rejects_same_anchor_twice(linear_dimer):
 def test_orient_rejects_bad_axis(linear_dimer):
     with pytest.raises(ValueError, match="axis"):
         orient_along_axis(linear_dimer, (0, 5), axis="w")
+
+
+# --------------------------------------------------------------------- #
+#  rotate_around_axis                                                   #
+# --------------------------------------------------------------------- #
+
+
+def test_rotate_around_z_default_no_op(linear_dimer):
+    """angle=0 returns positions unchanged."""
+    out = rotate_around_axis(linear_dimer, axis="z", angle=0.0)
+    assert np.allclose(out.positions, linear_dimer.positions, atol=1e-12)
+
+
+def test_rotate_around_z_90_deg():
+    """90° around z: (1, 0, 0) -> (0, 1, 0)."""
+    s = Structure(elements=["C"], positions=np.array([[1.0, 0.0, 0.0]]))
+    out = rotate_around_axis(s, axis="z", angle=90.0)
+    assert np.allclose(out.positions[0], [0.0, 1.0, 0.0], atol=1e-12)
+
+
+def test_rotate_around_x_90_deg():
+    """90° around x: (0, 1, 0) -> (0, 0, 1)."""
+    s = Structure(elements=["C"], positions=np.array([[0.0, 1.0, 0.0]]))
+    out = rotate_around_axis(s, axis="x", angle=90.0)
+    assert np.allclose(out.positions[0], [0.0, 0.0, 1.0], atol=1e-12)
+
+
+def test_rotate_around_y_90_deg():
+    """90° around y: (1, 0, 0) -> (0, 0, -1)."""
+    s = Structure(elements=["C"], positions=np.array([[1.0, 0.0, 0.0]]))
+    out = rotate_around_axis(s, axis="y", angle=90.0)
+    assert np.allclose(out.positions[0], [0.0, 0.0, -1.0], atol=1e-12)
+
+
+def test_rotate_then_unrotate_recovers_original(linear_dimer):
+    """Rotating by +θ then -θ around the same axis is identity."""
+    out = rotate_around_axis(linear_dimer, axis="z", angle=37.5)
+    out = rotate_around_axis(out,         axis="z", angle=-37.5)
+    assert np.allclose(out.positions, linear_dimer.positions, atol=1e-10)
+
+
+def test_rotate_combined_with_orient_redirects_tilt():
+    """Common workflow: orient with angle to tilt in xz-plane, then
+    rotate around z to point the tilt in another direction (e.g. yz)."""
+    s = Structure(
+        elements=["C", "C"],
+        positions=np.array([[0, 0, 0], [3.0, 0.0, 0.0]]),
+        title="dimer",
+    )
+    # Orient with 30° tilt in xz-plane (default tilt direction)
+    out = orient_along_axis(s, (0, 1), axis="z", angle=30.0)
+    a0_xz = out.positions[0]
+    a1_xz = out.positions[1]
+    # Anchor pair at (sin(30)*3, 0, cos(30)*3) - (-sin(30)*1.5, 0, -cos(30)*1.5)
+    assert abs(a1_xz[1]) < 1e-9 and abs(a0_xz[1]) < 1e-9   # in xz-plane
+    # Now rotate 90° around z; tilt now in yz-plane
+    out2 = rotate_around_axis(out, axis="z", angle=90.0)
+    a0_yz = out2.positions[0]
+    a1_yz = out2.positions[1]
+    assert abs(a1_yz[0]) < 1e-9 and abs(a0_yz[0]) < 1e-9   # now in yz-plane
+
+
+def test_rotate_rejects_bad_axis(linear_dimer):
+    with pytest.raises(ValueError, match="axis"):
+        rotate_around_axis(linear_dimer, axis="w", angle=10.0)
 
 
 # --------------------------------------------------------------------- #
@@ -240,7 +339,7 @@ def test_electrode_atom_count(single_anchor, element, plane,
     element + (plane, orthogonal) combo."""
     out = add_electrode_slab(single_anchor, element, plane,
                               size, anchor_index=0,
-                              gap=2.0, orthogonal=orthogonal)
+                              contact_distance=2.0, orthogonal=orthogonal)
     n_metal = sum(1 for e in out.elements if e == element)
     assert n_metal == n_expected, (
         f"{element}({plane}) orthogonal={orthogonal} size={size}: "
@@ -257,7 +356,7 @@ def test_electrode_atom_count(single_anchor, element, plane,
 def test_electrode_plus_z_atoms_above_anchor(single_anchor, plane,
                                               orthogonal, size):
     out = add_electrode_slab(single_anchor, "Au", plane, size,
-                              anchor_index=0, gap=2.0, side="+z",
+                              anchor_index=0, contact_distance=2.0, side="+z",
                               orthogonal=orthogonal)
     au_z = np.array([p[2] for e, p in zip(out.elements, out.positions) if e == "Au"])
     assert au_z.min() >= 2.0 - 1e-6
@@ -273,7 +372,7 @@ def test_electrode_plus_z_atoms_above_anchor(single_anchor, plane,
 def test_electrode_minus_z_atoms_below_anchor(single_anchor, plane,
                                                 orthogonal, size):
     out = add_electrode_slab(single_anchor, "Au", plane, size,
-                              anchor_index=0, gap=2.0, side="-z",
+                              anchor_index=0, contact_distance=2.0, side="-z",
                               orthogonal=orthogonal)
     au_z = np.array([p[2] for e, p in zip(out.elements, out.positions) if e == "Au"])
     assert au_z.max() <= -2.0 + 1e-6
@@ -294,7 +393,7 @@ def test_electrode_default_offset_centers_slab_on_anchor(plane, orthogonal, size
         elements=["S"], positions=np.array([[3.7, -1.2, 0.0]]), title="off-origin",
     )
     out = add_electrode_slab(s, "Au", plane, size, anchor_index=0,
-                              gap=2.0, orthogonal=orthogonal)
+                              contact_distance=2.0, orthogonal=orthogonal)
     au = np.array([p for e, p in zip(out.elements, out.positions) if e == "Au"])
     centroid_xy = au[:, :2].mean(axis=0)
     assert np.allclose(centroid_xy, [3.7, -1.2], atol=1e-6), (
@@ -312,10 +411,10 @@ def test_electrode_offset_shifts_slab_centroid(single_anchor, offset_xy):
     """Non-zero offset shifts the slab's centroid by exactly that
     much, leaving everything else unchanged."""
     base = add_electrode_slab(single_anchor, "Au", "111",
-                              (3, 3, 2), anchor_index=0, gap=2.0)
+                              (3, 3, 2), anchor_index=0, contact_distance=2.0)
     shifted = add_electrode_slab(single_anchor, "Au", "111",
-                                  (3, 3, 2), anchor_index=0, gap=2.0,
-                                  offset=offset_xy)
+                                  (3, 3, 2), anchor_index=0,
+                                  contact_distance=2.0, offset=offset_xy)
     base_centroid = np.array([p[:2] for e, p in zip(base.elements, base.positions)
                                if e == "Au"]).mean(axis=0)
     shifted_centroid = np.array([p[:2] for e, p in zip(shifted.elements, shifted.positions)
@@ -335,7 +434,7 @@ def test_electrode_metadata_marks_atoms_as_ELC(single_anchor):
     """Spec § 5: electrode atoms get residue_name='ELC' and a fresh
     residue_id so the molecule and electrode are separable."""
     out = add_electrode_slab(single_anchor, "Au", "111",
-                              (2, 2, 1), anchor_index=0, gap=2.0)
+                              (2, 2, 1), anchor_index=0, contact_distance=2.0)
     elc_indices = [i for i, n in enumerate(out.residue_names) if n == "ELC"]
     assert len(elc_indices) > 0
     elc_residue_ids = {out.residue_ids[i] for i in elc_indices}
@@ -400,10 +499,11 @@ def test_electrode_lattice_constant_override(single_anchor):
     """Explicit lattice_constant changes the slab's overall extent
     (proxy for 'the kwarg actually reached ASE')."""
     default = add_electrode_slab(single_anchor, "Au", "100",
-                                  (3, 3, 1), 0, gap=2.0, orthogonal=True)
+                                  (3, 3, 1), 0, contact_distance=2.0,
+                                  orthogonal=True)
     expanded = add_electrode_slab(single_anchor, "Au", "100",
-                                   (3, 3, 1), 0, gap=2.0, orthogonal=True,
-                                   lattice_constant=5.0)
+                                   (3, 3, 1), 0, contact_distance=2.0,
+                                   orthogonal=True, lattice_constant=5.0)
     def slab_extent(s):
         au_xy = np.array([p[:2] for e, p in zip(s.elements, s.positions)
                           if e == "Au"])
@@ -417,7 +517,8 @@ def test_electrode_inter_layer_offset_rescales_z():
     """inter_layer_offset overrides ASE's natural inter-layer spacing.
     Useful for strained-distance studies."""
     s = Structure(elements=["S"], positions=np.array([[0.0, 0, 0]]))
-    natural = add_electrode_slab(s, "Au", "111", (2, 2, 3), 0, gap=2.0)
+    natural = add_electrode_slab(s, "Au", "111", (2, 2, 3), 0,
+                                   contact_distance=2.0)
     nat_z = sorted({float(p[2])
                     for e, p in zip(natural.elements, natural.positions)
                     if e == "Au"})
@@ -425,7 +526,8 @@ def test_electrode_inter_layer_offset_rescales_z():
 
     forced_dz = nat_dz * 1.5
     stretched = add_electrode_slab(s, "Au", "111", (2, 2, 3), 0,
-                                    gap=2.0, inter_layer_offset=forced_dz)
+                                    contact_distance=2.0,
+                                    inter_layer_offset=forced_dz)
     stretch_z = sorted({float(p[2])
                         for e, p in zip(stretched.elements, stretched.positions)
                         if e == "Au"})
@@ -449,11 +551,17 @@ def test_electrode_inter_layer_offset_rescales_z():
 ])
 def test_symmetric_electrodes_doubles_metal_count(linear_dimer, plane,
                                                     orthogonal, size, per_side):
+    """gap is now the total electrode-to-electrode distance.  After
+    midpoint orient, linear_dimer's anchor pair is 3 Å apart along z;
+    pick gap = 7.0 Å so each side's contact distance = (7-3)/2 = 2.0 Å,
+    matching the old per-side semantics for a clean atom-count check."""
     oriented = orient_along_axis(linear_dimer, (0, 5), axis="z",
                                   center="midpoint")
+    # NEW convention: anchor_indices = (a_top, a_bot).  After orient,
+    # atom 5 ends up on +z (top), atom 0 on -z (bottom).
     out = add_symmetric_electrodes(oriented, "Au", plane, size,
-                                    anchor_indices=(0, 5),
-                                    gap=2.0, orthogonal=orthogonal)
+                                    anchor_indices=(5, 0),
+                                    gap=7.0, orthogonal=orthogonal)
     n_au = sum(1 for e in out.elements if e == "Au")
     assert n_au == 2 * per_side
 
@@ -463,8 +571,8 @@ def test_symmetric_electrodes_above_and_below(linear_dimer):
                                   center="midpoint")
     out = add_symmetric_electrodes(oriented, "Au", "111",
                                     (2, 2, 2),
-                                    anchor_indices=(0, 5),
-                                    gap=2.0)
+                                    anchor_indices=(5, 0),
+                                    gap=7.0)
     a0_z = oriented.positions[0, 2]
     a1_z = oriented.positions[5, 2]
     assert a0_z < a1_z, "expected midpoint centring to put a0 below a1"
@@ -474,18 +582,84 @@ def test_symmetric_electrodes_above_and_below(linear_dimer):
     assert above == 8 and below == 8
 
 
+def test_symmetric_electrodes_gap_centered_on_anchor_midpoint(linear_dimer):
+    """Spec § "tilted molecule + gap": the closest layers of the two
+    electrodes sit at z = mid.z ± gap/2 where mid = anchor-pair midpoint."""
+    oriented = orient_along_axis(linear_dimer, (0, 5), axis="z")
+    a_top = oriented.positions[5]
+    a_bot = oriented.positions[0]
+    mid_z = 0.5 * (a_top[2] + a_bot[2])
+    gap = 7.0
+    out = add_symmetric_electrodes(oriented, "Au", "111",
+                                    (2, 2, 1),
+                                    anchor_indices=(5, 0),
+                                    gap=gap)
+    au_z = sorted({float(p[2])
+                   for e, p in zip(out.elements, out.positions)
+                   if e == "Au"})
+    # Two layers: one at mid + gap/2, one at mid - gap/2.
+    assert np.isclose(au_z[-1], mid_z + gap / 2, atol=1e-9)
+    assert np.isclose(au_z[0],  mid_z - gap / 2, atol=1e-9)
+
+
+def test_symmetric_electrodes_rejects_too_small_gap(linear_dimer):
+    """gap smaller than anchor-pair z-extent must raise ValueError --
+    otherwise the electrodes would overlap the molecule."""
+    oriented = orient_along_axis(linear_dimer, (0, 5), axis="z")
+    # anchor pair is 3.0 Å apart in z after orient; gap=1.0 too small.
+    with pytest.raises(ValueError, match="gap"):
+        add_symmetric_electrodes(oriented, "Au", "111", (2, 2, 1),
+                                  anchor_indices=(5, 0), gap=1.0)
+
+
+def test_symmetric_electrodes_handles_tilted_molecule():
+    """For a tilted molecule (anchor pair NOT along z), gap is still
+    measured along z and the slabs are collinear along z, centred on
+    the anchor-pair midpoint's xy."""
+    s = Structure(
+        elements=["S", "C", "C", "S"],
+        positions=np.array([
+            [0.0, 0.0, 0.0],
+            [1.5, 0.0, 0.0],
+            [3.5, 0.0, 0.0],
+            [5.0, 0.0, 0.0],
+        ]),
+        title="bdt-stub",
+    )
+    # 30-degree tilt in xz-plane via the new angle parameter
+    tilted = orient_along_axis(s, (0, 3), axis="z", angle=30.0)
+    a_top = tilted.positions[3]
+    a_bot = tilted.positions[0]
+    mid = 0.5 * (a_top + a_bot)
+    # gap = 9.0 Å > anchor z-extent
+    junction = add_symmetric_electrodes(tilted, "Au", "111", (3, 3, 1),
+                                          anchor_indices=(3, 0),
+                                          gap=9.0)
+    # The two electrode layers' centroids should sit at (mid.x, mid.y)
+    # in xy and at mid.z ± gap/2 in z.
+    au_pos = np.array([p for e, p in zip(junction.elements, junction.positions)
+                       if e == "Au"])
+    z_layers = sorted({round(float(z), 6) for z in au_pos[:, 2]})
+    assert len(z_layers) == 2
+    assert np.isclose(z_layers[1], mid[2] + 9.0 / 2, atol=1e-6)
+    assert np.isclose(z_layers[0], mid[2] - 9.0 / 2, atol=1e-6)
+    # Lateral centroid of all Au atoms should equal (mid.x, mid.y).
+    centroid_xy = au_pos[:, :2].mean(axis=0)
+    assert np.allclose(centroid_xy, mid[:2], atol=1e-6), (
+        f"slab centroid {centroid_xy} should equal anchor midpoint "
+        f"({mid[0]}, {mid[1]})"
+    )
+
+
 def test_symmetric_electrodes_offset_propagates_to_both_sides(linear_dimer):
     """The single offset arg shifts BOTH the +z and -z slabs by the
     same (Δx, Δy)."""
-    oriented = orient_along_axis(linear_dimer, (0, 5), axis="z",
-                                  center="midpoint")
+    oriented = orient_along_axis(linear_dimer, (0, 5), axis="z")
     base = add_symmetric_electrodes(oriented, "Au", "111", (2, 2, 2),
-                                      anchor_indices=(0, 5), gap=2.0)
+                                      anchor_indices=(5, 0), gap=7.0)
     shifted = add_symmetric_electrodes(oriented, "Au", "111", (2, 2, 2),
-                                         anchor_indices=(0, 5), gap=2.0,
+                                         anchor_indices=(5, 0), gap=7.0,
                                          offset=(0.6, -0.4))
-    # Top slab (z > 0) and bottom slab (z < 0) should each have shifted
-    # by (0.6, -0.4) in xy.
     def side_centroid(s, sign):
         au = np.array([p[:2] for e, p in zip(s.elements, s.positions)
                        if e == "Au" and (sign * p[2]) > 0])
@@ -530,7 +704,9 @@ def test_junction_end_to_end(orthogonal, size, per_side):
 
     junction = add_symmetric_electrodes(
         oriented, "Au", "111", size,
-        anchor_indices=(0, 3), gap=2.0, orthogonal=orthogonal,
+        # NEW convention: (a_top, a_bot).  After orient with default
+        # midpoint centring, atom 3 is on +z (top), atom 0 on -z (bottom).
+        anchor_indices=(3, 0), gap=9.0, orthogonal=orthogonal,
     )
     n_au = sum(1 for e in junction.elements if e == "Au")
     # symmetric => 2 sides × per_side atoms
@@ -563,16 +739,22 @@ def test_junction_stepped_contacts_via_two_calls():
     # Place the outer 4×4 stack one such layer further out.
     outer_gap = inner_gap + 2.355
 
-    # Inner stacks: 3×3 single layer, both sides.
+    # Inner stacks: 3×3 single layer, both sides.  Single-electrode
+    # mode uses ``contact_distance`` (anchor-to-closest-layer), not
+    # ``gap`` (which is reserved for the pair-mode total junction gap).
     s1 = add_electrode_slab(oriented, "Au", "111", (3, 3, inner_layers),
-                              anchor_index=0, gap=inner_gap, side="-z")
+                              anchor_index=0, contact_distance=inner_gap,
+                              side="-z")
     s2 = add_electrode_slab(s1, "Au", "111", (3, 3, inner_layers),
-                              anchor_index=3, gap=inner_gap, side="+z")
-    # Outer stacks: 4×4 single layer, both sides, larger gap.
+                              anchor_index=3, contact_distance=inner_gap,
+                              side="+z")
+    # Outer stacks: 4×4 single layer, both sides, larger contact distance.
     s3 = add_electrode_slab(s2, "Au", "111", (4, 4, 1),
-                              anchor_index=0, gap=outer_gap, side="-z")
+                              anchor_index=0, contact_distance=outer_gap,
+                              side="-z")
     junction = add_electrode_slab(s3, "Au", "111", (4, 4, 1),
-                                    anchor_index=3, gap=outer_gap, side="+z")
+                                    anchor_index=3, contact_distance=outer_gap,
+                                    side="+z")
 
     n_au = sum(1 for e in junction.elements if e == "Au")
     # 9 (3×3 close) × 2 sides + 16 (4×4 far) × 2 sides
