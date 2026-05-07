@@ -31,12 +31,31 @@ Concretely the feature must let the user:
 4. **Define a molecular axis** by selecting two anchor atoms.  Apply a
    rotation that places that pair on the z-axis (the transport-DFT
    convention; ±z carries the electrodes).
-5. **Add electrodes:** for each side (+z, -z) independently, pick:
-    * Element (Au / Ag / Cu / Ni / Pt / Pd / …)
-    * Crystal plane: (100) / (110) / (111)
-    * A stack of layers, each with its own (m × n) lateral repeat
-      (e.g. `[(3, 3), (4, 4)]` = 3×3 closest, then 4×4 further out)
-    * Anchor-to-electrode-center distance (slider)
+5. **Add electrodes:** for each side (+z, -z), the user fills out one
+    "stack" panel per call.  Per panel:
+    * **Element** (dropdown — Au / Ag / Cu / Ni / Pt / Pd; see § 8).
+    * **Crystal plane** (dropdown — 100 / 110 / 111).
+    * **Cell shape** (toggle — *primitive* vs *orthogonal*; only fcc(111)
+      has a real choice, the toggle is hidden / disabled for 100 / 110.
+      Constraints from ASE bubble up as inline error hints if the user
+      picks an incompatible (m, n).  See § 8).
+    * **In-plane size** *m* × *n* (two integer inputs; integers ≥ 1).
+    * **Number of layers** *n_layers* (integer input ≥ 1).
+    * **Gap** to the closest layer (slider, default 2.0 Å).
+    * **Lateral offset** Δx, Δy (two sliders, default 0.0 Å each).
+      Default places the slab centroid directly under / over the
+      anchor (atop site).  Adjust to park the anchor on bridge or
+      hollow sites.
+    * **Lattice constant** override (advanced text input; default
+      from `molbuilder/data/fcc_lattice.json`).
+    * **Inter-layer spacing** override (advanced text input; default
+      from ASE for the chosen lattice constant).
+    All layers in a single panel share the same (m × n) — uniform.
+    For a stepped contact (e.g. 3×3 closest, 4×4 further out), the
+    user adds **two** stacks on the same side: one panel with
+    `(m=3, n=3, n_layers=K_inner, gap=g_inner)`, then another with
+    `(m=4, n=4, n_layers=K_outer, gap=g_outer)` where `g_outer` is
+    set so the second stack lands beyond the first.
 6. **Hand off** the finished junction to the Build tab so it flows into
    the existing FDF / PySCF generators with the existing validation /
    metadata pipeline.
@@ -87,10 +106,13 @@ Walkthrough for the canonical Au-thiol-Au workflow:
 5. User re-selects the two S atoms (now the anchor pair).
 6. User clicks **Orient along z**.  Backend rotates the structure so the
    S–S vector is on +z; viewer re-centres.
-7. User picks **Electrode +z**, sets element=Au, plane=111,
-   layers=`[(3,3), (4,4)]`, gap=2.0 Å.  Same for **Electrode -z**.
-8. Backend builds two FCC-Au slabs and places them ±z.  Viewer shows
-   the full junction (~70 atoms).
+7. User picks **Electrode +z** (panel 1), sets element=Au, plane=111,
+   primitive cell, m=3, n=3, n_layers=2, gap=2.0 Å, offset=(0, 0).
+   Adds another panel for the same side with m=4, n=4, n_layers=1,
+   gap=2.0 + 2.355 (one inter-layer spacing further out) for the
+   stepped 3×3 → 4×4 outer layer.  Mirror of both for **Electrode -z**.
+8. Backend builds the four FCC-Au slabs (one per panel) and places
+   them ±z.  Viewer shows the full junction (~70 atoms).
 9. User clicks **Send to Build tab** → Build tab opens with this
    structure pre-loaded; user clicks Generate .fdf / Generate .py as
    normal.
@@ -150,10 +172,12 @@ molbuilder/
 │   ├── delete_atoms(struct, indices)
 │   ├── add_atom(struct, element, anchor_index, offset)
 │   ├── orient_along_axis(struct, anchor_indices, axis="z", center="first")
-│   ├── add_electrode_slab(struct, element, plane, layer_sizes,
-│   │                      anchor_index, *, gap, side, lattice_constant)
-│   └── add_symmetric_electrodes(struct, element, plane, layer_sizes,
-│                                anchor_indices, *, gap, lattice_constant)
+│   ├── add_electrode_slab(struct, element, plane, size, anchor_index,
+│   │                      *, gap, side, orthogonal, offset,
+│   │                      lattice_constant, inter_layer_offset)
+│   └── add_symmetric_electrodes(struct, element, plane, size,
+│                                anchor_indices, *, gap, orthogonal,
+│                                offset, lattice_constant)
 │
 ├── cli.py                             ◄── new "modify" subcommand (M1)
 │
@@ -182,7 +206,7 @@ web UI as a portal, not a separate product).
 | **M2** | UI skeleton: tab in shared nav, file load, atom list, click-to-select mirroring viewer ↔ list. | New `static/modify.js`, `tab-modify` panel in `index.html`.  No edits possible yet. | not started |
 | **M3** | Edit ops wired: delete, add-with-sliders, live distance.  `/api/modify/atom_op` endpoint. | `web/blueprints/modify.py`; sliders + Apply buttons. | not started |
 | **M4** | Anchor-pair selection + orient-along-z. | UI for picking the second anchor; `/api/modify/orient` endpoint. | not started |
-| **M5** | Electrode panel (per-layer config, gap slider, symmetric/per-side mode); Send-to-Build handoff. | `/api/modify/electrode`; cross-tab handoff plumbing. | not started |
+| **M5** | Electrode panel (one panel per stack -- size, gap, offset sliders, orthogonal toggle when meaningful, symmetric/per-side mode); Send-to-Build handoff. | `/api/modify/electrode`; cross-tab handoff plumbing. | not started |
 
 Each milestone keeps `pytest tests/ -q` green.  No "intermediate broken
 state" commits.
@@ -235,30 +259,41 @@ axis (Rodrigues formula).  `center`:
 ```python
 add_electrode_slab(struct: Structure,
                    element: str,
-                   plane: str,                       # "100" / "110" / "111"
-                   layer_sizes: Sequence[Tuple[int, int]],
+                   plane: str,                            # "100" / "110" / "111"
+                   size: Tuple[int, int, int],            # (m, n, n_layers); uniform
                    anchor_index: int,
                    *, gap: float = 2.0,
-                   side: str = "+z",                 # or "-z"
+                   side: str = "+z",                      # or "-z"
+                   orthogonal: bool = False,
+                   offset: Tuple[float, float] = (0.0, 0.0),
                    lattice_constant: float | None = None,
                    inter_layer_offset: float | None = None) -> Structure
 ```
 
-Build an FCC slab via ASE's `fcc{100,110,111}`, mask each layer to its
-own (m, n) sub-rectangle, translate so the closest layer sits at
-`anchor.z ± gap` with lateral centering on the anchor's (x, y).
+Build a uniform FCC slab via ASE's `fcc{100,110,111}` with `m × n`
+in-plane repeats and `n_layers` layers, all of identical size.
+Translate so the slab's lateral centroid sits at
+`(anchor.x + offset[0], anchor.y + offset[1])` and the closest
+layer's z is `anchor.z ± gap`.  For a stepped contact (different
+(m, n) at different distances) call this twice with different
+`(size, gap)`.
 
 ```python
 add_symmetric_electrodes(struct: Structure,
                          element: str, plane: str,
-                         layer_sizes: Sequence[Tuple[int, int]],
+                         size: Tuple[int, int, int],
                          anchor_indices: Tuple[int, int],
                          *, gap: float = 2.0,
+                         orthogonal: bool = False,
+                         offset: Tuple[float, float] = (0.0, 0.0),
                          lattice_constant: float | None = None) -> Structure
 ```
 
-Convenience: one call adds the same stack on both ±z sides.  For
-asymmetric junctions, call `add_electrode_slab` directly twice.
+Convenience: one call adds the same stack on both ±z sides; the
+`offset` is applied symmetrically (same Δx, Δy on both top and
+bottom slabs).  For asymmetric junctions (different size / offset /
+gap per side, or stepped contacts) call `add_electrode_slab`
+directly twice or four times.
 
 ### 4.2 CLI subcommand (`molbuilder modify`)
 
@@ -269,13 +304,19 @@ command line per principle #2:
 molbuilder modify in.xyz out.xyz \
     --delete 12,13              # drop atoms 12 and 13
     --orient-axis 5,9           # put atoms 5,9 on z (a0 at origin)
-    --electrode +z Au:111:3x3,4x4@2.0 \
-    --electrode -z Au:111:3x3,4x4@2.0
+    --electrode +z Au:111:3x3x2@2.0 \
+    --electrode +z Au:111:4x4x1@4.355 \
+    --electrode -z Au:111:3x3x2@2.0 \
+    --electrode -z Au:111:4x4x1@4.355
 ```
 
-Format of `--electrode` value: `<element>:<plane>:<m>x<n>[,<m>x<n>...]@<gap>`.
-`+z` / `-z` chooses the side.  `--add` is omitted for now; the
-slider-driven add-atom op is UI-only and rarely useful from a script.
+Format of `--electrode` value: `<element>:<plane>:<m>x<n>x<n_layers>@<gap>`
+(uniform per call; for stepped contacts pass `--electrode` multiple
+times for the same side with different `(size, gap)`).  `+z` / `-z`
+chooses the side.  Optional flags `--orthogonal` /
+`--electrode-offset Δx,Δy` apply to the next `--electrode` value;
+`--add` is omitted for now (slider-driven add-atom is UI-only and
+rarely useful from a script).
 
 `--delete`, `--orient-axis`, and `--electrode` are applied **in order**
 so a single command line corresponds to the user's UI sequence.  Stdin
@@ -293,8 +334,8 @@ op-specific args; respond with `{"ok": bool, "xyz": <new>, "n_atoms": int,
 | `POST /api/modify/delete` | `{xyz, indices: List[int]}` | `delete_atoms` |
 | `POST /api/modify/add_atom` | `{xyz, element, anchor_index, offset: [dx,dy,dz]}` | `add_atom` |
 | `POST /api/modify/orient` | `{xyz, anchors: [a0,a1], axis?, center?}` | `orient_along_axis` |
-| `POST /api/modify/electrode` | `{xyz, element, plane, layer_sizes, anchor_index, gap, side, lattice_constant?}` | `add_electrode_slab` |
-| `POST /api/modify/symmetric_electrodes` | `{xyz, element, plane, layer_sizes, anchors:[a0,a1], gap, lattice_constant?}` | `add_symmetric_electrodes` |
+| `POST /api/modify/electrode` | `{xyz, element, plane, size:[m,n,n_layers], anchor_index, gap, side, orthogonal, offset:[dx,dy], lattice_constant?, inter_layer_offset?}` | `add_electrode_slab` |
+| `POST /api/modify/symmetric_electrodes` | `{xyz, element, plane, size:[m,n,n_layers], anchors:[a0,a1], gap, orthogonal, offset:[dx,dy], lattice_constant?}` | `add_symmetric_electrodes` |
 
 All ops run `validate_geometry(struct)` against the **result** structure
 and return any warnings in `issues: [...]` (same shape as `/api/build/fdf`).
@@ -333,7 +374,7 @@ The UI shows them in an issues panel mirroring the Build tab's design.
 
 ## 7. Off-scope (intentionally not implemented)
 
-* BCC metals (Fe, Cr, Mo, W).  Plumbing is FCC-only in M1.
+* BCC metals (Fe, Cr, Mo, W).  Plumbing is FCC-only.
 * HCP metals (Co, Zn, Cd).  Same.
 * Surface reconstruction (Au(111) 22×√3 herringbone, etc.).  We use
   ASE's idealised slabs.
@@ -346,3 +387,100 @@ The UI shows them in an issues panel mirroring the Build tab's design.
 
 These are all real follow-ups; they belong in subsequent milestones,
 not in M1.
+
+---
+
+## 8. Supported electrode metals (closed list)
+
+The Modify tab supports exactly these six FCC metals; the list is
+closed at the API boundary (`SUPPORTED_FCC_ELEMENTS` in
+`molbuilder.modify`) so the UI dropdown, the CLI's `--electrode`
+parser, and the Python function reject anything else with a clear
+`ValueError`.
+
+The actual numeric values live in `molbuilder/data/fcc_lattice.json`
+with the full citation chain in `molbuilder/data/README.md` — see
+**§ 9 below** for the data-directory contract.  The README's table is
+reproduced here for convenience but `molbuilder/data/README.md` is
+canonical:
+
+| Symbol | Element | Lattice constant *a* (Å) | Crystal system |
+|---|---|---|---|
+| **Au** | Gold      | 4.0782 | FCC |
+| **Ag** | Silver    | 4.0853 | FCC |
+| **Cu** | Copper    | 3.6149 | FCC |
+| **Ni** | Nickel    | 3.5240 | FCC |
+| **Pt** | Platinum  | 3.9242 | FCC |
+| **Pd** | Palladium | 3.8907 | FCC |
+
+**Why a closed list:**
+
+1. The fcc100 / fcc110 / fcc111 builders in ASE accept *any* element
+   symbol; passing Fe (BCC) silently returns a wrong-symmetry slab.
+2. The lattice-constant table needs an authoritative source per entry
+   (we use Wyckoff 1963 — see the data README); an open list invites
+   users to type a Z-label and get whatever ASE default ships, which
+   can drift between ASE versions.
+3. The molecular-electronics use case is concentrated on these six;
+   adding Ru / Os / Ir is real future work but isn't current scope.
+
+**Override** the lattice constant per call with the
+`lattice_constant=` kwarg on `add_electrode_slab` (or
+`--lattice-constant` on the CLI) when you need a strained-lattice
+slab or a non-room-temperature value.  For a persistent override
+across reinstalls, use the `MOLBUILDER_DATA_DIR` environment variable
+(see § 9).
+
+---
+
+## 9. Fundamental-data directory contract
+
+Reference values that the code reads as input — lattice constants,
+future bond-length tables, future ECP defaults — live in
+`molbuilder/data/` rather than as Python literals.  Two reasons:
+
+* **Auditable provenance.**  Every numeric value has a citation in
+  `molbuilder/data/README.md`.  A reviewer can verify a value against
+  the cited source without reading code.
+* **User-updatable.**  An end user edits a JSON file (or sets
+  `MOLBUILDER_DATA_DIR` to point at a copy elsewhere) to use their
+  own DFT-equilibrium constants without touching the package source.
+
+### Layout
+
+```
+molbuilder/data/
+├── README.md             # citations, sources, override mechanism, schema
+├── fcc_lattice.json      # supported FCC metals (closed list)
+└── (future tables here, each documented in README.md)
+```
+
+### Loader contract
+
+Every Python module that reads from `molbuilder/data/` must:
+
+1. Walk `_data_dir_candidates()` (defined in `molbuilder.modify`):
+    a. `$MOLBUILDER_DATA_DIR/<file>` if the env var is set.
+    b. `<package>/data/<file>` (the bundled copy).
+
+2. Raise a clear `RuntimeError` if no candidate file exists, listing
+   every searched path.  The user must see exactly which files were
+   tried so a typo in the override path is obvious.
+
+3. Validate the schema (presence of required keys, parsable values)
+   and raise a clear error on mismatch — a malformed override should
+   fail loudly at import, not silently when the wrong slab gets built
+   later.
+
+### Adding a new data file
+
+1. Drop the file in `molbuilder/data/` with a snake-case name and a
+   schema version field (`"_format": "<table-name> v1"`).
+2. Document its schema and every value in `molbuilder/data/README.md`
+   with a citation per value.
+3. Wire it into the relevant Python module via a `_load_*()` helper
+   that follows the loader contract above.
+4. Add it to `[tool.setuptools.package-data]` in `pyproject.toml`
+   under `data/*.json` (or whatever pattern matches).
+5. Update this spec (or the relevant feature spec) to point at the
+   data file from the surface that consumes it.

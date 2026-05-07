@@ -1,0 +1,16 @@
+{
+    "_format": "molbuilder.data.fcc_lattice v1",
+    "_units": {
+        "a": "angstrom",
+        "temperature_K": 298
+    },
+    "_source": "Wyckoff 1963 vol. 1 p. 10 (see molbuilder/data/README.md for the full citation chain)",
+    "metals": {
+        "Au": { "a": 4.0782, "system": "fcc", "name": "Gold" },
+        "Ag": { "a": 4.0853, "system": "fcc", "name": "Silver" },
+        "Cu": { "a": 3.6149, "system": "fcc", "name": "Copper" },
+        "Ni": { "a": 3.5240, "system": "fcc", "name": "Nickel" },
+        "Pt": { "a": 3.9242, "system": "fcc", "name": "Platinum" },
+        "Pd": { "a": 3.8907, "system": "fcc", "name": "Palladium" }
+    }
+}

@@ -92,7 +92,11 @@ include = ["molbuilder*"]
 molbuilder = [
     "web/templates/*.html",
     "web/static/*.css", "web/static/*.js",
+    "web/static/lib/*.js",
     "web/static/watch/*.css", "web/static/watch/*.js",
+    # Fundamental-data tables loaded at import time.  See
+    # molbuilder/data/README.md for citations + the override mechanism.
+    "data/*.json", "data/*.md",
 ]
 
 [tool.pytest.ini_options]
