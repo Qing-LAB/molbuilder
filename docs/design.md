@@ -524,11 +524,14 @@ below for the check list.
 The generated PySCF script does **not** import molbuilder at runtime.
 A user can `scp` the .py to a cluster that has only `pyscf +
 geometric` installed and run it. The molwatch emitter helper class
-is pasted verbatim into the generated script (currently as
-text-templating; Phase 4 switches to `inspect.getsource()` of a real
-file under `generators/_runtime/molwatch_emitter.py` for IDE-checkability
-and unit testability — the "generated artifact has no extra imports"
-invariant is preserved either way).
+is pasted verbatim into the generated script via
+`inspect.getsource(MolwatchEmitter)` from
+:mod:`molbuilder.trajectory_log.emitter` (Phase 4, `3bd5c32`).
+The class is the source of truth -- the inline text in
+`pyscf/input.py:_emit_molwatch_emitter` is a single
+`inspect.getsource` call, not a duplicate string -- and gets unit-
+tested directly via `tests/test_molwatch_emitter.py`.  The "generated
+artifact has no extra imports" invariant is preserved.
 
 ### 8. Don't reinvent wheels
 
@@ -746,8 +749,8 @@ older paths are not deprecated — they are the public surface.
 | 2.5 | 3DNA backend added at `molbuilder/backends/_threedna.py` (will move to `builders/backends/` in Phase 2.7); detection chain `in-tree > $X3DNA > PATH`; registered in dispatch with auto-order `threedna > amber > rdkit`; CLI's `--backend` choice list extended | **done** |
 | 2.6 | `Issue` dataclass added (`issues.py`); `validation.py` wired into `render_fdf` / `render_script`; per-field metadata lifted onto `SiestaConfig` and `PySCFConfig` via `dataclasses.field(metadata=...)`; validators read ranges from the metadata. **This is when principles #1 and #6 become load-bearing.** Side effect: the validator surfaced an `AddHs(addCoords=True)` artifact in the peptide builder (some Hs left at heavy-atom anchor positions); fixed in the same phase via a `_drop_overlapping_hydrogens` post-pass. | **done** |
 | 2.7 | Layering-compliance commit: `SiestaConfig` / `PySCFConfig` split out into `molbuilder/config/` (re-exports preserve external imports); `molwatch_log/` renamed to `trajectory_log/` (re-exports preserved); `backends/` moved under `builders/`. No behavior change. | **done** (landed as 2.7a + 2.7b + 2.7c) |
-| 3 | Web UI redesigned: Build tab + Watch tab; shared 3Dmol viewer, style controls; clean styling pass; "Watch this run" handoff. SSE / WebSocket vs 15s mtime polling resolved at `a3aab23` (server is authoritative; polling stays). | **partially done** — 3a build routes namespaced under `/api/build/*` (`3d3d85b`); 3b shared tab nav + banner above menu (`4b274d5` / `10a0d88` / `562c34d`); 3d Watch-this-run handoff (`86a2d64`); 3c shared 3Dmol viewer **deferred** (refactor, not load-bearing — current per-page viewers work). |
-| 4 | `_MolwatchEmitter` extracted to `molbuilder/generators/_runtime/molwatch_emitter.py`; pasted into generated script via `inspect.getsource()`; round-trip emitter→parser unit test added. **Re-tiered:** principle #7 already holds via the inlined-text emitter at `pyscf/input.py:618`; this phase is for IDE-checkability and unit-testability of the emitter, not correctness. Can ship after Phase 5. | not started |
+| 3 | Web UI redesigned: Build tab + Watch tab; shared 3Dmol viewer, style controls; clean styling pass; "Watch this run" handoff. SSE / WebSocket vs 15s mtime polling resolved at `a3aab23` (server is authoritative; polling stays). | **done** — 3a build routes namespaced under `/api/build/*` (`3d3d85b`); 3b shared tab nav + banner above menu (`4b274d5` / `10a0d88` / `562c34d`); 3c shared 3Dmol style helper at `static/lib/mol-style.js` -- the only honest overlap between Build and Watch viewers, ~50 lines of representation/sizing math, extracted (`7110885`); 3d Watch-this-run handoff (`86a2d64`) -- Build-side buttons subsequently retired as dead UI in `4171194`, receiver half (Watch tab honours `?path=`) intact. |
+| 4 | `MolwatchEmitter` extracted to `molbuilder/trajectory_log/emitter.py`; inlined into generated script via `inspect.getsource()`; emitter unit tests added (`tests/test_molwatch_emitter.py`).  Generated script stays self-contained (no molbuilder runtime dependency on the user's machine) -- the class source is inlined verbatim, the script's globals supply `_mw_time` / `_mw_np`. | **done — `3bd5c32`** |
 | 5 | argparse → click conversion of `cli.py`; `molbuilder watch parse` / `molbuilder watch tail` JSON-on-stdout subcommands (issue #81); `molbuilder validate` subcommand emitting `Issue` JSON; `-` stdin support on `fdf` / `pyscf` so principle #2 is realized end-to-end; `add_dataclass_options` bridge from field metadata to `click.option` lands here | **done** — sub-phases 5a (argparse→click, `2456dad`), 5b (stdin support, `fba531e`), 5c (`molbuilder validate`, `63a3b51`), 5d (`watch parse`/`tail`, `952fff0`), 5e (`add_dataclass_options` bridge, `041def3`). |
 | 6 | v0.4 scientific polish — fix the 10 known gaps below; each fix lands as the triple (generator change + validation rule + spec test) so they can't drift; lift `mf.diis_space` / `mf.damp` / `pao_energy_shift` defaults onto the metadata-augmented config fields from Phase 2.6 | **done** — all 10 gaps closed (`#1+#2 23d8a99`, `#3 3f11a31`, `#4 e695262`, `#5 f6459b2`, `#6 69e226b`, `#7 d2a4709`, `#8 2b85d21 + 0a00abc`, `#9 d1b9d1c`, `#10 453abe5`).  0 xfails left in `tests/test_science_gaps.py`. |
 
