@@ -44,10 +44,21 @@ it with the `pyscf` subcommand which emits a full runnable script.
   detected from extension).
 * Second positional arg `fdf` / `py`: output path.
 * All `SiestaConfig` / `PySCFConfig` fields are exposed as
-  `--<kebab-case-field>` flags.
-* Boolean fields with default `True` get `--no-<field>` flags;
-  fields with default `False` get `--<field>` flags.
-* `pyscf` exposes `--no-trajectory` to disable the
+  `--<kebab-case-field>` flags (auto-generated from dataclass
+  metadata via `add_dataclass_options` in `molbuilder/cli.py`).
+* Boolean fields surface as a `--<field> / --no-<field>` pair
+  regardless of the default; either form may be passed.
+* Fields whose dataclass metadata carries a `choices` tuple are
+  validated at CLI parse time via `click.Choice`, so a typo on
+  e.g. `--method`, `--solution-method`, `--scf-init-guess`, or
+  `--optimizer` fails with exit code 2 before any conversion runs.
+* Five fields opt out of the bridge via `metadata['skip_cli']`
+  and are hand-rolled at the call site because their CLI handling
+  needs custom parsing (`--kgrid`, `--psml-lib`, `--species-order`)
+  or because they have a tri-state `None`/`True`/`False`
+  semantic the bridge can't represent (`parallel_block_size`,
+  `parallel_over_k`).
+* `pyscf` exposes `--no-write-trajectory` to disable the
   `<job>_geom_optim.xyz` streaming output.
 * On success, prints "Wrote <path>: ..." to stderr.
 * On `fdf` with missing pseudopotentials, exits with code 2 (other

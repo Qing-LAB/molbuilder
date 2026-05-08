@@ -1,14 +1,14 @@
 """CLI surface smoke tests.
 
-Tests against the current argparse-based CLI in ``molbuilder/cli.py``.
-A future click conversion will rewrite the implementation; these
-tests are written to survive that rewrite by exercising the user-
-visible interface only:
+Tests against the click-based CLI in ``molbuilder/cli.py``.  Three
+roles:
 
   * every subcommand has a ``--help``
   * every subcommand parses the documented happy-path invocation
   * subcommand routing (``main(["X", ...]) -> proper handler``) works
     for the build verbs without hitting heavy external deps
+  * the dataclass -> click bridge (add_dataclass_options) wires every
+    SiestaConfig / PySCFConfig field through to the right kwarg
 
 Heavy dispatches (smiles needs RDKit, name needs PubChem, fdf needs
 ASE + a structure file, watch serve binds a port) are tested via
@@ -19,7 +19,6 @@ end test that produces a real .fdf file lives in
 
 from __future__ import annotations
 
-import argparse
 import sys
 
 import numpy as np
@@ -44,8 +43,8 @@ _SUBCOMMANDS = [
 @pytest.mark.parametrize("sub", _SUBCOMMANDS)
 def test_subcommand_help_exits_cleanly(sub):
     """Every subcommand's --help must succeed (SystemExit code 0).
-    Failure here means an argparse misconfiguration -- a typo in
-    `add_argument`, a duplicate flag, etc."""
+    Failure here means a click misconfiguration -- a typo in a
+    decorator, a duplicate flag name, an undefined kwarg, etc."""
     with pytest.raises(SystemExit) as exc:
         cli.main([sub, "--help"])
     assert exc.value.code == 0
@@ -58,11 +57,11 @@ def test_top_level_help_exits_cleanly():
 
 
 def test_no_subcommand_is_an_error():
-    """Running `molbuilder` with no subcommand should fail with an
-    argparse usage error, not an unhelpful crash."""
+    """Running `molbuilder` with no subcommand should fail with a
+    usage error, not an unhelpful crash."""
     with pytest.raises(SystemExit) as exc:
         cli.main([])
-    # argparse exits 2 on usage error.
+    # click exits 2 on usage error.
     assert exc.value.code == 2
 
 
@@ -107,8 +106,8 @@ def test_build_peptide_routes_to_build_peptide(monkeypatch, capsys, tmp_path):
 
 def test_build_dna_passes_backend_and_form(monkeypatch, tmp_path):
     """DNA's --backend / --form / --terminal flags must reach the
-    builder.  This catches the argparse->kwargs mapping; if a flag
-    is dropped, the test fails -- a real bug."""
+    builder.  This catches the click-decorator -> kwargs mapping; if
+    a flag is dropped, the test fails -- a real bug."""
     captured = []
     monkeypatch.setattr("molbuilder.build_dna", _make_capture(captured))
     rc = cli.main([
@@ -781,6 +780,158 @@ def test_siesta_default_values_render_in_fdf(expected_substr):
 
 
 # ---- Modify electrode-spec parser is case-insensitive on key ----- #
+
+
+# ---- Bridge: metadata['choices'] -> click.Choice ---------------- #
+
+
+def test_add_dataclass_options_emits_click_choice_when_metadata_set():
+    """A dataclass field with ``metadata['choices']=...`` lands as a
+    ``click.Choice`` option, so a typo fails at CLI parse time instead
+    of waiting for the downstream tool (SIESTA / PySCF) to error out
+    much later."""
+    import click as _click
+    import dataclasses
+
+    @dataclasses.dataclass
+    class _Cfg:
+        method: str = dataclasses.field(
+            default="RKS",
+            metadata={"choices": ("RKS", "UKS", "RHF", "UHF")},
+        )
+
+    @_click.command()
+    @cli.add_dataclass_options(_Cfg)
+    def demo(**kw):
+        return kw
+
+    from click.testing import CliRunner
+    runner = CliRunner()
+
+    # Bad value -> click error (exit code 2).
+    res = runner.invoke(demo, ["--method", "FOO"])
+    assert res.exit_code != 0
+    out = (res.output or "").lower()
+    assert "invalid value" in out or "not one of" in out, res.output
+
+    # Good value passes through.
+    res = runner.invoke(demo, ["--method", "UHF"])
+    assert res.exit_code == 0
+
+
+def test_add_dataclass_options_choices_appear_in_help():
+    """``--help`` for a Choice-typed field shows the valid options so
+    the CLI is self-documenting."""
+    import click as _click
+    import dataclasses
+
+    @dataclasses.dataclass
+    class _Cfg:
+        method: str = dataclasses.field(
+            default="RKS",
+            metadata={"choices": ("RKS", "UKS", "RHF")},
+        )
+
+    @_click.command()
+    @cli.add_dataclass_options(_Cfg)
+    def demo(**kw):
+        return kw
+
+    from click.testing import CliRunner
+    res = CliRunner().invoke(demo, ["--help"])
+    assert res.exit_code == 0
+    # click renders Choice options as "[a|b|c]" in --help.
+    assert "RKS" in res.output and "UKS" in res.output and "RHF" in res.output
+
+
+@pytest.mark.parametrize("subcommand,flag,bad_val", [
+    ("fdf",   "--solution-method", "diagonalize"),
+    ("pyscf", "--method",          "UKKS"),
+    ("pyscf", "--scf-init-guess",  "huckl"),
+    ("pyscf", "--optimizer",       "geometric_v2"),
+])
+def test_real_subcommand_choice_validation_rejects_typos(
+        subcommand, flag, bad_val, tmp_path):
+    """The four config fields whose old hand-rolled CLI used
+    ``click.Choice`` keep that constraint after the bridge migration:
+    a typo on the real ``fdf`` / ``pyscf`` subcommands fails at parse
+    time with exit code 2 rather than producing a broken FDF / .py."""
+    in_xyz = _h2_xyz_at(tmp_path / "h2.xyz")
+    out_path = tmp_path / ("h2.fdf" if subcommand == "fdf" else "h2.py")
+    with pytest.raises(SystemExit) as exc:
+        cli.main([subcommand, in_xyz, str(out_path), flag, bad_val])
+    assert exc.value.code == 2
+
+
+# ---- Bridge: unknown types must error loudly (P3) --------------- #
+
+
+def test_add_dataclass_options_rejects_unknown_field_type():
+    """A dataclass field with an annotation the bridge can't handle
+    (Sequence[str], Tuple, dict, ...) must raise TypeError instead of
+    silently coercing to ``type=str``.  The user is expected to mark
+    such fields ``skip_cli=True`` and hand-roll a click.option at the
+    call site."""
+    import click as _click
+    import dataclasses
+    from typing import Sequence
+
+    @dataclasses.dataclass
+    class _Cfg:
+        species: Sequence[str] = dataclasses.field(default_factory=list)
+
+    with pytest.raises(TypeError) as exc:
+        @_click.command()
+        @cli.add_dataclass_options(_Cfg)
+        def demo(**kw):
+            return kw
+
+    msg = str(exc.value)
+    assert "species" in msg
+    assert "skip_cli" in msg
+
+
+def test_add_dataclass_options_skip_cli_field_is_not_type_checked():
+    """A field marked ``skip_cli=True`` is exempt from the type check
+    -- the bridge doesn't try to generate an option for it, so weird
+    types are fine."""
+    import click as _click
+    import dataclasses
+    from typing import Sequence
+
+    @dataclasses.dataclass
+    class _Cfg:
+        species: Sequence[str] = dataclasses.field(
+            default_factory=list,
+            metadata={"skip_cli": True},
+        )
+
+    # Must NOT raise.
+    @_click.command()
+    @cli.add_dataclass_options(_Cfg)
+    def demo(**kw):
+        return kw
+
+
+def test_add_dataclass_options_choices_on_bool_is_an_error():
+    """``choices=`` on a bool field is meaningless (bool fields surface
+    as a ``--foo / --no-foo`` pair).  Bridge must reject the
+    combination loudly."""
+    import click as _click
+    import dataclasses
+
+    @dataclasses.dataclass
+    class _Cfg:
+        flag: bool = dataclasses.field(
+            default=True, metadata={"choices": ("true", "false")},
+        )
+
+    with pytest.raises(TypeError) as exc:
+        @_click.command()
+        @cli.add_dataclass_options(_Cfg)
+        def demo(**kw):
+            return kw
+    assert "choices" in str(exc.value)
 
 
 def test_modify_electrode_spec_key_case_insensitive():

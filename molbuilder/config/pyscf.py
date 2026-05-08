@@ -43,6 +43,7 @@ class PySCFConfig:
 
     # ---------------- Method (main run) ----------------
     method: str = field(default="RKS", metadata={
+        "choices": ("RKS", "UKS", "RHF", "UHF"),
         "help": "RKS / UKS / RHF / UHF",
     })
     functional: str = field(default="B3LYP", metadata={
@@ -71,6 +72,12 @@ class PySCFConfig:
     ecp: "str | dict | None" = field(default=None, metadata={
         "help": ("effective core potential (e.g. 'lanl2dz'); default = auto "
                  "for heavy atoms on non-def2 bases; pass 'none' to disable"),
+        # The dict variant is Python-API-only (per-element ECPs); the
+        # CLI surface is only the str case, plus the "none"/"" coercion
+        # to "" (= explicitly disable auto-emit).  add_dataclass_options
+        # would otherwise reject the str|dict|None union; cmd_pyscf
+        # hand-rolls --ecp instead.
+        "skip_cli": True,
     })
 
     # ---------------- Solvent (optional) ----------------
@@ -95,6 +102,7 @@ class PySCFConfig:
         "help":  "max SCF cycles per single-point",
     })
     scf_init_guess: str = field(default="minao", metadata={
+        "choices": ("minao", "atom", "1e", "huckel"),
         "help": "SCF initial guess: minao / atom / 1e / huckel",
     })
     grid_level: int = field(default=4, metadata={
@@ -159,6 +167,7 @@ class PySCFConfig:
         "help": "run geometry optimization; --no-optimize for single-point only",
     })
     optimizer: str = field(default="geometric", metadata={
+        "choices": ("geometric", "berny"),
         "help": "geomeTRIC or berny",
     })
     geom_max_steps: int = field(default=200, metadata={

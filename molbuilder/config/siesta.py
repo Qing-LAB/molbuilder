@@ -129,6 +129,7 @@ class SiestaConfig:
     })
     solution_method: str = field(default="diagon", metadata={
         "label": "SolutionMethod",
+        "choices": ("diagon", "OMM", "transiesta"),
         "help": "diagon / OMM / transiesta (transiesta requires the TranSIESTA build)",
     })
 

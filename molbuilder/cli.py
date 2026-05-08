@@ -123,6 +123,7 @@ def add_dataclass_options(cls, *,
 
             flag = "--" + prefix + fld.name.replace("_", "-")
             help_text = fld.metadata.get("help") or fld.metadata.get("label") or ""
+            choices = fld.metadata.get("choices")
 
             ann = resolved_hints.get(fld.name, fld.type)
             # Walk Optional[X] / Union[X, None]
@@ -138,6 +139,23 @@ def add_dataclass_options(cls, *,
             default = (fld.default
                        if fld.default is not dataclasses.MISSING
                        else None)
+
+            # P1: enumerated values get a click.Choice so a typo fails at
+            # CLI parse time instead of waiting for SIESTA / PySCF to
+            # error out at execution time.  The choice list lives in the
+            # dataclass field metadata so the dataclass stays the single
+            # source of truth.
+            if choices is not None:
+                if py_t is bool:
+                    raise TypeError(
+                        f"{cls.__name__}.{fld.name}: 'choices' metadata is "
+                        f"meaningless on a bool field"
+                    )
+                f = click.option(flag, fld.name,
+                                 type=click.Choice(list(choices)),
+                                 default=default, show_default=True,
+                                 help=help_text)(f)
+                continue
 
             if py_t is bool:
                 # Generate --foo / --no-foo pair so the user can flip
@@ -155,12 +173,24 @@ def add_dataclass_options(cls, *,
                 f = click.option(flag, fld.name, type=float,
                                  default=default, show_default=True,
                                  help=help_text)(f)
-            else:
-                # str / Optional[str] / unknown -- accept as a string
-                # and let the dataclass __post_init__ / call site coerce.
+            elif py_t is str:
                 f = click.option(flag, fld.name, type=str,
-                                 default=default, show_default=(default is not None),
+                                 default=default,
+                                 show_default=(default is not None),
                                  help=help_text)(f)
+            else:
+                # P3: bail loudly rather than silently coercing odd types
+                # (Sequence[str], Tuple[int, int, int], dict-of-X, ...) to
+                # str.  Author the field with skip_cli=True and hand-roll
+                # the click.option at the call site, or add support for
+                # the new type to this bridge.
+                raise TypeError(
+                    f"{cls.__name__}.{fld.name!r}: cannot auto-generate a "
+                    f"CLI option for type {py_t!r}.  Mark the field with "
+                    f"metadata={{'skip_cli': True}} and hand-roll a "
+                    f"click.option at the call site, or extend "
+                    f"add_dataclass_options to handle this type."
+                )
         return f
     return deco
 
@@ -441,8 +471,15 @@ def cmd_fdf(input_path, fdf_path, kgrid, psml_lib, species_order, **fields):
 @cli.command("pyscf", short_help="convert XYZ / PDB to a runnable PySCF script")
 @click.argument("input_path", metavar="input")
 @click.argument("py_path",    metavar="py")
+# Hand-rolled --ecp because PySCFConfig.ecp is annotated str|dict|None
+# and the dict variant is Python-API-only; the bridge has skip_cli=True
+# on the field to avoid the union-type rejection in P3.
+@click.option("--ecp", default=None,
+              help="effective core potential (e.g. 'lanl2dz'); "
+                   "default = auto for heavy atoms on non-def2 bases; "
+                   "pass 'none' to disable auto-emit")
 @_make_pyscf_options_decorator()
-def cmd_pyscf(input_path, py_path, **fields):
+def cmd_pyscf(input_path, py_path, ecp, **fields):
     """Convert an XYZ or PDB structure into a runnable PySCF script.
 
     Every PySCFConfig field is exposed as a CLI option (auto-generated
@@ -465,9 +502,11 @@ def cmd_pyscf(input_path, py_path, **fields):
         return None if s.strip().lower() in ("", "none") else s
     fields["dispersion"]        = _none_if_empty(fields.get("dispersion"))
     fields["preopt_dispersion"] = _none_if_empty(fields.get("preopt_dispersion"))
-    if fields.get("ecp") is not None:
-        ecp_val = fields["ecp"].strip().lower()
-        fields["ecp"] = "" if ecp_val in ("", "none") else fields["ecp"]
+    if ecp is not None:
+        ecp_val = ecp.strip().lower()
+        fields["ecp"] = "" if ecp_val in ("", "none") else ecp
+    else:
+        fields["ecp"] = None
 
     cfg = PySCFConfig(**fields)
     with _resolve_input_path(input_path) as resolved_input:
@@ -1167,7 +1206,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     Kept for ``project.scripts`` and for tests that call
     ``cli.main([...])`` directly.
 
-    The contract we need to preserve from the argparse era:
+    The contract we need to preserve (inherited from the argparse
+    predecessor; tests assert it):
       * ``--help`` / ``-h``                 -> SystemExit(0)
       * missing / unknown args / commands   -> SystemExit(2)
       * normal command completion           -> return 0 (no SystemExit)
@@ -1185,7 +1225,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         rc = cli.main(args=args, standalone_mode=False)
     except click.UsageError as e:
         # Missing required command, unknown subcommand, missing arg,
-        # bad type conversion -- argparse would exit(2) on all of these.
+        # bad type conversion -- all of these must exit(2) per the
+        # contract above.
         click.echo(f"Error: {e.format_message()}", err=True)
         sys.exit(2)
     except click.ClickException as e:
