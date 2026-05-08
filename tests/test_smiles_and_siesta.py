@@ -133,3 +133,125 @@ def test_convert_xyz_to_fdf(tmp_path):
     assert os.path.isfile(str(fdf_path))
     text = fdf_path.read_text()
     assert "SystemLabel       dna4" in text
+
+
+# --------------------------------------------------------------------- #
+#  Spin block (S2) — pin the keyword spelling so a SIESTA-version       #
+#  regression at this layer fails loudly                                 #
+# --------------------------------------------------------------------- #
+
+
+def _h2_struct():
+    """Single shared two-atom test structure."""
+    import numpy as np
+    from molbuilder.structure import Structure
+    return Structure(
+        elements=["H", "H"],
+        positions=np.array([[0, 0, 0], [0.74, 0, 0]]),
+        title="h2",
+    )
+
+
+def test_spin_polarized_emits_v5_keyword():
+    """``cfg.spin_polarized=True`` MUST emit the v5 single-line
+    ``Spin polarized`` form.  Without this line, SIESTA defaults to
+    closed-shell DFT and any open-shell system (radical / transition
+    metal / triplet) silently produces the wrong electronic state."""
+    fdf = render_fdf(_h2_struct(), SiestaConfig(spin_polarized=True))
+    assert "Spin polarized" in fdf
+    # When spin_total is unset, neither constraint line is emitted.
+    assert "Spin.Fix" not in fdf
+    assert "Spin.Total" not in fdf
+
+
+def test_spin_total_emits_constraint_pair():
+    """``cfg.spin_total`` requires BOTH ``Spin.Fix .true.`` AND
+    ``Spin.Total <v>`` -- without ``Spin.Fix`` the constraint is
+    silently ignored by SIESTA, leaving multiplicity unconstrained."""
+    fdf = render_fdf(
+        _h2_struct(),
+        SiestaConfig(spin_polarized=True, spin_total=2.0),
+    )
+    assert "Spin polarized" in fdf
+    assert "Spin.Fix          .true." in fdf
+    assert "Spin.Total        2.0" in fdf
+
+
+def test_spin_total_ignored_without_polarization():
+    """``spin_total`` set but ``spin_polarized=False`` -> nothing
+    spin-related lands in the FDF."""
+    fdf = render_fdf(
+        _h2_struct(),
+        SiestaConfig(spin_polarized=False, spin_total=2.0),
+    )
+    assert "Spin polarized" not in fdf
+    assert "Spin.Fix" not in fdf
+    assert "Spin.Total" not in fdf
+
+
+def test_default_fdf_has_no_spin_block():
+    """Default (closed-shell) FDF must not mention Spin at all -- the
+    presence of any ``Spin`` keyword would force open-shell DFT."""
+    fdf = render_fdf(_h2_struct(), SiestaConfig())
+    assert "Spin polarized"      not in fdf
+    assert "Spin.Fix"            not in fdf
+    assert "Spin.Total"          not in fdf
+    assert "SpinPolarized"       not in fdf  # v4 form not emitted either
+
+
+# --------------------------------------------------------------------- #
+#  Verlet/Nose dynamics (S1) — temperature/timestep are config-driven,  #
+#  Nose gets MD.TargetTemperature so the thermostat target isn't 0 K  #
+# --------------------------------------------------------------------- #
+
+
+def test_verlet_uses_config_temperature_and_timestep():
+    """Verlet dynamics emits MD.InitialTemperature and
+    MD.LengthTimeStep from cfg fields (not hard-coded).  No
+    MD.TargetTemperature for Verlet (NVE has no thermostat)."""
+    cfg = SiestaConfig(
+        relax_type="Verlet",
+        md_initial_temperature=500.0,
+        md_length_timestep=0.5,
+    )
+    fdf = render_fdf(_h2_struct(), cfg)
+    assert "MD.InitialTemperature 500.0 K" in fdf
+    assert "MD.LengthTimeStep 0.5 fs"      in fdf
+    # Verlet is NVE: no thermostat target.
+    assert "MD.TargetTemperature" not in fdf
+
+
+def test_nose_emits_md_target_temperature_default_to_initial():
+    """Nose-Hoover NVT MUST emit MD.TargetTemperature.  When
+    md_target_temperature is None, fall back to md_initial_temperature
+    so the thermostat target isn't 0 K (which would quench the run)."""
+    cfg = SiestaConfig(
+        relax_type="Nose",
+        md_initial_temperature=400.0,
+        md_target_temperature=None,
+    )
+    fdf = render_fdf(_h2_struct(), cfg)
+    assert "MD.InitialTemperature 400.0 K" in fdf
+    assert "MD.TargetTemperature  400.0 K" in fdf
+
+
+def test_nose_target_temperature_explicit_override():
+    """When md_target_temperature is set, it overrides initial."""
+    cfg = SiestaConfig(
+        relax_type="Nose",
+        md_initial_temperature=400.0,
+        md_target_temperature=298.15,
+    )
+    fdf = render_fdf(_h2_struct(), cfg)
+    assert "MD.InitialTemperature 400.0 K"  in fdf
+    assert "MD.TargetTemperature  298.15 K" in fdf
+
+
+def test_cg_relax_does_not_emit_md_temperature_block():
+    """CG (and Broyden / FIRE) relaxations don't need temperature or
+    timestep -- they're not MD."""
+    fdf = render_fdf(_h2_struct(), SiestaConfig(relax_type="CG"))
+    assert "MD.InitialTemperature" not in fdf
+    assert "MD.LengthTimeStep"     not in fdf
+    assert "MD.TargetTemperature"  not in fdf
+

@@ -368,7 +368,9 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     # already a vdW-aware functional (XC.functional VDW + DRSLL /
     # KBM / LMKLL): the non-local correlation lives in the functional
     # itself, and an additional MM.Potentials block would double-count.
-    if cfg.xc_functional.upper() != "VDW":
+    # Strip + upper so leading/trailing whitespace doesn't make a
+    # vdW-aware functional miss the gate (SP2).
+    if cfg.xc_functional.strip().upper() != "VDW":
         out += _emit_dispersion_template(cfg.xc_authors, v)
         out.append("")
 
@@ -642,26 +644,40 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             ]
             out.append(f"{displ_kw} {cfg.relax_max_displ} Ang")
         else:
-            # Verlet / Nose dynamics need an initial-velocity seed; without
-            # MD.InitialTemperature SIESTA starts with zero velocities,
-            # producing a steepest-descent-like trajectory mislabelled as
-            # MD.  Use 300 K as a pragmatic default (room temperature,
-            # standard for biomolecular MD); the user can override by
-            # editing this line, or set MD.TargetTemperature for Nose.
+            # Verlet / Nose dynamics need an initial-velocity seed;
+            # without MD.InitialTemperature SIESTA starts with zero
+            # velocities, producing a steepest-descent-like trajectory
+            # mislabelled as MD.  Nose-Hoover NVT also needs
+            # MD.TargetTemperature for the thermostat target -- without
+            # it SIESTA defaults the target to 0 K and the trajectory
+            # cools monotonically (a quench mislabelled as NVT).  All
+            # three values come from cfg fields so the user can tune
+            # them without editing the generated FDF (S1).
+            target_T = (cfg.md_target_temperature
+                        if cfg.md_target_temperature is not None
+                        else cfg.md_initial_temperature)
             if v: out += [
                 "",
                 "# MD.InitialTemperature: initial atomic-velocity seed (K).",
                 "# Without this, SIESTA starts at 0 K -- not real dynamics.",
-                "# For Nose-Hoover NVT also set MD.TargetTemperature.",
             ]
-            out.append("MD.InitialTemperature 300.0 K")
+            out.append(f"MD.InitialTemperature {cfg.md_initial_temperature} K")
+            if relax_kind == "NOSE":
+                if v: out += [
+                    "",
+                    "# MD.TargetTemperature: Nose-Hoover NVT target (K).",
+                    "# Required for the thermostat; without it SIESTA",
+                    "# defaults the target to 0 K and the run quenches",
+                    "# instead of equilibrating.",
+                ]
+                out.append(f"MD.TargetTemperature  {target_T} K")
             if v: out += [
                 "",
                 "# MD.LengthTimeStep: integration timestep (fs).",
                 "# 1.0 fs is SIESTA's default and works for systems without H;",
                 "# bonded H typically needs 0.5 fs for stable energy conservation.",
             ]
-            out.append("MD.LengthTimeStep 1.0 fs")
+            out.append(f"MD.LengthTimeStep {cfg.md_length_timestep} fs")
 
         if cfg.use_save_cg or cfg.use_save_xv:
             if v: out += [

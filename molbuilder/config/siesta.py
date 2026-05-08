@@ -60,7 +60,10 @@ class SiestaConfig:
     })
     pao_energy_shift: float = field(default=0.01, metadata={
         "label": "PAO.EnergyShift", "unit": "Ry",
-        "range": (0.001, 0.1),
+        # Upper bound tightened to 0.05 (SP4): 0.1 Ry contracts PAO
+        # cutoff radii to ~3 Bohr, putting bond energies hundreds of
+        # meV off -- well outside any defensible production window.
+        "range": (0.001, 0.05),
         "tier":  "advanced",
         # Default tightened from 0.02 -> 0.01 Ry (gap #5).  SIESTA's
         # own internal default (0.02) is fine for screening / quick
@@ -152,6 +155,7 @@ class SiestaConfig:
     # in the FDF's verbose comments.
     relax_type: str = field(default="CG", metadata={
         "label": "MD.TypeOfRun",
+        "choices": ("CG", "Broyden", "FIRE", "Verlet", "Nose", "none"),
         "help": "MD/relax algorithm: CG / Broyden / FIRE / Verlet / Nose / none",
     })
     relax_steps: int = field(default=200, metadata={
@@ -171,6 +175,34 @@ class SiestaConfig:
         "range": (0.001, 0.5),
         "tier":  "advanced",
         "help":  "displacement cap per step (MD.MaxCGDispl for CG, MD.MaxDispl otherwise)",
+    })
+
+    # ---- Verlet / Nose dynamics (only emitted when relax_type is in
+    # ("Verlet", "Nose"); ignored otherwise).  Defaults are chosen to
+    # match SIESTA's room-temperature biomolecular MD convention.
+    # md_target_temperature defaults to None -> "use the same value as
+    # md_initial_temperature" so the Nose-Hoover thermostat has a
+    # sensible target without forcing the user to set both fields.
+    md_initial_temperature: float = field(default=300.0, metadata={
+        "label": "MD.InitialTemperature", "unit": "K",
+        "range": (0.0, 5000.0),
+        "tier":  "advanced",
+        "help":  "initial-velocity-seed temperature for Verlet/Nose dynamics (K)",
+    })
+    md_target_temperature: Optional[float] = field(default=None, metadata={
+        "label": "MD.TargetTemperature", "unit": "K",
+        "tier":  "advanced",
+        "help":  ("Nose-Hoover NVT target temperature (K).  None -> use "
+                  "md_initial_temperature; ignored unless relax_type=Nose"),
+    })
+    md_length_timestep: float = field(default=1.0, metadata={
+        "label": "MD.LengthTimeStep", "unit": "fs",
+        "range": (0.1, 5.0),
+        "tier":  "advanced",
+        "help":  ("integration timestep for Verlet/Nose dynamics (fs).  "
+                  "1.0 fs is SIESTA's default and works for systems without "
+                  "H; bonded H typically needs 0.5 fs for stable energy "
+                  "conservation"),
     })
 
     # SCF / MD continuation flags (free insurance for restartable jobs)

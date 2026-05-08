@@ -42,6 +42,17 @@ class MolwatchEmitter:
     """Streams ``<JOB>.molwatch.log`` with one marker-delimited
     block per opt step.  See molbuilder spec for the format.
     """
+    # Unit-conversion constants used at write time so ``.molwatch.log``
+    # is unit-self-consistent and the parser does zero conversion.
+    #
+    # HARTREE_TO_EV is the CODATA-2018 value 27.211386245988 eV/Hartree.
+    # HARTREE_BOHR_TO_EV_ANG = 51.42208619 is the value used by ASE,
+    # NIST historical tables, and most quantum-chemistry packages; the
+    # CODATA-2018-derived value (27.211386245988 / 0.529177210903 =
+    # 51.422067476) differs by ~4 ppm.  We pick the ASE/literature
+    # convention so forces emitted here line up with what users see in
+    # ASE / VASP / QE log files; the difference is well below the SCF
+    # noise floor.
     HARTREE_TO_EV          = 27.211386245988
     HARTREE_BOHR_TO_EV_ANG = 51.42208619
 

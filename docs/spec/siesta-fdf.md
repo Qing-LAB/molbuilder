@@ -57,15 +57,30 @@ copy_pseudopotentials(species, lib, dest_dir) -> List[str]    # missing
 7. **SCF**: `SolutionMethod`, `DM.MixingWeight`, `DM.NumberPulay`,
    `DM.Tolerance`, `DM.Energy.Tolerance`, `MaxSCFIterations`,
    `ElectronicTemperature`, optional `DM.UseSaveDM`.
-8. **NetCharge**: emitted iff resolved charge != 0 (see "Charge
+8. **Spin** (only when `cfg.spin_polarized=True`): `Spin polarized`
+   plus, when `cfg.spin_total is not None`, the two-line
+   `Spin.Fix .true.` / `Spin.Total <v>` constraint pair (see "Spin
    contract" below).
-9. **k-grid**: Monkhorst-Pack mesh from `cfg.kgrid`.
-10. **Geometry optimisation**: `MD.TypeOfRun`, `MD.NumCGsteps`,
-    `MD.MaxForceTol`, `MD.MaxCGDispl`, `MD.UseSaveCG`/`UseSaveXV`.
-    Skipped entirely when `cfg.relax_type.lower() == "none"`.
-11. **Output flags**: `WriteForces`, `WriteCoorStep`, `WriteCoorXmol`,
+9. **NetCharge**: emitted iff resolved charge != 0 (see "Charge
+   contract" below).
+10. **k-grid**: Monkhorst-Pack mesh from `cfg.kgrid`.
+11. **Geometry optimisation / dynamics**: `MD.TypeOfRun`, per-engine
+    step-count keyword (`MD.NumCGsteps` for CG, `MD.NumBroydenSteps`
+    for Broyden, `MD.NumFIRESteps` for FIRE; `MD.FinalTimeStep` for
+    Verlet/Nose dynamics).  Relaxation modes (CG/Broyden/FIRE) also
+    emit `MD.MaxForceTol` and the displacement cap (`MD.MaxCGDispl`
+    for CG, `MD.MaxDispl` for Broyden/FIRE).  Dynamics modes
+    (Verlet/Nose) instead emit `MD.InitialTemperature` and
+    `MD.LengthTimeStep`; Nose-Hoover NVT additionally emits
+    `MD.TargetTemperature` (defaulting to `md_initial_temperature`
+    when `md_target_temperature is None`) — without it SIESTA's
+    thermostat target falls back to 0 K and the run quenches
+    instead of equilibrating.  All modes optionally emit
+    `MD.UseSaveCG` / `MD.UseSaveXV`.  Skipped entirely when
+    `cfg.relax_type.lower() == "none"`.
+12. **Output flags**: `WriteForces`, `WriteCoorStep`, `WriteCoorXmol`,
     `WriteMDhistory`, optional `WriteHS`.
-12. **Troubleshooting block** (when `cfg.verbose_comments=True`):
+13. **Troubleshooting block** (when `cfg.verbose_comments=True`):
     inline tuning hints for SCF / forces / speed, plus relaxation
     hints when an MD block is present.
 
@@ -96,21 +111,37 @@ will do with it.
 
 ## Spin contract
 
-SIESTA's default is spin-restricted (no `SpinPolarized` line emitted
-→ closed-shell DFT).  Open-shell systems (radicals, transition
+SIESTA's default is spin-restricted (no `Spin` block emitted →
+closed-shell DFT).  Open-shell systems (radicals, transition
 metals, triplets) **silently produce wrong electronic structure**
 without spin polarisation.
 
-* `cfg.spin_polarized=False` (default): no `SpinPolarized` block.
-* `cfg.spin_polarized=True`: emit `SpinPolarized true`.
+Targeted SIESTA version range: 4.1 -- 5.x.  v5 introduced a
+unified single-line `Spin <option>` keyword (recognised options:
+`non-polarized`, `polarized`, `non-collinear`, `spin-orbit`) that
+supersedes the older multi-line `SpinPolarized true` form.  v4.1+
+back-compat-accepts both spellings; the v5 manual marks the older
+form deprecated.  The generator emits the v5 form.
+
+The total-spin pin requires TWO lines, not one:
+
+* `Spin.Fix .true.`  enables the constraint.  Without it,
+  `Spin.Total` below is silently ignored.
+* `Spin.Total <value>`  target total spin moment in mu_B
+  (= number of unpaired electrons).
+
+* `cfg.spin_polarized=False` (default): no `Spin` block.
+* `cfg.spin_polarized=True`: emit `Spin polarized`.
 * `cfg.spin_total` (float, optional): when set together with
-  `spin_polarized=True`, emit `SpinTotal <value>` so SIESTA's
+  `spin_polarized=True`, emit the
+  `Spin.Fix .true.` / `Spin.Total <value>` pair so SIESTA's
   initial guess targets the right multiplicity.  When set with
-  `spin_polarized=False`, the value is ignored (no `SpinTotal`
-  line) — `SpinTotal` is meaningless without polarisation.
+  `spin_polarized=False`, the value is ignored (no `Spin.Fix` /
+  `Spin.Total` lines) — `Spin.Total` is meaningless without
+  polarisation.
 
 There is no equivalent of PySCF's "method=RKS validation": SIESTA
-can be told `SpinPolarized true` regardless of basis or method, so
+can be told `Spin polarized` regardless of basis or method, so
 the only correctness rule is that the user MUST set it for any
 open-shell system.  Document this loudly in the FDF when the user
 passes `--spin-polarized`.

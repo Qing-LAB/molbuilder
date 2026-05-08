@@ -103,8 +103,13 @@ def _resolve_ecp(struct: Structure, cfg: PySCFConfig) -> Optional[str]:
     (no extra basis-set library install).  Stuttgart RSC / SBKJC
     are alternatives the user can pick via cfg.ecp = "stuttgart".
     """
-    if cfg.ecp == "":
-        return None        # explicitly disabled
+    # Normalize "explicitly disabled" -- treat the empty string and the
+    # case-insensitive "none" sentinel identically (P4).  cmd_pyscf
+    # already does this for CLI input, but Python-API users who pass
+    # ``PySCFConfig(ecp="none")`` would otherwise reach gto.M(ecp="none"),
+    # which raises ``Unable to parse the input ECP data`` at runtime.
+    if isinstance(cfg.ecp, str) and cfg.ecp.strip().lower() in ("", "none"):
+        return None
     if cfg.ecp is not None:
         return cfg.ecp     # explicit user choice (str or per-element dict)
     # Auto-detect.  Skip when basis is in the def2 family (it bundles ECP).
@@ -235,8 +240,16 @@ def render_script(struct: Structure,
         out.append("    pip install geometric           # optimizer")
     if cfg.optimize and cfg.optimizer == "berny":
         out.append("    pip install pyberny             # optimizer")
-    if cfg.dispersion or (cfg.preopt and cfg.preopt_dispersion):
-        out.append("    pip install pyscf-dispersion    # D3/D3BJ/D4 corrections")
+    # PySCF 2.x ships D3/D3BJ natively (just set ``mf.disp = "d3bj"``).
+    # Only D4 still requires the separate pyscf-dispersion package, so
+    # we only advertise that install line when D4 is actually requested
+    # (production or pre-opt stage) -- otherwise the hint is misleading.
+    needs_dispersion_pkg = (
+        (cfg.dispersion or "").lower() == "d4"
+        or (cfg.preopt and (cfg.preopt_dispersion or "").lower() == "d4")
+    )
+    if needs_dispersion_pkg:
+        out.append("    pip install pyscf-dispersion    # required for D4")
     out.append("")
     out.append("Or in one shot (full molbuilder runtime stack):")
     out.append("    pip install -r requirements-runtime.txt")
@@ -419,7 +432,12 @@ def render_script(struct: Structure,
                 f"valid: {sorted(_SOLVENTS)}"
             )
         out.append("# PCM solvation -- continuum model (cheaper than ddCOSMO).")
-        out.append("mf = pcm.PCM(mf)")
+        # Use the SCF-method form ``mf.PCM()`` instead of the bare
+        # ``pcm.PCM(mf)`` constructor (P1).  In PySCF 2.x ``mf.PCM()``
+        # returns a PCM-decorated SCF object that exposes
+        # ``.with_solvent``; ``pcm.PCM(mf)`` returns a bare solvent
+        # object (no .with_solvent), so the next two lines used to crash.
+        out.append("mf = mf.PCM()")
         out.append(f'mf.with_solvent.method = "{cfg.solvent_method}"')
         out.append(f"mf.with_solvent.eps = {eps}    "
                    f"# {cfg.solvent} dielectric")
@@ -496,12 +514,18 @@ def render_script(struct: Structure,
         # SCF, which may not be at mol_eq exactly -- the difference
         # is small (mHa) but matters when comparing reaction energies
         # across runs.  One extra SCF, cheap relative to the opt.
+        #
+        # Use mf.reset(mol_eq) rather than ``mf.mol = mol_eq`` (P3):
+        # reset() invalidates cached integrals (_eri / with_df / MO
+        # arrays) bound to the previous mol so the subsequent kernel()
+        # rebuilds them at the new geometry; bare attribute assignment
+        # leaves the caches stale.  See PySCF 2.x SCF.reset() docs.
         if v:
             out.append("# Re-evaluate at the relaxed geometry: optimize() leaves")
             out.append("# mf bound to the last line-search SCF, not necessarily")
-            out.append("# the SCF AT mol_eq.  Rerun kernel() so mf.e_tot is the")
-            out.append("# energy at the saved coordinates.")
-        out.append("mf.mol = mol_eq")
+            out.append("# the SCF AT mol_eq.  reset() drops cached integrals so")
+            out.append("# kernel() rebuilds them at mol_eq's coordinates.")
+        out.append("mf.reset(mol_eq)")
         out.append("mf.kernel()")
         out.append('print(f"Final energy: {mf.e_tot:.8f} Hartree")')
     else:
@@ -638,6 +662,18 @@ def _emit_preopt_block(cfg: PySCFConfig, charge: int, v: bool) -> List[str]:
         out.append(f'mf1.disp = "{cfg.preopt_dispersion}"')
     out.append(f"mf1.conv_tol  = {cfg.scf_conv_tol:.0e}")
     out.append(f"mf1.max_cycle = {cfg.scf_max_cycle}")
+    # Mirror the production-stage SCF tuning knobs onto the pre-opt
+    # mean-field (P2).  If the user needed level_shift / damp /
+    # diis_space / a non-default init_guess to make production
+    # converge, the pre-opt warm-up needs the same help -- otherwise
+    # pre-opt diverges silently before production runs.
+    out.append(f'mf1.init_guess = "{cfg.scf_init_guess}"')
+    if cfg.level_shift:
+        out.append(f"mf1.level_shift = {cfg.level_shift}")
+    if cfg.diis_space != 8:
+        out.append(f"mf1.diis_space = {cfg.diis_space}")
+    if cfg.damp:
+        out.append(f"mf1.damp = {cfg.damp}")
     # Wire the preopt SCF callback so the molwatch log captures preopt
     # SCF history too -- otherwise the user only sees a single block per
     # preopt opt step with empty scf_history (and the "Watch tab can't

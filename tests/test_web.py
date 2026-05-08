@@ -506,7 +506,7 @@ def test_pyscf_custom_params(web_client, peptide_xyz):
     assert 'basis      = "def2-TZVP"' in script
     assert "mol_eq = optimize(" not in script   # optimize off
     assert 'mf.disp = "d4"' in script
-    assert "mf = pcm.PCM(mf)" in script
+    assert "mf = mf.PCM()" in script   # PySCF 2.x SCF-method form (P1)
     assert "TROUBLESHOOTING" not in script      # verbose off
 
 

@@ -204,8 +204,14 @@ class PySCFConfig:
                  "watch it live"),
     })
     molwatch_log: bool = field(default=True, metadata={
+        # Emission also requires ``optimize=True`` AND
+        # ``optimizer="geometric"`` -- the molwatch hooks ride on the
+        # SCF and geomeTRIC opt-step callbacks, so a single-point or
+        # berny run has nowhere to attach.  See spec
+        # docs/spec/pyscf-script.md L33 for the exact gate.
         "help": ("write the additive <job>.molwatch.log (self-contained "
-                 "per-step coords / energy / forces; molwatch's preferred input)"),
+                 "per-step coords / energy / forces; molwatch's preferred "
+                 "input).  Requires --optimize and --optimizer geometric"),
     })
 
     # ---------------- Runtime ----------------

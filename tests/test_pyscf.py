@@ -301,8 +301,14 @@ def test_dispersion_can_be_disabled(h2o):
 
 def test_solvent_emits_pcm_block(h2o):
     text = render_script(h2o, PySCFConfig(solvent="water"))
+    # The pcm import remains because importing it patches the .PCM()
+    # method onto the SCF base class.
     assert "from pyscf.solvent import pcm" in text
-    assert "mf = pcm.PCM(mf)" in text
+    # PySCF 2.x SCF-method form (P1).  The older ``pcm.PCM(mf)`` form
+    # returns a bare solvent object that doesn't expose .with_solvent
+    # and would crash the next two lines at runtime.
+    assert "mf = mf.PCM()" in text
+    assert "pcm.PCM(mf)" not in text
     eps = _SOLVENTS["water"]
     assert f"mf.with_solvent.eps = {eps}" in text
 
@@ -394,3 +400,105 @@ def test_loaded_structure_to_pyscf_script(h2o, tmp_path):
     text = render_script(s2, PySCFConfig(job_name="reloaded"))
     assert 'JOB = "reloaded"' in text
     compile(text, "<reloaded>", "exec")
+
+
+# --------------------------------------------------------------------- #
+#  PCM solvent uses the SCF-method form (P1)                            #
+# --------------------------------------------------------------------- #
+
+
+def test_pcm_uses_mf_method_form(h2o):
+    """Generated script must wrap PCM via ``mf = mf.PCM()`` (PySCF 2.x
+    SCF-method form), not the lower-level ``pcm.PCM(mf)`` constructor
+    -- the latter returns a bare solvent object with no
+    ``.with_solvent`` attribute and the next two lines used to crash."""
+    text = render_script(h2o, PySCFConfig(solvent="water"))
+    compile(text, "<solvent>", "exec")
+    assert "mf = mf.PCM()" in text
+    assert "pcm.PCM(mf)" not in text
+    # And the with_solvent settings still land on the wrapped mf.
+    assert "mf.with_solvent.method" in text
+    assert "mf.with_solvent.eps"    in text
+
+
+# --------------------------------------------------------------------- #
+#  Pre-opt mf1 inherits hard-SCF settings from cfg (P2)                 #
+# --------------------------------------------------------------------- #
+
+
+def test_preopt_inherits_init_guess(h2o):
+    """When cfg.preopt=True, mf1 must get the production
+    init_guess so a stiff SCF that needed e.g. huckel to converge
+    actually has it during the warm-up too."""
+    text = render_script(
+        h2o,
+        PySCFConfig(preopt=True, scf_init_guess="huckel"),
+    )
+    assert 'mf1.init_guess = "huckel"' in text
+
+
+def test_preopt_inherits_level_shift_and_diis(h2o):
+    """level_shift, diis_space, and damp must be mirrored onto mf1."""
+    text = render_script(
+        h2o,
+        PySCFConfig(preopt=True,
+                    level_shift=0.2,
+                    diis_space=16,
+                    damp=0.3),
+    )
+    assert "mf1.level_shift = 0.2" in text
+    assert "mf1.diis_space = 16"   in text
+    assert "mf1.damp = 0.3"        in text
+
+
+def test_preopt_omits_default_diis_and_damp(h2o):
+    """At default cfg.diis_space=8 and cfg.damp=0.0 we keep the script
+    clean (no redundant ``mf1.diis_space = 8`` line)."""
+    text = render_script(h2o, PySCFConfig(preopt=True))
+    assert "mf1.diis_space" not in text
+    assert "mf1.damp"       not in text
+
+
+# --------------------------------------------------------------------- #
+#  Production stage uses mf.reset(mol_eq) not mf.mol = (P3)             #
+# --------------------------------------------------------------------- #
+
+
+def test_post_opt_uses_mf_reset_not_attribute_assignment(h2o):
+    """After geomopt completes, the script re-evaluates at mol_eq.
+    PySCF 2.x's canonical form is ``mf.reset(mol_eq)`` which drops
+    cached integrals; ``mf.mol = mol_eq`` leaves them stale and
+    kernel() may use integrals built at the previous geometry."""
+    text = render_script(h2o, PySCFConfig(optimize=True))
+    assert "mf.reset(mol_eq)" in text
+    assert "mf.mol = mol_eq"  not in text
+
+
+# --------------------------------------------------------------------- #
+#  ECP "none" sentinel works from the Python API too (P4)               #
+# --------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("ecp_value", ["", "none", "None", "NONE", "  none  "])
+def test_python_api_ecp_none_sentinel_disables_ecp(h2o, ecp_value):
+    """Python-API users who pass ``PySCFConfig(ecp=...)`` with the
+    case-insensitive none sentinel (or empty string) get the same
+    behaviour as ``--ecp none`` from the CLI: no ``ecp=`` in
+    gto.M(...).  Without the normalisation the script reaches
+    ``gto.M(ecp="none")`` which raises at runtime."""
+    text = render_script(h2o, PySCFConfig(ecp=ecp_value))
+    compile(text, "<ecp>", "exec")
+    # The literal strings ecp="none" / ecp="None" must NEVER appear in
+    # the generated gto.M(...) call.
+    assert 'ecp     = "none"' not in text
+    assert 'ecp     = "None"' not in text
+    assert 'ecp = "none"'     not in text
+    assert 'ecp = "None"'     not in text
+
+
+def test_python_api_ecp_explicit_lanl2dz_passes_through(h2o):
+    """An explicit ECP name still propagates verbatim."""
+    text = render_script(h2o, PySCFConfig(ecp="lanl2dz", basis="cc-pVDZ"))
+    assert ('ecp     = "lanl2dz"' in text
+            or 'ecp = "lanl2dz"' in text)
+

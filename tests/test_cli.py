@@ -582,6 +582,10 @@ def _stub_pyscf_summary(out_path):
     ("--relax-max-displ",        "0.10",     "relax_max_displ",        0.10),
     ("--net-charge",             "-2",       "net_charge",             -2),
     ("--spin-total",             "1.0",      "spin_total",             1.0),
+    # Verlet/Nose MD fields added in S1 (see config/siesta.py).
+    ("--md-initial-temperature", "350.0",    "md_initial_temperature", 350.0),
+    ("--md-target-temperature",  "298.15",   "md_target_temperature",  298.15),
+    ("--md-length-timestep",     "0.5",      "md_length_timestep",     0.5),
 ])
 def test_fdf_cli_override_propagates_to_siesta_config(
         flag, cli_val, attr, expected, monkeypatch, tmp_path):
@@ -846,14 +850,15 @@ def test_add_dataclass_options_choices_appear_in_help():
 
 @pytest.mark.parametrize("subcommand,flag,bad_val", [
     ("fdf",   "--solution-method", "diagonalize"),
+    ("fdf",   "--relax-type",      "BFGS"),         # S3
     ("pyscf", "--method",          "UKKS"),
     ("pyscf", "--scf-init-guess",  "huckl"),
     ("pyscf", "--optimizer",       "geometric_v2"),
 ])
 def test_real_subcommand_choice_validation_rejects_typos(
         subcommand, flag, bad_val, tmp_path):
-    """The four config fields whose old hand-rolled CLI used
-    ``click.Choice`` keep that constraint after the bridge migration:
+    """The five config fields whose dataclass metadata carries a
+    ``choices`` tuple keep their constraint after the bridge migration:
     a typo on the real ``fdf`` / ``pyscf`` subcommands fails at parse
     time with exit code 2 rather than producing a broken FDF / .py."""
     in_xyz = _h2_xyz_at(tmp_path / "h2.xyz")
