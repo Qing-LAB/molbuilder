@@ -27,44 +27,76 @@ from typing import Optional
 @dataclass
 class PySCFConfig:
     # ---------------- System ----------------
-    job_name: str = "pyscf_relax"
-    charge: Optional[int] = None        # None -> auto from phosphates
-    spin: int = 0                       # PySCF convention: 2S, NOT 2S+1
-    symmetry: bool = False              # True is faster but rarely matches
-                                        # builder-output geometry exactly
+    job_name: str = field(default="pyscf_relax", metadata={
+        "help": "job name; output files get this prefix",
+    })
+    charge: Optional[int] = field(default=None, metadata={
+        "help": "net charge (default: auto-detect from phosphates)",
+    })
+    spin: int = field(default=0, metadata={
+        "help": "2S (NOT 2S+1); 0=closed shell, 1=doublet, 2=triplet, ...",
+    })
+    symmetry: bool = field(default=False, metadata={
+        "help": "enable point-group symmetry; faster but rarely matches "
+                "builder-output geometry exactly",
+    })
 
     # ---------------- Method (main run) ----------------
-    method: str = "RKS"                 # "RKS" / "UKS" / "RHF" / "UHF"
-    functional: str = "B3LYP"
-    basis: str = "def2-SVP"
-    auxbasis: Optional[str] = None      # None -> let density_fit() pick
-    density_fit: bool = True
-    dispersion: Optional[str] = "d3bj"  # None / "d3" / "d3bj" / "d4"
+    method: str = field(default="RKS", metadata={
+        "help": "RKS / UKS / RHF / UHF",
+    })
+    functional: str = field(default="B3LYP", metadata={
+        "help": "XC functional (e.g. B3LYP / PBE / PBE0 / M06-2X / wB97X-D)",
+    })
+    basis: str = field(default="def2-SVP", metadata={
+        "help": "Gaussian basis set (e.g. def2-SVP / def2-TZVP / cc-pVDZ)",
+    })
+    auxbasis: Optional[str] = field(default=None, metadata={
+        "help": "auxiliary fitting basis; None lets density_fit() auto-pick",
+    })
+    density_fit: bool = field(default=True, metadata={
+        "help": "use density fitting (faster Coulomb/exchange evaluation)",
+    })
+    dispersion: Optional[str] = field(default="d3bj", metadata={
+        "help": "dispersion correction: d3 / d3bj / d4 / 'none' to disable",
+    })
     # Effective Core Potential (gap #8).  None = auto: emit
     # ecp="lanl2dz" when heavy atoms (Z > 36) are present AND the
     # basis is not in the def2 family (def2-SVP / def2_SVP / def2svp
     # all bundle their own ECP).  Set to a name string ("lanl2dz",
     # "stuttgart", "def2", ...) to force a specific ECP; pass a dict
     # ({"Pt": "lanl2dz", "Au": "stuttgart"}) for per-element control.
-    # Set to "" to disable auto-emit.
-    ecp: "str | dict | None" = None
+    # Set to "" to disable auto-emit.  Per-element dicts aren't
+    # accessible from the CLI; use the Python API for that.
+    ecp: "str | dict | None" = field(default=None, metadata={
+        "help": ("effective core potential (e.g. 'lanl2dz'); default = auto "
+                 "for heavy atoms on non-def2 bases; pass 'none' to disable"),
+    })
 
     # ---------------- Solvent (optional) ----------------
-    solvent: Optional[str] = None       # None or one of _SOLVENTS keys
-    solvent_method: str = "IEF-PCM"     # "IEF-PCM" / "C-PCM" / "COSMO"
+    solvent: Optional[str] = field(default=None, metadata={
+        "help": "solvent (water / methanol / dmso / chloroform / ...)",
+    })
+    solvent_method: str = field(default="IEF-PCM", metadata={
+        "help": "PCM model: IEF-PCM / C-PCM / COSMO",
+    })
 
     # ---------------- SCF ----------------
     scf_conv_tol: float = field(default=1e-9, metadata={
         "label": "scf.conv_tol", "unit": "Hartree",
         "range": (1e-12, 1e-4),
         "tier":  "advanced",
+        "help":  "SCF convergence tolerance on the energy (Hartree)",
     })
     scf_max_cycle: int = field(default=100, metadata={
         "label": "scf.max_cycle",
         "range": (10, 1000),
         "tier":  "advanced",
+        "help":  "max SCF cycles per single-point",
     })
-    scf_init_guess: str = "minao"       # "minao" / "atom" / "1e" / "huckel"
+    scf_init_guess: str = field(default="minao", metadata={
+        "help": "SCF initial guess: minao / atom / 1e / huckel",
+    })
     grid_level: int = field(default=4, metadata={
         "label": "DFT grid level",
         "range": (0, 9),
@@ -100,56 +132,94 @@ class PySCFConfig:
     })
 
     # ---------------- Pre-optimization (optional warm-up) ----------------
-    preopt: bool = False
-    preopt_functional: str = "PBE"
-    preopt_basis: str = "def2-SVP"
-    preopt_density_fit: bool = True
-    preopt_dispersion: Optional[str] = None
-    preopt_max_steps: int = 50
-    preopt_grms: float = 1.0e-3         # Ha/Bohr; 3x looser than main
+    preopt: bool = field(default=False, metadata={
+        "help": "run a cheap PBE/def2-SVP pre-opt before main run",
+    })
+    preopt_functional: str = field(default="PBE", metadata={
+        "help": "XC functional for the pre-opt stage",
+    })
+    preopt_basis: str = field(default="def2-SVP", metadata={
+        "help": "Gaussian basis for the pre-opt stage",
+    })
+    preopt_density_fit: bool = field(default=True, metadata={
+        "help": "density fitting on the pre-opt SCF",
+    })
+    preopt_dispersion: Optional[str] = field(default=None, metadata={
+        "help": "dispersion correction on pre-opt mf (d3 / d3bj / d4); default off",
+    })
+    preopt_max_steps: int = field(default=50, metadata={
+        "help": "max geomeTRIC steps in the pre-opt stage",
+    })
+    preopt_grms: float = field(default=1.0e-3, metadata={
+        "help": "pre-opt grms convergence (Ha/Bohr); 3x looser than main",
+    })
 
     # ---------------- Main optimization ----------------
-    optimize: bool = True
-    optimizer: str = "geometric"        # "geometric" or "berny"
+    optimize: bool = field(default=True, metadata={
+        "help": "run geometry optimization; --no-optimize for single-point only",
+    })
+    optimizer: str = field(default="geometric", metadata={
+        "help": "geomeTRIC or berny",
+    })
     geom_max_steps: int = field(default=200, metadata={
         "label": "geom max steps",
         "range": (1, 10000),
         "tier":  "advanced",
+        "help":  "max optimization steps",
     })
-    geom_conv_energy: float = 1.0e-6    # Hartree
-    geom_conv_grms: float = 3.0e-4      # Ha/Bohr
-    geom_conv_gmax: float = 4.5e-4      # Ha/Bohr
+    geom_conv_energy: float = field(default=1.0e-6, metadata={
+        "help": "geomeTRIC energy convergence (Hartree)",
+    })
+    geom_conv_grms: float = field(default=3.0e-4, metadata={
+        "help": "geomeTRIC RMS gradient convergence (Ha/Bohr)",
+    })
+    geom_conv_gmax: float = field(default=4.5e-4, metadata={
+        "help": "geomeTRIC max-gradient convergence (Ha/Bohr)",
+    })
 
     # ---------------- Output ----------------
-    chkfile: bool = True                # write <job>.chk (DM, mol, energies)
-    log_file: bool = True               # write <job>.log
-    save_optimized_xyz: bool = True
-    save_initial_xyz: bool = True
-    write_trajectory: bool = True       # stream geomeTRIC's <job>_geom_optim.xyz
-                                        # so molwatch can watch it live
-    molwatch_log: bool = True           # additive: write <job>.molwatch.log with
-                                        # one self-contained, marker-delimited
-                                        # block per opt step (coords + energy +
-                                        # forces + per-cycle SCF residuals).
-                                        # Standard outputs are still emitted;
-                                        # this is purely an additional file.
+    chkfile: bool = field(default=True, metadata={
+        "help": "write <job>.chk (DM, mol, energies for restart)",
+    })
+    log_file: bool = field(default=True, metadata={
+        "help": "write the PySCF text log to <job>.log",
+    })
+    save_optimized_xyz: bool = field(default=True, metadata={
+        "help": "snapshot the relaxed geometry to <job>_optimized.xyz",
+    })
+    save_initial_xyz: bool = field(default=True, metadata={
+        "help": "snapshot the input geometry to <job>_initial.xyz",
+    })
+    write_trajectory: bool = field(default=True, metadata={
+        "help": ("stream geomeTRIC's <job>_geom_optim.xyz so molwatch can "
+                 "watch it live"),
+    })
+    molwatch_log: bool = field(default=True, metadata={
+        "help": ("write the additive <job>.molwatch.log (self-contained "
+                 "per-step coords / energy / forces; molwatch's preferred input)"),
+    })
 
     # ---------------- Runtime ----------------
     max_memory_mb: int = field(default=4000, metadata={
         "label": "max_memory", "unit": "MB",
         "range": (100, 1_000_000),
         "tier":  "advanced",
+        "help":  "MB hint for PySCF's max_memory",
     })
-    threads: Optional[int] = None       # None -> inherit OMP_NUM_THREADS
+    threads: Optional[int] = field(default=None, metadata={
+        "help": "OMP_NUM_THREADS pin; default = inherit env",
+    })
     verbose: int = field(default=4, metadata={
         "label": "PySCF verbose",
         "range": (0, 9),
         "tier":  "advanced",
-        "help":  "0 silent, 4 info, 5 debug",
+        "help":  "PySCF verbosity: 0 silent, 4 info, 5 debug",
     })
 
     # ---------------- Comments ----------------
-    verbose_comments: bool = True       # inline tuning hints + troubleshooting
+    verbose_comments: bool = field(default=True, metadata={
+        "help": "emit inline tuning hints + troubleshooting block in the script",
+    })
 
 
 __all__ = ["PySCFConfig"]

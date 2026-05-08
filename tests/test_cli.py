@@ -468,6 +468,345 @@ def test_add_dataclass_options_works_on_real_pyscf_config():
 
 
 # --------------------------------------------------------------------- #
+#  Bridge coverage: every non-skip dataclass field is wired to the CLI  #
+#                                                                       #
+#  These tests are the safety net for the add_dataclass_options bridge  #
+#  migration of cmd_fdf / cmd_pyscf.  Three layers, each catching a     #
+#  different class of bug:                                              #
+#                                                                       #
+#    1. Bridge exposure -- every SiestaConfig / PySCFConfig field       #
+#       without ``skip_cli=True`` must appear as a click option on the  #
+#       corresponding subcommand's ``--help``.  Catches "bridge dropped #
+#       a field" when the metadata key is misspelled or a new field     #
+#       lands without metadata.                                         #
+#                                                                       #
+#    2. CLI -> Config plumbing -- a curated list of (flag, value) pairs #
+#       per subcommand.  Each invocation patches the heavy ``convert``  #
+#       to a no-op that captures the SiestaConfig / PySCFConfig         #
+#       actually constructed; the test then asserts the captured        #
+#       config has the expected attribute value.  Catches wrong-kwarg-  #
+#       name and type-coercion bugs (e.g. mesh_cutoff arriving as       #
+#       string "199.0" instead of float 199.0).                         #
+#                                                                       #
+#    3. Default-value render -- assert each scalar default appears in   #
+#       the FDF output of a default SiestaConfig().  Earlier mutation   #
+#       testing (mesh_cutoff 300 -> 100) revealed 0 test failures here  #
+#       because no test pinned the default rendering; this layer fills  #
+#       that gap.                                                       #
+# --------------------------------------------------------------------- #
+
+
+def test_fdf_cli_exposes_every_non_skip_siesta_field():
+    """Bridge invariant: every SiestaConfig field without skip_cli=True
+    must surface as a click option on the fdf subcommand."""
+    import dataclasses
+    from click.testing import CliRunner
+    from molbuilder.config.siesta import SiestaConfig
+
+    runner = CliRunner()
+    res = runner.invoke(cli.cli, ["fdf", "--help"])
+    assert res.exit_code == 0, res.output
+    out = res.output
+    for fld in dataclasses.fields(SiestaConfig):
+        if fld.metadata.get("skip_cli"):
+            continue
+        flag = "--" + fld.name.replace("_", "-")
+        # bool fields land as ``--foo / --no-foo``; either form proves
+        # the option is wired.
+        if fld.type in ("bool", bool):
+            no_flag = "--no-" + fld.name.replace("_", "-")
+            assert flag in out or no_flag in out, \
+                f"Bridge dropped bool field {fld.name}"
+        else:
+            assert flag in out, f"Bridge dropped scalar field {fld.name}"
+
+
+def test_pyscf_cli_exposes_every_non_skip_pyscf_field():
+    """Bridge invariant for PySCFConfig (same idea as above)."""
+    import dataclasses
+    from click.testing import CliRunner
+    from molbuilder.config.pyscf import PySCFConfig
+
+    runner = CliRunner()
+    res = runner.invoke(cli.cli, ["pyscf", "--help"])
+    assert res.exit_code == 0, res.output
+    out = res.output
+    for fld in dataclasses.fields(PySCFConfig):
+        if fld.metadata.get("skip_cli"):
+            continue
+        flag = "--" + fld.name.replace("_", "-")
+        if fld.type in ("bool", bool):
+            no_flag = "--no-" + fld.name.replace("_", "-")
+            assert flag in out or no_flag in out, \
+                f"Bridge dropped bool field {fld.name}"
+        else:
+            assert flag in out, f"Bridge dropped scalar field {fld.name}"
+
+
+def _h2_xyz_at(path):
+    path.write_text("2\nh2\nH 0 0 0\nH 0.74 0 0\n")
+    return str(path)
+
+
+def _stub_siesta_summary(out_path):
+    return {"fdf": str(out_path), "n_atoms": 2, "species": ["H"],
+            "missing_psml": []}
+
+
+def _stub_pyscf_summary(out_path):
+    return {"py": str(out_path), "n_atoms": 2, "charge": 0, "label": "h2"}
+
+
+@pytest.mark.parametrize("flag,cli_val,attr,expected", [
+    # Each row: a SiestaConfig field whose CLI override must round-trip
+    # cleanly through the bridge.  Fields are picked across the dataclass
+    # layout so a regression in any tier (basic / advanced / output /
+    # relaxation) shows up here.  Bools live in their own test below.
+    ("--system-name",            "demo_run", "system_name",            "demo_run"),
+    ("--system-label",           "demo",     "system_label",           "demo"),
+    ("--cell-padding",           "20.0",     "cell_padding",           20.0),
+    ("--basis-size",             "TZP",      "basis_size",             "TZP"),
+    ("--pao-energy-shift",       "0.005",    "pao_energy_shift",       0.005),
+    ("--xc-functional",          "VDW",      "xc_functional",          "VDW"),
+    ("--xc-authors",             "DRSLL",    "xc_authors",             "DRSLL"),
+    ("--mesh-cutoff",            "199.0",    "mesh_cutoff",            199.0),
+    ("--mixing-weight",          "0.05",     "mixing_weight",          0.05),
+    ("--pulay-history",          "8",        "pulay_history",          8),
+    ("--dm-tolerance",           "1e-7",     "dm_tolerance",           1e-7),
+    ("--dm-energy-tolerance",    "1e-3",     "dm_energy_tolerance",    1e-3),
+    ("--max-scf-iter",           "777",      "max_scf_iter",           777),
+    ("--electronic-temperature", "1500.0",   "electronic_temperature", 1500.0),
+    ("--solution-method",        "OMM",      "solution_method",        "OMM"),
+    ("--relax-type",             "FIRE",     "relax_type",             "FIRE"),
+    ("--relax-steps",            "999",      "relax_steps",            999),
+    ("--relax-force-tol",        "0.005",    "relax_force_tol",        0.005),
+    ("--relax-max-displ",        "0.10",     "relax_max_displ",        0.10),
+    ("--net-charge",             "-2",       "net_charge",             -2),
+    ("--spin-total",             "1.0",      "spin_total",             1.0),
+])
+def test_fdf_cli_override_propagates_to_siesta_config(
+        flag, cli_val, attr, expected, monkeypatch, tmp_path):
+    """Each SiestaConfig CLI flag must arrive at the SiestaConfig actually
+    used by convert().  Catches kwarg-name typos and type-coercion bugs."""
+    captured = {}
+
+    def fake_convert(input_path, fdf_path, config):
+        captured["cfg"] = config
+        return _stub_siesta_summary(fdf_path)
+    monkeypatch.setattr("molbuilder.siesta.convert", fake_convert)
+
+    in_xyz = _h2_xyz_at(tmp_path / "h2.xyz")
+    out_fdf = tmp_path / "h2.fdf"
+    rc = cli.main(["fdf", in_xyz, str(out_fdf), flag, cli_val])
+    assert rc == 0
+    assert getattr(captured["cfg"], attr) == expected, (
+        f"{flag} {cli_val!r}: expected SiestaConfig.{attr}={expected!r}, "
+        f"got {getattr(captured['cfg'], attr)!r}"
+    )
+
+
+@pytest.mark.parametrize("attr,flag_off,flag_on", [
+    # Bool fields surface as --foo / --no-foo pairs.  The default for
+    # each is True, so passing the negative form must flip it to False;
+    # passing the positive form on top of an already-True default must
+    # keep it True (round-trip).
+    ("use_save_dm",       "--no-use-save-dm",       "--use-save-dm"),
+    ("use_save_cg",       "--no-use-save-cg",       "--use-save-cg"),
+    ("use_save_xv",       "--no-use-save-xv",       "--use-save-xv"),
+    ("write_forces",      "--no-write-forces",      "--write-forces"),
+    ("write_coor_step",   "--no-write-coor-step",   "--write-coor-step"),
+    ("write_coor_xmol",   "--no-write-coor-xmol",   "--write-coor-xmol"),
+    ("write_md_history",  "--no-write-md-history",  "--write-md-history"),
+    ("wrap_into_cell",    "--no-wrap-into-cell",    "--wrap-into-cell"),
+    ("center_in_vacuum",  "--no-center-in-vacuum",  "--center-in-vacuum"),
+    ("verbose_comments",  "--no-verbose-comments",  "--verbose-comments"),
+    ("copy_psml",         "--no-copy-psml",         "--copy-psml"),
+    ("spin_polarized",    "--no-spin-polarized",    "--spin-polarized"),
+])
+def test_fdf_cli_bool_flags_round_trip(
+        attr, flag_off, flag_on, monkeypatch, tmp_path):
+    """``--no-foo`` flips the bool to False and the positive form keeps
+    True.  Catches a bridge regression where bool fields are turned
+    into is_flag=True (one-way switch) instead of a flag pair."""
+    captured = []
+
+    def fake_convert(input_path, fdf_path, config):
+        captured.append(config)
+        return _stub_siesta_summary(fdf_path)
+    monkeypatch.setattr("molbuilder.siesta.convert", fake_convert)
+
+    in_xyz = _h2_xyz_at(tmp_path / "h2.xyz")
+    out_fdf = tmp_path / "h2.fdf"
+
+    assert cli.main(["fdf", in_xyz, str(out_fdf), flag_off]) == 0
+    assert getattr(captured[-1], attr) is False, f"{flag_off} did not flip {attr}"
+    assert cli.main(["fdf", in_xyz, str(out_fdf), flag_on]) == 0
+    assert getattr(captured[-1], attr) is True, f"{flag_on} did not set {attr}"
+
+
+@pytest.mark.parametrize("flag,cli_val,attr,expected", [
+    # PySCFConfig CLI override coverage.  Same shape as the SIESTA
+    # version but spans method / SCF / opt / runtime tiers.
+    ("--job-name",         "demo",       "job_name",          "demo"),
+    ("--charge",           "-2",         "charge",            -2),
+    ("--spin",             "1",          "spin",              1),
+    ("--method",           "UKS",        "method",            "UKS"),
+    ("--functional",       "PBE",        "functional",        "PBE"),
+    ("--basis",            "def2-TZVP",  "basis",             "def2-TZVP"),
+    ("--auxbasis",         "def2-universal-jkfit", "auxbasis", "def2-universal-jkfit"),
+    ("--solvent",          "water",      "solvent",           "water"),
+    ("--solvent-method",   "C-PCM",      "solvent_method",    "C-PCM"),
+    ("--scf-conv-tol",     "1e-10",      "scf_conv_tol",      1e-10),
+    ("--scf-max-cycle",    "200",        "scf_max_cycle",     200),
+    ("--scf-init-guess",   "huckel",     "scf_init_guess",    "huckel"),
+    ("--grid-level",       "5",          "grid_level",        5),
+    ("--level-shift",      "0.2",        "level_shift",       0.2),
+    ("--diis-space",       "16",         "diis_space",        16),
+    ("--damp",             "0.4",        "damp",              0.4),
+    ("--preopt-functional","BLYP",       "preopt_functional", "BLYP"),
+    ("--preopt-basis",     "def2-TZVP",  "preopt_basis",      "def2-TZVP"),
+    ("--preopt-max-steps", "30",         "preopt_max_steps",  30),
+    ("--preopt-grms",      "5e-4",       "preopt_grms",       5e-4),
+    ("--optimizer",        "berny",      "optimizer",         "berny"),
+    ("--geom-max-steps",   "300",        "geom_max_steps",    300),
+    ("--geom-conv-energy", "1e-7",       "geom_conv_energy",  1e-7),
+    ("--geom-conv-grms",   "1e-4",       "geom_conv_grms",    1e-4),
+    ("--geom-conv-gmax",   "2e-4",       "geom_conv_gmax",    2e-4),
+    ("--max-memory-mb",    "8000",       "max_memory_mb",     8000),
+    ("--threads",          "4",          "threads",           4),
+    ("--verbose",          "5",          "verbose",           5),
+])
+def test_pyscf_cli_override_propagates_to_pyscf_config(
+        flag, cli_val, attr, expected, monkeypatch, tmp_path):
+    """Per-field PySCFConfig CLI override coverage."""
+    captured = {}
+
+    def fake_convert(input_path, py_path, config):
+        captured["cfg"] = config
+        return _stub_pyscf_summary(py_path)
+    monkeypatch.setattr("molbuilder.pyscf.convert", fake_convert)
+
+    in_xyz = _h2_xyz_at(tmp_path / "h2.xyz")
+    out_py = tmp_path / "h2.py"
+    rc = cli.main(["pyscf", in_xyz, str(out_py), flag, cli_val])
+    assert rc == 0
+    assert getattr(captured["cfg"], attr) == expected, (
+        f"{flag} {cli_val!r}: expected PySCFConfig.{attr}={expected!r}, "
+        f"got {getattr(captured['cfg'], attr)!r}"
+    )
+
+
+@pytest.mark.parametrize("attr,default,off_flag", [
+    # Curated bool-flag round-trip for PySCFConfig.  Defaults true ->
+    # passing --no-<flag> must flip to False.
+    ("symmetry",            False, "--symmetry"),       # default False -> positive form sets True
+    ("density_fit",         True,  "--no-density-fit"),
+    ("preopt",              False, "--preopt"),
+    ("preopt_density_fit",  True,  "--no-preopt-density-fit"),
+    ("optimize",            True,  "--no-optimize"),
+    ("chkfile",             True,  "--no-chkfile"),
+    ("log_file",            True,  "--no-log-file"),
+    ("save_optimized_xyz",  True,  "--no-save-optimized-xyz"),
+    ("save_initial_xyz",    True,  "--no-save-initial-xyz"),
+    ("write_trajectory",    True,  "--no-write-trajectory"),
+    ("molwatch_log",        True,  "--no-molwatch-log"),
+    ("verbose_comments",    True,  "--no-verbose-comments"),
+])
+def test_pyscf_cli_bool_flags_round_trip(
+        attr, default, off_flag, monkeypatch, tmp_path):
+    """Same idea as the SIESTA bool round-trip test."""
+    captured = []
+
+    def fake_convert(input_path, py_path, config):
+        captured.append(config)
+        return _stub_pyscf_summary(py_path)
+    monkeypatch.setattr("molbuilder.pyscf.convert", fake_convert)
+
+    in_xyz = _h2_xyz_at(tmp_path / "h2.xyz")
+    out_py = tmp_path / "h2.py"
+
+    rc = cli.main(["pyscf", in_xyz, str(out_py), off_flag])
+    assert rc == 0
+    expected_after = not default
+    assert getattr(captured[-1], attr) is expected_after, (
+        f"{off_flag} did not flip {attr} to {expected_after!r}"
+    )
+
+
+# ---- Layer 3: default values render in the generated FDF -------- #
+
+
+@pytest.mark.parametrize("expected_substr", [
+    "MeshCutoff 300.0 Ry",
+    "PAO.BasisSize DZP",
+    "PAO.EnergyShift 0.01 Ry",
+    "XC.functional GGA",
+    "XC.authors    PBE",
+    "DM.MixingWeight   0.02",
+    "DM.NumberPulay    3",
+    "DM.Tolerance      1e-05",
+    "DM.Energy.Tolerance 1e-04 eV",
+    "MaxSCFIterations  500",
+    "ElectronicTemperature 300.0 K",
+    "SolutionMethod    diagon",
+    "MD.TypeOfRun CG",
+    "MD.NumCGsteps 200",
+    "MD.MaxForceTol 0.02 eV/Ang",
+    "MD.MaxCGDispl 0.05 Ang",
+    "WriteForces        .true.",
+    "WriteCoorStep      .true.",
+    "WriteCoorXmol      .true.",
+    "WriteMDhistory     .true.",
+    "DM.UseSaveDM      .true.",
+    "MD.UseSaveCG      .true.",
+    "MD.UseSaveXV      .true.",
+])
+def test_siesta_default_values_render_in_fdf(expected_substr):
+    """Each scalar/bool default in SiestaConfig must appear with the
+    expected label/value in the rendered FDF.  Catches "field is wired
+    to the CLI but the FDF generator ignores its value" mutations
+    (e.g. mesh_cutoff 300 -> 100 with no test failure)."""
+    from molbuilder.siesta import SiestaConfig, render_fdf
+    from molbuilder.structure import Structure
+    s = Structure(
+        elements=["H", "H"],
+        positions=np.array([[0, 0, 0], [0.74, 0, 0]]),
+        title="h2",
+    )
+    fdf = render_fdf(s, SiestaConfig())
+    assert expected_substr in fdf, (
+        f"missing default substring {expected_substr!r}.\n"
+        f"FDF output (first 4kB):\n{fdf[:4000]}"
+    )
+
+
+# ---- Modify electrode-spec parser is case-insensitive on key ----- #
+
+
+def test_modify_electrode_spec_key_case_insensitive():
+    """``@GAP=`` / ``@Gap=`` / ``@CONTACT=`` are accepted (R3 fix:
+    the parser lowercases the key).  Catches a regression where the
+    ``.lower()`` call in ``_parse_electrode_spec`` is dropped --
+    earlier mutation testing showed 0 test failures when this was
+    silently removed."""
+    upper = cli._parse_electrode_spec("Au:111:3x3x2@GAP=8.0:5,10")
+    assert upper["mode"] == "pair"
+    assert upper["gap"] == 8.0
+
+    mixed = cli._parse_electrode_spec("Au:111:3x3x2@Gap=8.0:5,10")
+    assert mixed["mode"] == "pair"
+    assert mixed["gap"] == 8.0
+
+    upper_contact = cli._parse_electrode_spec("Au:111:3x3x2@CONTACT=2.4:+z=3")
+    assert upper_contact["mode"] == "single"
+    assert upper_contact["contact_distance"] == 2.4
+
+    mixed_contact = cli._parse_electrode_spec("Au:111:3x3x2@Contact=2.4:-z=7")
+    assert mixed_contact["mode"] == "single"
+    assert mixed_contact["contact_distance"] == 2.4
+
+
+# --------------------------------------------------------------------- #
 #  Phase 5d: watch parse / tail subcommands                             #
 # --------------------------------------------------------------------- #
 

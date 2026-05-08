@@ -36,19 +36,28 @@ from typing import Optional, Sequence, Tuple
 @dataclass
 class SiestaConfig:
     # System
-    system_name: str = "siesta_run"
-    system_label: str = "siesta"
+    system_name: str = field(default="siesta_run", metadata={
+        "label": "SystemName",
+        "help": "FDF SystemName label written into the .fdf header",
+    })
+    system_label: str = field(default="siesta", metadata={
+        "label": "SystemLabel",
+        "help": "FDF SystemLabel; output files get this prefix",
+    })
 
     # Cell handling for non-periodic XYZ files
     cell_padding: float = field(default=15.0, metadata={
         "label": "Cell padding", "unit": "Å",
         "range": (5.0, 50.0),
         "tier":  "basic",
-        "help":  "vacuum padding around the molecule on each face of the auto-cell",
+        "help":  "vacuum padding (Å) around the molecule on each face of the auto-cell",
     })
 
     # Basis
-    basis_size: str = "DZP"
+    basis_size: str = field(default="DZP", metadata={
+        "label": "PAO.BasisSize",
+        "help": "PAO basis size: SZ / DZ / SZP / DZP / TZP (rough -> tight)",
+    })
     pao_energy_shift: float = field(default=0.01, metadata={
         "label": "PAO.EnergyShift", "unit": "Ry",
         "range": (0.001, 0.1),
@@ -66,8 +75,14 @@ class SiestaConfig:
     })
 
     # XC
-    xc_functional: str = "GGA"
-    xc_authors: str = "PBE"
+    xc_functional: str = field(default="GGA", metadata={
+        "label": "XC.Functional",
+        "help": "XC functional family: LDA / GGA / VDW",
+    })
+    xc_authors: str = field(default="PBE", metadata={
+        "label": "XC.Authors",
+        "help": "XC parameterisation: PBE / revPBE / BLYP / DRSLL ...",
+    })
 
     # SCF
     mesh_cutoff: float = field(default=300.0, metadata={
@@ -80,37 +95,51 @@ class SiestaConfig:
         "label": "DM.MixingWeight",
         "range": (0.001, 0.5),
         "tier":  "advanced",
-        "help":  "smaller = more conservative SCF; lower if oscillating",
+        "help":  "DM mixing weight; smaller = more conservative SCF, lower if oscillating",
     })
     pulay_history: int = field(default=3, metadata={
         "label": "DM.NumberPulay",
         "range": (0, 20),
         "tier":  "advanced",
+        "help":  "Pulay history depth; 3 is SIESTA-tutorial default for relaxation",
     })
     dm_tolerance: float = field(default=1e-5, metadata={
         "label": "DM.Tolerance",
         "range": (1e-8, 1e-3),
         "tier":  "advanced",
+        "help":  "DM-element SCF convergence threshold",
     })
     dm_energy_tolerance: float = field(default=1e-4, metadata={
         "label": "DM.Energy.Tolerance", "unit": "eV",
         "range": (1e-8, 1e-1),
         "tier":  "advanced",
+        "help":  "redundant SCF energy guard (eV)",
     })
     max_scf_iter: int = field(default=500, metadata={
         "label": "MaxSCFIterations",
         "range": (10, 5000),
         "tier":  "advanced",
+        "help":  "max SCF iterations per geometry step",
     })
     electronic_temperature: float = field(default=300.0, metadata={
         "label": "ElectronicTemperature", "unit": "K",
         "range": (0.0, 5000.0),
         "tier":  "advanced",
+        "help":  "electronic temperature for Fermi-Dirac smearing (K)",
     })
-    solution_method: str = "diagon"      # default; OMM for very large systems
+    solution_method: str = field(default="diagon", metadata={
+        "label": "SolutionMethod",
+        "help": "diagon / OMM / transiesta (transiesta requires the TranSIESTA build)",
+    })
 
-    # k-grid
-    kgrid: Tuple[int, int, int] = (1, 1, 1)
+    # k-grid -- Tuple field with custom CLI parsing; not auto-generated
+    # by add_dataclass_options (the bridge handles only scalar types).
+    kgrid: Tuple[int, int, int] = field(default=(1, 1, 1), metadata={
+        "label": "kgrid_Monkhorst_Pack",
+        "tier":  "basic",
+        "help":  "Monkhorst-Pack mesh (e.g. 4x4x1 in CLI or [4,4,1] in code)",
+        "skip_cli": True,
+    })
 
     # Relaxation; relax_type="none" disables the MD block entirely.
     # The actual SIESTA keyword for step count and max-displacement
@@ -120,7 +149,10 @@ class SiestaConfig:
     # Verlet / Nose -> MD.FinalTimeStep + MD.InitialTemperature).  The
     # labels below are therefore generic; per-engine help text lives
     # in the FDF's verbose comments.
-    relax_type: str = "CG"
+    relax_type: str = field(default="CG", metadata={
+        "label": "MD.TypeOfRun",
+        "help": "MD/relax algorithm: CG / Broyden / FIRE / Verlet / Nose / none",
+    })
     relax_steps: int = field(default=200, metadata={
         "label": "MD step count",
         "range": (1, 10000),
@@ -141,9 +173,15 @@ class SiestaConfig:
     })
 
     # SCF / MD continuation flags (free insurance for restartable jobs)
-    use_save_dm: bool = True
-    use_save_cg: bool = True
-    use_save_xv: bool = True
+    use_save_dm: bool = field(default=True, metadata={
+        "help": "read .DM from a prior run if present (free warm-start)",
+    })
+    use_save_cg: bool = field(default=True, metadata={
+        "help": "read .CG from a prior CG relaxation if present",
+    })
+    use_save_xv: bool = field(default=True, metadata={
+        "help": "read .XV (final geometry/velocities) from a prior run if present",
+    })
 
     # Atom positioning relative to the cell:
     #   wrap_into_cell -- when an explicit cell is given (e.g. read from
@@ -157,26 +195,39 @@ class SiestaConfig:
     #                     centre (default).  Disable to keep raw input
     #                     coordinates (useful when several runs share a
     #                     reference frame).
-    wrap_into_cell: bool = True
-    center_in_vacuum: bool = True
+    wrap_into_cell: bool = field(default=True, metadata={
+        "help": "fold atoms with fractional coords outside [0,1) back into the cell",
+    })
+    center_in_vacuum: bool = field(default=True, metadata={
+        "help": "centre the molecule in the auto-vacuum cell (auto-cell case)",
+    })
 
     # When True, every section in the emitted FDF carries inline tuning
     # hints (parameter ranges, what to change when SCF / CG misbehave,
-    # etc.) plus a "Troubleshooting" block at the end.  Set False for
-    # a clean machine-readable FDF.
-    verbose_comments: bool = True
+    # etc.) plus a "Troubleshooting" block at the end.
+    verbose_comments: bool = field(default=True, metadata={
+        "help": "emit inline tuning hints and a Troubleshooting block in the FDF",
+    })
 
     # Output flags
-    write_forces: bool = True
-    write_coor_step: bool = True
-    write_coor_xmol: bool = True         # .xyz of every relaxation step
-    write_md_history: bool = True        # .ANI trajectory file
-    write_hs: bool = False               # H + S matrices (TranSIESTA / DOS)
-    write_molwatch_log: bool = True      # write <job>.molwatch.log alongside the
-                                         # .fdf with the initial geometry as a
-                                         # preview block, so molwatch can render
-                                         # the structure immediately -- before
-                                         # SIESTA has produced any output.
+    write_forces: bool = field(default=True, metadata={
+        "help": "write forces to the .FA file (required for relaxation)",
+    })
+    write_coor_step: bool = field(default=True, metadata={
+        "help": "write coordinates at every MD step in the main .out",
+    })
+    write_coor_xmol: bool = field(default=True, metadata={
+        "help": "write .xyz of every relaxation step (movie viewer)",
+    })
+    write_md_history: bool = field(default=True, metadata={
+        "help": "write the .ANI trajectory file (xcrysden / vmd / OVITO)",
+    })
+    write_hs: bool = field(default=False, metadata={
+        "help": "write H + S matrices (TranSIESTA / DOS / transport)",
+    })
+    write_molwatch_log: bool = field(default=True, metadata={
+        "help": "write <job>.molwatch.log preview (lets molwatch render before SIESTA does)",
+    })
 
     # ---------------- Parallel execution (MPI) ----------------
     # Only matter when running `mpirun -np N siesta`; single-rank runs
@@ -184,47 +235,53 @@ class SiestaConfig:
     # failure mode -- `propor: ERROR: IMAX = 0` -- by overriding
     # SIESTA's auto-picked BlockSize, which can be too coarse for
     # the per-atom distribution pass on small molecules.
-    parallel_block_size: Optional[int] = None
-                                         # None -> auto: pick a power-of-2
-                                         # block size based on n_atoms (see
-                                         # _auto_block_size below).  Set an
-                                         # explicit int to override (8 is a
-                                         # safe value for most molecules at
-                                         # typical 1-8 MPI rank counts; raise
-                                         # to 16-32 for >1000 atoms / >=16
-                                         # ranks to recover ScaLAPACK
-                                         # efficiency).
-    parallel_over_k: Optional[bool] = None
-                                         # None -> auto: False if k-grid is
-                                         # 1x1x1 (Gamma; molecule/vacuum),
-                                         # True otherwise (periodic crystal
-                                         # with multiple k-points).
+    # Both default to None -> auto-detect.  The CLI bridge can't
+    # represent a tri-state Optional[bool] (None / True / False) with
+    # a flag pair, so we mark them skip_cli=True; users who need to
+    # override go through the Python API.  Block-size auto picks a
+    # power-of-2 from n_atoms; over_k auto turns on when the k-grid
+    # has multiple k-points.
+    parallel_block_size: Optional[int] = field(default=None, metadata={
+        "help": "MPI block size; None=auto (power-of-2 from n_atoms)",
+        "skip_cli": True,
+    })
+    parallel_over_k: Optional[bool] = field(default=None, metadata={
+        "help": "MPI parallelise over k-points; None=auto from kgrid",
+        "skip_cli": True,
+    })
 
-    # Pseudopotentials
-    psml_lib: Optional[str] = None
-    copy_psml: bool = True
-
-    # Misc -- pin the species order if you want a specific layout
-    species_order: Optional[Sequence[str]] = None
+    # Pseudopotentials -- psml_lib uses click.Path() in the CLI so it's
+    # hand-rolled there; species_order needs comma-string parsing on
+    # the CLI side, also hand-rolled.
+    psml_lib: Optional[str] = field(default=None, metadata={
+        "help": "path to a flat directory of .psml pseudopotentials",
+        "skip_cli": True,
+    })
+    copy_psml: bool = field(default=True, metadata={
+        "help": "copy psml files into the output directory (alongside the FDF)",
+    })
+    species_order: Optional[Sequence[str]] = field(default=None, metadata={
+        "help": "comma-separated species order (e.g. 'C,H,S,Au')",
+        "skip_cli": True,
+    })
 
     # Net charge.  When None (default), render_fdf auto-detects from the
-    # phosphate protonation state via formal_charge_from_phosphates.  Set
-    # an explicit integer to override -- needed for any system whose net
-    # charge comes from groups other than phosphates (carboxylates,
-    # protonated amines, sulfonates, etc., which the heuristic does NOT
-    # detect).  An explicit 0 disables auto-detection (treats system as
-    # neutral even if the heuristic would have flagged it).
-    net_charge: Optional[int] = None
+    # phosphate protonation state via formal_charge_from_phosphates.
+    net_charge: Optional[int] = field(default=None, metadata={
+        "help": ("net charge override (default: auto-detect from phosphates; "
+                 "set explicitly for charged side chains -- carboxylates, "
+                 "amines, sulfonates -- the heuristic doesn't see)"),
+    })
 
-    # Spin polarisation.  Default off (closed-shell DFT).  Set True for
-    # any system with unpaired electrons (radicals, transition metals,
-    # certain charged biomolecules) -- without it SIESTA assumes
-    # spin-restricted and silently produces a wrong electronic
-    # structure for open-shell systems.
-    spin_polarized: bool = False
-    # Optional: total spin moment in units of Bohr magnetons (=
-    # number of unpaired electrons).  None lets SIESTA decide.
-    spin_total: Optional[float] = None
+    # Spin polarisation.  Default off (closed-shell DFT).
+    spin_polarized: bool = field(default=False, metadata={
+        "help": ("open-shell DFT (collinear); required for radicals / "
+                 "transition metals / triplet systems"),
+    })
+    spin_total: Optional[float] = field(default=None, metadata={
+        "help": ("target total spin moment (mu_B); only emitted with "
+                 "--spin-polarized"),
+    })
 
 
 # Backwards-compatible alias.  External code that imports `Config` from
