@@ -5,8 +5,11 @@ Routes (no url_prefix; each carries its own full path):
     POST /api/modify/load        validate / canonicalise an XYZ payload
     POST /api/modify/delete      delete_atoms(indices)
     POST /api/modify/add_atom    add_atom(element, anchor, offset)
+    POST /api/modify/orient      orient_along_axis(anchors, axis,
+                                                   angle, center)
+    POST /api/modify/rotate      rotate_around_axis(axis, angle)
 
-M3 covers the per-atom ops.  M4 adds /api/modify/orient and
+M3 covers the per-atom ops.  M4 added /api/modify/orient and
 /api/modify/rotate; M5 adds the electrode endpoints.
 
 JSON body shape (shared by every op):
@@ -55,6 +58,8 @@ from flask import Blueprint, jsonify, request
 from molbuilder.modify import (
     add_atom as _add_atom,
     delete_atoms as _delete_atoms,
+    orient_along_axis as _orient_along_axis,
+    rotate_around_axis as _rotate_around_axis,
 )
 from molbuilder.structure import Structure
 from molbuilder.validation import validate_geometry
@@ -241,4 +246,105 @@ def api_modify_add_atom():
         )
     except Exception as exc:                       # noqa: BLE001
         return _err(f"add_atom failed: {exc}", 400)
+    return _ok_response(new_struct)
+
+
+# --------------------------------------------------------------------- #
+#  /api/modify/orient                                                   #
+# --------------------------------------------------------------------- #
+
+
+@bp.route("/api/modify/orient", methods=["POST"])
+def api_modify_orient():
+    """Rotate the structure so the anchor-pair vector forms ``angle``
+    degrees with the chosen target axis.
+
+    Body: ``{xyz, [...metadata...], anchors: [a0, a1], axis?, angle?,
+             center?}``.
+
+    Defaults match :func:`molbuilder.modify.orient_along_axis`:
+    ``axis="z"`` (transport-DFT convention), ``angle=0.0`` (anchor
+    pair lands exactly along the axis), ``center="midpoint"``
+    (anchor-pair midpoint at the origin -- the geometry pair-mode
+    electrode placement expects).
+    """
+    body = request.get_json(silent=True) or {}
+    try:
+        struct = _struct_from_body(body)
+    except ValueError as exc:
+        return _err(str(exc), 400)
+    anchors = body.get("anchors")
+    if (not isinstance(anchors, list)) or len(anchors) != 2:
+        return _err(
+            "'anchors' must be a 2-element [a0, a1] list of atom indices",
+            400,
+        )
+    try:
+        a0, a1 = int(anchors[0]), int(anchors[1])
+    except (TypeError, ValueError):
+        return _err("anchor indices must be integers", 400)
+    if a0 == a1:
+        return _err("anchors must be two distinct atom indices", 400)
+    if not (0 <= a0 < struct.n_atoms and 0 <= a1 < struct.n_atoms):
+        return _err(
+            f"anchor indices ({a0}, {a1}) out of range for "
+            f"{struct.n_atoms}-atom structure",
+            400,
+        )
+    axis = (body.get("axis") or "z").strip().lower()
+    if axis not in ("x", "y", "z"):
+        return _err(f"axis must be 'x', 'y', or 'z'; got {axis!r}", 400)
+    center = (body.get("center") or "midpoint").strip().lower()
+    if center not in ("midpoint", "first", "none"):
+        return _err(
+            f"center must be 'midpoint', 'first', or 'none'; got {center!r}",
+            400,
+        )
+    angle = body.get("angle", 0.0)
+    try:
+        angle_f = float(angle)
+    except (TypeError, ValueError):
+        return _err("angle must be a number (degrees)", 400)
+    try:
+        new_struct = _orient_along_axis(
+            struct, (a0, a1), axis=axis, angle=angle_f, center=center,
+        )
+    except (ValueError, Exception) as exc:        # noqa: BLE001
+        return _err(f"orient_along_axis failed: {exc}", 400)
+    return _ok_response(new_struct)
+
+
+# --------------------------------------------------------------------- #
+#  /api/modify/rotate                                                   #
+# --------------------------------------------------------------------- #
+
+
+@bp.route("/api/modify/rotate", methods=["POST"])
+def api_modify_rotate():
+    """Rotate every atom by ``angle`` degrees (right-hand rule) around
+    the named axis through the origin.
+
+    Body: ``{xyz, [...metadata...], axis, angle}``.
+
+    Useful for redirecting a tilted molecule's azimuth after an
+    ``orient`` op with non-zero angle (e.g. spin a tilt from the
+    xz-plane into the yz-plane via ``axis=z, angle=90``).
+    """
+    body = request.get_json(silent=True) or {}
+    try:
+        struct = _struct_from_body(body)
+    except ValueError as exc:
+        return _err(str(exc), 400)
+    axis = (body.get("axis") or "").strip().lower()
+    if axis not in ("x", "y", "z"):
+        return _err(f"axis must be 'x', 'y', or 'z'; got {axis!r}", 400)
+    angle = body.get("angle")
+    try:
+        angle_f = float(angle)
+    except (TypeError, ValueError):
+        return _err("angle must be a number (degrees)", 400)
+    try:
+        new_struct = _rotate_around_axis(struct, axis=axis, angle=angle_f)
+    except Exception as exc:                       # noqa: BLE001
+        return _err(f"rotate_around_axis failed: {exc}", 400)
     return _ok_response(new_struct)

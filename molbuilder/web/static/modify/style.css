@@ -332,6 +332,55 @@ header .tagline {
     color: var(--text-primary);
     text-align: right;
 }
+.edit-panel .axis-radios {
+    display: inline-flex;
+    gap: 0.6rem;
+}
+.edit-panel .axis-radios label {
+    color: var(--text-primary);
+    font: 0.88rem ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    cursor: pointer;
+    user-select: none;
+}
+.edit-panel .axis-radios input[type="radio"] {
+    accent-color: var(--accent);
+    margin-right: 0.25rem;
+}
+.edit-panel select {
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    padding: 0.25rem 0.45rem;
+    font: inherit;
+}
+.edit-panel .selection-info {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0.5rem;
+    font: 0.78rem ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    color: var(--text-primary);
+}
+.edit-panel .selection-info thead th {
+    background: var(--bg-card-hover);
+    color: var(--text-secondary);
+    font-weight: 600;
+    text-align: left;
+    padding: 0.25rem 0.4rem;
+    border-bottom: 1px solid var(--border-soft);
+}
+.edit-panel .selection-info tbody td {
+    padding: 0.2rem 0.4rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+.edit-panel .selection-info .col-idx,
+.edit-panel .selection-info .col-el {
+    color: var(--text-secondary);
+}
+.edit-panel .selection-info .col-coord {
+    text-align: right;
+    color: var(--accent);
+}
 .edit-panel .readout {
     font: 0.88rem/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
     color: var(--text-primary);

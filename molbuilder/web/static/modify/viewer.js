@@ -29,6 +29,7 @@
     const state = {
         xyz: null,
         elements: [],          // ["C", "H", ...]
+        positions: [],         // [[x, y, z], ...]   parsed from xyz
         atom_names: [],        // ["CA", "HB1", ...] (or [] if absent)
         residue_ids: [],       // [1, 1, 2, ...]   (or [] if absent)
         residue_names: [],     // ["MOL", ...]     (or [] if absent)
@@ -61,7 +62,10 @@
         // Re-paint highlight overlays since setStyle clears them.
         renderHighlights();
         renderIndexLabels();
-        viewer.render();
+        // Axes are independent shapes; setStyle doesn't disturb them
+        // but we redraw whenever the structure changes.  Render once
+        // at the end so partial updates aren't visible.
+        drawAxes();
     }
 
     function renderHighlights() {
@@ -114,6 +118,72 @@
         _indexLabels = [];
     }
 
+    // ----- xyz axis triad ----------------------------------------- //
+    // Draws a small RGB axis triad just outside the structure's
+    // bounding box so the user has a fixed orientation reference.
+    // Always anchored at the world origin; the arrows visually
+    // co-move with the molecule when the user rotates the camera,
+    // which is what makes them useful.
+
+    let _axisShapes = [];
+    let _axisLabels = [];
+
+    function clearAxes() {
+        _axisShapes.forEach((s) => viewer.removeShape(s));
+        _axisLabels.forEach((l) => viewer.removeLabel(l));
+        _axisShapes = [];
+        _axisLabels = [];
+    }
+
+    function drawAxes() {
+        clearAxes();
+        const cb = $("show-axes");
+        if (!cb || !cb.checked) {
+            viewer.render();
+            return;
+        }
+        // Length = 1.2 * the structure's outermost x/y/z extent so
+        // the arrows reach past the molecule visually but don't get
+        // gigantic for very long chains.  Floor at 1.5 Å for empty /
+        // single-atom states.
+        let extent = 1.5;
+        if (state.positions.length) {
+            for (const [x, y, z] of state.positions) {
+                extent = Math.max(
+                    extent, Math.abs(x), Math.abs(y), Math.abs(z),
+                );
+            }
+        }
+        const L = extent * 1.2;
+        const triplet = [
+            { dir: [L, 0, 0], color: "0xff5555", label: "x" },  // red
+            { dir: [0, L, 0], color: "0x55cc55", label: "y" },  // green
+            { dir: [0, 0, L], color: "0x5588ff", label: "z" },  // blue
+        ];
+        for (const { dir, color, label } of triplet) {
+            const arrow = viewer.addArrow({
+                start:  { x: 0, y: 0, z: 0 },
+                end:    { x: dir[0], y: dir[1], z: dir[2] },
+                radius: 0.05,
+                radiusRatio: 2.5,
+                mid:    0.92,
+                color:  color,
+            });
+            _axisShapes.push(arrow);
+            const lbl = viewer.addLabel(label, {
+                position: {
+                    x: dir[0] * 1.08, y: dir[1] * 1.08, z: dir[2] * 1.08,
+                },
+                fontColor: color,
+                backgroundOpacity: 0.0,
+                fontSize: 14,
+                inFront: true,
+            });
+            _axisLabels.push(lbl);
+        }
+        viewer.render();
+    }
+
     // --------------------------------------------------------------- //
     //  Atom list (left column).  Built once per structure load; row    //
     //  highlight syncs with state.selected on every change.            //
@@ -153,7 +223,12 @@
             const idx = Number(tr.dataset.atomIndex);
             tr.classList.toggle("is-selected", state.selected.has(idx));
         });
-        // 2. Selection readout in the right panel.
+        // 2. Selection readout in the right panel.  Two layers:
+        //    - one-line summary (always visible)
+        //    - per-atom table showing index, element, name, residue,
+        //      x/y/z coordinates -- shown only when at least one atom
+        //      is selected.  Coordinates come from state.positions
+        //      which we parse from xyz at applyStructure() time.
         const sel = Array.from(state.selected).sort((a, b) => a - b);
         const out = $("selection-readout");
         if (!sel.length) {
@@ -162,9 +237,35 @@
             const parts = sel.map((i) => `#${i} ${state.elements[i]}`);
             out.textContent = parts.join(", ");
         }
-        // 3. Edit-panel button enablement (M3).
-        //    - Delete: any selection AND no op in flight.
-        //    - Add atom: exactly one anchor AND no op in flight.
+        const infoTable = $("selection-info");
+        const infoBody  = $("selection-info-body");
+        if (infoTable && infoBody) {
+            infoBody.innerHTML = "";
+            if (sel.length) {
+                infoTable.hidden = false;
+                for (const i of sel) {
+                    const p  = state.positions[i] || [0, 0, 0];
+                    const tr = document.createElement("tr");
+                    tr.innerHTML = `
+                        <td class="col-idx">${i}</td>
+                        <td class="col-el">${state.elements[i] || ""}</td>
+                        <td class="col-name">${state.atom_names[i] || ""}</td>
+                        <td class="col-res">${formatResidue(i)}</td>
+                        <td class="col-coord">${p[0].toFixed(3)}</td>
+                        <td class="col-coord">${p[1].toFixed(3)}</td>
+                        <td class="col-coord">${p[2].toFixed(3)}</td>
+                    `;
+                    infoBody.appendChild(tr);
+                }
+            } else {
+                infoTable.hidden = true;
+            }
+        }
+        // 3. Edit-panel button enablement.
+        //    - Delete: any selection AND no op in flight.            (M3)
+        //    - Add atom: exactly one anchor AND no op in flight.     (M3)
+        //    - Orient: exactly two anchors AND no op in flight.      (M4)
+        //    - Rotate: a structure is loaded AND no op in flight.    (M4)
         // The in-flight gate prevents a double-click on Apply from
         // firing two parallel fetches; postOp() flips the inFlight
         // bit + calls refreshSelectionUI when the op starts/ends.
@@ -187,6 +288,30 @@
                         : "Anchor: pick exactly one atom";
             }
         }
+        // M4: Orient button + anchor-pair readout.
+        const orientBtn = $("orient-apply");
+        const orientReadout = $("orient-anchor-readout");
+        if (orientBtn && orientReadout) {
+            if (sel.length === 2) {
+                const [a, b] = sel.slice().sort((x, y) => x - y);
+                orientBtn.disabled = locked;
+                orientReadout.textContent =
+                    `Anchors: #${a} ${state.elements[a]} → ` +
+                    `#${b} ${state.elements[b]}`;
+            } else {
+                orientBtn.disabled = true;
+                orientReadout.textContent =
+                    sel.length === 0
+                        ? "Anchors: pick two atoms"
+                        : sel.length === 1
+                            ? "Anchors: pick one more atom"
+                            : "Anchors: pick exactly two atoms";
+            }
+        }
+        // M4: Rotate button -- enabled whenever a structure is
+        // loaded.  Rotation doesn't need a selection.
+        const rotateBtn = $("rotate-apply");
+        if (rotateBtn) rotateBtn.disabled = locked || state.n_atoms === 0;
         // 4. Viewer: re-style so the highlight overlay reflects state.
         applyStyle();
     }
@@ -265,6 +390,24 @@
         state.title         = r.title || "";
         state.n_atoms       = Number(r.n_atoms || state.elements.length || 0);
         state.selected      = new Set();
+        // Parse positions from the xyz string so the selection-info
+        // table can display per-atom (x, y, z) without an extra
+        // server roundtrip.  Lines after the 2-line header are
+        // ``<element>  <x>  <y>  <z>``; whitespace is forgiving.
+        state.positions = [];
+        if (state.xyz) {
+            const lines = state.xyz.split("\n").slice(2);
+            for (const line of lines) {
+                const t = line.trim();
+                if (!t) continue;
+                const parts = t.split(/\s+/);
+                if (parts.length < 4) continue;
+                state.positions.push([
+                    Number(parts[1]), Number(parts[2]), Number(parts[3]),
+                ]);
+                if (state.positions.length === state.n_atoms) break;
+            }
+        }
 
         $("title-readout").textContent =
             state.title ? `${state.title} (${formula(state.elements)})`
@@ -426,6 +569,60 @@
         );
     }
 
+    // ----- M4: orient + rotate ------------------------------------- //
+
+    function getCheckedRadio(name) {
+        const r = document.querySelector(
+            `input[name="${name}"]:checked`,
+        );
+        return r ? r.value : null;
+    }
+
+    function refreshOrientAngleReadout() {
+        const v = Number($("orient-angle").value);
+        $("orient-angle-val").textContent = `${v}°`;
+    }
+
+    function refreshRotateAngleReadout() {
+        const v = Number($("rotate-angle").value);
+        $("rotate-angle-val").textContent = `${v}°`;
+    }
+
+    async function applyOrient() {
+        // The selection is the anchor pair.  Send sorted-ascending so
+        // the renderer's "first anchor" semantic is reproducible from
+        // the UI without exposing a "swap" affordance.  Tilted-pair
+        // direction is determined by orient_along_axis (a0 -> a1).
+        const sel = Array.from(state.selected).sort((a, b) => a - b);
+        if (sel.length !== 2) {
+            setEditStatus("Pick exactly two anchor atoms first.", "error");
+            return;
+        }
+        const axis  = getCheckedRadio("orient-axis") || "z";
+        const angle = Number($("orient-angle").value);
+        const center = $("orient-center").value || "midpoint";
+        await postOp(
+            "/api/modify/orient",
+            { anchors: sel, axis, angle, center },
+            angle === 0 ? `Oriented along ${axis}`
+                        : `Oriented (${axis}, tilt ${angle}°)`,
+        );
+    }
+
+    async function applyRotate() {
+        const axis  = getCheckedRadio("rotate-axis") || "z";
+        const angle = Number($("rotate-angle").value);
+        if (angle === 0) {
+            setEditStatus("Angle = 0; nothing to rotate.", "error");
+            return;
+        }
+        await postOp(
+            "/api/modify/rotate",
+            { axis, angle },
+            `Rotated ${angle}° around ${axis}`,
+        );
+    }
+
     // --------------------------------------------------------------- //
     //  Wire DOM events.                                                //
     // --------------------------------------------------------------- //
@@ -445,6 +642,8 @@
         });
         $("rep").addEventListener("change", applyStyle);
         $("show-indices").addEventListener("change", applyStyle);
+        const showAxes = $("show-axes");
+        if (showAxes) showAxes.addEventListener("change", drawAxes);
         $("clear-selection").addEventListener("click", () => {
             state.selected.clear();
             refreshSelectionUI();
@@ -462,6 +661,22 @@
             if (sl) sl.addEventListener("input", refreshAddDistance);
         });
         refreshAddDistance();
+
+        // M4: orient + rotate op buttons + live angle readouts.
+        const orientBtn = $("orient-apply");
+        if (orientBtn) orientBtn.addEventListener("click", applyOrient);
+        const rotateBtn = $("rotate-apply");
+        if (rotateBtn) rotateBtn.addEventListener("click", applyRotate);
+        const orientAngle = $("orient-angle");
+        if (orientAngle) {
+            orientAngle.addEventListener("input", refreshOrientAngleReadout);
+            refreshOrientAngleReadout();
+        }
+        const rotateAngle = $("rotate-angle");
+        if (rotateAngle) {
+            rotateAngle.addEventListener("input", refreshRotateAngleReadout);
+            refreshRotateAngleReadout();
+        }
     });
 
     // ----- Test hook ------------------------------------------------- //

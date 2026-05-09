@@ -685,8 +685,10 @@ def test_modify_page_loads(web_client):
         # M3 op controls (delete + add-with-sliders) are real now.
         'id="delete-apply"',
         'id="add-apply"',
-        # Future-op placeholders document what M4-M5 still fill in.
-        "Orient along axis (M4)",
+        # M4 op controls (orient + rotate) are real now.
+        'id="orient-apply"',
+        'id="rotate-apply"',
+        # Future-op placeholder documents what M5 still fills in.
         "Electrode panel (M5)",
     ):
         assert needle in body, f"missing {needle!r} in /modify HTML"
@@ -950,8 +952,7 @@ def test_modify_page_has_m3_edit_controls(web_client):
         'id="add-dz"',     'id="add-dz-val"',
         'id="add-distance"',
         'id="add-apply"',
-        # The future-op fieldsets (M4, M5) keep their placeholder text.
-        "Orient along axis (M4)",
+        # The remaining future-op fieldset (M5) keeps its placeholder.
         "Electrode panel (M5)",
     ):
         assert needle in body, f"missing {needle!r} in /modify HTML"
@@ -968,5 +969,227 @@ def test_modify_viewer_js_wires_delete_and_add(web_client):
         "applyAddAtom",
         "refreshAddDistance",
         "currentStateBody",
+    ):
+        assert needle in js, f"missing {needle!r} in modify viewer.js"
+
+
+# --------------------------------------------------------------------- #
+#  Modify-tab orient + rotate endpoints (M4)                            #
+# --------------------------------------------------------------------- #
+
+
+_LINEAR_XYZ = (
+    "4\nlinear\n"
+    "C 0 0 0\n"
+    "C 1 1 0\n"
+    "C 2 2 0\n"
+    "C 3 3 0\n"
+)
+
+
+def _coords_from_xyz(xyz):
+    """Parse an xyz string into a list of (x, y, z) tuples (skip
+    header lines).  Helper for the orient / rotate tests."""
+    return [
+        tuple(float(v) for v in line.split()[1:4])
+        for line in xyz.splitlines()[2:] if line.strip()
+    ]
+
+
+def test_modify_orient_default_lays_anchor_pair_along_z(web_client):
+    """Default ``axis="z"``, ``angle=0`` orients atoms 0 -> 3 along z.
+    With ``center="midpoint"`` (default), the midpoint of the pair
+    lands at the origin so a0 is at -d/2 and a1 at +d/2 along z."""
+    import math
+    r = web_client.post("/api/modify/orient", json={
+        "xyz": _LINEAR_XYZ,
+        "anchors": [0, 3],
+    })
+    body = r.get_json()
+    assert body["ok"] is True
+    coords = _coords_from_xyz(body["xyz"])
+    a0, a3 = coords[0], coords[3]
+    # x and y of the anchors collapse to ~0 (vector lies along z).
+    assert abs(a0[0]) < 1e-6 and abs(a0[1]) < 1e-6
+    assert abs(a3[0]) < 1e-6 and abs(a3[1]) < 1e-6
+    # The pair separation is preserved (sqrt(3)*sqrt(3+3+0) = sqrt(18)).
+    sep = math.sqrt(sum((b - a) ** 2 for a, b in zip(a0, a3)))
+    assert abs(sep - math.sqrt(18.0)) < 1e-6, sep
+    # midpoint at origin
+    mid = tuple(0.5 * (x + y) for x, y in zip(a0, a3))
+    assert all(abs(v) < 1e-6 for v in mid), mid
+
+
+def test_modify_orient_with_tilt_angle_puts_pair_in_xz_plane(web_client):
+    """Non-zero ``angle`` tilts the anchor pair away from the target
+    axis in a fixed plane (xz for axis=z).  The vector becomes
+    ``(sin θ * d, 0, cos θ * d)``."""
+    import math
+    r = web_client.post("/api/modify/orient", json={
+        "xyz": _LINEAR_XYZ,
+        "anchors": [0, 3],
+        "axis": "z",
+        "angle": 30.0,
+    })
+    coords = _coords_from_xyz(r.get_json()["xyz"])
+    vec = tuple(b - a for a, b in zip(coords[0], coords[3]))
+    d = math.sqrt(sum(v * v for v in vec))
+    # Tilt direction lies in the xz-plane: y-component is ~0.
+    assert abs(vec[1]) < 1e-6, vec
+    assert abs(vec[0] - math.sin(math.radians(30.0)) * d) < 1e-5, vec
+    assert abs(vec[2] - math.cos(math.radians(30.0)) * d) < 1e-5, vec
+
+
+def test_modify_orient_center_first_pins_a0_at_origin(web_client):
+    r = web_client.post("/api/modify/orient", json={
+        "xyz": _LINEAR_XYZ,
+        "anchors": [0, 3],
+        "center": "first",
+    })
+    coords = _coords_from_xyz(r.get_json()["xyz"])
+    assert all(abs(v) < 1e-6 for v in coords[0]), coords[0]
+
+
+def test_modify_orient_rejects_same_anchor_twice(web_client):
+    r = web_client.post("/api/modify/orient", json={
+        "xyz": _LINEAR_XYZ,
+        "anchors": [1, 1],
+    })
+    assert r.status_code == 400
+    assert "distinct" in r.get_json()["error"]
+
+
+def test_modify_orient_rejects_out_of_range_anchor(web_client):
+    r = web_client.post("/api/modify/orient", json={
+        "xyz": _LINEAR_XYZ,
+        "anchors": [0, 99],
+    })
+    assert r.status_code == 400
+    assert "out of range" in r.get_json()["error"]
+
+
+def test_modify_orient_rejects_bad_axis(web_client):
+    r = web_client.post("/api/modify/orient", json={
+        "xyz": _LINEAR_XYZ,
+        "anchors": [0, 3],
+        "axis": "w",
+    })
+    assert r.status_code == 400
+    assert "axis" in r.get_json()["error"]
+
+
+def test_modify_orient_rejects_non_two_anchors(web_client):
+    r = web_client.post("/api/modify/orient", json={
+        "xyz": _LINEAR_XYZ,
+        "anchors": [0, 1, 2],
+    })
+    assert r.status_code == 400
+    assert "anchors" in r.get_json()["error"]
+
+
+def test_modify_rotate_z_90_degrees(web_client):
+    """Rotation around z by 90° maps (1, 1, 0) -> (-1, 1, 0)."""
+    r = web_client.post("/api/modify/rotate", json={
+        "xyz": _LINEAR_XYZ, "axis": "z", "angle": 90,
+    })
+    body = r.get_json()
+    assert body["ok"] is True
+    coords = _coords_from_xyz(body["xyz"])
+    # atom 1 was at (1, 1, 0); after a +90° rotation around z it
+    # becomes (-1, 1, 0).
+    assert abs(coords[1][0] - (-1.0)) < 1e-6, coords[1]
+    assert abs(coords[1][1] - 1.0)    < 1e-6, coords[1]
+    assert abs(coords[1][2] - 0.0)    < 1e-6, coords[1]
+
+
+def test_modify_rotate_x_180_degrees(web_client):
+    """Rotation around x by 180° flips y and z signs."""
+    r = web_client.post("/api/modify/rotate", json={
+        "xyz": _LINEAR_XYZ, "axis": "x", "angle": 180,
+    })
+    coords = _coords_from_xyz(r.get_json()["xyz"])
+    # atom 1: (1, 1, 0) -> (1, -1, 0)
+    assert abs(coords[1][0] - 1.0)    < 1e-6, coords[1]
+    assert abs(coords[1][1] - (-1.0)) < 1e-6, coords[1]
+    assert abs(coords[1][2] - 0.0)    < 1e-6, coords[1]
+
+
+def test_modify_rotate_rejects_bad_axis(web_client):
+    r = web_client.post("/api/modify/rotate", json={
+        "xyz": _LINEAR_XYZ, "axis": "w", "angle": 30,
+    })
+    assert r.status_code == 400
+    assert "axis" in r.get_json()["error"]
+
+
+def test_modify_rotate_rejects_non_numeric_angle(web_client):
+    r = web_client.post("/api/modify/rotate", json={
+        "xyz": _LINEAR_XYZ, "axis": "z", "angle": "ninety",
+    })
+    assert r.status_code == 400
+    assert "angle" in r.get_json()["error"]
+
+
+def test_modify_orient_then_rotate_chains_through_metadata(web_client):
+    """Chain orient -> rotate while preserving per-atom metadata
+    (matches the spec § 5 invariant)."""
+    s1 = web_client.post("/api/modify/load", json={
+        "xyz": _LINEAR_XYZ,
+        "atom_names":    ["C1", "C2", "C3", "C4"],
+        "residue_ids":   [1, 1, 1, 1],
+        "residue_names": ["MOL", "MOL", "MOL", "MOL"],
+        "chain_ids":     ["A", "A", "A", "A"],
+    }).get_json()
+    s2 = web_client.post("/api/modify/orient", json={
+        "xyz":           s1["xyz"],
+        "atom_names":    s1["atom_names"],
+        "residue_ids":   s1["residue_ids"],
+        "residue_names": s1["residue_names"],
+        "chain_ids":     s1["chain_ids"],
+        "anchors":       [0, 3],
+    }).get_json()
+    s3 = web_client.post("/api/modify/rotate", json={
+        "xyz":           s2["xyz"],
+        "atom_names":    s2["atom_names"],
+        "residue_ids":   s2["residue_ids"],
+        "residue_names": s2["residue_names"],
+        "chain_ids":     s2["chain_ids"],
+        "axis": "z", "angle": 45,
+    }).get_json()
+    assert s3["atom_names"] == ["C1", "C2", "C3", "C4"]
+    assert s3["residue_names"] == ["MOL"] * 4
+
+
+def test_modify_page_has_m4_orient_rotate_controls(web_client):
+    """The Edit panel must expose the M4 orient + rotate controls
+    (anchor-pair readout, axis radios, angle slider, Apply for both
+    ops).  The M5 placeholder (electrode panel) stays disabled."""
+    body = web_client.get("/modify").data.decode()
+    for needle in (
+        # Orient
+        'id="orient-apply"',
+        'id="orient-anchor-readout"',
+        'id="orient-angle"',     'id="orient-angle-val"',
+        'id="orient-center"',
+        'name="orient-axis"',
+        # Rotate
+        'id="rotate-apply"',
+        'id="rotate-angle"',     'id="rotate-angle-val"',
+        'name="rotate-axis"',
+        # M5 placeholder still there.
+        "Electrode panel (M5)",
+    ):
+        assert needle in body, f"missing {needle!r} in /modify HTML"
+
+
+def test_modify_viewer_js_wires_orient_and_rotate(web_client):
+    js = web_client.get("/static/modify/viewer.js").data.decode()
+    for needle in (
+        "/api/modify/orient",
+        "/api/modify/rotate",
+        "applyOrient",
+        "applyRotate",
+        "refreshOrientAngleReadout",
+        "refreshRotateAngleReadout",
     ):
         assert needle in js, f"missing {needle!r} in modify viewer.js"

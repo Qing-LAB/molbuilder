@@ -120,6 +120,10 @@
         <input type="checkbox" id="show-indices">
         Show atom indices
       </label>
+      <label class="check">
+        <input type="checkbox" id="show-axes" checked>
+        Show xyz axes
+      </label>
       <button id="clear-selection" class="ghost">Clear selection</button>
     </div>
   </section>
@@ -134,6 +138,20 @@
       <fieldset class="op-block">
         <legend>Selection</legend>
         <div id="selection-readout" class="readout">No atoms selected.</div>
+        <table id="selection-info" class="selection-info" hidden>
+          <thead>
+            <tr>
+              <th class="col-idx">#</th>
+              <th class="col-el">El</th>
+              <th class="col-name">Name</th>
+              <th class="col-res">Res</th>
+              <th class="col-coord">x (Å)</th>
+              <th class="col-coord">y (Å)</th>
+              <th class="col-coord">z (Å)</th>
+            </tr>
+          </thead>
+          <tbody id="selection-info-body"></tbody>
+        </table>
       </fieldset>
 
       <!-- Delete: enabled when at least one atom is selected.
@@ -199,13 +217,81 @@
         </button>
       </fieldset>
 
-      <!-- Future M4 / M5 placeholders.  Disabled and explanatory so
-           the user can see what the eventual flow looks like. -->
-      <fieldset class="op-block future-op" disabled>
-        <legend>Orient along axis (M4)</legend>
-        <p class="hint">Pick two atoms; the orient operation rotates the
-        structure so the anchor pair lies along z.</p>
+      <!-- Orient along axis: enabled when EXACTLY TWO atoms are
+           selected (the anchor pair).  Default rotates the molecule
+           so the (a0 -> a1) vector lies along z; the angle slider
+           tilts the pair away from the axis (xz-plane for axis=z).
+           See spec § 2.1 (Tilted molecules). -->
+      <fieldset class="op-block">
+        <legend>Orient along axis</legend>
+        <div class="op-row">
+          <span id="orient-anchor-readout" class="muted">Anchors: pick two atoms</span>
+        </div>
+        <div class="op-row" id="orient-axis-row">
+          <span class="muted">Target axis</span>
+          <span class="axis-radios">
+            <label><input type="radio" name="orient-axis" value="x">x</label>
+            <label><input type="radio" name="orient-axis" value="y">y</label>
+            <label><input type="radio" name="orient-axis" value="z" checked>z</label>
+          </span>
+        </div>
+        <label class="slider-row">
+          <span>tilt</span>
+          <input id="orient-angle" type="range"
+                 min="-90" max="90" step="1" value="0">
+          <span id="orient-angle-val" class="readout-inline">0°</span>
+        </label>
+        <div class="op-row">
+          <label>Center
+            <select id="orient-center">
+              <option value="midpoint" selected>midpoint (default)</option>
+              <option value="first">first anchor at origin</option>
+              <option value="none">rotation only</option>
+            </select>
+          </label>
+        </div>
+        <p class="hint">
+          Default tilt = 0 places the anchor pair exactly along the
+          target axis.  Non-zero tilt puts the pair in a fixed plane:
+          axis=z &rarr; xz-plane; axis=x &rarr; xy-plane; axis=y &rarr;
+          yz-plane.  Use Rotate around axis below to redirect the
+          tilt's azimuth.
+        </p>
+        <button id="orient-apply" class="full-btn" disabled>
+          Apply orient
+        </button>
       </fieldset>
+
+      <!-- Rotate around axis: a free spin around an axis through the
+           origin.  Useful AFTER an orient with non-zero tilt, to swing
+           the tilt out of the default plane. -->
+      <fieldset class="op-block">
+        <legend>Rotate around axis</legend>
+        <div class="op-row" id="rotate-axis-row">
+          <span class="muted">Axis</span>
+          <span class="axis-radios">
+            <label><input type="radio" name="rotate-axis" value="x">x</label>
+            <label><input type="radio" name="rotate-axis" value="y">y</label>
+            <label><input type="radio" name="rotate-axis" value="z" checked>z</label>
+          </span>
+        </div>
+        <label class="slider-row">
+          <span>angle</span>
+          <input id="rotate-angle" type="range"
+                 min="-180" max="180" step="1" value="0">
+          <span id="rotate-angle-val" class="readout-inline">0°</span>
+        </label>
+        <p class="hint">
+          Right-hand rule.  Apply rotates every atom in the structure
+          by the given angle around the chosen axis through the
+          origin.
+        </p>
+        <button id="rotate-apply" class="full-btn" disabled>
+          Apply rotate
+        </button>
+      </fieldset>
+
+      <!-- M5 placeholder.  Active controls land in the next milestone. -->
       <fieldset class="op-block future-op" disabled>
         <legend>Electrode panel (M5)</legend>
         <p class="hint">FCC slab (Au / Ag / Cu / Ni / Pt / Pd) on

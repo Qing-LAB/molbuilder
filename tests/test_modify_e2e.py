@@ -122,9 +122,18 @@ def _open_modify(page, base_url):
 def _load_water(page, water_xyz_file):
     """Upload the water.xyz fixture and wait for the atom list to
     populate (3 rows for O + 2H)."""
-    page.set_input_files("#file-picker", water_xyz_file)
-    # The auto-submit-on-pick handler fires Load; status becomes "ok".
-    page.wait_for_selector("#atom-list-body tr:nth-child(3)")
+    _load_file(page, water_xyz_file, expected_atoms=3)
+
+
+def _load_file(page, xyz_path, expected_atoms):
+    """Upload an arbitrary XYZ file and wait for the atom list to
+    show ``expected_atoms`` rows.  Handles the auto-submit-on-pick
+    handler the file-picker fires."""
+    page.set_input_files("#file-picker", xyz_path)
+    page.wait_for_function(
+        f"() => document.querySelectorAll('#atom-list-body tr').length"
+        f" === {int(expected_atoms)}"
+    )
 
 
 # --------------------------------------------------------------------- #
@@ -572,6 +581,149 @@ def test_apply_add_atom_appends_h_at_offset(
 # --------------------------------------------------------------------- #
 #  Static-asset sanity                                                  #
 # --------------------------------------------------------------------- #
+
+
+def test_selection_info_table_shows_atom_details(
+        page, flask_server, water_xyz_file):
+    """When an atom is selected, the right-panel ``Selection`` block
+    shows a per-atom info row with index, element, atom name, residue,
+    and (x, y, z) coordinates.  No selection -> table hidden."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    info_table = page.locator("#selection-info")
+    assert info_table.is_hidden(), "info table should hide when no selection"
+
+    page.locator("#atom-list-body tr").nth(1).click()  # H1 at (0.957, 0, 0)
+    info_table.wait_for(state="visible")
+    rows = page.locator("#selection-info-body tr")
+    assert rows.count() == 1
+    cells = rows.first.locator("td")
+    assert cells.nth(0).inner_text() == "1"          # index
+    assert cells.nth(1).inner_text() == "H"          # element
+    # Coordinates -- formatted as f"{v:.3f}".
+    assert cells.nth(4).inner_text() == "0.957"
+    assert cells.nth(5).inner_text() == "0.000"
+    assert cells.nth(6).inner_text() == "0.000"
+
+
+def test_axes_overlay_drawn_when_show_axes_checked(
+        page, flask_server, water_xyz_file):
+    """Three axis arrows are drawn at the world origin when the
+    ``Show xyz axes`` checkbox is checked (default).  Verify by
+    counting shapes the test hook can see; toggling the checkbox
+    adds/removes them."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    # The default state checks the box.
+    assert page.locator("#show-axes").is_checked()
+    n_shapes = page.evaluate("""() => {
+        const v = window.__molbuilder_modify_test.getViewer();
+        return v.getModel ? (v.shapes ? v.shapes.length : 0) : 0;
+    }""")
+    assert n_shapes >= 3, f"expected >= 3 axis arrows; got {n_shapes}"
+    # Uncheck -> shapes drop.
+    page.locator("#show-axes").uncheck()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getViewer().shapes.length === 0"
+    )
+    # Re-check -> back to 3.
+    page.locator("#show-axes").check()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getViewer().shapes.length === 3"
+    )
+
+
+# --------------------------------------------------------------------- #
+#  M4: anchor-pair selection + Apply Orient                             #
+# --------------------------------------------------------------------- #
+
+
+def test_orient_button_enabled_only_with_two_anchors(
+        page, flask_server, water_xyz_file):
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    btn = page.locator("#orient-apply")
+    assert btn.is_disabled(), "no selection -> Orient disabled"
+    page.locator("#atom-list-body tr").nth(0).click()
+    assert btn.is_disabled(), "one selection -> still disabled"
+    page.locator("#atom-list-body tr").nth(2).click(modifiers=["Shift"])
+    assert btn.is_enabled(), "two selections -> Orient enabled"
+    # Anchor readout reflects both atoms.
+    readout = page.locator("#orient-anchor-readout").inner_text()
+    assert "#0" in readout and "#2" in readout
+    # Adding a third disables again.
+    page.locator("#atom-list-body tr").nth(1).click(modifiers=["Shift"])
+    assert btn.is_disabled(), "three selections -> Orient disabled"
+
+
+def test_apply_orient_lays_anchor_pair_along_z(
+        page, flask_server, tmp_path):
+    """Load a 4-atom diagonal chain, pick atoms 0 and 3, click Apply
+    Orient -> the resulting xyz has atoms 0 and 3 along the z axis."""
+    diag_xyz = tmp_path / "diag.xyz"
+    diag_xyz.write_text(
+        "4\ndiag\nC 0 0 0\nC 1 1 0\nC 2 2 0\nC 3 3 0\n"
+    )
+    errors = _open_modify(page, flask_server)
+    _load_file(page, str(diag_xyz), expected_atoms=4)
+
+    page.locator("#atom-list-body tr").nth(0).click()
+    page.locator("#atom-list-body tr").nth(3).click(modifiers=["Shift"])
+    page.locator("#orient-apply").click()
+    # Wait for the response to land + UI to settle.
+    page.wait_for_function(
+        "() => document.querySelector('#edit-status') &&"
+        " /Oriented/.test(document.querySelector('#edit-status').textContent)"
+    )
+    # After orient, atoms 0 and 3 must lie on the z axis (x ~ 0, y ~ 0).
+    coords = page.evaluate("""() => {
+        const v = window.__molbuilder_modify_test.getViewer();
+        return v.selectedAtoms({}).map(a => [a.x, a.y, a.z]);
+    }""")
+    assert abs(coords[0][0]) < 1e-3 and abs(coords[0][1]) < 1e-3, coords[0]
+    assert abs(coords[3][0]) < 1e-3 and abs(coords[3][1]) < 1e-3, coords[3]
+    assert errors == [], f"JS errors during orient: {errors}"
+
+
+# --------------------------------------------------------------------- #
+#  M4: Rotate around axis                                               #
+# --------------------------------------------------------------------- #
+
+
+def test_rotate_button_enabled_when_structure_loaded(
+        page, flask_server, water_xyz_file):
+    """Rotate doesn't need a selection; just a structure and a
+    non-zero angle."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    assert page.locator("#rotate-apply").is_enabled()
+
+
+def test_apply_rotate_z_90(
+        page, flask_server, tmp_path):
+    """+90° z-rotation maps atom 1 from (1, 1, 0) to (-1, 1, 0)."""
+    diag_xyz = tmp_path / "diag.xyz"
+    diag_xyz.write_text("4\ndiag\nC 0 0 0\nC 1 1 0\nC 2 2 0\nC 3 3 0\n")
+    _open_modify(page, flask_server)
+    _load_file(page, str(diag_xyz), expected_atoms=4)
+
+    # Set the rotate angle slider to 90 degrees.
+    page.locator("#rotate-angle").evaluate(
+        "(el) => { el.value = '90'; "
+        "el.dispatchEvent(new Event('input', {bubbles: true})); }"
+    )
+    page.locator("#rotate-apply").click()
+    page.wait_for_function(
+        "() => /Rotated/.test(document.querySelector('#edit-status').textContent)"
+    )
+    coords = page.evaluate("""() => {
+        const v = window.__molbuilder_modify_test.getViewer();
+        return v.selectedAtoms({}).map(a => [a.x, a.y, a.z]);
+    }""")
+    # atom 1 was at (1, 1, 0) -> should be (-1, 1, 0) after +90° rotation.
+    assert abs(coords[1][0] - (-1.0)) < 1e-3, coords[1]
+    assert abs(coords[1][1] - 1.0)    < 1e-3, coords[1]
+    assert abs(coords[1][2] - 0.0)    < 1e-3, coords[1]
 
 
 def test_modify_page_resources_load_with_200(page, flask_server):
