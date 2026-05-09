@@ -200,25 +200,30 @@ def test_fdf_response_includes_validation_issues(web_client, peptide_xyz):
 
 def test_both_pages_serve_with_shared_tab_nav(web_client):
     """The unified UI puts a shared tab nav at the top of every page so
-    a user can flip between Build (/) and Watch (/watch) without
-    leaving the app.  The active tab matches the current page; both
-    tab links point at the canonical paths."""
-    for path, active in [("/", "Build"), ("/watch", "Watch")]:
+    a user can flip between Build (/), Watch (/watch), and Modify
+    (/modify) without leaving the app.  The active tab matches the
+    current page; the tab links point at the canonical paths."""
+    import re
+    for path, active_href in [
+        ("/",       "/"),
+        ("/watch",  "/watch"),
+        ("/modify", "/modify"),
+    ]:
         r = web_client.get(path)
         assert r.status_code == 200, f"{path} returned {r.status_code}"
         html = r.get_data(as_text=True)
-        # Both tab links present
-        assert 'href="/"' in html, f"{path}: missing Build tab link"
-        assert 'href="/watch"' in html, f"{path}: missing Watch tab link"
-        # Active state on the current page
-        if active == "Build":
-            assert 'href="/" class="app-tab is-active"' in html, (
-                "/ should mark Build active"
-            )
-        else:
-            assert 'href="/watch" class="app-tab is-active"' in html, (
-                "/watch should mark Watch active"
-            )
+        # Every tab link is present on every page (shared nav).
+        assert 'href="/"'       in html, f"{path}: missing Build tab link"
+        assert 'href="/watch"'  in html, f"{path}: missing Watch tab link"
+        assert 'href="/modify"' in html, f"{path}: missing Modify tab link"
+        # The current page's link carries is-active.  Match flexibly
+        # so whitespace alignment in the template can change without
+        # breaking the test.
+        m = re.search(
+            rf'<a[^>]*href="{re.escape(active_href)}"[^>]*class="[^"]*is-active[^"]*"',
+            html,
+        )
+        assert m, f"{path}: link to {active_href} missing is-active"
 
 
 # --------------------------------------------------------------------- #
@@ -647,3 +652,110 @@ def test_pyscf_missing_xyz_returns_error(web_client):
     r = web_client.post("/api/build/pyscf", json={"params": {}})
     body = r.get_json()
     assert body["ok"] is False
+
+
+# --------------------------------------------------------------------- #
+#  Modify tab (M2 -- read-only inspection skeleton)                     #
+# --------------------------------------------------------------------- #
+
+
+def test_modify_page_loads(web_client):
+    """``GET /modify`` returns 200 with the M2 page contents.  M2 is
+    read-only inspection; the edit ops land in M3+."""
+    r = web_client.get("/modify")
+    assert r.status_code == 200
+    body = r.data.decode()
+    for needle in (
+        "molbuilder",
+        # The page-title and tagline are Modify-specific.
+        "modify a structure",
+        # Static asset paths the template references.
+        "modify/style.css",
+        "modify/viewer.js",
+        # Three-pane scaffolding the JS targets by id.
+        'id="atom-list-body"',
+        'id="atom-list"',
+        'id="viewer"',
+        'id="file-picker"',
+        'id="load-btn"',
+        'id="rep"',
+        'id="show-indices"',
+        'id="clear-selection"',
+        'id="selection-readout"',
+        # Future-op placeholders document what M3-M5 fill in.
+        "Delete (M3)",
+        "Orient along axis (M4)",
+        "Electrode panel (M5)",
+    ):
+        assert needle in body, f"missing {needle!r} in /modify HTML"
+
+
+def test_modify_static_assets_load(web_client):
+    """The ``modify/`` static dir must serve the new CSS + JS files."""
+    css = web_client.get("/static/modify/style.css")
+    assert css.status_code == 200
+    assert b".modify-grid" in css.data
+    js = web_client.get("/static/modify/viewer.js")
+    assert js.status_code == 200
+    body = js.data.decode()
+    # Sanity-check the JS hits /api/build/load (M2's only backend dep)
+    # and registers the click hook for the viewer ↔ list sync.
+    assert "/api/build/load" in body
+    assert "setClickable"    in body
+    assert "rebuildAtomList" in body
+
+
+def test_all_three_pages_link_to_modify_tab(web_client):
+    """Every top-level page (/, /watch, /modify) must include the
+    Modify tab link in the shared ``app-tabs`` nav.  Spec: this is the
+    same shared-nav block in three templates -- if one drifts, the UI
+    becomes inconsistent."""
+    for path in ("/", "/watch", "/modify"):
+        body = web_client.get(path).data.decode()
+        assert 'href="/modify"' in body, (
+            f"{path!r} doesn't link to /modify in its app-tabs nav"
+        )
+        assert 'href="/"' in body
+        assert 'href="/watch"' in body
+
+
+def test_modify_page_marks_itself_active_in_tabs(web_client):
+    """The Modify tab link on /modify must carry the is-active class
+    (matches /'s Build link and /watch's Watch link)."""
+    body = web_client.get("/modify").data.decode()
+    # The active link must be the /modify one specifically.
+    import re
+    m = re.search(
+        r'<a[^>]*href="/modify"[^>]*class="[^"]*is-active[^"]*"',
+        body,
+    )
+    assert m, "Modify tab link on /modify is missing is-active"
+
+
+# --------------------------------------------------------------------- #
+#  /api/build/load extended response (atom_names / residue_ids / ...)   #
+#  -- needed by the Modify tab's atom list, surfaced from Structure's   #
+#  PDB metadata.                                                        #
+# --------------------------------------------------------------------- #
+
+
+def test_build_load_response_includes_atom_metadata(web_client):
+    """``POST /api/build/load`` must return atom_names / residue_ids /
+    residue_names / chain_ids alongside elements -- the Modify tab's
+    atom list (M2) reads these to populate per-row labels."""
+    xyz = "3\nh2o\nO 0 0 0\nH 0.957 0 0\nH -0.24 0.927 0\n"
+    r = web_client.post(
+        "/api/build/load",
+        data={"file": (io.BytesIO(xyz.encode()), "h2o.xyz")},
+        content_type="multipart/form-data",
+    )
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["n_atoms"] == 3
+    # All four metadata lists are present and length-matched.
+    for k in ("atom_names", "residue_ids", "residue_names", "chain_ids"):
+        assert k in body, f"missing {k!r}"
+        assert isinstance(body[k], list), f"{k!r} is not a list"
+        assert len(body[k]) == 3, (
+            f"{k!r} has {len(body[k])} entries, expected 3"
+        )

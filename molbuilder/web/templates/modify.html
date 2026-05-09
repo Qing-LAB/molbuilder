@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>molbuilder &mdash; modify a structure</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='modify/style.css') }}">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js"></script>
+<style>
+/* Shared menu bar between Build (/), Watch (/watch), and Modify
+   (this page, /modify).  Identical block in templates/index.html
+   and templates/watch.html -- if you change one, change all three
+   (or extract to a shared .css). */
+.app-tabs {
+  display: flex; align-items: stretch;
+  background: #141414; border-bottom: 1px solid #2a2a2a;
+  font: 15px/1.4 system-ui, sans-serif;
+}
+.app-tab {
+  padding: 0.75rem 1.6rem;
+  color: #777;
+  font-weight: 500;
+  text-decoration: none;
+  border-bottom: 4px solid transparent;
+  transition: color 0.12s, background 0.12s, border-color 0.12s;
+}
+.app-tab:hover { color: #ddd; background: #1c1c1c; }
+.app-tab.is-active {
+  color: #fff;
+  background: #2a2a2a;
+  border-bottom-color: #4a9eff;
+  font-weight: 700;
+}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>molbuilder</h1>
+  <p class="tagline">
+    Modify a built or loaded structure &mdash; inspect atoms, prepare
+    junctions, and hand the result back to the Build tab.
+  </p>
+</header>
+
+<nav class="app-tabs" role="tablist" aria-label="molbuilder sections">
+  <a href="/"       class="app-tab"            role="tab">Build</a>
+  <a href="/watch"  class="app-tab"            role="tab">Watch</a>
+  <a href="/modify" class="app-tab is-active"  role="tab" aria-current="page">Modify</a>
+</nav>
+
+<!-- ============================================================ -->
+<!--  M2 layout (read-only inspection):                            -->
+<!--    LOADER ROW: file picker + status                           -->
+<!--    THREE COLUMNS:                                             -->
+<!--      LEFT   atom list (click-to-highlight, multi-select       -->
+<!--             scaffolding for M4 anchor-pair selection)         -->
+<!--      MIDDLE 3Dmol viewer (click atom -> select; bond hover    -->
+<!--             will show distance in M3)                         -->
+<!--      RIGHT  edit panel (placeholder; M3-M5 fill in delete /   -->
+<!--             add / orient / electrode panels)                  -->
+<!-- ============================================================ -->
+
+<section class="loader-bar">
+  <div class="loader">
+    <label for="file-picker">Structure:</label>
+    <input id="file-picker" type="file"
+           accept=".xyz,.pdb,chemical/x-xyz,chemical/x-pdb,text/plain">
+    <button id="load-btn">Load</button>
+    <span id="status" class="status">No structure loaded.</span>
+  </div>
+</section>
+
+<main class="modify-grid">
+
+  <!-- LEFT: Atom list -->
+  <aside class="card atom-list-card">
+    <header class="card-header">
+      <h2>Atoms</h2>
+      <span id="atom-count" class="muted">0 atoms</span>
+    </header>
+    <div class="atom-list-wrap">
+      <table id="atom-list" class="atom-list" aria-label="Atom list">
+        <thead>
+          <tr>
+            <th class="col-idx">#</th>
+            <th class="col-el">Element</th>
+            <th class="col-name">Name</th>
+            <th class="col-res">Residue</th>
+          </tr>
+        </thead>
+        <tbody id="atom-list-body">
+          <!-- One <tr data-atom-index="N"> per atom; populated by
+               viewer.js after a structure is loaded. -->
+        </tbody>
+      </table>
+    </div>
+    <p class="hint">
+      Click a row to highlight that atom in the viewer (and vice versa).
+      Shift-click to multi-select &mdash; M4 will use the selection as
+      an anchor pair for orient-along-z.
+    </p>
+  </aside>
+
+  <!-- MIDDLE: 3D viewer -->
+  <section class="card viewer-card">
+    <header class="card-header">
+      <h2>Viewer</h2>
+      <span id="title-readout" class="muted"></span>
+    </header>
+    <div id="viewer" class="viewer"></div>
+    <div class="viewer-controls">
+      <label>Style
+        <select id="rep">
+          <option value="stick" selected>stick</option>
+          <option value="ballstick">ball &amp; stick</option>
+          <option value="sphere">sphere (CPK)</option>
+          <option value="line">line</option>
+        </select>
+      </label>
+      <label class="check">
+        <input type="checkbox" id="show-indices">
+        Show atom indices
+      </label>
+      <button id="clear-selection" class="ghost">Clear selection</button>
+    </div>
+  </section>
+
+  <!-- RIGHT: Edit panel placeholder -->
+  <aside class="card edit-card">
+    <header class="card-header">
+      <h2>Edit</h2>
+      <span class="muted">M2 read-only</span>
+    </header>
+    <div class="edit-panel">
+      <p class="hint">
+        The edit panel lands in <strong>M3</strong> &mdash; delete,
+        add-with-sliders, orient-along-z, and the electrode panel
+        (<strong>M5</strong>).  M2 is read-only inspection so the
+        wiring between the atom list and the viewer can be verified
+        in isolation.
+      </p>
+      <fieldset class="future-op">
+        <legend>Selection</legend>
+        <div id="selection-readout" class="readout">No atoms selected.</div>
+      </fieldset>
+      <fieldset class="future-op" disabled>
+        <legend>Delete (M3)</legend>
+        <button class="full-btn" disabled>Delete selected</button>
+      </fieldset>
+      <fieldset class="future-op" disabled>
+        <legend>Orient along axis (M4)</legend>
+        <p class="hint">Pick two atoms; the orient operation rotates the
+        structure so the anchor pair lies along z.</p>
+      </fieldset>
+      <fieldset class="future-op" disabled>
+        <legend>Electrode panel (M5)</legend>
+        <p class="hint">FCC slab (Au / Ag / Cu / Ni / Pt / Pd) on
+        either or both sides of the molecule.</p>
+      </fieldset>
+    </div>
+  </aside>
+
+</main>
+
+<footer>
+  <p>molbuilder &middot; <a href="/api/health">/api/health</a> &middot;
+     spec: <code>docs/spec/modify-tab.md</code></p>
+</footer>
+
+<!-- mol-style.js is the shared 3Dmol style helper used by Build /
+     Watch viewers; the Modify viewer reuses it for visual consistency. -->
+<script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>
+<script src="{{ url_for('static', filename='modify/viewer.js') }}"></script>
+</body>
+</html>

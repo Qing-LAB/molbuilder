@@ -1,16 +1,21 @@
 """Flask app factory for the molbuilder UI.
 
-The UI has two halves served by one process:
+The UI has three halves served by one process:
 
-  * Build  at  ``GET /``         (build page; routes under
-                                  ``/api/build/*`` -- see
-                                  ``web/blueprints/build.py``)
-  * Watch  at  ``GET /watch``    (watch page; routes under
-                                  ``/api/watch/*`` -- see
-                                  ``web/blueprints/watch.py``)
+  * Build   at  ``GET /``         (build page; routes under
+                                   ``/api/build/*`` -- see
+                                   ``web/blueprints/build.py``)
+  * Watch   at  ``GET /watch``    (watch page; routes under
+                                   ``/api/watch/*`` -- see
+                                   ``web/blueprints/watch.py``)
+  * Modify  at  ``GET /modify``   (modify page; M2 = read-only
+                                   inspection.  Edit ops + their
+                                   ``/api/modify/*`` routes land
+                                   in M3-M5 -- see
+                                   ``docs/spec/modify-tab.md``.)
 
-Two top-level routes stay on the app rather than on either blueprint
-because both halves consume them:
+Two top-level routes stay on the app rather than on any blueprint
+because all three halves consume them:
 
   * ``GET /api/health``    liveness
   * ``GET /api/backends``  available builder backends (used by both
@@ -50,6 +55,14 @@ def create_app() -> Flask:
     @app.route("/")
     def index():
         return render_template("index.html")
+
+    @app.route("/modify")
+    def modify_page():
+        # M2: read-only inspection (load XYZ/PDB, atom list, viewer
+        # click-sync).  M3-M5 add edits, anchor-pair selection, and
+        # the electrode panel.  The shared app-tabs nav lives in the
+        # template just like /watch -- no business logic here.
+        return render_template("modify.html")
 
     @app.route("/api/health")
     def api_health():

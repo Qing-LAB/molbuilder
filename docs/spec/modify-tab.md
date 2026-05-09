@@ -4,7 +4,7 @@
 > Code, tests, and the UI must follow this spec; if any of them diverge,
 > update this document in the same commit.  Pointer in `docs/design.md`.
 
-Status (2026-05-08): M1 done (Python API + CLI + tests); M2-M5 not yet started.
+Status (2026-05-08): M1 done (Python API + CLI + tests); M2 done (UI skeleton: /modify route, atom list ↔ viewer click sync, file load via /api/build/load); M3-M5 not yet started.
 
 ---
 
@@ -231,12 +231,21 @@ molbuilder/
 ├── cli.py                             ◄── new "modify" subcommand (M1)
 │
 ├── web/
+│   ├── app.py                         ◄── route /modify -> render modify.html
 │   ├── blueprints/
 │   │   └── modify.py                  ◄── /api/modify/* routes (M3)
 │   ├── templates/
-│   │   └── index.html                 ◄── new <div id="tab-modify">
+│   │   └── modify.html                ◄── new top-level page (M2),
+│   │                                       mirrors templates/watch.html
+│   │                                       shape; the shared app-tabs
+│   │                                       nav is duplicated across
+│   │                                       index.html / watch.html /
+│   │                                       modify.html so each page is
+│   │                                       independently routable.
 │   └── static/
-│       └── modify.js                  ◄── Modify tab UI logic (M2-M5)
+│       └── modify/
+│           ├── style.css               ◄── three-pane layout (M2)
+│           └── viewer.js               ◄── Modify tab UI logic (M2-M5)
 │
 tests/
 ├── test_modify.py                     ◄── unit tests per op (M1)
@@ -252,7 +261,7 @@ web UI as a portal, not a separate product).
 | Milestone | Scope | Deliverable | Status |
 |---|---|---|---|
 | **M1** | Pure functions + CLI + tests.  No UI. | `molbuilder/modify.py`, `molbuilder modify` CLI subcommand, `tests/test_modify*.py`.  End-to-end: build a Au(111)-bdt-Au(111) junction from a relaxed BDT XYZ via CLI. | **done (2026-05-08)** |
-| **M2** | UI skeleton: tab in shared nav, file load, atom list, click-to-select mirroring viewer ↔ list. | New `static/modify.js`, `tab-modify` panel in `index.html`.  No edits possible yet. | not started |
+| **M2** | UI skeleton: tab in shared nav, file load, atom list, click-to-select mirroring viewer ↔ list. | New `static/modify/{style.css,viewer.js}`, new `templates/modify.html` served at `/modify`, third "Modify" tab on every shared-nav block.  Reuses `/api/build/load` for the file-upload step.  No edits possible yet. | **done (2026-05-08)** |
 | **M3** | Edit ops wired: delete, add-with-sliders, live distance.  `/api/modify/atom_op` endpoint. | `web/blueprints/modify.py`; sliders + Apply buttons. | not started |
 | **M4** | Anchor-pair selection + orient-along-z. | UI for picking the second anchor; `/api/modify/orient` endpoint. | not started |
 | **M5** | Electrode panel (one panel per stack -- size, gap, offset sliders, orthogonal toggle when meaningful, symmetric/per-side mode); Send-to-Build handoff. | `/api/modify/electrode`; cross-tab handoff plumbing. | not started |

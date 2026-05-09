@@ -234,6 +234,14 @@ def api_build_load():
         "summary": struct.summary(),
         "title": struct.title or (filename or fmt),
         "elements": list(struct.elements),
+        # Per-atom PDB metadata for downstream consumers (e.g. the
+        # Modify tab's atom list, M2).  The fields are always present
+        # on Structure (defaults filled in __post_init__) so JSON
+        # callers don't need null-check branches.
+        "atom_names":    list(struct.atom_names),
+        "residue_ids":   list(struct.residue_ids),
+        "residue_names": list(struct.residue_names),
+        "chain_ids":     list(struct.chain_ids),
         "source_format": fmt,
     })
 
