@@ -4,7 +4,7 @@
 > Code, tests, and the UI must follow this spec; if any of them diverge,
 > update this document in the same commit.  Pointer in `docs/design.md`.
 
-Status (2026-05-08): M1 done (Python API + CLI + tests); M2 done (UI skeleton: /modify route, atom list ↔ viewer click sync, file load via /api/build/load); M3-M5 not yet started.
+Status (2026-05-08): M1 done (Python API + CLI + tests); M2 done (UI skeleton: /modify route, atom list ↔ viewer click sync, file load via /api/build/load); M3 done (delete + add-atom edit ops wired via /api/modify/* endpoints); M4-M5 not yet started.
 
 ---
 
@@ -262,7 +262,7 @@ web UI as a portal, not a separate product).
 |---|---|---|---|
 | **M1** | Pure functions + CLI + tests.  No UI. | `molbuilder/modify.py`, `molbuilder modify` CLI subcommand, `tests/test_modify*.py`.  End-to-end: build a Au(111)-bdt-Au(111) junction from a relaxed BDT XYZ via CLI. | **done (2026-05-08)** |
 | **M2** | UI skeleton: tab in shared nav, file load, atom list, click-to-select mirroring viewer ↔ list. | New `static/modify/{style.css,viewer.js}`, new `templates/modify.html` served at `/modify`, third "Modify" tab on every shared-nav block.  Reuses `/api/build/load` for the file-upload step.  No edits possible yet. | **done (2026-05-08)** |
-| **M3** | Edit ops wired: delete, add-with-sliders, live distance.  `/api/modify/atom_op` endpoint. | `web/blueprints/modify.py`; sliders + Apply buttons. | not started |
+| **M3** | Edit ops wired: delete, add-with-sliders, live distance.  `/api/modify/{load,delete,add_atom}` endpoints. | `web/blueprints/modify.py`; Delete and Add-atom fieldsets in modify.html with element input + dx/dy/dz sliders + live `|offset|` readout. | **done (2026-05-08)** |
 | **M4** | Anchor-pair selection + orient-along-z. | UI for picking the second anchor; `/api/modify/orient` endpoint. | not started |
 | **M5** | Electrode panel (one panel per stack -- size, gap, offset sliders, orthogonal toggle when meaningful, symmetric/per-side mode); Send-to-Build handoff. | `/api/modify/electrode`; cross-tab handoff plumbing. | not started |
 

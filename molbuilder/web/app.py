@@ -47,10 +47,12 @@ def create_app() -> Flask:
     # self-contained (handlers, helpers, validation).  Both blueprints
     # use full route paths in their decorators (no url_prefix) -- the
     # paths read clearly at the call site.
-    from .blueprints.build import bp as build_bp
-    from .blueprints.watch import bp as watch_bp
+    from .blueprints.build  import bp as build_bp
+    from .blueprints.watch  import bp as watch_bp
+    from .blueprints.modify import bp as modify_bp
     app.register_blueprint(build_bp)
     app.register_blueprint(watch_bp)
+    app.register_blueprint(modify_bp)
 
     @app.route("/")
     def index():

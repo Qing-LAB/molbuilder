@@ -682,8 +682,10 @@ def test_modify_page_loads(web_client):
         'id="show-indices"',
         'id="clear-selection"',
         'id="selection-readout"',
-        # Future-op placeholders document what M3-M5 fill in.
-        "Delete (M3)",
+        # M3 op controls (delete + add-with-sliders) are real now.
+        'id="delete-apply"',
+        'id="add-apply"',
+        # Future-op placeholders document what M4-M5 still fill in.
         "Orient along axis (M4)",
         "Electrode panel (M5)",
     ):
@@ -759,3 +761,212 @@ def test_build_load_response_includes_atom_metadata(web_client):
         assert len(body[k]) == 3, (
             f"{k!r} has {len(body[k])} entries, expected 3"
         )
+
+
+# --------------------------------------------------------------------- #
+#  Modify-tab edit-op endpoints (M3).  Body shape carries the canonical #
+#  state (xyz + atom_names / residue_ids / residue_names / chain_ids)   #
+#  alongside op-specific args; response shape mirrors /api/build/load + #
+#  adds an issues array.                                                #
+# --------------------------------------------------------------------- #
+
+
+_H2O_XYZ = "3\nh2o\nO 0 0 0\nH 0.957 0 0\nH -0.24 0.927 0\n"
+
+
+def test_modify_load_validates_and_canonicalises(web_client):
+    r = web_client.post("/api/modify/load", json={"xyz": _H2O_XYZ})
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["n_atoms"] == 3
+    assert body["elements"] == ["O", "H", "H"]
+    # Canonical re-export round-trips through Structure.from_xyz, so the
+    # atom count + first/last positions match the input.
+    out_xyz = body["xyz"]
+    assert "3" in out_xyz.splitlines()[0]
+    # Issues array is always present (even when empty).
+    assert isinstance(body.get("issues"), list)
+
+
+def test_modify_load_rejects_empty_xyz(web_client):
+    r = web_client.post("/api/modify/load", json={"xyz": ""})
+    assert r.status_code == 400
+    body = r.get_json()
+    assert body["ok"] is False
+    assert "xyz" in body["error"].lower()
+
+
+def test_modify_delete_drops_listed_indices(web_client):
+    r = web_client.post("/api/modify/delete", json={
+        "xyz": _H2O_XYZ,
+        "indices": [1, 2],   # both H atoms
+    })
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["n_atoms"] == 1
+    assert body["elements"] == ["O"]
+
+
+def test_modify_delete_silently_ignores_out_of_range(web_client):
+    """Matches molbuilder.modify.delete_atoms behaviour."""
+    r = web_client.post("/api/modify/delete", json={
+        "xyz": _H2O_XYZ,
+        "indices": [99, -1, 0],   # only 0 is in range
+    })
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["n_atoms"] == 2     # dropped O, kept the two H
+
+
+def test_modify_delete_rejects_non_int_indices(web_client):
+    r = web_client.post("/api/modify/delete", json={
+        "xyz": _H2O_XYZ,
+        "indices": ["a", "b"],
+    })
+    assert r.status_code == 400
+    assert r.get_json()["ok"] is False
+
+
+def test_modify_add_atom_appends_at_offset(web_client):
+    r = web_client.post("/api/modify/add_atom", json={
+        "xyz": _H2O_XYZ,
+        "element": "H",
+        "anchor_index": 0,            # the O
+        "offset": [0.0, 0.0, 1.5],
+    })
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["n_atoms"] == 4
+    assert body["elements"][-1] == "H"
+    # New atom lands in a fresh residue named MOD (default).
+    assert body["residue_names"][-1] == "MOD"
+
+
+def test_modify_add_atom_explicit_residue_id_groups_atoms(web_client):
+    """The web layer surfaces SP-E (add_atom's optional residue_id) so a
+    UI builder can land multiple appended atoms in one residue."""
+    r = web_client.post("/api/modify/add_atom", json={
+        "xyz": _H2O_XYZ,
+        "element": "C",
+        "anchor_index": 0,
+        "offset": [1.5, 0, 0],
+        "residue_id": 99,
+    })
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["residue_ids"][-1] == 99
+
+
+def test_modify_add_atom_rejects_bad_anchor(web_client):
+    r = web_client.post("/api/modify/add_atom", json={
+        "xyz": _H2O_XYZ,
+        "element": "H",
+        "anchor_index": 99,
+        "offset": [0, 0, 1],
+    })
+    assert r.status_code == 400
+    body = r.get_json()
+    assert body["ok"] is False
+    assert "anchor_index" in body["error"]
+
+
+def test_modify_add_atom_rejects_missing_offset(web_client):
+    r = web_client.post("/api/modify/add_atom", json={
+        "xyz": _H2O_XYZ,
+        "element": "H",
+        "anchor_index": 0,
+        # offset missing
+    })
+    assert r.status_code == 400
+    assert "offset" in r.get_json()["error"]
+
+
+def test_modify_endpoint_chain_preserves_metadata(web_client):
+    """Spec invariant: per-atom metadata round-trips through every op
+    when the client passes it back in the body.  Load -> add_atom ->
+    delete keeps the atom_names / residue_ids carried alongside xyz."""
+    # 1. Initial load -- supply explicit per-atom metadata.
+    r1 = web_client.post("/api/modify/load", json={
+        "xyz": _H2O_XYZ,
+        "atom_names":    ["OW", "HW1", "HW2"],
+        "residue_ids":   [7, 7, 7],
+        "residue_names": ["WAT", "WAT", "WAT"],
+        "chain_ids":     ["B", "B", "B"],
+    })
+    s1 = r1.get_json()
+    assert s1["atom_names"]  == ["OW", "HW1", "HW2"]
+    assert s1["residue_ids"] == [7, 7, 7]
+    # 2. Add an atom; the metadata for the original 3 atoms must
+    # survive (Structure preserves through add_atom).
+    r2 = web_client.post("/api/modify/add_atom", json={
+        "xyz":           s1["xyz"],
+        "atom_names":    s1["atom_names"],
+        "residue_ids":   s1["residue_ids"],
+        "residue_names": s1["residue_names"],
+        "chain_ids":     s1["chain_ids"],
+        "element":       "H",
+        "anchor_index":  0,
+        "offset":        [0, 0, 1.5],
+    })
+    s2 = r2.get_json()
+    assert s2["n_atoms"] == 4
+    assert s2["atom_names"][:3]    == ["OW", "HW1", "HW2"]
+    assert s2["residue_ids"][:3]   == [7, 7, 7]
+    assert s2["residue_names"][:3] == ["WAT", "WAT", "WAT"]
+    # 3. Delete the new atom; metadata for the surviving three is
+    # still intact.
+    r3 = web_client.post("/api/modify/delete", json={
+        "xyz":           s2["xyz"],
+        "atom_names":    s2["atom_names"],
+        "residue_ids":   s2["residue_ids"],
+        "residue_names": s2["residue_names"],
+        "chain_ids":     s2["chain_ids"],
+        "indices":       [3],
+    })
+    s3 = r3.get_json()
+    assert s3["n_atoms"] == 3
+    assert s3["atom_names"]    == ["OW", "HW1", "HW2"]
+    assert s3["residue_names"] == ["WAT", "WAT", "WAT"]
+
+
+# --------------------------------------------------------------------- #
+#  M3 UI scaffolding lives in modify.html / static/modify/viewer.js.    #
+# --------------------------------------------------------------------- #
+
+
+def test_modify_page_has_m3_edit_controls(web_client):
+    """The Edit panel must expose the M3 op controls (delete button,
+    add-atom element input, three offset sliders + live distance
+    readout).  M4 / M5 placeholders remain disabled."""
+    body = web_client.get("/modify").data.decode()
+    for needle in (
+        # Delete
+        'id="delete-apply"',
+        # Add atom
+        'id="add-element"',
+        'id="add-anchor-readout"',
+        'id="add-dx"',     'id="add-dx-val"',
+        'id="add-dy"',     'id="add-dy-val"',
+        'id="add-dz"',     'id="add-dz-val"',
+        'id="add-distance"',
+        'id="add-apply"',
+        # The future-op fieldsets (M4, M5) keep their placeholder text.
+        "Orient along axis (M4)",
+        "Electrode panel (M5)",
+    ):
+        assert needle in body, f"missing {needle!r} in /modify HTML"
+
+
+def test_modify_viewer_js_wires_delete_and_add(web_client):
+    """The Modify viewer.js must call the M3 endpoints and update the
+    live |offset| readout client-side."""
+    js = web_client.get("/static/modify/viewer.js").data.decode()
+    for needle in (
+        "/api/modify/delete",
+        "/api/modify/add_atom",
+        "applyDelete",
+        "applyAddAtom",
+        "refreshAddDistance",
+        "currentStateBody",
+    ):
+        assert needle in js, f"missing {needle!r} in modify viewer.js"

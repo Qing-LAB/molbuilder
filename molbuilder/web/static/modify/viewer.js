@@ -161,7 +161,28 @@
             const parts = sel.map((i) => `#${i} ${state.elements[i]}`);
             out.textContent = parts.join(", ");
         }
-        // 3. Viewer: re-style so the highlight overlay reflects state.
+        // 3. Edit-panel button enablement (M3).
+        //    - Delete: any selection at all.
+        //    - Add atom: exactly one anchor (single-select).
+        const deleteBtn = $("delete-apply");
+        if (deleteBtn) deleteBtn.disabled = sel.length === 0;
+        const addBtn = $("add-apply");
+        const anchorReadout = $("add-anchor-readout");
+        if (addBtn && anchorReadout) {
+            if (sel.length === 1) {
+                const a = sel[0];
+                addBtn.disabled = false;
+                anchorReadout.textContent =
+                    `Anchor: #${a} ${state.elements[a]}`;
+            } else {
+                addBtn.disabled = true;
+                anchorReadout.textContent =
+                    sel.length === 0
+                        ? "Anchor: (none)"
+                        : "Anchor: pick exactly one atom";
+            }
+        }
+        // 4. Viewer: re-style so the highlight overlay reflects state.
         applyStyle();
     }
 
@@ -280,6 +301,106 @@
     }
 
     // --------------------------------------------------------------- //
+    //  Modify ops (M3).  Each op POSTs the current canonical state +  //
+    //  op-specific args to /api/modify/<op>; on success the response   //
+    //  IS the next canonical state, so we just feed it through         //
+    //  applyStructure() and the UI updates atomically.                 //
+    // --------------------------------------------------------------- //
+    function currentStateBody() {
+        // Bundle the canonical state for an /api/modify/* request.  We
+        // ALWAYS send the full metadata bundle so the new structure
+        // returned by the server preserves it (xyz alone would lose
+        // atom_names / residue_ids -- per spec § 5).
+        return {
+            xyz:           state.xyz || "",
+            atom_names:    state.atom_names,
+            residue_ids:   state.residue_ids,
+            residue_names: state.residue_names,
+            chain_ids:     state.chain_ids,
+            title:         state.title,
+        };
+    }
+
+    function setEditStatus(msg, kind = null) {
+        const el = $("edit-status");
+        if (!el) return;
+        el.textContent = msg;
+        el.className = "muted" + (kind ? ` status-${kind}` : "");
+    }
+
+    async function postOp(path, extraBody, label) {
+        const body = Object.assign(currentStateBody(), extraBody);
+        let r;
+        try {
+            r = await fetch(path, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body),
+            }).then((x) => x.json());
+        } catch (e) {
+            setEditStatus(`Network error: ${e.message}`, "error");
+            return null;
+        }
+        if (!r || !r.ok) {
+            setEditStatus(r?.error || `${label} failed.`, "error");
+            return null;
+        }
+        // Success: replace the state with the new structure and clear
+        // the per-op selection (atom indices have shifted after delete).
+        applyStructure(r);
+        setEditStatus(
+            r.issues && r.issues.length
+                ? `${label}: ${r.n_atoms} atoms, ${r.issues.length} issue(s).`
+                : `${label}: ${r.n_atoms} atoms.`,
+            "ok",
+        );
+        return r;
+    }
+
+    async function applyDelete() {
+        const indices = Array.from(state.selected).sort((a, b) => a - b);
+        if (!indices.length) return;
+        await postOp("/api/modify/delete", { indices }, "Deleted");
+    }
+
+    function readAddOffset() {
+        return [
+            Number($("add-dx").value),
+            Number($("add-dy").value),
+            Number($("add-dz").value),
+        ];
+    }
+
+    function refreshAddDistance() {
+        const [dx, dy, dz] = readAddOffset();
+        $("add-dx-val").textContent = dx.toFixed(2);
+        $("add-dy-val").textContent = dy.toFixed(2);
+        $("add-dz-val").textContent = dz.toFixed(2);
+        const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        $("add-distance").textContent = `${d.toFixed(2)} Å`;
+    }
+
+    async function applyAddAtom() {
+        const sel = Array.from(state.selected);
+        if (sel.length !== 1) {
+            setEditStatus("Pick exactly one anchor atom first.", "error");
+            return;
+        }
+        const anchor_index = sel[0];
+        const element = ($("add-element").value || "H").trim();
+        if (!element) {
+            setEditStatus("Element required.", "error");
+            return;
+        }
+        const offset = readAddOffset();
+        await postOp(
+            "/api/modify/add_atom",
+            { element, anchor_index, offset },
+            `Added ${element}`,
+        );
+    }
+
+    // --------------------------------------------------------------- //
     //  Wire DOM events.                                                //
     // --------------------------------------------------------------- //
     document.addEventListener("DOMContentLoaded", () => {
@@ -302,5 +423,18 @@
             state.selected.clear();
             refreshSelectionUI();
         });
+
+        // M3: delete + add-atom op buttons.
+        const delBtn = $("delete-apply");
+        if (delBtn) delBtn.addEventListener("click", applyDelete);
+        const addBtn = $("add-apply");
+        if (addBtn) addBtn.addEventListener("click", applyAddAtom);
+        // Live distance readout: every slider input refreshes the
+        // |offset| display without hitting the server.
+        ["add-dx", "add-dy", "add-dz"].forEach((id) => {
+            const sl = $(id);
+            if (sl) sl.addEventListener("input", refreshAddDistance);
+        });
+        refreshAddDistance();
     });
 })();

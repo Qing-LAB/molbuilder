@@ -49,15 +49,14 @@
 </nav>
 
 <!-- ============================================================ -->
-<!--  M2 layout (read-only inspection):                            -->
+<!--  Layout:                                                       -->
 <!--    LOADER ROW: file picker + status                           -->
 <!--    THREE COLUMNS:                                             -->
 <!--      LEFT   atom list (click-to-highlight, multi-select       -->
 <!--             scaffolding for M4 anchor-pair selection)         -->
-<!--      MIDDLE 3Dmol viewer (click atom -> select; bond hover    -->
-<!--             will show distance in M3)                         -->
-<!--      RIGHT  edit panel (placeholder; M3-M5 fill in delete /   -->
-<!--             add / orient / electrode panels)                  -->
+<!--      MIDDLE 3Dmol viewer (click atom -> select)               -->
+<!--      RIGHT  edit panel: delete + add-with-sliders (M3); M4    -->
+<!--             orient + M5 electrode panels still placeholders   -->
 <!-- ============================================================ -->
 
 <section class="loader-bar">
@@ -125,34 +124,89 @@
     </div>
   </section>
 
-  <!-- RIGHT: Edit panel placeholder -->
+  <!-- RIGHT: Edit panel -->
   <aside class="card edit-card">
     <header class="card-header">
       <h2>Edit</h2>
-      <span class="muted">M2 read-only</span>
+      <span id="edit-status" class="muted"></span>
     </header>
     <div class="edit-panel">
-      <p class="hint">
-        The edit panel lands in <strong>M3</strong> &mdash; delete,
-        add-with-sliders, orient-along-z, and the electrode panel
-        (<strong>M5</strong>).  M2 is read-only inspection so the
-        wiring between the atom list and the viewer can be verified
-        in isolation.
-      </p>
-      <fieldset class="future-op">
+      <fieldset class="op-block">
         <legend>Selection</legend>
         <div id="selection-readout" class="readout">No atoms selected.</div>
       </fieldset>
-      <fieldset class="future-op" disabled>
-        <legend>Delete (M3)</legend>
-        <button class="full-btn" disabled>Delete selected</button>
+
+      <!-- Delete: enabled when at least one atom is selected.
+           Wires to POST /api/modify/delete. -->
+      <fieldset class="op-block">
+        <legend>Delete</legend>
+        <p class="hint">
+          Removes the currently selected atoms.  Heavy and light atoms
+          alike; out-of-range indices are silently ignored server-side.
+        </p>
+        <button id="delete-apply" class="full-btn" disabled>
+          Delete selected
+        </button>
       </fieldset>
-      <fieldset class="future-op" disabled>
+
+      <!-- Add atom: anchor = single-selected atom; element + offset
+           sliders set the new atom's species and (dx, dy, dz) from
+           the anchor.  Live |offset| readout helps the user pick a
+           sensible bond length client-side; the actual atom is only
+           created on Apply. -->
+      <fieldset class="op-block">
+        <legend>Add atom</legend>
+        <div class="op-row">
+          <label>Element
+            <input id="add-element" type="text" value="H" maxlength="3"
+                   size="3" autocomplete="off">
+          </label>
+          <span class="muted" id="add-anchor-readout">Anchor: (none)</span>
+        </div>
+        <p class="hint">
+          Pick an anchor by clicking exactly one atom.  Sliders set the
+          offset (&Aring;) from the anchor; live distance shows |offset|.
+          Apply commits the addition; the new atom lands in a fresh
+          residue named MOD.
+        </p>
+
+        <label class="slider-row">
+          <span>dx</span>
+          <input id="add-dx" type="range"
+                 min="-3" max="3" step="0.05" value="0">
+          <span id="add-dx-val" class="readout-inline">0.00</span>
+        </label>
+        <label class="slider-row">
+          <span>dy</span>
+          <input id="add-dy" type="range"
+                 min="-3" max="3" step="0.05" value="0">
+          <span id="add-dy-val" class="readout-inline">0.00</span>
+        </label>
+        <label class="slider-row">
+          <span>dz</span>
+          <input id="add-dz" type="range"
+                 min="-3" max="3" step="0.05" value="1.0">
+          <span id="add-dz-val" class="readout-inline">1.00</span>
+        </label>
+
+        <div class="op-row">
+          <span class="muted">|offset|</span>
+          <span id="add-distance" class="readout-inline">1.00 &Aring;</span>
+        </div>
+
+        <button id="add-apply" class="full-btn" disabled>
+          Add atom
+        </button>
+      </fieldset>
+
+      <!-- Future M4 / M5 placeholders.  Disabled and explanatory so
+           the user can see what the eventual flow looks like. -->
+      <fieldset class="op-block future-op" disabled>
         <legend>Orient along axis (M4)</legend>
         <p class="hint">Pick two atoms; the orient operation rotates the
         structure so the anchor pair lies along z.</p>
       </fieldset>
-      <fieldset class="future-op" disabled>
+      <fieldset class="op-block future-op" disabled>
         <legend>Electrode panel (M5)</legend>
         <p class="hint">FCC slab (Au / Ag / Cu / Ni / Pt / Pd) on
         either or both sides of the molecule.</p>
