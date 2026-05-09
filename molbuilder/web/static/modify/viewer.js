@@ -35,6 +35,7 @@
         title: "",
         n_atoms: 0,
         selected: new Set(),   // atom indices
+        inFlight: false,       // true while an /api/modify/* fetch is open
     };
 
     const HIGHLIGHT_COLOR = "#fbbf24";       // amber, matches --warning
@@ -162,16 +163,20 @@
             out.textContent = parts.join(", ");
         }
         // 3. Edit-panel button enablement (M3).
-        //    - Delete: any selection at all.
-        //    - Add atom: exactly one anchor (single-select).
+        //    - Delete: any selection AND no op in flight.
+        //    - Add atom: exactly one anchor AND no op in flight.
+        // The in-flight gate prevents a double-click on Apply from
+        // firing two parallel fetches; postOp() flips the inFlight
+        // bit + calls refreshSelectionUI when the op starts/ends.
+        const locked = state.inFlight;
         const deleteBtn = $("delete-apply");
-        if (deleteBtn) deleteBtn.disabled = sel.length === 0;
+        if (deleteBtn) deleteBtn.disabled = locked || sel.length === 0;
         const addBtn = $("add-apply");
         const anchorReadout = $("add-anchor-readout");
         if (addBtn && anchorReadout) {
             if (sel.length === 1) {
                 const a = sel[0];
-                addBtn.disabled = false;
+                addBtn.disabled = locked;
                 anchorReadout.textContent =
                     `Anchor: #${a} ${state.elements[a]}`;
             } else {
@@ -329,32 +334,53 @@
     }
 
     async function postOp(path, extraBody, label) {
+        // Drop the call entirely if a prior op is still in flight.
+        // Without this guard, a user double-click on Apply would fire
+        // two parallel fetches; the second is wasted work AND could
+        // race with the first (e.g. add_atom twice with stale xyz
+        // before the first response updates state).  Buttons are
+        // also disabled while in-flight so the visible UI matches.
+        if (state.inFlight) return null;
+        state.inFlight = true;
+        refreshSelectionUI();    // disable Delete/Add buttons during fetch
+        setEditStatus(`${label}…`);
         const body = Object.assign(currentStateBody(), extraBody);
-        let r;
+        let r = null;
         try {
-            r = await fetch(path, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body),
-            }).then((x) => x.json());
-        } catch (e) {
-            setEditStatus(`Network error: ${e.message}`, "error");
-            return null;
+            try {
+                r = await fetch(path, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(body),
+                }).then((x) => x.json());
+            } catch (e) {
+                setEditStatus(`Network error: ${e.message}`, "error");
+                return null;
+            }
+            if (!r || !r.ok) {
+                setEditStatus(r?.error || `${label} failed.`, "error");
+                return null;
+            }
+            // Success: replace the state with the new structure and
+            // clear the per-op selection (atom indices have shifted
+            // after delete).  applyStructure() will rebuild the list
+            // and call refreshSelectionUI which re-enables buttons.
+            applyStructure(r);
+            setEditStatus(
+                r.issues && r.issues.length
+                    ? `${label}: ${r.n_atoms} atoms, ${r.issues.length} issue(s).`
+                    : `${label}: ${r.n_atoms} atoms.`,
+                "ok",
+            );
+            return r;
+        } finally {
+            // Always release the lock so a transient error can't wedge
+            // the UI permanently.  The selection-UI refresh in
+            // applyStructure already ran on the success path; on the
+            // error path we run it explicitly to flip buttons back.
+            state.inFlight = false;
+            refreshSelectionUI();
         }
-        if (!r || !r.ok) {
-            setEditStatus(r?.error || `${label} failed.`, "error");
-            return null;
-        }
-        // Success: replace the state with the new structure and clear
-        // the per-op selection (atom indices have shifted after delete).
-        applyStructure(r);
-        setEditStatus(
-            r.issues && r.issues.length
-                ? `${label}: ${r.n_atoms} atoms, ${r.issues.length} issue(s).`
-                : `${label}: ${r.n_atoms} atoms.`,
-            "ok",
-        );
-        return r;
     }
 
     async function applyDelete() {
@@ -437,4 +463,20 @@
         });
         refreshAddDistance();
     });
+
+    // ----- Test hook ------------------------------------------------- //
+    // Exposes the click-callback path so the Playwright E2E tests can
+    // verify the viewer -> list direction WITHOUT clicking WebGL
+    // canvas pixels at known atom positions (which would require
+    // projecting atom coordinates through the camera matrix and is
+    // brittle across viewport sizes).  Production has zero behavior
+    // change -- this just attaches three references to ``window``
+    // that nothing else looks at.
+    window.__molbuilder_modify_test = {
+        onAtomListRowClick: onAtomListRowClick,
+        onViewerAtomClick:  onViewerAtomClick,
+        getViewer:          () => viewer,
+        getSelected:        () => Array.from(state.selected),
+        getNAtoms:          () => state.n_atoms,
+    };
 })();

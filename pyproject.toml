@@ -43,6 +43,19 @@ test = [
     "pyflakes>=3",
 ]
 
+# Browser-driven end-to-end tests for the Modify (and future)
+# tabs.  Skipped automatically when these aren't installed; install
+# with:
+#     pip install -e ".[e2e]"
+#     python -m playwright install chromium
+# WSL / minimal Linux installs may also need:
+#     sudo python -m playwright install-deps chromium
+# (one-time, ~30 MB of system libs for the headless Chromium).
+e2e = [
+    "playwright>=1.40",
+    "pytest-playwright>=0.4",
+]
+
 # Tools needed to *execute* the SIESTA / PySCF input files molbuilder
 # generates -- as opposed to building structures with molbuilder itself.
 # Mirrors requirements-runtime.txt so either workflow works:
