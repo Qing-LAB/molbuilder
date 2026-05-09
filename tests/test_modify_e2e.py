@@ -1018,3 +1018,174 @@ def test_modify_uses_sessionstorage_not_localstorage(
     )
     assert in_session is True, "save target should be sessionStorage"
     assert in_local   is False, "save MUST NOT leak into localStorage"
+
+
+# --------------------------------------------------------------------- #
+#  M5: electrode panel + Send-to-Build handoff                          #
+# --------------------------------------------------------------------- #
+
+
+_SS_XYZ_FOR_E2E = (
+    "2\nss-pair\n"
+    "S 0 0 -2\n"
+    "S 0 0  2\n"
+)
+
+
+@pytest.fixture
+def ss_pair_xyz_file(tmp_path):
+    """A 2-atom S pair on the z axis -- the canonical test fixture for
+    the symmetric-electrode workflow (stands in for a relaxed BDT
+    where the user has already deleted the thiol H caps)."""
+    p = tmp_path / "ss_pair.xyz"
+    p.write_text(_SS_XYZ_FOR_E2E)
+    return str(p)
+
+
+def test_electrode_apply_disabled_without_correct_anchor_count(
+        page, flask_server, ss_pair_xyz_file):
+    """Pair mode (default) needs 2 anchors; switching to single mode
+    needs 1.  The Apply button reflects this."""
+    _open_modify(page, flask_server)
+    _load_file(page, ss_pair_xyz_file, expected_atoms=2)
+    btn = page.locator("#elc-apply")
+    # No selection yet -> disabled.
+    assert btn.is_disabled()
+    # One atom selected -> still disabled in pair mode.
+    page.locator("#atom-list-body tr").nth(0).click()
+    assert btn.is_disabled()
+    # Two atoms selected -> enabled (this is the bdt-junction anchor pair).
+    page.locator("#atom-list-body tr").nth(1).click(modifiers=["Shift"])
+    assert btn.is_enabled()
+    # Switch to single mode -> two anchors is now wrong; disable.
+    page.locator("#elc-mode").select_option("single")
+    assert btn.is_disabled()
+    # One anchor in single mode -> enabled.
+    page.locator("#atom-list-body tr").nth(0).click()
+    assert btn.is_enabled()
+
+
+def test_electrode_gap_label_tracks_mode(
+        page, flask_server, ss_pair_xyz_file):
+    """The gap-slider label reads "gap" in pair mode (the canonical
+    electrode-to-electrode distance) and "contact" in single mode
+    (anchor-to-closest-layer)."""
+    _open_modify(page, flask_server)
+    _load_file(page, ss_pair_xyz_file, expected_atoms=2)
+    label = page.locator("#elc-gap-label")
+    assert label.inner_text() == "gap"
+    page.locator("#elc-mode").select_option("single")
+    assert label.inner_text() == "contact"
+    page.locator("#elc-mode").select_option("symmetric")
+    assert label.inner_text() == "gap"
+
+
+def test_electrode_side_picker_only_visible_in_single_mode(
+        page, flask_server, ss_pair_xyz_file):
+    """Pair mode hides the +z/-z side picker (both slabs are placed
+    automatically); single mode shows it."""
+    _open_modify(page, flask_server)
+    _load_file(page, ss_pair_xyz_file, expected_atoms=2)
+    side_row = page.locator("#elc-side-row")
+    assert side_row.is_hidden()
+    page.locator("#elc-mode").select_option("single")
+    assert side_row.is_visible()
+
+
+def test_apply_electrode_pair_mode_builds_au_junction(
+        page, flask_server, ss_pair_xyz_file):
+    """End-to-end: 2-atom S pair -> select both -> Apply pair-mode
+    Au(111) 2x2x1 -> atom list grows to 10 (2 S + 8 Au)."""
+    errors = _open_modify(page, flask_server)
+    _load_file(page, ss_pair_xyz_file, expected_atoms=2)
+    page.locator("#atom-list-body tr").nth(0).click()
+    page.locator("#atom-list-body tr").nth(1).click(modifiers=["Shift"])
+    # Set 2x2x1 size for a tractable junction.
+    for input_id, val in [("elc-m", "2"), ("elc-n", "2"), ("elc-layers", "1")]:
+        page.evaluate(
+            "(args) => {"
+            "  const el = document.getElementById(args.id);"
+            "  el.value = args.val;"
+            "  el.dispatchEvent(new Event('input', {bubbles: true}));"
+            "}",
+            {"id": input_id, "val": val},
+        )
+    page.locator("#elc-apply").click()
+    page.wait_for_function(
+        "() => document.querySelectorAll('#atom-list-body tr').length === 10"
+    )
+    rows = page.locator("#atom-list-body tr")
+    elements = [
+        rows.nth(i).locator(".col-el").inner_text() for i in range(10)
+    ]
+    assert sum(1 for e in elements if e == "Au") == 8
+    assert sum(1 for e in elements if e == "S")  == 2
+    assert errors == [], f"JS errors during electrode apply: {errors}"
+
+
+def test_send_to_build_writes_handoff_payload(
+        page, flask_server, ss_pair_xyz_file):
+    """The Send-to-Build button writes the structure to the same
+    sessionStorage key (``builder-structure``) Phase 1 uses for tab-
+    navigation persistence, then navigates to /.  The Build tab's
+    restoreStructureState picks it up identically to a fresh build.
+
+    We let the navigation happen (sessionStorage survives same-tab
+    navigation in Chromium) and read the saved key from the
+    destination page."""
+    _open_modify(page, flask_server)
+    _load_file(page, ss_pair_xyz_file, expected_atoms=2)
+    # Click and wait for the URL to flip to "/".
+    with page.expect_navigation():
+        page.locator("#send-to-build").click()
+    assert page.url.rstrip("/") == flask_server.rstrip("/"), (
+        f"expected redirect to /, got {page.url}"
+    )
+    # Read the handoff payload from sessionStorage on the destination.
+    saved = page.evaluate(
+        "() => sessionStorage.getItem('builder-structure')"
+    )
+    assert saved is not None, (
+        "send-to-build did not write to sessionStorage"
+    )
+    import json as _json
+    parsed = _json.loads(saved)
+    assert parsed["v"] == 1
+    r = parsed["response"]
+    assert r["n_atoms"]  == 2
+    assert r["elements"] == ["S", "S"]
+    assert r["title"]
+    # The Build-side restoreStructureState path expects this exact
+    # response shape (mirrors what /api/build/molecule returns).
+    for k in ("xyz", "pdb", "title", "n_atoms", "elements",
+              "atom_names", "residue_ids", "residue_names",
+              "chain_ids", "source_format"):
+        assert k in r, f"handoff response missing {k!r}"
+
+
+def test_send_to_build_handoff_renders_structure_in_build(
+        page, flask_server, ss_pair_xyz_file):
+    """Closes the loop: after Send-to-Build navigates to /, the
+    Build tab's atom info panel shows the molecule and the Generate
+    buttons are enabled.  This is the user-visible test that
+    ``builder-structure`` round-trips end-to-end."""
+    _open_modify(page, flask_server)
+    _load_file(page, ss_pair_xyz_file, expected_atoms=2)
+    with page.expect_navigation():
+        page.locator("#send-to-build").click()
+    # On the Build tab now: restoreStructureState fires during JS
+    # init and applyStructureResult enables the Generate buttons.
+    page.wait_for_function(
+        "() => !document.getElementById('dl-xyz').disabled",
+        timeout=5000,
+    )
+    assert page.locator("#info-atoms").inner_text() == "2"
+    assert page.locator("#generate-fdf").is_enabled()
+    assert page.locator("#generate-pyscf").is_enabled()
+
+
+def test_send_to_build_disabled_without_structure(page, flask_server):
+    """Send-to-Build button must be disabled when no structure is
+    loaded -- nothing to hand off."""
+    _open_modify(page, flask_server)
+    assert page.locator("#send-to-build").is_disabled()

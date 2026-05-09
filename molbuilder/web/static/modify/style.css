@@ -258,6 +258,13 @@ header .tagline {
     color: var(--text-secondary);
     font-size: 0.88rem;
 }
+/* Honour the HTML5 ``hidden`` attribute on op-rows.  Without this
+   selector the .op-row { display: flex } rule above wins over
+   the user-agent ``[hidden] { display: none }`` default and the
+   side-picker stays visible in pair mode. */
+.edit-panel .op-row[hidden] {
+    display: none;
+}
 .edit-panel .op-row label {
     display: flex;
     align-items: center;

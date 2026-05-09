@@ -4,7 +4,7 @@
 > Code, tests, and the UI must follow this spec; if any of them diverge,
 > update this document in the same commit.  Pointer in `docs/design.md`.
 
-Status (2026-05-09): M1 done (Python API + CLI + tests); M2 done (UI skeleton: /modify route, atom list ↔ viewer click sync, file load via /api/build/load); M3 done (delete + add-atom edit ops wired via /api/modify/* endpoints); M4 done (anchor-pair selection + orient + rotate; per-atom info panel; xyz axis overlay); M5 not yet started.
+Status (2026-05-09): All milestones done.  M1 Python API + CLI + tests; M2 UI skeleton (route, atom list ↔ viewer click sync, file load); M3 delete + add-atom; M4 anchor-pair orient + rotate, per-atom info panel, xyz-axes overlay; M5 electrode panel (pair / single mode) + Send-to-Build handoff via the same ``builder-structure`` sessionStorage key Phase 1 cross-tab persistence uses.
 
 ---
 
@@ -264,7 +264,7 @@ web UI as a portal, not a separate product).
 | **M2** | UI skeleton: tab in shared nav, file load, atom list, click-to-select mirroring viewer ↔ list. | New `static/modify/{style.css,viewer.js}`, new `templates/modify.html` served at `/modify`, third "Modify" tab on every shared-nav block.  Reuses `/api/build/load` for the file-upload step.  No edits possible yet. | **done (2026-05-08)** |
 | **M3** | Edit ops wired: delete, add-with-sliders, live distance.  `/api/modify/{load,delete,add_atom}` endpoints. | `web/blueprints/modify.py`; Delete and Add-atom fieldsets in modify.html with element input + dx/dy/dz sliders + live `|offset|` readout. | **done (2026-05-08)** |
 | **M4** | Anchor-pair selection + orient-along-z + rotate-around-axis.  Per-atom info panel and an xyz-axes overlay so users can read off the geometry while they edit. | UI: Orient fieldset (axis radio, tilt slider, center mode dropdown, Apply enabled at exactly two selected atoms) + Rotate fieldset (axis radio, angle slider, Apply); Selection panel grew a per-atom info table (idx / element / name / residue / x / y / z); main-viewer toolbar gained a `Show xyz axes` checkbox that draws RGB axis arrows at the world origin.  Backend: `/api/modify/{orient,rotate}` endpoints. | **done (2026-05-09)** |
-| **M5** | Electrode panel (one panel per stack -- size, gap, offset sliders, orthogonal toggle when meaningful, symmetric/per-side mode); Send-to-Build handoff. | `/api/modify/electrode`; cross-tab handoff plumbing. | not started |
+| **M5** | Electrode panel (size / gap / offset sliders, orthogonal toggle, symmetric/per-side mode); Send-to-Build handoff. | UI: Electrode fieldset (mode select, element / plane / m × n × n_layers / gap / dx / dy / orthogonal / side), Apply enabled when selection size matches mode (1 single, 2 pair); Send-to-Build button writes the structure to ``sessionStorage["builder-structure"]`` (the same key Phase 1 uses for tab navigation) and navigates to ``/`` where Build's ``restoreStructureState`` picks it up.  Backend: ``/api/modify/electrode`` + ``/api/modify/symmetric_electrodes``. | **done (2026-05-09)** |
 
 Each milestone keeps `pytest tests/ -q` green.  No "intermediate broken
 state" commits.

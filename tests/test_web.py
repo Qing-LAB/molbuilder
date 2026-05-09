@@ -682,14 +682,13 @@ def test_modify_page_loads(web_client):
         'id="show-indices"',
         'id="clear-selection"',
         'id="selection-readout"',
-        # M3 op controls (delete + add-with-sliders) are real now.
+        # All five edit ops are wired (M3 + M4 + M5).
         'id="delete-apply"',
         'id="add-apply"',
-        # M4 op controls (orient + rotate) are real now.
         'id="orient-apply"',
         'id="rotate-apply"',
-        # Future-op placeholder documents what M5 still fills in.
-        "Electrode panel (M5)",
+        'id="elc-apply"',
+        'id="send-to-build"',
     ):
         assert needle in body, f"missing {needle!r} in /modify HTML"
 
@@ -952,8 +951,9 @@ def test_modify_page_has_m3_edit_controls(web_client):
         'id="add-dz"',     'id="add-dz-val"',
         'id="add-distance"',
         'id="add-apply"',
-        # The remaining future-op fieldset (M5) keeps its placeholder.
-        "Electrode panel (M5)",
+        # M5 electrode + handoff controls are wired.
+        'id="elc-apply"',
+        'id="send-to-build"',
     ):
         assert needle in body, f"missing {needle!r} in /modify HTML"
 
@@ -1176,8 +1176,9 @@ def test_modify_page_has_m4_orient_rotate_controls(web_client):
         'id="rotate-apply"',
         'id="rotate-angle"',     'id="rotate-angle-val"',
         'name="rotate-axis"',
-        # M5 placeholder still there.
-        "Electrode panel (M5)",
+        # M5 controls wired.
+        'id="elc-apply"',
+        'id="send-to-build"',
     ):
         assert needle in body, f"missing {needle!r} in /modify HTML"
 
@@ -1193,3 +1194,143 @@ def test_modify_viewer_js_wires_orient_and_rotate(web_client):
         "refreshRotateAngleReadout",
     ):
         assert needle in js, f"missing {needle!r} in modify viewer.js"
+
+
+# --------------------------------------------------------------------- #
+#  M5: electrode endpoints + Send-to-Build handoff                      #
+# --------------------------------------------------------------------- #
+
+
+_SS_XYZ = (
+    "2\nss-pair\n"
+    "S 0 0 -2\n"
+    "S 0 0  2\n"
+)
+
+
+def test_modify_symmetric_electrodes_pair_mode(web_client):
+    """Pair mode: 2x2x1 Au(111) on either side of a 2-atom S pair,
+    8 Å gap.  4 Au atoms per side -> 8 ELC atoms + 2 S = 10 total."""
+    r = web_client.post("/api/modify/symmetric_electrodes", json={
+        "xyz":     _SS_XYZ,
+        "element": "Au", "plane": "111",
+        "size":    [2, 2, 1],
+        "anchors": [1, 0],          # +z first, -z second
+        "gap":     8.0,
+    })
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["n_atoms"] == 10
+    elc = sum(1 for n in body["residue_names"] if n == "ELC")
+    assert elc == 8, body["residue_names"]
+
+
+def test_modify_symmetric_electrodes_pair_mode_orthogonal_111(web_client):
+    """Orthogonal cell on fcc(111) needs even m × n; 2x2 is fine."""
+    r = web_client.post("/api/modify/symmetric_electrodes", json={
+        "xyz": _SS_XYZ,
+        "element": "Au", "plane": "111",
+        "size": [2, 2, 1], "anchors": [1, 0],
+        "gap": 8.0, "orthogonal": True,
+    })
+    assert r.get_json()["ok"] is True
+
+
+def test_modify_symmetric_electrodes_rejects_unsupported_element(web_client):
+    """The closed list of supported FCC metals (Au/Ag/Cu/Ni/Pt/Pd) is
+    enforced at the endpoint boundary, not just at the Python API."""
+    r = web_client.post("/api/modify/symmetric_electrodes", json={
+        "xyz": _SS_XYZ,
+        "element": "Fe",            # BCC; not on the FCC closed list
+        "plane": "111", "size": [2, 2, 1],
+        "anchors": [1, 0],
+    })
+    assert r.status_code == 400
+    err = r.get_json()["error"]
+    assert "element" in err
+    assert "Au" in err               # the supported list is named
+
+
+def test_modify_symmetric_electrodes_rejects_bad_plane(web_client):
+    r = web_client.post("/api/modify/symmetric_electrodes", json={
+        "xyz": _SS_XYZ, "element": "Au", "plane": "112",
+        "size": [2, 2, 1], "anchors": [1, 0],
+    })
+    assert r.status_code == 400
+    assert "plane" in r.get_json()["error"]
+
+
+def test_modify_symmetric_electrodes_rejects_bad_size(web_client):
+    """``size`` must be 3 positive integers."""
+    r = web_client.post("/api/modify/symmetric_electrodes", json={
+        "xyz": _SS_XYZ, "element": "Au", "plane": "111",
+        "size": [0, 1, 1], "anchors": [1, 0],
+    })
+    assert r.status_code == 400
+    assert "size" in r.get_json()["error"]
+
+
+def test_modify_symmetric_electrodes_rejects_same_anchor_twice(web_client):
+    r = web_client.post("/api/modify/symmetric_electrodes", json={
+        "xyz": _SS_XYZ, "element": "Au", "plane": "111",
+        "size": [2, 2, 1], "anchors": [0, 0],
+    })
+    assert r.status_code == 400
+    assert "distinct" in r.get_json()["error"]
+
+
+def test_modify_electrode_single_mode(web_client):
+    """Single mode: one slab on +z above the second S atom."""
+    r = web_client.post("/api/modify/electrode", json={
+        "xyz": _SS_XYZ, "element": "Au", "plane": "111",
+        "size": [2, 2, 1], "anchor_index": 1,
+        "side": "+z", "contact_distance": 2.4,
+    })
+    body = r.get_json()
+    assert body["ok"] is True
+    # 4 Au atoms + 2 S = 6 total.
+    assert body["n_atoms"] == 6
+    assert sum(1 for n in body["residue_names"] if n == "ELC") == 4
+
+
+def test_modify_electrode_single_mode_minus_z(web_client):
+    """``side="-z"`` builds below the anchor."""
+    r = web_client.post("/api/modify/electrode", json={
+        "xyz": _SS_XYZ, "element": "Au", "plane": "111",
+        "size": [2, 2, 1], "anchor_index": 0, "side": "-z",
+    })
+    body = r.get_json()
+    assert body["ok"] is True
+    # The 4 added Au atoms must all sit below the anchor's z (= -2).
+    z_au = [body["xyz"].splitlines()[i + 2].split()[3]
+            for i, el in enumerate(body["elements"]) if el == "Au"]
+    assert all(float(z) < -2.0 for z in z_au), z_au
+
+
+def test_modify_electrode_rejects_bad_side(web_client):
+    r = web_client.post("/api/modify/electrode", json={
+        "xyz": _SS_XYZ, "element": "Au", "plane": "111",
+        "size": [2, 2, 1], "anchor_index": 0, "side": "above",
+    })
+    assert r.status_code == 400
+    assert "side" in r.get_json()["error"]
+
+
+def test_modify_electrode_rejects_bad_anchor(web_client):
+    r = web_client.post("/api/modify/electrode", json={
+        "xyz": _SS_XYZ, "element": "Au", "plane": "111",
+        "size": [2, 2, 1], "anchor_index": 99,
+    })
+    assert r.status_code == 400
+    assert "out of range" in r.get_json()["error"]
+
+
+def test_modify_electrode_lattice_constant_override(web_client):
+    """``lattice_constant`` lets the user override the per-element
+    table value (e.g. for strained-electrode studies)."""
+    r = web_client.post("/api/modify/electrode", json={
+        "xyz": _SS_XYZ, "element": "Au", "plane": "111",
+        "size": [2, 2, 1], "anchor_index": 1, "side": "+z",
+        "lattice_constant": 4.5,        # vs Au's actual 4.0782 Å
+    })
+    assert r.get_json()["ok"] is True

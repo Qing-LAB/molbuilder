@@ -322,6 +322,36 @@
         // loaded.  Rotation doesn't need a selection.
         const rotateBtn = $("rotate-apply");
         if (rotateBtn) rotateBtn.disabled = locked || state.n_atoms === 0;
+        // M5: Electrode + Send-to-Build buttons.  Electrode requires
+        // the right number of anchors for its mode (1 for single,
+        // 2 for symmetric); Send-to-Build needs a structure.
+        const elcBtn = $("elc-apply");
+        const elcReadout = $("elc-anchor-readout");
+        const mode = ($("elc-mode") || {}).value || "symmetric";
+        if (elcBtn && elcReadout) {
+            const need = (mode === "single") ? 1 : 2;
+            if (sel.length === need) {
+                elcBtn.disabled = locked;
+                if (need === 1) {
+                    elcReadout.textContent =
+                        `Anchor: #${sel[0]} ${state.elements[sel[0]]}.  ` +
+                        `Side determines which face the slab grows on.`;
+                } else {
+                    const [a, b] = sel.slice().sort((x, y) => x - y);
+                    elcReadout.textContent =
+                        `Anchors: #${a} ${state.elements[a]} (-z) ↔ ` +
+                        `#${b} ${state.elements[b]} (+z).`;
+                }
+            } else {
+                elcBtn.disabled = true;
+                elcReadout.textContent =
+                    mode === "single"
+                        ? "Single mode: pick exactly one anchor."
+                        : "Pair mode: pick two atoms (the +z and -z anchors).";
+            }
+        }
+        const sendBtn = $("send-to-build");
+        if (sendBtn) sendBtn.disabled = locked || state.n_atoms === 0;
         // 4. Viewer: re-style so the highlight overlay reflects state.
         applyStyle();
     }
@@ -622,6 +652,133 @@
         );
     }
 
+    // ----- M5: electrode panel + Send-to-Build handoff ------------- //
+
+    function readElcCommonBody() {
+        // Bundle the shared fields both single + symmetric modes
+        // need.  Returned as a plain object that postOp will merge
+        // into currentStateBody().
+        const m         = Number($("elc-m").value);
+        const n         = Number($("elc-n").value);
+        const layers    = Number($("elc-layers").value);
+        return {
+            element:    $("elc-element").value,
+            plane:      getCheckedRadio("elc-plane") || "111",
+            size:       [m, n, layers],
+            orthogonal: $("elc-orthogonal").checked,
+            offset:     [
+                Number($("elc-dx").value),
+                Number($("elc-dy").value),
+            ],
+        };
+    }
+
+    function refreshElcReadouts() {
+        $("elc-gap-val").textContent = `${Number($("elc-gap").value).toFixed(1)} Å`;
+        $("elc-dx-val").textContent  = Number($("elc-dx").value).toFixed(2);
+        $("elc-dy-val").textContent  = Number($("elc-dy").value).toFixed(2);
+        // The gap label tracks the mode: pair-mode gap is
+        // electrode-to-electrode; single-mode gap is anchor-to-
+        // closest-layer (i.e. ``contact_distance``).
+        const mode = $("elc-mode").value;
+        $("elc-gap-label").textContent =
+            mode === "single" ? "contact" : "gap";
+        // Show / hide the side picker by mode.
+        const sideRow = $("elc-side-row");
+        if (sideRow) sideRow.hidden = (mode !== "single");
+    }
+
+    async function applyElectrode() {
+        const sel = Array.from(state.selected).sort((a, b) => a - b);
+        const mode = $("elc-mode").value;
+        const common = readElcCommonBody();
+        const gap = Number($("elc-gap").value);
+        if (mode === "single") {
+            if (sel.length !== 1) {
+                setEditStatus("Pick exactly one anchor for single mode.", "error");
+                return;
+            }
+            const side = getCheckedRadio("elc-side") || "+z";
+            await postOp(
+                "/api/modify/electrode",
+                Object.assign({}, common, {
+                    anchor_index:     sel[0],
+                    side:             side,
+                    contact_distance: gap,
+                }),
+                `Added ${common.element}(${common.plane}) ${side}`,
+            );
+        } else {
+            // Symmetric mode.  The renderer wants
+            // anchors=[a_top, a_bot] (+z anchor first).  Sort the
+            // selection by z-coordinate so the user doesn't have to
+            // care about click order.
+            if (sel.length !== 2) {
+                setEditStatus("Pair mode needs exactly two anchors.", "error");
+                return;
+            }
+            const [i0, i1] = sel;
+            const z0 = state.positions[i0][2];
+            const z1 = state.positions[i1][2];
+            const a_top = z0 >= z1 ? i0 : i1;
+            const a_bot = z0 >= z1 ? i1 : i0;
+            await postOp(
+                "/api/modify/symmetric_electrodes",
+                Object.assign({}, common, {
+                    anchors: [a_top, a_bot],
+                    gap:     gap,
+                }),
+                `Added ${common.element}(${common.plane}) pair`,
+            );
+        }
+    }
+
+    function sendToBuild() {
+        // Persist the current structure under the same key Phase 1
+        // uses for cross-tab navigation, then navigate to the Build
+        // tab.  Build's restoreStructureState() picks it up
+        // identically to a fresh build.  We bundle the response
+        // shape applyStructureResult() expects so the Build tab
+        // doesn't need a separate code path.
+        if (!state.xyz || !state.n_atoms) {
+            setEditStatus("Nothing to send -- load a structure first.", "error");
+            return;
+        }
+        const payload = {
+            v: 1,
+            saved_at: new Date().toISOString(),
+            response: {
+                xyz:           state.xyz,
+                pdb:           "",                  // Build computes if needed
+                title:         state.title || "modify-handoff",
+                n_atoms:       state.n_atoms,
+                n_residues:    null,                // unknown here; harmless
+                summary:       `${state.n_atoms} atoms (from Modify tab)`,
+                elements:      state.elements,
+                atom_names:    state.atom_names,
+                residue_ids:   state.residue_ids,
+                residue_names: state.residue_names,
+                chain_ids:     state.chain_ids,
+                source_format: "xyz",
+            },
+            camera: null,        // Build owns its own camera
+        };
+        try {
+            sessionStorage.setItem(
+                "builder-structure",
+                JSON.stringify(payload),
+            );
+        } catch (e) {
+            setEditStatus(
+                `Could not stage handoff: ${e && e.message}`, "error");
+            return;
+        }
+        // Save Modify's own state so a back-button trip preserves
+        // the source structure too.
+        try { saveModifyState(); } catch (_e) { /* ok if not yet wired */ }
+        window.location.href = "/";
+    }
+
     // --------------------------------------------------------------- //
     //  Wire DOM events.                                                //
     // --------------------------------------------------------------- //
@@ -676,6 +833,26 @@
             rotateAngle.addEventListener("input", refreshRotateAngleReadout);
             refreshRotateAngleReadout();
         }
+
+        // M5: electrode panel + Send-to-Build handoff.
+        const elcBtn = $("elc-apply");
+        if (elcBtn) elcBtn.addEventListener("click", applyElectrode);
+        const sendBtn = $("send-to-build");
+        if (sendBtn) sendBtn.addEventListener("click", sendToBuild);
+        // Mode switch: re-evaluate selection requirement + show/hide
+        // the side picker; live readouts update on slider drag.
+        const modeSel = $("elc-mode");
+        if (modeSel) {
+            modeSel.addEventListener("change", () => {
+                refreshElcReadouts();
+                refreshSelectionUI();
+            });
+        }
+        ["elc-gap", "elc-dx", "elc-dy"].forEach((id) => {
+            const sl = $(id);
+            if (sl) sl.addEventListener("input", refreshElcReadouts);
+        });
+        refreshElcReadouts();
 
         // Phase 1: persist structure state across tab navigation.
         // Restore here (after every event handler is wired so the

@@ -22,8 +22,9 @@
 <!--      MIDDLE 3Dmol viewer (click atom -> select; xyz axes      -->
 <!--             toggle drawn at world origin)                     -->
 <!--      RIGHT  edit panel: Delete + Add atom (M3); Orient +      -->
-<!--             Rotate (M4); selection info panel.  Electrode     -->
-<!--             panel (M5) is still the only placeholder.         -->
+<!--             Rotate (M4); Electrode panel (pair / single mode) -->
+<!--             + Send-to-Build handoff (M5); selection info      -->
+<!--             panel.  All M1-M5 ops now wired.                  -->
 <!-- ============================================================ -->
 
 <section class="loader-bar">
@@ -258,11 +259,110 @@
         </button>
       </fieldset>
 
-      <!-- M5 placeholder.  Active controls land in the next milestone. -->
-      <fieldset class="op-block future-op" disabled>
-        <legend>Electrode panel (M5)</legend>
-        <p class="hint">FCC slab (Au / Ag / Cu / Ni / Pt / Pd) on
-        either or both sides of the molecule.</p>
+      <!-- Electrode panel: build FCC slab(s) around the anchor(s).
+           Pair mode (default) places two slabs collinear along z
+           with a user-specified electrode-to-electrode gap; single
+           mode places one slab on +z OR -z of one anchor. -->
+      <fieldset class="op-block">
+        <legend>Electrode panel</legend>
+        <div class="op-row">
+          <label>Mode
+            <select id="elc-mode">
+              <option value="symmetric" selected>Pair (symmetric)</option>
+              <option value="single">Single (per-side)</option>
+            </select>
+          </label>
+        </div>
+        <p id="elc-anchor-readout" class="hint">
+          Pair mode: pick two atoms (the +z and -z anchors).
+        </p>
+
+        <div class="op-row">
+          <label>Element
+            <select id="elc-element">
+              <option value="Au" selected>Au</option>
+              <option value="Ag">Ag</option>
+              <option value="Cu">Cu</option>
+              <option value="Ni">Ni</option>
+              <option value="Pt">Pt</option>
+              <option value="Pd">Pd</option>
+            </select>
+          </label>
+          <label>Plane
+            <span class="axis-radios">
+              <label><input type="radio" name="elc-plane" value="100">100</label>
+              <label><input type="radio" name="elc-plane" value="110">110</label>
+              <label><input type="radio" name="elc-plane" value="111" checked>111</label>
+            </span>
+          </label>
+        </div>
+
+        <div class="op-row">
+          <label>m
+            <input id="elc-m" type="number" min="1" max="20" step="1" value="3">
+          </label>
+          <label>n
+            <input id="elc-n" type="number" min="1" max="20" step="1" value="3">
+          </label>
+          <label>layers
+            <input id="elc-layers" type="number" min="1" max="20" step="1" value="2">
+          </label>
+        </div>
+
+        <label class="slider-row">
+          <span id="elc-gap-label">gap</span>
+          <input id="elc-gap" type="range"
+                 min="2.0" max="20.0" step="0.1" value="8.0">
+          <span id="elc-gap-val" class="readout-inline">8.0 Å</span>
+        </label>
+
+        <label class="slider-row">
+          <span>dx</span>
+          <input id="elc-dx" type="range"
+                 min="-3" max="3" step="0.05" value="0">
+          <span id="elc-dx-val" class="readout-inline">0.00</span>
+        </label>
+        <label class="slider-row">
+          <span>dy</span>
+          <input id="elc-dy" type="range"
+                 min="-3" max="3" step="0.05" value="0">
+          <span id="elc-dy-val" class="readout-inline">0.00</span>
+        </label>
+
+        <div class="op-row">
+          <label class="check"><input type="checkbox" id="elc-orthogonal">
+            Orthogonal cell (fcc(111) only)</label>
+        </div>
+
+        <!-- Single-mode-only side picker.  Hidden in pair mode. -->
+        <div class="op-row" id="elc-side-row" hidden>
+          <label>Side
+            <span class="axis-radios">
+              <label><input type="radio" name="elc-side" value="+z" checked>+z</label>
+              <label><input type="radio" name="elc-side" value="-z">−z</label>
+            </span>
+          </label>
+        </div>
+
+        <button id="elc-apply" class="full-btn" disabled>
+          Add electrode
+        </button>
+      </fieldset>
+
+      <!-- Send-to-Build handoff: writes the current structure to
+           sessionStorage under the same ``builder-structure`` key
+           Phase 1 uses for tab-navigation persistence, then
+           navigates to /. -->
+      <fieldset class="op-block">
+        <legend>Hand off</legend>
+        <p class="hint">
+          Send the current structure (molecule + electrodes) to the
+          Build tab so you can generate a SIESTA <code>.fdf</code> or
+          PySCF script.
+        </p>
+        <button id="send-to-build" class="full-btn" disabled>
+          Send to Build tab
+        </button>
       </fieldset>
     </div>
   </aside>
