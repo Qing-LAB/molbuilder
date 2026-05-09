@@ -47,13 +47,25 @@ JSON response shape (shared):
 This matches `/api/build/load` so the front end can keep one
 ``applyStructure(response)`` path for both initial load and
 modify-op responses.
+
+Body parsing, response building, validation, and the error
+response shape all live in ``_shared.py`` so the build, modify,
+and (future) any electrode-handoff blueprints share one wire
+contract.  If a wire shape changes here, both blueprints' tests
+catch it.
 """
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import List, Optional
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, request
+
+from ._shared import (
+    err as _err,
+    ok_structure_response as _ok_response,
+    struct_from_body as _struct_from_body,
+)
 
 from molbuilder.modify import (
     add_atom as _add_atom,
@@ -61,73 +73,9 @@ from molbuilder.modify import (
     orient_along_axis as _orient_along_axis,
     rotate_around_axis as _rotate_around_axis,
 )
-from molbuilder.structure import Structure
-from molbuilder.validation import validate_geometry
 
 
 bp = Blueprint("modify", __name__)
-
-
-def _issues_to_json(issues):
-    """Same serialiser as build.py.  Duplicated here rather than
-    imported across blueprints; if the schema changes, both copies
-    need to update -- but they're trivially small and not worth a
-    cross-blueprint shim."""
-    return [{"severity": i.severity, "message": i.message, "where": i.where}
-            for i in issues]
-
-
-def _struct_from_body(body: Dict[str, Any]) -> Structure:
-    """Reconstruct a Structure from the canonical body shape.
-
-    Reads ``xyz`` (required) and the four optional metadata lists.
-    A metadata list is honoured only when its length matches the
-    atom count; otherwise the default from ``Structure.from_xyz``
-    (atom_names = elements, residue_ids = [1]*n, residue_names =
-    ["MOL"]*n, chain_ids = ["A"]*n) is kept so a malformed metadata
-    array can't corrupt the result.
-    """
-    xyz = body.get("xyz") or ""
-    if not isinstance(xyz, str) or not xyz.strip():
-        raise ValueError("missing or empty 'xyz'")
-    title = body.get("title") or None
-    s = Structure.from_xyz(xyz, title=title)
-    n = s.n_atoms
-    for attr in ("atom_names", "residue_ids", "residue_names", "chain_ids"):
-        v = body.get(attr)
-        if v is None:
-            continue
-        if not isinstance(v, list) or len(v) != n:
-            # Silently drop malformed metadata; the default from
-            # from_xyz is already in place.  An explicit error here
-            # would be friendlier UX but the spec keeps the wire
-            # shape forgiving.
-            continue
-        setattr(s, attr, list(v))
-    return s
-
-
-def _ok_response(struct: Structure):
-    """Serialise a Structure + run validate_geometry into the canonical
-    response shape (matches /api/build/load + adds an issues array)."""
-    issues = validate_geometry(struct)
-    return jsonify({
-        "ok":            True,
-        "xyz":           struct.to_xyz(),
-        "elements":      list(struct.elements),
-        "atom_names":    list(struct.atom_names),
-        "residue_ids":   list(struct.residue_ids),
-        "residue_names": list(struct.residue_names),
-        "chain_ids":     list(struct.chain_ids),
-        "n_atoms":       struct.n_atoms,
-        "n_residues":    struct.n_residues,
-        "title":         struct.title or "",
-        "issues":        _issues_to_json(issues),
-    })
-
-
-def _err(msg: str, code: int = 400):
-    return jsonify({"ok": False, "error": msg}), code
 
 
 # --------------------------------------------------------------------- #

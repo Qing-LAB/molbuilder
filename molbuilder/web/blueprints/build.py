@@ -50,12 +50,16 @@ JSON shape:
 
 from __future__ import annotations
 
-import dataclasses
 import typing
-from dataclasses import fields
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
 from flask import Blueprint, jsonify, request
+
+from ._shared import (
+    coerce_to_field_type as _coerce_to_field_type,
+    config_from_params as _config_from_params,
+    issues_to_json as _issues_to_json,
+)
 
 from molbuilder import (
     build_dna, build_from_name, build_from_smiles,
@@ -68,13 +72,6 @@ from molbuilder.pyscf  import render_script
 from molbuilder.siesta import render_fdf
 from molbuilder.structure import Structure
 from molbuilder.validation import validate, validate_geometry
-
-
-def _issues_to_json(issues):
-    """Serialise List[Issue] for the JSON wire.  The web client reads
-    `issues[].severity / message / where` to decide how to display."""
-    return [{"severity": i.severity, "message": i.message, "where": i.where}
-            for i in issues]
 
 
 bp = Blueprint("build", __name__)
@@ -405,112 +402,8 @@ def _xyz_to_structure(xyz_text: str) -> Structure:
     return Structure.from_xyz(xyz_text, title="from-browser")
 
 
-def _coerce_to_field_type(field: dataclasses.Field, value: Any,
-                          resolved_hints: Dict[str, Any]) -> Any:
-    """Convert a JSON-arriving value to the field's declared type.
-
-    The form layer can deliver number-typed fields as strings ("300"
-    rather than 300) when the request comes from a non-browser HTTP
-    client (the in-tree JS frontend coerces with parseFloat/parseInt
-    so the test path is fine).  Without coercion, the dataclass
-    happily stores the string, downstream the validator's range check
-    raises ``TypeError`` on ``string < int`` and the validator-pass
-    swallows it as a "skip this validator", quietly losing the
-    out-of-range warning.
-
-    Coercion respects ``Optional[X]`` (the empty string and ``None``
-    pass through as ``None``).  ``bool`` accepts the JSON literal True
-    / False as well as the strings ``"true"`` / ``"false"`` / ``"1"`` /
-    ``"0"`` (case-insensitive).  Tuple-typed fields like ``kgrid``
-    fall through to per-element int coercion.
-
-    Unknown / unhandled types pass through untouched -- the dataclass
-    constructor sees what the caller sent.
-    """
-    ann = resolved_hints.get(field.name, field.type)
-    origin = typing.get_origin(ann)
-    args   = typing.get_args(ann)
-    is_optional = (origin is typing.Union and type(None) in args)
-    if is_optional:
-        if value is None or value == "":
-            return None
-        ann = next((a for a in args if a is not type(None)), str)
-        origin = typing.get_origin(ann)
-        args   = typing.get_args(ann)
-
-    if ann is bool:
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, str):
-            return value.strip().lower() in ("true", "1", "yes", "on")
-        return bool(value)
-    if ann is int:
-        return int(value)
-    if ann is float:
-        return float(value)
-    if ann is str:
-        return str(value)
-    # Tuple[int, int, int] (kgrid is the only such field today).
-    if origin is tuple and args:
-        if not isinstance(value, (list, tuple)):
-            return value
-        elem_t = args[0]
-        return tuple(elem_t(v) for v in value)
-    # Sequence[str] (species_order in SiestaConfig) -- accept either a
-    # comma-string or an already-list value.
-    if origin in (list, tuple) and args and args[0] is str:
-        if isinstance(value, str):
-            return [s.strip() for s in value.split(",") if s.strip()]
-        return value
-    # Anything else: pass through.
-    return value
-
-
 _SIESTA_HINTS = typing.get_type_hints(SiestaConfig)
 _PYSCF_HINTS  = typing.get_type_hints(PySCFConfig)
-
-
-def _config_from_params(cls, params: Dict[str, Any], hints: Dict[str, Any],
-                        none_sentinels: Tuple[str, ...] = ()):
-    """Build a config instance from a JSON-style params dict.
-
-    Common mechanism behind ``_siesta_config_from_params`` and
-    ``_pyscf_config_from_params``.  Walks dataclass fields, picks the
-    matching key from ``params``, coerces to the field's declared
-    type, and constructs the dataclass.
-
-    ``none_sentinels``: per-field rule for "this string means None"
-    (e.g. ``("solvent", "auxbasis", "dispersion")`` for PySCFConfig
-    where the form sends an empty string for "leave default").
-    """
-    by_name = {f.name: f for f in fields(cls)}
-    kwargs: Dict[str, Any] = {}
-    for k, v in params.items():
-        f = by_name.get(k)
-        if f is None:
-            continue
-        # Form-sentinel "empty string -> None / drop" handling for
-        # specific Optional fields the JS deliberately blanks out.
-        if k in none_sentinels and (v == "" or v is None):
-            kwargs[k] = None
-            continue
-        # Backwards-compat: JS sometimes sends "none" for "no
-        # dispersion".  Same treatment as the empty-string case.
-        if k == "dispersion" and isinstance(v, str) and v.strip().lower() == "none":
-            kwargs[k] = None
-            continue
-        # net_charge: empty string from the form means "auto-detect"
-        # (don't pass the kwarg so the dataclass default of None
-        # kicks in and render_fdf falls back to the phosphate
-        # heuristic).
-        if k == "net_charge" and (v == "" or v is None):
-            continue
-        # Coercion failures (TypeError / ValueError) propagate to the
-        # endpoint, which surfaces them as an error-severity Issue
-        # rather than HTTP 400 -- so the UI renders the same panel
-        # for parse-failure as for validator-failure.
-        kwargs[k] = _coerce_to_field_type(f, v, hints)
-    return cls(**kwargs)
 
 
 def _siesta_config_from_params(params: Dict[str, Any]) -> SiestaConfig:
