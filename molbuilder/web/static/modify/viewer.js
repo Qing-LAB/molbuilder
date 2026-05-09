@@ -33,6 +33,7 @@
         atom_names: [],        // ["CA", "HB1", ...] (or [] if absent)
         residue_ids: [],       // [1, 1, 2, ...]   (or [] if absent)
         residue_names: [],     // ["MOL", ...]     (or [] if absent)
+        chain_ids: [],         // ["A", ...]       (or [] if absent)
         title: "",
         n_atoms: 0,
         selected: new Set(),   // atom indices
@@ -387,6 +388,7 @@
         state.atom_names    = Array.isArray(r.atom_names)    ? r.atom_names    : [];
         state.residue_ids   = Array.isArray(r.residue_ids)   ? r.residue_ids   : [];
         state.residue_names = Array.isArray(r.residue_names) ? r.residue_names : [];
+        state.chain_ids     = Array.isArray(r.chain_ids)     ? r.chain_ids     : [];
         state.title         = r.title || "";
         state.n_atoms       = Number(r.n_atoms || state.elements.length || 0);
         state.selected      = new Set();
