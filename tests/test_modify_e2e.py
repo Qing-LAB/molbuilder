@@ -747,3 +747,223 @@ def test_modify_page_resources_load_with_200(page, flask_server):
     assert not local_failures, (
         f"local-asset 4xx/5xx responses: {local_failures}"
     )
+
+
+# --------------------------------------------------------------------- #
+#  Phase 1 state persistence: structure survives tab navigation.        #
+#                                                                       #
+#  Build, Watch, and Modify are separate Flask routes, so clicking      #
+#  between them is a full page reload.  JS closure state dies on each   #
+#  reload; sessionStorage doesn't.  The Phase 1 implementation in       #
+#  modify/viewer.js + viewer.js writes the built/loaded structure to    #
+#  sessionStorage on ``pagehide`` and restores it on the next page      #
+#  load.  These tests exercise the round-trip in a real browser.        #
+# --------------------------------------------------------------------- #
+
+
+def test_modify_structure_survives_navigation_to_watch_and_back(
+        page, flask_server, water_xyz_file):
+    """Load a structure on Modify, click the Watch tab, then click
+    the Modify tab again.  The atom list should still show the
+    original 3 rows -- without Phase 1 it would be empty (closure
+    state was destroyed on the navigation)."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    # Sanity: 3 rows are present before we leave.
+    assert page.locator("#atom-list-body tr").count() == 3
+    # Click off to /watch (full reload).
+    page.locator('a.app-tab[href="/watch"]').click()
+    page.wait_for_url(f"{flask_server}/watch")
+    # And back.
+    page.locator('a.app-tab[href="/modify"]').click()
+    page.wait_for_url(f"{flask_server}/modify")
+    # Atom list should be repopulated by the restore.
+    page.wait_for_function(
+        "() => document.querySelectorAll('#atom-list-body tr').length === 3"
+    )
+    # Element column for the first row is still O (not e.g. "" if
+    # restore mangled the metadata).
+    rows = page.locator("#atom-list-body tr")
+    assert rows.nth(0).locator(".col-el").inner_text() == "O"
+
+
+def test_modify_selection_survives_navigation(
+        page, flask_server, water_xyz_file):
+    """Select an atom on Modify, navigate away, come back.  The
+    selected row stays highlighted -- the saved state includes the
+    selection set."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    page.locator("#atom-list-body tr").nth(1).click()
+    # Confirm selection before nav.
+    assert "is-selected" in (
+        page.locator("#atom-list-body tr").nth(1).get_attribute("class") or ""
+    )
+    page.locator('a.app-tab[href="/watch"]').click()
+    page.wait_for_url(f"{flask_server}/watch")
+    page.locator('a.app-tab[href="/modify"]').click()
+    page.wait_for_url(f"{flask_server}/modify")
+    page.wait_for_function(
+        "() => document.querySelectorAll('#atom-list-body tr').length === 3"
+    )
+    # The selection survives.
+    selected = page.locator("#atom-list-body tr.is-selected")
+    assert selected.count() == 1
+    assert selected.first.get_attribute("data-atom-index") == "1"
+
+
+def test_modify_state_after_op_survives_navigation(
+        page, flask_server, water_xyz_file):
+    """Apply Delete on Modify (state.xyz is now the post-delete
+    structure), navigate away, come back.  The 2-atom post-delete
+    state must be what restores -- NOT the 3-atom pre-load."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    page.locator("#atom-list-body tr").nth(0).click()  # O
+    page.locator("#delete-apply").click()
+    page.wait_for_function(
+        "() => document.querySelectorAll('#atom-list-body tr').length === 2"
+    )
+    page.locator('a.app-tab[href="/watch"]').click()
+    page.wait_for_url(f"{flask_server}/watch")
+    page.locator('a.app-tab[href="/modify"]').click()
+    page.wait_for_url(f"{flask_server}/modify")
+    # Post-delete state is what restores.
+    page.wait_for_function(
+        "() => document.querySelectorAll('#atom-list-body tr').length === 2"
+    )
+    rows = page.locator("#atom-list-body tr")
+    elements = [
+        rows.nth(i).locator(".col-el").inner_text() for i in range(2)
+    ]
+    assert elements == ["H", "H"]
+
+
+def test_modify_handles_storage_quota_exceeded_gracefully(
+        page, flask_server, water_xyz_file):
+    """If sessionStorage is full or disabled (private mode in some
+    browsers throws on setItem), the save path must catch the error
+    and not crash the page.  Mocked by stubbing setItem to throw."""
+    errors = _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+
+    # Wrap setItem so any save attempt throws.
+    page.evaluate("""() => {
+        const orig = sessionStorage.setItem.bind(sessionStorage);
+        sessionStorage.setItem = (k, v) => {
+            if (k === "modify-state") {
+                throw new DOMException("Quota exceeded", "QuotaExceededError");
+            }
+            return orig(k, v);
+        };
+    }""")
+    # Trigger the save by dispatching pagehide manually -- normally
+    # fired by the browser on navigation.  Catch any thrown error.
+    page.evaluate("""() => {
+        window.dispatchEvent(new Event("pagehide"));
+    }""")
+    # No JS errors should reach the page-error handler; the save
+    # function catches QuotaExceededError and warns to console
+    # (which is filtered to error-only, so a console.warn doesn't
+    # count).  Page is still alive.
+    page.wait_for_timeout(150)
+    page_errors = [e for e in errors if e[0] == "pageerror"]
+    assert page_errors == [], f"unexpected pageerror: {page_errors}"
+    # Atom list still rendered; the page didn't break.
+    assert page.locator("#atom-list-body tr").count() == 3
+
+
+# --------------------------------------------------------------------- #
+#  Phase 1 (Build side): structure survives Build <-> Watch <-> Build  #
+# --------------------------------------------------------------------- #
+
+
+def test_build_structure_survives_navigation(page, flask_server):
+    """Build a peptide on /, navigate to /watch, then back to /.
+    The 3D viewer must still show the molecule, the info panel
+    must still show n_atoms, and the Generate buttons must still
+    be enabled -- without Phase 1 the user lost everything and
+    had to click Build again."""
+    page.goto(f"{flask_server}/")
+    page.wait_for_selector("#build-btn")
+    # Build a tiny peptide.  AmberTools/RDKit/3DNA -- whichever the
+    # ``auto`` backend resolves to is fine for this test.
+    page.locator("#kind").select_option("peptide")
+    page.locator("#input-text").fill("AC")
+    page.locator("#build-btn").click()
+    # Wait for the build response: dl-xyz becomes enabled and
+    # info-atoms shows a non-empty atom count.
+    page.wait_for_function(
+        "() => !document.getElementById('dl-xyz').disabled"
+    )
+    n_atoms_before = page.locator("#info-atoms").inner_text()
+    assert n_atoms_before and n_atoms_before != "—"
+    # Click Watch (full navigation).
+    page.locator('a.app-tab[href="/watch"]').click()
+    page.wait_for_url(f"{flask_server}/watch")
+    # And back.
+    page.locator('a.app-tab[href="/"]').click()
+    page.wait_for_url(f"{flask_server}/")
+    # The structure was restored from sessionStorage.
+    page.wait_for_function(
+        "() => !document.getElementById('dl-xyz').disabled",
+        timeout=5000,
+    )
+    n_atoms_after = page.locator("#info-atoms").inner_text()
+    assert n_atoms_after == n_atoms_before, (
+        f"atom count not restored: was {n_atoms_before!r}, "
+        f"now {n_atoms_after!r}"
+    )
+    # Generate buttons re-enabled too.
+    assert page.locator("#generate-fdf").is_enabled()
+    assert page.locator("#generate-pyscf").is_enabled()
+
+
+def test_build_structure_state_round_trips_modify(
+        page, flask_server, water_xyz_file):
+    """Build/Modify are independent persistence keys -- loading on
+    Modify must not pollute Build's state, and vice versa.  This
+    pins the per-tab key boundary (modify-state vs
+    builder-structure)."""
+    # Modify side first.
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    page.evaluate("() => window.dispatchEvent(new Event('pagehide'))")
+    # Now visit Build.  No prior Build save -> empty viewer.
+    page.goto(f"{flask_server}/")
+    page.wait_for_selector("#build-btn")
+    # Generate buttons start disabled (no structure built).
+    assert page.locator("#generate-fdf").is_disabled()
+    # The two keys are isolated.
+    has_modify_key = page.evaluate(
+        "() => sessionStorage.getItem('modify-state') !== null"
+    )
+    has_builder_key = page.evaluate(
+        "() => sessionStorage.getItem('builder-structure') !== null"
+    )
+    assert has_modify_key is True
+    assert has_builder_key is False, (
+        "Modify's save leaked into Build's storage key"
+    )
+
+
+def test_modify_uses_sessionstorage_not_localstorage(
+        page, flask_server, water_xyz_file):
+    """Document the persistence boundary: ``sessionStorage`` (clears
+    on browser close) NOT ``localStorage`` (persists across browser
+    restarts).  This is the spec-recorded design choice -- molecular
+    structures aren't sensitive but a "session ends -> fresh start"
+    default fits a scientific-tool feel.  Verify the saved key
+    actually lives in sessionStorage."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    page.evaluate("() => window.dispatchEvent(new Event('pagehide'))")
+    # The Modify state must be in sessionStorage, NOT localStorage.
+    in_session = page.evaluate(
+        "() => sessionStorage.getItem('modify-state') !== null"
+    )
+    in_local   = page.evaluate(
+        "() => localStorage.getItem('modify-state') !== null"
+    )
+    assert in_session is True, "save target should be sessionStorage"
+    assert in_local   is False, "save MUST NOT leak into localStorage"

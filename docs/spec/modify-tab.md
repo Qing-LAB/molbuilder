@@ -495,6 +495,30 @@ The UI shows them in an issues panel mirroring the Build tab's design.
 * **Anchor indices are 0-based** in the Python API; the UI shows them
   1-based to match the existing atom-index labels in the viewer.
 
+### 5.1 Cross-tab persistence (Phase 1)
+
+Build (`/`), Watch (`/watch`), and Modify (`/modify`) are separate
+Flask routes, so navigating between tabs is a full page reload --
+JS closure state is destroyed.  Phase 1 (2026-05-09) added
+``sessionStorage`` round-trips for the structure on Build and Modify:
+
+* **Build** persists the last-rendered ``Structure`` (xyz, metadata,
+  3Dmol camera) under ``builder-structure``.  The form-fields
+  storage at ``builder-form`` is unchanged and complementary.
+* **Modify** persists xyz + metadata + the current atom selection
+  + 3Dmol camera + viewer toggles (`Show indices`, `Show xyz axes`,
+  representation) under ``modify-state``.
+* **Storage scope:** ``sessionStorage`` (per-tab, cleared on browser
+  close), not ``localStorage`` -- so a "session ends -> fresh start"
+  default applies.  Quota errors (>5 MB structures) are caught and
+  the save silently skipped.
+* **Watch** stays as it was: only the path-input value is persisted.
+  Auto-reload of the trajectory on `pageshow` is Phase 2 work.
+* The **Modify -> Build "Send to Build" handoff** in M5 reuses the
+  same ``builder-structure`` key: Modify writes the finished
+  junction there, navigates to ``/``, and Build's restore renders
+  it identically to a fresh build.
+
 ---
 
 ## 6. Open decisions (recorded for future readers)

@@ -677,7 +677,136 @@
             rotateAngle.addEventListener("input", refreshRotateAngleReadout);
             refreshRotateAngleReadout();
         }
+
+        // Phase 1: persist structure state across tab navigation.
+        // Restore here (after every event handler is wired so the
+        // restored UI behaves identically to a freshly-loaded one);
+        // save on pagehide so the user's latest state survives a
+        // click on /, /watch, or anywhere else.
+        restoreModifyState();
+        window.addEventListener("pagehide", saveModifyState);
     });
+
+    // ----- State persistence across tab navigation -------------------- //
+    // Build, Watch, and Modify are separate Flask routes (full page
+    // reloads on every nav).  JS closure state -- the loaded
+    // structure, the selection, the 3Dmol camera -- gets destroyed
+    // when the user clicks /watch and again when they come back.
+    // sessionStorage survives same-tab navigation so we use it as the
+    // bridge.  This mirrors the pattern Build's viewer.js already
+    // uses for form values (saveFormState / restoreFormState).
+    //
+    // Stored payload shape (key MODIFY_STATE_KEY):
+    //   {
+    //     v: 1,
+    //     saved_at: <iso8601>,
+    //     xyz, elements, atom_names, residue_ids, residue_names,
+    //     chain_ids, title, n_atoms,
+    //     selected: [...],   // sorted atom indices
+    //     camera: viewer.getView(),
+    //     show_axes:    bool,
+    //     show_indices: bool,
+    //     rep:          string,
+    //   }
+    //
+    // We don't expire by saved_at -- sessionStorage already clears
+    // on browser close, which is the right "fresh start" boundary.
+
+    const MODIFY_STATE_KEY = "modify-state";
+    const STATE_SCHEMA_VERSION = 1;
+
+    function saveModifyState() {
+        if (!state.xyz) return;     // nothing to save
+        let camera = null;
+        try {
+            camera = viewer.getView();
+        } catch (_e) {
+            // 3Dmol's getView is synchronous and shouldn't throw, but
+            // be defensive in case the viewer was torn down early.
+        }
+        const payload = {
+            v: STATE_SCHEMA_VERSION,
+            saved_at: new Date().toISOString(),
+            xyz:           state.xyz,
+            elements:      state.elements,
+            atom_names:    state.atom_names,
+            residue_ids:   state.residue_ids,
+            residue_names: state.residue_names,
+            chain_ids:     state.chain_ids,
+            title:         state.title,
+            n_atoms:       state.n_atoms,
+            selected:      Array.from(state.selected).sort((a, b) => a - b),
+            camera:        camera,
+            show_axes:     ($("show-axes")    || {}).checked || false,
+            show_indices:  ($("show-indices") || {}).checked || false,
+            rep:           ($("rep") || {}).value || "stick",
+        };
+        try {
+            sessionStorage.setItem(
+                MODIFY_STATE_KEY,
+                JSON.stringify(payload),
+            );
+        } catch (e) {
+            // QuotaExceededError on a >5 MB structure, or storage
+            // disabled (private mode in some browsers).  Skip without
+            // crashing -- the user simply loses persistence.
+            console.warn("modify: could not save state:", e && e.message);
+        }
+    }
+
+    function restoreModifyState() {
+        let saved = null;
+        try {
+            saved = JSON.parse(sessionStorage.getItem(MODIFY_STATE_KEY) || "null");
+        } catch (_e) {
+            return;
+        }
+        if (!saved || saved.v !== STATE_SCHEMA_VERSION) return;
+        if (!saved.xyz) return;
+        // Restore the toolbar toggles BEFORE rendering so the first
+        // applyStyle picks up the saved representation.
+        if ($("rep") && saved.rep) $("rep").value = saved.rep;
+        if ($("show-indices")) $("show-indices").checked = !!saved.show_indices;
+        if ($("show-axes"))    $("show-axes").checked    = !!saved.show_axes;
+        // Feed the saved structure through the existing
+        // applyStructure() path so the atom list, viewer, and info
+        // panel all re-render via the same code as a fresh load.
+        applyStructure({
+            xyz:           saved.xyz,
+            elements:      saved.elements,
+            atom_names:    saved.atom_names,
+            residue_ids:   saved.residue_ids,
+            residue_names: saved.residue_names,
+            chain_ids:     saved.chain_ids,
+            title:         saved.title,
+            n_atoms:       saved.n_atoms,
+        });
+        // Restore the selection (applyStructure cleared it).
+        if (Array.isArray(saved.selected) && saved.selected.length) {
+            saved.selected.forEach((i) => {
+                if (Number.isInteger(i) && i >= 0 && i < state.n_atoms) {
+                    state.selected.add(i);
+                }
+            });
+            refreshSelectionUI();
+        }
+        // Restore the camera last so it doesn't fight zoomTo() inside
+        // applyStructure.
+        if (Array.isArray(saved.camera)) {
+            try {
+                viewer.setView(saved.camera);
+                viewer.render();
+            } catch (_e) {
+                // Bad cached camera array -- fall back to default.
+                viewer.zoomTo();
+                viewer.render();
+            }
+        }
+        setStatus(
+            `Restored ${state.n_atoms}-atom structure (${saved.title || "unnamed"}).`,
+            "ok",
+        );
+    }
 
     // ----- Test hook ------------------------------------------------- //
     // Exposes the click-callback path so the Playwright E2E tests can

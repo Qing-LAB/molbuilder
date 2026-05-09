@@ -300,6 +300,10 @@
         state.title = r.title;
         state.fdf = null;
         state.pyscf = null;
+        // Stash the full response so saveStructureState can persist
+        // a faithful re-render payload to sessionStorage; the same
+        // shape feeds back into applyStructureResult on restore.
+        state.last_response = r;
         $("info-title").textContent     = r.title;
         $("info-atoms").textContent     = r.n_atoms;
         $("info-residues").textContent  = r.n_residues || "—";
@@ -892,6 +896,84 @@
 
     restoreFormState();
     window.addEventListener("pagehide", saveFormState);
+
+    // ----- Session state: persist the BUILT / LOADED structure too ---
+    // The form-state restore above brings back what the user TYPED;
+    // this complementary pair brings back what they actually
+    // BUILT.  Without it, clicking Watch and coming back nukes the
+    // 3-D viewer's molecule -- the form fields survive but the
+    // structure does not, forcing the user to rebuild before they
+    // can keep editing.  Phase 1 of the cross-tab persistence work
+    // recorded in docs/spec/modify-tab.md.
+    //
+    // The same key ("builder-structure") is the destination of the
+    // upcoming Modify -> Build "Send to Build" handoff (M5): the
+    // Modify tab writes the finished junction here, navigates to /,
+    // and Build's restore picks it up identically.
+
+    const STRUCTURE_KEY = "builder-structure";
+    const STRUCTURE_SCHEMA_VERSION = 1;
+
+    function saveStructureState() {
+        if (!state.xyz || !state.last_response) return;
+        let camera = null;
+        try {
+            camera = viewer.getView();
+        } catch (_e) {
+            // 3Dmol's getView is synchronous; defensive on teardown.
+        }
+        const payload = {
+            v: STRUCTURE_SCHEMA_VERSION,
+            saved_at: new Date().toISOString(),
+            response: state.last_response,
+            camera:   camera,
+        };
+        try {
+            sessionStorage.setItem(STRUCTURE_KEY, JSON.stringify(payload));
+        } catch (e) {
+            // QuotaExceededError on a structure that doesn't fit
+            // (sessionStorage cap is ~5-10 MB).  Skip without
+            // crashing -- the user just loses persistence on this
+            // particular load.
+            console.warn("builder: could not save structure state:",
+                         e && e.message);
+        }
+    }
+
+    function restoreStructureState() {
+        let saved = null;
+        try {
+            saved = JSON.parse(sessionStorage.getItem(STRUCTURE_KEY) || "null");
+        } catch (_e) {
+            return false;
+        }
+        if (!saved || saved.v !== STRUCTURE_SCHEMA_VERSION) return false;
+        const r = saved.response;
+        if (!r || !r.xyz) return false;
+        // Replay the build/load through the same path a fresh
+        // /api/build/molecule response would take.  This keeps the
+        // info panel, atom counts, and the disabled/enabled state of
+        // the Generate buttons consistent with a fresh build.
+        applyStructureResult(r);
+        // Restore the camera last so it doesn't fight the zoomTo()
+        // inside renderStructure().
+        if (Array.isArray(saved.camera)) {
+            try {
+                viewer.setView(saved.camera);
+                viewer.render();
+            } catch (_e) {
+                viewer.zoomTo();
+                viewer.render();
+            }
+        }
+        return true;
+    }
+
+    // Restore AFTER the form-state restore above so the Build form
+    // fields match the structure if the user had built (e.g. a DNA
+    // sequence is in the input box AND the helix is in the viewer).
+    restoreStructureState();
+    window.addEventListener("pagehide", saveStructureState);
 
     // Wire each engine-scoped form input to the debounced preflight
     // refresh so the issues panel updates live as the user adjusts
