@@ -144,7 +144,11 @@ def add_dataclass_options(cls, *,
             # CLI parse time instead of waiting for SIESTA / PySCF to
             # error out at execution time.  The choice list lives in the
             # dataclass field metadata so the dataclass stays the single
-            # source of truth.
+            # source of truth.  ``case_sensitive=False`` (R2) lets users
+            # type ``--relax-type cg`` interchangeably with ``CG`` --
+            # without it, the renderer's ``.upper()`` is dead code at
+            # the CLI layer because click rejects mismatched case before
+            # the renderer sees the value.
             if choices is not None:
                 if py_t is bool:
                     raise TypeError(
@@ -152,7 +156,8 @@ def add_dataclass_options(cls, *,
                         f"meaningless on a bool field"
                     )
                 f = click.option(flag, fld.name,
-                                 type=click.Choice(list(choices)),
+                                 type=click.Choice(list(choices),
+                                                   case_sensitive=False),
                                  default=default, show_default=True,
                                  help=help_text)(f)
                 continue

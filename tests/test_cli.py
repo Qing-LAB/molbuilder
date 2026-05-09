@@ -844,8 +844,13 @@ def test_add_dataclass_options_choices_appear_in_help():
     from click.testing import CliRunner
     res = CliRunner().invoke(demo, ["--help"])
     assert res.exit_code == 0
-    # click renders Choice options as "[a|b|c]" in --help.
-    assert "RKS" in res.output and "UKS" in res.output and "RHF" in res.output
+    # click renders Choice options as "[a|b|c]" in --help.  With R2's
+    # ``case_sensitive=False`` the rendered list is lowercased, so we
+    # match case-insensitively.
+    out = res.output.lower()
+    assert "rks" in out and "uks" in out and "rhf" in out
+    # And the default still shows in the original case.
+    assert "RKS" in res.output
 
 
 @pytest.mark.parametrize("subcommand,flag,bad_val", [

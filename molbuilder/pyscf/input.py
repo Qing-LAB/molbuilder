@@ -515,18 +515,37 @@ def render_script(struct: Structure,
         # is small (mHa) but matters when comparing reaction energies
         # across runs.  One extra SCF, cheap relative to the opt.
         #
-        # Use mf.reset(mol_eq) rather than ``mf.mol = mol_eq`` (P3):
-        # reset() invalidates cached integrals (_eri / with_df / MO
-        # arrays) bound to the previous mol so the subsequent kernel()
-        # rebuilds them at the new geometry; bare attribute assignment
-        # leaves the caches stale.  See PySCF 2.x SCF.reset() docs.
+        # Three things going on here:
+        #   1. ``mf.make_rdm1()`` snapshots the converged density at
+        #      the previous (line-search) geometry from the cached MOs.
+        #      This lets kernel() warm-start from that DM instead of
+        #      cold-starting from MINAO -- saves ~10-30 SCF cycles
+        #      since the post-opt geometry is a tiny perturbation of
+        #      the line-search step (R1).
+        #   2. ``mf.reset(mol_eq)`` updates self.mol AND invalidates
+        #      cached integrals (_eri / with_df / _opt) bound to the
+        #      previous mol.  Without reset(), kernel() would reuse
+        #      stale integrals and the result would not be the SCF
+        #      at mol_eq (P3).
+        #   3. ``mf.kernel(dm0=dm_prev)`` rebuilds integrals at mol_eq
+        #      and converges from the warm-started DM.
         if v:
             out.append("# Re-evaluate at the relaxed geometry: optimize() leaves")
             out.append("# mf bound to the last line-search SCF, not necessarily")
             out.append("# the SCF AT mol_eq.  reset() drops cached integrals so")
-            out.append("# kernel() rebuilds them at mol_eq's coordinates.")
+            out.append("# kernel() rebuilds them at mol_eq's coordinates;")
+            out.append("# dm0=dm_prev warm-starts from the converged DM when")
+            out.append("# the previous SCF state is intact.")
+        # ``mf.make_rdm1()`` errors with ``'>' not supported between
+        # 'NoneType' and 'int'`` when geomeTRIC's optimize() failed to
+        # converge or otherwise left mf without a valid ``mo_occ``.
+        # Guard the warm-start: if mf doesn't carry a usable density,
+        # fall back to mf.init_guess (MINAO) for the post-opt SCF.
+        out.append("dm_prev = (mf.make_rdm1() "
+                   "if mf.mo_coeff is not None and mf.mo_occ is not None "
+                   "else None)")
         out.append("mf.reset(mol_eq)")
-        out.append("mf.kernel()")
+        out.append("mf.kernel(dm0=dm_prev)")
         out.append('print(f"Final energy: {mf.e_tot:.8f} Hartree")')
     else:
         if v:

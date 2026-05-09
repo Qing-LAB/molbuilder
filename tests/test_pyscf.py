@@ -474,6 +474,88 @@ def test_post_opt_uses_mf_reset_not_attribute_assignment(h2o):
     assert "mf.mol = mol_eq"  not in text
 
 
+def test_post_opt_warm_starts_from_converged_dm(h2o):
+    """R1: the post-opt re-eval must pass dm0=dm_prev to mf.kernel(),
+    where dm_prev is the converged DM at the previous geometry (or
+    None if the geomopt left mf in a partial state).  Without the
+    warm-start, kernel() restarts from MINAO (the default init_guess)
+    and burns 10-30 SCF cycles re-converging from scratch rather than
+    warm-starting from the line-search density."""
+    text = render_script(h2o, PySCFConfig(optimize=True))
+    # The DM snapshot is guarded so a failed/partial optimize doesn't
+    # crash on mo_occ=None inside make_rdm1().
+    assert "mf.make_rdm1()" in text
+    assert "mf.mo_coeff is not None" in text
+    assert "mf.mo_occ is not None"   in text
+    # The kernel() call passes the (possibly None) DM as the warm start.
+    assert "mf.kernel(dm0=dm_prev)"   in text
+    # And the bare mf.kernel() form must NOT appear in the post-opt path
+    # (it can still appear in the single-point path `e = mf.kernel()`).
+    rest = text.split("mf.reset(mol_eq)", 1)[-1]
+    # Take only the next ~5 lines after reset() to scope the assertion.
+    rest = "\n".join(rest.split("\n")[:8])
+    assert "mf.kernel()" not in rest
+
+
+# --------------------------------------------------------------------- #
+#  Bridge: choices accept any case via the bridge (R2)                  #
+# --------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("flag,value", [
+    ("--method",          "uks"),       # default RKS / choices include UKS
+    ("--method",          "Uks"),
+    ("--scf-init-guess",  "HUCKEL"),
+    ("--optimizer",       "BERNY"),
+    ("--dispersion",      "D3BJ"),      # R4
+    ("--dispersion",      "NONE"),      # R4 + cmd_pyscf coercion
+])
+def test_pyscf_choice_accepts_mixed_case(flag, value, monkeypatch, tmp_path):
+    """R2: ``case_sensitive=False`` on the bridge's click.Choice lets
+    users type the choice in any case.  Without this, the renderer's
+    own ``.upper()`` is dead code at the CLI layer."""
+    from molbuilder import cli as _cli
+    captured = {}
+
+    def fake_convert(input_path, py_path, config):
+        captured["cfg"] = config
+        return {"py": py_path, "n_atoms": 0, "charge": 0, "label": "x"}
+    monkeypatch.setattr("molbuilder.pyscf.convert", fake_convert)
+
+    in_xyz = tmp_path / "h2.xyz"
+    in_xyz.write_text("2\nh2\nH 0 0 0\nH 0.74 0 0\n")
+    out_py = tmp_path / "h2.py"
+    rc = _cli.main(["pyscf", str(in_xyz), str(out_py), flag, value])
+    assert rc == 0
+    # The captured config must hold a value (either the original-case
+    # match from the choices list or the post-coercion None for
+    # --dispersion NONE).
+    assert "cfg" in captured
+
+
+# --------------------------------------------------------------------- #
+#  Dispersion choices reject typos at parse time (R4)                   #
+# --------------------------------------------------------------------- #
+
+
+@pytest.mark.parametrize("flag,bad_val", [
+    ("--dispersion",        "d3-bj"),
+    ("--dispersion",        "Grimme-D4"),
+    ("--preopt-dispersion", "d4bj"),
+])
+def test_pyscf_dispersion_typo_rejected_at_parse_time(
+        flag, bad_val, tmp_path):
+    """R4: dispersion / preopt_dispersion now carry choices metadata
+    so a typo fails at CLI parse time instead of reaching PySCF."""
+    from molbuilder import cli as _cli
+    in_xyz = tmp_path / "h2.xyz"
+    in_xyz.write_text("2\nh2\nH 0 0 0\nH 0.74 0 0\n")
+    out_py = tmp_path / "h2.py"
+    with pytest.raises(SystemExit) as exc:
+        _cli.main(["pyscf", str(in_xyz), str(out_py), flag, bad_val])
+    assert exc.value.code == 2
+
+
 # --------------------------------------------------------------------- #
 #  ECP "none" sentinel works from the Python API too (P4)               #
 # --------------------------------------------------------------------- #

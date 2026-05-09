@@ -637,6 +637,34 @@ def _validate_pyscf(struct: Structure, cfg,
             "config.method",
         ))
 
+    # R3: silent open-shell miss when method=RKS/RHF (closed-shell) AND
+    # spin=0 AND the system has an odd electron count -- a radical the
+    # user didn't recognise (CH3., NO, charged-organic with odd e-).
+    # ``spin=0`` on an odd-electron system is a contradiction: an
+    # unpaired electron MUST exist somewhere, so RKS would either fail
+    # SCF or quietly return the wrong electronic state.  Compute
+    # parity from charge + atomic numbers.
+    if method in ("RKS", "RHF") and cfg.spin == 0:
+        # Lazy import: pyscf/input.py owns _ATOMIC_NUMBER (an L2 sibling
+        # module).  Importing here, not at module top, to avoid a hard
+        # cycle should pyscf/input.py ever start to import this file at
+        # module load.
+        from .pyscf.input import _ATOMIC_NUMBER, _resolve_charge
+        n_e = (sum(_ATOMIC_NUMBER.get(el, 0) for el in struct.elements)
+               - _resolve_charge(struct, cfg))
+        if n_e % 2 == 1:
+            issues.append(Issue(
+                "warn",
+                f"odd electron count (n_e = {n_e}) with method = {method} "
+                f"and spin = 0 -- the system is a radical and a closed-"
+                f"shell SCF will either fail to converge or quietly "
+                f"return the wrong electronic state.  Switch to UKS / "
+                f"UHF and set spin = 1 (or higher for multi-radical "
+                f"systems).  If the count is wrong because charge auto-"
+                f"detection missed something, set cfg.charge explicitly",
+                "config.method",
+            ))
+
     # Peptide protonation: PeptideBuilder + AddHs builds the gas-phase
     # NEUTRAL form (Asp / Glu protonated, Lys / Arg neutral, etc.).
     # For sequences containing charged side chains, the physiological

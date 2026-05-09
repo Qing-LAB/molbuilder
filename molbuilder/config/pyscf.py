@@ -59,6 +59,11 @@ class PySCFConfig:
         "help": "use density fitting (faster Coulomb/exchange evaluation)",
     })
     dispersion: Optional[str] = field(default="d3bj", metadata={
+        # ``none`` is in the choices list so that the case-insensitive
+        # click.Choice still accepts the disable spelling; cmd_pyscf
+        # then normalises ``none`` -> None before constructing the
+        # config.  (R4)
+        "choices": ("d3", "d3bj", "d4", "none"),
         "help": "dispersion correction: d3 / d3bj / d4 / 'none' to disable",
     })
     # Effective Core Potential (gap #8).  None = auto: emit
@@ -153,6 +158,9 @@ class PySCFConfig:
         "help": "density fitting on the pre-opt SCF",
     })
     preopt_dispersion: Optional[str] = field(default=None, metadata={
+        # Same choice list as ``dispersion``; cmd_pyscf normalises
+        # ``none`` -> None.  (R4)
+        "choices": ("d3", "d3bj", "d4", "none"),
         "help": "dispersion correction on pre-opt mf (d3 / d3bj / d4); default off",
     })
     preopt_max_steps: int = field(default=50, metadata={
