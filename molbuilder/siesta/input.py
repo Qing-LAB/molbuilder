@@ -486,6 +486,20 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
                 "# multiplicity; without it SIESTA may settle into a wrong",
                 "# spin state.",
             ]
+            if v and cfg.spin_total == 0.0:
+                # SP-A: a constrained singlet ON TOP of open-shell DFT
+                # is unusual -- the cheaper path is spin_polarized=False
+                # (spin-restricted Kohn-Sham).  Surface this so a user
+                # who landed here by accident sees the contradiction.
+                out += [
+                    "# NOTE: spin_total = 0.0 with spin_polarized=True asks",
+                    "# for a constrained singlet via open-shell DFT (broken-",
+                    "# symmetry capable).  Most users wanting a singlet are",
+                    "# better served by spin_polarized=False -- the",
+                    "# spin-restricted formalism is cheaper and gives the",
+                    "# same answer.  Keep this if you specifically want",
+                    "# anti-ferromagnetic / broken-symmetry singlet.",
+                ]
             out.append("Spin.Fix          .true.")
             out.append(f"Spin.Total        {cfg.spin_total}")
 

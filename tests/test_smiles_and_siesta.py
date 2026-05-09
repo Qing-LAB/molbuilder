@@ -189,6 +189,34 @@ def test_spin_total_ignored_without_polarization():
     assert "Spin.Total" not in fdf
 
 
+def test_spin_total_zero_with_polarization_emits_constrained_singlet_note():
+    """SP-A: ``spin_polarized=True`` AND ``spin_total=0.0`` produces a
+    constrained singlet ON TOP of open-shell DFT.  This is unusual
+    (the cheaper path is spin-restricted KS) and the verbose-mode FDF
+    must surface a comment so a user who landed here by accident sees
+    the contradiction."""
+    fdf = render_fdf(
+        _h2_struct(),
+        SiestaConfig(spin_polarized=True, spin_total=0.0,
+                     verbose_comments=True),
+    )
+    assert "constrained singlet" in fdf
+    assert "Spin.Fix          .true." in fdf
+    assert "Spin.Total        0.0"    in fdf
+
+
+def test_spin_total_nonzero_does_not_emit_constrained_singlet_note():
+    """SP-A negative case: a real open-shell run (spin_total>0) must
+    NOT pick up the constrained-singlet note -- that note is reserved
+    for the unusual zero case."""
+    fdf = render_fdf(
+        _h2_struct(),
+        SiestaConfig(spin_polarized=True, spin_total=2.0,
+                     verbose_comments=True),
+    )
+    assert "constrained singlet" not in fdf
+
+
 def test_default_fdf_has_no_spin_block():
     """Default (closed-shell) FDF must not mention Spin at all -- the
     presence of any ``Spin`` keyword would force open-shell DFT."""

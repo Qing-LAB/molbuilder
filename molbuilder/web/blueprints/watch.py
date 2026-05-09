@@ -24,7 +24,6 @@ from __future__ import annotations
 
 import os
 import tempfile
-import time
 from threading import Lock
 from typing import Any, Dict, Optional, Tuple
 
@@ -190,12 +189,25 @@ def _api_load_multipart(uploaded_file):
     # detection layer's content sniff isn't fooled by extension-less
     # names.  Sanitise the basename to dodge path-traversal in the
     # temp filename itself.
+    #
+    # Use NamedTemporaryFile (R6): the previous filename construction
+    # was ``molwatch_{int(time.time())}_{name}`` which collides at
+    # second-resolution -- two uploads in the same second overwrote
+    # each other while a parser was reading the file.
+    # NamedTemporaryFile reserves a unique inode atomically.
     safe_name = os.path.basename(uploaded_file.filename) or "upload"
-    tmp_path = os.path.join(
-        tempfile.gettempdir(),
-        f"molwatch_{int(time.time())}_{safe_name}"
-    )
+    safe_stem = os.path.splitext(safe_name)[0]
+    safe_suffix = os.path.splitext(safe_name)[1] or ""
     try:
+        # mkstemp returns (fd, path) with an atomically-reserved
+        # unique filename.  Close the fd immediately and let
+        # ``uploaded_file.save(path)`` reopen the path -- werkzeug's
+        # FileStorage.save expects either a path string or a
+        # writable binary stream.
+        tmp_fd, tmp_path = tempfile.mkstemp(
+            prefix=f"molwatch_{safe_stem}_", suffix=safe_suffix,
+        )
+        os.close(tmp_fd)
         uploaded_file.save(tmp_path)
     except OSError as exc:
         return jsonify({"ok": False,

@@ -89,14 +89,28 @@ def add_atom(
     *,
     atom_name: Optional[str] = None,
     residue_name: str = "MOD",
+    residue_id: Optional[int] = None,
 ) -> Structure:
     """Return a new ``Structure`` with one atom appended.
 
     The new atom's position is ``struct.positions[anchor_index] + offset``.
-    A new residue id is allocated (``max(residue_ids) + 1``) so the added
-    atom isn't lumped into the anchor's residue -- handy when the user
-    wants to delete just-added atoms in one shot, and matches the way
-    molbuilder treats added thiol caps / explicit hydrogens.
+
+    By default a fresh residue id is allocated (``max(residue_ids) + 1``)
+    so the added atom isn't lumped into the anchor's residue -- handy
+    when the user wants to delete just-added atoms in one shot, and
+    matches the way molbuilder treats added thiol caps / explicit
+    hydrogens.  Pass ``residue_id`` explicitly to land the new atom in
+    a specific residue (SP-E) -- e.g. building a polyatomic side-chain
+    cap (-COOH = 4 atoms) where all four atoms share one residue id:
+
+        s = add_atom(s, "C", anchor_index=ag, offset=(1.5, 0, 0))
+        rid = s.residue_ids[-1]
+        s = add_atom(s, "O", anchor_index=s.n_atoms - 1,
+                     offset=(0.6, 1.0, 0), residue_id=rid)
+        s = add_atom(s, "O", anchor_index=s.n_atoms - 2,
+                     offset=(0.6, -1.0, 0), residue_id=rid)
+        s = add_atom(s, "H", anchor_index=s.n_atoms - 1,
+                     offset=(0.6, -1.0, 0), residue_id=rid)
 
     Parameters
     ----------
@@ -112,6 +126,9 @@ def add_atom(
         PDB-style atom name; default = ``element``.
     residue_name
         Residue name for the new atom; default ``"MOD"``.
+    residue_id
+        If provided, place the new atom in this existing residue.
+        Default ``None`` -> allocate a fresh residue id.
     """
     if not (0 <= anchor_index < struct.n_atoms):
         raise IndexError(
@@ -120,7 +137,10 @@ def add_atom(
         )
     offset_arr = np.asarray(offset, dtype=float).reshape(3)
     new_pos = struct.positions[anchor_index] + offset_arr
-    new_residue_id = (max(struct.residue_ids) if struct.residue_ids else 0) + 1
+    if residue_id is None:
+        new_residue_id = (max(struct.residue_ids) if struct.residue_ids else 0) + 1
+    else:
+        new_residue_id = int(residue_id)
     return Structure(
         elements=struct.elements + [element],
         positions=np.vstack([struct.positions, new_pos[None, :]]),
@@ -416,13 +436,33 @@ def _load_fcc_lattice() -> dict:
     )
 
 
-_FCC_LATTICE_A: dict = _load_fcc_lattice()
-
-# Public tuple of supported electrode elements.  CLI / web layers read
-# this to populate dropdowns and validate input -- single source of truth.
-SUPPORTED_FCC_ELEMENTS: Tuple[str, ...] = tuple(_FCC_LATTICE_A.keys())
+# Closed list of supported FCC electrode metals.  Hardcoded (rather
+# than derived from ``fcc_lattice.json``) so a missing or
+# misconfigured ``MOLBUILDER_DATA_DIR`` doesn't crash module import
+# (SP-C).  The JSON file holds the lattice CONSTANTS for these
+# elements; membership in the closed list is a design decision
+# (Au / Ag / Cu / Ni / Pt / Pd are the typical molecular-electronics
+# choices) and lives here.  Adding a new metal is a two-step change:
+# update this tuple AND extend the JSON.
+SUPPORTED_FCC_ELEMENTS: Tuple[str, ...] = ("Au", "Ag", "Cu", "Ni", "Pt", "Pd")
 
 SUPPORTED_FCC_PLANES: Tuple[str, ...] = ("100", "110", "111")
+
+# Lattice-constant table is loaded lazily on first call to
+# :func:`_get_fcc_lattice` and cached for the rest of the process.
+# Lazy loading lets ``import molbuilder.modify`` succeed even when the
+# data file is missing -- only operations that actually need a lattice
+# constant (build_electrode_slab, etc.) surface the error, and only
+# at the moment they need it.
+_FCC_LATTICE_A_CACHE: Optional[dict] = None
+
+
+def _get_fcc_lattice() -> dict:
+    """Return the FCC lattice-constant dict, loading on first call."""
+    global _FCC_LATTICE_A_CACHE
+    if _FCC_LATTICE_A_CACHE is None:
+        _FCC_LATTICE_A_CACHE = _load_fcc_lattice()
+    return _FCC_LATTICE_A_CACHE
 
 
 def _check_fcc_element(element: str) -> None:
@@ -430,7 +470,7 @@ def _check_fcc_element(element: str) -> None:
     supported list.  The list is closed (see ``SUPPORTED_FCC_ELEMENTS``)
     so the UI dropdown and the Python API stay in lockstep.
     """
-    if element not in _FCC_LATTICE_A:
+    if element not in SUPPORTED_FCC_ELEMENTS:
         raise ValueError(
             f"unsupported electrode element {element!r}; "
             f"supported FCC metals are: "
@@ -601,7 +641,7 @@ def add_electrode_slab(
             f"{struct.n_atoms}-atom structure"
         )
     _check_fcc_element(element)
-    a = lattice_constant if lattice_constant is not None else _FCC_LATTICE_A[element]
+    a = lattice_constant if lattice_constant is not None else _get_fcc_lattice()[element]
 
     # Use ASE's slab builder (principle #8: "Don't reinvent wheels").
     # The ``orthogonal`` flag is user-selectable; ``_build_ase_slab``

@@ -135,6 +135,31 @@ def test_add_atom_rejects_bad_anchor(linear_dimer):
         add_atom(linear_dimer, "S", anchor_index=99, offset=[0, 0, 0])
 
 
+def test_add_atom_explicit_residue_id_groups_atoms_in_one_residue(linear_dimer):
+    """SP-E: passing ``residue_id=`` lets a caller land multiple
+    appended atoms in the same residue -- needed for polyatomic
+    side-chain caps (e.g. -COOH = 4 atoms all in one residue).
+    The default (no kwarg) still allocates a fresh id per call."""
+    s = add_atom(linear_dimer, "C", 0, [1.5, 0, 0])
+    rid = s.residue_ids[-1]
+    s = add_atom(s, "O", anchor_index=s.n_atoms - 1, offset=[0.6, 1.0, 0],
+                 residue_id=rid)
+    s = add_atom(s, "O", anchor_index=s.n_atoms - 2, offset=[0.6, -1.0, 0],
+                 residue_id=rid)
+    s = add_atom(s, "H", anchor_index=s.n_atoms - 1, offset=[0.0, -1.0, 0],
+                 residue_id=rid)
+    # Last four atoms (the cap) all share rid.
+    assert s.residue_ids[-4:] == [rid, rid, rid, rid]
+
+
+def test_add_atom_default_still_allocates_fresh_residue(linear_dimer):
+    """SP-E sanity: the default (no residue_id kwarg) preserves the
+    pre-SP-E behaviour of giving each appended atom its own residue."""
+    s = add_atom(linear_dimer, "S", 0, [1, 0, 0])
+    s = add_atom(s, "S", 0, [-1, 0, 0])  # second call -- still fresh id
+    assert s.residue_ids[-2] != s.residue_ids[-1]
+
+
 # --------------------------------------------------------------------- #
 #  orient_along_axis                                                    #
 # --------------------------------------------------------------------- #
@@ -776,3 +801,54 @@ def test_junction_stepped_contacts_via_two_calls():
     elc_residues = {r for r, n in zip(junction.residue_ids, junction.residue_names)
                     if n == "ELC"}
     assert len(elc_residues) == 4
+
+
+# --------------------------------------------------------------------- #
+#  SP-C: import does NOT load the FCC lattice file.  Lazy load only      #
+#  triggers when a function actually needs the table.                    #
+# --------------------------------------------------------------------- #
+
+
+def test_modify_module_import_does_not_eagerly_load_fcc_table(monkeypatch):
+    """SP-C: the FCC lattice-constant table loads on first call to
+    ``_get_fcc_lattice``, NOT at module import.  This way a broken
+    ``MOLBUILDER_DATA_DIR`` doesn't cascade into ``import molbuilder``
+    failing -- only operations that actually consume a lattice
+    constant surface the error, and only when the user runs them."""
+    import importlib
+    import molbuilder.modify as mod
+    # Reset the cache and re-import the module.  Right after import
+    # the cache must be None (lazy).
+    mod._FCC_LATTICE_A_CACHE = None
+    importlib.reload(mod)
+    assert mod._FCC_LATTICE_A_CACHE is None, (
+        "FCC table was loaded at import time -- SP-C regressed"
+    )
+    # Asking for the table populates the cache.
+    table = mod._get_fcc_lattice()
+    assert "Au" in table
+    assert mod._FCC_LATTICE_A_CACHE is not None
+    # Public closed list of metals is hardcoded so a missing JSON
+    # doesn't take it down.
+    assert mod.SUPPORTED_FCC_ELEMENTS == ("Au", "Ag", "Cu", "Ni", "Pt", "Pd")
+
+
+def test_modify_module_falls_back_to_packaged_data_when_env_var_broken(
+        tmp_path, monkeypatch):
+    """SP-C: even when ``MOLBUILDER_DATA_DIR`` points at a directory
+    without ``fcc_lattice.json``, the loader falls back to the
+    packaged ``molbuilder/data/`` so the operation still succeeds."""
+    monkeypatch.setenv("MOLBUILDER_DATA_DIR", str(tmp_path / "nonexistent"))
+    import importlib
+    import molbuilder.modify as mod
+    mod._FCC_LATTICE_A_CACHE = None
+    importlib.reload(mod)
+    # Import didn't crash even with a broken env var.
+    assert mod.SUPPORTED_FCC_ELEMENTS == ("Au", "Ag", "Cu", "Ni", "Pt", "Pd")
+    # Lookup falls back to the packaged data dir.
+    table = mod._get_fcc_lattice()
+    assert "Au" in table
+    # Reset for the rest of the suite.
+    monkeypatch.delenv("MOLBUILDER_DATA_DIR", raising=False)
+    mod._FCC_LATTICE_A_CACHE = None
+    importlib.reload(mod)

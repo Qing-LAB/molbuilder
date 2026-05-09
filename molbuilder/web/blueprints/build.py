@@ -50,8 +50,10 @@ JSON shape:
 
 from __future__ import annotations
 
+import dataclasses
+import typing
 from dataclasses import fields
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 from flask import Blueprint, jsonify, request
 
@@ -395,38 +397,126 @@ def _xyz_to_structure(xyz_text: str) -> Structure:
     return Structure.from_xyz(xyz_text, title="from-browser")
 
 
-def _siesta_config_from_params(params: Dict[str, Any]) -> SiestaConfig:
-    """Build a SiestaConfig from a dict, picking only fields it knows."""
-    valid = {f.name for f in fields(SiestaConfig)}
+def _coerce_to_field_type(field: dataclasses.Field, value: Any,
+                          resolved_hints: Dict[str, Any]) -> Any:
+    """Convert a JSON-arriving value to the field's declared type.
+
+    The form layer can deliver number-typed fields as strings ("300"
+    rather than 300) when the request comes from a non-browser HTTP
+    client (the in-tree JS frontend coerces with parseFloat/parseInt
+    so the test path is fine).  Without coercion, the dataclass
+    happily stores the string, downstream the validator's range check
+    raises ``TypeError`` on ``string < int`` and the validator-pass
+    swallows it as a "skip this validator", quietly losing the
+    out-of-range warning.
+
+    Coercion respects ``Optional[X]`` (the empty string and ``None``
+    pass through as ``None``).  ``bool`` accepts the JSON literal True
+    / False as well as the strings ``"true"`` / ``"false"`` / ``"1"`` /
+    ``"0"`` (case-insensitive).  Tuple-typed fields like ``kgrid``
+    fall through to per-element int coercion.
+
+    Unknown / unhandled types pass through untouched -- the dataclass
+    constructor sees what the caller sent.
+    """
+    ann = resolved_hints.get(field.name, field.type)
+    origin = typing.get_origin(ann)
+    args   = typing.get_args(ann)
+    is_optional = (origin is typing.Union and type(None) in args)
+    if is_optional:
+        if value is None or value == "":
+            return None
+        ann = next((a for a in args if a is not type(None)), str)
+        origin = typing.get_origin(ann)
+        args   = typing.get_args(ann)
+
+    if ann is bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in ("true", "1", "yes", "on")
+        return bool(value)
+    if ann is int:
+        return int(value)
+    if ann is float:
+        return float(value)
+    if ann is str:
+        return str(value)
+    # Tuple[int, int, int] (kgrid is the only such field today).
+    if origin is tuple and args:
+        if not isinstance(value, (list, tuple)):
+            return value
+        elem_t = args[0]
+        return tuple(elem_t(v) for v in value)
+    # Sequence[str] (species_order in SiestaConfig) -- accept either a
+    # comma-string or an already-list value.
+    if origin in (list, tuple) and args and args[0] is str:
+        if isinstance(value, str):
+            return [s.strip() for s in value.split(",") if s.strip()]
+        return value
+    # Anything else: pass through.
+    return value
+
+
+_SIESTA_HINTS = typing.get_type_hints(SiestaConfig)
+_PYSCF_HINTS  = typing.get_type_hints(PySCFConfig)
+
+
+def _config_from_params(cls, params: Dict[str, Any], hints: Dict[str, Any],
+                        none_sentinels: Tuple[str, ...] = ()):
+    """Build a config instance from a JSON-style params dict.
+
+    Common mechanism behind ``_siesta_config_from_params`` and
+    ``_pyscf_config_from_params``.  Walks dataclass fields, picks the
+    matching key from ``params``, coerces to the field's declared
+    type, and constructs the dataclass.
+
+    ``none_sentinels``: per-field rule for "this string means None"
+    (e.g. ``("solvent", "auxbasis", "dispersion")`` for PySCFConfig
+    where the form sends an empty string for "leave default").
+    """
+    by_name = {f.name: f for f in fields(cls)}
     kwargs: Dict[str, Any] = {}
     for k, v in params.items():
-        if k not in valid:
+        f = by_name.get(k)
+        if f is None:
             continue
-        # kgrid arrives as [a, b, c]
-        if k == "kgrid" and isinstance(v, (list, tuple)) and len(v) == 3:
-            kwargs[k] = (int(v[0]), int(v[1]), int(v[2]))
+        # Form-sentinel "empty string -> None / drop" handling for
+        # specific Optional fields the JS deliberately blanks out.
+        if k in none_sentinels and (v == "" or v is None):
+            kwargs[k] = None
+            continue
+        # Backwards-compat: JS sometimes sends "none" for "no
+        # dispersion".  Same treatment as the empty-string case.
+        if k == "dispersion" and isinstance(v, str) and v.strip().lower() == "none":
+            kwargs[k] = None
+            continue
         # net_charge: empty string from the form means "auto-detect"
-        elif k == "net_charge" and (v == "" or v is None):
+        # (don't pass the kwarg so the dataclass default of None
+        # kicks in and render_fdf falls back to the phosphate
+        # heuristic).
+        if k == "net_charge" and (v == "" or v is None):
             continue
-        else:
-            kwargs[k] = v
-    return SiestaConfig(**kwargs)
+        # Coercion failures (TypeError / ValueError) propagate to the
+        # endpoint, which surfaces them as an error-severity Issue
+        # rather than HTTP 400 -- so the UI renders the same panel
+        # for parse-failure as for validator-failure.
+        kwargs[k] = _coerce_to_field_type(f, v, hints)
+    return cls(**kwargs)
+
+
+def _siesta_config_from_params(params: Dict[str, Any]) -> SiestaConfig:
+    """Build a SiestaConfig from a JSON params dict, with per-field
+    type coercion (R5)."""
+    return _config_from_params(SiestaConfig, params, _SIESTA_HINTS)
 
 
 def _pyscf_config_from_params(params: Dict[str, Any]) -> PySCFConfig:
-    """Build a PySCFConfig from a dict, picking only fields it knows."""
-    valid = {f.name for f in fields(PySCFConfig)}
-    kwargs: Dict[str, Any] = {}
-    for k, v in params.items():
-        if k not in valid:
-            continue
-        # Empty string from the form means "leave default / None".
-        if v == "" and k in ("solvent", "auxbasis", "dispersion"):
-            kwargs[k] = None
-            continue
-        # JS sends "none" for "no dispersion"
-        if k == "dispersion" and isinstance(v, str) and v.lower() == "none":
-            kwargs[k] = None
-            continue
-        kwargs[k] = v
-    return PySCFConfig(**kwargs)
+    """Build a PySCFConfig from a JSON params dict, with per-field
+    type coercion (R5).  Empty-string sentinels for solvent /
+    auxbasis / dispersion are normalised to None so the form's "leave
+    default" UI gesture round-trips correctly."""
+    return _config_from_params(
+        PySCFConfig, params, _PYSCF_HINTS,
+        none_sentinels=("solvent", "auxbasis", "dispersion"),
+    )

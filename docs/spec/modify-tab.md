@@ -4,7 +4,7 @@
 > Code, tests, and the UI must follow this spec; if any of them diverge,
 > update this document in the same commit.  Pointer in `docs/design.md`.
 
-Status (2026-05-07): planning + M1 in progress.
+Status (2026-05-08): M1 done (Python API + CLI + tests); M2-M5 not yet started.
 
 ---
 
@@ -41,7 +41,13 @@ Concretely the feature must let the user:
       picks an incompatible (m, n).  See § 8).
     * **In-plane size** *m* × *n* (two integer inputs; integers ≥ 1).
     * **Number of layers** *n_layers* (integer input ≥ 1).
-    * **Gap** to the closest layer (slider, default 2.0 Å).
+    * **Gap** — meaning depends on the panel mode:
+        * Pair-mode (symmetric electrodes from one panel): the total
+          electrode-to-electrode separation; default **8.0 Å** (matches
+          `add_symmetric_electrodes(gap=8.0)`).
+        * Single-mode (one slab, one anchor): the anchor-to-closest-
+          layer contact distance; default **2.4 Å** (matches
+          `add_electrode_slab(contact_distance=2.4)`).
     * **Lateral offset** Δx, Δy (two sliders, default 0.0 Å each).
       Default places the slab centroid directly under / over the
       anchor (atop site).  Adjust to park the anchor on bridge or
@@ -66,7 +72,9 @@ Out of scope for the initial milestone:
   independently is supported via twice-calling the per-side function;
   the UI panel ships symmetric-mode first).
 * Non-FCC metals (BCC: Fe, Cr, Mo, W).  The plumbing is in place to add
-  them but the in-tree `_FCC_LATTICE_A` table is FCC-only for M1.
+  them but the in-tree FCC lattice table (loaded lazily by
+  `molbuilder.modify._get_fcc_lattice`, with the closed list of metals
+  in `SUPPORTED_FCC_ELEMENTS`) is FCC-only for M1.
 * Undo/redo in the UI.  The canonical state lives in the viewer; the
   user re-loads if they want to rewind.
 * Multi-molecule junctions (two molecules in parallel between
@@ -243,7 +251,7 @@ web UI as a portal, not a separate product).
 
 | Milestone | Scope | Deliverable | Status |
 |---|---|---|---|
-| **M1** | Pure functions + CLI + tests.  No UI. | `molbuilder/modify.py`, `molbuilder modify` CLI subcommand, `tests/test_modify*.py`.  End-to-end: build a Au(111)-bdt-Au(111) junction from a relaxed BDT XYZ via CLI. | in progress (2026-05-07) |
+| **M1** | Pure functions + CLI + tests.  No UI. | `molbuilder/modify.py`, `molbuilder modify` CLI subcommand, `tests/test_modify*.py`.  End-to-end: build a Au(111)-bdt-Au(111) junction from a relaxed BDT XYZ via CLI. | **done (2026-05-08)** |
 | **M2** | UI skeleton: tab in shared nav, file load, atom list, click-to-select mirroring viewer ↔ list. | New `static/modify.js`, `tab-modify` panel in `index.html`.  No edits possible yet. | not started |
 | **M3** | Edit ops wired: delete, add-with-sliders, live distance.  `/api/modify/atom_op` endpoint. | `web/blueprints/modify.py`; sliders + Apply buttons. | not started |
 | **M4** | Anchor-pair selection + orient-along-z. | UI for picking the second anchor; `/api/modify/orient` endpoint. | not started |

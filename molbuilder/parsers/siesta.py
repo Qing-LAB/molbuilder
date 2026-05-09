@@ -246,17 +246,24 @@ class SiestaParser(TrajectoryParser):
                     e_ks  = float(m_scf.group(3))
                     dDmax = float(m_scf.group(5))
                     dHmax = float(m_scf.group(7))
-                    # iscf==1 starts a new SCF run.  In the legacy
-                    # parallel-list parser, this was the cue to flush
-                    # the previous current_scf into a separate
-                    # scf_history list; in the Frame refactor the
+                    # iscf==1 starts a new SCF run.  Normally the
                     # previous step's SCF was already attached to its
                     # Frame at commit() time (which happens between
-                    # SCF runs, when the outcoor block arrives), so
-                    # current_scf is already empty here.  We just
-                    # reset prev_E_KS so the new run's first delta_E
-                    # comes out as 0.0.
+                    # SCF runs, when the outcoor: block arrives), so
+                    # current_scf is empty by the time we see iscf==1.
+                    #
+                    # SP-D: a failed-SCF restart can produce two SCF
+                    # runs WITHOUT an intervening outcoor: line (e.g.
+                    # SIESTA aborts the first SCF and the user's
+                    # restart script kicks off another).  In that case
+                    # current_scf still holds the previous (failed) run
+                    # and would silently merge into this step's frame.
+                    # Drop it: the failed run is informational at best,
+                    # and we shouldn't attribute its cycles to the
+                    # next geometry step.
                     if iscf == 1:
+                        if current_scf:
+                            current_scf = []
                         prev_E_KS = None
                     delta_E = (e_ks - prev_E_KS) if prev_E_KS is not None else 0.0
                     current_scf.append({

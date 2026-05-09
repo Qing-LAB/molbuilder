@@ -339,6 +339,7 @@ class PySCFParser(TrajectoryParser):
 
         runs: List[List[Dict[str, float]]] = []
         current: List[Dict[str, float]] = []
+        prev_cycle: Optional[int] = None
 
         try:
             with open(log_path, "r", errors="replace") as fh:
@@ -347,11 +348,19 @@ class PySCFParser(TrajectoryParser):
                     if m:
                         cycle, e, de, g, ddm = m.groups()
                         cy = int(cycle)
-                        # New SCF run boundary: cycle resets to a small
-                        # number after a converged-or-extra-cycle line.
-                        # We use _SCF_CONVERGED_RE to mark boundaries
-                        # explicitly below; here we just build the list.
-                        if cy == 0 and current:
+                        # New SCF run boundary detection (SP-D).
+                        # PySCF's first SCF cycle is sometimes ``0`` and
+                        # sometimes ``1`` depending on version.  Use the
+                        # robust signal: any cycle number that is NOT
+                        # strictly greater than the previous one is a
+                        # new-run marker.  ``_SCF_CONVERGED_RE`` below
+                        # also flushes -- this catches the case where a
+                        # run diverged before the converged line.
+                        is_boundary = (
+                            current and prev_cycle is not None
+                            and cy <= prev_cycle
+                        )
+                        if is_boundary:
                             runs.append(current)
                             current = []
                         try:
@@ -362,6 +371,7 @@ class PySCFParser(TrajectoryParser):
                                 "gnorm":   float(g)  * _HA_BOHR_TO_EV_ANG,
                                 "ddm":     float(ddm),
                             })
+                            prev_cycle = cy
                         except ValueError:
                             continue
                     elif _SCF_CONVERGED_RE.search(raw):
@@ -372,6 +382,7 @@ class PySCFParser(TrajectoryParser):
                         if current:
                             runs.append(current)
                             current = []
+                            prev_cycle = None
                 if current:
                     runs.append(current)
         except OSError:
