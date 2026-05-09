@@ -1,19 +1,28 @@
-/* molbuilder Modify tab — M2 (read-only inspection).
+/* molbuilder Modify tab.
  *
- * Three-pane UI (atom list ↔ 3Dmol viewer ↔ edit panel placeholder):
+ * Three-pane UI (atom list ↔ 3Dmol viewer ↔ edit panel):
  *
  *   * the atom list on the left mirrors the structure's atoms;
  *     clicking a row highlights the atom in the viewer.
  *   * the viewer in the middle renders the structure via 3Dmol; clicking
- *     an atom highlights its row in the list.
- *   * the edit panel on the right is a placeholder for M3-M5; M2 only
- *     shows the current selection.
+ *     an atom highlights its row in the list.  An xyz axis triad
+ *     (toggle: ``Show xyz axes``) sits at the world origin for
+ *     orientation reference.
+ *   * the edit panel on the right hosts the live edit operations:
+ *     Delete, Add atom (with offset sliders + live |offset|
+ *     readout), Orient along axis (anchor pair, tilt slider, center
+ *     mode), Rotate around axis.  M5's electrode panel is the only
+ *     remaining placeholder.
  *
- * Backend dependency for M2: ``POST /api/build/load`` (already exists)
- * for file upload.  No /api/modify/* routes yet -- those land in M3
- * with the actual edit operations.
+ * Backend: file upload reuses ``POST /api/build/load``; edit ops
+ * use ``POST /api/modify/{load,delete,add_atom,orient,rotate}``.
+ * State is persisted across tab navigation via sessionStorage
+ * (key: ``modify-state``) so a Modify -> Watch -> Modify round
+ * trip preserves the loaded structure, the selection, and the
+ * 3Dmol camera.
  *
- * Spec: docs/spec/modify-tab.md.
+ * Spec: docs/spec/modify-tab.md (M2-M4 + Phase 1 cross-tab
+ * persistence as of 2026-05-09).
  */
 (function () {
     "use strict";
@@ -23,8 +32,8 @@
     // --------------------------------------------------------------- //
     //  Module state.  Single canonical structure (xyz string + parsed  //
     //  atom metadata) plus a per-atom selected/highlighted bookkeeping //
-    //  set.  Multi-select is shift-click; M4 will use the selection as //
-    //  an anchor pair for orient-along-z.                              //
+    //  set.  Multi-select is shift-click; the orient op (M4) reads     //
+    //  the selection as an anchor pair when its length is exactly 2.   //
     // --------------------------------------------------------------- //
     const state = {
         xyz: null,
@@ -323,9 +332,9 @@
     //  Plain click  -> single-select that atom.                        //
     //  Shift-click  -> toggle that atom's membership in the selection. //
     //                                                                  //
-    //  M4 will use the selection (when len == 2) as the anchor pair    //
-    //  for orient-along-z; the multi-select scaffolding is here so M4  //
-    //  doesn't need a UI rewrite.                                      //
+    //  The orient op (M4) reads the selection as the anchor pair       //
+    //  (a0, a1) when its length is exactly 2; the add-atom op (M3)     //
+    //  reads it as the anchor when the length is exactly 1.            //
     // --------------------------------------------------------------- //
     function onAtomListRowClick(idx, shiftKey) {
         if (shiftKey) {
@@ -432,23 +441,11 @@
         refreshSelectionUI();
     }
 
-    function formula(elements) {
-        if (!elements || !elements.length) return "—";
-        const counts = {};
-        elements.forEach((e) => (counts[e] = (counts[e] || 0) + 1));
-        const order = ["C", "H", "N", "O", "P", "S"];
-        const parts = [];
-        order.forEach((e) => {
-            if (counts[e]) {
-                parts.push(counts[e] > 1 ? `${e}${counts[e]}` : e);
-                delete counts[e];
-            }
-        });
-        Object.keys(counts).sort().forEach((e) => {
-            parts.push(counts[e] > 1 ? `${e}${counts[e]}` : e);
-        });
-        return parts.join("");
-    }
+    // formula() lives in static/lib/mol-format.js; loaded by the
+    // template above.  Local alias keeps callers below readable.
+    const formula = (window.molbuilder && window.molbuilder.fmt
+                     ? window.molbuilder.fmt.formula
+                     : (els) => (els && els.length ? els.join("") : "—"));
 
     // --------------------------------------------------------------- //
     //  Modify ops (M3).  Each op POSTs the current canonical state +  //

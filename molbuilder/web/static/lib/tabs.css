@@ -1,0 +1,38 @@
+/* molbuilder shared app-tabs nav styling.
+ *
+ * The Build (/), Watch (/watch), and Modify (/modify) pages share a
+ * top-of-page navigation strip (Build / Watch / Modify); each page
+ * marks its current tab with ``class="app-tab is-active"``.  The
+ * markup itself lives in ``templates/_app_header.html`` (a Jinja
+ * partial included by all three pages).
+ *
+ * If you change the visual treatment of a tab, change it here and
+ * all three pages pick it up.
+ */
+
+.app-tabs {
+    display: flex;
+    align-items: stretch;
+    background: #141414;
+    border-bottom: 1px solid #2a2a2a;
+    font: 15px/1.4 system-ui, sans-serif;
+}
+
+.app-tab {
+    padding: 0.75rem 1.6rem;
+    color: #777;
+    font-weight: 500;
+    text-decoration: none;
+    border-bottom: 4px solid transparent;
+    transition: color 0.12s, background 0.12s, border-color 0.12s;
+}
+.app-tab:hover {
+    color: #ddd;
+    background: #1c1c1c;
+}
+.app-tab.is-active {
+    color: #fff;
+    background: #2a2a2a;
+    border-bottom-color: #4a9eff;
+    font-weight: 700;
+}

@@ -1,0 +1,32 @@
+{#- molbuilder shared header + app-tabs nav.
+
+   Included by index.html / watch.html / modify.html.  Each caller
+   sets active_tab (one of "build", "watch", "modify") and
+   optionally page_tagline (HTML-safe) before the include.
+
+   Styling lives in static/lib/tabs.css (loaded by every page that
+   uses this partial).  This is the SINGLE source of truth for the
+   tab nav -- changing any of Build / Watch / Modify link text or
+   adding a fourth tab is a one-place change here.
+-#}
+<header>
+  <h1>molbuilder</h1>
+  {% if page_tagline %}
+  <p class="tagline">{{ page_tagline | safe }}</p>
+  {% endif %}
+</header>
+
+<nav class="app-tabs" role="tablist" aria-label="molbuilder sections">
+  <a href="/"
+     class="app-tab{% if active_tab == 'build' %} is-active{% endif %}"
+     role="tab"
+     {% if active_tab == 'build' %}aria-current="page"{% endif %}>Build</a>
+  <a href="/watch"
+     class="app-tab{% if active_tab == 'watch' %} is-active{% endif %}"
+     role="tab"
+     {% if active_tab == 'watch' %}aria-current="page"{% endif %}>Watch</a>
+  <a href="/modify"
+     class="app-tab{% if active_tab == 'modify' %} is-active{% endif %}"
+     role="tab"
+     {% if active_tab == 'modify' %}aria-current="page"{% endif %}>Modify</a>
+</nav>

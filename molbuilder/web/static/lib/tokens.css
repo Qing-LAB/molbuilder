@@ -1,0 +1,55 @@
+/* molbuilder shared design tokens.
+ *
+ * One source of truth for colors, radii, shadows, and gaps used
+ * across the Build (/), Watch (/watch), and Modify (/modify) pages.
+ * Each per-page stylesheet imports this file with ``@import``;
+ * page-local additions (e.g. Watch's --viewer-height, Modify's
+ * --warning-bg) sit alongside in the importing file.
+ *
+ * If you change a token here, every page picks it up automatically.
+ * Keep visuals subtle (this is a scientist-facing tool) -- no harsh
+ * gradients, no animations beyond 120 ms hover transitions.
+ */
+
+:root {
+    /* ---- Surfaces ---- */
+    --bg-page:        #14171c;     /* body */
+    --bg-card:        #1d2128;     /* cards */
+    --bg-card-hover:  #232831;
+    --bg-input:       #262b33;     /* form controls */
+    --bg-input-focus: #2c323b;
+    --bg-fieldset:    #1f242c;
+    --bg-code:        #0f1217;     /* fdf / py preview block */
+
+    /* ---- Borders ---- */
+    --border-strong: #3a3f48;
+    --border-soft:   #2c313a;
+    --border-dashed: #2c313a;
+
+    /* ---- Text ---- */
+    --text-primary:   #e6e9ef;
+    --text-secondary: #a8aebb;
+    --text-muted:     #6c7280;
+    --text-mono:      #b8c4d6;
+
+    /* ---- Accents ---- */
+    --accent:        #6ba6ff;       /* primary cool blue */
+    --accent-hover:  #8ab8ff;
+    --accent-strong: #4a8de0;
+    --accent-bg:     rgba(107, 166, 255, 0.10);
+    --accent-glow:   rgba(107, 166, 255, 0.25);
+    --success:       #4ade80;
+    --error:         #f87171;
+    --warning:       #fbbf24;
+    --warning-bg:    rgba(251, 191, 36, 0.18);
+
+    /* ---- Shadows ---- */
+    --shadow-card:   0 1px 0 rgba(255, 255, 255, 0.02) inset,
+                     0 4px 12px rgba(0, 0, 0, 0.30);
+    --shadow-input:  0 0 0 3px var(--accent-glow);
+
+    /* ---- Layout ---- */
+    --radius:        7px;
+    --radius-sm:     4px;
+    --gap:           14px;
+}

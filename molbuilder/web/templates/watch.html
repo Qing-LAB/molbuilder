@@ -3,52 +3,16 @@
 <head>
 <meta charset="utf-8">
 <title>molwatch &mdash; live trajectory viewer</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='watch/style.css') }}">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js"></script>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
-<style>
-/* Shared menu bar between Build (/) and Watch (this page, /watch).
-   Sits BELOW the banner on each page so the title/tagline is the
-   primary identity and the tabs are unambiguously a mode switcher.
-   Identical block in templates/index.html -- if you change one,
-   change both (or extract to a shared .css). */
-.app-tabs {
-  display: flex; align-items: stretch;
-  background: #141414; border-bottom: 1px solid #2a2a2a;
-  font: 15px/1.4 system-ui, sans-serif;
-}
-.app-tab {
-  padding: 0.75rem 1.6rem;
-  color: #777;
-  font-weight: 500;
-  text-decoration: none;
-  border-bottom: 4px solid transparent;
-  transition: color 0.12s, background 0.12s, border-color 0.12s;
-}
-.app-tab:hover { color: #ddd; background: #1c1c1c; }
-.app-tab.is-active {
-  color: #fff;
-  background: #2a2a2a;
-  border-bottom-color: #4a9eff;
-  font-weight: 700;
-}
-</style>
 </head>
 <body>
 
-<header>
-  <h1>molbuilder</h1>
-  <p class="tagline">
-    Live trajectory viewer for SIESTA and PySCF / geomeTRIC runs
-    &mdash; scrub frames, see force vectors, and track SCF progress.
-  </p>
-</header>
-
-<nav class="app-tabs" role="tablist" aria-label="molbuilder sections">
-  <a href="/"       class="app-tab"            role="tab">Build</a>
-  <a href="/watch"  class="app-tab is-active"  role="tab" aria-current="page">Watch</a>
-  <a href="/modify" class="app-tab"            role="tab">Modify</a>
-</nav>
+{% set active_tab = "watch" %}
+{% set page_tagline = "Live trajectory viewer for SIESTA and PySCF / geomeTRIC runs &mdash; scrub frames, see force vectors, and track SCF progress." %}
+{% include "_app_header.html" %}
 
 <section class="loader-bar">
   <div class="loader">

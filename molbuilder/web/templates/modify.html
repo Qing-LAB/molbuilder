@@ -3,60 +3,27 @@
 <head>
 <meta charset="utf-8">
 <title>molbuilder &mdash; modify a structure</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='modify/style.css') }}">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js"></script>
-<style>
-/* Shared menu bar between Build (/), Watch (/watch), and Modify
-   (this page, /modify).  Identical block in templates/index.html
-   and templates/watch.html -- if you change one, change all three
-   (or extract to a shared .css). */
-.app-tabs {
-  display: flex; align-items: stretch;
-  background: #141414; border-bottom: 1px solid #2a2a2a;
-  font: 15px/1.4 system-ui, sans-serif;
-}
-.app-tab {
-  padding: 0.75rem 1.6rem;
-  color: #777;
-  font-weight: 500;
-  text-decoration: none;
-  border-bottom: 4px solid transparent;
-  transition: color 0.12s, background 0.12s, border-color 0.12s;
-}
-.app-tab:hover { color: #ddd; background: #1c1c1c; }
-.app-tab.is-active {
-  color: #fff;
-  background: #2a2a2a;
-  border-bottom-color: #4a9eff;
-  font-weight: 700;
-}
-</style>
 </head>
 <body>
 
-<header>
-  <h1>molbuilder</h1>
-  <p class="tagline">
-    Modify a built or loaded structure &mdash; inspect atoms, prepare
-    junctions, and hand the result back to the Build tab.
-  </p>
-</header>
-
-<nav class="app-tabs" role="tablist" aria-label="molbuilder sections">
-  <a href="/"       class="app-tab"            role="tab">Build</a>
-  <a href="/watch"  class="app-tab"            role="tab">Watch</a>
-  <a href="/modify" class="app-tab is-active"  role="tab" aria-current="page">Modify</a>
-</nav>
+{% set active_tab = "modify" %}
+{% set page_tagline = "Modify a built or loaded structure &mdash; inspect atoms, prepare junctions, and hand the result back to the Build tab." %}
+{% include "_app_header.html" %}
 
 <!-- ============================================================ -->
 <!--  Layout:                                                       -->
 <!--    LOADER ROW: file picker + status                           -->
 <!--    THREE COLUMNS:                                             -->
-<!--      LEFT   atom list (click-to-highlight, multi-select       -->
-<!--             scaffolding for M4 anchor-pair selection)         -->
-<!--      MIDDLE 3Dmol viewer (click atom -> select)               -->
-<!--      RIGHT  edit panel: delete + add-with-sliders (M3); M4    -->
-<!--             orient + M5 electrode panels still placeholders   -->
+<!--      LEFT   atom list (click-to-highlight; shift-click for    -->
+<!--             multi-select / anchor-pair selection)             -->
+<!--      MIDDLE 3Dmol viewer (click atom -> select; xyz axes      -->
+<!--             toggle drawn at world origin)                     -->
+<!--      RIGHT  edit panel: Delete + Add atom (M3); Orient +      -->
+<!--             Rotate (M4); selection info panel.  Electrode     -->
+<!--             panel (M5) is still the only placeholder.         -->
 <!-- ============================================================ -->
 
 <section class="loader-bar">
@@ -95,8 +62,8 @@
     </div>
     <p class="hint">
       Click a row to highlight that atom in the viewer (and vice versa).
-      Shift-click to multi-select &mdash; M4 will use the selection as
-      an anchor pair for orient-along-z.
+      Shift-click to multi-select &mdash; the orient op reads a
+      two-atom selection as the anchor pair.
     </p>
   </aside>
 
@@ -307,9 +274,11 @@
      spec: <code>docs/spec/modify-tab.md</code></p>
 </footer>
 
-<!-- mol-style.js is the shared 3Dmol style helper used by Build /
-     Watch viewers; the Modify viewer reuses it for visual consistency. -->
+<!-- Shared lib helpers used by every viewer (Build / Watch / Modify).
+     mol-style.js: 3Dmol style-spec builder.  mol-format.js: chemical-
+     formula renderer (Hill order with C+H first). -->
 <script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/mol-format.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/viewer.js') }}"></script>
 </body>
 </html>

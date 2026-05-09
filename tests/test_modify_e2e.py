@@ -1,4 +1,10 @@
-"""End-to-end browser tests for the Modify tab (M2 + M3).
+"""End-to-end browser tests for the Modify tab.
+
+Covers M2 (UI skeleton: file load, atom list ↔ viewer click sync,
+3Dmol axis overlay) through M4 (orient + rotate, anchor-pair
+selection, info panel) plus Phase 1 cross-tab persistence (the
+structure + selection + camera survive Build ↔ Watch ↔ Modify
+navigation via sessionStorage).
 
 What pytest can't reach
 =======================
@@ -198,8 +204,9 @@ def test_clicking_row_highlights_row_and_viewer(
 
 def test_shift_click_multi_select(
         page, flask_server, water_xyz_file):
-    """Shift-click adds atoms to the selection (M4 will use this for
-    anchor pairs).  Plain click on a third row clears + reselects."""
+    """Shift-click adds atoms to the selection (orient reads a
+    two-atom selection as the anchor pair).  Plain click on a
+    third row clears + reselects."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
 

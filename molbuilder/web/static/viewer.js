@@ -508,23 +508,11 @@
         }
     });
 
-    function formula(elements) {
-        if (!elements || !elements.length) return "—";
-        const counts = {};
-        elements.forEach(e => counts[e] = (counts[e] || 0) + 1);
-        const order = ["C", "H", "N", "O", "P", "S"];
-        const parts = [];
-        order.forEach(e => {
-            if (counts[e]) {
-                parts.push(counts[e] > 1 ? `${e}${counts[e]}` : e);
-                delete counts[e];
-            }
-        });
-        Object.keys(counts).sort().forEach(e => {
-            parts.push(counts[e] > 1 ? `${e}${counts[e]}` : e);
-        });
-        return parts.join("");
-    }
+    // formula() lives in static/lib/mol-format.js; loaded by the
+    // template above.  Local alias keeps callers below readable.
+    const formula = (window.molbuilder && window.molbuilder.fmt
+                     ? window.molbuilder.fmt.formula
+                     : (els) => (els && els.length ? els.join("") : "—"));
 
     // ----- 2. Render --------------------------------------------------
     // Sizing math lives in molbuilder/web/static/lib/mol-style.js so the

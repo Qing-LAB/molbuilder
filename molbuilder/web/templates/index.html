@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>molbuilder &mdash; build a molecule from a sequence</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <!-- 3Dmol.js: pin to a specific cdnjs build for reproducibility.
      cdnjs delivers an immutable artifact per version, so bumping the
@@ -11,50 +12,12 @@
      SRI hash from this exact file (e.g. via openssl dgst -sha384) and
      add `integrity="sha384-..." crossorigin="anonymous"` here. -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js"></script>
-<style>
-/* Shared menu bar between Build (this page, /) and Watch (/watch).
-   Sits BELOW the banner on each page so the title/tagline is the
-   primary identity and the tabs are unambiguously a mode switcher.
-   Identical block in templates/watch.html -- if you change one,
-   change both (or extract to a shared .css). */
-.app-tabs {
-  display: flex; align-items: stretch;
-  background: #141414; border-bottom: 1px solid #2a2a2a;
-  font: 15px/1.4 system-ui, sans-serif;
-}
-.app-tab {
-  padding: 0.75rem 1.6rem;
-  color: #777;
-  font-weight: 500;
-  text-decoration: none;
-  border-bottom: 4px solid transparent;
-  transition: color 0.12s, background 0.12s, border-color 0.12s;
-}
-.app-tab:hover { color: #ddd; background: #1c1c1c; }
-.app-tab.is-active {
-  color: #fff;
-  background: #2a2a2a;
-  border-bottom-color: #4a9eff;
-  font-weight: 700;
-}
-</style>
 </head>
 <body>
 
-<header>
-  <h1>molbuilder</h1>
-  <p class="tagline">
-    Build a 3-D molecule from a peptide / DNA / RNA sequence,
-    a SMILES string, or a chemical name &mdash; and turn it into a
-    SIESTA <code>.fdf</code> or PySCF input.
-  </p>
-</header>
-
-<nav class="app-tabs" role="tablist" aria-label="molbuilder sections">
-  <a href="/"       class="app-tab is-active" role="tab" aria-current="page">Build</a>
-  <a href="/watch"  class="app-tab"           role="tab">Watch</a>
-  <a href="/modify" class="app-tab"           role="tab">Modify</a>
-</nav>
+{% set active_tab = "build" %}
+{% set page_tagline = "Build a 3-D molecule from a peptide / DNA / RNA sequence, a SMILES string, or a chemical name &mdash; and turn it into a SIESTA <code>.fdf</code> or PySCF input." %}
+{% include "_app_header.html" %}
 
 <!-- ============================================================ -->
 <!--  Two-column layout:                                           -->
@@ -609,6 +572,7 @@
 </footer>
 
 <script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/mol-format.js') }}"></script>
 <script src="{{ url_for('static', filename='viewer.js') }}"></script>
 </body>
 </html>
