@@ -68,7 +68,7 @@ catch it.
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from flask import Blueprint, request
 
@@ -493,19 +493,31 @@ def api_modify_electrode():
 
 @bp.route("/api/modify/symmetric_electrodes", methods=["POST"])
 def api_modify_symmetric_electrodes():
-    """Append a collinear-z pair of FCC slabs around the anchor pair.
+    """Append a collinear-z pair of FCC slabs perpendicular to z.
 
     Body: ``{xyz, [...metadata...], element, plane, size:[m,n,n_layers],
-             anchors:[a_top,a_bot], gap?, orthogonal?, offset?,
-             lattice_constant?}``.
+             gap?, anchors?, orthogonal?, offset?, lattice_constant?}``.
 
-    ``gap`` is the canonical electrode-to-electrode z-distance
-    (the empty space between the two slabs' closest layers).  Both
-    slabs are centred laterally on
-    ``mid.xy + offset`` where ``mid`` is the anchor-pair midpoint;
-    even when the molecule is tilted off z, the electrodes stay
-    collinear along z and the molecule fits its tilted geometry
-    between them.
+    ``gap`` is the canonical electrode-to-electrode z-distance (the
+    empty space between the two slabs' closest layers).
+
+    Slab placement (canonical, ``anchors`` omitted):
+
+      top closest layer at z = +gap/2
+      bot closest layer at z = -gap/2
+      lateral xy centroid    = ``offset`` (default origin)
+
+    The midpoint of the two slabs is at the world origin -- the
+    user is expected to centre the molecule (``/api/modify/translate``
+    with ``recenter=true``) and pose it (Pose subtab) before the
+    slab op so the molecule sits in the gap exactly the way they
+    want it.  Anchors aren't needed: slab placement is fully
+    determined by ``gap`` and (optionally) ``offset``.
+
+    Legacy mode: pass ``anchors=[a_top, a_bot]`` to centre the slab
+    midpoint on the anchor-pair midpoint instead of the origin.
+    Useful when the molecule is NOT pre-centred and the caller wants
+    the slabs to flank a specific atom pair.
     """
     body = request.get_json(silent=True) or {}
     try:
@@ -518,23 +530,28 @@ def api_modify_symmetric_electrodes():
     except ValueError as exc:
         return _err(str(exc), 400)
     anchors = body.get("anchors")
-    if (not isinstance(anchors, list)) or len(anchors) != 2:
-        return _err(
-            "'anchors' must be a 2-element [a_top, a_bot] list",
-            400,
-        )
-    try:
-        a_top, a_bot = int(anchors[0]), int(anchors[1])
-    except (TypeError, ValueError):
-        return _err("anchor indices must be integers", 400)
-    if a_top == a_bot:
-        return _err("anchors must be two distinct atom indices", 400)
-    if not (0 <= a_top < struct.n_atoms and 0 <= a_bot < struct.n_atoms):
-        return _err(
-            f"anchor indices ({a_top}, {a_bot}) out of range for "
-            f"{struct.n_atoms}-atom structure",
-            400,
-        )
+    anchor_indices: Optional[Tuple[int, int]]
+    if anchors is None:
+        anchor_indices = None
+    else:
+        if (not isinstance(anchors, list)) or len(anchors) != 2:
+            return _err(
+                "'anchors' must be omitted or a 2-element [a_top, a_bot] list",
+                400,
+            )
+        try:
+            a_top, a_bot = int(anchors[0]), int(anchors[1])
+        except (TypeError, ValueError):
+            return _err("anchor indices must be integers", 400)
+        if a_top == a_bot:
+            return _err("anchors must be two distinct atom indices", 400)
+        if not (0 <= a_top < struct.n_atoms and 0 <= a_bot < struct.n_atoms):
+            return _err(
+                f"anchor indices ({a_top}, {a_bot}) out of range for "
+                f"{struct.n_atoms}-atom structure",
+                400,
+            )
+        anchor_indices = (a_top, a_bot)
     gap = body.get("gap", 8.0)
     try:
         gap = float(gap)
@@ -542,7 +559,7 @@ def api_modify_symmetric_electrodes():
         return _err("'gap' must be numeric", 400)
     try:
         new_struct = _add_symmetric_electrodes(
-            struct, element, plane, size, (a_top, a_bot),
+            struct, element, plane, size, anchor_indices,
             gap=gap,
             orthogonal=orthogonal,
             offset=offset,

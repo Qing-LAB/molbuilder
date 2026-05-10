@@ -1141,23 +1141,24 @@ def ss_pair_xyz_file(tmp_path):
     return str(p)
 
 
-def test_electrode_apply_disabled_without_correct_anchor_count(
+def test_electrode_apply_button_state_matches_selection_and_mode(
         page, flask_server, ss_pair_xyz_file):
-    """Pair mode (default) needs 2 anchors; switching to single mode
-    needs 1.  The Apply button reflects this."""
+    """Pair mode: 0 atoms selected = enabled (canonical origin-
+    centred placement), 1 = disabled (ambiguous), 2 = enabled
+    (legacy anchor-pair midpoint).  Single mode needs exactly 1."""
     _open_modify(page, flask_server)
     _load_file(page, ss_pair_xyz_file, expected_atoms=2)
     _open_op_tab(page, "junction")
     btn = page.locator("#elc-apply")
-    # No selection yet -> disabled.
-    assert btn.is_disabled()
-    # One atom selected -> still disabled in pair mode.
+    # No selection in pair mode -> enabled (canonical origin-centred).
+    assert btn.is_enabled()
+    # One atom selected -> disabled (ambiguous: not 0, not 2).
     page.locator("#atom-list-body tr").nth(0).click()
     assert btn.is_disabled()
-    # Two atoms selected -> enabled (this is the bdt-junction anchor pair).
+    # Two atoms selected -> enabled (legacy anchor-pair midpoint mode).
     page.locator("#atom-list-body tr").nth(1).click(modifiers=["Shift"])
     assert btn.is_enabled()
-    # Switch to single mode -> two anchors is now wrong; disable.
+    # Switch to single mode -> two anchors is wrong; disabled.
     page.locator("#elc-mode").select_option("single")
     assert btn.is_disabled()
     # One anchor in single mode -> enabled.

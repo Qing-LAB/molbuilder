@@ -317,10 +317,11 @@
            finished structure to the Build tab to generate FDF/PySCF. -->
       <div class="optab-panel" data-op-panel="junction" role="tabpanel">
 
-      <!-- Electrode panel: build FCC slab(s) around the anchor(s).
-           Pair mode (default) places two slabs collinear along z
-           with a user-specified electrode-to-electrode gap; single
-           mode places one slab on +z OR -z of one anchor. -->
+      <!-- Electrode panel: build FCC slab(s) perpendicular to z.
+           Pair mode (default) places two slabs at z = ±gap/2 around
+           the origin (no anchors needed -- centre + pose the
+           molecule first); single mode places one slab on +z OR -z
+           of one selected anchor. -->
       <fieldset class="op-block">
         <legend>Electrode panel</legend>
         <div class="op-row">
@@ -332,7 +333,7 @@
           </label>
         </div>
         <p id="elc-anchor-readout" class="hint">
-          Pair mode: pick two atoms (the +z and -z anchors).
+          Pair mode: slabs at z = ±gap/2 around the origin.
         </p>
 
         <div class="op-row">

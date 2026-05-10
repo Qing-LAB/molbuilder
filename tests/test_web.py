@@ -1320,6 +1320,55 @@ def test_modify_symmetric_electrodes_pair_mode(web_client):
     assert elc == 8, body["residue_names"]
 
 
+def test_modify_symmetric_electrodes_anchorless_centres_on_origin(web_client):
+    """Anchorless mode (no ``anchors`` field) puts the slab midpoint
+    at the world origin: top closest layer at z = +gap/2, bot at
+    -gap/2.  We verify by reading ELC z-coords from the response
+    xyz.  This is the canonical UI workflow -- centre-and-pose the
+    molecule first, then add slabs around the origin."""
+    r = web_client.post("/api/modify/symmetric_electrodes", json={
+        "xyz":     _SS_XYZ,
+        "element": "Au", "plane": "111",
+        "size":    [2, 2, 1],
+        "gap":     8.0,
+        # No anchors field.
+    })
+    body = r.get_json()
+    assert body["ok"] is True
+    coords = _coords_from_xyz(body["xyz"])
+    elc_z = [coords[i][2] for i, rn in enumerate(body["residue_names"])
+             if rn == "ELC"]
+    top = [z for z in elc_z if z > 0]
+    bot = [z for z in elc_z if z < 0]
+    assert top, "expected at least one ELC atom at z > 0"
+    assert bot, "expected at least one ELC atom at z < 0"
+    # Closest layers are at exactly ±gap/2 = ±4.0 Å.
+    assert abs(min(top) - 4.0) < 1e-6, f"top closest z = {min(top)}"
+    assert abs(max(bot) + 4.0) < 1e-6, f"bot closest z = {max(bot)}"
+
+
+def test_modify_symmetric_electrodes_anchorless_offset_shifts_xy(web_client):
+    """Anchorless + ``offset:[Δx, Δy]`` shifts both slabs in xy
+    while keeping the z midpoint on the origin."""
+    r = web_client.post("/api/modify/symmetric_electrodes", json={
+        "xyz":     _SS_XYZ,
+        "element": "Au", "plane": "111",
+        "size":    [2, 2, 1],
+        "gap":     8.0,
+        "offset":  [3.0, -2.0],
+    })
+    body = r.get_json()
+    assert body["ok"] is True
+    coords = _coords_from_xyz(body["xyz"])
+    elc = [coords[i] for i, rn in enumerate(body["residue_names"])
+           if rn == "ELC"]
+    cx = sum(c[0] for c in elc) / len(elc)
+    cy = sum(c[1] for c in elc) / len(elc)
+    # Both slabs together: their lateral centroid lands at the offset.
+    assert abs(cx - 3.0) < 1e-6, cx
+    assert abs(cy + 2.0) < 1e-6, cy
+
+
 def test_modify_symmetric_electrodes_pair_mode_orthogonal_111(web_client):
     """Orthogonal cell on fcc(111) needs even m × n; 2x2 is fine."""
     r = web_client.post("/api/modify/symmetric_electrodes", json={

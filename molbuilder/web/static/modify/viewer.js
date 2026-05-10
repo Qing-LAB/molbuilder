@@ -56,22 +56,21 @@
     // off the bottom of the stack as new ops are pushed.
     const HISTORY_MAX = 20;
 
-    // Selection marker: a small amber arrow pointing DOWN at the
-    // atom, with the tip LANDING on the atom's rendered surface
-    // (no visual gap).  Drawn as a separate ``addArrow`` shape so
-    // the atom rendering itself is unchanged.  We use a small fixed
-    // tip offset rather than a vdW lookup -- the default stick rep
-    // renders atoms at ~0.13 Å radius so a vdW-scale offset (1-2 Å)
-    // visually FLOATS the arrow far above the atom.  The fixed
-    // value is chosen to read as "touching" against stick rep and
-    // is still acceptable against ball-and-stick (where atoms are
-    // ~0.4 Å radius).  Independent of element so H and Ir look
-    // equally selectable.
-    const HIGHLIGHT_COLOR    = "#fbbf24";    // amber, matches --warning
-    const MARKER_TIP_OFFSET  = 0.15;         // tip-to-atom-center distance, Å
-    const MARKER_LEN         = 0.7;          // arrow length, Å
-    const MARKER_RADIUS      = 0.06;         // shaft radius, Å
-    const MARKER_RADIUS_RATIO = 2.6;         // head:shaft ratio
+    // Selection marker: a small wireframe halo SPHERE drawn around
+    // the atom.  Earlier iterations used an arrow above the atom,
+    // but in dense regions the arrow easily overlapped neighbouring
+    // bonds and was hard to spot.  A halo encloses the atom directly
+    // -- the atom and its halo move together, the halo doesn't blot
+    // out neighbours, and it's visible from any camera angle (no
+    // single fixed direction to occlude).  Radius is fixed (NOT
+    // vdW-scaled) so H and Ir look equally selectable; chosen so
+    // the halo sits just outside the rendered stick atom (~0.13 Å)
+    // and only marginally outside a ball-and-stick atom (~0.4 Å).
+    const HIGHLIGHT_COLOR    = "#fb923c";    // bright orange; high contrast
+                                              // on white viewer bg + every
+                                              // element colour we render.
+    const MARKER_RADIUS      = 0.45;         // halo radius, Å
+    const MARKER_LINEWIDTH   = 3.0;          // wireframe stroke width
 
     // --------------------------------------------------------------- //
     //  3Dmol viewer.                                                   //
@@ -107,27 +106,23 @@
     }
 
     function renderHighlights() {
-        // Draw a small amber arrow pointing down at each selected
-        // atom from above (along world +z).  The arrow tip lands
-        // just above the atom centre (MARKER_TIP_OFFSET) so it
-        // visibly touches the rendered surface for stick rep
-        // without overlapping a ball-and-stick sphere.
+        // Draw a wireframe halo sphere around each selected atom.
+        // The halo encloses the atom, doesn't grow with vdW radius,
+        // and is visible from every camera angle (no occlusion when
+        // the camera looks down the marker axis as a fixed-direction
+        // arrow would suffer from).
         clearHighlights();
         state.selected.forEach((idx) => {
             const p = state.positions[idx];
             if (!p) return;
-            const tip  = MARKER_TIP_OFFSET;
-            const tail = tip + MARKER_LEN;
-            const arrow = viewer.addArrow({
-                start:       { x: p[0], y: p[1], z: p[2] + tail },
-                end:         { x: p[0], y: p[1], z: p[2] + tip  },
-                color:       HIGHLIGHT_COLOR,
-                radius:      MARKER_RADIUS,
-                radiusRatio: MARKER_RADIUS_RATIO,
-                mid:         0.7,           // most of the length is shaft;
-                                            // only the last 30% is the head
+            const halo = viewer.addSphere({
+                center:    { x: p[0], y: p[1], z: p[2] },
+                radius:    MARKER_RADIUS,
+                color:     HIGHLIGHT_COLOR,
+                wireframe: true,
+                linewidth: MARKER_LINEWIDTH,
             });
-            _highlightShapes.push(arrow);
+            _highlightShapes.push(halo);
         });
     }
 
@@ -357,25 +352,38 @@
         const elcReadout = $("elc-anchor-readout");
         const mode = ($("elc-mode") || {}).value || "symmetric";
         if (elcBtn && elcReadout) {
-            const need = (mode === "single") ? 1 : 2;
-            if (sel.length === need) {
-                elcBtn.disabled = locked;
-                if (need === 1) {
+            if (mode === "single") {
+                if (sel.length === 1) {
+                    elcBtn.disabled = locked;
                     elcReadout.textContent =
                         `Anchor: #${sel[0]} ${state.elements[sel[0]]}.  ` +
                         `Side determines which face the slab grows on.`;
                 } else {
-                    const [a, b] = sel.slice().sort((x, y) => x - y);
+                    elcBtn.disabled = true;
                     elcReadout.textContent =
-                        `Anchors: #${a} ${state.elements[a]} (-z) ↔ ` +
-                        `#${b} ${state.elements[b]} (+z).`;
+                        "Single mode: pick exactly one anchor.";
                 }
             } else {
-                elcBtn.disabled = true;
-                elcReadout.textContent =
-                    mode === "single"
-                        ? "Single mode: pick exactly one anchor."
-                        : "Pair mode: pick two atoms (the +z and -z anchors).";
+                // Pair mode: 0 atoms = canonical origin-centred placement,
+                // 2 atoms = legacy anchor-midpoint placement.  1 atom is
+                // ambiguous; the apply handler rejects it explicitly.
+                elcBtn.disabled = locked || state.n_atoms === 0;
+                if (sel.length === 0) {
+                    elcReadout.textContent =
+                        "Pair mode: slabs at z = ±gap/2 around the origin.  "
+                        + "Centre + pose the molecule first (Geom + Pose).";
+                } else if (sel.length === 2) {
+                    const [a, b] = sel.slice().sort((x, y) => x - y);
+                    elcReadout.textContent =
+                        `Legacy mode: slabs flank #${a} ${state.elements[a]} `
+                        + `↔ #${b} ${state.elements[b]} `
+                        + "(midpoint of the two anchors).";
+                } else {
+                    elcBtn.disabled = true;
+                    elcReadout.textContent =
+                        "Pair mode: select 0 atoms (origin-centred) or "
+                        + "2 atoms (legacy anchor pair).";
+                }
             }
         }
         const sendBtn = $("send-to-build");
@@ -827,25 +835,36 @@
                 `Added ${common.element}(${common.plane}) ${side}`,
             );
         } else {
-            // Symmetric mode.  The renderer wants
-            // anchors=[a_top, a_bot] (+z anchor first).  Sort the
-            // selection by z-coordinate so the user doesn't have to
-            // care about click order.
-            if (sel.length !== 2) {
-                setEditStatus("Pair mode needs exactly two anchors.", "error");
+            // Symmetric pair mode -- canonical placement is at the
+            // world origin.  Slabs at z = ±gap/2, lateral xy on the
+            // origin (plus the user's xy offset).  No anchor pick is
+            // required; the user is expected to centre + pose the
+            // molecule (Geom + Pose subtabs) before adding slabs.
+            //
+            // If the user has selected two atoms anyway, we forward
+            // them as legacy anchor pair: the slabs centre on the
+            // anchor-pair midpoint instead of the origin.  Useful for
+            // un-centred structures.  Selecting one atom is
+            // ambiguous -- treat it as user error so they explicitly
+            // pick 0 or 2.
+            if (sel.length === 1) {
+                setEditStatus(
+                    "Pair mode: select 0 atoms (origin-centred slabs)"
+                    + " or 2 atoms (legacy anchor-pair midpoint).", "error");
                 return;
             }
-            const [i0, i1] = sel;
-            const z0 = state.positions[i0][2];
-            const z1 = state.positions[i1][2];
-            const a_top = z0 >= z1 ? i0 : i1;
-            const a_bot = z0 >= z1 ? i1 : i0;
+            const extra = { gap: gap };
+            if (sel.length === 2) {
+                const [i0, i1] = sel;
+                const z0 = state.positions[i0][2];
+                const z1 = state.positions[i1][2];
+                const a_top = z0 >= z1 ? i0 : i1;
+                const a_bot = z0 >= z1 ? i1 : i0;
+                extra.anchors = [a_top, a_bot];
+            }
             r = await postOp(
                 "/api/modify/symmetric_electrodes",
-                Object.assign({}, common, {
-                    anchors: [a_top, a_bot],
-                    gap:     gap,
-                }),
+                Object.assign({}, common, extra),
                 `Added ${common.element}(${common.plane}) pair`,
             );
         }

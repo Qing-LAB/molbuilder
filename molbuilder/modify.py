@@ -730,7 +730,7 @@ def add_symmetric_electrodes(
     element: str,
     plane: str,
     size: Tuple[int, int, int],
-    anchor_indices: Tuple[int, int],
+    anchor_indices: Optional[Tuple[int, int]] = None,
     *,
     gap: float = 8.0,
     orthogonal: bool = False,
@@ -738,46 +738,100 @@ def add_symmetric_electrodes(
     lattice_constant: Optional[float] = None,
 ) -> Structure:
     """Add a symmetric pair of FCC electrodes -- one on +z, one on -z --
-    flanking the molecule's anchor pair.
+    perpendicular to the z-axis, with the inter-slab midpoint at the
+    origin.
 
-    Geometry:
+    Geometry (the canonical case, ``anchor_indices=None``):
 
-      mid    = 0.5 * (positions[a_top] + positions[a_bot])
-      gap    = electrode-to-electrode distance (closest layer to closest
-               layer), measured along z
-      top closest layer at  z = mid.z + gap/2
-      bot closest layer at  z = mid.z - gap/2
-      both slabs lateral-centred on (mid.x + offset[0], mid.y + offset[1])
+      top closest layer at  z = +gap/2
+      bot closest layer at  z = -gap/2
+      both slabs lateral-centred on (offset[0], offset[1])
 
-    The two electrodes are **collinear along z**, even when the anchor
-    pair vector is tilted off the z-axis.  This matches real junction
-    geometry where the metal contacts are crystallographic and the
-    molecule fits in whatever pose it wants between them.
+    The two electrodes are **collinear along z**, perpendicular to the
+    z-axis.  The user's workflow is: Center the molecule at origin,
+    rotate it (Pose ops) so it sits the way they want in the gap,
+    then call this with the desired ``gap`` -- the slabs are always
+    placed symmetrically around the origin so the user has full
+    control over molecule-vs-slab geometry via the molecule's pose
+    alone.
 
-    ``gap`` here is the **canonical "junction gap"** -- the empty z-space
-    between the two electrodes.  Internally each side gets the
-    contact distance ``(gap - anchor_separation_z) / 2``, where
-    ``anchor_separation_z = abs(positions[a_top].z - positions[a_bot].z)``.
-    If the gap is smaller than the anchor pair's z-extent, this raises
-    ``ValueError`` so the user adjusts before getting an overlapping
-    structure.
+    ``gap`` is the **canonical "junction gap"** -- the empty z-space
+    between the two electrodes' closest layers.
 
     Parameters
     ----------
     anchor_indices
-        ``(a_top, a_bot)`` -- the +z anchor first, the -z anchor second.
-        After ``orient_along_axis(..., center="midpoint")`` the +z
-        anchor is the one with the larger z coordinate.
+        ``None`` (default, recommended) -- slabs centred on the
+        origin; no atom selection required.
+
+        ``(a_top, a_bot)`` -- legacy mode that places the slab midpoint
+        at the anchor-pair midpoint instead of the origin.  ``a_top``
+        is the +z anchor, ``a_bot`` is the -z anchor.  Useful when the
+        molecule is NOT pre-centred and the caller wants the slabs to
+        flank a specific atom pair instead.  The contact distance is
+        ``(gap - |z_top - z_bot|) / 2`` so the slabs still sit at
+        ``mid.z ± gap/2``.
     gap
         Total junction gap (Å), electrode-to-electrode along z.  Default
         8.0 Å is a typical value for thiol-anchored small molecules.
-    orthogonal, offset, lattice_constant
+    offset
+        ``(Δx, Δy)`` lateral shift in Å applied to BOTH slabs.  Default
+        ``(0, 0)`` puts the slabs' lateral centroid on the (xy) origin.
+    orthogonal, lattice_constant
         Same as :func:`add_electrode_slab`; applied to both sides.
 
     For asymmetric junctions (different size / metal / offset per side,
     or stepped contacts), call :func:`add_electrode_slab` twice with
     different parameters.
     """
+    if anchor_indices is None:
+        # Anchorless / origin-centred mode (the recommended workflow).
+        # The slabs sit at z = ±gap/2 around the origin; xy is centred
+        # on (offset_x, offset_y).  We still need ATOMS in struct to
+        # pin the existing molecule on (it carries through the
+        # add_electrode_slab call), but no per-atom anchor is read --
+        # we synthesise a fake anchor at the origin via index 0 and
+        # cancel out its contribution with a compensating offset.
+        if struct.n_atoms == 0:
+            raise ValueError(
+                "cannot add electrodes to an empty structure"
+            )
+        contact = gap / 2.0
+        # Pick atom 0 as the ASE-call anchor; the two add_electrode_slab
+        # calls below offset its xy to land at (offset_x, offset_y) and
+        # adjust the contact so the closest layer is at ±gap/2 in
+        # absolute z (independent of where atom 0 happens to sit).
+        ref = struct.positions[0]
+        # contact_distance is measured FROM the anchor along ±z, so to
+        # get a closest layer at z = +gap/2 we need
+        # contact_distance = +gap/2 - ref.z, and on the -z side
+        # contact_distance = +gap/2 + ref.z.
+        contact_top = (gap / 2.0) - float(ref[2])
+        contact_bot = (gap / 2.0) + float(ref[2])
+        if contact_top <= 0.0 or contact_bot <= 0.0:
+            raise ValueError(
+                f"reference atom z = {ref[2]:.3f} is outside the gap "
+                f"(±{gap/2:.3f} Å); centre the molecule with "
+                f"Structure.centered() first, or increase gap."
+            )
+        delta_xy = (
+            float(offset[0]) - float(ref[0]),
+            float(offset[1]) - float(ref[1]),
+        )
+        out = add_electrode_slab(
+            struct, element, plane, size, anchor_index=0,
+            contact_distance=contact_bot, side="-z",
+            orthogonal=orthogonal, offset=delta_xy,
+            lattice_constant=lattice_constant,
+        )
+        out = add_electrode_slab(
+            out, element, plane, size, anchor_index=0,
+            contact_distance=contact_top, side="+z",
+            orthogonal=orthogonal, offset=delta_xy,
+            lattice_constant=lattice_constant,
+        )
+        return out
+
     a_top, a_bot = int(anchor_indices[0]), int(anchor_indices[1])
     if a_top == a_bot:
         raise ValueError("anchor_indices must be two distinct atoms")
