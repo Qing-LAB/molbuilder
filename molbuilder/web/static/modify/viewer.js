@@ -49,19 +49,20 @@
         inFlight: false,       // true while an /api/modify/* fetch is open
     };
 
-    // Selection halo: a thin translucent wireframe sphere drawn
-    // ALONGSIDE the atom (as a separate shape, not via setStyle).
-    // The atom keeps its element color and stick/ball-and-stick
-    // appearance unchanged; the user sees a "ring" around it
-    // marking the selection.  Radius is element-vdW + 0.35 Å so the
-    // halo always sits just outside the atom's rendered surface
-    // regardless of representation.
-    const HIGHLIGHT_COLOR  = "#fbbf24";      // amber, matches --warning
-    const HIGHLIGHT_PAD    = 0.35;           // Å beyond the atom's vdW
-    const HIGHLIGHT_OPACITY = 0.55;
-    // Approximate vdW radii (Å) for the elements the Modify tab is
-    // likely to see.  Falls back to 1.5 for anything not in the
-    // table -- close enough to put the halo outside the atom.
+    // Selection marker: a small amber arrow pointing DOWN at the
+    // atom from just above it.  Drawn as a separate ``addArrow``
+    // shape so the atom rendering itself (size, element color,
+    // stick/ball-and-stick) is unchanged.  Length is independent of
+    // atom size -- the marker doesn't scale with vdW so a hydrogen
+    // and an iridium look equally selectable.
+    const HIGHLIGHT_COLOR    = "#fbbf24";    // amber, matches --warning
+    const MARKER_LEN         = 0.9;          // arrow length, Å
+    const MARKER_GAP         = 0.4;          // Å above the atom's vdW
+    const MARKER_RADIUS      = 0.06;         // shaft radius, Å
+    const MARKER_RADIUS_RATIO = 2.6;         // head:shaft ratio
+    // Approximate vdW radii (Å) so the arrow sits just above the
+    // atom's rendered surface for any element.  Falls back to 1.5
+    // for anything not in the table.
     const _VDW = {
         H: 1.20, He: 1.40, Li: 1.82, Be: 1.53, B: 1.92, C: 1.70,
         N: 1.55, O: 1.52, F: 1.47, Ne: 1.54, Na: 2.27, Mg: 1.73,
@@ -104,24 +105,29 @@
     }
 
     function renderHighlights() {
-        // Draw a thin amber halo around each selected atom.  Drawn
-        // as a SEPARATE shape (addSphere with wireframe=true) so the
-        // atom's element color + stick rendering are unchanged --
-        // the halo just sits around it as a ring.
+        // Draw a small amber arrow pointing down at each selected
+        // atom from a fixed offset above it (along world +z).  The
+        // atom itself is left unchanged -- the arrow is a SEPARATE
+        // shape, doesn't grow with the atom's vdW radius, and
+        // points *at* the atom so there's no ambiguity about which
+        // one is selected even in dense structures.
         clearHighlights();
         state.selected.forEach((idx) => {
             const p = state.positions[idx];
             if (!p) return;
             const el = state.elements[idx] || "C";
-            const r = (_VDW[el] || 1.5) + HIGHLIGHT_PAD;
-            const sphere = viewer.addSphere({
-                center:    { x: p[0], y: p[1], z: p[2] },
-                radius:    r,
-                color:     HIGHLIGHT_COLOR,
-                wireframe: true,
-                opacity:   HIGHLIGHT_OPACITY,
+            const tip = (_VDW[el] || 1.5) + MARKER_GAP;       // arrow tip z-offset
+            const tail = tip + MARKER_LEN;                    // arrow tail z-offset
+            const arrow = viewer.addArrow({
+                start:       { x: p[0], y: p[1], z: p[2] + tail },
+                end:         { x: p[0], y: p[1], z: p[2] + tip  },
+                color:       HIGHLIGHT_COLOR,
+                radius:      MARKER_RADIUS,
+                radiusRatio: MARKER_RADIUS_RATIO,
+                mid:         0.7,           // most of the length is shaft;
+                                            // only the last 30% is the head
             });
-            _highlightShapes.push(sphere);
+            _highlightShapes.push(arrow);
         });
     }
 
