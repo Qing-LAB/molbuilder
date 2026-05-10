@@ -47,17 +47,24 @@
         n_atoms: 0,
         selected: new Set(),   // atom indices
         inFlight: false,       // true while an /api/modify/* fetch is open
+        history: [],           // {response} snapshots; capped at HISTORY_MAX
     };
 
+    // Cap on the undo history.  Each snapshot carries the full
+    // structure response (xyz + metadata, ~50 KB for a 1k-atom
+    // junction); 20 entries = ~1 MB worst case.  Older entries fall
+    // off the bottom of the stack as new ops are pushed.
+    const HISTORY_MAX = 20;
+
     // Selection marker: a small amber arrow pointing DOWN at the
-    // atom from just above it.  Drawn as a separate ``addArrow``
-    // shape so the atom rendering itself (size, element color,
-    // stick/ball-and-stick) is unchanged.  Length is independent of
-    // atom size -- the marker doesn't scale with vdW so a hydrogen
-    // and an iridium look equally selectable.
+    // atom, with the tip LANDING on the atom's vdW surface (no
+    // visual gap).  Drawn as a separate ``addArrow`` shape so the
+    // atom rendering itself (size, element color, stick or
+    // ball-and-stick) is unchanged.  Length is independent of atom
+    // size -- the marker doesn't scale with vdW so a hydrogen and
+    // an iridium look equally selectable.
     const HIGHLIGHT_COLOR    = "#fbbf24";    // amber, matches --warning
     const MARKER_LEN         = 0.9;          // arrow length, Å
-    const MARKER_GAP         = 0.4;          // Å above the atom's vdW
     const MARKER_RADIUS      = 0.06;         // shaft radius, Å
     const MARKER_RADIUS_RATIO = 2.6;         // head:shaft ratio
     // Approximate vdW radii (Å) so the arrow sits just above the
@@ -106,18 +113,19 @@
 
     function renderHighlights() {
         // Draw a small amber arrow pointing down at each selected
-        // atom from a fixed offset above it (along world +z).  The
-        // atom itself is left unchanged -- the arrow is a SEPARATE
-        // shape, doesn't grow with the atom's vdW radius, and
-        // points *at* the atom so there's no ambiguity about which
-        // one is selected even in dense structures.
+        // atom from above (along world +z).  The arrow tip LANDS
+        // exactly on the atom's vdW surface -- no visual gap.  The
+        // atom itself is left unchanged: the arrow is a SEPARATE
+        // shape, doesn't grow with the atom's vdW radius, and is
+        // unambiguous about which atom is selected even in dense
+        // structures.
         clearHighlights();
         state.selected.forEach((idx) => {
             const p = state.positions[idx];
             if (!p) return;
             const el = state.elements[idx] || "C";
-            const tip = (_VDW[el] || 1.5) + MARKER_GAP;       // arrow tip z-offset
-            const tail = tip + MARKER_LEN;                    // arrow tail z-offset
+            const tip  = (_VDW[el] || 1.5);                   // tip rests on vdW surface
+            const tail = tip + MARKER_LEN;                    // shaft top
             const arrow = viewer.addArrow({
                 start:       { x: p[0], y: p[1], z: p[2] + tail },
                 end:         { x: p[0], y: p[1], z: p[2] + tip  },
@@ -162,6 +170,19 @@
         _indexLabels = [];
     }
 
+    function recenterView() {
+        // Refit the camera so the structure's bounding box is
+        // centered in the canvas.  ``zoomTo()`` with no selection
+        // also re-anchors the rotation pivot to the bbox center, so
+        // subsequent mouse-wheel zooms don't drift off-screen.  Used
+        // by the Re-center button -- after adding electrodes the
+        // bbox grows substantially and the camera's stored lookAt
+        // can be off-axis vs the new geometry.
+        if (!state.xyz) return;
+        viewer.zoomTo();
+        viewer.render();
+    }
+
     // ----- xyz axis triad ----------------------------------------- //
     // Draws a small RGB axis triad just outside the structure's
     // bounding box so the user has a fixed orientation reference.
@@ -179,6 +200,13 @@
         _axisLabels = [];
     }
 
+    // Fixed length for the xyz triad so the axes always read as a
+    // compact compass marker at the world origin -- NOT a coordinate
+    // grid that scales with the molecule.  At 1.5 Å the triad is
+    // longer than a typical bond (~1.4 Å) and short enough to stay
+    // out of the way of the structure even in dense junctions.
+    const AXIS_LEN = 1.5;
+
     function drawAxes() {
         clearAxes();
         const cb = $("show-axes");
@@ -186,41 +214,28 @@
             viewer.render();
             return;
         }
-        // Length = 1.2 * the structure's outermost x/y/z extent so
-        // the arrows reach past the molecule visually but don't get
-        // gigantic for very long chains.  Floor at 1.5 Å for empty /
-        // single-atom states.
-        let extent = 1.5;
-        if (state.positions.length) {
-            for (const [x, y, z] of state.positions) {
-                extent = Math.max(
-                    extent, Math.abs(x), Math.abs(y), Math.abs(z),
-                );
-            }
-        }
-        const L = extent * 1.2;
         const triplet = [
-            { dir: [L, 0, 0], color: "0xff5555", label: "x" },  // red
-            { dir: [0, L, 0], color: "0x55cc55", label: "y" },  // green
-            { dir: [0, 0, L], color: "0x5588ff", label: "z" },  // blue
+            { dir: [AXIS_LEN, 0, 0], color: "0xff5555", label: "x" },  // red
+            { dir: [0, AXIS_LEN, 0], color: "0x55cc55", label: "y" },  // green
+            { dir: [0, 0, AXIS_LEN], color: "0x5588ff", label: "z" },  // blue
         ];
         for (const { dir, color, label } of triplet) {
             const arrow = viewer.addArrow({
-                start:  { x: 0, y: 0, z: 0 },
-                end:    { x: dir[0], y: dir[1], z: dir[2] },
-                radius: 0.05,
+                start:       { x: 0, y: 0, z: 0 },
+                end:         { x: dir[0], y: dir[1], z: dir[2] },
+                radius:      0.05,
                 radiusRatio: 2.5,
-                mid:    0.92,
-                color:  color,
+                mid:         0.85,
+                color:       color,
             });
             _axisShapes.push(arrow);
             const lbl = viewer.addLabel(label, {
                 position: {
-                    x: dir[0] * 1.08, y: dir[1] * 1.08, z: dir[2] * 1.08,
+                    x: dir[0] * 1.15, y: dir[1] * 1.15, z: dir[2] * 1.15,
                 },
                 fontColor: color,
                 backgroundOpacity: 0.0,
-                fontSize: 14,
+                fontSize: 12,
                 inFront: true,
             });
             _axisLabels.push(lbl);
@@ -503,6 +518,7 @@
 
         rebuildAtomList();
         refreshSelectionUI();
+        refreshUndoButton();
     }
 
     // formula() lives in static/lib/mol-format.js; loaded by the
@@ -532,6 +548,54 @@
         };
     }
 
+    // ----- Undo history ------------------------------------------- //
+    // Snapshot of the canonical structure shape applyStructure() takes
+    // -- same keys as an /api/modify/* response.  Pushed BEFORE every
+    // mutating op so the user can step backwards through up to
+    // HISTORY_MAX recent states.
+    function snapshotForHistory() {
+        if (!state.xyz) return null;
+        return {
+            xyz:           state.xyz,
+            elements:      state.elements,
+            atom_names:    state.atom_names,
+            residue_ids:   state.residue_ids,
+            residue_names: state.residue_names,
+            chain_ids:     state.chain_ids,
+            title:         state.title,
+            n_atoms:       state.n_atoms,
+        };
+    }
+
+    function pushHistory() {
+        const snap = snapshotForHistory();
+        if (!snap) return;
+        state.history.push(snap);
+        if (state.history.length > HISTORY_MAX) {
+            state.history.shift();   // drop the oldest
+        }
+        refreshUndoButton();
+    }
+
+    function refreshUndoButton() {
+        const btn = $("undo-op");
+        if (btn) btn.disabled = state.inFlight || state.history.length === 0;
+    }
+
+    function applyUndo() {
+        if (!state.history.length) return;
+        const prev = state.history.pop();
+        applyStructure(prev);
+        // applyStructure clears state.selected but DOES NOT touch
+        // state.history.  refreshSelectionUI runs at the end and the
+        // undo button updates via refreshUndoButton() below.
+        refreshUndoButton();
+        setEditStatus(
+            `Undid op (${prev.n_atoms} atoms restored).  ${state.history.length} step(s) left.`,
+            "ok",
+        );
+    }
+
     function setEditStatus(msg, kind = null) {
         const el = $("edit-status");
         if (!el) return;
@@ -547,8 +611,14 @@
         // before the first response updates state).  Buttons are
         // also disabled while in-flight so the visible UI matches.
         if (state.inFlight) return null;
+        // Push a history snapshot BEFORE the network call so undo can
+        // restore the pre-op state regardless of whether the fetch
+        // succeeds or fails.  Saved state is the structure as it was
+        // when the user clicked Apply.
+        pushHistory();
         state.inFlight = true;
         refreshSelectionUI();    // disable Delete/Add buttons during fetch
+        refreshUndoButton();      // and undo
         setEditStatus(`${label}…`);
         const body = Object.assign(currentStateBody(), extraBody);
         let r = null;
@@ -586,6 +656,7 @@
             // error path we run it explicitly to flip buttons back.
             state.inFlight = false;
             refreshSelectionUI();
+            refreshUndoButton();
         }
     }
 
@@ -838,6 +909,10 @@
             state.selected.clear();
             refreshSelectionUI();
         });
+        const recenterBtn = $("recenter-view");
+        if (recenterBtn) recenterBtn.addEventListener("click", recenterView);
+        const undoBtn = $("undo-op");
+        if (undoBtn) undoBtn.addEventListener("click", applyUndo);
 
         // M3: delete + add-atom op buttons.
         const delBtn = $("delete-apply");

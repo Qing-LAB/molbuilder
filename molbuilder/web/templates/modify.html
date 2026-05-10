@@ -92,6 +92,10 @@
         <input type="checkbox" id="show-axes" checked>
         Show xyz axes
       </label>
+      <button id="recenter-view" class="ghost"
+        title="Re-fit the camera to the current structure (atom + slab bounding box).
+After adding electrodes the bounding box grows substantially;
+this puts the centroid back in the middle of the view.">Re-center</button>
       <button id="clear-selection" class="ghost">Clear selection</button>
     </div>
   </section>
@@ -100,6 +104,10 @@
   <aside class="card edit-card">
     <header class="card-header">
       <h2>Edit</h2>
+      <button id="undo-op" class="ghost" disabled
+        title="Roll back the most recent edit operation.
+Undo replays the previous structure (xyz + selection + camera);
+you can step backwards through up to 20 ops.">Undo</button>
       <span id="edit-status" class="muted"></span>
     </header>
     <div class="edit-panel">
