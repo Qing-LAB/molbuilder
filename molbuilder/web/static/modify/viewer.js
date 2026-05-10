@@ -191,6 +191,32 @@
         viewer.render();
     }
 
+    // Selection used by ``snapPivotToCenter``: the molecule when
+    // slabs are present, every atom otherwise.  Centred separately
+    // from ``focusMolecule`` because rotation re-anchoring must NOT
+    // change the zoom level (only the lookAt).
+    function pivotSelection() {
+        if (state.residue_names &&
+            state.residue_names.indexOf("ELC") !== -1) {
+            return {not: {resn: "ELC"}};
+        }
+        return {};
+    }
+
+    // Snap the camera lookAt onto the structure centroid without
+    // touching the zoom level.  3Dmol's ``center()`` translates the
+    // model so the selection's centroid lands on the world origin
+    // (which is where rotations pivot) -- the camera distance stays
+    // exactly where the user left it.  Used as a mousedown hook so
+    // every rotation drag pivots on the structure regardless of any
+    // pan the user did before.
+    function snapPivotToCenter() {
+        if (!state.xyz || state.n_atoms === 0) return;
+        try {
+            viewer.center(pivotSelection(), 0);
+        } catch (_e) { /* ok if viewer isn't ready yet */ }
+    }
+
     // ----- xyz axis triad ----------------------------------------- //
     // Draws a small RGB axis triad just outside the structure's
     // bounding box so the user has a fixed orientation reference.
@@ -990,6 +1016,26 @@
 
         const focusBtn = $("focus-molecule");
         if (focusBtn) focusBtn.addEventListener("click", focusMolecule);
+
+        // Re-anchor rotation pivot on every plain left-mousedown over
+        // the viewer canvas.  3Dmol's pivot is the camera lookAt;
+        // ctrl/shift-pan moves the lookAt, so a rotation that
+        // follows a pan would orbit the molecule eccentrically.
+        // Snapping the lookAt back to the structure centroid before
+        // rotation begins makes every rotation pivot on the molecule
+        // (or on the bounding-box centroid if no slabs are present).
+        // Skip when ctrl/shift/alt is held -- those modifiers signal
+        // pan / zoom and must not snap.  Mouse-button distinction:
+        // the snap fires on left-button only because right-button
+        // and middle-button drags are 3Dmol's pan/zoom, not rotate.
+        const viewerEl = $("viewer");
+        if (viewerEl) {
+            viewerEl.addEventListener("mousedown", (e) => {
+                if (e.button !== 0) return;
+                if (e.ctrlKey || e.shiftKey || e.altKey) return;
+                snapPivotToCenter();
+            });
+        }
 
         // Geom subtab: center-at-origin + translate-by-offset.
         const centerBtn = $("center-apply");
