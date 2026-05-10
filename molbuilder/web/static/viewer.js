@@ -652,8 +652,27 @@
         if (!state.fdf) return;
         const label = ($("p-system-label").value.trim() || "siesta").replace(
             /[^A-Za-z0-9._-]+/g, "_");
-        downloadAs(state.fdf, label + ".fdf");
+        // Stage-aware filename: <name>-stage<N>.fdf when the user
+        // picked a non-Custom preset, so saving each stage's FDF
+        // alongside the previous ones in one directory doesn't
+        // overwrite (and matches the "Run with: ... <name>-stage<N>.fdf"
+        // line emitted in the FDF body).
+        const stage = stageNumberFromPreset();
+        const suffix = stage ? `-stage${stage}` : "";
+        downloadAs(state.fdf, label + suffix + ".fdf");
     });
+
+    // Map the Build form's stage-preset selector value to the
+    // SiestaConfig / PySCFConfig ``stage`` integer.  Custom and
+    // single-run modes pass null so the unsuffixed ``.molwatch.log``
+    // filename is used.
+    function stageNumberFromPreset() {
+        const v = ($("p-stage-preset") || {}).value || "custom";
+        if (v === "coarse") return 1;
+        if (v === "medium") return 2;
+        if (v === "tight")  return 3;
+        return null;
+    }
 
     function collectFdfParams() {
         const num  = (id) => parseFloat($(id).value);
@@ -668,6 +687,7 @@
         return {
             system_name:            jobName,
             system_label:           jobName,
+            stage:                  stageNumberFromPreset(),
 
             // Basis & grid
             basis_size:             $("p-basis").value,
@@ -757,7 +777,10 @@
         if (!state.pyscf) return;
         const label = ($("py-job-name").value.trim() || "pyscf_relax")
             .replace(/[^A-Za-z0-9._-]+/g, "_");
-        downloadAs(state.pyscf, label + ".py", "text/x-python");
+        // Stage-aware filename for the same reason as dl-fdf above.
+        const stage = stageNumberFromPreset();
+        const suffix = stage ? `-stage${stage}` : "";
+        downloadAs(state.pyscf, label + suffix + ".py", "text/x-python");
     });
 
     function collectPyscfParams() {
@@ -775,6 +798,7 @@
         const params = {
             // System
             job_name:           trim("py-job-name") || "pyscf_relax",
+            stage:              stageNumberFromPreset(),
             charge:             int("py-charge"),       // null -> auto-detect
             spin:               int("py-spin")  || 0,
             symmetry:           bool("py-symmetry"),

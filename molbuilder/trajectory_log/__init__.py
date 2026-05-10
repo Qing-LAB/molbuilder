@@ -19,6 +19,7 @@ keep working.
 """
 
 from .emitter import MolwatchEmitter
-from .format import write_initial_preview
+from .format import molwatch_log_basename, write_initial_preview
 
-__all__ = ["MolwatchEmitter", "write_initial_preview"]
+__all__ = ["MolwatchEmitter", "molwatch_log_basename",
+           "write_initial_preview"]

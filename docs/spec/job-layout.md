@@ -175,12 +175,34 @@ boundary with the source filename as a label.  Live polling pins to
 the **newest** log file (the one currently being written by the
 active SIESTA / PySCF run); older stages are static.
 
-Achieving this requires the user to give each stage's log a
-distinct filename — typically by including the stage suffix in
-`SystemLabel`-derived filenames or, for SIESTA, by renaming the
-preview log between runs.  A future generator-side enhancement will
-auto-suffix `<basename>-stage<N>.molwatch.log` when the Build tab's
-Relaxation-stage selector is set, removing the manual rename step.
+**Auto-suffixed log filenames per stage.**  When the Build tab's
+Relaxation-stage selector is set to a non-Custom value, both the
+SIESTA and PySCF generators emit a stage-suffixed log filename:
+
+  * SIESTA: the preview write at FDF-emission time goes to
+    `<basename>-stage<N>.molwatch.log` (the FDF's "Run with:" hint
+    block also advertises the stage-suffixed FDF + stdout names).
+  * PySCF: the inlined `MolwatchEmitter(...)` constructor receives
+    `JOB + "-stage<N>.molwatch.log"` instead of the bare
+    `JOB + ".molwatch.log"`.
+
+The basename / `SystemLabel` / `JOB` itself stays unsuffixed across
+stages so SIESTA's `.XV` / `.DM` / `.CG` restart files transfer
+cleanly.  Only the *log* filename grows the suffix.  A run directory
+ends up with the catalogue:
+
+```
+my-job/
+├── my-job-stage1.fdf            ├── my-job-stage1.molwatch.log
+├── my-job-stage2.fdf            ├── my-job-stage2.molwatch.log
+├── my-job-stage3.fdf            ├── my-job-stage3.molwatch.log
+├── my-job.XV / .DM / .CG        ├── my-job.STRUCT_OUT (final)
+└── my-job-stage1.out / -stage2.out / -stage3.out (engine stdout)
+```
+
+Pointing the Watch tab at `my-job/` resolves to all three
+`.molwatch.log` files in mtime order and renders one merged
+trajectory with stage boundary markers.
 
 ---
 

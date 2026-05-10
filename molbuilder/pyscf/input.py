@@ -387,7 +387,7 @@ def render_script(struct: Structure,
     # below (mf1 for preopt, mf for production).  The opt-step hook
     # is wired at each `optimize(...)` call.
     if cfg.optimize and cfg.molwatch_log and cfg.optimizer == "geometric":
-        out += _emit_molwatch_emitter(v)
+        out += _emit_molwatch_emitter(v, cfg)
 
     # ------------------------------------------------------------- preopt
     if cfg.preopt and cfg.optimize:
@@ -744,7 +744,7 @@ def _emit_preopt_block(cfg: PySCFConfig, charge: int, v: bool) -> List[str]:
     return out
 
 
-def _emit_molwatch_emitter(v: bool) -> List[str]:
+def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig") -> List[str]:
     """Inline streaming writer for ``<JOB>.molwatch.log``.
 
     The emitter is instantiated **early** -- BEFORE preopt -- so the
@@ -809,7 +809,18 @@ def _emit_molwatch_emitter(v: bool) -> List[str]:
     # has nothing to load on the Watch tab until preopt finishes.
     # The SCF callback is wired separately at each stage's mf object
     # (see emit_scf_callback_wiring below).
-    out.append('_molwatch = MolwatchEmitter(JOB + ".molwatch.log", JOB, mol)')
+    # Stage-aware molwatch-log filename (job-layout v1).  When the
+    # config carries ``stage`` (1/2/3), each stage's run writes to
+    # its own ``<JOB>-stage<N>.molwatch.log`` so a directory
+    # accumulates one log per stage and the Watch tab's multi-stage
+    # merge picks them up automatically.  ``JOB`` itself stays
+    # unsuffixed so the .chk / .log / _optimized.xyz filenames
+    # transfer cleanly across stages.
+    if getattr(cfg, "stage", None) is not None:
+        _mw_log_expr = f'JOB + "-stage{int(cfg.stage)}.molwatch.log"'
+    else:
+        _mw_log_expr = 'JOB + ".molwatch.log"'
+    out.append(f'_molwatch = MolwatchEmitter({_mw_log_expr}, JOB, mol)')
     out.append("")
     # Run-state markers.  The watch UI reads these to render a binary
     # "Finished / Ongoing / Error" badge -- authoritative when present,

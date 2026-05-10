@@ -1277,17 +1277,6 @@ Items deferred from prior reviews and the staged-relaxation /
 job-layout work.  Each is currently reachable but not load-bearing;
 promote when the time comes.
 
-### Job-layout follow-up
-
-- **Auto-suffix `<basename>-stage<N>.molwatch.log` on the generator
-  side.**  Multi-stage trajectory merging (Cut 3, 2026-05-10) works
-  when the directory has multiple distinct `*.molwatch.log` files;
-  today the user has to rename the preview log between stages to
-  preserve them.  When the Build-tab "Relaxation stage" selector is
-  on a non-Custom value, the FDF / PySCF generator should write
-  `<basename>-stage1.molwatch.log` / `…stage2…` / `…stage3…`
-  automatically so the rename step disappears.
-
 ### High priority
 
 - **`rotate_around_axis` rotation pivot.**  Currently rotates around

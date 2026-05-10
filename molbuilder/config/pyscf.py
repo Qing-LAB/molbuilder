@@ -244,5 +244,20 @@ class PySCFConfig:
         "help": "emit inline tuning hints + troubleshooting block in the script",
     })
 
+    # ---------------- Staged relaxation (job-layout v1) ----------------
+    # When 1, 2, or 3, the inlined ``MolwatchEmitter`` writes to
+    # ``<job>-stage<N>.molwatch.log`` instead of ``<job>.molwatch.log``,
+    # so the three stages of a coarse->medium->tight relaxation in one
+    # directory each get their own log and the Watch tab's multi-stage
+    # merge picks them up automatically.  ``None`` (default) keeps the
+    # unsuffixed name for single-run workflows.  ``job_name`` (the
+    # protocol basename) stays identical across stages.
+    stage: Optional[int] = field(default=None, metadata={
+        "label": "Relaxation stage",
+        "help":  "stage marker (1/2/3) for the .molwatch.log filename; "
+                 "None keeps the unsuffixed name",
+        "range": (1, 3),
+    })
+
 
 __all__ = ["PySCFConfig"]

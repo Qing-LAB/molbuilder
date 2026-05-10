@@ -584,3 +584,20 @@ def test_python_api_ecp_explicit_lanl2dz_passes_through(h2o):
     assert ('ecp     = "lanl2dz"' in text
             or 'ecp = "lanl2dz"' in text)
 
+
+
+# ---- Staged-relaxation suffix (job-layout v1) ---------------------------- #
+
+
+def test_pyscf_molwatch_emitter_uses_stage_suffix(h2o):
+    """When cfg.stage is 1/2/3 the inlined ``MolwatchEmitter(...)``
+    call writes to ``<JOB>-stage<N>.molwatch.log`` so stages don't
+    overwrite each other in a shared directory."""
+    text = render_script(h2o, PySCFConfig(stage=2, job_name="my-job"))
+    assert 'MolwatchEmitter(JOB + "-stage2.molwatch.log"' in text
+
+
+def test_pyscf_molwatch_emitter_unsuffixed_when_stage_is_none(h2o):
+    text = render_script(h2o, PySCFConfig(stage=None, job_name="my-job"))
+    assert 'MolwatchEmitter(JOB + ".molwatch.log"' in text
+    assert 'stage' not in text.split('MolwatchEmitter(JOB')[1].splitlines()[0]

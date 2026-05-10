@@ -19,10 +19,29 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..structure import Structure
+
+
+def molwatch_log_basename(system_label: str,
+                          stage: Optional[int] = None) -> str:
+    """Resolve the canonical ``<basename>[.stage<N>].molwatch.log``
+    filename for a given system label + optional stage marker.
+
+    Per ``docs/spec/job-layout.md``: when the user is running a staged
+    coarse->medium->tight relaxation, each stage gets a uniquely-named
+    log file in the same directory (the basename stays identical so
+    SIESTA's restart files transfer; only the molwatch-log filename
+    grows the suffix).  ``stage=None`` returns the unsuffixed name.
+
+    Returns just the filename, not a full path; callers join with the
+    target directory.
+    """
+    if stage is None:
+        return f"{system_label}.molwatch.log"
+    return f"{system_label}-stage{int(stage)}.molwatch.log"
 
 
 def write_initial_preview(

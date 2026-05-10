@@ -283,3 +283,42 @@ def test_cg_relax_does_not_emit_md_temperature_block():
     assert "MD.LengthTimeStep"     not in fdf
     assert "MD.TargetTemperature"  not in fdf
 
+
+
+# ---- Staged-relaxation suffix (job-layout v1) ---------------------------- #
+#
+# When ``cfg.stage`` is 1/2/3 the FDF's "Run with:" hint advertises a
+# ``<basename>-stage<N>.fdf`` filename and the convert() preview-write
+# uses ``<basename>-stage<N>.molwatch.log`` so multiple stages
+# accumulate in one directory and the Watch tab's multi-stage merge
+# picks them up automatically.
+
+
+def test_fdf_stage_suffix_appears_in_run_with_block():
+    fdf = render_fdf(_h2_struct(),
+                     SiestaConfig(system_label="my-job", stage=2))
+    assert "my-job-stage2.fdf" in fdf
+    assert "my-job-stage2.out" in fdf
+    assert "my-job-stage2.molwatch.log" in fdf
+    assert "Stage 2" in fdf
+
+
+def test_fdf_no_stage_suffix_when_stage_is_none():
+    fdf = render_fdf(_h2_struct(),
+                     SiestaConfig(system_label="my-job", stage=None))
+    assert "my-job.fdf" in fdf
+    assert "my-job.molwatch.log" in fdf
+    assert "Stage 1" not in fdf and "Stage 2" not in fdf
+
+
+def test_convert_writes_stage_suffixed_preview_log(tmp_path):
+    """convert() drops a preview log next to the FDF; the filename
+    follows the protocol basename + stage suffix, NOT the FDF stem."""
+    import os
+    in_p = tmp_path / "anything.xyz"
+    in_p.write_text("2\nh2\nH 0 0 0\nH 0 0 0.74\n")
+    fdf_p = tmp_path / "deliberately_unrelated_name.fdf"
+    summary = convert(str(in_p), str(fdf_p),
+                      SiestaConfig(system_label="my-job", stage=3))
+    assert os.path.basename(summary["molwatch_log"]) \
+        == "my-job-stage3.molwatch.log"

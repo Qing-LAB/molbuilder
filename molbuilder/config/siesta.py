@@ -242,6 +242,22 @@ class SiestaConfig:
         "help": "emit inline tuning hints and a Troubleshooting block in the FDF",
     })
 
+    # Staged-relaxation marker (job-layout v1, Cut 3+).  When 1, 2, or 3,
+    # the preview ``<basename>.molwatch.log`` is written as
+    # ``<basename>-stage<N>.molwatch.log`` so multiple stages of a
+    # coarse->medium->tight relaxation accumulate in one directory and
+    # the Watch tab's multi-stage merge picks them up automatically.
+    # ``None`` (default) keeps the unsuffixed filename for single-run
+    # workflows.  Constraints: SystemLabel stays identical across stages
+    # (so SIESTA's .XV / .DM / .CG restart files transfer cleanly); only
+    # the preview-log filename gets the suffix.
+    stage: Optional[int] = field(default=None, metadata={
+        "label": "Relaxation stage",
+        "help":  "stage marker (1/2/3) for the preview .molwatch.log "
+                 "filename; None keeps the unsuffixed name",
+        "range": (1, 3),
+    })
+
     # Output flags
     write_forces: bool = field(default=True, metadata={
         "help": "write forces to the .FA file (required for relaxation)",

@@ -277,19 +277,38 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     # Suggest the canonical ``mpirun`` invocation so the user redirects
     # stdout to ``<basename>.out`` (the Watch tab's discovery chain
     # also looks for that filename).  See docs/spec/job-layout.md.
+    #
+    # Stage-aware filenames: when ``cfg.stage`` is set (1/2/3), the
+    # FDF + stdout-redirect filenames pick up the ``-stage<N>`` suffix
+    # so a coarse->medium->tight workflow produces
+    # ``<basename>-stage1.fdf`` / ``…stage2…`` / ``…stage3…`` in one
+    # directory.  The SystemLabel itself stays unsuffixed (so SIESTA's
+    # .XV / .DM / .CG restart files transfer cleanly between stages).
+    from ..trajectory_log.format import molwatch_log_basename
+    if cfg.stage is not None:
+        _stage_suffix = f"-stage{int(cfg.stage)}"
+    else:
+        _stage_suffix = ""
+    _fdf_name  = f"{cfg.system_label}{_stage_suffix}.fdf"
+    _out_name  = f"{cfg.system_label}{_stage_suffix}.out"
+    _mw_name   = molwatch_log_basename(cfg.system_label, cfg.stage)
     if cfg.verbose_comments:
         out.append("# === Run with (job-layout v1) ===")
         out.append(
             "# Run from this directory -- all outputs share the "
             "SystemLabel basename below.")
-        out.append(
-            f"#     mpirun -np 4 siesta < {cfg.system_label}.fdf "
-            f"> {cfg.system_label}.out")
+        out.append(f"#     mpirun -np 4 siesta < {_fdf_name} > {_out_name}")
+        if cfg.stage is not None:
+            out.append(
+                f"# Stage {int(cfg.stage)} of a staged relaxation; "
+                "SIESTA reads .XV / .DM from the previous stage")
+            out.append(
+                "# (same SystemLabel, same directory).  See the Watch "
+                "tab's 'Staged relaxation workflow' panel.")
         out.append(
             "# Watch the run live: open the Watch tab and point it "
             "at this directory")
-        out.append(
-            f"# (the loader resolves it to {cfg.system_label}.molwatch.log).")
+        out.append(f"# (the loader resolves it to {_mw_name}).")
         out.append("")
 
     out.append(f"SystemName        {cfg.system_name}")
@@ -959,18 +978,26 @@ def convert(
         else:
             summary["missing_psml"] = copy_pseudopotentials(species, lib, fdf_p.parent)
 
-    # Drop a preview <fdf-stem>.molwatch.log next to the .fdf so molwatch
-    # can render the initial geometry the moment the user loads it -- no
-    # waiting for SIESTA to write its first outcoor block.  The file is
-    # static (one preview block, no live updates); for live updates while
-    # SIESTA is running, point molwatch at the .out file instead.
+    # Drop a preview <basename>[-stage<N>].molwatch.log next to the
+    # .fdf so molwatch can render the initial geometry the moment the
+    # user loads it -- no waiting for SIESTA to write its first
+    # outcoor block.  The file is static (one preview block, no live
+    # updates); for live updates while SIESTA is running, point
+    # molwatch at the .out file instead.
+    #
+    # Filename derives from cfg.system_label (the protocol basename)
+    # plus the optional stage suffix -- NOT from the FDF's stem.  This
+    # way a user who names the FDF "anything.fdf" still gets the
+    # canonical preview-log name that the Watch tab discovery chain
+    # recognises.  See docs/spec/job-layout.md.
     if cfg.write_molwatch_log:
-        from ..trajectory_log import write_initial_preview
-        mw_path = fdf_p.with_suffix(".molwatch.log")
+        from ..trajectory_log import molwatch_log_basename, write_initial_preview
+        mw_path = fdf_p.parent / molwatch_log_basename(
+            cfg.system_label, cfg.stage)
         write_initial_preview(
             struct,
             mw_path,
-            job=fdf_p.stem,
+            job=cfg.system_label,
             engine="siesta",
         )
         summary["molwatch_log"] = str(mw_path)
