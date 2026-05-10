@@ -177,17 +177,14 @@ the adapter goes away then.
 
 ### Domain verbs (L2)
 
-> **Module paths in this table reflect the post-2.7 target layout.**
-> Phase 2.7 is rolling out incrementally; these paths still differ
-> from the on-disk reality:
->   * builders -- still `molbuilder/peptide.py`,
->     `molbuilder/nucleic.py`, `molbuilder/smiles.py`,
->     `molbuilder/pubchem.py` (top-level, not under `builders/`).
->   * generators -- still `molbuilder/siesta/input.py` and
->     `molbuilder/pyscf/input.py` (the renderers; not under
->     `generators/`).
-> The verbs themselves and their consume/yield contracts are accurate
-> now.
+> **Notes on the as-shipped layout.**  The top-level builder modules
+> (`molbuilder/peptide.py`, `nucleic.py`, `smiles.py`, `pubchem.py`)
+> are the L2 verbs; `builders/` is reserved for `builders/backends/*`.
+> The generators ship at `molbuilder/siesta/input.py` and
+> `molbuilder/pyscf/input.py` rather than a flat `generators/`
+> directory; the per-engine subpackages let the configs and emitters
+> co-locate (the configs themselves live at L1 in `molbuilder/config/`
+> and are re-exported from each engine package for back-compat).
 
 | Verb | Module | Consumes | Yields |
 |---|---|---|---|
@@ -620,25 +617,13 @@ These have been considered and rejected; do not reintroduce them.
 
 ---
 
-## Post-merge package layout
+## Package layout
 
-> **This is the post-2.7 target layout.**  Phase 2.7 done so far:
->   * `config/` -- `SiestaConfig` and `PySCFConfig` live there
->     (re-exported from the engine packages for back-compat).
->   * `trajectory_log/` -- renamed from `molwatch_log/`; the old
->     name is preserved as a back-compat shim.
->   * `builders/backends/` -- the per-tool nucleic-acid backends
->     moved under a new `builders/` package; `molbuilder.backends`
->     is preserved as a back-compat shim.
-> Still pending:
->   * `generators/` -- the SIESTA / PySCF emitters still live at
->     `molbuilder/siesta/input.py` and `molbuilder/pyscf/input.py`.
->   * The build verbs (peptide / nucleic / smiles / pubchem) still
->     live at the top level rather than under `builders/`.
-> Re-export shims keep external imports stable while the layout
-> moves; until then,
-> re-export shims keep external imports stable but the on-disk
-> shape is the pre-2.7 one.
+The L1/L2/L3 split below is the as-shipped layout.  Re-export shims
+keep external imports stable across the deliberate splits (`config/`
+re-exported from `molbuilder.siesta` / `molbuilder.pyscf`,
+`trajectory_log/` aliased as `molwatch_log/`, `builders.backends.*`
+aliased as `molbuilder.backends.*`).
 
 ```
 molbuilder/
@@ -753,26 +738,19 @@ older paths are not deprecated — they are the public surface.
 
 ---
 
-## Merge plan
+## Merge plan — historical
 
-| Phase | Outcome | Status |
-|---|---|---|
-| 1 / commit 3 | `siesta`, `pyscf`, `molwatch_log` promoted to subpackages with re-exporting `__init__.py`; tests green | **done — `e34ede7`** |
-| 1 / commit 4 | `_inbound_molwatch/parsers/` moved to `molbuilder/parsers/` (flat layout: one `<format>.py` per parser); parser tests lifted to `tests/watch/`; `_inbound_molwatch/tests/conftest.py` merged into `tests/conftest.py` (it's a `sys.path` hack, not a copy-target) | **done — `1cb9c48`** |
-| 1 / commit 5 | Watch web app moved to `molbuilder/web/blueprints/watch.py` (split route group, not a separate app); `molbuilder watch serve` CLI subcommand added; web routes namespaced `/api/build/*` and `/api/watch/*` via Flask Blueprints; `flask` lifted to core dependency; `molwatch` console-script shim added | **done — `29af210`** (build-side namespacing landed later as `3d3d85b`) |
-| 1 / commit 6 | `_inbound_molwatch/` deleted; remaining `docs/spec/` files merged into `docs/spec/`; `pyproject.toml` / `requirements.txt` from the subtree dropped | **done — `7214c08`** |
-| 2 | `Frame` and minimal `Trajectory(source_format, frames, lattice)` dataclasses added at `molbuilder/frame.py`; parsers' `parse(path)` now returns `Trajectory`; the legacy molwatch v1 dict shape produced by `molbuilder/parsers/__init__.py:trajectory_to_legacy_dict` so `/api/watch/load` keeps the same JSON the JS client expects | **done** |
-| 2.5 | 3DNA backend added at `molbuilder/backends/_threedna.py` (will move to `builders/backends/` in Phase 2.7); detection chain `in-tree > $X3DNA > PATH`; registered in dispatch with auto-order `threedna > amber > rdkit`; CLI's `--backend` choice list extended | **done** |
-| 2.6 | `Issue` dataclass added (`issues.py`); `validation.py` wired into `render_fdf` / `render_script`; per-field metadata lifted onto `SiestaConfig` and `PySCFConfig` via `dataclasses.field(metadata=...)`; validators read ranges from the metadata. **This is when principles #1 and #6 become load-bearing.** Side effect: the validator surfaced an `AddHs(addCoords=True)` artifact in the peptide builder (some Hs left at heavy-atom anchor positions); fixed in the same phase via a `_drop_overlapping_hydrogens` post-pass. | **done** |
-| 2.7 | Layering-compliance commit: `SiestaConfig` / `PySCFConfig` split out into `molbuilder/config/` (re-exports preserve external imports); `molwatch_log/` renamed to `trajectory_log/` (re-exports preserved); `backends/` moved under `builders/`. No behavior change. | **done** (landed as 2.7a + 2.7b + 2.7c) |
-| 3 | Web UI redesigned: Build tab + Watch tab; shared 3Dmol viewer, style controls; clean styling pass; "Watch this run" handoff. SSE / WebSocket vs 15s mtime polling resolved at `a3aab23` (server is authoritative; polling stays). | **done** — 3a build routes namespaced under `/api/build/*` (`3d3d85b`); 3b shared tab nav + banner above menu (`4b274d5` / `10a0d88` / `562c34d`); 3c shared 3Dmol style helper at `static/lib/mol-style.js` -- the only honest overlap between Build and Watch viewers, ~50 lines of representation/sizing math, extracted (`7110885`); 3d Watch-this-run handoff (`86a2d64`) -- Build-side buttons subsequently retired as dead UI in `4171194`, receiver half (Watch tab honours `?path=`) intact. |
-| 4 | `MolwatchEmitter` extracted to `molbuilder/trajectory_log/emitter.py`; inlined into generated script via `inspect.getsource()`; emitter unit tests added (`tests/test_molwatch_emitter.py`).  Generated script stays self-contained (no molbuilder runtime dependency on the user's machine) -- the class source is inlined verbatim, the script's globals supply `_mw_time` / `_mw_np`. | **done — `3bd5c32`** |
-| 5 | argparse → click conversion of `cli.py`; `molbuilder watch parse` / `molbuilder watch tail` JSON-on-stdout subcommands (issue #81); `molbuilder validate` subcommand emitting `Issue` JSON; `-` stdin support on `fdf` / `pyscf` so principle #2 is realized end-to-end; `add_dataclass_options` bridge from field metadata to `click.option` lands here | **done** — sub-phases 5a (argparse→click, `2456dad`), 5b (stdin support, `fba531e`), 5c (`molbuilder validate`, `63a3b51`), 5d (`watch parse`/`tail`, `952fff0`), 5e (`add_dataclass_options` bridge, `041def3`). |
-| 6 | v0.4 scientific polish — fix the 10 known gaps below; each fix lands as the triple (generator change + validation rule + spec test) so they can't drift; lift `mf.diis_space` / `mf.damp` / `pao_energy_shift` defaults onto the metadata-augmented config fields from Phase 2.6 | **done** — all 10 gaps closed (`#1+#2 23d8a99`, `#3 3f11a31`, `#4 e695262`, `#5 f6459b2`, `#6 69e226b`, `#7 d2a4709`, `#8 2b85d21 + 0a00abc`, `#9 d1b9d1c`, `#10 453abe5`).  0 xfails left in `tests/test_science_gaps.py`. |
+The molbuilder + molwatch merge ran in six phases (subpackage promotion;
+flat parsers layout; Flask blueprint split with namespaced routes;
+`Frame` / `Trajectory` dataclasses; 3DNA backend; field-metadata-driven
+validation; layering compliance; UI redesign with shared viewer; emitter
+extraction; argparse→click; v0.4 scientific polish closing 10 known
+gaps).  All phases are complete.  Reconstruct any specific phase from
+`git log --oneline --grep="Phase\|review-fix\|merge"` as needed; the
+post-merge **package layout** below is the current shape.
 
-Each commit must keep `pytest tests/ -q` green. No "intermediate broken
-state" commits; if a refactor would temporarily break tests, split it
-finer.
+Tests are green at every commit on every phase branch — no "intermediate
+broken state" commits.
 
 ---
 
@@ -818,119 +796,17 @@ in `tests/conftest.py`. The CLI `molbuilder validate` subcommand emits
 the same `List[Issue]` as JSON to stdout for shell-driven pre-flight
 checks.
 
-### Known SIESTA / PySCF science gaps
+### Known SIESTA / PySCF science gaps — historical
 
-Identified during the 2026-05-01 design review. All ten confirmed
-present and unfixed in the audit on the same date. Each lands as the
-triple (generator change + validation rule + spec test) in Phase 6.
-
-1. ~~**`SpinTotal` keyword in FDF (`generators/siesta.py`, line ~587 in
-   pre-split file) is probably not a real SIESTA keyword.** SIESTA uses
-   `Spin.Fix true` + `Spin.Total <v>`. Verify against the SIESTA manual
-   for the targeted version range and fix the emission. (Currently
-   silently ignored by SIESTA's fdf parser on a value mismatch.)~~
-   **Fixed:** generator now emits `Spin.Fix true` + `Spin.Total <v>`
-   as a paired two-line block.  Test
-   `test_gap_1_siesta_emits_spin_total_with_dot` flipped from xfail
-   to passing; `test_c2_spin_total_emits_dotted_form_with_fix`
-   pins the new form + asserts `SpinTotal ` (legacy bogus token)
-   never appears.
-2. ~~**`SpinPolarized true` (line ~579 in pre-split file) is the v4-era
-   keyword.** SIESTA v5 prefers single-line `Spin polarized`. Either
-   feature-detect or document the targeted SIESTA version range.~~
-   **Fixed:** generator emits the v5 single-line `Spin polarized`.
-   Targeted SIESTA range now documented in the spin block's verbose
-   comments (4.1 -- 5.x; v4 back-compat accepted but deprecated in v5+).
-   Test `test_gap_2_siesta_emits_v5_spin_block` flipped to passing;
-   `test_c2_spin_polarized_emits_v5_form` pins the v5 form + asserts
-   `SpinPolarized` (legacy v4 token) never appears.
-3. ~~**No SIESTA dispersion-correction emission.** For organic /
-   biomolecule work without a vdW-aware functional, plain PBE / B3LYP
-   underbinds. Add a commented-out `%block MM.Potentials` (D2/D3
-   empirical) template when the chosen XC is non-dispersive.~~
-   **Fixed:** SIESTA generator now emits a commented Grimme-D2
-   template via `_emit_dispersion_template` when
-   `cfg.xc_functional.upper() != "VDW"`.  Verbose mode adds the
-   "what under-binds" rationale + the alternative "switch to VDW
-   XC" recipe; non-verbose still emits the bare template stub.
-   Skipped when the user already chose a vdW-aware XC (otherwise
-   the block would double-count).  Tests:
-   `test_gap_3_siesta_emits_dispersion_template_for_pbe` (xfail
-   flipped) + `test_gap_3_dispersion_template_suppressed_for_vdw_xc`.
-4. ~~**`mf.stability_analysis()` is not auto-emitted for UKS / UHF.**
-   Open-shell SCFs can converge to broken-symmetry saddles; without a
-   stability check the user gets a non-variational answer with no
-   warning. Auto-emit when `method` starts with `U`.~~ **Fixed:**
-   PySCF generator now emits a `mf.stability_analysis()` call after
-   the SCF/optimize stage when `method_class.startswith("U")`. The
-   xfail is flipped to a passing test
-   (`test_gap_4_pyscf_uks_emits_stability_analysis`); a complementary
-   test pins that closed-shell scripts don't carry the call.
-5. ~~**`PAO.EnergyShift 0.02 Ry` default is loose.** Production SIESTA
-   work typically uses 0.005 – 0.01 Ry. Tighten the default to 0.01 Ry.~~
-   **Fixed:** `SiestaConfig.pao_energy_shift` default is now 0.01 Ry
-   (was 0.02; SIESTA's own default).  ~2x slower SCF for far better
-   PAO-tail convergence -- production-side of "well-converged" per
-   the SIESTA manual's 0.001-0.01 recommendation.  Tighten to 0.005
-   for phonon / vibrational work; loosen back to 0.02 for screening.
-   Test `test_gap_5_siesta_pao_energy_shift_default_is_tight` flipped
-   from xfail to passing.
-6. ~~**No post-processing block in either generator.** Add a commented-out
-   `# --- Post-processing hook ---` placeholder to both with 2-3 common
-   follow-ups (SIESTA: `BandLines` / `PDOS`; PySCF: `analyze()` /
-   `mulliken_pop()` / `dip_moment()`).~~ **Fixed:**
-   * SIESTA generator emits a `# === Post-processing hook (commented
-     templates) ===` block at end of FDF with four templates:
-     `WriteMullikenPop`, `%block BandLines`, `%block ProjectedDensityOfStates`,
-     `SaveRho` / `SaveDeltaRho` / `SaveElectrostaticPotential`.
-   * PySCF generator emits an analogous block with `mulliken_pop`,
-     `dip_moment`, `mf.analyze()`, and a Lowdin / NPA pointer.
-   Both default-disabled (commented).  Tests
-   `test_gap_6_siesta_emits_post_processing_hook` and
-   `test_gap_6_pyscf_emits_post_processing_hook` flipped from xfail
-   to passing.
-7. ~~**No SIESTA minimum version pinned.** `requirements-runtime.txt`
-   doesn't declare a minimum; emitted keywords like `DM.Energy.Tolerance`
-   may be silently ignored on old builds. Document the targeted range.~~
-   **Fixed:** `requirements-runtime.txt` now documents the targeted
-   SIESTA version range (4.1 -- 5.x) inline with the conda install
-   pointer, with a specific note that older builds (4.0 and earlier)
-   may reject the v5-form keywords (`Spin polarized`, `Spin.Total` +
-   `Spin.Fix`).  Test
-   `test_gap_7_requirements_documents_siesta_version_range` flipped
-   from xfail to passing.
-8. ~~**No ECP support for non-def2 bases.** A user with a Pt/Pd structure
-   on cc-pVDZ needs a manual `ecp = {...}` block. Lower priority.~~
-   **Fixed:** PySCFConfig grows `ecp: Optional[str] = None` (auto-detect).
-   Generator emits `ecp = "lanl2dz"` in the `gto.M(...)` call when
-   the structure has heavy atoms (Z > 36) AND the basis is not a
-   def2-* family member (def2-* bundles its own ECP and would
-   double-count).  Override via `cfg.ecp = '<name>'` to force a
-   different ECP; set `cfg.ecp = ""` to disable auto-emit entirely.
-   Tests `test_gap_8_pyscf_emits_ecp_for_heavy_atoms_with_non_def2`
-   (xfail flipped) plus three complementary tests pinning the
-   def2-skip / light-atoms-skip / user-disable paths.
-9. ~~**`save_optimized_xyz` writes from `mol_eq` (correct), but `mf.e_tot`
-   may not match `mol_eq`'s geometry for non-converged opts.** Probably
-   a non-issue in practice; flag for awareness.~~
-   **Fixed:** generator now emits `mf.mol = mol_eq; mf.kernel()` after
-   `optimize()` returns, so the printed final energy is unambiguously
-   the converged SCF at mol_eq's coordinates.  One extra SCF, cheap
-   relative to the optimisation.  Test
-   `test_gap_9_pyscf_reevaluates_energy_at_optimized_geom` flipped
-   from xfail to passing.
-10. ~~**No `mf.diis_space` / `mf.damp` in `PySCFConfig`.** Hard-SCF
-    troubleshooting requires editing the generated script. Mentioned in
-    the troubleshooting block; could be exposed as config fields.~~
-    **Fixed:** `PySCFConfig.diis_space` (default 8 = PySCF's default;
-    bump to 12-20 for oscillating SCFs) and `PySCFConfig.damp`
-    (default 0; 0.3-0.5 helps when DIIS alone isn't enough) are
-    now first-class fields with metadata.  Generator emits
-    `mf.diis_space = N` / `mf.damp = X` only when bumped from
-    defaults so easy-converge scripts stay clean.  Tests
-    `test_gap_10_pyscf_config_exposes_diis_space_and_damp` (xfail
-    flipped) and `test_gap_10_diis_damp_emitted_only_when_tuned`
-    pin the field presence + the conditional emission.
+Ten gaps were identified in the 2026-05-01 design review (SIESTA
+`SpinTotal` / `SpinPolarized` keyword forms, dispersion-correction
+emission, `mf.stability_analysis()` for open-shell, `PAO.EnergyShift`
+default, post-processing hook templates, SIESTA version pinning,
+ECP auto-emit for heavy atoms with non-def2 bases, post-relax
+`mf.kernel()` re-evaluation, `mf.diis_space` / `mf.damp` exposure).
+All ten are closed and pinned by tests in `tests/test_science_gaps.py`
+(0 xfails).  Reconstruct any specific fix from
+`git log --oneline --grep="science\|gap"`.
 
 ### Pinned false positive from the 2026-05-05 deep code review
 
@@ -1394,18 +1270,58 @@ may match on; only the Python module name changes.
 
 ---
 
-## Open questions
+## Next steps
 
-- Frequency / thermochemistry support in the PySCF script (post-relax
-  Hessian + RRHO). Lower priority than the science gap list above.
-- Whether `Trajectory` should grow analysis methods (RMSD, principal
-  axes, dipole moment time series) versus staying as a thin
-  `(source_format, frames, lattice)` wrapper.  Phase 2 landed it as
-  the thin shape; revisit if Phase 3's web redesign or new CLI
-  subcommands want richer ergonomics.
-- Whether a non-trivial CP2K / ORCA generator + parser arrives before
-  v1.0. If yes, the `generators/` and `parsers/` flat layouts already
-  accommodate it; if no, the abstraction is fine as-is.
+Items deferred from the 2026-05-09 modify-tab review.  Each is
+currently reachable but not load-bearing; promote when the time comes.
+
+### High priority
+
+- **`rotate_around_axis` rotation pivot.**  Currently rotates around
+  the world origin (documented).  Add a `center: str = "centroid" |
+  "origin" | "midpoint"` kwarg, default `"centroid"`, so the typical
+  user flow `add_atom(...) → rotate(z, 90°)` doesn't swing the
+  molecule on a wide arc.  UI: add a "Pivot" select in the Pose
+  subtab Rotate row.
+- **`Structure.centered()` documentation + alternatives.**  Today
+  `centered()` puts the *atom-coordinate mean* at origin (NOT the
+  bounding-box centre, NOT the centre of mass).  For asymmetric
+  molecules the atom-mean shifts toward heavy substituents.  Either
+  document the choice in the docstring (one-line caution) or split
+  into `centroid_centered()` + `bbox_centered()` + `mass_centered()`
+  and have the Geom subtab grow a "Centre on…" select.
+- **Element-aware default `contact_distance`.**  `2.4 Å` is canonical
+  Au-S; 0.1-0.4 Å off for Pt-N, Cu-S, Ag-S, Pd-S, Ni-S.  Either
+  load defaults from a small `data/contact_distance.json` keyed by
+  metal, or emit a warn-severity Issue when the chosen metal isn't
+  Au.  Prefer the data file (matches the `fcc_lattice.json` precedent).
+
+### Medium priority
+
+- **Frequency / thermochemistry support in the PySCF script** (post-
+  relax Hessian + RRHO).
+- **Whether `Trajectory` should grow analysis methods** (RMSD,
+  principal axes, dipole moment time series) versus staying as a
+  thin `(source_format, frames, lattice)` wrapper.  Phase 2 landed
+  it as the thin shape; revisit if a future CLI subcommand wants
+  richer ergonomics.
+- **Whether a non-trivial CP2K / ORCA generator + parser arrives
+  before v1.0.**  If yes, the flat `generators/` and `parsers/`
+  layouts already accommodate it; if no, the abstraction is fine.
+- **Phone-width (≤ 640 px) E2E layout test for Modify** — the
+  viewer-controls toolbar has six children and may wrap badly on
+  narrow viewports.  Existing layout test runs at 800 px.
+
+### Low priority
+
+- **Tighten `_struct_from_body` callers' `except`** — two routes in
+  `web/blueprints/modify.py` were already narrowed in M6; remaining
+  blueprint endpoints could be audited for the same pattern.
+- **Drop the redundant `test_postop_early_return_blocks_concurrent_call`
+  E2E test** that documents itself as redundant with
+  `test_apply_button_disables_during_fetch`.  Either give it
+  independent value (e.g. drive `postOp` directly via a test hook
+  that bypasses the disable layer) or delete it.
 
 ---
 

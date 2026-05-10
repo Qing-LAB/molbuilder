@@ -4,7 +4,7 @@
 > Code, tests, and the UI must follow this spec; if any of them diverge,
 > update this document in the same commit.  Pointer in `docs/design.md`.
 
-Status (2026-05-09): All milestones done.  M1 Python API + CLI + tests; M2 UI skeleton (route, atom list ↔ viewer click sync, file load); M3 delete + add-atom; M4 anchor-pair orient + rotate, per-atom info panel, xyz-axes overlay; M5 electrode panel (pair / single mode) + Send-to-Build handoff via the same ``builder-structure`` sessionStorage key Phase 1 cross-tab persistence uses.
+Status (2026-05-10): All milestones done.  M1 Python API + CLI + tests; M2 UI skeleton (route, atom list ↔ viewer click sync, file load); M3 delete + add-atom; M4 anchor-pair orient + rotate, per-atom info panel, xyz-axes overlay; M5 electrode panel (pair / single mode) + Send-to-Build handoff via the same ``builder-structure`` sessionStorage key Phase 1 cross-tab persistence uses; M6 Geom subtab (centre-at-origin, translate-by-Δ), anchorless slab mode (slabs at z = ±gap/2 around the world origin), wireframe halo selection marker, Focus-molecule button + rotation-pivot snap on left-drag, slab-only Undo (HISTORY_MAX = 20), single-source-of-truth `/api/modify/meta` for the element + plane dropdowns.
 
 ---
 
@@ -23,15 +23,27 @@ Concretely the feature must let the user:
 2. **Inspect** every atom in a side-panel list with click-to-highlight
    in the 3Dmol viewer (and the reverse: clicking an atom in the viewer
    highlights its row in the list).
-3. **Edit individual atoms:**
+3. **Edit individual atoms (Atom subtab):**
     a. **Delete** any selected atom(s).
     b. **Add** a new atom anchored to a selected one with `(dx, dy, dz)`
        offset.  Sliders adjust the offset live; a distance readout
        updates as the slider moves.  Commits on Apply.
-4. **Define a molecular axis** by selecting two anchor atoms.  Apply a
-   rotation that places that pair on the z-axis (the transport-DFT
-   convention; ±z carries the electrodes).
-5. **Add electrodes:** for each side (+z, -z), the user fills out one
+4. **Pose the molecule (Pose subtab):**
+    a. **Orient anchor pair along an axis** by selecting two atoms
+       and applying a rotation that places that pair on the z-axis
+       (the transport-DFT convention; ±z carries the electrodes).
+       A tilt slider inclines the pair away from z by 0–90°.
+    b. **Rotate around an axis** -- spin every atom by N° around x,
+       y, or z through the origin.  Useful for redirecting a tilted
+       molecule's azimuth.
+5. **Place the molecule (Geom subtab):**
+    a. **Centre at origin** -- one button click; translates the
+       structure so the geometric centroid (atom-coordinate mean)
+       lands at (0, 0, 0).
+    b. **Translate by (Δx, Δy, Δz) Å** -- explicit number inputs;
+       useful for nudging the centroid to a specific point after
+       centring or before adding electrodes.
+6. **Add electrodes (Junction subtab):** the user fills out one
     "stack" panel per call.  Per panel:
     * **Element** (dropdown — Au / Ag / Cu / Ni / Pt / Pd; see § 8).
     * **Crystal plane** (dropdown — 100 / 110 / 111).
@@ -43,8 +55,11 @@ Concretely the feature must let the user:
     * **Number of layers** *n_layers* (integer input ≥ 1).
     * **Gap** — meaning depends on the panel mode:
         * Pair-mode (symmetric electrodes from one panel): the total
-          electrode-to-electrode separation; default **8.0 Å** (matches
-          `add_symmetric_electrodes(gap=8.0)`).
+          electrode-to-electrode z-distance; UI default **12.0 Å**
+          (range 4–30 Å).  The Python default for
+          `add_symmetric_electrodes(gap=...)` is 8.0; the UI raises
+          it because most published junctions (oligophenyl, OPV3,
+          alkanedithiols n=4–10) need 12–20 Å.
         * Single-mode (one slab, one anchor): the anchor-to-closest-
           layer contact distance; default **2.4 Å** (matches
           `add_electrode_slab(contact_distance=2.4)`).
@@ -62,11 +77,14 @@ Concretely the feature must let the user:
     `(m=3, n=3, n_layers=K_inner, gap=g_inner)`, then another with
     `(m=4, n=4, n_layers=K_outer, gap=g_outer)` where `g_outer` is
     set so the second stack lands beyond the first.
-6. **Hand off** the finished junction to the Build tab so it flows into
+7. **Hand off** the finished junction to the Build tab so it flows into
    the existing FDF / PySCF generators with the existing validation /
    metadata pipeline.
 
-Out of scope for the initial milestone:
+Plus a slab-scoped **Undo** for the Junction subtab (see § 2.3) and a
+**Focus molecule** camera affordance (see § 2.2).
+
+Out of scope:
 
 * Asymmetric junctions in the convenience helper (each side configured
   independently is supported via twice-calling the per-side function;
@@ -74,9 +92,10 @@ Out of scope for the initial milestone:
 * Non-FCC metals (BCC: Fe, Cr, Mo, W).  The plumbing is in place to add
   them but the in-tree FCC lattice table (loaded lazily by
   `molbuilder.modify._get_fcc_lattice`, with the closed list of metals
-  in `SUPPORTED_FCC_ELEMENTS`) is FCC-only for M1.
-* Undo/redo in the UI.  The canonical state lives in the viewer; the
-  user re-loads if they want to rewind.
+  in `SUPPORTED_FCC_ELEMENTS`) is FCC-only.
+* General-purpose Undo/redo for non-slab ops.  Undo is **slab-only**
+  (see § 2.3) -- the user typically iterates electrode parameters and
+  rolls back; deletes / rotates / translates are committed.
 * Multi-molecule junctions (two molecules in parallel between
   electrodes).  One bridging molecule per junction.
 
@@ -102,35 +121,109 @@ Out of scope for the initial milestone:
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-Walkthrough for the canonical Au-thiol-Au workflow:
+Walkthrough for the canonical Au-thiol-Au workflow (M6 anchorless flow):
 
 1. User clicks **Load** → file picker → `.xyz` of `1,4-benzenedithiol`.
 2. Viewer renders 14 atoms (6 C, 4 H, 2 S, 2 H_thiol).
 3. User clicks the two thiol H atoms in the viewer (ordering matters:
    first click = `a0`, second click = `a1`); their list rows highlight,
    the **Orient axis** button enables.
-4. User clicks **Delete** to remove the two thiol H caps (leaving the
-   two S atoms exposed for Au coupling).
-5. User re-selects the two S atoms (now the anchor pair).
-6. User clicks **Orient along z**.  Backend rotates the structure so the
-   S–S vector is on +z; viewer re-centres.
-7. User opens the **Electrode** panel (default = pair mode).  Picks
-   element=Au, plane=111, primitive cell, m=3, n=3, n_layers=2, gap=9.0 Å
-   (electrode-to-electrode distance), offset=(0, 0).  One panel = one
-   pair of slabs (top + bottom) added in one shot.  For a stepped
-   3×3 + 4×4 contact, the user adds a second pair-mode panel with
-   m=4, n=4, n_layers=1 and a larger gap.
-8. Backend builds the FCC-Au slabs and places them ±z, both
-   lateral-centred on the anchor-pair midpoint.  Viewer shows the
-   full junction.
-9. User clicks **Send to Build tab** → Build tab opens with this
-   structure pre-loaded; user clicks Generate .fdf / Generate .py as
-   normal.
+4. (Atom subtab) User clicks **Delete** to remove the two thiol H caps
+   (leaving the two S atoms exposed for Au coupling).
+5. (Pose subtab) User re-selects the two S atoms (now the anchor pair)
+   and clicks **Orient along z** with `center=midpoint` (default) so
+   the S–S midpoint lands at the origin.
+6. (Geom subtab) Optional: click **Centre at origin** if the loaded
+   geometry was not pre-centred; this puts the molecule's centroid on
+   (0, 0, 0).  After the orient step in 5, this is usually a no-op
+   for symmetric molecules.
+7. (Junction subtab, default = pair mode) User picks element=Au,
+   plane=111, primitive cell, m=3, n=3, n_layers=2, gap=12 Å (UI
+   default; raise to 14–18 Å for longer molecules), offset=(0, 0).
+   With **no atoms selected**, this is the canonical anchorless flow:
+   slabs land at z = ±gap/2 around the world origin.
+8. Backend builds the FCC-Au slabs perpendicular to z, both lateral-
+   centred on the (offset) origin.  Viewer shows the full junction.
+9. (Optional iteration) User adjusts gap / m / n, hits **Apply Add
+   Electrode** again to replace the slab, or hits **Undo** to revert
+   to the pre-slab structure (slab-only undo, up to HISTORY_MAX = 20
+   ops; see § 2.3).
+10. User clicks **Send to Build tab** → Build tab opens with this
+    structure pre-loaded; user clicks Generate .fdf / Generate .py as
+    normal.
+
+**Legacy anchored flow** (slabs flank a specific atom pair in xy +
+z): the user selects exactly two atoms before clicking Apply Add
+Electrode in pair mode.  The slabs are then placed with the slab
+midpoint on the anchor-pair midpoint, **not** the origin.  Useful
+when the molecule is NOT pre-centred and the user wants the slabs
+to follow the anchor positions directly.
 
 For an asymmetric junction (different metal / size on each side), the
 user toggles a panel into **single-electrode mode** (rare); each
 single-mode panel adds one slab with `contact_distance` (anchor-to-
 closest-layer) instead of `gap`.
+
+### 2.2 Camera anchoring
+
+3Dmol's rotation/zoom pivot is the camera lookAt point.  In a typical
+junction the molecule is small (a few Å) but the slabs span 20+ Å, so
+3Dmol's auto-fit of the bounding box pivots far from the molecule and
+mouse-wheel zoom drifts the molecule out of view.  Two affordances
+keep interaction smooth:
+
+* **Focus-molecule button** (viewer toolbar).  One click anchors the
+  pivot on the molecule (excludes residue `ELC`) and refits the
+  camera with a 0.55× pull-back so the slabs remain visible in the
+  periphery.  Use whenever rotate/zoom feels off-centre.
+* **Pivot snap on rotation drag.**  On every plain left-button drag
+  (no ctrl/shift/alt), once the gesture commits to a drag (movement
+  > 4 px from the press point), the camera lookAt snaps to the
+  structure centroid.  This makes rotation always pivot on the
+  structure regardless of any pan the user did beforehand.  Click-
+  to-select gestures (no drag) do NOT trigger the snap, so atom
+  picks stay precise.
+
+### 2.3 Undo (slab-only)
+
+The Junction subtab's **Undo** button rolls back the most recent
+electrode-slab op.  Scope:
+
+* Pushed only by `applyElectrode` (single + pair mode), and only on
+  a successful response (failed ops do not consume an undo slot).
+* Stack depth `HISTORY_MAX = 20`; pushing the 21st snapshot drops
+  the oldest from the bottom.
+* Other ops (delete / add / rotate / translate / centre) are
+  **committed immediately** and DO NOT push history.  The canonical
+  way to roll back a non-slab edit is to re-load the source XYZ.
+* Each undo snapshot carries the full canonical structure response
+  (xyz + per-atom metadata).  Re-applying the snapshot via
+  `applyStructure` is the same code path the server response takes,
+  so the UI re-renders identically.
+
+The slab-only scope matches the original requirement ("experiment
+with electrode parameters and roll back").  General undo for delete
+/ rotate workflows is out of scope.
+
+### 2.4 Geom subtab (centre + translate)
+
+Two op-blocks, both rigid (preserve bonds, angles, residue
+assignments; only coordinates change):
+
+* **Centre at origin.**  Translates the structure so its
+  *atom-coordinate mean* (geometric centroid) lands at (0, 0, 0).
+  Note: this is the unweighted mean, NOT the bounding-box centre or
+  the centre of mass.  For asymmetric molecules with a long
+  substituent (e.g. an alkyl tail off a benzenedithiol), the
+  centroid will shift toward the long substituent; if the user
+  needs the **anchor-pair midpoint** at the origin, prefer the
+  Pose-subtab `Orient along axis` op with `center='midpoint'`.
+* **Translate by (Δx, Δy, Δz) Å.**  Three number inputs; pressing
+  Apply shifts every atom by the given vector.  All-zero is
+  rejected as a no-op with an explicit error message.
+
+Both ops require a loaded structure (buttons disable on
+`state.n_atoms === 0`).
 
 ### 2.1 Tilted molecules
 
@@ -265,6 +358,7 @@ web UI as a portal, not a separate product).
 | **M3** | Edit ops wired: delete, add-with-sliders, live distance.  `/api/modify/{load,delete,add_atom}` endpoints. | `web/blueprints/modify.py`; Delete and Add-atom fieldsets in modify.html with element input + dx/dy/dz sliders + live `|offset|` readout. | **done (2026-05-08)** |
 | **M4** | Anchor-pair selection + orient-along-z + rotate-around-axis.  Per-atom info panel and an xyz-axes overlay so users can read off the geometry while they edit. | UI: Orient fieldset (axis radio, tilt slider, center mode dropdown, Apply enabled at exactly two selected atoms) + Rotate fieldset (axis radio, angle slider, Apply); Selection panel grew a per-atom info table (idx / element / name / residue / x / y / z); main-viewer toolbar gained a `Show xyz axes` checkbox that draws RGB axis arrows at the world origin.  Backend: `/api/modify/{orient,rotate}` endpoints. | **done (2026-05-09)** |
 | **M5** | Electrode panel (size / gap / offset sliders, orthogonal toggle, symmetric/per-side mode); Send-to-Build handoff. | UI: Electrode fieldset (mode select, element / plane / m × n × n_layers / gap / dx / dy / orthogonal / side), Apply enabled when selection size matches mode (1 single, 2 pair); Send-to-Build button writes the structure to ``sessionStorage["builder-structure"]`` (the same key Phase 1 uses for tab navigation) and navigates to ``/`` where Build's ``restoreStructureState`` picks it up.  Backend: ``/api/modify/electrode`` + ``/api/modify/symmetric_electrodes``. | **done (2026-05-09)** |
+| **M6** | Geom subtab (centre + translate); anchorless `add_symmetric_electrodes` (slabs at z=±gap/2 around origin); slab-only Undo with HISTORY_MAX=20; wireframe halo selection marker; Focus-molecule button + click-vs-drag rotation pivot snap; single-source `/api/modify/meta` for the FCC element + plane dropdowns. | UI: new Geom panel (Centre at origin button + Translate Δx/Δy/Δz row); Junction-panel Undo button; viewer toolbar Focus-molecule button.  Backend: `/api/modify/translate`, `/api/modify/meta`; `add_symmetric_electrodes(anchor_indices=None)` overload that places slabs symmetrically around the origin with a real molecule-z-extent vs. gap pre-flight; route-level `gap > 0` / `contact_distance > 0` validation. | **done (2026-05-10)** |
 
 Each milestone keeps `pytest tests/ -q` green.  No "intermediate broken
 state" commits.
@@ -365,29 +459,52 @@ which takes `gap` (electrode-to-electrode distance) directly.
 add_symmetric_electrodes(struct: Structure,
                          element: str, plane: str,
                          size: Tuple[int, int, int],
-                         anchor_indices: Tuple[int, int],
+                         anchor_indices: Tuple[int, int] | None = None,
                          *, gap: float = 8.0,
                          orthogonal: bool = False,
                          offset: Tuple[float, float] = (0.0, 0.0),
                          lattice_constant: float | None = None) -> Structure
 ```
 
-**Pair-electrode primitive.**  `anchor_indices = (a_top, a_bot)` --
-the +z anchor first, the -z anchor second.  Computes
-`mid = 0.5 * (positions[a_top] + positions[a_bot])`, then places the
-two slabs collinear along z at `mid.z ± gap/2`, both lateral-centred
-on `(mid.x + offset[0], mid.y + offset[1])`.  For a tilted molecule
-(anchor pair off-z), the two electrodes still lie collinear along z;
-the molecule fits its tilted geometry between them.
+**Pair-electrode primitive, two modes:**
+
+* **Anchorless (default, `anchor_indices=None`).**  Place the slab
+  pair symmetrically around the world origin: top closest layer at
+  `z = +gap/2`, bot closest layer at `z = -gap/2`, both lateral-
+  centred on `(offset[0], offset[1])`.  No anchor selection required.
+  Pre-flight rejects `gap <= 0`; rejects `gap < mol_z_extent + 3 Å`
+  with an actionable "shorten or re-orient the molecule" message
+  rather than producing a structure with overlapping atoms.  Empty
+  structure is rejected with a pointer at the Build tab / load
+  endpoint.  Workflow: centre + pose the molecule first (Geom +
+  Pose subtabs), then add slabs.
+* **Legacy anchored (`anchor_indices=(a_top, a_bot)`).**  Computes
+  `mid = 0.5 * (positions[a_top] + positions[a_bot])` and places the
+  two slabs collinear along z at `mid.z ± gap/2`, both lateral-
+  centred on `(mid.x + offset[0], mid.y + offset[1])`.  For a tilted
+  molecule (anchor pair off-z), the two electrodes still lie
+  collinear along z; the molecule fits its tilted geometry between
+  them.  Internally, each side gets the per-side contact distance
+  `(gap - anchor_separation_z) / 2`; if `gap` is smaller than the
+  anchor pair's z-extent the call raises `ValueError`.
 
 `gap` is the canonical **junction gap** -- the empty z-space between
-the two electrodes.  Internally, each side gets the per-side contact
-distance `(gap - anchor_separation_z) / 2`.  If `gap` is smaller than
-the anchor pair's z-extent, raises `ValueError` (the electrodes would
-overlap the molecule).
+the two electrodes' closest layers.
 
 For asymmetric junctions (different size / offset / metal per side,
 or stepped contacts), call `add_electrode_slab` directly per side.
+
+```python
+# Implemented as Structure methods, exposed via /api/modify/translate.
+struct.translated(vec: Sequence[float]) -> Structure
+struct.centered() -> Structure                # centroid at origin
+```
+
+**Translate primitive.**  `translated((dx, dy, dz))` shifts every
+atom by the given vector (Å).  `centered()` is sugar for
+`translated(-positions.mean(axis=0))`: it moves the *atom-coordinate
+mean* (not the bounding-box centre, not the centre of mass) to
+(0, 0, 0).  Both ops are rigid; per-atom metadata is preserved.
 
 ### 4.2 CLI subcommand (`molbuilder modify`)
 
@@ -468,13 +585,15 @@ op-specific args; respond with `{"ok": bool, "xyz": <new>, "n_atoms": int,
 
 | Endpoint | Body shape | Effect |
 |---|---|---|
+| `GET /api/modify/meta` | (no body) | Returns `{ok, fcc_elements, fcc_planes}` for UI dropdowns; reads from the `SUPPORTED_FCC_ELEMENTS` / `SUPPORTED_FCC_PLANES` tuples in `molbuilder.modify`.  Single source of truth -- HTML must not duplicate the lists. |
 | `POST /api/modify/load` | `{xyz, format?}` | Validate input.  Echo back canonical xyz (re-parsed; catches malformed input early). |
 | `POST /api/modify/delete` | `{xyz, indices: List[int]}` | `delete_atoms` |
 | `POST /api/modify/add_atom` | `{xyz, element, anchor_index, offset: [dx,dy,dz]}` | `add_atom` |
 | `POST /api/modify/orient` | `{xyz, anchors: [a0,a1], axis?, center?}` | `orient_along_axis` |
 | `POST /api/modify/rotate` | `{xyz, axis, angle}` | `rotate_around_axis` |
-| `POST /api/modify/electrode` | `{xyz, element, plane, size:[m,n,n_layers], anchor_index, contact_distance, side, orthogonal, offset:[dx,dy], lattice_constant?, inter_layer_offset?}` | `add_electrode_slab` (single mode) |
-| `POST /api/modify/symmetric_electrodes` | `{xyz, element, plane, size:[m,n,n_layers], anchors:[a_top,a_bot], gap, orthogonal, offset:[dx,dy], lattice_constant?}` | `add_symmetric_electrodes` (pair mode; `gap` = electrode-to-electrode distance) |
+| `POST /api/modify/translate` | `{xyz, recenter?: true} OR {xyz, dx?, dy?, dz?}` | If `recenter` is truthy, `Structure.centered()`; otherwise `Structure.translated((dx, dy, dz))`.  `recenter` wins if both are sent. |
+| `POST /api/modify/electrode` | `{xyz, element, plane, size:[m,n,n_layers], anchor_index, contact_distance, side, orthogonal, offset:[dx,dy], lattice_constant?, inter_layer_offset?}` | `add_electrode_slab` (single mode).  Rejects `contact_distance <= 0`. |
+| `POST /api/modify/symmetric_electrodes` | `{xyz, element, plane, size:[m,n,n_layers], gap, anchors?:[a_top,a_bot], orthogonal, offset:[dx,dy], lattice_constant?}` | `add_symmetric_electrodes`.  Anchorless when `anchors` is omitted (canonical M6 flow); legacy anchor-pair-midpoint mode when `anchors` is sent.  Rejects `gap <= 0`. |
 
 All ops run `validate_geometry(struct)` against the **result** structure
 and return any warnings in `issues: [...]` (same shape as `/api/build/fdf`).
@@ -532,6 +651,9 @@ JS closure state is destroyed.  Phase 1 (2026-05-09) added
 | D5 | Live distance during add-atom is computed client-side from slider values; only commits on Apply. | Accepted. |
 | D6 | CLI `modify` is one chainable subcommand, not a multi-step interactive shape. | Accepted. |
 | D7 | Anchor atoms are NOT removed automatically before electrode placement; the user explicitly deletes them (e.g. thiol H caps before exposing S to Au). | Accepted — keeps the op explicit. |
+| D8 | Web UI populates the FCC element + plane dropdowns from `/api/modify/meta` rather than hardcoding the lists in HTML. | Accepted (M6).  Realises Principle #1 (dataclass / Python-tuple as the source of truth) for the Modify tab. |
+| D9 | Pair-mode electrode placement defaults to anchorless: slabs at `z = ±gap/2` around the world origin.  Legacy anchor-midpoint mode is opt-in via two-atom selection. | Accepted (M6).  Decouples slab placement from molecule centring; the user controls geometry via the Geom + Pose subtabs. |
+| D10 | Undo is scoped to electrode-slab ops only; general undo for delete / rotate / translate is out of scope.  Pushed only on a successful response (failed ops do not consume an undo slot). | Accepted (M6).  Matches the original "experiment with electrodes and roll back" intent without growing the JS state model. |
 
 ---
 
