@@ -93,6 +93,28 @@
         viewer.render();
     }
 
+    // Cell line colour is contrast-driven so the box stays visible
+    // across every background option.  3Dmol takes integer or
+    // string colours; a string passes through unchanged when the
+    // user has selected one of the named backgrounds (white / black)
+    // and we likewise pass back our integer 0x... constants.
+    //
+    // Picks a dark grey on light backgrounds (white / light grey)
+    // and a light grey on dark backgrounds (black).  An unknown bg
+    // value (user-supplied via /bgcolor query string in dev) falls
+    // back to mid-grey, which is at least visible on most surfaces
+    // even if not optimal.
+    function cellLineColor() {
+        const bg = ($("bg") || {}).value || "white";
+        if (bg === "black" || bg === "0x000000" || bg === "#000000") {
+            return 0xcccccc;
+        }
+        if (bg === "white" || bg === "0xeeeeee" || bg === "#eeeeee") {
+            return 0x444444;
+        }
+        return 0x888888;       // unknown bg -- safe middle ground
+    }
+
     function drawCell() {
         // Remove only the cell shapes -- leave force arrows alone.
         for (const s of state.cellShapes) viewer.removeShape(s);
@@ -133,12 +155,13 @@
             [[1, 1, 0], [1, 1, 1]],
         ];
 
+        const lineColor = cellLineColor();
         for (const [u, v] of edges) {
             const s = viewer.addCylinder({
                 start:  corner(u[0], u[1], u[2]),
                 end:    corner(v[0], v[1], v[2]),
                 radius: 0.04,
-                color:  0x888888,
+                color:  lineColor,
                 fromCap: 1,
                 toCap:   1,
             });
@@ -810,7 +833,9 @@
     $("show-cell").addEventListener("change", drawCell);
     $("bg").addEventListener("change", (e) => {
         viewer.setBackgroundColor(e.target.value);
-        viewer.render();
+        // Cell line colour is bg-contrast-driven; redraw with the
+        // new colour so the box stays visible on the new background.
+        drawCell();
     });
 
     /* Overlays */
