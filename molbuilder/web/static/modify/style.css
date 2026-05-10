@@ -78,21 +78,56 @@ header .tagline {
 .status-ok    { color: var(--success); }
 .status-error { color: var(--error); }
 
-/* ---- Three-column main grid ---- */
+/* ---- Three-column main grid ----
+ *
+ * Layout breakpoints:
+ *   >= 1280px   3-column: atoms (300px) | viewer (1fr) | edit (340px)
+ *   1024-1280   2-column: viewer (1fr) | edit (320px); atoms collapses
+ *               to a horizontal strip above the viewer
+ *   < 1024px    1-column stack: atoms, viewer, edit (top to bottom)
+ *
+ * The viewer always gets the most space because it's the primary
+ * surface; atom list shrinks first because it has its own scroll;
+ * edit panel keeps its width since the form controls don't reflow.
+ */
 .modify-grid {
     display: grid;
-    grid-template-columns: 320px minmax(0, 1fr) 320px;
+    grid-template-columns: 300px minmax(0, 1fr) 340px;
     gap: var(--gap);
     padding: var(--gap);
     align-items: stretch;
-    min-height: calc(100vh - 240px);
+    min-height: calc(100vh - 200px);
 }
-@media (max-width: 1100px) {
-    /* Stack the columns on narrow viewports.  Atom list above viewer,
-       edit panel below (least frequently used). */
+@media (max-width: 1280px) {
+    /* 2-column: atom list collapses to a thin strip above viewer +
+       edit panel. */
+    .modify-grid {
+        grid-template-columns: minmax(0, 1fr) 320px;
+        grid-template-areas:
+            "atoms atoms"
+            "viewer edit";
+    }
+    .modify-grid .atom-list-card { grid-area: atoms; max-height: 30vh; }
+    .modify-grid .viewer-card    { grid-area: viewer; }
+    .modify-grid .edit-card      { grid-area: edit; }
+}
+@media (max-width: 1024px) {
+    /* 1-column stack: atoms, viewer, edit panel. */
     .modify-grid {
         grid-template-columns: 1fr;
+        grid-template-areas:
+            "atoms"
+            "viewer"
+            "edit";
     }
+    .modify-grid .atom-list-card { max-height: 28vh; }
+    .modify-grid .viewer-card    { min-height: 360px; }
+}
+@media (max-width: 640px) {
+    /* Phone-narrow: drop padding, drop gap to claw back pixels. */
+    .modify-grid { padding: 6px; gap: 6px; }
+    .loader-bar { padding: 0.55rem 0.8rem; }
+    header      { padding: 0.9rem 1rem 0.6rem; }
 }
 
 /* ---- Cards ---- */
@@ -225,20 +260,67 @@ header .tagline {
 .edit-card .edit-panel {
     flex: 1 1 auto;
     overflow: auto;
-    padding: 0.85rem 1rem;
+    padding: 0.6rem 0.85rem;
 }
 .edit-panel .hint {
     color: var(--text-muted);
-    font-size: 0.85rem;
-    line-height: 1.45;
-    margin: 0 0 0.85rem;
+    font-size: 0.82rem;
+    line-height: 1.4;
+    margin: 0 0 0.6rem;
 }
+
+/* The Selection block sits above the sub-tabs as a permanent,
+   always-visible status panel.  Visually compact -- the per-atom
+   info table is the data, not the chrome. */
+.edit-panel .selection-block {
+    margin-top: 0;
+}
+
+/* Sub-tabs (Atom / Pose / Junction) split the op fieldsets into
+   the three workflow phases so only one panel is visible at a
+   time.  Mirrors the .control-tabs / .ctab pattern in the Watch
+   stylesheet. */
+.edit-panel .op-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--border-soft);
+    margin: 0.6rem -0.85rem 0.4rem;     /* bleed to card edges */
+    padding: 0 0.5rem;
+    background: var(--bg-card);
+}
+.edit-panel .optab {
+    flex: 1;
+    background: transparent;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    padding: 0.45rem 0.3rem;
+    color: var(--text-secondary);
+    font: 600 0.82rem/1 system-ui, sans-serif;
+    cursor: pointer;
+    transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.edit-panel .optab:hover {
+    color: var(--text-primary);
+    background: var(--bg-card-hover);
+}
+.edit-panel .optab.is-active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+    background: var(--accent-bg);
+}
+.edit-panel .optab-panel {
+    display: none;
+}
+.edit-panel .optab-panel.is-active {
+    display: block;
+}
+
 .edit-panel .op-block {
     background: var(--bg-fieldset);
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-sm);
-    padding: 0.55rem 0.85rem 0.7rem;
-    margin: 0.7rem 0;
+    padding: 0.5rem 0.75rem 0.6rem;
+    margin: 0.55rem 0;
 }
 .edit-panel .op-block legend {
     color: var(--text-secondary);

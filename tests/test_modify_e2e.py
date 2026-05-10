@@ -142,6 +142,21 @@ def _load_file(page, xyz_path, expected_atoms):
     )
 
 
+def _open_op_tab(page, op_tab):
+    """Click the Modify edit-panel sub-tab (one of "atom", "pose",
+    "junction") so its op-block fieldsets become visible.  Tests
+    that interact with Pose-tab or Junction-tab controls have to
+    activate the right sub-tab first; the Atom tab is the default."""
+    assert op_tab in ("atom", "pose", "junction")
+    page.locator(f'.optab[data-op-tab="{op_tab}"]').click()
+    page.wait_for_function(
+        "(t) => document.querySelector("
+        "    `.optab-panel[data-op-panel=\"${t}\"]`"
+        ").classList.contains('is-active')",
+        arg=op_tab,
+    )
+
+
 # --------------------------------------------------------------------- #
 #  M2: page loads, atom list populates                                  #
 # --------------------------------------------------------------------- #
@@ -649,6 +664,7 @@ def test_orient_button_enabled_only_with_two_anchors(
         page, flask_server, water_xyz_file):
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
+    _open_op_tab(page, "pose")
     btn = page.locator("#orient-apply")
     assert btn.is_disabled(), "no selection -> Orient disabled"
     page.locator("#atom-list-body tr").nth(0).click()
@@ -676,6 +692,7 @@ def test_apply_orient_lays_anchor_pair_along_z(
 
     page.locator("#atom-list-body tr").nth(0).click()
     page.locator("#atom-list-body tr").nth(3).click(modifiers=["Shift"])
+    _open_op_tab(page, "pose")
     page.locator("#orient-apply").click()
     # Wait for the response to land + UI to settle.
     page.wait_for_function(
@@ -703,6 +720,7 @@ def test_rotate_button_enabled_when_structure_loaded(
     non-zero angle."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
+    _open_op_tab(page, "pose")
     assert page.locator("#rotate-apply").is_enabled()
 
 
@@ -713,6 +731,7 @@ def test_apply_rotate_z_90(
     diag_xyz.write_text("4\ndiag\nC 0 0 0\nC 1 1 0\nC 2 2 0\nC 3 3 0\n")
     _open_modify(page, flask_server)
     _load_file(page, str(diag_xyz), expected_atoms=4)
+    _open_op_tab(page, "pose")
 
     # Set the rotate angle slider to 90 degrees.
     page.locator("#rotate-angle").evaluate(
@@ -1048,6 +1067,7 @@ def test_electrode_apply_disabled_without_correct_anchor_count(
     needs 1.  The Apply button reflects this."""
     _open_modify(page, flask_server)
     _load_file(page, ss_pair_xyz_file, expected_atoms=2)
+    _open_op_tab(page, "junction")
     btn = page.locator("#elc-apply")
     # No selection yet -> disabled.
     assert btn.is_disabled()
@@ -1072,6 +1092,7 @@ def test_electrode_gap_label_tracks_mode(
     (anchor-to-closest-layer)."""
     _open_modify(page, flask_server)
     _load_file(page, ss_pair_xyz_file, expected_atoms=2)
+    _open_op_tab(page, "junction")
     label = page.locator("#elc-gap-label")
     assert label.inner_text() == "gap"
     page.locator("#elc-mode").select_option("single")
@@ -1086,6 +1107,7 @@ def test_electrode_side_picker_only_visible_in_single_mode(
     automatically); single mode shows it."""
     _open_modify(page, flask_server)
     _load_file(page, ss_pair_xyz_file, expected_atoms=2)
+    _open_op_tab(page, "junction")
     side_row = page.locator("#elc-side-row")
     assert side_row.is_hidden()
     page.locator("#elc-mode").select_option("single")
@@ -1100,6 +1122,7 @@ def test_apply_electrode_pair_mode_builds_au_junction(
     _load_file(page, ss_pair_xyz_file, expected_atoms=2)
     page.locator("#atom-list-body tr").nth(0).click()
     page.locator("#atom-list-body tr").nth(1).click(modifiers=["Shift"])
+    _open_op_tab(page, "junction")
     # Set 2x2x1 size for a tractable junction.
     for input_id, val in [("elc-m", "2"), ("elc-n", "2"), ("elc-layers", "1")]:
         page.evaluate(
@@ -1135,6 +1158,7 @@ def test_send_to_build_writes_handoff_payload(
     destination page."""
     _open_modify(page, flask_server)
     _load_file(page, ss_pair_xyz_file, expected_atoms=2)
+    _open_op_tab(page, "junction")
     # Click and wait for the URL to flip to "/".
     with page.expect_navigation():
         page.locator("#send-to-build").click()
@@ -1171,6 +1195,7 @@ def test_send_to_build_handoff_renders_structure_in_build(
     ``builder-structure`` round-trips end-to-end."""
     _open_modify(page, flask_server)
     _load_file(page, ss_pair_xyz_file, expected_atoms=2)
+    _open_op_tab(page, "junction")
     with page.expect_navigation():
         page.locator("#send-to-build").click()
     # On the Build tab now: restoreStructureState fires during JS
@@ -1182,6 +1207,76 @@ def test_send_to_build_handoff_renders_structure_in_build(
     assert page.locator("#info-atoms").inner_text() == "2"
     assert page.locator("#generate-fdf").is_enabled()
     assert page.locator("#generate-pyscf").is_enabled()
+
+
+def test_op_subtabs_default_to_atom_and_swap_on_click(
+        page, flask_server, water_xyz_file):
+    """The edit panel splits the ops into Atom / Pose / Junction
+    sub-tabs.  Default-active is Atom (the most common starting
+    op).  Clicking Pose shows orient + rotate; clicking Junction
+    shows electrode + send-to-build."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+
+    # Default visible op-panel is the atom one.
+    atom_panel = page.locator('.optab-panel[data-op-panel="atom"]')
+    pose_panel = page.locator('.optab-panel[data-op-panel="pose"]')
+    junction_panel = page.locator('.optab-panel[data-op-panel="junction"]')
+    assert atom_panel.is_visible()
+    assert pose_panel.is_hidden()
+    assert junction_panel.is_hidden()
+
+    # Click Pose -> only that panel becomes visible.
+    page.locator('.optab[data-op-tab="pose"]').click()
+    assert pose_panel.is_visible()
+    assert atom_panel.is_hidden()
+    assert junction_panel.is_hidden()
+    # Apply Orient is still in the DOM (just hidden was Junction tab).
+    assert page.locator("#orient-apply").is_visible()
+
+    # Click Junction.
+    page.locator('.optab[data-op-tab="junction"]').click()
+    assert junction_panel.is_visible()
+    assert page.locator("#elc-apply").is_visible()
+    assert page.locator("#send-to-build").is_visible()
+
+
+def test_selection_block_visible_across_subtabs(
+        page, flask_server, water_xyz_file):
+    """The Selection block stays above the sub-tabs (always visible)
+    so the user can see what's selected regardless of which op tab
+    is open.  Click an atom, switch to Pose, the selection info row
+    is still rendered."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    page.locator("#atom-list-body tr").nth(0).click()
+    info = page.locator("#selection-info")
+    assert info.is_visible()
+    page.locator('.optab[data-op-tab="pose"]').click()
+    assert info.is_visible()
+    page.locator('.optab[data-op-tab="junction"]').click()
+    assert info.is_visible()
+
+
+def test_modify_layout_stacks_on_narrow_viewport(
+        page, flask_server, water_xyz_file):
+    """The 3-column grid collapses to a 1-column stack at viewport
+    width <= 1024px.  Use Playwright's set_viewport_size to drive
+    the responsive media query and assert the grid-template-columns
+    computed style flips to a single track.  Width 800px is the
+    "tablet portrait" range we want to support."""
+    page.set_viewport_size({"width": 800, "height": 900})
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    cols = page.evaluate(
+        "() => getComputedStyle(document.querySelector('.modify-grid'))"
+        ".gridTemplateColumns"
+    )
+    # 1-column stack has exactly ONE track; multi-column has 2 or 3.
+    n_tracks = len(cols.split())
+    assert n_tracks == 1, (
+        f"narrow viewport should give one track; got {n_tracks} ({cols!r})"
+    )
 
 
 def test_send_to_build_disabled_without_structure(page, flask_server):

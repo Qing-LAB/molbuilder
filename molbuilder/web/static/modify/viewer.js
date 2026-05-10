@@ -49,8 +49,26 @@
         inFlight: false,       // true while an /api/modify/* fetch is open
     };
 
-    const HIGHLIGHT_COLOR = "#fbbf24";       // amber, matches --warning
-    const HIGHLIGHT_RADIUS = 0.55;           // ~vdW for a sulfur in Å
+    // Selection halo: a thin translucent wireframe sphere drawn
+    // ALONGSIDE the atom (as a separate shape, not via setStyle).
+    // The atom keeps its element color and stick/ball-and-stick
+    // appearance unchanged; the user sees a "ring" around it
+    // marking the selection.  Radius is element-vdW + 0.35 Å so the
+    // halo always sits just outside the atom's rendered surface
+    // regardless of representation.
+    const HIGHLIGHT_COLOR  = "#fbbf24";      // amber, matches --warning
+    const HIGHLIGHT_PAD    = 0.35;           // Å beyond the atom's vdW
+    const HIGHLIGHT_OPACITY = 0.55;
+    // Approximate vdW radii (Å) for the elements the Modify tab is
+    // likely to see.  Falls back to 1.5 for anything not in the
+    // table -- close enough to put the halo outside the atom.
+    const _VDW = {
+        H: 1.20, He: 1.40, Li: 1.82, Be: 1.53, B: 1.92, C: 1.70,
+        N: 1.55, O: 1.52, F: 1.47, Ne: 1.54, Na: 2.27, Mg: 1.73,
+        Si: 2.10, P: 1.80, S: 1.80, Cl: 1.75, K: 2.75, Ca: 2.31,
+        Ni: 1.63, Cu: 1.40, Zn: 1.39, Br: 1.85, I: 1.98,
+        Pd: 1.63, Ag: 1.72, Pt: 1.75, Au: 1.66,
+    };
 
     // --------------------------------------------------------------- //
     //  3Dmol viewer.                                                   //
@@ -78,22 +96,32 @@
         drawAxes();
     }
 
+    let _highlightShapes = [];
+
+    function clearHighlights() {
+        _highlightShapes.forEach((s) => viewer.removeShape(s));
+        _highlightShapes = [];
+    }
+
     function renderHighlights() {
-        // Re-apply a sphere overlay on each currently-selected atom.
-        // Calling setStyle({serial: i}, {...}, true) ADDS the spec
-        // alongside the base style instead of replacing it.
+        // Draw a thin amber halo around each selected atom.  Drawn
+        // as a SEPARATE shape (addSphere with wireframe=true) so the
+        // atom's element color + stick rendering are unchanged --
+        // the halo just sits around it as a ring.
+        clearHighlights();
         state.selected.forEach((idx) => {
-            viewer.setStyle(
-                { serial: idx },
-                {
-                    sphere: {
-                        scale: HIGHLIGHT_RADIUS,
-                        color: HIGHLIGHT_COLOR,
-                        opacity: 0.55,
-                    },
-                },
-                /* add= */ true,
-            );
+            const p = state.positions[idx];
+            if (!p) return;
+            const el = state.elements[idx] || "C";
+            const r = (_VDW[el] || 1.5) + HIGHLIGHT_PAD;
+            const sphere = viewer.addSphere({
+                center:    { x: p[0], y: p[1], z: p[2] },
+                radius:    r,
+                color:     HIGHLIGHT_COLOR,
+                wireframe: true,
+                opacity:   HIGHLIGHT_OPACITY,
+            });
+            _highlightShapes.push(sphere);
         });
     }
 
@@ -853,6 +881,27 @@
             if (sl) sl.addEventListener("input", refreshElcReadouts);
         });
         refreshElcReadouts();
+
+        // Sub-tabs: click an op-tab button to swap which panel is
+        // visible.  Pure DOM toggle (no state in the IIFE; the
+        // is-active class is the state).
+        document.querySelectorAll(".optab").forEach((btn) => {
+            btn.addEventListener("click", () => {
+                const target = btn.dataset.opTab;
+                document.querySelectorAll(".optab").forEach((b) => {
+                    b.classList.toggle(
+                        "is-active",
+                        b.dataset.opTab === target,
+                    );
+                });
+                document.querySelectorAll(".optab-panel").forEach((p) => {
+                    p.classList.toggle(
+                        "is-active",
+                        p.dataset.opPanel === target,
+                    );
+                });
+            });
+        });
 
         // Phase 1: persist structure state across tab navigation.
         // Restore here (after every event handler is wired so the

@@ -103,7 +103,9 @@
       <span id="edit-status" class="muted"></span>
     </header>
     <div class="edit-panel">
-      <fieldset class="op-block">
+      <!-- Selection: always visible at the top of the edit panel.
+           Every op below this reads from the current selection. -->
+      <fieldset class="op-block selection-block">
         <legend>Selection</legend>
         <div id="selection-readout" class="readout">No atoms selected.</div>
         <table id="selection-info" class="selection-info" hidden>
@@ -122,14 +124,28 @@
         </table>
       </fieldset>
 
+      <!-- Sub-tabs split the op fieldsets into the three workflow
+           phases.  Default-open is "Atom" (the most common starting
+           point: load, then delete H caps or add a substituent).
+           User picks the tab matching the operation they need; only
+           one panel is visible at a time so the edit column doesn't
+           sprawl down the page. -->
+      <nav class="op-tabs" role="tablist" aria-label="Operations">
+        <button class="optab is-active" data-op-tab="atom"
+                role="tab" type="button">1. Atom</button>
+        <button class="optab" data-op-tab="pose"
+                role="tab" type="button">2. Pose</button>
+        <button class="optab" data-op-tab="junction"
+                role="tab" type="button">3. Junction</button>
+      </nav>
+
+      <!-- Atom edits: delete + add (M3 ops). -->
+      <div class="optab-panel is-active" data-op-panel="atom" role="tabpanel">
+
       <!-- Delete: enabled when at least one atom is selected.
            Wires to POST /api/modify/delete. -->
       <fieldset class="op-block">
         <legend>Delete</legend>
-        <p class="hint">
-          Removes the currently selected atoms.  Heavy and light atoms
-          alike; out-of-range indices are silently ignored server-side.
-        </p>
         <button id="delete-apply" class="full-btn" disabled>
           Delete selected
         </button>
@@ -149,13 +165,6 @@
           </label>
           <span class="muted" id="add-anchor-readout">Anchor: (none)</span>
         </div>
-        <p class="hint">
-          Pick an anchor by clicking exactly one atom.  Sliders set the
-          offset (&Aring;) from the anchor; live distance shows |offset|.
-          Apply commits the addition; the new atom lands in a fresh
-          residue named MOD.
-        </p>
-
         <label class="slider-row">
           <span>dx</span>
           <input id="add-dx" type="range"
@@ -184,6 +193,12 @@
           Add atom
         </button>
       </fieldset>
+
+      </div><!-- /.optab-panel data-op-panel="atom" -->
+
+      <!-- Pose: orient + rotate (M4 ops).  These move the whole
+           molecule rigidly. -->
+      <div class="optab-panel" data-op-panel="pose" role="tabpanel">
 
       <!-- Orient along axis: enabled when EXACTLY TWO atoms are
            selected (the anchor pair).  Default rotates the molecule
@@ -218,13 +233,6 @@
             </select>
           </label>
         </div>
-        <p class="hint">
-          Default tilt = 0 places the anchor pair exactly along the
-          target axis.  Non-zero tilt puts the pair in a fixed plane:
-          axis=z &rarr; xz-plane; axis=x &rarr; xy-plane; axis=y &rarr;
-          yz-plane.  Use Rotate around axis below to redirect the
-          tilt's azimuth.
-        </p>
         <button id="orient-apply" class="full-btn" disabled>
           Apply orient
         </button>
@@ -249,15 +257,17 @@
                  min="-180" max="180" step="1" value="0">
           <span id="rotate-angle-val" class="readout-inline">0°</span>
         </label>
-        <p class="hint">
-          Right-hand rule.  Apply rotates every atom in the structure
-          by the given angle around the chosen axis through the
-          origin.
-        </p>
         <button id="rotate-apply" class="full-btn" disabled>
           Apply rotate
         </button>
       </fieldset>
+
+      </div><!-- /.optab-panel data-op-panel="pose" -->
+
+      <!-- Junction: electrode panel + Send-to-Build handoff (M5).
+           Place metal slabs around the anchor(s), then hand off the
+           finished structure to the Build tab to generate FDF/PySCF. -->
+      <div class="optab-panel" data-op-panel="junction" role="tabpanel">
 
       <!-- Electrode panel: build FCC slab(s) around the anchor(s).
            Pair mode (default) places two slabs collinear along z
@@ -355,15 +365,12 @@
            navigates to /. -->
       <fieldset class="op-block">
         <legend>Hand off</legend>
-        <p class="hint">
-          Send the current structure (molecule + electrodes) to the
-          Build tab so you can generate a SIESTA <code>.fdf</code> or
-          PySCF script.
-        </p>
         <button id="send-to-build" class="full-btn" disabled>
           Send to Build tab
         </button>
       </fieldset>
+
+      </div><!-- /.optab-panel data-op-panel="junction" -->
     </div>
   </aside>
 
