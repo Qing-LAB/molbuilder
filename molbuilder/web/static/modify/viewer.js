@@ -157,6 +157,40 @@
         _indexLabels = [];
     }
 
+    // ----- Camera anchoring -------------------------------------- //
+    // 3Dmol's mouse-zoom and rotate-around-cursor handlers anchor on
+    // the model's PIVOT, which ``viewer.zoomTo()`` sets to the
+    // bounding-box centroid of the current selection.  When slabs
+    // are added the bounding box grows ~10x and gets dominated by
+    // the slabs; the pivot drifts off the molecule and zoom-into-
+    // the-molecule starts feeling like "the molecule slides off
+    // screen as I scroll".
+    //
+    // ``focusMolecule()`` re-anchors the pivot on the MOLECULE
+    // (everything that's not residue ``ELC``) and zooms tight on it,
+    // then pulls the camera back enough that the slabs remain in
+    // frame as periphery.  Wired to the Focus-molecule toolbar
+    // button -- the user clicks it whenever interaction feels off-
+    // centre.  ``applyStructure`` does NOT call this automatically;
+    // its default fit is a plain ``zoomTo`` showing the whole
+    // structure so a fresh render always frames everything.
+    function focusMolecule() {
+        if (!state.xyz || state.n_atoms === 0) return;
+        const hasSlabs = state.residue_names &&
+            state.residue_names.indexOf("ELC") !== -1;
+        if (hasSlabs) {
+            // Pivot + zoom-fit to the molecule (non-ELC atoms only).
+            // Then back the camera off so the slabs remain visible
+            // in the periphery; without the zoom-out the slabs would
+            // be clipped or behind the camera.
+            viewer.zoomTo({not: {resn: "ELC"}});
+            viewer.zoom(0.55, 0);   // 0.55 = pull back; instant (0 ms)
+        } else {
+            viewer.zoomTo();
+        }
+        viewer.render();
+    }
+
     // ----- xyz axis triad ----------------------------------------- //
     // Draws a small RGB axis triad just outside the structure's
     // bounding box so the user has a fixed orientation reference.
@@ -499,6 +533,11 @@
             // takes (sel, clickable, callback).
             viewer.setClickable({}, true, onViewerAtomClick);
             applyStyle();
+            // Default fit shows the whole structure (atoms + slabs)
+            // so the user always sees what's in the model after a
+            // refresh.  The Focus-molecule toolbar button switches to
+            // a molecule-anchored pivot for smooth zoom on the small
+            // molecule when slabs are present.
             viewer.zoomTo();
             viewer.render();
         }
@@ -948,6 +987,9 @@
         });
         const undoBtn = $("undo-op");
         if (undoBtn) undoBtn.addEventListener("click", applyUndo);
+
+        const focusBtn = $("focus-molecule");
+        if (focusBtn) focusBtn.addEventListener("click", focusMolecule);
 
         // Geom subtab: center-at-origin + translate-by-offset.
         const centerBtn = $("center-apply");
