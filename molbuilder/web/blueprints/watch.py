@@ -59,6 +59,13 @@ _state: Dict[str, Any] = {
     "parser":   None,    # the TrajectoryParser class chosen for this file
     "uploaded": False,   # True when the active file was uploaded via
                          # the file-picker (one-shot, no live watching)
+
+    # Multi-stage merge state.  Set when the user loaded a directory
+    # containing > 1 *.molwatch.log files; ``_refresh_if_changed``
+    # re-runs the merge when ``run_dir`` is set so a /api/watch/data
+    # poll doesn't clobber the merged trajectory with the newest
+    # log's frames alone.
+    "run_dir":  None,    # absolute directory path or None
 }
 
 # Track the last temp file we created from a file-picker upload so
@@ -131,10 +138,17 @@ def _list_molwatch_logs(directory: str) -> List[str]:
     """Return all ``*.molwatch.log`` files in the directory in mtime
     order (oldest first).  Used to detect a multi-stage run; if the
     list has > 1 element, the loader concatenates them.
+
+    Tiebreak by basename so two files written in the same second
+    (POSIX-on-FAT, NFS without sub-second precision) sort
+    deterministically.  With the canonical ``<base>-stage<N>``
+    naming, lexical order matches stage order so this also
+    rescues the multi-stage merge from filesystem inode order.
     """
     hits = glob.glob(os.path.join(directory, "*.molwatch.log"))
     valid = [p for p in hits if os.path.isfile(p)]
-    return sorted(valid, key=lambda p: os.path.getmtime(p))
+    return sorted(valid, key=lambda p: (os.path.getmtime(p),
+                                          os.path.basename(p)))
 
 
 def _resolve_run_directory(directory: str) -> Tuple[Optional[str], List[str]]:
@@ -234,6 +248,7 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
             return None, "No file loaded yet."
         cached_mtime = _state["mtime"]
         parser_cls   = _state["parser"]
+        run_dir      = _state["run_dir"]
 
     if not os.path.isfile(path):
         return None, f"File not found: {path}"
@@ -241,6 +256,38 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         mtime = os.path.getmtime(path)
     except OSError as exc:
         return None, str(exc)
+
+    # ---- Multi-stage: re-merge when the active log changed ------
+    # When a multi-stage merge is in flight, every poll re-scans the
+    # directory and re-runs the merge over the full set of logs.  Two
+    # things this gets right:
+    #   1. The user can drop a new <base>-stage<N+1>.molwatch.log into
+    #      the directory mid-watch and the next poll picks it up.
+    #   2. The earlier stages' frames don't disappear when the active
+    #      (newest) stage's mtime advances -- the merge re-runs over
+    #      every log on every refresh, so the merged trajectory is
+    #      always the FULL multi-stage view, not just the newest.
+    if run_dir is not None:
+        all_logs = _list_molwatch_logs(run_dir)
+        active_path = all_logs[-1] if all_logs else path
+        try:
+            active_mtime = os.path.getmtime(active_path)
+        except OSError as exc:
+            return None, str(exc)
+        # Cheap path: nothing changed in the newest log.
+        if active_mtime == cached_mtime and active_path == path:
+            with _lock:
+                return dict(_state), None
+        try:
+            new_data, _stages_meta = _merge_molwatch_trajectories(all_logs)
+        except Exception as exc:                              # noqa: BLE001
+            return None, f"Multi-stage refresh failed: {exc}"
+        with _lock:
+            if _state["run_dir"] == run_dir:
+                _state["path"]  = active_path
+                _state["data"]  = new_data
+                _state["mtime"] = active_mtime
+            return dict(_state), None
 
     # ---- Cheap path: nothing changed ----------------------------
     if mtime == cached_mtime:
@@ -291,30 +338,44 @@ def _merge_molwatch_trajectories(paths: List[str]) -> Tuple[Dict[str, Any],
     """
     from molbuilder.parsers.molwatch_log import MolwatchLogParser
 
-    merged = {
+    merged: Dict[str, Any] = {
         "frames": [], "energies": [], "max_forces": [],
         "forces": [], "scf_history": [], "wall_times": [],
-        "iterations": [], "stages": [],
+        "iterations": [], "step_indices": [], "stages": [],
     }
     stages: List[Dict[str, Any]] = []
     any_scf = False
     last_traj_legacy: Optional[Dict[str, Any]] = None
     for path in paths:
-        traj = MolwatchLogParser.parse(path)
-        legacy = trajectory_to_legacy_dict(traj)
-        last_traj_legacy = legacy
+        # Each per-file parse is wrapped: a torn / mid-write log
+        # mustn't take down the whole merge.  Surfacing the failure
+        # in stages metadata lets the frontend say "stage 2
+        # unparseable, showing 1 + 3" instead of HTTP 500.
         n_before = len(merged["frames"])
-        # Concatenate the per-frame arrays.  ``iterations`` has its
-        # own meaning (per-stage step index); we keep that from the
-        # source so users can still see "step 5 of stage 2", and
-        # leave the global-monotone re-number to the plot side via
-        # ``stages_metadata``.
+        try:
+            traj   = MolwatchLogParser.parse(path)
+            legacy = trajectory_to_legacy_dict(traj)
+        except Exception as exc:                              # noqa: BLE001
+            stages.append({
+                "name":        os.path.basename(path),
+                "start_frame": n_before,
+                "end_frame":   n_before,
+                "n_frames":    0,
+                "mtime":       os.path.getmtime(path),
+                "error":       f"{type(exc).__name__}: {exc}",
+            })
+            continue
+        last_traj_legacy = legacy
         merged["frames"].extend(legacy["frames"])
         merged["energies"].extend(legacy["energies"])
         merged["max_forces"].extend(legacy["max_forces"])
         merged["forces"].extend(legacy["forces"])
         merged["wall_times"].extend(legacy["wall_times"])
-        merged["iterations"].extend(legacy["iterations"])
+        # Preserve the per-stage step indices alongside the global
+        # iteration renumbering below.  Save-frame-as-XYZ uses these
+        # to label the file with the source-log step number rather
+        # than a meaningless global frame index.
+        merged["step_indices"].extend(legacy["iterations"])
         if legacy["scf_history"]:
             any_scf = True
             merged["scf_history"].extend(legacy["scf_history"])
@@ -345,10 +406,9 @@ def _merge_molwatch_trajectories(paths: List[str]) -> Tuple[Dict[str, Any],
         merged["run_state"]     = "ongoing"
         merged["error_message"] = ""
     # Re-number iterations globally so the energy / force plots have
-    # a monotone x-axis across the merged trajectory.  The original
-    # per-stage iteration values weren't useful in a multi-stage view
-    # (each stage restarts at 1) and the frontend uses ``iterations``
-    # directly as the plot x-axis.
+    # a monotone x-axis across the merged trajectory.  Per-stage
+    # step indices are kept under ``step_indices`` for tooltip / save
+    # use cases that need the original log-local numbering.
     merged["iterations"] = list(range(len(merged["frames"])))
     merged["stages"] = stages
     return merged, stages
@@ -437,9 +497,10 @@ def api_load():
         return jsonify({"ok": False, "error": str(exc)}), 400
 
     # Multi-stage merge: parse every log, concatenate, attach stages
-    # metadata.  The active path stays the newest file so subsequent
-    # /api/watch/data polls re-parse only when THAT file changes
-    # (older stages are static and complete).
+    # metadata.  ``_state["run_dir"]`` is set so subsequent
+    # /api/watch/data polls re-run the merge across the FULL log set
+    # rather than tail-following only the newest file (which would
+    # silently drop older stages from the merged view).
     if multi_logs:
         try:
             merged, stages_meta = _merge_molwatch_trajectories(multi_logs)
@@ -454,6 +515,7 @@ def api_load():
             _state["data"]     = merged
             _state["parser"]   = parser_cls
             _state["uploaded"] = False
+            _state["run_dir"]  = resolved_from_dir
         return jsonify({
             "ok":               True,
             "path":             path,
@@ -472,6 +534,7 @@ def api_load():
         _state["data"]     = None
         _state["parser"]   = parser_cls
         _state["uploaded"] = False
+        _state["run_dir"]  = None
 
     state, err = _refresh_if_changed()
     if err:
@@ -549,6 +612,7 @@ def _api_load_multipart(uploaded_file):
         _state["data"]     = None
         _state["parser"]   = parser_cls
         _state["uploaded"] = True
+        _state["run_dir"]  = None     # uploads are one-shot, single-file
 
     state, err = _refresh_if_changed()
     if err:

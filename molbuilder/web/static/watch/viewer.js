@@ -31,6 +31,12 @@
         cellShapes:  [],
         forceShapes: [],
         indexLabels: [],
+        // Inspect tab: up to two picked atoms (0-based indices into
+        // frame[currentFrame]).  Halo shapes are tracked separately
+        // from cell / force / index overlays so toggling any one of
+        // those doesn't clobber the picks.
+        pickedAtoms: [],
+        pickShapes:  [],
     };
 
     const viewer = $3Dmol.createViewer("viewer", {
@@ -327,6 +333,110 @@
         viewer.render();
     }
 
+    /* ------------------------------------------------------------------ */
+    /*  Inspect tab: two-atom picking + live distance                      */
+    /* ------------------------------------------------------------------ */
+
+    // Halo marker shared with the Modify tab's selection style:
+    // wireframe sphere with a fixed radius (independent of vdW so H
+    // and Ir feel equally selectable) in high-contrast amber.
+    const PICK_HIGHLIGHT_COLOR  = "#fb923c";
+    const PICK_HIGHLIGHT_RADIUS = 0.45;
+
+    function clearPickHighlights() {
+        for (const s of state.pickShapes) viewer.removeShape(s);
+        state.pickShapes = [];
+    }
+
+    function renderPickHighlights() {
+        clearPickHighlights();
+        if (!state.data || !state.data.frames.length) {
+            viewer.render();
+            return;
+        }
+        const frame = state.data.frames[state.currentFrame] || [];
+        for (const idx of state.pickedAtoms) {
+            const row = frame[idx];
+            if (!row) continue;
+            const halo = viewer.addSphere({
+                center:    { x: row[1], y: row[2], z: row[3] },
+                radius:    PICK_HIGHLIGHT_RADIUS,
+                color:     PICK_HIGHLIGHT_COLOR,
+                wireframe: true,
+                linewidth: 3.0,
+            });
+            state.pickShapes.push(halo);
+        }
+        viewer.render();
+    }
+
+    function updateInspectPanel() {
+        const pa = state.pickedAtoms;
+        const frame = (state.data && state.data.frames[state.currentFrame])
+                    || [];
+        const fmt = (idx) => {
+            const r = frame[idx];
+            if (!r) return "—";
+            return "#" + idx + " " + r[0]
+                + "  (" + r[1].toFixed(3)
+                + ", " + r[2].toFixed(3)
+                + ", " + r[3].toFixed(3) + ") Å";
+        };
+        const aCell = $("inspect-a");
+        const bCell = $("inspect-b");
+        const dCell = $("inspect-d");
+        if (!aCell || !bCell || !dCell) return;
+        aCell.textContent = pa[0] != null ? fmt(pa[0]) : "—";
+        bCell.textContent = pa[1] != null ? fmt(pa[1]) : "—";
+        if (pa.length === 2) {
+            const a = frame[pa[0]];
+            const b = frame[pa[1]];
+            if (a && b) {
+                const dx = a[1] - b[1];
+                const dy = a[2] - b[2];
+                const dz = a[3] - b[3];
+                const d = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                dCell.textContent = d.toFixed(4) + " Å";
+            } else {
+                dCell.textContent = "—";
+            }
+        } else {
+            dCell.textContent = "—";
+        }
+        const hint  = $("inspect-hint");
+        const table = $("inspect-table");
+        const btn   = $("inspect-clear");
+        if (hint)  hint.hidden  = pa.length > 0;
+        if (table) table.hidden = pa.length === 0;
+        if (btn)   btn.disabled = pa.length === 0;
+    }
+
+    // 3Dmol click callback.  ``atom.serial`` is 0-based for XYZ-
+    // loaded models (every Watch trajectory goes through
+    // viewer.addModelsAsFrames(framesToMultiXyz(...), "xyz")).  Toggle
+    // semantics: clicking an already-picked atom DROPS it; clicking
+    // a new atom appends; > 2 picks drop the oldest so a third click
+    // becomes the new "B" against the surviving "A".
+    function onWatchAtomClick(atom) {
+        const idx = Number(atom.serial);
+        const pa = state.pickedAtoms;
+        const existing = pa.indexOf(idx);
+        if (existing !== -1) {
+            pa.splice(existing, 1);
+        } else {
+            if (pa.length >= 2) pa.shift();
+            pa.push(idx);
+        }
+        renderPickHighlights();
+        updateInspectPanel();
+    }
+
+    function clearAtomPicks() {
+        state.pickedAtoms = [];
+        renderPickHighlights();
+        updateInspectPanel();
+    }
+
     function rebuildModel() {
         viewer.removeAllModels();
         if (!state.data || !state.data.frames.length) {
@@ -334,6 +444,10 @@
             return;
         }
         viewer.addModelsAsFrames(framesToMultiXyz(state.data.frames), "xyz");
+        // Wire the per-atom click hook for the Inspect tab.  Must be
+        // installed BEFORE the first render or 3Dmol's click region
+        // isn't registered.  setClickable takes (sel, clickable, cb).
+        viewer.setClickable({}, true, onWatchAtomClick);
         applyStyle();
         drawCell();
         if (state.firstFit) {
@@ -353,6 +467,11 @@
         // these calls also issues viewer.render(), so no extra render here.
         drawIndices();
         drawForces();
+        // Picked-atom halos sit on absolute coordinates and 3Dmol
+        // doesn't animate Shape objects with setFrame, so re-render
+        // them at every frame change.  Cheap (max 2 spheres).
+        renderPickHighlights();
+        updateInspectPanel();
         $("frame-idx").textContent = idx;
         $("frame-slider").value = idx;
     }
@@ -781,6 +900,7 @@
         const file = e.target.files[0];
         if (!file) return;
         pause();
+        clearAtomPicks();
         setStatus("Uploading " + file.name + "\u2026", "");
         const fd = new FormData();
         fd.append("file", file);
@@ -818,6 +938,9 @@
 
     async function loadByPath(path) {
         pause();
+        // Drop atom picks: a fresh load means a new trajectory and
+        // the picked indices may not exist in the new model.
+        clearAtomPicks();
         setStatus("Loading\u2026", "");
         try {
             const r = await fetch("/api/watch/load", {
@@ -929,6 +1052,12 @@
         if (state.playTimer) play();    // restart with new cadence
     });
 
+    /* ---- Inspect-tab: Clear-picks button ------------------------- */
+    const inspectClearBtn = $("inspect-clear");
+    if (inspectClearBtn) {
+        inspectClearBtn.addEventListener("click", clearAtomPicks);
+    }
+
     /* ---- Save current frame as XYZ ------------------------------- */
     /* Hands the displayed structure off to the next step in the
        user's pipeline -- e.g., dropping the relaxed molecule into a
@@ -949,7 +1078,11 @@
         const energyEv = (state.data.energies || [])[idx];
         const fileStem = (state.label && state.label.replace(/[^A-Za-z0-9._-]+/g, "_"))
             || engine;
-        const stepIdx = (state.data.iterations || [])[idx];
+        // Prefer per-stage step indices when present (multi-stage
+        // merge) -- those match the source log's numbering.  Fall
+        // back to the global iterations for single-stage runs.
+        const stepIdx = ((state.data.step_indices || [])[idx])
+                     ?? ((state.data.iterations  || [])[idx]);
         const stepLabel = (stepIdx !== undefined && stepIdx !== null)
             ? "step " + stepIdx : "frame " + idx;
 

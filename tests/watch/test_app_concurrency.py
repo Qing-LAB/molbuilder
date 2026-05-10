@@ -53,10 +53,11 @@ def _reset_state():
     SlowParser.release.clear()
     SlowParser.parse_started.clear()
     with app_module._lock:
-        app_module._state["path"]   = None
-        app_module._state["mtime"]  = None
-        app_module._state["data"]   = None
-        app_module._state["parser"] = None
+        app_module._state["path"]    = None
+        app_module._state["mtime"]   = None
+        app_module._state["data"]    = None
+        app_module._state["parser"]  = None
+        app_module._state["run_dir"] = None
     yield
     SlowParser.release.set()
 

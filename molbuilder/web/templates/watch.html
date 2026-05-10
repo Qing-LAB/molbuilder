@@ -89,6 +89,7 @@ FILE mode (back-compat; also supported):
       <nav class="control-tabs" role="tablist">
         <button class="ctab is-active" data-tab="style"    role="tab">Style</button>
         <button class="ctab"           data-tab="overlays" role="tab">Overlays</button>
+        <button class="ctab"           data-tab="inspect"  role="tab">Inspect</button>
         <button class="ctab"           data-tab="playback" role="tab">Playback</button>
       </nav>
 
@@ -142,6 +143,24 @@ FILE mode (back-compat; also supported):
         </label>
         <label class="check"><input type="checkbox" id="highlight-max" checked>
           Highlight largest force</label>
+      </div>
+
+      <div class="ctab-panel" data-panel="inspect" role="tabpanel">
+        <p class="hint" id="inspect-hint">
+          Click two atoms in the viewer to measure their distance.
+          The distance updates as the trajectory plays.
+        </p>
+        <table id="inspect-table" class="inspect-table" hidden>
+          <tbody>
+            <tr><th>A</th>     <td id="inspect-a">—</td></tr>
+            <tr><th>B</th>     <td id="inspect-b">—</td></tr>
+            <tr><th>|A&minus;B|</th><td id="inspect-d" class="inspect-distance">—</td></tr>
+          </tbody>
+        </table>
+        <button id="inspect-clear" class="full-btn" disabled
+          title="Drop the current atom picks.&#10;Loading a new file or trajectory also resets the selection.">
+          Clear selection
+        </button>
       </div>
 
       <div class="ctab-panel" data-panel="playback" role="tabpanel">

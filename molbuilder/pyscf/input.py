@@ -809,18 +809,19 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig") -> List[str]:
     # has nothing to load on the Watch tab until preopt finishes.
     # The SCF callback is wired separately at each stage's mf object
     # (see emit_scf_callback_wiring below).
-    # Stage-aware molwatch-log filename (job-layout v1).  When the
-    # config carries ``stage`` (1/2/3), each stage's run writes to
-    # its own ``<JOB>-stage<N>.molwatch.log`` so a directory
-    # accumulates one log per stage and the Watch tab's multi-stage
-    # merge picks them up automatically.  ``JOB`` itself stays
-    # unsuffixed so the .chk / .log / _optimized.xyz filenames
-    # transfer cleanly across stages.
-    if getattr(cfg, "stage", None) is not None:
-        _mw_log_expr = f'JOB + "-stage{int(cfg.stage)}.molwatch.log"'
-    else:
-        _mw_log_expr = 'JOB + ".molwatch.log"'
-    out.append(f'_molwatch = MolwatchEmitter({_mw_log_expr}, JOB, mol)')
+    # Stage-aware molwatch-log filename (job-layout v1).  Compute
+    # via the L1 ``molwatch_log_basename`` helper so the rule has
+    # ONE source of truth across SIESTA + PySCF emitters; the
+    # generated script gets the resolved suffix as a literal so it
+    # stays self-contained at runtime (no molbuilder import).
+    from ..trajectory_log.format import molwatch_log_basename
+    _placeholder      = "_X_"
+    _resolved_for_X   = molwatch_log_basename(_placeholder,
+                                              getattr(cfg, "stage", None))
+    # Strip the placeholder; what's left is the suffix the generator
+    # appends to ``JOB`` at runtime.
+    _suffix = _resolved_for_X[len(_placeholder):]
+    out.append(f'_molwatch = MolwatchEmitter(JOB + {_suffix!r}, JOB, mol)')
     out.append("")
     # Run-state markers.  The watch UI reads these to render a binary
     # "Finished / Ongoing / Error" badge -- authoritative when present,

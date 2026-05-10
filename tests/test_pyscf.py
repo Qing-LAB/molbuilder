@@ -594,10 +594,16 @@ def test_pyscf_molwatch_emitter_uses_stage_suffix(h2o):
     call writes to ``<JOB>-stage<N>.molwatch.log`` so stages don't
     overwrite each other in a shared directory."""
     text = render_script(h2o, PySCFConfig(stage=2, job_name="my-job"))
-    assert 'MolwatchEmitter(JOB + "-stage2.molwatch.log"' in text
+    # Quote style is repr()'s choice (single or double); the contract
+    # is the JOB + "<suffix>" expression with the right suffix.
+    assert ("MolwatchEmitter(JOB + '-stage2.molwatch.log'" in text
+            or 'MolwatchEmitter(JOB + "-stage2.molwatch.log"' in text)
 
 
 def test_pyscf_molwatch_emitter_unsuffixed_when_stage_is_none(h2o):
     text = render_script(h2o, PySCFConfig(stage=None, job_name="my-job"))
-    assert 'MolwatchEmitter(JOB + ".molwatch.log"' in text
-    assert 'stage' not in text.split('MolwatchEmitter(JOB')[1].splitlines()[0]
+    assert ("MolwatchEmitter(JOB + '.molwatch.log'" in text
+            or 'MolwatchEmitter(JOB + ".molwatch.log"' in text)
+    emitter_line = [ln for ln in text.splitlines()
+                    if "MolwatchEmitter(JOB" in ln][0]
+    assert "stage" not in emitter_line

@@ -329,11 +329,18 @@ For a trajectory file the user loads, the viewer renders:
   so the user can spot stalled or oscillating SCFs while the run is
   still going.
 
-Single page, three control tabs: **Style** (representation, radius,
+Single page, four control tabs: **Style** (representation, radius,
 element coloring, background, cell visibility), **Overlays** (atom
 indices, force arrows with magnitude threshold, highlight max-force
-atom), **Playback** (slider, prev / play / pause / next, speed,
-loop). Frame counter "X / N" sits above the slider.
+atom), **Inspect** (click two atoms in the viewer to see their
+indices, elements, per-frame coordinates, and live |A−B| distance),
+**Playback** (slider, prev / play / pause / next, speed, loop).
+Frame counter "X / N" sits above the slider.
+
+The Inspect picks reset on file load and on file-picker upload, but
+persist across polling refreshes (the picked atom indices stay
+meaningful as long as the trajectory is the same — only coordinates
+update each frame).
 
 ### Supported inputs (auto-detect)
 

@@ -414,6 +414,36 @@ button:disabled {
 }
 .scf-plots .plot { height: clamp(180px, 22vh, 230px); }
 
+/* ---- Inspect tab: atom-pick + distance ----
+ *
+ * Two-atom picking lives in the right-hand control aside (4th tab).
+ * The table stays compact -- the aside is narrow -- and the
+ * distance row is highlighted via the accent colour so the user's
+ * eye lands on it.
+ */
+.inspect-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0;
+    font-size: 0.88rem;
+}
+.inspect-table th, .inspect-table td {
+    padding: 5px 8px;
+    text-align: left;
+    border-bottom: 1px solid var(--border-soft);
+    vertical-align: top;
+    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+}
+.inspect-table th {
+    color: var(--accent);
+    font-weight: 600;
+    width: 4em;
+}
+.inspect-distance {
+    color: var(--accent);
+    font-weight: 600;
+}
+
 /* ---- Staged-relaxation workflow guide ----
  *
  * Native-collapsible <details>/<summary> card.  Closed by default
