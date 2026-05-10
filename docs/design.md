@@ -1277,23 +1277,16 @@ Items deferred from prior reviews and the staged-relaxation /
 job-layout work.  Each is currently reachable but not load-bearing;
 promote when the time comes.
 
-### Job-layout follow-ups (2026-05-10)
+### Job-layout follow-up
 
-- **Cut 2 — basename consolidation on Build.**  Today's form has
-  `p-system-name` and `p-system-label` as separate fields; the
-  job-layout protocol (`docs/spec/job-layout.md`) makes the basename
-  load-bearing across input + log + restart files.  Consolidate to
-  one "Job name" field that drives both.  The verbose-comments block
-  in the generated FDF should grow a "Run with: `mpirun -np 4 siesta
-  < my-job.fdf > my-job.out`" line using the basename so users
-  follow the convention by copy-paste rather than memory.
-- **Cut 3 — multi-stage trajectory merging in Watch.**  When a
-  directory contains multiple `*.molwatch.log` files (e.g. one per
-  stage of a coarse → medium → tight relaxation), the Watch loader
-  should optionally concatenate their frames into a single
-  trajectory with stage markers in the energy + force plots.  Today
-  the newest file wins; the others are reachable only by pointing at
-  them individually.
+- **Auto-suffix `<basename>-stage<N>.molwatch.log` on the generator
+  side.**  Multi-stage trajectory merging (Cut 3, 2026-05-10) works
+  when the directory has multiple distinct `*.molwatch.log` files;
+  today the user has to rename the preview log between stages to
+  preserve them.  When the Build-tab "Relaxation stage" selector is
+  on a non-Custom value, the FDF / PySCF generator should write
+  `<basename>-stage1.molwatch.log` / `…stage2…` / `…stage3…`
+  automatically so the rename step disappears.
 
 ### High priority
 

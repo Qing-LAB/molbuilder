@@ -361,9 +361,52 @@
     /*  Plotly traces                                                      */
     /* ------------------------------------------------------------------ */
 
+    // Build Plotly ``shapes`` + ``annotations`` for stage boundaries
+    // when state.data is a multi-stage merged trajectory.  Each
+    // stage transition (where a new source .molwatch.log begins)
+    // gets a dashed vertical line + a small label at the top of the
+    // plot showing the stage name.  Returns {shapes, annotations}
+    // (both empty arrays for single-stage runs).
+    function stageMarkers() {
+        const stages = state.data && state.data.stages;
+        if (!Array.isArray(stages) || stages.length < 2) {
+            return { shapes: [], annotations: [] };
+        }
+        const shapes = [];
+        const annotations = [];
+        for (const s of stages) {
+            // Skip the line at frame 0 (start of the first stage --
+            // would just be the y-axis).  Always add the label.
+            if (s.start_frame > 0) {
+                shapes.push({
+                    type: "line",
+                    xref: "x", yref: "paper",
+                    x0: s.start_frame, x1: s.start_frame,
+                    y0: 0, y1: 1,
+                    line: { color: "#888", width: 1, dash: "dash" },
+                });
+            }
+            const labelX = s.start_frame
+                + Math.max(1, Math.floor((s.n_frames - 1) / 2));
+            const stageLabel = s.name.replace(/\.molwatch\.log$/, "");
+            annotations.push({
+                x: labelX,
+                y: 1.02,
+                xref: "x", yref: "paper",
+                text: stageLabel,
+                showarrow: false,
+                font: { size: 10, color: "#888" },
+                xanchor: "center",
+                yanchor: "bottom",
+            });
+        }
+        return { shapes, annotations };
+    }
+
     function makePlots() {
         if (!state.data) return;
         const x = state.data.iterations;
+        const stageMx = stageMarkers();
 
         Plotly.react("energy-plot", [{
             x: x,
@@ -379,6 +422,8 @@
             xaxis: { title: "CG step", dtick: 1, zeroline: false },
             yaxis: { title: "E_KS (eV)", tickformat: ".4f", zeroline: false },
             font: { family: "system-ui, sans-serif", size: 11 },
+            shapes:      stageMx.shapes,
+            annotations: stageMx.annotations,
         }, { displayModeBar: false, responsive: true });
 
         Plotly.react("force-plot", [{
@@ -395,6 +440,8 @@
             xaxis: { title: "CG step", dtick: 1, zeroline: false },
             yaxis: { title: "Max |F| (eV/\u00C5)", rangemode: "tozero", zeroline: false },
             font: { family: "system-ui, sans-serif", size: 11 },
+            shapes:      stageMx.shapes,
+            annotations: stageMx.annotations,
         }, { displayModeBar: false, responsive: true });
 
         renderScfProgress();
@@ -796,12 +843,24 @@
             if (r.resolved_from) {
                 const baseDir = r.resolved_from.replace(/\/+$/, "");
                 const fileNm  = (r.path || "").split("/").pop() || r.path;
-                setStatus(
-                    "Loaded \u201c" + fileNm + "\u201d from " + baseDir
-                    + "/  \u2014 mtime "
-                    + new Date(r.mtime * 1000).toLocaleTimeString() + ".",
-                    "ok"
-                );
+                const ts = new Date(r.mtime * 1000).toLocaleTimeString();
+                let msg;
+                if (Array.isArray(r.stages) && r.stages.length > 1) {
+                    // Multi-stage run -- summarise the merge so the
+                    // user knows their staged trajectory was joined.
+                    const parts = r.stages.map(
+                        s => s.name + " (" + s.n_frames + " frame"
+                             + (s.n_frames === 1 ? "" : "s") + ")"
+                    );
+                    msg = "Loaded " + r.stages.length
+                        + " stages from " + baseDir + "/  \u2014 "
+                        + parts.join(" \u2192 ")
+                        + ".  Live polling: " + fileNm + " (mtime " + ts + ").";
+                } else {
+                    msg = "Loaded \u201c" + fileNm + "\u201d from " + baseDir
+                        + "/  \u2014 mtime " + ts + ".";
+                }
+                setStatus(msg, "ok");
                 $("path-input").value = r.path;
             }
             startPolling();

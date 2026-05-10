@@ -659,9 +659,15 @@
         const num  = (id) => parseFloat($(id).value);
         const int  = (id) => parseInt($(id).value, 10);
         const bool = (id) => $(id).checked;
+        // The form has ONE basename field (Job name); default
+        // SystemName to it as well so the FDF carries something
+        // descriptive without a separate input.  The Python API
+        // still supports separate values for power users; the web
+        // just folds them.
+        const jobName = $("p-system-label").value.trim();
         return {
-            system_name:            $("p-system-name").value.trim(),
-            system_label:           $("p-system-label").value.trim(),
+            system_name:            jobName,
+            system_label:           jobName,
 
             // Basis & grid
             basis_size:             $("p-basis").value,
@@ -833,7 +839,7 @@
         "add-hydrogens", "protonate-phosphates",
         // SIESTA
         "p-stage-preset",
-        "p-system-name", "p-system-label", "p-basis", "p-mesh-cutoff",
+        "p-system-label", "p-basis", "p-mesh-cutoff",
         "p-pao-energy-shift", "p-xc-functional", "p-xc-authors",
         "p-solution-method", "p-mixing-weight", "p-pulay-history",
         "p-dm-tolerance", "p-dm-energy-tolerance", "p-max-scf-iter",

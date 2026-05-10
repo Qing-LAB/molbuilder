@@ -235,3 +235,79 @@ def test_load_file_path_unchanged(client, tmp_path):
     body = r.get_json()
     assert body["ok"] is True
     assert body["resolved_from"] is None
+
+
+# --------------------------------------------------------------------- #
+#  Multi-stage merge (job-layout v1, Cut 3)                             #
+#                                                                       #
+#  When a directory contains > 1 *.molwatch.log files (the staged       #
+#  relaxation case), the loader concatenates their trajectories into    #
+#  one merged dict and tags each source as a stage.                     #
+# --------------------------------------------------------------------- #
+
+
+_MOLWATCH_TWO_STEPS = (
+    "# molwatch trajectory log v1\n"
+    "# engine: pyscf\n"
+    "==== molwatch step 0 begin ====\n"
+    "step_index: 0\n"
+    "n_atoms: 3\n"
+    "coordinates (Ang):\n"
+    "   O   0.00000000   0.00000000   0.00000000\n"
+    "   H   0.95700000   0.00000000   0.00000000\n"
+    "   H  -0.23900000   0.92700000   0.00000000\n"
+    "energy (eV): -76.40000000\n"
+    "==== molwatch step 0 end ====\n"
+    "==== molwatch step 1 begin ====\n"
+    "step_index: 1\n"
+    "n_atoms: 3\n"
+    "coordinates (Ang):\n"
+    "   O   0.00000000   0.00000000   0.00000000\n"
+    "   H   0.95700000   0.00000000   0.00000000\n"
+    "   H  -0.23900000   0.92700000   0.00000000\n"
+    "energy (eV): -76.50000000\n"
+    "==== molwatch step 1 end ====\n"
+)
+
+
+def test_load_directory_multi_stage_merges_trajectories(client, tmp_path):
+    """Two *.molwatch.log files in a directory -> one merged
+    trajectory; ``stages`` metadata attributes each frame range to a
+    source file."""
+    import os, time
+    s1 = tmp_path / "my-job-stage1.molwatch.log"
+    s2 = tmp_path / "my-job-stage2.molwatch.log"
+    s1.write_text(_MOLWATCH_TWO_STEPS)
+    s2.write_text(_MOLWATCH_TWO_STEPS)
+    past = time.time() - 60
+    os.utime(s1, (past, past))
+    r = client.post("/api/watch/load", json={"path": str(tmp_path)})
+    body = r.get_json()
+    assert body["ok"] is True, body
+    # 2 stages * 2 frames each = 4 merged frames.
+    assert len(body["data"]["frames"]) == 4
+    # Iterations are renumbered globally for the plot x-axis.
+    assert body["data"]["iterations"] == [0, 1, 2, 3]
+    # Stages metadata names each source file in mtime order (oldest
+    # first) and tags frame ranges.
+    stages = body["stages"]
+    assert [s["name"] for s in stages] == [
+        "my-job-stage1.molwatch.log",
+        "my-job-stage2.molwatch.log",
+    ]
+    assert stages[0]["start_frame"] == 0 and stages[0]["n_frames"] == 2
+    assert stages[1]["start_frame"] == 2 and stages[1]["n_frames"] == 2
+    # Active polling target = the newest log (stage 2).
+    assert body["path"].endswith("my-job-stage2.molwatch.log")
+
+
+def test_load_directory_single_log_no_stages_field(client, tmp_path):
+    """A directory with exactly one *.molwatch.log goes the single-
+    log path; the response should NOT carry a ``stages`` field
+    (so the frontend's stage-marker logic stays inert)."""
+    p = tmp_path / "my-job.molwatch.log"
+    p.write_text(_MOLWATCH_HEAD)
+    r = client.post("/api/watch/load", json={"path": str(tmp_path)})
+    body = r.get_json()
+    assert body["ok"] is True
+    assert "stages" not in body or not body["stages"]

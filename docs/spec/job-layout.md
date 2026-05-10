@@ -165,11 +165,22 @@ filenames carry the `-stageN` suffix.  This means:
 - Watch tab discovery picks up the **latest** `.molwatch.log` as the
   primary view (since each stage rewrites the same file).
 
-A **future** Watch-tab feature (Cut 3 in the implementation plan)
-will optionally scan for stage-suffixed `.molwatch.log` files and
-concatenate their frames into a single trajectory with stage
-markers in the energy plot.  For today's release, the latest stage's
-`.molwatch.log` is what loads.
+**Multi-stage trajectory merging.**  When the directory contains
+**more than one** `*.molwatch.log` file, the Watch loader parses
+all of them in mtime order (oldest first), concatenates the
+trajectories into a single merged view, and tags each source as a
+"stage" with metadata (start frame, end frame, source filename).
+The energy and force plots draw dashed vertical lines at each stage
+boundary with the source filename as a label.  Live polling pins to
+the **newest** log file (the one currently being written by the
+active SIESTA / PySCF run); older stages are static.
+
+Achieving this requires the user to give each stage's log a
+distinct filename — typically by including the stage suffix in
+`SystemLabel`-derived filenames or, for SIESTA, by renaming the
+preview log between runs.  A future generator-side enhancement will
+auto-suffix `<basename>-stage<N>.molwatch.log` when the Build tab's
+Relaxation-stage selector is set, removing the manual rename step.
 
 ---
 

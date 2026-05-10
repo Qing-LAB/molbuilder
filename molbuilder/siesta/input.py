@@ -272,6 +272,26 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
 
     out: List[str] = []
 
+    # job-layout v1 hint -- the basename ``cfg.system_label`` is the
+    # protocol's "job name"; every output / restart file shares it.
+    # Suggest the canonical ``mpirun`` invocation so the user redirects
+    # stdout to ``<basename>.out`` (the Watch tab's discovery chain
+    # also looks for that filename).  See docs/spec/job-layout.md.
+    if cfg.verbose_comments:
+        out.append("# === Run with (job-layout v1) ===")
+        out.append(
+            "# Run from this directory -- all outputs share the "
+            "SystemLabel basename below.")
+        out.append(
+            f"#     mpirun -np 4 siesta < {cfg.system_label}.fdf "
+            f"> {cfg.system_label}.out")
+        out.append(
+            "# Watch the run live: open the Watch tab and point it "
+            "at this directory")
+        out.append(
+            f"# (the loader resolves it to {cfg.system_label}.molwatch.log).")
+        out.append("")
+
     out.append(f"SystemName        {cfg.system_name}")
     out.append(f"SystemLabel       {cfg.system_label}")
     out.append("")

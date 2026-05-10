@@ -186,10 +186,21 @@
       </p>
 
       <div class="param-grid">
-        <fieldset>
+        <fieldset title="The job name is the basename for ALL output files: the FDF, the unified trajectory log, the SIESTA stdout (if you redirect to <name>.out as recommended), and the restart files (.XV / .DM / .CG).&#10;Per docs/spec/job-layout.md: keep this identical across staged-relaxation runs so SIESTA can pick up the previous stage's restart files automatically.">
           <legend>System</legend>
-          <label>SystemName       <input id="p-system-name"  value="siesta_run"></label>
-          <label>SystemLabel      <input id="p-system-label" value="siesta"></label>
+          <label title="The basename for every file the job produces.&#10;Drives FDF SystemLabel + SystemName; output files get this prefix.&#10;Letters / digits / hyphens / underscores only; no spaces, dots, or slashes.">
+            <strong>Job name</strong>
+            <input id="p-system-label" value="siesta"
+                   pattern="[A-Za-z0-9_\-]+"
+                   title="Letters, digits, hyphens, underscores; no spaces, dots, or slashes">
+          </label>
+          <p class="hint" style="margin: 0.2em 0 0; font-size: 0.8em;">
+            Used as the basename for <code>&lt;name&gt;.fdf</code>,
+            <code>&lt;name&gt;.molwatch.log</code>,
+            <code>&lt;name&gt;.out</code> (recommended redirect target),
+            and the <code>.XV</code> / <code>.DM</code> / <code>.CG</code>
+            restart files.  Keep identical across staged runs.
+          </p>
         </fieldset>
 
         <fieldset title="Basis set and real-space mesh resolution.">

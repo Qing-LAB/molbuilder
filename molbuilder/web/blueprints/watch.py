@@ -127,6 +127,16 @@ def _newest(paths: List[str]) -> Optional[str]:
     return max(valid, key=lambda p: os.path.getmtime(p))
 
 
+def _list_molwatch_logs(directory: str) -> List[str]:
+    """Return all ``*.molwatch.log`` files in the directory in mtime
+    order (oldest first).  Used to detect a multi-stage run; if the
+    list has > 1 element, the loader concatenates them.
+    """
+    hits = glob.glob(os.path.join(directory, "*.molwatch.log"))
+    valid = [p for p in hits if os.path.isfile(p)]
+    return sorted(valid, key=lambda p: os.path.getmtime(p))
+
+
 def _resolve_run_directory(directory: str) -> Tuple[Optional[str], List[str]]:
     """Resolve a run directory to a single file Watch should load.
 
@@ -255,6 +265,95 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         return dict(_state), None
 
 
+def _merge_molwatch_trajectories(paths: List[str]) -> Tuple[Dict[str, Any],
+                                                              List[Dict[str, Any]]]:
+    """Parse each ``*.molwatch.log`` in ``paths`` (oldest first) and
+    concatenate the resulting trajectories into one legacy-shape dict.
+
+    Returns ``(merged_dict, stages_metadata)`` where ``stages_metadata``
+    is a list of one dict per source file::
+
+        {"name":        "my-job-stage1.molwatch.log",
+         "start_frame": 0,
+         "end_frame":   17,
+         "n_frames":    18,
+         "mtime":       1715300000.0}
+
+    The frontend uses ``stages_metadata`` to draw stage-boundary
+    markers on the energy / force plots and to show a "merged from N
+    stages" message in the status banner.
+
+    The merged dict's ``frames`` / ``energies`` / ``forces`` /
+    ``scf_history`` are concatenated in order; ``iterations`` is
+    re-numbered globally so the plot's x-axis stays monotone.
+    ``lattice`` and ``source_format`` come from the LATEST trajectory
+    (it's the one the polling thread is watching for updates).
+    """
+    from molbuilder.parsers.molwatch_log import MolwatchLogParser
+
+    merged = {
+        "frames": [], "energies": [], "max_forces": [],
+        "forces": [], "scf_history": [], "wall_times": [],
+        "iterations": [], "stages": [],
+    }
+    stages: List[Dict[str, Any]] = []
+    any_scf = False
+    last_traj_legacy: Optional[Dict[str, Any]] = None
+    for path in paths:
+        traj = MolwatchLogParser.parse(path)
+        legacy = trajectory_to_legacy_dict(traj)
+        last_traj_legacy = legacy
+        n_before = len(merged["frames"])
+        # Concatenate the per-frame arrays.  ``iterations`` has its
+        # own meaning (per-stage step index); we keep that from the
+        # source so users can still see "step 5 of stage 2", and
+        # leave the global-monotone re-number to the plot side via
+        # ``stages_metadata``.
+        merged["frames"].extend(legacy["frames"])
+        merged["energies"].extend(legacy["energies"])
+        merged["max_forces"].extend(legacy["max_forces"])
+        merged["forces"].extend(legacy["forces"])
+        merged["wall_times"].extend(legacy["wall_times"])
+        merged["iterations"].extend(legacy["iterations"])
+        if legacy["scf_history"]:
+            any_scf = True
+            merged["scf_history"].extend(legacy["scf_history"])
+        else:
+            # Fill with empty per-frame entries so frame index aligns.
+            merged["scf_history"].extend([[] for _ in legacy["frames"]])
+        n_after = len(merged["frames"])
+        stages.append({
+            "name":        os.path.basename(path),
+            "start_frame": n_before,
+            "end_frame":   max(n_after - 1, n_before),
+            "n_frames":    n_after - n_before,
+            "mtime":       os.path.getmtime(path),
+        })
+
+    # Honour the legacy "no scf data anywhere -> top-level []" quirk.
+    if not any_scf:
+        merged["scf_history"] = []
+
+    if last_traj_legacy is not None:
+        merged["lattice"]       = last_traj_legacy["lattice"]
+        merged["source_format"] = last_traj_legacy["source_format"]
+        merged["run_state"]     = last_traj_legacy["run_state"]
+        merged["error_message"] = last_traj_legacy["error_message"]
+    else:
+        merged["lattice"]       = None
+        merged["source_format"] = "molwatch"
+        merged["run_state"]     = "ongoing"
+        merged["error_message"] = ""
+    # Re-number iterations globally so the energy / force plots have
+    # a monotone x-axis across the merged trajectory.  The original
+    # per-stage iteration values weren't useful in a multi-stage view
+    # (each stage restarts at 1) and the frontend uses ``iterations``
+    # directly as the plot x-axis.
+    merged["iterations"] = list(range(len(merged["frames"])))
+    merged["stages"] = stages
+    return merged, stages
+
+
 @bp.route("/watch")
 def watch_page():
     return render_template("watch.html")
@@ -293,23 +392,35 @@ def api_load():
     # user passed a directory, scan it for the canonical artefacts
     # and load the best match; if a regular file, behave like before.
     resolved_from_dir: Optional[str] = None
+    multi_logs: List[str] = []
     if os.path.isdir(raw_path):
-        path, attempts = _resolve_run_directory(raw_path)
-        if path is None:
-            tried = "\n  ".join(attempts) if attempts else "(no candidates)"
-            return jsonify({
-                "ok": False,
-                "error": (
-                    f"No molbuilder-job artefacts found in directory:\n"
-                    f"  {raw_path}\n"
-                    f"Discovery chain (per docs/spec/job-layout.md):\n"
-                    f"  {tried}\n"
-                    f"Generate an FDF or PySCF script with the Build "
-                    f"tab into this directory, or point Watch at the "
-                    f"specific log file."
-                ),
-            }), 404
-        resolved_from_dir = raw_path
+        # Multi-stage detection: directory with > 1 *.molwatch.log
+        # files is treated as a staged run; the loader parses every
+        # log, concatenates the trajectories, and tags frames with a
+        # per-stage ``stages`` metadata list.  Polling pins to the
+        # newest file (older stages are static).
+        all_logs = _list_molwatch_logs(raw_path)
+        if len(all_logs) > 1:
+            multi_logs = all_logs
+            path = all_logs[-1]              # newest -- the polling target
+            resolved_from_dir = raw_path
+        else:
+            path, attempts = _resolve_run_directory(raw_path)
+            if path is None:
+                tried = "\n  ".join(attempts) if attempts else "(no candidates)"
+                return jsonify({
+                    "ok": False,
+                    "error": (
+                        f"No molbuilder-job artefacts found in directory:\n"
+                        f"  {raw_path}\n"
+                        f"Discovery chain (per docs/spec/job-layout.md):\n"
+                        f"  {tried}\n"
+                        f"Generate an FDF or PySCF script with the Build "
+                        f"tab into this directory, or point Watch at the "
+                        f"specific log file."
+                    ),
+                }), 404
+            resolved_from_dir = raw_path
     else:
         path = raw_path
         if not os.path.isfile(path):
@@ -324,6 +435,36 @@ def api_load():
         parser_cls = detect_parser(path)
     except UnknownFormatError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
+
+    # Multi-stage merge: parse every log, concatenate, attach stages
+    # metadata.  The active path stays the newest file so subsequent
+    # /api/watch/data polls re-parse only when THAT file changes
+    # (older stages are static and complete).
+    if multi_logs:
+        try:
+            merged, stages_meta = _merge_molwatch_trajectories(multi_logs)
+        except Exception as exc:                           # pragma: no cover
+            return jsonify({
+                "ok": False,
+                "error": f"Multi-stage merge failed: {exc}",
+            }), 500
+        with _lock:
+            _state["path"]     = path
+            _state["mtime"]    = os.path.getmtime(path)
+            _state["data"]     = merged
+            _state["parser"]   = parser_cls
+            _state["uploaded"] = False
+        return jsonify({
+            "ok":               True,
+            "path":             path,
+            "resolved_from":    resolved_from_dir,
+            "mtime":            _state["mtime"],
+            "format":           parser_cls.name,
+            "label":            parser_cls.label,
+            "data":             merged,
+            "stages":           stages_meta,
+            "uploaded":         False,
+        })
 
     with _lock:
         _state["path"]     = path
