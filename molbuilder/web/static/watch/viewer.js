@@ -790,6 +790,20 @@
                 format: r.format,
                 label:  r.label,
             });
+            // Directory mode: show the user which file the loader
+            // picked, and update the input with the resolved path so
+            // the next poll / page-revisit reuses it directly.
+            if (r.resolved_from) {
+                const baseDir = r.resolved_from.replace(/\/+$/, "");
+                const fileNm  = (r.path || "").split("/").pop() || r.path;
+                setStatus(
+                    "Loaded \u201c" + fileNm + "\u201d from " + baseDir
+                    + "/  \u2014 mtime "
+                    + new Date(r.mtime * 1000).toLocaleTimeString() + ".",
+                    "ok"
+                );
+                $("path-input").value = r.path;
+            }
             startPolling();
         } catch (e) {
             setStatus("Network error: " + e.message, "error");

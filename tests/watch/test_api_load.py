@@ -139,3 +139,99 @@ def test_load_by_multipart_persists_path_for_data_polls(client):
     assert body["ok"] is True
     assert body["uploaded"] is True
     assert body["data"]["source_format"] == "siesta"
+
+
+# --------------------------------------------------------------------- #
+#  Directory mode (job-layout v1)                                       #
+#                                                                       #
+#  Per docs/spec/job-layout.md the loader resolves a directory path     #
+#  to a single file via a documented discovery chain.  These tests pin  #
+#  each rung of the chain so a regression at the protocol boundary      #
+#  fails loudly here rather than as user-visible "load failed" errors. #
+# --------------------------------------------------------------------- #
+
+
+_MOLWATCH_HEAD = (
+    "# molwatch trajectory log v1\n"
+    "# engine: siesta\n"
+    "# step: 0\n"
+)
+
+
+def test_load_directory_picks_molwatch_log_first(client, tmp_path):
+    """A directory with a .molwatch.log resolves to that file even if a
+    .out file is also present (the protocol prefers .molwatch.log)."""
+    (tmp_path / "my-job.molwatch.log").write_text(_MOLWATCH_HEAD)
+    (tmp_path / "my-job.out").write_text(_SIESTA_HEAD)
+    r = client.post("/api/watch/load", json={"path": str(tmp_path)})
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["resolved_from"] == str(tmp_path)
+    assert body["path"].endswith("my-job.molwatch.log")
+
+
+def test_load_directory_falls_back_to_fdf_system_label(client, tmp_path):
+    """No .molwatch.log; an .fdf is present.  Loader parses
+    SystemLabel and looks for <label>.molwatch.log, then <label>.out."""
+    (tmp_path / "input.fdf").write_text("SystemLabel my-job\n")
+    (tmp_path / "my-job.out").write_text(_SIESTA_HEAD)
+    r = client.post("/api/watch/load", json={"path": str(tmp_path)})
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["path"].endswith("my-job.out")
+
+
+def test_load_directory_falls_back_to_py_job_name(client, tmp_path):
+    """No .molwatch.log or .fdf; a .py is present with a molbuilder-
+    style ``job_name = "..."`` declaration.  Loader picks up
+    <job>.molwatch.log."""
+    (tmp_path / "script.py").write_text(
+        '"""molbuilder PySCF script"""\n'
+        'job_name = "my-pyscf-run"\n'
+        'print("hi")\n'
+    )
+    (tmp_path / "my-pyscf-run.molwatch.log").write_text(_MOLWATCH_HEAD)
+    r = client.post("/api/watch/load", json={"path": str(tmp_path)})
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["path"].endswith("my-pyscf-run.molwatch.log")
+
+
+def test_load_directory_empty_returns_chain_error(client, tmp_path):
+    """An empty directory returns a 404 whose error message names the
+    discovery chain so the user can see what was tried."""
+    r = client.post("/api/watch/load", json={"path": str(tmp_path)})
+    body = r.get_json()
+    assert r.status_code == 404
+    assert body["ok"] is False
+    assert "job-layout.md" in body["error"]
+    assert "*.molwatch.log" in body["error"]
+    assert "*.fdf" in body["error"]
+
+
+def test_load_directory_picks_newest_molwatch_log(client, tmp_path):
+    """When multiple *.molwatch.log files exist (staged run), the
+    newest mtime wins."""
+    import os, time
+    older = tmp_path / "stage1.molwatch.log"
+    newer = tmp_path / "stage2.molwatch.log"
+    older.write_text(_MOLWATCH_HEAD)
+    newer.write_text(_MOLWATCH_HEAD)
+    # Force the older to actually be older.
+    past = time.time() - 60
+    os.utime(older, (past, past))
+    r = client.post("/api/watch/load", json={"path": str(tmp_path)})
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["path"].endswith("stage2.molwatch.log")
+
+
+def test_load_file_path_unchanged(client, tmp_path):
+    """File-mode (back-compat): passing a regular file path skips the
+    discovery chain and ``resolved_from`` is null."""
+    p = tmp_path / "run.out"
+    p.write_text(_SIESTA_HEAD)
+    r = client.post("/api/watch/load", json={"path": str(p)})
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["resolved_from"] is None

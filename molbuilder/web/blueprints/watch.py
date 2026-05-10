@@ -5,12 +5,19 @@ Routes (registered with no url_prefix; each carries its own full path):
     GET  /watch                browser UI page
     GET  /api/watch/formats    parser registry summary
     POST /api/watch/load       JSON {"path": "..."} or multipart upload
+                                ``path`` may be either a single file or
+                                a run directory (job-layout v1; see
+                                ``docs/spec/job-layout.md``).
     GET  /api/watch/data       poll for changes (mtime-based)
 
-The user opens /watch, paste an absolute path to the output file, and
-clicks *Load*.  The page polls /api/watch/data roughly every 15
-seconds; when the file's mtime advances the parser re-runs and the
-viewer + plots refresh.
+The user opens /watch, paste an absolute path to the output file or
+the **run directory** containing it, and clicks *Load*.  The
+directory branch follows the discovery chain in
+``docs/spec/job-layout.md``: ``*.molwatch.log`` first, then ``*.fdf``
+parsed for SystemLabel, then ``*.py`` parsed for job_name, then a
+generic ``*.out`` / ``*_geom_optim.xyz`` fallback.  The page polls
+/api/watch/data roughly every 15 seconds; when the file's mtime
+advances the parser re-runs and the viewer + plots refresh.
 
 Format support is plugin-style: see ``molbuilder/parsers/`` for the
 registered parsers and the auto-detection registry.
@@ -22,10 +29,12 @@ design (see docs/design.md "Watch -- live trajectory viewer").
 
 from __future__ import annotations
 
+import glob
 import os
+import re
 import tempfile
 from threading import Lock
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from flask import Blueprint, jsonify, render_template, request
 
@@ -55,6 +64,144 @@ _state: Dict[str, Any] = {
 # Track the last temp file we created from a file-picker upload so
 # we can clean it up when a new upload comes in.
 _last_temp_upload: Optional[str] = None
+
+
+# --------------------------------------------------------------------- #
+#  Directory-aware path resolution (job-layout v1)                      #
+#                                                                       #
+#  See ``docs/spec/job-layout.md`` for the full contract.  When the     #
+#  user gives Watch a directory instead of a file, scan it for the      #
+#  canonical artefacts in the protocol's preferred order; first hit     #
+#  wins.  The fallbacks parse the molbuilder-generated input files      #
+#  (.fdf / .py) to recover the basename.                                #
+# --------------------------------------------------------------------- #
+
+
+# SystemLabel may appear with or without the dotted form; SIESTA's own
+# parser accepts both.  Match on a single token (no spaces) so we
+# don't capture trailing comments.
+_FDF_SYSTEM_LABEL_RE = re.compile(
+    r"^\s*SystemLabel(?:\s|\.)\s*(\S+)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+# molbuilder-generated PySCF scripts set ``job_name = "..."`` near the
+# top.  The regex anchors on the LHS to avoid catching incidental
+# strings further down.
+_PY_JOB_NAME_RE = re.compile(
+    r"^\s*job_name\s*=\s*[\"\']([A-Za-z0-9_\-]+)[\"\']",
+    re.MULTILINE,
+)
+
+
+def _read_text_safely(path: str, max_bytes: int = 65536) -> str:
+    """Read up to ``max_bytes`` of ``path`` and return as text.  Used
+    for the .fdf / .py header sniff -- we only need the first chunk
+    to find SystemLabel / job_name; reading the whole multi-MB FDF
+    is wasteful.
+    """
+    try:
+        with open(path, "rb") as fh:
+            data = fh.read(max_bytes)
+    except OSError:
+        return ""
+    return data.decode("utf-8", errors="replace")
+
+
+def _basename_from_fdf(path: str) -> Optional[str]:
+    text = _read_text_safely(path)
+    m = _FDF_SYSTEM_LABEL_RE.search(text)
+    return m.group(1) if m else None
+
+
+def _basename_from_py(path: str) -> Optional[str]:
+    text = _read_text_safely(path)
+    m = _PY_JOB_NAME_RE.search(text)
+    return m.group(1) if m else None
+
+
+def _newest(paths: List[str]) -> Optional[str]:
+    """Pick the most recently modified path from a list."""
+    valid = [p for p in paths if os.path.isfile(p)]
+    if not valid:
+        return None
+    return max(valid, key=lambda p: os.path.getmtime(p))
+
+
+def _resolve_run_directory(directory: str) -> Tuple[Optional[str], List[str]]:
+    """Resolve a run directory to a single file Watch should load.
+
+    Returns ``(resolved_path, attempts)``: the resolved file path
+    (or ``None`` if nothing was found), plus a list of human-readable
+    "tried X" strings used to build the error message when nothing
+    matches.
+
+    Discovery chain follows ``docs/spec/job-layout.md`` § "How Watch
+    resolves a directory":
+
+      1. Any ``*.molwatch.log`` (newest wins for staged runs).
+      2. ``*.fdf`` -> parse SystemLabel -> ``<label>.molwatch.log``,
+         ``<label>.out``.
+      3. ``*.py``  -> parse job_name      -> ``<job>.molwatch.log``,
+         ``<job>.log``, ``<job>_geom_optim.xyz``.
+      4. Generic fallbacks: ``run.out``, ``siesta.log``, ``*.out``,
+         ``*_geom_optim.xyz``.
+    """
+    attempts: List[str] = []
+
+    # 1. *.molwatch.log directly in the directory.
+    log_hits = glob.glob(os.path.join(directory, "*.molwatch.log"))
+    attempts.append(f"*.molwatch.log -> {len(log_hits)} match(es)")
+    if log_hits:
+        return _newest(log_hits), attempts
+
+    # 2. SIESTA: *.fdf -> SystemLabel -> sibling outputs.
+    fdf_hits = glob.glob(os.path.join(directory, "*.fdf"))
+    attempts.append(f"*.fdf -> {len(fdf_hits)} match(es)")
+    for fdf in fdf_hits:
+        label = _basename_from_fdf(fdf)
+        if not label:
+            attempts.append(f"  {os.path.basename(fdf)}: SystemLabel not found")
+            continue
+        for suffix in (".molwatch.log", ".out"):
+            cand = os.path.join(directory, f"{label}{suffix}")
+            attempts.append(f"  -> {label}{suffix}: "
+                            f"{'found' if os.path.isfile(cand) else 'missing'}")
+            if os.path.isfile(cand):
+                return cand, attempts
+
+    # 3. PySCF: *.py -> job_name -> sibling outputs.
+    py_hits = glob.glob(os.path.join(directory, "*.py"))
+    attempts.append(f"*.py -> {len(py_hits)} match(es)")
+    for py in py_hits:
+        name = _basename_from_py(py)
+        if not name:
+            attempts.append(f"  {os.path.basename(py)}: job_name not found")
+            continue
+        for suffix in (".molwatch.log", ".log", "_geom_optim.xyz"):
+            cand = os.path.join(directory, f"{name}{suffix}")
+            attempts.append(f"  -> {name}{suffix}: "
+                            f"{'found' if os.path.isfile(cand) else 'missing'}")
+            if os.path.isfile(cand):
+                return cand, attempts
+
+    # 4. Generic fallbacks.
+    for fname in ("run.out", "siesta.log"):
+        cand = os.path.join(directory, fname)
+        attempts.append(f"{fname}: "
+                        f"{'found' if os.path.isfile(cand) else 'missing'}")
+        if os.path.isfile(cand):
+            return cand, attempts
+    out_hits = glob.glob(os.path.join(directory, "*.out"))
+    if out_hits:
+        attempts.append(f"*.out -> picked {os.path.basename(out_hits[0])}")
+        return _newest(out_hits), attempts
+    optim_hits = glob.glob(os.path.join(directory, "*_geom_optim.xyz"))
+    if optim_hits:
+        attempts.append(f"*_geom_optim.xyz -> "
+                        f"picked {os.path.basename(optim_hits[0])}")
+        return _newest(optim_hits), attempts
+
+    return None, attempts
 
 
 def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
@@ -137,12 +284,40 @@ def api_load():
 
     # ---- JSON path (live-watch mode) -------------------------------
     body = request.get_json(silent=True) or {}
-    path = (body.get("path") or "").strip()
-    if not path:
+    raw_path = (body.get("path") or "").strip()
+    if not raw_path:
         return jsonify({"ok": False, "error": "Empty path."}), 400
-    path = os.path.abspath(os.path.expanduser(path))
-    if not os.path.isfile(path):
-        return jsonify({"ok": False, "error": f"File not found: {path}"}), 404
+    raw_path = os.path.abspath(os.path.expanduser(raw_path))
+
+    # Directory-aware resolution per docs/spec/job-layout.md.  If the
+    # user passed a directory, scan it for the canonical artefacts
+    # and load the best match; if a regular file, behave like before.
+    resolved_from_dir: Optional[str] = None
+    if os.path.isdir(raw_path):
+        path, attempts = _resolve_run_directory(raw_path)
+        if path is None:
+            tried = "\n  ".join(attempts) if attempts else "(no candidates)"
+            return jsonify({
+                "ok": False,
+                "error": (
+                    f"No molbuilder-job artefacts found in directory:\n"
+                    f"  {raw_path}\n"
+                    f"Discovery chain (per docs/spec/job-layout.md):\n"
+                    f"  {tried}\n"
+                    f"Generate an FDF or PySCF script with the Build "
+                    f"tab into this directory, or point Watch at the "
+                    f"specific log file."
+                ),
+            }), 404
+        resolved_from_dir = raw_path
+    else:
+        path = raw_path
+        if not os.path.isfile(path):
+            return jsonify({
+                "ok": False,
+                "error": f"File or directory not found: {path}",
+            }), 404
+
     # Auto-detect parser before committing to the new path so an
     # unsupported file doesn't blank out a working one.
     try:
@@ -161,13 +336,14 @@ def api_load():
     if err:
         return jsonify({"ok": False, "error": err}), 500
     return jsonify({
-        "ok":       True,
-        "path":     state["path"],
-        "mtime":    state["mtime"],
-        "format":   parser_cls.name,
-        "label":    parser_cls.label,
-        "data":     state["data"],
-        "uploaded": False,
+        "ok":               True,
+        "path":             state["path"],
+        "resolved_from":    resolved_from_dir,
+        "mtime":            state["mtime"],
+        "format":           parser_cls.name,
+        "label":            parser_cls.label,
+        "data":             state["data"],
+        "uploaded":         False,
     })
 
 

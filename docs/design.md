@@ -42,6 +42,7 @@ this document points to them):
 | Build tab (web UI) + `/api/build/*` | `docs/spec/web-api.md` |
 | Watch tab (web UI) + `/api/watch/*` | `docs/spec/watch-ui.md`, `docs/spec/watch-api.md` |
 | **Modify tab** (web UI) + `/api/modify/*` + `molbuilder modify` CLI | **`docs/spec/modify-tab.md`** |
+| **Job layout** (basename + filename protocol; Build writes, Watch reads) | **`docs/spec/job-layout.md`** |
 | SIESTA FDF generator | `docs/spec/siesta-fdf.md` |
 | PySCF script generator | `docs/spec/pyscf-script.md` |
 | `Structure` dataclass | `docs/spec/structure.md` |
@@ -1272,8 +1273,27 @@ may match on; only the Python module name changes.
 
 ## Next steps
 
-Items deferred from the 2026-05-09 modify-tab review.  Each is
-currently reachable but not load-bearing; promote when the time comes.
+Items deferred from prior reviews and the staged-relaxation /
+job-layout work.  Each is currently reachable but not load-bearing;
+promote when the time comes.
+
+### Job-layout follow-ups (2026-05-10)
+
+- **Cut 2 — basename consolidation on Build.**  Today's form has
+  `p-system-name` and `p-system-label` as separate fields; the
+  job-layout protocol (`docs/spec/job-layout.md`) makes the basename
+  load-bearing across input + log + restart files.  Consolidate to
+  one "Job name" field that drives both.  The verbose-comments block
+  in the generated FDF should grow a "Run with: `mpirun -np 4 siesta
+  < my-job.fdf > my-job.out`" line using the basename so users
+  follow the convention by copy-paste rather than memory.
+- **Cut 3 — multi-stage trajectory merging in Watch.**  When a
+  directory contains multiple `*.molwatch.log` files (e.g. one per
+  stage of a coarse → medium → tight relaxation), the Watch loader
+  should optionally concatenate their frames into a single
+  trajectory with stage markers in the energy + force plots.  Today
+  the newest file wins; the others are reachable only by pointing at
+  them individually.
 
 ### High priority
 

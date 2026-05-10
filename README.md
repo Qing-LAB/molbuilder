@@ -190,6 +190,13 @@ stages and run them all in the **same directory**.  molbuilder's
 generated FDF emits `DM.UseSaveDM`, `MD.UseSaveXV`, `MD.UseSaveCG`
 all `.true.` by default, so the continuation works for free.
 
+The full naming protocol — which files share the basename, which
+ones the Watch tab discovers, what's safe vs. what breaks the
+restart — lives in [`docs/spec/job-layout.md`](docs/spec/job-layout.md).
+When you point the Watch tab at a **run directory** (not a specific
+file), it walks that protocol's discovery chain to pick the right
+log automatically.
+
 ### Watch tab — how it works
 
 Auto-detected formats:
