@@ -10,6 +10,8 @@ Routes (no url_prefix; each carries its own full path):
                                                     axis, angle, center)
     POST /api/modify/rotate                rotate_around_axis(axis,
                                                     angle)
+    POST /api/modify/translate             rigid translate ({dx,dy,dz}
+                                                    or {recenter:true})
     POST /api/modify/electrode             add_electrode_slab (single
                                             mode: one slab on +z or -z
                                             of one anchor)
@@ -308,6 +310,54 @@ def api_modify_rotate():
         new_struct = _rotate_around_axis(struct, axis=axis, angle=angle_f)
     except Exception as exc:                       # noqa: BLE001
         return _err(f"rotate_around_axis failed: {exc}", 400)
+    return _ok_response(new_struct)
+
+
+# --------------------------------------------------------------------- #
+#  /api/modify/translate                                                #
+# --------------------------------------------------------------------- #
+
+
+@bp.route("/api/modify/translate", methods=["POST"])
+def api_modify_translate():
+    """Translate every atom rigidly.
+
+    Two modes (mutually exclusive; ``recenter`` wins if both):
+
+    * ``{recenter: true}`` -- translate so the geometric centroid
+      lands on the origin.  Useful after adding electrode slabs
+      shifts the structure off-axis: re-anchoring the centroid
+      makes mouse-zoom feel sane and aligns subsequent slab ops
+      against a predictable origin.
+    * ``{dx, dy, dz}`` (Å) -- translate by the given vector.
+      Each component defaults to 0.
+
+    The op is rigid: bonds, angles, residue assignments, and
+    selection indices are all preserved (callers should keep their
+    ``state.selected`` indices across the round-trip; only the
+    coordinates change).
+    """
+    body = request.get_json(silent=True) or {}
+    try:
+        struct = _struct_from_body(body)
+    except ValueError as exc:
+        return _err(str(exc), 400)
+    if bool(body.get("recenter", False)):
+        try:
+            new_struct = struct.centered()
+        except Exception as exc:                       # noqa: BLE001
+            return _err(f"recenter failed: {exc}", 400)
+        return _ok_response(new_struct)
+    try:
+        dx = float(body.get("dx", 0.0) or 0.0)
+        dy = float(body.get("dy", 0.0) or 0.0)
+        dz = float(body.get("dz", 0.0) or 0.0)
+    except (TypeError, ValueError):
+        return _err("dx, dy, dz must be numbers (Å)", 400)
+    try:
+        new_struct = struct.translated((dx, dy, dz))
+    except Exception as exc:                           # noqa: BLE001
+        return _err(f"translate failed: {exc}", 400)
     return _ok_response(new_struct)
 
 

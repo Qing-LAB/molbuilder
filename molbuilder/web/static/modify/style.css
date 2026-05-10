@@ -462,6 +462,84 @@ header .tagline {
     cursor: not-allowed;
 }
 
+/* ---- Junction subtab: legibility ----
+ *
+ * Three small int inputs (m / n / layers) live in a single op-row
+ * with ``justify-content: space-between``.  Default styling crams
+ * them up against the edges with the labels touching the inputs.
+ * Lay them out as an even three-column grid with breathing room so
+ * each labelled input stays readable. */
+.edit-panel [data-op-panel="junction"] .op-row {
+    /* Slightly more vertical room between rows; the panel has 8+
+       parameters and the default 0.4rem read as cramped. */
+    margin: 0.55rem 0;
+}
+.edit-panel [data-op-panel="junction"] .op-row label {
+    /* Labels stay above their input -- two-line layout reads better
+       than the default single-line label+input cluster when several
+       sit side-by-side. */
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.25rem;
+    font-size: 0.85rem;
+    flex: 1 1 0;
+}
+.edit-panel [data-op-panel="junction"] input[type="number"] {
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    padding: 0.3rem 0.45rem;
+    font: inherit;
+    width: 100%;
+}
+.edit-panel [data-op-panel="junction"] input[type="number"]:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+/* The Apply Add Electrode button + Undo button share a row so the
+   Undo affordance is right next to the action it rolls back. */
+.edit-panel .elc-actions {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.5rem;
+    align-items: center;
+    margin-top: 0.5rem;
+}
+
+/* ---- Geom subtab: Δx Δy Δz row ----
+ *
+ * Three labelled number inputs in a single row.  Each label's text
+ * sits ABOVE its input (column flow) so the row stays one line on
+ * narrow widths instead of wrapping. */
+.edit-panel .translate-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem;
+    align-items: stretch;
+}
+.edit-panel .translate-row label {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.25rem;
+    font-size: 0.85rem;
+}
+.edit-panel .translate-row input[type="number"] {
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    padding: 0.3rem 0.45rem;
+    font: inherit;
+    width: 100%;
+}
+.edit-panel .translate-row input[type="number"]:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
 /* ---- Footer ---- */
 footer {
     padding: 1rem 2rem;

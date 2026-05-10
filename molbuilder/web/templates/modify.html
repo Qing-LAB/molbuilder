@@ -92,10 +92,6 @@
         <input type="checkbox" id="show-axes" checked>
         Show xyz axes
       </label>
-      <button id="recenter-view" class="ghost"
-        title="Re-fit the camera to the current structure (atom + slab bounding box).
-After adding electrodes the bounding box grows substantially;
-this puts the centroid back in the middle of the view.">Re-center</button>
       <button id="clear-selection" class="ghost">Clear selection</button>
     </div>
   </section>
@@ -104,10 +100,6 @@ this puts the centroid back in the middle of the view.">Re-center</button>
   <aside class="card edit-card">
     <header class="card-header">
       <h2>Edit</h2>
-      <button id="undo-op" class="ghost" disabled
-        title="Roll back the most recent edit operation.
-Undo replays the previous structure (xyz + selection + camera);
-you can step backwards through up to 20 ops.">Undo</button>
       <span id="edit-status" class="muted"></span>
     </header>
     <div class="edit-panel">
@@ -143,8 +135,10 @@ you can step backwards through up to 20 ops.">Undo</button>
                 role="tab" type="button">1. Atom</button>
         <button class="optab" data-op-tab="pose"
                 role="tab" type="button">2. Pose</button>
+        <button class="optab" data-op-tab="geom"
+                role="tab" type="button">3. Geom</button>
         <button class="optab" data-op-tab="junction"
-                role="tab" type="button">3. Junction</button>
+                role="tab" type="button">4. Junction</button>
       </nav>
 
       <!-- Atom edits: delete + add (M3 ops). -->
@@ -272,6 +266,52 @@ you can step backwards through up to 20 ops.">Undo</button>
 
       </div><!-- /.optab-panel data-op-panel="pose" -->
 
+      <!-- Geom: rigid translates that don't depend on a selection.
+           Center-at-origin re-anchors the centroid (useful after
+           adding electrodes shifts the structure off-axis); the
+           offset row applies a free (Δx, Δy, Δz) shift. -->
+      <div class="optab-panel" data-op-panel="geom" role="tabpanel">
+
+      <fieldset class="op-block">
+        <legend>Center at origin</legend>
+        <p class="hint">
+          Translate the entire structure (atoms + slabs) so its
+          centroid sits at (0,&nbsp;0,&nbsp;0).  Rotates and zooms
+          stay centred afterwards.
+        </p>
+        <button id="center-apply" class="full-btn">
+          Center at origin
+        </button>
+      </fieldset>
+
+      <fieldset class="op-block">
+        <legend>Translate by offset</legend>
+        <p class="hint">
+          Shift every atom by (Δx,&nbsp;Δy,&nbsp;Δz) in&nbsp;Å.
+          Pair with Center-at-origin to nudge the centroid to a
+          specific point.
+        </p>
+        <div class="op-row translate-row">
+          <label>Δx&nbsp;(Å)
+            <input id="translate-dx" type="number"
+                   step="0.1" value="0.0">
+          </label>
+          <label>Δy&nbsp;(Å)
+            <input id="translate-dy" type="number"
+                   step="0.1" value="0.0">
+          </label>
+          <label>Δz&nbsp;(Å)
+            <input id="translate-dz" type="number"
+                   step="0.1" value="0.0">
+          </label>
+        </div>
+        <button id="translate-apply" class="full-btn">
+          Apply translate
+        </button>
+      </fieldset>
+
+      </div><!-- /.optab-panel data-op-panel="geom" -->
+
       <!-- Junction: electrode panel + Send-to-Build handoff (M5).
            Place metal slabs around the anchor(s), then hand off the
            finished structure to the Build tab to generate FDF/PySCF. -->
@@ -362,9 +402,14 @@ you can step backwards through up to 20 ops.">Undo</button>
           </label>
         </div>
 
-        <button id="elc-apply" class="full-btn" disabled>
-          Add electrode
-        </button>
+        <div class="elc-actions">
+          <button id="elc-apply" class="full-btn" disabled>
+            Add electrode
+          </button>
+          <button id="undo-op" class="ghost" disabled
+            title="Roll back the most recent electrode-slab op.
+Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</button>
+        </div>
       </fieldset>
 
       <!-- Send-to-Build handoff: writes the current structure to

@@ -57,26 +57,21 @@
     const HISTORY_MAX = 20;
 
     // Selection marker: a small amber arrow pointing DOWN at the
-    // atom, with the tip LANDING on the atom's vdW surface (no
-    // visual gap).  Drawn as a separate ``addArrow`` shape so the
-    // atom rendering itself (size, element color, stick or
-    // ball-and-stick) is unchanged.  Length is independent of atom
-    // size -- the marker doesn't scale with vdW so a hydrogen and
-    // an iridium look equally selectable.
+    // atom, with the tip LANDING on the atom's rendered surface
+    // (no visual gap).  Drawn as a separate ``addArrow`` shape so
+    // the atom rendering itself is unchanged.  We use a small fixed
+    // tip offset rather than a vdW lookup -- the default stick rep
+    // renders atoms at ~0.13 Å radius so a vdW-scale offset (1-2 Å)
+    // visually FLOATS the arrow far above the atom.  The fixed
+    // value is chosen to read as "touching" against stick rep and
+    // is still acceptable against ball-and-stick (where atoms are
+    // ~0.4 Å radius).  Independent of element so H and Ir look
+    // equally selectable.
     const HIGHLIGHT_COLOR    = "#fbbf24";    // amber, matches --warning
-    const MARKER_LEN         = 0.9;          // arrow length, Å
+    const MARKER_TIP_OFFSET  = 0.15;         // tip-to-atom-center distance, Å
+    const MARKER_LEN         = 0.7;          // arrow length, Å
     const MARKER_RADIUS      = 0.06;         // shaft radius, Å
     const MARKER_RADIUS_RATIO = 2.6;         // head:shaft ratio
-    // Approximate vdW radii (Å) so the arrow sits just above the
-    // atom's rendered surface for any element.  Falls back to 1.5
-    // for anything not in the table.
-    const _VDW = {
-        H: 1.20, He: 1.40, Li: 1.82, Be: 1.53, B: 1.92, C: 1.70,
-        N: 1.55, O: 1.52, F: 1.47, Ne: 1.54, Na: 2.27, Mg: 1.73,
-        Si: 2.10, P: 1.80, S: 1.80, Cl: 1.75, K: 2.75, Ca: 2.31,
-        Ni: 1.63, Cu: 1.40, Zn: 1.39, Br: 1.85, I: 1.98,
-        Pd: 1.63, Ag: 1.72, Pt: 1.75, Au: 1.66,
-    };
 
     // --------------------------------------------------------------- //
     //  3Dmol viewer.                                                   //
@@ -113,19 +108,16 @@
 
     function renderHighlights() {
         // Draw a small amber arrow pointing down at each selected
-        // atom from above (along world +z).  The arrow tip LANDS
-        // exactly on the atom's vdW surface -- no visual gap.  The
-        // atom itself is left unchanged: the arrow is a SEPARATE
-        // shape, doesn't grow with the atom's vdW radius, and is
-        // unambiguous about which atom is selected even in dense
-        // structures.
+        // atom from above (along world +z).  The arrow tip lands
+        // just above the atom centre (MARKER_TIP_OFFSET) so it
+        // visibly touches the rendered surface for stick rep
+        // without overlapping a ball-and-stick sphere.
         clearHighlights();
         state.selected.forEach((idx) => {
             const p = state.positions[idx];
             if (!p) return;
-            const el = state.elements[idx] || "C";
-            const tip  = (_VDW[el] || 1.5);                   // tip rests on vdW surface
-            const tail = tip + MARKER_LEN;                    // shaft top
+            const tip  = MARKER_TIP_OFFSET;
+            const tail = tip + MARKER_LEN;
             const arrow = viewer.addArrow({
                 start:       { x: p[0], y: p[1], z: p[2] + tail },
                 end:         { x: p[0], y: p[1], z: p[2] + tip  },
@@ -168,19 +160,6 @@
         viewer.removeAllLabels();
         viewer.removeAllShapes();
         _indexLabels = [];
-    }
-
-    function recenterView() {
-        // Refit the camera so the structure's bounding box is
-        // centered in the canvas.  ``zoomTo()`` with no selection
-        // also re-anchors the rotation pivot to the bbox center, so
-        // subsequent mouse-wheel zooms don't drift off-screen.  Used
-        // by the Re-center button -- after adding electrodes the
-        // bbox grows substantially and the camera's stored lookAt
-        // can be off-axis vs the new geometry.
-        if (!state.xyz) return;
-        viewer.zoomTo();
-        viewer.render();
     }
 
     // ----- xyz axis triad ----------------------------------------- //
@@ -550,9 +529,13 @@
 
     // ----- Undo history ------------------------------------------- //
     // Snapshot of the canonical structure shape applyStructure() takes
-    // -- same keys as an /api/modify/* response.  Pushed BEFORE every
-    // mutating op so the user can step backwards through up to
-    // HISTORY_MAX recent states.
+    // -- same keys as an /api/modify/* response.  Scoped to electrode
+    // (slab) ops ONLY: those are the ones the user wants to experiment
+    // with and roll back.  Other ops (delete / add atom / orient /
+    // rotate / translate / center) are committed immediately and
+    // don't push history.  ``snapshotForHistory()`` is taken BEFORE
+    // the network call; it's only pushed onto the stack AFTER a
+    // successful response so failed ops don't burn an undo slot.
     function snapshotForHistory() {
         if (!state.xyz) return null;
         return {
@@ -565,16 +548,6 @@
             title:         state.title,
             n_atoms:       state.n_atoms,
         };
-    }
-
-    function pushHistory() {
-        const snap = snapshotForHistory();
-        if (!snap) return;
-        state.history.push(snap);
-        if (state.history.length > HISTORY_MAX) {
-            state.history.shift();   // drop the oldest
-        }
-        refreshUndoButton();
     }
 
     function refreshUndoButton() {
@@ -611,14 +584,8 @@
         // before the first response updates state).  Buttons are
         // also disabled while in-flight so the visible UI matches.
         if (state.inFlight) return null;
-        // Push a history snapshot BEFORE the network call so undo can
-        // restore the pre-op state regardless of whether the fetch
-        // succeeds or fails.  Saved state is the structure as it was
-        // when the user clicked Apply.
-        pushHistory();
         state.inFlight = true;
         refreshSelectionUI();    // disable Delete/Add buttons during fetch
-        refreshUndoButton();      // and undo
         setEditStatus(`${label}…`);
         const body = Object.assign(currentStateBody(), extraBody);
         let r = null;
@@ -656,7 +623,6 @@
             // error path we run it explicitly to flip buttons back.
             state.inFlight = false;
             refreshSelectionUI();
-            refreshUndoButton();
         }
     }
 
@@ -664,6 +630,47 @@
         const indices = Array.from(state.selected).sort((a, b) => a - b);
         if (!indices.length) return;
         await postOp("/api/modify/delete", { indices }, "Deleted");
+    }
+
+    // ----- Geom subtab: rigid translate ops ----------------------- //
+    // Both ops route through the shared /api/modify/translate
+    // endpoint; only the body changes (recenter:true vs explicit
+    // dx/dy/dz).  After the structure shifts, applyStructure() runs
+    // viewer.zoomTo() so the camera re-fits the new bounding box --
+    // there's no separate "re-fit camera" button anymore because
+    // every coordinate-changing op already does the right thing.
+    async function applyCenter() {
+        if (!state.xyz) {
+            setEditStatus("Load a structure first.", "error");
+            return;
+        }
+        await postOp(
+            "/api/modify/translate",
+            { recenter: true },
+            "Centered at origin",
+        );
+    }
+
+    async function applyTranslate() {
+        if (!state.xyz) {
+            setEditStatus("Load a structure first.", "error");
+            return;
+        }
+        const dx = Number($("translate-dx").value) || 0;
+        const dy = Number($("translate-dy").value) || 0;
+        const dz = Number($("translate-dz").value) || 0;
+        if (dx === 0 && dy === 0 && dz === 0) {
+            setEditStatus(
+                "Nothing to translate (Δx, Δy, Δz are all 0).",
+                "error",
+            );
+            return;
+        }
+        await postOp(
+            "/api/modify/translate",
+            { dx, dy, dz },
+            `Translated (${dx}, ${dy}, ${dz}) Å`,
+        );
     }
 
     function readAddOffset() {
@@ -798,13 +805,19 @@
         const mode = $("elc-mode").value;
         const common = readElcCommonBody();
         const gap = Number($("elc-gap").value);
+        // Snapshot the pre-op state so a successful slab op can be
+        // rolled back via Undo.  We only commit it to the history
+        // stack after the response comes back ok -- a 400 / network
+        // error must not consume an undo slot.
+        const snap = snapshotForHistory();
+        let r = null;
         if (mode === "single") {
             if (sel.length !== 1) {
                 setEditStatus("Pick exactly one anchor for single mode.", "error");
                 return;
             }
             const side = getCheckedRadio("elc-side") || "+z";
-            await postOp(
+            r = await postOp(
                 "/api/modify/electrode",
                 Object.assign({}, common, {
                     anchor_index:     sel[0],
@@ -827,7 +840,7 @@
             const z1 = state.positions[i1][2];
             const a_top = z0 >= z1 ? i0 : i1;
             const a_bot = z0 >= z1 ? i1 : i0;
-            await postOp(
+            r = await postOp(
                 "/api/modify/symmetric_electrodes",
                 Object.assign({}, common, {
                     anchors: [a_top, a_bot],
@@ -835,6 +848,11 @@
                 }),
                 `Added ${common.element}(${common.plane}) pair`,
             );
+        }
+        if (r && snap) {
+            state.history.push(snap);
+            if (state.history.length > HISTORY_MAX) state.history.shift();
+            refreshUndoButton();
         }
     }
 
@@ -909,10 +927,14 @@
             state.selected.clear();
             refreshSelectionUI();
         });
-        const recenterBtn = $("recenter-view");
-        if (recenterBtn) recenterBtn.addEventListener("click", recenterView);
         const undoBtn = $("undo-op");
         if (undoBtn) undoBtn.addEventListener("click", applyUndo);
+
+        // Geom subtab: center-at-origin + translate-by-offset.
+        const centerBtn = $("center-apply");
+        if (centerBtn) centerBtn.addEventListener("click", applyCenter);
+        const translateBtn = $("translate-apply");
+        if (translateBtn) translateBtn.addEventListener("click", applyTranslate);
 
         // M3: delete + add-atom op buttons.
         const delBtn = $("delete-apply");
@@ -1128,5 +1150,10 @@
         getViewer:          () => viewer,
         getSelected:        () => Array.from(state.selected),
         getNAtoms:          () => state.n_atoms,
+        // getState is read-only (we expose the raw state object,
+        // tests must not mutate it).  Used by Geom-subtab tests to
+        // probe positions after a translate / center op without
+        // round-tripping through xyz parsing.
+        getState:           () => state,
     };
 })();

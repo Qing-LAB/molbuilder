@@ -1130,6 +1130,101 @@ def test_modify_rotate_rejects_non_numeric_angle(web_client):
     assert "angle" in r.get_json()["error"]
 
 
+# --------------------------------------------------------------------- #
+#  /api/modify/translate                                                 #
+# --------------------------------------------------------------------- #
+
+
+def test_modify_translate_recenter_puts_centroid_at_origin(web_client):
+    """``recenter: true`` translates so the geometric centroid sits
+    at (0, 0, 0).  The fixture _LINEAR_XYZ is (1,1,1)/(2,2,2)/(3,3,3)/
+    (4,4,4) so its centroid is (2.5, 2.5, 2.5); after recentering
+    every coord is shifted by -2.5."""
+    r = web_client.post("/api/modify/translate", json={
+        "xyz": _LINEAR_XYZ,
+        "recenter": True,
+    })
+    body = r.get_json()
+    assert body["ok"] is True
+    coords = _coords_from_xyz(body["xyz"])
+    cx = sum(c[0] for c in coords) / len(coords)
+    cy = sum(c[1] for c in coords) / len(coords)
+    cz = sum(c[2] for c in coords) / len(coords)
+    assert abs(cx) < 1e-9, cx
+    assert abs(cy) < 1e-9, cy
+    assert abs(cz) < 1e-9, cz
+
+
+def test_modify_translate_offset_shifts_every_atom_by_delta(web_client):
+    """``{dx, dy, dz}`` shifts every coordinate by exactly that
+    vector and preserves intra-structure distances."""
+    r = web_client.post("/api/modify/translate", json={
+        "xyz": _LINEAR_XYZ,
+        "dx": 10.0, "dy": -5.0, "dz": 0.5,
+    })
+    body = r.get_json()
+    assert body["ok"] is True
+    out = _coords_from_xyz(body["xyz"])
+    src = _coords_from_xyz(_LINEAR_XYZ)
+    for s, o in zip(src, out):
+        assert abs(o[0] - s[0] - 10.0) < 1e-9
+        assert abs(o[1] - s[1] + 5.0) < 1e-9
+        assert abs(o[2] - s[2] - 0.5) < 1e-9
+
+
+def test_modify_translate_recenter_wins_over_dxdydz(web_client):
+    """When both ``recenter`` and ``{dx,dy,dz}`` are supplied the
+    server takes the recenter path (documented behaviour); the dx
+    fields are silently ignored."""
+    r = web_client.post("/api/modify/translate", json={
+        "xyz": _LINEAR_XYZ,
+        "recenter": True,
+        "dx": 999.0, "dy": -999.0, "dz": 999.0,
+    })
+    coords = _coords_from_xyz(r.get_json()["xyz"])
+    cx = sum(c[0] for c in coords) / len(coords)
+    # Centroid at origin -- the dx/dy/dz fields were ignored.
+    assert abs(cx) < 1e-9, cx
+
+
+def test_modify_translate_zero_default_is_a_noop(web_client):
+    """Omitting dx/dy/dz defaults each to 0.0; the result is byte-
+    identical xyz with the same atom count."""
+    r = web_client.post("/api/modify/translate", json={"xyz": _LINEAR_XYZ})
+    body = r.get_json()
+    assert body["ok"] is True
+    src = _coords_from_xyz(_LINEAR_XYZ)
+    out = _coords_from_xyz(body["xyz"])
+    for s, o in zip(src, out):
+        for a, b in zip(s, o):
+            assert abs(a - b) < 1e-12
+
+
+def test_modify_translate_rejects_non_numeric_offset(web_client):
+    r = web_client.post("/api/modify/translate", json={
+        "xyz": _LINEAR_XYZ,
+        "dx": "pizza",
+    })
+    assert r.status_code == 400
+    assert "number" in r.get_json()["error"]
+
+
+def test_modify_translate_preserves_metadata(web_client):
+    """Per-atom metadata round-trips through translate (rigid op)."""
+    r = web_client.post("/api/modify/translate", json={
+        "xyz": _LINEAR_XYZ,
+        "atom_names":    ["C1", "C2", "C3", "C4"],
+        "residue_ids":   [1, 1, 1, 1],
+        "residue_names": ["MOL", "MOL", "MOL", "MOL"],
+        "chain_ids":     ["A", "A", "A", "A"],
+        "dx": 1.0,
+    })
+    body = r.get_json()
+    assert body["atom_names"] == ["C1", "C2", "C3", "C4"]
+    assert body["residue_ids"] == [1, 1, 1, 1]
+    assert body["chain_ids"] == ["A", "A", "A", "A"]
+
+
 def test_modify_orient_then_rotate_chains_through_metadata(web_client):
     """Chain orient -> rotate while preserving per-atom metadata
     (matches the spec § 5 invariant)."""
