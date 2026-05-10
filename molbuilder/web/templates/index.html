@@ -299,6 +299,21 @@
 
         <fieldset title="Geometry optimisation algorithm and convergence.">
           <legend>Relaxation</legend>
+          <label title="Bulk-fill the convergence parameters for a coarse-to-fine staged relaxation.&#10;Coarse: get into the basin fast (loose tols, big steps).&#10;Medium: refine to publication tolerance.&#10;Tight: final production geometry.&#10;Run all three stages in sequence with the SAME SystemLabel in the SAME directory; SIESTA reuses .XV (coords) and .DM (density matrix) automatically.&#10;See the Watch tab's 'Staged relaxation workflow' panel for the full recipe.&#10;Custom keeps your current values untouched.">
+            <strong>Relaxation stage</strong>
+            <select id="p-stage-preset">
+              <option value="custom" selected>Custom (no auto-fill)</option>
+              <option value="coarse">Stage 1 — Coarse (fast descent)</option>
+              <option value="medium">Stage 2 — Medium (refine)</option>
+              <option value="tight">Stage 3 — Tight (production)</option>
+            </select>
+          </label>
+          <p class="hint" style="margin: 0.2em 0 0.6em; font-size: 0.82em;">
+            For staged tightening, run all stages with the SAME SystemLabel
+            in the SAME directory.  SIESTA reads <code>.XV</code> /
+            <code>.DM</code> from the previous stage automatically.
+            Full guide on the <strong>Watch</strong> tab.
+          </p>
           <label title="Geometry optimisation algorithm or dynamics type.&#10;CG: conjugate-gradient (robust default for small-medium systems).&#10;Broyden: BFGS-like, often faster on flat surfaces.&#10;FIRE: fast inertial relaxation, good for large systems.&#10;Verlet: velocity-Verlet NVE molecular dynamics (constant energy).&#10;Nose: Nose-Hoover NVT dynamics (constant temperature -- also set MD.InitialTemperature).&#10;none: single-point SCF, no relaxation.">
             MD.TypeOfRun
             <select id="p-relax">

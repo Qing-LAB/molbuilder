@@ -184,6 +184,176 @@ Engine-native files (also supported):
       <div id="scf-gnorm-plot"  class="plot"></div>
     </div>
   </section>
+
+  <!-- Staged-relaxation workflow guide.  Always rendered; a
+       <details> element gives native collapsibility (no JS).  The
+       guide explains the SIESTA restart contract and the canonical
+       coarse->medium->tight recipe so users can tighten convergence
+       without losing previous work.  The Build tab's "Relaxation
+       stage" preset selector bulk-fills the matching parameter
+       values; this guide is the reference. -->
+  <section class="workflow-row">
+    <details id="workflow-guide" class="workflow-card">
+      <summary>
+        <span class="workflow-title">Staged relaxation workflow</span>
+        <span class="workflow-hint">— how to tighten convergence without
+          losing previous work</span>
+      </summary>
+      <div class="workflow-body">
+
+        <p class="workflow-lead">
+          SIESTA writes three "state" files into the run directory at every
+          run with the same <code>SystemLabel</code>.  Re-running SIESTA in
+          the same directory with the same label automatically picks them
+          up and continues — that's the mechanism for incrementally
+          tightening convergence parameters without re-doing the early
+          relaxation steps.
+        </p>
+
+        <h4 class="workflow-h">Restart files (written automatically)</h4>
+        <table class="workflow-table">
+          <thead><tr>
+            <th>File</th><th>Holds</th><th>Read by</th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td><code>&lt;label&gt;.XV</code></td>
+              <td>latest atomic coordinates + velocities</td>
+              <td><code>MD.UseSaveXV true</code></td>
+            </tr>
+            <tr>
+              <td><code>&lt;label&gt;.DM</code></td>
+              <td>converged density matrix from the last SCF</td>
+              <td><code>DM.UseSaveDM true</code></td>
+            </tr>
+            <tr>
+              <td><code>&lt;label&gt;.CG</code></td>
+              <td>conjugate-gradient line-search state</td>
+              <td><code>MD.UseSaveCG true</code> (CG only)</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="workflow-note">
+          molbuilder generates FDF files with all three flags <strong>on</strong>
+          by default — a continuation works for free as long as you keep
+          the same <code>SystemLabel</code> in the same directory.
+        </p>
+
+        <h4 class="workflow-h">The 3-stage recipe (recommended)</h4>
+        <table class="workflow-table workflow-recipe">
+          <thead><tr>
+            <th></th>
+            <th>Stage 1 — Coarse</th>
+            <th>Stage 2 — Medium</th>
+            <th>Stage 3 — Tight</th>
+          </tr></thead>
+          <tbody>
+            <tr>
+              <td>Goal</td>
+              <td>get into the basin fast</td>
+              <td>refine to publication tolerance</td>
+              <td>final production geometry</td>
+            </tr>
+            <tr>
+              <td>MaxForceTol (eV/Å)</td>
+              <td>0.04</td><td>0.02</td><td>0.01</td>
+            </tr>
+            <tr>
+              <td>MaxDispl (Å)</td>
+              <td>0.20</td><td>0.10</td><td>0.05</td>
+            </tr>
+            <tr>
+              <td>DM.Tolerance</td>
+              <td>1e-3</td><td>1e-4</td><td>1e-5</td>
+            </tr>
+            <tr>
+              <td>MeshCutoff (Ry)</td>
+              <td>200</td><td>300</td><td>400</td>
+            </tr>
+            <tr>
+              <td>PAO.EnergyShift (Ry)</td>
+              <td>0.02</td><td>0.01</td><td>0.005</td>
+            </tr>
+            <tr>
+              <td>DM.MixingWeight</td>
+              <td>0.05</td><td>0.02</td><td>0.01</td>
+            </tr>
+            <tr>
+              <td>NumCGsteps cap</td>
+              <td>80</td><td>40</td><td>30</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="workflow-note">
+          The Build tab's <strong>Relaxation stage</strong> select
+          (in the SIESTA panel) bulk-fills these values.  Generate one
+          FDF per stage; run SIESTA on each in turn with the SAME
+          <code>SystemLabel</code> in the SAME directory.
+        </p>
+
+        <h4 class="workflow-h">What you can change between stages — and what you can't</h4>
+        <div class="workflow-cols">
+          <div>
+            <h5 class="workflow-good">✔ Safe to change</h5>
+            <ul>
+              <li>Convergence parameters (force tol, DM tol, max displ)</li>
+              <li>MeshCutoff (mesh re-built; DM transfers)</li>
+              <li>k-grid (DM transfers; one cold SCF step possible)</li>
+              <li>MD.TypeOfRun (CG → Broyden → FIRE)</li>
+              <li>PAO.EnergyShift, IF orbital count doesn't change</li>
+              <li>DM.MixingWeight / SCF damping</li>
+            </ul>
+          </div>
+          <div>
+            <h5 class="workflow-bad">✘ Will break the restart</h5>
+            <ul>
+              <li>Number of atoms / atomic species</li>
+              <li>Pseudopotentials (different .psml files)</li>
+              <li>Basis size (SZ / DZ / DZP / TZP)</li>
+              <li>Lattice vectors (different cell)</li>
+              <li>SystemLabel (then SIESTA can't find the saved files)</li>
+              <li>Spin polarization toggle (DM shape changes)</li>
+            </ul>
+          </div>
+        </div>
+
+        <h4 class="workflow-h">Step-by-step</h4>
+        <ol class="workflow-steps">
+          <li>
+            <strong>Build tab → Generate FDF</strong> with
+            <em>Relaxation stage = Coarse</em>.  Save as
+            e.g. <code>job-stage1.fdf</code> in your run directory.
+          </li>
+          <li>
+            Run SIESTA: <code>siesta &lt; job-stage1.fdf &gt; stage1.log</code>.
+            Open the <code>job.molwatch.log</code> in this Watch tab to
+            monitor convergence.
+          </li>
+          <li>
+            When stage 1 converges (or stalls near the basin), back to
+            Build tab → switch <em>Relaxation stage</em> to
+            <strong>Medium</strong> (the form fields update
+            automatically).  Generate FDF again, save as
+            <code>job-stage2.fdf</code> in the SAME directory.
+          </li>
+          <li>
+            Run <code>siesta &lt; job-stage2.fdf &gt; stage2.log</code>.
+            SIESTA reads <code>job.XV</code> and <code>job.DM</code>
+            from stage 1 — the first SCF starts warm, subsequent
+            geometry steps need fewer SCF iterations.
+          </li>
+          <li>
+            Repeat with <em>Relaxation stage = Tight</em> for the final
+            production geometry.  The relaxed coordinates land in
+            <code>job.STRUCT_OUT</code>; you can also use the
+            <strong>Save current frame as XYZ</strong> button on this
+            Watch tab to grab any frame.
+          </li>
+        </ol>
+
+      </div>
+    </details>
+  </section>
 </main>
 
 <script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>

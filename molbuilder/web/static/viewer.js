@@ -832,6 +832,7 @@
         "kind", "input-text", "backend", "form", "terminal",
         "add-hydrogens", "protonate-phosphates",
         // SIESTA
+        "p-stage-preset",
         "p-system-name", "p-system-label", "p-basis", "p-mesh-cutoff",
         "p-pao-energy-shift", "p-xc-functional", "p-xc-authors",
         "p-solution-method", "p-mixing-weight", "p-pulay-history",
@@ -962,6 +963,69 @@
     // sequence is in the input box AND the helix is in the viewer).
     restoreStructureState();
     window.addEventListener("pagehide", saveStructureState);
+
+    // ----- Staged-relaxation presets ----------------------------- //
+    // The Watch tab carries the full workflow guide; the Build tab's
+    // job is to make it one-click to fill the SIESTA convergence
+    // params for each stage.  Same SystemLabel + same directory ->
+    // SIESTA reads the previous stage's .XV and .DM automatically.
+    //
+    // Values are the ones documented in the Watch tab's recipe table.
+    // The ``custom`` option does NOT reset anything -- it just stops
+    // auto-filling so the user can fine-tune individual fields.
+    const STAGE_PRESETS = {
+        coarse: {
+            "p-mesh-cutoff":         200,
+            "p-pao-energy-shift":    0.02,
+            "p-mixing-weight":       0.05,
+            "p-dm-tolerance":        1e-3,
+            "p-dm-energy-tolerance": 1e-3,
+            "p-relax-steps":         80,
+            "p-force-tol":           0.04,
+            "p-max-displ":           0.20,
+        },
+        medium: {
+            "p-mesh-cutoff":         300,
+            "p-pao-energy-shift":    0.01,
+            "p-mixing-weight":       0.02,
+            "p-dm-tolerance":        1e-4,
+            "p-dm-energy-tolerance": 1e-4,
+            "p-relax-steps":         40,
+            "p-force-tol":           0.02,
+            "p-max-displ":           0.10,
+        },
+        tight: {
+            "p-mesh-cutoff":         400,
+            "p-pao-energy-shift":    0.005,
+            "p-mixing-weight":       0.01,
+            "p-dm-tolerance":        1e-5,
+            "p-dm-energy-tolerance": 1e-5,
+            "p-relax-steps":         30,
+            "p-force-tol":           0.01,
+            "p-max-displ":           0.05,
+        },
+    };
+
+    function applyStagePreset(stage) {
+        const preset = STAGE_PRESETS[stage];
+        if (!preset) return;
+        Object.entries(preset).forEach(([id, value]) => {
+            const el = $(id);
+            if (!el) return;
+            el.value = String(value);
+            // Fire 'change' so the preflight + sessionStorage handlers
+            // see the new value as if the user had typed it.
+            el.dispatchEvent(new Event("change", { bubbles: true }));
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+    }
+
+    const stageSel = $("p-stage-preset");
+    if (stageSel) {
+        stageSel.addEventListener("change", () => {
+            applyStagePreset(stageSel.value);
+        });
+    }
 
     // Wire each engine-scoped form input to the debounced preflight
     // refresh so the issues panel updates live as the user adjusts

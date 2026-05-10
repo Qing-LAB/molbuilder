@@ -167,6 +167,29 @@ up identically to a fresh build.
 
 The full Modify spec lives at `docs/spec/modify-tab.md`.
 
+### Staged SIESTA relaxation (coarse → medium → tight)
+
+Production geometry optimisation usually doesn't run with tight
+convergence from the start.  The faster route is to **stage** the
+calculation: a coarse run (loose tolerances, big steps) gets the
+structure into the energy basin; a medium run refines it; a tight
+final run produces the publication-grade geometry.  Each stage
+**continues** the previous one — SIESTA reads `<label>.XV` for
+coordinates and `<label>.DM` for the SCF starting guess from the
+previous run, so the early relaxation work is never repeated.
+
+The Build tab's SIESTA panel has a **Relaxation stage** select that
+bulk-fills the right convergence parameters for each stage (Coarse /
+Medium / Tight); the **Watch tab** carries the full workflow guide
+in an embedded "Staged relaxation workflow" panel — open it on
+`/watch` for the recipe table, the restart-file contract, and a
+do/don't list.
+
+The mechanical contract: keep `SystemLabel` **identical** across all
+stages and run them all in the **same directory**.  molbuilder's
+generated FDF emits `DM.UseSaveDM`, `MD.UseSaveXV`, `MD.UseSaveCG`
+all `.true.` by default, so the continuation works for free.
+
 ### Watch tab — how it works
 
 Auto-detected formats:
