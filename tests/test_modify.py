@@ -689,6 +689,64 @@ def test_symmetric_electrodes_handles_tilted_molecule():
     )
 
 
+def test_symmetric_electrodes_anchorless_centres_on_origin(linear_dimer):
+    """``anchor_indices=None`` (default) places the slab pair
+    symmetrically around the world origin: closest layers at ±gap/2
+    in absolute z, regardless of where the molecule sits."""
+    out = add_symmetric_electrodes(linear_dimer, "Au", "111",
+                                   size=(2, 2, 2), gap=10.0)
+    elc_z = np.array([p[2] for n, p in zip(out.residue_names, out.positions)
+                      if n == "ELC"])
+    top = elc_z[elc_z > 0].min()
+    bot = elc_z[elc_z < 0].max()
+    assert abs(top - 5.0) < 1e-9, top
+    assert abs(bot + 5.0) < 1e-9, bot
+
+
+def test_symmetric_electrodes_anchorless_works_for_offset_origin():
+    """With atom 0 NOT near the centroid, the closest layers still
+    land at ±gap/2 absolute (regression: the old contact_top<=0
+    guard rejected this case spuriously)."""
+    s = Structure(elements=["C", "C", "C"],
+                  positions=np.array([[10.0, 0, -1],
+                                       [10.0, 0,  0],
+                                       [10.0, 0,  1]]))
+    out = add_symmetric_electrodes(s, "Au", "111",
+                                   size=(2, 2, 2), gap=10.0)
+    elc_z = np.array([p[2] for n, p in zip(out.residue_names, out.positions)
+                      if n == "ELC"])
+    assert abs(elc_z[elc_z > 0].min() - 5.0) < 1e-9
+    assert abs(elc_z[elc_z < 0].max() + 5.0) < 1e-9
+
+
+def test_symmetric_electrodes_anchorless_rejects_too_small_gap():
+    """The gap must accommodate the molecule's z-extent + 2× M-X
+    bond margin (1.5 Å each side).  A 6 Å molecule cannot fit in a
+    4 Å gap; reject with an actionable message."""
+    s = Structure(elements=["C"]*5, positions=np.array([
+        [0, 0, -3], [0, 0, -1.5], [0, 0, 0], [0, 0, 1.5], [0, 0, 3],
+    ]))
+    with pytest.raises(ValueError, match="too small"):
+        add_symmetric_electrodes(s, "Au", "111", size=(2, 2, 2), gap=4.0)
+
+
+def test_symmetric_electrodes_anchorless_rejects_nonpositive_gap():
+    """gap == 0 and gap < 0 must be rejected explicitly."""
+    s = Structure(elements=["C"], positions=np.array([[0, 0, 0]]))
+    with pytest.raises(ValueError, match="must be > 0"):
+        add_symmetric_electrodes(s, "Au", "111", size=(2, 2, 2), gap=0.0)
+    with pytest.raises(ValueError, match="must be > 0"):
+        add_symmetric_electrodes(s, "Au", "111", size=(2, 2, 2), gap=-3.0)
+
+
+def test_symmetric_electrodes_anchorless_rejects_empty_structure():
+    """An empty struct can't carry the slab op; the error must point
+    the user at how to load a structure."""
+    s = Structure(elements=[], positions=np.zeros((0, 3)))
+    with pytest.raises(ValueError, match="empty structure"):
+        add_symmetric_electrodes(s, "Au", "111", size=(2, 2, 2), gap=8.0)
+
+
 def test_symmetric_electrodes_offset_propagates_to_both_sides(linear_dimer):
     """The single offset arg shifts BOTH the +z and -z slabs by the
     same (Δx, Δy)."""

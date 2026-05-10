@@ -18,6 +18,11 @@ Routes (no url_prefix; each carries its own full path):
     POST /api/modify/symmetric_electrodes  add_symmetric_electrodes
                                             (pair mode: collinear-z
                                             slabs separated by gap)
+    GET  /api/modify/meta                  dropdown enums (FCC
+                                            elements + planes) for
+                                            the UI; reads from the
+                                            single-source-of-truth
+                                            tuples in molbuilder.modify.
 
 M3 covered the per-atom ops; M4 added orient + rotate; M5 added
 the two electrode endpoints below.  The /api/modify/* surface is
@@ -70,7 +75,7 @@ from __future__ import annotations
 
 from typing import List, Optional, Tuple
 
-from flask import Blueprint, request
+from flask import Blueprint, jsonify, request
 
 from ._shared import (
     err as _err,
@@ -94,6 +99,31 @@ bp = Blueprint("modify", __name__)
 
 
 # --------------------------------------------------------------------- #
+#  /api/modify/meta                                                     #
+# --------------------------------------------------------------------- #
+
+
+@bp.route("/api/modify/meta", methods=["GET"])
+def api_modify_meta():
+    """Return enums the Modify-tab UI needs for its dropdowns.
+
+    The single source of truth for the supported FCC elements and
+    surface planes is ``molbuilder.modify``; the web form populates
+    its <select> / radio groups by hitting this endpoint at page
+    init rather than hardcoding the lists in the HTML template.
+
+    Anti-pattern dodged: parallel field-metadata tables in the web
+    layer that drift from the Python tuples.  Adding a new metal in
+    ``molbuilder.modify`` reaches the UI automatically.
+    """
+    return jsonify({
+        "ok":           True,
+        "fcc_elements": list(SUPPORTED_FCC_ELEMENTS),
+        "fcc_planes":   list(SUPPORTED_FCC_PLANES),
+    })
+
+
+# --------------------------------------------------------------------- #
 #  /api/modify/load                                                     #
 # --------------------------------------------------------------------- #
 
@@ -107,7 +137,7 @@ def api_modify_load():
     body = request.get_json(silent=True) or {}
     try:
         struct = _struct_from_body(body)
-    except (ValueError, Exception) as exc:        # noqa: BLE001
+    except ValueError as exc:
         return _err(f"could not parse xyz: {exc}", 400)
     return _ok_response(struct)
 
@@ -272,7 +302,7 @@ def api_modify_orient():
         new_struct = _orient_along_axis(
             struct, (a0, a1), axis=axis, angle=angle_f, center=center,
         )
-    except (ValueError, Exception) as exc:        # noqa: BLE001
+    except ValueError as exc:
         return _err(f"orient_along_axis failed: {exc}", 400)
     return _ok_response(new_struct)
 
@@ -462,6 +492,8 @@ def api_modify_electrode():
         contact_distance = float(contact_distance)
     except (TypeError, ValueError):
         return _err("'contact_distance' must be numeric", 400)
+    if contact_distance <= 0.0:
+        return _err("'contact_distance' must be > 0 Å", 400)
     side = (body.get("side") or "+z").strip()
     if side not in ("+z", "-z"):
         return _err(f"'side' must be '+z' or '-z'; got {side!r}", 400)
@@ -557,6 +589,8 @@ def api_modify_symmetric_electrodes():
         gap = float(gap)
     except (TypeError, ValueError):
         return _err("'gap' must be numeric", 400)
+    if gap <= 0.0:
+        return _err("'gap' must be > 0 Å", 400)
     try:
         new_struct = _add_symmetric_electrodes(
             struct, element, plane, size, anchor_indices,

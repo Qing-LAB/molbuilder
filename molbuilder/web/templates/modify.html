@@ -283,7 +283,7 @@ is dominated by the slabs and 3Dmol's auto-pivot drifts off the molecule.">Focus
           centroid sits at (0,&nbsp;0,&nbsp;0).  Rotates and zooms
           stay centred afterwards.
         </p>
-        <button id="center-apply" class="full-btn">
+        <button id="center-apply" class="full-btn" disabled>
           Center at origin
         </button>
       </fieldset>
@@ -309,7 +309,7 @@ is dominated by the slabs and 3Dmol's auto-pivot drifts off the molecule.">Focus
                    step="0.1" value="0.0">
           </label>
         </div>
-        <button id="translate-apply" class="full-btn">
+        <button id="translate-apply" class="full-btn" disabled>
           Apply translate
         </button>
       </fieldset>
@@ -342,21 +342,14 @@ is dominated by the slabs and 3Dmol's auto-pivot drifts off the molecule.">Focus
 
         <div class="op-row">
           <label>Element
-            <select id="elc-element">
-              <option value="Au" selected>Au</option>
-              <option value="Ag">Ag</option>
-              <option value="Cu">Cu</option>
-              <option value="Ni">Ni</option>
-              <option value="Pt">Pt</option>
-              <option value="Pd">Pd</option>
-            </select>
+            <!-- Options populated at init from /api/modify/meta so the
+                 list never drifts from molbuilder.modify's
+                 SUPPORTED_FCC_ELEMENTS tuple. -->
+            <select id="elc-element"></select>
           </label>
           <label>Plane
-            <span class="axis-radios">
-              <label><input type="radio" name="elc-plane" value="100">100</label>
-              <label><input type="radio" name="elc-plane" value="110">110</label>
-              <label><input type="radio" name="elc-plane" value="111" checked>111</label>
-            </span>
+            <!-- Same: radios populated from SUPPORTED_FCC_PLANES at init. -->
+            <span class="axis-radios" id="elc-plane-radios"></span>
           </label>
         </div>
 
@@ -374,9 +367,13 @@ is dominated by the slabs and 3Dmol's auto-pivot drifts off the molecule.">Focus
 
         <label class="slider-row">
           <span id="elc-gap-label">gap</span>
+          <!-- Default 12 Å.  A canonical Au-S-X-S-Au junction with
+               two 2.4 Å contacts leaves only 7.2 Å of molecule -- enough
+               for benzenedithiol-class molecules.  Most published
+               junctions (oligophenyl, alkanedithiols, OPV3) need 12-20 Å. -->
           <input id="elc-gap" type="range"
-                 min="2.0" max="20.0" step="0.1" value="8.0">
-          <span id="elc-gap-val" class="readout-inline">8.0 Å</span>
+                 min="4.0" max="30.0" step="0.1" value="12.0">
+          <span id="elc-gap-val" class="readout-inline">12.0 Å</span>
         </label>
 
         <label class="slider-row">

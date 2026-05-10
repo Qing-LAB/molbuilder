@@ -1347,6 +1347,43 @@ def test_modify_symmetric_electrodes_anchorless_centres_on_origin(web_client):
     assert abs(max(bot) + 4.0) < 1e-6, f"bot closest z = {max(bot)}"
 
 
+def test_modify_meta_lists_supported_elements_and_planes(web_client):
+    """/api/modify/meta returns the SAME tuples molbuilder.modify
+    exports.  This is the wire contract that lets the UI populate
+    its dropdowns without duplicating the lists in HTML."""
+    from molbuilder.modify import (SUPPORTED_FCC_ELEMENTS,
+                                    SUPPORTED_FCC_PLANES)
+    r = web_client.get("/api/modify/meta")
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["fcc_elements"] == list(SUPPORTED_FCC_ELEMENTS)
+    assert body["fcc_planes"]   == list(SUPPORTED_FCC_PLANES)
+
+
+def test_modify_symmetric_electrodes_rejects_nonpositive_gap(web_client):
+    """A 0 / negative gap is rejected at the route boundary so the
+    user gets an actionable 400 instead of a downstream geometry
+    error."""
+    for gap in (0.0, -3.0):
+        r = web_client.post("/api/modify/symmetric_electrodes", json={
+            "xyz": _SS_XYZ, "element": "Au", "plane": "111",
+            "size": [2, 2, 1], "gap": gap,
+        })
+        assert r.status_code == 400, gap
+        assert "gap" in r.get_json()["error"], gap
+
+
+def test_modify_electrode_rejects_nonpositive_contact_distance(web_client):
+    """Single-mode contact distance must be strictly positive."""
+    r = web_client.post("/api/modify/electrode", json={
+        "xyz": _SS_XYZ, "element": "Au", "plane": "111",
+        "size": [2, 2, 1], "anchor_index": 0,
+        "contact_distance": 0.0, "side": "+z",
+    })
+    assert r.status_code == 400
+    assert "contact_distance" in r.get_json()["error"]
+
+
 def test_modify_symmetric_electrodes_anchorless_offset_shifts_xy(web_client):
     """Anchorless + ``offset:[Δx, Δy]`` shifts both slabs in xy
     while keeping the z midpoint on the origin."""

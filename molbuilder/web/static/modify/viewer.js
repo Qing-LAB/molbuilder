@@ -405,6 +405,12 @@
         // loaded.  Rotation doesn't need a selection.
         const rotateBtn = $("rotate-apply");
         if (rotateBtn) rotateBtn.disabled = locked || state.n_atoms === 0;
+        // Geom subtab: Center + Translate operate on the whole
+        // structure with no selection requirement; only need atoms.
+        const centerBtn = $("center-apply");
+        if (centerBtn) centerBtn.disabled = locked || state.n_atoms === 0;
+        const translateBtn = $("translate-apply");
+        if (translateBtn) translateBtn.disabled = locked || state.n_atoms === 0;
         // M5: Electrode + Send-to-Build buttons.  Electrode requires
         // the right number of anchors for its mode (1 for single,
         // 2 for symmetric); Send-to-Build needs a structure.
@@ -858,6 +864,51 @@
         };
     }
 
+    // Populate the element <select> and plane radios from the
+    // server's /api/modify/meta endpoint so the UI never duplicates
+    // ``SUPPORTED_FCC_ELEMENTS`` / ``SUPPORTED_FCC_PLANES`` from the
+    // Python source.  Adding a new metal in molbuilder.modify reaches
+    // the dropdown automatically; no template change.  Defaults: first
+    // element is selected, plane "111" is checked when present (it's
+    // the canonical close-packed surface for transport junctions).
+    async function populateElectrodeMeta() {
+        let meta = null;
+        try {
+            const r = await fetch("/api/modify/meta");
+            meta = await r.json();
+        } catch (_e) { /* fall through to a hard-coded fallback below */ }
+        const elements = (meta && meta.fcc_elements)
+            || ["Au", "Ag", "Cu", "Ni", "Pt", "Pd"];
+        const planes   = (meta && meta.fcc_planes)
+            || ["100", "110", "111"];
+        const elSel = $("elc-element");
+        if (elSel) {
+            elSel.innerHTML = "";
+            for (const sym of elements) {
+                const opt = document.createElement("option");
+                opt.value = sym;
+                opt.textContent = sym;
+                if (sym === "Au") opt.selected = true;
+                elSel.appendChild(opt);
+            }
+        }
+        const planeBox = $("elc-plane-radios");
+        if (planeBox) {
+            planeBox.innerHTML = "";
+            for (const p of planes) {
+                const lbl = document.createElement("label");
+                const inp = document.createElement("input");
+                inp.type = "radio";
+                inp.name = "elc-plane";
+                inp.value = p;
+                if (p === "111") inp.checked = true;
+                lbl.appendChild(inp);
+                lbl.appendChild(document.createTextNode(p));
+                planeBox.appendChild(lbl);
+            }
+        }
+    }
+
     function refreshElcReadouts() {
         $("elc-gap-val").textContent = `${Number($("elc-gap").value).toFixed(1)} Å`;
         $("elc-dx-val").textContent  = Number($("elc-dx").value).toFixed(2);
@@ -1017,23 +1068,52 @@
         const focusBtn = $("focus-molecule");
         if (focusBtn) focusBtn.addEventListener("click", focusMolecule);
 
-        // Re-anchor rotation pivot on every plain left-mousedown over
-        // the viewer canvas.  3Dmol's pivot is the camera lookAt;
-        // ctrl/shift-pan moves the lookAt, so a rotation that
-        // follows a pan would orbit the molecule eccentrically.
-        // Snapping the lookAt back to the structure centroid before
-        // rotation begins makes every rotation pivot on the molecule
-        // (or on the bounding-box centroid if no slabs are present).
-        // Skip when ctrl/shift/alt is held -- those modifiers signal
-        // pan / zoom and must not snap.  Mouse-button distinction:
-        // the snap fires on left-button only because right-button
-        // and middle-button drags are 3Dmol's pan/zoom, not rotate.
+        // Re-anchor the rotation pivot on the FIRST drag-confirming
+        // mousemove of every plain left-button gesture.  3Dmol's
+        // pivot is the camera lookAt; ctrl/shift-pan moves the
+        // lookAt, so a follow-up rotation would orbit the molecule
+        // eccentrically.  Snapping back to the structure centroid
+        // before rotation kicks in fixes that.
+        //
+        // We DON'T snap on raw mousedown -- that would visibly jump
+        // the camera every time the user clicks an atom to select it
+        // (mousedown without drag).  Instead we wait for a movement
+        // > DRAG_THRESHOLD_PX from the press point; at that point
+        // the gesture has committed to "drag", so a snap is invisible
+        // (the user is already moving the camera).  Modifier keys
+        // (ctrl / shift / alt) signal pan / zoom and must NOT snap.
+        const DRAG_THRESHOLD_PX = 4;
         const viewerEl = $("viewer");
         if (viewerEl) {
+            let pressX = null, pressY = null, pressNoMods = false;
+            let snapped = false;
             viewerEl.addEventListener("mousedown", (e) => {
-                if (e.button !== 0) return;
-                if (e.ctrlKey || e.shiftKey || e.altKey) return;
-                snapPivotToCenter();
+                if (e.button !== 0) {
+                    pressNoMods = false;
+                    return;
+                }
+                pressX = e.clientX;
+                pressY = e.clientY;
+                pressNoMods = !(e.ctrlKey || e.shiftKey || e.altKey);
+                snapped = false;
+            });
+            viewerEl.addEventListener("mousemove", (e) => {
+                if (!pressNoMods || snapped) return;
+                if (pressX === null || pressY === null) return;
+                const dx = e.clientX - pressX;
+                const dy = e.clientY - pressY;
+                if (dx * dx + dy * dy >= DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) {
+                    snapPivotToCenter();
+                    snapped = true;
+                }
+            });
+            viewerEl.addEventListener("mouseup", () => {
+                pressX = pressY = null;
+                pressNoMods = false;
+            });
+            viewerEl.addEventListener("mouseleave", () => {
+                pressX = pressY = null;
+                pressNoMods = false;
             });
         }
 
@@ -1090,7 +1170,11 @@
             const sl = $(id);
             if (sl) sl.addEventListener("input", refreshElcReadouts);
         });
-        refreshElcReadouts();
+        // Populate element + plane controls from /api/modify/meta;
+        // refresh the readouts once the controls exist.  Async so we
+        // don't block the rest of init -- the mode switch and selection
+        // UI are wired off the existing readouts.
+        populateElectrodeMeta().then(refreshElcReadouts);
 
         // Sub-tabs: click an op-tab button to swap which panel is
         // visible.  Pure DOM toggle (no state in the IIFE; the

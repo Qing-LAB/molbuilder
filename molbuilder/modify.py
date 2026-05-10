@@ -157,11 +157,7 @@ def add_atom(
 # --------------------------------------------------------------------- #
 
 
-_AXIS_VECTORS = {
-    "x": np.array([1.0, 0.0, 0.0]),
-    "y": np.array([0.0, 1.0, 0.0]),
-    "z": np.array([0.0, 0.0, 1.0]),
-}
+_AXES = ("x", "y", "z")
 
 
 def _rotation_matrix_from_a_to_b(a: np.ndarray, b: np.ndarray) -> np.ndarray:
@@ -245,7 +241,7 @@ def orient_along_axis(
         * ``"none"``: leave translation unchanged after rotation; only
           rotate.  Use when the caller will translate explicitly.
     """
-    if axis not in _AXIS_VECTORS:
+    if axis not in _AXES:
         raise ValueError(f"axis must be 'x', 'y', or 'z'; got {axis!r}")
     if center not in ("first", "midpoint", "none"):
         raise ValueError(
@@ -323,7 +319,7 @@ def rotate_around_axis(
         angle = counter-clockwise when looking down the axis from +
         toward origin).  Default ``0.0`` is a no-op.
     """
-    if axis not in _AXIS_VECTORS:
+    if axis not in _AXES:
         raise ValueError(f"axis must be 'x', 'y', or 'z'; got {axis!r}")
     theta_rad = np.radians(float(angle))
     c, s = np.cos(theta_rad), np.sin(theta_rad)
@@ -666,6 +662,24 @@ def add_electrode_slab(
     z_unique = sorted({round(float(z), 4) for z in z_vals})
     z_min = z_unique[0]
 
+    # Sanity-check ASE's slab orientation: every atom in a given
+    # layer must have the same z (within FP tolerance), i.e. the slab
+    # surface normal is parallel to z.  ASE's ``fcc{100,110,111}``
+    # builders honour this convention today; the assertion is a guard
+    # so a future ASE convention change (or a misinterpreted custom
+    # ``lattice_constant``) can't silently produce a tilted slab,
+    # which would invalidate transport-DFT lead self-energy
+    # assumptions.
+    for z_layer in z_unique:
+        in_layer = metal_pos[np.abs(metal_pos[:, 2] - z_layer) < 1e-3, 2]
+        if len(in_layer) and float(np.std(in_layer)) > 1e-6:
+            raise RuntimeError(
+                f"ASE slab is not z-perpendicular (layer at z={z_layer} "
+                f"has within-layer z-std {np.std(in_layer):.2e} > 1e-6). "
+                f"Surface normal must be along z for transport-DFT "
+                f"electrodes.  Aborting; this is a build-tool regression."
+            )
+
     # Translate so the slab's lateral centroid (average xy of every
     # electrode atom) lands at ``(anchor.x + offset[0], anchor.y +
     # offset[1])``.  The default ``offset=(0, 0)`` puts the slab
@@ -787,33 +801,52 @@ def add_symmetric_electrodes(
     if anchor_indices is None:
         # Anchorless / origin-centred mode (the recommended workflow).
         # The slabs sit at z = ±gap/2 around the origin; xy is centred
-        # on (offset_x, offset_y).  We still need ATOMS in struct to
-        # pin the existing molecule on (it carries through the
-        # add_electrode_slab call), but no per-atom anchor is read --
-        # we synthesise a fake anchor at the origin via index 0 and
-        # cancel out its contribution with a compensating offset.
+        # on (offset_x, offset_y).  We still need ATOMS in struct so
+        # the molecule is preserved through the add_electrode_slab
+        # call; the GEOMETRIC CENTROID of the molecule (atom-coordinate
+        # mean) plays the role of the synthetic anchor, with a
+        # compensating offset so the slab lands on the absolute
+        # z = ±gap/2 plane regardless of where the molecule sits.
         if struct.n_atoms == 0:
             raise ValueError(
-                "cannot add electrodes to an empty structure"
+                "cannot add electrodes to an empty structure; load a "
+                "molecule first (Build tab, /api/build/load, or one "
+                "of the molbuilder build CLIs)"
             )
-        contact = gap / 2.0
-        # Pick atom 0 as the ASE-call anchor; the two add_electrode_slab
-        # calls below offset its xy to land at (offset_x, offset_y) and
-        # adjust the contact so the closest layer is at ±gap/2 in
-        # absolute z (independent of where atom 0 happens to sit).
+        if gap <= 0.0:
+            raise ValueError(
+                f"gap = {gap:.3f} Å must be > 0"
+            )
+        # Reject a gap that's too small for the molecule's z-extent.
+        # The molecule has to fit in the empty space between the slabs;
+        # we leave a ``mol_z_margin`` cushion on each side because a
+        # typical M-X contact bond is ~2.0-2.4 Å.  Rejecting up front
+        # gives the user an actionable message instead of a downstream
+        # min-distance validation error.
+        mol_z = struct.positions[:, 2]
+        mol_z_extent = float(mol_z.max() - mol_z.min())
+        mol_z_margin = 1.5     # Å, generous floor on M-X contact bond
+        min_gap = mol_z_extent + 2.0 * mol_z_margin
+        if gap < min_gap:
+            raise ValueError(
+                f"gap = {gap:.2f} Å is too small for the molecule's "
+                f"z-extent ({mol_z_extent:.2f} Å). Need ≥ "
+                f"{min_gap:.2f} Å, or shorten / re-orient the "
+                f"molecule so its z-extent is smaller."
+            )
+        # add_electrode_slab places its slab using ``positions[anchor_index]``
+        # as the geometric reference: lateral xy = anchor.xy + offset,
+        # closest-layer z = anchor.z + sign * contact_distance.  We
+        # pass ``anchor_index=0`` and compute ``offset`` and
+        # ``contact_distance`` relative to atom 0 so the cancellation
+        # is consistent: slab xy lands at the user's offset (default
+        # 0,0), closest layers at absolute ±gap/2 (independent of
+        # atom 0's location, which is just a placeholder).  The
+        # CENTROID is used only for the pre-flight z-extent guard
+        # above; it's not the placement reference.
         ref = struct.positions[0]
-        # contact_distance is measured FROM the anchor along ±z, so to
-        # get a closest layer at z = +gap/2 we need
-        # contact_distance = +gap/2 - ref.z, and on the -z side
-        # contact_distance = +gap/2 + ref.z.
         contact_top = (gap / 2.0) - float(ref[2])
         contact_bot = (gap / 2.0) + float(ref[2])
-        if contact_top <= 0.0 or contact_bot <= 0.0:
-            raise ValueError(
-                f"reference atom z = {ref[2]:.3f} is outside the gap "
-                f"(±{gap/2:.3f} Å); centre the molecule with "
-                f"Structure.centered() first, or increase gap."
-            )
         delta_xy = (
             float(offset[0]) - float(ref[0]),
             float(offset[1]) - float(ref[1]),

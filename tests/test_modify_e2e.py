@@ -629,31 +629,144 @@ def test_selection_info_table_shows_atom_details(
     assert cells.nth(6).inner_text() == "0.000"
 
 
-def test_axes_overlay_drawn_when_show_axes_checked(
+def test_axes_have_fixed_length_at_origin(
         page, flask_server, water_xyz_file):
-    """Three axis arrows are drawn at the world origin when the
-    ``Show xyz axes`` checkbox is checked (default).  Verify by
-    counting shapes the test hook can see; toggling the checkbox
-    adds/removes them."""
+    """The xyz axis triad must be a fixed-length compass anchored
+    at the world origin.  Specifically:
+
+      * Three arrows are drawn when ``Show xyz axes`` is checked.
+      * Each arrow's geometry encodes a length of AXIS_LEN (1.5 Å).
+      * The shapes count drops to zero when the box is unchecked
+        and returns to 3 on re-check.
+
+    Stronger than counting shapes alone -- that wouldn't catch a
+    regression where axes scale with the molecule extent (the prior
+    bug)."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
-    # The default state checks the box.
     assert page.locator("#show-axes").is_checked()
-    n_shapes = page.evaluate("""() => {
+    # Probe the axis arrows' encoded vertex distance (3Dmol caches
+    # the start/end vectors on the underlying CylinderShape; we read
+    # them via the viewer's shapes array).  All three axis arrows
+    # must encode a length close to 1.5 Å (AXIS_LEN); the molecule
+    # bounding box is < 2 Å so a regression that re-introduced the
+    # old "axes scale with molecule" bug would still pass a
+    # >=3-arrows count but FAIL this length check on a larger
+    # structure.
+    lengths = page.evaluate("""() => {
         const v = window.__molbuilder_modify_test.getViewer();
-        return v.getModel ? (v.shapes ? v.shapes.length : 0) : 0;
+        const out = [];
+        for (const s of (v.shapes || [])) {
+            const cyl = s && s.intersectionShape && s.intersectionShape.cylinder;
+            if (!cyl || !cyl.length) continue;
+            for (const c of cyl) {
+                const dx = c.c2.x - c.c1.x,
+                      dy = c.c2.y - c.c1.y,
+                      dz = c.c2.z - c.c1.z;
+                out.push(Math.sqrt(dx*dx + dy*dy + dz*dz));
+            }
+        }
+        return out;
     }""")
-    assert n_shapes >= 3, f"expected >= 3 axis arrows; got {n_shapes}"
-    # Uncheck -> shapes drop.
+    # 3Dmol's addArrow with ``mid: 0.85`` and total length 1.5 Å
+    # builds a shaft cylinder of length 0.85 × 1.5 = 1.275 Å plus a
+    # cone for the arrowhead.  We probe the shaft cylinders: three
+    # axes -> three shaft cylinders all at 1.275 Å.  This guards
+    # against the prior regression where axis length scaled with
+    # the structure's bounding box -- a larger molecule would push
+    # the lengths up far beyond 1.275.
+    expected_shaft = 1.5 * 0.85
+    n_axis_length = sum(1 for L in lengths if abs(L - expected_shaft) < 1e-3)
+    assert n_axis_length >= 3, (
+        f"expected >= 3 axis-length cylinders at {expected_shaft:.3f} Å; "
+        f"got lengths {lengths}"
+    )
     page.locator("#show-axes").uncheck()
     page.wait_for_function(
         "() => window.__molbuilder_modify_test.getViewer().shapes.length === 0"
     )
-    # Re-check -> back to 3.
     page.locator("#show-axes").check()
     page.wait_for_function(
         "() => window.__molbuilder_modify_test.getViewer().shapes.length === 3"
     )
+
+
+def test_selected_atom_adds_halo_marker_shape(
+        page, flask_server, water_xyz_file):
+    """Selecting an atom adds a halo marker shape; clearing the
+    selection removes it.  Behavioural contract -- counts the
+    viewer's shape array before and after.  Avoids probing 3Dmol's
+    internal shape representation, which varies across versions."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    n_before = page.evaluate(
+        "() => window.__molbuilder_modify_test.getViewer().shapes.length"
+    )
+    page.locator("#atom-list-body tr").nth(0).click()
+    page.wait_for_function(
+        f"() => window.__molbuilder_modify_test.getViewer().shapes.length"
+        f" > {n_before}"
+    )
+    n_with_halo = page.evaluate(
+        "() => window.__molbuilder_modify_test.getViewer().shapes.length"
+    )
+    # Selecting one atom must add at least one shape (the halo).  3Dmol
+    # may decompose addSphere into multiple internal sub-shapes (e.g.
+    # a wireframe sphere is built from many cylinder line segments
+    # under the hood); we accept any positive delta.
+    assert n_with_halo > n_before, (n_before, n_with_halo)
+    page.locator("#clear-selection").click()
+    page.wait_for_function(
+        f"() => window.__molbuilder_modify_test.getViewer().shapes.length"
+        f" === {n_before}"
+    )
+
+
+def test_focus_molecule_button_recentres_camera(
+        page, flask_server, water_xyz_file):
+    """The Focus-molecule button calls viewer.zoomTo on the non-ELC
+    selection and re-fits the camera.  Verify by capturing the camera
+    state, panning off-axis programmatically, clicking the button,
+    and asserting the camera position changes."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    initial = page.evaluate(
+        "() => window.__molbuilder_modify_test.getViewer().getView()"
+    )
+    page.evaluate("""() => {
+        const v = window.__molbuilder_modify_test.getViewer();
+        const view = v.getView();
+        view[0] += 7; view[1] -= 5;
+        v.setView(view);
+        v.render();
+    }""")
+    page.locator("#focus-molecule").click()
+    after = page.evaluate(
+        "() => window.__molbuilder_modify_test.getViewer().getView()"
+    )
+    # The pan we injected was (+7, -5) on a structure with extent ~1 Å,
+    # so the focus click must move pan offsets meaningfully back
+    # toward the initial values (within 0.5 Å).
+    assert abs(after[0] - initial[0]) < 0.5, (after[0], initial[0])
+    assert abs(after[1] - initial[1]) < 0.5, (after[1], initial[1])
+
+
+def test_focus_molecule_no_op_without_structure(page, flask_server):
+    """Clicking Focus-molecule with no structure loaded must not
+    raise a JS error.  The handler returns early."""
+    errors = _open_modify(page, flask_server)
+    page.locator("#focus-molecule").click()
+    page.wait_for_timeout(100)
+    assert errors == [], f"JS error on focus-molecule no-op: {errors}"
+
+
+def test_geom_buttons_disabled_without_structure(page, flask_server):
+    """Center-at-origin and Translate buttons start disabled before a
+    structure is loaded.  Mirrors the rotate / send-to-build pattern."""
+    _open_modify(page, flask_server)
+    _open_op_tab(page, "geom")
+    assert page.locator("#center-apply").is_disabled()
+    assert page.locator("#translate-apply").is_disabled()
 
 
 # --------------------------------------------------------------------- #
@@ -774,6 +887,38 @@ def test_undo_disabled_after_non_slab_ops(
     )
     _open_op_tab(page, "junction")
     assert page.locator("#undo-op").is_disabled()
+
+
+def test_undo_after_electrode_op_restores_pre_slab_structure(
+        page, flask_server, water_xyz_file):
+    """End-to-end positive Undo path.  Apply an anchorless pair-mode
+    electrode op (no atom selection); atom count grows.  Click Undo;
+    atom count returns to 3.  Undo button disables again at depth 0."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    _open_op_tab(page, "junction")
+    # Set m=n=2, layers=1 -> 4 Au atoms per side -> +8 atoms.
+    for input_id, val in [("elc-m", "2"), ("elc-n", "2"), ("elc-layers", "1")]:
+        page.evaluate(
+            "(args) => {"
+            "  const el = document.getElementById(args.id);"
+            "  el.value = args.val;"
+            "  el.dispatchEvent(new Event('input', {bubbles: true}));"
+            "}",
+            {"id": input_id, "val": val},
+        )
+    # Anchorless pair mode: no selection needed.
+    page.locator("#elc-apply").click()
+    page.wait_for_function(
+        "() => document.querySelectorAll('#atom-list-body tr').length === 11"
+    )
+    undo = page.locator("#undo-op")
+    assert undo.is_enabled()
+    undo.click()
+    page.wait_for_function(
+        "() => document.querySelectorAll('#atom-list-body tr').length === 3"
+    )
+    assert undo.is_disabled()
 
 
 def test_geom_translate_then_center_returns_centroid_to_origin(
