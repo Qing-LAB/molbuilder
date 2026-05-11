@@ -377,17 +377,20 @@ button.primary:disabled,
     border: 1px solid var(--border-soft);
 }
 
-/* Resizable viewer container -- 3Dmol canvas lives inside.
- * We deliberately render the canvas with its own background so the
- * dark UI doesn't shine through (chemistry viewers are usually nicer
- * against a neutral bg). */
+/* Fixed-aspect viewer container -- 3Dmol canvas lives inside.  The
+ * 1:1 aspect ratio is consistent across Build / Modify / Watch so
+ * the user gets a predictable square no matter which tab they're on;
+ * min-height / max-height keep the panel in a comfortable navigation
+ * range (never tiny, never dominates the viewport).  We deliberately
+ * render the canvas with a neutral background so the dark UI doesn't
+ * shine through (chemistry viewers read better against white).  */
 .viewer-wrap {
     width: 100%;
-    height: 480px;
+    max-width: 560px;
+    aspect-ratio: 1 / 1;
     min-height: 320px;
-    min-width: 280px;
-    max-width: 100%;
-    resize: both;
+    max-height: min(60vh, 560px);
+    margin: 0 auto;
     overflow: hidden;
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-sm);

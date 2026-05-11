@@ -613,8 +613,14 @@ The UI shows them in an issues panel mirroring the Build tab's design.
 * **Electrode atoms** carry `residue_name = "ELC"` and `atom_name = element`
   so they're trivially separable from molecule atoms (e.g. by
   `select(residue_name="ELC")` later).
-* **Anchor indices are 0-based** in the Python API; the UI shows them
-  1-based to match the existing atom-index labels in the viewer.
+* **Atom indices are 0-based in the Python API and the wire JSON**
+  (`anchor_index`, `indices: [...]`, etc.).  Every **user-facing**
+  surface (atom-list table, selection readout, selection-info table,
+  viewer overlay labels, error messages quoting an atom) is **1-based**
+  -- matching PDB / SIESTA conventions and the Watch tab's overlay.
+  The JS UI converts at the boundary: `tr.dataset.atomIndex` stays
+  0-based for click handlers and state.selected; the displayed `#`
+  column adds 1.  Build / Modify / Watch all follow this rule.
 
 ### 5.1 Cross-tab persistence (Phase 1)
 

@@ -209,9 +209,16 @@ header .tagline {
 
 /* ---- Viewer (middle) ---- */
 .viewer-card { gap: 0; }
+/* Square viewer, consistent with Build + Watch (aspect-ratio 1:1,
+ * 320 - 560 px clamped to 60vh).  Sits in the centre column of the
+ * .modify-grid; centred horizontally when the container is wider. */
 .viewer-card #viewer.viewer {
-    flex: 1 1 auto;
-    min-height: 380px;
+    width: 100%;
+    max-width: 560px;
+    aspect-ratio: 1 / 1;
+    min-height: 320px;
+    max-height: min(60vh, 560px);
+    margin: 0 auto;
     position: relative;
     background: white;
 }

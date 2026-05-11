@@ -370,7 +370,9 @@
         const fmt = (idx) => {
             const r = frame[idx];
             if (!r) return "—";
-            return "#" + idx + " " + r[0]
+            // Display 1-based to match the Overlays tab's index labels
+            // and the atom-list table; internal idx stays 0-based.
+            return "#" + (idx + 1) + " " + r[0]
                 + "  (" + r[1].toFixed(3)
                 + ", " + r[2].toFixed(3)
                 + ", " + r[3].toFixed(3) + ") Å";
@@ -451,9 +453,12 @@
         for (let i = 0; i < frame.length; i++) {
             const r = frame[i];
             const tr = document.createElement("tr");
+            // dataset.atomIndex stays 0-based (matches state.pickedAtoms
+            // and 3Dmol's atom.serial); the displayed ``#`` column is
+            // 1-based to match the overlay labels in the Overlays tab.
             tr.dataset.atomIndex = String(i);
             tr.innerHTML =
-                '<td class="col-idx">' + i + '</td>' +
+                '<td class="col-idx">' + (i + 1) + '</td>' +
                 '<td class="col-el">'  + (r[0] || "?") + '</td>' +
                 '<td class="col-coord">' + r[1].toFixed(2) + '</td>' +
                 '<td class="col-coord">' + r[2].toFixed(2) + '</td>' +

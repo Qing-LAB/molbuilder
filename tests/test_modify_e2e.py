@@ -215,7 +215,8 @@ def test_clicking_row_highlights_row_and_viewer(
     )
     assert selected == [1]
     # The selection readout in the right panel reflects the pick.
-    assert "#1 H" in page.locator("#selection-readout").inner_text()
+    # User-facing labels are 1-based: 0-based atom 1 -> "#2".
+    assert "#2 H" in page.locator("#selection-readout").inner_text()
 
 
 def test_shift_click_multi_select(
@@ -569,7 +570,8 @@ def test_selection_info_table_shows_atom_details(
     rows = page.locator("#selection-info-body tr")
     assert rows.count() == 1
     cells = rows.first.locator("td")
-    assert cells.nth(0).inner_text() == "1"          # index
+    # Displayed index is 1-based; 0-based atom 1 -> "2".
+    assert cells.nth(0).inner_text() == "2"          # 1-based index
     assert cells.nth(1).inner_text() == "H"          # element
     # Coordinates -- formatted as f"{v:.3f}".
     assert cells.nth(4).inner_text() == "0.957"
@@ -733,9 +735,10 @@ def test_orient_button_enabled_only_with_two_anchors(
     assert btn.is_disabled(), "one selection -> still disabled"
     page.locator("#atom-list-body tr").nth(2).click(modifiers=["Shift"])
     assert btn.is_enabled(), "two selections -> Orient enabled"
-    # Anchor readout reflects both atoms.
+    # Anchor readout reflects both atoms.  Displayed labels are 1-based;
+    # 0-based atoms 0 and 2 -> "#1" and "#3".
     readout = page.locator("#orient-anchor-readout").inner_text()
-    assert "#0" in readout and "#2" in readout
+    assert "#1" in readout and "#3" in readout
     # Adding a third disables again.
     page.locator("#atom-list-body tr").nth(1).click(modifiers=["Shift"])
     assert btn.is_disabled(), "three selections -> Orient disabled"

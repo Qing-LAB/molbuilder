@@ -116,10 +116,15 @@
         clearIndexLabels();
         if (!$("show-indices").checked) return;
         // 3Dmol's selectedAtoms returns the atom records (with x/y/z and
-        // serial).  Label every atom with its 0-based index.
+        // serial).  Label every atom with its 1-based index (matches
+        // the atom-list table, the selection-info table, the Build
+        // viewer's overlay, and PDB/SIESTA conventions).  The Python
+        // API uses 0-based indices; we convert at the UI boundary
+        // (see ``onViewerAtomClick`` for the click->state.selected
+        // direction).
         const atoms = viewer.selectedAtoms({});
         atoms.forEach((a, i) => {
-            const lbl = viewer.addLabel(String(i), {
+            const lbl = viewer.addLabel(String(i + 1), {
                 position: { x: a.x, y: a.y, z: a.z },
                 backgroundColor: "rgba(0,0,0,0.55)",
                 fontColor: "white",
@@ -267,9 +272,14 @@
         tbody.innerHTML = "";
         for (let i = 0; i < state.n_atoms; i++) {
             const tr = document.createElement("tr");
+            // Internal: ``dataset.atomIndex`` stays 0-based (matches
+            // 3Dmol's atom.serial, the Python API's anchor_index,
+            // and ``state.selected``).  The DISPLAYED ``#`` column
+            // is 1-based to match PDB / SIESTA convention and the
+            // viewer overlay.  Click handler uses the 0-based int.
             tr.dataset.atomIndex = String(i);
             tr.innerHTML = `
-                <td class="col-idx">${i}</td>
+                <td class="col-idx">${i + 1}</td>
                 <td class="col-el">${state.elements[i] || ""}</td>
                 <td class="col-name">${state.atom_names[i] || ""}</td>
                 <td class="col-res">${formatResidue(i)}</td>
@@ -308,7 +318,11 @@
         if (!sel.length) {
             out.textContent = "No atoms selected.";
         } else {
-            const parts = sel.map((i) => `#${i} ${state.elements[i]}`);
+            // User-facing labels are 1-based (matches the atom-list
+            // table, the viewer overlay, and PDB/SIESTA convention).
+            const parts = sel.map(
+                (i) => `#${i + 1} ${state.elements[i]}`
+            );
             out.textContent = parts.join(", ");
         }
         const infoTable = $("selection-info");
@@ -321,7 +335,7 @@
                     const p  = state.positions[i] || [0, 0, 0];
                     const tr = document.createElement("tr");
                     tr.innerHTML = `
-                        <td class="col-idx">${i}</td>
+                        <td class="col-idx">${i + 1}</td>
                         <td class="col-el">${state.elements[i] || ""}</td>
                         <td class="col-name">${state.atom_names[i] || ""}</td>
                         <td class="col-res">${formatResidue(i)}</td>
@@ -353,7 +367,7 @@
                 const a = sel[0];
                 addBtn.disabled = locked;
                 anchorReadout.textContent =
-                    `Anchor: #${a} ${state.elements[a]}`;
+                    `Anchor: #${a + 1} ${state.elements[a]}`;
             } else {
                 addBtn.disabled = true;
                 anchorReadout.textContent =
@@ -370,8 +384,8 @@
                 const [a, b] = sel.slice().sort((x, y) => x - y);
                 orientBtn.disabled = locked;
                 orientReadout.textContent =
-                    `Anchors: #${a} ${state.elements[a]} → ` +
-                    `#${b} ${state.elements[b]}`;
+                    `Anchors: #${a + 1} ${state.elements[a]} → ` +
+                    `#${b + 1} ${state.elements[b]}`;
             } else {
                 orientBtn.disabled = true;
                 orientReadout.textContent =
@@ -403,7 +417,7 @@
                 if (sel.length === 1) {
                     elcBtn.disabled = locked;
                     elcReadout.textContent =
-                        `Anchor: #${sel[0]} ${state.elements[sel[0]]}.  ` +
+                        `Anchor: #${sel[0] + 1} ${state.elements[sel[0]]}.  ` +
                         `Side determines which face the slab grows on.`;
                 } else {
                     elcBtn.disabled = true;
@@ -422,8 +436,8 @@
                 } else if (sel.length === 2) {
                     const [a, b] = sel.slice().sort((x, y) => x - y);
                     elcReadout.textContent =
-                        `Legacy mode: slabs flank #${a} ${state.elements[a]} `
-                        + `↔ #${b} ${state.elements[b]} `
+                        `Legacy mode: slabs flank #${a + 1} ${state.elements[a]} `
+                        + `↔ #${b + 1} ${state.elements[b]} `
                         + "(midpoint of the two anchors).";
                 } else {
                     elcBtn.disabled = true;

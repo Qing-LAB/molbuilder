@@ -148,9 +148,17 @@ main {
     align-items: start;
 }
 
+/* Square viewer, consistent with Build + Modify (aspect-ratio 1:1,
+ * 320 - 560 px clamped to 60vh).  The right-hand .controls aside
+ * tracks the same vertical extent so the two panels align top + bot.
+ */
 #viewer {
     width: 100%;
-    height: var(--viewer-height);
+    max-width: 560px;
+    aspect-ratio: 1 / 1;
+    min-height: 320px;
+    max-height: min(60vh, 560px);
+    margin: 0 auto;
     border: 1px solid var(--border-strong);
     background: #ffffff;         /* same white bg as builder's viewer-wrap */
     position: relative;
@@ -165,7 +173,12 @@ main {
     display: flex;
     flex-direction: column;
     gap: 0;
+    /* Match the viewer's height clamp so the right aside aligns with
+     * the square viewer panel.  ``--viewer-height`` is kept as the
+     * legacy variable name; value is the same min(60vh, 560px). */
     height: var(--viewer-height);
+    min-height: 320px;
+    max-height: min(60vh, 560px);
     background: var(--bg-card);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius);
