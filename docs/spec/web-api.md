@@ -47,7 +47,7 @@ detection chain (in-tree → `$X3DNA` → `fiber` on PATH; see
 | `/api/build/load`             | POST | JSON `{text, format, filename}` OR multipart `file=` | structure JSON | 400 empty, 413 too big |
 | `/api/build/fdf`              | POST | `{xyz, params}` | `{ok, fdf, system_label, issues}` | 400 bad params, 500 render |
 | `/api/build/pyscf`            | POST | `{xyz, params}` | `{ok, script, job_name, issues}` | 400 bad params, 500 render |
-| `/api/build/preflight`        | POST | `{xyz, engine, params}` | `{ok, issues}` | 200 always (issues carry errors) |
+| `/api/build/preflight`        | POST | `{xyz, engine, params}` | `{ok, issues}` (`ok:true`) on success or config-parse fail | 400 missing `xyz` / unknown `engine` / unparseable `xyz`; otherwise 200 (issues carry config-parse errors) |
 | `/api/build/schema/<engine>`  | GET  | — (engine ∈ {`siesta`, `pyscf`}) | `{ok, schema}` | 404 unknown engine |
 
 The structure JSON shape on success (returned by `/molecule` and
@@ -95,7 +95,11 @@ The error JSON shape is identical across all endpoints:
 Unknown `kind` → 400 with a list of valid values.  Empty `input` →
 400.  Missing optional dep (PeptideBuilder for `peptide`, PubChemPy
 for `name`, OpenBabel + tleap for `amber`, 3DNA for `threedna`) →
-500 with install hint.
+500 with `{"ok": false, "error": "missing dependency: <ImportError>"}`.
+The error string carries the raw `ImportError` message (which
+typically names the missing module); the CLI side carries
+curated install hints — the web layer relies on the operator
+already knowing how to install Python deps for the server.
 
 ### `/api/build/load` payload variants
 
@@ -146,6 +150,20 @@ Validation-only sibling of `/fdf` and `/pyscf`.  Same body shape
 plus an `engine: "siesta" | "pyscf"` discriminator; returns just
 `{ok, issues}` so the UI's issues panel can update live without
 generating the file body.
+
+Error-response policy:
+
+* Missing `xyz`, unknown `engine`, or unparseable `xyz` → HTTP
+  400 with `{"ok": false, "error": "<reason>"}`.  These are
+  programmer / wiring errors — the caller should fix the
+  request rather than display the failure to the user.
+* Config-parse failure (the form sent values that don't coerce
+  into the dataclass — e.g., a non-numeric mesh_cutoff) → HTTP
+  200 with `{"ok": true, "issues": [{"severity": "error",
+  "message": "bad parameters: <exc>", "where": "config"}]}`.
+  The same issues panel renders this alongside warn-severity
+  field-range messages, so the UI doesn't need a separate
+  error-handling branch for "user-typed-something-invalid".
 
 ### `/api/build/schema/<engine>` (form-rendering schema)
 
@@ -228,6 +246,89 @@ Pin-tests in `tests/test_web.py::test_siesta_form_schema_matches_documented_layo
 and the PySCF counterpart lock the section names + per-section
 field counts so a stray field-reorder doesn't silently rearrange
 the UI.
+
+---
+
+## `/api/watch/*` — Watch blueprint (mounted in `web/blueprints/watch.py`)
+
+| route | method | body | response | status |
+|---|---|---|---|---|
+| `/watch`             | GET  | — | `watch.html` (browser UI) | 200 |
+| `/api/watch/formats` | GET  | — | `{ok, formats: [{name, label, description}, ...]}` | 200 |
+| `/api/watch/load`    | POST | JSON `{path: "<abs-path>"}` OR multipart `file=` | `{ok, format, label, mtime, uploaded, ...}` | 400 bad input · 403 outside `MOLBUILDER_WATCH_ROOT` · 404 missing file · 500 parse fail |
+| `/api/watch/data`    | GET  | `?mtime=<client-cached-float>` (optional) | `{ok, changed, mtime, path, format, label, data, uploaded}` or `{ok, changed: false, mtime}` | 200 (errors carry `{ok:false, error}`) |
+
+The Watch app is **single-user, single-tab** by design (see
+`design.md` "Watch — live trajectory viewer"): one global "current
+file" dict guarded by a `threading.Lock`.  Two clients pointing at
+the same server share state.  This is intentional — the watch app
+isn't a multi-tenant service.
+
+**State machine** for `/api/watch/load`:
+
+1. Multipart upload → save to a `tempfile.NamedTemporaryFile`,
+   parse, register the temp path as the active file.  A second
+   upload deletes the previous temp (atexit cleanup catches the
+   final tab-close).
+2. JSON `{path: ...}` → resolve to an absolute path, optionally
+   constrained by the `MOLBUILDER_WATCH_ROOT` env var (see below),
+   detect the parser, parse, store as the active file.
+
+`/api/watch/data` is the polling endpoint; the JS calls it every
+~15 s.  When `client_mtime` matches the server's cached mtime,
+the response is the minimal `{ok, changed: false, mtime}` so the
+common no-change path doesn't reserialise the whole trajectory.
+
+### `MOLBUILDER_WATCH_ROOT` env var
+
+When the operator sets `MOLBUILDER_WATCH_ROOT=/abs/path` before
+starting the server, `/api/watch/load` refuses to read any path
+outside that subtree (HTTP 403, structured error).  This is the
+intended deployment posture on shared / multi-user hosts: scope
+the read-arbitrary-file primitive to the operator's intended run
+area.  Unset by default; the server trusts the caller's path when
+the env var is absent.
+
+### `/api/watch/data` response shape (`changed: true` branch)
+
+```json
+{
+  "ok":       true,
+  "changed":  true,
+  "path":     "<absolute path of the active file>",
+  "mtime":    <unix epoch seconds, float>,
+  "format":   "siesta" | "pyscf" | "molwatch" | ...,
+  "label":    "<human label from the parser>",
+  "data":     { /* legacy molwatch-v1 trajectory dict */ },
+  "uploaded": <bool — true for multipart-upload temp files>
+}
+```
+
+The `data` sub-dict is the legacy v1 trajectory shape produced by
+`parsers/__init__.py::trajectory_to_legacy_dict`:
+
+```json
+{
+  "frames":        [ [[el, x, y, z], ...], ... ],
+  "energies":      [<float|null>, ...],
+  "max_forces":    [<float|null>, ...],
+  "forces":        [ [[fx, fy, fz], ...] | [], ...],
+  "iterations":    [<int>, ...],
+  "step_indices":  [<int>, ...],
+  "wall_times":    [<float|null>, ...],
+  "scf_history":   [ [{"cycle", "energy", "delta_E", ...}, ...], ... ] | [],
+  "lattice":       [[ax,ay,az], [bx,by,bz], [cx,cy,cz]] | null,
+  "source_format": "<engine name>",
+  "run_state":     "ongoing" | "finished" | "errored",
+  "error_message": "<string when run_state=errored>",
+  "stages":        [<merged stage info — multi-stage runs>] | []
+}
+```
+
+Multi-stage runs (job-layout v1, multiple `<basename>-stage<N>.molwatch.log`
+files in the same directory) get one stage entry per file in
+`stages`; the frontend uses those to draw stage-boundary markers
+on plots.
 
 ---
 
