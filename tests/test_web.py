@@ -1515,3 +1515,77 @@ def test_modify_electrode_lattice_constant_override(web_client):
         "lattice_constant": 4.5,        # vs Au's actual 4.0782 Å
     })
     assert r.get_json()["ok"] is True
+
+
+# --------------------------------------------------------------------- #
+#  Basename validation (job-layout v1)                                  #
+# --------------------------------------------------------------------- #
+
+
+def test_modify_fdf_rejects_slash_in_system_label(web_client):
+    """The Build /api/build/fdf endpoint validates ``system_label``
+    against the basename charset before any file write.  Slashes,
+    spaces, dots, and leading-dot are all rejected per
+    docs/spec/job-layout.md."""
+    for bad in ("a/b", "with spaces", "has.dot", ".leading"):
+        r = web_client.post("/api/build/fdf", json={
+            "xyz": _LINEAR_XYZ,
+            "params": {"system_label": bad},
+        })
+        body = r.get_json()
+        assert body["ok"] is False or any(
+            i.get("severity") == "error" and "basename" in i.get("message", "")
+            for i in body.get("issues", [])
+        ), f"expected error for system_label={bad!r}; got {body}"
+
+
+def test_modify_pyscf_rejects_slash_in_job_name(web_client):
+    """Same rule for PySCFConfig.job_name."""
+    r = web_client.post("/api/build/pyscf", json={
+        "xyz": _LINEAR_XYZ,
+        "params": {"job_name": "evil/path"},
+    })
+    body = r.get_json()
+    assert body["ok"] is False or any(
+        i.get("severity") == "error" and "basename" in i.get("message", "")
+        for i in body.get("issues", [])
+    ), f"expected error for job_name='evil/path'; got {body}"
+
+
+# --------------------------------------------------------------------- #
+#  NaN / Inf rejection on /api/modify/* floats                          #
+# --------------------------------------------------------------------- #
+
+
+def test_modify_translate_rejects_nan_offset(web_client):
+    """A NaN dx must not propagate through to the structure -- the
+    boundary helper ``_shared.finite_float`` rejects non-finite
+    values."""
+    r = web_client.post("/api/modify/translate", json={
+        "xyz": _LINEAR_XYZ, "dx": float("nan"), "dy": 0.0, "dz": 0.0,
+    })
+    assert r.status_code == 400
+    assert "finite" in r.get_json()["error"]
+
+
+def test_modify_translate_rejects_inf_offset(web_client):
+    """Same for Inf."""
+    r = web_client.post("/api/modify/translate", json={
+        "xyz": _LINEAR_XYZ, "dx": float("inf"), "dy": 0.0, "dz": 0.0,
+    })
+    assert r.status_code == 400
+
+
+def test_modify_rotate_rejects_nan_angle(web_client):
+    r = web_client.post("/api/modify/rotate", json={
+        "xyz": _LINEAR_XYZ, "axis": "z", "angle": float("nan"),
+    })
+    assert r.status_code == 400
+
+
+def test_modify_symmetric_electrodes_rejects_nan_gap(web_client):
+    r = web_client.post("/api/modify/symmetric_electrodes", json={
+        "xyz": _LINEAR_XYZ, "element": "Au", "plane": "111",
+        "size": [2, 2, 1], "gap": float("nan"),
+    })
+    assert r.status_code == 400

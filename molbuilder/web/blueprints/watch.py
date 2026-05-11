@@ -109,17 +109,16 @@ _FDF_SYSTEM_LABEL_RE = re.compile(
     # SystemLabel must be filesystem-safe anyway and trusting an
     # arbitrary \S+ here would let a malformed FDF inject path
     # fragments into the discovery chain's os.path.join() below.
-    r"^\s*SystemLabel(?:\s|\.)\s*([A-Za-z0-9._\-]+)\s*$",
+    # Same charset as the basename validator in
+    # molbuilder/config/siesta.py (see _BASENAME_RE).
+    r"^\s*SystemLabel(?:\s|\.)\s*([A-Za-z0-9_\-]+)\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
 # molbuilder-generated PySCF scripts set ``job_name = "..."`` near the
 # top.  The regex anchors on the LHS to avoid catching incidental
 # strings further down.
 _PY_JOB_NAME_RE = re.compile(
-    # Allow dots so an old/external script using ``job_name = "mol.run1"``
-    # still resolves; same charset as the basename validator in
-    # molbuilder/config/siesta.py (see _BASENAME_RE).
-    r"^\s*job_name\s*=\s*[\"\']([A-Za-z0-9._\-]+)[\"\']",
+    r"^\s*job_name\s*=\s*[\"\']([A-Za-z0-9_\-]+)[\"\']",
     re.MULTILINE,
 )
 

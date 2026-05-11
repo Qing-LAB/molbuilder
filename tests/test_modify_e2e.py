@@ -1493,3 +1493,114 @@ def test_send_to_build_disabled_without_structure(page, flask_server):
     loaded -- nothing to hand off."""
     _open_modify(page, flask_server)
     assert page.locator("#send-to-build").is_disabled()
+
+
+# --------------------------------------------------------------------- #
+#  Watch Inspect tab: atom-pick + live distance display                 #
+# --------------------------------------------------------------------- #
+
+
+_MOLWATCH_ONE_STEP = (
+    "# molwatch trajectory log v1\n"
+    "# engine: pyscf\n"
+    "==== molwatch step 0 begin ====\n"
+    "step_index: 0\n"
+    "n_atoms: 3\n"
+    "coordinates (Ang):\n"
+    "   O   0.00000000   0.00000000   0.00000000\n"
+    "   H   0.95700000   0.00000000   0.00000000\n"
+    "   H  -0.23900000   0.92700000   0.00000000\n"
+    "energy (eV): -76.40000000\n"
+    "==== molwatch step 0 end ====\n"
+)
+
+
+@pytest.fixture
+def watch_log_file(tmp_path):
+    p = tmp_path / "demo.molwatch.log"
+    p.write_text(_MOLWATCH_ONE_STEP)
+    return str(p)
+
+
+def _load_watch_log(page, base_url, log_path):
+    page.goto(f"{base_url}/watch", wait_until="domcontentloaded")
+    page.wait_for_selector("#path-input")
+    page.fill("#path-input", log_path)
+    page.click("#load-btn")
+    page.wait_for_function(
+        "() => document.querySelector('#frame-tot')"
+        " && document.querySelector('#frame-tot').textContent !== '0'"
+        " || (document.querySelector('#frame-tot')"
+        "     && document.querySelector('#frame-tot').textContent === '0'"
+        "     && document.querySelectorAll('#inspect-atom-list-body tr').length > 0)",
+        timeout=8000,
+    )
+
+
+def test_watch_inspect_atom_list_populates(page, flask_server, watch_log_file):
+    """Loading a trajectory populates the Inspect-tab atom list with
+    one row per atom; the displayed ``#`` column is 1-based."""
+    _load_watch_log(page, flask_server, watch_log_file)
+    page.locator(".ctab[data-tab='inspect']").click()
+    page.wait_for_function(
+        "() => document.querySelectorAll('#inspect-atom-list-body tr').length === 3"
+    )
+    rows = page.locator("#inspect-atom-list-body tr")
+    # First row: 1-based index "1", element "O".
+    cells = rows.nth(0).locator("td")
+    assert cells.nth(0).inner_text() == "1"
+    assert cells.nth(1).inner_text() == "O"
+
+
+def test_watch_inspect_row_click_picks_atom(page, flask_server, watch_log_file):
+    """Clicking a row in the Inspect atom list adds the atom to the
+    pick list (visible via the row's .is-selected class) and the
+    distance row shows '—' until a second atom is picked."""
+    _load_watch_log(page, flask_server, watch_log_file)
+    page.locator(".ctab[data-tab='inspect']").click()
+    page.locator("#inspect-atom-list-body tr").nth(0).click()
+    page.wait_for_selector("#inspect-atom-list-body tr.is-selected")
+    # The hint goes away; the table becomes visible.
+    page.wait_for_function(
+        "() => !document.getElementById('inspect-table').hidden"
+    )
+    a_cell = page.locator("#inspect-a").inner_text()
+    assert a_cell.startswith("#1 O"), a_cell
+    # No distance yet (only one pick).
+    assert page.locator("#inspect-d").inner_text() == "—"
+
+
+def test_watch_inspect_distance_renders_with_two_picks(
+        page, flask_server, watch_log_file):
+    """Picking two atoms computes |A-B| and renders it in the
+    distance row.  Water's O and first H sit (0,0,0) and (0.957,0,0)
+    so the distance is 0.957 A."""
+    _load_watch_log(page, flask_server, watch_log_file)
+    page.locator(".ctab[data-tab='inspect']").click()
+    page.locator("#inspect-atom-list-body tr").nth(0).click()  # O
+    page.locator("#inspect-atom-list-body tr").nth(1).click()  # H1
+    page.wait_for_function(
+        "() => document.getElementById('inspect-d').textContent !== '—'"
+    )
+    d_text = page.locator("#inspect-d").inner_text()
+    # Format: "0.9570 Å"
+    assert d_text.startswith("0.957"), d_text
+    assert "Å" in d_text
+
+
+def test_watch_inspect_clear_button_drops_picks(
+        page, flask_server, watch_log_file):
+    """Clear-selection drops both picks; the hint reappears, the
+    table hides, and the Clear button disables again."""
+    _load_watch_log(page, flask_server, watch_log_file)
+    page.locator(".ctab[data-tab='inspect']").click()
+    page.locator("#inspect-atom-list-body tr").nth(0).click()
+    page.locator("#inspect-atom-list-body tr").nth(1).click()
+    btn = page.locator("#inspect-clear")
+    assert btn.is_enabled()
+    btn.click()
+    page.wait_for_function(
+        "() => !document.getElementById('inspect-hint').hidden"
+        " && document.getElementById('inspect-table').hidden"
+    )
+    assert btn.is_disabled()

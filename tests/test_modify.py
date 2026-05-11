@@ -910,3 +910,125 @@ def test_modify_module_falls_back_to_packaged_data_when_env_var_broken(
     monkeypatch.delenv("MOLBUILDER_DATA_DIR", raising=False)
     mod._FCC_LATTICE_A_CACHE = None
     importlib.reload(mod)
+
+
+# --------------------------------------------------------------------- #
+#  Element-aware default contact distance                               #
+# --------------------------------------------------------------------- #
+
+
+def test_default_contact_distance_table_has_supported_metals():
+    """The contact-distance table covers every metal the slab op
+    accepts; the Au-S canonical 2.40 A is the headline value, and
+    Pt-N is shorter (2.05) which is the whole reason for the table."""
+    from molbuilder.modify import (
+        default_contact_distance, SUPPORTED_FCC_ELEMENTS,
+    )
+    for sym in SUPPORTED_FCC_ELEMENTS:
+        d = default_contact_distance(sym)
+        assert isinstance(d, float)
+        assert 1.5 < d < 3.5, (sym, d)
+    assert default_contact_distance("Au") == 2.40
+    assert default_contact_distance("Pt") == 2.05
+    assert default_contact_distance("Ag") == 2.50
+    # Unsupported element falls back to the legacy Au-S value (back-
+    # compat with callers that relied on the old hardcoded default).
+    assert default_contact_distance("Fe") == 2.4
+
+
+def test_add_electrode_slab_uses_element_aware_contact_distance(linear_dimer):
+    """``add_electrode_slab`` resolves contact_distance from
+    ``default_contact_distance(element)`` when not overridden -- so
+    a Pt slab on the same anchor lands at a different z than an Au
+    slab.  Concretely: the Pt closest layer is 0.35 A closer to the
+    anchor than Au's (2.40 - 2.05)."""
+    au_out = add_electrode_slab(linear_dimer, "Au", "111",
+                                size=(2, 2, 1), anchor_index=0, side="+z")
+    pt_out = add_electrode_slab(linear_dimer, "Pt", "111",
+                                size=(2, 2, 1), anchor_index=0, side="+z")
+    # Anchor sits at positions[0]; the closest metal layer's z =
+    # anchor.z + contact_distance.  Find the smallest metal z above
+    # the anchor.
+    anchor_z = linear_dimer.positions[0, 2]
+    au_z = min(p[2] for n, p in zip(au_out.residue_names, au_out.positions)
+               if n == "ELC" and p[2] > anchor_z)
+    pt_z = min(p[2] for n, p in zip(pt_out.residue_names, pt_out.positions)
+               if n == "ELC" and p[2] > anchor_z)
+    assert abs((au_z - anchor_z) - 2.40) < 1e-6, au_z - anchor_z
+    assert abs((pt_z - anchor_z) - 2.05) < 1e-6, pt_z - anchor_z
+
+
+# --------------------------------------------------------------------- #
+#  rotate_around_axis(center=...) pivot                                 #
+# --------------------------------------------------------------------- #
+
+
+def test_rotate_around_axis_centroid_pivot_leaves_centroid_invariant():
+    """``center='centroid'`` rotates each atom about the molecule's
+    atom-mean centroid; the centroid is fixed under the rotation."""
+    s = Structure(elements=["C"] * 4,
+                  positions=np.array([[0., 0., 0.],
+                                       [1., 1., 0.],
+                                       [2., 2., 0.],
+                                       [3., 3., 0.]]))
+    centroid_before = s.positions.mean(axis=0)
+    rot = rotate_around_axis(s, axis="z", angle=90.0, center="centroid")
+    centroid_after = rot.positions.mean(axis=0)
+    assert np.allclose(centroid_before, centroid_after, atol=1e-9)
+    # Atom 1 was at (1, 1, 0); centroid is (1.5, 1.5, 0).  In centroid
+    # frame: (-0.5, -0.5, 0).  Rotate +90 about z: (0.5, -0.5, 0).
+    # Back to world: (2, 1, 0).
+    assert np.allclose(rot.positions[1], [2.0, 1.0, 0.0], atol=1e-9)
+
+
+def test_rotate_around_axis_python_default_is_origin_pivot():
+    """The Python API's default ``center='origin'`` preserves the
+    legacy world-axis behaviour for any existing caller that didn't
+    pass the kwarg.  The Modify-tab UI defaults to ``'centroid'``
+    on its own (HTML <select>), which is independent from the
+    function's default."""
+    s = Structure(elements=["C"] * 2,
+                  positions=np.array([[1., 1., 0.], [2., 2., 0.]]))
+    rot_default  = rotate_around_axis(s, axis="z", angle=90.0)
+    rot_centroid = rotate_around_axis(s, axis="z", angle=90.0,
+                                       center="centroid")
+    # The two results differ for an off-origin molecule.
+    assert not np.allclose(rot_default.positions, rot_centroid.positions)
+    # Default = origin: atom 0 at (1,1,0) -> (-1, 1, 0).
+    assert np.allclose(rot_default.positions[0],
+                       [-1.0, 1.0, 0.0], atol=1e-9)
+
+
+def test_rotate_around_axis_rejects_unknown_center():
+    s = Structure(elements=["C"], positions=np.array([[0., 0., 0.]]))
+    with pytest.raises(ValueError, match="center"):
+        rotate_around_axis(s, axis="z", angle=10.0, center="midpoint")
+
+
+# --------------------------------------------------------------------- #
+#  Structure.copy()                                                     #
+# --------------------------------------------------------------------- #
+
+
+def test_structure_copy_is_independent():
+    """``Structure.copy()`` returns a fresh Structure whose
+    positions array and metadata lists can be mutated without
+    touching the original.  Used by ``delete_atoms`` /
+    ``add_electrode_slab`` no-op branches."""
+    s = Structure(
+        elements=["O", "H", "H"],
+        positions=np.array([[0., 0., 0.], [1., 0., 0.], [-0.3, 0.9, 0.]]),
+        atom_names=["O1", "H1", "H2"],
+        residue_ids=[1, 1, 1],
+        residue_names=["MOL", "MOL", "MOL"],
+        chain_ids=["A", "A", "A"],
+        title="water",
+    )
+    c = s.copy()
+    # Mutating the copy doesn't reach the original.
+    c.positions[0, 0] = 99.0
+    c.atom_names[0] = "X"
+    c.residue_ids[0] = 42
+    assert s.positions[0, 0] == 0.0
+    assert s.atom_names[0] == "O1"
+    assert s.residue_ids[0] == 1

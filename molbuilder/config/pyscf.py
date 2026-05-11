@@ -31,7 +31,7 @@ class PySCFConfig:
     # ---------------- System ----------------
     job_name: str = field(default="pyscf_relax", metadata={
         "help":     "job name; output files get this prefix.  Must match "
-                    "[A-Za-z0-9._-]+ (job-layout v1).",
+                    "[A-Za-z0-9_-]+ (job-layout v1; no dots).",
         # Same basename rule as SiestaConfig.system_label -- import the
         # shared helper so the regex has ONE home.
         "validate": _validate_basename("job_name"),

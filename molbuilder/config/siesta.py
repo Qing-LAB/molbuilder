@@ -36,13 +36,16 @@ from typing import Optional, Sequence, Tuple
 # Job-layout v1 protocol (docs/spec/job-layout.md): the basename
 # (= SystemLabel for SIESTA, job_name for PySCF) drives EVERY output
 # filename, including SIESTA's restart files (.XV / .DM / .CG).  It
-# must be safe to embed in a filesystem path without quoting; we keep
-# it strict: letters, digits, hyphens, underscores, dots.  Reject
-# slashes, whitespace, shell metacharacters, leading-dot.
+# must be safe to embed in a filesystem path without quoting AND
+# play nicely with ``<basename>.molwatch.log`` stem/extension
+# parsing -- so we BAN dots in addition to slashes / whitespace.
+# Allowed: letters, digits, hyphens, underscores.  The HTML form's
+# ``pattern=`` attribute and the spec list the same rule; this is
+# the single Python source of truth.
 #
 # The same regex is re-used by PySCFConfig.job_name (see
 # molbuilder/config/pyscf.py) so the two configs share one rule.
-_BASENAME_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._\-]*$")
+_BASENAME_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
 
 
 def _validate_basename(label: str):
@@ -59,8 +62,9 @@ def _validate_basename(label: str):
                 severity="error",
                 message=(
                     f"{label}={value!r} is not a valid job basename. "
-                    "Must match [A-Za-z0-9._-]+ (no slashes, no spaces, "
-                    "no leading dot).  See docs/spec/job-layout.md."
+                    "Must match [A-Za-z0-9_-]+ (letters, digits, hyphens, "
+                    "underscores).  No dots / slashes / spaces.  See "
+                    "docs/spec/job-layout.md."
                 ),
                 where=f"config.{label}",
             )
@@ -78,7 +82,7 @@ class SiestaConfig:
     system_label: str = field(default="siesta", metadata={
         "label":    "SystemLabel",
         "help":     "FDF SystemLabel; output files get this prefix.  "
-                    "Must match [A-Za-z0-9._-]+ (job-layout v1).",
+                    "Must match [A-Za-z0-9_-]+ (job-layout v1; no dots).",
         "validate": _validate_basename("system_label"),
     })
 
