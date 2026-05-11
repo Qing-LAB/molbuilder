@@ -752,8 +752,7 @@ def add_symmetric_electrodes(
     lattice_constant: Optional[float] = None,
 ) -> Structure:
     """Add a symmetric pair of FCC electrodes -- one on +z, one on -z --
-    perpendicular to the z-axis, with the inter-slab midpoint at the
-    origin.
+    with the inter-slab midpoint at the origin.
 
     Geometry (the canonical case, ``anchor_indices=None``):
 
@@ -761,8 +760,10 @@ def add_symmetric_electrodes(
       bot closest layer at  z = -gap/2
       both slabs lateral-centred on (offset[0], offset[1])
 
-    The two electrodes are **collinear along z**, perpendicular to the
-    z-axis.  The user's workflow is: Center the molecule at origin,
+    Each slab's layer planes are perpendicular to z (the surface
+    normal points along z, per ASE's fcc{100,110,111} convention);
+    the line joining the two slab centroids IS the z-axis.  The
+    user's workflow is: Center the molecule at origin,
     rotate it (Pose ops) so it sits the way they want in the gap,
     then call this with the desired ``gap`` -- the slabs are always
     placed symmetrically around the origin so the user has full

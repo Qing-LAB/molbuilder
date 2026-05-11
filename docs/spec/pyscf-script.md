@@ -30,11 +30,24 @@ File presence depends on the cfg flags listed in the second column.
 | `<job>_geom.log` | same as above | geomeTRIC's own log for the production stage |
 | `<job>_preopt_optim.xyz` | `cfg.preopt` AND `cfg.write_trajectory` AND `cfg.optimizer == "geometric"` | streaming pre-opt-stage trajectory, same format |
 | `<job>_preopt.log` | same as above | geomeTRIC's own log for the pre-opt stage |
-| `<job>.molwatch.log` | `cfg.molwatch_log` (default `True`) AND `cfg.optimize` AND `cfg.optimizer == "geometric"` | unified per-step trajectory log written **alongside** the standard outputs (additive). One marker-delimited block per accepted opt step containing coordinates, total energy (eV), per-atom forces (eV/Å), max force (eV/Å), and the SCF cycle history for that step. Single-file input for molwatch. |
+| `<job>.molwatch.log` (or `<job>-stage<N>.molwatch.log` when `cfg.stage` is set) | `cfg.molwatch_log` (default `True`) AND `cfg.optimize` AND `cfg.optimizer == "geometric"` | unified per-step trajectory log written **alongside** the standard outputs (additive). One marker-delimited block per accepted opt step containing coordinates, total energy (eV), per-atom forces (eV/Å), max force (eV/Å), and the SCF cycle history for that step. Single-file input for the Watch tab. |
 
 The script's header docstring "Outputs:" block must list **exactly**
 the set of files this table promises for the active config — no
 under- or over-promising.
+
+**Stage-aware filename** (job-layout v1): when `cfg.stage` is set to
+1/2/3 (the Build tab's "Relaxation stage" preset), the inlined
+`MolwatchEmitter(...)` writes to `<job>-stage<N>.molwatch.log` so
+multiple stages accumulate in one run directory and the Watch tab's
+multi-stage merge picks them up automatically.  The `job_name`
+itself stays unsuffixed across stages so `<job>.chk`, `<job>.log`,
+`<job>_optimized.xyz` and the rest transfer cleanly.  The filename
+rule is centralised in
+`molbuilder.trajectory_log.format.molwatch_log_basename` and the
+generator embeds the resolved suffix as a literal string at
+emission time so the generated script stays self-contained (no
+runtime molbuilder import).
 
 ---
 

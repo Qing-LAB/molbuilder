@@ -23,12 +23,18 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Optional
 
+from .siesta import _validate_basename     # shared with SiestaConfig
+
 
 @dataclass
 class PySCFConfig:
     # ---------------- System ----------------
     job_name: str = field(default="pyscf_relax", metadata={
-        "help": "job name; output files get this prefix",
+        "help":     "job name; output files get this prefix.  Must match "
+                    "[A-Za-z0-9._-]+ (job-layout v1).",
+        # Same basename rule as SiestaConfig.system_label -- import the
+        # shared helper so the regex has ONE home.
+        "validate": _validate_basename("job_name"),
     })
     charge: Optional[int] = field(default=None, metadata={
         "help": "net charge (default: auto-detect from phosphates)",

@@ -622,6 +622,12 @@ These have been considered and rejected; do not reintroduce them.
 | 2026-05-01 | Web routing uses Flask Blueprints, not a hand-rolled router. | Blueprints are Flask's native URL-prefix primitive; we don't reinvent it. |
 | 2026-05-01 | Do not introduce ASE-backed parsers in Phase 1 or 2. | The existing molwatch parsers work and are well-understood; switching would change behavior subtly. Revisit if maintenance cost grows; until then, keep the parsers we have. |
 | 2026-05-03 | Watch viewer stays on browser-driven mtime polling; SSE / push-style alternatives are not pursued. | The server has authoritative knowledge of the file state.  An SSE swap would only pay off if paired with sub-second change detection (background watcher / inotify), and SCF runs are slow enough that the 15s poll latency is rarely the bottleneck.  Polling is the right shape for "server tells browser what's available." |
+| 2026-05-09 | Modify-tab pair-mode electrode placement defaults to **anchorless**: slabs at `z = ±gap/2` around the world origin (legacy anchor-pair-midpoint mode opt-in via two-atom selection). | Decouples slab placement from molecule centring; the user controls junction geometry via the Geom + Pose subtabs alone.  Realises the user's mental model "slabs are crystallographic, the molecule fits between them" with no per-atom dependence. |
+| 2026-05-09 | Modify-tab Undo is **slab-only**; non-slab ops are committed.  Snapshot pushed on a successful response (failed ops do not consume an undo slot). | Matches the original "experiment with electrode parameters and roll back" intent.  General undo across delete / rotate / translate would grow the JS state model materially for a feature few users have asked for; revisit if needed. |
+| 2026-05-09 | `GET /api/modify/meta` is the single source of truth for the FCC element + plane dropdowns; HTML must not duplicate the lists. | Realises Principle #1 (dataclass / Python-tuple = source of truth) for the Modify tab's enums.  Adding a metal in `molbuilder.modify.SUPPORTED_FCC_ELEMENTS` reaches the UI automatically. |
+| 2026-05-10 | **Job-layout v1** (`docs/spec/job-layout.md`) codifies the on-disk shape of a molbuilder run: one directory, one basename, named files.  Watch resolves a **run directory** via a documented discovery chain (`*.molwatch.log` → `*.fdf` → `*.py` → fallbacks). | Lets the user point Watch at a directory instead of a specific output file.  Cross-stage continuation (SIESTA `.XV` / `.DM` / `.CG`, PySCF `.chk`) works automatically because the basename stays identical across staged runs. |
+| 2026-05-10 | Multiple `*.molwatch.log` files in a run directory are **merged** into one trajectory with stage-boundary markers; live polling pins to the newest log; older stages are static. | Realises the staged-relaxation workflow (coarse → medium → tight) end-to-end.  Polling re-runs the merge over the FULL log set (per-file mtime-keyed cache prevents re-parsing static stages). |
+| 2026-05-10 | When the Build-tab "Relaxation stage" preset is non-Custom, the SIESTA + PySCF generators auto-suffix the `.molwatch.log` filename as `<basename>-stage<N>.molwatch.log`.  Basename itself stays unsuffixed so restart files transfer. | Removes the manual-rename step from the staged-relaxation flow.  Suffix rule lives in `molbuilder.trajectory_log.format.molwatch_log_basename` -- ONE source for both engines, no drift. |
 
 ---
 
@@ -636,100 +642,112 @@ aliased as `molbuilder.backends.*`).
 ```
 molbuilder/
   # ----- L1: core types -----
+  __init__.py              # public API: re-exports L1 types + key L2 verbs
   structure.py             # Structure dataclass + readers / writers
-  frame.py                 # Frame dataclass — Structure + per-step physics
-  issues.py                # Issue(severity, message, where)
+  frame.py                 # Frame + Trajectory dataclasses
+  issues.py                # Issue(severity, message, where) + ValidationError
   config/
     __init__.py            # re-exports SiestaConfig, PySCFConfig
-    siesta.py              # SiestaConfig (was head of siesta/input.py)
-    pyscf.py               # PySCFConfig (was head of pyscf/input.py)
-  chemistry.py             # element table, masses, valences
-  residues.py              # PDB residue templates
-  trajectory_log/          # was molwatch_log/
+    siesta.py              # SiestaConfig
+    pyscf.py               # PySCFConfig
+  chemistry.py             # element table, masses, valences, H placement
+  residues.py              # PDB residue templates + 1-letter parser
+  trajectory_log/
     __init__.py
-    format.py              # writer + on-disk format spec
-                           # (the .molwatch.log v1 file extension is unchanged;
-                           # only the module name changes)
+    format.py              # write_initial_preview, molwatch_log_basename
+    emitter.py             # MolwatchEmitter (inlined into generated PySCF scripts)
+  molwatch_log/            # back-compat shim -> trajectory_log
 
   # ----- L2: domain verbs -----
+  peptide.py               # build_peptide
+  nucleic.py               # build_dna / build_rna
+  smiles.py                # build_from_smiles
+  pubchem.py               # build_from_name
+  modify.py                # delete / add_atom / orient / rotate / electrode ops
+  validation.py            # validate(struct, cfg) -> List[Issue]
   builders/
-    __init__.py            # re-exports build_peptide / build_dna / build_rna /
-                           # build_from_smiles / build_from_name
-    peptide.py
-    nucleic.py
-    smiles.py
-    pubchem.py
-    backends/              # used only by builders/
-      __init__.py
+    backends/
+      __init__.py          # is_available(), dispatch()
       _amber.py            # tleap-driven extended chain
       _rdkit.py            # ETKDG embedded conformer
       _threedna.py         # canonical B/A/Z-form helix via fiber
       _common.py
-  generators/
-    __init__.py            # re-exports render_fdf, render_script
-    siesta.py              # was siesta/input.py (generator only; Config moved out)
-    pyscf.py               # was pyscf/input.py (generator only; Config moved out)
-    _runtime/
-      molwatch_emitter.py  # extracted; pasted into generated script via inspect.getsource()
+  backends/                # back-compat shim -> builders/backends
+  siesta/
+    __init__.py            # re-exports SiestaConfig, render_fdf, convert
+    input.py               # render_fdf / convert / FDF body builders
+  pyscf/
+    __init__.py            # re-exports PySCFConfig, render_script, convert
+    input.py               # render_script / convert / inlined emitter wiring
   parsers/
-    __init__.py            # registry + detect_parser
+    __init__.py            # PARSERS registry + detect_parser + Trajectory legacy adapter
     base.py                # TrajectoryParser ABC; parse() -> Trajectory
     molwatch_log.py
     siesta.py
     pyscf.py
-  validation.py            # validate_geometry(struct, cfg) -> List[Issue]
+  data/
+    README.md              # citations for every numeric value below
+    fcc_lattice.json       # supported FCC metals (closed list)
 
   # ----- L3: surfaces -----
-  cli.py                   # click-based; one subcommand group per verb
+  cli.py                   # click-based; add_dataclass_options bridge
   web/
-    __init__.py
-    app.py                 # Flask app + Blueprint registration
+    __init__.py            # create_app
+    app.py                 # Flask app + Blueprint registration + 413 handler
     blueprints/
-      build.py             # /api/build/* routes
-      watch.py             # /api/watch/* routes
-    templates/index.html   # tabbed UI shell
+      _shared.py           # body parsing, issue serialisation, type coercion
+      build.py             # /api/build/* routes (molecule, load, fdf, pyscf, preflight)
+      modify.py            # /api/modify/* routes (8 endpoints; see modify-tab.md)
+      watch.py             # /api/watch/* routes + directory-mode + multi-stage merge
+    templates/
+      _app_header.html     # shared header + tab nav partial
+      index.html           # Build tab page
+      modify.html          # Modify tab page
+      watch.html           # Watch tab page
     static/
-      viewer.js            # shared 3Dmol viewer + style controls
+      viewer.js            # Build viewer
       style.css
-
-  __init__.py              # public API: re-exports L1 types + key L2 verbs
+      lib/
+        tokens.css         # CSS custom properties (one home for theme tokens)
+        tabs.css           # top-of-page Build/Modify/Watch nav
+        mol-style.js       # shared 3Dmol style-spec builder
+        mol-format.js      # chemical-formula renderer
+        mol-pick.js        # shared wireframe-halo helper (Modify + Watch)
+      modify/{viewer.js, style.css}
+      watch/{viewer.js, style.css}
 
 tests/
   conftest.py
-  test_structure.py
-  test_frame.py            # NEW
-  test_chemistry.py
-  test_residues.py
-  test_peptide.py
-  test_nucleic.py
-  test_smiles_and_siesta.py
-  test_pyscf.py
-  test_pyscf_spec.py
-  test_review_fixes.py
-  test_load.py
-  test_pdb_ter.py
+  test_structure.py         test_frame.py         test_chemistry.py
+  test_residues.py          test_peptide.py       test_nucleic.py
+  test_smiles_and_siesta.py test_pyscf.py         test_pyscf_spec.py
+  test_validation.py        test_science_gaps.py  test_review_fixes.py
+  test_load.py              test_pdb_ter.py
   test_output_correctness.py
-  test_molwatch_preview.py
-  test_web.py
-  test_validation.py       # NEW
-  watch/                   # parser tests; was _inbound_molwatch/tests/
+  test_molwatch_preview.py  test_molwatch_emitter.py
+  test_pubchem.py           test_backends.py
+  test_cli.py
+  test_modify.py            test_modify_e2e.py    # Playwright E2E
+  test_web.py               # Build + Modify Flask
+  watch/                    # Watch parser + Flask
     test_registry.py
     test_molwatch_log_parser.py
     test_siesta_parser.py
     test_pyscf_parser.py
     test_api_load.py
     test_app_concurrency.py
-spec/                      # docs/spec/ — per-component test contracts
-  README.md
-  builders.md
-  chemistry.md
-  cli.md
-  pyscf-script.md
-  siesta-fdf.md
-  structure.md
-  web-api.md
-  parsers.md               # NEW
-  validation.md            # NEW
+
+docs/
+  design.md                 # this file
+  spec/                     # per-feature contracts (canonical)
+    README.md
+    builders.md   chemistry.md  cli.md         job-layout.md
+    modify-tab.md parsers.md    pyscf-script.md  siesta-fdf.md
+    structure.md  watch-api.md  watch-ui.md    web-api.md
+  img/                      # README screenshots (Build / Modify / Watch tabs)
+
+tools/
+  capture_screenshots.py    # idempotent README screenshot capture
 ```
 
 External imports that callers may already use stay valid via
@@ -1304,33 +1322,57 @@ promote when the time comes.
   load defaults from a small `data/contact_distance.json` keyed by
   metal, or emit a warn-severity Issue when the chosen metal isn't
   Au.  Prefer the data file (matches the `fcc_lattice.json` precedent).
+- **Dataclass-driven form schema for the Build tab.**  Today the
+  SIESTA + PySCF form fields in `web/templates/index.html` plus
+  `web/static/viewer.js::collectFdfParams()` / `collectPyscfParams()`
+  duplicate the dataclass field set (~50 fields each side).  Add
+  `_shared.py::dataclass_to_form_schema(cls)` + `GET
+  /api/build/schema/{siesta,pyscf}` + a JS form-renderer; phase the
+  cut-over dual-running with the existing static form.  Closes the
+  one remaining Principle-#1 anti-pattern in the project.
 
 ### Medium priority
 
 - **Frequency / thermochemistry support in the PySCF script** (post-
   relax Hessian + RRHO).
+- **Naming consistency**: `SiestaConfig.write_molwatch_log` vs
+  `PySCFConfig.molwatch_log` are the same concept.  Pick one
+  (`write_molwatch_log` reads more cleanly) and keep the other as
+  a deprecated kwarg alias.
+- **`Structure.copy()` helper** — three inline `Structure(...)`
+  clone sites in `molbuilder/modify.py` (no_op branches) repeat the
+  same field-by-field rebuild.  Add `Structure.copy()` (via
+  `dataclasses.replace` + `positions.copy()`).
 - **Whether `Trajectory` should grow analysis methods** (RMSD,
   principal axes, dipole moment time series) versus staying as a
   thin `(source_format, frames, lattice)` wrapper.  Phase 2 landed
   it as the thin shape; revisit if a future CLI subcommand wants
   richer ergonomics.
 - **Whether a non-trivial CP2K / ORCA generator + parser arrives
-  before v1.0.**  If yes, the flat `generators/` and `parsers/`
-  layouts already accommodate it; if no, the abstraction is fine.
+  before v1.0.**  If yes, the per-engine subpackage layouts already
+  accommodate it; if no, the abstraction is fine.
 - **Phone-width (≤ 640 px) E2E layout test for Modify** — the
   viewer-controls toolbar has six children and may wrap badly on
   narrow viewports.  Existing layout test runs at 800 px.
+- **Watch-tab opt-in path constraint** (`MOLBUILDER_WATCH_ROOT`
+  env).  Today the deployment-stance warning fires when the user
+  binds to non-loopback, but local-attacker scenarios (multi-user
+  hosts) have no guard.  Add an env-driven root-allowlist so
+  `/api/watch/load` rejects paths outside the configured root.
 
 ### Low priority
 
-- **Tighten `_struct_from_body` callers' `except`** — two routes in
-  `web/blueprints/modify.py` were already narrowed in M6; remaining
-  blueprint endpoints could be audited for the same pattern.
 - **Drop the redundant `test_postop_early_return_blocks_concurrent_call`
   E2E test** that documents itself as redundant with
   `test_apply_button_disables_during_fetch`.  Either give it
   independent value (e.g. drive `postOp` directly via a test hook
   that bypasses the disable layer) or delete it.
+- **`_list_molwatch_logs` directory-size cap.**  Latency cliff at
+  >256 logs; not currently hit by any reported workflow.
+- **`_last_temp_upload` cleanup on Werkzeug worker restart.**
+  Today the previous upload's temp file stays in `/tmp` until the
+  next upload comes in (process restart leaves the previous one).
+  `/tmp` self-cleans on reboot.
 
 ---
 

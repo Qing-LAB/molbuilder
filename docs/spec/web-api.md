@@ -1,75 +1,102 @@
-# Spec — Flask web UI + API
+# Spec — Web UI + Build API
 
-**Module**: `molbuilder/web/app.py` &nbsp;·&nbsp; **Templates**:
-`molbuilder/web/templates/index.html` &nbsp;·&nbsp; **Static**:
-`molbuilder/web/static/{viewer.js,style.css}` &nbsp;·&nbsp; **Tests**:
-`tests/test_web.py`, `tests/test_review_fixes.py` (S6)
+**Module**: `molbuilder/web/app.py` (registers the three blueprints)
+&nbsp;·&nbsp; **Templates**:
+`molbuilder/web/templates/{index,modify,watch}.html`
+&nbsp;·&nbsp; **Static**:
+`molbuilder/web/static/{viewer,modify/viewer,watch/viewer}.js` +
+`static/lib/{tabs,tokens}.css`, `static/lib/mol-{style,format,pick}.js`
+&nbsp;·&nbsp; **Tests**:
+`tests/test_web.py`, `tests/watch/`, `tests/test_modify_e2e.py`,
+`tests/test_review_fixes.py` (S6)
 
-The web UI is a single HTML page that talks to a Flask backend.  It
-should mirror what the CLI does, with a 3D viewer (3Dmol.js) and a
-form-driven interface.
+The web UI is a single Flask app serving **three tabs** that share
+the 3Dmol.js viewer + style helpers and tab-bar partial:
 
-## Endpoints
+| Path | Tab | Spec | Blueprint |
+|---|---|---|---|
+| `/`         | Build  | this file       | `web/blueprints/build.py` |
+| `/modify`   | Modify | `modify-tab.md` | `web/blueprints/modify.py` |
+| `/watch`    | Watch  | `watch-ui.md`, `watch-api.md` | `web/blueprints/watch.py` |
 
-| route | method | body | response | error code |
-| --- | --- | --- | --- | --- |
-| `/`           | GET  | — | HTML page | — |
-| `/api/health` | GET  | — | `{ok: true, version: "x.y.z"}` | — |
-| `/api/backends` | GET | — | `{ok, available: {rdkit: bool, amber: bool}}` | — |
-| `/api/build`  | POST | `{kind, input, ...}` | structure JSON (see below) | 400 bad input, 500 missing dep |
-| `/api/load`   | POST | json `{text, format, filename}` OR multipart `file=` | structure JSON | 400 empty, 413 too big |
-| `/api/fdf`    | POST | `{xyz, params}` | `{ok, fdf, system_label}` | 400 bad params, 500 render |
-| `/api/pyscf`  | POST | `{xyz, params}` | `{ok, script, job_name}` | 400 bad params, 500 render |
+The Modify and Watch endpoint contracts live in their own specs.
+This document covers (a) shared infrastructure and (b) the
+`/api/build/*` surface.
 
-### Request size cap
+---
 
-`MAX_CONTENT_LENGTH = 10 MiB` on the Flask app.  This applies to
-`/api/load` (real PDB / XYZ uploads) but caps every endpoint.  Larger
-bodies → 413 (Payload Too Large) automatically.
+## Shared endpoints
 
-### Structure JSON shape
+| route | method | body | response | status |
+|---|---|---|---|---|
+| `/api/health`   | GET | — | `{ok: true, version: "x.y.z"}` | — |
+| `/api/backends` | GET | — | `{ok, available: {rdkit, amber, threedna}: bool}` | — |
 
-`/api/build` and `/api/load` both return the same shape on success:
+`/api/backends` is consumed by Build's backend picker and by Modify
+for cross-check.  The `threedna` entry is `true` only when the
+detection chain (in-tree → `$X3DNA` → `fiber` on PATH; see
+`docs/design.md` § "3DNA") finds a complete install.
+
+---
+
+## `/api/build/*` — Build blueprint (mounted in `web/blueprints/build.py`)
+
+| route | method | body | response | status |
+|---|---|---|---|---|
+| `/api/build/molecule`  | POST | `{kind, input, ...}` | structure JSON | 400 bad input, 500 missing dep |
+| `/api/build/load`      | POST | JSON `{text, format, filename}` OR multipart `file=` | structure JSON | 400 empty, 413 too big |
+| `/api/build/fdf`       | POST | `{xyz, params}` | `{ok, fdf, system_label, issues}` | 400 bad params, 500 render |
+| `/api/build/pyscf`     | POST | `{xyz, params}` | `{ok, script, job_name, issues}` | 400 bad params, 500 render |
+| `/api/build/preflight` | POST | `{xyz, engine, params}` | `{ok, issues}` | 200 always (issues carry errors) |
+
+The structure JSON shape on success (returned by `/molecule` and
+`/load`):
 
 ```json
 {
-  "ok":          true,
-  "xyz":         "<xyz text>",
-  "pdb":         "<pdb text>",
-  "n_atoms":     int,
-  "n_residues":  int,
-  "summary":     "<Structure 'title': N atoms, R residues, formula CxHyOz>",
-  "title":       str,
-  "elements":    ["C", "H", ...],
-  "source_format": "xyz" | "pdb"          // /api/load only
+  "ok":            true,
+  "xyz":           "<xyz text>",
+  "pdb":           "<pdb text>",
+  "n_atoms":       int,
+  "n_residues":    int,
+  "summary":       "<Structure 'title': N atoms, R residues, formula CxHyOz>",
+  "title":         str,
+  "elements":      ["C", "H", ...],
+  "atom_names":    [...],
+  "residue_ids":   [...],
+  "residue_names": [...],
+  "chain_ids":     [...],
+  "source_format": "xyz" | "pdb"          // /load only
 }
 ```
 
-### Error JSON shape
+The error JSON shape is identical across all endpoints:
 
 ```json
 { "ok": false, "error": "human-readable message" }
 ```
 
-## `/api/build` payload
+### `/api/build/molecule` payload
 
 ```json
 {
   "kind":     "peptide" | "dna" | "rna" | "smiles" | "name",
   "input":    str,
   // DNA / RNA only:
-  "backend":   "auto" | "rdkit" | "amber",
+  "backend":   "auto" | "rdkit" | "amber" | "threedna",
   "form":      "B" | "A" | "Z",
   "terminal":  "OH" | "5P" | "3P" | "PP",
-  "protonate_phosphates": bool
+  "add_hydrogens":         bool,
+  "protonate_phosphates":  bool
 }
 ```
 
 Unknown `kind` → 400 with a list of valid values.  Empty `input` →
-400.  Missing optional dep (e.g. PeptideBuilder for `peptide`,
-PubChemPy for `name`) → 500 with install hint.
+400.  Missing optional dep (PeptideBuilder for `peptide`, PubChemPy
+for `name`, OpenBabel + tleap for `amber`, 3DNA for `threedna`) →
+500 with install hint.
 
-## `/api/load` payload variants
+### `/api/build/load` payload variants
 
 JSON body:
 ```json
@@ -80,97 +107,117 @@ JSON body:
 }
 ```
 
-Multipart form-data:
-```
-file=<uploaded file>
-```
+Multipart form-data: `file=<uploaded file>`.
 
-Format detection precedence:
-1. Explicit `format` field (if not `"auto"`).
-2. Filename extension (`.xyz` / `.pdb`).
-3. Content sniff: first line is digits → `xyz`, else `pdb`.
+Format detection precedence: explicit `format` → filename extension
+→ content sniff (digits-only first line → xyz, else pdb).
 
-## `/api/fdf` payload (SIESTA)
+### `/api/build/fdf` and `/api/build/pyscf` payload
 
 ```json
 {
   "xyz":    "<xyz text from a previous build>",
-  "params": { /* SiestaConfig fields */ }
+  "params": { /* SiestaConfig or PySCFConfig fields */ }
 }
 ```
 
 Server-side:
-* Parses `xyz` via `Structure.from_xyz` (the canonical parser; the
-  legacy `_xyz_to_structure` wrapper delegates to it — T5 fix).
-* Filters `params` against `fields(SiestaConfig)` so unknown keys
-  are silently dropped.
+* Parses `xyz` via `Structure.from_xyz` (canonical parser).
+* Filters `params` against `fields(SiestaConfig|PySCFConfig)` so
+  unknown keys are silently dropped.
+* Type-coerces each value via `_shared.coerce_to_field_type` (handles
+  `Optional[X]`, kgrid tuple, sequence-of-strings, etc.).
+* Per-field validators (`metadata["range"]`, `metadata["validate"]`)
+  run via `validation.validate(struct, cfg)` BEFORE emission; an
+  error-severity `Issue` raises `ValidationError` and the route
+  returns 400 with the issues array.
 * Special-case `kgrid`: incoming `[a, b, c]` list converted to
   `(int, int, int)` tuple.
 * Special-case `net_charge`: empty string or null → `None`
-  (auto-detect).
+  (auto-detect from phosphate protonation).
+* Generators emit a "Run with:" verbose-comment block referencing
+  the protocol basename (`SystemLabel` / `job_name`) per the
+  job-layout v1 protocol; see [`job-layout.md`](job-layout.md).
 
-## `/api/pyscf` payload
+### `/api/build/preflight` payload
 
-Same shape as `/api/fdf` but mapped to `PySCFConfig`.  Special-cases:
-* `dispersion = "none"` → `None` (no dispersion).
-* `solvent = ""` → `None` (gas phase).
-* `auxbasis = ""` → `None` (let `density_fit()` pick).
+Validation-only sibling of `/fdf` and `/pyscf`.  Same body shape
+plus an `engine: "siesta" | "pyscf"` discriminator; returns just
+`{ok, issues}` so the UI's issues panel can update live without
+generating the file body.
+
+---
+
+## Request-size cap
+
+`MAX_CONTENT_LENGTH = 50 MB` on the Flask app.  Watch uploads (large
+trajectory logs) need the headroom; Build's typical PDB / XYZ
+uploads are < 1 MB.  Oversized bodies → 413 with the standard
+`{ok: false, error: "..."}` JSON shape (a Flask error handler
+converts Werkzeug's default HTML 413 page into JSON so the JS
+uploaders' `r.json()` doesn't crash).
+
+---
 
 ## Front-end contract
 
-The HTML page:
-
-* Loads 3Dmol.js from `cdnjs/3Dmol/2.1.0/3Dmol-min.js` (pinned).
-* Has a top-level layout: header, 12-col grid main, footer.
-  * Left column (controls): card "1. Build / Load", card "2. Generate
-    input" (with two tabs).
-  * Right column (viewer): card "Inspect" containing the resizable
-    3Dmol viewer (CSS `resize: both` on `.viewer-wrap`).
-* Tabs in card 2: SIESTA `.fdf` | PySCF script.  Switching preserves
-  each tab's last-generated output.
+All three tabs:
+* Load 3Dmol.js from `cdnjs/3Dmol/2.1.0/3Dmol-min.js` (pinned).
+* Share `static/lib/tabs.css` (the top-of-page Build / Modify / Watch
+  nav) and `static/lib/tokens.css` (CSS custom properties for
+  colours / radii / spacing).
+* Share `static/lib/mol-style.js` (3Dmol style-spec builder), `mol-
+  format.js` (chemical-formula renderer), `mol-pick.js` (selection
+  halo helper used by Modify and Watch).
 * Theme: dark.  CSS variables in `:root` for every colour.  No
   hardcoded `#fff` / `#000` in selectors.
-* Resize-aware: a `ResizeObserver` on `.viewer-wrap` calls
-  `viewer.resize() + render()` on dimension change, so the WebGL
-  canvas tracks the user's drag.
-* Stale state: every successful build/load resets `state.fdf` /
-  `state.pyscf` to null and disables the `.fdf` / `.py` download
-  buttons, so the user can't accidentally download text from the
-  previous structure.
+* Every dynamic insertion uses `textContent` (not `innerHTML`).
 
-## Front-end compatibility rules
+The Build page (`index.html`) specifically:
+* Layout: header, 12-col grid main, footer.
+* Left column (controls): card "1. Build / Load", card "2. Generate
+  input" (with two tabs SIESTA `.fdf` | PySCF script).
+* Right column (viewer): card "Inspect" with a resizable 3Dmol
+  viewer (CSS `resize: both` on `.viewer-wrap`).
+* A `ResizeObserver` on `.viewer-wrap` calls `viewer.resize() +
+  render()` on dimension change.
+* Every successful build / load resets `state.fdf` / `state.pyscf`
+  to null and disables the download buttons so the user can't
+  accidentally download text from the previous structure.
+* `sessionStorage["builder-structure"]` carries the Modify→Build
+  handoff (M5); `sessionStorage["builder-form"]` survives form
+  values across navigation.
 
-The UI prevents the user from submitting parameter combinations that
-would produce an invalid or wrong-physics config.  Rules are
-implemented in `viewer.js::applyCompatibility()`, run on page load
+### Form-side compatibility rules
+
+`viewer.js::applyCompatibility()` locks parameter combinations that
+would produce an invalid or wrong-physics config.  Runs on page load
 and on `change` of any trigger input.  Each locked field gets
-`disabled` plus a `.lock-reason` hint span explaining why.
+`disabled` + a `.lock-reason` hint span.
 
-### PySCF tab
+PySCF tab:
+| trigger | dependent | lock |
+|---|---|---|
+| `method ∈ {RKS, RHF}`            | `spin`              | force `spin = 0` |
+| `optimize = false`               | optimizer, geom_*, preopt | lock entire Optimization + Pre-opt sections |
+| `optimize = true` AND `preopt = false` | preopt_*    | lock with "Pre-opt is disabled" |
+| `solvent = ""`                   | solvent_method      | lock with "No solvent selected (gas phase)" |
 
-| trigger                | dependent           | lock condition                                       |
-| ---                    | ---                 | ---                                                  |
-| `method ∈ {RKS, RHF}`  | `spin`              | force `spin = 0`; lock with hint about UKS/UHF       |
-| `optimize = false`     | optimizer, geom_*, preopt | lock everything in Optimization + Pre-opt sections |
-| `optimize = false`     | preopt (checkbox)   | lock the checkbox itself                             |
-| `optimize = true` AND `preopt = false` | preopt_*  | lock with "Pre-opt is disabled"                     |
-| `solvent = ""`         | solvent_method      | lock with "No solvent selected (gas phase)"          |
-
-### SIESTA tab
-
-| trigger                  | dependent                        | lock condition                            |
-| ---                      | ---                              | ---                                       |
-| `spin_polarized = false` | spin_total                       | lock; SpinTotal is meaningless without polarisation |
-| `relax_type = "none"`    | relax_steps, force_tol, max_displ | lock; no MD block emitted in the FDF      |
+SIESTA tab:
+| trigger | dependent | lock |
+|---|---|---|
+| `spin_polarized = false` | spin_total                        | SpinTotal meaningless without polarisation |
+| `relax_type = "none"`    | relax_steps, force_tol, max_displ | no MD block emitted |
 
 ### Defence in depth
 
 The server does NOT trust the UI.  Even if a malicious or buggy
-client submits an invalid combination (e.g. RKS + spin=1), the
-server catches it via the same validation that the spec requires
-(see `pyscf-script.md::"Spin / method compatibility"`).  The UI
-rules exist to give the user fast, in-place feedback; the server
-rules exist to protect the data.
+client submits an invalid combination, the same validators
+(`validation.py:validate(struct, cfg)`) run server-side via field
+metadata.  The UI rules give the user fast feedback; the server
+rules protect the data.
+
+---
 
 ## Forbidden patterns
 
@@ -179,18 +226,20 @@ The Flask app must NOT:
 1. Run with `debug=True` by default — Flask's debugger allows
    arbitrary code execution.  Enable only via explicit `--debug`
    CLI flag.
-2. Bind to `0.0.0.0` by default — that exposes `/api/load` (which
-   reads any local file the server can access) to the network.
+2. Bind to `0.0.0.0` by default — that exposes `/api/watch/load`
+   (reads any local file the server can access) to the network.
    Default `127.0.0.1`; print a loud warning when the user opts in
-   to a non-loopback host.
-3. Echo unsanitised user input as HTML — every dynamic insertion
-   uses `textContent` (not `innerHTML`).
+   to a non-loopback host (`warn_if_remote` in
+   `web/blueprints/watch.py`).
+3. Echo unsanitised user input as HTML.
 4. Trust the UI's compatibility-locking to validate inputs — the
-   server-side validation (e.g. `render_script` raising on
-   RKS+spin≠0) is the source of truth for correctness.
+   server-side validation pass is the source of truth.
+
+---
 
 ## Test reference
 
-* `test_web.py` — every endpoint × every documented payload variant.
-* `test_review_fixes.py::test_s6_web_app_caps_upload_size` — confirms
-  the 10 MiB cap fires (HTTP 413).
+* `tests/test_web.py` — every Build + Modify endpoint × every documented payload variant.
+* `tests/watch/test_api_load.py` — every Watch endpoint variant including directory-mode discovery and multi-stage merge.
+* `tests/test_modify_e2e.py` — Playwright + live Flask end-to-end.
+* `tests/test_review_fixes.py::test_s6_web_app_caps_upload_size` — confirms the upload cap fires (HTTP 413, JSON body shape).

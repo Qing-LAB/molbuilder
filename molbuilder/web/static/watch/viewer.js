@@ -337,15 +337,13 @@
     /*  Inspect tab: two-atom picking + live distance                      */
     /* ------------------------------------------------------------------ */
 
-    // Halo marker shared with the Modify tab's selection style:
-    // wireframe sphere with a fixed radius (independent of vdW so H
-    // and Ir feel equally selectable) in high-contrast amber.
-    const PICK_HIGHLIGHT_COLOR  = "#fb923c";
-    const PICK_HIGHLIGHT_RADIUS = 0.45;
+    // Selection halo shared with the Modify tab via static/lib/mol-pick.js
+    // (one source of truth for the colour / radius / shape).
+    const pick = (window.molbuilder && window.molbuilder.pick) || null;
 
     function clearPickHighlights() {
-        for (const s of state.pickShapes) viewer.removeShape(s);
-        state.pickShapes = [];
+        if (pick) pick.clearHalos(viewer, state.pickShapes);
+        else state.pickShapes.length = 0;
     }
 
     function renderPickHighlights() {
@@ -357,15 +355,10 @@
         const frame = state.data.frames[state.currentFrame] || [];
         for (const idx of state.pickedAtoms) {
             const row = frame[idx];
-            if (!row) continue;
-            const halo = viewer.addSphere({
-                center:    { x: row[1], y: row[2], z: row[3] },
-                radius:    PICK_HIGHLIGHT_RADIUS,
-                color:     PICK_HIGHLIGHT_COLOR,
-                wireframe: true,
-                linewidth: 3.0,
-            });
-            state.pickShapes.push(halo);
+            if (!row || !pick) continue;
+            state.pickShapes.push(
+                pick.addHalo(viewer, {x: row[1], y: row[2], z: row[3]})
+            );
         }
         viewer.render();
     }
@@ -411,14 +404,11 @@
         if (btn)   btn.disabled = pa.length === 0;
     }
 
-    // 3Dmol click callback.  ``atom.serial`` is 0-based for XYZ-
-    // loaded models (every Watch trajectory goes through
-    // viewer.addModelsAsFrames(framesToMultiXyz(...), "xyz")).  Toggle
-    // semantics: clicking an already-picked atom DROPS it; clicking
-    // a new atom appends; > 2 picks drop the oldest so a third click
-    // becomes the new "B" against the surviving "A".
-    function onWatchAtomClick(atom) {
-        const idx = Number(atom.serial);
+    // Toggle pick state for ``idx`` (0-based atom index): drop if
+    // already picked, append if new; cap at 2 picks total (a third
+    // pick drops the oldest).  Shared between the viewer click hook
+    // and the atom-list row click.
+    function togglePick(idx) {
         const pa = state.pickedAtoms;
         const existing = pa.indexOf(idx);
         if (existing !== -1) {
@@ -429,12 +419,83 @@
         }
         renderPickHighlights();
         updateInspectPanel();
+        refreshAtomListHighlights();
+    }
+
+    // 3Dmol click callback.  ``atom.serial`` is 0-based for XYZ-
+    // loaded models (every Watch trajectory goes through
+    // viewer.addModelsAsFrames(framesToMultiXyz(...), "xyz")).
+    function onWatchAtomClick(atom) {
+        togglePick(Number(atom.serial));
     }
 
     function clearAtomPicks() {
         state.pickedAtoms = [];
         renderPickHighlights();
         updateInspectPanel();
+        refreshAtomListHighlights();
+    }
+
+    // Build the atom-list table inside the Inspect panel.  One row
+    // per atom: index, element, current-frame (x, y, z).  Rendered
+    // once per ``rebuildModel`` (atom identity is fixed across a
+    // trajectory); coordinates update on every showFrame() via
+    // updateAtomListCoords().  Row click toggles the pick.
+    function rebuildInspectAtomList() {
+        const tbody = $("inspect-atom-list-body");
+        if (!tbody) return;
+        tbody.innerHTML = "";
+        if (!state.data || !state.data.frames.length) return;
+        const frame = state.data.frames[state.currentFrame] || [];
+        const frag = document.createDocumentFragment();
+        for (let i = 0; i < frame.length; i++) {
+            const r = frame[i];
+            const tr = document.createElement("tr");
+            tr.dataset.atomIndex = String(i);
+            tr.innerHTML =
+                '<td class="col-idx">' + i + '</td>' +
+                '<td class="col-el">'  + (r[0] || "?") + '</td>' +
+                '<td class="col-coord">' + r[1].toFixed(2) + '</td>' +
+                '<td class="col-coord">' + r[2].toFixed(2) + '</td>' +
+                '<td class="col-coord">' + r[3].toFixed(2) + '</td>';
+            tr.addEventListener("click", () => togglePick(i));
+            frag.appendChild(tr);
+        }
+        tbody.appendChild(frag);
+        refreshAtomListHighlights();
+    }
+
+    // Per-frame coord refresh: rebuilds only the .col-coord cells of
+    // each existing row so the row click handlers stay attached.
+    // Called from showFrame().
+    function updateAtomListCoords() {
+        const tbody = $("inspect-atom-list-body");
+        if (!tbody || !state.data || !state.data.frames.length) return;
+        const frame = state.data.frames[state.currentFrame] || [];
+        const rows  = tbody.children;
+        if (rows.length !== frame.length) {
+            // Atom count changed (unlikely mid-trajectory) -- rebuild.
+            rebuildInspectAtomList();
+            return;
+        }
+        for (let i = 0; i < frame.length; i++) {
+            const cells = rows[i].children;
+            cells[2].textContent = frame[i][1].toFixed(2);
+            cells[3].textContent = frame[i][2].toFixed(2);
+            cells[4].textContent = frame[i][3].toFixed(2);
+        }
+    }
+
+    function refreshAtomListHighlights() {
+        const tbody = $("inspect-atom-list-body");
+        if (!tbody) return;
+        const picked = new Set(state.pickedAtoms);
+        for (const tr of tbody.children) {
+            tr.classList.toggle(
+                "is-selected",
+                picked.has(Number(tr.dataset.atomIndex)),
+            );
+        }
     }
 
     function rebuildModel() {
@@ -444,15 +505,33 @@
             return;
         }
         viewer.addModelsAsFrames(framesToMultiXyz(state.data.frames), "xyz");
-        // Wire the per-atom click hook for the Inspect tab.  Must be
-        // installed BEFORE the first render or 3Dmol's click region
-        // isn't registered.  setClickable takes (sel, clickable, cb).
-        viewer.setClickable({}, true, onWatchAtomClick);
         applyStyle();
+        // Wire the per-atom click hook AFTER applyStyle: 3Dmol's
+        // setStyle() rebuilds the per-atom render objects, which on
+        // movie-mode models (addModelsAsFrames) drops the clickable
+        // flag installed by an earlier setClickable.  Re-installing
+        // it last keeps clicks alive across rep / radius /
+        // colour-scheme changes.
+        viewer.setClickable({}, true, onWatchAtomClick);
         drawCell();
+        // Populate the Inspect-tab atom list now that the model is
+        // loaded; the list mirrors the per-frame coordinates and is
+        // the keyboard-friendly path to selection.
+        rebuildInspectAtomList();
         if (state.firstFit) {
             viewer.zoomTo();
             state.firstFit = false;
+        }
+    }
+
+    // Also re-install setClickable whenever applyStyle re-runs (rep /
+    // radius / colour-scheme dropdown changes call applyStyle without
+    // a full rebuildModel; without this the click handler silently
+    // dies after the first dropdown change).
+    function applyStyleAndRewireClicks() {
+        applyStyle();
+        if (state.data && state.data.frames && state.data.frames.length) {
+            viewer.setClickable({}, true, onWatchAtomClick);
         }
     }
 
@@ -472,6 +551,10 @@
         // them at every frame change.  Cheap (max 2 spheres).
         renderPickHighlights();
         updateInspectPanel();
+        // Refresh the per-row coordinates in the atom list so the
+        // user sees per-frame xyz drift.  Cheap: rewrites 3 text
+        // nodes per atom, no DOM reshape, no listener churn.
+        updateAtomListCoords();
         $("frame-idx").textContent = idx;
         $("frame-slider").value = idx;
     }
@@ -1023,9 +1106,9 @@
         showFrame(parseInt(e.target.value, 10));
     });
 
-    $("rep").addEventListener("change", applyStyle);
-    $("radius").addEventListener("input", applyStyle);
-    $("colorscheme").addEventListener("change", applyStyle);
+    $("rep").addEventListener("change", applyStyleAndRewireClicks);
+    $("radius").addEventListener("input", applyStyleAndRewireClicks);
+    $("colorscheme").addEventListener("change", applyStyleAndRewireClicks);
     $("show-cell").addEventListener("change", drawCell);
     $("bg").addEventListener("change", (e) => {
         viewer.setBackgroundColor(e.target.value);

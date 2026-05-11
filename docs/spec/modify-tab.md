@@ -234,10 +234,12 @@ midpoint stays at the origin; only the orientation changes.
 
 When a tilted molecule then has electrodes added in **pair mode**:
 
-* The two electrodes are **always collinear along z**, regardless of
-  molecule tilt.  This is intentional and matches real junction
-  geometry: metal contacts are crystallographic, the molecule fits
-  whatever pose works between them.
+* Each slab's layer planes are **always perpendicular to z** (surface
+  normal along +z) and the line joining the two slab centroids IS
+  the z-axis, regardless of molecule tilt.  This is intentional and
+  matches real junction geometry: metal contacts are
+  crystallographic, the molecule fits whatever pose works between
+  them.
 * `gap` is the z-distance between the closest layer of the +z slab
   and the closest layer of the -z slab -- still measured along z,
   not along the molecule's tilted axis.

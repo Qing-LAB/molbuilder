@@ -20,6 +20,7 @@ contracts.
 from __future__ import annotations
 
 import dataclasses
+import math
 import typing
 from dataclasses import fields
 from typing import Any, Dict, List, Tuple
@@ -74,25 +75,35 @@ def struct_from_body(body: Dict[str, Any]) -> Structure:
 
     Raises ``ValueError`` when the xyz field is missing or empty;
     callers turn that into an HTTP 400 with the standard error shape.
+
+    Construction goes through a single ``Structure(...)`` call so all
+    invariants in ``Structure.__post_init__`` (parallel-array length
+    checks, dtype coercion of positions) fire on the final shape --
+    NOT via post-construction ``setattr`` that bypasses the contract.
     """
     xyz = body.get("xyz") or ""
     if not isinstance(xyz, str) or not xyz.strip():
         raise ValueError("missing or empty 'xyz'")
     title = body.get("title") or None
-    s = Structure.from_xyz(xyz, title=title)
-    n = s.n_atoms
-    for attr in ("atom_names", "residue_ids", "residue_names", "chain_ids"):
+    base = Structure.from_xyz(xyz, title=title)
+    n = base.n_atoms
+    # Pick the body-supplied list only if it's the right shape; else
+    # keep the from_xyz default.  Then construct a fresh Structure
+    # so __post_init__ validates the combined invariants.
+    def _pick(attr, default):
         v = body.get(attr)
-        if v is None:
-            continue
-        if not isinstance(v, list) or len(v) != n:
-            # Silently drop malformed metadata; the default from
-            # from_xyz is already in place.  An explicit error here
-            # would be friendlier UX but the spec keeps the wire
-            # shape forgiving.
-            continue
-        setattr(s, attr, list(v))
-    return s
+        if isinstance(v, list) and len(v) == n:
+            return list(v)
+        return default
+    return Structure(
+        elements      = list(base.elements),
+        positions     = base.positions,
+        atom_names    = _pick("atom_names",    list(base.atom_names)),
+        residue_ids   = _pick("residue_ids",   list(base.residue_ids)),
+        residue_names = _pick("residue_names", list(base.residue_names)),
+        chain_ids     = _pick("chain_ids",     list(base.chain_ids)),
+        title         = base.title,
+    )
 
 
 def structure_to_dict(struct: Structure) -> Dict[str, Any]:
@@ -129,6 +140,29 @@ def ok_structure_response(struct: Structure):
 def err(msg: str, code: int = 400):
     """Standard error response shape for the modify routes."""
     return jsonify({"ok": False, "error": msg}), code
+
+
+def finite_float(name: str, value: Any, default: float = 0.0) -> float:
+    """Coerce ``value`` to a finite float or raise ``ValueError`` with
+    a request-facing message.  Used by the /api/modify/* float fields
+    so a JSON body that passes ``"nan"`` / ``"inf"`` (or a stringified
+    huge number that parses but breaks downstream geometry) gets
+    rejected at the boundary instead of silently producing a
+    NaN-coordinate structure.
+
+    Returns ``default`` when ``value`` is None or "" -- mirrors the
+    ``body.get(field, default)`` pattern already in the route
+    handlers.
+    """
+    if value is None or value == "":
+        return float(default)
+    try:
+        f = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{name!r} must be a finite number; got {value!r}") from exc
+    if not math.isfinite(f):
+        raise ValueError(f"{name!r} must be finite; got {value!r}")
+    return f
 
 
 # --------------------------------------------------------------------- #
@@ -251,6 +285,7 @@ __all__ = [
     "structure_to_dict",
     "ok_structure_response",
     "err",
+    "finite_float",
     "coerce_to_field_type",
     "config_from_params",
 ]

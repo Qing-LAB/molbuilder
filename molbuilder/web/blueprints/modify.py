@@ -79,6 +79,7 @@ from flask import Blueprint, jsonify, request
 
 from ._shared import (
     err as _err,
+    finite_float as _finite_float,
     ok_structure_response as _ok_response,
     struct_from_body as _struct_from_body,
 )
@@ -293,11 +294,10 @@ def api_modify_orient():
             f"center must be 'midpoint', 'first', or 'none'; got {center!r}",
             400,
         )
-    angle = body.get("angle", 0.0)
     try:
-        angle_f = float(angle)
-    except (TypeError, ValueError):
-        return _err("angle must be a number (degrees)", 400)
+        angle_f = _finite_float("angle", body.get("angle", 0.0))
+    except ValueError as exc:
+        return _err(str(exc), 400)
     try:
         new_struct = _orient_along_axis(
             struct, (a0, a1), axis=axis, angle=angle_f, center=center,
@@ -331,11 +331,10 @@ def api_modify_rotate():
     axis = (body.get("axis") or "").strip().lower()
     if axis not in ("x", "y", "z"):
         return _err(f"axis must be 'x', 'y', or 'z'; got {axis!r}", 400)
-    angle = body.get("angle")
     try:
-        angle_f = float(angle)
-    except (TypeError, ValueError):
-        return _err("angle must be a number (degrees)", 400)
+        angle_f = _finite_float("angle", body.get("angle"))
+    except ValueError as exc:
+        return _err(str(exc), 400)
     try:
         new_struct = _rotate_around_axis(struct, axis=axis, angle=angle_f)
     except Exception as exc:                       # noqa: BLE001
@@ -379,11 +378,11 @@ def api_modify_translate():
             return _err(f"recenter failed: {exc}", 400)
         return _ok_response(new_struct)
     try:
-        dx = float(body.get("dx", 0.0) or 0.0)
-        dy = float(body.get("dy", 0.0) or 0.0)
-        dz = float(body.get("dz", 0.0) or 0.0)
-    except (TypeError, ValueError):
-        return _err("dx, dy, dz must be numbers (Å)", 400)
+        dx = _finite_float("dx", body.get("dx", 0.0))
+        dy = _finite_float("dy", body.get("dy", 0.0))
+        dz = _finite_float("dz", body.get("dz", 0.0))
+    except ValueError as exc:
+        return _err(str(exc), 400)
     try:
         new_struct = struct.translated((dx, dy, dz))
     except Exception as exc:                           # noqa: BLE001
@@ -487,11 +486,11 @@ def api_modify_electrode():
             f"{struct.n_atoms}-atom structure",
             400,
         )
-    contact_distance = body.get("contact_distance", 2.4)
     try:
-        contact_distance = float(contact_distance)
-    except (TypeError, ValueError):
-        return _err("'contact_distance' must be numeric", 400)
+        contact_distance = _finite_float(
+            "contact_distance", body.get("contact_distance", 2.4))
+    except ValueError as exc:
+        return _err(str(exc), 400)
     if contact_distance <= 0.0:
         return _err("'contact_distance' must be > 0 Å", 400)
     side = (body.get("side") or "+z").strip()
@@ -584,11 +583,10 @@ def api_modify_symmetric_electrodes():
                 400,
             )
         anchor_indices = (a_top, a_bot)
-    gap = body.get("gap", 8.0)
     try:
-        gap = float(gap)
-    except (TypeError, ValueError):
-        return _err("'gap' must be numeric", 400)
+        gap = _finite_float("gap", body.get("gap", 8.0))
+    except ValueError as exc:
+        return _err(str(exc), 400)
     if gap <= 0.0:
         return _err("'gap' must be > 0 Å", 400)
     try:

@@ -16,9 +16,14 @@ emitter / server function.
 | `rna`     | build ssRNA       | `1-letter sequence` | XYZ to stdout / `--out` / `--pdb` |
 | `smiles`  | build from SMILES | SMILES string       | XYZ to stdout / `--out` / `--pdb` |
 | `name`    | build from name   | common / IUPAC name | XYZ to stdout / `--out` / `--pdb` |
-| `fdf`     | XYZ/PDB → SIESTA fdf | path + path        | writes `.fdf` |
-| `pyscf`   | XYZ/PDB → PySCF script | path + path     | writes `.py` |
-| `serve`   | run web UI        | `--host`, `--port`  | starts Flask on port 8000 |
+| `modify`  | edit a structure  | XYZ/PDB path (or `-`) + output path (or `-`) | XYZ to file or stdout; one op type per call |
+| `fdf`     | XYZ/PDB → SIESTA fdf | path (or `-`) + output path | writes `.fdf` |
+| `pyscf`   | XYZ/PDB → PySCF script | path (or `-`) + output path | writes `.py` |
+| `validate` | run pre-emission validation pass | XYZ/PDB path, `--config <siesta-fdf|pyscf-py>` | JSON Issue list to stdout; exit 1 on any error-severity issue |
+| `serve`   | run web UI        | `--host`, `--port`, `--debug` | Flask on port 8000; lands on Build tab |
+| `watch parse` | one-shot trajectory parse | `<trajectory-path>` | JSON dump of frames + metadata to stdout |
+| `watch tail`  | streaming trajectory follow | `<trajectory-path>` | NDJSON, one frame per line (re-parses on file mtime change) |
+| `watch serve` | run web UI on Watch tab | `--host`, `--port`, `--debug` | Same Flask app as `serve`; lands on /watch |
 
 ## Build-subcommand contract
 

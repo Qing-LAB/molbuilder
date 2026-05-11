@@ -56,21 +56,11 @@
     // off the bottom of the stack as new ops are pushed.
     const HISTORY_MAX = 20;
 
-    // Selection marker: a small wireframe halo SPHERE drawn around
-    // the atom.  Earlier iterations used an arrow above the atom,
-    // but in dense regions the arrow easily overlapped neighbouring
-    // bonds and was hard to spot.  A halo encloses the atom directly
-    // -- the atom and its halo move together, the halo doesn't blot
-    // out neighbours, and it's visible from any camera angle (no
-    // single fixed direction to occlude).  Radius is fixed (NOT
-    // vdW-scaled) so H and Ir look equally selectable; chosen so
-    // the halo sits just outside the rendered stick atom (~0.13 Å)
-    // and only marginally outside a ball-and-stick atom (~0.4 Å).
-    const HIGHLIGHT_COLOR    = "#fb923c";    // bright orange; high contrast
-                                              // on white viewer bg + every
-                                              // element colour we render.
-    const MARKER_RADIUS      = 0.45;         // halo radius, Å
-    const MARKER_LINEWIDTH   = 3.0;          // wireframe stroke width
+    // Selection marker: a wireframe halo SPHERE drawn around each
+    // picked atom.  Shape + colour + radius live in
+    // static/lib/mol-pick.js so the Modify and Watch tabs draw the
+    // same marker; see that file for the design rationale.
+    const _pick = (window.molbuilder && window.molbuilder.pick) || null;
 
     // --------------------------------------------------------------- //
     //  3Dmol viewer.                                                   //
@@ -101,28 +91,19 @@
     let _highlightShapes = [];
 
     function clearHighlights() {
-        _highlightShapes.forEach((s) => viewer.removeShape(s));
-        _highlightShapes = [];
+        if (_pick) _pick.clearHalos(viewer, _highlightShapes);
+        else _highlightShapes.length = 0;
     }
 
     function renderHighlights() {
-        // Draw a wireframe halo sphere around each selected atom.
-        // The halo encloses the atom, doesn't grow with vdW radius,
-        // and is visible from every camera angle (no occlusion when
-        // the camera looks down the marker axis as a fixed-direction
-        // arrow would suffer from).
         clearHighlights();
+        if (!_pick) return;
         state.selected.forEach((idx) => {
             const p = state.positions[idx];
             if (!p) return;
-            const halo = viewer.addSphere({
-                center:    { x: p[0], y: p[1], z: p[2] },
-                radius:    MARKER_RADIUS,
-                color:     HIGHLIGHT_COLOR,
-                wireframe: true,
-                linewidth: MARKER_LINEWIDTH,
-            });
-            _highlightShapes.push(halo);
+            _highlightShapes.push(
+                _pick.addHalo(viewer, {x: p[0], y: p[1], z: p[2]})
+            );
         });
     }
 

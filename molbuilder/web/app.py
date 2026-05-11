@@ -54,6 +54,22 @@ def create_app() -> Flask:
     app.register_blueprint(watch_bp)
     app.register_blueprint(modify_bp)
 
+    # 413 Payload Too Large -- without this Flask returns its default
+    # HTML 413 page, which the JS uploaders parse as ``r.json()`` and
+    # crash with a misleading "Network error".  Returning the same
+    # ``{ok: false, error: ...}`` JSON shape every other endpoint
+    # uses gives the user an actionable message.
+    from werkzeug.exceptions import RequestEntityTooLarge
+
+    @app.errorhandler(RequestEntityTooLarge)
+    def _too_large(_exc):
+        return jsonify({
+            "ok":    False,
+            "error": (f"Upload exceeds the {_MAX_UPLOAD_MB} MB cap "
+                      f"(MAX_CONTENT_LENGTH).  Shrink the file or "
+                      f"point the loader at the path on disk."),
+        }), 413
+
     @app.route("/")
     def index():
         return render_template("index.html")

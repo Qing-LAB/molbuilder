@@ -32,6 +32,7 @@ from __future__ import annotations
 import glob
 import os
 import re
+import sys
 import tempfile
 from threading import Lock
 from typing import Any, Dict, List, Optional, Tuple
@@ -88,14 +89,21 @@ _last_temp_upload: Optional[str] = None
 # parser accepts both.  Match on a single token (no spaces) so we
 # don't capture trailing comments.
 _FDF_SYSTEM_LABEL_RE = re.compile(
-    r"^\s*SystemLabel(?:\s|\.)\s*(\S+)\s*$",
+    # Bound the capture to the job-layout basename charset; SIESTA's
+    # SystemLabel must be filesystem-safe anyway and trusting an
+    # arbitrary \S+ here would let a malformed FDF inject path
+    # fragments into the discovery chain's os.path.join() below.
+    r"^\s*SystemLabel(?:\s|\.)\s*([A-Za-z0-9._\-]+)\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
 # molbuilder-generated PySCF scripts set ``job_name = "..."`` near the
 # top.  The regex anchors on the LHS to avoid catching incidental
 # strings further down.
 _PY_JOB_NAME_RE = re.compile(
-    r"^\s*job_name\s*=\s*[\"\']([A-Za-z0-9_\-]+)[\"\']",
+    # Allow dots so an old/external script using ``job_name = "mol.run1"``
+    # still resolves; same charset as the basename validator in
+    # molbuilder/config/siesta.py (see _BASENAME_RE).
+    r"^\s*job_name\s*=\s*[\"\']([A-Za-z0-9._\-]+)[\"\']",
     re.MULTILINE,
 )
 
@@ -283,7 +291,12 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
         except Exception as exc:                              # noqa: BLE001
             return None, f"Multi-stage refresh failed: {exc}"
         with _lock:
-            if _state["run_dir"] == run_dir:
+            # Defensive: a concurrent /api/load may have swapped to a
+            # different run (different directory OR different parser
+            # class).  Mirror the single-file branch's identity check
+            # so a stale parse never overwrites fresher state.
+            if (_state["run_dir"] == run_dir
+                    and _state["parser"] is parser_cls):
                 _state["path"]  = active_path
                 _state["data"]  = new_data
                 _state["mtime"] = active_mtime
@@ -310,6 +323,15 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
             _state["data"]  = new_data
             _state["mtime"] = mtime
         return dict(_state), None
+
+
+# Per-file parse cache for the multi-stage merge.  Keyed by absolute
+# path, valued by ``(mtime, legacy_dict)``.  ``_merge_molwatch_trajectories``
+# reuses a cached entry when the file's mtime hasn't advanced, so a
+# poll that picks up new frames in the newest stage doesn't re-parse
+# the 2 or 3 prior (static) stage logs.  Single-process, single-user
+# scope -- bounded by the number of stages in flight (≤ a handful).
+_MERGE_PARSE_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 
 
 def _merge_molwatch_trajectories(paths: List[str]) -> Tuple[Dict[str, Any],
@@ -347,15 +369,29 @@ def _merge_molwatch_trajectories(paths: List[str]) -> Tuple[Dict[str, Any],
     any_scf = False
     last_traj_legacy: Optional[Dict[str, Any]] = None
     for path in paths:
-        # Each per-file parse is wrapped: a torn / mid-write log
-        # mustn't take down the whole merge.  Surfacing the failure
-        # in stages metadata lets the frontend say "stage 2
-        # unparseable, showing 1 + 3" instead of HTTP 500.
+        # Per-file parse is wrapped: a torn / mid-write log mustn't
+        # take down the whole merge.  Surfacing the failure in stages
+        # metadata lets the frontend say "stage 2 unparseable, showing
+        # 1 + 3" instead of HTTP 500.  A small mtime-keyed parse
+        # cache means an unchanged stage isn't re-parsed on every
+        # poll (perf hot path -- otherwise three 50-MB logs each cost
+        # one full re-parse per 15s tick).
         n_before = len(merged["frames"])
         try:
-            traj   = MolwatchLogParser.parse(path)
-            legacy = trajectory_to_legacy_dict(traj)
+            mt = os.path.getmtime(path)
+            cached = _MERGE_PARSE_CACHE.get(path)
+            if cached is not None and cached[0] == mt:
+                legacy = cached[1]
+            else:
+                traj   = MolwatchLogParser.parse(path)
+                legacy = trajectory_to_legacy_dict(traj)
+                _MERGE_PARSE_CACHE[path] = (mt, legacy)
         except Exception as exc:                              # noqa: BLE001
+            # Log to stderr so the operator has a signal beyond the
+            # frontend's stages-metadata entry; dedupe by (path, exc-type)
+            # in the cache key so a repeating tear doesn't spam the log.
+            print(f"[watch] merge skipped {path}: "
+                  f"{type(exc).__name__}: {exc}", file=sys.stderr)
             stages.append({
                 "name":        os.path.basename(path),
                 "start_frame": n_before,

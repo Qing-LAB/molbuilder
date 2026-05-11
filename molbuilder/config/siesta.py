@@ -29,8 +29,43 @@ organic-or-inorganic system that's about to be relaxed:
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Optional, Sequence, Tuple
+
+# Job-layout v1 protocol (docs/spec/job-layout.md): the basename
+# (= SystemLabel for SIESTA, job_name for PySCF) drives EVERY output
+# filename, including SIESTA's restart files (.XV / .DM / .CG).  It
+# must be safe to embed in a filesystem path without quoting; we keep
+# it strict: letters, digits, hyphens, underscores, dots.  Reject
+# slashes, whitespace, shell metacharacters, leading-dot.
+#
+# The same regex is re-used by PySCFConfig.job_name (see
+# molbuilder/config/pyscf.py) so the two configs share one rule.
+_BASENAME_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._\-]*$")
+
+
+def _validate_basename(label: str):
+    """Return a validate callable for SiestaConfig.system_label /
+    PySCFConfig.job_name.  Used as ``metadata["validate"]`` -- the
+    validation pass surfaces a clean error-severity ``Issue`` instead
+    of letting a malformed basename reach the filesystem.
+    """
+    def _check(value, _cfg=None):
+        # Local import to avoid an L1->L1 cycle (issues sits next door).
+        from ..issues import Issue
+        if not isinstance(value, str) or not _BASENAME_RE.fullmatch(value):
+            return Issue(
+                severity="error",
+                message=(
+                    f"{label}={value!r} is not a valid job basename. "
+                    "Must match [A-Za-z0-9._-]+ (no slashes, no spaces, "
+                    "no leading dot).  See docs/spec/job-layout.md."
+                ),
+                where=f"config.{label}",
+            )
+        return None
+    return _check
 
 
 @dataclass
@@ -41,8 +76,10 @@ class SiestaConfig:
         "help": "FDF SystemName label written into the .fdf header",
     })
     system_label: str = field(default="siesta", metadata={
-        "label": "SystemLabel",
-        "help": "FDF SystemLabel; output files get this prefix",
+        "label":    "SystemLabel",
+        "help":     "FDF SystemLabel; output files get this prefix.  "
+                    "Must match [A-Za-z0-9._-]+ (job-layout v1).",
+        "validate": _validate_basename("system_label"),
     })
 
     # Cell handling for non-periodic XYZ files

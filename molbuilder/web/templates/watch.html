@@ -147,9 +147,24 @@ FILE mode (back-compat; also supported):
 
       <div class="ctab-panel" data-panel="inspect" role="tabpanel">
         <p class="hint" id="inspect-hint">
-          Click two atoms in the viewer to measure their distance.
-          The distance updates as the trajectory plays.
+          Click two atoms — in the viewer or in the list below — to
+          measure their distance.  Updates per frame as the
+          trajectory plays.
         </p>
+        <div class="inspect-list-wrap">
+          <table class="inspect-list" aria-label="Atom list">
+            <thead>
+              <tr>
+                <th class="col-idx">#</th>
+                <th class="col-el">El</th>
+                <th class="col-coord">x</th>
+                <th class="col-coord">y</th>
+                <th class="col-coord">z</th>
+              </tr>
+            </thead>
+            <tbody id="inspect-atom-list-body"></tbody>
+          </table>
+        </div>
         <table id="inspect-table" class="inspect-table" hidden>
           <tbody>
             <tr><th>A</th>     <td id="inspect-a">—</td></tr>
@@ -380,6 +395,7 @@ FILE mode (back-compat; also supported):
 </main>
 
 <script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/mol-pick.js') }}"></script>
 <script src="{{ url_for('static', filename='watch/viewer.js') }}"></script>
 </body>
 </html>

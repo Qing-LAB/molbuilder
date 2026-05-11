@@ -7,24 +7,51 @@
 
 ## Sibling outputs
 
-Alongside the `<name>.fdf` file, `convert(...)` also writes
-`<name>.molwatch.log` by default (`cfg.write_molwatch_log = True`).
-That sibling log carries one *initial-state preview block* (step 0)
-containing the molecule's coordinates, with no energy / forces /
-SCF data, and a `kind: initial_preview` marker line.
+Alongside the `<basename>.fdf` file, `convert(...)` also writes
+`<basename>.molwatch.log` by default (`cfg.write_molwatch_log =
+True`).  That sibling log carries one *initial-state preview block*
+(step 0) containing the molecule's coordinates, with no energy /
+forces / SCF data, and a `kind: initial_preview` marker line.
 
 Purpose: molwatch can render the structure the moment the user
 loads it, before SIESTA has produced any of its own output.  The
 preview file is static (one block, never updated); for live updates
-during a SIESTA run the user points molwatch at the SIESTA `.out`
-file instead.  Both files share the same job stem so they live next
-to each other and are easy to find from one another.
+during a SIESTA run the user points Watch at the run **directory**
+which discovers the right log via the [job-layout v1
+protocol](job-layout.md), or at the SIESTA `.out` file directly.
 
 Set `cfg.write_molwatch_log = False` to suppress the sibling file.
 
+**Stage-aware filename** (job-layout v1): when `cfg.stage` is set
+to 1/2/3 (the Build tab's "Relaxation stage" preset), the sibling
+log filename becomes `<basename>-stage<N>.molwatch.log` so multiple
+stages accumulate in one directory without collisions.  The
+`SystemLabel` itself stays unsuffixed across stages so SIESTA's
+`.XV` / `.DM` / `.CG` restart files transfer cleanly.  Filename
+rule is centralised in
+`molbuilder.trajectory_log.format.molwatch_log_basename`.
+
+**"Run with:" verbose-comment block.**  When `cfg.verbose_comments =
+True` (default), the generated FDF header carries a hint block
+recommending the canonical invocation:
+
+```fdf
+# === Run with (job-layout v1) ===
+# Run from this directory -- all outputs share the SystemLabel basename below.
+#     mpirun -np 4 siesta < <basename>[-stage<N>].fdf > <basename>[-stage<N>].out
+# Watch the run live: open the Watch tab and point it at this directory
+# (the loader resolves it to <basename>[-stage<N>].molwatch.log).
+```
+
+Following the suggested stdout redirect (`> <basename>.out`) keeps
+the run directory canonically named per job-layout v1; the Watch
+tab's directory discovery chain picks up `<basename>.out` as a
+fallback when no `.molwatch.log` is present.
+
 The format spec for `.molwatch.log` is documented in
-`docs/spec/pyscf-script.md` (the format itself is engine-agnostic;
-the `# engine:` header line distinguishes who wrote it).
+[`pyscf-script.md`](pyscf-script.md) (the format itself is
+engine-agnostic; the `# engine:` header line distinguishes who
+wrote it).
 
 
 The emitter takes a `Structure` (or an XYZ/PDB file path) and writes

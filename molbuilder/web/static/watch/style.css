@@ -421,6 +421,53 @@ button:disabled {
  * distance row is highlighted via the accent colour so the user's
  * eye lands on it.
  */
+/* Scrollable atom list -- the keyboard-friendly path to selection.
+ * Sits ABOVE the distance table; row click toggles a pick.  Compact
+ * monospace layout so the narrow control aside fits 5 columns
+ * (index, element, x, y, z) without wrapping. */
+.inspect-list-wrap {
+    max-height: 240px;
+    overflow-y: auto;
+    margin: 6px 0 8px;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm, 4px);
+    background: var(--bg-card);
+}
+.inspect-list {
+    width: 100%;
+    border-collapse: collapse;
+    font: 0.82rem ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+}
+.inspect-list thead th {
+    position: sticky;
+    top: 0;
+    background: var(--bg-card);
+    color: var(--text-secondary);
+    font-weight: 600;
+    text-align: left;
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--border-soft);
+    z-index: 1;
+}
+.inspect-list tbody td {
+    padding: 3px 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+}
+.inspect-list tbody tr {
+    cursor: pointer;
+    transition: background 0.08s;
+}
+.inspect-list tbody tr:hover {
+    background: var(--bg-card-hover, rgba(255, 255, 255, 0.05));
+}
+.inspect-list tbody tr.is-selected {
+    background: var(--warning-bg, rgba(251, 146, 60, 0.18));
+    color: var(--text-primary);
+}
+.inspect-list .col-idx   { width: 3em; color: var(--text-muted); }
+.inspect-list .col-el    { width: 3em; color: var(--text-primary); font-weight: 600; }
+.inspect-list .col-coord { text-align: right; color: var(--accent); }
+
 .inspect-table {
     width: 100%;
     border-collapse: collapse;
