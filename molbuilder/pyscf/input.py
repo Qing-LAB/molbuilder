@@ -126,22 +126,14 @@ def _resolve_ecp(struct: Structure, cfg: PySCFConfig) -> Optional[str]:
 
 
 def _resolve_charge(struct: Structure, cfg: PySCFConfig) -> int:
-    """Resolve the molecule's net charge.
-
-    Order of precedence:
-      1. cfg.charge explicit override (including 0, which disables
-         auto-detection).
-      2. phosphate-protonation heuristic via
-         :func:`molbuilder.chemistry.formal_charge_from_phosphates`.
-
-    The heuristic only counts deprotonated phosphate non-bridging
-    oxygens; charged side chains (Asp, Glu, Lys, Arg, His) are NOT
-    detected and the user must override with cfg.charge for those.
+    """Thin shim onto :func:`molbuilder.chemistry.resolve_net_charge`
+    that bridges PySCFConfig's ``charge`` field to the shared rule
+    (SiestaConfig uses ``net_charge`` -- different field name, same
+    semantics).  Kept as a module-private helper so the rest of
+    render_script doesn't have to know the chemistry import path.
     """
-    if cfg.charge is not None:
-        return int(cfg.charge)
-    from ..chemistry import formal_charge_from_phosphates
-    return formal_charge_from_phosphates(struct)
+    from ..chemistry import resolve_net_charge
+    return resolve_net_charge(struct, cfg.charge)
 
 
 def render_script(struct: Structure,

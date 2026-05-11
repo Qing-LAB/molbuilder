@@ -169,6 +169,29 @@ def formal_charge_from_phosphates(struct: Structure) -> int:
     return charge
 
 
+def resolve_net_charge(struct: Structure,
+                      explicit_charge: Optional[int]) -> int:
+    """Resolve a molecule's net charge from an optional explicit override.
+
+    The rule lives here so the SIESTA and PySCF generators (which
+    name their dataclass fields differently -- ``cfg.net_charge`` vs
+    ``cfg.charge``) don't each carry their own copy:
+
+      1. Explicit override wins.  ``0`` is meaningful (forces neutral,
+         disables auto-detection); only ``None`` triggers the
+         auto-detect path.
+      2. Otherwise, count the deprotonated phosphate non-bridging
+         oxygens via :func:`formal_charge_from_phosphates`.
+
+    The heuristic only sees phosphate groups; charged side chains
+    (Asp / Glu / Lys / Arg / His) are NOT detected -- the user
+    must override with a non-None explicit value for those.
+    """
+    if explicit_charge is not None:
+        return int(explicit_charge)
+    return formal_charge_from_phosphates(struct)
+
+
 def protonate_phosphate_oxygens(struct: Structure) -> Tuple[Structure, int]:
     """Neutralise the molecule by adding Hs to deprotonated phosphate Os.
 

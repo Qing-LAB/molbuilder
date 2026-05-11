@@ -168,13 +168,14 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     species_index = {s: i + 1 for i, s in enumerate(species)}
 
     # ---------- net charge: explicit override or auto-detect ----------
-    if cfg.net_charge is not None:
-        auto_charge = int(cfg.net_charge)
-        charge_source = "user-specified"
-    else:
-        from ..chemistry import formal_charge_from_phosphates
-        auto_charge = formal_charge_from_phosphates(struct)
-        charge_source = "auto (phosphate protonation)"
+    # The rule itself lives in molbuilder.chemistry.resolve_net_charge
+    # (shared with the PySCF generator); here we only also track a
+    # user-facing comment label so the emitted FDF says WHY the
+    # NetCharge value was picked.
+    from ..chemistry import resolve_net_charge
+    auto_charge = resolve_net_charge(struct, cfg.net_charge)
+    charge_source = ("user-specified" if cfg.net_charge is not None
+                     else "auto (phosphate protonation)")
 
     # For charged systems in vacuum, the SIESTA-recommended padding is
     # >=25 A on each face to suppress image-image Coulomb interactions.
