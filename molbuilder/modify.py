@@ -61,15 +61,7 @@ def delete_atoms(struct: Structure, indices: Sequence[int]) -> Structure:
     keep = sorted(set(range(struct.n_atoms)) - set(int(i) for i in indices))
     if len(keep) == struct.n_atoms:
         # No-op (or all indices were out of range / already absent).
-        return Structure(
-            elements=list(struct.elements),
-            positions=struct.positions.copy(),
-            atom_names=list(struct.atom_names),
-            residue_ids=list(struct.residue_ids),
-            residue_names=list(struct.residue_names),
-            chain_ids=list(struct.chain_ids),
-            title=struct.title,
-        )
+        return struct.copy()
     return Structure(
         elements=     [struct.elements[i]      for i in keep],
         positions=    struct.positions[keep].copy(),
@@ -300,9 +292,10 @@ def rotate_around_axis(
     struct: Structure,
     axis: str = "z",
     angle: float = 0.0,
+    *,
+    center: str = "origin",
 ) -> Structure:
-    """Rotate every atom by ``angle`` degrees around the given axis,
-    which passes through the origin.
+    """Rotate every atom by ``angle`` degrees around the named axis.
 
     Useful after :func:`orient_along_axis` to spin a tilted molecule
     around the transport axis to a different azimuth -- e.g. to tilt
@@ -311,16 +304,33 @@ def rotate_around_axis(
     Parameters
     ----------
     axis
-        Rotation axis: "x", "y", or "z" (default).  Passes through
-        the origin -- callers wanting rotation around a different
-        point should translate first / after.
+        Rotation axis: "x", "y", or "z" (default).
     angle
         Rotation angle in **degrees**.  Right-hand rule (positive
         angle = counter-clockwise when looking down the axis from +
         toward origin).  Default ``0.0`` is a no-op.
+    center
+        Pivot point for the rotation:
+
+        * ``"origin"`` (default) -- the rotation axis passes through
+          the world origin.  This is non-commutative with
+          ``add_atom`` / ``translate`` ops that leave the molecule
+          off-origin: the molecule then swings on a wide arc rather
+          than rotating in place.  Use when you want a global
+          coordinate-system rotation (e.g. immediately after
+          ``orient_along_axis(center="midpoint")`` which already
+          placed the anchor pair at the origin).
+        * ``"centroid"`` -- the rotation axis passes through the
+          atom-coordinate mean.  The molecule rotates in place
+          regardless of its current global position.  Use for the
+          typical "spin this molecule by N degrees" intent.
     """
     if axis not in _AXES:
         raise ValueError(f"axis must be 'x', 'y', or 'z'; got {axis!r}")
+    if center not in ("origin", "centroid"):
+        raise ValueError(
+            f"center must be 'origin' or 'centroid'; got {center!r}"
+        )
     theta_rad = np.radians(float(angle))
     c, s = np.cos(theta_rad), np.sin(theta_rad)
     if axis == "z":
@@ -335,9 +345,16 @@ def rotate_around_axis(
         R = np.array([[ c, 0.0,  s],
                       [0.0, 1.0, 0.0],
                       [-s, 0.0,  c]])
+    if center == "centroid":
+        # Rotate about the atom centroid by subtracting it, rotating
+        # in the centroid frame, then translating back.
+        centroid = struct.positions.mean(axis=0)
+        new_pos = (struct.positions - centroid) @ R.T + centroid
+    else:
+        new_pos = struct.positions @ R.T
     return Structure(
         elements=list(struct.elements),
-        positions=struct.positions @ R.T,
+        positions=new_pos,
         atom_names=list(struct.atom_names),
         residue_ids=list(struct.residue_ids),
         residue_names=list(struct.residue_names),
@@ -461,6 +478,79 @@ def _get_fcc_lattice() -> dict:
     return _FCC_LATTICE_A_CACHE
 
 
+# Metal-element-aware default contact distances (Å) loaded from
+# ``data/contact_distance.json``.  Used by ``add_electrode_slab``
+# when the caller doesn't override ``contact_distance``: Au-S
+# canonical 2.40 Å is wrong for Pt-N (2.05) or Ag-S (2.50), so the
+# element-aware default is a real win over the previous hardcoded
+# 2.4 default.  Lazy-load + cache pattern matches the FCC lattice
+# table above.
+_CONTACT_DISTANCE_CACHE: Optional[dict] = None
+
+
+def _load_contact_distance() -> dict:
+    """Load the per-metal default contact-distance table from
+    ``contact_distance.json``.  Returns ``{element_symbol: float_A}``.
+    """
+    last_error: Optional[Exception] = None
+    for candidate_dir in _data_dir_candidates():
+        path = candidate_dir / "contact_distance.json"
+        if not path.is_file():
+            continue
+        try:
+            with open(path) as fh:
+                data = _json.load(fh)
+        except (_json.JSONDecodeError, OSError) as exc:
+            last_error = RuntimeError(
+                f"failed to read contact-distance table at {path!s}: {exc}"
+            )
+            continue
+        if not isinstance(data, dict) or "metals" not in data:
+            last_error = RuntimeError(
+                f"contact-distance table at {path!s} missing 'metals' key"
+            )
+            continue
+        out: dict = {}
+        for sym, entry in data["metals"].items():
+            try:
+                out[sym] = float(entry["d"])
+            except (KeyError, TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    f"contact-distance entry {sym!r} in {path!s} "
+                    f"is malformed: {exc}"
+                ) from exc
+        if not out:
+            raise RuntimeError(
+                f"contact-distance table at {path!s} contains zero entries"
+            )
+        return out
+    raise RuntimeError(
+        f"could not locate contact_distance.json under any of: "
+        f"{[str(p) for p in _data_dir_candidates()]}.  "
+        f"Last error: {last_error}"
+    )
+
+
+def _get_contact_distance() -> dict:
+    """Return the per-metal default contact-distance dict, loading on
+    first call.  Cached for the rest of the process."""
+    global _CONTACT_DISTANCE_CACHE
+    if _CONTACT_DISTANCE_CACHE is None:
+        _CONTACT_DISTANCE_CACHE = _load_contact_distance()
+    return _CONTACT_DISTANCE_CACHE
+
+
+def default_contact_distance(element: str) -> float:
+    """Element-aware default contact distance (Å) for a metal anchor.
+
+    Falls back to 2.4 (canonical Au-S) when the element isn't in the
+    table -- preserves backward compatibility with callers that
+    relied on the old hardcoded default for unsupported metals.
+    """
+    table = _get_contact_distance()
+    return table.get(element, 2.4)
+
+
 def _check_fcc_element(element: str) -> None:
     """Raise ``ValueError`` if the requested element isn't on the
     supported list.  The list is closed (see ``SUPPORTED_FCC_ELEMENTS``)
@@ -531,7 +621,7 @@ def add_electrode_slab(
     size: Tuple[int, int, int],
     anchor_index: int,
     *,
-    contact_distance: float = 2.4,
+    contact_distance: Optional[float] = None,
     side: str = "+z",
     orthogonal: bool = False,
     offset: Tuple[float, float] = (0.0, 0.0),
@@ -620,15 +710,12 @@ def add_electrode_slab(
     """
     m, n, n_layers = (int(s) for s in size)
     if n_layers <= 0:
-        return Structure(
-            elements=list(struct.elements),
-            positions=struct.positions.copy(),
-            atom_names=list(struct.atom_names),
-            residue_ids=list(struct.residue_ids),
-            residue_names=list(struct.residue_names),
-            chain_ids=list(struct.chain_ids),
-            title=struct.title,
-        )
+        return struct.copy()
+    # Element-aware default: 2.4 A is Au-S; Pt-N wants 2.05, Ag-S
+    # 2.50, etc.  Loaded from data/contact_distance.json so users
+    # can audit / override per molbuilder/data/README.md.
+    if contact_distance is None:
+        contact_distance = default_contact_distance(element)
     if side not in ("+z", "-z"):
         raise ValueError(f"side must be '+z' or '-z'; got {side!r}")
     if not (0 <= anchor_index < struct.n_atoms):

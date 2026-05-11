@@ -517,58 +517,6 @@ def test_apply_button_disables_during_fetch(
     page.unroute("**/api/modify/delete")
 
 
-def test_postop_early_return_blocks_concurrent_call(
-        page, flask_server, water_xyz_file):
-    """The ``state.inFlight`` early-return in ``postOp`` is a second
-    layer of defence behind the button-disable.  This test bypasses
-    the button entirely (calls ``onAtomListRowClick`` then directly
-    invokes the op via the test hook would expose it; here we
-    instead post via fetch races) to verify the JS guard is real.
-
-    Approach: fire two parallel fetches by overriding the global
-    fetch with a wrapper that records calls, then directly invoke
-    ``applyDelete`` twice via the test hook.  We don't have a hook
-    for ``applyDelete`` itself; instead we rely on the button click
-    being intercepted by the disable layer.  This test thus
-    duplicates the user-visible-behavior test (one fetch lands), and
-    is kept as documentation of the design intent."""
-    _open_modify(page, flask_server)
-    _load_water(page, water_xyz_file)
-
-    delete_calls = []
-    page.on(
-        "request",
-        lambda req: (
-            delete_calls.append(req.url)
-            if "/api/modify/delete" in req.url else None
-        ),
-    )
-    # Slow the response so a second click would race during in-flight.
-    def _slow_route(route):
-        import time
-        time.sleep(0.3)
-        route.continue_()
-    page.route("**/api/modify/delete", _slow_route)
-
-    page.locator("#atom-list-body tr").nth(0).click()
-    btn = page.locator("#delete-apply")
-    btn.click()
-    # Try a second click during in-flight; force=True bypasses
-    # Playwright's actionability check, but the browser still
-    # drops events on disabled <button> elements.  Both guards
-    # combine to ensure only one fetch hits the wire.
-    btn.click(force=True)
-
-    page.wait_for_function(
-        "() => document.querySelectorAll('#atom-list-body tr').length === 2"
-    )
-    page.wait_for_timeout(100)
-    assert len(delete_calls) == 1, (
-        f"expected one POST /api/modify/delete; got {len(delete_calls)}"
-    )
-    page.unroute("**/api/modify/delete")
-
-
 def test_apply_add_atom_appends_h_at_offset(
         page, flask_server, water_xyz_file):
     """End-to-end: anchor=O, element=H, dz=1.0 -> atom list grows to
@@ -838,16 +786,18 @@ def test_rotate_button_enabled_when_structure_loaded(
     assert page.locator("#rotate-apply").is_enabled()
 
 
-def test_apply_rotate_z_90(
+def test_apply_rotate_z_90_centroid_default(
         page, flask_server, tmp_path):
-    """+90° z-rotation maps atom 1 from (1, 1, 0) to (-1, 1, 0)."""
+    """Default pivot = centroid: +90° z-rotation about the
+    centroid (1.5, 1.5, 0) maps atom 1 from (1, 1, 0) to
+    (2, 1, 0).  This is the "rotate in place" default that matches
+    user intent for the typical "spin this molecule N degrees" op."""
     diag_xyz = tmp_path / "diag.xyz"
     diag_xyz.write_text("4\ndiag\nC 0 0 0\nC 1 1 0\nC 2 2 0\nC 3 3 0\n")
     _open_modify(page, flask_server)
     _load_file(page, str(diag_xyz), expected_atoms=4)
     _open_op_tab(page, "pose")
 
-    # Set the rotate angle slider to 90 degrees.
     page.locator("#rotate-angle").evaluate(
         "(el) => { el.value = '90'; "
         "el.dispatchEvent(new Event('input', {bubbles: true})); }"
@@ -860,7 +810,37 @@ def test_apply_rotate_z_90(
         const v = window.__molbuilder_modify_test.getViewer();
         return v.selectedAtoms({}).map(a => [a.x, a.y, a.z]);
     }""")
-    # atom 1 was at (1, 1, 0) -> should be (-1, 1, 0) after +90° rotation.
+    # Centroid = (1.5, 1.5, 0).  Atom 1 at (1, 1, 0) -> centroid frame
+    # (-0.5, -0.5, 0) -> rotate 90° -> (0.5, -0.5, 0) -> world (2, 1, 0).
+    assert abs(coords[1][0] - 2.0) < 1e-3, coords[1]
+    assert abs(coords[1][1] - 1.0) < 1e-3, coords[1]
+    assert abs(coords[1][2] - 0.0) < 1e-3, coords[1]
+
+
+def test_apply_rotate_z_90_origin_pivot(
+        page, flask_server, tmp_path):
+    """Pivot = origin: +90° z-rotation about the world origin maps
+    atom 1 from (1, 1, 0) to (-1, 1, 0).  Pre-2026-05-10 behaviour;
+    still available via the Pivot dropdown."""
+    diag_xyz = tmp_path / "diag.xyz"
+    diag_xyz.write_text("4\ndiag\nC 0 0 0\nC 1 1 0\nC 2 2 0\nC 3 3 0\n")
+    _open_modify(page, flask_server)
+    _load_file(page, str(diag_xyz), expected_atoms=4)
+    _open_op_tab(page, "pose")
+
+    page.locator("#rotate-center").select_option("origin")
+    page.locator("#rotate-angle").evaluate(
+        "(el) => { el.value = '90'; "
+        "el.dispatchEvent(new Event('input', {bubbles: true})); }"
+    )
+    page.locator("#rotate-apply").click()
+    page.wait_for_function(
+        "() => /Rotated/.test(document.querySelector('#edit-status').textContent)"
+    )
+    coords = page.evaluate("""() => {
+        const v = window.__molbuilder_modify_test.getViewer();
+        return v.selectedAtoms({}).map(a => [a.x, a.y, a.z]);
+    }""")
     assert abs(coords[1][0] - (-1.0)) < 1e-3, coords[1]
     assert abs(coords[1][1] - 1.0)    < 1e-3, coords[1]
     assert abs(coords[1][2] - 0.0)    < 1e-3, coords[1]

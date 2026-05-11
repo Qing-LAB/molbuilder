@@ -171,7 +171,7 @@ def api_modify_delete():
         return _err("'indices' must be a list of integers", 400)
     try:
         new_struct = _delete_atoms(struct, indices_int)
-    except Exception as exc:                       # noqa: BLE001
+    except (ValueError, IndexError) as exc:
         return _err(f"delete_atoms failed: {exc}", 400)
     return _ok_response(new_struct)
 
@@ -238,7 +238,7 @@ def api_modify_add_atom():
             atom_name=atom_name, residue_name=residue_name,
             residue_id=residue_id,
         )
-    except Exception as exc:                       # noqa: BLE001
+    except (ValueError, IndexError) as exc:
         return _err(f"add_atom failed: {exc}", 400)
     return _ok_response(new_struct)
 
@@ -335,9 +335,17 @@ def api_modify_rotate():
         angle_f = _finite_float("angle", body.get("angle"))
     except ValueError as exc:
         return _err(str(exc), 400)
+    center = (body.get("center") or "origin").strip().lower()
+    if center not in ("origin", "centroid"):
+        return _err(
+            f"center must be 'origin' or 'centroid'; got {center!r}",
+            400,
+        )
     try:
-        new_struct = _rotate_around_axis(struct, axis=axis, angle=angle_f)
-    except Exception as exc:                       # noqa: BLE001
+        new_struct = _rotate_around_axis(
+            struct, axis=axis, angle=angle_f, center=center,
+        )
+    except ValueError as exc:
         return _err(f"rotate_around_axis failed: {exc}", 400)
     return _ok_response(new_struct)
 
@@ -374,7 +382,7 @@ def api_modify_translate():
     if bool(body.get("recenter", False)):
         try:
             new_struct = struct.centered()
-        except Exception as exc:                       # noqa: BLE001
+        except ValueError as exc:
             return _err(f"recenter failed: {exc}", 400)
         return _ok_response(new_struct)
     try:
@@ -385,7 +393,7 @@ def api_modify_translate():
         return _err(str(exc), 400)
     try:
         new_struct = struct.translated((dx, dy, dz))
-    except Exception as exc:                           # noqa: BLE001
+    except ValueError as exc:
         return _err(f"translate failed: {exc}", 400)
     return _ok_response(new_struct)
 

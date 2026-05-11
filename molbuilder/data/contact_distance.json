@@ -1,0 +1,16 @@
+{
+    "_format": "molbuilder.data.contact_distance v1",
+    "_units": {
+        "d": "angstrom"
+    },
+    "_purpose": "Default metal-to-anchor contact distance used by `add_electrode_slab` and the Modify-tab single-mode electrode panel when the user doesn't override. One value per metal (canonical M-S thiol-anchor bond, except Pt-N where pyridine is the typical anchor).",
+    "_sources": "Au-S (Au) 2.40 A: Sellers H. et al. 1993 JACS 115, 9389 (thiolate SAMs).  Ag-S 2.50 A: Yates and Houston 1985 PRB 31 6878.  Cu-S 2.30 A: Crystallographic Cu-thiolate.  Ni-S 2.20 A: Ni(II) thiolates.  Pt-N 2.05 A: Pt-pyridine.  Pd-S 2.30 A: Pd-thiolate.  All approximate room-temperature production defaults; tighten with cfg.contact_distance = ... for non-equilibrium studies.",
+    "metals": {
+        "Au": { "d": 2.40, "anchor": "S", "note": "canonical Au-S thiolate; molecular-electronics workhorse" },
+        "Ag": { "d": 2.50, "anchor": "S", "note": "Ag-thiolate; longer than Au-S" },
+        "Cu": { "d": 2.30, "anchor": "S", "note": "Cu(I)-thiolate; tarnishes under thiol exposure -- use Au or Pt for production" },
+        "Ni": { "d": 2.20, "anchor": "S", "note": "Ni(II)-thiolate" },
+        "Pt": { "d": 2.05, "anchor": "N", "note": "Pt-pyridine (typical Pt anchor); for Pt-S thiolate use 2.30" },
+        "Pd": { "d": 2.30, "anchor": "S", "note": "Pd-thiolate" }
+    }
+}

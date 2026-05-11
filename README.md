@@ -1,12 +1,14 @@
 # molbuilder
 
-> Build, modify, and watch molecular-electronics calculations end to end.
+> Assemble **metal–molecule–metal nanojunctions** for transport-DFT
+> simulations.  Build → modify → simulate → watch, all in one
+> toolkit.
 
-molbuilder turns a sequence, SMILES string, or chemical name into a
-3-D structure, lets you edit it into a derived geometry (e.g. a
-metal-molecule-metal junction), generates **SIESTA** or **PySCF**
-input files, and watches the resulting calculation live in a
-browser.  One toolkit covers the whole pipeline:
+molbuilder is built around the **molecular-electronics workflow**:
+constructing the geometry of a single-molecule junction sandwiched
+between two metal electrodes (Au–thiol–Au is the canonical example),
+generating **SIESTA** or **PySCF** input for that geometry, and
+watching the resulting DFT optimisation live in a browser.
 
 ```
 sequence ──► Structure ──► (modify) ──► SIESTA .fdf  ──► siesta ──┐
@@ -14,6 +16,14 @@ sequence ──► Structure ──► (modify) ──► SIESTA .fdf  ──►
                                                                               │
                                                             ◄──── live watch ─┘
 ```
+
+The **Modify** tab is the headline feature.  It takes a relaxed
+molecule (built here or loaded from anywhere), lets you orient its
+anchor atoms onto the z-axis, and adds crystallographic FCC
+electrode slabs at a chosen gap — giving you a transport-ready
+geometry in a few clicks.  The full pipeline (build / modify /
+generate / watch) is what differentiates molbuilder from a
+general-purpose builder: every step knows about the next.
 
 These are **starting structures for a geometry optimisation** — not
 equilibrium geometries.  Always relax in your DFT/MP2 code before
@@ -64,32 +74,89 @@ readable as a tutorial.
 
 ---
 
-## The Modify tab
+## The Modify tab — assemble a nanojunction
 
 ![Modify tab — water loaded, atom list on the left, viewer in the middle, Edit panel on the right with 4 sub-tabs](docs/img/modify-tab.png)
 
-Edit an existing `.xyz` / `.pdb` into a derived structure:
+The Modify tab assembles a **metal–molecule–metal nanojunction** from
+an existing molecule plus a couple of clicks.  The canonical workflow
+takes a thiol-anchored molecule (1,4-benzenedithiol, an alkanedithiol,
+an oligophenyl, …) and produces a Au–S–molecule–S–Au geometry ready
+for SIESTA / TranSIESTA transport calculations.
+
+### Canonical Au–thiol–Au workflow
+
+1. **Load** the relaxed molecule (`.xyz` or `.pdb`).
+2. **Atom subtab** — click the two thiol hydrogens, hit **Delete**
+   to expose the S atoms.
+3. **Pose subtab** — select the two S atoms (Shift-click), pick
+   target axis **z** with `center = midpoint`, hit **Apply orient**.
+   The S–S vector now lies along z; their midpoint is at the origin.
+4. **Geom subtab** — optional `Centre at origin` cleans up any
+   residual offset.
+5. **Junction subtab** — pick element **Au**, plane **111**, set
+   `m × n × layers` (e.g. 3 × 3 × 2), set the gap (12 Å is a sensible
+   default for short oligomers; longer molecules need more), click
+   **Apply Add Electrode**.  In the default *anchorless* mode no
+   atom selection is required: slabs land at `z = ±gap/2` around the
+   world origin and the molecule fits between them.
+6. **Send to Build** — Build picks up the assembled junction and you
+   generate `.fdf` / `.py` normally.
+
+### What each subtab is for
 
 * **Atom** — delete selected atoms, add a new atom with `(dx, dy,
-  dz)` offset and a live distance readout.
+  dz)` offset and a live distance readout.  Used to strip H caps
+  before exposing anchor atoms, or to add an explicit cap (-CH₃, -F)
+  at an arbitrary site.
 * **Pose** — orient an anchor pair onto the z-axis (with a tilt
-  slider), or rotate the whole structure around x / y / z by an
-  explicit angle.
-* **Geom** — center the structure at the origin (centroid → (0,
-  0, 0)) or apply an explicit `(Δx, Δy, Δz)` translation.
-* **Junction** — add FCC electrode slabs.  Default (anchorless)
-  mode places slabs at z = ±gap/2 around the world origin so the
-  user controls geometry via the molecule's pose alone.  Legacy
-  anchor-pair mode is opt-in by selecting two atoms.
+  slider), or rotate the whole structure around x / y / z.  The
+  Rotate op has a `Pivot` select (centroid = rotate in place,
+  origin = world-axis rotation).
+* **Geom** — translate the structure: centre the geometric centroid
+  at the origin or apply an explicit `(Δx, Δy, Δz)` shift.  Useful
+  when chaining ops or recovering from an off-origin starting xyz.
+* **Junction** — add FCC electrode slabs (Au / Ag / Cu / Ni / Pt /
+  Pd) on the (100) / (110) / (111) plane.  Two modes:
+  * **Anchorless (default)** — slabs at `z = ±gap/2` around the
+    world origin.  No atom selection needed; controlled entirely by
+    `gap` + lateral `(dx, dy)` offset.  The user's job is to centre
+    + pose the molecule first, then add slabs around it.
+  * **Anchor-pair (legacy)** — with two atoms selected, slabs are
+    placed so the *midpoint* of those anchors becomes the slab
+    midpoint.  Useful when the molecule is not pre-centred or when
+    you want the slabs to follow a tilted anchor pair.
 
-Click two atoms in the viewer to multi-select (orient + electrode
-ops read a pair as anchors).  The Junction subtab carries a
-**slab-only Undo** with 20-deep history so you can experiment with
-electrode parameters and roll back.  When the junction is done,
-**Send to Build** hands it off; Build picks it up identically to a
-fresh build and you generate the FDF / PySCF script.
+Element-aware defaults for contact distance: 2.40 Å Au–S, 2.50 Å
+Ag–S, 2.30 Å Cu–S / Pd–S, 2.20 Å Ni–S, 2.05 Å Pt–N (see
+[`molbuilder/data/contact_distance.json`](molbuilder/data/contact_distance.json)
+for citations).  Override with the contact-distance slider in
+Single mode or pass `contact_distance=` in the Python API.
 
-The full Modify spec lives at [`docs/spec/modify-tab.md`](docs/spec/modify-tab.md).
+### Slab-only Undo
+
+The Junction subtab carries a 20-deep **Undo** for electrode ops
+only.  Other ops (delete / rotate / translate / centre) are
+committed immediately and roll back via re-load.  Snapshot pushes
+only on a successful response so a failed Apply doesn't consume an
+undo slot.
+
+### Atom-picking helpers
+
+Click any atom in the viewer or in the left-hand atom list to
+select; Shift-click to add to a multi-selection (orient + legacy
+electrode mode read a pair as anchors).  Picked atoms wear a bright
+orange wireframe halo, visible from any camera angle.  The viewer
+toolbar's **Focus molecule** button anchors the camera pivot on the
+molecule (ignoring electrode slabs) when interaction feels
+off-centre — useful after adding bulky slabs that dominate the
+auto-fit bounding box.
+
+The full Modify spec, including every endpoint and the
+electrode-placement math, lives at
+[`docs/spec/modify-tab.md`](docs/spec/modify-tab.md).
+The directory-layout protocol that ties Modify to Build and Watch
+is at [`docs/spec/job-layout.md`](docs/spec/job-layout.md).
 
 ---
 

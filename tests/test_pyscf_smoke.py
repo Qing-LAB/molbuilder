@@ -87,7 +87,7 @@ def _silent_singlepoint_config(job_name: str,
         save_optimized_xyz=False,
         save_initial_xyz=False,
         write_trajectory=False,
-        molwatch_log=False,
+        write_molwatch_log=False,
         verbose=3,
         verbose_comments=False,
     )

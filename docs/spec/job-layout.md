@@ -212,7 +212,7 @@ trajectory with stage boundary markers.
   in the same directory; their names are dictated by the chemical
   element, not the basename.  They're shared across jobs (a Au
   pseudopotential is the same Au pseudopotential everywhere); the
-  `--psml-lib` CLI flag copies them into the job directory at
+  `--psml-lib` CLI flag copies them into the run directory at
   generate time, but the layout doesn't *require* this.
 - **Output post-processing files** (Mulliken charges, BandLines
   output, PDOS files) follow SIESTA's own naming conventions

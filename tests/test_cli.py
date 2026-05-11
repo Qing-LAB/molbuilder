@@ -216,7 +216,7 @@ def test_pyscf_cli_exposes_review_fix_l_options(monkeypatch, tmp_path):
     were silent CLI gaps before review-fix L:
         --diis-space, --damp, --ecp,
         --no-preopt-density-fit, --preopt-dispersion,
-        --no-molwatch-log, --no-save-initial-xyz, --no-save-optimized-xyz.
+        --no-write-molwatch-log, --no-save-initial-xyz, --no-save-optimized-xyz.
     Smoke-check by running with all of them on a real input + asserting
     the generated script reflects each non-default setting."""
     import io
@@ -230,7 +230,7 @@ def test_pyscf_cli_exposes_review_fix_l_options(monkeypatch, tmp_path):
         "--damp",       "0.4",
         "--ecp",        "lanl2dz",
         "--preopt-dispersion", "d3bj",
-        "--no-molwatch-log",
+        "--no-write-molwatch-log",
         "--no-save-initial-xyz",
         "--no-save-optimized-xyz",
     ])
@@ -254,7 +254,7 @@ def test_pyscf_cli_help_lists_all_review_fix_l_options():
     assert res.exit_code == 0
     for flag in ("--diis-space", "--damp", "--ecp",
                  "--no-preopt-density-fit", "--preopt-dispersion",
-                 "--no-molwatch-log",
+                 "--no-write-molwatch-log",
                  "--no-save-initial-xyz", "--no-save-optimized-xyz"):
         assert flag in res.output, f"missing {flag} in pyscf --help"
 
@@ -712,7 +712,7 @@ def test_pyscf_cli_override_propagates_to_pyscf_config(
     ("save_optimized_xyz",  True,  "--no-save-optimized-xyz"),
     ("save_initial_xyz",    True,  "--no-save-initial-xyz"),
     ("write_trajectory",    True,  "--no-write-trajectory"),
-    ("molwatch_log",        True,  "--no-molwatch-log"),
+    ("write_molwatch_log",  True,  "--no-write-molwatch-log"),
     ("verbose_comments",    True,  "--no-verbose-comments"),
 ])
 def test_pyscf_cli_bool_flags_round_trip(

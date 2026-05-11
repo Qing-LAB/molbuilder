@@ -136,17 +136,26 @@ is dominated by the slabs and 3Dmol's auto-pivot drifts off the molecule.">Focus
            sprawl down the page. -->
       <nav class="op-tabs" role="tablist" aria-label="Operations">
         <button class="optab is-active" data-op-tab="atom"
-                role="tab" type="button">1. Atom</button>
+                role="tab" type="button"
+                id="optab-btn-atom" aria-controls="optab-panel-atom"
+                aria-selected="true">1. Atom</button>
         <button class="optab" data-op-tab="pose"
-                role="tab" type="button">2. Pose</button>
+                role="tab" type="button"
+                id="optab-btn-pose" aria-controls="optab-panel-pose"
+                aria-selected="false">2. Pose</button>
         <button class="optab" data-op-tab="geom"
-                role="tab" type="button">3. Geom</button>
+                role="tab" type="button"
+                id="optab-btn-geom" aria-controls="optab-panel-geom"
+                aria-selected="false">3. Geom</button>
         <button class="optab" data-op-tab="junction"
-                role="tab" type="button">4. Junction</button>
+                role="tab" type="button"
+                id="optab-btn-junction" aria-controls="optab-panel-junction"
+                aria-selected="false">4. Junction</button>
       </nav>
 
       <!-- Atom edits: delete + add (M3 ops). -->
-      <div class="optab-panel is-active" data-op-panel="atom" role="tabpanel">
+      <div class="optab-panel is-active" data-op-panel="atom" role="tabpanel"
+           id="optab-panel-atom" aria-labelledby="optab-btn-atom">
 
       <!-- Delete: enabled when at least one atom is selected.
            Wires to POST /api/modify/delete. -->
@@ -204,7 +213,8 @@ is dominated by the slabs and 3Dmol's auto-pivot drifts off the molecule.">Focus
 
       <!-- Pose: orient + rotate (M4 ops).  These move the whole
            molecule rigidly. -->
-      <div class="optab-panel" data-op-panel="pose" role="tabpanel">
+      <div class="optab-panel" data-op-panel="pose" role="tabpanel"
+           id="optab-panel-pose" aria-labelledby="optab-btn-pose">
 
       <!-- Orient along axis: enabled when EXACTLY TWO atoms are
            selected (the anchor pair).  Default rotates the molecule
@@ -257,6 +267,14 @@ is dominated by the slabs and 3Dmol's auto-pivot drifts off the molecule.">Focus
             <label><input type="radio" name="rotate-axis" value="z" checked>z</label>
           </span>
         </div>
+        <div class="op-row">
+          <label>Pivot
+            <select id="rotate-center">
+              <option value="centroid" selected>centroid (rotate in place)</option>
+              <option value="origin">origin (world axis)</option>
+            </select>
+          </label>
+        </div>
         <label class="slider-row">
           <span>angle</span>
           <input id="rotate-angle" type="range"
@@ -274,7 +292,8 @@ is dominated by the slabs and 3Dmol's auto-pivot drifts off the molecule.">Focus
            Center-at-origin re-anchors the centroid (useful after
            adding electrodes shifts the structure off-axis); the
            offset row applies a free (Δx, Δy, Δz) shift. -->
-      <div class="optab-panel" data-op-panel="geom" role="tabpanel">
+      <div class="optab-panel" data-op-panel="geom" role="tabpanel"
+           id="optab-panel-geom" aria-labelledby="optab-btn-geom">
 
       <fieldset class="op-block">
         <legend>Center at origin</legend>
@@ -319,7 +338,8 @@ is dominated by the slabs and 3Dmol's auto-pivot drifts off the molecule.">Focus
       <!-- Junction: electrode panel + Send-to-Build handoff (M5).
            Place metal slabs around the anchor(s), then hand off the
            finished structure to the Build tab to generate FDF/PySCF. -->
-      <div class="optab-panel" data-op-panel="junction" role="tabpanel">
+      <div class="optab-panel" data-op-panel="junction" role="tabpanel"
+           id="optab-panel-junction" aria-labelledby="optab-btn-junction">
 
       <!-- Electrode panel: build FCC slab(s) perpendicular to z.
            Pair mode (default) places two slabs at z = ±gap/2 around

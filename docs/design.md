@@ -1298,30 +1298,10 @@ may match on; only the Python module name changes.
 
 ## Next steps
 
-Items deferred from prior reviews and the staged-relaxation /
-job-layout work.  Each is currently reachable but not load-bearing;
-promote when the time comes.
+Items not load-bearing but worth picking up when the time comes.
 
 ### High priority
 
-- **`rotate_around_axis` rotation pivot.**  Currently rotates around
-  the world origin (documented).  Add a `center: str = "centroid" |
-  "origin" | "midpoint"` kwarg, default `"centroid"`, so the typical
-  user flow `add_atom(...) → rotate(z, 90°)` doesn't swing the
-  molecule on a wide arc.  UI: add a "Pivot" select in the Pose
-  subtab Rotate row.
-- **`Structure.centered()` documentation + alternatives.**  Today
-  `centered()` puts the *atom-coordinate mean* at origin (NOT the
-  bounding-box centre, NOT the centre of mass).  For asymmetric
-  molecules the atom-mean shifts toward heavy substituents.  Either
-  document the choice in the docstring (one-line caution) or split
-  into `centroid_centered()` + `bbox_centered()` + `mass_centered()`
-  and have the Geom subtab grow a "Centre on…" select.
-- **Element-aware default `contact_distance`.**  `2.4 Å` is canonical
-  Au-S; 0.1-0.4 Å off for Pt-N, Cu-S, Ag-S, Pd-S, Ni-S.  Either
-  load defaults from a small `data/contact_distance.json` keyed by
-  metal, or emit a warn-severity Issue when the chosen metal isn't
-  Au.  Prefer the data file (matches the `fcc_lattice.json` precedent).
 - **Dataclass-driven form schema for the Build tab.**  Today the
   SIESTA + PySCF form fields in `web/templates/index.html` plus
   `web/static/viewer.js::collectFdfParams()` / `collectPyscfParams()`
@@ -1329,50 +1309,23 @@ promote when the time comes.
   `_shared.py::dataclass_to_form_schema(cls)` + `GET
   /api/build/schema/{siesta,pyscf}` + a JS form-renderer; phase the
   cut-over dual-running with the existing static form.  Closes the
-  one remaining Principle-#1 anti-pattern in the project.
+  last remaining Principle-#1 anti-pattern in the project.
 
 ### Medium priority
 
 - **Frequency / thermochemistry support in the PySCF script** (post-
   relax Hessian + RRHO).
-- **Naming consistency**: `SiestaConfig.write_molwatch_log` vs
-  `PySCFConfig.molwatch_log` are the same concept.  Pick one
-  (`write_molwatch_log` reads more cleanly) and keep the other as
-  a deprecated kwarg alias.
-- **`Structure.copy()` helper** — three inline `Structure(...)`
-  clone sites in `molbuilder/modify.py` (no_op branches) repeat the
-  same field-by-field rebuild.  Add `Structure.copy()` (via
-  `dataclasses.replace` + `positions.copy()`).
-- **Whether `Trajectory` should grow analysis methods** (RMSD,
-  principal axes, dipole moment time series) versus staying as a
-  thin `(source_format, frames, lattice)` wrapper.  Phase 2 landed
-  it as the thin shape; revisit if a future CLI subcommand wants
-  richer ergonomics.
-- **Whether a non-trivial CP2K / ORCA generator + parser arrives
-  before v1.0.**  If yes, the per-engine subpackage layouts already
-  accommodate it; if no, the abstraction is fine.
+- **`Trajectory` analysis methods.**  Whether `Trajectory` should
+  grow RMSD / principal axes / dipole moment time series, versus
+  staying as a thin `(source_format, frames, lattice)` wrapper.
+  Phase 2 landed it as the thin shape; revisit if a future CLI
+  subcommand wants richer ergonomics.
+- **CP2K / ORCA generator + parser.**  If a non-trivial new engine
+  arrives before v1.0, the per-engine subpackage layouts already
+  accommodate it; if not, the abstraction is fine.
 - **Phone-width (≤ 640 px) E2E layout test for Modify** — the
   viewer-controls toolbar has six children and may wrap badly on
   narrow viewports.  Existing layout test runs at 800 px.
-- **Watch-tab opt-in path constraint** (`MOLBUILDER_WATCH_ROOT`
-  env).  Today the deployment-stance warning fires when the user
-  binds to non-loopback, but local-attacker scenarios (multi-user
-  hosts) have no guard.  Add an env-driven root-allowlist so
-  `/api/watch/load` rejects paths outside the configured root.
-
-### Low priority
-
-- **Drop the redundant `test_postop_early_return_blocks_concurrent_call`
-  E2E test** that documents itself as redundant with
-  `test_apply_button_disables_during_fetch`.  Either give it
-  independent value (e.g. drive `postOp` directly via a test hook
-  that bypasses the disable layer) or delete it.
-- **`_list_molwatch_logs` directory-size cap.**  Latency cliff at
-  >256 logs; not currently hit by any reported workflow.
-- **`_last_temp_upload` cleanup on Werkzeug worker restart.**
-  Today the previous upload's temp file stays in `/tmp` until the
-  next upload comes in (process restart leaves the previous one).
-  `/tmp` self-cleans on reboot.
 
 ---
 

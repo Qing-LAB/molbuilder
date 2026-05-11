@@ -256,7 +256,7 @@ def test_molwatch_log_instantiation_skipped_when_optimizer_is_berny(h2o):
     optimizer != 'geometric' rather than emit an unwired class."""
     text = render_script(h2o,
                          PySCFConfig(optimize=True, optimizer="berny",
-                                     molwatch_log=True))
+                                     write_molwatch_log=True))
     assert "MolwatchEmitter" not in text
     assert ".molwatch.log" not in text or text.count(".molwatch.log") <= 1
 

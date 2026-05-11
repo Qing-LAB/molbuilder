@@ -431,6 +431,24 @@ class Structure:
     #  Combine / translate / center -- handy small utilities              #
     # ------------------------------------------------------------------ #
 
+    def copy(self) -> "Structure":
+        """Return a deep-ish copy: all metadata lists are duplicated;
+        ``positions`` is copied so the new Structure can be mutated
+        without affecting the original.  Used by op helpers that
+        return the input unchanged (e.g. ``add_electrode_slab`` with
+        ``n_layers <= 0`` short-circuits to ``struct.copy()`` rather
+        than open-coding the field-by-field rebuild three times).
+        """
+        return Structure(
+            elements      = list(self.elements),
+            positions     = self.positions.copy(),
+            atom_names    = list(self.atom_names),
+            residue_ids   = list(self.residue_ids),
+            residue_names = list(self.residue_names),
+            chain_ids     = list(self.chain_ids),
+            title         = self.title,
+        )
+
     def translated(self, vec: Sequence[float]) -> "Structure":
         v = np.asarray(vec, dtype=float).reshape(3)
         return Structure(
@@ -444,7 +462,19 @@ class Structure:
         )
 
     def centered(self) -> "Structure":
-        """Translate so the geometric centre sits at the origin."""
+        """Translate so the **atom-coordinate mean** lands at the
+        world origin.
+
+        Note the choice of centring: this is the unweighted mean of
+        atomic positions, NOT the bounding-box centre and NOT the
+        centre of mass.  For asymmetric molecules with a long
+        substituent (alkyl chain off a benzenedithiol, etc.) the
+        atom-mean will shift toward the heavier side.  When you
+        need the **anchor-pair midpoint** at the origin (the typical
+        transport-junction convention), use
+        ``orient_along_axis(struct, anchors, center='midpoint')``
+        instead -- it explicitly anchors on a user-chosen atom pair.
+        """
         return self.translated(-self.positions.mean(axis=0))
 
     @classmethod

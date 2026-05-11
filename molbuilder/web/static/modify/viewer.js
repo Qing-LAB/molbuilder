@@ -498,8 +498,9 @@
             return;
         }
         applyStructure(r);
+        const fmt = (r.source_format || "structure").toUpperCase();
         setStatus(
-            `Loaded ${r.n_atoms}-atom ${r.source_format.toUpperCase()} from ${file.name}.`,
+            `Loaded ${r.n_atoms}-atom ${fmt} from ${file.name}.`,
             "ok",
         );
     }
@@ -531,6 +532,20 @@
                 ]);
                 if (state.positions.length === state.n_atoms) break;
             }
+        }
+        // Defensive: a malformed XYZ payload (missing column, partial
+        // line, etc.) could leave positions.length != n_atoms, which
+        // would silently mis-attribute coordinates to atom indices in
+        // the selection-info panel and the slab-placement math.  Log
+        // loudly and clear so the next op fails fast rather than
+        // emitting wrong physics.
+        if (state.positions.length !== state.n_atoms) {
+            console.warn(
+                "XYZ parse anomaly: positions=" + state.positions.length
+                + " but n_atoms=" + state.n_atoms
+                + "; clearing positions array."
+            );
+            state.positions = [];
         }
 
         $("title-readout").textContent =
@@ -811,16 +826,17 @@
     }
 
     async function applyRotate() {
-        const axis  = getCheckedRadio("rotate-axis") || "z";
-        const angle = Number($("rotate-angle").value);
+        const axis   = getCheckedRadio("rotate-axis") || "z";
+        const angle  = Number($("rotate-angle").value);
+        const center = ($("rotate-center") || {}).value || "centroid";
         if (angle === 0) {
             setEditStatus("Angle = 0; nothing to rotate.", "error");
             return;
         }
         await postOp(
             "/api/modify/rotate",
-            { axis, angle },
-            `Rotated ${angle}° around ${axis}`,
+            { axis, angle, center },
+            `Rotated ${angle}° around ${axis} (${center} pivot)`,
         );
     }
 
@@ -1164,10 +1180,13 @@
             btn.addEventListener("click", () => {
                 const target = btn.dataset.opTab;
                 document.querySelectorAll(".optab").forEach((b) => {
-                    b.classList.toggle(
-                        "is-active",
-                        b.dataset.opTab === target,
-                    );
+                    const on = (b.dataset.opTab === target);
+                    b.classList.toggle("is-active", on);
+                    // Keep aria-selected in sync so screen readers
+                    // announce the active tab; pairs with the
+                    // aria-controls / aria-labelledby links on the
+                    // <button> and <div role="tabpanel"> elements.
+                    b.setAttribute("aria-selected", on ? "true" : "false");
                 });
                 document.querySelectorAll(".optab-panel").forEach((p) => {
                     p.classList.toggle(

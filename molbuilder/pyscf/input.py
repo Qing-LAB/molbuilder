@@ -227,7 +227,7 @@ def render_script(struct: Structure,
         out.append("                                   per step; readable live by")
         out.append("                                   molwatch).")
         out.append(f"    {label}_geom.log         -- geomeTRIC's main-opt log")
-    if cfg.optimize and cfg.molwatch_log and cfg.optimizer == "geometric":
+    if cfg.optimize and cfg.write_molwatch_log and cfg.optimizer == "geometric":
         out.append(f"    {label}.molwatch.log     -- unified per-step log: marker-")
         out.append("                                  delimited blocks containing")
         out.append("                                  coords, energy (eV), forces")
@@ -386,7 +386,7 @@ def render_script(struct: Structure,
     # time.  SCF cycle hooks are wired per-stage at each mf object
     # below (mf1 for preopt, mf for production).  The opt-step hook
     # is wired at each `optimize(...)` call.
-    if cfg.optimize and cfg.molwatch_log and cfg.optimizer == "geometric":
+    if cfg.optimize and cfg.write_molwatch_log and cfg.optimizer == "geometric":
         out += _emit_molwatch_emitter(v, cfg)
 
     # ------------------------------------------------------------- preopt
@@ -466,7 +466,7 @@ def render_script(struct: Structure,
     # is captured for production opt steps.  The emitter itself was
     # instantiated earlier (before preopt); we just attach the hook
     # here once mf is in its final form.
-    if cfg.optimize and cfg.molwatch_log and cfg.optimizer == "geometric":
+    if cfg.optimize and cfg.write_molwatch_log and cfg.optimizer == "geometric":
         out.append(_emit_molwatch_callback_wire("mf"))
     out.append("")
 
@@ -500,7 +500,7 @@ def render_script(struct: Structure,
                 out.append("    # with one frame per accepted step.  molwatch")
                 out.append("    # tails this file live, frame-by-frame.")
             out.append('    prefix                = JOB + "_geom",')
-        if cfg.molwatch_log and cfg.optimizer == "geometric":
+        if cfg.write_molwatch_log and cfg.optimizer == "geometric":
             if v:
                 out.append("    # callback fires once per accepted opt step;")
                 out.append("    # _molwatch.opt_step_hook flushes one block to")
@@ -697,7 +697,7 @@ def _emit_preopt_block(cfg: PySCFConfig, charge: int, v: bool) -> List[str]:
     # SCF history too -- otherwise the user only sees a single block per
     # preopt opt step with empty scf_history (and the "Watch tab can't
     # see anything until preopt finishes" UX bug returns at SCF granularity).
-    if cfg.molwatch_log and cfg.optimizer == "geometric":
+    if cfg.write_molwatch_log and cfg.optimizer == "geometric":
         out.append(_emit_molwatch_callback_wire("mf1"))
     out.append("")
     out.append("mol_pre = optimize(")
@@ -716,7 +716,7 @@ def _emit_preopt_block(cfg: PySCFConfig, charge: int, v: bool) -> List[str]:
             out.append("    #   <JOB>_preopt_optim.xyz")
             out.append("    # so molwatch can watch either stage live.")
         out.append('    prefix            = JOB + "_preopt",')
-    if cfg.molwatch_log and cfg.optimizer == "geometric":
+    if cfg.write_molwatch_log and cfg.optimizer == "geometric":
         if v:
             out.append("    # Stream preopt opt steps to <JOB>.molwatch.log so")
             out.append("    # the Watch tab shows progress from frame 1 onwards")
@@ -791,7 +791,7 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig") -> List[str]:
         out.append("# NOT edit the inline copy; edit the module and regenerate.")
         out.append("#")
         out.append("# All standard PySCF/geomeTRIC outputs are kept untouched;")
-        out.append("# this is purely additional.  Disable via cfg.molwatch_log =")
+        out.append("# this is purely additional.  Disable via cfg.write_molwatch_log =")
         out.append("# False at generation time if you don't want it.")
     out.append("import time as _mw_time")
     out.append("import numpy as _mw_np")

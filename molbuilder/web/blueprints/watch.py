@@ -70,8 +70,24 @@ _state: Dict[str, Any] = {
 }
 
 # Track the last temp file we created from a file-picker upload so
-# we can clean it up when a new upload comes in.
+# we can clean it up when a new upload comes in.  An atexit hook
+# also clears it on clean process exit (Ctrl-C of the dev server),
+# so a workflow of "spin up dev server, drop one upload, Ctrl-C" no
+# longer leaves a /tmp/molwatch_* file behind.  SIGKILL / power loss
+# can't be caught; /tmp self-cleans on reboot.
+import atexit as _atexit
 _last_temp_upload: Optional[str] = None
+
+
+@_atexit.register
+def _cleanup_last_temp_upload() -> None:                # pragma: no cover
+    global _last_temp_upload
+    if _last_temp_upload:
+        try:
+            os.remove(_last_temp_upload)
+        except OSError:
+            pass
+        _last_temp_upload = None
 
 
 # --------------------------------------------------------------------- #
@@ -142,6 +158,9 @@ def _newest(paths: List[str]) -> Optional[str]:
     return max(valid, key=lambda p: os.path.getmtime(p))
 
 
+_MAX_LOGS_PER_DIR = 256
+
+
 def _list_molwatch_logs(directory: str) -> List[str]:
     """Return all ``*.molwatch.log`` files in the directory in mtime
     order (oldest first).  Used to detect a multi-stage run; if the
@@ -152,11 +171,27 @@ def _list_molwatch_logs(directory: str) -> List[str]:
     deterministically.  With the canonical ``<base>-stage<N>``
     naming, lexical order matches stage order so this also
     rescues the multi-stage merge from filesystem inode order.
+
+    Capped at ``_MAX_LOGS_PER_DIR`` so an accidentally-shared
+    directory with thousands of stale logs can't make every poll
+    spend seconds in glob + merge.  The cap chooses the NEWEST
+    entries (likely the active staged run); older entries are
+    dropped with a stderr warning.
     """
     hits = glob.glob(os.path.join(directory, "*.molwatch.log"))
     valid = [p for p in hits if os.path.isfile(p)]
-    return sorted(valid, key=lambda p: (os.path.getmtime(p),
-                                          os.path.basename(p)))
+    sorted_logs = sorted(
+        valid, key=lambda p: (os.path.getmtime(p), os.path.basename(p)),
+    )
+    if len(sorted_logs) > _MAX_LOGS_PER_DIR:
+        dropped = len(sorted_logs) - _MAX_LOGS_PER_DIR
+        print(
+            f"[watch] {directory}: {len(sorted_logs)} *.molwatch.log "
+            f"files; capping at {_MAX_LOGS_PER_DIR} newest "
+            f"(dropped {dropped} older).", file=sys.stderr,
+        )
+        sorted_logs = sorted_logs[-_MAX_LOGS_PER_DIR:]
+    return sorted_logs
 
 
 def _resolve_run_directory(directory: str) -> Tuple[Optional[str], List[str]]:
@@ -482,7 +517,30 @@ def api_load():
     raw_path = (body.get("path") or "").strip()
     if not raw_path:
         return jsonify({"ok": False, "error": "Empty path."}), 400
-    raw_path = os.path.abspath(os.path.expanduser(raw_path))
+    # realpath (not just abspath) so symlinks pointing outside the
+    # opt-in MOLBUILDER_WATCH_ROOT are rejected too.
+    raw_path = os.path.realpath(os.path.expanduser(raw_path))
+    # Optional deployment-stance constraint: when MOLBUILDER_WATCH_ROOT
+    # is set, /api/watch/load refuses paths outside that subtree.
+    # Useful on shared / multi-user hosts to keep the read-arbitrary-
+    # file primitive scoped to the operator's intended run area.
+    # Unset by default (current behaviour: trust the user's path).
+    watch_root = os.environ.get("MOLBUILDER_WATCH_ROOT")
+    if watch_root:
+        watch_root_abs = os.path.realpath(os.path.expanduser(watch_root))
+        try:
+            common = os.path.commonpath([raw_path, watch_root_abs])
+        except ValueError:
+            common = ""
+        if common != watch_root_abs:
+            return jsonify({
+                "ok": False,
+                "error": (
+                    f"Path {raw_path!r} is outside MOLBUILDER_WATCH_ROOT "
+                    f"({watch_root_abs!r}); refusing to read.  Unset the "
+                    "env var or move the file under that root."
+                ),
+            }), 403
 
     # Directory-aware resolution per docs/spec/job-layout.md.  If the
     # user passed a directory, scan it for the canonical artefacts

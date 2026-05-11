@@ -217,15 +217,19 @@ class PySCFConfig:
         "help": ("stream geomeTRIC's <job>_geom_optim.xyz so molwatch can "
                  "watch it live"),
     })
-    molwatch_log: bool = field(default=True, metadata={
-        # Emission also requires ``optimize=True`` AND
-        # ``optimizer="geometric"`` -- the molwatch hooks ride on the
-        # SCF and geomeTRIC opt-step callbacks, so a single-point or
-        # berny run has nowhere to attach.  See spec
-        # docs/spec/pyscf-script.md L33 for the exact gate.
+    # Match SiestaConfig's naming (``write_molwatch_log``) so the two
+    # configs read the same way.  ``molwatch_log`` is kept as a
+    # back-compat property below in __post_init__ for callers passing
+    # the old kwarg.  Emission also requires ``optimize=True`` AND
+    # ``optimizer="geometric"`` -- the molwatch hooks ride on the
+    # SCF and geomeTRIC opt-step callbacks, so a single-point or
+    # berny run has nowhere to attach.  See spec
+    # docs/spec/pyscf-script.md L33 for the exact gate.
+    write_molwatch_log: bool = field(default=True, metadata={
         "help": ("write the additive <job>.molwatch.log (self-contained "
-                 "per-step coords / energy / forces; molwatch's preferred "
-                 "input).  Requires --optimize and --optimizer geometric"),
+                 "per-step coords / energy / forces; the Watch tab's "
+                 "preferred input).  Requires --optimize and "
+                 "--optimizer geometric"),
     })
 
     # ---------------- Runtime ----------------
@@ -264,6 +268,18 @@ class PySCFConfig:
                  "None keeps the unsuffixed name",
         "range": (1, 3),
     })
+
+    # Back-compat: the field was named ``molwatch_log`` before the
+    # 2026-05-10 naming alignment with SiestaConfig.write_molwatch_log.
+    # The property mirrors writes / reads to the canonical attribute
+    # so existing user code passing ``molwatch_log=...`` still works.
+    @property
+    def molwatch_log(self) -> bool:                  # pragma: no cover
+        return self.write_molwatch_log
+
+    @molwatch_log.setter
+    def molwatch_log(self, value: bool) -> None:     # pragma: no cover
+        self.write_molwatch_log = value
 
 
 __all__ = ["PySCFConfig"]

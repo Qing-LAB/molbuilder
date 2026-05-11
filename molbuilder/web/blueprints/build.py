@@ -254,7 +254,7 @@ def api_build_fdf():
     # Parse XYZ -> Structure (skip ASE round-trip; we wrote it ourselves)
     try:
         struct = _xyz_to_structure(xyz_text)
-    except Exception as exc:
+    except (ValueError, IndexError) as exc:
         return jsonify({"ok": False,
                         "error": f"could not parse xyz: {exc}"}), 400
 
@@ -299,7 +299,7 @@ def api_build_pyscf():
 
     try:
         struct = _xyz_to_structure(xyz_text)
-    except Exception as exc:
+    except (ValueError, IndexError) as exc:
         return jsonify({"ok": False,
                         "error": f"could not parse xyz: {exc}"}), 400
 
@@ -365,7 +365,7 @@ def api_build_preflight():
 
     try:
         struct = _xyz_to_structure(xyz_text)
-    except Exception as exc:
+    except (ValueError, IndexError) as exc:
         return jsonify({"ok": False,
                         "error": f"could not parse xyz: {exc}"}), 400
 
