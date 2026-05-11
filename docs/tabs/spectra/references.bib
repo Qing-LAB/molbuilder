@@ -1,0 +1,185 @@
+% molbuilder Spectra tab — curated bibliography.
+%
+% Each entry below MUST be verified by the author before the v1.2
+% release tag.  Verification = the entry's title, authors, journal,
+% year, volume/pages, and DOI all match a check against the
+% publisher's record (or a trusted database: Crossref, DOI.org,
+% the publisher's own page).  When verified, append a comment line
+% `% @verified <date> <initials>` after the closing brace of the
+% entry.
+%
+% Unverified entries are flagged `% TO VERIFY` and MUST NOT be
+% cited from production-quality emitted scripts or the spec's
+% prose.  The CI lint (future) will refuse a release tag if any
+% script-cited key resolves to a TO-VERIFY entry.
+%
+% Adding a new citation:
+%   1. Add the verified BibTeX entry here.
+%   2. Reference the key in spec.md (§ 11.x or § 14) AND in the
+%      engine's `methods_fragment()` output.
+%   3. Cross-check the DOI resolves.
+
+% ----- Canonical vibrational-spectroscopy reference -----
+
+@book{Wilson1955,
+  author    = {Wilson, E. Bright, Jr. and Decius, J. C. and Cross, Paul C.},
+  title     = {Molecular Vibrations: The Theory of Infrared and Raman
+               Vibrational Spectra},
+  publisher = {McGraw-Hill},
+  address   = {New York},
+  year      = {1955}
+  % Reprinted by Dover, 1980.  The canonical text on normal-mode
+  % analysis, GF-matrix method, and the symmetry classification of
+  % vibrational modes.  Cite for the foundational treatment of
+  % harmonic vibrational analysis.
+}
+% TO VERIFY
+
+% ----- PySCF (engine) -----
+
+@article{Sun2020,
+  author  = {Sun, Qiming and Zhang, Xing and Banerjee, Samragni and
+             Bao, Peng and Barbry, Marc and Blunt, Nick S. and others},
+  title   = {Recent developments in the {PySCF} program package},
+  journal = {Journal of Chemical Physics},
+  volume  = {153},
+  number  = {2},
+  pages   = {024109},
+  year    = {2020},
+  doi     = {10.1063/5.0006074}
+  % Reference for the PySCF package as a whole.  Covers the analytic
+  % Hessian (`pyscf.hessian.rks` etc.) and the polarizability
+  % derivative interfaces that the Spectra tab uses.  Cite when
+  % naming PySCF as the engine in a Methods paragraph.
+}
+% TO VERIFY
+
+@article{Sun2018,
+  author  = {Sun, Qiming and Berkelbach, Timothy C. and Blunt,
+             Nick S. and Booth, George H. and Guo, Sheng and Li,
+             Zhendong and Liu, Junzi and McClain, James D. and others},
+  title   = {{PySCF}: the {Python}-based simulations of chemistry framework},
+  journal = {WIREs Computational Molecular Science},
+  volume  = {8},
+  number  = {1},
+  pages   = {e1340},
+  year    = {2018},
+  doi     = {10.1002/wcms.1340}
+  % Original PySCF reference.  Cite alongside Sun2020 in the first
+  % mention; subsequent mentions need only one.
+}
+% TO VERIFY
+
+% ----- Analytic polarizability derivatives (Raman activity) -----
+
+@article{Komornicki1979,
+  author  = {Komornicki, Andrew and McIver, James W., Jr.},
+  title   = {An Efficient {Ab Initio} Method for Computing Infrared and
+             {Raman} Intensities: Application to Ethylene},
+  journal = {Journal of Chemical Physics},
+  volume  = {70},
+  number  = {5},
+  pages   = {2014--2016},
+  year    = {1979},
+  doi     = {10.1063/1.437627}
+  % First analytic-derivative formulation for IR + Raman intensities
+  % in ab initio frameworks.  Cite when describing the methodology
+  % for dα/dR in the Methods section.
+}
+% TO VERIFY
+
+% ----- Anharmonicity bounds on displacement amplitude -----
+
+@book{Mills1972,
+  author    = {Mills, Ian M.},
+  title     = {Vibration-Rotation Structure in Asymmetric- and
+               Symmetric-Top Molecules},
+  booktitle = {Molecular Spectroscopy: Modern Research},
+  editor    = {Rao, K. Narahari and Mathews, C. Weldon},
+  publisher = {Academic Press},
+  address   = {New York},
+  pages     = {115--140},
+  year      = {1972}
+  % Chapter cited for the harmonic / anharmonic mixing bounds that
+  % constrain finite-difference displacement amplitudes in
+  % vibrational-mode analysis.  Used as the citation for the
+  % default A = 0.10 Å choice in SpectraConfig and the > 0.20 Å
+  % preflight warning.
+}
+% TO VERIFY
+
+% ----- Vibrational effects on molecular conductance (transport linkage) -----
+
+@article{Galperin2007,
+  author  = {Galperin, Michael and Ratner, Mark A. and Nitzan, Abraham},
+  title   = {Molecular transport junctions: vibrational effects},
+  journal = {Journal of Physics: Condensed Matter},
+  volume  = {19},
+  number  = {10},
+  pages   = {103201},
+  year    = {2007},
+  doi     = {10.1088/0953-8984/19/10/103201}
+  % Review of vibrational effects in molecular electronic transport.
+  % Cite for the Raman-bright != EPC-strong scientific caveat
+  % surfaced in the tab's UI (§ 9.5 of spec.md) and the motivation
+  % for the per-mode electronic-structure computation.
+}
+% TO VERIFY
+
+% ----- Electron-phonon coupling from DFT for molecular junctions -----
+
+@article{Frederiksen2007,
+  author  = {Frederiksen, Thomas and Paulsson, Magnus and Brandbyge,
+             Mads and Jauho, Antti-Pekka},
+  title   = {Inelastic transport theory from first principles: methodology
+             and application to nanoscale devices},
+  journal = {Physical Review B},
+  volume  = {75},
+  number  = {20},
+  pages   = {205413},
+  year    = {2007},
+  doi     = {10.1103/PhysRevB.75.205413}
+  % Methodology paper for computing electron-phonon coupling
+  % constants from first-principles DFT for molecular junctions.
+  % Cite when explaining the per-mode g_HOMO / g_LUMO readouts in
+  % the electronic-structure panel (§ 9.2.4 of spec.md) and the
+  % significance for inelastic-transport (IETS) calculations.
+}
+% TO VERIFY
+
+% ----- Hybrid DFT functional (B3LYP) -----
+
+@article{Becke1993,
+  author  = {Becke, Axel D.},
+  title   = {Density-functional thermochemistry. {III}. The role of
+             exact exchange},
+  journal = {Journal of Chemical Physics},
+  volume  = {98},
+  number  = {7},
+  pages   = {5648--5652},
+  year    = {1993},
+  doi     = {10.1063/1.464913}
+  % Defines the B3 mixing of HF exchange used in the B3 family.
+  % Combined with Lee-Yang-Parr correlation [Lee1988] this gives
+  % B3LYP.  Cite when naming B3LYP as the functional in the
+  % Methods section.
+}
+% TO VERIFY
+
+% ----- Grimme D3 with Becke-Johnson damping (dispersion) -----
+
+@article{Grimme2011,
+  author  = {Grimme, Stefan and Ehrlich, Stephan and Goerigk, Lars},
+  title   = {Effect of the damping function in dispersion corrected
+             density functional theory},
+  journal = {Journal of Computational Chemistry},
+  volume  = {32},
+  number  = {7},
+  pages   = {1456--1465},
+  year    = {2011},
+  doi     = {10.1002/jcc.21759}
+  % Introduces the Becke-Johnson damping for the D3 dispersion
+  % correction (D3BJ).  Cite when D3BJ is the dispersion correction
+  % chosen in the script (the default for the Spectra tab).
+}
+% TO VERIFY

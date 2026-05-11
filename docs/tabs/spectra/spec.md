@@ -1,0 +1,776 @@
+# Spectra tab — design spec
+
+Status: **design-locked, not yet implemented**.  Author-approved
+2026-05-11.  This document is the test contract for the Spectra
+tab and the underlying `molbuilder.spectra` subpackage.  Sister
+files in this folder:
+
+* [`references.bib`](references.bib) — curated bibliography (each
+  entry verified by the author before merge).
+
+## 1. Purpose
+
+A post-relaxation analysis tab that runs **harmonic vibrational
+analysis** on a relaxed structure and emits a self-contained
+script the user runs externally.  The script produces:
+
+* **Normal-mode wavenumbers** ω_i (cm⁻¹) and atomic eigenvectors
+  Q_i (which atom moves how) — restricted to user-selected free
+  atoms via a partial Hessian.
+* **Raman activities** per mode (analytic polarizability
+  derivative dα/dR_j projected onto each mode Q_i).
+* For a user-selected subset of modes, **per-mode electronic
+  structure**: HOMO / LUMO and the MO spectrum within a window
+  [HOMO−N, LUMO+M] at displaced geometries (±A·Q_i), enabling
+  computation of electron-phonon coupling constants
+  g_i = ∂E_HOMO/∂Q_i (and similarly for LUMO) that drive
+  inelastic transport features (phonon sidebands in I(V), IETS).
+
+The Raman spectrum + 3D mode animation answer "what does this
+molecule do vibrationally?"; the per-mode electronic structure
+answers "**how does each vibration modulate the orbitals that
+carry current?**" — the load-bearing data product for the
+upcoming Transport tab.
+
+## 2. Scope (v1)
+
+In scope (1a + 1b):
+
+* Hessian (analytic or finite-difference fallback) with partial-
+  Hessian support when atoms are fixed.
+* Raman activities (analytic dα/dR where the engine supports it).
+* Per-mode displaced-geometry SCFs producing the electronic-
+  structure data above.
+* Engine: **PySCF only**.  The engine layer is abstracted (see
+  §3.2) so adding SIESTA (finite-difference force constants +
+  external Raman post-process) is a future drop-in.
+
+Out of scope (1c, deferred):
+
+* **IR intensities** (dipole derivatives).  The infrastructure
+  (engine protocol, JSON schema, UI panel) reserves space —
+  `ir_intensity_km_mol` is a nullable field in the mode result
+  shape, the toggle exists in the form (disabled in v1), but
+  rendering and computation are not implemented.
+* **Anharmonic / quasi-RRHO corrections**.  v1 is strictly
+  harmonic.
+* **SIESTA engine**.  Reserved choice in `SpectraConfig.engine`,
+  no implementation.
+
+## 3. Architecture
+
+### 3.1 Engine-agnostic L1
+
+```
+molbuilder/
+├── config/
+│   └── spectra.py            # SpectraConfig
+├── spectra/
+│   ├── __init__.py
+│   ├── results.py            # SpectraResults, ModeData (typed dataclasses)
+│   ├── engine_base.py        # SpectraEngine Protocol + registry
+│   ├── pyscf_engine.py       # PySCFSpectraEngine (v1)
+│   ├── selection.py          # mode-selection logic (cfg -> List[int])
+│   └── methods.py            # render_methods_md(cfg, results) -> str
+└── parsers/
+    └── spectra_json.py       # engine-independent JSON -> SpectraResults
+```
+
+`SpectraConfig` declares **what** the user wants — universal
+vocabulary, no engine-specific names.  `SpectraResults` is the
+shape the UI consumes — independent of which engine produced it.
+Adding SIESTA later requires zero changes to these L1 types.
+
+### 3.2 Engine-specific L2
+
+```python
+# molbuilder/spectra/engine_base.py
+class SpectraEngine(Protocol):
+    name:  str                              # "pyscf"
+    label: str                              # "PySCF (analytic Hessian + dα/dR)"
+
+    @classmethod
+    def render_script(cls, struct: Structure, cfg: SpectraConfig) -> str: ...
+    @classmethod
+    def parse_output(cls, path: str) -> SpectraResults: ...
+    @classmethod
+    def preflight(cls, struct: Structure, cfg: SpectraConfig) -> List[Issue]: ...
+    @classmethod
+    def methods_fragment(cls, cfg: SpectraConfig,
+                         modes: List[ModeData]) -> str: ...
+
+_ENGINES: Dict[str, Type[SpectraEngine]] = {}
+
+def register_engine(cls): _ENGINES[cls.name] = cls; return cls
+def get_engine(name: str) -> Type[SpectraEngine]: ...
+```
+
+Adding SIESTA later: one `@register_engine class SiestaSpectraEngine`
+plus a tuple-entry in `SpectraConfig.engine`'s `choices`
+metadata.  Nothing else changes — the form, the blueprint, the
+parser dispatch, and the Methods generator all delegate to the
+registered engine.
+
+### 3.3 Data flow
+
+```
+SpectraConfig + Structure
+        │
+        ▼
+PySCFSpectraEngine.preflight()  ──►  [Issues]    (range + scientific warns)
+        │
+        ▼
+PySCFSpectraEngine.render_script()  ──►  spectra.py
+        │                                  │
+        │                          [user runs externally]
+        │                                  │
+        │                                  ▼
+        │                          <job>.spectra.json
+        │                                  │
+        ▼                                  ▼
+PySCFSpectraEngine.parse_output()  ──► SpectraResults
+        │
+        ▼
+methods.py::render_methods_md(cfg, results)  ──► Methods markdown
+        │
+        ▼
+Spectra tab UI (engine-blind: consumes SpectraResults only)
+```
+
+External run = the user typing `python spectra.py` on a cluster.
+We do not orchestrate the run.
+
+## 4. `SpectraConfig` — every field
+
+All fields carry `dataclasses.field(..., metadata=...)` with the
+standard keys (`section`, `label`, `unit`, `range`, `choices`,
+`tier`, `help`, optional `id_suffix`, optional `null_label`) so
+the schema-driven Build-form pipeline (see
+[`../../protocols/web-api.md`](../../protocols/web-api.md)
+§ `/api/build/schema/<engine>`) renders the form automatically.
+
+| Field | Type | Default | Section | Notes |
+|---|---|---|---|---|
+| `engine` | str | `"pyscf"` | System | `choices=("pyscf",)`; SIESTA reserved |
+| `job_name` | str | `"spectra"` | System | filesystem-safe basename per [`job-layout.md`](../../protocols/job-layout.md); pattern `[A-Za-z0-9_-]+` |
+| `method` | str | `"RKS"` | Method | `choices=("RKS","UKS","RHF","UHF")` |
+| `functional` | str | `"B3LYP"` | Method | any libxc string |
+| `basis` | str | `"def2-SVP"` | Method | any PySCF-recognised basis |
+| `dispersion` | Optional[str] | `"d3bj"` | Method | `choices=("d3","d3bj","d4","none")`; `"none"` -> None |
+| `density_fit` | bool | `True` | Method | RI-J / RI-JK |
+| `fixed_elements` | List[str] | `[]` | Frozen atoms | union with the index list (see §7) |
+| `fixed_residue_names` | List[str] | `[]` | Frozen atoms | union |
+| `fixed_indices` | List[int] | `[]` | Frozen atoms | 0-based |
+| `compute_raman` | bool | `True` | Spectrum | `False` runs only the Hessian (faster; for diagnostic use) |
+| `compute_ir` | bool | `False` | Spectrum | reserved, disabled in v1 UI |
+| `displacement_amplitude_ang` | float | `0.10` | Spectrum | range (0.02, 0.30); see §11.4 |
+| `es_mode_selection` | str | `"none"` | Electronic structure | Model 2 selector: `choices=("none","all","top_n","threshold","explicit")` |
+| `es_top_n` | int | `10` | Electronic structure | active when selector=`top_n` |
+| `es_threshold` | float | `1.0` | Electronic structure | Å⁴/amu; active when selector=`threshold` |
+| `es_explicit_indices` | List[int] | `[]` | Electronic structure | 1-based mode indices |
+| `es_n_homo_below` | int | `5` | Electronic structure | record MOs from HOMO−N to LUMO+M |
+| `es_n_lumo_above` | int | `5` | Electronic structure | same |
+| `scf_conv_tol` | float | `1e-9` | SCF | Hartree |
+| `scf_max_cycle` | int | `100` | SCF | |
+| `grid_level` | int | `4` | SCF | DFT grid; hybrid functionals need ≥4 |
+| `max_memory_mb` | int | `4000` | Runtime | |
+| `threads` | Optional[int] | `None` | Runtime | None → inherit OMP_NUM_THREADS |
+| `verbose` | int | `4` | Runtime | PySCF log level |
+| `verbose_comments` | bool | `True` | Runtime | inline citation + tuning hints in emitted script |
+
+**Class-level**:
+
+```python
+_form_section_order = (
+    "System", "Method", "Frozen atoms",
+    "Spectrum", "Electronic structure", "SCF", "Runtime",
+)
+```
+
+so the schema-driven form renders sections in workflow order.
+
+## 5. `SpectraResults` + `ModeData`
+
+```python
+@dataclass
+class ModeData:
+    index_1based:        int
+    frequency_cm1:       float
+    raman_activity:      Optional[float]              # Å^4/amu; None if compute_raman=False
+    ir_intensity_km_mol: Optional[float]              # always None in v1 (1c reserved)
+    eigenvector_free:    np.ndarray                   # shape (n_free, 3); mass-weighted
+    has_imag:            bool                         # |ω|^2 < 0  -> True; sign convention: imag freqs reported negative
+
+    # Per-mode electronic structure (None when this mode wasn't selected)
+    electronic_structure: Optional[ModeElectronicStructure] = None
+
+@dataclass
+class ModeElectronicStructure:
+    amplitude_ang:        float                       # the A used for ±A·Q displacement
+    mo_energies_eq_eh:    np.ndarray                  # equilibrium reference (shape (n_window,))
+    mo_energies_minus_eh: np.ndarray
+    mo_energies_plus_eh:  np.ndarray
+    homo_index_in_window: int                         # which row of the windows is the HOMO
+    scf_energy_eq_eh:     float
+    scf_energy_minus_eh:  float
+    scf_energy_plus_eh:   float
+
+@dataclass
+class SpectraResults:
+    schema_version:   int                             # = 1 for this spec
+    engine:           str
+    engine_version:   str
+    molbuilder_version: str
+    timestamp:        str                             # ISO-8601 UTC
+
+    structure_hash:   str                             # SHA-256 of canonical XYZ; provenance
+    n_atoms_total:    int
+    free_atom_idxs:   List[int]                       # 0-based; complement of fixed set
+    fixed_atom_idxs:  List[int]                       # 0-based
+
+    equilibrium_scf_eh:       float
+    equilibrium_mo_energies:  np.ndarray              # all MOs at equilibrium
+    equilibrium_homo_idx:     int
+
+    modes:                List[ModeData]              # sorted by frequency ascending
+    selected_mode_idxs_1based: List[int]              # which ones got ES treatment
+
+    config:               Dict[str, Any]              # the SpectraConfig as dict (provenance)
+    methods_text:         str                         # pre-rendered Methods paragraph
+    bibliography_keys:    List[str]                   # keys actually cited in methods_text
+
+    # Engine-specific noise kept here so the common schema doesn't bloat.
+    engine_metadata:      Dict[str, Any] = field(default_factory=dict)
+```
+
+The UI consumes only the common surface (`modes`, `equilibrium_*`,
+`methods_text`, `bibliography_keys`).  `engine_metadata` is for
+debugging / future tools and is **not** rendered by default.
+
+## 6. `<job>.spectra.json` — on-disk schema
+
+The script writes exactly one JSON file per run:
+
+```json
+{
+  "schema_version":     1,
+  "engine":             "pyscf",
+  "engine_version":     "2.x.y",
+  "molbuilder_version": "1.2.0",
+  "timestamp":          "2026-05-11T12:34:56Z",
+  "structure_hash":     "sha256:...",
+  "n_atoms_total":      50,
+  "free_atom_idxs":     [3, 4, 5, 6, 7, ...],
+  "fixed_atom_idxs":    [0, 1, 2, 8, 9, ...],
+  "config":             { /* SpectraConfig as JSON-safe dict */ },
+
+  "equilibrium": {
+    "scf_energy_eh":    -123.4567890,
+    "mo_energies_eh":   [-19.2, -10.5, ..., 0.21, 0.45, ...],
+    "homo_idx":         27
+  },
+
+  "modes": [
+    {
+      "index_1based":         1,
+      "frequency_cm1":        412.3,
+      "raman_activity_a4_amu": 12.5,
+      "ir_intensity_km_mol":  null,
+      "has_imag":             false,
+      "eigenvector_free":     [[dx, dy, dz], ...],
+      "electronic_structure": null
+    },
+    {
+      "index_1based":         7,
+      "frequency_cm1":        1023.4,
+      "raman_activity_a4_amu": 87.2,
+      "ir_intensity_km_mol":  null,
+      "has_imag":             false,
+      "eigenvector_free":     [[dx, dy, dz], ...],
+      "electronic_structure": {
+        "amplitude_ang":        0.10,
+        "mo_energies_eq_eh":    [...],
+        "mo_energies_minus_eh": [...],
+        "mo_energies_plus_eh":  [...],
+        "homo_index_in_window": 5,
+        "scf_energy_eq_eh":     -123.4567,
+        "scf_energy_minus_eh":  -123.4521,
+        "scf_energy_plus_eh":   -123.4523
+      }
+    }
+  ],
+
+  "selected_mode_idxs_1based": [7, 12, 14, ...],
+  "methods_text":              "Harmonic vibrational analysis was ...",
+  "bibliography_keys":         ["Sun2020", "Becke1993", "Grimme2011", ...]
+}
+```
+
+**Conventions**:
+
+* All energies in **Hartree** (Eh) at the wire level; the parser
+  converts to **eV** when populating the typed `SpectraResults`
+  fields that have an `_ev` suffix.
+* All frequencies in **cm⁻¹**.  Imaginary frequencies reported as
+  negative values; `has_imag: true` is the canonical flag.
+* All distances in **Å**.
+* Atom indices are **0-based** in JSON to match Python; the UI
+  displays them 1-based.
+* Mode indices are **1-based** everywhere (JSON + UI) to match
+  spectroscopic literature convention.
+* `eigenvector_free` is mass-weighted (Q_i normal-mode coordinate
+  basis), shape `(n_free, 3)`, units Å·amu⁻¹ᐟ².  Visualisation
+  divides by √m before scaling.
+
+## 7. Atom-fixing semantics
+
+The free-atom set is computed once at script start:
+
+```
+fixed = ∪ {i : element[i] ∈ cfg.fixed_elements}
+      ∪ ∪ {i : residue_name[i] ∈ cfg.fixed_residue_names}
+      ∪ set(cfg.fixed_indices)
+free  = {0, 1, ..., N-1} ∖ fixed
+```
+
+Union semantics: an atom is fixed if it matches **any** of the
+three filters.  Empty filters do nothing.  A user fixing all Au
+atoms (e.g. for a metal–molecule–metal junction) sets
+`fixed_elements=["Au"]`; everything else stays free.
+
+* **Edge cases**:
+  * `fixed = ∅`: all atoms move (default).
+  * `fixed = all atoms`: error-severity issue surfaced in
+    preflight ("no free atoms to vibrate").
+  * `n_free = 1`: degrees of freedom too few for a Hessian; warn.
+  * Residue-name filter requires the input structure to carry
+    residue metadata; loaded `.xyz` files don't (the `.xyz` format
+    has no residue column).  The form disables the residue-name
+    multi-select when the loaded structure has no residue info.
+
+Effect on the Hessian: PySCF's `mol.set_geom_(...).build()` with
+the `atmlst=free_atom_idxs` kwarg on `Hessian.kernel()` computes
+a **partial Hessian** — only the (3·n_free × 3·n_free) block is
+filled.  Vibrational modes are then mass-weighted and diagonalised
+over the free subspace; fixed atoms contribute zero to the
+eigenvectors.
+
+## 8. Mode-selection semantics (Model 2)
+
+After the Hessian + Raman activities are in hand, the script
+applies `cfg.es_mode_selection` to pick which modes get the
+displaced-geometry SCFs:
+
+| Selector | Selected mode set | Notes |
+|---|---|---|
+| `none` | `{}` | No displaced SCFs.  Output has `electronic_structure: null` on every mode.  Cost: 0 extra SCFs. |
+| `all` | every vibrational mode | 2 SCFs per mode (±A).  Cost: 2 × (3·N_free − 6) SCFs (5 for linear molecules — translation/rotation degrees of freedom removed). |
+| `top_n` | `n` modes with the highest `raman_activity_a4_amu` | Ties broken by lower mode index.  Cost: 2·n SCFs. |
+| `threshold` | modes with `raman_activity_a4_amu > cfg.es_threshold` | Cost: variable. |
+| `explicit` | `cfg.es_explicit_indices` (1-based) | Validated: indices out of range raise a preflight error.  Cost: 2·len(list) SCFs. |
+
+**Two-stage workflow** (cheapest scientifically): first run with
+`es_mode_selection="none"` → see the spectrum + animations →
+identify modes of interest → re-run with `es_mode_selection="explicit"`
+and the chosen indices.  This is a natural usage pattern of the
+single-script design; no special UI flow is needed.
+
+## 9. UI contract
+
+### 9.1 Form (schema-driven)
+
+The Spectra tab's form is generated by the existing form-schema
+pipeline (see [`../../protocols/web-api.md`](../../protocols/web-api.md)
+§ `/api/build/schema/<engine>`) from `SpectraConfig` field
+metadata, with one new schema endpoint:
+
+* `GET /api/build/schema/spectra` — returns the schema for
+  `SpectraConfig`, parallel to existing `siesta` / `pyscf`
+  endpoints.
+
+The form has a load-file row at the top (Option A: structure
+comes from disk only; see §1 design fork resolved 2026-05-11).
+A "Send to Spectra" handoff from Build / Modify is **not**
+shipped in v1 — the user saves a relaxed structure to disk and
+loads it here.
+
+### 9.2 Display — four panes
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│  9.2.1 Spectrum plot                                           │
+│  - x: wavenumber (cm⁻¹), 0 .. 4000                             │
+│  - y: Raman activity (Å⁴/amu)                                  │
+│  - sticks + Lorentzian-broadened envelope (FWHM user-adjustable)│
+│  - imaginary modes flagged red, at negative ω                  │
+│  - click stick -> select mode (synchronises with §9.2.2)       │
+├────────────────────────────────────────────────────────────────┤
+│  9.2.2 Mode list (full tabular view of all per-mode data)      │
+│  See § 9.2.2.* below for the column set.                       │
+├────────────────────────────────────────────────────────────────┤
+│  9.2.3 3D viewer with mode animation                           │
+│  - structure rendered via shared 3Dmol style (see Build)       │
+│  - selected mode: free atoms animate sinusoidally along Q_i    │
+│  - amplitude slider (default 0.5 Å peak-to-peak)               │
+│  - speed slider; pause toggle                                  │
+│  - fixed atoms greyed out, no animation                        │
+├────────────────────────────────────────────────────────────────┤
+│  9.2.4 Electronic-structure panel (for selected mode)          │
+│  - bar diagram of MO energies at -A / 0 / +A                   │
+│  - HOMO highlighted (filled), LUMO highlighted (open)          │
+│  - gap drift annotated: ΔGap(±A) = Gap(±A) − Gap(0)            │
+│  - electron-phonon coupling readout:                           │
+│      g_HOMO = (E_HOMO(+A) − E_HOMO(−A)) / (2·A·√(ℏ/(2·m·ω)))   │
+│      g_LUMO (similar)                                          │
+│  - placeholder + hint when selected mode has ES = null         │
+└────────────────────────────────────────────────────────────────┘
+```
+
+#### 9.2.2.1 Mode list — columns
+
+The mode list is the **tabular twin of the spectrum plot**.  It
+shows every mode with all available per-mode data so a user who
+wants numbers (rather than a chart) gets them without leaving
+the tab.  Every row corresponds to one stick in §9.2.1; clicking
+either drives the same selection state.
+
+| Column | Source | Units / format | Notes |
+|---|---|---|---|
+| `#` | `mode.index_1based` | 1-based int | sortable; ascending by default |
+| `ω` | `mode.frequency_cm1` | cm⁻¹, 1 dp | imaginary modes shown red with negative sign |
+| Raman activity | `mode.raman_activity` | Å⁴/amu, 3 sig fig | sortable; blank if `compute_raman=False` |
+| IR intensity | `mode.ir_intensity_km_mol` | km/mol | blank in v1 (1c reserved column) |
+| ES? | derived | "✓" or "—" | "✓" if `mode.electronic_structure` is populated |
+| HOMO (eq) | `ModeElectronicStructure.mo_energies_eq_eh[homo_index_in_window]` | eV (converted from Eh) | only when ES present |
+| LUMO (eq) | adjacent row in same array | eV | only when ES present |
+| Gap (eq) | computed | eV | LUMO − HOMO at equilibrium |
+| ΔHOMO(+A) | `mo_energies_plus_eh[homo] − mo_energies_eq_eh[homo]` | meV | shift of HOMO under +A displacement |
+| ΔHOMO(−A) | analogous | meV | |
+| ΔLUMO(+A) | analogous | meV | |
+| ΔLUMO(−A) | analogous | meV | |
+| ΔGap (max) | `max(|ΔGap(+A)|, |ΔGap(−A)|)` | meV | quick-scan column for transport relevance |
+| g_HOMO | computed | meV/(amu·Å)¹ᐟ² | electron-phonon coupling magnitude (see §9.2.4 formula) |
+| g_LUMO | analogous | meV/(amu·Å)¹ᐟ² | |
+
+Defaults visible: `#`, `ω`, `Raman act`, `ES?`, `HOMO`, `LUMO`,
+`Gap`, `ΔGap (max)`.  The remaining columns are toggled on via a
+"Columns…" menu (default-off because they bloat the table when
+ES is computed for all modes).  Column visibility persists in
+sessionStorage.
+
+#### 9.2.2.2 Mode list — interactions
+
+* **Sort**: click any column header.  Click again to reverse.
+  Default sort is `#` ascending (frequency ordering).
+* **Filter**: a single text input above the table filters by any
+  visible column's stringified value (case-insensitive substring
+  match).
+* **Selection**: clicking a row sets the active mode for the 3D
+  animation (§9.2.3) and the electronic-structure panel (§9.2.4).
+  Active row gets a highlighted background.  Clicking a stick in
+  the spectrum plot (§9.2.1) also sets the selection; the two
+  views are synchronised through a single shared state.
+* **Export**: a small "Export CSV" button on the table header
+  downloads the currently-filtered, currently-sorted view as a
+  CSV with the visible columns.  Useful for plotting elsewhere
+  or pasting into a manuscript table.
+* **Empty-row hint**: when ES isn't populated for any mode (the
+  user picked `es_mode_selection="none"`), the ES-derived
+  columns are hidden entirely (not just blanked).  When ES is
+  populated for *some* modes, those columns are shown and
+  un-selected modes display "—".
+
+#### 9.2.2.3 Mode list — accessibility
+
+* The table is a real `<table>` with `<thead>` + `<tbody>` + a
+  visible `<caption>`, not a div-stack; screen readers announce
+  it as a data table.
+* Each row has `aria-selected` synced to the active selection.
+* Column headers carry `aria-sort` reflecting the current sort.
+* The filter input has an `aria-controls` pointer to the table
+  `id`.
+
+### 9.3 Cost preview
+
+A live readout near the bottom of the form:
+
+```
+This configuration will run:
+  1 equilibrium SCF
+  1 analytic Hessian (~ N_free²·k_basis cost)
+  1 polarizability derivative (~ 5 SCF-equivalents for analytic dα/dR)
+  2 × M displaced SCFs       (M = N selected modes by current selector)
+  ─────────────────────────
+  ≈ K SCF-equivalents total
+
+  Estimated wall time on 8 cores: T hours
+  (heuristic; actual depends on basis size and SCF convergence)
+```
+
+`K` and `T` are computed client-side from `cfg` + the loaded
+structure (`N_atoms`, element distribution).  The estimate is
+explicitly labelled as a heuristic with a 2-3× error bar.
+
+### 9.4 Methods-preview button
+
+Button: **Show methods text**.  Opens a modal showing the
+Markdown that would land in the script's header comment.  Updates
+live as form values change so the user can see how the prose
+shifts.  Copy button so it can be pasted into a manuscript
+draft.
+
+The Markdown is computed by `molbuilder/spectra/methods.py::render_methods_md(cfg, struct)`
+(structure metadata informs phrasings like "5 fixed Au atoms" vs
+"all-atom analysis").  Run-time numbers that depend on the actual
+calculation result (final wavenumbers, gap drifts, etc.) are
+placeholders pre-run; the post-run version uses the parsed
+`SpectraResults` and substitutes real numbers.
+
+### 9.5 Explainer panel + tooltips + scientific caveats
+
+A collapsible panel at the top of the tab (open by default on
+first visit, dismissable; state in sessionStorage):
+
+> **What this tab does** — One paragraph of plain-English
+> explanation per the §1 purpose statement.  Walks the user from
+> "you have a relaxed structure" through "you'll get a Raman
+> spectrum + electronic-structure data per mode".  No jargon
+> without a tooltip-target.
+
+Per-field tooltips include both **what** the knob does and a
+**when-to-change** hint with a citation key, e.g.:
+
+```
+displacement_amplitude_ang:
+  ±A along each mode eigenvector for the per-mode electronic-
+  structure SCFs.  Typical 0.05–0.15 Å — small enough that
+  anharmonic-cubic mixing < 1% [Mills1972 §2.4]; large enough
+  that finite-difference noise on ΔE_HOMO is suppressed.
+```
+
+**Scientific-caveat banners** (rendered as yellow `hint`
+sections in the form):
+
+* Next to `top_n` / `threshold` selectors:
+  > Pruning by Raman activity may miss modes with weak Raman
+  > activity but strong electron-phonon coupling.  Use
+  > `explicit` (after inspecting the spectrum) or `all` when
+  > the goal is transport-coupling input data.
+  > [Galperin2007]
+
+* Next to `displacement_amplitude_ang`:
+  > Larger displacements probe anharmonic curvature; smaller
+  > displacements increase finite-difference noise.  Default 0.10 Å
+  > is a defensible production value.
+
+* Top of the page (always visible) when `n_free > 30`:
+  > This is a large free-atom set ({n_free} atoms, {3·n_free − 6}
+  > vibrational modes).  Estimated time at default convergence is
+  > {T} hours.  Consider fixing the metal slab via the "Frozen
+  > atoms — element" multi-select if you're only interested in the
+  > molecule's modes.
+
+## 10. API endpoints
+
+The Spectra tab is served by a new blueprint
+`molbuilder/web/blueprints/spectra.py`, mounted on the same Flask
+app as the Build/Modify/Watch blueprints.
+
+| route | method | body | response | status |
+|---|---|---|---|---|
+| `/spectra`                  | GET  | — | `spectra.html` | 200 |
+| `/api/build/schema/spectra` | GET  | — | `{ok, schema}` (extends the existing schema endpoint family) | 200 / 404 |
+| `/api/spectra/render`       | POST | `{xyz, params}` | `{ok, script, methods_md, issues}` | 400 bad input · 500 render fail |
+| `/api/spectra/load`         | POST | JSON `{path}` OR multipart `file=` | `{ok, results}` (the parsed `SpectraResults` as JSON) | 400 bad input · 404 missing file · 500 parse fail |
+
+**Conventions match the Build blueprint** (see
+[`../../protocols/web-api.md`](../../protocols/web-api.md)):
+
+* Error shape: `{"ok": false, "error": "<msg>"}` for HTTP 4xx /
+  5xx.
+* `/api/spectra/render` returns `issues` as the same structured
+  list the Build endpoints emit; the JS issues panel handles them
+  identically.
+
+The `/api/build/schema/spectra` route is added to the existing
+schema dispatch (currently covers `siesta` and `pyscf`); the
+dispatch dict gets one entry.
+
+## 11. Publication-quality requirements
+
+Per the design discussion (this conversation, 2026-05-11), the
+**generated files are the single source of truth** for what was
+run — a user reading them should be able to distil a Methods
+paragraph without consulting external docs.
+
+### 11.1 Inline citation keys in emitted script
+
+Every numerical parameter in the script header + body carries a
+trailing comment of the form:
+
+```python
+displacement_amplitude_ang = 0.10   # ±A·Q_i along each mode
+                                    # eigenvector; 0.05–0.15 Å
+                                    # typical (anharmonic-cubic
+                                    # mixing < 1%) [Mills1972 §2.4]
+```
+
+Citation keys resolve against
+[`references.bib`](references.bib) in this folder.
+
+### 11.2 Methods-paragraph header in script
+
+The first ~60 lines of the emitted Python script are a docstring
+block containing:
+
+* A 2-paragraph Methods-section draft with the actual parameter
+  values inlined ("…analytic Hessian using `pyscf.hessian.rks`
+  [Sun2020]…with B3LYP/def2-SVP [Becke1993, Grimme2011]…").
+* A "selected modes" line: which modes were chosen for ES
+  treatment, by what criterion.
+* A bibliography listing the citation keys used in the prose +
+  inline comments, in BibTeX-key form.
+
+The same text is also served by the Methods-preview button in
+the UI (§9.4) — exactly the same prose, so the user sees
+identical content in both places.
+
+### 11.3 Bibliography at `tabs/spectra/references.bib`
+
+A BibTeX file colocated with this spec.  Each entry **verified by
+the author** before the entry ships in a release (`@verified`
+comment marker on each entry that has been checked).  Adding a
+new citation to the script body requires adding a verified entry
+to the .bib first.
+
+### 11.4 Pre-flight scientific warnings
+
+`SpectraEngine.preflight()` returns warn-severity `Issue`s for
+scientifically dubious configurations:
+
+* `grid_level < 4` with a hybrid functional (B3LYP / PBE0 / M06-2X
+  / wB97X-D): "Hybrid functionals need DFT grid ≥ 4 for reliable
+  Hessian." [Sun2020]
+* `displacement_amplitude_ang > 0.20`: "Large displacement may
+  mix anharmonic contributions." [Mills1972]
+* `displacement_amplitude_ang < 0.04`: "Small displacement
+  amplifies finite-difference SCF noise; ΔE_HOMO may be
+  numerically unstable."
+* `es_mode_selection ∈ {top_n, threshold}`: surface the
+  Raman-bright ≠ EPC-strong caveat from §9.5.
+* `n_free > 50` AND `es_mode_selection == "all"`: estimate hours
+  on 8 cores, suggest atom-fixing or switching to `explicit`.
+
+These run client-side (in the live preflight loop) AND
+server-side (when `/api/spectra/render` is called) — same pattern
+as Build's preflight in the existing schema-driven form.
+
+## 12. Test contracts
+
+Tests must be derivable from this spec without reading the
+implementation (per [`../../README.md`](../../README.md)).
+
+### 12.1 Unit tests (no PySCF runtime needed)
+
+* `SpectraConfig` field metadata is complete (every field has
+  `section`, `label`, `help`; numeric fields have `range`).
+* `dataclass_to_form_schema(SpectraConfig, "sp")` produces the
+  expected schema (pin section names + per-section field counts,
+  same pattern as the existing SIESTA / PySCF schema pin tests in
+  `tests/test_web.py`).
+* Atom-fixing semantics: given a structure with a known
+  `(elements, residue_names)`, `compute_free_atoms(struct, cfg)`
+  returns the expected free-atom list for each filter combination
+  (empty / element-only / residue-only / index-only / union of
+  two / union of all three).
+* Mode-selection: given a list of `(idx_1based, raman_activity)`
+  tuples, the selector returns the expected subset for each of
+  `none` / `all` / `top_n` / `threshold` / `explicit`.
+* `SpectraResults` JSON round-trip: parser reads back a
+  hand-written `.spectra.json` byte-identical to what the parser
+  produced.
+
+### 12.2 Engine-shim tests (PySCF runtime needed; marked `@pytest.mark.smoke`)
+
+* H₂O at HF/STO-3G: full Raman analysis (no atom-fixing,
+  selector=`all`).  Three vibrational modes; bend ~1500–1700 cm⁻¹;
+  sym + asym stretches ~3500–4500 cm⁻¹ (HF/STO-3G overestimates
+  by ~10–15%).  Each mode has non-zero Raman activity; HOMO−LUMO
+  gap shifts by < 1 eV under default A.  Just verifies the
+  end-to-end pipeline.
+* H₂O with `fixed_elements=["O"]`: partial Hessian on 2 atoms;
+  one mode survives (the symmetric H–H pseudo-stretch).
+* Small Au cluster + dithiol with `fixed_elements=["Au"]`:
+  confirms slab-fixed transport-prep workflow runs end-to-end.
+
+### 12.3 Web / E2E tests (Playwright)
+
+* `/spectra` page loads with zero JS errors.
+* Form renders all sections in `_form_section_order`.
+* Sections lock/unlock via compatibility rules (e.g.
+  `es_top_n` / `es_threshold` / `es_explicit_indices` inputs lock
+  when the matching selector value isn't active).
+* Spectrum plot renders for a fixture `.spectra.json`.
+* Mode-click in the spectrum highlights the matching row in the
+  mode list and triggers the 3D animation.
+* "Show methods text" modal opens and shows the expected Markdown
+  for a known config.
+* Pre-flight cost preview updates live when form values change.
+
+## 13. Future extensions
+
+### 13.1 IR add-on (1c)
+
+PySCF computes dipole derivatives natively.  Implementation:
+
+* Flip `compute_ir` to `True`-capable in the form (currently
+  disabled).
+* Engine `render_script` emits the dipole-derivative block.
+* Engine `parse_output` populates `ir_intensity_km_mol` on each
+  `ModeData`.
+* Spectrum plot adds a toggle "Raman / IR / Both".
+
+Estimated effort: ~3-5 days.  No schema changes (the field is
+already reserved in `ModeData`).
+
+### 13.2 SIESTA engine
+
+`molbuilder/spectra/siesta_engine.py` implements `SpectraEngine`
+for the SIESTA force-constant workflow (`MD.TypeOfRun = FC`,
+finite-difference dipoles for IR, external tool — likely
+`vibrana` — for Raman activities).  Significantly more work
+because SIESTA's vibrational path is FD-based and Raman activities
+require post-processing.  Reserved choice in `SpectraConfig.engine`
+gets the new value; everything else is automatic.
+
+### 13.3 Methods extractor CLI
+
+`molbuilder spectra methods <output_dir>` — reads the script +
+the `.spectra.json` from a completed run and emits a Markdown
+file with the Methods paragraph + bibliography (BibTeX, only the
+entries actually cited).  Pairs with the equivalent Transport
+extractor sketched in the Transport-tab spec (yet to be written).
+Useful when the user has run several configurations and wants
+machine-curated Methods drafts.
+
+## 14. References
+
+The bibliography file [`references.bib`](references.bib)
+contains the cited works.  Candidate entries to seed (each
+verified by the author before the v1.2 release tag — see § 11.3):
+
+* Wilson, Decius, Cross 1955 — *Molecular Vibrations* (canonical
+  text)
+* Sun et al. 2020, J. Chem. Phys. 153, 024109 — PySCF capabilities
+* Komornicki & Fitzgerald 1993, JCP 99, 1398 — analytic dα/dR
+* Mills 1972 — anharmonicity bounds on displacement
+* Galperin, Ratner, Nitzan 2007, JPCM 19, 103201 — vibrational
+  effects on molecular conductance
+* Frederiksen et al. 2007, PRB 75, 205413 — electron-phonon
+  coupling from DFT for molecular junctions
+* Becke 1993, JCP 98, 5648 — B3LYP
+* Grimme et al. 2011, JCC 32, 1456 — D3BJ
+
+Adding a new citation to the spec or to the emitted script
+requires adding the verified BibTeX entry to `references.bib`
+first.
