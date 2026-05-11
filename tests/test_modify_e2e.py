@@ -188,9 +188,12 @@ def test_load_water_populates_atom_list(page, flask_server, water_xyz_file):
     assert rows.nth(1).locator(".col-el").inner_text() == "H"
     # Atom-count badge.
     assert page.locator("#atom-count").inner_text() == "3 atoms"
-    # Status flipped to ok.
+    # Status flipped to ok.  Compound-class convention shared with
+    # Build + Watch: class becomes "status ok", not "status-ok".
     status_class = page.locator("#status").get_attribute("class") or ""
-    assert "status-ok" in status_class
+    assert "status" in status_class.split() and "ok" in status_class.split(), (
+        f"#status class should be 'status ok', got {status_class!r}"
+    )
     assert errors == [], f"JS errors during load: {errors}"
 
 
@@ -1864,6 +1867,53 @@ def test_build_page_loads_without_js_errors(page, flask_server):
     )
     assert errors == [], (
         f"unexpected JS errors on the Build page: {errors}"
+    )
+
+
+def test_build_form_live_preflight_fires_on_field_edit(
+        page, flask_server):
+    """After building a structure, editing a SIESTA field with a
+    range-violating value must fire /api/build/preflight via the
+    debounced listener and surface a warn-severity issue in the
+    #fdf-issues panel WITHOUT re-clicking Generate.
+
+    Regression test for the FORM_IDS / wirePreflightListeners
+    cutover: before the fix, the JS halt on FORM_IDS prevented
+    these listeners from being attached.
+    """
+    _open_build(page, flask_server)
+    # Build any structure so the preflight loop has state.xyz to
+    # send.  A 2-residue peptide is cheapest.
+    page.locator("#kind").select_option("peptide")
+    page.locator("#input-text").fill("AC")
+    page.locator("#build-btn").click()
+    page.wait_for_function(
+        "() => !document.getElementById('dl-xyz').disabled",
+        timeout=8000,
+    )
+    # Drop MeshCutoff below its declared range=(50, 1000) -- the
+    # config-metadata validator emits a warn for out-of-range.
+    page.fill("#p-mesh-cutoff", "30")
+    # Debounce is 250 ms; allow a generous 2 s for the preflight
+    # round-trip + render.
+    page.wait_for_function(
+        "() => {"
+        "  const panel = document.getElementById('fdf-issues');"
+        "  if (!panel || panel.hidden) return false;"
+        "  return panel.querySelectorAll('li').length > 0;"
+        "}",
+        timeout=2000,
+    )
+    issue_texts = page.evaluate(
+        "() => Array.from("
+        "  document.querySelectorAll('#fdf-issues li')"
+        ").map(li => li.textContent)"
+    )
+    # The mesh-cutoff range warning must appear among the issues.
+    mesh_warn = [t for t in issue_texts if "mesh_cutoff" in t.lower()]
+    assert mesh_warn, (
+        f"expected a mesh_cutoff range warning after dropping below "
+        f"50; got: {issue_texts}"
     )
 
 

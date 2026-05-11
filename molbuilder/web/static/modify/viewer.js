@@ -490,9 +490,14 @@
     //  endpoint the Build tab uses; M2 doesn't need its own route.     //
     // --------------------------------------------------------------- //
     function setStatus(msg, kind = null) {
+        // Compound-class convention shared with Build + Watch:
+        // ``className = "status ok"`` so the CSS rule ``.status.ok``
+        // applies.  Earlier this tab emitted ``status-ok`` (hyphen
+        // form) which would break against a future shared stylesheet;
+        // aligned now -- see web/static/style.css + watch/style.css.
         const el = $("status");
         el.textContent = msg;
-        el.className = "status" + (kind ? ` status-${kind}` : "");
+        el.className = "status" + (kind ? " " + kind : "");
     }
 
     async function loadFile(file) {

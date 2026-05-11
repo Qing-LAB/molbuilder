@@ -422,6 +422,33 @@ lives on the dataclass field — CLI options and web form schemas are
 both generated from `dataclasses.fields(Config)`, not maintained in
 parallel.
 
+### Adding a new SIESTA / PySCF parameter
+
+The Build form is **schema-driven** end-to-end (v1.1.0+).  To expose
+a new SIESTA or PySCF knob, the only edit is to the dataclass:
+
+```python
+# in molbuilder/config/siesta.py (or pyscf.py)
+my_new_param: float = field(default=0.5, metadata={
+    "section": "SCF",                       # which form fieldset
+    "label":   "My new parameter",          # user-facing label
+    "unit":    "Ry",                        # appended to the label
+    "range":   (0.1, 2.0),                  # validator + form min/max
+    "tier":    "advanced",                  # styling cue
+    "help":    "what this knob does",       # tooltip
+    # "choices": (...) for select-style enums
+    # "id_suffix": "..." to override the default hyphenated id
+})
+```
+
+The generator emits the right FDF / Python lines, the click CLI
+gains a `--my-new-param` flag, the validator checks the range,
+and `GET /api/build/schema/<engine>` ships the field to the JS
+renderer which adds an input to the Build tab — **no HTML, JS, or
+test-fixture edits needed**.  Pin-tests in
+`tests/test_web.py::test_*_form_schema_matches_documented_layout`
+update once when you add the field; everything else is automatic.
+
 ---
 
 ## License

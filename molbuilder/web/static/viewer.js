@@ -872,11 +872,34 @@
         sessionStorage.setItem("builder-form", JSON.stringify(saved));
     }
 
+    // Map legacy (pre-schema-driven cutover) input IDs to the
+    // current schema-derived ones.  Users with sessionStorage from
+    // before the 2026-05-11 cutover get one-shot migration of the
+    // few fields whose IDs changed: basis_size went from p-basis ->
+    // p-basis-size, and the kgrid sub-inputs went from p-kx/p-ky/p-kz
+    // to p-k-x/p-k-y/p-k-z.  Add an entry here if a future rename
+    // would otherwise drop a field's value on first reload.
+    const LEGACY_ID_MIGRATION = {
+        "p-basis": "p-basis-size",
+        "p-kx":    "p-k-x",
+        "p-ky":    "p-k-y",
+        "p-kz":    "p-k-z",
+    };
+
     function restoreFormState() {
         let saved;
         try { saved = JSON.parse(sessionStorage.getItem("builder-form") || "null"); }
         catch (_) { return; }
         if (!saved) return;
+        // Apply legacy-key migration: copy values stored under the
+        // old id to the new one BEFORE the per-id restore loop.
+        // Don't overwrite a value already saved under the new id
+        // (the user has clearly used the new form since the cutover).
+        for (const [oldId, newId] of Object.entries(LEGACY_ID_MIGRATION)) {
+            if (oldId in saved && !(newId in saved)) {
+                saved[newId] = saved[oldId];
+            }
+        }
         getFormIds().forEach(id => {
             const el = $(id);
             if (!el || !(id in saved)) return;

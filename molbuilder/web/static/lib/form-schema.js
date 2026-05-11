@@ -211,6 +211,10 @@
         if (!container || !schema || !Array.isArray(schema.sections)) {
             throw new Error("form-schema.renderForm: bad container/schema");
         }
+        // Fresh render -> schema and DOM are presumed to match, so
+        // clear the stale-warning cache.  Any actual mismatch on
+        // the next collectForm will re-warn.
+        _staleWarnings.clear();
         container.innerHTML = "";
         for (const sect of schema.sections) {
             const fs = el("fieldset", { class: "schema-section" });
@@ -222,14 +226,38 @@
         }
     }
 
+    /* Tracks fields we've already warned about per-load so a stale
+     * schema doesn't spam the console with one warning per call to
+     * collectForm.  Cleared whenever renderForm runs (a fresh render
+     * is presumed to match the schema). */
+    const _staleWarnings = new Set();
+
+    function _warnStale(fieldName, reason) {
+        if (_staleWarnings.has(fieldName)) return;
+        _staleWarnings.add(fieldName);
+        if (root.console && root.console.warn) {
+            root.console.warn(
+                "form-schema.collectForm: field '" + fieldName +
+                "' " + reason + " (stale schema?)"
+            );
+        }
+    }
+
     function collectField(f, container) {
         const elx = container.querySelector("#" + cssEsc(f.id));
         const optional = !!f.optional;
+        // Schema/DOM mismatch: schema lists a field whose id has no
+        // matching element.  Warn once, fall back to the schema's
+        // declared default so the rest of the form still submits
+        // sensibly.  int-triple handles this per-sub-input below.
+        if (!elx && f.kind !== "int-triple") {
+            _warnStale(f.name, "has id '" + f.id + "' but no DOM element");
+            return f.default !== undefined ? f.default : null;
+        }
         switch (f.kind) {
             case "checkbox":
-                return elx ? !!elx.checked : !!f.default;
+                return !!elx.checked;
             case "int": {
-                if (!elx) return f.default;
                 const v = elx.value.trim();
                 if (v === "" && optional) return null;
                 if (v === "") return null;
@@ -237,7 +265,6 @@
                 return Number.isFinite(n) ? n : null;
             }
             case "number": {
-                if (!elx) return f.default;
                 const v = elx.value.trim();
                 if (v === "" && optional) return null;
                 if (v === "") return null;
@@ -245,35 +272,45 @@
                 return Number.isFinite(n) ? n : null;
             }
             case "text":
-                return elx ? String(elx.value).trim() : (f.default || "");
+                return String(elx.value).trim();
             case "select": {
-                if (!elx) return f.default;
                 const v = elx.value;
                 // Empty value on an Optional select -> null.
                 if (v === "" && (optional || f.null_option)) return null;
                 return v;
             }
             case "tri-select": {
-                if (!elx) return f.default;
                 const v = elx.value;
                 if (v === "auto" || v === "") return null;
                 return v === "true";
             }
             case "int-triple": {
                 const labs = f.labels || ["x", "y", "z"];
+                const defaults = Array.isArray(f.default)
+                    ? f.default : [0, 0, 0];
                 const out = [];
-                for (const lab of labs) {
+                let anyMissing = false;
+                labs.forEach((lab, i) => {
                     const subEl = container.querySelector(
                         "#" + cssEsc(f.id + "-" + lab)
                     );
-                    const v = subEl ? subEl.value.trim() : "";
+                    if (!subEl) {
+                        anyMissing = true;
+                        out.push(defaults[i] != null ? defaults[i] : 0);
+                        return;
+                    }
+                    const v = subEl.value.trim();
                     const n = v === "" ? null : parseInt(v, 10);
-                    out.push(Number.isFinite(n) ? n : 0);
+                    out.push(Number.isFinite(n) ? n
+                             : (defaults[i] != null ? defaults[i] : 0));
+                });
+                if (anyMissing) {
+                    _warnStale(f.name, "has missing int-triple sub-input(s)");
                 }
                 return out;
             }
             default:
-                return elx ? elx.value : f.default;
+                return elx.value;
         }
     }
 

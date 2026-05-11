@@ -69,6 +69,16 @@ it with the `pyscf` subcommand which emits a full runnable script.
 * On `fdf` with missing pseudopotentials, exits with code 2 (other
   errors exit 1).
 
+For the full, current flag list, run `molbuilder fdf --help` or
+`molbuilder pyscf --help`.  The help text is auto-generated from
+`field.metadata` (label / unit / range / help) on `SiestaConfig` /
+`PySCFConfig`, so adding a dataclass field surfaces a new CLI flag
+without touching the CLI definition.  Flags added since the
+initial commit and not separately documented here include
+`--compute-frequencies / --no-compute-frequencies`,
+`--temperature-K` and `--pressure-atm` for post-relax
+harmonic frequencies + RRHO thermochemistry (v1.1.0+).
+
 ## `serve` subcommand contract
 
 * Default `--host 127.0.0.1`, `--port 8000`.

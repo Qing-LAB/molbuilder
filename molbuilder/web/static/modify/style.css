@@ -75,8 +75,13 @@ header .tagline {
     font-size: 0.9rem;
     padding-left: 0.5rem;
 }
-.status-ok    { color: var(--success); }
-.status-error { color: var(--error); }
+/* Compound-class convention shared with Build (style.css) and
+ * Watch (watch/style.css): the JS sets ``className = "status ok"``
+ * etc.  Keep the rules selector-aligned across all three tabs so a
+ * future "add a severity" change is a single CSS edit. */
+.status.ok    { color: var(--success); }
+.status.error { color: var(--error); }
+.status.warn  { color: #d8a64b; }
 
 /* ---- Three-column main grid ----
  *
