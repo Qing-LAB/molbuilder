@@ -1741,3 +1741,104 @@ def test_dataclass_schema_is_json_serialisable():
     serialised = json.dumps(sch)
     # Round-trips without loss.
     assert json.loads(serialised) == sch
+
+
+def test_dataclass_schema_honors_form_section_order_override():
+    """A class-level _form_section_order tuple overrides declaration
+    order without forcing the user to reorder fields.  Section names
+    in the tuple come first (in the tuple's order); any extra
+    sections present in field metadata but missing from the tuple
+    keep their declaration-order position appended after."""
+    from dataclasses import dataclass as _dc, field as _f
+    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
+
+    @_dc
+    class Reordered:
+        _form_section_order = ("Z", "X")  # declared order is X, Y, Z
+        x: int = _f(default=0, metadata={"section": "X"})
+        y: int = _f(default=0, metadata={"section": "Y"})
+        z: int = _f(default=0, metadata={"section": "Z"})
+
+    sch = dataclass_to_form_schema(Reordered, id_prefix="t")
+    names = [s["name"] for s in sch["sections"]]
+    # Explicit "Z", "X" come first; then "Y" tacked on (in declaration
+    # position 2 of the original ordering).
+    assert names == ["Z", "X", "Y"], names
+
+
+def test_siesta_form_schema_matches_documented_layout():
+    """The production SiestaConfig schema -- both the section order
+    and the count of fields per section -- is itself part of the
+    Build-tab contract.  Pin it here so a stray field-reorder or a
+    forgotten metadata addition doesn't silently rearrange the UI."""
+    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
+    from molbuilder.config.siesta import SiestaConfig
+
+    sch = dataclass_to_form_schema(SiestaConfig, id_prefix="p")
+    assert sch["config"] == "SiestaConfig"
+    assert sch["id_prefix"] == "p"
+
+    expected = [
+        ("System",                   1),
+        ("Basis & grid",             3),
+        ("Exchange-correlation",     2),
+        ("SCF",                      7),
+        ("Parallel execution",       2),
+        ("Spin",                     2),
+        ("k-grid (Monkhorst-Pack)",  1),
+        ("Relaxation",               4),
+        ("Output & positioning",     6),
+    ]
+    got = [(s["name"], len(s["fields"])) for s in sch["sections"]]
+    assert got == expected, got
+
+    # The kgrid Tuple field MUST render as the "int-triple" kind so
+    # the JS renderer knows to emit three side-by-side inputs.
+    kgrid = next(
+        f for s in sch["sections"] for f in s["fields"]
+        if f["name"] == "kgrid"
+    )
+    assert kgrid["kind"] == "int-triple"
+    assert kgrid["labels"] == ["x", "y", "z"]
+
+
+def test_pyscf_form_schema_matches_documented_layout():
+    """Same pin for PySCFConfig.  The post-relax frequencies /
+    thermochemistry section (added in v1.1) is the rightmost
+    semantic group, after Solvent."""
+    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
+    from molbuilder.config.pyscf import PySCFConfig
+
+    sch = dataclass_to_form_schema(PySCFConfig, id_prefix="py")
+    assert sch["config"] == "PySCFConfig"
+    assert sch["id_prefix"] == "py"
+
+    expected = [
+        ("System",                       4),
+        ("Method",                       5),
+        ("SCF",                          5),
+        ("Pre-optimization (optional)",  5),
+        ("Optimization",                 6),
+        ("Solvent (optional)",           2),
+        ("Frequencies / thermochemistry", 3),
+        ("Runtime & output",             6),
+    ]
+    got = [(s["name"], len(s["fields"])) for s in sch["sections"]]
+    assert got == expected, got
+
+    # Spin uses range metadata that must propagate so the JS renderer
+    # can emit min/max attributes (UX hint, not a server-side check).
+    spin = next(
+        f for s in sch["sections"] for f in s["fields"]
+        if f["name"] == "spin"
+    )
+    assert spin["kind"] == "int"
+    assert spin["min"] == 0 and spin["max"] == 10
+
+    # The job-name pattern carries through so the renderer can apply
+    # the HTML5 pattern= attribute, matching the existing static form.
+    jn = next(
+        f for s in sch["sections"] for f in s["fields"]
+        if f["name"] == "job_name"
+    )
+    assert jn["pattern"] == r"^[A-Za-z0-9_\-]+$"

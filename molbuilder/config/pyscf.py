@@ -28,8 +28,31 @@ from .siesta import _validate_basename     # shared with SiestaConfig
 
 @dataclass
 class PySCFConfig:
+    # Explicit form-section order for the schema-driven Build form.
+    # PySCF runs in a natural reading order (system -> method -> SCF
+    # -> opt -> solvent -> runtime -> post-relax analysis); the
+    # dataclass field declaration order mostly matches but a few
+    # field groups are out of place (Solvent declared next to Method,
+    # Pre-opt declared between SCF and Optimization).  Pinning the
+    # order here keeps the schema independent of those declaration
+    # quirks.
+    _form_section_order = (
+        "System",
+        "Method",
+        "SCF",
+        "Pre-optimization (optional)",
+        "Optimization",
+        "Solvent (optional)",
+        "Frequencies / thermochemistry",
+        "Runtime & output",
+    )
+
     # ---------------- System ----------------
     job_name: str = field(default="pyscf_relax", metadata={
+        "section":  "System",
+        "label":    "Job name",
+        "id_suffix": "job-name",
+        "pattern":  r"^[A-Za-z0-9_\-]+$",
         "help":     "job name; output files get this prefix.  Must match "
                     "[A-Za-z0-9_-]+ (job-layout v1; no dots).",
         # Same basename rule as SiestaConfig.system_label -- import the
@@ -37,34 +60,54 @@ class PySCFConfig:
         "validate": _validate_basename("job_name"),
     })
     charge: Optional[int] = field(default=None, metadata={
+        "section": "System",
+        "label":   "Net charge",
+        "null_label": "(auto)",
         "help": "net charge (default: auto-detect from phosphates)",
     })
     spin: int = field(default=0, metadata={
+        "section": "System",
+        "label":   "Spin (2S)",
+        "range":   (0, 10),
         "help": "2S (NOT 2S+1); 0=closed shell, 1=doublet, 2=triplet, ...",
     })
     symmetry: bool = field(default=False, metadata={
+        "section": "System",
+        "label":   "Use point-group symmetry",
         "help": "enable point-group symmetry; faster but rarely matches "
                 "builder-output geometry exactly",
     })
 
     # ---------------- Method (main run) ----------------
     method: str = field(default="RKS", metadata={
+        "section": "Method",
+        "label":   "SCF method",
         "choices": ("RKS", "UKS", "RHF", "UHF"),
         "help": "RKS / UKS / RHF / UHF",
     })
     functional: str = field(default="B3LYP", metadata={
+        "section": "Method",
+        "label":   "Functional",
         "help": "XC functional (e.g. B3LYP / PBE / PBE0 / M06-2X / wB97X-D)",
     })
     basis: str = field(default="def2-SVP", metadata={
+        "section": "Method",
+        "label":   "Basis set",
         "help": "Gaussian basis set (e.g. def2-SVP / def2-TZVP / cc-pVDZ)",
     })
+    # auxbasis: Python-API knob; rarely set from the form (auto-pick
+    # from density_fit() is the right default).  No section -> not on form.
     auxbasis: Optional[str] = field(default=None, metadata={
         "help": "auxiliary fitting basis; None lets density_fit() auto-pick",
     })
     density_fit: bool = field(default=True, metadata={
+        "section": "Method",
+        "label":   "Density fitting",
         "help": "use density fitting (faster Coulomb/exchange evaluation)",
     })
     dispersion: Optional[str] = field(default="d3bj", metadata={
+        "section": "Method",
+        "label":   "Dispersion",
         # ``none`` is in the choices list so that the case-insensitive
         # click.Choice still accepts the disable spelling; cmd_pyscf
         # then normalises ``none`` -> None before constructing the
@@ -91,32 +134,30 @@ class PySCFConfig:
         "skip_cli": True,
     })
 
-    # ---------------- Solvent (optional) ----------------
-    solvent: Optional[str] = field(default=None, metadata={
-        "help": "solvent (water / methanol / dmso / chloroform / ...)",
-    })
-    solvent_method: str = field(default="IEF-PCM", metadata={
-        "help": "PCM model: IEF-PCM / C-PCM / COSMO",
-    })
-
     # ---------------- SCF ----------------
     scf_conv_tol: float = field(default=1e-9, metadata={
+        "section": "SCF",
         "label": "scf.conv_tol", "unit": "Hartree",
         "range": (1e-12, 1e-4),
         "tier":  "advanced",
         "help":  "SCF convergence tolerance on the energy (Hartree)",
     })
     scf_max_cycle: int = field(default=100, metadata={
+        "section": "SCF",
         "label": "scf.max_cycle",
         "range": (10, 1000),
         "tier":  "advanced",
         "help":  "max SCF cycles per single-point",
     })
     scf_init_guess: str = field(default="minao", metadata={
+        "section": "SCF",
+        "label":  "scf.init_guess",
+        "id_suffix": "init-guess",
         "choices": ("minao", "atom", "1e", "huckel"),
         "help": "SCF initial guess: minao / atom / 1e / huckel",
     })
     grid_level: int = field(default=4, metadata={
+        "section": "SCF",
         "label": "DFT grid level",
         "range": (0, 9),
         "tier":  "advanced",
@@ -129,14 +170,15 @@ class PySCFConfig:
         "help":  "0=coarse, 3=screening, 4=default (hybrid-friendly), 5=tight, 9=ultra",
     })
     level_shift: float = field(default=0.0, metadata={
+        "section": "SCF",
         "label": "Level shift", "unit": "Hartree",
         "range": (0.0, 1.0),
         "tier":  "advanced",
         "help":  "0.1-0.3 helps hard SCFs; 0 if SCF converges cleanly",
     })
-    # Hard-SCF troubleshooting knobs (gap #10).  Both default to
-    # PySCF's own defaults so behaviour is unchanged for the
-    # easy-converge case; bump them when SCF oscillates.
+    # Hard-SCF troubleshooting knobs.  No section -> not on form;
+    # power users tweak via Python API.  Defaults preserve PySCF
+    # behaviour for the easy-converge case.
     diis_space: int = field(default=8, metadata={
         "label": "mf.diis_space",
         "range": (4, 20),
@@ -152,14 +194,22 @@ class PySCFConfig:
 
     # ---------------- Pre-optimization (optional warm-up) ----------------
     preopt: bool = field(default=False, metadata={
+        "section": "Pre-optimization (optional)",
+        "label":   "Enable pre-optimization",
         "help": "run a cheap PBE/def2-SVP pre-opt before main run",
     })
     preopt_functional: str = field(default="PBE", metadata={
+        "section": "Pre-optimization (optional)",
+        "label":   "Pre-opt functional",
         "help": "XC functional for the pre-opt stage",
     })
     preopt_basis: str = field(default="def2-SVP", metadata={
+        "section": "Pre-optimization (optional)",
+        "label":   "Pre-opt basis",
         "help": "Gaussian basis for the pre-opt stage",
     })
+    # preopt_density_fit / preopt_dispersion: kept off the form to
+    # avoid clutter; they default sensibly and power users tweak via API.
     preopt_density_fit: bool = field(default=True, metadata={
         "help": "density fitting on the pre-opt SCF",
     })
@@ -170,43 +220,104 @@ class PySCFConfig:
         "help": "dispersion correction on pre-opt mf (d3 / d3bj / d4); default off",
     })
     preopt_max_steps: int = field(default=50, metadata={
+        "section": "Pre-optimization (optional)",
+        "label":   "Pre-opt max steps",
+        "range":   (1, 1000),
+        "tier":    "advanced",
         "help": "max geomeTRIC steps in the pre-opt stage",
     })
     preopt_grms: float = field(default=1.0e-3, metadata={
+        "section": "Pre-optimization (optional)",
+        "label":   "Pre-opt grms", "unit": "Ha/Bohr",
+        "tier":    "advanced",
         "help": "pre-opt grms convergence (Ha/Bohr); 3x looser than main",
     })
 
     # ---------------- Main optimization ----------------
     optimize: bool = field(default=True, metadata={
+        "section": "Optimization",
+        "label":   "Optimize geometry",
         "help": "run geometry optimization; --no-optimize for single-point only",
     })
     optimizer: str = field(default="geometric", metadata={
+        "section": "Optimization",
+        "label":   "Optimizer",
         "choices": ("geometric", "berny"),
         "help": "geomeTRIC or berny",
     })
     geom_max_steps: int = field(default=200, metadata={
+        "section": "Optimization",
         "label": "geom max steps",
         "range": (1, 10000),
         "tier":  "advanced",
         "help":  "max optimization steps",
     })
     geom_conv_energy: float = field(default=1.0e-6, metadata={
+        "section": "Optimization",
+        "label":   "geom_conv_energy", "unit": "Hartree",
+        "tier":    "advanced",
         "help": "geomeTRIC energy convergence (Hartree)",
     })
     geom_conv_grms: float = field(default=3.0e-4, metadata={
+        "section": "Optimization",
+        "label":   "geom_conv_grms", "unit": "Ha/Bohr",
+        "tier":    "advanced",
         "help": "geomeTRIC RMS gradient convergence (Ha/Bohr)",
     })
     geom_conv_gmax: float = field(default=4.5e-4, metadata={
+        "section": "Optimization",
+        "label":   "geom_conv_gmax", "unit": "Ha/Bohr",
+        "tier":    "advanced",
         "help": "geomeTRIC max-gradient convergence (Ha/Bohr)",
     })
 
-    # ---------------- Output ----------------
+    # ---------------- Solvent (optional) ----------------
+    solvent: Optional[str] = field(default=None, metadata={
+        "section": "Solvent (optional)",
+        "label":   "Solvent",
+        "null_label": "(gas phase)",
+        "help": "solvent (water / methanol / dmso / chloroform / ...)",
+    })
+    solvent_method: str = field(default="IEF-PCM", metadata={
+        "section": "Solvent (optional)",
+        "label":   "PCM model",
+        "choices": ("IEF-PCM", "C-PCM", "COSMO"),
+        "help": "PCM model: IEF-PCM / C-PCM / COSMO",
+    })
+
+    # ---------------- Runtime ----------------
+    max_memory_mb: int = field(default=4000, metadata={
+        "section": "Runtime & output",
+        "label": "max_memory", "unit": "MB",
+        "id_suffix": "max-memory",
+        "range": (100, 1_000_000),
+        "tier":  "advanced",
+        "help":  "MB hint for PySCF's max_memory",
+    })
+    threads: Optional[int] = field(default=None, metadata={
+        "section": "Runtime & output",
+        "label":   "Threads",
+        "null_label": "(inherit OMP_NUM_THREADS)",
+        "help": "OMP_NUM_THREADS pin; default = inherit env",
+    })
+    verbose: int = field(default=4, metadata={
+        "section": "Runtime & output",
+        "label": "PySCF verbose",
+        "range": (0, 9),
+        "tier":  "advanced",
+        "help":  "PySCF verbosity: 0 silent, 4 info, 5 debug",
+    })
     chkfile: bool = field(default=True, metadata={
+        "section": "Runtime & output",
+        "label":   "Write checkpoint (.chk)",
         "help": "write <job>.chk (DM, mol, energies for restart)",
     })
     log_file: bool = field(default=True, metadata={
+        "section": "Runtime & output",
+        "label":   "Write PySCF log",
         "help": "write the PySCF text log to <job>.log",
     })
+    # Always-on output knobs; unsectioned (no good reason to expose).
     save_optimized_xyz: bool = field(default=True, metadata={
         "help": "snapshot the relaxed geometry to <job>_optimized.xyz",
     })
@@ -232,23 +343,6 @@ class PySCFConfig:
                  "--optimizer geometric"),
     })
 
-    # ---------------- Runtime ----------------
-    max_memory_mb: int = field(default=4000, metadata={
-        "label": "max_memory", "unit": "MB",
-        "range": (100, 1_000_000),
-        "tier":  "advanced",
-        "help":  "MB hint for PySCF's max_memory",
-    })
-    threads: Optional[int] = field(default=None, metadata={
-        "help": "OMP_NUM_THREADS pin; default = inherit env",
-    })
-    verbose: int = field(default=4, metadata={
-        "label": "PySCF verbose",
-        "range": (0, 9),
-        "tier":  "advanced",
-        "help":  "PySCF verbosity: 0 silent, 4 info, 5 debug",
-    })
-
     # ---------------- Frequencies / thermochemistry (post-relax) ----------------
     # Opt-in: when True, the script computes the analytic Hessian at
     # the relaxed (or, for single-point runs, the input) geometry,
@@ -264,19 +358,24 @@ class PySCFConfig:
     # script does not auto-perturb; the user decides whether to
     # restart the optimization along the imaginary coordinate.
     compute_frequencies: bool = field(default=False, metadata={
+        "section": "Frequencies / thermochemistry",
         "label": "Post-relax frequencies + thermochemistry",
         "tier":  "advanced",
         "help":  "compute analytic Hessian + RRHO thermochemistry "
                  "(ZPE, H, G, S, Cv, Cp) at temperature_K / pressure_atm",
     })
     temperature_K: float = field(default=298.15, metadata={
+        "section": "Frequencies / thermochemistry",
         "label": "Thermochemistry temperature", "unit": "K",
+        "id_suffix": "temperature",
         "range": (0.0, 5000.0),
         "tier":  "advanced",
         "help":  "RRHO temperature for thermo.thermo() (standard: 298.15 K)",
     })
     pressure_atm: float = field(default=1.0, metadata={
+        "section": "Frequencies / thermochemistry",
         "label": "Thermochemistry pressure", "unit": "atm",
+        "id_suffix": "pressure",
         "range": (1.0e-6, 1.0e3),
         "tier":  "advanced",
         "help":  "RRHO pressure for thermo.thermo() (standard: 1 atm = 101325 Pa)",
@@ -284,6 +383,8 @@ class PySCFConfig:
 
     # ---------------- Comments ----------------
     verbose_comments: bool = field(default=True, metadata={
+        "section": "Runtime & output",
+        "label":   "Verbose comments in script",
         "help": "emit inline tuning hints + troubleshooting block in the script",
     })
 

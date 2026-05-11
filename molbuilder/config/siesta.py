@@ -74,6 +74,25 @@ def _validate_basename(label: str):
 
 @dataclass
 class SiestaConfig:
+    # Explicit form-section order for the schema-driven Build form.
+    # Without this, sections would appear in the order their first
+    # field is declared below -- which puts Spin / Parallel at the
+    # end (they were grouped with the late-arriving "extras" rather
+    # than near the SCF block).  This list keeps the form's visual
+    # order close to SIESTA's own .fdf reading order: setup first,
+    # then SCF + sampling, then the optimisation algorithm, then I/O.
+    _form_section_order = (
+        "System",
+        "Basis & grid",
+        "Exchange-correlation",
+        "SCF",
+        "Parallel execution",
+        "Spin",
+        "k-grid (Monkhorst-Pack)",
+        "Relaxation",
+        "Output & positioning",
+    )
+
     # System
     # ``system_name`` is auto-folded to match ``system_label`` by the
     # web JS collector (one user-visible "Job name" field drives both),

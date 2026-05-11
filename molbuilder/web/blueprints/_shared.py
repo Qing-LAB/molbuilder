@@ -230,6 +230,16 @@ def dataclass_to_form_schema(cls, id_prefix: str) -> Dict[str, Any]:
     ``electronic_temperature``); they declare ``"id_suffix"`` so the
     compatibility engine + sessionStorage list stay backwards-
     compatible.
+
+    **Section ordering**: by default sections appear in the order
+    their first field is declared in the dataclass.  When the class
+    declares an ``_form_section_order`` class attribute (a tuple /
+    list of section names), sections appear in that order instead;
+    any sections present in field metadata but missing from the
+    explicit order get appended after the explicit ones in
+    declaration order.  This lets a dataclass control form layout
+    without reorganising the (often natural) field declaration
+    order.
     """
     hints = typing.get_type_hints(cls)
     sections_in_order: List[str] = []
@@ -242,6 +252,24 @@ def dataclass_to_form_schema(cls, id_prefix: str) -> Dict[str, Any]:
             sections_in_order.append(section)
             by_section[section] = []
         by_section[section].append(_field_to_schema(f, hints, id_prefix))
+
+    # Explicit section ordering via _form_section_order on the class.
+    # Names not present in that list keep their declaration-order
+    # position (appended after the explicit names).
+    declared_order = getattr(cls, "_form_section_order", None)
+    if declared_order:
+        seen = set()
+        ordered: List[str] = []
+        for name in declared_order:
+            if name in by_section and name not in seen:
+                ordered.append(name)
+                seen.add(name)
+        for name in sections_in_order:
+            if name not in seen:
+                ordered.append(name)
+                seen.add(name)
+        sections_in_order = ordered
+
     return {
         "config":    cls.__name__,
         "id_prefix": id_prefix,
