@@ -1488,6 +1488,53 @@ def test_modify_layout_stacks_on_narrow_viewport(
     )
 
 
+def test_modify_layout_phone_width_no_horizontal_overflow(
+        page, flask_server, water_xyz_file):
+    """Phone-width viewport (360 px): the page must not produce a
+    horizontal scrollbar, and the 5-child viewer toolbar must wrap to
+    multiple rows.  Document body scrollWidth <= clientWidth is the
+    canonical "did mobile layout break?" check -- if a child element
+    overflows, scrollWidth exceeds the viewport width by exactly that
+    amount.
+    """
+    page.set_viewport_size({"width": 360, "height": 720})
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    # Page body must fit the viewport horizontally.
+    overflow_px = page.evaluate(
+        "() => document.documentElement.scrollWidth"
+        " - document.documentElement.clientWidth"
+    )
+    if overflow_px > 0:
+        # Diagnostic: list elements wider than the viewport so we can
+        # pin the offender in the failure message instead of guessing.
+        offenders = page.evaluate(
+            "(vw) => Array.from(document.querySelectorAll('*'))"
+            ".filter(e => e.scrollWidth > vw + 1)"
+            ".slice(0, 8)"
+            ".map(e => e.tagName + (e.id ? '#' + e.id : '')"
+            " + (e.className && typeof e.className === 'string'"
+            " ? '.' + e.className.split(' ').slice(0, 2).join('.') : '')"
+            " + ' (sw=' + e.scrollWidth + ')')",
+            360
+        )
+        raise AssertionError(
+            f"phone-width page overflows horizontally by {overflow_px} px; "
+            f"offenders: {offenders}"
+        )
+    # Viewer-controls children must wrap -- assert the toolbar height
+    # exceeds a single-row height (a single row is ~32-44 px including
+    # padding; multi-row should be >= 60 px on a 360 px viewport).
+    toolbar_h = page.evaluate(
+        "() => document.querySelector('.viewer-controls')"
+        ".getBoundingClientRect().height"
+    )
+    assert toolbar_h >= 60, (
+        f"viewer-controls did not wrap on 360 px viewport "
+        f"(height = {toolbar_h:.0f} px, expected >= 60 for multi-row)"
+    )
+
+
 def test_send_to_build_disabled_without_structure(page, flask_server):
     """Send-to-Build button must be disabled when no structure is
     loaded -- nothing to hand off."""

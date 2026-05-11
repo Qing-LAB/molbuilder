@@ -128,6 +128,13 @@ header .tagline {
     .modify-grid { padding: 6px; gap: 6px; }
     .loader-bar { padding: 0.55rem 0.8rem; }
     header      { padding: 0.9rem 1rem 0.6rem; }
+    /* The file input has a browser-supplied minimum content width
+       (~250-280 px for "No file chosen" + button) that ignores the
+       parent's flex-wrap and overflows 360 px viewports.  Cap it to
+       the row width and force the status span onto its own line so
+       the loader-bar never produces a horizontal scrollbar. */
+    .loader input[type="file"] { max-width: 100%; min-width: 0; }
+    .loader .status { flex-basis: 100%; }
 }
 
 /* ---- Cards ---- */
