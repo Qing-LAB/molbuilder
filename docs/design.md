@@ -628,6 +628,8 @@ These have been considered and rejected; do not reintroduce them.
 | 2026-05-10 | **Job-layout v1** (`docs/spec/job-layout.md`) codifies the on-disk shape of a molbuilder run: one directory, one basename, named files.  Watch resolves a **run directory** via a documented discovery chain (`*.molwatch.log` → `*.fdf` → `*.py` → fallbacks). | Lets the user point Watch at a directory instead of a specific output file.  Cross-stage continuation (SIESTA `.XV` / `.DM` / `.CG`, PySCF `.chk`) works automatically because the basename stays identical across staged runs. |
 | 2026-05-10 | Multiple `*.molwatch.log` files in a run directory are **merged** into one trajectory with stage-boundary markers; live polling pins to the newest log; older stages are static. | Realises the staged-relaxation workflow (coarse → medium → tight) end-to-end.  Polling re-runs the merge over the FULL log set (per-file mtime-keyed cache prevents re-parsing static stages). |
 | 2026-05-10 | When the Build-tab "Relaxation stage" preset is non-Custom, the SIESTA + PySCF generators auto-suffix the `.molwatch.log` filename as `<basename>-stage<N>.molwatch.log`.  Basename itself stays unsuffixed so restart files transfer. | Removes the manual-rename step from the staged-relaxation flow.  Suffix rule lives in `molbuilder.trajectory_log.format.molwatch_log_basename` -- ONE source for both engines, no drift. |
+| 2026-05-10 | `Trajectory` stays a thin `(source_format, frames, lattice)` wrapper.  Per-trajectory analysis (RMSD, principal axes, dipole, radius of gyration) lives as free functions under `molbuilder/analysis/` if and when a consuming workflow arrives — NOT as methods on `Trajectory`. | The Phase-2 minimum has proven sufficient through v1.0 (Watch, CLI, all parsers).  Adding methods would couple analysis to the parser-output shape and bloat the L1 surface that every consumer pays for, in exchange for ergonomics no caller has asked for.  Pull-on-demand functions stay testable independently and don't pollute the wrapper. |
+| 2026-05-10 | CP2K / ORCA generator + parser deferred indefinitely; the per-engine subpackage layout (`molbuilder/<engine>/input.py` + `parsers/<engine>.py`) is already in place and will be reactivated when a real workflow asks for it. | v1.0 ships covering SIESTA + PySCF, the two engines actually used.  Adding speculative CP2K / ORCA support before a use case means committing to test + maintenance burden for code with no caller — exactly the trap Principle-#8 ("don't reinvent wheels") points at one layer up.  The layout split costs nothing to keep dormant. |
 
 ---
 
@@ -1315,14 +1317,6 @@ Items not load-bearing but worth picking up when the time comes.
 
 - **Frequency / thermochemistry support in the PySCF script** (post-
   relax Hessian + RRHO).
-- **`Trajectory` analysis methods.**  Whether `Trajectory` should
-  grow RMSD / principal axes / dipole moment time series, versus
-  staying as a thin `(source_format, frames, lattice)` wrapper.
-  Phase 2 landed it as the thin shape; revisit if a future CLI
-  subcommand wants richer ergonomics.
-- **CP2K / ORCA generator + parser.**  If a non-trivial new engine
-  arrives before v1.0, the per-engine subpackage layouts already
-  accommodate it; if not, the abstraction is fine.
 - **Phone-width (≤ 640 px) E2E layout test for Modify** — the
   viewer-controls toolbar has six children and may wrap badly on
   narrow viewports.  Existing layout test runs at 800 px.
