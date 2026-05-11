@@ -171,6 +171,194 @@ def finite_float(name: str, value: Any, default: float = 0.0) -> float:
 # --------------------------------------------------------------------- #
 
 
+def dataclass_to_form_schema(cls, id_prefix: str) -> Dict[str, Any]:
+    """Build a JSON form-rendering schema from an L1 config dataclass.
+
+    Closes the last Principle-#1 anti-pattern: the SIESTA + PySCF
+    form fields in ``web/templates/index.html`` and the per-field
+    parse logic in ``viewer.js`` used to duplicate the dataclass
+    field set (~50 fields each side).  This generator walks
+    ``dataclasses.fields(cls)`` ONCE and emits everything the JS
+    renderer needs to construct the form -- so adding a new field
+    is now a one-line metadata change on the dataclass.
+
+    Schema shape::
+
+        {
+          "config":    "SiestaConfig",
+          "id_prefix": "p",
+          "sections":  [
+            {"name": "System", "fields": [<field_schema>, ...]},
+            ...
+          ],
+        }
+
+    Per-field shape (subset; only the relevant keys for the field's
+    inferred kind are present)::
+
+        {
+          "name":     "<dataclass field name>",         # canonical key
+          "id":       "<id_prefix>-<id_suffix>",        # HTML id
+          "label":    "<human label>",                  # from metadata.label
+          "help":     "<help / tooltip>",
+          "default":  <JSON-serialisable default>,
+          "tier":     "basic" | "advanced",
+          "kind":     "checkbox" | "int" | "number" | "text"
+                      | "select" | "tri-select" | "int-triple",
+          # number / int:
+          "min": ..., "max": ..., "step": ...,
+          # select / tri-select:
+          "choices": [...],
+          "null_option": True,
+          "null_label":  "<label for the empty option>",
+          # int-triple (kgrid):
+          "labels": ["x", "y", "z"],
+          # display:
+          "unit": "Å" | "Ry" | ...,
+          "pattern": "<HTML pattern attr>",
+        }
+
+    **Opt-in via ``section``**: only fields whose metadata declares a
+    ``"section"`` key are exposed.  Fields without a section live on
+    the dataclass for the Python API / CLI but stay off the web form
+    (psml paths, write_forces always-on flags, MD-only knobs that
+    only matter for relax_type=Verlet, etc.).
+
+    **ID override via ``id_suffix``**: by default the HTML id is
+    ``"{id_prefix}-{field_name.replace('_', '-')}"``.  A few fields
+    have shorter legacy ids (e.g. ``p-temperature`` for
+    ``electronic_temperature``); they declare ``"id_suffix"`` so the
+    compatibility engine + sessionStorage list stay backwards-
+    compatible.
+    """
+    hints = typing.get_type_hints(cls)
+    sections_in_order: List[str] = []
+    by_section: Dict[str, List[Dict[str, Any]]] = {}
+    for f in fields(cls):
+        section = f.metadata.get("section")
+        if not section:
+            continue
+        if section not in by_section:
+            sections_in_order.append(section)
+            by_section[section] = []
+        by_section[section].append(_field_to_schema(f, hints, id_prefix))
+    return {
+        "config":    cls.__name__,
+        "id_prefix": id_prefix,
+        "sections": [
+            {"name": s, "fields": by_section[s]}
+            for s in sections_in_order
+        ],
+    }
+
+
+def _field_to_schema(f: dataclasses.Field,
+                     hints: Dict[str, Any],
+                     id_prefix: str) -> Dict[str, Any]:
+    """One dataclass field -> one schema entry.
+
+    Pure inspection: no I/O, no side effects, only field.type +
+    field.metadata + field.default.  Optional[X] unwraps to X with
+    ``optional=True`` so the renderer knows to emit an empty/auto
+    sentinel option.
+    """
+    ann = hints.get(f.name, f.type)
+    origin = typing.get_origin(ann)
+    args = typing.get_args(ann)
+    is_optional = (origin is typing.Union and type(None) in args)
+    if is_optional:
+        ann = next((a for a in args if a is not type(None)), str)
+        origin = typing.get_origin(ann)
+        args   = typing.get_args(ann)
+
+    md = dict(f.metadata)
+    id_suffix = md.get("id_suffix", f.name.replace("_", "-"))
+    out: Dict[str, Any] = {
+        "name":     f.name,
+        "id":       f"{id_prefix}-{id_suffix}",
+        "label":    md.get("label", f.name.replace("_", " ").capitalize()),
+        "help":     md.get("help", ""),
+        "default":  _serialize_default(f),
+        "optional": is_optional,
+        "tier":     md.get("tier", "basic"),
+    }
+    if "unit" in md:
+        out["unit"] = md["unit"]
+
+    choices = md.get("choices")
+    if choices is not None:
+        out["kind"] = "select"
+        out["choices"] = list(choices)
+        # An Optional[str] with explicit choices needs an empty
+        # sentinel option in the UI (e.g. the dispersion select
+        # whose "none" choice maps to None).
+        if is_optional:
+            out["null_option"] = True
+            out["null_label"] = md.get("null_label", "(default)")
+    elif ann is bool:
+        if is_optional:
+            # Optional[bool] -> tri-select (auto / true / false).
+            # Today only parallel_over_k uses this pattern.
+            out["kind"] = "tri-select"
+            out["choices"] = ["auto", "true", "false"]
+        else:
+            out["kind"] = "checkbox"
+    elif ann is int:
+        out["kind"] = "int"
+        rng = md.get("range")
+        if rng is not None:
+            out["min"], out["max"] = rng
+        if is_optional:
+            out["null_option"] = True
+            out["null_label"] = md.get("null_label", "(auto)")
+    elif ann is float:
+        out["kind"] = "number"
+        # step="any" is the HTML "accept any float"; widgets can
+        # override with metadata["step"] when they want spinner steps.
+        out["step"] = md.get("step", "any")
+        rng = md.get("range")
+        if rng is not None:
+            out["min"], out["max"] = rng
+        if is_optional:
+            out["null_option"] = True
+            out["null_label"] = md.get("null_label", "(auto)")
+    elif origin is tuple and args:
+        # Tuple[int, int, int] -- only kgrid today.  Renderer emits
+        # three side-by-side number inputs with sub-ids
+        # f"{id}-{labels[i]}".  We pass the labels through so the
+        # k-grid UI's "kx / ky / kz" stays declaration-driven.
+        out["kind"] = "int-triple"
+        out["labels"] = list(md.get("triple_labels", ("x", "y", "z")))
+    elif ann is str:
+        out["kind"] = "text"
+    else:
+        # Sequence[str] (species_order) etc. -- not exposed in the
+        # form today.  Fall back to text so the schema is at least
+        # well-formed for tests, but the field shouldn't have a
+        # section anyway.
+        out["kind"] = "text"
+
+    if "pattern" in md:
+        out["pattern"] = md["pattern"]
+    return out
+
+
+def _serialize_default(f: dataclasses.Field) -> Any:
+    """JSON-friendly default for the schema.
+
+    dataclasses use MISSING when the field uses ``default_factory``;
+    we don't expose those (no form field uses one today) but if a
+    future one does, ``None`` is a safe placeholder.  Tuples become
+    lists for JSON compatibility.
+    """
+    if f.default is dataclasses.MISSING:
+        return None
+    v = f.default
+    if isinstance(v, tuple):
+        return list(v)
+    return v
+
+
 def coerce_to_field_type(field: dataclasses.Field, value: Any,
                          resolved_hints: Dict[str, Any]) -> Any:
     """Convert a JSON-arriving value to the field's declared type.
