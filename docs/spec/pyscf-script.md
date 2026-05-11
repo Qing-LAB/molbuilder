@@ -31,6 +31,7 @@ File presence depends on the cfg flags listed in the second column.
 | `<job>_preopt_optim.xyz` | `cfg.preopt` AND `cfg.write_trajectory` AND `cfg.optimizer == "geometric"` | streaming pre-opt-stage trajectory, same format |
 | `<job>_preopt.log` | same as above | geomeTRIC's own log for the pre-opt stage |
 | `<job>.molwatch.log` (or `<job>-stage<N>.molwatch.log` when `cfg.stage` is set) | `cfg.molwatch_log` (default `True`) AND `cfg.optimize` AND `cfg.optimizer == "geometric"` | unified per-step trajectory log written **alongside** the standard outputs (additive). One marker-delimited block per accepted opt step containing coordinates, total energy (eV), per-atom forces (eV/Å), max force (eV/Å), and the SCF cycle history for that step. Single-file input for the Watch tab. |
+| `<job>.thermo.txt` | `cfg.compute_frequencies` (default `False`) | post-relax harmonic analysis + RRHO thermochemistry. Header recording (T, P, method/basis), `[frequencies]` block with one `mode N  wavenumber (cm^-1)` line per vibrational mode (imaginary modes tagged `(imag)`), and `[thermochemistry]` block with the full `pyscf.hessian.thermo.thermo()` dict (ZPE, U/H/G/S/Cv/Cp at the configured temperature_K and pressure_atm). The block runs at the converged `mf` at `mol_eq` and is wrapped in try/except so a Hessian failure does NOT lose the converged energy or `<job>_optimized.xyz`. |
 
 The script's header docstring "Outputs:" block must list **exactly**
 the set of files this table promises for the active config — no

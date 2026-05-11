@@ -249,6 +249,39 @@ class PySCFConfig:
         "help":  "PySCF verbosity: 0 silent, 4 info, 5 debug",
     })
 
+    # ---------------- Frequencies / thermochemistry (post-relax) ----------------
+    # Opt-in: when True, the script computes the analytic Hessian at
+    # the relaxed (or, for single-point runs, the input) geometry,
+    # runs PySCF's harmonic_analysis to get wavenumbers in cm^-1, and
+    # passes the result through ``thermo.thermo`` for RRHO ZPE / U /
+    # H / G / S / Cv / Cp at (temperature_K, pressure_atm).  The
+    # summary is written to ``<job>.thermo.txt`` so the file lives
+    # alongside the converged log / chkfile.
+    #
+    # Cost: one analytic Hessian -- typically 5-15x a single SCF for
+    # small molecules, more for larger ones.  Default off so the
+    # extra cost is explicit.  Imaginary modes are reported but the
+    # script does not auto-perturb; the user decides whether to
+    # restart the optimization along the imaginary coordinate.
+    compute_frequencies: bool = field(default=False, metadata={
+        "label": "Post-relax frequencies + thermochemistry",
+        "tier":  "advanced",
+        "help":  "compute analytic Hessian + RRHO thermochemistry "
+                 "(ZPE, H, G, S, Cv, Cp) at temperature_K / pressure_atm",
+    })
+    temperature_K: float = field(default=298.15, metadata={
+        "label": "Thermochemistry temperature", "unit": "K",
+        "range": (0.0, 5000.0),
+        "tier":  "advanced",
+        "help":  "RRHO temperature for thermo.thermo() (standard: 298.15 K)",
+    })
+    pressure_atm: float = field(default=1.0, metadata={
+        "label": "Thermochemistry pressure", "unit": "atm",
+        "range": (1.0e-6, 1.0e3),
+        "tier":  "advanced",
+        "help":  "RRHO pressure for thermo.thermo() (standard: 1 atm = 101325 Pa)",
+    })
+
     # ---------------- Comments ----------------
     verbose_comments: bool = field(default=True, metadata={
         "help": "emit inline tuning hints + troubleshooting block in the script",

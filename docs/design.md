@@ -630,6 +630,7 @@ These have been considered and rejected; do not reintroduce them.
 | 2026-05-10 | When the Build-tab "Relaxation stage" preset is non-Custom, the SIESTA + PySCF generators auto-suffix the `.molwatch.log` filename as `<basename>-stage<N>.molwatch.log`.  Basename itself stays unsuffixed so restart files transfer. | Removes the manual-rename step from the staged-relaxation flow.  Suffix rule lives in `molbuilder.trajectory_log.format.molwatch_log_basename` -- ONE source for both engines, no drift. |
 | 2026-05-10 | `Trajectory` stays a thin `(source_format, frames, lattice)` wrapper.  Per-trajectory analysis (RMSD, principal axes, dipole, radius of gyration) lives as free functions under `molbuilder/analysis/` if and when a consuming workflow arrives — NOT as methods on `Trajectory`. | The Phase-2 minimum has proven sufficient through v1.0 (Watch, CLI, all parsers).  Adding methods would couple analysis to the parser-output shape and bloat the L1 surface that every consumer pays for, in exchange for ergonomics no caller has asked for.  Pull-on-demand functions stay testable independently and don't pollute the wrapper. |
 | 2026-05-10 | CP2K / ORCA generator + parser deferred indefinitely; the per-engine subpackage layout (`molbuilder/<engine>/input.py` + `parsers/<engine>.py`) is already in place and will be reactivated when a real workflow asks for it. | v1.0 ships covering SIESTA + PySCF, the two engines actually used.  Adding speculative CP2K / ORCA support before a use case means committing to test + maintenance burden for code with no caller — exactly the trap Principle-#8 ("don't reinvent wheels") points at one layer up.  The layout split costs nothing to keep dormant. |
+| 2026-05-11 | Post-relax frequencies + RRHO thermochemistry are an **opt-in** PySCF script feature (`cfg.compute_frequencies`).  Output is a separate plain-text `<job>.thermo.txt`; no on-disk format change to the existing molwatch log.  The block runs at the converged `mf` at `mol_eq` (no extra SCF) and is wrapped in try/except so a Hessian failure doesn't lose the converged energy or `<job>_optimized.xyz`. | One Hessian is 5-15x the cost of a single SCF — making it default-on would hurt the relaxation workflow.  A separate `.thermo.txt` (instead of mutating the molwatch log) keeps the streaming/append-only contract on the molwatch side intact.  RRHO (not quasi-RRHO) is the PySCF-bundled path; quasi-RRHO is a documented follow-up if low-frequency mode artifacts become a problem in practice. |
 
 ---
 
@@ -1312,11 +1313,6 @@ Items not load-bearing but worth picking up when the time comes.
   /api/build/schema/{siesta,pyscf}` + a JS form-renderer; phase the
   cut-over dual-running with the existing static form.  Closes the
   last remaining Principle-#1 anti-pattern in the project.
-
-### Medium priority
-
-- **Frequency / thermochemistry support in the PySCF script** (post-
-  relax Hessian + RRHO).
 
 ---
 
