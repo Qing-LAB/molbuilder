@@ -625,10 +625,23 @@
             connectgaps: false,
         }], {
             title: { text: "Total energy", font: { size: 13 } },
-            margin: { l: 80, r: 16, t: 36, b: 44 },
-            xaxis: { title: "CG step", dtick: 1, zeroline: false },
-            yaxis: { title: "E_KS (eV)", tickformat: ".4f", zeroline: false },
-            font: { family: "system-ui, sans-serif", size: 11 },
+            // automargin: true lets Plotly pick the left/bottom
+            // margins from the actual tick-label widths -- shorter
+            // axis numbers thus claw back lateral space.
+            margin: { l: 8, r: 12, t: 32, b: 32 },
+            // No fixed dtick: let Plotly pick a sparse number of
+            // ticks (~5-7) and skip integer labels at high frame
+            // counts.  tickformat=".6~r" gives "shortest unique"
+            // numbers (drops trailing zeros), so e.g. an energy
+            // like -2073.1000 shows as "-2073.1" instead of
+            // "-2073.1000" -- big lateral-space win.
+            xaxis: { title: { text: "CG step", standoff: 4 },
+                     zeroline: false, automargin: true,
+                     nticks: 6 },
+            yaxis: { title: { text: "E_KS (eV)", standoff: 4 },
+                     tickformat: ".6~r", zeroline: false,
+                     automargin: true, nticks: 5 },
+            font: { family: "system-ui, sans-serif", size: 10 },
             shapes:      stageMx.shapes,
             annotations: stageMx.annotations,
         }, { displayModeBar: false, responsive: true });
@@ -643,10 +656,15 @@
             connectgaps: false,
         }], {
             title: { text: "Max force", font: { size: 13 } },
-            margin: { l: 70, r: 16, t: 36, b: 44 },
-            xaxis: { title: "CG step", dtick: 1, zeroline: false },
-            yaxis: { title: "Max |F| (eV/\u00C5)", rangemode: "tozero", zeroline: false },
-            font: { family: "system-ui, sans-serif", size: 11 },
+            margin: { l: 8, r: 12, t: 32, b: 32 },
+            xaxis: { title: { text: "CG step", standoff: 4 },
+                     zeroline: false, automargin: true,
+                     nticks: 6 },
+            yaxis: { title: { text: "Max |F| (eV/\u00C5)", standoff: 4 },
+                     tickformat: ".3~r",
+                     rangemode: "tozero", zeroline: false,
+                     automargin: true, nticks: 5 },
+            font: { family: "system-ui, sans-serif", size: 10 },
             shapes:      stageMx.shapes,
             annotations: stageMx.annotations,
         }, { displayModeBar: false, responsive: true });
@@ -663,9 +681,16 @@
      */
     function renderScfProgress() {
         const section = $("scf-section");
+        const scfEnergyEl = $("scf-energy-plot");
+        const scfGnormEl  = $("scf-gnorm-plot");
         const history = state.data && state.data.scf_history;
-        if (!history || history.length === 0) {
+        const hideScf = () => {
             section.hidden = true;
+            scfEnergyEl.hidden = true;
+            scfGnormEl.hidden  = true;
+        };
+        if (!history || history.length === 0) {
+            hideScf();
             return;
         }
 
@@ -688,10 +713,12 @@
             // No step has SCF detail yet (e.g., file contains only
             // the initial preview).  Hide the SCF panel until the
             // first real SCF block lands.
-            section.hidden = true;
+            hideScf();
             return;
         }
-        section.hidden = false;
+        section.hidden     = false;
+        scfEnergyEl.hidden = false;
+        scfGnormEl.hidden  = false;
 
         const cycles   = current.map(c => c.cycle);
         const energies = current.map(c => c.energy);
@@ -765,16 +792,20 @@
             name: "E",
         }], {
             title: { text: "SCF energy (current step)", font: { size: 12 } },
-            margin: { l: 80, r: 16, t: 32, b: 40 },
-            xaxis: { title: "SCF cycle", dtick: 1, zeroline: false },
-            yaxis: { title: "E (eV)", tickformat: ".4f", zeroline: false },
+            margin: { l: 8, r: 12, t: 28, b: 30 },
+            xaxis: { title: { text: "SCF cycle", standoff: 4 },
+                     zeroline: false, automargin: true,
+                     nticks: 6 },
+            yaxis: { title: { text: "E (eV)", standoff: 4 },
+                     tickformat: ".6~r", zeroline: false,
+                     automargin: true, nticks: 5 },
             font: { family: "system-ui, sans-serif", size: 10 },
         }, { displayModeBar: false, responsive: true });
 
         // Residual on log y-axis -- spans many decades during SCF.
         const resPlotEl = $("scf-gnorm-plot");
         if (residual !== null) {
-            resPlotEl.style.display = "";
+            resPlotEl.hidden = false;
             Plotly.react("scf-gnorm-plot", [{
                 x: cycles,
                 y: residual,
@@ -785,14 +816,18 @@
             }], {
                 title: { text: "SCF residual " + residualName,
                          font: { size: 12 } },
-                margin: { l: 70, r: 16, t: 32, b: 40 },
-                xaxis: { title: "SCF cycle", dtick: 1, zeroline: false },
-                yaxis: { title: residualName + " (" + residualUnit + ")",
-                         type: "log", zeroline: false, tickformat: ".0e" },
+                margin: { l: 8, r: 12, t: 28, b: 30 },
+                xaxis: { title: { text: "SCF cycle", standoff: 4 },
+                         zeroline: false, automargin: true,
+                         nticks: 6 },
+                yaxis: { title: { text: residualName + " (" + residualUnit + ")",
+                                  standoff: 4 },
+                         type: "log", zeroline: false, tickformat: ".0e",
+                         automargin: true, nticks: 5 },
                 font: { family: "system-ui, sans-serif", size: 10 },
             }, { displayModeBar: false, responsive: true });
         } else {
-            resPlotEl.style.display = "none";
+            resPlotEl.hidden = true;
         }
     }
 

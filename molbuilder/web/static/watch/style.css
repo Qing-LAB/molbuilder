@@ -14,12 +14,12 @@
     --shadow-soft:    0 1px 0 rgba(255, 255, 255, 0.02) inset,
                       0 2px 6px rgba(0, 0, 0, 0.25);
 
-    /* The single source of truth for the height of the viewer +
-       controls row.  `clamp` makes it responsive to viewport: never
-       below 360px, never above 500px, around 52% of viewport height
-       in between.  Updating this one variable rescales both columns
-       in lockstep. */
-    --viewer-height:  clamp(360px, 52vh, 500px);
+    /* Square-side length of the viewer panel.  The viewer is
+     * aspect-ratio 1:1 and both width + height resolve to this
+     * variable; the .controls aside picks up the same value as its
+     * fixed height so the two panels align top + bottom.  Updating
+     * this one variable rescales both columns in lockstep. */
+    --viewer-extent:  clamp(320px, 60vh, 560px);
 }
 
 * { box-sizing: border-box; }
@@ -141,24 +141,29 @@ main {
  * stretching to the viewer's height — any extra height triggers the
  * aside's internal scroll instead of pushing the plots row down.
  */
+/* Viewer-row layout:
+ *
+ *   [ square viewer ] [ controls aside grows to fill remaining width ]
+ *
+ * The viewer is a fixed-aspect square (1:1, 320-560 px clamped to
+ * 60vh); the aside takes the remaining horizontal space so we
+ * don't waste lateral room on wide displays.  Both panels share
+ * the viewer's vertical extent via ``align-items: stretch`` -- the
+ * aside ends up exactly as tall as the viewer is wide.  Internal
+ * panel scroll (.ctab-panel.is-active) handles content overflow
+ * inside the aside; the row itself never grows past the viewer's
+ * height clamp.
+ */
 .viewer-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 290px;
+    grid-template-columns: auto minmax(0, 1fr);
     gap: var(--gap);
-    align-items: start;
+    align-items: stretch;
 }
 
-/* Square viewer, consistent with Build + Modify (aspect-ratio 1:1,
- * 320 - 560 px clamped to 60vh).  The right-hand .controls aside
- * tracks the same vertical extent so the two panels align top + bot.
- */
 #viewer {
-    width: 100%;
-    max-width: 560px;
-    aspect-ratio: 1 / 1;
-    min-height: 320px;
-    max-height: min(60vh, 560px);
-    margin: 0 auto;
+    width: var(--viewer-extent);
+    height: var(--viewer-extent);
     border: 1px solid var(--border-strong);
     background: #ffffff;         /* same white bg as builder's viewer-wrap */
     position: relative;
@@ -173,12 +178,9 @@ main {
     display: flex;
     flex-direction: column;
     gap: 0;
-    /* Match the viewer's height clamp so the right aside aligns with
-     * the square viewer panel.  ``--viewer-height`` is kept as the
-     * legacy variable name; value is the same min(60vh, 560px). */
-    height: var(--viewer-height);
-    min-height: 320px;
-    max-height: min(60vh, 560px);
+    /* Track the viewer's square side length so the two panels align
+     * top + bottom; internal panel scroll handles content overflow. */
+    height: var(--viewer-extent);
     background: var(--bg-card);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius);
@@ -379,29 +381,39 @@ button:disabled {
 
 /* ---- Plots row ---- */
 
+/* All four plot tiles (energy + force + scf-energy + scf-gnorm)
+ * live in one grid that reflows responsively:
+ *   wide:   4 columns
+ *   narrow: 2 columns
+ *   phone:  1 column
+ * ``auto-fit, minmax(280px, 1fr)`` gives this without media queries
+ * and automatically collapses hidden cells (when SCF data is
+ * absent, those two cells carry ``hidden`` and ``display: none``,
+ * so the remaining 2 plots take half the width each). */
 .plots-row {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
     gap: var(--gap);
 }
 .plot {
-    /* Slightly more compact than before so the dashboard fits a 1080p
-       laptop screen without scrolling. */
-    height: clamp(220px, 28vh, 300px);
+    height: clamp(200px, 24vh, 260px);
     border: 1px solid var(--border-strong);
     background: var(--bg-card);
     border-radius: var(--radius);
     box-shadow: var(--shadow-soft);
 }
 
-/* ---- SCF-progress panel (engine-agnostic) ---- */
+/* ---- SCF-progress banner (engine-agnostic) ---- */
 
-.scf-row {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
+.scf-banner-row { display: flex; }
+/* HTML5 ``hidden`` attribute must beat the display: flex above and
+ * the display: grid on .plots-row below; the browser's default
+ * [hidden]{display:none} loses to the .* rules without an explicit
+ * override. */
+.scf-banner-row[hidden] { display: none; }
+.plot[hidden]           { display: none; }
 .scf-banner {
+    flex: 1;
     background: var(--bg-card);
     border: 1px solid var(--border-strong);
     border-left: 3px solid var(--accent);
@@ -420,12 +432,6 @@ button:disabled {
     font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
     font-size: 0.85rem;
 }
-.scf-plots {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: var(--gap);
-}
-.scf-plots .plot { height: clamp(180px, 22vh, 230px); }
 
 /* ---- Inspect tab: atom-pick + distance ----
  *
@@ -434,12 +440,29 @@ button:disabled {
  * distance row is highlighted via the accent colour so the user's
  * eye lands on it.
  */
-/* Scrollable atom list -- the keyboard-friendly path to selection.
- * Sits ABOVE the distance table; row click toggles a pick.  Compact
- * monospace layout so the narrow control aside fits 5 columns
- * (index, element, x, y, z) without wrapping. */
+/* Inspect ctab-panel becomes a flex column: the atom-list grows to
+ * fill the remaining height inside the controls aside (the ONE
+ * scrollable region); the hint, distance table, and Clear button
+ * stay anchored beneath at their natural sizes.  Drops the previous
+ * double-scrollbar (panel + atom-list-wrap both had overflow auto).
+ */
+.ctab-panel[data-panel="inspect"] {
+    display: none;
+    flex-direction: column;
+    overflow: hidden;    /* panel does NOT scroll; inner list does */
+    min-height: 0;
+}
+.ctab-panel[data-panel="inspect"].is-active {
+    display: flex;
+}
+
+/* The atom list is the only growing / scrolling child of the
+ * Inspect panel.  ``flex: 1`` + ``min-height: 0`` lets it shrink
+ * below its content height so the scrollbar appears inside it
+ * (sticky <thead> stays pinned). */
 .inspect-list-wrap {
-    max-height: 240px;
+    flex: 1;
+    min-height: 0;
     overflow-y: auto;
     margin: 6px 0 8px;
     border: 1px solid var(--border-soft);
@@ -627,13 +650,11 @@ button:disabled {
     /* Stack viewer above controls; controls expand to natural height. */
     .viewer-row { grid-template-columns: 1fr; }
     .controls   { height: auto; max-height: 60vh; }
-    .plots-row  { grid-template-columns: 1fr; }
-    .scf-plots  { grid-template-columns: 1fr; }
 }
 @media (max-width: 640px) {
     .loader input[type="text"] { min-width: 0; flex: 1; }
     main, header, .loader-bar { padding-left: 12px; padding-right: 12px; }
-    :root { --viewer-height: clamp(280px, 50vh, 380px); }
+    :root { --viewer-extent: clamp(240px, 70vw, 380px); }
 }
 
 /* ---- Run-state badge: fixed prominent indicator above the viewer.

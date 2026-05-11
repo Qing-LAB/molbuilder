@@ -201,26 +201,30 @@ FILE mode (back-compat; also supported):
   </section><!-- /.viewer-row -->
   </section><!-- /.card.viewer-card -->
 
-  <section class="plots-row">
-    <div id="energy-plot" class="plot"></div>
-    <div id="force-plot" class="plot"></div>
-  </section>
-
-  <!-- Engine-agnostic SCF-iteration progress for the most recent
-       opt step.  Hidden when the loaded file has no scf_history
-       (e.g. SIESTA whose `scf:` lines weren't yet captured, or a
-       PySCF run whose .log wasn't found next to the trajectory).
-       The banner title and the residual axis adapt to the engine
-       at render time -- see renderScfProgress() in viewer.js. -->
-  <section class="scf-row" id="scf-section" hidden>
+  <!-- SCF-progress banner -- engine-agnostic title/status for the
+       most-recent opt step's SCF cycles.  Banner sits above the plot
+       row; the two SCF plots live INSIDE the same plots-row grid
+       below so all four (energy + force + scf-energy + scf-gnorm)
+       can line up side-by-side at wide widths.  The banner +
+       individual SCF plots are hidden when scf_history is empty. -->
+  <section class="scf-banner-row" id="scf-section" hidden>
     <div class="scf-banner">
       <strong id="scf-title">SCF progress</strong>
       <span id="scf-status" class="scf-status"></span>
     </div>
-    <div class="scf-plots">
-      <div id="scf-energy-plot" class="plot"></div>
-      <div id="scf-gnorm-plot"  class="plot"></div>
-    </div>
+  </section>
+
+  <!-- Plots row: 4 plots when there's space, 2 when narrower, 1 on
+       phones.  ``auto-fit`` with a minimum 280px reflows
+       automatically.  Individual SCF plots are ``hidden`` when no
+       SCF data is available; CSS ``display: none`` on the hidden
+       attribute removes them from the grid so the remaining cells
+       redistribute. -->
+  <section class="plots-row">
+    <div id="energy-plot"     class="plot"></div>
+    <div id="force-plot"      class="plot"></div>
+    <div id="scf-energy-plot" class="plot" hidden></div>
+    <div id="scf-gnorm-plot"  class="plot" hidden></div>
   </section>
 
   <!-- Staged-relaxation workflow guide.  Always rendered; a
