@@ -23,6 +23,13 @@ dependencies = [
     "biopython>=1.81",           # required by PeptideBuilder
     "flask>=3.0",                # bundled web UI (build + watch); core post-merge
     "click>=8.1",                # CLI plumbing for `molbuilder ...` subcommands
+    "sisl>=0.14",                # SIESTA / TranSIESTA / TBtrans output parsing
+                                 # (NetCDF binary + ASCII).  Required by the
+                                 # Transport tab for T(E) reading, eigenchannel
+                                 # decomposition, orbital-resolved transmission,
+                                 # and I(V) integration.  Pulls netCDF4 + h5py
+                                 # transitively -- heavier install but a
+                                 # one-time cost.
 ]
 
 [project.optional-dependencies]
