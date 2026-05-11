@@ -1838,6 +1838,24 @@ def test_api_build_schema_returns_pyscf_schema(web_client):
     assert "Frequencies / thermochemistry" in section_names
 
 
+def test_form_schema_js_is_served(web_client):
+    """The new web/static/lib/form-schema.js is the JS-side
+    consumer of /api/build/schema/<engine>.  It must be served
+    by Flask static so index.html can <script src="..."> it."""
+    r = web_client.get("/static/lib/form-schema.js")
+    assert r.status_code == 200
+    body = r.data.decode()
+    # Public API surface -- if any name disappears, the Build form
+    # cutover breaks silently.
+    for needle in (
+        "renderForm", "collectForm", "fetchSchema",
+        # All seven kinds must remain handled in the switch.
+        '"checkbox"', '"int"', '"number"', '"text"',
+        '"select"', '"tri-select"', '"int-triple"',
+    ):
+        assert needle in body, f"form-schema.js missing {needle!r}"
+
+
 def test_api_build_schema_rejects_unknown_engine(web_client):
     """An unknown engine name surfaces as 404 with a structured
     error so the UI doesn't silently render an empty form."""
