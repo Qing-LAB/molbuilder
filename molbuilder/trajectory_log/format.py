@@ -1,8 +1,8 @@
 """Tiny helper for writing the initial-state preview block of a
 ``<job>.molwatch.log``.
 
-The block format matches the spec in ``docs/spec/pyscf-script.md``
-(and the corresponding entry in molwatch's ``docs/spec/parsers.md``).
+The block format matches the spec in ``docs/engines/pyscf.md``
+(and the corresponding entry in molwatch's ``docs/types/parsers.md``).
 This module exists so non-runtime molbuilder code paths -- the SIESTA
 FDF generator, future engine integrations -- can drop a one-block
 preview file alongside their main output, giving molwatch something
@@ -30,7 +30,7 @@ def molwatch_log_basename(system_label: str,
     """Resolve the canonical ``<basename>[.stage<N>].molwatch.log``
     filename for a given system label + optional stage marker.
 
-    Per ``docs/spec/job-layout.md``: when the user is running a staged
+    Per ``docs/protocols/job-layout.md``: when the user is running a staged
     coarse->medium->tight relaxation, each stage gets a uniquely-named
     log file in the same directory (the basename stays identical so
     SIESTA's restart files transfer; only the molwatch-log filename

@@ -12,7 +12,7 @@ The UI has three halves served by one process:
                                    inspection.  Edit ops + their
                                    ``/api/modify/*`` routes land
                                    in M3-M5 -- see
-                                   ``docs/spec/modify-tab.md``.)
+                                   ``docs/tabs/modify.md``.)
 
 Two top-level routes stay on the app rather than on any blueprint
 because all three halves consume them:

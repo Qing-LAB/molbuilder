@@ -889,7 +889,7 @@ def cmd_modify(input_path, output_path,
         molbuilder modify step1.xyz junction.xyz \\
             --electrode Cu:111:3x3x2@contact=2.0:-z=0
 
-    See docs/spec/modify-tab.md for the full per-(plane, orthogonal)
+    See docs/tabs/modify.md for the full per-(plane, orthogonal)
     constraint table; ASE's own error message bubbles up if the
     requested (m, n) doesn't satisfy the chosen cell shape.
     """

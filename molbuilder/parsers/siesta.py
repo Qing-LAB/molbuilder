@@ -121,7 +121,7 @@ class SiestaParser(TrajectoryParser):
 
         # SCF iteration history accumulator for the current step.  Each
         # entry is a per-cycle dict matching the schema in
-        # docs/spec/parsers.md.  SIESTA's column set differs from
+        # docs/types/parsers.md.  SIESTA's column set differs from
         # PySCF (dHmax / dDmax instead of |g| / |ddm|); the UI picks
         # the right residual to plot based on which keys are present.
         # Flushed onto Frame.scf_history at commit() time, then reset.

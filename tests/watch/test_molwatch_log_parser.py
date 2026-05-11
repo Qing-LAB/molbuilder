@@ -6,7 +6,7 @@ real thing (two complete steps + a torn third step where the closing
 keeps two complete steps with correct numbers, drops the torn one,
 and round-trips through strict JSON.
 
-Format spec lives in ``docs/spec/parsers.md``.  These tests are
+Format spec lives in ``docs/types/parsers.md``.  These tests are
 spec-derived: they don't peek at parser internals, they just assert
 the documented invariants.
 """

@@ -145,7 +145,7 @@ def test_load_by_multipart_persists_path_for_data_polls(client):
 # --------------------------------------------------------------------- #
 #  Directory mode (job-layout v1)                                       #
 #                                                                       #
-#  Per docs/spec/job-layout.md the loader resolves a directory path     #
+#  Per docs/protocols/job-layout.md the loader resolves a directory path     #
 #  to a single file via a documented discovery chain.  These tests pin  #
 #  each rung of the chain so a regression at the protocol boundary      #
 #  fails loudly here rather than as user-visible "load failed" errors. #

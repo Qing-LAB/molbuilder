@@ -15,9 +15,9 @@ the 3Dmol.js viewer + style helpers and tab-bar partial:
 
 | Path | Tab | Spec | Blueprint |
 |---|---|---|---|
-| `/`         | Build  | this file       | `web/blueprints/build.py` |
-| `/modify`   | Modify | `modify-tab.md` | `web/blueprints/modify.py` |
-| `/watch`    | Watch  | `watch-ui.md`, `watch-api.md` | `web/blueprints/watch.py` |
+| `/`         | Build  | this file                         | `web/blueprints/build.py` |
+| `/modify`   | Modify | [`tabs/modify.md`](../tabs/modify.md) | `web/blueprints/modify.py` |
+| `/watch`    | Watch  | [`tabs/watch.md`](../tabs/watch.md), [`watch-api.md`](watch-api.md) | `web/blueprints/watch.py` |
 
 The Modify and Watch endpoint contracts live in their own specs.
 This document covers (a) shared infrastructure and (b) the

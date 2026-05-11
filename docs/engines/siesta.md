@@ -18,7 +18,7 @@ loads it, before SIESTA has produced any of its own output.  The
 preview file is static (one block, never updated); for live updates
 during a SIESTA run the user points Watch at the run **directory**
 which discovers the right log via the [job-layout v1
-protocol](job-layout.md), or at the SIESTA `.out` file directly.
+protocol](../protocols/job-layout.md), or at the SIESTA `.out` file directly.
 
 Set `cfg.write_molwatch_log = False` to suppress the sibling file.
 
@@ -49,9 +49,8 @@ tab's directory discovery chain picks up `<basename>.out` as a
 fallback when no `.molwatch.log` is present.
 
 The format spec for `.molwatch.log` is documented in
-[`pyscf-script.md`](pyscf-script.md) (the format itself is
-engine-agnostic; the `# engine:` header line distinguishes who
-wrote it).
+[`pyscf.md`](pyscf.md) (the format itself is engine-agnostic;
+the `# engine:` header line distinguishes who wrote it).
 
 
 The emitter takes a `Structure` (or an XYZ/PDB file path) and writes

@@ -277,7 +277,7 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     # protocol's "job name"; every output / restart file shares it.
     # Suggest the canonical ``mpirun`` invocation so the user redirects
     # stdout to ``<basename>.out`` (the Watch tab's discovery chain
-    # also looks for that filename).  See docs/spec/job-layout.md.
+    # also looks for that filename).  See docs/protocols/job-layout.md.
     #
     # Stage-aware filenames: when ``cfg.stage`` is set (1/2/3), the
     # FDF + stdout-redirect filenames pick up the ``-stage<N>`` suffix
@@ -990,7 +990,7 @@ def convert(
     # plus the optional stage suffix -- NOT from the FDF's stem.  This
     # way a user who names the FDF "anything.fdf" still gets the
     # canonical preview-log name that the Watch tab discovery chain
-    # recognises.  See docs/spec/job-layout.md.
+    # recognises.  See docs/protocols/job-layout.md.
     if cfg.write_molwatch_log:
         from ..trajectory_log import molwatch_log_basename, write_initial_preview
         mw_path = fdf_p.parent / molwatch_log_basename(

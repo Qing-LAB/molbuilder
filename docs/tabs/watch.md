@@ -7,7 +7,7 @@
 (integration via `index_page_has_*` checks)
 
 Served at the `/watch` route by the unified molbuilder Flask app
-(see [`watch-api.md`](watch-api.md) for the route map).  The HTML
+(see [`../protocols/watch-api.md`](../protocols/watch-api.md) for the route map).  The HTML
 page is a single-file dashboard.  No SPA framework, no build step —
 vanilla JS + 3Dmol.js + Plotly.
 

@@ -43,7 +43,7 @@ The metadata fields are optional: when present, they override the
 defaults that ``Structure.from_xyz`` populates.  Sending them lets a
 chain of ops preserve PDB-style atom names / residue ids across
 round-trips through XYZ (per the spec's "Per-atom metadata is
-preserved" invariant in `docs/spec/modify-tab.md` § 5).
+preserved" invariant in `docs/tabs/modify.md` § 5).
 
 JSON response shape (shared):
 

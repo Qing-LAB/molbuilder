@@ -119,7 +119,7 @@ def detect_parser(path: str) -> Type[TrajectoryParser]:
         lines.append("")
         lines.append(
             "See README.md ('How auto-detection decides') or "
-            "docs/spec/parsers.md ('Detection order and debugging') "
+            "docs/types/parsers.md ('Detection order and debugging') "
             "for the per-parser detection rules and a debug checklist."
         )
 

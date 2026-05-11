@@ -7,13 +7,13 @@ Routes (registered with no url_prefix; each carries its own full path):
     POST /api/watch/load       JSON {"path": "..."} or multipart upload
                                 ``path`` may be either a single file or
                                 a run directory (job-layout v1; see
-                                ``docs/spec/job-layout.md``).
+                                ``docs/protocols/job-layout.md``).
     GET  /api/watch/data       poll for changes (mtime-based)
 
 The user opens /watch, paste an absolute path to the output file or
 the **run directory** containing it, and clicks *Load*.  The
 directory branch follows the discovery chain in
-``docs/spec/job-layout.md``: ``*.molwatch.log`` first, then ``*.fdf``
+``docs/protocols/job-layout.md``: ``*.molwatch.log`` first, then ``*.fdf``
 parsed for SystemLabel, then ``*.py`` parsed for job_name, then a
 generic ``*.out`` / ``*_geom_optim.xyz`` fallback.  The page polls
 /api/watch/data roughly every 15 seconds; when the file's mtime
@@ -93,7 +93,7 @@ def _cleanup_last_temp_upload() -> None:                # pragma: no cover
 # --------------------------------------------------------------------- #
 #  Directory-aware path resolution (job-layout v1)                      #
 #                                                                       #
-#  See ``docs/spec/job-layout.md`` for the full contract.  When the     #
+#  See ``docs/protocols/job-layout.md`` for the full contract.  When the     #
 #  user gives Watch a directory instead of a file, scan it for the      #
 #  canonical artefacts in the protocol's preferred order; first hit     #
 #  wins.  The fallbacks parse the molbuilder-generated input files      #
@@ -201,7 +201,7 @@ def _resolve_run_directory(directory: str) -> Tuple[Optional[str], List[str]]:
     "tried X" strings used to build the error message when nothing
     matches.
 
-    Discovery chain follows ``docs/spec/job-layout.md`` § "How Watch
+    Discovery chain follows ``docs/protocols/job-layout.md`` § "How Watch
     resolves a directory":
 
       1. Any ``*.molwatch.log`` (newest wins for staged runs).
@@ -541,7 +541,7 @@ def api_load():
                 ),
             }), 403
 
-    # Directory-aware resolution per docs/spec/job-layout.md.  If the
+    # Directory-aware resolution per docs/protocols/job-layout.md.  If the
     # user passed a directory, scan it for the canonical artefacts
     # and load the best match; if a regular file, behave like before.
     resolved_from_dir: Optional[str] = None
@@ -566,7 +566,7 @@ def api_load():
                     "error": (
                         f"No molbuilder-job artefacts found in directory:\n"
                         f"  {raw_path}\n"
-                        f"Discovery chain (per docs/spec/job-layout.md):\n"
+                        f"Discovery chain (per docs/protocols/job-layout.md):\n"
                         f"  {tried}\n"
                         f"Generate an FDF or PySCF script with the Build "
                         f"tab into this directory, or point Watch at the "

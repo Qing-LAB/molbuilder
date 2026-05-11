@@ -335,7 +335,7 @@ class PySCFConfig:
     # ``optimizer="geometric"`` -- the molwatch hooks ride on the
     # SCF and geomeTRIC opt-step callbacks, so a single-point or
     # berny run has nowhere to attach.  See spec
-    # docs/spec/pyscf-script.md L33 for the exact gate.
+    # docs/engines/pyscf.md L33 for the exact gate.
     write_molwatch_log: bool = field(default=True, metadata={
         "help": ("write the additive <job>.molwatch.log (self-contained "
                  "per-step coords / energy / forces; the Watch tab's "

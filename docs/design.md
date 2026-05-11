@@ -3,7 +3,8 @@
 This document is the durable design reference for molbuilder. It captures
 mission, architectural principles, decisions made, and active roadmap items
 that span multiple sessions of work. Per-component test contracts live under
-[`docs/spec/`](spec/README.md); this document sits above them.
+[`docs/`](README.md) (categorised by purpose: `protocols/`, `types/`,
+`engines/`, `tabs/`); this document sits above them.
 
 When in doubt about whether to do something, read this file first. When the
 file is wrong (the decision changed, the constraint shifted), update it in
@@ -39,16 +40,16 @@ this document points to them):
 
 | Feature | Spec |
 |---|---|
-| Build tab (web UI) + `/api/build/*` | `docs/spec/web-api.md` |
-| Watch tab (web UI) + `/api/watch/*` | `docs/spec/watch-ui.md`, `docs/spec/watch-api.md` |
-| **Modify tab** (web UI) + `/api/modify/*` + `molbuilder modify` CLI | **`docs/spec/modify-tab.md`** |
-| **Job layout** (basename + filename protocol; Build writes, Watch reads) | **`docs/spec/job-layout.md`** |
-| SIESTA FDF generator | `docs/spec/siesta-fdf.md` |
-| PySCF script generator | `docs/spec/pyscf-script.md` |
-| `Structure` dataclass | `docs/spec/structure.md` |
-| Builder backends (peptide / dna / rna / smiles / name) | `docs/spec/builders.md` |
-| Parser plugins (siesta / pyscf / molwatch_log) | `docs/spec/parsers.md` |
-| Top-level CLI shape | `docs/spec/cli.md` |
+| Build tab (web UI) + `/api/build/*` | `docs/protocols/web-api.md` |
+| Watch tab (web UI) + `/api/watch/*` | `docs/tabs/watch.md`, `docs/protocols/watch-api.md` |
+| **Modify tab** (web UI) + `/api/modify/*` + `molbuilder modify` CLI | **`docs/tabs/modify.md`** |
+| **Job layout** (basename + filename protocol; Build writes, Watch reads) | **`docs/protocols/job-layout.md`** |
+| SIESTA FDF generator | `docs/engines/siesta.md` |
+| PySCF script generator | `docs/engines/pyscf.md` |
+| `Structure` dataclass | `docs/types/structure.md` |
+| Builder backends (peptide / dna / rna / smiles / name) | `docs/engines/builders.md` |
+| Parser plugins (siesta / pyscf / molwatch_log) | `docs/types/parsers.md` |
+| Top-level CLI shape | `docs/protocols/cli.md` |
 
 ---
 
@@ -301,8 +302,8 @@ One source feeds:
   ranges as the CLI.
 - **Validators**: `validation.py` reads `range` / `validate` per field.
   An out-of-range value yields one `Issue`.
-- **Spec docs**: `docs/spec/<config>.md` can be (semi-)generated from
-  metadata so they don't drift.
+- **Spec docs**: per-engine and per-tab specs under `docs/engines/` and
+  `docs/tabs/` can be (semi-)generated from metadata so they don't drift.
 
 This is what makes the dataclass-as-source-of-truth principle real
 rather than aspirational.
@@ -625,7 +626,7 @@ These have been considered and rejected; do not reintroduce them.
 | 2026-05-09 | Modify-tab pair-mode electrode placement defaults to **anchorless**: slabs at `z = ±gap/2` around the world origin (legacy anchor-pair-midpoint mode opt-in via two-atom selection). | Decouples slab placement from molecule centring; the user controls junction geometry via the Geom + Pose subtabs alone.  Realises the user's mental model "slabs are crystallographic, the molecule fits between them" with no per-atom dependence. |
 | 2026-05-09 | Modify-tab Undo is **slab-only**; non-slab ops are committed.  Snapshot pushed on a successful response (failed ops do not consume an undo slot). | Matches the original "experiment with electrode parameters and roll back" intent.  General undo across delete / rotate / translate would grow the JS state model materially for a feature few users have asked for; revisit if needed. |
 | 2026-05-09 | `GET /api/modify/meta` is the single source of truth for the FCC element + plane dropdowns; HTML must not duplicate the lists. | Realises Principle #1 (dataclass / Python-tuple = source of truth) for the Modify tab's enums.  Adding a metal in `molbuilder.modify.SUPPORTED_FCC_ELEMENTS` reaches the UI automatically. |
-| 2026-05-10 | **Job-layout v1** (`docs/spec/job-layout.md`) codifies the on-disk shape of a molbuilder run: one directory, one basename, named files.  Watch resolves a **run directory** via a documented discovery chain (`*.molwatch.log` → `*.fdf` → `*.py` → fallbacks). | Lets the user point Watch at a directory instead of a specific output file.  Cross-stage continuation (SIESTA `.XV` / `.DM` / `.CG`, PySCF `.chk`) works automatically because the basename stays identical across staged runs. |
+| 2026-05-10 | **Job-layout v1** (`docs/protocols/job-layout.md`) codifies the on-disk shape of a molbuilder run: one directory, one basename, named files.  Watch resolves a **run directory** via a documented discovery chain (`*.molwatch.log` → `*.fdf` → `*.py` → fallbacks). | Lets the user point Watch at a directory instead of a specific output file.  Cross-stage continuation (SIESTA `.XV` / `.DM` / `.CG`, PySCF `.chk`) works automatically because the basename stays identical across staged runs. |
 | 2026-05-10 | Multiple `*.molwatch.log` files in a run directory are **merged** into one trajectory with stage-boundary markers; live polling pins to the newest log; older stages are static. | Realises the staged-relaxation workflow (coarse → medium → tight) end-to-end.  Polling re-runs the merge over the FULL log set (per-file mtime-keyed cache prevents re-parsing static stages). |
 | 2026-05-10 | When the Build-tab "Relaxation stage" preset is non-Custom, the SIESTA + PySCF generators auto-suffix the `.molwatch.log` filename as `<basename>-stage<N>.molwatch.log`.  Basename itself stays unsuffixed so restart files transfer. | Removes the manual-rename step from the staged-relaxation flow.  Suffix rule lives in `molbuilder.trajectory_log.format.molwatch_log_basename` -- ONE source for both engines, no drift. |
 | 2026-05-10 | `Trajectory` stays a thin `(source_format, frames, lattice)` wrapper.  Per-trajectory analysis (RMSD, principal axes, dipole, radius of gyration) lives as free functions under `molbuilder/analysis/` if and when a consuming workflow arrives — NOT as methods on `Trajectory`. | The Phase-2 minimum has proven sufficient through v1.0 (Watch, CLI, all parsers).  Adding methods would couple analysis to the parser-output shape and bloat the L1 surface that every consumer pays for, in exchange for ergonomics no caller has asked for.  Pull-on-demand functions stay testable independently and don't pollute the wrapper. |
@@ -702,7 +703,7 @@ molbuilder/
     blueprints/
       _shared.py           # body parsing, issue serialisation, type coercion
       build.py             # /api/build/* routes (molecule, load, fdf, pyscf, preflight)
-      modify.py            # /api/modify/* routes (8 endpoints; see modify-tab.md)
+      modify.py            # /api/modify/* routes (8 endpoints; see tabs/modify.md)
       watch.py             # /api/watch/* routes + directory-mode + multi-stage merge
     templates/
       _app_header.html     # shared header + tab nav partial
@@ -743,13 +744,17 @@ tests/
     test_app_concurrency.py
 
 docs/
-  design.md                 # this file
-  spec/                     # per-feature contracts (canonical)
-    README.md
-    builders.md   chemistry.md  cli.md         job-layout.md
-    modify-tab.md parsers.md    pyscf-script.md  siesta-fdf.md
-    structure.md  watch-api.md  watch-ui.md    web-api.md
-  img/                      # README screenshots (Build / Modify / Watch tabs)
+  design.md                  # this file (cross-cutting design + decisions log)
+  README.md                  # docs index + the spec-doc rule
+  protocols/                 # cross-cutting interfaces
+    web-api.md  watch-api.md  cli.md  job-layout.md
+  types/                     # L1 data-type contracts
+    structure.md  parsers.md  chemistry.md
+  engines/                   # per-engine emitter specs
+    siesta.md  pyscf.md  builders.md
+  tabs/                      # per-tab UI specs (subfolders when multi-asset)
+    modify.md  watch.md
+  img/                       # README screenshots
 
 tools/
   capture_screenshots.py    # idempotent README screenshot capture
@@ -1317,9 +1322,12 @@ indicator that nothing is pending.
 - Any change to the principles or decisions in this document requires
   updating it in the same PR as the code change. A drift between this
   doc and the code is a bug.
-- Test contracts (the per-component specs) live under `docs/spec/`. Tests
-  must be derivable from those specs without reading the implementation.
-  See [`docs/spec/README.md`](spec/README.md) for the rule.
+- Test contracts (the per-component specs) live under `docs/`, organised
+  by purpose: `protocols/` (cross-cutting interfaces), `types/` (L1
+  data-type contracts), `engines/` (per-engine emitter specs), and
+  `tabs/` (per-tab UI specs).  Tests must be derivable from those specs
+  without reading the implementation.  See [`docs/README.md`](README.md)
+  for the index + the spec-doc rule.
 - Code review must explicitly check (a) target-tool correctness for
   generated SIESTA / PySCF outputs, (b) scientific defensibility of
   defaults, and (c) the layering invariant (no L1 → L2 imports, no

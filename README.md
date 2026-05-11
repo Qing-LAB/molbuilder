@@ -154,9 +154,9 @@ auto-fit bounding box.
 
 The full Modify spec, including every endpoint and the
 electrode-placement math, lives at
-[`docs/spec/modify-tab.md`](docs/spec/modify-tab.md).
+[`docs/tabs/modify.md`](docs/tabs/modify.md).
 The directory-layout protocol that ties Modify to Build and Watch
-is at [`docs/spec/job-layout.md`](docs/spec/job-layout.md).
+is at [`docs/protocols/job-layout.md`](docs/protocols/job-layout.md).
 
 ---
 
@@ -198,7 +198,7 @@ still-running job is dropped on parse and picked up next refresh.
 ### Run directory + staged relaxation
 
 Point Watch at a **directory** and it walks the [job-layout
-v1 protocol](docs/spec/job-layout.md) to find the right files
+v1 protocol](docs/protocols/job-layout.md) to find the right files
 automatically — `*.molwatch.log` first, then `*.fdf` / `*.py` parsed
 for the basename, then generic fallbacks.
 
@@ -337,13 +337,13 @@ for the full install + license contract.
 | Document | What it covers |
 |---|---|
 | [`docs/design.md`](docs/design.md) | Durable design, architecture (L1/L2/L3 layering), principles, decisions log, anti-patterns |
-| [`docs/spec/modify-tab.md`](docs/spec/modify-tab.md) | Modify tab Python API + endpoints + UI walkthrough |
-| [`docs/spec/job-layout.md`](docs/spec/job-layout.md) | Directory + filename protocol (Build writes, Watch reads) |
-| [`docs/spec/siesta-fdf.md`](docs/spec/siesta-fdf.md) | SIESTA generator contract |
-| [`docs/spec/pyscf-script.md`](docs/spec/pyscf-script.md) | PySCF generator contract |
-| [`docs/spec/structure.md`](docs/spec/structure.md) | `Structure` dataclass + readers / writers |
-| [`docs/spec/builders.md`](docs/spec/builders.md) | Per-backend behavior (peptide / DNA / RNA / SMILES / name) |
-| [`docs/spec/parsers.md`](docs/spec/parsers.md) | Trajectory parser registry + auto-detect |
+| [`docs/tabs/modify.md`](docs/tabs/modify.md) | Modify tab Python API + endpoints + UI walkthrough |
+| [`docs/protocols/job-layout.md`](docs/protocols/job-layout.md) | Directory + filename protocol (Build writes, Watch reads) |
+| [`docs/engines/siesta.md`](docs/engines/siesta.md) | SIESTA generator contract |
+| [`docs/engines/pyscf.md`](docs/engines/pyscf.md) | PySCF generator contract |
+| [`docs/types/structure.md`](docs/types/structure.md) | `Structure` dataclass + readers / writers |
+| [`docs/engines/builders.md`](docs/engines/builders.md) | Per-backend behavior (peptide / DNA / RNA / SMILES / name) |
+| [`docs/types/parsers.md`](docs/types/parsers.md) | Trajectory parser registry + auto-detect |
 | [`molbuilder/data/README.md`](molbuilder/data/README.md) | Citations for every numeric value (FCC lattice constants, etc.) |
 
 ---
@@ -424,8 +424,12 @@ molbuilder/
     static/...
 tests/
 docs/
-  design.md                               # durable design + architecture
-  spec/                                   # per-feature contracts
+  design.md                               # durable design + decisions log
+  README.md                               # docs index
+  protocols/                              # cross-cutting interfaces (web-api, cli, job-layout, ...)
+  types/                                  # L1 data-type contracts (structure, parsers, chemistry)
+  engines/                                # per-engine emitter specs (siesta, pyscf, builders)
+  tabs/                                   # per-tab UI specs (modify, watch; subfolders when multi-asset)
   img/                                    # README screenshots
 ```
 

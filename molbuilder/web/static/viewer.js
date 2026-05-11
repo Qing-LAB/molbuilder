@@ -932,7 +932,7 @@
     // 3-D viewer's molecule -- the form fields survive but the
     // structure does not, forcing the user to rebuild before they
     // can keep editing.  Phase 1 of the cross-tab persistence work
-    // recorded in docs/spec/modify-tab.md.
+    // recorded in docs/tabs/modify.md.
     //
     // The same key ("builder-structure") is the destination of the
     // upcoming Modify -> Build "Send to Build" handoff (M5): the

@@ -1,7 +1,7 @@
 """Spec invariants for the generated PySCF script.
 
 These tests are deliberately decoupled from the implementation: they
-encode the contract documented in ``docs/spec/pyscf-script.md``.  When
+encode the contract documented in ``docs/engines/pyscf.md``.  When
 a spec change requires the code to deviate, both the spec doc AND
 these tests must be updated in the same commit.
 

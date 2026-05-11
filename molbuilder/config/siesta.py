@@ -33,7 +33,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Optional, Sequence, Tuple
 
-# Job-layout v1 protocol (docs/spec/job-layout.md): the basename
+# Job-layout v1 protocol (docs/protocols/job-layout.md): the basename
 # (= SystemLabel for SIESTA, job_name for PySCF) drives EVERY output
 # filename, including SIESTA's restart files (.XV / .DM / .CG).  It
 # must be safe to embed in a filesystem path without quoting AND
@@ -64,7 +64,7 @@ def _validate_basename(label: str):
                     f"{label}={value!r} is not a valid job basename. "
                     "Must match [A-Za-z0-9_-]+ (letters, digits, hyphens, "
                     "underscores).  No dots / slashes / spaces.  See "
-                    "docs/spec/job-layout.md."
+                    "docs/protocols/job-layout.md."
                 ),
                 where=f"config.{label}",
             )
