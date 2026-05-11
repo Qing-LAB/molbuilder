@@ -224,22 +224,40 @@
      * With ~6 segments the staircase is invisible at typical zoom. */
     const HEAD_FRAC = 0.30;     // last 30% of the arrow length is the head
     const CONE_SEGS = 6;        // radial slices in the cone (more = smoother)
+    function setForcesStatus(msg) {
+        // Single point of truth for the diagnostic readout next to
+        // the Show-force-vectors checkbox.  Empty string clears the
+        // line so the toggle area stays compact when there's
+        // nothing to report.
+        const el = $("forces-status");
+        if (el) el.textContent = msg || "";
+    }
+
     function drawForces() {
         for (const s of state.forceShapes) viewer.removeShape(s);
         state.forceShapes = [];
 
         if (!$("show-forces").checked) {
+            setForcesStatus("Off — tick to overlay arrows.");
             viewer.render();
             return;
         }
-        if (!state.data) { viewer.render(); return; }
+        if (!state.data) {
+            setForcesStatus("No trajectory loaded yet.");
+            viewer.render();
+            return;
+        }
 
         const frame  = state.data.frames[state.currentFrame];
         const forces = state.data.forces && state.data.forces[state.currentFrame];
         if (!frame || !forces || !forces.length) {
-            // Helpful diagnostic for when forces aren't shipped for this step
-            // (typical for an in-flight CG step that hasn't written its force
-            // block yet).
+            // The parser couldn't extract forces for this step.
+            // Typical for geomeTRIC .xyz trajectories (which carry
+            // no forces at all) and for an in-flight CG step that
+            // hasn't written its force block yet.
+            setForcesStatus(
+                "No force data on this frame (parser did not capture it)."
+            );
             console.info(
                 "[viewer] no per-atom forces for frame",
                 state.currentFrame,
@@ -330,6 +348,22 @@
             state.currentFrame,
             "(maxMag =", maxMag.toFixed(3), "eV/\u00C5 at atom", maxIdx + 1, ")"
         );
+        // Surface the same information to the user-visible readout
+        // next to the toggle.  When `drawn === 0` and forces are
+        // present, fmin is too tight -- tell the user explicitly so
+        // they can lower it.
+        if (drawn === 0) {
+            setForcesStatus(
+                "0 arrows shown (all |F| < threshold " +
+                fmin.toFixed(3) + " eV/\u00C5; max |F| = " +
+                maxMag.toFixed(3) + ")."
+            );
+        } else {
+            setForcesStatus(
+                "Showing " + drawn + " arrow" + (drawn === 1 ? "" : "s") +
+                " (max |F| = " + maxMag.toFixed(3) + " eV/\u00C5)."
+            );
+        }
         viewer.render();
     }
 

@@ -532,6 +532,7 @@
         // see the restored values when computing locks.
         restoreFormState();
         wireCompatibilityListeners();
+        wirePreflightListeners();
         applyCompatibility();
     }
 
@@ -1047,15 +1048,28 @@
     // settings.  p-* IDs feed SIESTA's panel; py-* IDs feed PySCF's.
     // No-op until the user has built a structure (state.xyz set) --
     // see refreshPreflight().
-    FORM_IDS.forEach(id => {
-        const el = $(id);
-        if (!el) return;
-        const which = id.startsWith("p-")  ? "siesta"
-                    : id.startsWith("py-") ? "pyscf"
-                                           : null;
-        if (!which) return;
-        const event = (el.type === "checkbox" || el.tagName === "SELECT")
-            ? "change" : "input";
-        el.addEventListener(event, () => refreshPreflightDebounced[which]());
-    });
+    //
+    // CRITICAL: must run AFTER initFormsFromSchema renders the form,
+    // because the schema-driven inputs don't exist at module load.
+    // wirePreflightListeners is called from initFormsFromSchema's
+    // tail.  It also walks getFormIds() rather than a hard-coded
+    // list so adding a new dataclass field auto-wires preflight.
+    function wirePreflightListeners() {
+        getFormIds().forEach(id => {
+            const el = $(id);
+            if (!el) return;
+            const which = id.startsWith("p-")  ? "siesta"
+                        : id.startsWith("py-") ? "pyscf"
+                                               : null;
+            if (!which) return;
+            // Skip the static stage-preset selector -- it has its own
+            // change handler that bulk-fills sibling inputs (each of
+            // which fires their own change event and gets caught
+            // below).
+            if (id === "p-stage-preset") return;
+            const event = (el.type === "checkbox" || el.tagName === "SELECT")
+                ? "change" : "input";
+            el.addEventListener(event, () => refreshPreflightDebounced[which]());
+        });
+    }
 })();

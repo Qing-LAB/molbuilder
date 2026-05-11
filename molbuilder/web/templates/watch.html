@@ -130,8 +130,15 @@ FILE mode (back-compat; also supported):
       <div class="ctab-panel" data-panel="overlays" role="tabpanel">
         <label class="check"><input type="checkbox" id="show-indices">
           Show atom indices</label>
-        <label class="check"><input type="checkbox" id="show-forces">
+        <label class="check"
+          title="Renders a coloured arrow at each atom whose force magnitude exceeds the threshold below.&#10;The longest arrow gets a 'highlight' gold tint when 'Highlight largest force' is ticked.&#10;Forces are only available when the parser captured them (molwatch logs and SIESTA .out always do; geomeTRIC trajectory .xyz does NOT).">
+          <input type="checkbox" id="show-forces">
           Show force vectors</label>
+        <!-- Diagnostic readout so the user can tell the difference
+             between "toggle is off", "no forces in the data", and
+             "forces present but all below the threshold".  Updated
+             by drawForces() on every invocation. -->
+        <span id="forces-status" class="readout" aria-live="polite"></span>
         <label>Arrow length scale (&Aring; per eV/&Aring;)
           <span class="row-with-readout">
             <input id="force-scale" type="range" min="0.1" max="5.0" step="0.1" value="1.0">
@@ -139,7 +146,7 @@ FILE mode (back-compat; also supported):
           </span>
         </label>
         <label>Hide |F| smaller than (eV/&Aring;)
-          <input id="force-min" type="number" min="0" max="10" step="0.05" value="0.05">
+          <input id="force-min" type="number" min="0" max="10" step="0.01" value="0.01">
         </label>
         <label class="check"><input type="checkbox" id="highlight-max" checked>
           Highlight largest force</label>

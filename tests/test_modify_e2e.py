@@ -1566,6 +1566,27 @@ _MOLWATCH_ONE_STEP = (
 _MOLWATCH_ONE_STEP_FINISHED = _MOLWATCH_ONE_STEP + "# concluded: ok\n"
 
 
+# Molwatch fixture with realistic non-zero forces for the
+# show-force-vectors toggle test.  Two-atom H2 with one atom pulled
+# off-equilibrium so the per-atom force vector has a clear direction.
+_MOLWATCH_WITH_FORCES = (
+    "# molwatch trajectory log v1\n"
+    "# engine: pyscf\n"
+    "==== molwatch step 0 begin ====\n"
+    "step_index: 0\n"
+    "n_atoms: 2\n"
+    "coordinates (Ang):\n"
+    "   H   0.00000000   0.00000000   0.00000000\n"
+    "   H   1.20000000   0.00000000   0.00000000\n"
+    "energy (eV): -32.0\n"
+    "forces (eV/Ang):\n"
+    "   H   1.50000000   0.00000000   0.00000000\n"
+    "   H  -1.50000000   0.00000000   0.00000000\n"
+    "max_force (eV/Ang): 1.5\n"
+    "==== molwatch step 0 end ====\n"
+)
+
+
 @pytest.fixture
 def watch_log_file(tmp_path):
     p = tmp_path / "demo.molwatch.log"
@@ -1578,6 +1599,85 @@ def watch_log_file_finished(tmp_path):
     p = tmp_path / "demo-done.molwatch.log"
     p.write_text(_MOLWATCH_ONE_STEP_FINISHED)
     return str(p)
+
+
+@pytest.fixture
+def watch_log_file_with_forces(tmp_path):
+    p = tmp_path / "h2-forces.molwatch.log"
+    p.write_text(_MOLWATCH_WITH_FORCES)
+    return str(p)
+
+
+def test_watch_show_forces_renders_arrows(
+        page, flask_server, watch_log_file_with_forces):
+    """Toggling 'Show force vectors' on a trajectory that carries
+    per-atom forces must add arrow shapes to the 3Dmol viewer.
+    User-reported regression: the toggle did nothing -- forces
+    were parsed but no arrows appeared.
+
+    The viewer.js helper drawForces() pushes each shape onto
+    state.forceShapes (cylinder for shaft + CONE_SEGS cylinders
+    for the head).  Reading state.forceShapes.length back to the
+    test is the most direct "did the toggle do anything?" check.
+    """
+    # Capture console messages for diagnostic purposes -- drawForces
+    # emits a "no per-atom forces for frame N" console.info when the
+    # data path doesn't carry forces.
+    console_logs = []
+    page.on("console", lambda msg:
+            console_logs.append((msg.type, msg.text)))
+    _load_watch_log(page, flask_server, watch_log_file_with_forces)
+    # The Show-force-vectors checkbox lives inside the "Overlays"
+    # sub-tab panel of the Watch viewer controls (default-active
+    # tab is "Style", so we click into Overlays first).
+    page.locator('.ctab[data-tab="overlays"]').click()
+    chk = page.locator("#show-forces")
+    assert not chk.is_checked()
+    chk.check()
+    # Give the click a moment to fire drawForces synchronously.
+    page.wait_for_timeout(200)
+    # Each atom with non-zero force contributes (1 shaft + CONE_SEGS
+    # head cones).  Two atoms x ~7 shapes = ~14, but a soft floor of
+    # 2 (one arrow's worth) is enough to prove rendering happened.
+    page.wait_for_function(
+        "() => window.__forceShapeCount !== undefined"
+        "      || (document.querySelector('#viewer canvas') !== null)",
+        timeout=3000,
+    )
+    # drawForces() emits a structured diagnostic console.info on
+    # every invocation that draws or skips.  Look for the "drew N
+    # force arrows" line as proof that drawForces ran and produced
+    # arrow primitives for both atoms.
+    drew_msgs = [
+        text for typ, text in console_logs
+        if typ == "info" and "force arrow" in text
+    ]
+    assert drew_msgs, (
+        f"drawForces did not log a draw event after toggling ON; "
+        f"the renderer probably exited early.  console: {console_logs}"
+    )
+    # The fixture has 2 atoms with non-zero force, so the diagnostic
+    # must report drawing 2 arrows -- anything less means the
+    # renderer rejected one or both.
+    assert "drew 2 force arrows" in drew_msgs[-1], drew_msgs[-1]
+    # The new status readout next to the toggle must reflect the
+    # render outcome ("Showing N arrows ..." / "Hidden ..." etc.)
+    # so a user who has all-tiny forces (everything below fmin)
+    # sees a clear "0 forces above the threshold" instead of an
+    # invisible failure.
+    status = page.locator("#forces-status").text_content() or ""
+    assert "2" in status and "arrow" in status.lower(), (
+        f"#forces-status should report N=2 arrows drawn; got {status!r}"
+    )
+    # Toggle OFF and confirm the renderer ran again + the status
+    # flips to a "hidden" message.
+    chk.uncheck()
+    page.wait_for_timeout(150)
+    assert not chk.is_checked()
+    status_off = page.locator("#forces-status").text_content() or ""
+    assert "off" in status_off.lower() or "hidden" in status_off.lower(), (
+        f"#forces-status should report toggle off; got {status_off!r}"
+    )
 
 
 def _load_watch_log(page, base_url, log_path):
@@ -1738,6 +1838,32 @@ def _open_build(page, base_url):
         "() => document.querySelector('#siesta-form-container fieldset')"
         " && document.querySelector('#pyscf-form-container fieldset')",
         timeout=8000,
+    )
+
+
+def test_build_page_loads_without_js_errors(page, flask_server):
+    """The Build / index page must boot without any uncaught JS
+    pageerror -- a single ReferenceError near the bottom of the
+    IIFE halts the rest of the module's wiring (compat engine,
+    preflight, stage-preset) and the symptoms are subtle.
+    Previously regressed on the schema-driven cutover when an
+    obsolete FORM_IDS reference survived a rename.
+    """
+    errors = []
+    page.on("pageerror", lambda exc: errors.append(str(exc)))
+    page.on("console", lambda msg:
+            errors.append("console.error: " + msg.text)
+            if msg.type == "error" else None)
+    page.goto(f"{flask_server}/", wait_until="networkidle")
+    # Wait for the schema-driven form to render too, so any error
+    # in the async path also surfaces.
+    page.wait_for_function(
+        "() => document.querySelector('#siesta-form-container fieldset')"
+        " && document.querySelector('#pyscf-form-container fieldset')",
+        timeout=8000,
+    )
+    assert errors == [], (
+        f"unexpected JS errors on the Build page: {errors}"
     )
 
 
