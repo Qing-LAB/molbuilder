@@ -470,9 +470,18 @@ def test_atoms_inside_with_no_wrap_no_warn(water_struct):
 def test_pyscf_negative_spin_is_error(water_struct):
     cfg = PySCFConfig(spin=-1)
     issues = validate(water_struct, cfg)
-    errs = [i for i in issues if i.where == "config.spin"]
+    spin_issues = [i for i in issues if i.where == "config.spin"]
+    # spin=-1 produces TWO issues now that the dataclass declares
+    # range=(0, 10) for the schema-driven form:
+    #   1. error: "spin = -1 is negative; ..." (explicit semantic check)
+    #   2. warn:  "Spin (2S) = -1 is outside the recommended range [0, 10]"
+    #             (auto from field range metadata)
+    # The error must survive; the additional range warn is fine
+    # (both convey "this is wrong" to the user, with the explicit
+    # error carrying the actionable explanation).
+    errs = [i for i in spin_issues if i.severity == "error"]
     assert len(errs) == 1
-    assert errs[0].severity == "error"
+    assert "negative" in errs[0].message
 
 
 def test_pyscf_open_shell_spin_with_rks_is_warn(water_struct):

@@ -311,8 +311,17 @@
         // Update the BlockSize textbox's placeholder to show the
         // auto-picked value for this structure.  Empty input still
         // means "use auto"; the placeholder just makes it visible.
-        $("p-block-size").placeholder =
-            "auto (" + autoBlockSize(r.n_atoms) + ", n=" + r.n_atoms + ")";
+        // Defensive: the schema-driven SIESTA form may not have
+        // rendered yet on the very first restoreStructureState()
+        // call after a navigation.  Skip silently; the placeholder
+        // is just a hint, not load-bearing.  initFormsFromSchema()
+        // will re-apply the structure result anyway via
+        // restoreStructureState's second invocation path.
+        const bs = $("p-block-size");
+        if (bs) {
+            bs.placeholder =
+                "auto (" + autoBlockSize(r.n_atoms) + ", n=" + r.n_atoms + ")";
+        }
         $("dl-xyz").disabled = false;
         $("dl-pdb").disabled = false;
         $("generate-fdf").disabled = false;
@@ -463,20 +472,68 @@
         applySiestaCompatibility();
     }
 
-    // Wire change events for every input that triggers a rule.  We
-    // listen on `change` rather than `input` so rapid typing in a
-    // number field doesn't thrash the DOM; the rules only depend on
-    // dropdown values and checkbox states anyway.
-    [
-        "py-method", "py-optimize", "py-preopt", "py-solvent",
-        "p-spin-polarized", "p-relax",
-    ].forEach(id => {
-        const el = $(id);
-        if (el) el.addEventListener("change", applyCompatibility);
-    });
+    // The compat-engine wiring + initial run move into
+    // initFormsFromSchema() below: the form's inputs only exist
+    // AFTER the schema-driven renderer fills the containers, so
+    // attaching listeners at module-load (when the containers are
+    // empty <div>s) wouldn't find anything.  Same reason
+    // restoreFormState() and the first applyCompatibility() are
+    // deferred.
+    function wireCompatibilityListeners() {
+        [
+            "py-method", "py-optimize", "py-preopt", "py-solvent",
+            "p-spin-polarized", "p-relax",
+        ].forEach(id => {
+            const el = $(id);
+            if (el) el.addEventListener("change", applyCompatibility);
+        });
+    }
 
-    // Initial state on page load.
-    applyCompatibility();
+    // Module-level cache of the form schemas, populated once on
+    // page load by initFormsFromSchema().  collectFdfParams() and
+    // collectPyscfParams() read from this; getFormIds() walks both
+    // schemas to build the persistence ID list.
+    const formSchemas = { siesta: null, pyscf: null };
+
+    async function initFormsFromSchema() {
+        const fs = (window.molbuilder || {}).formSchema;
+        if (!fs) {
+            console.error(
+                "form-schema.js not loaded; build form will not appear"
+            );
+            return;
+        }
+        try {
+            const [siesta, pyscf] = await Promise.all([
+                fs.fetchSchema("siesta"),
+                fs.fetchSchema("pyscf"),
+            ]);
+            formSchemas.siesta = siesta;
+            formSchemas.pyscf  = pyscf;
+            const siestaC = $("siesta-form-container");
+            const pyscfC  = $("pyscf-form-container");
+            if (siestaC) fs.renderForm(siestaC, siesta);
+            if (pyscfC)  fs.renderForm(pyscfC,  pyscf);
+        } catch (exc) {
+            console.error("could not load build-form schema:", exc);
+            // Surface a visible failure so the user knows the
+            // server's /api/build/schema endpoint is unreachable.
+            for (const id of ["siesta-form-container", "pyscf-form-container"]) {
+                const c = $(id);
+                if (c) c.innerHTML =
+                    '<p class="status error">Could not load form schema: '
+                    + String(exc).replace(/[&<>]/g, c =>
+                        ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]))
+                    + '</p>';
+            }
+            return;
+        }
+        // restoreFormState BEFORE applyCompatibility so compat rules
+        // see the restored values when computing locks.
+        restoreFormState();
+        wireCompatibilityListeners();
+        applyCompatibility();
+    }
 
     // ----- Load existing .xyz / .pdb ----------------------------------
     $("load-file").addEventListener("change", () => {
@@ -675,69 +732,25 @@
     }
 
     function collectFdfParams() {
-        const num  = (id) => parseFloat($(id).value);
-        const int  = (id) => parseInt($(id).value, 10);
-        const bool = (id) => $(id).checked;
-        // The form has ONE basename field (Job name); default
-        // SystemName to it as well so the FDF carries something
-        // descriptive without a separate input.  The Python API
-        // still supports separate values for power users; the web
-        // just folds them.
-        const jobName = $("p-system-label").value.trim();
-        return {
-            system_name:            jobName,
-            system_label:           jobName,
-            stage:                  stageNumberFromPreset(),
-
-            // Basis & grid
-            basis_size:             $("p-basis").value,
-            mesh_cutoff:            num("p-mesh-cutoff"),
-            pao_energy_shift:       num("p-pao-energy-shift"),
-
-            // XC
-            xc_functional:          $("p-xc-functional").value,
-            xc_authors:             $("p-xc-authors").value.trim(),
-
-            // SCF
-            solution_method:        $("p-solution-method").value,
-            mixing_weight:          num("p-mixing-weight"),
-            pulay_history:          int("p-pulay-history"),
-            dm_tolerance:           num("p-dm-tolerance"),
-            dm_energy_tolerance:    num("p-dm-energy-tolerance"),
-            max_scf_iter:           int("p-max-scf-iter"),
-            electronic_temperature: num("p-temperature"),
-
-            // Spin
-            spin_polarized:         bool("p-spin-polarized"),
-            spin_total:             $("p-spin-total").value === ""
-                                    ? null : num("p-spin-total"),
-
-            // k-grid
-            kgrid:                  [int("p-kx"), int("p-ky"), int("p-kz")],
-
-            // Parallel execution -- empty BlockSize / "auto" ParallelOverK
-            // mean "let the backend auto-pick", which is the recommended
-            // path; the textbox is here only for power users who want a
-            // specific value.
-            parallel_block_size:    ($("p-block-size").value === ""
-                                    ? null : int("p-block-size")),
-            parallel_over_k:        ($("p-parallel-over-k").value === "auto"
-                                    ? null : $("p-parallel-over-k").value === "true"),
-
-            // Relaxation
-            relax_type:             $("p-relax").value,
-            relax_steps:            int("p-relax-steps"),
-            relax_force_tol:        num("p-force-tol"),
-            relax_max_displ:        num("p-max-displ"),
-
-            // Output + positioning + comments
-            write_coor_xmol:        bool("p-write-coor-xmol"),
-            write_md_history:       bool("p-write-md-history"),
-            write_hs:               bool("p-write-hs"),
-            wrap_into_cell:         bool("p-wrap-into-cell"),
-            center_in_vacuum:       bool("p-center-in-vacuum"),
-            verbose_comments:       bool("p-verbose-comments"),
-        };
+        // The schema-driven collector returns one entry per dataclass
+        // field with a "section": metadata key.  Two post-processing
+        // tweaks on top:
+        //   1. The web form has ONE user-visible "Job name" input
+        //      (system_label).  The Python API has BOTH system_name
+        //      and system_label.  We fold them here so the generated
+        //      FDF carries a matched pair without exposing two
+        //      near-identical fields to the user.
+        //   2. The "Relaxation stage" preset is a UI shortcut, not a
+        //      dataclass field rendered by the schema; we layer the
+        //      stage-number on top of the collected params.
+        if (!formSchemas.siesta) return {};
+        const container = $("siesta-form-container");
+        const params = window.molbuilder.formSchema.collectForm(
+            container, formSchemas.siesta
+        );
+        params.system_name = params.system_label;
+        params.stage       = stageNumberFromPreset();
+        return params;
     }
 
     // ----- 4. Generate PySCF script -----------------------------------
@@ -784,69 +797,27 @@
     });
 
     function collectPyscfParams() {
-        const str  = (id) => $(id).value;
-        const trim = (id) => $(id).value.trim();
-        const num  = (id) => {
-            const v = $(id).value.trim();
-            return v === "" ? null : parseFloat(v);
-        };
-        const int  = (id) => {
-            const v = $(id).value.trim();
-            return v === "" ? null : parseInt(v, 10);
-        };
-        const bool = (id) => $(id).checked;
-        const params = {
-            // System
-            job_name:           trim("py-job-name") || "pyscf_relax",
-            stage:              stageNumberFromPreset(),
-            charge:             int("py-charge"),       // null -> auto-detect
-            spin:               int("py-spin")  || 0,
-            symmetry:           bool("py-symmetry"),
-
-            // Method
-            method:             str("py-method"),
-            functional:         trim("py-functional"),
-            basis:              trim("py-basis"),
-            dispersion:         str("py-dispersion"),   // "none" -> server maps to null
-            density_fit:        bool("py-density-fit"),
-
-            // SCF
-            scf_conv_tol:       num("py-scf-conv-tol"),
-            scf_max_cycle:      int("py-scf-max-cycle"),
-            scf_init_guess:     str("py-init-guess"),
-            grid_level:         int("py-grid-level"),
-            level_shift:        num("py-level-shift"),
-
-            // Pre-opt
-            preopt:             bool("py-preopt"),
-            preopt_functional:  trim("py-preopt-functional"),
-            preopt_basis:       trim("py-preopt-basis"),
-            preopt_max_steps:   int("py-preopt-max-steps"),
-            preopt_grms:        num("py-preopt-grms"),
-
-            // Main opt
-            optimize:           bool("py-optimize"),
-            optimizer:          str("py-optimizer"),
-            geom_max_steps:     int("py-geom-max-steps"),
-            geom_conv_energy:   num("py-geom-conv-energy"),
-            geom_conv_grms:     num("py-geom-conv-grms"),
-            geom_conv_gmax:     num("py-geom-conv-gmax"),
-
-            // Solvent
-            solvent:            str("py-solvent"),      // "" -> server maps to null
-            solvent_method:     str("py-solvent-method"),
-
-            // Runtime / output
-            max_memory_mb:      int("py-max-memory"),
-            threads:            int("py-threads"),
-            verbose:            int("py-verbose"),
-            chkfile:            bool("py-chkfile"),
-            log_file:           bool("py-log-file"),
-            verbose_comments:   bool("py-verbose-comments"),
-        };
-        // Drop null-valued keys so the server-side dataclass uses its
-        // declared default rather than getting None where it expects an
-        // int / float.
+        // Schema-driven collector + three post-processing tweaks:
+        //   1. The "Relaxation stage" preset is a UI shortcut (lives
+        //      in the SIESTA panel but flows through to PySCFConfig
+        //      so PySCF runs also write stage-suffixed molwatch logs).
+        //   2. dispersion = "none" comes off the select as the literal
+        //      string "none"; server's config_from_params normalises
+        //      it to None, but we drop it client-side too so the
+        //      validation panel never sees the placeholder.
+        //   3. Drop null-valued keys so the dataclass uses its
+        //      declared default rather than getting None where it
+        //      expects an int / float (e.g. charge=None should leave
+        //      the dataclass alone; the server's auto-detect path
+        //      runs only when no charge key is present).
+        if (!formSchemas.pyscf) return {};
+        const container = $("pyscf-form-container");
+        const params = window.molbuilder.formSchema.collectForm(
+            container, formSchemas.pyscf
+        );
+        params.stage = stageNumberFromPreset();
+        if (params.dispersion === "none") params.dispersion = null;
+        // Drop nulls.
         Object.keys(params).forEach(k => {
             if (params[k] === null) delete params[k];
         });
@@ -857,38 +828,42 @@
     // Navigating to /watch and back is a full page reload; sessionStorage
     // survives same-tab navigations so the user's input isn't lost.
 
-    const FORM_IDS = [
-        // Build section
+    // Static IDs that aren't part of the schema-driven SIESTA /
+    // PySCF forms but DO need session-storage persistence: the
+    // build-section inputs (kind, sequence, backend, etc.) and the
+    // Relaxation-stage preset selector (a UI shortcut, not a
+    // dataclass field).  All other persistent IDs are derived at
+    // save/restore time by walking the rendered schemas.
+    const STATIC_FORM_IDS = [
         "kind", "input-text", "backend", "form", "terminal",
         "add-hydrogens", "protonate-phosphates",
-        // SIESTA
         "p-stage-preset",
-        "p-system-label", "p-basis", "p-mesh-cutoff",
-        "p-pao-energy-shift", "p-xc-functional", "p-xc-authors",
-        "p-solution-method", "p-mixing-weight", "p-pulay-history",
-        "p-dm-tolerance", "p-dm-energy-tolerance", "p-max-scf-iter",
-        "p-temperature", "p-spin-polarized", "p-spin-total",
-        "p-kx", "p-ky", "p-kz", "p-block-size", "p-parallel-over-k",
-        "p-relax", "p-relax-steps", "p-force-tol", "p-max-displ",
-        "p-write-coor-xmol", "p-write-md-history", "p-write-hs",
-        "p-wrap-into-cell", "p-center-in-vacuum", "p-verbose-comments",
-        // PySCF
-        "py-job-name", "py-charge", "py-spin", "py-symmetry",
-        "py-method", "py-functional", "py-basis", "py-dispersion",
-        "py-density-fit", "py-scf-conv-tol", "py-scf-max-cycle",
-        "py-init-guess", "py-grid-level", "py-level-shift",
-        "py-preopt", "py-preopt-functional", "py-preopt-basis",
-        "py-preopt-max-steps", "py-preopt-grms",
-        "py-optimize", "py-optimizer", "py-geom-max-steps",
-        "py-geom-conv-energy", "py-geom-conv-grms", "py-geom-conv-gmax",
-        "py-solvent", "py-solvent-method",
-        "py-max-memory", "py-threads", "py-verbose",
-        "py-chkfile", "py-log-file", "py-verbose-comments",
     ];
+
+    function getFormIds() {
+        const ids = STATIC_FORM_IDS.slice();
+        for (const sch of [formSchemas.siesta, formSchemas.pyscf]) {
+            if (!sch) continue;
+            for (const sect of sch.sections) {
+                for (const f of sect.fields) {
+                    if (f.kind === "int-triple") {
+                        // Tuple field renders as three sub-inputs;
+                        // each has its own id and needs persistence.
+                        for (const lab of f.labels) {
+                            ids.push(f.id + "-" + lab);
+                        }
+                    } else {
+                        ids.push(f.id);
+                    }
+                }
+            }
+        }
+        return ids;
+    }
 
     function saveFormState() {
         const saved = {};
-        FORM_IDS.forEach(id => {
+        getFormIds().forEach(id => {
             const el = $(id);
             if (!el) return;
             saved[id] = el.type === "checkbox" ? el.checked : el.value;
@@ -901,7 +876,7 @@
         try { saved = JSON.parse(sessionStorage.getItem("builder-form") || "null"); }
         catch (_) { return; }
         if (!saved) return;
-        FORM_IDS.forEach(id => {
+        getFormIds().forEach(id => {
             const el = $(id);
             if (!el || !(id in saved)) return;
             if (el.type === "checkbox") el.checked = saved[id];
@@ -913,8 +888,18 @@
         $("input-text").placeholder = placeholderFor($("kind").value);
     }
 
+    // Build-section restore can run synchronously since those fields
+    // are static HTML; the schema-driven SIESTA / PySCF fields get
+    // restored a second time inside initFormsFromSchema() after the
+    // renderer fills the containers.
     restoreFormState();
     window.addEventListener("pagehide", saveFormState);
+
+    // Kick off the async schema fetch + form render.  Everything
+    // that depends on the form's inputs (compatibility engine,
+    // change listeners, full restoreFormState walk) happens inside
+    // this function once the renderer has populated the DOM.
+    initFormsFromSchema();
 
     // ----- Session state: persist the BUILT / LOADED structure too ---
     // The form-state restore above brings back what the user TYPED;

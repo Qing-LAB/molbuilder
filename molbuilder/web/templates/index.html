@@ -185,227 +185,88 @@
         default.
       </p>
 
-      <div class="param-grid">
-        <fieldset title="The job name is the basename for ALL output files: the FDF, the unified trajectory log, the SIESTA stdout (if you redirect to <name>.out as recommended), and the restart files (.XV / .DM / .CG).&#10;Per docs/spec/job-layout.md: keep this identical across staged-relaxation runs so SIESTA can pick up the previous stage's restart files automatically.">
-          <legend>System</legend>
-          <label title="The basename for every file the job produces.&#10;Drives FDF SystemLabel + SystemName; output files get this prefix.&#10;Letters / digits / hyphens / underscores only; no spaces, dots, or slashes.">
-            <strong>Job name</strong>
-            <input id="p-system-label" value="siesta"
-                   pattern="[A-Za-z0-9_\-]+"
-                   title="Letters, digits, hyphens, underscores; no spaces, dots, or slashes">
-          </label>
-          <p class="hint" style="margin: 0.2em 0 0; font-size: 0.8em;">
-            Used as the basename for <code>&lt;name&gt;.fdf</code>,
-            <code>&lt;name&gt;.molwatch.log</code>,
-            <code>&lt;name&gt;.out</code> (recommended redirect target),
-            and the <code>.XV</code> / <code>.DM</code> / <code>.CG</code>
-            restart files.  Keep identical across staged runs.
-          </p>
-          <details class="hint" style="margin: 0.4em 0 0; font-size: 0.8em;">
-            <summary style="cursor: pointer;">
-              <strong>Important:</strong> SIESTA restart-from-folder behavior
-            </summary>
-            <div style="margin-top: 0.4em;">
-              With the default continuation flags
-              (<code>MD.UseSaveXV</code> /
-              <code>DM.UseSaveDM</code> /
-              <code>MD.UseSaveCG</code> all
-              <em>on</em>), SIESTA <strong>silently overrides</strong> the
-              <code>AtomicCoordinatesAndAtomicSpecies</code> block in
-              the generated FDF when a
-              <code>&lt;name&gt;.XV</code> file exists in the run
-              directory &mdash; the saved coordinates win, not the
-              FDF&apos;s.  Same for <code>.DM</code> (density-matrix
-              warm-start) and <code>.CG</code> (CG state resume).
-              This is what makes staged relaxation work: stage 2&apos;s
-              FDF can carry stage 1&apos;s input coords and SIESTA still
-              picks up stage 1&apos;s converged geometry.
-              <br><br>
-              <strong>For a clean fresh start</strong>, either run in
-              an empty directory, delete
-              <code>&lt;name&gt;.XV</code> / <code>.DM</code> /
-              <code>.CG</code> first, or change SystemLabel.
-              SIESTA falls back to the FDF coordinates silently
-              when none of those files exist.
-            </div>
-          </details>
-        </fieldset>
+      <!-- SIESTA restart-from-folder warning + job-name guidance.
+           The job-name field itself comes from the schema-driven
+           container below; this fieldset is the user-facing
+           explanation of the .XV / .DM / .CG silent-override
+           mechanic (job-layout v1).  Kept as static HTML because
+           it's prose + an external pointer, not config data. -->
+      <fieldset class="param-grid-pre"
+                title="SIESTA reuses the .XV / .DM / .CG files in the run directory automatically when their basename matches the SystemLabel set below.">
+        <legend>Run directory &amp; restart</legend>
+        <p class="hint" style="margin: 0;">
+          The <strong>Job name</strong> field in the form below drives
+          the basename for every output file:
+          <code>&lt;name&gt;.fdf</code>,
+          <code>&lt;name&gt;.molwatch.log</code>,
+          <code>&lt;name&gt;.out</code> (recommended redirect target),
+          and the <code>.XV</code> / <code>.DM</code> /
+          <code>.CG</code> restart files.  Keep identical across
+          staged runs.
+        </p>
+        <details class="hint" style="margin: 0.4em 0 0; font-size: 0.8em;">
+          <summary style="cursor: pointer;">
+            <strong>Important:</strong> SIESTA restart-from-folder behavior
+          </summary>
+          <div style="margin-top: 0.4em;">
+            With the default continuation flags
+            (<code>MD.UseSaveXV</code> /
+            <code>DM.UseSaveDM</code> /
+            <code>MD.UseSaveCG</code> all
+            <em>on</em>), SIESTA <strong>silently overrides</strong> the
+            <code>AtomicCoordinatesAndAtomicSpecies</code> block in
+            the generated FDF when a
+            <code>&lt;name&gt;.XV</code> file exists in the run
+            directory &mdash; the saved coordinates win, not the
+            FDF&apos;s.  Same for <code>.DM</code> (density-matrix
+            warm-start) and <code>.CG</code> (CG state resume).
+            This is what makes staged relaxation work: stage 2&apos;s
+            FDF can carry stage 1&apos;s input coords and SIESTA still
+            picks up stage 1&apos;s converged geometry.
+            <br><br>
+            <strong>For a clean fresh start</strong>, either run in
+            an empty directory, delete
+            <code>&lt;name&gt;.XV</code> / <code>.DM</code> /
+            <code>.CG</code> first, or change SystemLabel.
+            SIESTA falls back to the FDF coordinates silently
+            when none of those files exist.
+          </div>
+        </details>
+      </fieldset>
 
-        <fieldset title="Basis set and real-space mesh resolution.">
-          <legend>Basis &amp; grid</legend>
-          <label title="Orbital basis quality (SZ &lt; DZP &lt; TZP).&#10;DZP is recommended for production work.">
-            Basis size
-            <select id="p-basis">
-              <option>SZ</option><option>SZP</option>
-              <option>DZ</option><option selected>DZP</option>
-              <option>TZP</option>
-            </select>
-          </label>
-          <label title="Real-space mesh cutoff (Ry).&#10;Range 200-500. Higher = better forces, slower (cubic in cutoff).&#10;Increase if forces are noisy.">
-            MeshCutoff (Ry)
-            <input id="p-mesh-cutoff" type="number" value="300" step="25" min="50">
-          </label>
-          <label title="Controls how diffuse the PAOs are (Ry).&#10;0.01: production default (tighter than SIESTA's built-in 0.02; needed for accurate bond energies).&#10;0.02: fast screening.  0.005: phonons / vibrational analysis.&#10;Smaller = more diffuse orbitals = more accurate, slower.">
-            PAO.EnergyShift (Ry)
-            <input id="p-pao-energy-shift" type="number" value="0.01" step="0.005" min="0.001" max="0.1">
-          </label>
-        </fieldset>
+      <!-- Relaxation-stage preset selector (UI shortcut, not a
+           SiestaConfig field).  When non-Custom, the JS bulk-fills
+           the matching relax_* / SCF fields in the schema-driven
+           form below.  The selected stage also flows through as
+           SiestaConfig.stage so the resulting FDF writes a
+           stage-suffixed .molwatch.log filename. -->
+      <fieldset class="param-grid-pre">
+        <legend>Relaxation stage preset</legend>
+        <label title="Bulk-fill the convergence parameters for a coarse-to-fine staged relaxation.&#10;Coarse: get into the basin fast (loose tols, big steps).&#10;Medium: refine to publication tolerance.&#10;Tight: final production geometry.&#10;Run all three stages in sequence with the SAME SystemLabel in the SAME directory; SIESTA reuses .XV (coords) and .DM (density matrix) automatically.&#10;Custom keeps your current values untouched.">
+          <strong>Stage</strong>
+          <select id="p-stage-preset">
+            <option value="custom" selected>Custom (no auto-fill)</option>
+            <option value="coarse">Stage 1 — Coarse (fast descent)</option>
+            <option value="medium">Stage 2 — Medium (refine)</option>
+            <option value="tight">Stage 3 — Tight (production)</option>
+          </select>
+        </label>
+      </fieldset>
 
-        <fieldset title="Exchange-correlation functional.">
-          <legend>Exchange-correlation</legend>
-          <label title="GGA recommended for most systems.&#10;LDA underestimates band gaps. VDW for dispersion-dominated systems.">
-            XC.functional
-            <select id="p-xc-functional">
-              <option selected>GGA</option><option>LDA</option>
-              <option>VDW</option>
-            </select>
-          </label>
-          <label title="Parametrisation: PBE (standard GGA), BLYP, PW92 (LDA), DRSLL (vdW).">
-            XC.authors
-            <input id="p-xc-authors" value="PBE">
-          </label>
-        </fieldset>
+      <!-- Schema-driven form: filled by form-schema.js using the
+           SiestaConfig schema from GET /api/build/schema/siesta.
+           Field IDs match the legacy ones (p-system-label,
+           p-mesh-cutoff, etc.) so the compatibility engine and
+           sessionStorage persistence keep working without changes.
 
-        <fieldset title="Self-consistent-field cycle parameters.">
-          <legend>SCF</legend>
-          <label title="diagon: standard full diagonalization.&#10;OMM: orbital-minimization, order-N, for > 500 atoms.&#10;transiesta: non-equilibrium Green's function transport (requires TranSIESTA build).">
-            SolutionMethod
-            <select id="p-solution-method">
-              <option selected>diagon</option><option>OMM</option>
-              <option>transiesta</option>
-            </select>
-          </label>
-          <label title="DM mixing weight (0.001-0.5).&#10;Smaller = stable but slow. Larger = aggressive, may oscillate.&#10;Insulators: 0.05-0.10. Metals / hard SCF: 0.005-0.02.">
-            DM.MixingWeight
-            <input id="p-mixing-weight" type="number" step="0.005" value="0.02" min="0.0001" max="1.0">
-          </label>
-          <label title="Number of previous DM iterates kept for Pulay (DIIS) mixing.&#10;3 adequate for most systems. 5-8 for hard cases (metals, charged open-shell).">
-            DM.NumberPulay
-            <input id="p-pulay-history" type="number" step="1" value="3" min="1" max="20">
-          </label>
-          <label title="DM convergence threshold.&#10;1e-5 standard. 1e-6 for accurate forces or band structure.">
-            DM.Tolerance
-            <input id="p-dm-tolerance" type="number" step="1e-6" value="1e-5">
-          </label>
-          <label title="Energy-based SCF convergence guard (eV).&#10;Acts as a secondary criterion alongside DM.Tolerance.">
-            DM.Energy.Tolerance (eV)
-            <input id="p-dm-energy-tolerance" type="number" step="1e-5" value="1e-4">
-          </label>
-          <label title="SCF iteration cap.&#10;500 is generous; most systems converge in < 100 per geometry step.">
-            MaxSCFIterations
-            <input id="p-max-scf-iter" type="number" step="50" value="500" min="10">
-          </label>
-          <label title="Fermi-Dirac smearing.&#10;300 K (default) for most systems. 1000-2000 K helps SCF for metals. &lt; 100 K for accurate band-edge properties.">
-            T_elec (K)
-            <input id="p-temperature" type="number" step="50" value="300" min="0">
-          </label>
-        </fieldset>
-
-        <fieldset title="MPI parallel-execution settings.&#10;Only matter when running `mpirun -np N siesta`; single-rank runs ignore them.&#10;The auto-picked default avoids the `propor: ERROR: IMAX = 0` failure mode on small molecules.">
-          <legend>Parallel execution</legend>
-          <label title="ScaLAPACK orbital block size, also used for several per-atom distribution passes.&#10;Auto-picked from the structure (BlockSize <= n_atoms): 8 for >=16 atoms, 4 for 8-15, 2 for 4-7, 1 below.&#10;Override here if you want a specific value (e.g., 16 or 32 for a >1000-atom system on >=16 ranks).&#10;Lower (4 or 1) if `propor: ERROR: IMAX = 0` still appears after the auto-pick.">
-            BlockSize
-            <input id="p-block-size" type="number" min="1" max="64" step="1" placeholder="auto">
-          </label>
-          <label title="Diagonalize across k-points (.true.) or across orbitals (.false.).&#10;MUST be .false. for 1x1x1 (Gamma) k-grids -- otherwise SIESTA tries to distribute 1 k-point across N ranks and fails.&#10;Auto-selected from the k-grid: false for 1x1x1, true for multi-k.">
-            ParallelOverK
-            <select id="p-parallel-over-k">
-              <option value="auto" selected>auto (from k-grid)</option>
-              <option value="false">false (orbital-parallel)</option>
-              <option value="true">true (k-parallel)</option>
-            </select>
-          </label>
-        </fieldset>
-
-        <fieldset title="Spin polarisation.&#10;SIESTA's default is closed-shell.  REQUIRED for radicals, transition metals, triplets, etc. -- without it the electronic structure is silently wrong for open-shell systems.">
-          <legend>Spin</legend>
-          <label title="Open-shell DFT (collinear).  Required for any system with unpaired electrons.">
-            <input id="p-spin-polarized" type="checkbox">
-            Spin polarized (open-shell)
-          </label>
-          <label title="Total spin moment in Bohr magnetons (= number of unpaired electrons).&#10;Helps SIESTA's initial guess converge to the right multiplicity.&#10;Leave blank for SIESTA's default (auto).">
-            SpinTotal (&mu;<sub>B</sub>)
-            <input id="p-spin-total" type="number" step="0.5" placeholder="auto">
-          </label>
-        </fieldset>
-
-        <fieldset title="Monkhorst-Pack k-point sampling.&#10;Vacuum/molecule: 1x1x1 (Gamma only). Periodic 3D: 4x4x4 to 8x8x8. 2D slab: kx*ky*1.">
-          <legend>k-grid (Monkhorst-Pack)</legend>
-          <label><span>k<sub>x</sub></span>  <input id="p-kx" type="number" min="1" max="32" value="1"></label>
-          <label><span>k<sub>y</sub></span>  <input id="p-ky" type="number" min="1" max="32" value="1"></label>
-          <label><span>k<sub>z</sub></span>  <input id="p-kz" type="number" min="1" max="32" value="1"></label>
-        </fieldset>
-
-        <fieldset title="Geometry optimisation algorithm and convergence.">
-          <legend>Relaxation</legend>
-          <label title="Bulk-fill the convergence parameters for a coarse-to-fine staged relaxation.&#10;Coarse: get into the basin fast (loose tols, big steps).&#10;Medium: refine to publication tolerance.&#10;Tight: final production geometry.&#10;Run all three stages in sequence with the SAME SystemLabel in the SAME directory; SIESTA reuses .XV (coords) and .DM (density matrix) automatically.&#10;See the Watch tab's 'Staged relaxation workflow' panel for the full recipe.&#10;Custom keeps your current values untouched.">
-            <strong>Relaxation stage</strong>
-            <select id="p-stage-preset">
-              <option value="custom" selected>Custom (no auto-fill)</option>
-              <option value="coarse">Stage 1 — Coarse (fast descent)</option>
-              <option value="medium">Stage 2 — Medium (refine)</option>
-              <option value="tight">Stage 3 — Tight (production)</option>
-            </select>
-          </label>
-          <p class="hint" style="margin: 0.2em 0 0.6em; font-size: 0.82em;">
-            For staged tightening, run all stages with the SAME SystemLabel
-            in the SAME directory.  SIESTA reads <code>.XV</code> /
-            <code>.DM</code> from the previous stage automatically.
-            Full guide on the <strong>Watch</strong> tab.
-          </p>
-          <label title="Geometry optimisation algorithm or dynamics type.&#10;CG: conjugate-gradient (robust default for small-medium systems).&#10;Broyden: BFGS-like, often faster on flat surfaces.&#10;FIRE: fast inertial relaxation, good for large systems.&#10;Verlet: velocity-Verlet NVE molecular dynamics (constant energy).&#10;Nose: Nose-Hoover NVT dynamics (constant temperature -- also set MD.InitialTemperature).&#10;none: single-point SCF, no relaxation.">
-            MD.TypeOfRun
-            <select id="p-relax">
-              <option value="CG"      selected>CG (conjugate gradient)</option>
-              <option value="Broyden">Broyden (BFGS-like)</option>
-              <option value="FIRE">FIRE (fast inertial)</option>
-              <option value="Verlet">Verlet (NVE dynamics)</option>
-              <option value="Nose">Nose (NVT, Nose-Hoover)</option>
-              <option value="none">none (single point)</option>
-            </select>
-          </label>
-          <label title="Maximum CG/relax iterations.">
-            MD.NumCGsteps
-            <input id="p-relax-steps" type="number" value="200" min="1">
-          </label>
-          <label title="Convergence threshold on the maximum atomic force (eV/Ang).&#10;0.04 SIESTA default (loose). 0.02 production. 0.01 properties. 0.005 phonons.">
-            Force tol (eV/&Aring;)
-            <input id="p-force-tol" type="number" step="0.005" value="0.02" min="0.001">
-          </label>
-          <label title="Maximum atom displacement per relaxation step (Ang).&#10;0.05 cautious / near-converged. 0.10-0.20 fast / far from minimum.">
-            Max displ (&Aring;)
-            <input id="p-max-displ" type="number" step="0.01" value="0.05" min="0.001">
-          </label>
-        </fieldset>
-
-        <fieldset title="Output flags + cell positioning options.">
-          <legend>Output &amp; positioning</legend>
-          <label title=".xyz at every relaxation step (movie viewer)">
-            <input id="p-write-coor-xmol" type="checkbox" checked>
-            Write CoorXmol (.xyz per step)
-          </label>
-          <label title="Write trajectory to .ANI for xcrysden / vmd / OVITO.">
-            <input id="p-write-md-history" type="checkbox" checked>
-            Write MD history (.ANI)
-          </label>
-          <label title="Write H + S matrices.&#10;Required for TranSIESTA / DOS / transport calculations.">
-            <input id="p-write-hs" type="checkbox">
-            Write HS (transport / DOS)
-          </label>
-          <label title="When a periodic cell is given, fold atoms whose fractional coordinates fall outside [0, 1) back into the unit cell.">
-            <input id="p-wrap-into-cell" type="checkbox" checked>
-            Wrap atoms into cell (PBC)
-          </label>
-          <label title="In the auto-vacuum case, place the bounding-box midpoint at the cell centre.">
-            <input id="p-center-in-vacuum" type="checkbox" checked>
-            Centre molecule in vacuum
-          </label>
-          <label title="Strip the inline help comments from the FDF.">
-            <input id="p-verbose-comments" type="checkbox" checked>
-            Verbose comments / tuning hints
-          </label>
-        </fieldset>
-      </div>
+           The legacy static fieldsets used to sit here.  All ~30
+           SiestaConfig form fields now carry "section": metadata
+           in molbuilder/config/siesta.py; the schema endpoint
+           streams the layout to the JS renderer below.  Adding or
+           removing a field is a one-line dataclass change -- no
+           HTML touched. -->
+      <div id="siesta-form-container" class="param-grid"
+           data-form-schema="siesta"></div>
 
       <div class="fdf-actions">
         <button id="generate-fdf" disabled>Generate .fdf</button>
@@ -434,177 +295,13 @@
         organics and biomolecules.
       </p>
 
-      <div class="param-grid">
-        <fieldset>
-          <legend>System</legend>
-          <label title="Used for output filenames (.log, .chk, _optimized.xyz).">
-            Job name        <input id="py-job-name" value="pyscf_relax">
-          </label>
-          <label title="Net charge.&#10;Leave blank to auto-detect from phosphate protonation state (the same logic used for SIESTA's NetCharge).&#10;Set explicitly for systems with charged side chains (Asp, Glu, Lys, Arg, ...) the heuristic doesn't see.">
-            Charge          <input id="py-charge" type="number" placeholder="auto">
-          </label>
-          <label title="Spin convention in PySCF is 2S, NOT 2S+1.&#10;Closed shell -> 0.  Doublet radical -> 1 (also flip method to UKS).  Triplet -> 2.">
-            Spin (2S)       <input id="py-spin" type="number" value="0" min="0">
-          </label>
-          <label title="Use point-group symmetry to speed up SCF.&#10;Off by default because builder geometry rarely sits on the symmetry elements exactly; bad symmetry detection causes hard SCF crashes.">
-            <input id="py-symmetry" type="checkbox"> Use point-group symmetry
-          </label>
-        </fieldset>
-
-        <fieldset title="Production-stage method.">
-          <legend>Method</legend>
-          <label title="RKS = restricted Kohn-Sham (closed shell, default).&#10;UKS = unrestricted (radicals, magnetic systems).&#10;RHF/UHF = Hartree-Fock baselines.">
-            Method
-            <select id="py-method">
-              <option value="RKS" selected>RKS (closed-shell DFT)</option>
-              <option value="UKS">UKS (open-shell DFT)</option>
-              <option value="RHF">RHF (closed-shell HF)</option>
-              <option value="UHF">UHF (open-shell HF)</option>
-            </select>
-          </label>
-          <label title="DFT functional name (PySCF / libxc).&#10;B3LYP: hybrid GGA, decades of validation for organics.&#10;PBE: pure GGA, faster, no self-interaction-error fix.&#10;PBE0 / M06-2X / wB97X-D: alternative hybrids.">
-            Functional
-            <input id="py-functional" value="B3LYP">
-          </label>
-          <label title="Atomic basis set.&#10;def2-SVP: smallest you'd publish with (production minimum).&#10;def2-TZVP: accurate, ~3x slower.&#10;cc-pVDZ / aug-cc-pVDZ: Dunning family; aug-* for anions / weak interactions.">
-            Basis
-            <input id="py-basis" value="def2-SVP">
-          </label>
-          <label title="Dispersion correction: D3 with Becke-Johnson damping is the modern default; nearly free, big improvement for biomolecules.">
-            Dispersion
-            <select id="py-dispersion">
-              <option value="d3bj" selected>D3BJ</option>
-              <option value="d3">D3 (zero damping)</option>
-              <option value="d4">D4</option>
-              <option value="none">none</option>
-            </select>
-          </label>
-          <label title="Density fitting (RIJK).&#10;5-10x SCF speedup with negligible accuracy loss for organics.&#10;Recommend ON unless you need exact 4-index integrals.">
-            <input id="py-density-fit" type="checkbox" checked>
-            Density fitting (RI)
-          </label>
-        </fieldset>
-
-        <fieldset title="Self-consistent-field cycle parameters.">
-          <legend>SCF</legend>
-          <label title="Density-matrix convergence threshold (Hartree).&#10;1e-9 standard. 1e-10 for accurate forces or anion / diffuse calculations.">
-            conv_tol         <input id="py-scf-conv-tol" type="number" value="1e-9" step="1e-10">
-          </label>
-          <label title="Maximum SCF iterations.&#10;100 plenty for closed-shell organics. 200-300 for hard cases.">
-            max_cycle        <input id="py-scf-max-cycle" type="number" value="100" min="20" step="20">
-          </label>
-          <label title="Initial guess for the density matrix.&#10;minao: superposition of atomic orbitals (default).&#10;atom: superposition of atomic densities (more diffuse).&#10;1e: 1-electron Hamiltonian.&#10;huckel: extended Huckel.">
-            init_guess
-            <select id="py-init-guess">
-              <option selected>minao</option>
-              <option>atom</option>
-              <option>1e</option>
-              <option>huckel</option>
-            </select>
-          </label>
-          <label title="DFT integration grid level (0-9).&#10;3: coarse screening. 4: production default (hybrid-friendly; noise floor low enough for tight geom opt). 5: tight (vibrational / phonons). 9: ultra.&#10;Hybrid functionals (B3LYP, PBE0, M06-2X) need at least level 4 for reliable forces.">
-            grid_level       <input id="py-grid-level" type="number" value="4" min="0" max="9">
-          </label>
-          <label title="Level shift on virtual orbitals (Hartree).&#10;0 default.  0.1-0.3 helps when SCF oscillates (open-shell metals, hard radicals).">
-            level_shift      <input id="py-level-shift" type="number" value="0.0" step="0.1">
-          </label>
-        </fieldset>
-
-        <fieldset title="Optional: cheap PBE/def2-SVP warm-up before the production functional.">
-          <legend>Pre-optimization (optional)</legend>
-          <label title="Run a quick PBE/def2-SVP geometry pass before the main run.&#10;Useful for builder-output structures (especially long ssDNA / large peptides) where the hybrid functional would otherwise spend its first 5-10 steps fixing bond lengths.&#10;Off by default; cost is 5-15% of production-stage time.">
-            <input id="py-preopt" type="checkbox"> Enable pre-optimization
-          </label>
-          <label title="Cheap functional for the warm-up.&#10;PBE: pure GGA, robust SCF.&#10;BLYP / BP86: alternative pure GGAs.">
-            preopt functional <input id="py-preopt-functional" value="PBE">
-          </label>
-          <label title="Pre-opt basis (typically same or smaller than the main basis).">
-            preopt basis    <input id="py-preopt-basis" value="def2-SVP">
-          </label>
-          <label title="Maximum pre-opt geometry steps.&#10;50 is plenty -- we don't fully converge here.">
-            preopt steps    <input id="py-preopt-max-steps" type="number" value="50" step="10">
-          </label>
-          <label title="Pre-opt convergence on max gradient (Ha/Bohr).&#10;1e-3 default = ~0.05 eV/Ang, 3x looser than main.">
-            preopt grms     <input id="py-preopt-grms" type="number" value="1e-3" step="1e-4">
-          </label>
-        </fieldset>
-
-        <fieldset title="Production-stage geometry optimization.">
-          <legend>Optimization</legend>
-          <label title="Disable for a single-point energy / properties run.">
-            <input id="py-optimize" type="checkbox" checked> Optimize geometry
-          </label>
-          <label title="geomeTRIC: translation-rotation-invariant internal coordinates, robust on big steps.  Recommended.&#10;Berny: built into PySCF, fewer dependencies, less robust on flexible biomolecules.">
-            optimizer
-            <select id="py-optimizer">
-              <option value="geometric" selected>geomeTRIC</option>
-              <option value="berny">Berny</option>
-            </select>
-          </label>
-          <label title="Maximum optimization steps.&#10;200 is generous; well-behaved organics converge in 30-100.">
-            max_steps        <input id="py-geom-max-steps" type="number" value="200" step="50">
-          </label>
-          <label title="Energy convergence between consecutive steps (Hartree).">
-            conv_energy      <input id="py-geom-conv-energy" type="number" value="1e-6" step="1e-7">
-          </label>
-          <label title="RMS gradient threshold (Ha/Bohr) -- ~ 0.015 eV/Ang.&#10;3e-4 standard.  1e-4 for accurate forces / phonons.  1e-3 for screening.">
-            conv_grms        <input id="py-geom-conv-grms" type="number" value="3e-4" step="1e-4">
-          </label>
-          <label title="Max gradient threshold (Ha/Bohr).">
-            conv_gmax        <input id="py-geom-conv-gmax" type="number" value="4.5e-4" step="1e-4">
-          </label>
-        </fieldset>
-
-        <fieldset title="Optional implicit solvation (PCM-family models).">
-          <legend>Solvent (optional)</legend>
-          <label title="Implicit solvent.  Leave 'none' for gas phase.">
-            solvent
-            <select id="py-solvent">
-              <option value="" selected>none (gas phase)</option>
-              <option value="water">water</option>
-              <option value="methanol">methanol</option>
-              <option value="ethanol">ethanol</option>
-              <option value="acetone">acetone</option>
-              <option value="dmso">DMSO</option>
-              <option value="thf">THF</option>
-              <option value="chloroform">chloroform</option>
-              <option value="toluene">toluene</option>
-              <option value="hexane">hexane</option>
-            </select>
-          </label>
-          <label title="PCM flavour.  IEF-PCM is the modern default.">
-            method
-            <select id="py-solvent-method">
-              <option selected>IEF-PCM</option>
-              <option>C-PCM</option>
-              <option>COSMO</option>
-            </select>
-          </label>
-        </fieldset>
-
-        <fieldset title="Runtime / output options.">
-          <legend>Runtime &amp; output</legend>
-          <label title="Memory hint to PySCF in MB (max_memory).">
-            max memory (MB) <input id="py-max-memory" type="number" value="4000" step="500">
-          </label>
-          <label title="Pin OMP_NUM_THREADS in the script header.&#10;Leave blank to inherit from the launching shell.">
-            threads         <input id="py-threads" type="number" placeholder="env">
-          </label>
-          <label title="PySCF verbosity level.&#10;0 silent. 4 info (default). 5 debug.">
-            verbose         <input id="py-verbose" type="number" value="4" min="0" max="9">
-          </label>
-          <label title="Write the .chk checkpoint (DM, mol object, energies).&#10;Required for restarts and many post-SCF analyses.">
-            <input id="py-chkfile" type="checkbox" checked> Write .chk
-          </label>
-          <label title="Write a per-job .log file (recommended for any non-trivial run).">
-            <input id="py-log-file" type="checkbox" checked> Write .log
-          </label>
-          <label title="Strip the inline tuning hints from the generated script.">
-            <input id="py-verbose-comments" type="checkbox" checked>
-            Verbose comments / tuning hints
-          </label>
-        </fieldset>
-      </div>
+      <!-- Schema-driven form for PySCF.  Filled by form-schema.js
+           using GET /api/build/schema/pyscf.  All ~30 PySCFConfig
+           form fields are declared in molbuilder/config/pyscf.py
+           with "section": metadata; adding / removing a field is a
+           one-line dataclass change. -->
+      <div id="pyscf-form-container" class="param-grid"
+           data-form-schema="pyscf"></div>
 
       <div class="fdf-actions">
         <button id="generate-pyscf" disabled>Generate .py</button>
@@ -627,6 +324,7 @@
 
 <script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-format.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
 <script src="{{ url_for('static', filename='viewer.js') }}"></script>
 </body>
 </html>

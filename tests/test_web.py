@@ -42,15 +42,25 @@ def test_index_page_has_tab_markup(web_client):
         assert needle in body, f"missing {needle!r} in index.html"
 
 
-def test_index_page_has_siesta_spin_fields(web_client):
-    """Spec: SIESTA tab must expose spin_polarized + spin_total."""
-    body = web_client.get("/").data.decode()
-    for needle in (
-        'id="p-spin-polarized"',
-        'id="p-spin-total"',
-        'Spin polarized',     # legend / label
-    ):
-        assert needle in body, f"missing {needle!r} in index.html"
+def test_siesta_schema_exposes_spin_fields(web_client):
+    """Spec: SIESTA tab must expose spin_polarized + spin_total.
+    Post schema-driven cutover the fields live in the dataclass
+    metadata, not in the served index.html, so the check moves to
+    the /api/build/schema/siesta endpoint where the contract now
+    lives."""
+    sch = web_client.get("/api/build/schema/siesta").get_json()["schema"]
+    by_name = {f["name"]: f
+               for s in sch["sections"]
+               for f in s["fields"]}
+    assert "spin_polarized" in by_name, list(by_name)
+    assert "spin_total"     in by_name, list(by_name)
+    # The renderer-emitted ids must match what the compatibility
+    # engine in viewer.js references by string.
+    assert by_name["spin_polarized"]["id"] == "p-spin-polarized"
+    assert by_name["spin_total"]["id"]     == "p-spin-total"
+    # The Spin section is the legend the rendered fieldset carries.
+    section_names = [s["name"] for s in sch["sections"]]
+    assert "Spin" in section_names
 
 
 def test_viewer_js_has_compatibility_engine(web_client):
