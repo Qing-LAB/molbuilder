@@ -1317,9 +1317,6 @@ Items not load-bearing but worth picking up when the time comes.
 
 - **Frequency / thermochemistry support in the PySCF script** (post-
   relax Hessian + RRHO).
-- **Phone-width (≤ 640 px) E2E layout test for Modify** — the
-  viewer-controls toolbar has six children and may wrap badly on
-  narrow viewports.  Existing layout test runs at 800 px.
 
 ---
 
