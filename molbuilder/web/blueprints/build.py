@@ -63,7 +63,6 @@ from typing import Any, Dict
 from flask import Blueprint, jsonify, request
 
 from ._shared import (
-    coerce_to_field_type as _coerce_to_field_type,
     config_from_params as _config_from_params,
     dataclass_to_form_schema as _dataclass_to_form_schema,
     issues_to_json as _issues_to_json,
