@@ -2,10 +2,17 @@
 
 Routes (registered with no url_prefix; each carries its own full path):
 
-    POST /api/build/molecule   build a Structure from sequence/SMILES/name
-    POST /api/build/load       load an existing XYZ / PDB into a Structure
-    POST /api/build/fdf        render a SIESTA .fdf for a Structure + params
-    POST /api/build/pyscf      render a PySCF script for a Structure + params
+    POST /api/build/molecule        build a Structure from sequence/SMILES/name
+    POST /api/build/load            load an existing XYZ / PDB into a Structure
+    POST /api/build/fdf             render a SIESTA .fdf for a Structure + params
+    POST /api/build/pyscf           render a PySCF script for a Structure + params
+    POST /api/build/preflight       fast validate-only path (no rendering)
+    GET  /api/build/schema/<engine> form-rendering schema for the SIESTA /
+                                    PySCF Build panel (engine ∈ {siesta, pyscf}).
+                                    The Build tab's JS renders the form
+                                    directly from this schema so the
+                                    dataclass is the SINGLE source of truth
+                                    for the field set + per-field UI hints.
 
 The four endpoints share a single Flask app instance with the watch
 blueprint at ``molbuilder/web/blueprints/watch.py``.  Two top-level
@@ -58,6 +65,7 @@ from flask import Blueprint, jsonify, request
 from ._shared import (
     coerce_to_field_type as _coerce_to_field_type,
     config_from_params as _config_from_params,
+    dataclass_to_form_schema as _dataclass_to_form_schema,
     issues_to_json as _issues_to_json,
 )
 
@@ -327,6 +335,40 @@ def api_build_pyscf():
         "script": script,
         "job_name": cfg.job_name,
         "issues": _issues_to_json(issues),
+    })
+
+
+@bp.route("/api/build/schema/<engine>", methods=["GET"])
+def api_build_schema(engine: str):
+    """Form-rendering schema for the SIESTA or PySCF Build panel.
+
+    Returns the JSON-friendly shape produced by
+    ``_shared.dataclass_to_form_schema()`` -- see the helper docstring
+    for the exact field/section layout.  The Build tab's JS calls
+    this once on page load and renders the form panel directly from
+    the returned schema; no static HTML field declarations are
+    duplicated.
+
+    ``engine`` is constrained to {"siesta", "pyscf"} so a typo
+    surfaces as a clean 404 instead of leaking a default response.
+    """
+    engine = (engine or "").strip().lower()
+    cls_map = {
+        "siesta": (SiestaConfig, "p"),
+        "pyscf":  (PySCFConfig,  "py"),
+    }
+    if engine not in cls_map:
+        return jsonify({
+            "ok": False,
+            "error": (
+                f"unknown engine {engine!r}; "
+                f"expected one of {sorted(cls_map)}"
+            ),
+        }), 404
+    cls, id_prefix = cls_map[engine]
+    return jsonify({
+        "ok": True,
+        "schema": _dataclass_to_form_schema(cls, id_prefix),
     })
 
 

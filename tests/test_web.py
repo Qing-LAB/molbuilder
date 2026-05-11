@@ -1802,6 +1802,52 @@ def test_siesta_form_schema_matches_documented_layout():
     assert kgrid["labels"] == ["x", "y", "z"]
 
 
+def test_api_build_schema_returns_siesta_schema(web_client):
+    """GET /api/build/schema/siesta returns the SiestaConfig schema
+    via the shared dataclass_to_form_schema helper.  The wire shape
+    is ``{"ok": True, "schema": {...}}``; the schema's id_prefix
+    field is the canonical "p" used by the form-field IDs."""
+    r = web_client.get("/api/build/schema/siesta")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True
+    sch = body["schema"]
+    assert sch["config"] == "SiestaConfig"
+    assert sch["id_prefix"] == "p"
+    # Smoke: the first section is "System" and it carries the
+    # SystemLabel field that maps to the existing #p-system-label id.
+    assert sch["sections"][0]["name"] == "System"
+    sysfields = sch["sections"][0]["fields"]
+    sysl = next(f for f in sysfields if f["name"] == "system_label")
+    assert sysl["id"] == "p-system-label"
+
+
+def test_api_build_schema_returns_pyscf_schema(web_client):
+    """GET /api/build/schema/pyscf returns the PySCFConfig schema
+    with id_prefix='py'.  The Frequencies section MUST be present
+    so the post-relax Hessian / thermo block is reachable from the
+    schema-driven form."""
+    r = web_client.get("/api/build/schema/pyscf")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["ok"] is True
+    sch = body["schema"]
+    assert sch["config"] == "PySCFConfig"
+    assert sch["id_prefix"] == "py"
+    section_names = [s["name"] for s in sch["sections"]]
+    assert "Frequencies / thermochemistry" in section_names
+
+
+def test_api_build_schema_rejects_unknown_engine(web_client):
+    """An unknown engine name surfaces as 404 with a structured
+    error so the UI doesn't silently render an empty form."""
+    r = web_client.get("/api/build/schema/cp2k")
+    assert r.status_code == 404
+    body = r.get_json()
+    assert body["ok"] is False
+    assert "cp2k" in body["error"].lower()
+
+
 def test_pyscf_form_schema_matches_documented_layout():
     """Same pin for PySCFConfig.  The post-relax frequencies /
     thermochemistry section (added in v1.1) is the rightmost
