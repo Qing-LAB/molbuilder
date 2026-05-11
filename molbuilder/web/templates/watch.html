@@ -86,11 +86,11 @@ FILE mode (back-compat; also supported):
       <!-- Three tab panels condense the previous stacked fieldsets;
            only one is visible at a time so the controls aside never
            outgrows the viewer height. -->
-      <nav class="control-tabs" role="tablist">
-        <button class="ctab is-active" data-tab="style"    role="tab">Style</button>
-        <button class="ctab"           data-tab="overlays" role="tab">Overlays</button>
-        <button class="ctab"           data-tab="inspect"  role="tab">Inspect</button>
-        <button class="ctab"           data-tab="playback" role="tab">Playback</button>
+      <nav class="control-tabs" role="tablist" aria-label="Viewer controls">
+        <button class="ctab is-active" data-tab="style"    role="tab" aria-selected="true">Style</button>
+        <button class="ctab"           data-tab="overlays" role="tab" aria-selected="false">Overlays</button>
+        <button class="ctab"           data-tab="inspect"  role="tab" aria-selected="false">Inspect</button>
+        <button class="ctab"           data-tab="playback" role="tab" aria-selected="false">Playback</button>
       </nav>
 
       <div class="ctab-panel is-active" data-panel="style" role="tabpanel">

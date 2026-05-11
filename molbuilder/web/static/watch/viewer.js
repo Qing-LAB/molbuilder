@@ -1329,9 +1329,14 @@
     document.querySelectorAll(".ctab").forEach((btn) => {
         btn.addEventListener("click", () => {
             const target = btn.dataset.tab;
-            document.querySelectorAll(".ctab").forEach(
-                (b) => b.classList.toggle("is-active", b === btn)
-            );
+            document.querySelectorAll(".ctab").forEach((b) => {
+                const active = (b === btn);
+                b.classList.toggle("is-active", active);
+                // Sync aria-selected so screen readers track the
+                // active tab; the visual is-active class alone
+                // doesn't reach assistive tech.
+                b.setAttribute("aria-selected", active ? "true" : "false");
+            });
             document.querySelectorAll(".ctab-panel").forEach(
                 (p) => p.classList.toggle(
                     "is-active", p.dataset.panel === target

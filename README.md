@@ -243,6 +243,19 @@ from molbuilder.siesta import SiestaConfig, render_fdf
 from molbuilder.pyscf  import PySCFConfig, render_script
 fdf = render_fdf(s, SiestaConfig(system_label="junction", stage=1))
 py  = render_script(s, PySCFConfig(method="UKS", xc="B3LYP"))
+
+# Opt-in post-relax harmonic frequencies + RRHO thermochemistry.
+# Emits a <job>.thermo.txt alongside the converged log with the
+# vibrational wavenumbers and ZPE / U / H / G / S / Cv / Cp at the
+# configured temperature and pressure.  Adds one analytic Hessian
+# to the run (5-15x a single SCF for small molecules); wrapped in
+# try/except so a Hessian failure never loses the converged
+# energy or <job>_optimized.xyz.
+py = render_script(s, PySCFConfig(
+    compute_frequencies=True,
+    temperature_K=298.15,    # standard
+    pressure_atm=1.0,
+))
 ```
 
 ---
