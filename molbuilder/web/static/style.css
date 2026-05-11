@@ -593,6 +593,69 @@ fieldset label:has(> input[type="checkbox"]) {
 /* The k-grid fieldset has 3 tiny inputs that look better stacked
    vertically -- already the default with our new label rule. */
 
+/* ---- Schema-driven form (form-schema.js renderForm output) ----
+ *
+ * The schema renderer emits <fieldset class="schema-section">
+ * containing <label class="schema-field schema-field-<kind>">,
+ * so most rules apply automatically via the generic `fieldset`
+ * and `fieldset label` selectors above.  Below are the small
+ * additions for the kinds that need custom layout. */
+
+.param-grid-pre {
+    /* Pre-form fieldsets (the Run-directory & restart prose, the
+       Relaxation-stage preset selector) shouldn't sit in the
+       responsive grid columns -- they read better as full-width
+       blocks above the schema-driven .param-grid below them. */
+    margin: 0 0 10px;
+}
+.param-grid-pre + .param-grid-pre {
+    margin-top: 6px;
+}
+
+/* int-triple kind (kgrid: Tuple[int, int, int]).  Three small
+ * inline cells with sub-labels so the user reads "x 1  y 1  z 1"
+ * instead of three anonymous boxes. */
+.schema-int-triple {
+    display: inline-flex;
+    flex-direction: row;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 1px;
+}
+.schema-int-triple-cell {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+}
+.schema-int-triple-label {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    min-width: 1.2em;
+    text-align: right;
+}
+.schema-int-triple-cell > input {
+    width: 4em;
+    min-width: 3em;
+}
+
+/* Advanced-tier fields: keep them visible but slightly dimmed so
+ * the "advanced knob" status reads without hiding the control.
+ * Tier is set via metadata["tier"] = "advanced" on the dataclass
+ * field; the renderer adds .is-advanced to the wrapping <label>. */
+.schema-field.is-advanced {
+    opacity: 0.92;
+}
+.schema-field.is-advanced::before {
+    /* tiny "•" marker, just enough to flag without screaming */
+    content: "•";
+    color: var(--accent);
+    margin-right: 4px;
+    font-weight: 700;
+    opacity: 0.6;
+}
+
 /* ---- FDF / PySCF action row + output ---- */
 
 .fdf-actions {

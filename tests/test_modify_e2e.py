@@ -1718,3 +1718,187 @@ def test_watch_run_state_badge_finished_shows_ended_timestamp(
     assert _HHMMSS_RE.search(detail), (
         f"finished badge detail should contain an HH:MM:SS timestamp: {detail!r}"
     )
+
+
+# --------------------------------------------------------------------- #
+#  Schema-driven Build form (form-schema.js renderer)                  #
+#                                                                       #
+#  The static SIESTA + PySCF form fields no longer ship in the index    #
+#  page; they're injected by form-schema.js on page load from GET       #
+#  /api/build/schema/<engine>.  These tests exercise the renderer +    #
+#  collector end-to-end so the cutover stays honest in the future.      #
+# --------------------------------------------------------------------- #
+
+
+def _open_build(page, base_url):
+    """Open the Build page and wait until both schema-driven forms
+    have rendered (their containers gain children)."""
+    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    page.wait_for_function(
+        "() => document.querySelector('#siesta-form-container fieldset')"
+        " && document.querySelector('#pyscf-form-container fieldset')",
+        timeout=8000,
+    )
+
+
+def test_build_form_renders_siesta_sections_in_pinned_order(
+        page, flask_server):
+    """The rendered SIESTA <fieldset> sections must match the schema's
+    section order in declaration sequence -- pins the visual layout
+    to the dataclass + _form_section_order."""
+    _open_build(page, flask_server)
+    legends = page.evaluate(
+        "() => Array.from("
+        "  document.querySelectorAll('#siesta-form-container fieldset > legend')"
+        ").map(l => l.textContent.trim())"
+    )
+    assert legends == [
+        "System",
+        "Basis & grid",
+        "Exchange-correlation",
+        "SCF",
+        "Parallel execution",
+        "Spin",
+        "k-grid (Monkhorst-Pack)",
+        "Relaxation",
+        "Output & positioning",
+    ], legends
+
+
+def test_build_form_renders_pyscf_sections_in_pinned_order(
+        page, flask_server):
+    """Same pin for the PySCF panel."""
+    _open_build(page, flask_server)
+    legends = page.evaluate(
+        "() => Array.from("
+        "  document.querySelectorAll('#pyscf-form-container fieldset > legend')"
+        ").map(l => l.textContent.trim())"
+    )
+    assert legends == [
+        "System",
+        "Method",
+        "SCF",
+        "Pre-optimization (optional)",
+        "Optimization",
+        "Solvent (optional)",
+        "Frequencies / thermochemistry",
+        "Runtime & output",
+    ], legends
+
+
+def test_build_form_kgrid_renders_sub_labels(page, flask_server):
+    """int-triple (kgrid: Tuple[int,int,int]) must render three
+    labelled cells, not three anonymous number boxes.  Each cell
+    shows its sub-label (x / y / z) so the user can tell which
+    input drives which dimension."""
+    _open_build(page, flask_server)
+    labels = page.evaluate(
+        "() => Array.from("
+        "  document.querySelectorAll('.schema-int-triple-label')"
+        ").map(s => s.textContent.trim())"
+    )
+    assert labels == ["x", "y", "z"], labels
+    # The three sub-inputs use the schema-derived sub-ids.
+    for sub in ("x", "y", "z"):
+        assert page.locator(f"#p-k-{sub}").count() == 1, sub
+
+
+def test_build_form_legacy_short_ids_preserved(page, flask_server):
+    """Fields with metadata["id_suffix"] override keep their legacy
+    short id so the compatibility engine and sessionStorage list
+    remain compatible across the cutover."""
+    _open_build(page, flask_server)
+    # electronic_temperature -> "p-temperature" (not "p-electronic-temperature").
+    assert page.locator("#p-temperature").count() == 1
+    # parallel_block_size -> "p-block-size".
+    assert page.locator("#p-block-size").count() == 1
+    # relax_force_tol -> "p-force-tol".
+    assert page.locator("#p-force-tol").count() == 1
+    # relax_max_displ -> "p-max-displ".
+    assert page.locator("#p-max-displ").count() == 1
+    # max_memory_mb -> "py-max-memory".
+    assert page.locator("#py-max-memory").count() == 1
+    # scf_init_guess -> "py-init-guess".
+    assert page.locator("#py-init-guess").count() == 1
+
+
+def test_build_form_collect_round_trip(page, flask_server):
+    """collectForm walks the rendered DOM and reads values back as
+    a dict whose keys are dataclass field names.  Round-trip a few
+    edits and assert the returned shape matches what the FDF
+    endpoint would receive."""
+    _open_build(page, flask_server)
+    # Edit a few representative fields directly.
+    page.fill("#p-system-label", "ci-test")
+    page.fill("#p-mesh-cutoff", "350")
+    page.locator("#p-spin-polarized").check()
+    page.fill("#p-k-x", "4")
+    page.fill("#p-k-y", "4")
+    page.fill("#p-k-z", "1")
+
+    collected = page.evaluate(
+        "async () => {"
+        "  const fs = window.molbuilder.formSchema;"
+        "  const sch = await fs.fetchSchema('siesta');"
+        "  return fs.collectForm("
+        "    document.getElementById('siesta-form-container'), sch"
+        "  );"
+        "}"
+    )
+    assert collected["system_label"] == "ci-test"
+    assert collected["mesh_cutoff"] == 350
+    assert collected["spin_polarized"] is True
+    assert collected["kgrid"] == [4, 4, 1]
+    # spin_total is Optional[float]; default left blank should
+    # collect as null (server treats absent / null as auto).
+    assert collected["spin_total"] is None
+    # The dispersion field is PySCF only -- not in the SIESTA
+    # schema -- so it must NOT appear in the collected SIESTA dict.
+    assert "dispersion" not in collected
+
+
+def test_build_form_collect_pyscf_dispersion_select(page, flask_server):
+    """PySCF dispersion is an Optional[str] with explicit choices
+    ("d3", "d3bj", "d4", "none").  Default is "d3bj"; the user
+    selecting "none" must come through verbatim so the JS-side
+    post-processing can map it to null."""
+    _open_build(page, flask_server)
+    # Switch to the PySCF panel -- the dispersion select lives there
+    # and the default-active SIESTA panel hides it.
+    page.locator('[data-tab="pyscf"]').click()
+    page.locator("#py-dispersion").select_option("none")
+    collected = page.evaluate(
+        "async () => {"
+        "  const fs = window.molbuilder.formSchema;"
+        "  const sch = await fs.fetchSchema('pyscf');"
+        "  return fs.collectForm("
+        "    document.getElementById('pyscf-form-container'), sch"
+        "  );"
+        "}"
+    )
+    assert collected["dispersion"] == "none"
+
+
+def test_build_form_tri_select_optional_bool(page, flask_server):
+    """Optional[bool] (parallel_over_k) renders as a 3-option select
+    auto/true/false; "auto" must collect as null."""
+    _open_build(page, flask_server)
+    val = page.evaluate(
+        "() => document.getElementById('p-parallel-over-k').value"
+    )
+    assert val == "auto"
+    collect_js = (
+        "async () => {"
+        "  const fs = window.molbuilder.formSchema;"
+        "  const sch = await fs.fetchSchema('siesta');"
+        "  return fs.collectForm("
+        "    document.getElementById('siesta-form-container'), sch"
+        "  );"
+        "}"
+    )
+    collected = page.evaluate(collect_js)
+    assert collected["parallel_over_k"] is None
+    # Flip to "true" -> must collect as the JS boolean true.
+    page.locator("#p-parallel-over-k").select_option("true")
+    collected = page.evaluate(collect_js)
+    assert collected["parallel_over_k"] is True

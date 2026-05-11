@@ -143,17 +143,23 @@
     }
 
     function makeIntTriple(f) {
-        // Three side-by-side number inputs sharing a single id
-        // prefix.  Sub-ids: f.id + "-" + label (e.g. "p-k-x", "p-k-y", "p-k-z").
-        // The triple labels come from the schema (defaults x/y/z).
+        // Three labelled number inputs sharing one id prefix.  Each
+        // cell carries its own sub-label so kgrid (Tuple[int,int,int])
+        // reads as "kx 1  ky 1  kz 1" instead of three anonymous boxes.
+        // Sub-ids: f.id + "-" + label, e.g. "p-k-x" / "p-k-y" / "p-k-z";
+        // collectForm reassembles into [int, int, int].
         const wrap = el("span", { class: "schema-int-triple" });
         const defaults = Array.isArray(f.default) ? f.default : [0, 0, 0];
         f.labels.forEach((lab, i) => {
-            const inp = el("input", {
+            const cell = el("span", { class: "schema-int-triple-cell" });
+            cell.appendChild(el("span", {
+                class: "schema-int-triple-label",
+            }, lab));
+            cell.appendChild(el("input", {
                 id: `${f.id}-${lab}`, type: "number", step: "1",
                 value: defaults[i] != null ? defaults[i] : "",
-            });
-            wrap.appendChild(inp);
+            }));
+            wrap.appendChild(cell);
         });
         return wrap;
     }
