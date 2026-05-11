@@ -252,6 +252,25 @@ FILE mode (back-compat; also supported):
           relaxation steps.
         </p>
 
+        <div class="workflow-callout">
+          <strong>Surprise:</strong> SIESTA <strong>silently
+          overrides</strong> the
+          <code>AtomicCoordinatesAndAtomicSpecies</code> block in the
+          FDF whenever a <code>&lt;label&gt;.XV</code> file is
+          present in the run directory.  The saved coordinates win,
+          not the FDF&apos;s.  Same for
+          <code>&lt;label&gt;.DM</code> (density-matrix warm-start)
+          and <code>&lt;label&gt;.CG</code> (CG state).  This is what
+          makes the recipe below work — stage 2&apos;s FDF can carry
+          stage 1&apos;s input coords and SIESTA still picks up stage
+          1&apos;s converged geometry.  If you want a clean fresh
+          start, either run in an empty directory, delete the
+          <code>.XV</code> / <code>.DM</code> / <code>.CG</code>
+          files first, or change <code>SystemLabel</code>.  SIESTA
+          falls back to the FDF coordinates silently when none of
+          those files exist — no warning either way.
+        </div>
+
         <h4 class="workflow-h">Restart files (written automatically)</h4>
         <table class="workflow-table">
           <thead><tr>

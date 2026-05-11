@@ -201,6 +201,34 @@
             and the <code>.XV</code> / <code>.DM</code> / <code>.CG</code>
             restart files.  Keep identical across staged runs.
           </p>
+          <details class="hint" style="margin: 0.4em 0 0; font-size: 0.8em;">
+            <summary style="cursor: pointer;">
+              <strong>Important:</strong> SIESTA restart-from-folder behavior
+            </summary>
+            <div style="margin-top: 0.4em;">
+              With the default continuation flags
+              (<code>MD.UseSaveXV</code> /
+              <code>DM.UseSaveDM</code> /
+              <code>MD.UseSaveCG</code> all
+              <em>on</em>), SIESTA <strong>silently overrides</strong> the
+              <code>AtomicCoordinatesAndAtomicSpecies</code> block in
+              the generated FDF when a
+              <code>&lt;name&gt;.XV</code> file exists in the run
+              directory &mdash; the saved coordinates win, not the
+              FDF&apos;s.  Same for <code>.DM</code> (density-matrix
+              warm-start) and <code>.CG</code> (CG state resume).
+              This is what makes staged relaxation work: stage 2&apos;s
+              FDF can carry stage 1&apos;s input coords and SIESTA still
+              picks up stage 1&apos;s converged geometry.
+              <br><br>
+              <strong>For a clean fresh start</strong>, either run in
+              an empty directory, delete
+              <code>&lt;name&gt;.XV</code> / <code>.DM</code> /
+              <code>.CG</code> first, or change SystemLabel.
+              SIESTA falls back to the FDF coordinates silently
+              when none of those files exist.
+            </div>
+          </details>
         </fieldset>
 
         <fieldset title="Basis set and real-space mesh resolution.">

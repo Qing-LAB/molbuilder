@@ -75,18 +75,26 @@ def _validate_basename(label: str):
 @dataclass
 class SiestaConfig:
     # System
+    # ``system_name`` is auto-folded to match ``system_label`` by the
+    # web JS collector (one user-visible "Job name" field drives both),
+    # so it stays off the schema-driven form.
     system_name: str = field(default="siesta_run", metadata={
         "label": "SystemName",
         "help": "FDF SystemName label written into the .fdf header",
     })
     system_label: str = field(default="siesta", metadata={
+        "section":  "System",
         "label":    "SystemLabel",
+        "id_suffix": "system-label",
         "help":     "FDF SystemLabel; output files get this prefix.  "
                     "Must match [A-Za-z0-9_-]+ (job-layout v1; no dots).",
+        "pattern":  r"^[A-Za-z0-9_\-]+$",
         "validate": _validate_basename("system_label"),
     })
 
-    # Cell handling for non-periodic XYZ files
+    # Cell handling for non-periodic XYZ files.  Not exposed in the web
+    # form today (the auto-cell pad is fine for the typical workflow);
+    # leave unsectioned so it stays a Python-API knob.
     cell_padding: float = field(default=15.0, metadata={
         "label": "Cell padding", "unit": "Å",
         "range": (5.0, 50.0),
@@ -96,10 +104,13 @@ class SiestaConfig:
 
     # Basis
     basis_size: str = field(default="DZP", metadata={
+        "section": "Basis & grid",
         "label": "PAO.BasisSize",
+        "choices": ("SZ", "DZ", "SZP", "DZP", "TZP"),
         "help": "PAO basis size: SZ / DZ / SZP / DZP / TZP (rough -> tight)",
     })
     pao_energy_shift: float = field(default=0.01, metadata={
+        "section": "Basis & grid",
         "label": "PAO.EnergyShift", "unit": "Ry",
         # Upper bound tightened to 0.05 (SP4): 0.1 Ry contracts PAO
         # cutoff radii to ~3 Bohr, putting bond energies hundreds of
@@ -118,69 +129,91 @@ class SiestaConfig:
         "help":  "smaller = more diffuse / more accurate; production work uses 0.005-0.01 Ry",
     })
 
-    # XC
-    xc_functional: str = field(default="GGA", metadata={
-        "label": "XC.Functional",
-        "help": "XC functional family: LDA / GGA / VDW",
-    })
-    xc_authors: str = field(default="PBE", metadata={
-        "label": "XC.Authors",
-        "help": "XC parameterisation: PBE / revPBE / BLYP / DRSLL ...",
-    })
-
-    # SCF
+    # Mesh cutoff lives in the "Basis & grid" section in the form
+    # (next to the basis-size dropdown) even though it's strictly a
+    # real-space-grid parameter; SIESTA users think of "basis + grid"
+    # together when sizing their run.
     mesh_cutoff: float = field(default=300.0, metadata={
+        "section": "Basis & grid",
         "label": "MeshCutoff", "unit": "Ry",
         "range": (50.0, 1000.0),
         "tier":  "basic",
         "help":  "real-space integration grid; 200-300 typical, 400+ for tight basis",
     })
+
+    # XC
+    xc_functional: str = field(default="GGA", metadata={
+        "section": "Exchange-correlation",
+        "label": "XC.Functional",
+        "choices": ("LDA", "GGA", "VDW"),
+        "help": "XC functional family: LDA / GGA / VDW",
+    })
+    xc_authors: str = field(default="PBE", metadata={
+        "section": "Exchange-correlation",
+        "label": "XC.Authors",
+        "help": "XC parameterisation: PBE / revPBE / BLYP / DRSLL ...",
+    })
+
+    # SCF
+    solution_method: str = field(default="diagon", metadata={
+        "section": "SCF",
+        "label": "SolutionMethod",
+        "choices": ("diagon", "OMM", "transiesta"),
+        "help": "diagon / OMM / transiesta (transiesta requires the TranSIESTA build)",
+    })
     mixing_weight: float = field(default=0.02, metadata={
+        "section": "SCF",
         "label": "DM.MixingWeight",
         "range": (0.001, 0.5),
         "tier":  "advanced",
         "help":  "DM mixing weight; smaller = more conservative SCF, lower if oscillating",
     })
     pulay_history: int = field(default=3, metadata={
+        "section": "SCF",
         "label": "DM.NumberPulay",
         "range": (0, 20),
         "tier":  "advanced",
         "help":  "Pulay history depth; 3 is SIESTA-tutorial default for relaxation",
     })
     dm_tolerance: float = field(default=1e-5, metadata={
+        "section": "SCF",
         "label": "DM.Tolerance",
         "range": (1e-8, 1e-3),
         "tier":  "advanced",
         "help":  "DM-element SCF convergence threshold",
     })
     dm_energy_tolerance: float = field(default=1e-4, metadata={
+        "section": "SCF",
         "label": "DM.Energy.Tolerance", "unit": "eV",
         "range": (1e-8, 1e-1),
         "tier":  "advanced",
         "help":  "redundant SCF energy guard (eV)",
     })
     max_scf_iter: int = field(default=500, metadata={
+        "section": "SCF",
         "label": "MaxSCFIterations",
         "range": (10, 5000),
         "tier":  "advanced",
         "help":  "max SCF iterations per geometry step",
     })
     electronic_temperature: float = field(default=300.0, metadata={
+        "section": "SCF",
         "label": "ElectronicTemperature", "unit": "K",
+        "id_suffix": "temperature",
         "range": (0.0, 5000.0),
         "tier":  "advanced",
         "help":  "electronic temperature for Fermi-Dirac smearing (K)",
     })
-    solution_method: str = field(default="diagon", metadata={
-        "label": "SolutionMethod",
-        "choices": ("diagon", "OMM", "transiesta"),
-        "help": "diagon / OMM / transiesta (transiesta requires the TranSIESTA build)",
-    })
 
     # k-grid -- Tuple field with custom CLI parsing; not auto-generated
     # by add_dataclass_options (the bridge handles only scalar types).
+    # In the schema-driven form this renders as three side-by-side int
+    # inputs (kx / ky / kz) under id sub-suffixes "x", "y", "z".
     kgrid: Tuple[int, int, int] = field(default=(1, 1, 1), metadata={
+        "section": "k-grid (Monkhorst-Pack)",
         "label": "kgrid_Monkhorst_Pack",
+        "id_suffix": "k",
+        "triple_labels": ("x", "y", "z"),
         "tier":  "basic",
         "help":  "Monkhorst-Pack mesh (e.g. 4x4x1 in CLI or [4,4,1] in code)",
         "skip_cli": True,
@@ -195,24 +228,31 @@ class SiestaConfig:
     # labels below are therefore generic; per-engine help text lives
     # in the FDF's verbose comments.
     relax_type: str = field(default="CG", metadata={
+        "section": "Relaxation",
         "label": "MD.TypeOfRun",
+        "id_suffix": "relax",
         "choices": ("CG", "Broyden", "FIRE", "Verlet", "Nose", "none"),
         "help": "MD/relax algorithm: CG / Broyden / FIRE / Verlet / Nose / none",
     })
     relax_steps: int = field(default=200, metadata={
+        "section": "Relaxation",
         "label": "MD step count",
         "range": (1, 10000),
         "tier":  "advanced",
         "help":  "max relaxation steps (CG/Broyden/FIRE) or MD time steps (Verlet/Nose)",
     })
     relax_force_tol: float = field(default=0.02, metadata={
+        "section": "Relaxation",
         "label": "MD.MaxForceTol", "unit": "eV/Å",
+        "id_suffix": "force-tol",
         "range": (0.001, 0.5),
         "tier":  "advanced",
         "help":  "force-tol stop criterion (CG/Broyden/FIRE only; ignored in Verlet/Nose)",
     })
     relax_max_displ: float = field(default=0.05, metadata={
+        "section": "Relaxation",
         "label": "MD max-displ", "unit": "Å",
+        "id_suffix": "max-displ",
         "range": (0.001, 0.5),
         "tier":  "advanced",
         "help":  "displacement cap per step (MD.MaxCGDispl for CG, MD.MaxDispl otherwise)",
@@ -270,9 +310,13 @@ class SiestaConfig:
     #                     coordinates (useful when several runs share a
     #                     reference frame).
     wrap_into_cell: bool = field(default=True, metadata={
+        "section": "Output & positioning",
+        "label": "Wrap atoms into cell",
         "help": "fold atoms with fractional coords outside [0,1) back into the cell",
     })
     center_in_vacuum: bool = field(default=True, metadata={
+        "section": "Output & positioning",
+        "label": "Center in vacuum cell",
         "help": "centre the molecule in the auto-vacuum cell (auto-cell case)",
     })
 
@@ -280,6 +324,8 @@ class SiestaConfig:
     # hints (parameter ranges, what to change when SCF / CG misbehave,
     # etc.) plus a "Troubleshooting" block at the end.
     verbose_comments: bool = field(default=True, metadata={
+        "section": "Output & positioning",
+        "label": "Verbose inline comments",
         "help": "emit inline tuning hints and a Troubleshooting block in the FDF",
     })
 
@@ -307,12 +353,18 @@ class SiestaConfig:
         "help": "write coordinates at every MD step in the main .out",
     })
     write_coor_xmol: bool = field(default=True, metadata={
+        "section": "Output & positioning",
+        "label": "Write XMOL .xyz per step",
         "help": "write .xyz of every relaxation step (movie viewer)",
     })
     write_md_history: bool = field(default=True, metadata={
+        "section": "Output & positioning",
+        "label": "Write .ANI trajectory",
         "help": "write the .ANI trajectory file (xcrysden / vmd / OVITO)",
     })
     write_hs: bool = field(default=False, metadata={
+        "section": "Output & positioning",
+        "label": "Write H+S matrices",
         "help": "write H + S matrices (TranSIESTA / DOS / transport)",
     })
     write_molwatch_log: bool = field(default=True, metadata={
@@ -332,10 +384,16 @@ class SiestaConfig:
     # power-of-2 from n_atoms; over_k auto turns on when the k-grid
     # has multiple k-points.
     parallel_block_size: Optional[int] = field(default=None, metadata={
+        "section": "Parallel execution",
+        "label": "BlockSize",
+        "id_suffix": "block-size",
+        "null_label": "(auto)",
         "help": "MPI block size; None=auto (power-of-2 from n_atoms)",
         "skip_cli": True,
     })
     parallel_over_k: Optional[bool] = field(default=None, metadata={
+        "section": "Parallel execution",
+        "label": "ParallelOverK",
         "help": "MPI parallelise over k-points; None=auto from kgrid",
         "skip_cli": True,
     })
@@ -365,10 +423,15 @@ class SiestaConfig:
 
     # Spin polarisation.  Default off (closed-shell DFT).
     spin_polarized: bool = field(default=False, metadata={
+        "section": "Spin",
+        "label": "Spin polarized",
         "help": ("open-shell DFT (collinear); required for radicals / "
                  "transition metals / triplet systems"),
     })
     spin_total: Optional[float] = field(default=None, metadata={
+        "section": "Spin",
+        "label": "SpinTotal",
+        "null_label": "(default)",
         "help": ("target total spin moment (mu_B); only emitted with "
                  "--spin-polarized"),
     })

@@ -1561,11 +1561,22 @@ _MOLWATCH_ONE_STEP = (
     "==== molwatch step 0 end ====\n"
 )
 
+# Same one-step trajectory + the writer's clean-exit marker; the
+# parser flips run_state to "finished" on this line.
+_MOLWATCH_ONE_STEP_FINISHED = _MOLWATCH_ONE_STEP + "# concluded: ok\n"
+
 
 @pytest.fixture
 def watch_log_file(tmp_path):
     p = tmp_path / "demo.molwatch.log"
     p.write_text(_MOLWATCH_ONE_STEP)
+    return str(p)
+
+
+@pytest.fixture
+def watch_log_file_finished(tmp_path):
+    p = tmp_path / "demo-done.molwatch.log"
+    p.write_text(_MOLWATCH_ONE_STEP_FINISHED)
     return str(p)
 
 
@@ -1651,3 +1662,59 @@ def test_watch_inspect_clear_button_drops_picks(
         " && document.getElementById('inspect-table').hidden"
     )
     assert btn.is_disabled()
+
+
+# --------------------------------------------------------------------- #
+#  Run-state badge: must show "last result at <time>" so users know     #
+#  when the simulation last produced output (distinct from the Watch    #
+#  tab's poll time).  Source: wall_times[] from the parser when         #
+#  available (PySCF molwatch emits per-step), else file mtime fallback  #
+#  (SIESTA raw .out has no per-step wall clock).                        #
+# --------------------------------------------------------------------- #
+
+
+import re as _re_badge
+_HHMMSS_RE = _re_badge.compile(r"\d{1,2}:\d{2}:\d{2}")
+
+
+def test_watch_run_state_badge_ongoing_shows_last_result_timestamp(
+        page, flask_server, watch_log_file):
+    """Loading an ongoing molwatch log (no `# concluded:` marker)
+    must show the Ongoing badge with a "last result <HH:MM:SS>"
+    string in the detail.  The timestamp is the per-step wall_time
+    when present, else the file's mtime."""
+    _load_watch_log(page, flask_server, watch_log_file)
+    page.wait_for_selector("#run-state-label", state="visible")
+    # CSS text-transform may uppercase the visible label; check the
+    # DOM text directly (text_content() bypasses rendering).
+    label  = page.locator("#run-state-label").text_content()
+    detail = page.locator("#run-state-detail").text_content()
+    assert (label or "").lower() == "ongoing", (
+        f"expected Ongoing, got {label!r}"
+    )
+    assert "last result" in (detail or "").lower(), (
+        f"ongoing badge detail should mention 'last result': {detail!r}"
+    )
+    assert _HHMMSS_RE.search(detail or ""), (
+        f"ongoing badge detail should contain an HH:MM:SS timestamp: {detail!r}"
+    )
+
+
+def test_watch_run_state_badge_finished_shows_ended_timestamp(
+        page, flask_server, watch_log_file_finished):
+    """A molwatch log with `# concluded:` marker -> Finished badge
+    with "ended <HH:MM:SS>" in the detail."""
+    _load_watch_log(page, flask_server, watch_log_file_finished)
+    page.wait_for_selector("#run-state-label", state="visible")
+    page.wait_for_function(
+        "() => document.getElementById('run-state-label')"
+        ".textContent === 'Finished'",
+        timeout=8000,
+    )
+    detail = page.locator("#run-state-detail").text_content() or ""
+    assert "ended" in detail.lower(), (
+        f"finished badge detail should mention 'ended': {detail!r}"
+    )
+    assert _HHMMSS_RE.search(detail), (
+        f"finished badge detail should contain an HH:MM:SS timestamp: {detail!r}"
+    )

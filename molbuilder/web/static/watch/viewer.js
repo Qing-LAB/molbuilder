@@ -872,6 +872,28 @@
         return Math.floor(secs/3600) + "h " + Math.floor((secs%3600)/60) + "m";
     }
 
+    /* Wall-clock formatter for the run-state badge's "last result at"
+     * detail.  Today's results show just HH:MM:SS so the badge stays
+     * compact; older results prepend MMM DD so the user can tell the
+     * difference between a 12 h-old "Ongoing" (probably stalled) and
+     * one from 5 min ago.  Input is a Unix-epoch SECONDS timestamp
+     * (matches the wire format of mtime / wall_times). */
+    function fmtTimestamp(epochSecs) {
+        if (!Number.isFinite(epochSecs)) return "";
+        const d   = new Date(epochSecs * 1000);
+        const now = new Date();
+        const sameDay = d.getFullYear() === now.getFullYear()
+            && d.getMonth() === now.getMonth()
+            && d.getDate()  === now.getDate();
+        const t = d.toLocaleTimeString();
+        if (sameDay) return t;
+        // "MMM D, HH:MM:SS" -- locale-aware date prefix, no year (the
+        // 99% case for "this is from yesterday or last week").
+        const date = d.toLocaleDateString(undefined,
+            { month: "short", day: "numeric" });
+        return date + " " + t;
+    }
+
     function applyNewData(r) {
         const wasAtEnd = !state.data
             || state.currentFrame >= state.data.frames.length - 1;
@@ -930,25 +952,47 @@
                 "run-state-ongoing", "run-state-error",
             );
             badge.hidden = false;
-            const elapsedTxt = (elapsed != null)
-                ? "total " + fmtElapsed(elapsed)
+            // "Last result at <time>": prefer the per-frame wall_time
+            // from the simulation log (authoritative; this is when the
+            // simulation itself produced the result), fall back to
+            // the file's mtime (the only timestamp available when the
+            // engine doesn't emit per-step wall clocks, e.g. raw SIESTA
+            // .out without molwatch hooks).  This is DIFFERENT from
+            // "Watch tab last polled at X" -- which is a client-side
+            // concern not shown on the badge.
+            const lastResultEpoch = Number.isFinite(lastWall)
+                ? lastWall
+                : (Number.isFinite(state.mtime) ? state.mtime : null);
+            const lastResultTs = (lastResultEpoch != null)
+                ? fmtTimestamp(lastResultEpoch)
                 : "";
+            const elapsedTxt = (elapsed != null)
+                ? fmtElapsed(elapsed)
+                : "";
+            const joinParts = (...parts) =>
+                parts.filter(s => s && s.length).join(" \u00b7 ");
             if (runState === "finished") {
                 badge.classList.add("run-state-finished");
                 badgeLab.textContent = "Finished";
-                badgeDet.textContent = elapsedTxt;
+                badgeDet.textContent = joinParts(
+                    lastResultTs ? "ended " + lastResultTs : "",
+                    elapsedTxt ? "total " + elapsedTxt : "",
+                );
             } else if (runState === "error") {
                 badge.classList.add("run-state-error");
                 badgeLab.textContent = "Error";
-                badgeDet.textContent = errMsg
-                    ? errMsg + (elapsedTxt ? " \u2014 " + elapsedTxt : "")
-                    : elapsedTxt;
+                badgeDet.textContent = joinParts(
+                    errMsg,
+                    lastResultTs ? "stopped " + lastResultTs : "",
+                    elapsedTxt ? "total " + elapsedTxt : "",
+                );
             } else {
                 badge.classList.add("run-state-ongoing");
                 badgeLab.textContent = "Ongoing";
-                badgeDet.textContent = (elapsed != null)
-                    ? "sim time " + fmtElapsed(elapsed)
-                    : "";
+                badgeDet.textContent = joinParts(
+                    lastResultTs ? "last result " + lastResultTs : "",
+                    elapsedTxt ? "sim time " + elapsedTxt : "",
+                );
             }
         }
 
