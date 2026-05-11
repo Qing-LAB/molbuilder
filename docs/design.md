@@ -631,6 +631,7 @@ These have been considered and rejected; do not reintroduce them.
 | 2026-05-10 | `Trajectory` stays a thin `(source_format, frames, lattice)` wrapper.  Per-trajectory analysis (RMSD, principal axes, dipole, radius of gyration) lives as free functions under `molbuilder/analysis/` if and when a consuming workflow arrives — NOT as methods on `Trajectory`. | The Phase-2 minimum has proven sufficient through v1.0 (Watch, CLI, all parsers).  Adding methods would couple analysis to the parser-output shape and bloat the L1 surface that every consumer pays for, in exchange for ergonomics no caller has asked for.  Pull-on-demand functions stay testable independently and don't pollute the wrapper. |
 | 2026-05-10 | CP2K / ORCA generator + parser deferred indefinitely; the per-engine subpackage layout (`molbuilder/<engine>/input.py` + `parsers/<engine>.py`) is already in place and will be reactivated when a real workflow asks for it. | v1.0 ships covering SIESTA + PySCF, the two engines actually used.  Adding speculative CP2K / ORCA support before a use case means committing to test + maintenance burden for code with no caller — exactly the trap Principle-#8 ("don't reinvent wheels") points at one layer up.  The layout split costs nothing to keep dormant. |
 | 2026-05-11 | Post-relax frequencies + RRHO thermochemistry are an **opt-in** PySCF script feature (`cfg.compute_frequencies`).  Output is a separate plain-text `<job>.thermo.txt`; no on-disk format change to the existing molwatch log.  The block runs at the converged `mf` at `mol_eq` (no extra SCF) and is wrapped in try/except so a Hessian failure doesn't lose the converged energy or `<job>_optimized.xyz`. | One Hessian is 5-15x the cost of a single SCF — making it default-on would hurt the relaxation workflow.  A separate `.thermo.txt` (instead of mutating the molwatch log) keeps the streaming/append-only contract on the molwatch side intact.  RRHO (not quasi-RRHO) is the PySCF-bundled path; quasi-RRHO is a documented follow-up if low-frequency mode artifacts become a problem in practice. |
+| 2026-05-11 | Build-tab form is **schema-driven** end-to-end.  `_shared.py::dataclass_to_form_schema(cls, prefix)` serialises every `SiestaConfig` / `PySCFConfig` field that carries a `"section"` metadata key; `GET /api/build/schema/{siesta,pyscf}` streams it; `web/static/lib/form-schema.js::renderForm()` builds the DOM and `collectForm()` reads values back.  Section ordering is controlled by an optional class-level `_form_section_order` tuple so dataclass field-declaration order doesn't dictate the UI layout. | Closes the last Principle-#1 anti-pattern: adding / removing a Build form field is now a one-line dataclass change.  No HTML touched, no JS form-collect updated, no `FORM_IDS` list maintained.  Field-level metadata (label, unit, range, choices, pattern, tier, help, null_label) drives both the validator AND the UI — the dataclass is the only place these constraints are written.  Pin-tests in `tests/test_web.py` lock the schema shape so a stray field-reorder doesn't silently rearrange the UI. |
 
 ---
 
@@ -1301,18 +1302,12 @@ may match on; only the Python module name changes.
 
 ## Next steps
 
-Items not load-bearing but worth picking up when the time comes.
-
-### High priority
-
-- **Dataclass-driven form schema for the Build tab.**  Today the
-  SIESTA + PySCF form fields in `web/templates/index.html` plus
-  `web/static/viewer.js::collectFdfParams()` / `collectPyscfParams()`
-  duplicate the dataclass field set (~50 fields each side).  Add
-  `_shared.py::dataclass_to_form_schema(cls)` + `GET
-  /api/build/schema/{siesta,pyscf}` + a JS form-renderer; phase the
-  cut-over dual-running with the existing static form.  Closes the
-  last remaining Principle-#1 anti-pattern in the project.
+_The previous Next-steps list is empty as of 2026-05-11._
+The Build-tab dataclass-driven form (the last Principle-#1
+anti-pattern) shipped in commit `20f6d49`; the related decision
+row is in the log above.  Add items here when new design gaps
+surface; otherwise leave this section as the visible-clean
+indicator that nothing is pending.
 
 ---
 
