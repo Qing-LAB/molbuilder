@@ -43,11 +43,12 @@ detection chain (in-tree → `$X3DNA` → `fiber` on PATH; see
 
 | route | method | body | response | status |
 |---|---|---|---|---|
-| `/api/build/molecule`  | POST | `{kind, input, ...}` | structure JSON | 400 bad input, 500 missing dep |
-| `/api/build/load`      | POST | JSON `{text, format, filename}` OR multipart `file=` | structure JSON | 400 empty, 413 too big |
-| `/api/build/fdf`       | POST | `{xyz, params}` | `{ok, fdf, system_label, issues}` | 400 bad params, 500 render |
-| `/api/build/pyscf`     | POST | `{xyz, params}` | `{ok, script, job_name, issues}` | 400 bad params, 500 render |
-| `/api/build/preflight` | POST | `{xyz, engine, params}` | `{ok, issues}` | 200 always (issues carry errors) |
+| `/api/build/molecule`         | POST | `{kind, input, ...}` | structure JSON | 400 bad input, 500 missing dep |
+| `/api/build/load`             | POST | JSON `{text, format, filename}` OR multipart `file=` | structure JSON | 400 empty, 413 too big |
+| `/api/build/fdf`              | POST | `{xyz, params}` | `{ok, fdf, system_label, issues}` | 400 bad params, 500 render |
+| `/api/build/pyscf`            | POST | `{xyz, params}` | `{ok, script, job_name, issues}` | 400 bad params, 500 render |
+| `/api/build/preflight`        | POST | `{xyz, engine, params}` | `{ok, issues}` | 200 always (issues carry errors) |
+| `/api/build/schema/<engine>`  | GET  | — (engine ∈ {`siesta`, `pyscf`}) | `{ok, schema}` | 404 unknown engine |
 
 The structure JSON shape on success (returned by `/molecule` and
 `/load`):
@@ -145,6 +146,88 @@ Validation-only sibling of `/fdf` and `/pyscf`.  Same body shape
 plus an `engine: "siesta" | "pyscf"` discriminator; returns just
 `{ok, issues}` so the UI's issues panel can update live without
 generating the file body.
+
+### `/api/build/schema/<engine>` (form-rendering schema)
+
+Read-only.  Returns the JSON-friendly schema produced by
+`_shared.py::dataclass_to_form_schema(cls, id_prefix)` for the
+SIESTA / PySCF Build panels — the Build tab's JS renderer
+(`web/static/lib/form-schema.js`) consumes this directly so the
+dataclass is the only place form-field declarations live.
+
+Response shape:
+
+```json
+{
+  "ok": true,
+  "schema": {
+    "config":    "SiestaConfig" | "PySCFConfig",
+    "id_prefix": "p" | "py",
+    "sections": [
+      {
+        "name":   "<section legend>",
+        "fields": [<field_schema>, ...]
+      },
+      ...
+    ]
+  }
+}
+```
+
+Per-field schema (only the keys relevant to the inferred `kind`
+are populated):
+
+```json
+{
+  "name":     "<dataclass field name>",
+  "id":       "<id_prefix>-<id_suffix>",     // HTML id; renderer/compat-engine contract
+  "label":    "<human label>",
+  "help":     "<tooltip text>",
+  "default":  <JSON-serialisable default>,
+  "optional": bool,
+  "tier":     "basic" | "advanced",
+  "kind":     "checkbox" | "int" | "number" | "text"
+              | "select" | "tri-select" | "int-triple",
+  // number / int:
+  "min":   ..., "max": ..., "step": ...,
+  // select / tri-select:
+  "choices":     [...],
+  "null_option": true,
+  "null_label":  "(default)" | "(auto)" | ...,
+  // int-triple (kgrid):
+  "labels":  ["x", "y", "z"],
+  // display:
+  "unit":    "Å" | "Ry" | "Hartree" | ...,
+  "pattern": "<HTML5 pattern attr>"
+}
+```
+
+Contract:
+
+* **Opt-in**: only dataclass fields whose metadata declares a
+  `"section"` key are exposed.  Unsectioned fields (path-typed
+  knobs, always-on flags, MD-only state) stay on the dataclass
+  for the Python API + CLI but stay off the form.
+* **ID stability**: by default `id = f"{id_prefix}-{field_name.replace('_', '-')}"`.
+  Fields with legacy short IDs (e.g. `p-temperature` for
+  `electronic_temperature`, `p-block-size` for
+  `parallel_block_size`) declare `metadata["id_suffix"]` so the
+  compatibility engine + sessionStorage list stay
+  backwards-compatible.
+* **Section ordering**: the dataclass can declare a class-level
+  `_form_section_order` tuple to pin section order; otherwise
+  sections appear in the order the first field declaring each
+  section is declared.
+* **Unknown engine** → 404 with `{ok: false, error: "..."}`.
+* **No POST equivalent**: the schema is the contract, not a
+  validator hook.  The existing `/api/build/{fdf,pyscf,preflight}`
+  routes consume the JSON dict the JS collector produces from
+  the rendered DOM.
+
+Pin-tests in `tests/test_web.py::test_siesta_form_schema_matches_documented_layout`
+and the PySCF counterpart lock the section names + per-section
+field counts so a stray field-reorder doesn't silently rearrange
+the UI.
 
 ---
 
