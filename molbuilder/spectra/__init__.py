@@ -36,6 +36,7 @@ from .results import (
     PHASE_COMPLETE,
 )
 from .selection import select_modes, validate_selection
+from .methods import render_methods_md, extract_citation_keys
 
 __all__ = [
     # Config (L1) -- re-exported from molbuilder.config.spectra
@@ -57,4 +58,7 @@ __all__ = [
     # Mode-selection logic (L2)
     "select_modes",
     "validate_selection",
+    # Methods-paragraph composer (L2)
+    "render_methods_md",
+    "extract_citation_keys",
 ]
