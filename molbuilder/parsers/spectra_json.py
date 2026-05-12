@@ -43,6 +43,7 @@ its own module + function-level API.
 from __future__ import annotations
 
 import json
+import math
 import os
 import tempfile
 from typing import Any, Dict, Union
@@ -125,13 +126,13 @@ class SpectraJsonFieldError(SpectraJsonError):
 def _reject_nonfinite_constant(token: str):
     """``json.loads(..., parse_constant=...)`` hook.
 
-    ``parse_constant`` fires for ``NaN``, ``Infinity``,
-    ``-Infinity`` -- non-standard tokens that Python's json
-    module accepts on input by default but that downstream
-    consumers (browsers, jq, RFC-8259 parsers) reject.  We turn
-    each into a parse failure so the user gets a clear "the
-    engine wrote a non-finite value" diagnosis instead of NaN
-    silently propagating into SpectraResults.
+    ``parse_constant`` fires for the SYMBOLIC tokens ``NaN``,
+    ``Infinity``, ``-Infinity`` -- non-standard tokens that
+    Python's json module accepts on input by default but that
+    downstream consumers (browsers, jq, RFC-8259 parsers) reject.
+    Companion to :func:`_strict_finite_float` which catches the
+    different but related case of a syntactically-valid numeric
+    literal that overflows to infinity (``1e500``).
     """
     raise SpectraJsonMalformedError(
         f"non-finite numeric literal {token!r} is not valid JSON; "
@@ -139,6 +140,32 @@ def _reject_nonfinite_constant(token: str):
         f"writing (likely an SCF that failed to converge produced "
         f"a divergent energy)"
     )
+
+
+def _strict_finite_float(s: str) -> float:
+    """``json.loads(..., parse_float=...)`` hook.
+
+    Used as a defensive wrapper around ``float()`` that rejects
+    any numeric literal whose decoded value isn't IEEE 754 finite.
+    Catches the overflow-to-infinity case (``1e500`` decodes to
+    ``inf`` silently in stock json) that ``parse_constant`` does
+    not -- ``parse_constant`` is only invoked for the symbolic
+    ``Infinity`` / ``NaN`` tokens, not for valid-syntax numeric
+    literals that happen to overflow.
+
+    Underflow to 0.0 (``1e-500``) is INTENTIONALLY accepted --
+    it's physically equivalent to zero and is a valid IEEE 754
+    finite value.
+    """
+    v = float(s)
+    if not math.isfinite(v):
+        raise SpectraJsonMalformedError(
+            f"numeric literal {s!r} overflows to non-finite {v!r}; "
+            f"the wire format requires finite IEEE 754 doubles "
+            f"(a divergent SCF or unit-mismatched energy is the "
+            f"common cause)"
+        )
+    return v
 
 
 def _validate_schema_version(actual: Any) -> None:
@@ -156,14 +183,32 @@ def _validate_dict_to_results(d: Dict[str, Any], where: str) -> SpectraResults:
     """Shared reconstitution + error-wrapping logic.  ``where``
     is a short label (path or ``"input dict"``) interpolated into
     the FieldError message so callers can tell at a glance which
-    input failed."""
+    input failed.
+
+    The catch list covers every exception class
+    :meth:`SpectraResults.from_dict` can raise on a malformed
+    payload:
+
+      * ``KeyError``       -- missing required top-level field;
+      * ``TypeError``      -- wrong scalar type (``int(None)``,
+                              ``float("1+2j")``, numpy can't
+                              cast complex to float, etc.);
+      * ``ValueError``     -- dataclass __post_init__ rejection
+                              (bad shape, range, partition);
+      * ``AttributeError`` -- value where a nested dict was
+                              expected (e.g. ``modes`` is an
+                              object instead of a list, so each
+                              iteration step hands a string to
+                              ``ModeData.from_dict`` whose first
+                              call is ``d.get(...)``).
+    """
     try:
         return SpectraResults.from_dict(d)
     except KeyError as e:
         raise SpectraJsonFieldError(
             f"{where} is missing required field {e.args[0]!r}"
         ) from e
-    except (TypeError, ValueError) as e:
+    except (TypeError, ValueError, AttributeError) as e:
         raise SpectraJsonFieldError(
             f"{where} has a malformed field: {e}"
         ) from e
@@ -236,11 +281,22 @@ def parse_spectra_json(path: Union[str, "os.PathLike[str]"]) -> SpectraResults:
     except OSError as e:
         raise SpectraJsonError(f"failed to read {p!r}: {e}") from e
 
-    # 3. JSON-decode.  parse_constant rejects NaN / Infinity /
-    #    -Infinity (non-standard tokens that Python's json module
-    #    silently accepts by default).
+    # 3. JSON-decode.  Two hooks gate non-finite numerics:
+    #      parse_constant -- rejects symbolic NaN / Infinity tokens
+    #                        (non-standard but Python-accepted).
+    #      parse_float    -- rejects overflow-to-inf from valid-
+    #                        syntax literals like "1e500" that
+    #                        parse_constant doesn't see.
+    #    Together they ensure every float that enters the typed
+    #    surface is IEEE 754 finite.  Non-JSON-numeric literals
+    #    (Fortran "1.5d10", hex "0x1.fp10") are rejected by the
+    #    standard lexer as a JSONDecodeError.
     try:
-        d = json.loads(raw, parse_constant=_reject_nonfinite_constant)
+        d = json.loads(
+            raw,
+            parse_constant=_reject_nonfinite_constant,
+            parse_float=_strict_finite_float,
+        )
     except json.JSONDecodeError as e:
         raise SpectraJsonMalformedError(
             f"{p!r} is not valid JSON ({e.msg} at line {e.lineno} "

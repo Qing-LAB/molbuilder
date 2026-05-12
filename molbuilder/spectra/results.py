@@ -70,6 +70,30 @@ PHASE_COMPLETE = "complete"  # phase done, data is final for this run
 _VALID_PHASE_STATES = (PHASE_EMPTY, PHASE_RUNNING, PHASE_COMPLETE)
 
 
+def _reject_complex_then_asarray(value, *, field: str) -> np.ndarray:
+    """Coerce ``value`` to a 1-D-or-greater float ndarray, raising
+    ``TypeError`` LOUDLY if the input is complex.
+
+    Plain ``np.asarray(complex_input, dtype=float)`` silently drops
+    the imaginary part with only a numpy ComplexWarning -- the
+    `__post_init__` then sees a clean real array and we lose data
+    without ever raising.  Our wire format is all real-valued, so
+    a complex input is a programmer error (or a hand-edited file
+    gone wrong); fail with a clear message rather than corrupt
+    the result quietly.
+    """
+    arr = np.asarray(value)
+    if np.iscomplexobj(arr):
+        raise TypeError(
+            f"{field}: complex values are not supported by the v1 "
+            f"Spectra wire format (the imaginary part would be "
+            f"silently discarded).  If you need complex polarizability "
+            f"or coupling tensors, encode as paired (re, im) real "
+            f"arrays.  Got dtype={arr.dtype}."
+        )
+    return np.asarray(arr, dtype=float)
+
+
 def _no_equality(self, other):  # noqa: ARG001
     """Shared explicit ``__eq__`` that refuses bool comparison.
 
@@ -142,9 +166,12 @@ class ModeElectronicStructure:
         int array, or a non-contiguous view is normalised once and
         the typed surface stays predictable downstream.
         """
-        self.mo_energies_eq_eh    = np.asarray(self.mo_energies_eq_eh,    dtype=float)
-        self.mo_energies_minus_eh = np.asarray(self.mo_energies_minus_eh, dtype=float)
-        self.mo_energies_plus_eh  = np.asarray(self.mo_energies_plus_eh,  dtype=float)
+        self.mo_energies_eq_eh    = _reject_complex_then_asarray(
+            self.mo_energies_eq_eh,    field="ModeElectronicStructure.mo_energies_eq_eh")
+        self.mo_energies_minus_eh = _reject_complex_then_asarray(
+            self.mo_energies_minus_eh, field="ModeElectronicStructure.mo_energies_minus_eh")
+        self.mo_energies_plus_eh  = _reject_complex_then_asarray(
+            self.mo_energies_plus_eh,  field="ModeElectronicStructure.mo_energies_plus_eh")
         if self.mo_energies_eq_eh.ndim != 1:
             raise ValueError(
                 f"ModeElectronicStructure.mo_energies_eq_eh must be 1-D; "
@@ -257,7 +284,8 @@ class ModeData:
         (every mode has the same n_free) is validated at the
         SpectraResults level, not here.
         """
-        self.eigenvector_free = np.asarray(self.eigenvector_free, dtype=float)
+        self.eigenvector_free = _reject_complex_then_asarray(
+            self.eigenvector_free, field="ModeData.eigenvector_free")
         if self.eigenvector_free.ndim != 2 or self.eigenvector_free.shape[1] != 3:
             raise ValueError(
                 f"ModeData.eigenvector_free must have shape (n_free, 3); "
@@ -395,8 +423,9 @@ class SpectraResults:
         rather than when the UI hits the inconsistency rendering.
         """
         # Equilibrium MO array.
-        self.equilibrium_mo_energies_eh = np.asarray(
-            self.equilibrium_mo_energies_eh, dtype=float
+        self.equilibrium_mo_energies_eh = _reject_complex_then_asarray(
+            self.equilibrium_mo_energies_eh,
+            field="SpectraResults.equilibrium_mo_energies_eh",
         )
         if self.equilibrium_mo_energies_eh.ndim != 1:
             raise ValueError(

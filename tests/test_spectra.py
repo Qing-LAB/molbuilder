@@ -665,6 +665,75 @@ class TestPostInitValidation:
                 bibliography_keys          = [],
             )
 
+    # ----- Complex-value rejection across all three dataclasses ----- #
+    #
+    # numpy's asarray(complex_input, dtype=float) silently discards the
+    # imaginary part with only a warning -- a quiet correctness hole
+    # for an all-real-valued wire format.  All three dataclasses must
+    # reject complex inputs LOUDLY at __post_init__.
+
+    def test_es_mo_array_rejects_complex(self):
+        with pytest.raises(TypeError, match="complex"):
+            ModeElectronicStructure(
+                amplitude_ang        = 0.1,
+                mo_energies_eq_eh    = np.array([1+0j, 2+0j, 3+0j]),
+                mo_energies_minus_eh = np.zeros(3),
+                mo_energies_plus_eh  = np.zeros(3),
+                homo_index_in_window = 0,
+                scf_energy_eq_eh     = -1.0,
+                scf_energy_minus_eh  = -1.0,
+                scf_energy_plus_eh   = -1.0,
+            )
+
+    def test_mode_eigenvector_rejects_complex(self):
+        with pytest.raises(TypeError, match="complex"):
+            ModeData(
+                index_1based          = 1,
+                frequency_cm1         = 100.0,
+                raman_activity_a4_amu = None,
+                ir_intensity_km_mol   = None,
+                eigenvector_free      = np.array([[1+0j, 0, 0],
+                                                  [-1+0j, 0, 0]]),
+                has_imag              = False,
+            )
+
+    def test_equilibrium_mos_reject_complex(self):
+        with pytest.raises(TypeError, match="complex"):
+            SpectraResults(
+                schema_version             = SCHEMA_VERSION,
+                engine                     = "pyscf",
+                engine_version             = "2.6.0",
+                molbuilder_version         = "1.2.0",
+                timestamp                  = "t",
+                structure_hash             = "h",
+                n_atoms_total              = 1,
+                free_atom_idxs             = [0],
+                fixed_atom_idxs            = [],
+                equilibrium_scf_eh         = -1.0,
+                equilibrium_mo_energies_eh = np.array([1+0j, 0, -1+0j]),
+                equilibrium_homo_idx       = 1,
+                modes                      = [],
+                selected_mode_idxs_1based  = [],
+                config                     = {},
+                methods_text               = "",
+                bibliography_keys          = [],
+            )
+
+    def test_zero_imaginary_part_complex_still_rejected(self):
+        """Even when the imaginary part is exactly 0, we reject -- the
+        dtype carries the type information regardless of value.  This
+        means a user who computed a complex array and forgot to take
+        ``.real`` gets a clear error instead of silent data loss."""
+        with pytest.raises(TypeError, match="complex"):
+            ModeData(
+                index_1based          = 1,
+                frequency_cm1         = 100.0,
+                raman_activity_a4_amu = None,
+                ir_intensity_km_mol   = None,
+                eigenvector_free      = np.zeros((2, 3), dtype=complex),
+                has_imag              = False,
+            )
+
     def test_empty_modes_allowed_for_in_progress_runs(self):
         """An in-progress run before phase-2 (Hessian) has no modes
         yet; the empty list must be accepted by validation."""
