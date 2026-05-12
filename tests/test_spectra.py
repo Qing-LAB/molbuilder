@@ -1,7 +1,7 @@
-"""Tests for the Spectra-tab L1 result types.
+"""Tests for the Spectra-tab L1 surfaces (result types + config).
 
 Pins the JSON wire shape + the engine-agnostic dataclass surface
-documented in ``docs/tabs/spectra/spec.md`` § 5 - § 6.  These tests
+documented in ``docs/tabs/spectra/spec.md`` § 4 - § 6.  These tests
 are runtime-cheap: no PySCF, no SCF, no Hessian.  They protect:
 
   * round-trip fidelity (typed -> dict -> JSON -> dict -> typed
@@ -10,7 +10,10 @@ are runtime-cheap: no PySCF, no SCF, no Hessian.  They protect:
     (extra wire keys are ignored, missing optional keys default
     sensibly);
   * the ``complete`` flag semantics for the Option B (live-watch)
-    phase-checkpoint model.
+    phase-checkpoint model;
+  * the SpectraConfig schema shape (section names + per-section
+    field counts) so a stray reorder of fields doesn't silently
+    rearrange the UI.
 
 PySCF-side smoke tests for actual Hessian + Raman activities live
 in ``tests/test_spectra_smoke.py`` (to be added when the
@@ -19,17 +22,20 @@ PySCFSpectraEngine lands; marked with ``@pytest.mark.smoke``).
 
 from __future__ import annotations
 
+import dataclasses
 import json
 
 import numpy as np
 import pytest
 
+from molbuilder.config.spectra import SpectraConfig
 from molbuilder.spectra import (
     ModeData,
     ModeElectronicStructure,
     SpectraResults,
 )
 from molbuilder.spectra.results import SCHEMA_VERSION
+from molbuilder.web.blueprints._shared import dataclass_to_form_schema
 
 
 # --------------------------------------------------------------------- #
@@ -666,3 +672,150 @@ class TestPostInitValidation:
         )
         assert r.modes == []
         assert r.complete is False
+
+
+# --------------------------------------------------------------------- #
+#  SpectraConfig -- L1 dataclass, field metadata, form-schema shape     #
+# --------------------------------------------------------------------- #
+
+
+class TestSpectraConfigDefaults:
+    """The dataclass instantiates with all-defaults and the values
+    match the v1 spec defaults so a user's first-pass run is
+    cheap (es_mode_selection=none) and uses production-defensible
+    method/basis choices (B3LYP/def2-SVP/D3BJ, grid 4)."""
+
+    def test_default_construction(self):
+        cfg = SpectraConfig()
+        # Spec-pinned defaults.
+        assert cfg.engine     == "pyscf"
+        assert cfg.job_name   == "spectra"
+        assert cfg.method     == "RKS"
+        assert cfg.functional == "B3LYP"
+        assert cfg.basis      == "def2-SVP"
+        assert cfg.dispersion == "d3bj"
+        assert cfg.density_fit is True
+
+    def test_atom_fix_lists_empty_by_default(self):
+        cfg = SpectraConfig()
+        assert cfg.fixed_elements      == []
+        assert cfg.fixed_residue_names == []
+        assert cfg.fixed_indices       == []
+
+    def test_es_off_by_default(self):
+        """First-pass run should be cheap -- spectrum only, no
+        displaced SCFs.  User opts in to top_n / explicit after
+        seeing the spectrum."""
+        cfg = SpectraConfig()
+        assert cfg.es_mode_selection == "none"
+
+    def test_ir_off_v1_reserved(self):
+        """compute_ir is reserved for 1c and ignored in v1."""
+        cfg = SpectraConfig()
+        assert cfg.compute_ir is False
+
+    def test_displacement_amplitude_production_default(self):
+        """0.10 Å is the production-defensible value (Mills 1972
+        §2.4)."""
+        cfg = SpectraConfig()
+        assert cfg.displacement_amplitude_ang == pytest.approx(0.10)
+
+
+class TestSpectraConfigFieldMetadata:
+    """Every form-exposed field carries the metadata the
+    schema-driven UI + validator + CLI bridge consume."""
+
+    def test_every_sectioned_field_has_label_and_help(self):
+        """Spec-required: any field with a ``section`` key must
+        also carry ``label`` + ``help`` so the rendered form has
+        a name and a tooltip and the Methods generator has a
+        human-facing string to compose with."""
+        missing_label = []
+        missing_help  = []
+        for f in dataclasses.fields(SpectraConfig):
+            if "section" not in f.metadata:
+                continue
+            if not f.metadata.get("label"):
+                missing_label.append(f.name)
+            if not f.metadata.get("help"):
+                missing_help.append(f.name)
+        assert missing_label == [], f"missing label on: {missing_label}"
+        assert missing_help  == [], f"missing help on:  {missing_help}"
+
+    def test_basename_validator_attached(self):
+        """job_name carries the shared _validate_basename callable
+        in its metadata so the validation pass refuses paths-with-
+        dots / slashes / whitespace (per docs/protocols/job-layout.md)."""
+        jn = next(f for f in dataclasses.fields(SpectraConfig)
+                  if f.name == "job_name")
+        assert callable(jn.metadata.get("validate"))
+
+
+class TestSpectraConfigSchema:
+    """Form-schema shape pin: section names + per-section field
+    counts.  A stray field-reorder or a forgotten metadata addition
+    would silently rearrange the UI; this test catches it."""
+
+    def test_schema_section_layout(self):
+        sch = dataclass_to_form_schema(SpectraConfig, id_prefix="sp")
+        assert sch["config"]    == "SpectraConfig"
+        assert sch["id_prefix"] == "sp"
+
+        expected = [
+            ("System",               2),   # engine, job_name
+            ("Method",               5),   # method, functional, basis,
+                                           # dispersion, density_fit
+            ("Frozen atoms",         3),   # elements, residue_names, indices
+            ("Spectrum",             3),   # compute_raman, compute_ir,
+                                           # displacement_amplitude_ang
+            ("Electronic structure", 6),   # selection, top_n, threshold,
+                                           # explicit_indices, n_homo_below,
+                                           # n_lumo_above
+            ("SCF",                  3),   # conv_tol, max_cycle, grid_level
+            ("Runtime",              4),   # max_memory_mb, threads, verbose,
+                                           # verbose_comments
+        ]
+        got = [(s["name"], len(s["fields"])) for s in sch["sections"]]
+        assert got == expected, got
+
+    def test_es_selection_choices_match_spec(self):
+        """The Model 2 selector (spec § 8) must offer exactly the
+        five documented options -- none / all / top_n / threshold /
+        explicit -- in that order so the form ordering is stable."""
+        sch = dataclass_to_form_schema(SpectraConfig, id_prefix="sp")
+        es_section = next(s for s in sch["sections"]
+                          if s["name"] == "Electronic structure")
+        sel_field = next(f for f in es_section["fields"]
+                         if f["name"] == "es_mode_selection")
+        assert sel_field["kind"]    == "select"
+        assert sel_field["choices"] == ["none", "all", "top_n",
+                                        "threshold", "explicit"]
+
+    def test_engine_field_carries_only_pyscf_in_v1(self):
+        """v1 ships PySCF only; the SIESTA slot is reserved but
+        not yet a valid choice.  The schema test pins this so
+        adding SIESTA later is an explicit one-line change to
+        SpectraConfig.engine's choices tuple AND to this test."""
+        sch = dataclass_to_form_schema(SpectraConfig, id_prefix="sp")
+        system_section = next(s for s in sch["sections"]
+                              if s["name"] == "System")
+        engine_field = next(f for f in system_section["fields"]
+                            if f["name"] == "engine")
+        assert engine_field["choices"] == ["pyscf"]
+
+    def test_legacy_id_overrides_preserved(self):
+        """A handful of fields carry id_suffix overrides so the
+        rendered HTML id is shorter / matches the UI affordances.
+        Pinning the mapping so a future rename of the field name
+        doesn't accidentally break the form selectors."""
+        sch = dataclass_to_form_schema(SpectraConfig, id_prefix="sp")
+        fmap = {f["name"]: f
+                for s in sch["sections"]
+                for f in s["fields"]}
+        # All these fields opt out of the default underscore->hyphen
+        # ID transform via id_suffix metadata.
+        assert fmap["job_name"]["id"]          == "sp-job-name"
+        assert fmap["max_memory_mb"]["id"]     == "sp-max-memory"
+        assert fmap["es_mode_selection"]["id"] == "sp-es-selection"
+        assert fmap["es_n_homo_below"]["id"]   == "sp-es-n-homo-below"
+        assert fmap["es_n_lumo_above"]["id"]   == "sp-es-n-lumo-above"
