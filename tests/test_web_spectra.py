@@ -20,13 +20,10 @@ import io
 import json
 
 import numpy as np
-import pytest
 
 from molbuilder.parsers.spectra_json import dump_spectra_json
 from molbuilder.spectra import (
     ModeData,
-    ModeElectronicStructure,  # noqa: F401  imported for fixture use
-    SpectraConfig,
     SpectraResults,
 )
 from molbuilder.spectra.results import (

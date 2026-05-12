@@ -19,7 +19,6 @@ import pytest
 from molbuilder.spectra import (
     ModeData,
     ModeElectronicStructure,
-    SpectraConfig,  # noqa: F401  (kept for symmetry with other tests)
     SpectraResults,
 )
 from molbuilder.spectra.results import (

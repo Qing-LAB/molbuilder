@@ -1764,7 +1764,6 @@ class TestRenderMethodsMdWithStruct:
         """When a Structure is provided, the prose names total
         atoms, free atoms, and the 3N-6 mode count."""
         from molbuilder.spectra import render_methods_md
-        from molbuilder import Structure
 
         class _Atom:
             def __init__(self, sym):
