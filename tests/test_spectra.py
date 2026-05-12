@@ -960,8 +960,10 @@ class TestEngineRegistry:
     def _make_dummy_engine(self, name: str):
         """Build a minimal engine class meeting the Protocol shape
         without doing real work -- enough for registry tests."""
-        from molbuilder.spectra import SpectraEngine
-
+        # Note: SpectraEngine is the Protocol; we don't subclass it
+        # explicitly (duck-typed Protocols don't need it), but the
+        # isinstance test in test_protocol_runtime_checkable does
+        # import it to assert structural conformance.
         class _DummyEngine:
             pass
 

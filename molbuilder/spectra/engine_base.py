@@ -33,7 +33,7 @@ through this registry.
 
 from __future__ import annotations
 
-from typing import Dict, List, Protocol, Type, runtime_checkable
+from typing import Dict, List, Optional, Protocol, Type, runtime_checkable
 
 from ..config.spectra import SpectraConfig
 from ..issues import Issue
@@ -101,12 +101,13 @@ class SpectraEngine(Protocol):
     @classmethod
     def preflight(cls, struct: Structure,
                   cfg: SpectraConfig,
-                  prior: "SpectraResults | None" = None) -> List[Issue]:
+                  prior: Optional[SpectraResults] = None) -> List[Issue]:
         """Scientific + consistency checks before the script runs.
 
         Returns a list of :class:`Issue` -- the web layer's
-        validation panel renders these inline.  The four severity
-        classes follow the rest of molbuilder's pipeline:
+        validation panel renders these inline.  Severity matches
+        the rest of molbuilder's pipeline (`Issue.severity` is
+        constrained to ``"error"`` or ``"warn"``):
 
           * ``error`` -- the script would fail / produce bad data;
             blocks generation.  Examples: ``top_n`` selector with
@@ -117,8 +118,6 @@ class SpectraEngine(Protocol):
             Examples: hybrid functional with grid level < 4
             (spec § 11.4); displacement amplitude outside
             [0.04, 0.20] Å.
-          * ``info``  -- noteworthy but neither broken nor dubious.
-          * ``note``  -- pure documentation.
 
         ``prior`` is the on-disk :class:`SpectraResults` if this
         run is a resume / re-run after an earlier run on the same

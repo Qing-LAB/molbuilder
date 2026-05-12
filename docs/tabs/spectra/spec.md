@@ -336,15 +336,15 @@ so the schema-driven form renders sections in workflow order.
 ```python
 @dataclass
 class ModeData:
-    index_1based:        int
-    frequency_cm1:       float
-    raman_activity:      Optional[float]              # Å^4/amu; None if compute_raman=False
-    ir_intensity_km_mol: Optional[float]              # always None in v1 (1c reserved)
-    eigenvector_free:    np.ndarray                   # shape (n_free, 3); mass-weighted
-    has_imag:            bool                         # |ω|^2 < 0  -> True; sign convention: imag freqs reported negative
+    index_1based:          int
+    frequency_cm1:         float
+    raman_activity_a4_amu: Optional[float]            # None if compute_raman=False
+    ir_intensity_km_mol:   Optional[float]            # always None in v1 (1c reserved)
+    eigenvector_free:      np.ndarray                 # shape (n_free, 3); mass-weighted
+    has_imag:              bool                       # |ω|^2 < 0  -> True; sign convention: imag freqs reported negative
 
     # Per-mode electronic structure (None when this mode wasn't selected)
-    electronic_structure: Optional[ModeElectronicStructure] = None
+    electronic_structure:  Optional[ModeElectronicStructure] = None
 
 @dataclass
 class ModeElectronicStructure:
@@ -370,9 +370,9 @@ class SpectraResults:
     free_atom_idxs:   List[int]                       # 0-based; complement of fixed set
     fixed_atom_idxs:  List[int]                       # 0-based
 
-    equilibrium_scf_eh:       float
-    equilibrium_mo_energies:  np.ndarray              # all MOs at equilibrium
-    equilibrium_homo_idx:     int
+    equilibrium_scf_eh:         float
+    equilibrium_mo_energies_eh: np.ndarray            # all MOs at equilibrium (Hartree)
+    equilibrium_homo_idx:       int
 
     modes:                List[ModeData]              # sorted by frequency ascending
     selected_mode_idxs_1based: List[int]              # which ones got ES treatment
@@ -707,7 +707,7 @@ either drives the same selection state.
 |---|---|---|---|
 | `#` | `mode.index_1based` | 1-based int | sortable; ascending by default |
 | `ω` | `mode.frequency_cm1` | cm⁻¹, 1 dp | imaginary modes shown red with negative sign |
-| Raman activity | `mode.raman_activity` | Å⁴/amu, 3 sig fig | sortable; blank if `compute_raman=False` |
+| Raman activity | `mode.raman_activity_a4_amu` | Å⁴/amu, 3 sig fig | sortable; blank if `compute_raman=False` |
 | IR intensity | `mode.ir_intensity_km_mol` | km/mol | blank in v1 (1c reserved column) |
 | ES? | derived | "✓" or "—" | "✓" if `mode.electronic_structure` is populated |
 | HOMO (eq) | `ModeElectronicStructure.mo_energies_eq_eh[homo_index_in_window]` | eV (converted from Eh) | only when ES present |

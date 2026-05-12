@@ -48,7 +48,6 @@ branch; see spec § 6.
 
 from __future__ import annotations
 
-import dataclasses
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
