@@ -86,6 +86,14 @@ def render_spectra_script(struct: Structure, cfg: SpectraConfig) -> str:
     lines += _emit_initial_state()
     lines += _emit_equilibrium_scf(cfg)
     lines += _emit_hessian_block(cfg)
+    # Shared helpers for L3 and L4: both phases run SCFs at displaced
+    # geometries via _build_mf_at(coords).  Emit ONCE whenever
+    # either L3 or L4 will run -- previously _build_mf_at lived
+    # inside the Raman block, so `compute_raman=False` with
+    # `es_mode_selection != "none"` crashed the script with NameError.
+    needs_displaced_scf = cfg.compute_raman or cfg.es_mode_selection != "none"
+    if needs_displaced_scf:
+        lines += _emit_displaced_scf_helpers(cfg)
     if cfg.compute_raman:
         lines += _emit_raman_block(cfg)
     if cfg.es_mode_selection != "none":
@@ -189,10 +197,13 @@ def _emit_constants(struct: Structure, cfg: SpectraConfig) -> List[str]:
     """Pin runtime constants the user can tweak inline if they
     re-run the script with a small parameter change."""
     out: List[str] = []
+    # Pull SCHEMA_VERSION from the live constant so a future bump in
+    # results.py propagates here without anyone having to remember.
+    from .results import SCHEMA_VERSION as _SCHEMA_VERSION
     out.append("# ============================================================")
     out.append("#  Constants  (mirrored from SpectraConfig at render time)")
     out.append("# ============================================================")
-    out.append("SCHEMA_VERSION = 1")
+    out.append(f"SCHEMA_VERSION = {int(_SCHEMA_VERSION)}")
     out.append(f"JOB            = {cfg.job_name!r}")
     out.append("JSON_PATH      = JOB + '.spectra.json'")
     out.append("")
@@ -669,9 +680,55 @@ def _emit_hessian_block(cfg: SpectraConfig) -> List[str]:
 # --------------------------------------------------------------------- #
 
 
+def _emit_displaced_scf_helpers(cfg: SpectraConfig) -> List[str]:
+    """COORDS_EQ_ANG + _build_mf_at -- shared between L3 (Raman FD)
+    and L4 (per-mode ES).  Emit ONCE per script whenever either
+    phase will run, so the names exist regardless of which phase
+    block is enabled."""
+    out: List[str] = []
+    out.append("# ============================================================")
+    out.append("#  Shared helpers for L3 / L4 (displaced-geometry SCFs)")
+    out.append("# ============================================================")
+    out.append("# Equilibrium coords (Å).  Used as the reference geometry")
+    out.append("# both for Raman finite-difference (L3) and per-mode")
+    out.append("# displacement (L4).")
+    out.append("COORDS_EQ_ANG = np.asarray([[a[1], a[2], a[3]] for a in ATOMS])")
+    out.append("")
+    out.append("def _build_mf_at(coords):")
+    out.append("    '''Re-build mol at new coords + reconverge SCF.'''")
+    out.append("    _mol_new = mol.copy()")
+    out.append("    _mol_new.atom = [[ELEMENTS[_i], tuple(coords[_i])]")
+    out.append("                     for _i in range(N_ATOMS)]")
+    out.append("    _mol_new.unit = 'Angstrom'")
+    out.append("    _mol_new.build()")
+    out.append("    if METHOD.upper() in ('RKS', 'UKS'):")
+    out.append("        _mf2 = (dft.RKS if METHOD.upper() == 'RKS' else dft.UKS)(_mol_new)")
+    out.append("        _mf2.xc = FUNCTIONAL")
+    out.append("        if DISPERSION and DISPERSION.lower() != 'none':")
+    out.append("            _mf2.disp = DISPERSION")
+    out.append("        _mf2.grids.level = GRID_LEVEL")
+    out.append("    else:")
+    out.append("        _mf2 = (scf.RHF if METHOD.upper() == 'RHF' else scf.UHF)(_mol_new)")
+    out.append("    if DENSITY_FIT:")
+    out.append("        _mf2 = _mf2.density_fit()")
+    out.append("    _mf2.conv_tol  = SCF_CONV_TOL")
+    out.append("    _mf2.max_cycle = SCF_MAX_CYCLE")
+    out.append("    _mf2.kernel()")
+    out.append("    if not _mf2.converged:")
+    out.append("        raise SystemExit('displaced SCF did not converge at "
+               "FD step')")
+    out.append("    return _mf2")
+    out.append("")
+    return out
+
+
 def _emit_raman_block(cfg: SpectraConfig) -> List[str]:
     """Finite-difference dα/dR_k for k over free Cartesians;
-    project onto modes; Raman activity per mode."""
+    project onto modes; Raman activity per mode.
+
+    Requires COORDS_EQ_ANG and _build_mf_at from the shared
+    displaced-SCF helper block (always emitted before this when
+    compute_raman is True)."""
     out: List[str] = []
     out.append("# ============================================================")
     out.append("#  Phase 3: Raman activities (finite-difference dα/dR)")
@@ -714,36 +771,6 @@ def _emit_raman_block(cfg: SpectraConfig) -> List[str]:
     out.append("    new[atom_idx, direction] += delta")
     out.append("    return new")
     out.append("")
-    out.append("def _build_mf_at(coords):")
-    out.append("    '''Re-build mol at new coords + reconverge SCF.'''")
-    out.append("    _mol_new = mol.copy()")
-    out.append("    _mol_new.atom = [[ELEMENTS[_i], tuple(coords[_i])]")
-    out.append("                     for _i in range(N_ATOMS)]")
-    out.append("    _mol_new.unit = 'Angstrom'")
-    out.append("    _mol_new.build()")
-    out.append("    if METHOD.upper() in ('RKS', 'UKS'):")
-    out.append("        _mf2 = (dft.RKS if METHOD.upper() == 'RKS' else dft.UKS)(_mol_new)")
-    out.append("        _mf2.xc = FUNCTIONAL")
-    out.append("        if DISPERSION and DISPERSION.lower() != 'none':")
-    out.append("            _mf2.disp = DISPERSION")
-    out.append("        _mf2.grids.level = GRID_LEVEL")
-    out.append("    else:")
-    out.append("        _mf2 = (scf.RHF if METHOD.upper() == 'RHF' else scf.UHF)(_mol_new)")
-    out.append("    if DENSITY_FIT:")
-    out.append("        _mf2 = _mf2.density_fit()")
-    out.append("    _mf2.conv_tol  = SCF_CONV_TOL")
-    out.append("    _mf2.max_cycle = SCF_MAX_CYCLE")
-    out.append("    _mf2.kernel()")
-    out.append("    if not _mf2.converged:")
-    out.append("        raise SystemExit('displaced SCF did not converge at "
-               "FD step')")
-    out.append("    return _mf2")
-    out.append("")
-    out.append("# Equilibrium coords (Å).  Note we work in Å for the FD step")
-    out.append("# even though Bohr would match PySCF native units -- the FD")
-    out.append("# step is user-visible (0.005 Å typical) so keeping it in")
-    out.append("# Å makes the math match the configured value.")
-    out.append("COORDS_EQ_ANG = np.asarray([[a[1], a[2], a[3]] for a in ATOMS])")
     out.append("alpha_eq = _polarizability(mf)")
     out.append("")
     out.append("# Build dα/dR_kα by central difference for each free-atom Cartesian.")
@@ -865,6 +892,20 @@ def _emit_es_loop(cfg: SpectraConfig) -> List[str]:
     out.append("    _hi = min(len(_mos), _homo + 1 + ES_N_LUMO_ABOVE)")
     out.append("    return _mos[_lo:_hi].copy(), _homo - _lo")
     out.append("")
+    out.append("# Defensive: skip out-of-range explicit indices.  The")
+    out.append("# pre-render validator can't range-check explicit indices")
+    out.append("# because the mode count isn't known until L2 completes,")
+    out.append("# so a user typo (es_explicit_indices=[1, 99] on a 12-mode")
+    out.append("# system) would otherwise crash here with IndexError after")
+    out.append("# L2 + L3 already burned wall time.  Print + skip instead.")
+    out.append("_n_modes_available = len(modes_payload)")
+    out.append("_skipped_oor = [i for i in _selected")
+    out.append("                if not 1 <= i <= _n_modes_available]")
+    out.append("if _skipped_oor:")
+    out.append("    print(f'  WARN: skipping out-of-range mode indices "
+               "{_skipped_oor}; ' f'valid range is 1..{_n_modes_available}')")
+    out.append("_selected = [i for i in _selected")
+    out.append("             if 1 <= i <= _n_modes_available]")
     out.append("for _idx_1 in _selected:")
     out.append("    _mode_pos = _idx_1 - 1")
     out.append("    _evec = np.asarray(modes_payload[_mode_pos]['eigenvector_free'])")

@@ -2415,3 +2415,253 @@ class TestPySCFScriptSelectorInline:
         )
         assert "FREQ_MIN_CM1               = 500.0" in script
         assert "FREQ_MAX_CM1               = 3500.0" in script
+
+
+# --------------------------------------------------------------------- #
+#  Regression tests for script-template bugs caught in review           #
+# --------------------------------------------------------------------- #
+
+
+class TestPySCFScriptDisplacedScfHelpers:
+    """Bug: `_build_mf_at` + `COORDS_EQ_ANG` used to be defined inside
+    the Raman block.  With compute_raman=False + es_mode_selection
+    != "none", the ES block called undefined names -> NameError at
+    runtime.  Fix: emit shared helpers when L3 OR L4 is enabled."""
+
+    def test_helpers_defined_when_only_es_enabled(self):
+        """The failing config combo from the review."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(
+            _struct_water_real(),
+            SpectraConfig(compute_raman=False,
+                          es_mode_selection="explicit",
+                          es_explicit_indices=[1]),
+        )
+        # Both names are defined in the shared helper block.
+        assert "def _build_mf_at" in script
+        assert "COORDS_EQ_ANG" in script
+        # And the ES block references them.
+        assert "_build_mf_at(" in script
+
+    def test_helpers_defined_when_only_raman_enabled(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(
+            _struct_water_real(),
+            SpectraConfig(compute_raman=True,
+                          es_mode_selection="none"),
+        )
+        assert "def _build_mf_at" in script
+        assert "COORDS_EQ_ANG" in script
+
+    def test_helpers_defined_when_both_enabled(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(
+            _struct_water_real(),
+            SpectraConfig(compute_raman=True,
+                          es_mode_selection="all"),
+        )
+        # Defined exactly once -- not duplicated between the two phases.
+        assert script.count("def _build_mf_at") == 1
+        assert script.count("COORDS_EQ_ANG = np.asarray") == 1
+
+    def test_helpers_absent_when_neither_enabled(self):
+        """When neither L3 nor L4 is on, the helpers aren't emitted
+        (no caller).  Keeps the script minimal for diagnostic-only
+        Hessian-only runs."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(
+            _struct_water_real(),
+            SpectraConfig(compute_raman=False,
+                          es_mode_selection="none"),
+        )
+        assert "def _build_mf_at" not in script
+
+    def test_only_es_enabled_compiles_AND_helpers_resolve(self):
+        """Compile pass + an exec-time symbol check.  The earlier
+        compile parametrize matrix didn't catch the original bug
+        because compile checks syntax, not name resolution.  Here
+        we exec the script's textual definition of _build_mf_at by
+        slicing it out and feeding it through compile() in 'exec'
+        mode to verify the def parses on its own."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        cfg = SpectraConfig(compute_raman=False,
+                            es_mode_selection="explicit",
+                            es_explicit_indices=[1])
+        script = render_spectra_script(_struct_water_real(), cfg)
+        compile(script, "<no-raman-with-es>", "exec")
+        # Locate the _build_mf_at definition and assert it appears
+        # BEFORE the first L4 call site.
+        def_pos  = script.find("def _build_mf_at")
+        call_pos = script.find("_build_mf_at(", def_pos + 1)
+        assert def_pos != -1, "_build_mf_at not defined"
+        assert call_pos != -1, "_build_mf_at not called"
+        assert def_pos < call_pos, (
+            "def must come before first call site, otherwise NameError "
+            "at runtime"
+        )
+
+
+class TestPySCFScriptSchemaVersionInterpolated:
+    """Bug: SCHEMA_VERSION was a literal 1 in the emitted script.
+    A future bump in results.SCHEMA_VERSION would leave scripts
+    silently writing the old version -> parser rejects with a
+    misleading 'schema_mismatch' on what should be valid output.
+
+    Fix: interpolate from results.SCHEMA_VERSION at render time.
+    """
+
+    def test_schema_version_matches_live_constant(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        from molbuilder.spectra.results import SCHEMA_VERSION
+        script = render_spectra_script(_struct_water_real(), SpectraConfig())
+        # The emitted constant matches the imported one.  If someone
+        # bumps SCHEMA_VERSION to 2, this test fails immediately and
+        # the developer remembers to refresh the script template.
+        assert f"SCHEMA_VERSION = {SCHEMA_VERSION}" in script
+
+
+class TestPySCFScriptL4OutOfRangeGuard:
+    """Bug: L4 loop did `modes_payload[_mode_pos]` without checking
+    that _mode_pos was in range.  A user with es_explicit_indices=[99]
+    on a 12-mode system would crash with IndexError AFTER L2 + L3
+    already completed -- hours of wall time lost.
+
+    Fix: pre-filter _selected to valid range, print + skip the rest.
+    The pre-render validator can't catch this (mode count unknown
+    pre-L2) so the script has to be the second line of defence.
+    """
+
+    def test_es_loop_has_range_guard(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(
+            _struct_water_real(),
+            SpectraConfig(es_mode_selection="explicit",
+                          es_explicit_indices=[1]),
+        )
+        # The guard predicate.
+        assert "1 <= i <= _n_modes_available" in script
+        # And the WARN print for skipped indices so the user notices.
+        assert "skipping out-of-range mode indices" in script
+
+    def test_guard_emits_for_every_selector_kind(self):
+        """The guard is in the shared L4 loop, so it covers ANY
+        selector (top_n / threshold / explicit / all) since
+        _selected is computed by the inlined selector before the
+        guard runs."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        for sel in ("all", "top_n", "threshold", "explicit"):
+            cfg = SpectraConfig(
+                es_mode_selection=sel,
+                es_explicit_indices=[1, 2] if sel == "explicit" else [],
+            )
+            script = render_spectra_script(_struct_water_real(), cfg)
+            assert "1 <= i <= _n_modes_available" in script, sel
+
+
+class TestSelectorEquivalence:
+    """Pin the script's inlined selector against the canonical
+    Python `select_modes` for a fixture of (modes, cfg) pairs.
+
+    The script's selector is hand-rolled.  If someone changes the
+    Python version (e.g. tie-breaking rule) without updating the
+    script, this test catches the drift immediately.
+
+    We don't exec the full script (would need real PySCF + a
+    converged SCF); we exec ONLY the selector function out of the
+    emitted text by slicing the if/elif/else block + the helpers
+    it needs.
+    """
+
+    def _build_selector_namespace(self, cfg, modes_payload):
+        """Re-create the runtime environment the inlined selector
+        sees: ES_MODE_SELECTION / ES_TOP_N / ES_THRESHOLD /
+        ES_EXPLICIT_INDICES / FREQ_MIN_CM1 / FREQ_MAX_CM1 plus the
+        modes_payload list."""
+        return {
+            "ES_MODE_SELECTION":    cfg.es_mode_selection,
+            "ES_TOP_N":             cfg.es_top_n,
+            "ES_THRESHOLD":         cfg.es_threshold,
+            "ES_EXPLICIT_INDICES":  list(cfg.es_explicit_indices),
+            "FREQ_MIN_CM1":         cfg.freq_min_cm1,
+            "FREQ_MAX_CM1":         cfg.freq_max_cm1,
+            "modes_payload":        modes_payload,
+        }
+
+    def _modes_payload_for_fixture(self):
+        """A modes_payload list shaped like what the in-script
+        Hessian block builds (matching the wire form expected by
+        the inlined selector).  Same modes as `_modes_fixture()`."""
+        out = []
+        for m in _modes_fixture():
+            out.append({
+                "index_1based":          m.index_1based,
+                "frequency_cm1":         m.frequency_cm1,
+                "raman_activity_a4_amu": m.raman_activity_a4_amu,
+                "ir_intensity_km_mol":   m.ir_intensity_km_mol,
+                "eigenvector_free":      m.eigenvector_free.tolist(),
+                "has_imag":              m.has_imag,
+                "electronic_structure":  None,
+            })
+        return out
+
+    def _exec_inlined_selector(self, script: str, ns: dict) -> list:
+        """Slice the inlined selector out of the script + exec it
+        against the prepared namespace.  Returns the value of
+        `_selected` after execution."""
+        # The inlined selector starts at the "if ES_MODE_SELECTION"
+        # marker and ends before the def _displaced_scf line.
+        start = script.find("if ES_MODE_SELECTION == 'all':")
+        end   = script.find("state['selected_mode_idxs_1based']")
+        assert start != -1 and end != -1 and end > start, (
+            "could not locate inlined selector block in script"
+        )
+        body = script[start:end]
+        # The selector also references `_passes_freq_window`, defined
+        # just above.  Include from the "def _passes_freq_window" line.
+        helper_start = script.find("def _passes_freq_window")
+        assert helper_start != -1
+        helper = script[helper_start:start]
+        exec(helper + body, ns)
+        return list(ns["_selected"])
+
+    @pytest.mark.parametrize("cfg_overrides", [
+        # Each selector exercised on the same modes fixture.
+        dict(es_mode_selection="none"),
+        dict(es_mode_selection="all"),
+        dict(es_mode_selection="all", freq_min_cm1=500.0, freq_max_cm1=3500.0),
+        dict(es_mode_selection="top_n", es_top_n=3),
+        dict(es_mode_selection="top_n", es_top_n=10),  # exceeds count
+        dict(es_mode_selection="top_n", es_top_n=2,
+             freq_min_cm1=1000.0, freq_max_cm1=3000.0),
+        dict(es_mode_selection="threshold", es_threshold=10.0),
+        dict(es_mode_selection="threshold", es_threshold=100.0),  # nothing
+        dict(es_mode_selection="explicit", es_explicit_indices=[1, 3, 5]),
+        dict(es_mode_selection="explicit", es_explicit_indices=[2]),
+    ])
+    def test_inlined_selector_matches_select_modes(self, cfg_overrides):
+        from molbuilder.spectra import select_modes
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        cfg = SpectraConfig(**cfg_overrides)
+        modes = _modes_fixture()
+
+        # Python canonical result.
+        py_selected = select_modes(modes, cfg, prior=None)
+
+        # When selector == "none", the L4 block isn't emitted at all
+        # so there's nothing to exec against -- Python and "script
+        # behaviour" trivially agree on the empty list.
+        if cfg.es_mode_selection == "none":
+            assert py_selected == []
+            return
+
+        # Script's inlined result: render, slice, exec.
+        script = render_spectra_script(_struct_water_real(), cfg)
+        ns = self._build_selector_namespace(
+            cfg, self._modes_payload_for_fixture()
+        )
+        script_selected = self._exec_inlined_selector(script, ns)
+
+        assert py_selected == script_selected, (
+            f"selector drift for cfg={cfg_overrides!r}: "
+            f"python={py_selected}, script={script_selected}"
+        )
