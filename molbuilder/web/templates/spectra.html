@@ -5,6 +5,7 @@
 <title>molbuilder &mdash; spectra (Raman / IR)</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='spectra/style.css') }}">
 </head>
 <body>
 
@@ -12,26 +13,133 @@
 {% set page_tagline = "Post-relaxation harmonic vibrational analysis &mdash; frequencies, Raman activities, and per-mode electronic structure for transport preparation." %}
 {% include "_app_header.html" %}
 
-<main class="spectra-shell">
-  <!--
-    The full Spectra-tab UI lands in task L3b (templates + JS + CSS).
-    For now this placeholder confirms the route + blueprint wiring;
-    the spec § 10 endpoints (/api/build/schema/spectra,
-    /api/spectra/render, /api/spectra/load) are already live and
-    can be exercised via curl / the test client.
-  -->
-  <section class="placeholder-card">
-    <h2>Spectra tab (under construction)</h2>
-    <p>The schema-driven form + Methods-preview modal + live-watch
-       viewer lands next.  In the meantime the API is functional:</p>
-    <ul>
-      <li><code>GET /api/build/schema/spectra</code> &mdash; form schema</li>
-      <li><code>POST /api/spectra/render</code> &mdash; generate the runnable script</li>
-      <li><code>POST /api/spectra/load</code> &mdash; parse a spectra.json file</li>
-    </ul>
-    <p>See <code>docs/tabs/spectra/spec.md</code> for the full design contract.</p>
+<main class="spectra-grid">
+
+  <!-- ============================================================ -->
+  <!-- LEFT: structure input + form (schema-driven from SpectraConfig)
+       The form is built at page load from /api/build/schema/spectra
+       (same mechanism Build uses for siesta/pyscf).  -->
+  <!-- ============================================================ -->
+  <section class="card card-input">
+    <header class="card-header">
+      <h2>1. Structure</h2>
+    </header>
+
+    <div class="xyz-input-row">
+      <label for="xyz-text">XYZ:</label>
+      <textarea id="xyz-text" rows="6"
+                placeholder="Paste an XYZ block, or upload a file."></textarea>
+    </div>
+    <div class="xyz-upload-row">
+      <input id="xyz-file" type="file" accept=".xyz,chemical/x-xyz,text/plain">
+      <button id="xyz-load-btn">Load file</button>
+      <span id="xyz-status" class="status"></span>
+    </div>
+
+    <header class="card-header">
+      <h2>2. Spectra parameters</h2>
+    </header>
+
+    <!-- The schema-driven form lands here at page-load time.  The
+         <p> below is a fallback for the brief moment between
+         DOMContentLoaded and the /api/build/schema/spectra response;
+         JS replaces it as soon as the schema arrives. -->
+    <div id="spectra-form-container">
+      <p class="status">Loading form schema&hellip;</p>
+    </div>
+
+    <header class="card-header">
+      <h2>3. Generate</h2>
+    </header>
+    <div class="action-row">
+      <button id="generate-btn" class="primary">Generate spectra.py</button>
+      <button id="methods-preview-btn" type="button">Show Methods text</button>
+      <span id="generate-status" class="status"></span>
+    </div>
+
+    <details class="prior-row">
+      <summary>Resume from prior run (optional)</summary>
+      <p class="hint">
+        Point this at an existing <code>&lt;job&gt;.spectra.json</code>
+        to enable the top-N / threshold selectors (they need the L3
+        Raman data the prior run produced) and to skip already-completed
+        modes when resuming L4.  Leave empty for a fresh job.
+      </p>
+      <input id="prior-path" type="text" placeholder="/path/to/prev.spectra.json">
+    </details>
+  </section>
+
+  <!-- ============================================================ -->
+  <!-- RIGHT: output panels                                          -->
+  <!-- ============================================================ -->
+  <section class="card card-output">
+    <header class="card-header">
+      <h2>Issues</h2>
+    </header>
+    <div id="issues-panel" class="issues-panel">
+      <p class="status muted">No issues yet.  Run "Generate" to see preflight findings.</p>
+    </div>
+
+    <header class="card-header">
+      <h2>Generated script</h2>
+    </header>
+    <div class="script-actions">
+      <button id="download-script-btn" disabled>Download spectra.py</button>
+      <button id="copy-script-btn" disabled>Copy to clipboard</button>
+      <span id="script-summary" class="status muted"></span>
+    </div>
+    <pre id="script-preview" class="script-preview"
+         aria-label="Generated spectra.py preview"></pre>
+
+    <header class="card-header">
+      <h2>Load existing results</h2>
+    </header>
+    <div class="results-actions">
+      <input id="results-file" type="file" accept=".json,application/json">
+      <button id="load-results-btn">Load .spectra.json</button>
+      <span id="results-status" class="status"></span>
+    </div>
+
+    <div id="results-summary" class="results-summary" hidden>
+      <header class="card-header">
+        <h2>Results summary</h2>
+      </header>
+      <dl id="results-summary-list" class="results-meta"></dl>
+      <h3>Modes</h3>
+      <div class="modes-table-wrap">
+        <table id="modes-table" class="modes-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>ω (cm⁻¹)</th>
+              <th>Raman (Å⁴/amu)</th>
+              <th>imag?</th>
+              <th>ES?</th>
+            </tr>
+          </thead>
+          <tbody id="modes-tbody"></tbody>
+        </table>
+      </div>
+    </div>
   </section>
 </main>
+
+<!-- ============================================================ -->
+<!-- Methods-preview modal (spec § 9.4)                            -->
+<!-- ============================================================ -->
+<dialog id="methods-modal" class="methods-modal">
+  <header class="methods-modal-header">
+    <h2>Methods (manuscript-ready prose)</h2>
+    <div class="methods-modal-actions">
+      <button id="methods-copy-btn" type="button">Copy</button>
+      <button id="methods-close-btn" type="button">Close</button>
+    </div>
+  </header>
+  <article id="methods-modal-body" class="methods-modal-body"></article>
+</dialog>
+
+<script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
+<script src="{{ url_for('static', filename='spectra/viewer.js') }}"></script>
 
 </body>
 </html>

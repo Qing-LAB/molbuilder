@@ -1,0 +1,340 @@
+/* molbuilder Spectra-tab styles.
+ *
+ * Shared design tokens live in static/lib/tokens.css; this file
+ * uses them via var(--...).  Layout mirrors the Modify tab's
+ * card-grid pattern -- two columns on desktop, stacked on
+ * narrow viewports.
+ */
+@import url("../lib/tokens.css");
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                 system-ui, "Inter", sans-serif;
+    color: var(--text-primary);
+    background: var(--bg-page);
+}
+
+header {
+    padding: 1.4rem 2rem 1rem;
+    border-bottom: 1px solid var(--border-soft);
+}
+header h1 {
+    margin: 0;
+    font: 700 1.6rem/1.2 "Inter", system-ui, sans-serif;
+}
+header .tagline {
+    margin: 0.2rem 0 0;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+
+/* ---- Two-column layout (stacks on narrow) ------------------- */
+
+.spectra-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+    gap: 1.25rem;
+    padding: 1.25rem 1.5rem;
+    align-items: start;
+}
+@media (max-width: 1100px) {
+    .spectra-grid { grid-template-columns: 1fr; }
+}
+
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    padding: 1.2rem 1.4rem;
+}
+.card-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin: 0 0 0.7rem;
+}
+.card-header h2 {
+    margin: 0;
+    font: 600 1.05rem/1.2 "Inter", system-ui, sans-serif;
+    color: var(--text-primary);
+}
+.card-header + * { margin-top: 0; }
+.card-header:not(:first-of-type) {
+    border-top: 1px solid var(--border-soft);
+    padding-top: 1rem;
+    margin-top: 1.4rem;
+}
+
+/* ---- XYZ input row ----------------------------------------- */
+
+.xyz-input-row { display: grid; gap: 0.3rem; margin-bottom: 0.6rem; }
+.xyz-input-row label { font-size: 0.9rem; color: var(--text-secondary); }
+.xyz-input-row textarea {
+    width: 100%;
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 0.5rem 0.7rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85rem;
+    resize: vertical;
+    min-height: 100px;
+}
+.xyz-upload-row {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 0.6rem;
+}
+
+/* ---- Buttons ----------------------------------------------- */
+
+button {
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 0.4rem 0.9rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 0.12s ease;
+}
+button:hover  { background: var(--bg-input-focus); }
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+button.primary {
+    background: #2b5f9e;
+    border-color: #3577b9;
+}
+button.primary:hover { background: #336dab; }
+
+input[type="text"],
+input[type="file"] {
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.9rem;
+}
+input[type="text"]:focus,
+input[type="file"]:focus,
+textarea:focus {
+    outline: none;
+    border-color: #3577b9;
+    background: var(--bg-input-focus);
+}
+
+/* ---- Action row + prior-run details ------------------------ */
+
+.action-row {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.prior-row {
+    margin-top: 1rem;
+    padding: 0.6rem 0.8rem;
+    border: 1px dashed var(--border-soft);
+    border-radius: 6px;
+}
+.prior-row summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+.prior-row p.hint {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    margin: 0.5rem 0;
+}
+.prior-row input[type="text"] { width: 100%; }
+
+/* ---- Status messages --------------------------------------- */
+
+.status {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+.status.ok    { color: #6fcf6f; }
+.status.error { color: #e07070; }
+.status.muted { color: var(--text-secondary); opacity: 0.7; }
+
+/* ---- Issues panel ------------------------------------------ */
+
+.issues-panel {
+    display: grid;
+    gap: 0.45rem;
+    margin-bottom: 1rem;
+}
+.issue {
+    padding: 0.45rem 0.7rem;
+    border-radius: 6px;
+    border: 1px solid var(--border-soft);
+    font-size: 0.88rem;
+    line-height: 1.4;
+}
+.issue.error  { border-color: #80262f; background: #2d1518; }
+.issue.warn   { border-color: #7a652c; background: #2a2515; }
+.issue .badge {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 0.05rem 0.45rem;
+    border-radius: 3px;
+    margin-right: 0.4rem;
+    vertical-align: 1px;
+}
+.issue.error .badge { background: #80262f; color: #fff; }
+.issue.warn  .badge { background: #7a652c; color: #fff; }
+.issue .where {
+    margin-left: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    background: var(--bg-input);
+    padding: 0.05rem 0.4rem;
+    border-radius: 3px;
+}
+
+/* ---- Generated-script preview ------------------------------ */
+
+.script-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    flex-wrap: wrap;
+}
+.script-preview {
+    background: var(--bg-code);
+    color: var(--text-primary);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    padding: 0.8rem 1rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    max-height: 320px;
+    overflow: auto;
+    white-space: pre;
+    margin: 0 0 1rem;
+}
+.script-preview:empty { display: none; }
+
+/* ---- Results-summary panel --------------------------------- */
+
+.results-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 0.5rem;
+}
+
+.results-summary { margin-top: 1rem; }
+.results-meta {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.25rem 1rem;
+    font-size: 0.88rem;
+    margin: 0 0 0.8rem;
+}
+.results-meta dt { color: var(--text-secondary); }
+.results-meta dd { margin: 0; }
+
+.modes-table-wrap {
+    max-height: 360px;
+    overflow: auto;
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+}
+.modes-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+.modes-table thead {
+    position: sticky;
+    top: 0;
+    background: var(--bg-card-hover);
+}
+.modes-table th,
+.modes-table td {
+    padding: 0.35rem 0.6rem;
+    border-bottom: 1px solid var(--border-soft);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.modes-table th:first-child,
+.modes-table td:first-child { text-align: left; }
+.modes-table tbody tr:hover { background: var(--bg-card-hover); }
+
+/* ---- Locked form fields (selector compatibility) ----------- */
+
+.is-locked {
+    opacity: 0.45;
+}
+.is-locked input,
+.is-locked select,
+.is-locked textarea {
+    pointer-events: none;
+}
+
+/* ---- Methods modal ---------------------------------------- */
+
+.methods-modal {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    max-width: 720px;
+    width: 92%;
+    padding: 0;
+    box-shadow: 0 12px 36px rgba(0,0,0,0.55);
+}
+.methods-modal::backdrop {
+    background: rgba(10, 12, 16, 0.7);
+}
+.methods-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.8rem 1.2rem;
+    border-bottom: 1px solid var(--border-soft);
+}
+.methods-modal-header h2 {
+    margin: 0;
+    font: 600 1.05rem/1.2 "Inter", system-ui, sans-serif;
+}
+.methods-modal-actions { display: flex; gap: 0.4rem; }
+.methods-modal-body {
+    padding: 1rem 1.4rem;
+    max-height: 60vh;
+    overflow: auto;
+    font-size: 0.92rem;
+    line-height: 1.55;
+}
+.methods-modal-body p { margin: 0 0 1em; }
+.methods-modal-body code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85em;
+    background: var(--bg-input);
+    padding: 0.05rem 0.3rem;
+    border-radius: 3px;
+}
+
+/* ---- Card-output spacing tweaks --------------------------- */
+
+.card-output > .card-header:first-child { margin-top: 0; }

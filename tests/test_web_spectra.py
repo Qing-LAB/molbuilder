@@ -97,9 +97,19 @@ class TestSpectraPage:
         # Tab nav present + Spectra tab marked active.
         assert "Spectra" in body
         assert "app-tabs" in body
-        # Placeholder mentions the API surface.
-        assert "/api/spectra/render" in body
-        assert "/api/spectra/load"   in body
+        # Form container + key controls present (rendered into by JS).
+        assert 'id="spectra-form-container"' in body
+        assert 'id="xyz-text"'                in body
+        assert 'id="generate-btn"'            in body
+        assert 'id="load-results-btn"'        in body
+        # Methods-preview modal present (dialog element + handles).
+        assert 'id="methods-modal"'           in body
+        # Static assets pinned in the template.
+        assert 'spectra/style.css'            in body
+        assert 'spectra/viewer.js'            in body
+        # Shared form-schema helper loaded BEFORE the per-page viewer.
+        assert body.index("lib/form-schema.js") \
+               < body.index("spectra/viewer.js")
 
     def test_app_header_includes_spectra_tab(self, web_client):
         """The shared header now lists Spectra alongside Build / Modify /
@@ -108,6 +118,30 @@ class TestSpectraPage:
         r = web_client.get("/")
         body = r.data.decode()
         assert 'href="/spectra"' in body
+
+    def test_viewer_js_served(self, web_client):
+        """The Spectra-tab JS should be reachable as a static asset
+        and contain the four endpoint URLs it talks to."""
+        r = web_client.get("/static/spectra/viewer.js")
+        assert r.status_code == 200
+        js = r.data.decode()
+        assert "/api/build/schema/spectra" in js
+        assert "/api/spectra/render"        in js
+        assert "/api/spectra/load"          in js
+        # Selector / compatibility logic present (locks unused
+        # ES value fields when the selector changes).
+        assert "applyCompatibility" in js
+        # Methods-preview modal handler.
+        assert "openMethodsModal"   in js
+
+    def test_style_css_served(self, web_client):
+        """The CSS imports the shared tokens so theming stays in
+        lock-step with Build / Modify / Watch."""
+        r = web_client.get("/static/spectra/style.css")
+        assert r.status_code == 200
+        css = r.data.decode()
+        assert "tokens.css" in css
+        assert ".spectra-grid" in css
 
 
 # --------------------------------------------------------------------- #
