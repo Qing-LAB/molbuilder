@@ -1411,13 +1411,29 @@ class TestExtractCitationKeys:
         from molbuilder.spectra import extract_citation_keys
         assert extract_citation_keys("[Foo_Bar2020]") == ["Foo_Bar2020"]
 
-    def test_multiple_keys_in_one_bracket_not_split(self):
-        """We chose single-key markers; `[A, B]` is a single match
-        attempt and falls through (no comma allowed).  Authors
-        should use `[A] [B]` or `[A, B]` -> two separate brackets."""
+    def test_separate_brackets(self):
+        """Each `[Key]` bracket pair contributes its key."""
         from molbuilder.spectra import extract_citation_keys
         assert extract_citation_keys("[Galperin2007] [Frederiksen2007]") \
             == ["Galperin2007", "Frederiksen2007"]
+
+    def test_comma_separated_keys_in_one_bracket_split(self):
+        """`[Foo, Bar]` is common physics/chem prose style.  Each
+        comma-separated key contributes its key, preserving
+        first-appearance order."""
+        from molbuilder.spectra import extract_citation_keys
+        assert extract_citation_keys("PySCF [Sun2020, Sun2018] is widely used.") \
+            == ["Sun2020", "Sun2018"]
+
+    def test_comma_separated_keys_dedupe_against_earlier(self):
+        from molbuilder.spectra import extract_citation_keys
+        assert extract_citation_keys(
+            "[Sun2020] then [Sun2020, Sun2018]"
+        ) == ["Sun2020", "Sun2018"]
+
+    def test_three_comma_separated_keys(self):
+        from molbuilder.spectra import extract_citation_keys
+        assert extract_citation_keys("[A2020, B2021, C2022]") == ["A2020", "B2021", "C2022"]
 
 
 class TestRenderMethodsMdPreRun:
@@ -1717,3 +1733,291 @@ class TestRenderMethodsMdWithStruct:
         # 3 free, 4 fixed.
         assert "3 free" in md
         assert "4 held fixed" in md
+
+    def test_real_structure_dataclass_works(self):
+        """A real molbuilder.Structure (elements as List[str], not
+        list-of-atom-objects) should feed atom counts correctly --
+        regression test against the mock-only earlier version."""
+        from molbuilder.spectra import render_methods_md
+        from molbuilder.structure import Structure
+        struct = Structure(
+            elements  = ["O", "H", "H"],
+            positions = np.array([[0., 0., 0.],
+                                  [0.96, 0., 0.],
+                                  [-0.24, 0.93, 0.]]),
+        )
+        md = render_methods_md(SpectraConfig(), struct=struct)
+        assert "3 atoms" in md
+        # 3*3 - 6 = 3 modes for water.
+        assert "3 non-translational" in md
+
+    def test_real_structure_with_fixed_elements(self):
+        """Real Structure + fixed_elements=['Au'] -> Au atoms
+        removed from the free count."""
+        from molbuilder.spectra import render_methods_md
+        from molbuilder.structure import Structure
+        struct = Structure(
+            elements  = ["Au", "Au", "C", "H"],
+            positions = np.array([[0., 0., 0.],
+                                  [2., 0., 0.],
+                                  [4., 0., 0.],
+                                  [5., 0., 0.]]),
+        )
+        cfg = SpectraConfig(fixed_elements=["Au"])
+        md = render_methods_md(cfg, struct=struct)
+        assert "2 free" in md
+        assert "2 held fixed" in md
+
+
+# --------------------------------------------------------------------- #
+#  PySCFSpectraEngine (engine wrapper -- non-render_script methods)     #
+#                                                                       #
+#  Spec § 3.2 + § 9 + § 11.  render_script is tested separately when    #
+#  the script-template module lands (next commit).                      #
+# --------------------------------------------------------------------- #
+
+
+def _struct_water():
+    """Real Structure for water -- used by engine preflight tests."""
+    from molbuilder.structure import Structure
+    return Structure(
+        elements  = ["O", "H", "H"],
+        positions = np.array([[0., 0., 0.],
+                              [0.96, 0., 0.],
+                              [-0.24, 0.93, 0.]]),
+    )
+
+
+class TestPySCFSpectraEngineRegistration:
+
+    def test_registered_under_pyscf(self):
+        """The engine self-registers at import time -- importing
+        molbuilder.spectra (or .pyscf_engine) puts 'pyscf' in the
+        registry."""
+        from molbuilder.spectra import get_engine
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        assert get_engine("pyscf") is PySCFSpectraEngine
+
+    def test_engine_metadata(self):
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        assert PySCFSpectraEngine.name == "pyscf"
+        assert "PySCF" in PySCFSpectraEngine.label
+
+
+class TestPySCFEngineMethodsFragment:
+
+    def test_basic_fragment_cites_pyscf(self):
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig()
+        frag = PySCFSpectraEngine.methods_fragment(cfg, [])
+        # Pyscf citation keys present.
+        assert "Sun2020" in frag
+        assert "Sun2018" in frag
+        # Names the analytic Hessian module.
+        assert "pyscf.hessian" in frag
+
+    def test_method_specific_hessian_module(self):
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig(method="UHF")
+        frag = PySCFSpectraEngine.methods_fragment(cfg, [])
+        assert "pyscf.hessian.uhf" in frag
+
+    def test_raman_path_cites_komornicki(self):
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig(compute_raman=True)
+        frag = PySCFSpectraEngine.methods_fragment(cfg, [])
+        assert "Komornicki1979" in frag
+        assert "polarizability" in frag.lower()
+
+    def test_no_raman_path_omits_komornicki(self):
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig(compute_raman=False)
+        frag = PySCFSpectraEngine.methods_fragment(cfg, [])
+        assert "Komornicki1979" not in frag
+
+    def test_density_fit_mentioned_when_on(self):
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg_on  = SpectraConfig(density_fit=True)
+        cfg_off = SpectraConfig(density_fit=False)
+        assert "density fitting" in PySCFSpectraEngine.methods_fragment(cfg_on, []).lower()
+        assert "density fitting" not in PySCFSpectraEngine.methods_fragment(cfg_off, []).lower()
+
+    def test_grid_level_mentioned_for_dft_only(self):
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        # DFT path mentions grid level.
+        assert "grid level" in PySCFSpectraEngine.methods_fragment(
+            SpectraConfig(method="RKS"), []
+        ).lower()
+        # HF path doesn't.
+        assert "grid level" not in PySCFSpectraEngine.methods_fragment(
+            SpectraConfig(method="RHF"), []
+        ).lower()
+
+    def test_fragment_composes_into_render_methods_md(self):
+        """The engine's fragment flows into render_methods_md's
+        output and its citations bubble up into the bibliography."""
+        from molbuilder.spectra import render_methods_md
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig()
+        md = render_methods_md(cfg, engine=PySCFSpectraEngine)
+        assert "pyscf.hessian" in md
+        assert "Sun2020" in md
+        # Sun2020 appears in the trailing bibliography too.
+        bib = md.split("**Bibliography**", 1)[1]
+        assert "Sun2020" in bib
+
+
+class TestPySCFEnginePreflight:
+
+    def test_clean_config_has_no_issues(self):
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig()  # defaults -- selector=none, no L3 dep
+        issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
+        errors = [i for i in issues if i.severity == "error"]
+        assert errors == []
+
+    def test_hybrid_with_low_grid_warns(self):
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig(functional="B3LYP", grid_level=3)
+        issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
+        warns = [i for i in issues if i.severity == "warn"]
+        assert any(i.where == "config.grid_level" for i in warns)
+
+    def test_pbe0_recognised_as_hybrid(self):
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig(functional="PBE0", grid_level=2)
+        issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
+        assert any(i.where == "config.grid_level"
+                   and i.severity == "warn" for i in issues)
+
+    def test_pure_functional_no_grid_warn(self):
+        """Pure PBE (not hybrid) shouldn't trip the grid-level warn
+        -- the recommendation is hybrid-specific."""
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig(functional="PBE", grid_level=2)
+        issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
+        assert not any(i.where == "config.grid_level" for i in issues)
+
+    def test_displacement_below_window_warns(self):
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig(displacement_amplitude_ang=0.03)
+        issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
+        assert any(i.where == "config.displacement_amplitude_ang"
+                   and i.severity == "warn" for i in issues)
+
+    def test_displacement_above_window_warns(self):
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig(displacement_amplitude_ang=0.25)
+        issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
+        assert any(i.where == "config.displacement_amplitude_ang"
+                   and i.severity == "warn" for i in issues)
+
+    def test_default_displacement_no_warn(self):
+        """Default 0.10 Å is the defensible production value."""
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig()
+        issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
+        assert not any(i.where == "config.displacement_amplitude_ang"
+                       for i in issues)
+
+    def test_compute_ir_warns_reserved(self):
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig(compute_ir=True)
+        issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
+        assert any(i.where == "config.compute_ir"
+                   and i.severity == "warn"
+                   and "v1.2" in i.message for i in issues)
+
+    def test_unsupported_method_errors(self):
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig()
+        # Sidestep the dataclass's choices validation by setting
+        # the attribute directly -- the preflight is the second
+        # line of defence anyway.
+        cfg.method = "BOGUS"
+        issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
+        assert any(i.where == "config.method"
+                   and i.severity == "error" for i in issues)
+
+    def test_out_of_range_fixed_indices_errors(self):
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig(fixed_indices=[0, 1, 99])  # water has 3 atoms
+        issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
+        assert any(i.where == "config.fixed_indices"
+                   and i.severity == "error" for i in issues)
+
+    def test_in_range_fixed_indices_ok(self):
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig(fixed_indices=[0, 1])  # all valid for water
+        issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
+        assert not any(i.where == "config.fixed_indices" for i in issues)
+
+    def test_selector_top_n_without_prior_l3_errors(self):
+        """top_n / threshold selectors need a prior L3 run; the
+        engine's preflight delegates to selection.validate_selection
+        and surfaces that as an error."""
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig(es_mode_selection="top_n", es_top_n=5)
+        issues = PySCFSpectraEngine.preflight(_struct_water(), cfg, prior=None)
+        errors = [i for i in issues if i.severity == "error"]
+        assert any(i.where == "config.es_mode_selection" for i in errors)
+
+    def test_selector_top_n_with_prior_l3_ok(self):
+        """Same selector + a prior result that completed L3 -> OK
+        (no error from the validator)."""
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig(es_mode_selection="top_n", es_top_n=3)
+        prior = _make_results(complete=True)
+        issues = PySCFSpectraEngine.preflight(_struct_water(), cfg, prior=prior)
+        errs = [i for i in issues if i.severity == "error"
+                and i.where == "config.es_mode_selection"]
+        assert errs == []
+
+
+class TestPySCFEngineIsHybridFunctional:
+    """The hybrid-detection heuristic.  We accept some false
+    positives (the resulting warn is benign) but want no false
+    negatives for the canonical hybrid families."""
+
+    @pytest.mark.parametrize("name", [
+        "B3LYP", "b3lyp", "B3PW91",
+        "PBE0", "pbe0",
+        "M06", "M06-2X", "M06-L",
+        "ωB97X-D", "wB97X",
+        "CAM-B3LYP",
+        "BHandH", "BHandHLYP",
+        "TPSS0",
+        "HSE06",
+    ])
+    def test_recognised_hybrids(self, name):
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        assert PySCFSpectraEngine._is_hybrid_functional(name) is True
+
+    @pytest.mark.parametrize("name", [
+        "PBE", "BLYP", "LDA", "BP86", "TPSS", "SCAN",
+    ])
+    def test_pure_functionals_not_flagged(self, name):
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        assert PySCFSpectraEngine._is_hybrid_functional(name) is False
+
+
+class TestPySCFEngineParseOutput:
+    """parse_output should delegate to the engine-agnostic JSON
+    parser cleanly."""
+
+    def test_parse_output_round_trips(self, tmp_path):
+        from molbuilder.parsers.spectra_json import dump_spectra_json
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        original = _make_results(complete=True)
+        p = tmp_path / "x.spectra.json"
+        dump_spectra_json(original, p)
+        loaded = PySCFSpectraEngine.parse_output(str(p))
+        assert loaded.engine == original.engine
+        assert len(loaded.modes) == len(original.modes)
+
+    def test_parse_output_propagates_missing_file_error(self, tmp_path):
+        from molbuilder.parsers.spectra_json import SpectraJsonNotFoundError
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        bad = tmp_path / "missing.spectra.json"
+        with pytest.raises(SpectraJsonNotFoundError):
+            PySCFSpectraEngine.parse_output(str(bad))

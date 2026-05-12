@@ -40,12 +40,21 @@ from .engine_base import SpectraEngine, UnknownEngineError, get_engine
 from .results import SpectraResults
 
 
-# Citation marker regex: [Word] where Word is BibKeyName (letters /
-# digits / underscore -- no spaces, no special chars).  Used both to
-# extract used keys and to detect markers inserted by engine
-# fragments.  Section markers like "[Mills1972 §2.4]" are matched on
-# the key only -- the §-suffix is just prose.
-_CITE_RE = re.compile(r"\[([A-Za-z][A-Za-z0-9_]*)(?:\s+§[^\]]*)?\]")
+# Citation marker regex.  Matches:
+#   [Foo]             -- single key
+#   [Foo, Bar]        -- comma-separated keys (common phys/chem style)
+#   [Foo §section]    -- section suffix on a single key (Mills1972 §2.4)
+# A key is a letter followed by letters/digits/underscore.  Each
+# bracket-group's matched span is split on commas by
+# :func:`extract_citation_keys`.
+_CITE_RE = re.compile(
+    r"\[("
+    r"[A-Za-z][A-Za-z0-9_]*"                       # first key
+    r"(?:\s*,\s*[A-Za-z][A-Za-z0-9_]*)*"           # optional , Key, Key ...
+    r")"
+    r"(?:\s+§[^\]]*)?"                             # optional ' §section' suffix
+    r"\]"
+)
 
 
 def render_methods_md(
@@ -152,10 +161,13 @@ def extract_citation_keys(text: str) -> List[str]:
     seen: set = set()
     out: List[str] = []
     for m in _CITE_RE.finditer(text or ""):
-        key = m.group(1)
-        if key not in seen:
-            seen.add(key)
-            out.append(key)
+        # group(1) is either a single key or a comma-separated list
+        # of keys (e.g. "Sun2020, Sun2018").  Split on commas and
+        # add each key, preserving order of first appearance.
+        for key in (k.strip() for k in m.group(1).split(",")):
+            if key and key not in seen:
+                seen.add(key)
+                out.append(key)
     return out
 
 
@@ -187,12 +199,12 @@ def _paragraph_vibrational(cfg: SpectraConfig,
     fxc_cite = " [Becke1993]" if fxc.upper().startswith("B3") else ""
 
     # Atom-count clause -- only when we have a Structure to count from.
+    # Structure stores elements as a list of element symbols; n_atoms
+    # is its length.  Defensive try/except so a duck-typed mock (in
+    # tests) carrying `.elements` works too.
     atom_clause = ""
     if struct is not None:
-        try:
-            n_atoms = len(struct.atoms)
-        except Exception:
-            n_atoms = None
+        n_atoms = _count_structure_atoms(struct)
         if n_atoms:
             n_free = _count_free_atoms(struct, cfg)
             n_modes = max(0, 3 * n_free - 6) if n_free >= 2 else 0
@@ -349,28 +361,70 @@ def _engine_fragment(cfg: SpectraConfig,
         return ""
 
 
+def _count_structure_atoms(struct: Structure) -> int:
+    """Total atom count from a Structure-like object.
+
+    Tries ``len(struct.elements)`` first (the canonical molbuilder
+    Structure exposes ``elements`` as a list of element symbols)
+    then falls back to ``len(struct.atoms)`` for duck-typed mocks.
+    Returns 0 when neither attribute is available -- the Methods
+    composer treats 0 as "skip the atom-count clause" rather than
+    raising, since this is a presentational concern."""
+    elements = getattr(struct, "elements", None)
+    if elements is not None:
+        try:
+            return len(elements)
+        except TypeError:
+            pass
+    atoms = getattr(struct, "atoms", None)
+    if atoms is not None:
+        try:
+            return len(atoms)
+        except TypeError:
+            pass
+    return 0
+
+
+def _structure_element_symbols(struct: Structure) -> List[str]:
+    """Return per-atom element symbols from a Structure-like object.
+
+    Real Structure: ``struct.elements`` is already a list of symbols.
+    Mock-style ``struct.atoms``: per-atom objects expose ``.symbol``
+    or ``.element``.  Returns ``[]`` when neither shape is available
+    (Methods composer treats this as no per-atom info; freezing-by-
+    element gracefully degrades)."""
+    elements = getattr(struct, "elements", None)
+    if elements is not None:
+        return [str(e) for e in elements]
+    atoms = getattr(struct, "atoms", None)
+    if atoms is not None:
+        out: List[str] = []
+        for a in atoms:
+            sym = getattr(a, "symbol", None) or getattr(a, "element", None)
+            out.append(str(sym) if sym is not None else "")
+        return out
+    return []
+
+
 def _count_free_atoms(struct: Structure, cfg: SpectraConfig) -> int:
     """Approximate the count of unfrozen atoms by element + index
     union (residue-name freezing isn't decidable without parsing the
-    PDB).  Returns ``len(struct.atoms)`` when no freeze rule applies.
+    PDB).  Returns the total atom count when no freeze rule applies.
 
     The Methods prose only uses this to phrase "N free atoms, 3N-6
     modes" -- being off by a few atoms in unusual frozen-residue
     setups is acceptable since the engine's actual frozen-atom list
-    appears verbatim in the script body (spec § 7).
-    """
-    try:
-        atoms = struct.atoms
-    except Exception:
+    appears verbatim in the script body (spec § 7)."""
+    n_total = _count_structure_atoms(struct)
+    if n_total == 0:
         return 0
-    n_total = len(atoms)
     if not (cfg.fixed_elements or cfg.fixed_indices):
         return n_total
     fixed: set = set()
     if cfg.fixed_elements:
         elem_set = {e.strip() for e in cfg.fixed_elements if e.strip()}
-        for i, a in enumerate(atoms):
-            sym = getattr(a, "symbol", None) or getattr(a, "element", None)
+        symbols = _structure_element_symbols(struct)
+        for i, sym in enumerate(symbols):
             if sym in elem_set:
                 fixed.add(i)
     if cfg.fixed_indices:

@@ -38,6 +38,14 @@ from .results import (
 from .selection import select_modes, validate_selection
 from .methods import render_methods_md, extract_citation_keys
 
+# Import the PySCF engine for its side effect: the module's
+# @register_engine decorator runs and the engine becomes
+# discoverable via get_engine("pyscf").  Keep this AFTER the
+# engine_base import (which defines the registry) and AFTER the
+# `register_engine` re-export above (so the registry contract is
+# stable by the time the engine imports it).
+from . import pyscf_engine as _pyscf_engine  # noqa: F401
+
 __all__ = [
     # Config (L1) -- re-exported from molbuilder.config.spectra
     "SpectraConfig",
