@@ -186,8 +186,14 @@ def validate_selection(modes: List[ModeData],
             where="config.es_mode_selection",
         ))
 
-    # Explicit-index range check.
-    if sel == "explicit":
+    # Explicit-index range check.  Only meaningful when we actually
+    # know the mode count -- pre-render (no L2 results yet, modes=[])
+    # the validator has no upper bound to check against, so skip the
+    # check rather than reject every index.  The engine's L4 loop
+    # silently skips out-of-range indices at runtime, and the
+    # render-time validator will run again with a populated modes
+    # list during a resume.
+    if sel == "explicit" and modes:
         valid_range = range(1, len(modes) + 1)
         bad = [i for i in cfg.es_explicit_indices if i not in valid_range]
         if bad:

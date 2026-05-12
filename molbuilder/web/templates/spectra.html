@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>molbuilder &mdash; spectra (Raman / IR)</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
+</head>
+<body>
+
+{% set active_tab = "spectra" %}
+{% set page_tagline = "Post-relaxation harmonic vibrational analysis &mdash; frequencies, Raman activities, and per-mode electronic structure for transport preparation." %}
+{% include "_app_header.html" %}
+
+<main class="spectra-shell">
+  <!--
+    The full Spectra-tab UI lands in task L3b (templates + JS + CSS).
+    For now this placeholder confirms the route + blueprint wiring;
+    the spec § 10 endpoints (/api/build/schema/spectra,
+    /api/spectra/render, /api/spectra/load) are already live and
+    can be exercised via curl / the test client.
+  -->
+  <section class="placeholder-card">
+    <h2>Spectra tab (under construction)</h2>
+    <p>The schema-driven form + Methods-preview modal + live-watch
+       viewer lands next.  In the meantime the API is functional:</p>
+    <ul>
+      <li><code>GET /api/build/schema/spectra</code> &mdash; form schema</li>
+      <li><code>POST /api/spectra/render</code> &mdash; generate the runnable script</li>
+      <li><code>POST /api/spectra/load</code> &mdash; parse a spectra.json file</li>
+    </ul>
+    <p>See <code>docs/tabs/spectra/spec.md</code> for the full design contract.</p>
+  </section>
+</main>
+
+</body>
+</html>

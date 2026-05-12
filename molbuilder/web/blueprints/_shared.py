@@ -448,8 +448,66 @@ def coerce_to_field_type(field: dataclasses.Field, value: Any,
         if isinstance(value, str):
             return [s.strip() for s in value.split(",") if s.strip()]
         return value
+    # Sequence[int] (fixed_indices / es_explicit_indices) -- accept
+    # comma-separated indices with optional range syntax
+    # "0-35, 100, 150-200" -> [0,1,...,35, 100, 150,...,200].  Used by
+    # the Spectra tab's frozen-atom + L4 explicit-mode lists.
+    if origin in (list, tuple) and args and args[0] is int:
+        if isinstance(value, str):
+            return _parse_int_list_with_ranges(value)
+        if isinstance(value, (list, tuple)):
+            # Already a sequence; coerce each element to int.  Reject
+            # element-wise rather than silently truncating floats so
+            # bad input surfaces.
+            return [int(v) for v in value]
+        return value
     # Anything else: pass through.
     return value
+
+
+def _parse_int_list_with_ranges(s: str):
+    """Parse ``"0-35, 100, 150-200"`` -> ``[0, 1, ..., 35, 100, 150, ..., 200]``.
+
+    Each comma-separated token is either a bare integer or
+    ``<lo>-<hi>`` (inclusive on both ends).  Whitespace around
+    commas / hyphens is tolerated.  Empty tokens (trailing comma)
+    are skipped.
+
+    Raises ``ValueError`` with the offending token so the caller can
+    surface it as a typed error to the user.
+    """
+    out = []
+    for tok in s.split(","):
+        tok = tok.strip()
+        if not tok:
+            continue
+        if "-" in tok:
+            # Negative-prefix support would be ambiguous with the
+            # range separator; indices are 0-based so negatives don't
+            # need to be supported here.
+            lo_s, _, hi_s = tok.partition("-")
+            try:
+                lo = int(lo_s.strip())
+                hi = int(hi_s.strip())
+            except ValueError:
+                raise ValueError(
+                    f"could not parse index range {tok!r}; "
+                    f"expected '<int>-<int>'"
+                )
+            if hi < lo:
+                raise ValueError(
+                    f"index range {tok!r} is empty (hi < lo)"
+                )
+            out.extend(range(lo, hi + 1))
+        else:
+            try:
+                out.append(int(tok))
+            except ValueError:
+                raise ValueError(
+                    f"could not parse index {tok!r}; "
+                    f"expected an integer"
+                )
+    return out
 
 
 def config_from_params(cls, params: Dict[str, Any],

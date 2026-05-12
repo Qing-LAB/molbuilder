@@ -37,11 +37,18 @@ from typing import List, Optional
 
 from ..config.spectra import SpectraConfig
 from ..issues import Issue
-from ..parsers.spectra_json import parse_spectra_json
 from ..structure import Structure
 from .engine_base import register_engine
 from .results import ModeData, SpectraResults
 from .selection import validate_selection
+
+# parse_spectra_json is lazy-imported inside parse_output to break a
+# circular import: parsers.spectra_json imports from spectra.results,
+# which loads spectra.__init__, which imports this module.  If we
+# imported parse_spectra_json eagerly here, the dependency graph
+# `parsers.spectra_json -> spectra.results -> spectra.__init__ ->
+# pyscf_engine -> parsers.spectra_json` deadlocks during the very
+# first `from molbuilder.parsers.spectra_json import ...` call.
 
 
 # Citation key markers used in the methods_fragment + the
@@ -118,6 +125,9 @@ class PySCFSpectraEngine:
         contract is symmetric with future engines that might do
         post-processing.
         """
+        # Lazy import to break the circular dep documented at the
+        # top of this module.
+        from ..parsers.spectra_json import parse_spectra_json
         return parse_spectra_json(path)
 
     # ------------------------------------------------------------------ #

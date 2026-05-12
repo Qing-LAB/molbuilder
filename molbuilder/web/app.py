@@ -47,12 +47,14 @@ def create_app() -> Flask:
     # self-contained (handlers, helpers, validation).  Both blueprints
     # use full route paths in their decorators (no url_prefix) -- the
     # paths read clearly at the call site.
-    from .blueprints.build  import bp as build_bp
-    from .blueprints.watch  import bp as watch_bp
-    from .blueprints.modify import bp as modify_bp
+    from .blueprints.build   import bp as build_bp
+    from .blueprints.watch   import bp as watch_bp
+    from .blueprints.modify  import bp as modify_bp
+    from .blueprints.spectra import bp as spectra_bp
     app.register_blueprint(build_bp)
     app.register_blueprint(watch_bp)
     app.register_blueprint(modify_bp)
+    app.register_blueprint(spectra_bp)
 
     # 413 Payload Too Large -- without this Flask returns its default
     # HTML 413 page, which the JS uploaders parse as ``r.json()`` and
