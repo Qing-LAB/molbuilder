@@ -15,6 +15,10 @@ PySCF engine is the only one shipped in v1; the SIESTA engine slot
 is reserved.
 """
 
+# Config re-export matches the pattern at molbuilder/{siesta,pyscf}/__init__.py
+# so callers can do `from molbuilder.spectra import SpectraConfig` without
+# reaching into the config/ subpackage explicitly.
+from ..config.spectra import SpectraConfig
 from .engine_base import (
     SpectraEngine,
     UnknownEngineError,
@@ -33,6 +37,8 @@ from .results import (
 )
 
 __all__ = [
+    # Config (L1) -- re-exported from molbuilder.config.spectra
+    "SpectraConfig",
     # Result types (L1)
     "ModeData",
     "ModeElectronicStructure",

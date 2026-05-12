@@ -28,10 +28,10 @@ import json
 import numpy as np
 import pytest
 
-from molbuilder.config.spectra import SpectraConfig
 from molbuilder.spectra import (
     ModeData,
     ModeElectronicStructure,
+    SpectraConfig,
     SpectraResults,
 )
 from molbuilder.spectra.results import (
