@@ -35,6 +35,7 @@ from .results import (
     PHASE_RUNNING,
     PHASE_COMPLETE,
 )
+from .selection import select_modes, validate_selection
 
 __all__ = [
     # Config (L1) -- re-exported from molbuilder.config.spectra
@@ -53,4 +54,7 @@ __all__ = [
     "get_engine",
     "registered_engines",
     "unregister_engine",
+    # Mode-selection logic (L2)
+    "select_modes",
+    "validate_selection",
 ]
