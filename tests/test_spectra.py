@@ -67,6 +67,12 @@ def _make_mode(index: int = 1,
 
 
 def _make_results(complete: bool = True) -> SpectraResults:
+    """Fixture: 2-atom molecule, all atoms free, three vibrational
+    modes (no atoms fixed -> n_free=2, eigenvector shape (2,3)).
+    The middle mode has electronic-structure data populated; the
+    others don't.  Mirrors what a real PySCF run on H2O would
+    produce structurally (though with toy numerical values).
+    """
     return SpectraResults(
         schema_version             = SCHEMA_VERSION,
         engine                     = "pyscf",
@@ -74,8 +80,8 @@ def _make_results(complete: bool = True) -> SpectraResults:
         molbuilder_version         = "1.2.0",
         timestamp                  = "2026-05-11T12:00:00Z",
         structure_hash             = "sha256:abc123",
-        n_atoms_total              = 3,
-        free_atom_idxs             = [0, 1, 2],
+        n_atoms_total              = 2,
+        free_atom_idxs             = [0, 1],
         fixed_atom_idxs            = [],
         equilibrium_scf_eh         = -76.4123,
         equilibrium_mo_energies_eh = np.array([-1.0, -0.5, -0.2, 0.1, 0.3]),
@@ -302,3 +308,361 @@ class TestSpectraResults:
         assert freqs_before == freqs_after
         # Confirm input fixture is actually ascending so the assertion is meaningful.
         assert freqs_before == sorted(freqs_before)
+
+
+# --------------------------------------------------------------------- #
+#  Equality is intentionally undefined -- must raise loudly             #
+# --------------------------------------------------------------------- #
+
+
+class TestEqualityIsLoud:
+    """A spectrum is not equal-able by `==` -- the scientific
+    operations are Δ-quantities, not yes/no.  Accidental
+    ``a == b`` (e.g. from a copy-paste, a test author who didn't
+    realise spectra need a tolerance comparator) raises with a
+    pointer at the future ``spectra.compare`` API.
+    """
+
+    def test_mode_electronic_structure_eq_raises(self):
+        a, b = _make_es(), _make_es()
+        with pytest.raises(TypeError, match="equality is intentionally undefined"):
+            a == b  # noqa: B015
+        with pytest.raises(TypeError):
+            a != b  # noqa: B015
+
+    def test_mode_data_eq_raises(self):
+        a, b = _make_mode(), _make_mode()
+        with pytest.raises(TypeError, match="equality is intentionally undefined"):
+            a == b  # noqa: B015
+
+    def test_spectra_results_eq_raises(self):
+        a, b = _make_results(), _make_results()
+        with pytest.raises(TypeError, match="equality is intentionally undefined"):
+            a == b  # noqa: B015
+
+    def test_error_message_points_at_compare_api(self):
+        """The error message names the future structured comparator
+        (`molbuilder.spectra.compare`) so a user hitting this knows
+        where the right operation will live when it's built."""
+        a, b = _make_es(), _make_es()
+        try:
+            a == b  # noqa: B015
+        except TypeError as exc:
+            msg = str(exc)
+            assert "molbuilder.spectra.compare" in msg
+            assert "Δ" in msg  # mentions the Δ-quantity intent
+
+
+# --------------------------------------------------------------------- #
+#  Type / shape normalisation in __post_init__                          #
+# --------------------------------------------------------------------- #
+
+
+class TestPostInitValidation:
+    """Strict types from the start: every numpy field is coerced to
+    dtype=float and shape-validated at construction.  Failures
+    raise at the construction site, not 100 lines downstream when
+    a caller assumes a float array but got ints.
+    """
+
+    # ----- ModeElectronicStructure -----
+
+    def test_mo_arrays_coerced_to_float(self):
+        """Passing an int-typed array gets promoted to float64."""
+        es = ModeElectronicStructure(
+            amplitude_ang        = 0.1,
+            mo_energies_eq_eh    = [1, 2, 3, 4, 5],       # plain list
+            mo_energies_minus_eh = np.array([1, 2, 3, 4, 5], dtype=int),
+            mo_energies_plus_eh  = (1, 2, 3, 4, 5),       # tuple
+            homo_index_in_window = 2,
+            scf_energy_eq_eh     = -1.0,
+            scf_energy_minus_eh  = -1.0,
+            scf_energy_plus_eh   = -1.0,
+        )
+        assert es.mo_energies_eq_eh.dtype == np.float64
+        assert es.mo_energies_minus_eh.dtype == np.float64
+        assert es.mo_energies_plus_eh.dtype == np.float64
+
+    def test_mo_arrays_must_be_1d(self):
+        """A 2-D MO array is a programmer error -- catch at
+        construction, don't let it propagate."""
+        with pytest.raises(ValueError, match="must be 1-D"):
+            ModeElectronicStructure(
+                amplitude_ang        = 0.1,
+                mo_energies_eq_eh    = np.zeros((3, 3)),
+                mo_energies_minus_eh = np.zeros(9),
+                mo_energies_plus_eh  = np.zeros(9),
+                homo_index_in_window = 0,
+                scf_energy_eq_eh     = -1.0,
+                scf_energy_minus_eh  = -1.0,
+                scf_energy_plus_eh   = -1.0,
+            )
+
+    def test_mo_arrays_must_match_size(self):
+        """All three MO arrays must have the same window size."""
+        with pytest.raises(ValueError, match="must share the same shape"):
+            ModeElectronicStructure(
+                amplitude_ang        = 0.1,
+                mo_energies_eq_eh    = np.zeros(5),
+                mo_energies_minus_eh = np.zeros(4),       # wrong size
+                mo_energies_plus_eh  = np.zeros(5),
+                homo_index_in_window = 0,
+                scf_energy_eq_eh     = -1.0,
+                scf_energy_minus_eh  = -1.0,
+                scf_energy_plus_eh   = -1.0,
+            )
+
+    def test_homo_index_in_range(self):
+        """homo_index_in_window must be a valid index into the
+        equilibrium MO array."""
+        with pytest.raises(ValueError, match="out of range"):
+            ModeElectronicStructure(
+                amplitude_ang        = 0.1,
+                mo_energies_eq_eh    = np.zeros(5),
+                mo_energies_minus_eh = np.zeros(5),
+                mo_energies_plus_eh  = np.zeros(5),
+                homo_index_in_window = 10,                # > 5
+                scf_energy_eq_eh     = -1.0,
+                scf_energy_minus_eh  = -1.0,
+                scf_energy_plus_eh   = -1.0,
+            )
+
+    # ----- ModeData -----
+
+    def test_eigenvector_coerced_to_float(self):
+        m = ModeData(
+            index_1based          = 1,
+            frequency_cm1         = 100.0,
+            raman_activity_a4_amu = None,
+            ir_intensity_km_mol   = None,
+            eigenvector_free      = [[1, 0, 0], [-1, 0, 0]],   # list of int lists
+            has_imag              = False,
+        )
+        assert m.eigenvector_free.dtype == np.float64
+
+    def test_eigenvector_shape_validated(self):
+        """eigenvector_free must be (n_free, 3); wrong shapes raise."""
+        with pytest.raises(ValueError, match="must have shape"):
+            ModeData(
+                index_1based          = 1,
+                frequency_cm1         = 100.0,
+                raman_activity_a4_amu = None,
+                ir_intensity_km_mol   = None,
+                eigenvector_free      = np.zeros((3, 4)),       # last axis != 3
+                has_imag              = False,
+            )
+        with pytest.raises(ValueError, match="must have shape"):
+            ModeData(
+                index_1based          = 1,
+                frequency_cm1         = 100.0,
+                raman_activity_a4_amu = None,
+                ir_intensity_km_mol   = None,
+                eigenvector_free      = np.zeros(6),            # 1-D, not 2-D
+                has_imag              = False,
+            )
+
+    # ----- SpectraResults -----
+
+    def test_equilibrium_mos_coerced_to_float(self):
+        r = SpectraResults(
+            schema_version             = SCHEMA_VERSION,
+            engine                     = "pyscf",
+            engine_version             = "2.6.0",
+            molbuilder_version         = "1.2.0",
+            timestamp                  = "2026-05-11T12:00:00Z",
+            structure_hash             = "sha256:abc",
+            n_atoms_total              = 1,
+            free_atom_idxs             = [0],
+            fixed_atom_idxs            = [],
+            equilibrium_scf_eh         = -1.0,
+            equilibrium_mo_energies_eh = [-1, 0, 1],            # int list
+            equilibrium_homo_idx       = 1,
+            modes                      = [],
+            selected_mode_idxs_1based  = [],
+            config                     = {},
+            methods_text               = "",
+            bibliography_keys          = [],
+            complete                   = False,
+        )
+        assert r.equilibrium_mo_energies_eh.dtype == np.float64
+
+    def test_homo_idx_validated(self):
+        with pytest.raises(ValueError, match="out of range"):
+            SpectraResults(
+                schema_version             = SCHEMA_VERSION,
+                engine                     = "pyscf",
+                engine_version             = "2.6.0",
+                molbuilder_version         = "1.2.0",
+                timestamp                  = "t",
+                structure_hash             = "h",
+                n_atoms_total              = 1,
+                free_atom_idxs             = [0],
+                fixed_atom_idxs            = [],
+                equilibrium_scf_eh         = 0.0,
+                equilibrium_mo_energies_eh = np.zeros(3),
+                equilibrium_homo_idx       = 5,                 # out of range
+                modes                      = [],
+                selected_mode_idxs_1based  = [],
+                config                     = {},
+                methods_text               = "",
+                bibliography_keys          = [],
+                complete                   = False,
+            )
+
+    def test_free_fixed_partition_disjoint(self):
+        """An atom can be in either free or fixed, never both."""
+        with pytest.raises(ValueError, match="overlap"):
+            SpectraResults(
+                schema_version             = SCHEMA_VERSION,
+                engine                     = "pyscf",
+                engine_version             = "2.6.0",
+                molbuilder_version         = "1.2.0",
+                timestamp                  = "t",
+                structure_hash             = "h",
+                n_atoms_total              = 3,
+                free_atom_idxs             = [0, 1, 2],
+                fixed_atom_idxs            = [1, 2],            # overlaps with free
+                equilibrium_scf_eh         = 0.0,
+                equilibrium_mo_energies_eh = np.zeros(3),
+                equilibrium_homo_idx       = 0,
+                modes                      = [],
+                selected_mode_idxs_1based  = [],
+                config                     = {},
+                methods_text               = "",
+                bibliography_keys          = [],
+                complete                   = False,
+            )
+
+    def test_free_fixed_partition_complete(self):
+        """Free + fixed must cover all atoms exactly once."""
+        with pytest.raises(ValueError, match="!= n_atoms_total"):
+            SpectraResults(
+                schema_version             = SCHEMA_VERSION,
+                engine                     = "pyscf",
+                engine_version             = "2.6.0",
+                molbuilder_version         = "1.2.0",
+                timestamp                  = "t",
+                structure_hash             = "h",
+                n_atoms_total              = 10,                # claim 10
+                free_atom_idxs             = [0, 1],            # only 2 free
+                fixed_atom_idxs            = [2, 3],            # only 2 fixed
+                equilibrium_scf_eh         = 0.0,               # total = 4, not 10
+                equilibrium_mo_energies_eh = np.zeros(3),
+                equilibrium_homo_idx       = 0,
+                modes                      = [],
+                selected_mode_idxs_1based  = [],
+                config                     = {},
+                methods_text               = "",
+                bibliography_keys          = [],
+                complete                   = False,
+            )
+
+    def test_cross_mode_eigenvector_shape_consistency(self):
+        """Every mode's eigenvector_free must agree on n_free
+        (= len(free_atom_idxs)).  Catches "I shipped a wrong-shape
+        mode in the middle of the list" bugs."""
+        good_mode = _make_mode()                                 # n_free=2
+        # Construct a mode with n_free=3 -- should fail validation
+        # at SpectraResults construction because the rest of the
+        # results say n_free=2 via free_atom_idxs.
+        bad_mode = ModeData(
+            index_1based          = 99,
+            frequency_cm1         = 50.0,
+            raman_activity_a4_amu = 1.0,
+            ir_intensity_km_mol   = None,
+            eigenvector_free      = np.zeros((3, 3)),            # 3 atoms, not 2
+            has_imag              = False,
+        )
+        with pytest.raises(ValueError, match=r"eigenvector shape.*expected"):
+            SpectraResults(
+                schema_version             = SCHEMA_VERSION,
+                engine                     = "pyscf",
+                engine_version             = "2.6.0",
+                molbuilder_version         = "1.2.0",
+                timestamp                  = "t",
+                structure_hash             = "h",
+                n_atoms_total              = 2,
+                free_atom_idxs             = [0, 1],             # 2 free
+                fixed_atom_idxs            = [],
+                equilibrium_scf_eh         = 0.0,
+                equilibrium_mo_energies_eh = np.zeros(3),
+                equilibrium_homo_idx       = 0,
+                modes                      = [good_mode, bad_mode],
+                selected_mode_idxs_1based  = [],
+                config                     = {},
+                methods_text               = "",
+                bibliography_keys          = [],
+                complete                   = False,
+            )
+
+    def test_cross_mode_es_window_consistency(self):
+        """All modes' electronic_structure must use the same window
+        size (HOMO−N .. LUMO+M is a single config knob; modes
+        disagreeing means a parser bug)."""
+        m1 = _make_mode(index=1, with_es=True)
+        # m1's ES window has size 5.  Build m2 with size-7 ES.
+        m2 = ModeData(
+            index_1based          = 2,
+            frequency_cm1         = 200.0,
+            raman_activity_a4_amu = None,
+            ir_intensity_km_mol   = None,
+            eigenvector_free      = np.array([[1.0, 0, 0], [-1.0, 0, 0]]),
+            has_imag              = False,
+            electronic_structure  = ModeElectronicStructure(
+                amplitude_ang        = 0.1,
+                mo_energies_eq_eh    = np.zeros(7),           # window=7
+                mo_energies_minus_eh = np.zeros(7),
+                mo_energies_plus_eh  = np.zeros(7),
+                homo_index_in_window = 3,
+                scf_energy_eq_eh     = -1.0,
+                scf_energy_minus_eh  = -1.0,
+                scf_energy_plus_eh   = -1.0,
+            ),
+        )
+        with pytest.raises(ValueError, match="ES window has size"):
+            SpectraResults(
+                schema_version             = SCHEMA_VERSION,
+                engine                     = "pyscf",
+                engine_version             = "2.6.0",
+                molbuilder_version         = "1.2.0",
+                timestamp                  = "t",
+                structure_hash             = "h",
+                n_atoms_total              = 2,
+                free_atom_idxs             = [0, 1],
+                fixed_atom_idxs            = [],
+                equilibrium_scf_eh         = 0.0,
+                equilibrium_mo_energies_eh = np.zeros(3),
+                equilibrium_homo_idx       = 0,
+                modes                      = [m1, m2],
+                selected_mode_idxs_1based  = [1, 2],
+                config                     = {},
+                methods_text               = "",
+                bibliography_keys          = [],
+                complete                   = False,
+            )
+
+    def test_empty_modes_allowed_for_in_progress_runs(self):
+        """An in-progress run before phase-2 (Hessian) has no modes
+        yet; the empty list must be accepted by validation."""
+        r = SpectraResults(
+            schema_version             = SCHEMA_VERSION,
+            engine                     = "pyscf",
+            engine_version             = "2.6.0",
+            molbuilder_version         = "1.2.0",
+            timestamp                  = "t",
+            structure_hash             = "h",
+            n_atoms_total              = 1,
+            free_atom_idxs             = [0],
+            fixed_atom_idxs            = [],
+            equilibrium_scf_eh         = -1.0,
+            equilibrium_mo_energies_eh = np.zeros(3),
+            equilibrium_homo_idx       = 0,
+            modes                      = [],                  # not yet computed
+            selected_mode_idxs_1based  = [],
+            config                     = {},
+            methods_text               = "",
+            bibliography_keys          = [],
+            complete                   = False,
+        )
+        assert r.modes == []
+        assert r.complete is False

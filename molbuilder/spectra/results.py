@@ -26,6 +26,21 @@ share one schema -- the dataclass is the canonical structure, the
 dict is its wire encoding.  numpy arrays serialise as nested
 Python lists (round-trip via :func:`numpy.asarray`).
 
+Type discipline: every numpy field is coerced to ``dtype=float``
+and shape-validated in ``__post_init__``.  Passing an int array,
+a list-of-lists, or a wrong-shape array fails LOUDLY at
+construction time, not silently 100 lines downstream when a
+caller assumes the float type.
+
+Equality: ``a == b`` raises ``TypeError`` on all three dataclasses.
+Scientific comparison of two spectra is never a yes/no question --
+the real questions are "what's the Δfrequency at each mode?",
+"max ΔHOMO shift?", "is the spectrum converged within tolerance
+X cm⁻¹?".  None of those are bool-valued.  A future
+:func:`spectra.compare` (not yet implemented; build when a real
+caller needs it) will return structured deltas instead.  Until
+then, accidental ``==`` raises with a pointer at the right API.
+
 Schema version: pinned at 1 on :data:`SpectraResults.schema_version`.
 Bumping the version requires the parser to grow a per-version
 branch; see spec § 6.
@@ -43,12 +58,33 @@ import numpy as np
 SCHEMA_VERSION = 1
 
 
+def _no_equality(self, other):  # noqa: ARG001
+    """Shared explicit ``__eq__`` that refuses bool comparison.
+
+    Used by all three Spectra dataclasses so accidental ``a == b``
+    fails loudly with a pointer at the right API instead of either
+    (a) producing the numpy-ambiguous-truth-value TypeError on the
+    embedded ndarrays, or (b) silently giving a misleading False
+    when the user actually wanted "is the spectrum converged".
+    """
+    raise TypeError(
+        f"{type(self).__name__} equality is intentionally undefined. "
+        "Comparing two spectra is never a yes/no question; the "
+        "scientific operations are Δfrequency / Δactivity / "
+        "Δ(HOMO,LUMO) per mode.  A structured comparator will live "
+        "at `molbuilder.spectra.compare(...)` when a concrete "
+        "caller needs it.  Until then, compare per-field "
+        "(np.testing.assert_allclose on arrays, pytest.approx on "
+        "scalars) or call the comparator above."
+    )
+
+
 # --------------------------------------------------------------------- #
 #  Per-mode electronic structure                                        #
 # --------------------------------------------------------------------- #
 
 
-@dataclass
+@dataclass(eq=False)
 class ModeElectronicStructure:
     """Displaced-geometry SCF results for a single mode.
 
@@ -82,6 +118,39 @@ class ModeElectronicStructure:
     scf_energy_eq_eh:     float
     scf_energy_minus_eh:  float
     scf_energy_plus_eh:   float
+
+    __eq__ = _no_equality
+
+    def __post_init__(self):
+        """Normalise + shape-validate the MO arrays.
+
+        All three arrays must be 1-D, dtype=float, and have the
+        same length (the orbital window size).  We coerce dtype +
+        contiguity on the way in so a caller passing a list, an
+        int array, or a non-contiguous view is normalised once and
+        the typed surface stays predictable downstream.
+        """
+        self.mo_energies_eq_eh    = np.asarray(self.mo_energies_eq_eh,    dtype=float)
+        self.mo_energies_minus_eh = np.asarray(self.mo_energies_minus_eh, dtype=float)
+        self.mo_energies_plus_eh  = np.asarray(self.mo_energies_plus_eh,  dtype=float)
+        if self.mo_energies_eq_eh.ndim != 1:
+            raise ValueError(
+                f"ModeElectronicStructure.mo_energies_eq_eh must be 1-D; "
+                f"got shape {self.mo_energies_eq_eh.shape}"
+            )
+        n = self.mo_energies_eq_eh.size
+        if self.mo_energies_minus_eh.shape != (n,) or self.mo_energies_plus_eh.shape != (n,):
+            raise ValueError(
+                f"ModeElectronicStructure: mo_energies_{{eq,minus,plus}}_eh "
+                f"must share the same shape; got eq={self.mo_energies_eq_eh.shape}, "
+                f"minus={self.mo_energies_minus_eh.shape}, "
+                f"plus={self.mo_energies_plus_eh.shape}"
+            )
+        if not 0 <= self.homo_index_in_window < n:
+            raise ValueError(
+                f"ModeElectronicStructure.homo_index_in_window={self.homo_index_in_window} "
+                f"out of range [0, {n})"
+            )
 
     def to_dict(self) -> Dict[str, Any]:
         """JSON-friendly dict.  numpy arrays -> nested lists; floats
@@ -120,7 +189,7 @@ class ModeElectronicStructure:
 # --------------------------------------------------------------------- #
 
 
-@dataclass
+@dataclass(eq=False)
 class ModeData:
     """One vibrational mode.
 
@@ -165,6 +234,24 @@ class ModeData:
 
     electronic_structure:  Optional[ModeElectronicStructure] = None
 
+    __eq__ = _no_equality
+
+    def __post_init__(self):
+        """Normalise + shape-validate the eigenvector.
+
+        Eigenvector must be 2-D with the last axis = 3 (Cartesian
+        x/y/z displacement per free atom).  Number of free atoms
+        is implicit from the first axis -- cross-mode consistency
+        (every mode has the same n_free) is validated at the
+        SpectraResults level, not here.
+        """
+        self.eigenvector_free = np.asarray(self.eigenvector_free, dtype=float)
+        if self.eigenvector_free.ndim != 2 or self.eigenvector_free.shape[1] != 3:
+            raise ValueError(
+                f"ModeData.eigenvector_free must have shape (n_free, 3); "
+                f"got {self.eigenvector_free.shape}"
+            )
+
     def to_dict(self) -> Dict[str, Any]:
         return {
             "index_1based":          int(self.index_1based),
@@ -201,7 +288,7 @@ class ModeData:
 # --------------------------------------------------------------------- #
 
 
-@dataclass
+@dataclass(eq=False)
 class SpectraResults:
     """Engine-agnostic result of a Spectra run.
 
@@ -265,6 +352,78 @@ class SpectraResults:
     # kept here so the common schema doesn't bloat for engine-only
     # fields and the UI can ignore it.
     engine_metadata:           Dict[str, Any] = field(default_factory=dict)
+
+    __eq__ = _no_equality
+
+    def __post_init__(self):
+        """Normalise + cross-field shape-validate.
+
+        At the SpectraResults level we can check that:
+          * equilibrium_mo_energies_eh is a 1-D float array;
+          * homo_idx is in range;
+          * free_atom_idxs + fixed_atom_idxs partition [0, n_atoms_total);
+          * every mode's eigenvector_free has the same n_free
+            (= len(free_atom_idxs));
+          * every mode's electronic_structure (when present) has
+            the same window size.
+
+        Anything that fails here is a programmer / parser error
+        (the dataclass should never have been constructed); raising
+        at __post_init__ catches the bug at the construction site
+        rather than when the UI hits the inconsistency rendering.
+        """
+        # Equilibrium MO array.
+        self.equilibrium_mo_energies_eh = np.asarray(
+            self.equilibrium_mo_energies_eh, dtype=float
+        )
+        if self.equilibrium_mo_energies_eh.ndim != 1:
+            raise ValueError(
+                f"SpectraResults.equilibrium_mo_energies_eh must be 1-D; "
+                f"got shape {self.equilibrium_mo_energies_eh.shape}"
+            )
+        n_mos = self.equilibrium_mo_energies_eh.size
+        if not 0 <= self.equilibrium_homo_idx < n_mos:
+            raise ValueError(
+                f"SpectraResults.equilibrium_homo_idx={self.equilibrium_homo_idx} "
+                f"out of range [0, {n_mos})"
+            )
+        # Free + fixed atom partition.
+        free_set  = set(int(i) for i in self.free_atom_idxs)
+        fixed_set = set(int(i) for i in self.fixed_atom_idxs)
+        if free_set & fixed_set:
+            raise ValueError(
+                f"SpectraResults: free_atom_idxs and fixed_atom_idxs overlap "
+                f"at indices {sorted(free_set & fixed_set)}"
+            )
+        if len(free_set) + len(fixed_set) != self.n_atoms_total:
+            raise ValueError(
+                f"SpectraResults: free ({len(free_set)}) + fixed "
+                f"({len(fixed_set)}) atom counts != n_atoms_total "
+                f"({self.n_atoms_total})"
+            )
+        # Cross-mode shape consistency.  Allow the empty-modes case
+        # (in-progress write before phase 2 -- no harmonic analysis yet).
+        if self.modes:
+            n_free = len(free_set)
+            for m in self.modes:
+                if m.eigenvector_free.shape != (n_free, 3):
+                    raise ValueError(
+                        f"SpectraResults: mode {m.index_1based} has eigenvector "
+                        f"shape {m.eigenvector_free.shape}, expected ({n_free}, 3)"
+                    )
+            # Cross-mode ES window-size consistency.
+            es_window = None
+            for m in self.modes:
+                if m.electronic_structure is None:
+                    continue
+                w = m.electronic_structure.mo_energies_eq_eh.size
+                if es_window is None:
+                    es_window = w
+                elif w != es_window:
+                    raise ValueError(
+                        f"SpectraResults: mode {m.index_1based} ES window has "
+                        f"size {w}; expected {es_window} to match earlier modes"
+                    )
 
     def to_dict(self) -> Dict[str, Any]:
         return {
