@@ -254,6 +254,21 @@ textarea:focus {
 .results-meta dt { color: var(--text-secondary); }
 .results-meta dd { margin: 0; }
 
+.spectrum-chart {
+    width: 100%;
+    min-height: 280px;
+    margin: 0.6rem 0 1rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    padding: 4px;
+}
+.spectrum-chart:empty {
+    /* Plotly populates this, but when it can't (CDN slow / no modes
+       yet) the JS drops a fallback message in via innerHTML. */
+    min-height: 0;
+}
+
 .modes-table-wrap {
     max-height: 360px;
     overflow: auto;

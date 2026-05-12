@@ -6,6 +6,11 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='spectra/style.css') }}">
+<!-- Plotly: pinned to a specific cdnjs build for reproducibility,
+     matching the Build tab's pinning approach for 3Dmol.js.  cdnjs
+     serves an immutable artifact per version, so a URL bump is an
+     explicit code change rather than a silent dependency drift. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.35.2/plotly.min.js"></script>
 </head>
 <body>
 
@@ -105,6 +110,18 @@
         <h2>Results summary</h2>
       </header>
       <dl id="results-summary-list" class="results-meta"></dl>
+
+      <h3>Spectrum</h3>
+      <!--
+        Plotly draws into this div.  The chart is a stem-style
+        bar plot of frequency (cm⁻¹) vs Raman activity (Å⁴/amu);
+        imaginary modes are flagged with a distinct colour so a
+        saddle-point geometry is visually obvious.  Empty until
+        the first /api/spectra/load response arrives.
+      -->
+      <div id="spectrum-chart" class="spectrum-chart"
+           aria-label="Raman spectrum (frequency vs activity)"></div>
+
       <h3>Modes</h3>
       <div class="modes-table-wrap">
         <table id="modes-table" class="modes-table">

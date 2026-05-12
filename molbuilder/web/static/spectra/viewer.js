@@ -24,6 +24,7 @@
 
     // ----- DOM refs (resolved once at startup) -----------------
     const els = {
+        spectrumChart:  null,
         xyzText:        null,
         xyzFile:        null,
         xyzLoadBtn:     null,
@@ -393,6 +394,10 @@
                            + "<dd>" + escapeHtml(String(v)) + "</dd>")
             .join("");
 
+        // Spectrum chart (Plotly stem-style bar plot).  Drawn BEFORE
+        // the table so a slow render doesn't delay the table.
+        renderSpectrumChart(results.modes || []);
+
         // Modes table.
         const rows = (results.modes || []).map(m => {
             const raman = (m.raman_activity_a4_amu === null
@@ -408,6 +413,129 @@
                 + "</tr>";
         });
         els.modesTbody.innerHTML = rows.join("");
+    }
+
+    // ----- Spectrum chart (Plotly) -----------------------------
+    //
+    // Draws frequency (cm⁻¹) vs Raman activity (Å⁴/amu) as a
+    // stem-style bar plot.  Imaginary modes (frequency < 0) get a
+    // distinct red colour + a separate trace so a saddle-point
+    // geometry is visually obvious without consulting the table.
+    // Modes whose Raman activity isn't computed (cfg.compute_raman
+    // = False on the producing run) are shown at activity 0 with a
+    // grey marker so the user sees the mode density but understands
+    // there's no intensity data.
+    function renderSpectrumChart(modes) {
+        if (!els.spectrumChart) return;
+        if (typeof Plotly === "undefined") {
+            // Plotly is loaded via CDN; if a slow network hasn't
+            // delivered it yet the modes table still renders.  Show
+            // a one-line fallback rather than failing silently.
+            els.spectrumChart.innerHTML =
+                '<p class="status muted">Plotly not loaded; spectrum chart unavailable.</p>';
+            return;
+        }
+        if (!modes.length) {
+            Plotly.purge(els.spectrumChart);
+            els.spectrumChart.innerHTML =
+                '<p class="status muted">No modes yet.</p>';
+            return;
+        }
+
+        // Bucket the modes into three traces so each gets its own
+        // hover + legend entry.  This is cheaper than per-bar colour
+        // (Plotly draws a single legend item per trace).
+        const real = { x: [], y: [], text: [] };
+        const imag = { x: [], y: [], text: [] };
+        const noRaman = { x: [], y: [], text: [] };
+        for (const m of modes) {
+            const f      = Number(m.frequency_cm1);
+            const hasIm  = !!m.has_imag || f < 0;
+            const raman  = m.raman_activity_a4_amu;
+            const txt    = "Mode " + m.index_1based
+                         + "<br>ω = " + f.toFixed(1) + " cm⁻¹"
+                         + "<br>Raman = "
+                         + (raman === null || raman === undefined
+                            ? "n/a"
+                            : Number(raman).toFixed(2) + " Å⁴/amu");
+            if (raman === null || raman === undefined) {
+                noRaman.x.push(f);
+                noRaman.y.push(0);
+                noRaman.text.push(txt);
+            } else if (hasIm) {
+                imag.x.push(f);
+                imag.y.push(Number(raman));
+                imag.text.push(txt);
+            } else {
+                real.x.push(f);
+                real.y.push(Number(raman));
+                real.text.push(txt);
+            }
+        }
+
+        const traces = [];
+        if (real.x.length) traces.push({
+            type:        "bar",
+            name:        "Real",
+            x:           real.x,
+            y:           real.y,
+            text:        real.text,
+            hoverinfo:   "text",
+            marker:      { color: "#4a90d9", line: { width: 0 } },
+            width:       6,
+        });
+        if (imag.x.length) traces.push({
+            type:        "bar",
+            name:        "Imaginary",
+            x:           imag.x,
+            y:           imag.y,
+            text:        imag.text,
+            hoverinfo:   "text",
+            marker:      { color: "#e07070", line: { width: 0 } },
+            width:       6,
+        });
+        if (noRaman.x.length) traces.push({
+            type:        "scatter",
+            mode:        "markers",
+            name:        "No Raman",
+            x:           noRaman.x,
+            y:           noRaman.y,
+            text:        noRaman.text,
+            hoverinfo:   "text",
+            marker:      { color: "#888", symbol: "x", size: 7 },
+        });
+
+        const layout = {
+            margin:    { t: 28, r: 16, b: 44, l: 56 },
+            xaxis:     {
+                title: "Frequency (cm⁻¹)",
+                zeroline: false,
+                gridcolor: "#2c313a",
+                color: "#cfd3da",
+            },
+            yaxis:     {
+                title: "Raman activity (Å⁴/amu)",
+                rangemode: "tozero",
+                gridcolor: "#2c313a",
+                color: "#cfd3da",
+            },
+            plot_bgcolor:  "#1d2128",
+            paper_bgcolor: "#1d2128",
+            font:          { color: "#cfd3da" },
+            barmode:       "overlay",
+            legend:        { orientation: "h", y: 1.12 },
+            height:        260,
+        };
+
+        const config = {
+            displaylogo: false,
+            responsive:  true,
+            modeBarButtonsToRemove: [
+                "select2d", "lasso2d", "autoScale2d",
+            ],
+        };
+
+        Plotly.react(els.spectrumChart, traces, layout, config);
     }
 
     // ----- Bootstrap -------------------------------------------
@@ -432,6 +560,7 @@
         els.resultsSummary = $("results-summary");
         els.resultsMeta    = $("results-summary-list");
         els.modesTbody     = $("modes-tbody");
+        els.spectrumChart  = $("spectrum-chart");
         els.methodsModal   = $("methods-modal");
         els.methodsBody    = $("methods-modal-body");
         els.methodsClose   = $("methods-close-btn");

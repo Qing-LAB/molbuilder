@@ -143,6 +143,26 @@ class TestSpectraPage:
         assert "tokens.css" in css
         assert ".spectra-grid" in css
 
+    def test_plotly_loaded_from_cdn(self, web_client):
+        """The template pulls Plotly from a pinned cdnjs build so the
+        spectrum chart works without a local copy."""
+        body = web_client.get("/spectra").data.decode()
+        assert "cdnjs.cloudflare.com/ajax/libs/plotly.js" in body
+        # And a div for the chart is present.
+        assert 'id="spectrum-chart"' in body
+
+    def test_viewer_js_has_chart_renderer(self, web_client):
+        """The chart-renderer function is in the JS module and
+        builds three traces (real / imaginary / no-Raman)."""
+        js = web_client.get("/static/spectra/viewer.js").data.decode()
+        assert "renderSpectrumChart" in js
+        # Three trace buckets.
+        assert '"Real"'      in js
+        assert '"Imaginary"' in js
+        assert '"No Raman"'  in js
+        # Plotly entry point.
+        assert "Plotly.react" in js
+
 
 # --------------------------------------------------------------------- #
 #  Schema endpoint                                                      #
