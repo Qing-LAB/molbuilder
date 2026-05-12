@@ -15,6 +15,14 @@ PySCF engine is the only one shipped in v1; the SIESTA engine slot
 is reserved.
 """
 
+from .engine_base import (
+    SpectraEngine,
+    UnknownEngineError,
+    register_engine,
+    get_engine,
+    registered_engines,
+    unregister_engine,
+)
 from .results import (
     ModeData,
     ModeElectronicStructure,
@@ -25,10 +33,18 @@ from .results import (
 )
 
 __all__ = [
+    # Result types (L1)
     "ModeData",
     "ModeElectronicStructure",
     "SpectraResults",
     "PHASE_EMPTY",
     "PHASE_RUNNING",
     "PHASE_COMPLETE",
+    # Engine plug-in surface (L2)
+    "SpectraEngine",
+    "UnknownEngineError",
+    "register_engine",
+    "get_engine",
+    "registered_engines",
+    "unregister_engine",
 ]

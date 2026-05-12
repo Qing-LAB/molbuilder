@@ -943,3 +943,123 @@ class TestFreqRangeFilter:
             assert f["kind"] == "number"
             assert f.get("null_option") is True
             assert f["unit"] == "cm⁻¹"
+
+
+# --------------------------------------------------------------------- #
+#  L2 engine Protocol + registry (spec § 3.2)                           #
+# --------------------------------------------------------------------- #
+
+
+class TestEngineRegistry:
+    """The engine plug-in registry is the seam between L1 (shared
+    types) and L2 (per-engine implementations).  These tests pin
+    the registration semantics so the v1 PySCF engine + any future
+    SIESTA engine compose correctly.
+    """
+
+    def _make_dummy_engine(self, name: str):
+        """Build a minimal engine class meeting the Protocol shape
+        without doing real work -- enough for registry tests."""
+        from molbuilder.spectra import SpectraEngine
+
+        class _DummyEngine:
+            pass
+
+        _DummyEngine.name  = name
+        _DummyEngine.label = f"dummy ({name})"
+        # Stub methods just for Protocol satisfaction; tests don't
+        # exercise them.
+        _DummyEngine.render_script    = classmethod(lambda c, s, cfg: "")
+        _DummyEngine.parse_output     = classmethod(lambda c, p: None)
+        _DummyEngine.preflight        = classmethod(
+            lambda c, s, cfg, prior=None: []
+        )
+        _DummyEngine.methods_fragment = classmethod(lambda c, cfg, modes: "")
+        return _DummyEngine
+
+    def test_register_and_lookup(self):
+        from molbuilder.spectra import (
+            register_engine, get_engine, unregister_engine,
+        )
+        cls = self._make_dummy_engine("dummy-test-1")
+        try:
+            register_engine(cls)
+            assert get_engine("dummy-test-1") is cls
+        finally:
+            unregister_engine("dummy-test-1")
+
+    def test_unknown_engine_raises_with_available_list(self):
+        from molbuilder.spectra import get_engine, UnknownEngineError
+        with pytest.raises(UnknownEngineError) as exc_info:
+            get_engine("not-a-real-engine-xyz")
+        # The error names the requested engine + what's available
+        # so a typo is actionable.
+        assert "not-a-real-engine-xyz" in str(exc_info.value)
+        assert exc_info.value.name == "not-a-real-engine-xyz"
+        assert isinstance(exc_info.value.available, list)
+
+    def test_duplicate_registration_rejected(self):
+        """Re-registering an existing name is a programmer error
+        (two engines claiming the same key); register_engine
+        raises rather than silently overwriting."""
+        from molbuilder.spectra import register_engine, unregister_engine
+        cls1 = self._make_dummy_engine("dummy-test-dup")
+        cls2 = self._make_dummy_engine("dummy-test-dup")
+        try:
+            register_engine(cls1)
+            with pytest.raises(ValueError, match="already registered"):
+                register_engine(cls2)
+        finally:
+            unregister_engine("dummy-test-dup")
+
+    def test_re_registering_same_class_is_idempotent(self):
+        """Importing an engine module twice (e.g., via reload
+        during dev) must not raise -- the second import is the
+        SAME class, no conflict."""
+        from molbuilder.spectra import register_engine, unregister_engine
+        cls = self._make_dummy_engine("dummy-test-idem")
+        try:
+            register_engine(cls)
+            register_engine(cls)   # second call with the same class
+            from molbuilder.spectra import get_engine
+            assert get_engine("dummy-test-idem") is cls
+        finally:
+            unregister_engine("dummy-test-idem")
+
+    def test_class_without_name_attribute_rejected(self):
+        """An engine class without a `name` class attribute can't
+        be registered -- the registry would have nothing to key on."""
+        from molbuilder.spectra import register_engine
+
+        class _NamelessEngine:
+            label = "no name"
+
+        with pytest.raises(TypeError, match="non-empty string"):
+            register_engine(_NamelessEngine)
+
+    def test_registered_engines_returns_sorted_list(self):
+        from molbuilder.spectra import (
+            register_engine, registered_engines, unregister_engine,
+        )
+        b = self._make_dummy_engine("b-engine")
+        a = self._make_dummy_engine("a-engine")
+        try:
+            register_engine(b)
+            register_engine(a)
+            names = registered_engines()
+            assert "a-engine" in names
+            assert "b-engine" in names
+            # Sorted alphabetically -- 'a' before 'b'.
+            assert names.index("a-engine") < names.index("b-engine")
+        finally:
+            unregister_engine("a-engine")
+            unregister_engine("b-engine")
+
+    def test_protocol_runtime_checkable(self):
+        """SpectraEngine is @runtime_checkable so isinstance works.
+        A class meeting the Protocol shape via duck typing should
+        satisfy the check; one missing required methods should not."""
+        from molbuilder.spectra import SpectraEngine
+        cls = self._make_dummy_engine("dummy-test-proto")
+        # The dummy has all the right methods + attrs.
+        assert isinstance(cls, SpectraEngine)
