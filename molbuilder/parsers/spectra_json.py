@@ -1,11 +1,11 @@
-"""Engine-independent ``<job>.spectra.json`` parser.
+"""Engine-independent ``<job>.spectra.json`` parser + writer.
 
-Reads the structured JSON-result file written by a Spectra-tab
-engine (PySCF in v1; SIESTA reserved) and returns a typed
-:class:`molbuilder.spectra.results.SpectraResults`.  The wire
-shape is engine-agnostic by design (spec § 6); engine-specific
-extras live under ``engine_metadata`` and round-trip through the
-dataclass as a free-form ``Dict[str, Any]``.
+Reads (and writes) the structured JSON-result file produced by a
+Spectra-tab engine (PySCF in v1; SIESTA reserved) and returns a
+typed :class:`molbuilder.spectra.results.SpectraResults`.  The
+wire shape is engine-agnostic by design (spec § 6); engine-
+specific extras live under ``engine_metadata`` and round-trip
+through the dataclass as a free-form ``Dict[str, Any]``.
 
 The on-disk file is updated by the engine via atomic-replace at
 each phase boundary (spec § 6.1), so a reader will never see a
@@ -15,6 +15,24 @@ written the first checkpoint yet), or carry a different
 (disk corruption, manual edit gone wrong).  Each failure mode
 gets its own exception so the live-watch poller and the web
 ``/api/spectra/load`` endpoint can render targeted messages.
+
+JSON safety contract (applies to BOTH read and write):
+
+  * non-finite floats (NaN, ±Infinity) are forbidden -- they are
+    valid Python ``float`` values but not valid in standard JSON,
+    and downstream consumers (browsers, jq, strict parsers)
+    reject them.  The reader raises
+    :class:`SpectraJsonMalformedError` on encounter; the writer
+    raises a ``ValueError`` BEFORE touching disk so the engine
+    has to filter or null out NaN/Inf SCF energies explicitly.
+  * UTF-8 with an optional BOM is accepted; output is UTF-8 with
+    no BOM and ``ensure_ascii=False`` so cm⁻¹ / Å survive
+    verbatim.
+  * ``schema_version`` is compared with a strict type check
+    (``bool`` rejected even though Python treats ``True == 1``).
+  * Atomic write goes through ``os.replace`` of a sibling temp
+    file so a reader holding the path mid-write either sees the
+    old file or the new one, never a torn document.
 
 This is NOT a :class:`TrajectoryParser` subclass -- those handle
 per-step trajectories (SIESTA .out, geomeTRIC .xyz, molwatch logs).
@@ -26,9 +44,15 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from typing import Any, Dict, Union
 
 from ..spectra.results import SCHEMA_VERSION, SpectraResults
+
+
+# --------------------------------------------------------------------- #
+#  Exception hierarchy                                                  #
+# --------------------------------------------------------------------- #
 
 
 class SpectraJsonError(Exception):
@@ -52,14 +76,19 @@ class SpectraJsonNotFoundError(SpectraJsonError, FileNotFoundError):
 
 
 class SpectraJsonMalformedError(SpectraJsonError):
-    """The file exists but isn't valid JSON, or the top level is
-    not a JSON object.  Typically disk corruption, an editor
-    sneaking in a stray newline, or the file was hand-rolled."""
+    """The file exists but isn't valid JSON, isn't a JSON object
+    at the top level, contains a non-standard token (``NaN`` /
+    ``Infinity``), or can't be decoded as UTF-8.
+
+    Typically disk corruption, an editor sneaking in a stray
+    newline / BOM mismatch, an engine that wrote a non-finite
+    float without filtering, or the file was hand-rolled.
+    """
 
 
 class SpectraJsonSchemaError(SpectraJsonError):
-    """``schema_version`` is missing or doesn't match
-    :data:`SCHEMA_VERSION`.
+    """``schema_version`` is missing, the wrong type, or doesn't
+    match :data:`SCHEMA_VERSION`.
 
     A future newer engine writing schema_version=2 will trip this
     on a v1 reader; the message names both the expected and the
@@ -88,6 +117,63 @@ class SpectraJsonFieldError(SpectraJsonError):
     """
 
 
+# --------------------------------------------------------------------- #
+#  Internals                                                            #
+# --------------------------------------------------------------------- #
+
+
+def _reject_nonfinite_constant(token: str):
+    """``json.loads(..., parse_constant=...)`` hook.
+
+    ``parse_constant`` fires for ``NaN``, ``Infinity``,
+    ``-Infinity`` -- non-standard tokens that Python's json
+    module accepts on input by default but that downstream
+    consumers (browsers, jq, RFC-8259 parsers) reject.  We turn
+    each into a parse failure so the user gets a clear "the
+    engine wrote a non-finite value" diagnosis instead of NaN
+    silently propagating into SpectraResults.
+    """
+    raise SpectraJsonMalformedError(
+        f"non-finite numeric literal {token!r} is not valid JSON; "
+        f"the engine must filter or null out NaN/Inf before "
+        f"writing (likely an SCF that failed to converge produced "
+        f"a divergent energy)"
+    )
+
+
+def _validate_schema_version(actual: Any) -> None:
+    """Strict version check.  Rejects bool (``True == 1`` would
+    otherwise sneak past), non-int types, and wrong-version ints.
+    Centralised so the dict-input and file-input entry points
+    apply the same rule."""
+    if not isinstance(actual, int) or isinstance(actual, bool):
+        raise SpectraJsonSchemaError(SCHEMA_VERSION, actual)
+    if actual != SCHEMA_VERSION:
+        raise SpectraJsonSchemaError(SCHEMA_VERSION, actual)
+
+
+def _validate_dict_to_results(d: Dict[str, Any], where: str) -> SpectraResults:
+    """Shared reconstitution + error-wrapping logic.  ``where``
+    is a short label (path or ``"input dict"``) interpolated into
+    the FieldError message so callers can tell at a glance which
+    input failed."""
+    try:
+        return SpectraResults.from_dict(d)
+    except KeyError as e:
+        raise SpectraJsonFieldError(
+            f"{where} is missing required field {e.args[0]!r}"
+        ) from e
+    except (TypeError, ValueError) as e:
+        raise SpectraJsonFieldError(
+            f"{where} has a malformed field: {e}"
+        ) from e
+
+
+# --------------------------------------------------------------------- #
+#  Public API: read                                                     #
+# --------------------------------------------------------------------- #
+
+
 def parse_spectra_json(path: Union[str, "os.PathLike[str]"]) -> SpectraResults:
     """Read a ``<job>.spectra.json`` file and return a typed
     :class:`SpectraResults`.
@@ -111,9 +197,11 @@ def parse_spectra_json(path: Union[str, "os.PathLike[str]"]) -> SpectraResults:
         Path doesn't exist.  Common during live-watch before the
         engine has written the first phase checkpoint.
     SpectraJsonMalformedError
-        File exists but isn't a JSON object.
+        File exists but isn't valid JSON, isn't a JSON object,
+        contains a NaN/Inf token, or isn't UTF-8 decodable.
     SpectraJsonSchemaError
-        ``schema_version`` missing or != :data:`SCHEMA_VERSION`.
+        ``schema_version`` missing, wrong type, or
+        != :data:`SCHEMA_VERSION`.
     SpectraJsonFieldError
         Required field missing / wrong type / wrong shape.  Often
         means the file is from an older molbuilder where the L1
@@ -131,17 +219,28 @@ def parse_spectra_json(path: Union[str, "os.PathLike[str]"]) -> SpectraResults:
             f"is wrong)"
         )
 
-    # 2. Read + JSON-decode.  Atomic-replace at write time means
-    #    we never see a torn file -- but we may see hand-edited
-    #    junk or non-JSON content.
+    # 2. Read.  Use utf-8-sig so a BOM (some Windows editors
+    #    insert one) is transparently stripped instead of poisoning
+    #    the first byte of the JSON document.  UnicodeDecodeError
+    #    is a ValueError, not an OSError, so we catch it separately
+    #    and re-raise as MalformedError -- it means the file isn't
+    #    UTF-8 at all, which is a content problem (malformed), not
+    #    a filesystem problem.
     try:
-        with open(p, "r", encoding="utf-8") as fh:
+        with open(p, "r", encoding="utf-8-sig") as fh:
             raw = fh.read()
+    except UnicodeDecodeError as e:
+        raise SpectraJsonMalformedError(
+            f"{p!r} is not valid UTF-8 ({e.reason} at byte {e.start})"
+        ) from e
     except OSError as e:
         raise SpectraJsonError(f"failed to read {p!r}: {e}") from e
 
+    # 3. JSON-decode.  parse_constant rejects NaN / Infinity /
+    #    -Infinity (non-standard tokens that Python's json module
+    #    silently accepts by default).
     try:
-        d = json.loads(raw)
+        d = json.loads(raw, parse_constant=_reject_nonfinite_constant)
     except json.JSONDecodeError as e:
         raise SpectraJsonMalformedError(
             f"{p!r} is not valid JSON ({e.msg} at line {e.lineno} "
@@ -154,37 +253,30 @@ def parse_spectra_json(path: Union[str, "os.PathLike[str]"]) -> SpectraResults:
             f"{type(d).__name__}"
         )
 
-    # 3. schema_version gate.  We check BEFORE reconstitution so
+    # 4. schema_version gate.  We check BEFORE reconstitution so
     #    a v2 file doesn't trip a misleading "missing field" error
     #    in from_dict.
     if "schema_version" not in d:
         raise SpectraJsonSchemaError(SCHEMA_VERSION, None)
-    if d["schema_version"] != SCHEMA_VERSION:
-        raise SpectraJsonSchemaError(SCHEMA_VERSION, d["schema_version"])
+    _validate_schema_version(d["schema_version"])
 
-    # 4. Typed reconstitution.  SpectraResults.from_dict is the
-    #    authority on field types + shapes; we catch its errors and
-    #    re-raise with the field-name hint included so the user
-    #    doesn't see a bare KeyError out of dataclass internals.
-    try:
-        return SpectraResults.from_dict(d)
-    except KeyError as e:
-        raise SpectraJsonFieldError(
-            f"{p!r} is missing required field {e.args[0]!r}"
-        ) from e
-    except (TypeError, ValueError) as e:
-        raise SpectraJsonFieldError(
-            f"{p!r} has a malformed field: {e}"
-        ) from e
+    # 5. Typed reconstitution.
+    return _validate_dict_to_results(d, repr(p))
 
 
 def parse_spectra_json_dict(d: Dict[str, Any]) -> SpectraResults:
     """In-memory variant of :func:`parse_spectra_json`.
 
-    Same validation pipeline (schema_version check + typed
-    reconstitution) but skips the filesystem layer.  Useful when
-    the JSON arrived over the wire (e.g. a multipart POST to
+    Same validation pipeline (schema_version + typed reconstitution)
+    but skips the filesystem and the JSON decode layers.  Useful
+    when the JSON arrived over the wire (e.g. a multipart POST to
     ``/api/spectra/load``) and the caller already has the dict.
+
+    Note: NaN-rejection only fires at the json.loads layer, so this
+    in-memory path does NOT re-validate finiteness -- if the caller
+    constructed the dict in Python they're responsible for not
+    putting non-finite floats in it.  The dataclass's
+    ``__post_init__`` is the second line of defence.
 
     Raises the same exception hierarchy minus
     :class:`SpectraJsonNotFoundError` (we have the dict; it's
@@ -196,21 +288,118 @@ def parse_spectra_json_dict(d: Dict[str, Any]) -> SpectraResults:
         )
     if "schema_version" not in d:
         raise SpectraJsonSchemaError(SCHEMA_VERSION, None)
-    if d["schema_version"] != SCHEMA_VERSION:
-        raise SpectraJsonSchemaError(SCHEMA_VERSION, d["schema_version"])
+    _validate_schema_version(d["schema_version"])
+    return _validate_dict_to_results(d, "input dict")
+
+
+# --------------------------------------------------------------------- #
+#  Public API: write                                                    #
+# --------------------------------------------------------------------- #
+
+
+def dump_spectra_json(results: SpectraResults,
+                      path: Union[str, "os.PathLike[str]"],
+                      *,
+                      indent: int = 2) -> None:
+    """Write ``results`` to ``path`` via atomic rename.
+
+    The wire-format contract that every Spectra-tab writer
+    follows -- providing it as a helper here keeps engines from
+    diverging on the details (NaN handling, indent, BOM, atomicity).
+    The emitted script template in
+    ``spectra/<engine>_engine.py::render_script`` either imports
+    this directly or inlines the equivalent (see spec § 6.1).
+
+    Behaviour:
+
+      * ``results.to_dict()`` is encoded with ``allow_nan=False``
+        -- a non-finite scalar anywhere in the payload raises
+        :class:`ValueError` BEFORE any bytes hit disk, so the
+        engine is forced to filter or null out NaN/Inf SCF energies
+        explicitly instead of producing JSON that downstream
+        consumers can't read.
+      * UTF-8 without a BOM (cm⁻¹ / Å survive verbatim thanks to
+        ``ensure_ascii=False``).
+      * Atomic: write to ``<path>.tmp.<pid>`` first, then
+        :func:`os.replace` it on top of ``path``.  A reader
+        opening the path mid-write sees either the prior version
+        (intact) or the new version (intact) -- never a half-
+        written file.
+
+    Parameters
+    ----------
+    results
+        The :class:`SpectraResults` to serialise.
+    path
+        Destination path.  Parent directory must exist.
+    indent
+        ``json.dumps`` indent.  Default 2 (readable + diffable);
+        pass 0 / ``None`` for the compact wire form.
+
+    Raises
+    ------
+    ValueError
+        ``results.to_dict()`` contains a non-finite float.  The
+        engine must filter NaN/Inf before calling this.
+    OSError
+        Path can't be written (permission / no such directory /
+        disk full).  The temp file is cleaned up before re-raise.
+    """
+    p = os.fspath(path)
+    payload = results.to_dict()
+
+    # ``allow_nan=False`` is the safety net: dataclass __post_init__
+    # validates shapes but doesn't enforce finiteness on scalar
+    # fields (an SCF that didn't converge can leave NaN in
+    # equilibrium_scf_eh).  json.dumps would otherwise happily emit
+    # the bare token `NaN`.
+    text = json.dumps(payload,
+                      indent=indent,
+                      ensure_ascii=False,
+                      allow_nan=False,
+                      sort_keys=False)
+
+    # Atomic write: temp file in the same directory (so os.replace
+    # is a same-filesystem rename), fsync the data before replace
+    # to survive a crash between write() and replace().
+    parent  = os.path.dirname(os.path.abspath(p)) or "."
+    fd, tmp = tempfile.mkstemp(
+        prefix=os.path.basename(p) + ".",
+        suffix=".tmp",
+        dir=parent,
+    )
     try:
-        return SpectraResults.from_dict(d)
-    except KeyError as e:
-        raise SpectraJsonFieldError(
-            f"missing required field {e.args[0]!r}"
-        ) from e
-    except (TypeError, ValueError) as e:
-        raise SpectraJsonFieldError(f"malformed field: {e}") from e
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(text)
+            fh.flush()
+            try:
+                os.fsync(fh.fileno())
+            except OSError:
+                # Some filesystems (tmpfs on some kernels) reject
+                # fsync; the data is still in the OS write buffer
+                # and will land before the replace anyway.  Don't
+                # let a quirky FS block the write.
+                pass
+        os.replace(tmp, p)
+    except BaseException:
+        # Best-effort cleanup of the temp file on any failure
+        # (including KeyboardInterrupt).  We swallow errors during
+        # cleanup -- the original exception is what the caller
+        # cares about.
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 __all__ = [
+    # Read
     "parse_spectra_json",
     "parse_spectra_json_dict",
+    # Write
+    "dump_spectra_json",
+    # Exceptions
     "SpectraJsonError",
     "SpectraJsonNotFoundError",
     "SpectraJsonMalformedError",

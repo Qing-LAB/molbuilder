@@ -27,6 +27,7 @@ from molbuilder.spectra.results import (
     PHASE_EMPTY,
 )
 from molbuilder.parsers.spectra_json import (
+    dump_spectra_json,
     parse_spectra_json,
     parse_spectra_json_dict,
     SpectraJsonError,
@@ -369,3 +370,235 @@ class TestExceptionHierarchy:
         err = SpectraJsonSchemaError(1, 2)
         assert err.expected == 1
         assert err.actual == 2
+
+
+# --------------------------------------------------------------------- #
+#  Type-strict schema version                                            #
+# --------------------------------------------------------------------- #
+
+
+class TestSchemaVersionTypeSafety:
+    """``True == 1`` in Python because ``bool`` subclasses ``int``.
+    A naive ``d['schema_version'] != 1`` check passes for ``True``,
+    which is a quiet correctness hole (some other format using
+    JSON could put a boolean there).  The parser uses isinstance
+    to reject bool explicitly."""
+
+    def test_bool_true_rejected_as_schema_version(self, tmp_path):
+        payload = _make_minimal_results().to_dict()
+        payload["schema_version"] = True
+        p = _write_json(tmp_path, payload)
+        with pytest.raises(SpectraJsonSchemaError) as exc_info:
+            parse_spectra_json(p)
+        assert exc_info.value.actual is True
+
+    def test_string_schema_version_rejected(self, tmp_path):
+        payload = _make_minimal_results().to_dict()
+        payload["schema_version"] = "1"  # string "1", not int
+        p = _write_json(tmp_path, payload)
+        with pytest.raises(SpectraJsonSchemaError):
+            parse_spectra_json(p)
+
+    def test_float_schema_version_rejected(self, tmp_path):
+        """``1.0`` matches ``1`` numerically but isn't an int -- the
+        wire contract is integer schema versions only."""
+        payload = _make_minimal_results().to_dict()
+        payload["schema_version"] = 1.0
+        p = _write_json(tmp_path, payload)
+        with pytest.raises(SpectraJsonSchemaError):
+            parse_spectra_json(p)
+
+
+# --------------------------------------------------------------------- #
+#  Non-finite floats (NaN / Infinity)                                    #
+# --------------------------------------------------------------------- #
+
+
+class TestParseRejectsNonFinite:
+    """Python's json.loads silently accepts the non-standard
+    ``NaN``, ``Infinity``, ``-Infinity`` tokens.  Other consumers
+    (browsers' JSON.parse, jq, RFC-8259 parsers) reject them.  The
+    parser uses ``parse_constant`` to catch these at decode time
+    so a divergent SCF surfaces as a MalformedError with a
+    pointed message, not silent NaN propagation."""
+
+    def test_nan_token_rejected(self, tmp_path):
+        """Python json writes NaN as the literal token ``NaN``;
+        we reject it on read."""
+        p = tmp_path / "with_nan.spectra.json"
+        # Hand-craft the JSON so we get a NaN token without using
+        # Python's json.dumps (which we configure to reject NaN
+        # in the writer path anyway).
+        raw = (
+            '{"schema_version": 1, "engine": "pyscf", '
+            '"equilibrium_scf_eh": NaN}'
+        )
+        p.write_text(raw, encoding="utf-8")
+        with pytest.raises(SpectraJsonMalformedError) as exc_info:
+            parse_spectra_json(p)
+        assert "non-finite" in str(exc_info.value).lower() or \
+               "nan" in str(exc_info.value).lower()
+
+    def test_infinity_token_rejected(self, tmp_path):
+        p = tmp_path / "with_inf.spectra.json"
+        raw = (
+            '{"schema_version": 1, "engine": "pyscf", '
+            '"equilibrium_scf_eh": Infinity}'
+        )
+        p.write_text(raw, encoding="utf-8")
+        with pytest.raises(SpectraJsonMalformedError):
+            parse_spectra_json(p)
+
+    def test_negative_infinity_token_rejected(self, tmp_path):
+        p = tmp_path / "with_neginf.spectra.json"
+        raw = (
+            '{"schema_version": 1, "engine": "pyscf", '
+            '"equilibrium_scf_eh": -Infinity}'
+        )
+        p.write_text(raw, encoding="utf-8")
+        with pytest.raises(SpectraJsonMalformedError):
+            parse_spectra_json(p)
+
+
+# --------------------------------------------------------------------- #
+#  Encoding edge cases                                                  #
+# --------------------------------------------------------------------- #
+
+
+class TestParseEncodingTolerance:
+    """The reader uses utf-8-sig so a BOM-prefixed file (some
+    Windows editors insert one) is transparently stripped instead
+    of poisoning the first byte of the JSON document."""
+
+    def test_utf8_bom_tolerated(self, tmp_path):
+        p = tmp_path / "bom.spectra.json"
+        payload = _make_minimal_results().to_dict()
+        # Write the file with an explicit BOM.
+        body = json.dumps(payload)
+        p.write_bytes(b"\xef\xbb\xbf" + body.encode("utf-8"))
+        loaded = parse_spectra_json(p)
+        assert loaded.engine == "pyscf"
+
+    def test_utf8_special_chars_round_trip(self, tmp_path):
+        """cm⁻¹ / Å characters in `methods_text` survive the
+        utf-8 round-trip; ensure_ascii=False in the writer keeps
+        them readable in the file (no \\uXXXX escapes)."""
+        original = _make_minimal_results()
+        original.methods_text = "Displacement = 0.10 Å; ω in cm⁻¹"
+        p = tmp_path / "unicode.spectra.json"
+        dump_spectra_json(original, p)
+        # File contents should contain the literal Å / cm⁻¹ chars,
+        # not \\uXXXX escapes, because ensure_ascii=False is set.
+        raw = p.read_text(encoding="utf-8")
+        assert "Å" in raw
+        assert "cm⁻¹" in raw
+        # Round-trip preserves the chars.
+        loaded = parse_spectra_json(p)
+        assert "Å" in loaded.methods_text
+        assert "cm⁻¹" in loaded.methods_text
+
+    def test_non_utf8_file_raises_malformed(self, tmp_path):
+        """A file that isn't UTF-8 (e.g. Latin-1 with a high byte)
+        is content-malformed, not a filesystem error -- the parser
+        raises MalformedError so the caller can handle it
+        uniformly with other content-corruption cases."""
+        p = tmp_path / "latin1.spectra.json"
+        # 0xFF is not valid as a UTF-8 starter byte; encodes fine
+        # in Latin-1 but UTF-8 will reject.
+        p.write_bytes(b"\xff\xfeinvalid utf-8")
+        with pytest.raises(SpectraJsonMalformedError):
+            parse_spectra_json(p)
+
+
+# --------------------------------------------------------------------- #
+#  dump_spectra_json (writer)                                            #
+# --------------------------------------------------------------------- #
+
+
+class TestDumpSpectraJson:
+    """The writer is the second half of the wire-format contract.
+    It enforces the safety rules every Spectra engine has to
+    follow when emitting JSON checkpoints."""
+
+    def test_round_trip(self, tmp_path):
+        original = _make_minimal_results()
+        p = tmp_path / "out.spectra.json"
+        dump_spectra_json(original, p)
+        loaded = parse_spectra_json(p)
+        assert loaded.engine == original.engine
+        assert len(loaded.modes) == len(original.modes)
+
+    def test_nan_in_scalar_field_rejected(self, tmp_path):
+        """allow_nan=False means a NaN energy raises ValueError
+        BEFORE the file is touched -- the engine has to filter
+        non-finite values explicitly rather than silently emit
+        junk JSON."""
+        original = _make_minimal_results()
+        original.equilibrium_scf_eh = float("nan")
+        p = tmp_path / "out.spectra.json"
+        with pytest.raises(ValueError):
+            dump_spectra_json(original, p)
+        # File should not have been created.
+        assert not p.exists()
+
+    def test_inf_in_array_rejected(self, tmp_path):
+        """A non-finite value buried in an MO-energy array also
+        trips the writer."""
+        original = _make_minimal_results()
+        original.equilibrium_mo_energies_eh[0] = np.inf
+        p = tmp_path / "out.spectra.json"
+        with pytest.raises(ValueError):
+            dump_spectra_json(original, p)
+        assert not p.exists()
+
+    def test_atomic_replace_no_torn_file_on_failure(self, tmp_path):
+        """If the writer raises mid-write, the destination path is
+        either absent (fresh write) or still holds the OLD content
+        (overwrite case) -- never a half-written temp file
+        masquerading as the real one."""
+        # Seed an existing file with known content.
+        p = tmp_path / "existing.spectra.json"
+        good = _make_minimal_results()
+        dump_spectra_json(good, p)
+        original_bytes = p.read_bytes()
+
+        # Now attempt to overwrite with a non-finite payload -- it
+        # must fail BEFORE touching the destination.
+        bad = _make_minimal_results()
+        bad.equilibrium_scf_eh = float("inf")
+        with pytest.raises(ValueError):
+            dump_spectra_json(bad, p)
+
+        # Old content is intact.
+        assert p.read_bytes() == original_bytes
+        # No temp file dangling next to it.
+        siblings = list(tmp_path.iterdir())
+        assert siblings == [p], f"unexpected temp files: {siblings}"
+
+    def test_no_bom_in_output(self, tmp_path):
+        """The writer never emits a BOM, even though the reader
+        tolerates one on input.  Symmetric tolerance + strict
+        emission is the convention."""
+        original = _make_minimal_results()
+        p = tmp_path / "no_bom.spectra.json"
+        dump_spectra_json(original, p)
+        first_three = p.read_bytes()[:3]
+        assert first_three != b"\xef\xbb\xbf"
+        # And the first char is actually the JSON opening brace.
+        assert p.read_bytes()[:1] == b"{"
+
+    def test_indent_zero_compact_form(self, tmp_path):
+        """indent=0 gives the compact wire form -- useful when the
+        file is large and human-readability is less important."""
+        original = _make_minimal_results()
+        p = tmp_path / "compact.spectra.json"
+        dump_spectra_json(original, p, indent=0)
+        # Compact form has no two-space indentation on field names.
+        raw = p.read_text(encoding="utf-8")
+        assert '\n  "engine"' not in raw
+
+    def test_pathlike_accepted(self, tmp_path):
+        original = _make_minimal_results()
+        # pathlib.Path is os.PathLike.
+        dump_spectra_json(original, tmp_path / "x.json")
+        assert (tmp_path / "x.json").exists()
