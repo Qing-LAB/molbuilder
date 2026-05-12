@@ -55,7 +55,7 @@ from __future__ import annotations
 
 import json
 import typing
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 from flask import Blueprint, jsonify, render_template, request
 
@@ -396,7 +396,7 @@ def _load_prior(prior_path: Optional[str]) -> Tuple[
     from molbuilder.issues import Issue
     try:
         return parse_spectra_json(prior_path), None
-    except SpectraJsonNotFoundError as exc:
+    except SpectraJsonNotFoundError:
         return None, Issue(
             severity="warn",
             message=(f"prior results path {prior_path!r} not found; "

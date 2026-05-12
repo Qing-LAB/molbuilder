@@ -309,9 +309,9 @@ class PySCFSpectraEngine:
         }.get(method, "pyscf.hessian")
 
         parts = [
-            f"All electronic-structure calculations were performed "
-            f"with PySCF [Sun2020, Sun2018], a Python-based ab "
-            f"initio package."
+            "All electronic-structure calculations were performed "
+            "with PySCF [Sun2020, Sun2018], a Python-based ab "
+            "initio package."
         ]
 
         # Mention the analytic Hessian explicitly -- the choice of
@@ -327,11 +327,11 @@ class PySCFSpectraEngine:
         # Raman path: cite the analytic dα/dR + Komornicki1979.
         if cfg.compute_raman:
             parts.append(
-                f"Polarizability derivatives dα/dR were computed "
-                f"analytically with `pyscf.prop.polarizability` "
-                f"and projected onto the mass-weighted mode "
-                f"eigenvectors to obtain Raman activities in "
-                f"Å⁴/amu [Komornicki1979]."
+                "Polarizability derivatives dα/dR were computed "
+                "analytically with `pyscf.prop.polarizability` "
+                "and projected onto the mass-weighted mode "
+                "eigenvectors to obtain Raman activities in "
+                "Å⁴/amu [Komornicki1979]."
             )
 
         # Density fitting note.

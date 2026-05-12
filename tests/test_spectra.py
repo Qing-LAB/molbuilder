@@ -2519,6 +2519,20 @@ class TestPySCFScriptSchemaVersionInterpolated:
         # the developer remembers to refresh the script template.
         assert f"SCHEMA_VERSION = {SCHEMA_VERSION}" in script
 
+    def test_molbuilder_version_matches_package_metadata(self):
+        """The emitted MOLBUILDER_VERSION lands in
+        spectra.json.provenance.molbuilder_version -- it must match
+        the actual installed package version, not a placeholder
+        like 'spectra-v1'.  Regression: the constants block used to
+        hard-code 'spectra-v1' which silently lied in every result
+        file's provenance."""
+        from molbuilder import __version__
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water_real(), SpectraConfig())
+        assert f"MOLBUILDER_VERSION = {__version__!r}" in script
+        # Negative: the old placeholder is gone.
+        assert "'spectra-v1'" not in script
+
 
 class TestPySCFScriptL4OutOfRangeGuard:
     """Bug: L4 loop did `modes_payload[_mode_pos]` without checking
