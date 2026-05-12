@@ -58,6 +58,19 @@ import numpy as np
 SCHEMA_VERSION = 1
 
 
+# Phase status vocabulary -- per-layer flag carried on
+# :class:`SpectraResults` and emitted in the on-disk JSON.  Pinned
+# here as a module constant so the engine, the parser, and the UI
+# all read from one source.  Spec § 5 + § 6.1 describe transitions.
+
+PHASE_EMPTY    = "empty"     # not yet computed
+PHASE_RUNNING  = "running"   # script is mid-way through this phase
+                             # (live-watch / atomic-replace JSON updates)
+PHASE_COMPLETE = "complete"  # phase done, data is final for this run
+
+_VALID_PHASE_STATES = (PHASE_EMPTY, PHASE_RUNNING, PHASE_COMPLETE)
+
+
 def _no_equality(self, other):  # noqa: ARG001
     """Shared explicit ``__eq__`` that refuses bool comparison.
 
@@ -340,13 +353,23 @@ class SpectraResults:
     config:                    Dict[str, Any]
 
     # Methods-section prose + bibliography keys actually cited.
-    # Populated when complete = True; may be empty strings / lists
-    # during live watch.
+    # Populated as layers complete (grows as the run progresses);
+    # may be empty strings / lists during early phases.
     methods_text:              str
     bibliography_keys:         List[str]
 
-    # Live-watch flag: True iff the run wrote its final phase.
-    complete:                  bool
+    # Per-layer status flags (spec § 5 + § 6.1).  Replaces the
+    # older single `complete: bool` because the four-layer linear-
+    # chain model needs per-phase granularity for the stepper UI
+    # and the live-watch state machine.
+    #
+    # Each one of PHASE_EMPTY / PHASE_RUNNING / PHASE_COMPLETE
+    # (validated at __post_init__).  L1 (Setup) has no flag of its
+    # own -- the presence of a valid SpectraResults IS the
+    # Setup-complete signal.
+    phase_frequencies:         str = PHASE_EMPTY
+    phase_raman:               str = PHASE_EMPTY
+    phase_es:                  str = PHASE_EMPTY
 
     # Engine-specific noise (parsing diagnostics, version detail) --
     # kept here so the common schema doesn't bloat for engine-only
@@ -401,6 +424,15 @@ class SpectraResults:
                 f"({len(fixed_set)}) atom counts != n_atoms_total "
                 f"({self.n_atoms_total})"
             )
+        # Phase status validation.
+        for name, val in (("phase_frequencies", self.phase_frequencies),
+                          ("phase_raman",       self.phase_raman),
+                          ("phase_es",          self.phase_es)):
+            if val not in _VALID_PHASE_STATES:
+                raise ValueError(
+                    f"SpectraResults.{name}={val!r} is not a valid "
+                    f"phase status; expected one of {_VALID_PHASE_STATES}"
+                )
         # Cross-mode shape consistency.  Allow the empty-modes case
         # (in-progress write before phase 2 -- no harmonic analysis yet).
         if self.modes:
@@ -452,7 +484,9 @@ class SpectraResults:
             "methods_text":         str(self.methods_text),
             "bibliography_keys":    [str(k) for k in self.bibliography_keys],
 
-            "complete":             bool(self.complete),
+            "phase_frequencies":    str(self.phase_frequencies),
+            "phase_raman":          str(self.phase_raman),
+            "phase_es":             str(self.phase_es),
             "engine_metadata":      dict(self.engine_metadata),
         }
 
@@ -484,7 +518,9 @@ class SpectraResults:
             methods_text         = str(d.get("methods_text", "")),
             bibliography_keys    = [str(k) for k in d.get("bibliography_keys", [])],
 
-            complete             = bool(d.get("complete", False)),
+            phase_frequencies    = str(d.get("phase_frequencies", PHASE_EMPTY)),
+            phase_raman          = str(d.get("phase_raman",       PHASE_EMPTY)),
+            phase_es             = str(d.get("phase_es",          PHASE_EMPTY)),
             engine_metadata      = dict(d.get("engine_metadata", {})),
         )
 

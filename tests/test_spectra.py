@@ -34,7 +34,12 @@ from molbuilder.spectra import (
     ModeElectronicStructure,
     SpectraResults,
 )
-from molbuilder.spectra.results import SCHEMA_VERSION
+from molbuilder.spectra.results import (
+    SCHEMA_VERSION,
+    PHASE_EMPTY,
+    PHASE_RUNNING,
+    PHASE_COMPLETE,
+)
 from molbuilder.web.blueprints._shared import dataclass_to_form_schema
 
 
@@ -78,7 +83,14 @@ def _make_results(complete: bool = True) -> SpectraResults:
     The middle mode has electronic-structure data populated; the
     others don't.  Mirrors what a real PySCF run on H2O would
     produce structurally (though with toy numerical values).
+
+    ``complete`` controls the phase_* fields:
+      * True  -> all three layers PHASE_COMPLETE (full run done).
+      * False -> phase_frequencies done, phase_raman + phase_es
+                 empty (a "L2 only" intermediate state).
     """
+    phases = ((PHASE_COMPLETE, PHASE_COMPLETE, PHASE_COMPLETE) if complete
+              else (PHASE_COMPLETE, PHASE_EMPTY, PHASE_EMPTY))
     return SpectraResults(
         schema_version             = SCHEMA_VERSION,
         engine                     = "pyscf",
@@ -101,7 +113,9 @@ def _make_results(complete: bool = True) -> SpectraResults:
         config                     = {"engine": "pyscf", "compute_raman": True},
         methods_text               = "Harmonic vibrational analysis ...",
         bibliography_keys          = ["Sun2020", "Becke1993"],
-        complete                   = complete,
+        phase_frequencies          = phases[0],
+        phase_raman                = phases[1],
+        phase_es                   = phases[2],
     )
 
 
@@ -212,7 +226,10 @@ class TestSpectraResults:
         assert r2.schema_version == SCHEMA_VERSION
         assert r2.engine == "pyscf"
         assert r2.engine_version == "2.6.0"
-        assert r2.complete is True
+        # All three layers complete (round-trips through phase_*).
+        assert r2.phase_frequencies == PHASE_COMPLETE
+        assert r2.phase_raman       == PHASE_COMPLETE
+        assert r2.phase_es          == PHASE_COMPLETE
         assert len(r2.modes) == 3
         # The selected mode survives.
         assert r2.selected_mode_idxs_1based == [2]
@@ -226,8 +243,9 @@ class TestSpectraResults:
         )
 
     def test_round_trip_in_progress(self):
-        """Option B live-watch: an in-progress run has complete=False
-        and may have empty methods_text / bibliography_keys."""
+        """Live-watch state: an in-progress run before phase-2 has
+        all three phase_* = PHASE_EMPTY and may carry empty
+        methods_text / bibliography_keys."""
         r = SpectraResults(
             schema_version             = SCHEMA_VERSION,
             engine                     = "pyscf",
@@ -244,12 +262,15 @@ class TestSpectraResults:
             modes                      = [],         # Hessian not done yet
             selected_mode_idxs_1based  = [],
             config                     = {"engine": "pyscf"},
-            methods_text               = "",         # populated only at complete=True
+            methods_text               = "",         # populated as layers complete
             bibliography_keys          = [],
-            complete                   = False,
+            # phase_* default to PHASE_EMPTY in the dataclass; omitting
+            # them here exercises that default path.
         )
         r2 = SpectraResults.from_dict(json.loads(json.dumps(r.to_dict())))
-        assert r2.complete is False
+        assert r2.phase_frequencies == PHASE_EMPTY
+        assert r2.phase_raman       == PHASE_EMPTY
+        assert r2.phase_es          == PHASE_EMPTY
         assert r2.modes == []
         assert r2.methods_text == ""
         assert r2.bibliography_keys == []
@@ -276,15 +297,18 @@ class TestSpectraResults:
             },
             "modes":              [],
             "config":             {},
-            "complete":           False,
             # Intentionally omitted: methods_text, bibliography_keys,
-            # selected_mode_idxs_1based, engine_metadata.
+            # selected_mode_idxs_1based, engine_metadata, phase_*.
         }
         r = SpectraResults.from_dict(d)
         assert r.methods_text == ""
         assert r.bibliography_keys == []
         assert r.selected_mode_idxs_1based == []
         assert r.engine_metadata == {}
+        # Missing phase_* fields default to PHASE_EMPTY.
+        assert r.phase_frequencies == PHASE_EMPTY
+        assert r.phase_raman       == PHASE_EMPTY
+        assert r.phase_es          == PHASE_EMPTY
 
     def test_schema_version_pinned(self):
         """The on-disk schema is v1 for the entire v1.x release line.
@@ -488,7 +512,6 @@ class TestPostInitValidation:
             config                     = {},
             methods_text               = "",
             bibliography_keys          = [],
-            complete                   = False,
         )
         assert r.equilibrium_mo_energies_eh.dtype == np.float64
 
@@ -512,7 +535,6 @@ class TestPostInitValidation:
                 config                     = {},
                 methods_text               = "",
                 bibliography_keys          = [],
-                complete                   = False,
             )
 
     def test_free_fixed_partition_disjoint(self):
@@ -536,7 +558,6 @@ class TestPostInitValidation:
                 config                     = {},
                 methods_text               = "",
                 bibliography_keys          = [],
-                complete                   = False,
             )
 
     def test_free_fixed_partition_complete(self):
@@ -560,7 +581,6 @@ class TestPostInitValidation:
                 config                     = {},
                 methods_text               = "",
                 bibliography_keys          = [],
-                complete                   = False,
             )
 
     def test_cross_mode_eigenvector_shape_consistency(self):
@@ -598,7 +618,6 @@ class TestPostInitValidation:
                 config                     = {},
                 methods_text               = "",
                 bibliography_keys          = [],
-                complete                   = False,
             )
 
     def test_cross_mode_es_window_consistency(self):
@@ -644,7 +663,6 @@ class TestPostInitValidation:
                 config                     = {},
                 methods_text               = "",
                 bibliography_keys          = [],
-                complete                   = False,
             )
 
     def test_empty_modes_allowed_for_in_progress_runs(self):
@@ -668,10 +686,12 @@ class TestPostInitValidation:
             config                     = {},
             methods_text               = "",
             bibliography_keys          = [],
-            complete                   = False,
         )
         assert r.modes == []
-        assert r.complete is False
+        # phase_* default to PHASE_EMPTY for an in-progress run.
+        assert r.phase_frequencies == PHASE_EMPTY
+        assert r.phase_raman       == PHASE_EMPTY
+        assert r.phase_es          == PHASE_EMPTY
 
 
 # --------------------------------------------------------------------- #
@@ -768,8 +788,9 @@ class TestSpectraConfigSchema:
             ("Frozen atoms",         3),   # elements, residue_names, indices
             ("Spectrum",             3),   # compute_raman, compute_ir,
                                            # displacement_amplitude_ang
-            ("Electronic structure", 6),   # selection, top_n, threshold,
-                                           # explicit_indices, n_homo_below,
+            ("Electronic structure", 8),   # selection, top_n, threshold,
+                                           # explicit_indices, freq_min_cm1,
+                                           # freq_max_cm1, n_homo_below,
                                            # n_lumo_above
             ("SCF",                  3),   # conv_tol, max_cycle, grid_level
             ("Runtime",              4),   # max_memory_mb, threads, verbose,
@@ -819,3 +840,106 @@ class TestSpectraConfigSchema:
         assert fmap["es_mode_selection"]["id"] == "sp-es-selection"
         assert fmap["es_n_homo_below"]["id"]   == "sp-es-n-homo-below"
         assert fmap["es_n_lumo_above"]["id"]   == "sp-es-n-lumo-above"
+
+
+# --------------------------------------------------------------------- #
+#  Phase status + frequency-filter additions (spec § 2.5 / § 8.1)       #
+# --------------------------------------------------------------------- #
+
+
+class TestPhaseStatus:
+    """The per-phase status fields are the engine + UI's
+    coordination point for the four-layer linear chain.  Validate
+    construction + round-trip + transition semantics."""
+
+    def test_running_status_round_trips(self):
+        """A mid-run state (phase_es='running') must survive the
+        JSON round-trip -- the Watch-style polling endpoint
+        returns this state directly to the UI."""
+        r = _make_results()
+        r.phase_es = PHASE_RUNNING
+        r2 = SpectraResults.from_dict(json.loads(json.dumps(r.to_dict())))
+        assert r2.phase_es == PHASE_RUNNING
+
+    def test_invalid_phase_status_rejected(self):
+        """Phase values are constrained to the controlled vocabulary;
+        a stray string is a programmer error, not a forward-compat
+        opportunity."""
+        with pytest.raises(ValueError, match="is not a valid phase status"):
+            SpectraResults(
+                schema_version             = SCHEMA_VERSION,
+                engine                     = "pyscf",
+                engine_version             = "2.6.0",
+                molbuilder_version         = "1.2.0",
+                timestamp                  = "t",
+                structure_hash             = "h",
+                n_atoms_total              = 1,
+                free_atom_idxs             = [0],
+                fixed_atom_idxs            = [],
+                equilibrium_scf_eh         = 0.0,
+                equilibrium_mo_energies_eh = np.zeros(3),
+                equilibrium_homo_idx       = 0,
+                modes                      = [],
+                selected_mode_idxs_1based  = [],
+                config                     = {},
+                methods_text               = "",
+                bibliography_keys          = [],
+                phase_frequencies          = "kindof",  # not in vocab
+            )
+
+    def test_independent_phase_state(self):
+        """L3 (Raman) and L4 (ES) are siblings under L2 -- their
+        completion states are independent.  Construct a fixture
+        with L2+L3 complete but L4 still empty, and vice versa."""
+        # L2+L3 complete, L4 empty -- the typical "spectrum done,
+        # no ES yet" state.
+        r = _make_results(complete=False)
+        r.phase_raman = PHASE_COMPLETE
+        r2 = SpectraResults.from_dict(json.loads(json.dumps(r.to_dict())))
+        assert r2.phase_frequencies == PHASE_COMPLETE
+        assert r2.phase_raman       == PHASE_COMPLETE
+        assert r2.phase_es          == PHASE_EMPTY
+
+        # L2+L4 complete, L3 still empty -- valid too (user skipped
+        # Raman, went straight to ES via "explicit" selector).
+        r3 = _make_results(complete=True)
+        r3.phase_raman = PHASE_EMPTY
+        r4 = SpectraResults.from_dict(json.loads(json.dumps(r3.to_dict())))
+        assert r4.phase_frequencies == PHASE_COMPLETE
+        assert r4.phase_raman       == PHASE_EMPTY
+        assert r4.phase_es          == PHASE_COMPLETE
+
+
+class TestFreqRangeFilter:
+    """Spec § 8.1: the freq_min_cm1 / freq_max_cm1 fields appear
+    in the Electronic-structure section of the form schema and
+    are typed Optional[float].  The Model-2 selector logic that
+    APPLIES the filter lives in selection.py (next commit); this
+    class just pins the dataclass + schema surface."""
+
+    def test_default_no_filter(self):
+        cfg = SpectraConfig()
+        assert cfg.freq_min_cm1 is None
+        assert cfg.freq_max_cm1 is None
+
+    def test_freq_fields_in_es_section(self):
+        sch = dataclass_to_form_schema(SpectraConfig, id_prefix="sp")
+        es_section = next(s for s in sch["sections"]
+                          if s["name"] == "Electronic structure")
+        names = [f["name"] for f in es_section["fields"]]
+        assert "freq_min_cm1" in names
+        assert "freq_max_cm1" in names
+
+    def test_freq_fields_render_as_optional_number(self):
+        """Both freq fields are Optional[float] -> the schema
+        emits kind='number' with null_option=True so the form
+        widget can offer "no bound" empty-string mode."""
+        sch = dataclass_to_form_schema(SpectraConfig, id_prefix="sp")
+        fmap = {f["name"]: f
+                for s in sch["sections"]
+                for f in s["fields"]}
+        for fname in ("freq_min_cm1", "freq_max_cm1"):
+            f = fmap[fname]
+            assert f["kind"] == "number"
+            assert f.get("null_option") is True
+            assert f["unit"] == "cm⁻¹"

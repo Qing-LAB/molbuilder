@@ -19,10 +19,16 @@ from .results import (
     ModeData,
     ModeElectronicStructure,
     SpectraResults,
+    PHASE_EMPTY,
+    PHASE_RUNNING,
+    PHASE_COMPLETE,
 )
 
 __all__ = [
     "ModeData",
     "ModeElectronicStructure",
     "SpectraResults",
+    "PHASE_EMPTY",
+    "PHASE_RUNNING",
+    "PHASE_COMPLETE",
 ]

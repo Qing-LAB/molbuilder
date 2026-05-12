@@ -242,6 +242,40 @@ class SpectraConfig:
                    "then re-run with selector=explicit listing the "
                    "modes of interest",
     })
+    # Frequency-range filter (spec § 2.5.4 + § 8.1).  Composes with
+    # the selector above: restricts the selector's output to modes
+    # within [freq_min, freq_max].  Either bound = None removes that
+    # side; both = None means no filter.  Ignored when selector =
+    # "explicit" (user named specific modes, the window doesn't
+    # override).  Useful for targeting a chemically interesting
+    # window (e.g., 2800-3200 cm⁻¹ for C-H stretches) -- pays off
+    # at L4 only (L2 + L3 are fixed-cost).
+    freq_min_cm1: Optional[float] = field(default=None, metadata={
+        "section":    "Electronic structure",
+        "label":      "Min frequency",
+        "unit":       "cm⁻¹",
+        "null_label": "(no lower bound)",
+        "tier":       "advanced",
+        "help":       "constrain L4 mode selection to modes with "
+                      "frequency >= this value; useful for skipping "
+                      "low-frequency rocking / librational modes that "
+                      "are often noisy and rarely transport-relevant. "
+                      "Caveat: filtering may skip modes whose strong "
+                      "electron-phonon coupling lies outside the "
+                      "window [Galperin2007].  Ignored when "
+                      "selector=explicit.",
+    })
+    freq_max_cm1: Optional[float] = field(default=None, metadata={
+        "section":    "Electronic structure",
+        "label":      "Max frequency",
+        "unit":       "cm⁻¹",
+        "null_label": "(no upper bound)",
+        "tier":       "advanced",
+        "help":       "constrain L4 mode selection to modes with "
+                      "frequency <= this value; combine with "
+                      "freq_min_cm1 to focus on a window.  Ignored "
+                      "when selector=explicit.",
+    })
     es_n_homo_below: int = field(default=5, metadata={
         "section": "Electronic structure",
         "label":   "HOMO-N (orbitals below HOMO)",
