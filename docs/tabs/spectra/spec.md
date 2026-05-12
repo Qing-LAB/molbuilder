@@ -57,6 +57,146 @@ Out of scope (1c, deferred):
 * **SIESTA engine**.  Reserved choice in `SpectraConfig.engine`,
   no implementation.
 
+## 2.5 Layer model — progressive disclosure of computational effort
+
+The tab presents a **four-layer linear chain** that maps directly
+onto the natural quantum-chemistry workflow.  Each layer is
+opt-in (after L1); each layer's data persists on disk; the user
+moves up the chain incrementally as they want more detail.
+
+| Layer | Name | Cost | What you get | Triggered by |
+|---|---|---|---|---|
+| **L1** | **Setup** | none (config only) | method / basis / dispersion / atom-fixing chosen; structure loaded | the user editing any L1 config field |
+| **L2** | **Frequencies** | ~1-N SCF-equivalents (analytic Hessian) | equilibrium MO spectrum; wavenumbers ω_i + eigenvectors for every mode; 3D mode-animation data | always runs after L1 is set; required for any spectrum work |
+| **L3** | **Raman activities** | ~5N SCF-equivalents | per-mode Raman activities (analytic dα/dR projected onto each mode) | `compute_raman = True` |
+| **L4** | **Per-mode electronic structure** | 2 SCFs × M selected modes | HOMO/LUMO shift, ΔGap, g_HOMO / g_LUMO per selected mode | `es_mode_selection ≠ "none"` |
+
+### 2.5.1 Dependency graph
+
+The chain looks linear from the user's perspective, but the
+actual computational dependencies form a small tree:
+
+```
+L1 (config)
+   │
+   ▼
+L2 (equilibrium SCF + Hessian + eigenvectors)
+   │
+   ├─► L3 (Raman activities)     — needs only L2's converged
+   │                               equilibrium wavefunction
+   │
+   └─► L4 (per-mode displaced SCFs) — needs only L2's eigenvectors
+                                      (to know which direction to
+                                      displace along)
+```
+
+**L3 and L4 are independent of each other.**  L4 doesn't read
+anything from L3; L3 doesn't read anything from L4.  This is
+load-bearing for the re-run rules below: re-running L3 must NOT
+wipe L4, and vice versa.
+
+### 2.5.2 Re-run / wipe rules
+
+* **L1 change** (method / basis / dispersion / atom-fixing /
+  density-fit) → wipe L2, L3, L4.  Method changes invalidate the
+  Hessian (which depends on the wavefunction at that level of
+  theory); atom-fixing changes invalidate the mode count.  All
+  downstream data is recomputed.
+* **L2 change** (only triggered by an L1 change in practice — L2
+  has no knobs of its own beyond the L1 config it inherits) →
+  wipe L3 + L4.  Both depend on L2 directly.
+* **L3 change** (`compute_raman` toggle) → **no effect on L4**.
+  When toggled on, L3 runs; when toggled off, nothing destructive
+  happens (the UI just hides the L3 panel, data stays in the file).
+* **L4 mode-selection change** (`es_mode_selection`,
+  `es_explicit_indices`, `freq_min_cm1`, `freq_max_cm1`) →
+  **no effect on L3, additive within L4**.  Existing per-mode ES
+  data is preserved; the next run computes ES for newly-selected
+  modes that don't already have it.
+* **L4 compute-parameter change** (`displacement_amplitude_ang`,
+  `es_n_homo_below`, `es_n_lumo_above`) → wipe L4 only (L3
+  unaffected).  Existing ES data was computed at a different
+  amplitude / window and cannot be mixed.
+
+The user-facing rule, simplified: **changing the molecule or the
+level of theory means starting over; changing what you want
+computed at the existing level of theory means adding work, not
+redoing it.**
+
+### 2.5.3 Soft dependency: top_n / threshold L4 selectors require L3
+
+Two of the five Model-2 selectors (spec § 8) pick modes BY Raman
+activity, so they require L3 to be complete first:
+
+* `top_n`, `threshold` — disabled in the UI (with a hint) when L3
+  is not complete.
+* `none`, `all`, `explicit` — work with just L2 done.
+
+The dependency is enforced both client-side (form
+compatibility-engine locks the selector options when L3 is empty)
+and server-side (the engine's `preflight()` returns an
+error-severity Issue if a top_n / threshold selector is submitted
+without L3 data on disk).
+
+### 2.5.4 Frequency-range filter for L4 mode selection
+
+L4 carries an **optional frequency window**
+(`freq_min_cm1`, `freq_max_cm1`) that constrains mode selection
+to modes whose frequency falls in `[freq_min, freq_max]`.  The
+filter composes with the Model-2 selector:
+
+* `all + freq=[500, 2000]` → ES for every mode in [500, 2000] cm⁻¹.
+* `top_n=10 + freq=[2800, 3200]` → top-10 Raman-active modes
+  within the C-H stretch region.
+* `explicit=[7, 12, 14]` → ES for exactly those three modes; the
+  frequency filter is **ignored** when an explicit list is given
+  (the user said exactly these modes).
+
+Cost-wise this filter pays off only at L4 (L2 + L3 are
+fixed-cost — you compute the entire Hessian and the entire
+polarizability-derivative tensor regardless of which window the
+user cares about; you can't compute "just the C-H stretch part
+of the Hessian").  L4 scales linearly with the number of
+selected modes, so the filter directly reduces L4 cost.
+
+### 2.5.5 Stepper UI
+
+The Spectra tab presents the layer chain as a four-step stepper
+at the top of the page:
+
+```
+[L1 ✓ Setup]  →  [L2 ✓ Frequencies]  →  [L3 ○ Raman]  →  [L4 ○ Electronic structure]
+B3LYP/def2-SVP    54 modes (412-      not run             not run
+Au fixed (32)     3656 cm⁻¹)
+```
+
+Each step's icon reflects its `phase_status` (see § 5):
+
+* `○` empty — not yet run
+* `◐` running — script is currently working on this phase
+  (live-watch mode polling the JSON; § 6.1)
+* `✓` complete — phase finished, data on disk
+
+Clicking a step opens the form below configured for that step:
+
+* L1 step open → all L1 config fields editable.  Editing surfaces
+  a confirm dialog "this will discard L2 / L3 / L4 data".
+* L2 step open → no editable fields (L2 has no knobs of its own);
+  shows a summary panel of what L2 produced.
+* L3 step open → `compute_raman` toggle + summary panel.
+* L4 step open → all L4 fields editable (selector, value field,
+  freq range, displacement amplitude, MO window).  Compute-
+  parameter changes surface a confirm "this will wipe existing
+  L4 data and recompute".  Mode-selection changes are additive
+  (no confirm needed).
+
+The four display panes below the stepper (spectrum plot, mode
+list, 3D mode animation, ES panel) **auto-disable when their
+backing layer is `empty`** — e.g., the spectrum plot greys out
+until L2 is complete; the mode list shows but its Raman activity
+column is blank until L3 is complete; the ES panel shows a
+placeholder until at least one mode has L4 data.
+
 ## 3. Architecture
 
 ### 3.1 Engine-agnostic L1
@@ -164,10 +304,12 @@ the schema-driven Build-form pipeline (see
 | `compute_raman` | bool | `True` | Spectrum | `False` runs only the Hessian (faster; for diagnostic use) |
 | `compute_ir` | bool | `False` | Spectrum | reserved, disabled in v1 UI |
 | `displacement_amplitude_ang` | float | `0.10` | Spectrum | range (0.02, 0.30); see §11.4 |
-| `es_mode_selection` | str | `"none"` | Electronic structure | Model 2 selector: `choices=("none","all","top_n","threshold","explicit")` |
+| `es_mode_selection` | str | `"none"` | Electronic structure | Model 2 selector: `choices=("none","all","top_n","threshold","explicit")`; `top_n` + `threshold` soft-require L3 (§ 2.5.3) |
 | `es_top_n` | int | `10` | Electronic structure | active when selector=`top_n` |
 | `es_threshold` | float | `1.0` | Electronic structure | Å⁴/amu; active when selector=`threshold` |
 | `es_explicit_indices` | List[int] | `[]` | Electronic structure | 1-based mode indices |
+| `freq_min_cm1` | Optional[float] | `None` | Electronic structure | optional lower bound on mode frequency for L4 selection (§ 2.5.4); ignored when selector=`explicit` |
+| `freq_max_cm1` | Optional[float] | `None` | Electronic structure | optional upper bound on mode frequency for L4 selection |
 | `es_n_homo_below` | int | `5` | Electronic structure | record MOs from HOMO−N to LUMO+M |
 | `es_n_lumo_above` | int | `5` | Electronic structure | same |
 | `scf_conv_tol` | float | `1e-9` | SCF | Hartree |
@@ -239,9 +381,43 @@ class SpectraResults:
     methods_text:         str                         # pre-rendered Methods paragraph
     bibliography_keys:    List[str]                   # keys actually cited in methods_text
 
+    # Per-layer status flags (replaces the older single `complete: bool`).
+    # Each one of:
+    #   "empty"     -- phase has not been computed (data fields are
+    #                  default-empty / None / [])
+    #   "running"   -- phase is currently being computed; partial
+    #                  data may be present (e.g. some modes have ES
+    #                  but not all; L4 only)
+    #   "complete"  -- phase finished, data is final for this run.
+    phase_frequencies: str        # L2: equilibrium SCF + Hessian + modes
+    phase_raman:       str        # L3: Raman activities
+    phase_es:          str        # L4: per-mode displaced-geometry SCFs
+
     # Engine-specific noise kept here so the common schema doesn't bloat.
     engine_metadata:      Dict[str, Any] = field(default_factory=dict)
 ```
+
+Phase semantics:
+
+* **L1 (Setup)** has no phase_status of its own — the *presence*
+  of a valid `SpectraResults` (with a passing `__post_init__`)
+  IS the Setup-complete signal.  The `config` field carries the
+  L1 parameters that produced everything below.
+* `phase_frequencies == "complete"` means `modes` is populated
+  with at least one mode, eigenvectors are present, equilibrium
+  SCF data is valid.
+* `phase_raman == "complete"` means every mode's
+  `raman_activity_a4_amu` is a real float (not None).
+* `phase_es == "complete"` means every mode listed in
+  `selected_mode_idxs_1based` has a populated
+  `electronic_structure`.  Modes NOT in that list have
+  `electronic_structure = None` — that's correct, not an
+  incomplete state.
+* The `"running"` states only appear in live-watch mode (when
+  the engine's script atomically replaces the JSON during a
+  multi-phase run).  Post-completion the file's three phase_*
+  fields settle into some combination of `"empty"` and
+  `"complete"` reflecting what the user opted into.
 
 The UI consumes only the common surface (`modes`, `equilibrium_*`,
 `methods_text`, `bibliography_keys`).  `engine_metadata` is for
@@ -302,7 +478,11 @@ The script writes exactly one JSON file per run:
 
   "selected_mode_idxs_1based": [7, 12, 14, ...],
   "methods_text":              "Harmonic vibrational analysis was ...",
-  "bibliography_keys":         ["Sun2020", "Becke1993", "Grimme2011", ...]
+  "bibliography_keys":         ["Sun2020", "Becke1993", "Grimme2011", ...],
+
+  "phase_frequencies": "complete",
+  "phase_raman":       "complete",
+  "phase_es":          "running"
 }
 ```
 
@@ -321,6 +501,43 @@ The script writes exactly one JSON file per run:
 * `eigenvector_free` is mass-weighted (Q_i normal-mode coordinate
   basis), shape `(n_free, 3)`, units Å·amu⁻¹ᐟ².  Visualisation
   divides by √m before scaling.
+
+## 6.1 Live-watch: atomic-replace JSON checkpointing
+
+The emitted script writes `<job_name>.spectra.json` at the end
+of each phase, plus after each per-mode SCF in L4.  Writes are
+**atomic** (`tempfile.NamedTemporaryFile` + `os.replace`) so a
+concurrent reader never observes a partially-written JSON.
+
+`phase_*` fields transition over the lifetime of a run:
+
+```
+start:        phase_frequencies="empty",  phase_raman="empty",  phase_es="empty"
+L2 begins:    phase_frequencies="running"
+L2 done:      phase_frequencies="complete"
+L3 begins:    phase_raman="running"           (only if compute_raman=True)
+L3 done:      phase_raman="complete"
+L4 begins:    phase_es="running"              (only if es selector ≠ "none")
+L4 in flight: phase_es="running",  per-mode ES populated incrementally
+                                   (selected modes get electronic_structure
+                                   populated one at a time; partial state
+                                   is a valid intermediate JSON)
+L4 done:      phase_es="complete"
+```
+
+The Watch-style polling endpoint (`/api/spectra/data`, § 10)
+returns the current state of the file each poll; the UI's
+stepper renders `running` icons for phases in flight and updates
+the four display panes as their backing layers become
+`"complete"`.
+
+A user re-running the script with new L4 mode selections starts
+from `phase_es="empty"` (only L4 wiped, per § 2.5.2's compute-
+parameter-change rule) or with `phase_es` preserved at its
+existing state (mode-selection change is additive; new modes are
+added to the existing L4 data).  The engine's preflight
+determines which path applies and emits the appropriate script
+header.
 
 ## 7. Atom-fixing semantics
 
@@ -375,6 +592,39 @@ identify modes of interest → re-run with `es_mode_selection="explicit"`
 and the chosen indices.  This is a natural usage pattern of the
 single-script design; no special UI flow is needed.
 
+### 8.1 Frequency-range filter (composes with the selector)
+
+L4 carries an optional frequency window
+(`freq_min_cm1`, `freq_max_cm1`) that **restricts the selector's
+output** to modes whose frequency lies in `[freq_min, freq_max]`:
+
+| Selector | Effect of `freq_min` / `freq_max` |
+|---|---|
+| `none` | ignored (no L4 work) |
+| `all` | "all modes within the window" |
+| `top_n` | "top n by Raman activity, AMONG modes within the window" |
+| `threshold` | "modes with activity > threshold AND within the window" |
+| `explicit` | **ignored** — the user named specific modes, the window doesn't override |
+
+Either bound `None` removes that side of the window
+(`freq_min=None` → no lower bound).  Both `None` → no filter
+(default).
+
+Why the filter exists (cost-wise): L4 is the only phase whose
+cost scales with the number of selected modes.  L2 (Hessian)
+and L3 (Raman activities) are fixed-cost — you compute the whole
+matrix and the whole polarizability-derivative tensor regardless
+of the user's frequency window.  See § 2.5.4 for the cost-table.
+
+Scientific caveat (rendered as a yellow hint in the UI next to
+the freq fields):
+
+> Filtering by frequency range skips modes whose strong
+> electron-phonon coupling may lie outside that window.  The L4
+> ES data only reflects the selected modes; transport
+> interpretation should account for the omitted ranges.
+> [Galperin2007]
+
 ## 9. UI contract
 
 ### 9.1 Form (schema-driven)
@@ -393,6 +643,25 @@ comes from disk only; see §1 design fork resolved 2026-05-11).
 A "Send to Spectra" handoff from Build / Modify is **not**
 shipped in v1 — the user saves a relaxed structure to disk and
 loads it here.
+
+**The form panel below the stepper changes based on which step
+is open** (§ 2.5.5):
+
+* L1 step open → all L1 config fields editable (System / Method /
+  Frozen atoms / SCF / Runtime sections of the schema).
+* L2 step open → no editable fields; summary panel showing what
+  L2 produced (number of modes, frequency range, equilibrium SCF
+  energy, HOMO/LUMO gap at rest).
+* L3 step open → just the `compute_raman` toggle + a summary
+  panel (max Raman activity, brightest mode index).
+* L4 step open → all L4 config fields (selector, value field,
+  freq_min / freq_max, displacement_amplitude_ang, MO window).
+
+The schema-driven form's compatibility-engine handles the
+section-level locking — when L1 is finalised (its phase is
+"complete" in the loaded JSON), the L1 fields lock until the
+user explicitly clicks the L1 step to edit them (which raises
+the discard-downstream confirm).
 
 ### 9.2 Display — four panes
 
