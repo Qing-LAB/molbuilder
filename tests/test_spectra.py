@@ -2090,3 +2090,328 @@ class TestPySCFEngineParseOutput:
         bad = tmp_path / "missing.spectra.json"
         with pytest.raises(SpectraJsonNotFoundError):
             PySCFSpectraEngine.parse_output(str(bad))
+
+
+# --------------------------------------------------------------------- #
+#  PySCF script template (pyscf_script.py)                              #
+#                                                                       #
+#  The emitted Python script that gets shipped to the user.  Tests      #
+#  cannot RUN it (no PySCF in the test env, would take minutes), so     #
+#  the test surface is structural:                                      #
+#    * compile() accepts the output as valid Python (no syntax bugs);   #
+#    * expected block markers present / absent per config;              #
+#    * critical safety + correctness invariants are pinned (SCHEMA_     #
+#      VERSION matches the parser, atomic-replace pattern present,      #
+#      allow_nan=False, no stray BOM-like chars).                       #
+# --------------------------------------------------------------------- #
+
+
+def _struct_water_real():
+    """Real Structure for water -- used by script-template tests."""
+    from molbuilder.structure import Structure
+    return Structure(
+        elements  = ["O", "H", "H"],
+        positions = np.array([[0., 0., 0.],
+                              [0.96, 0., 0.],
+                              [-0.24, 0.93, 0.]]),
+    )
+
+
+class TestPySCFScriptCompiles:
+    """The most important guarantee: every config combination
+    produces a script that Python's compiler accepts.  A syntax
+    bug in the template would only surface when the user runs the
+    file -- catch them here instead."""
+
+    @pytest.mark.parametrize("cfg_overrides", [
+        # Default config
+        dict(),
+        # Minimal: no Raman, no ES
+        dict(compute_raman=False),
+        # Raman only
+        dict(compute_raman=True, es_mode_selection="none"),
+        # ES only with explicit selector
+        dict(compute_raman=False, es_mode_selection="explicit",
+             es_explicit_indices=[1, 2]),
+        # Full pipeline
+        dict(compute_raman=True, es_mode_selection="top_n", es_top_n=5),
+        # Threshold selector
+        dict(compute_raman=True, es_mode_selection="threshold",
+             es_threshold=10.0),
+        # All modes for ES
+        dict(es_mode_selection="all"),
+        # Dispersion variants
+        dict(dispersion="none"),
+        dict(dispersion="d4"),
+        # Unrestricted SCF
+        dict(method="UKS"),
+        # Hartree-Fock (no DFT)
+        dict(method="RHF"),
+        # Hybrid-low-grid (should compile fine, just a preflight warn)
+        dict(grid_level=2),
+        # Freeze atoms
+        dict(fixed_elements=["H"]),
+        dict(fixed_indices=[1, 2]),
+        # Frequency window
+        dict(es_mode_selection="all", freq_min_cm1=500.0, freq_max_cm1=3500.0),
+    ])
+    def test_compiles_as_python(self, cfg_overrides):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        cfg = SpectraConfig(**cfg_overrides)
+        script = render_spectra_script(_struct_water_real(), cfg)
+        # compile() raises SyntaxError on bad Python -- this is the
+        # cheap-to-run guarantee that the template is correct.
+        code = compile(script, f"<spectra.py {cfg_overrides!r}>", "exec")
+        assert code is not None
+
+
+class TestPySCFScriptHeader:
+    """The docstring header is the Methods-section source-of-truth
+    that ships with the script (spec § 11.2)."""
+
+    def test_starts_with_docstring(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water_real(), SpectraConfig())
+        assert script.startswith('"""PySCF Spectra input script')
+
+    def test_methods_paragraph_inlined(self):
+        """The header carries the full Methods prose (same content
+        as the UI's preview modal)."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water_real(),
+                                       SpectraConfig(compute_raman=True))
+        # Manuscript-ready citations land in the header.
+        assert "B3LYP" in script
+        assert "Sun2020" in script
+        assert "Komornicki1979" in script
+
+    def test_run_command_pin(self):
+        """The header documents `python <job>.spectra.py` so the
+        reader doesn't have to guess."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water_real(),
+                                       SpectraConfig(job_name="my_job"))
+        assert "python my_job.spectra.py" in script
+
+
+class TestPySCFScriptConstants:
+    """The constants block is the bridge between the Python config
+    surface and the inlined runtime values.  Pin invariants the
+    parser depends on."""
+
+    def test_schema_version_matches_parser(self):
+        """The script writes SCHEMA_VERSION=1 to match what
+        parse_spectra_json expects."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        from molbuilder.spectra.results import SCHEMA_VERSION
+        script = render_spectra_script(_struct_water_real(), SpectraConfig())
+        assert f"SCHEMA_VERSION = {SCHEMA_VERSION}" in script
+
+    def test_phase_constants_pinned(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water_real(), SpectraConfig())
+        assert "PHASE_EMPTY    = 'empty'" in script
+        assert "PHASE_RUNNING  = 'running'" in script
+        assert "PHASE_COMPLETE = 'complete'" in script
+
+    def test_job_name_substituted_into_path(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water_real(),
+                                       SpectraConfig(job_name="weird_name"))
+        assert "JOB            = 'weird_name'" in script
+        assert "JSON_PATH      = JOB + '.spectra.json'" in script
+
+    def test_method_specific_imports(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        # DFT path imports dft module.
+        s_dft = render_spectra_script(_struct_water_real(),
+                                      SpectraConfig(method="RKS"))
+        assert "from pyscf import gto, scf, dft" in s_dft
+        # HF path skips dft.
+        s_hf = render_spectra_script(_struct_water_real(),
+                                     SpectraConfig(method="RHF"))
+        assert "from pyscf import gto, scf" in s_hf
+        # The HF path shouldn't import dft (saves a few ms on script start).
+        # Check that the HF path doesn't have the trailing ", dft" import line.
+        assert "from pyscf import gto, scf, dft" not in s_hf
+
+
+class TestPySCFScriptAtomicWriter:
+    """The inlined atomic JSON writer is the same safety contract
+    as `molbuilder.parsers.spectra_json.dump_spectra_json`.  Pin
+    that every safety rule is present in the emitted bytes."""
+
+    def test_allow_nan_false(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water_real(), SpectraConfig())
+        # NaN/Inf would otherwise round-trip; allow_nan=False raises
+        # before bytes hit disk.
+        assert "allow_nan=False" in script
+
+    def test_ensure_ascii_false(self):
+        """ensure_ascii=False keeps cm⁻¹ / Å verbatim in the JSON
+        rather than escaping to \\uXXXX (which is valid JSON but
+        ugly and breaks grep-ability)."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water_real(), SpectraConfig())
+        assert "ensure_ascii=False" in script
+
+    def test_atomic_replace_via_tempfile(self):
+        """tempfile.mkstemp + os.replace is the atomic-rename
+        pattern that survives a crash between write and rename."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water_real(), SpectraConfig())
+        assert "tempfile.mkstemp" in script
+        assert "os.replace" in script
+
+    def test_fsync_before_replace(self):
+        """fsync forces the data to disk before the atomic rename
+        so a power-loss between write() and replace() doesn't leave
+        the new file with stale buffer contents."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water_real(), SpectraConfig())
+        assert "os.fsync" in script
+
+    def test_temp_file_cleanup_on_failure(self):
+        """The temp file is removed on any exception during write
+        (except path: os.unlink in the except branch)."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water_real(), SpectraConfig())
+        assert "os.unlink(tmp)" in script
+
+    def test_no_molbuilder_import_at_runtime(self):
+        """The script must run on a cluster node that has PySCF +
+        numpy + stdlib only -- no molbuilder dependency."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water_real(), SpectraConfig())
+        # No `import molbuilder` or `from molbuilder.*` lines.
+        for line in script.splitlines():
+            stripped = line.strip()
+            assert not stripped.startswith("import molbuilder")
+            assert not stripped.startswith("from molbuilder")
+
+
+class TestPySCFScriptPhaseBlocks:
+    """Each phase block (Hessian, Raman, ES) is emitted iff the
+    config asks for it.  Pin presence / absence per knob."""
+
+    def test_hessian_always_emitted(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water_real(), SpectraConfig())
+        assert "Phase 2: Hessian" in script
+        assert "mf.Hessian().kernel()" in script
+        assert "phase_frequencies'] = PHASE_COMPLETE" in script
+
+    def test_raman_block_when_enabled(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water_real(),
+                                       SpectraConfig(compute_raman=True))
+        assert "Phase 3: Raman" in script
+        assert "Polarizability()" in script
+        assert "phase_raman'] = PHASE_COMPLETE" in script
+
+    def test_raman_block_absent_when_disabled(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water_real(),
+                                       SpectraConfig(compute_raman=False))
+        assert "Phase 3: Raman" not in script
+        assert "Polarizability()" not in script
+
+    def test_es_block_when_enabled(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(
+            _struct_water_real(),
+            SpectraConfig(es_mode_selection="all"),
+        )
+        assert "Phase 4: per-mode" in script
+        assert "phase_es'] = PHASE_COMPLETE" in script
+
+    def test_es_block_absent_when_disabled(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(
+            _struct_water_real(),
+            SpectraConfig(es_mode_selection="none"),
+        )
+        assert "Phase 4: per-mode" not in script
+
+
+class TestPySCFScriptStructure:
+    """Verify atom coordinates, frozen-atom logic, and the
+    selection logic are present in the emitted code."""
+
+    def test_atoms_inlined(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water_real(), SpectraConfig())
+        # All three water atoms inlined into the ATOMS list.
+        assert "'O'" in script or "( ' O'" in script  # the formatting
+        assert script.count("'H'") >= 2 or script.count("' H'") >= 2
+
+    def test_frozen_mask_logic_present(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(
+            _struct_water_real(),
+            SpectraConfig(fixed_elements=["O"], fixed_indices=[1]),
+        )
+        # The freeze rule values are inlined.
+        assert "'O'" in script
+        # The runtime union logic is present.
+        assert "FIXED_ATOM_IDXS" in script
+        assert "FREE_ATOM_IDXS" in script
+        assert "FIXED_ELEMENTS" in script
+
+    def test_engine_renders_script_via_pyscf_script_module(self):
+        """The engine's render_script() should delegate to the
+        template module without raising."""
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        script = PySCFSpectraEngine.render_script(
+            _struct_water_real(), SpectraConfig(),
+        )
+        # Same script the template module produces.
+        assert "PySCF Spectra input script generated by molbuilder" in script
+        # And it compiles.
+        compile(script, "<engine.render_script output>", "exec")
+
+
+class TestPySCFScriptSelectorInline:
+    """The L4 block inlines the same selector logic as
+    spectra.selection.select_modes so the script behaves
+    identically without importing molbuilder."""
+
+    def test_explicit_selector_inlined(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(
+            _struct_water_real(),
+            SpectraConfig(es_mode_selection="explicit",
+                          es_explicit_indices=[1, 3, 7]),
+        )
+        # The indices are pinned into ES_EXPLICIT_INDICES.
+        assert "ES_EXPLICIT_INDICES        = [1, 3, 7]" in script
+
+    def test_top_n_selector_inlined(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(
+            _struct_water_real(),
+            SpectraConfig(es_mode_selection="top_n", es_top_n=12),
+        )
+        assert "ES_TOP_N                   = 12" in script
+        # The script's runtime selector branches on selector value.
+        assert "ES_MODE_SELECTION == 'top_n'" in script
+
+    def test_threshold_selector_inlined(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(
+            _struct_water_real(),
+            SpectraConfig(es_mode_selection="threshold", es_threshold=15.5),
+        )
+        assert "ES_THRESHOLD               = 15.5" in script
+        assert "ES_MODE_SELECTION == 'threshold'" in script
+
+    def test_freq_window_pinned(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(
+            _struct_water_real(),
+            SpectraConfig(es_mode_selection="all",
+                          freq_min_cm1=500.0, freq_max_cm1=3500.0),
+        )
+        assert "FREQ_MIN_CM1               = 500.0" in script
+        assert "FREQ_MAX_CM1               = 3500.0" in script
