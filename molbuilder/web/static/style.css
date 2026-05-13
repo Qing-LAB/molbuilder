@@ -246,23 +246,56 @@ button.primary:disabled,
 }
 .nucleic-row label { display: inline-flex; gap: 6px; align-items: center; }
 
-.load-row {
-    margin-top: 10px; padding-top: 8px;
-    border-top: 1px dashed var(--border-dashed);
-    font-size: 0.88rem;
-    color: var(--text-secondary);
+/* ---- Build/Load source-mode toggle ----
+   Two radio "tabs" at the top of the Build card; the two underlying
+   panels (#build-panel and #load-panel) are mutually exclusive. */
+.source-mode-row {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+    padding: 4px;
+    background: var(--bg-input);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
 }
-.load-row > summary {
+.source-mode-opt {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    border-radius: 5px;
     cursor: pointer;
-    color: var(--accent);
-    list-style: revert;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
     user-select: none;
+    transition: background 0.12s ease, color 0.12s ease;
 }
-.load-row > summary:hover { color: var(--accent-hover); }
-.load-row .hint { margin: 6px 0; color: var(--text-secondary); }
+.source-mode-opt:hover { background: var(--bg-input-focus); }
+.source-mode-opt:has(input:checked) {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--accent);
+    /* Cancel out the new 1px border so the row stays the same height. */
+    padding: 5px 11px;
+}
+.source-mode-opt input[type="radio"] { margin: 0; }
+.source-mode-opt code {
+    background: transparent;
+    padding: 0;
+    font-size: 0.85em;
+}
+
+/* The two panels swap via the [hidden] attribute -- no animation
+   (snappy is more important than fancy for this kind of input
+   gate). */
+.source-panel { display: block; }
+.source-panel[hidden] { display: none; }
+
 .load-controls {
     display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
 }
+#load-panel .hint { margin: 6px 0; color: var(--text-secondary); }
 
 /* ---- Status messages ---- */
 

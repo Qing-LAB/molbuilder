@@ -157,6 +157,43 @@
     });
     $("input-text").placeholder = placeholderFor($("kind").value);
     toggleNucleicOptions();
+
+    // ----- Source-mode toggle (Build vs Load) -----
+    //
+    // The two input paths are mutually exclusive: the user is
+    // EITHER entering a sequence/SMILES/name to build a structure,
+    // OR loading an external .xyz / .pdb file.  Both panels can't
+    // be visible at the same time -- having two competing inputs
+    // (sequence vs file) on screen confuses the "did the wrong one
+    // just fire?" diagnosis when something fails.
+    //
+    // Switching modes does NOT clear state.xyz: a structure built
+    // moments ago stays in the viewer even after the user flips to
+    // load mode to compare it with a saved file.  Switching just
+    // changes what the next "produce a structure" action does.
+    function applySourceMode(mode) {
+        const buildOn = (mode === "build");
+        $("build-panel").hidden = !buildOn;
+        $("load-panel").hidden  =  buildOn;
+        // Status messages from the OTHER panel are stale once we
+        // switch -- clear them so a "Loaded foo.xyz" message doesn't
+        // hang around while the user is mid-build.
+        if (buildOn) {
+            setStatus("load-status",  "");
+        } else {
+            setStatus("build-status", "");
+        }
+    }
+    document.querySelectorAll('input[name="source-mode"]').forEach(r => {
+        r.addEventListener("change", (e) => applySourceMode(e.target.value));
+    });
+    // Initial state mirrors the HTML `checked` attribute on the
+    // build radio; this call is for tests / restored sessions where
+    // the radio state may have been set programmatically.
+    applySourceMode(
+        (document.querySelector('input[name="source-mode"]:checked') || {}).value
+        || "build"
+    );
     $("input-text").addEventListener("keydown", (e) => {
         if (e.key === "Enter") $("build-btn").click();
     });

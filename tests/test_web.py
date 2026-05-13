@@ -42,6 +42,43 @@ def test_index_page_has_tab_markup(web_client):
         assert needle in body, f"missing {needle!r} in index.html"
 
 
+def test_build_load_source_mode_toggle_present(web_client):
+    """The Build / Load mode toggle is a radio group with two
+    panels (#build-panel, #load-panel) controlled by it.  Pins the
+    contract the JS depends on so a future template refactor that
+    drops one of the IDs trips this test instead of a UX bug."""
+    body = web_client.get("/").data.decode()
+    # Radio group + the two panels JS toggles between.
+    for needle in (
+        'name="source-mode"',
+        'value="build"',
+        'value="load"',
+        'id="build-panel"',
+        'id="load-panel"',
+        # The build form sits inside #build-panel; the kind selector
+        # is the most-tested element of that form.
+        'id="kind"',
+        # The file picker is the canonical element of #load-panel.
+        'id="load-file"',
+    ):
+        assert needle in body, f"missing {needle!r} in index.html"
+
+
+def test_viewer_js_applies_source_mode(web_client):
+    """viewer.js must wire the radio toggle so flipping it actually
+    swaps panel visibility (otherwise the radio is decorative)."""
+    js = web_client.get("/static/viewer.js").data.decode()
+    for needle in (
+        'applySourceMode',
+        '#build-panel',     # the function references this id
+        '#load-panel',
+        'source-mode',
+    ):
+        # Allow the JS to use the id with or without the # selector;
+        # the only thing we need is that the symbol appears.
+        assert needle.lstrip("#") in js, f"missing {needle!r} in viewer.js"
+
+
 def test_siesta_schema_exposes_spin_fields(web_client):
     """Spec: SIESTA tab must expose spin_polarized + spin_total.
     Post schema-driven cutover the fields live in the dataclass
