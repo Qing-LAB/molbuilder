@@ -140,6 +140,34 @@ class TestSpectraPage:
         assert "tokens.css" in css
         assert ".spectra-grid" in css
 
+    def test_shared_form_schema_css_served(self, web_client):
+        """The schema-driven form's layout (fieldset / label /
+        .param-grid) lives in static/lib/form-schema.css so any
+        page that renders a schema form picks up the same look.
+        The Spectra template includes it; without it the form
+        fields fall back to browser defaults and look scattered.
+        """
+        r = web_client.get("/static/lib/form-schema.css")
+        assert r.status_code == 200
+        css = r.data.decode()
+        # Three load-bearing rules.
+        for needle in (
+            "fieldset {",
+            "fieldset label",
+            ".param-grid {",
+            ".schema-int-triple",
+        ):
+            assert needle in css, f"missing {needle!r} in form-schema.css"
+
+    def test_spectra_page_includes_shared_form_schema_css(self, web_client):
+        body = web_client.get("/spectra").data.decode()
+        # The template imports the shared form-schema CSS so the
+        # rendered <fieldset>s pick up the consistent layout.
+        assert "lib/form-schema.css" in body
+        # And the form container has the .param-grid class so its
+        # fieldsets lay out in the responsive auto-fit grid.
+        assert 'class="param-grid"' in body
+
     def test_plotly_loaded_from_cdn(self, web_client):
         """The template pulls Plotly from a pinned cdnjs build so the
         spectrum chart works without a local copy."""

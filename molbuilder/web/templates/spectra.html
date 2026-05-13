@@ -5,6 +5,7 @@
 <title>molbuilder &mdash; spectra (Raman / IR)</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/form-schema.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='spectra/style.css') }}">
 <!-- Plotly: pinned to a specific cdnjs build for reproducibility,
      matching the Build tab's pinning approach for 3Dmol.js.  cdnjs
@@ -20,112 +21,141 @@
 
 <main class="spectra-grid">
 
-  <!-- ============================================================ -->
-  <!-- LEFT: structure input + form (schema-driven from SpectraConfig)
-       The form is built at page load from /api/build/schema/spectra
-       (same mechanism Build uses for siesta/pyscf).  -->
-  <!-- ============================================================ -->
+  <!-- ================================================================
+       LEFT column: INPUT  (structure + parameters + generate)
+       ================================================================ -->
   <section class="card card-input">
-    <header class="card-header">
-      <h2>1. Structure</h2>
-    </header>
 
-    <div class="xyz-input-row">
-      <label for="xyz-text">XYZ:</label>
-      <textarea id="xyz-text" rows="6"
-                placeholder="Paste an XYZ block, or upload a file."></textarea>
-    </div>
-    <div class="xyz-upload-row">
-      <input id="xyz-file" type="file" accept=".xyz,chemical/x-xyz,text/plain">
-      <button id="xyz-load-btn">Load file</button>
-      <span id="xyz-status" class="status"></span>
-    </div>
-
-    <header class="card-header">
-      <h2>2. Spectra parameters</h2>
-    </header>
-
-    <!-- The schema-driven form lands here at page-load time.  The
-         <p> below is a fallback for the brief moment between
-         DOMContentLoaded and the /api/build/schema/spectra response;
-         JS replaces it as soon as the schema arrives. -->
-    <div id="spectra-form-container">
-      <p class="status">Loading form schema&hellip;</p>
+    <!-- ── 1. Structure ──────────────────────────── -->
+    <div class="card-section">
+      <header class="section-header">
+        <h2 class="step-num"><span class="step-dot">1</span> Structure</h2>
+      </header>
+      <label class="field-block" for="xyz-text">
+        <span class="field-label">XYZ coordinates</span>
+        <textarea id="xyz-text" rows="6"
+                  placeholder="Paste an XYZ block, or upload a file below."></textarea>
+      </label>
+      <div class="inline-row">
+        <input id="xyz-file" type="file"
+               accept=".xyz,chemical/x-xyz,text/plain">
+        <button id="xyz-load-btn" type="button">Load file</button>
+        <span id="xyz-status" class="status"></span>
+      </div>
     </div>
 
-    <header class="card-header">
-      <h2>3. Generate</h2>
-    </header>
-    <div class="action-row">
-      <button id="generate-btn" class="primary">Generate spectra.py</button>
-      <button id="methods-preview-btn" type="button">Show Methods text</button>
-      <span id="generate-status" class="status"></span>
+    <!-- ── 2. Spectra parameters ─────────────────── -->
+    <div class="card-section">
+      <header class="section-header">
+        <h2 class="step-num"><span class="step-dot">2</span> Parameters</h2>
+        <p class="section-hint">
+          Auto-generated from <code>SpectraConfig</code>; hover any
+          label for the per-field help.
+        </p>
+      </header>
+      <!-- Schema-rendered fieldsets land inside .param-grid so the
+           auto-fit grid lays them out responsively (same pattern
+           the Build tab uses for SIESTA / PySCF panels). -->
+      <div id="spectra-form-container" class="param-grid">
+        <p class="status">Loading form schema&hellip;</p>
+      </div>
     </div>
 
-    <details class="prior-row">
-      <summary>Resume from prior run (optional)</summary>
-      <p class="hint">
-        Point this at an existing <code>&lt;job&gt;.spectra.json</code>
-        to enable the top-N / threshold selectors (they need the L3
-        Raman data the prior run produced) and to skip already-completed
-        modes when resuming L4.  Leave empty for a fresh job.
-      </p>
-      <input id="prior-path" type="text" placeholder="/path/to/prev.spectra.json">
-    </details>
-  </section>
+    <!-- ── 3. Generate ───────────────────────────── -->
+    <div class="card-section">
+      <header class="section-header">
+        <h2 class="step-num"><span class="step-dot">3</span> Generate</h2>
+      </header>
+      <div class="inline-row primary-actions">
+        <button id="generate-btn" class="primary" type="button">
+          Generate <code>spectra.py</code>
+        </button>
+        <button id="methods-preview-btn" type="button">
+          Show Methods text
+        </button>
+        <span id="generate-status" class="status"></span>
+      </div>
+      <details class="prior-row">
+        <summary>Resume from a prior run (optional)</summary>
+        <p class="hint">
+          Point at an existing <code>&lt;job&gt;.spectra.json</code>
+          to enable the top-N / threshold L4 selectors (they need
+          the prior run's Raman activities) and to skip already-
+          completed modes when resuming.  Leave empty for a fresh
+          job.
+        </p>
+        <input id="prior-path" type="text"
+               placeholder="/path/to/prev.spectra.json">
+      </details>
+    </div>
+  </section><!-- /.card-input -->
 
-  <!-- ============================================================ -->
-  <!-- RIGHT: output panels                                          -->
-  <!-- ============================================================ -->
+  <!-- ================================================================
+       RIGHT column: OUTPUT  (issues, script, results)
+       ================================================================ -->
   <section class="card card-output">
-    <header class="card-header">
-      <h2>Issues</h2>
-    </header>
-    <div id="issues-panel" class="issues-panel">
-      <p class="status muted">No issues yet.  Run "Generate" to see preflight findings.</p>
+
+    <!-- ── Issues (always visible; sits up top so the user sees
+            blocking errors immediately) ──────────── -->
+    <div class="card-section">
+      <header class="section-header">
+        <h2>Issues</h2>
+      </header>
+      <div id="issues-panel" class="issues-panel">
+        <p class="status muted">
+          No issues yet.  Click "Generate" to see preflight findings.
+        </p>
+      </div>
     </div>
 
-    <header class="card-header">
-      <h2>Generated script</h2>
-    </header>
-    <div class="script-actions">
-      <button id="download-script-btn" disabled>Download spectra.py</button>
-      <button id="copy-script-btn" disabled>Copy to clipboard</button>
-      <span id="script-summary" class="status muted"></span>
-    </div>
-    <pre id="script-preview" class="script-preview"
-         aria-label="Generated spectra.py preview"></pre>
-
-    <header class="card-header">
-      <h2>Load existing results</h2>
-    </header>
-    <div class="results-actions">
-      <input id="results-file" type="file" accept=".json,application/json">
-      <button id="load-results-btn">Load .spectra.json</button>
-      <span id="results-status" class="status"></span>
+    <!-- ── Generated script ─────────────────────── -->
+    <div class="card-section">
+      <header class="section-header">
+        <h2>Generated script</h2>
+        <span id="script-summary" class="status muted"></span>
+      </header>
+      <div class="inline-row">
+        <button id="download-script-btn" type="button" disabled>
+          Download <code>spectra.py</code>
+        </button>
+        <button id="copy-script-btn" type="button" disabled>
+          Copy to clipboard
+        </button>
+      </div>
+      <pre id="script-preview" class="script-preview"
+           aria-label="Generated spectra.py preview"></pre>
     </div>
 
-    <div id="results-summary" class="results-summary" hidden>
-      <header class="card-header">
-        <h2>Results summary</h2>
+    <!-- ── Load existing results ────────────────── -->
+    <div class="card-section">
+      <header class="section-header">
+        <h2>Load existing results</h2>
+      </header>
+      <div class="inline-row">
+        <input id="results-file" type="file"
+               accept=".json,application/json">
+        <button id="load-results-btn" type="button">
+          Load <code>.spectra.json</code>
+        </button>
+        <span id="results-status" class="status"></span>
+      </div>
+    </div>
+
+    <!-- ── Results panel (only visible after load) ── -->
+    <div id="results-summary" class="card-section results-summary" hidden>
+      <header class="section-header">
+        <h2>Results</h2>
       </header>
       <dl id="results-summary-list" class="results-meta"></dl>
 
-      <h3>Spectrum</h3>
-      <!--
-        Plotly draws into this div.  The chart is a stem-style
-        bar plot of frequency (cm⁻¹) vs Raman activity (Å⁴/amu);
-        imaginary modes are flagged with a distinct colour so a
-        saddle-point geometry is visually obvious.  Empty until
-        the first /api/spectra/load response arrives.
-      -->
+      <h3 class="subsection-h">Spectrum</h3>
+      <!-- Plotly: stem-style frequency vs Raman activity.  Click
+           a stick to select the mode (synchronises with the
+           table below and the ES panel). -->
       <div id="spectrum-chart" class="spectrum-chart"
            aria-label="Raman spectrum (frequency vs activity)"></div>
 
-      <h3>Modes</h3>
-      <!-- Table controls: filter + CSV export.  Sit above the table
-           so a sticky-header configuration doesn't push them off-
-           screen when the table grows. -->
+      <h3 class="subsection-h">Modes</h3>
       <div class="modes-table-controls">
         <input id="modes-filter" type="text"
                placeholder="Filter (matches any visible column)"
@@ -148,12 +178,9 @@
               <th data-col="raman_activity_a4_amu" data-numeric="1">Raman (Å⁴/amu)</th>
               <th data-col="has_imag">imag?</th>
               <th data-col="has_es">ES?</th>
-              <!-- ES-derived columns are hidden when no mode has ES.
-                   When ES is present, JS toggles class="es-only" rows
-                   visible. -->
-              <th data-col="homo_eq_ev"  data-numeric="1" class="es-col">HOMO (eV)</th>
-              <th data-col="lumo_eq_ev"  data-numeric="1" class="es-col">LUMO (eV)</th>
-              <th data-col="gap_eq_ev"   data-numeric="1" class="es-col">Gap (eV)</th>
+              <th data-col="homo_eq_ev"   data-numeric="1" class="es-col">HOMO (eV)</th>
+              <th data-col="lumo_eq_ev"   data-numeric="1" class="es-col">LUMO (eV)</th>
+              <th data-col="gap_eq_ev"    data-numeric="1" class="es-col">Gap (eV)</th>
               <th data-col="dgap_max_mev" data-numeric="1" class="es-col">ΔGap max (meV)</th>
             </tr>
           </thead>
@@ -161,28 +188,27 @@
         </table>
       </div>
 
-      <!-- ============================================================
-         Electronic-structure panel for the selected mode (spec § 9.2.4)
-         ============================================================ -->
-      <section id="es-panel" class="es-panel" hidden>
-        <header class="card-header">
-          <h2>Electronic structure (mode <span id="es-mode-idx">?</span>)</h2>
+      <!-- ES panel sits inside results-summary so it shares the
+           hidden-until-loaded state.  Internally toggles whether
+           the bar diagram or a "no ES for this mode" placeholder
+           is rendered. -->
+      <div id="es-panel" class="es-panel" hidden>
+        <header class="section-header subsection-h">
+          <h3>Electronic structure (mode <span id="es-mode-idx">?</span>)</h3>
           <span id="es-mode-freq" class="status muted"></span>
         </header>
-        <!-- MO bar diagram + gap drift annotations.  When the selected
-             mode has no ES data, we replace this with a placeholder. -->
         <div id="es-bar-diagram" class="es-bar-diagram"
              aria-label="MO energies at -A / 0 / +A for the selected mode">
         </div>
         <dl id="es-summary" class="es-summary"></dl>
-      </section>
+      </div>
     </div>
-  </section>
+  </section><!-- /.card-output -->
 </main>
 
-<!-- ============================================================ -->
-<!-- Methods-preview modal (spec § 9.4)                            -->
-<!-- ============================================================ -->
+<!-- ================================================================
+     Methods-preview modal (spec § 9.4)
+     ================================================================ -->
 <dialog id="methods-modal" class="methods-modal">
   <header class="methods-modal-header">
     <h2>Methods (manuscript-ready prose)</h2>

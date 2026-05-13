@@ -1,0 +1,154 @@
+/* Shared stylesheet for the schema-driven form renderer.
+ *
+ * Used by Build (/) and Spectra (/spectra) -- any page that renders
+ * a SiestaConfig / PySCFConfig / SpectraConfig form via
+ * `molbuilder.formSchema.renderForm()`.  This file is the single
+ * source of truth for the form's visual layout; per-page
+ * stylesheets pull in the page chrome only (cards, headers,
+ * page-specific panels).
+ *
+ * Depends on the design tokens in lib/tokens.css.  Include
+ * tokens.css BEFORE this file.
+ *
+ * Rules below mirror what the Build tab's style.css already
+ * applies via the global `fieldset` selector; this file extracts
+ * them so other pages (Spectra, future Transport tab) can pick up
+ * the same layout without re-importing the whole Build stylesheet.
+ */
+
+/* ---- Fieldsets in parameter forms ---- */
+
+fieldset {
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm, 6px);
+    padding: 8px 12px 10px;
+    margin: 0;
+    background: var(--bg-fieldset);
+    min-width: 0;     /* allow grid items to shrink below content width */
+}
+fieldset legend {
+    font-weight: 600;
+    padding: 0 6px;
+    font-size: 0.85rem;
+    color: var(--accent);
+    letter-spacing: 0.01em;
+}
+
+/* Default fieldset label style: stack the label name above the input.
+ * With the side-by-side default, long labels like "preopt functional"
+ * push inputs out of the column; stacked is also more responsive on
+ * narrow viewports. */
+fieldset label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 6px 0;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    min-width: 0;
+}
+fieldset label > input,
+fieldset label > select {
+    width: 100%;
+    margin-top: 1px;
+    max-width: none;
+    min-width: 0;
+}
+/* Inline checkboxes -- keep their existing horizontal layout */
+fieldset label > input[type="checkbox"] {
+    width: auto;
+    align-self: flex-start;
+}
+fieldset label:has(> input[type="checkbox"]) {
+    flex-direction: row;
+    align-items: center;
+    gap: 6px;
+}
+
+/* ---- Locked fields ----
+ *
+ * Compatibility-engine locks one field based on another's value.
+ * Locked fields stay visible but dim, with a "↳" reason hint. */
+fieldset label.is-locked {
+    opacity: 0.55;
+    transition: opacity 120ms;
+}
+fieldset input:disabled,
+fieldset select:disabled {
+    cursor: not-allowed;
+    background: var(--bg-fieldset);
+    color: var(--text-muted);
+}
+.lock-reason {
+    display: block;
+    margin-top: 2px;
+    font-size: 0.78rem;
+    color: var(--accent);
+    font-style: italic;
+    line-height: 1.35;
+}
+.lock-reason::before {
+    content: "↳ ";
+    color: var(--text-muted);
+    font-style: normal;
+}
+.lock-reason[hidden] { display: none; }
+
+/* ---- Param grid (the big block of schema-rendered fieldsets) ---- */
+
+.param-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+}
+
+.param-grid-pre {
+    /* Pre-form fieldsets (e.g. SIESTA's Relaxation-stage preset
+     * selector) read better as full-width blocks above the
+     * responsive .param-grid below them. */
+    margin: 0 0 10px;
+}
+.param-grid-pre + .param-grid-pre {
+    margin-top: 6px;
+}
+
+/* int-triple kind (e.g. kgrid: Tuple[int, int, int]).  Three small
+ * inline cells with sub-labels so the user reads "x 1  y 1  z 1"
+ * instead of three anonymous boxes. */
+.schema-int-triple {
+    display: inline-flex;
+    flex-direction: row;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 1px;
+}
+.schema-int-triple-cell {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+}
+.schema-int-triple-label {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    min-width: 1.2em;
+    text-align: right;
+}
+.schema-int-triple-cell > input {
+    width: 4em;
+    min-width: 3em;
+}
+
+/* Advanced-tier fields: keep visible but slightly dimmed so the
+ * "advanced knob" status reads without hiding the control. */
+.schema-field.is-advanced {
+    opacity: 0.92;
+}
+.schema-field.is-advanced::before {
+    content: "•";
+    color: var(--accent);
+    margin-right: 4px;
+    font-weight: 700;
+    opacity: 0.6;
+}

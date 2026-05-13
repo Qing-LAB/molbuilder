@@ -1,9 +1,14 @@
 /* molbuilder Spectra-tab styles.
  *
- * Shared design tokens live in static/lib/tokens.css; this file
- * uses them via var(--...).  Layout mirrors the Modify tab's
- * card-grid pattern -- two columns on desktop, stacked on
- * narrow viewports.
+ * Page chrome only: layout grid, cards, section headers, status
+ * messages, the spectrum chart container, the modes table, and the
+ * ES panel.
+ *
+ * The schema-driven form (rendered inside #spectra-form-container)
+ * picks up its styling from static/lib/form-schema.css -- which
+ * carries the fieldset / label / .param-grid rules that the Build
+ * tab uses too.  This page-level stylesheet does NOT restyle the
+ * form fields directly.
  */
 @import url("../lib/tokens.css");
 
@@ -33,119 +38,170 @@ header .tagline {
     font-size: 0.95rem;
 }
 
-/* ---- Two-column layout (stacks on narrow) ------------------- */
+/* ---- Two-column layout ---- */
 
 .spectra-grid {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
-    gap: 1.25rem;
-    padding: 1.25rem 1.5rem;
+    gap: 1.5rem;
+    padding: 1.25rem 1.5rem 2rem;
     align-items: start;
 }
 @media (max-width: 1100px) {
     .spectra-grid { grid-template-columns: 1fr; }
 }
 
+/* ---- Card / section model ----
+ *
+ * A `.card` is the column container; inside it, `.card-section`
+ * blocks separate concerns (Structure, Parameters, Generate;
+ * Issues, Generated script, Load, Results).  Sections use
+ * consistent vertical rhythm (1.4rem gap between sections,
+ * 0.7rem inside).
+ */
+
 .card {
     background: var(--bg-card);
     border: 1px solid var(--border-soft);
     border-radius: 12px;
-    padding: 1.2rem 1.4rem;
+    padding: 1rem 1.4rem 1.2rem;
 }
-.card-header {
+
+.card-section {
+    padding: 0.8rem 0;
+}
+.card-section + .card-section {
+    border-top: 1px solid var(--border-soft);
+}
+.card-section:first-of-type { padding-top: 0.4rem; }
+.card-section:last-of-type  { padding-bottom: 0; }
+
+/* Section headers: consistent layout, one source of truth.
+ * Step-numbered for the left column (Structure / Parameters /
+ * Generate), plain for the right column. */
+.section-header {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
-    margin: 0 0 0.7rem;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin: 0 0 0.6rem;
 }
-.card-header h2 {
+.section-header h2 {
     margin: 0;
-    font: 600 1.05rem/1.2 "Inter", system-ui, sans-serif;
+    font: 600 1.02rem/1.2 "Inter", system-ui, sans-serif;
     color: var(--text-primary);
 }
-.card-header + * { margin-top: 0; }
-.card-header:not(:first-of-type) {
-    border-top: 1px solid var(--border-soft);
-    padding-top: 1rem;
-    margin-top: 1.4rem;
+.section-header h3 {
+    margin: 0;
+    font: 600 0.95rem/1.2 "Inter", system-ui, sans-serif;
+    color: var(--text-primary);
+}
+.section-hint {
+    margin: 0;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
 }
 
-/* ---- XYZ input row ----------------------------------------- */
+/* Numbered step indicator: small filled circle to the left of the
+ * left-column section titles ("Structure", "Parameters", "Generate").
+ * Optional -- the right column doesn't use them. */
+.step-num { display: inline-flex; align-items: center; gap: 0.55rem; }
+.step-dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    background: var(--bg-input);
+    border: 1px solid var(--border-strong);
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
 
-.xyz-input-row { display: grid; gap: 0.3rem; margin-bottom: 0.6rem; }
-.xyz-input-row label { font-size: 0.9rem; color: var(--text-secondary); }
-.xyz-input-row textarea {
+/* Subsection heading inside a section (e.g. "Spectrum", "Modes"
+ * inside the Results section). */
+.subsection-h {
+    margin: 1.1rem 0 0.5rem;
+    font: 600 0.95rem/1.2 "Inter", system-ui, sans-serif;
+    color: var(--text-primary);
+}
+
+/* ---- Generic field/row helpers (used by structure + actions) ---- */
+
+.field-block {
+    display: grid;
+    gap: 0.3rem;
+    margin: 0 0 0.6rem;
+}
+.field-block > .field-label {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+.field-block > textarea,
+.field-block > input {
     width: 100%;
+}
+
+textarea, input[type="text"], input[type="file"] {
     background: var(--bg-input);
     color: var(--text-primary);
     border: 1px solid var(--border-strong);
     border-radius: 6px;
-    padding: 0.5rem 0.7rem;
+    padding: 0.45rem 0.65rem;
+    font-size: 0.9rem;
+}
+textarea {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 0.85rem;
     resize: vertical;
-    min-height: 100px;
+    min-height: 96px;
 }
-.xyz-upload-row {
-    display: flex;
-    gap: 0.6rem;
-    align-items: center;
-    flex-wrap: wrap;
-    margin-bottom: 0.6rem;
+textarea:focus, input[type="text"]:focus, input[type="file"]:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: var(--bg-input-focus);
 }
-
-/* ---- Buttons ----------------------------------------------- */
 
 button {
     background: var(--bg-input);
     color: var(--text-primary);
     border: 1px solid var(--border-strong);
     border-radius: 6px;
-    padding: 0.4rem 0.9rem;
+    padding: 0.42rem 0.95rem;
     font-size: 0.9rem;
     cursor: pointer;
-    transition: background 0.12s ease;
+    transition: background 0.12s ease, border-color 0.12s ease;
 }
-button:hover  { background: var(--bg-input-focus); }
-button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-}
-button.primary {
-    background: #2b5f9e;
-    border-color: #3577b9;
-}
+button:hover { background: var(--bg-input-focus); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button.primary  { background: #2b5f9e; border-color: #3577b9; color: #fff; }
 button.primary:hover { background: #336dab; }
-
-input[type="text"],
-input[type="file"] {
-    background: var(--bg-input);
-    color: var(--text-primary);
-    border: 1px solid var(--border-strong);
-    border-radius: 6px;
-    padding: 0.4rem 0.6rem;
-    font-size: 0.9rem;
-}
-input[type="text"]:focus,
-input[type="file"]:focus,
-textarea:focus {
-    outline: none;
-    border-color: #3577b9;
-    background: var(--bg-input-focus);
+button > code {
+    background: transparent;
+    padding: 0;
+    color: inherit;
+    font-size: 0.92em;
 }
 
-/* ---- Action row + prior-run details ------------------------ */
-
-.action-row {
+/* Horizontal rows of controls.  inline-row stays inline and wraps
+ * on narrow viewports.  primary-actions gives a bit more vertical
+ * breathing room for the main Generate row. */
+.inline-row {
     display: flex;
     gap: 0.6rem;
     align-items: center;
     flex-wrap: wrap;
+    margin: 0.3rem 0;
 }
+.primary-actions { margin-top: 0.4rem; }
 
+/* Resume-from-prior collapsible. */
 .prior-row {
-    margin-top: 1rem;
-    padding: 0.6rem 0.8rem;
+    margin: 0.8rem 0 0;
+    padding: 0.55rem 0.75rem;
     border: 1px dashed var(--border-soft);
     border-radius: 6px;
 }
@@ -153,30 +209,31 @@ textarea:focus {
     cursor: pointer;
     color: var(--text-secondary);
     font-size: 0.9rem;
+    user-select: none;
 }
 .prior-row p.hint {
     color: var(--text-secondary);
     font-size: 0.85rem;
-    margin: 0.5rem 0;
+    margin: 0.4rem 0;
 }
 .prior-row input[type="text"] { width: 100%; }
 
-/* ---- Status messages --------------------------------------- */
+/* ---- Status messages ---- */
 
 .status {
     font-size: 0.85rem;
     color: var(--text-secondary);
+    min-height: 1.1em;
 }
 .status.ok    { color: #6fcf6f; }
 .status.error { color: #e07070; }
-.status.muted { color: var(--text-secondary); opacity: 0.7; }
+.status.muted { color: var(--text-secondary); opacity: 0.75; }
 
-/* ---- Issues panel ------------------------------------------ */
+/* ---- Issues panel ---- */
 
 .issues-panel {
     display: grid;
     gap: 0.45rem;
-    margin-bottom: 1rem;
 }
 .issue {
     padding: 0.45rem 0.7rem;
@@ -208,68 +265,51 @@ textarea:focus {
     border-radius: 3px;
 }
 
-/* ---- Generated-script preview ------------------------------ */
+/* ---- Generated-script preview ---- */
 
-.script-actions {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-    margin-bottom: 0.5rem;
-    flex-wrap: wrap;
-}
 .script-preview {
     background: var(--bg-code);
     color: var(--text-primary);
     border: 1px solid var(--border-soft);
     border-radius: 6px;
-    padding: 0.8rem 1rem;
+    padding: 0.7rem 0.95rem;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 0.78rem;
     line-height: 1.5;
     max-height: 320px;
     overflow: auto;
     white-space: pre;
-    margin: 0 0 1rem;
+    margin: 0.5rem 0 0;
 }
 .script-preview:empty { display: none; }
 
-/* ---- Results-summary panel --------------------------------- */
+/* ---- Results meta dictionary ---- */
 
-.results-actions {
-    display: flex;
-    gap: 0.5rem;
-    align-items: center;
-    flex-wrap: wrap;
-    margin-bottom: 0.5rem;
-}
-
-.results-summary { margin-top: 1rem; }
 .results-meta {
     display: grid;
     grid-template-columns: max-content 1fr;
     gap: 0.25rem 1rem;
     font-size: 0.88rem;
-    margin: 0 0 0.8rem;
+    margin: 0;
 }
 .results-meta dt { color: var(--text-secondary); }
 .results-meta dd { margin: 0; }
 
+/* ---- Spectrum chart ---- */
+
 .spectrum-chart {
     width: 100%;
     min-height: 280px;
-    margin: 0.6rem 0 1rem;
+    margin: 0 0 0.4rem;
     background: var(--bg-card);
     border: 1px solid var(--border-soft);
     border-radius: 6px;
     padding: 4px;
 }
-.spectrum-chart:empty {
-    /* Plotly populates this, but when it can't (CDN slow / no modes
-       yet) the JS drops a fallback message in via innerHTML. */
-    min-height: 0;
-}
+.spectrum-chart:empty { min-height: 0; }
 
-/* Filter + CSV row above the table. */
+/* ---- Modes table ---- */
+
 .modes-table-controls {
     display: flex;
     gap: 0.6rem;
@@ -310,11 +350,7 @@ textarea:focus {
 .modes-table td:first-child { text-align: left; }
 .modes-table th[hidden],
 .modes-table td[hidden] { display: none; }
-/* Hidden ES columns: when no mode has ES, JS sets [hidden] on the
-   .es-col <th> headers; their <td> cousins are kept invisible by
-   the universal [hidden] rule above. */
 
-/* Sortable column headers. */
 .modes-table th[data-col] {
     cursor: pointer;
     user-select: none;
@@ -330,7 +366,6 @@ textarea:focus {
 }
 .modes-table th.sort-desc::after { content: " ▼"; }
 
-/* Row interaction states. */
 .modes-table tbody tr { cursor: pointer; }
 .modes-table tbody tr:hover { background: var(--bg-card-hover); }
 .modes-table tbody tr.active {
@@ -338,11 +373,8 @@ textarea:focus {
     outline: 1px solid #ffd454;
     outline-offset: -1px;
 }
-.modes-table tbody tr.mode-imag td:nth-child(2) {
-    color: #e07070;
-}
+.modes-table tbody tr.mode-imag td:nth-child(2) { color: #e07070; }
 
-/* Screen-reader-only caption helper. */
 .sr-only {
     position: absolute;
     width: 1px; height: 1px;
@@ -352,21 +384,21 @@ textarea:focus {
 }
 
 /* ---- Electronic-structure panel (§ 9.2.4) ---- */
+
 .es-panel {
-    margin-top: 1.4rem;
-    padding-top: 1rem;
+    margin-top: 1.1rem;
+    padding-top: 0.9rem;
     border-top: 1px solid var(--border-soft);
 }
-.es-panel .card-header { margin-top: 0; padding-top: 0; border-top: none; }
 .es-bar-diagram {
     background: var(--bg-card);
     border: 1px solid var(--border-soft);
     border-radius: 6px;
     padding: 4px;
-    margin: 0.6rem 0;
+    margin: 0.5rem 0;
 }
 .es-bar-diagram svg { display: block; max-width: 100%; }
-.es-bar-diagram p.status { padding: 1rem; }
+.es-bar-diagram p.status { padding: 0.8rem; }
 
 .es-summary {
     display: grid;
@@ -378,18 +410,7 @@ textarea:focus {
 .es-summary dt { color: var(--text-secondary); }
 .es-summary dd { margin: 0; font-variant-numeric: tabular-nums; }
 
-/* ---- Locked form fields (selector compatibility) ----------- */
-
-.is-locked {
-    opacity: 0.45;
-}
-.is-locked input,
-.is-locked select,
-.is-locked textarea {
-    pointer-events: none;
-}
-
-/* ---- Methods modal ---------------------------------------- */
+/* ---- Methods modal ---- */
 
 .methods-modal {
     background: var(--bg-card);
@@ -432,6 +453,9 @@ textarea:focus {
     border-radius: 3px;
 }
 
-/* ---- Card-output spacing tweaks --------------------------- */
-
-.card-output > .card-header:first-child { margin-top: 0; }
+/* Selector compatibility: a locked es-* value field gets faded so
+ * the user sees which knob is active. */
+.is-locked { opacity: 0.45; }
+.is-locked input, .is-locked select, .is-locked textarea {
+    pointer-events: none;
+}
