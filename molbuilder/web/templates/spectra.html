@@ -214,9 +214,28 @@
       <dl id="results-summary-list" class="results-meta"></dl>
 
       <h3 class="subsection-h">Spectrum</h3>
-      <!-- Plotly: stem-style frequency vs Raman activity.  Click
-           a stick to select the mode (synchronises with the
-           table below and the ES panel). -->
+      <!-- Spectrum-controls row: Lorentzian-broadening FWHM input.
+           Sits above the chart so the user can tune the broadening
+           while looking at the line shape; defaults to a moderate
+           20 cm⁻¹ that suits typical Raman line widths. -->
+      <div class="spectrum-controls">
+        <label class="inline-label">
+          <span>Lorentzian FWHM</span>
+          <input id="broadening-fwhm" type="number"
+                 min="1" max="500" step="1" value="20">
+          <span class="unit">cm⁻¹</span>
+        </label>
+        <span class="hint">
+          Sum-of-Lorentzians overlay on the sticks.  Increase to
+          smooth narrow lines into the broader envelope expected
+          in solution / room-temperature Raman; decrease for
+          sharper gas-phase spectra.  Set to 0 to hide the overlay.
+        </span>
+      </div>
+      <!-- Plotly: stem-style frequency vs Raman activity, optionally
+           with a broadened envelope overlay.  Click a stick to
+           select the mode (synchronises with the table below and
+           the ES panel). -->
       <div id="spectrum-chart" class="spectrum-chart"
            aria-label="Raman spectrum (frequency vs activity)"></div>
 

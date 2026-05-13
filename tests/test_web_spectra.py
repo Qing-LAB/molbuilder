@@ -264,6 +264,27 @@ class TestSpectraPage:
         # Plotly entry point.
         assert "Plotly.react" in js
 
+    def test_viewer_js_has_lorentzian_envelope(self, web_client):
+        """The Lorentzian broadening helper, the trace name, and the
+        FWHM input wiring are all in viewer.js."""
+        js = web_client.get("/static/spectra/viewer.js").data.decode()
+        assert "_lorentzianEnvelope" in js
+        # The trace name includes the FWHM value at render time.
+        assert "Lorentzian (FWHM" in js
+        # Input change handler.
+        assert "onBroadeningChange" in js
+        # State holds the current FWHM.
+        assert "broadeningFWHM" in js
+
+    def test_page_has_broadening_control(self, web_client):
+        """The Spectrum subsection has a FWHM number input above
+        the chart, with a default of 20 cm⁻¹."""
+        body = web_client.get("/spectra").data.decode()
+        assert 'id="broadening-fwhm"' in body
+        assert 'value="20"'           in body
+        # Hint text mentions Lorentzian.
+        assert "Lorentzian" in body
+
     def test_page_has_es_panel_and_table_controls(self, web_client):
         """The Spectra page exposes the mode-table interaction
         controls (filter + CSV) and the ES-panel scaffolding the

@@ -66,6 +66,8 @@
         watchStopBtn:   null,
         watchStatus:    null,
         phaseIndicator: null,
+        // Spectrum chart Lorentzian-broadening control.
+        broadeningFwhm: null,
     };
 
     // Last successful render payload + interactive state.
@@ -84,6 +86,9 @@
         watchTimer:     null,     // setInterval handle, or null
         watchPath:      null,     // server-side path being polled
         watchErrors:    0,        // consecutive transient-error counter
+        // Spectrum chart -- Lorentzian broadening FWHM in cm⁻¹.
+        // 0 disables the overlay (sticks only).
+        broadeningFWHM: 20,
     };
 
     // Poll interval for the live-watch loop.  2 s is the sweet spot:
@@ -1245,6 +1250,28 @@
             width:       6,
             customdata:  imag.idx,
         });
+        // Lorentzian-broadened envelope.  Active in activity mode
+        // (sticks visible) when FWHM > 0; rendered as a line trace
+        // overlaid on the sticks.  Sum of Lorentzians centered at
+        // each mode's frequency, normalised so peak height = the
+        // mode's Raman activity.
+        if (!densityMode && state.broadeningFWHM > 0) {
+            const envelope = _lorentzianEnvelope(
+                modes, state.broadeningFWHM
+            );
+            if (envelope.x.length) {
+                traces.push({
+                    type: "scatter",
+                    mode: "lines",
+                    name: `Lorentzian (FWHM ${state.broadeningFWHM} cm⁻¹)`,
+                    x:    envelope.x,
+                    y:    envelope.y,
+                    hoverinfo: "skip",
+                    line: { color: "#8ab9e6", width: 1.5 },
+                    // Bars on top of the line.
+                });
+            }
+        }
         if (pending.x.length) traces.push({
             type:        "scatter",
             mode:        "markers",
@@ -1307,6 +1334,68 @@
         if (idx != null) selectMode(Number(idx));
     }
 
+    /* Sum-of-Lorentzians envelope for the spectrum chart.
+     *
+     * For each mode with finite raman_activity_a4_amu, adds a
+     * Lorentzian centered at its frequency, normalised so the
+     * peak value equals the mode's activity:
+     *
+     *     L_i(x) = A_i · γ² / ((x - x_i)² + γ²)
+     *
+     * where γ = FWHM / 2 is the half-width at half-maximum.
+     * Total spectrum is the sum of all L_i.
+     *
+     * Returns {x, y} arrays sampled on a grid that spans the mode
+     * range with a few-cm⁻¹ resolution.  Empty input -> empty
+     * arrays so the caller can skip the trace.
+     */
+    function _lorentzianEnvelope(modes, fwhm) {
+        const bright = modes.filter(m =>
+            m.raman_activity_a4_amu != null
+            && Number.isFinite(Number(m.raman_activity_a4_amu))
+        );
+        if (!bright.length || fwhm <= 0) return { x: [], y: [] };
+
+        const gamma = fwhm / 2;
+        // Grid: extend a few HWHMs past each end of the spectrum so
+        // the envelope returns to ~0 at the edges.  Sample density:
+        // ~0.2·FWHM, capped to >=1 cm⁻¹.
+        let xmin = Infinity, xmax = -Infinity;
+        for (const m of bright) {
+            const f = Number(m.frequency_cm1);
+            if (f < xmin) xmin = f;
+            if (f > xmax) xmax = f;
+        }
+        xmin -= 5 * gamma;
+        xmax += 5 * gamma;
+        const step = Math.max(1, Math.round(fwhm / 5));
+        const n = Math.max(1, Math.floor((xmax - xmin) / step) + 1);
+        const x = new Array(n);
+        const y = new Array(n).fill(0);
+        for (let k = 0; k < n; k++) {
+            x[k] = xmin + k * step;
+        }
+        const gamma2 = gamma * gamma;
+        for (const m of bright) {
+            const x0 = Number(m.frequency_cm1);
+            const A  = Number(m.raman_activity_a4_amu);
+            for (let k = 0; k < n; k++) {
+                const dx = x[k] - x0;
+                y[k] += A * gamma2 / (dx * dx + gamma2);
+            }
+        }
+        return { x: x, y: y };
+    }
+
+    function onBroadeningChange() {
+        const raw = parseFloat(els.broadeningFwhm.value);
+        const v = Number.isFinite(raw) ? Math.max(0, raw) : 0;
+        state.broadeningFWHM = v;
+        if (state.results) {
+            renderSpectrumChart(state.results.modes || []);
+        }
+    }
+
     // ----- Bootstrap -------------------------------------------
     function init() {
         els.xyzText        = $("xyz-text");
@@ -1351,6 +1440,7 @@
         els.watchStopBtn      = $("watch-stop-btn");
         els.watchStatus       = $("watch-status");
         els.phaseIndicator    = $("phase-indicator");
+        els.broadeningFwhm    = $("broadening-fwhm");
 
         els.xyzLoadBtn.addEventListener("click", loadXyzFile);
         els.generateBtn.addEventListener("click", generateScript);
@@ -1361,6 +1451,15 @@
         els.loadPathBtn.addEventListener("click", loadByPath);
         els.watchBtn.addEventListener("click", startWatch);
         els.watchStopBtn.addEventListener("click", () => stopWatch("Stopped."));
+        // FWHM-controlled broadening re-renders the chart in place.
+        if (els.broadeningFwhm) {
+            els.broadeningFwhm.addEventListener("input", onBroadeningChange);
+            // Read initial value from the input so an
+            // HTML-default-modified value (sessionStorage etc.)
+            // propagates without needing a manual edit.
+            const v = parseFloat(els.broadeningFwhm.value);
+            if (Number.isFinite(v) && v >= 0) state.broadeningFWHM = v;
+        }
 
         // Mode-table interactions.
         els.modesTheadRow.addEventListener("click", onTableHeaderClick);
