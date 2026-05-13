@@ -398,6 +398,15 @@ class SpectraResults:
     phase_raman:               str = PHASE_EMPTY
     phase_es:                  str = PHASE_EMPTY
 
+    # Equilibrium geometry -- element symbols + Cartesian positions
+    # in Å.  Optional in the wire format (older results from
+    # SCHEMA_VERSION=1 won't have this) so reading an older JSON
+    # still works.  When present, the UI animates modes directly
+    # from the loaded results without needing the user to keep the
+    # XYZ in the input form.
+    equilibrium_elements:      Optional[List[str]]  = None
+    equilibrium_positions_ang: Optional[np.ndarray] = None
+
     # Engine-specific noise (parsing diagnostics, version detail) --
     # kept here so the common schema doesn't bloat for engine-only
     # fields and the UI can ignore it.
@@ -461,6 +470,39 @@ class SpectraResults:
                     f"SpectraResults.{name}={val!r} is not a valid "
                     f"phase status; expected one of {_VALID_PHASE_STATES}"
                 )
+        # Equilibrium geometry (optional).  When both elements and
+        # positions are supplied, validate shape + count match.
+        if self.equilibrium_elements is not None or self.equilibrium_positions_ang is not None:
+            if self.equilibrium_elements is None or self.equilibrium_positions_ang is None:
+                raise ValueError(
+                    "SpectraResults: equilibrium_elements and "
+                    "equilibrium_positions_ang must be supplied together "
+                    "(both or neither)."
+                )
+            self.equilibrium_positions_ang = _reject_complex_then_asarray(
+                self.equilibrium_positions_ang,
+                field="SpectraResults.equilibrium_positions_ang",
+            )
+            if (self.equilibrium_positions_ang.ndim != 2
+                    or self.equilibrium_positions_ang.shape[1] != 3):
+                raise ValueError(
+                    f"SpectraResults.equilibrium_positions_ang must "
+                    f"have shape (n_atoms, 3); got "
+                    f"{self.equilibrium_positions_ang.shape}"
+                )
+            n_geom = self.equilibrium_positions_ang.shape[0]
+            if n_geom != len(self.equilibrium_elements):
+                raise ValueError(
+                    f"SpectraResults: equilibrium_elements has "
+                    f"{len(self.equilibrium_elements)} symbols but "
+                    f"equilibrium_positions_ang has {n_geom} rows"
+                )
+            if n_geom != self.n_atoms_total:
+                raise ValueError(
+                    f"SpectraResults: geometry has {n_geom} atoms but "
+                    f"n_atoms_total = {self.n_atoms_total}"
+                )
+
         # Cross-mode shape consistency.  Allow the empty-modes case
         # (in-progress write before phase 2 -- no harmonic analysis yet).
         if self.modes:
@@ -502,6 +544,12 @@ class SpectraResults:
                 "scf_energy_eh":     float(self.equilibrium_scf_eh),
                 "mo_energies_eh":    self.equilibrium_mo_energies_eh.tolist(),
                 "homo_idx":          int(self.equilibrium_homo_idx),
+                # Optional geometry; emitted only when present so
+                # older readers ignore the missing keys cleanly.
+                **({"elements":      [str(e) for e in self.equilibrium_elements]}
+                   if self.equilibrium_elements is not None else {}),
+                **({"positions_ang": self.equilibrium_positions_ang.tolist()}
+                   if self.equilibrium_positions_ang is not None else {}),
             },
 
             "modes":                [m.to_dict() for m in self.modes],
@@ -536,6 +584,18 @@ class SpectraResults:
             equilibrium_scf_eh         = float(eq["scf_energy_eh"]),
             equilibrium_mo_energies_eh = np.asarray(eq["mo_energies_eh"], dtype=float),
             equilibrium_homo_idx       = int(eq["homo_idx"]),
+
+            # Optional geometry (added late in the schema; older
+            # JSON files don't have these keys, so .get() with None
+            # falls through cleanly).
+            equilibrium_elements       = (
+                [str(e) for e in eq["elements"]]
+                if "elements" in eq else None
+            ),
+            equilibrium_positions_ang  = (
+                np.asarray(eq["positions_ang"], dtype=float)
+                if "positions_ang" in eq else None
+            ),
 
             modes                = [ModeData.from_dict(m) for m in d["modes"]],
             selected_mode_idxs_1based = [int(i) for i in

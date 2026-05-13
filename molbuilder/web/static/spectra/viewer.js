@@ -68,6 +68,15 @@
         phaseIndicator: null,
         // Spectrum chart Lorentzian-broadening control.
         broadeningFwhm: null,
+        // 3Dmol mode-animation viewer (§ 9.2.3).
+        modeViewerWrap: null,
+        modeViewer:     null,
+        viewerStatus:   null,
+        animAmplitude:  null,
+        animAmplitudeVal: null,
+        animSpeed:      null,
+        animSpeedVal:   null,
+        animToggle:     null,
     };
 
     // Last successful render payload + interactive state.
@@ -89,6 +98,14 @@
         // Spectrum chart -- Lorentzian broadening FWHM in cm⁻¹.
         // 0 disables the overlay (sticks only).
         broadeningFWHM: 20,
+        // 3Dmol mode-animation viewer.
+        viewer:         null,    // 3Dmol GLViewer instance (lazy-built)
+        animTimer:      null,    // requestAnimationFrame handle
+        animPaused:     false,
+        animAmplitude:  0.3,     // peak Cartesian amplitude in Å
+        animSpeed:      1.0,     // cycle-rate multiplier (1.0 = ~1 Hz)
+        animPhase:      0.0,     // current phase in radians
+        animLastTs:     null,    // last frame timestamp for dt
     };
 
     // Poll interval for the live-watch loop.  2 s is the sweet spot:
@@ -660,6 +677,16 @@
         renderSpectrumChart(results.modes || []);
         renderModesTable();
         renderESPanel();
+        // Geometry changed (new results loaded) -- discard the old
+        // 3Dmol viewer so the next render rebuilds with the fresh
+        // structure.
+        if (state.viewer) {
+            _stopAnimation();
+            try { state.viewer.clear(); } catch (_) {}
+            state.viewer = null;
+            if (els.modeViewer) els.modeViewer.innerHTML = "";
+        }
+        renderModeViewer();
     }
 
     function _pickDefaultMode(modes, preferES) {
@@ -892,6 +919,7 @@
         state.selectedMode = Number(idx) || null;
         _highlightActiveRow();
         renderESPanel();
+        renderModeViewer();
         // Also highlight the corresponding stick in the chart by
         // re-rendering it (Plotly's selectedpoints API is per-trace,
         // and we have three; cleanest is a full react()).
@@ -1115,6 +1143,242 @@
             `</svg>`
         );
         return svgParts.join("\n");
+    }
+
+    // ----- Mode-animation viewer (§ 9.2.3) ---------------------
+    //
+    // 3Dmol.js renders the equilibrium structure inside #mode-viewer
+    // and we animate the selected mode by adding the eigenvector
+    // displacement times sin(phase) to each atom's equilibrium
+    // position on every animation frame.
+    //
+    // Geometry source priority:
+    //   1. results.equilibrium.elements + positions_ang
+    //      (preferred; works after page reload).
+    //   2. Parsed from els.xyzText.value
+    //      (fallback; only works while the user keeps the XYZ in
+    //      the input form).
+    //
+    // The mode shape is faithful (eigenvector_free carries the
+    // direction + relative amplitudes correctly).  The display
+    // amplitude is a user-tunable visualisation knob, not a
+    // physical quantity -- thermal RMS amplitudes are typically
+    // < 0.05 Å and too small to see.
+
+    function _equilibriumGeometry() {
+        // Return { elements, positions } or null if neither source
+        // has a usable structure.  Positions are Å.
+        const r = state.results;
+        if (r && r.equilibrium
+                && Array.isArray(r.equilibrium.elements)
+                && Array.isArray(r.equilibrium.positions_ang)
+                && r.equilibrium.elements.length
+                && r.equilibrium.positions_ang.length
+                   === r.equilibrium.elements.length) {
+            return {
+                elements:  r.equilibrium.elements.slice(),
+                positions: r.equilibrium.positions_ang.map(row => row.slice()),
+            };
+        }
+        // Fallback: parse the XYZ in the input form.
+        const xyzText = (els.xyzText && els.xyzText.value || "").trim();
+        if (!xyzText) return null;
+        try {
+            return _parseXyz(xyzText);
+        } catch (_) {
+            return null;
+        }
+    }
+
+    function _parseXyz(text) {
+        // Minimal XYZ parser: line 1 = atom count, line 2 = title,
+        // remaining lines = "<element> <x> <y> <z>".  Tolerates
+        // extra whitespace / blank trailing lines.
+        const lines = text.split(/\r?\n/);
+        if (lines.length < 3) throw new Error("xyz too short");
+        const n = parseInt(lines[0].trim(), 10);
+        if (!Number.isFinite(n) || n < 1) throw new Error("bad atom count");
+        const elements = [];
+        const positions = [];
+        for (let i = 0; i < n; i++) {
+            const parts = (lines[i + 2] || "").trim().split(/\s+/);
+            if (parts.length < 4) throw new Error("bad atom line " + (i + 2));
+            elements.push(parts[0]);
+            positions.push([
+                parseFloat(parts[1]),
+                parseFloat(parts[2]),
+                parseFloat(parts[3]),
+            ]);
+        }
+        return { elements: elements, positions: positions };
+    }
+
+    function _geomToXyz(elements, positions) {
+        // Format an Elements + Positions pair as an XYZ block
+        // 3Dmol can ingest.  No title line content is required;
+        // a single space placeholder suffices.
+        const lines = [String(elements.length), ""];
+        for (let i = 0; i < elements.length; i++) {
+            const [x, y, z] = positions[i];
+            lines.push(`${elements[i]} ${x.toFixed(8)} ${y.toFixed(8)} ${z.toFixed(8)}`);
+        }
+        return lines.join("\n");
+    }
+
+    function renderModeViewer() {
+        // Top-level entry point.  Called whenever selection / results
+        // change.  Shows / hides the viewer, builds the 3Dmol
+        // instance lazily, and starts (or stops) the animation
+        // depending on whether a mode is selected with a non-null
+        // eigenvector.
+        if (!els.modeViewerWrap) return;
+
+        const geom = _equilibriumGeometry();
+        if (!geom || state.selectedMode == null || !state.results) {
+            els.modeViewerWrap.hidden = true;
+            _stopAnimation();
+            return;
+        }
+        const mode = (state.results.modes || []).find(
+            m => m.index_1based === state.selectedMode
+        );
+        if (!mode || !Array.isArray(mode.eigenvector_free)) {
+            els.modeViewerWrap.hidden = true;
+            _stopAnimation();
+            return;
+        }
+        els.modeViewerWrap.hidden = false;
+
+        if (typeof window.$3Dmol === "undefined") {
+            els.modeViewer.innerHTML =
+                '<p class="status muted" style="padding:1rem">'
+                + '3Dmol.js failed to load; mode animation '
+                + 'unavailable.</p>';
+            setStatus(els.viewerStatus, "3Dmol not loaded", "muted");
+            return;
+        }
+        setStatus(els.viewerStatus,
+                  `Mode ${mode.index_1based} · `
+                  + Number(mode.frequency_cm1).toFixed(1)
+                  + " cm⁻¹"
+                  + (mode.has_imag ? " (imag)" : ""),
+                  "muted");
+
+        _ensureViewer(geom);
+        _startAnimation(geom, mode);
+    }
+
+    function _ensureViewer(geom) {
+        // Build the 3Dmol viewer once; reuse on subsequent renders.
+        // The viewer's internal model is updated per-frame via
+        // setAtomCoordinates (cheaper than rebuilding).
+        if (state.viewer) return;
+        // Clear any "Plotly not loaded"-style fallback content.
+        els.modeViewer.innerHTML = "";
+        state.viewer = window.$3Dmol.createViewer(els.modeViewer, {
+            backgroundColor: "#1d2128",
+        });
+        const xyz = _geomToXyz(geom.elements, geom.positions);
+        state.viewer.addModel(xyz, "xyz");
+        state.viewer.setStyle({}, {
+            stick:  { radius: 0.15 },
+            sphere: { scale: 0.25 },
+        });
+        // Grey out fixed atoms so the user sees the static anchor.
+        const fixed = new Set(
+            (state.results.fixed_atom_idxs || []).map(Number)
+        );
+        if (fixed.size) {
+            // 3Dmol atom serial is 1-based; our indices are 0-based.
+            for (const idx of fixed) {
+                state.viewer.setStyle(
+                    { serial: idx + 1 },
+                    { sphere: { scale: 0.25, color: "#555" },
+                      stick:  { radius: 0.15, color: "#555" } }
+                );
+            }
+        }
+        state.viewer.zoomTo();
+        state.viewer.render();
+    }
+
+    function _startAnimation(geom, mode) {
+        // Cancel any previous frame loop, then kick a fresh one.
+        _stopAnimation();
+        state.animPaused = false;
+        state.animPhase = 0;
+        state.animLastTs = null;
+        if (els.animToggle) els.animToggle.textContent = "Pause";
+
+        // Pre-compute the per-atom displacement vector in (n_atoms, 3)
+        // shape.  Free atoms get the mode eigenvector; fixed atoms
+        // get zero.  free_atom_idxs maps eigenvector row -> atom.
+        const free = state.results.free_atom_idxs || [];
+        const evec_free = mode.eigenvector_free;
+        const nAtoms = geom.elements.length;
+        const displacement = new Array(nAtoms);
+        for (let i = 0; i < nAtoms; i++) displacement[i] = [0, 0, 0];
+        for (let k = 0; k < free.length; k++) {
+            const atomIdx = free[k];
+            if (atomIdx >= 0 && atomIdx < nAtoms) {
+                displacement[atomIdx] = evec_free[k].slice();
+            }
+        }
+
+        const eqPos = geom.positions;
+
+        function tick(ts) {
+            if (!state.viewer) return;
+            if (state.animPaused) {
+                state.animLastTs = ts;
+                state.animTimer = requestAnimationFrame(tick);
+                return;
+            }
+            if (state.animLastTs != null) {
+                const dt = (ts - state.animLastTs) / 1000;   // seconds
+                // 1.0× speed = 1 cycle / second = 2π rad/s.
+                state.animPhase += 2 * Math.PI * state.animSpeed * dt;
+            }
+            state.animLastTs = ts;
+            const s = Math.sin(state.animPhase);
+            const A = state.animAmplitude;
+            // 3Dmol's setAtomCoordinates wants {serial, x, y, z}
+            // batch update; iterate atoms one at a time using the
+            // public ``atoms.x = ...`` mutation pattern instead.
+            const atoms = state.viewer.selectedAtoms({});
+            for (let i = 0; i < atoms.length && i < nAtoms; i++) {
+                atoms[i].x = eqPos[i][0] + A * s * displacement[i][0];
+                atoms[i].y = eqPos[i][1] + A * s * displacement[i][1];
+                atoms[i].z = eqPos[i][2] + A * s * displacement[i][2];
+            }
+            state.viewer.render();
+            state.animTimer = requestAnimationFrame(tick);
+        }
+        state.animTimer = requestAnimationFrame(tick);
+    }
+
+    function _stopAnimation() {
+        if (state.animTimer) cancelAnimationFrame(state.animTimer);
+        state.animTimer = null;
+        state.animLastTs = null;
+    }
+
+    function onAnimAmplitudeChange() {
+        const v = parseFloat(els.animAmplitude.value);
+        if (Number.isFinite(v)) state.animAmplitude = v;
+        if (els.animAmplitudeVal)
+            els.animAmplitudeVal.textContent = v.toFixed(2) + " Å";
+    }
+    function onAnimSpeedChange() {
+        const v = parseFloat(els.animSpeed.value);
+        if (Number.isFinite(v)) state.animSpeed = v;
+        if (els.animSpeedVal)
+            els.animSpeedVal.textContent = v.toFixed(1) + "×";
+    }
+    function onAnimToggle() {
+        state.animPaused = !state.animPaused;
+        if (els.animToggle)
+            els.animToggle.textContent = state.animPaused ? "Play" : "Pause";
     }
 
     // ----- Spectrum chart (Plotly) -----------------------------
@@ -1441,6 +1705,15 @@
         els.watchStatus       = $("watch-status");
         els.phaseIndicator    = $("phase-indicator");
         els.broadeningFwhm    = $("broadening-fwhm");
+        // 3D mode-animation viewer.
+        els.modeViewerWrap    = $("mode-viewer-wrap");
+        els.modeViewer        = $("mode-viewer");
+        els.viewerStatus      = $("viewer-status");
+        els.animAmplitude     = $("anim-amplitude");
+        els.animAmplitudeVal  = $("anim-amplitude-val");
+        els.animSpeed         = $("anim-speed");
+        els.animSpeedVal      = $("anim-speed-val");
+        els.animToggle        = $("anim-toggle");
 
         els.xyzLoadBtn.addEventListener("click", loadXyzFile);
         els.generateBtn.addEventListener("click", generateScript);
@@ -1459,6 +1732,19 @@
             // propagates without needing a manual edit.
             const v = parseFloat(els.broadeningFwhm.value);
             if (Number.isFinite(v) && v >= 0) state.broadeningFWHM = v;
+        }
+
+        // 3D viewer control wiring.
+        if (els.animAmplitude) {
+            els.animAmplitude.addEventListener("input", onAnimAmplitudeChange);
+            onAnimAmplitudeChange();
+        }
+        if (els.animSpeed) {
+            els.animSpeed.addEventListener("input", onAnimSpeedChange);
+            onAnimSpeedChange();
+        }
+        if (els.animToggle) {
+            els.animToggle.addEventListener("click", onAnimToggle);
         }
 
         // Mode-table interactions.

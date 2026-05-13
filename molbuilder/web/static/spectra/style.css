@@ -412,6 +412,50 @@ button > code {
     border: 0;
 }
 
+/* ---- Mode-animation viewer (§ 9.2.3) ----
+ *
+ * 3Dmol.js renders the equilibrium structure inside #mode-viewer;
+ * the JS animates the selected mode's eigenvector sinusoidally.
+ * The viewer is hidden until a mode is selected AND the geometry
+ * is available. */
+.mode-viewer-wrap {
+    margin-top: 1.1rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--border-soft);
+}
+.mode-viewer {
+    width: 100%;
+    height: 340px;
+    margin: 0.5rem 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    position: relative;       /* 3Dmol canvas positions absolutely */
+}
+.viewer-controls {
+    display: flex;
+    gap: 0.9rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin: 0.4rem 0;
+    font-size: 0.85rem;
+}
+.viewer-controls .inline-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--text-secondary);
+}
+.viewer-controls input[type="range"] {
+    width: 9rem;
+}
+.viewer-hint {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    opacity: 0.85;
+    margin: 0.4rem 0 0;
+}
+
 /* ---- Electronic-structure panel (§ 9.2.4) ---- */
 
 .es-panel {

@@ -13,6 +13,11 @@
      /vendor/plotly.min.js route reads the file out of the running
      plotly install. -->
 <script src="{{ url_for('vendor_plotly_js') }}"></script>
+<!-- 3Dmol.js: used by the per-mode eigenvector animation in the
+     Results section.  Loaded from cdnjs (same as the Build / Watch
+     tabs); local-serving 3Dmol is a follow-up since it isn't
+     bundled inside any Python package we depend on. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js"></script>
 </head>
 <body>
 
@@ -270,6 +275,44 @@
           </thead>
           <tbody id="modes-tbody"></tbody>
         </table>
+      </div>
+
+      <!-- 3D structure + per-mode animation.  Visible whenever a
+           mode is selected AND the geometry is available (either
+           from the loaded spectra.json's equilibrium.elements/
+           positions_ang or from the XYZ pasted in step 1).  -->
+      <div id="mode-viewer-wrap" class="mode-viewer-wrap" hidden>
+        <header class="section-header subsection-h">
+          <h3>Mode visualisation</h3>
+          <span id="viewer-status" class="status muted"></span>
+        </header>
+        <div class="viewer-controls">
+          <label class="inline-label">
+            <span>Amplitude</span>
+            <input id="anim-amplitude" type="range"
+                   min="0.05" max="1.0" step="0.05" value="0.3">
+            <span id="anim-amplitude-val" class="unit">0.30 Å</span>
+          </label>
+          <label class="inline-label">
+            <span>Speed</span>
+            <input id="anim-speed" type="range"
+                   min="0.2" max="3.0" step="0.1" value="1.0">
+            <span id="anim-speed-val" class="unit">1.0×</span>
+          </label>
+          <button id="anim-toggle" type="button">Pause</button>
+        </div>
+        <div id="mode-viewer" class="mode-viewer"
+             aria-label="3D structure with vibrational mode animation">
+        </div>
+        <p class="viewer-hint hint">
+          The mode <em>shape</em> (which atoms move, in what direction,
+          relative amplitudes) is faithful from the diagonalisation.
+          The <em>animation amplitude</em> is a visualisation knob,
+          not a physical quantity -- thermal RMS amplitudes are
+          typically &lt;0.05 Å and too small to see, so this slider
+          exaggerates the motion the way Gaussian / Jmol / Avogadro
+          do.  Fixed atoms (greyed out) stay still.
+        </p>
       </div>
 
       <!-- ES panel sits inside results-summary so it shares the

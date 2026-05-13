@@ -276,6 +276,34 @@ class TestSpectraPage:
         # State holds the current FWHM.
         assert "broadeningFWHM" in js
 
+    def test_page_has_mode_viewer(self, web_client):
+        """3Dmol viewer + controls live below the modes table.  Pins
+        the IDs the JS depends on + the 3Dmol script tag."""
+        body = web_client.get("/spectra").data.decode()
+        # Viewer wrap + canvas div.
+        assert 'id="mode-viewer-wrap"'   in body
+        assert 'id="mode-viewer"'        in body
+        # Controls.
+        assert 'id="anim-amplitude"'     in body
+        assert 'id="anim-speed"'         in body
+        assert 'id="anim-toggle"'        in body
+        # 3Dmol script tag.
+        assert "cdnjs.cloudflare.com/ajax/libs/3Dmol" in body
+
+    def test_viewer_js_has_mode_animation(self, web_client):
+        """The JS exposes the viewer setup + animation entry points."""
+        js = web_client.get("/static/spectra/viewer.js").data.decode()
+        for sym in (
+            "renderModeViewer",
+            "_ensureViewer",
+            "_startAnimation",
+            "_stopAnimation",
+            "_equilibriumGeometry",
+            "_parseXyz",
+            "$3Dmol",
+        ):
+            assert sym in js, f"missing {sym!r} in spectra/viewer.js"
+
     def test_page_has_broadening_control(self, web_client):
         """The Spectrum subsection has a FWHM number input above
         the chart, with a default of 20 cm⁻¹."""

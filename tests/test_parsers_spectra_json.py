@@ -1109,6 +1109,74 @@ class TestFilesystemEdgeCases:
 # --------------------------------------------------------------------- #
 
 
+class TestGeometryRoundTrip:
+    """The optional ``equilibrium.elements`` + ``equilibrium.
+    positions_ang`` fields (added late in the schema) round-trip
+    cleanly and remain backward-compatible: older JSON without
+    these keys still loads."""
+
+    def test_geometry_round_trips(self, tmp_path):
+        results = _make_minimal_results()
+        results.equilibrium_elements = ["O", "H"]
+        results.equilibrium_positions_ang = np.array([
+            [0.0, 0.0, 0.0],
+            [0.96, 0.0, 0.0],
+        ])
+        # Re-run __post_init__ via the constructor since we
+        # mutated fields directly.
+        results.__post_init__()
+        p = tmp_path / "geom.spectra.json"
+        dump_spectra_json(results, p)
+        # Wire form has the new keys under equilibrium.
+        raw = json.loads(p.read_text())
+        assert "elements"      in raw["equilibrium"]
+        assert "positions_ang" in raw["equilibrium"]
+        # Round-trip.
+        loaded = parse_spectra_json(p)
+        assert loaded.equilibrium_elements == ["O", "H"]
+        np.testing.assert_allclose(
+            loaded.equilibrium_positions_ang,
+            [[0.0, 0.0, 0.0], [0.96, 0.0, 0.0]],
+        )
+
+    def test_geometry_omitted_back_compat(self, tmp_path):
+        """A spectra.json without the geometry keys still parses --
+        the optional fields fall back to None on the typed side."""
+        results = _make_minimal_results()
+        # Explicitly leave equilibrium_elements / positions_ang as
+        # None (default).
+        assert results.equilibrium_elements      is None
+        assert results.equilibrium_positions_ang is None
+        p = tmp_path / "no-geom.spectra.json"
+        dump_spectra_json(results, p)
+        raw = json.loads(p.read_text())
+        # Keys not in the wire form when None.
+        assert "elements"      not in raw["equilibrium"]
+        assert "positions_ang" not in raw["equilibrium"]
+        # And the parser handles missing keys cleanly.
+        loaded = parse_spectra_json(p)
+        assert loaded.equilibrium_elements      is None
+        assert loaded.equilibrium_positions_ang is None
+
+    def test_geometry_partial_rejected(self):
+        """Elements without positions (or vice versa) is incoherent
+        -- reject at __post_init__."""
+        with pytest.raises(ValueError, match="must be supplied together"):
+            SpectraResults(
+                schema_version=SCHEMA_VERSION,
+                engine="pyscf", engine_version="x",
+                molbuilder_version="y", timestamp="t",
+                structure_hash="h", n_atoms_total=1,
+                free_atom_idxs=[0], fixed_atom_idxs=[],
+                equilibrium_scf_eh=-1.0,
+                equilibrium_mo_energies_eh=np.zeros(3),
+                equilibrium_homo_idx=0,
+                modes=[], selected_mode_idxs_1based=[],
+                config={}, methods_text="", bibliography_keys=[],
+                equilibrium_elements=["O"],     # but no positions
+            )
+
+
 class TestComprehensiveRoundTrip:
     """A single file with the full feature set: imaginary modes,
     selected + unselected modes, populated config + engine_metadata,
