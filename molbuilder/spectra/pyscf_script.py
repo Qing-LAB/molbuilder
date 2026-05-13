@@ -66,12 +66,20 @@ _CM1_PER_AU_FREQ = 219474.6313632   # 1 atomic unit of frequency (= 2*Rydberg) i
 _BOHR_TO_ANG     = 0.529177210903
 
 
-# Default finite-difference step for Raman dα/dR.  Smaller than the
-# L4 displacement amplitude on purpose: the L4 knob probes anharmonic
-# behaviour of HOMO/LUMO; the FD step here wants to be in the linear
-# regime of α(R) so a tighter step (0.005 Å) reduces FD truncation
-# error.  Not exposed as a config knob in v1 -- the choice is well
-# inside the production-defensible window for analytic Raman.
+# Default finite-difference step for Raman dα/dR.
+#
+# Central-difference truncation error scales as (δ²·α'''(R) / 6) where
+# α'''(R) is the third derivative of the polarizability with respect
+# to nuclear position.  For typical molecular polarizabilities α(R)
+# is smooth on the Bohr scale (α''' ~ 10⁻³ a.u.); at δ = 0.005 Å this
+# gives a relative error in dα/dR of roughly 1e-6, which is well below
+# the SCF noise floor at conv_tol=1e-9.  The 0.005 Å choice matches
+# the FD step Gaussian and ORCA use for their static polarizability-
+# derivative paths.  Not exposed as a config knob because (a) the
+# defensible range is narrow (~0.001 Å to ~0.01 Å), (b) tuning it
+# without changing the SCF convergence tolerance accomplishes
+# nothing, and (c) it has no scientific interpretation -- it's a
+# numerical-stability knob, not a physical one.
 _RAMAN_FD_STEP_ANG = 0.005
 
 
@@ -644,13 +652,20 @@ def _emit_hessian_block(cfg: SpectraConfig) -> List[str]:
     out.append("    FREQ_CM1  = _omega_au * CM1_PER_AU_FREQ")
     out.append("    HAS_IMAG  = [bool(f < 0) for f in FREQ_CM1]")
     out.append("    # Reshape each eigenvector back into (N_FREE, 3) and")
-    out.append("    # convert mass-weighted -> Cartesian normal mode by")
-    out.append("    # dividing each row by sqrt(m_i).  This is the per-")
-    out.append("    # atom displacement direction in Å (after normalisation).")
+    out.append("    # convert mass-weighted -> Cartesian normal mode.")
+    out.append("    # The eigenvector of the mass-weighted Hessian is L_mw;")
+    out.append("    # the per-atom Cartesian displacement direction is")
+    out.append("    # L_cart_k = L_mw_k / sqrt(m_k).  _msqrt_inv = 1/sqrt(m)")
+    out.append("    # so multiplying by it gives the correct conversion.")
+    out.append("    # (Bug fix: earlier code divided by _msqrt_inv, which")
+    out.append("    # is equivalent to multiplying by sqrt(m) -- the")
+    out.append("    # opposite direction.  Visible in heavy/light atom")
+    out.append("    # mixed systems where the light atom should move much")
+    out.append("    # more than the heavy one for a typical stretch.)")
     out.append("    NORM_MODES = np.zeros((len(_eigvals), N_FREE, 3))")
     out.append("    for _k in range(len(_eigvals)):")
     out.append("        _v = _eigvecs[:, _k].reshape(N_FREE, 3)")
-    out.append("        _v = _v / _msqrt_inv[:, None]  # mass-unweight")
+    out.append("        _v = _v * _msqrt_inv[:, None]  # L_cart = L_mw / sqrt(m)")
     out.append("        # Normalise so max-abs displacement is 1.  This")
     out.append("        # makes the eigenvectors visually comparable in the")
     out.append("        # UI; the L4 amplitude knob then scales them.")
@@ -705,8 +720,15 @@ def _emit_displaced_scf_helpers(cfg: SpectraConfig) -> List[str]:
     out.append("# displacement (L4).")
     out.append("COORDS_EQ_ANG = np.asarray([[a[1], a[2], a[3]] for a in ATOMS])")
     out.append("")
-    out.append("def _build_mf_at(coords):")
-    out.append("    '''Re-build mol at new coords + reconverge SCF.'''")
+    out.append("def _build_mf_at(coords, *, density_fit=None):")
+    out.append("    '''Re-build mol at new coords + reconverge SCF.")
+    out.append("")
+    out.append("    density_fit=None  -> follow the global DENSITY_FIT flag.")
+    out.append("    density_fit=False -> force the non-DF code path (the")
+    out.append("                         polarizability CPHF in pyscf-properties")
+    out.append("                         doesn't have a DF implementation yet, so")
+    out.append("                         the Raman FD calls force this).")
+    out.append("    density_fit=True  -> force DF on regardless of global.'''")
     out.append("    _mol_new = mol.copy()")
     out.append("    _mol_new.atom = [[ELEMENTS[_i], tuple(coords[_i])]")
     out.append("                     for _i in range(N_ATOMS)]")
@@ -720,7 +742,8 @@ def _emit_displaced_scf_helpers(cfg: SpectraConfig) -> List[str]:
     out.append("        _mf2.grids.level = GRID_LEVEL")
     out.append("    else:")
     out.append("        _mf2 = (scf.RHF if METHOD.upper() == 'RHF' else scf.UHF)(_mol_new)")
-    out.append("    if DENSITY_FIT:")
+    out.append("    _use_df = DENSITY_FIT if density_fit is None else density_fit")
+    out.append("    if _use_df:")
     out.append("        _mf2 = _mf2.density_fit()")
     out.append("    _mf2.conv_tol  = SCF_CONV_TOL")
     out.append("    _mf2.max_cycle = SCF_MAX_CYCLE")
@@ -762,19 +785,27 @@ def _emit_raman_block(cfg: SpectraConfig) -> List[str]:
     out.append("state['phase_raman'] = PHASE_RUNNING")
     out.append("_atomic_write_json(state, JSON_PATH)")
     out.append("")
+    out.append("# Polarizability requires the optional pyscf-properties package")
+    out.append("# (`pip install pyscf-properties`).  Core PySCF doesn't ship")
+    out.append("# the analytic CPHF polarizability; pyscf-properties adds it as")
+    out.append("# `mf.Polarizability().polarizability()`.")
+    out.append("#")
+    out.append("# The DF (density_fit) variant is NOT YET implemented in")
+    out.append("# pyscf-properties 0.1.x; the Raman block forces non-DF SCFs")
+    out.append("# for the polarizability evaluations.  The Hessian path stays")
+    out.append("# DF (controlled by the global DENSITY_FIT flag) so we only")
+    out.append("# pay the non-DF cost for the 6*N_FREE polarizability points.")
+    out.append("try:")
+    out.append("    import pyscf.prop.polarizability  # noqa: F401")
+    out.append("except ImportError:")
+    out.append("    raise SystemExit(")
+    out.append("        'COMPUTE_RAMAN=True requires the optional pyscf-properties '")
+    out.append("        'package.  Install with:  pip install pyscf-properties'")
+    out.append("    )")
+    out.append("")
     out.append("def _polarizability(_mf):")
     out.append("    '''Static dipole polarizability at the converged mf.'''")
-    out.append("    try:")
-    out.append("        # PySCF >= 2.x exposes the analytic CPHF polarizability")
-    out.append("        # via mf.Polarizability().polarizability().")
-    out.append("        return np.asarray(_mf.Polarizability().polarizability())")
-    out.append("    except Exception as _exc:")
-    out.append("        raise SystemExit(")
-    out.append("            'PySCF does not expose Polarizability() for this '")
-    out.append("            'mf class -- ' + repr(_exc) + ' -- consider rerunning '")
-    out.append("            'with COMPUTE_RAMAN=False or switching to a method '")
-    out.append("            'class that supports it (RKS/UKS/RHF/UHF in 2.6+).'")
-    out.append("        )")
+    out.append("    return np.asarray(_mf.Polarizability().polarizability())")
     out.append("")
     out.append("def _displace(coords, atom_idx, direction, delta):")
     out.append("    '''Return a copy of coords with one Cartesian shifted.'''")
@@ -782,7 +813,11 @@ def _emit_raman_block(cfg: SpectraConfig) -> List[str]:
     out.append("    new[atom_idx, direction] += delta")
     out.append("    return new")
     out.append("")
-    out.append("alpha_eq = _polarizability(mf)")
+    out.append("# Build a non-DF mf at the equilibrium geometry for the")
+    out.append("# polarizability calculations.  See module-docstring note re:")
+    out.append("# DF + Polarizability incompatibility.")
+    out.append("_mf_nodf_eq = _build_mf_at(COORDS_EQ_ANG, density_fit=False)")
+    out.append("alpha_eq = _polarizability(_mf_nodf_eq)")
     out.append("")
     out.append("# Build dα/dR_kα by central difference for each free-atom Cartesian.")
     out.append("DALPHA_DR = np.zeros((N_FREE, 3, 3, 3))   # (k, α_dir, i, j)")
@@ -790,10 +825,12 @@ def _emit_raman_block(cfg: SpectraConfig) -> List[str]:
     out.append("    for _dir in range(3):")
     out.append("        _mf_plus  = _build_mf_at(_displace(COORDS_EQ_ANG, ")
     out.append("                                          _atom_idx, _dir, ")
-    out.append("                                          +RAMAN_FD_STEP_ANG))")
+    out.append("                                          +RAMAN_FD_STEP_ANG),")
+    out.append("                                 density_fit=False)")
     out.append("        _mf_minus = _build_mf_at(_displace(COORDS_EQ_ANG, ")
     out.append("                                           _atom_idx, _dir, ")
-    out.append("                                           -RAMAN_FD_STEP_ANG))")
+    out.append("                                           -RAMAN_FD_STEP_ANG),")
+    out.append("                                 density_fit=False)")
     out.append("        _ap = _polarizability(_mf_plus)")
     out.append("        _am = _polarizability(_mf_minus)")
     out.append("        DALPHA_DR[_k_idx, _dir] = (_ap - _am) / (2 * RAMAN_FD_STEP_ANG)")

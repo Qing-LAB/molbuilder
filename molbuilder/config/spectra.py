@@ -189,8 +189,11 @@ class SpectraConfig:
         "tier":    "advanced",
         "help":    "±A·Q_i along each mode's eigenvector for the "
                    "per-mode electronic-structure SCFs; 0.05-0.15 Å "
-                   "typical (anharmonic-cubic mixing < 1% [Mills1972 "
-                   "§2.4]; below 0.02 Å the ΔE_HOMO noise dominates)",
+                   "is the contemporary-practice range (above ~0.20 Å "
+                   "anharmonic mixing becomes non-negligible, see "
+                   "[Mills1972] for the general framework; below "
+                   "~0.04 Å the ΔE_HOMO noise from the SCF tolerance "
+                   "tends to dominate)",
     })
 
     # ----------------- Electronic structure -----------------

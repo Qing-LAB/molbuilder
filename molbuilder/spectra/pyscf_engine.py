@@ -199,27 +199,32 @@ class PySCFSpectraEngine:
                 where="config.grid_level",
             ))
 
-        # Displacement amplitude (spec § 11.4 / Mills 1972 §2.4).
-        # The default 0.10 Å is safe; outside the [0.04, 0.20] Å
-        # window cubic anharmonicity / finite-difference noise
-        # erodes ΔE_HOMO accuracy.
+        # Displacement amplitude.  The [0.04, 0.20] Å range is an
+        # empirical, contemporary-practice heuristic -- not derived
+        # from a single source.  Below 0.04 Å the finite-difference
+        # noise on ΔE_HOMO dominates (at SCF conv_tol=1e-9, ΔE is
+        # ~1e-7 Ha and the FD noise scales as conv_tol/δ).  Above
+        # 0.20 Å cubic anharmonicity in the potential becomes
+        # significant (cf. Mills1972 for the general anharmonic-
+        # coupling framework, although that source doesn't pin the
+        # specific numerical bounds used here).
         amp = cfg.displacement_amplitude_ang
         if amp < 0.04:
             issues.append(Issue(
                 severity="warn",
                 message=(f"displacement_amplitude_ang={amp:g} Å is "
-                         f"below the Mills1972-defensible window "
+                         f"below the contemporary-practice window "
                          f"(0.04 Å); finite-difference noise on "
-                         f"ΔE_HOMO will dominate"),
+                         f"ΔE_HOMO will likely dominate"),
                 where="config.displacement_amplitude_ang",
             ))
         elif amp > 0.20:
             issues.append(Issue(
                 severity="warn",
                 message=(f"displacement_amplitude_ang={amp:g} Å is "
-                         f"above the Mills1972-defensible window "
+                         f"above the contemporary-practice window "
                          f"(0.20 Å); anharmonic-cubic mixing "
-                         f"becomes non-negligible (>1%)"),
+                         f"in the potential is likely non-negligible"),
                 where="config.displacement_amplitude_ang",
             ))
 
