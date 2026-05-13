@@ -39,7 +39,7 @@ from ..config.spectra import SpectraConfig
 from ..issues import Issue
 from ..structure import Structure
 from .engine_base import register_engine
-from .results import ModeData, SpectraResults
+from .results import ModeData, PHASE_COMPLETE, SpectraResults
 from .selection import validate_selection
 
 # parse_spectra_json is lazy-imported inside parse_output to break a
@@ -167,7 +167,6 @@ class PySCFSpectraEngine:
         # the validator can range-check explicit indices etc.
         l3_done = False
         if prior is not None:
-            from .results import PHASE_COMPLETE
             l3_done = (prior.phase_raman == PHASE_COMPLETE)
             modes_for_validation = list(prior.modes)
         else:
@@ -346,8 +345,6 @@ class PySCFSpectraEngine:
         # correspond to rigid-body motion of the free fragment, not
         # real vibrations.  Three non-collinear anchor atoms remove
         # all six translation+rotation DOFs; fewer leaves a residue.
-        n_fixed = len(cfg.fixed_indices) + len(cfg.fixed_elements) \
-            + len(cfg.fixed_residue_names)
         # We can't resolve element / residue freezes into actual
         # atom counts without the Structure's atom list -- but
         # element / residue freezes typically pin many atoms (a

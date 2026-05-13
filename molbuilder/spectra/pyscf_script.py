@@ -226,6 +226,13 @@ def _emit_gpu_setup(cfg: SpectraConfig) -> List[str]:
     polarizability; the Raman block builds its own CPU mf objects.
     """
     is_dft = cfg.method.upper() in ("RKS", "UKS")
+    # Pull the gpu4pyscf minimum compute capability from the engine
+    # class so the engine's preflight advisory and the script's
+    # runtime check use the SAME threshold.  Otherwise the two can
+    # drift (a future gpu4pyscf release that supports older cards
+    # would need an update in two places).
+    from .pyscf_engine import PySCFSpectraEngine
+    min_cc = int(PySCFSpectraEngine.GPU4PYSCF_MIN_COMPUTE_CAPABILITY)
     out: List[str] = []
     out.append("# ============================================================")
     out.append("#  GPU acceleration (optional, NVIDIA via gpu4pyscf)")
@@ -267,10 +274,10 @@ def _emit_gpu_setup(cfg: SpectraConfig) -> List[str]:
     out.append("            _name = _name.decode('utf-8', errors='replace')")
     out.append("        _maj = int(_props.get('major', 0))")
     out.append("        _min = int(_props.get('minor', 0))")
-    out.append("        if _maj < 7:")
+    out.append(f"        if _maj < {min_cc}:")
     out.append("            raise RuntimeError(")
     out.append("                f'GPU {_name} has compute capability '")
-    out.append("                f'{_maj}.{_min}; gpu4pyscf requires >= 7.0'")
+    out.append(f"                f'{{_maj}}.{{_min}}; gpu4pyscf requires >= {min_cc}.0'")
     out.append("            )")
     if is_dft:
         out.append("        _dft = _gpu_dft")
