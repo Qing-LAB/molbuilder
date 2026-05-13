@@ -44,27 +44,14 @@
       </div>
     </div>
 
-    <!-- ── 2. Spectra parameters ─────────────────── -->
+    <!-- ── 2. Generate ───────────────────────────── -->
+    <!-- Pulled up above the parameter form so it's visible without
+         scrolling.  Parameter form has sensible defaults; the user
+         can click Generate immediately and tune in step 3 below if
+         needed. -->
     <div class="card-section">
       <header class="section-header">
-        <h2 class="step-num"><span class="step-dot">2</span> Parameters</h2>
-        <p class="section-hint">
-          Auto-generated from <code>SpectraConfig</code>; hover any
-          label for the per-field help.
-        </p>
-      </header>
-      <!-- Schema-rendered fieldsets land inside .param-grid so the
-           auto-fit grid lays them out responsively (same pattern
-           the Build tab uses for SIESTA / PySCF panels). -->
-      <div id="spectra-form-container" class="param-grid">
-        <p class="status">Loading form schema&hellip;</p>
-      </div>
-    </div>
-
-    <!-- ── 3. Generate ───────────────────────────── -->
-    <div class="card-section">
-      <header class="section-header">
-        <h2 class="step-num"><span class="step-dot">3</span> Generate</h2>
+        <h2 class="step-num"><span class="step-dot">2</span> Generate</h2>
       </header>
       <div class="inline-row primary-actions">
         <button id="generate-btn" class="primary" type="button">
@@ -87,6 +74,23 @@
         <input id="prior-path" type="text"
                placeholder="/path/to/prev.spectra.json">
       </details>
+    </div>
+
+    <!-- ── 3. Parameters ─────────────────────────── -->
+    <div class="card-section">
+      <header class="section-header">
+        <h2 class="step-num"><span class="step-dot">3</span> Parameters</h2>
+        <p class="section-hint">
+          Defaults work for most cases.  Tune here, then re-click
+          Generate above.  Hover any label for the per-field help.
+        </p>
+      </header>
+      <!-- Schema-rendered fieldsets land inside .param-grid so the
+           auto-fit grid lays them out responsively (same pattern
+           the Build tab uses for SIESTA / PySCF panels). -->
+      <div id="spectra-form-container" class="param-grid">
+        <p class="status">Loading form schema&hellip;</p>
+      </div>
     </div>
   </section><!-- /.card-input -->
 
