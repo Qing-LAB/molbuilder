@@ -7,11 +7,12 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-schema.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='spectra/style.css') }}">
-<!-- Plotly: pinned to a specific cdnjs build for reproducibility,
-     matching the Build tab's pinning approach for 3Dmol.js.  cdnjs
-     serves an immutable artifact per version, so a URL bump is an
-     explicit code change rather than a silent dependency drift. -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.35.2/plotly.min.js"></script>
+<!-- Plotly: served by molbuilder itself from the installed plotly
+     Python package's bundled JS (package_data/plotly.min.js).  No
+     CDN, no internet round-trip, no firewall to worry about.  The
+     /vendor/plotly.min.js route reads the file out of the running
+     plotly install. -->
+<script src="{{ url_for('vendor_plotly_js') }}"></script>
 </head>
 <body>
 

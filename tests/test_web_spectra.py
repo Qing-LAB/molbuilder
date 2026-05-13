@@ -220,13 +220,30 @@ class TestSpectraPage:
         assert body["ok"]
         assert body["results"]["engine"] == "pyscf"
 
-    def test_plotly_loaded_from_cdn(self, web_client):
-        """The template pulls Plotly from a pinned cdnjs build so the
-        spectrum chart works without a local copy."""
+    def test_plotly_served_locally(self, web_client):
+        """The template pulls Plotly from molbuilder's own
+        /vendor/plotly.min.js route (which reads the installed
+        plotly Python package's bundled JS) -- no CDN, no internet
+        round-trip needed."""
         body = web_client.get("/spectra").data.decode()
-        assert "cdnjs.cloudflare.com/ajax/libs/plotly.js" in body
-        # And a div for the chart is present.
+        assert "/vendor/plotly.min.js" in body
         assert 'id="spectrum-chart"' in body
+
+    def test_vendor_plotly_route_serves_js(self, web_client):
+        """The /vendor/plotly.min.js route serves the file from the
+        installed plotly package.  Returns JS bytes when plotly is
+        importable; 404 otherwise (the spectra page degrades to the
+        existing 'Plotly not loaded' fallback)."""
+        r = web_client.get("/vendor/plotly.min.js")
+        try:
+            import plotly  # noqa: F401
+            assert r.status_code == 200, r.status_code
+            assert "application/javascript" in r.content_type
+            # First few bytes of plotly.min.js are an IIFE / use-strict
+            # banner.  Just confirm we got a sizeable JS payload.
+            assert len(r.data) > 100_000, len(r.data)
+        except ImportError:
+            assert r.status_code == 404
 
     def test_viewer_js_has_chart_renderer(self, web_client):
         """The chart-renderer function is in the JS module and

@@ -35,7 +35,7 @@ entry point:
       value (anharmonic-cubic mixing < 1 % per Mills 1972 §2.4;
       finite-difference noise on ΔE_HOMO suppressed).
     * Per-mode electronic structure off by default
-      (``es_mode_selection = "none"``) so a first-pass run is
+      (``es_mode_selection = "skip"``) so a first-pass run is
       cheap; users opt in to ``top_n`` / ``explicit`` after they
       see the Raman spectrum and pick modes of interest.
 """
@@ -205,17 +205,22 @@ class SpectraConfig:
     # The compatibility engine in the JS form locks the inactive
     # value fields so the user can't set conflicting state.
 
-    es_mode_selection: str = field(default="none", metadata={
+    es_mode_selection: str = field(default="skip", metadata={
         "section": "Electronic structure",
         "label":   "Mode selection",
         "id_suffix": "es-selection",
-        "choices": ("none", "all", "top_n", "threshold", "explicit"),
+        "choices": ("skip", "all", "top_n", "threshold", "explicit"),
         "help":    "which modes get per-mode electronic-structure data "
-                   "(2 SCFs per selected mode): none = spectrum only; "
-                   "all = every mode; top_n / threshold = prune by "
-                   "Raman activity (caveat: misses modes with weak "
-                   "Raman but strong electron-phonon coupling, see "
-                   "[Galperin2007]); explicit = user picks indices",
+                   "(2 SCFs per selected mode -- L4 is the expensive "
+                   "phase, scaling linearly with selected mode count). "
+                   "skip = spectrum-only run (no L4); "
+                   "all = every mode (cost ≈ 2·N_modes SCFs); "
+                   "top_n = top-N by Raman activity (≈ 2·N SCFs); "
+                   "threshold = above a Raman threshold (variable "
+                   "count); explicit = user-supplied indices.  "
+                   "top_n / threshold miss modes with weak Raman "
+                   "but strong electron-phonon coupling -- see "
+                   "[Galperin2007] before relying on them.",
     })
     es_top_n: int = field(default=10, metadata={
         "section": "Electronic structure",

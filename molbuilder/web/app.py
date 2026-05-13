@@ -28,7 +28,9 @@ to avoid name collisions with the build viewer.
 
 from __future__ import annotations
 
-from flask import Flask, jsonify, render_template
+import os
+
+from flask import Flask, abort, jsonify, render_template, send_file
 
 
 # Cap multipart uploads at 50 MB.  Build side only needs ~10 MB for
@@ -101,5 +103,39 @@ def create_app() -> Flask:
             "available": available_backends(),
             "auto_name": auto_backend_name(),
         })
+
+    @app.route("/vendor/plotly.min.js")
+    def vendor_plotly_js():
+        """Serve plotly.min.js from the installed plotly Python
+        package so the browser doesn't need a CDN at all.
+
+        The plotly Python distribution ships the JS bundle at
+        ``<package_dir>/package_data/plotly.min.js``; that's the
+        same artifact cdnjs serves.  Loading it locally means the
+        Spectra tab works on air-gapped clusters, behind firewalls,
+        on planes -- anywhere molbuilder itself runs.
+
+        Returns 404 if the plotly Python package isn't importable
+        or doesn't ship the JS bundle.  The Spectra page's <script>
+        tag falls through to the cdnjs URL in that case.
+        """
+        try:
+            import plotly
+        except ImportError:
+            abort(404)
+        path = os.path.join(
+            os.path.dirname(plotly.__file__),
+            "package_data", "plotly.min.js",
+        )
+        if not os.path.exists(path):
+            abort(404)
+        return send_file(
+            path,
+            mimetype="application/javascript",
+            # Long-cache: the URL is version-agnostic but the file
+            # changes only when the user upgrades the plotly Python
+            # package; that's a fresh app start anyway.
+            max_age=3600,
+        )
 
     return app

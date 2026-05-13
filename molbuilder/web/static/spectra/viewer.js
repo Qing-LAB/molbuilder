@@ -160,7 +160,7 @@
         // other Electronic-structure value fields get the disabled
         // attribute so the form coercion drops them.
         const activeByMode = {
-            "none":      null,
+            "skip":      null,
             "all":       null,
             "top_n":     "s-es_top_n",
             "threshold": "s-es_threshold",
@@ -555,7 +555,7 @@
                          ? "Raman ✓ " : "")
                       + (body.results.config
                          && body.results.config.es_mode_selection
-                         && body.results.config.es_mode_selection !== "none"
+                         && body.results.config.es_mode_selection !== "skip"
                          ? "ES ✓ " : "")
                       + ")");
         } else {
@@ -573,7 +573,7 @@
         if (results.config && results.config.compute_raman && r !== "complete")
             return "Phase: Raman activities (L3)";
         const sel = results.config && results.config.es_mode_selection;
-        if (sel && sel !== "none" && e !== "complete") {
+        if (sel && sel !== "skip" && e !== "complete") {
             const haveES = (results.modes || [])
                 .filter(m => m.electronic_structure).length;
             const planned = (results.selected_mode_idxs_1based || []).length;
@@ -590,7 +590,7 @@
         if (results.phase_frequencies !== "complete") return false;
         const cfg = results.config || {};
         if (cfg.compute_raman && results.phase_raman !== "complete") return false;
-        if (cfg.es_mode_selection && cfg.es_mode_selection !== "none"
+        if (cfg.es_mode_selection && cfg.es_mode_selection !== "skip"
             && results.phase_es !== "complete") return false;
         return true;
     }

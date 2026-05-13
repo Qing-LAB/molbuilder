@@ -796,7 +796,7 @@ class TestSpectraConfigDefaults:
         displaced SCFs.  User opts in to top_n / explicit after
         seeing the spectrum."""
         cfg = SpectraConfig()
-        assert cfg.es_mode_selection == "none"
+        assert cfg.es_mode_selection == "skip"
 
     def test_ir_off_v1_reserved(self):
         """compute_ir is reserved for 1c and ignored in v1."""
@@ -878,7 +878,7 @@ class TestSpectraConfigSchema:
         sel_field = next(f for f in es_section["fields"]
                          if f["name"] == "es_mode_selection")
         assert sel_field["kind"]    == "select"
-        assert sel_field["choices"] == ["none", "all", "top_n",
+        assert sel_field["choices"] == ["skip", "all", "top_n",
                                         "threshold", "explicit"]
 
     def test_engine_field_carries_only_pyscf_in_v1(self):
@@ -1180,7 +1180,7 @@ class TestSelectModes:
 
     def test_selector_none_returns_empty(self):
         from molbuilder.spectra import select_modes
-        cfg = SpectraConfig(es_mode_selection="none")
+        cfg = SpectraConfig(es_mode_selection="skip")
         assert select_modes(_modes_fixture(), cfg) == []
 
     def test_selector_all_returns_every_mode(self):
@@ -2128,7 +2128,7 @@ class TestPySCFScriptCompiles:
         # Minimal: no Raman, no ES
         dict(compute_raman=False),
         # Raman only
-        dict(compute_raman=True, es_mode_selection="none"),
+        dict(compute_raman=True, es_mode_selection="skip"),
         # ES only with explicit selector
         dict(compute_raman=False, es_mode_selection="explicit",
              es_explicit_indices=[1, 2]),
@@ -2329,7 +2329,7 @@ class TestPySCFScriptPhaseBlocks:
         from molbuilder.spectra.pyscf_script import render_spectra_script
         script = render_spectra_script(
             _struct_water_real(),
-            SpectraConfig(es_mode_selection="none"),
+            SpectraConfig(es_mode_selection="skip"),
         )
         assert "Phase 4: per-mode" not in script
 
@@ -2447,7 +2447,7 @@ class TestPySCFScriptDisplacedScfHelpers:
         script = render_spectra_script(
             _struct_water_real(),
             SpectraConfig(compute_raman=True,
-                          es_mode_selection="none"),
+                          es_mode_selection="skip"),
         )
         assert "def _build_mf_at" in script
         assert "COORDS_EQ_ANG" in script
@@ -2471,7 +2471,7 @@ class TestPySCFScriptDisplacedScfHelpers:
         script = render_spectra_script(
             _struct_water_real(),
             SpectraConfig(compute_raman=False,
-                          es_mode_selection="none"),
+                          es_mode_selection="skip"),
         )
         assert "def _build_mf_at" not in script
 
@@ -2639,7 +2639,7 @@ class TestSelectorEquivalence:
 
     @pytest.mark.parametrize("cfg_overrides", [
         # Each selector exercised on the same modes fixture.
-        dict(es_mode_selection="none"),
+        dict(es_mode_selection="skip"),
         dict(es_mode_selection="all"),
         dict(es_mode_selection="all", freq_min_cm1=500.0, freq_max_cm1=3500.0),
         dict(es_mode_selection="top_n", es_top_n=3),
@@ -2663,7 +2663,7 @@ class TestSelectorEquivalence:
         # When selector == "none", the L4 block isn't emitted at all
         # so there's nothing to exec against -- Python and "script
         # behaviour" trivially agree on the empty list.
-        if cfg.es_mode_selection == "none":
+        if cfg.es_mode_selection == "skip":
             assert py_selected == []
             return
 

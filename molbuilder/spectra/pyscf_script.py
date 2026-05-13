@@ -118,13 +118,13 @@ def render_spectra_script(struct: Structure, cfg: SpectraConfig) -> str:
     # geometries via _build_mf_at(coords).  Emit ONCE whenever
     # either L3 or L4 will run -- previously _build_mf_at lived
     # inside the Raman block, so `compute_raman=False` with
-    # `es_mode_selection != "none"` crashed the script with NameError.
-    needs_displaced_scf = cfg.compute_raman or cfg.es_mode_selection != "none"
+    # `es_mode_selection != "skip"` crashed the script with NameError.
+    needs_displaced_scf = cfg.compute_raman or cfg.es_mode_selection != "skip"
     if needs_displaced_scf:
         lines += _emit_displaced_scf_helpers(cfg)
     if cfg.compute_raman:
         lines += _emit_raman_block(cfg)
-    if cfg.es_mode_selection != "none":
+    if cfg.es_mode_selection != "skip":
         lines += _emit_es_loop(cfg)
     lines += _emit_final_summary()
     return "\n".join(lines) + "\n"

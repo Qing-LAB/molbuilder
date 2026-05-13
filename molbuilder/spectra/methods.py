@@ -114,9 +114,9 @@ def render_methods_md(
 
     # ------------------------------------------------------------------ #
     # Paragraph 2: per-mode electronic structure (skipped when
-    # selector == "none" -- nothing was / will be computed there).
+    # selector == "skip" -- nothing was / will be computed there).
     # ------------------------------------------------------------------ #
-    if cfg.es_mode_selection != "none":
+    if cfg.es_mode_selection != "skip":
         p2 = _paragraph_electronic_structure(cfg, results=results)
         parts.append(p2)
 
@@ -253,7 +253,7 @@ def _paragraph_electronic_structure(cfg: SpectraConfig,
                                     *,
                                     results: Optional[SpectraResults]) -> str:
     """Second Methods paragraph: per-mode displaced-geometry SCFs.
-    Only emitted when ``cfg.es_mode_selection != "none"`` -- the
+    Only emitted when ``cfg.es_mode_selection != "skip"`` -- the
     L4 step is opt-in (spec § 8)."""
     amp = cfg.displacement_amplitude_ang
     n_below = cfg.es_n_homo_below
@@ -324,7 +324,7 @@ def _selected_modes_line(cfg: SpectraConfig,
     can't enumerate by frequency."""
     if results is None:
         return ""
-    if cfg.es_mode_selection == "none":
+    if cfg.es_mode_selection == "skip":
         return ""
     picked = [m for m in results.modes
               if m.electronic_structure is not None]

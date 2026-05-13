@@ -18,7 +18,7 @@ Public surface:
 
 The five Model-2 selectors:
 
-    none      -> []  (no L4 work)
+    skip      -> []  (no L4 work)
     all       -> every mode (respecting the freq filter)
     top_n     -> top-N by raman_activity_a4_amu (respecting the
                  freq filter); REQUIRES L3 complete
@@ -62,7 +62,7 @@ def select_modes(modes: List[ModeData],
 
     Behaviour summary (full spec at § 8 + § 8.1):
 
-      * cfg.es_mode_selection == "none"  -> []
+      * cfg.es_mode_selection == "skip"  -> []
       * cfg.es_mode_selection == "all"   -> every mode (after freq filter)
       * cfg.es_mode_selection == "top_n" -> top cfg.es_top_n by Raman
                                             activity (after freq filter,
@@ -80,7 +80,7 @@ def select_modes(modes: List[ModeData],
     sel = cfg.es_mode_selection
 
     # 1. Resolve the base set per selector.
-    if sel == "none":
+    if sel == "skip":
         base: List[int] = []
 
     elif sel == "all":
