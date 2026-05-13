@@ -839,6 +839,22 @@ class TestSpectraConfigFieldMetadata:
                   if f.name == "job_name")
         assert callable(jn.metadata.get("validate"))
 
+    def test_choices_metadata_is_enforced(self):
+        """Any field carrying a ``choices`` tuple rejects values
+        outside that tuple at construction time -- catches both UI
+        typos and old-value drift after a rename (e.g. the pre-skip
+        ``es_mode_selection="none"`` smoke-test value, which used to
+        be silently accepted and then no-op'd downstream)."""
+        with pytest.raises(ValueError, match="es_mode_selection"):
+            SpectraConfig(es_mode_selection="none")  # renamed -> "skip"
+        with pytest.raises(ValueError, match="dispersion"):
+            SpectraConfig(dispersion="d5")
+        # None on Optional[str] field stays valid.
+        SpectraConfig(dispersion=None)
+        # All declared choices remain accepted.
+        for v in ("skip", "all", "top_n", "threshold", "explicit"):
+            SpectraConfig(es_mode_selection=v)
+
 
 class TestSpectraConfigSchema:
     """Form-schema shape pin: section names + per-section field

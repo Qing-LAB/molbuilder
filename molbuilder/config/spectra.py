@@ -42,7 +42,7 @@ entry point:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import List, Optional
 
 # Shared with SiestaConfig + PySCFConfig -- one regex, one rule
@@ -527,6 +527,25 @@ class SpectraConfig:
                    "Turn off only if you want a stripped-down "
                    "minimal-comment script.",
     })
+
+    def __post_init__(self) -> None:
+        # Reject any string-valued field whose value is outside its
+        # declared `choices` tuple.  Without this, a typo (e.g. the
+        # pre-rename `es_mode_selection="none"`) is accepted silently
+        # and the downstream script's selector branches no-op, leaving
+        # a phase marked "complete" with zero modes selected.
+        for f in fields(self):
+            choices = f.metadata.get("choices")
+            if not choices:
+                continue
+            value = getattr(self, f.name)
+            if value is None:  # Optional[str] fields legitimately allow None
+                continue
+            if value not in choices:
+                raise ValueError(
+                    f"{f.name}={value!r} is not one of "
+                    f"{tuple(choices)}"
+                )
 
 
 __all__ = ["SpectraConfig"]

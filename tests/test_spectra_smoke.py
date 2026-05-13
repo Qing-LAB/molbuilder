@@ -136,7 +136,7 @@ class TestWaterFrequenciesAllFree:
         at a near-equilibrium geometry."""
         cfg = SpectraConfig(
             compute_raman=False,
-            es_mode_selection="none",
+            es_mode_selection="skip",
             # Loosen SCF a bit so the smoke test is faster (defaults
             # are 1e-9; here 1e-7 still gives <1 cm⁻¹ freq noise).
             scf_conv_tol=1e-7,
@@ -171,7 +171,7 @@ class TestWaterFrequenciesAllFree:
         """
         cfg = SpectraConfig(
             compute_raman=False,
-            es_mode_selection="none",
+            es_mode_selection="skip",
             scf_conv_tol=1e-7,
             scf_max_cycle=80,
         )
@@ -224,7 +224,7 @@ class TestWaterFrequenciesAllFree:
         """
         cfg = SpectraConfig(
             compute_raman=False,
-            es_mode_selection="none",
+            es_mode_selection="skip",
             scf_conv_tol=1e-7,
             scf_max_cycle=80,
         )
@@ -278,7 +278,7 @@ class TestWaterRaman:
     def test_water_raman_activities_finite_and_positive(self):
         cfg = SpectraConfig(
             compute_raman=True,
-            es_mode_selection="none",
+            es_mode_selection="skip",
             scf_conv_tol=1e-7,
             scf_max_cycle=80,
         )
@@ -334,7 +334,7 @@ class TestPartialHessianMassWeighting:
         amplitude should be reasonable, not 1e6)."""
         cfg = SpectraConfig(
             compute_raman=False,
-            es_mode_selection="none",
+            es_mode_selection="skip",
             fixed_indices=[0],   # fix the O
             scf_conv_tol=1e-7,
             scf_max_cycle=80,
@@ -400,7 +400,7 @@ class TestPartialHessianMassWeighting:
         )
         cfg = SpectraConfig(
             compute_raman=False,
-            es_mode_selection="none",
+            es_mode_selection="skip",
             scf_conv_tol=1e-7,
             scf_max_cycle=80,
         )
