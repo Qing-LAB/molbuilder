@@ -49,16 +49,36 @@
         methodsBody:    null,
         methodsClose:   null,
         methodsCopy:    null,
+        // Selection sync + ES panel additions (§ 9.2.2 / § 9.2.4):
+        modesFilter:    null,
+        modesCsvBtn:    null,
+        modesFilterCount: null,
+        modesTheadRow:  null,
+        esPanel:        null,
+        esModeIdx:      null,
+        esModeFreq:     null,
+        esBarDiagram:   null,
+        esSummary:      null,
     };
 
-    // Last successful render payload.  Holds script + methods_md
-    // so the modal + download / copy buttons don't have to re-request.
+    // Last successful render payload + interactive state.
     const state = {
         schema:         null,
         lastScript:     null,
         lastMethodsMd:  null,
         lastJobName:    null,
+        // Live results + selection state (interactive layer).
+        results:        null,     // SpectraResults dict from /api/spectra/load
+        selectedMode:   null,     // 1-based index of active mode, or null
+        modeFilter:     "",       // current filter string
+        sortColumn:     "index_1based",
+        sortDir:        "asc",    // 'asc' | 'desc'
     };
+
+    // Hartree-to-eV conversion factor.  Used by the ES panel to
+    // present MO energies in user-friendly units instead of Eh.
+    // CODATA 2018 value.
+    const EH_TO_EV = 27.211386245988;
 
     // ----- Status helper ----------------------------------------
     function setStatus(el, msg, kind) {
@@ -371,8 +391,11 @@
     function renderResults(results) {
         if (!results) {
             els.resultsSummary.hidden = true;
+            state.results      = null;
+            state.selectedMode = null;
             return;
         }
+        state.results = results;
         els.resultsSummary.hidden = false;
 
         // Top-of-summary meta dictionary.
@@ -394,25 +417,480 @@
                            + "<dd>" + escapeHtml(String(v)) + "</dd>")
             .join("");
 
-        // Spectrum chart (Plotly stem-style bar plot).  Drawn BEFORE
-        // the table so a slow render doesn't delay the table.
-        renderSpectrumChart(results.modes || []);
-
-        // Modes table.
-        const rows = (results.modes || []).map(m => {
-            const raman = (m.raman_activity_a4_amu === null
-                           || m.raman_activity_a4_amu === undefined)
-                ? "—"
-                : Number(m.raman_activity_a4_amu).toFixed(2);
-            return "<tr>"
-                + "<td>" + m.index_1based + "</td>"
-                + "<td>" + Number(m.frequency_cm1).toFixed(1) + "</td>"
-                + "<td>" + raman + "</td>"
-                + "<td>" + (m.has_imag ? "✓" : "") + "</td>"
-                + "<td>" + (m.electronic_structure ? "✓" : "") + "</td>"
-                + "</tr>";
+        // Show/hide ES-derived table columns based on whether any
+        // mode has electronic_structure populated.
+        const anyES = (results.modes || []).some(m => !!m.electronic_structure);
+        document.querySelectorAll(".modes-table .es-col").forEach(th => {
+            th.hidden = !anyES;
         });
+
+        // Auto-select the highest-Raman-activity real mode so the
+        // ES panel comes up populated (if any mode has ES).  If no
+        // mode has ES, fall back to the lowest-index real mode.
+        if (results.modes && results.modes.length) {
+            state.selectedMode = _pickDefaultMode(results.modes, anyES);
+        } else {
+            state.selectedMode = null;
+        }
+
+        renderSpectrumChart(results.modes || []);
+        renderModesTable();
+        renderESPanel();
+    }
+
+    function _pickDefaultMode(modes, preferES) {
+        if (preferES) {
+            // First mode with ES populated, sorted by Raman activity
+            // descending if available.
+            const withES = modes.filter(m => !!m.electronic_structure);
+            if (withES.length) {
+                withES.sort((a, b) =>
+                    (b.raman_activity_a4_amu || 0) -
+                    (a.raman_activity_a4_amu || 0)
+                );
+                return withES[0].index_1based;
+            }
+        }
+        // Fallback: brightest real mode by Raman, else first real,
+        // else first mode.
+        const real = modes.filter(m => !m.has_imag);
+        const pool = real.length ? real : modes;
+        const ranked = pool
+            .filter(m => m.raman_activity_a4_amu != null)
+            .sort((a, b) => b.raman_activity_a4_amu - a.raman_activity_a4_amu);
+        return (ranked[0] || pool[0]).index_1based;
+    }
+
+    // ----- Mode table: sort + filter + selection + CSV ----------
+    //
+    // The table is the tabular twin of the spectrum chart (§ 9.2.2).
+    // Sort + filter + row click all run client-side against
+    // state.results.modes; the table is re-rendered on each state
+    // change.  Cheap (typical mode counts are <1000).
+    function renderModesTable() {
+        if (!state.results) return;
+        const modes = _modesForTable();
+        const anyES = (state.results.modes || []).some(m => !!m.electronic_structure);
+        const rows = modes.map(m => _renderModeRow(m, anyES));
         els.modesTbody.innerHTML = rows.join("");
+
+        // Update filter-result count.
+        const total = (state.results.modes || []).length;
+        if (state.modeFilter) {
+            setStatus(els.modesFilterCount,
+                      `${modes.length} of ${total} modes match`,
+                      "muted");
+        } else {
+            setStatus(els.modesFilterCount, "", "muted");
+        }
+
+        // Re-apply the active-row highlight after the rebuild.
+        _highlightActiveRow();
+        _updateSortIndicators();
+    }
+
+    function _modesForTable() {
+        const modes  = (state.results.modes || []).slice();
+        // Filter: case-insensitive substring across all stringified
+        // visible column values.
+        const filt = (state.modeFilter || "").trim().toLowerCase();
+        const filtered = filt
+            ? modes.filter(m => _modeMatchesFilter(m, filt))
+            : modes;
+        // Sort.
+        const col = state.sortColumn;
+        const dir = state.sortDir === "desc" ? -1 : 1;
+        const key = (m) => _modeKey(m, col);
+        filtered.sort((a, b) => {
+            const ka = key(a), kb = key(b);
+            // null/undefined sort to the bottom regardless of dir
+            // (a missing value isn't "smaller" than a real one --
+            // it just has no value).
+            if (ka == null && kb == null) return 0;
+            if (ka == null) return 1;
+            if (kb == null) return -1;
+            if (ka < kb) return -dir;
+            if (ka > kb) return dir;
+            return 0;
+        });
+        return filtered;
+    }
+
+    function _modeMatchesFilter(m, filt) {
+        // Match against the same fields the table shows, stringified.
+        const es = m.electronic_structure;
+        const vals = [
+            String(m.index_1based),
+            Number(m.frequency_cm1).toFixed(1),
+            m.raman_activity_a4_amu != null
+                ? Number(m.raman_activity_a4_amu).toFixed(2) : "",
+            m.has_imag ? "imag" : "",
+            es ? "es" : "",
+        ];
+        if (es) {
+            const homo = es.mo_energies_eq_eh[es.homo_index_in_window];
+            const lumo = es.mo_energies_eq_eh[es.homo_index_in_window + 1];
+            if (homo != null) vals.push((homo * EH_TO_EV).toFixed(3));
+            if (lumo != null) vals.push((lumo * EH_TO_EV).toFixed(3));
+            if (homo != null && lumo != null)
+                vals.push(((lumo - homo) * EH_TO_EV).toFixed(3));
+        }
+        return vals.some(v => v.toLowerCase().includes(filt));
+    }
+
+    function _modeKey(m, col) {
+        switch (col) {
+            case "index_1based":          return m.index_1based;
+            case "frequency_cm1":         return m.frequency_cm1;
+            case "raman_activity_a4_amu": return m.raman_activity_a4_amu;
+            case "has_imag":              return m.has_imag ? 1 : 0;
+            case "has_es":                return m.electronic_structure ? 1 : 0;
+            case "homo_eq_ev":            return _homoEq(m);
+            case "lumo_eq_ev":            return _lumoEq(m);
+            case "gap_eq_ev":             return _gapEq(m);
+            case "dgap_max_mev":          return _dgapMax(m);
+            default:                      return m.index_1based;
+        }
+    }
+
+    function _homoEq(m) {
+        const es = m.electronic_structure;
+        if (!es) return null;
+        const e = es.mo_energies_eq_eh[es.homo_index_in_window];
+        return e == null ? null : e * EH_TO_EV;
+    }
+    function _lumoEq(m) {
+        const es = m.electronic_structure;
+        if (!es) return null;
+        const e = es.mo_energies_eq_eh[es.homo_index_in_window + 1];
+        return e == null ? null : e * EH_TO_EV;
+    }
+    function _gapEq(m) {
+        const h = _homoEq(m), l = _lumoEq(m);
+        return h == null || l == null ? null : l - h;
+    }
+    function _dgapMax(m) {
+        const es = m.electronic_structure;
+        if (!es) return null;
+        const h = es.mo_energies_eq_eh[es.homo_index_in_window];
+        const l = es.mo_energies_eq_eh[es.homo_index_in_window + 1];
+        const hp = es.mo_energies_plus_eh[es.homo_index_in_window];
+        const lp = es.mo_energies_plus_eh[es.homo_index_in_window + 1];
+        const hm = es.mo_energies_minus_eh[es.homo_index_in_window];
+        const lm = es.mo_energies_minus_eh[es.homo_index_in_window + 1];
+        if ([h, l, hp, lp, hm, lm].some(x => x == null)) return null;
+        const dPlus  = ((lp - hp) - (l - h)) * EH_TO_EV * 1000;  // meV
+        const dMinus = ((lm - hm) - (l - h)) * EH_TO_EV * 1000;
+        return Math.max(Math.abs(dPlus), Math.abs(dMinus));
+    }
+
+    function _renderModeRow(m, anyES) {
+        const raman = (m.raman_activity_a4_amu == null)
+            ? "—"
+            : Number(m.raman_activity_a4_amu).toFixed(2);
+        const fmt = (v, dp) => v == null ? "—" : Number(v).toFixed(dp);
+        const hev = anyES ? fmt(_homoEq(m), 3) : "";
+        const lev = anyES ? fmt(_lumoEq(m), 3) : "";
+        const gev = anyES ? fmt(_gapEq(m),  3) : "";
+        const dgmev = anyES ? fmt(_dgapMax(m), 1) : "";
+        const esCols = anyES
+            ? `<td class="es-col">${hev}</td>`
+              + `<td class="es-col">${lev}</td>`
+              + `<td class="es-col">${gev}</td>`
+              + `<td class="es-col">${dgmev}</td>`
+            : "";
+        const imagClass = m.has_imag ? ' class="mode-imag"' : "";
+        return `<tr data-mode="${m.index_1based}"${imagClass}>`
+            + `<td>${m.index_1based}</td>`
+            + `<td>${Number(m.frequency_cm1).toFixed(1)}</td>`
+            + `<td>${raman}</td>`
+            + `<td>${m.has_imag ? "✓" : ""}</td>`
+            + `<td>${m.electronic_structure ? "✓" : ""}</td>`
+            + esCols
+            + `</tr>`;
+    }
+
+    function _highlightActiveRow() {
+        const rows = els.modesTbody.querySelectorAll("tr");
+        rows.forEach(r => {
+            const active = Number(r.dataset.mode) === state.selectedMode;
+            r.classList.toggle("active", active);
+            r.setAttribute("aria-selected", active ? "true" : "false");
+        });
+    }
+
+    function _updateSortIndicators() {
+        const headers = els.modesTheadRow.querySelectorAll("th");
+        headers.forEach(th => {
+            th.classList.remove("sort-asc", "sort-desc");
+            th.removeAttribute("aria-sort");
+            if (th.dataset.col === state.sortColumn) {
+                th.classList.add(state.sortDir === "desc" ? "sort-desc" : "sort-asc");
+                th.setAttribute(
+                    "aria-sort",
+                    state.sortDir === "desc" ? "descending" : "ascending"
+                );
+            }
+        });
+    }
+
+    function onTableHeaderClick(ev) {
+        const th = ev.target.closest("th");
+        if (!th || !th.dataset.col) return;
+        const col = th.dataset.col;
+        if (state.sortColumn === col) {
+            state.sortDir = state.sortDir === "asc" ? "desc" : "asc";
+        } else {
+            state.sortColumn = col;
+            // Default sort direction: numeric columns descending
+            // (so "biggest Raman activity first" is the natural reach
+            // for the user), index ascending (so "first mode first").
+            state.sortDir = (col === "index_1based") ? "asc"
+                          : (th.dataset.numeric === "1") ? "desc"
+                          : "asc";
+        }
+        renderModesTable();
+    }
+
+    function onTableRowClick(ev) {
+        const tr = ev.target.closest("tr[data-mode]");
+        if (!tr) return;
+        selectMode(Number(tr.dataset.mode));
+    }
+
+    function onFilterInput() {
+        state.modeFilter = els.modesFilter.value || "";
+        renderModesTable();
+    }
+
+    function selectMode(idx) {
+        if (!state.results) return;
+        state.selectedMode = Number(idx) || null;
+        _highlightActiveRow();
+        renderESPanel();
+        // Also highlight the corresponding stick in the chart by
+        // re-rendering it (Plotly's selectedpoints API is per-trace,
+        // and we have three; cleanest is a full react()).
+        renderSpectrumChart((state.results.modes || []));
+    }
+
+    // ----- CSV export ------------------------------------------
+    function exportCSV() {
+        if (!state.results) return;
+        const anyES = (state.results.modes || []).some(m => !!m.electronic_structure);
+        const headers = ["index_1based", "frequency_cm1",
+                         "raman_activity_a4_amu", "has_imag", "has_es"];
+        if (anyES) headers.push("homo_eq_ev", "lumo_eq_ev",
+                                 "gap_eq_ev", "dgap_max_mev");
+        const lines = [headers.join(",")];
+        for (const m of _modesForTable()) {
+            const row = [
+                m.index_1based,
+                Number(m.frequency_cm1).toFixed(4),
+                m.raman_activity_a4_amu == null ? "" :
+                    Number(m.raman_activity_a4_amu).toFixed(4),
+                m.has_imag ? "1" : "0",
+                m.electronic_structure ? "1" : "0",
+            ];
+            if (anyES) {
+                const fmt4 = v => v == null ? "" : Number(v).toFixed(4);
+                row.push(fmt4(_homoEq(m)));
+                row.push(fmt4(_lumoEq(m)));
+                row.push(fmt4(_gapEq(m)));
+                row.push(_dgapMax(m) == null ? "" : Number(_dgapMax(m)).toFixed(2));
+            }
+            lines.push(row.join(","));
+        }
+        const blob = new Blob([lines.join("\n") + "\n"],
+                              { type: "text/csv" });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement("a");
+        a.href     = url;
+        a.download = "spectra-modes.csv";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    }
+
+    // ----- ES panel (§ 9.2.4) ----------------------------------
+    //
+    // MO bar diagram for the selected mode: three columns (-A, eq, +A),
+    // each plotting MO energies in eV as horizontal bars.  HOMO and
+    // LUMO are highlighted; the gap drift Δ(LUMO−HOMO) between
+    // displaced and equilibrium geometries is annotated underneath.
+    //
+    // We deliberately use plain SVG (no Plotly) for the bar diagram:
+    // it's a small static-ish picture and the SVG markup is easier
+    // to read in the page source than a Plotly trace soup.
+    function renderESPanel() {
+        if (!els.esPanel) return;
+        if (!state.results || state.selectedMode == null) {
+            els.esPanel.hidden = true;
+            return;
+        }
+        const m = (state.results.modes || []).find(
+            x => x.index_1based === state.selectedMode
+        );
+        if (!m) {
+            els.esPanel.hidden = true;
+            return;
+        }
+        els.esPanel.hidden = false;
+        els.esModeIdx.textContent  = String(m.index_1based);
+        els.esModeFreq.textContent =
+            Number(m.frequency_cm1).toFixed(1) + " cm⁻¹"
+            + (m.has_imag ? " (imaginary)" : "");
+
+        const es = m.electronic_structure;
+        if (!es) {
+            els.esBarDiagram.innerHTML =
+                '<p class="status muted">'
+                + 'No electronic-structure data for this mode.<br>'
+                + 'Re-run with es_mode_selection covering this mode '
+                + '(or pick \'all\') to see HOMO/LUMO drift here.'
+                + '</p>';
+            els.esSummary.innerHTML = "";
+            return;
+        }
+
+        // Convert MO arrays to eV.
+        const eq    = es.mo_energies_eq_eh.map(e => e * EH_TO_EV);
+        const minus = es.mo_energies_minus_eh.map(e => e * EH_TO_EV);
+        const plus  = es.mo_energies_plus_eh.map(e => e * EH_TO_EV);
+        const hi    = es.homo_index_in_window;
+        const li    = hi + 1;
+
+        // Y-range: include all three displaced + eq arrays.
+        const all = eq.concat(minus, plus);
+        const lo  = Math.min.apply(null, all);
+        const up  = Math.max.apply(null, all);
+        const pad = (up - lo) * 0.05 || 0.1;
+        const yMin = lo - pad, yMax = up + pad;
+
+        els.esBarDiagram.innerHTML = _renderBarDiagramSVG({
+            minus: minus, eq: eq, plus: plus,
+            homo_idx: hi, lumo_idx: li,
+            yMin: yMin, yMax: yMax,
+            amplitude: es.amplitude_ang,
+        });
+
+        // Summary dict: Gap @ eq / ±A, ΔGap, ES SCF energies.
+        const gap_eq    = eq[li]    - eq[hi];
+        const gap_plus  = plus[li]  - plus[hi];
+        const gap_minus = minus[li] - minus[hi];
+        const dgap_plus_mev  = (gap_plus  - gap_eq) * 1000;
+        const dgap_minus_mev = (gap_minus - gap_eq) * 1000;
+        // Electron-phonon coupling magnitude per spec § 9.2.4:
+        //   g_HOMO = ΔE_HOMO(+A→−A) / (2A)  (meV/Å -- approximate)
+        // The full spec divides by √(ℏ/(2mω)) but that requires the
+        // mass-weighted normal coordinate magnitude per mode, which
+        // we don't currently emit.  Showing the simpler ΔE/(2A) form
+        // gives the user a first-pass EPC magnitude they can scale
+        // later.
+        const g_HOMO_mev_A = ((plus[hi] - minus[hi]) / (2 * es.amplitude_ang)) * 1000;
+        const g_LUMO_mev_A = ((plus[li] - minus[li]) / (2 * es.amplitude_ang)) * 1000;
+
+        const summary = [
+            ["Amplitude A",            es.amplitude_ang.toFixed(3) + " Å"],
+            ["HOMO @ eq",              eq[hi].toFixed(4)    + " eV"],
+            ["LUMO @ eq",              eq[li].toFixed(4)    + " eV"],
+            ["Gap @ eq",               gap_eq.toFixed(4)    + " eV"],
+            ["Gap @ +A",               gap_plus.toFixed(4)  + " eV"],
+            ["Gap @ −A",               gap_minus.toFixed(4) + " eV"],
+            ["ΔGap (+A)",              dgap_plus_mev.toFixed(2)  + " meV"],
+            ["ΔGap (−A)",              dgap_minus_mev.toFixed(2) + " meV"],
+            ["g_HOMO ≈ ΔE/(2A)",       g_HOMO_mev_A.toFixed(1) + " meV/Å"],
+            ["g_LUMO ≈ ΔE/(2A)",       g_LUMO_mev_A.toFixed(1) + " meV/Å"],
+        ];
+        els.esSummary.innerHTML = summary
+            .map(([k, v]) => "<dt>" + escapeHtml(String(k)) + "</dt>"
+                           + "<dd>" + escapeHtml(String(v)) + "</dd>")
+            .join("");
+    }
+
+    function _renderBarDiagramSVG(opts) {
+        // Three columns: -A, 0, +A.  Each column has horizontal
+        // bars for every MO energy.  HOMO/LUMO are coloured;
+        // others are grey lines.
+        const W = 520, H = 220;
+        const margin = { top: 20, right: 16, bottom: 36, left: 56 };
+        const innerW = W - margin.left - margin.right;
+        const innerH = H - margin.top  - margin.bottom;
+        const yScale = (e) =>
+            margin.top + innerH * (1 - (e - opts.yMin) / (opts.yMax - opts.yMin));
+
+        const cols = [
+            { label: "−A", x: 0,            arr: opts.minus },
+            { label: "eq", x: innerW / 2,   arr: opts.eq    },
+            { label: "+A", x: innerW,       arr: opts.plus  },
+        ];
+        const barW = 80;
+
+        const svgParts = [
+            `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet"`,
+            ` width="100%" role="img" aria-label="MO energy bar diagram">`,
+            // y-axis line
+            `<line x1="${margin.left}" y1="${margin.top}"`,
+            `      x2="${margin.left}" y2="${margin.top + innerH}"`,
+            `      stroke="#3a3f48" />`,
+            `<text x="6" y="${margin.top + innerH / 2}"`,
+            `      transform="rotate(-90 6 ${margin.top + innerH / 2})"`,
+            `      fill="#cfd3da" font-size="11" text-anchor="middle">`,
+            `  Energy (eV)`,
+            `</text>`,
+        ];
+
+        // y-axis ticks (5 even).
+        for (let i = 0; i <= 5; i++) {
+            const v = opts.yMin + (opts.yMax - opts.yMin) * i / 5;
+            const y = yScale(v);
+            svgParts.push(
+                `<line x1="${margin.left - 4}" y1="${y}"`,
+                `      x2="${margin.left}"     y2="${y}"`,
+                `      stroke="#3a3f48" />`,
+                `<text x="${margin.left - 8}" y="${y + 3}"`,
+                `      fill="#cfd3da" font-size="10" text-anchor="end">`,
+                `  ${v.toFixed(2)}`,
+                `</text>`
+            );
+        }
+
+        for (const col of cols) {
+            const cx = margin.left + col.x;
+            // x-axis label.
+            svgParts.push(
+                `<text x="${cx}" y="${margin.top + innerH + 20}"`,
+                `      fill="#cfd3da" font-size="11" text-anchor="middle">`,
+                `  ${col.label}</text>`
+            );
+            for (let i = 0; i < col.arr.length; i++) {
+                const y = yScale(col.arr[i]);
+                const isHomo = (i === opts.homo_idx);
+                const isLumo = (i === opts.lumo_idx);
+                const color = isHomo ? "#4a90d9"
+                            : isLumo ? "#e0a070"
+                            : "#666";
+                const sw    = (isHomo || isLumo) ? 2.5 : 1;
+                svgParts.push(
+                    `<line x1="${cx - barW / 2}" y1="${y}"`,
+                    `      x2="${cx + barW / 2}" y2="${y}"`,
+                    `      stroke="${color}" stroke-width="${sw}" />`
+                );
+            }
+        }
+
+        // Legend.
+        svgParts.push(
+            `<g transform="translate(${margin.left + 12}, ${margin.top - 4})">`,
+            `  <line x1="0" y1="0" x2="14" y2="0" stroke="#4a90d9" stroke-width="2.5" />`,
+            `  <text x="18" y="3" fill="#cfd3da" font-size="10">HOMO</text>`,
+            `  <line x1="58" y1="0" x2="72" y2="0" stroke="#e0a070" stroke-width="2.5" />`,
+            `  <text x="76" y="3" fill="#cfd3da" font-size="10">LUMO</text>`,
+            `</g>`,
+            `</svg>`
+        );
+        return svgParts.join("\n");
     }
 
     // ----- Spectrum chart (Plotly) -----------------------------
@@ -444,14 +922,19 @@
 
         // Bucket the modes into three traces so each gets its own
         // hover + legend entry.  This is cheaper than per-bar colour
-        // (Plotly draws a single legend item per trace).
-        const real = { x: [], y: [], text: [] };
-        const imag = { x: [], y: [], text: [] };
-        const noRaman = { x: [], y: [], text: [] };
+        // (Plotly draws a single legend item per trace).  Each trace
+        // also tracks which mode-index each bar corresponds to, so
+        // the plotly_click handler can map x-axis hit back to the
+        // mode that owns the stick.
+        const real = { x: [], y: [], text: [], idx: [], color: [] };
+        const imag = { x: [], y: [], text: [], idx: [], color: [] };
+        const noRaman = { x: [], y: [], text: [], idx: [] };
+        const sel = state.selectedMode;
         for (const m of modes) {
             const f      = Number(m.frequency_cm1);
             const hasIm  = !!m.has_imag || f < 0;
             const raman  = m.raman_activity_a4_amu;
+            const isSel  = (m.index_1based === sel);
             const txt    = "Mode " + m.index_1based
                          + "<br>ω = " + f.toFixed(1) + " cm⁻¹"
                          + "<br>Raman = "
@@ -462,14 +945,21 @@
                 noRaman.x.push(f);
                 noRaman.y.push(0);
                 noRaman.text.push(txt);
+                noRaman.idx.push(m.index_1based);
             } else if (hasIm) {
                 imag.x.push(f);
                 imag.y.push(Number(raman));
                 imag.text.push(txt);
+                imag.idx.push(m.index_1based);
+                // Highlight the selected stick by colour-overriding
+                // its bar in the per-point marker.color array.
+                imag.color.push(isSel ? "#ffd454" : "#e07070");
             } else {
                 real.x.push(f);
                 real.y.push(Number(raman));
                 real.text.push(txt);
+                real.idx.push(m.index_1based);
+                real.color.push(isSel ? "#ffd454" : "#4a90d9");
             }
         }
 
@@ -481,8 +971,11 @@
             y:           real.y,
             text:        real.text,
             hoverinfo:   "text",
-            marker:      { color: "#4a90d9", line: { width: 0 } },
+            marker:      { color: real.color, line: { width: 0 } },
             width:       6,
+            // Stash the mode-index list on the trace so the click
+            // handler can look up which mode was hit.
+            customdata:  real.idx,
         });
         if (imag.x.length) traces.push({
             type:        "bar",
@@ -491,8 +984,9 @@
             y:           imag.y,
             text:        imag.text,
             hoverinfo:   "text",
-            marker:      { color: "#e07070", line: { width: 0 } },
+            marker:      { color: imag.color, line: { width: 0 } },
             width:       6,
+            customdata:  imag.idx,
         });
         if (noRaman.x.length) traces.push({
             type:        "scatter",
@@ -503,6 +997,7 @@
             text:        noRaman.text,
             hoverinfo:   "text",
             marker:      { color: "#888", symbol: "x", size: 7 },
+            customdata:  noRaman.idx,
         });
 
         const layout = {
@@ -535,7 +1030,24 @@
             ],
         };
 
-        Plotly.react(els.spectrumChart, traces, layout, config);
+        Plotly.react(els.spectrumChart, traces, layout, config)
+            .then(() => {
+                // Wire (or re-wire) the click handler.  Plotly's
+                // .react() preserves event listeners across calls,
+                // but we attach idempotently for safety -- the .on()
+                // de-dupes on the same handler reference.
+                els.spectrumChart.removeAllListeners
+                    && els.spectrumChart.removeAllListeners("plotly_click");
+                els.spectrumChart.on("plotly_click", _onChartClick);
+            });
+    }
+
+    function _onChartClick(ev) {
+        // Plotly's click event carries `points[]`; each point has
+        // `customdata` = our mode index for the clicked stick.
+        if (!ev || !ev.points || !ev.points.length) return;
+        const idx = ev.points[0].customdata;
+        if (idx != null) selectMode(Number(idx));
     }
 
     // ----- Bootstrap -------------------------------------------
@@ -565,6 +1077,16 @@
         els.methodsBody    = $("methods-modal-body");
         els.methodsClose   = $("methods-close-btn");
         els.methodsCopy    = $("methods-copy-btn");
+        // Mode-table interactions + ES panel.
+        els.modesFilter       = $("modes-filter");
+        els.modesCsvBtn       = $("modes-csv-btn");
+        els.modesFilterCount  = $("modes-filter-count");
+        els.modesTheadRow     = $("modes-thead-row");
+        els.esPanel           = $("es-panel");
+        els.esModeIdx         = $("es-mode-idx");
+        els.esModeFreq        = $("es-mode-freq");
+        els.esBarDiagram      = $("es-bar-diagram");
+        els.esSummary         = $("es-summary");
 
         els.xyzLoadBtn.addEventListener("click", loadXyzFile);
         els.generateBtn.addEventListener("click", generateScript);
@@ -572,6 +1094,12 @@
         els.downloadBtn.addEventListener("click", downloadScript);
         els.copyBtn.addEventListener("click", copyScript);
         els.loadResultsBtn.addEventListener("click", loadResults);
+
+        // Mode-table interactions.
+        els.modesTheadRow.addEventListener("click", onTableHeaderClick);
+        els.modesTbody.addEventListener("click", onTableRowClick);
+        els.modesFilter.addEventListener("input", onFilterInput);
+        els.modesCsvBtn.addEventListener("click", exportCSV);
         els.methodsClose.addEventListener("click", closeMethodsModal);
         els.methodsCopy.addEventListener("click", copyMethods);
 

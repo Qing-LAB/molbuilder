@@ -160,6 +160,44 @@ class TestSpectraPage:
         # Plotly entry point.
         assert "Plotly.react" in js
 
+    def test_page_has_es_panel_and_table_controls(self, web_client):
+        """The Spectra page exposes the mode-table interaction
+        controls (filter + CSV) and the ES-panel scaffolding the
+        JS targets."""
+        body = web_client.get("/spectra").data.decode()
+        # Table-control row.
+        assert 'id="modes-filter"'        in body
+        assert 'id="modes-csv-btn"'       in body
+        assert 'id="modes-filter-count"'  in body
+        # Sortable headers carry the data-col attribute the JS
+        # reads to decide what to sort by.
+        assert 'data-col="frequency_cm1"'         in body
+        assert 'data-col="raman_activity_a4_amu"' in body
+        # ES-panel scaffolding.
+        assert 'id="es-panel"'         in body
+        assert 'id="es-bar-diagram"'   in body
+        assert 'id="es-summary"'       in body
+        # Caption for screen readers.
+        assert "Vibrational modes table"          in body
+
+    def test_viewer_js_has_selection_sync_and_es_renderer(self, web_client):
+        """The JS module exposes selectMode (click-row / click-stick
+        synchronisation) and renderESPanel (per-mode MO diagram).
+        Pins the contract the page markup depends on."""
+        js = web_client.get("/static/spectra/viewer.js").data.decode()
+        # Public-ish API of the interaction layer.
+        for sym in (
+            "selectMode",            # called from row click + chart click
+            "renderESPanel",         # MO bar diagram + summary
+            "renderModesTable",      # sort + filter render
+            "exportCSV",             # export button
+            "_onChartClick",         # plotly_click handler
+            "EH_TO_EV",              # Hartree -> eV conversion constant
+        ):
+            # JS supports both function decls and assignments; the
+            # symbol just has to APPEAR in the source.
+            assert sym in js, f"missing {sym!r} in spectra/viewer.js"
+
 
 # --------------------------------------------------------------------- #
 #  Schema endpoint                                                      #

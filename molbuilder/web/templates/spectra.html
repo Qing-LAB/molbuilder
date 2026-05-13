@@ -123,20 +123,59 @@
            aria-label="Raman spectrum (frequency vs activity)"></div>
 
       <h3>Modes</h3>
+      <!-- Table controls: filter + CSV export.  Sit above the table
+           so a sticky-header configuration doesn't push them off-
+           screen when the table grows. -->
+      <div class="modes-table-controls">
+        <input id="modes-filter" type="text"
+               placeholder="Filter (matches any visible column)"
+               aria-controls="modes-table">
+        <button id="modes-csv-btn" type="button">Export CSV</button>
+        <span id="modes-filter-count" class="status muted"></span>
+      </div>
       <div class="modes-table-wrap">
-        <table id="modes-table" class="modes-table">
+        <table id="modes-table" class="modes-table" tabindex="0"
+               aria-label="Vibrational modes (click row to select)">
+          <caption class="sr-only">
+            Vibrational modes table.  Sortable by column header
+            click.  Row click selects the mode and updates the
+            electronic-structure panel below.
+          </caption>
           <thead>
-            <tr>
-              <th>#</th>
-              <th>ω (cm⁻¹)</th>
-              <th>Raman (Å⁴/amu)</th>
-              <th>imag?</th>
-              <th>ES?</th>
+            <tr id="modes-thead-row">
+              <th data-col="index_1based"          data-numeric="1">#</th>
+              <th data-col="frequency_cm1"         data-numeric="1">ω (cm⁻¹)</th>
+              <th data-col="raman_activity_a4_amu" data-numeric="1">Raman (Å⁴/amu)</th>
+              <th data-col="has_imag">imag?</th>
+              <th data-col="has_es">ES?</th>
+              <!-- ES-derived columns are hidden when no mode has ES.
+                   When ES is present, JS toggles class="es-only" rows
+                   visible. -->
+              <th data-col="homo_eq_ev"  data-numeric="1" class="es-col">HOMO (eV)</th>
+              <th data-col="lumo_eq_ev"  data-numeric="1" class="es-col">LUMO (eV)</th>
+              <th data-col="gap_eq_ev"   data-numeric="1" class="es-col">Gap (eV)</th>
+              <th data-col="dgap_max_mev" data-numeric="1" class="es-col">ΔGap max (meV)</th>
             </tr>
           </thead>
           <tbody id="modes-tbody"></tbody>
         </table>
       </div>
+
+      <!-- ============================================================
+         Electronic-structure panel for the selected mode (spec § 9.2.4)
+         ============================================================ -->
+      <section id="es-panel" class="es-panel" hidden>
+        <header class="card-header">
+          <h2>Electronic structure (mode <span id="es-mode-idx">?</span>)</h2>
+          <span id="es-mode-freq" class="status muted"></span>
+        </header>
+        <!-- MO bar diagram + gap drift annotations.  When the selected
+             mode has no ES data, we replace this with a placeholder. -->
+        <div id="es-bar-diagram" class="es-bar-diagram"
+             aria-label="MO energies at -A / 0 / +A for the selected mode">
+        </div>
+        <dl id="es-summary" class="es-summary"></dl>
+      </section>
     </div>
   </section>
 </main>
