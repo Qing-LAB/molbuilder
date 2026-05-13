@@ -350,6 +350,23 @@ class TestSchemaEndpoint:
         assert "freq_min_cm1"       in by_name
         assert "freq_max_cm1"       in by_name
 
+    def test_schema_sections_carry_descriptions(self, web_client):
+        """Each form section ships a one-paragraph description so
+        the renderer can surface "what is this group for?" right
+        below the legend.  Pin the contract -- adding a new section
+        without a description should fail this test (and remind the
+        author to write one)."""
+        body = web_client.get("/api/build/schema/spectra").get_json()
+        for sect in body["schema"]["sections"]:
+            assert "description" in sect, (
+                f"section {sect['name']!r} is missing its "
+                f"`description` field"
+            )
+            assert len(sect["description"]) > 60, (
+                f"section {sect['name']!r} description is too short "
+                f"to be useful: {sect['description']!r}"
+            )
+
 
 # --------------------------------------------------------------------- #
 #  Render endpoint                                                      #

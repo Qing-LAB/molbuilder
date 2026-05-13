@@ -219,6 +219,18 @@
         for (const sect of schema.sections) {
             const fs = el("fieldset", { class: "schema-section" });
             fs.appendChild(el("legend", null, sect.name));
+            // Optional per-section description.  Appears as a small
+            // paragraph directly below the legend so the user reads
+            // "what is this group of knobs for?" before digging into
+            // the individual fields.  Schemas without a description
+            // for a section simply skip this paragraph.
+            if (sect.description) {
+                fs.appendChild(el(
+                    "p",
+                    { class: "schema-section-desc" },
+                    sect.description
+                ));
+            }
             for (const f of sect.fields) {
                 fs.appendChild(renderField(f));
             }

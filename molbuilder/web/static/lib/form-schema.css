@@ -34,6 +34,17 @@ fieldset legend {
     letter-spacing: 0.01em;
 }
 
+/* Optional per-section description (`{"description": "..."}` on a
+ * schema section).  Renders as a small paragraph between the
+ * legend and the first field. */
+fieldset .schema-section-desc {
+    margin: 0 0 8px;
+    padding: 0 2px;
+    font-size: 0.8rem;
+    line-height: 1.45;
+    color: var(--text-secondary);
+}
+
 /* Default fieldset label style: stack the label name above the input.
  * With the side-by-side default, long labels like "preopt functional"
  * push inputs out of the column; stacked is also more responsive on

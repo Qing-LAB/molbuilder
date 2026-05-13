@@ -270,13 +270,25 @@ def dataclass_to_form_schema(cls, id_prefix: str) -> Dict[str, Any]:
                 seen.add(name)
         sections_in_order = ordered
 
+    # Per-section descriptions (optional class attribute).  When a
+    # class declares ``_form_section_descriptions: Dict[str, str]``,
+    # each section's schema entry picks up its blurb and the form
+    # renderer surfaces it below the legend.  Sections missing from
+    # the dict get no description (omitted from the output) so this
+    # is opt-in per class.
+    descriptions = getattr(cls, "_form_section_descriptions", {}) or {}
+
+    def _section_entry(s: str) -> Dict[str, Any]:
+        entry: Dict[str, Any] = {"name": s, "fields": by_section[s]}
+        desc = descriptions.get(s)
+        if desc:
+            entry["description"] = desc
+        return entry
+
     return {
         "config":    cls.__name__,
         "id_prefix": id_prefix,
-        "sections": [
-            {"name": s, "fields": by_section[s]}
-            for s in sections_in_order
-        ],
+        "sections": [_section_entry(s) for s in sections_in_order],
     }
 
 

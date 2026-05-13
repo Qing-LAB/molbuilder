@@ -66,6 +66,69 @@ class SpectraConfig:
         "Runtime",
     )
 
+    # One-paragraph description per form section.  Surfaced in the
+    # UI directly below each section's legend so the user reads
+    # "what is this group of knobs for?" before digging into the
+    # individual fields.  Plain language; no internal-architecture
+    # jargon.
+    _form_section_descriptions = {
+        "System": (
+            "Engine selection and job-name identity.  The engine is "
+            "the quantum-chemistry code that will run; the job name "
+            "becomes the basename of every output file produced by "
+            "the generated script."
+        ),
+        "Method": (
+            "Level of theory for the SCF, the Hessian, and (when "
+            "enabled) the polarizability derivatives.  Defaults "
+            "(B3LYP / def2-SVP / D3BJ dispersion / density fitting "
+            "on) are production-quality for typical organic "
+            "molecules and metal-molecule junctions."
+        ),
+        "Frozen atoms": (
+            "Atoms held in place during the vibrational analysis.  "
+            "Most common use: freeze a metal slab in a "
+            "molecule-metal junction so the vibrational modes "
+            "describe only the molecule.  Three rules are "
+            "combined with OR: an atom is fixed if it matches by "
+            "element, by residue name (PDB only), or by index."
+        ),
+        "Spectrum": (
+            "Which spectrum-related quantities to compute.  "
+            "Frequencies are always computed.  Raman activities "
+            "are optional -- turning them off makes the run "
+            "significantly faster but you get only the line "
+            "positions, no intensities.  IR intensities are "
+            "reserved for a future release."
+        ),
+        "Electronic structure": (
+            "Per-mode orbital-energy probe: for each selected "
+            "vibrational mode, the script computes how the HOMO, "
+            "LUMO, and nearby orbitals shift when the molecule is "
+            "displaced along the mode.  Used downstream for "
+            "electron-phonon coupling analysis (transport, "
+            "inelastic spectroscopy).  This is the most expensive "
+            "step in a typical run; cost scales linearly with the "
+            "number of selected modes."
+        ),
+        "SCF": (
+            "Self-consistent-field convergence criteria and the "
+            "DFT integration grid.  Tighter tolerances + denser "
+            "grids give more accurate frequencies but cost more "
+            "SCF cycles per geometry.  The defaults are calibrated "
+            "for production vibrational analysis with a hybrid "
+            "functional; loosen for cheap exploratory runs, "
+            "tighten if you suspect frequency noise."
+        ),
+        "Runtime": (
+            "How the run uses your hardware -- memory budget, "
+            "CPU thread count, optional NVIDIA GPU acceleration "
+            "via gpu4pyscf, and log verbosity.  These don't "
+            "affect the science, only the wall time and the "
+            "amount of diagnostic output."
+        ),
+    }
+
     # ----------------- System -----------------
 
     engine: str = field(default="pyscf", metadata={
