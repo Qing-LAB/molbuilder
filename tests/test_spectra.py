@@ -1364,13 +1364,15 @@ class TestValidateSelection:
         assert issues == []
 
     def test_top_n_without_l3_errors(self):
-        """Soft dep: top_n REQUIRES L3 complete (spec § 2.5.3)."""
+        """Soft dep: top_n REQUIRES the prior Raman activities."""
         from molbuilder.spectra import validate_selection
         cfg = SpectraConfig(es_mode_selection="top_n", es_top_n=3)
         issues = validate_selection(_modes_fixture(), cfg, l3_done=False)
         errs = [i for i in issues if i.severity == "error"]
         assert len(errs) == 1
-        assert "requires phase_raman" in errs[0].message
+        # Plain-language reference to Raman + the workaround hint.
+        assert "Raman" in errs[0].message
+        assert "Compute Raman activities" in errs[0].message
 
     def test_threshold_without_l3_errors(self):
         from molbuilder.spectra import validate_selection
@@ -1379,7 +1381,8 @@ class TestValidateSelection:
         issues = validate_selection(_modes_fixture(), cfg, l3_done=False)
         errs = [i for i in issues if i.severity == "error"]
         assert len(errs) == 1
-        assert "phase_raman" in errs[0].message
+        # Plain-language Raman reference + workaround hint.
+        assert "Raman" in errs[0].message
 
     def test_top_n_with_l3_passes(self):
         """With L3 complete, top_n is fine."""
@@ -1427,7 +1430,9 @@ class TestValidateSelection:
         cfg = SpectraConfig(es_mode_selection="top_n", es_top_n=20)
         issues = validate_selection(_modes_fixture(), cfg, l3_done=True)
         warns = [i for i in issues if i.severity == "warn"]
-        assert any("exceeds the number of modes" in i.message for i in warns)
+        # Plain-language: "only N modes are available"
+        assert any("only" in i.message and "modes are available"
+                   in i.message for i in warns)
 
 
 # --------------------------------------------------------------------- #
@@ -1992,9 +1997,10 @@ class TestPySCFEnginePreflight:
         from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
         cfg = SpectraConfig(compute_ir=True)
         issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
+        # Plain-language: "aren't implemented" + suggestion.
         assert any(i.where == "config.compute_ir"
                    and i.severity == "warn"
-                   and "v1.2" in i.message for i in issues)
+                   and "implemented" in i.message for i in issues)
 
     def test_unsupported_method_errors(self):
         from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine

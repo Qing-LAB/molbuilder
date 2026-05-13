@@ -569,19 +569,19 @@
         const f = results.phase_frequencies;
         const r = results.phase_raman;
         const e = results.phase_es;
-        if (f !== "complete") return "Phase: harmonic Hessian (L2)";
+        if (f !== "complete") return "Computing vibrational frequencies (Hessian)";
         if (results.config && results.config.compute_raman && r !== "complete")
-            return "Phase: Raman activities (L3)";
+            return "Computing Raman activities (polarizability derivatives)";
         const sel = results.config && results.config.es_mode_selection;
         if (sel && sel !== "skip" && e !== "complete") {
             const haveES = (results.modes || [])
                 .filter(m => m.electronic_structure).length;
             const planned = (results.selected_mode_idxs_1based || []).length;
-            const planTxt = planned ? (" (" + haveES + "/" + planned + " modes)")
+            const planTxt = planned ? (" (" + haveES + " of " + planned + " modes done)")
                                     : "";
-            return "Phase: per-mode electronic structure (L4)" + planTxt;
+            return "Computing per-mode orbital energies (displaced SCFs)" + planTxt;
         }
-        return "Phase: still running";
+        return "Still running";
     }
 
     function allPhasesComplete(results) {
@@ -627,9 +627,9 @@
             ["Equilibrium E (Eh)", (results.equilibrium &&
                                     Number(results.equilibrium.scf_energy_eh)
                                         .toFixed(8)) || "—"],
-            ["Phase: frequencies", results.phase_frequencies],
-            ["Phase: Raman",       results.phase_raman],
-            ["Phase: ES (L4)",     results.phase_es],
+            ["Frequencies (Hessian)",     results.phase_frequencies],
+            ["Raman activities",           results.phase_raman],
+            ["Per-mode orbital energies",  results.phase_es],
         ];
         els.resultsMeta.innerHTML = meta
             .map(([k, v]) => "<dt>" + escapeHtml(String(k)) + "</dt>"

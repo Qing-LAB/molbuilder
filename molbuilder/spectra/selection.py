@@ -178,30 +178,30 @@ def validate_selection(modes: List[ModeData],
     if sel in ("top_n", "threshold") and not l3_done:
         issues.append(Issue(
             severity="error",
-            message=(f"es_mode_selection={sel!r} ranks modes by Raman "
-                     f"activity, which requires phase_raman=complete "
-                     f"in prior results.  Either run with "
-                     f"compute_raman=True first, or pick selector "
-                     f"'all' / 'explicit' for L4."),
+            message=(f"Mode selection '{sel}' ranks modes by Raman "
+                     f"activity, but no prior run with completed Raman "
+                     f"data was found.  Either run once with "
+                     f"\"Compute Raman activities\" enabled first, "
+                     f"or pick a selection that doesn't need Raman "
+                     f"data (skip, all, or explicit)."),
             where="config.es_mode_selection",
         ))
 
     # Explicit-index range check.  Only meaningful when we actually
-    # know the mode count -- pre-render (no L2 results yet, modes=[])
-    # the validator has no upper bound to check against, so skip the
-    # check rather than reject every index.  The engine's L4 loop
-    # silently skips out-of-range indices at runtime, and the
-    # render-time validator will run again with a populated modes
-    # list during a resume.
+    # know the mode count -- pre-render the validator has no upper
+    # bound to check against (modes will exist after the first run),
+    # so skip the check rather than reject every index.  The engine's
+    # runtime loop silently skips out-of-range indices anyway.
     if sel == "explicit" and modes:
         valid_range = range(1, len(modes) + 1)
         bad = [i for i in cfg.es_explicit_indices if i not in valid_range]
         if bad:
             issues.append(Issue(
                 severity="error",
-                message=(f"es_explicit_indices contains out-of-range "
-                         f"values {bad}; valid range is "
-                         f"1..{len(modes)} for the current mode set"),
+                message=(f"Explicit mode list contains out-of-range "
+                         f"numbers {bad}.  This molecule has {len(modes)} "
+                         f"vibrational modes; valid indices are "
+                         f"1..{len(modes)}."),
                 where="config.es_explicit_indices",
             ))
 
@@ -212,25 +212,27 @@ def validate_selection(modes: List[ModeData],
         if n_in_window == 0:
             issues.append(Issue(
                 severity="warn",
-                message=(f"frequency window ["
-                         f"{fmin if fmin is not None else '-inf'}, "
-                         f"{fmax if fmax is not None else '+inf'}] cm⁻¹ "
-                         f"contains zero modes; L4 will produce no ES "
-                         f"data"),
+                message=(f"The frequency window ["
+                         f"{fmin if fmin is not None else '-∞'}, "
+                         f"{fmax if fmax is not None else '+∞'}] cm⁻¹ "
+                         f"contains zero modes -- no orbital-energy "
+                         f"data will be computed.  Widen the window "
+                         f"or remove it to get results."),
                 where="config.freq_window",
             ))
 
     # top_n > available modes (after window) -- warn, not error;
-    # we silently clamp in select_modes but the user might not
-    # realise.
+    # we silently clamp but the user might not realise.
     if sel == "top_n":
         n_in_window = sum(1 for m in modes if _passes_freq_window(m, cfg))
         if cfg.es_top_n > n_in_window > 0:
             issues.append(Issue(
                 severity="warn",
-                message=(f"es_top_n={cfg.es_top_n} exceeds the number "
-                         f"of modes in the frequency window "
-                         f"({n_in_window}); will select all {n_in_window}"),
+                message=(f"You asked for the top {cfg.es_top_n} modes "
+                         f"by Raman activity, but only {n_in_window} "
+                         f"modes are available in the current "
+                         f"frequency window.  All {n_in_window} will "
+                         f"be selected."),
                 where="config.es_top_n",
             ))
 

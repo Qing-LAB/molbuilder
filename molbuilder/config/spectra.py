@@ -123,9 +123,15 @@ class SpectraConfig:
     density_fit: bool = field(default=True, metadata={
         "section": "Method",
         "label":   "Density fitting",
-        "help":    "use density fitting (RIJK) for the Coulomb / "
-                   "exchange evaluation -- 5-10x SCF speedup with "
-                   "negligible accuracy loss for organics",
+        "help":    "speeds up each SCF cycle 5-10x by approximating "
+                   "the two-electron Coulomb / exchange integrals "
+                   "with an auxiliary basis.  Accuracy loss is "
+                   "negligible for typical organic molecules; turn "
+                   "off only if you need every-last-digit reference "
+                   "energies.  Note: the Raman polarizability path "
+                   "automatically falls back to non-DF for the "
+                   "displaced-geometry calculations (the analytic "
+                   "polarizability code doesn't support DF yet).",
     })
 
     # ----------------- Frozen atoms -----------------
@@ -144,22 +150,31 @@ class SpectraConfig:
     fixed_elements: List[str] = field(default_factory=list, metadata={
         "section": "Frozen atoms",
         "label":   "Fixed by element",
-        "help":    "comma-separated element symbols whose atoms stay "
-                   "frozen during the Hessian (e.g. \"Au\" to fix a "
-                   "metal slab in a metal-molecule-metal junction)",
+        "help":    "comma-separated element symbols whose atoms are "
+                   "held in place during the vibrational analysis "
+                   "(e.g. \"Au\" to freeze a gold electrode in a "
+                   "metal-molecule-metal junction).  Freezing atoms "
+                   "removes their contribution to the Hessian and "
+                   "reduces the mode count; it does NOT remove them "
+                   "from the SCF or from the displaced-geometry "
+                   "calculations.",
     })
     fixed_residue_names: List[str] = field(default_factory=list, metadata={
         "section": "Frozen atoms",
         "label":   "Fixed by residue name",
-        "help":    "comma-separated PDB residue names whose atoms stay "
-                   "frozen (e.g. \"ALA,GLY\" to fix specific peptide "
-                   "residues); requires a structure with residue info",
+        "help":    "comma-separated PDB residue names whose atoms "
+                   "are held in place (e.g. \"ALA,GLY\" to freeze "
+                   "specific peptide residues).  Requires the input "
+                   "structure to carry residue labels -- works for "
+                   "PDB-derived structures, not bare XYZ.",
     })
     fixed_indices: List[int] = field(default_factory=list, metadata={
         "section": "Frozen atoms",
         "label":   "Fixed by atom index",
         "help":    "comma-separated 0-based atom indices, optionally "
-                   "with ranges (e.g. \"0-35, 100, 150-200\")",
+                   "with ranges (e.g. \"0-35, 100, 150-200\").  Use "
+                   "when you need finer control than element- or "
+                   "residue-level freezing.",
     })
 
     # ----------------- Spectrum -----------------
@@ -167,19 +182,22 @@ class SpectraConfig:
     compute_raman: bool = field(default=True, metadata={
         "section": "Spectrum",
         "label":   "Compute Raman activities",
-        "help":    "compute analytic polarizability derivatives "
-                   "[Komornicki1979] and project onto each mode to "
-                   "get Raman activities; False runs only the Hessian "
-                   "(diagnostic / wavenumber-only)",
+        "help":    "compute Raman scattering intensity for every "
+                   "mode.  Cost: roughly 6 × (number of free atoms) "
+                   "extra SCF calculations (one per ±finite-difference "
+                   "displacement in each Cartesian direction).  Turn "
+                   "off if you only want vibrational frequencies "
+                   "(faster, but no spectrum y-axis).",
     })
     compute_ir: bool = field(default=False, metadata={
         "section": "Spectrum",
-        "label":   "Compute IR intensities (reserved; v1.2)",
+        "label":   "Compute IR intensities (not yet implemented)",
         "tier":    "advanced",
-        "help":    "RESERVED -- the IR add-on (dipole derivatives) is "
-                   "scheduled for the 1c milestone; this field is in "
-                   "the schema so its arrival doesn't change the wire "
-                   "shape, but the engine ignores True in v1",
+        "help":    "Reserved for a future release that will add IR "
+                   "absorption intensities (dipole-moment "
+                   "derivatives).  This checkbox does nothing today; "
+                   "leaving it off avoids surprises when it activates "
+                   "in a later version.",
     })
     displacement_amplitude_ang: float = field(default=0.10, metadata={
         "section": "Spectrum",
@@ -187,13 +205,18 @@ class SpectraConfig:
         "unit":    "Å",
         "range":   (0.02, 0.30),
         "tier":    "advanced",
-        "help":    "±A·Q_i along each mode's eigenvector for the "
-                   "per-mode electronic-structure SCFs; 0.05-0.15 Å "
-                   "is the contemporary-practice range (above ~0.20 Å "
-                   "anharmonic mixing becomes non-negligible, see "
-                   "[Mills1972] for the general framework; below "
-                   "~0.04 Å the ΔE_HOMO noise from the SCF tolerance "
-                   "tends to dominate)",
+        "help":    "how far atoms are pushed along each mode "
+                   "eigenvector when probing how the orbitals shift "
+                   "(only used by the per-mode electronic-structure "
+                   "step).  Larger amplitude = more sensitivity to "
+                   "the mode but more anharmonic contamination of "
+                   "the linear response; smaller amplitude = cleaner "
+                   "but noisier orbital-energy differences.  0.05-"
+                   "0.15 Å is the contemporary-practice range; above "
+                   "~0.20 Å anharmonic mixing becomes non-negligible "
+                   "(see [Mills1972] for the general framework); "
+                   "below ~0.04 Å the orbital-energy noise from the "
+                   "SCF tolerance tends to dominate the signal.",
     })
 
     # ----------------- Electronic structure -----------------
@@ -210,25 +233,37 @@ class SpectraConfig:
         "label":   "Mode selection",
         "id_suffix": "es-selection",
         "choices": ("skip", "all", "top_n", "threshold", "explicit"),
-        "help":    "which modes get per-mode electronic-structure data "
-                   "(2 SCFs per selected mode -- L4 is the expensive "
-                   "phase, scaling linearly with selected mode count). "
-                   "skip = spectrum-only run (no L4); "
-                   "all = every mode (cost ≈ 2·N_modes SCFs); "
-                   "top_n = top-N by Raman activity (≈ 2·N SCFs); "
-                   "threshold = above a Raman threshold (variable "
-                   "count); explicit = user-supplied indices.  "
-                   "top_n / threshold miss modes with weak Raman "
-                   "but strong electron-phonon coupling -- see "
-                   "[Galperin2007] before relying on them.",
+        "help":    "which vibrational modes get the displaced-"
+                   "geometry orbital-energy probe.  Each chosen mode "
+                   "costs two extra SCF calculations (one at +A, one "
+                   "at -A along the mode), so this is the most "
+                   "expensive part of the run and its cost scales "
+                   "linearly with how many modes you pick.\n\n"
+                   "    skip      -- don't run this step at all; "
+                   "you get a spectrum but no per-mode HOMO/LUMO "
+                   "data.  Use this for first-pass exploration.\n"
+                   "    all       -- every mode (cost ≈ 2·N modes).\n"
+                   "    top_n     -- the N modes with the strongest "
+                   "Raman activity.\n"
+                   "    threshold -- every mode whose Raman activity "
+                   "exceeds your cutoff.\n"
+                   "    explicit  -- you list specific mode numbers.\n\n"
+                   "Caveat: top_n and threshold rank by Raman "
+                   "brightness, which is NOT the same as "
+                   "electron-phonon coupling strength -- a mode "
+                   "that's transport-critical can be Raman-weak.  "
+                   "See [Galperin2007].  When in doubt, use explicit "
+                   "(after looking at the spectrum) or all.",
     })
     es_top_n: int = field(default=10, metadata={
         "section": "Electronic structure",
         "label":   "Top-N modes",
         "range":   (1, 1000),
         "tier":    "advanced",
-        "help":    "(when selector=top_n) number of highest-Raman-"
-                   "activity modes that get ES data",
+        "help":    "(only used when selector = top_n) how many of "
+                   "the brightest Raman-active modes to compute "
+                   "orbital-energy data for.  Cost grows linearly: "
+                   "N modes = 2·N SCF calculations.",
     })
     es_threshold: float = field(default=1.0, metadata={
         "section": "Electronic structure",
@@ -236,18 +271,24 @@ class SpectraConfig:
         "unit":    "Å⁴/amu",
         "range":   (0.0, 1000.0),
         "tier":    "advanced",
-        "help":    "(when selector=threshold) only modes with Raman "
-                   "activity above this value get ES data",
+        "help":    "(only used when selector = threshold) Raman "
+                   "activity cutoff in Å⁴/amu; every mode brighter "
+                   "than this gets orbital-energy data.  Final mode "
+                   "count is unpredictable -- depends on how many "
+                   "modes happen to be above your cutoff.",
     })
     es_explicit_indices: List[int] = field(default_factory=list, metadata={
         "section": "Electronic structure",
         "label":   "Explicit modes",
         "tier":    "advanced",
-        "help":    "(when selector=explicit) comma-separated 1-based "
-                   "mode indices; the natural two-stage workflow is to "
-                   "run with selector=none first, see the spectrum, "
-                   "then re-run with selector=explicit listing the "
-                   "modes of interest",
+        "help":    "(only used when selector = explicit) comma-"
+                   "separated list of 1-based mode numbers to "
+                   "compute orbital-energy data for, e.g. "
+                   "\"3, 7, 12\".  Ranges supported: "
+                   "\"3-7, 12\".  Typical workflow: run with "
+                   "selector = skip first, look at the spectrum, "
+                   "then re-run with selector = explicit and the "
+                   "modes you care about.",
     })
     # Frequency-range filter (spec § 2.5.4 + § 8.1).  Composes with
     # the selector above: restricts the selector's output to modes
@@ -263,14 +304,14 @@ class SpectraConfig:
         "unit":       "cm⁻¹",
         "null_label": "(no lower bound)",
         "tier":       "advanced",
-        "help":       "constrain L4 mode selection to modes with "
-                      "frequency >= this value; useful for skipping "
+        "help":       "restrict orbital-energy data to modes at or "
+                      "above this frequency.  Useful for skipping "
                       "low-frequency rocking / librational modes that "
-                      "are often noisy and rarely transport-relevant. "
-                      "Caveat: filtering may skip modes whose strong "
-                      "electron-phonon coupling lies outside the "
-                      "window [Galperin2007].  Ignored when "
-                      "selector=explicit.",
+                      "are often noisy and rarely matter for "
+                      "transport.  Caveat: filtering may skip modes "
+                      "whose strong electron-phonon coupling lies "
+                      "outside your chosen window (see [Galperin2007]).  "
+                      "Ignored when selector = explicit.",
     })
     freq_max_cm1: Optional[float] = field(default=None, metadata={
         "section":    "Electronic structure",
@@ -278,90 +319,131 @@ class SpectraConfig:
         "unit":       "cm⁻¹",
         "null_label": "(no upper bound)",
         "tier":       "advanced",
-        "help":       "constrain L4 mode selection to modes with "
-                      "frequency <= this value; combine with "
-                      "freq_min_cm1 to focus on a window.  Ignored "
-                      "when selector=explicit.",
+        "help":       "restrict orbital-energy data to modes at or "
+                      "below this frequency.  Combine with Min "
+                      "frequency to target a specific spectral "
+                      "window (e.g. 2800-3200 cm⁻¹ for C-H stretches).  "
+                      "Ignored when selector = explicit.",
     })
     es_n_homo_below: int = field(default=5, metadata={
         "section": "Electronic structure",
-        "label":   "HOMO-N (orbitals below HOMO)",
+        "label":   "Orbitals below HOMO to save",
         "id_suffix": "es-n-homo-below",
         "range":   (0, 50),
         "tier":    "advanced",
-        "help":    "number of orbitals BELOW HOMO recorded at each "
-                   "displaced geometry; 5 is enough for transport "
-                   "prep, raise for richer DOS visualisation",
+        "help":    "how many frontier orbitals BELOW the HOMO to "
+                   "record at each displaced geometry.  Five is "
+                   "enough to study HOMO/LUMO behaviour for "
+                   "transport; raise it to see a richer slice of "
+                   "the orbital landscape (e.g. for "
+                   "density-of-states plots).  Doesn't change cost.",
     })
     es_n_lumo_above: int = field(default=5, metadata={
         "section": "Electronic structure",
-        "label":   "LUMO+M (orbitals above LUMO)",
+        "label":   "Orbitals above LUMO to save",
         "id_suffix": "es-n-lumo-above",
         "range":   (0, 50),
         "tier":    "advanced",
-        "help":    "number of orbitals ABOVE LUMO recorded at each "
-                   "displaced geometry",
+        "help":    "how many frontier orbitals ABOVE the LUMO to "
+                   "record at each displaced geometry.  Five matches "
+                   "the HOMO setting for a symmetric window around "
+                   "the gap.  Doesn't change cost.",
     })
 
     # ----------------- SCF -----------------
 
     scf_conv_tol: float = field(default=1e-9, metadata={
         "section": "SCF",
-        "label":   "scf.conv_tol",
+        "label":   "SCF energy convergence (scf.conv_tol)",
         "unit":    "Hartree",
         "range":   (1e-12, 1e-4),
         "tier":    "advanced",
-        "help":    "SCF convergence tolerance on the energy",
+        "help":    "tight stopping criterion for each self-consistent "
+                   "field calculation.  1e-9 Ha is the standard "
+                   "production setting for vibrational analysis (the "
+                   "Hessian eigenvalues are sensitive to SCF noise; "
+                   "looser tolerances let frequency error grow into "
+                   "the cm⁻¹ range).  Tighten to 1e-10 if you suspect "
+                   "frequency noise; loosen to 1e-7 for cheaper "
+                   "exploratory runs.",
     })
     scf_max_cycle: int = field(default=100, metadata={
         "section": "SCF",
-        "label":   "scf.max_cycle",
+        "label":   "Max SCF iterations (scf.max_cycle)",
         "range":   (10, 1000),
         "tier":    "advanced",
-        "help":    "max SCF cycles per single-point",
+        "help":    "cap on iterations PER self-consistent calculation.  "
+                   "If the SCF still hasn't converged at this point "
+                   "the run aborts with a clear error.  100 is "
+                   "generous; if a particular geometry struggles to "
+                   "converge it's usually a hint that the geometry "
+                   "or charge is wrong, not that you need more "
+                   "iterations.",
     })
     grid_level: int = field(default=4, metadata={
         "section": "SCF",
-        "label":   "DFT grid level",
+        "label":   "DFT integration grid level",
         "range":   (0, 9),
         "tier":    "advanced",
-        "help":    "0=coarse, 3=screening, 4=default (hybrid-friendly), "
-                   "5=tight, 9=ultra; v1 spec § 11.4 warns when < 4 "
-                   "with a hybrid functional",
+        "help":    "DFT exchange-correlation integrals are evaluated "
+                   "on a numerical grid; this is the radial/angular "
+                   "density.  0 = coarsest (smoke tests only), 3 = "
+                   "fast screening, 4 = production minimum for hybrid "
+                   "functionals (B3LYP, PBE0, M06...), 5 = tight, "
+                   "9 = ultra-tight reference quality.  Cost roughly "
+                   "doubles per level; for vibrational analysis with "
+                   "a hybrid functional level 4 is the recommended "
+                   "lower bound -- below that, grid noise becomes "
+                   "the dominant frequency error.",
     })
 
     # ----------------- Runtime -----------------
 
     max_memory_mb: int = field(default=4000, metadata={
         "section":  "Runtime",
-        "label":    "max_memory",
+        "label":    "Max memory (max_memory)",
         "unit":     "MB",
         "id_suffix": "max-memory",
         "range":    (100, 1_000_000),
         "tier":     "advanced",
-        "help":     "memory hint passed to PySCF",
+        "help":     "memory budget the SCF code is allowed to use "
+                    "for intermediates (ERI tensors, density-fit "
+                    "auxiliaries, etc.).  Larger values let bigger "
+                    "molecules fit in memory; raise this if you see "
+                    "out-of-memory errors with a 50+ atom system.",
     })
     threads: Optional[int] = field(default=None, metadata={
         "section":    "Runtime",
-        "label":      "Threads",
-        "null_label": "(inherit OMP_NUM_THREADS)",
+        "label":      "CPU threads",
+        "null_label": "(inherit from the environment)",
         "tier":       "advanced",
-        "help":       "OMP_NUM_THREADS pin; None inherits from the env",
+        "help":       "how many CPU threads to use.  Leave blank to "
+                      "inherit from OMP_NUM_THREADS (or auto-detect).  "
+                      "Set explicitly if your cluster scheduler "
+                      "doesn't propagate the env, or to leave cores "
+                      "free for other jobs.",
     })
     verbose: int = field(default=4, metadata={
         "section": "Runtime",
-        "label":   "PySCF verbose",
+        "label":   "Log verbosity (verbose)",
         "range":   (0, 9),
         "tier":    "advanced",
-        "help":    "PySCF log level: 0 silent, 4 info (default), 5 debug",
+        "help":    "how much detail the SCF prints to stdout.  "
+                   "0 = silent, 3 = warnings only, 4 = standard "
+                   "(SCF cycle table + final energy), 5 = debug.  "
+                   "Higher levels produce more diagnostic output "
+                   "but slow stdout-bound runs slightly.",
     })
     verbose_comments: bool = field(default=True, metadata={
         "section": "Runtime",
-        "label":   "Verbose comments in script",
-        "help":    "emit inline tuning hints + Methods-paragraph "
-                   "docstring + citation keys in the generated "
-                   "spectra.py (publication-quality default; see "
-                   "spec § 11)",
+        "label":   "Verbose comments in generated script",
+        "help":    "embed inline scientific explanations + the "
+                   "Methods-section prose + literature citations "
+                   "into the generated spectra.py.  Leaving this on "
+                   "makes the script self-documenting: a colleague "
+                   "reading it sees what the choices mean and why.  "
+                   "Turn off only if you want a stripped-down "
+                   "minimal-comment script.",
     })
 
 

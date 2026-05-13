@@ -93,10 +93,10 @@
         <summary>Resume from a prior run (optional)</summary>
         <p class="hint">
           Point at an existing <code>&lt;job&gt;.spectra.json</code>
-          to enable the top-N / threshold L4 selectors (they need
-          the prior run's Raman activities) and to skip already-
-          completed modes when resuming.  Leave empty for a fresh
-          job.
+          to enable the top-N / threshold mode selectors (they need
+          Raman activities that the prior run computed) and to skip
+          already-completed modes when resuming.  Leave empty for a
+          fresh job.
         </p>
         <input id="prior-path" type="text"
                placeholder="/path/to/prev.spectra.json">
@@ -104,14 +104,16 @@
     </div>
 
     <!-- ── Issues (sits right below Generate so blocking errors
-            from preflight surface immediately after the click) ── -->
+            from configuration checks surface immediately after the
+            click) ── -->
     <div class="card-section">
       <header class="section-header">
         <h2>Issues</h2>
       </header>
       <div id="issues-panel" class="issues-panel">
         <p class="status muted">
-          No issues yet.  Click "Generate" to see preflight findings.
+          No issues yet.  Click "Generate" to see configuration
+          checks.
         </p>
       </div>
     </div>
@@ -164,8 +166,9 @@
         <span id="watch-status" class="status"></span>
       </div>
 
-      <!-- Phase-progress chips: three dots that fill in as L2 / L3 /
-           L4 land.  Hidden until first load / watch tick. -->
+      <!-- Phase-progress chips: three dots that fill in as each
+           computational phase (Frequencies, Raman, Per-mode ES)
+           lands.  Hidden until first load / watch tick. -->
       <div id="phase-indicator" class="phase-indicator" hidden
            aria-label="Run-phase progress">
         <span class="phase">

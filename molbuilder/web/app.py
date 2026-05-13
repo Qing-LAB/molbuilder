@@ -28,8 +28,6 @@ to avoid name collisions with the build viewer.
 
 from __future__ import annotations
 
-import os
-
 from flask import Flask, abort, jsonify, render_template, send_file
 
 
@@ -109,32 +107,34 @@ def create_app() -> Flask:
         """Serve plotly.min.js from the installed plotly Python
         package so the browser doesn't need a CDN at all.
 
-        The plotly Python distribution ships the JS bundle at
-        ``<package_dir>/package_data/plotly.min.js``; that's the
-        same artifact cdnjs serves.  Loading it locally means the
-        Spectra tab works on air-gapped clusters, behind firewalls,
-        on planes -- anywhere molbuilder itself runs.
+        Plotly ships the JS bundle as package data; we read it via
+        ``importlib.resources`` rather than reaching into
+        ``plotly.__file__`` directly so this works for zip-packaged
+        installs, editable installs, and any other layout
+        ``importlib.resources`` supports.
 
         Returns 404 if the plotly Python package isn't importable
-        or doesn't ship the JS bundle.  The Spectra page's <script>
-        tag falls through to the cdnjs URL in that case.
+        or doesn't ship the JS bundle -- the caller (the Spectra
+        page) can degrade by showing the chart-unavailable message.
         """
+        from importlib import resources
         try:
-            import plotly
-        except ImportError:
+            # plotly>=5 publishes the bundle at
+            # ``plotly/package_data/plotly.min.js``; older versions
+            # used the same path.  files() returns a Traversable,
+            # which works the same for filesystem + zipfile installs.
+            ref = resources.files("plotly").joinpath(
+                "package_data", "plotly.min.js")
+        except ModuleNotFoundError:
             abort(404)
-        path = os.path.join(
-            os.path.dirname(plotly.__file__),
-            "package_data", "plotly.min.js",
-        )
-        if not os.path.exists(path):
+        if not ref.is_file():
             abort(404)
+        # Long-cache: the URL is version-agnostic but the file
+        # changes only when the user upgrades the plotly Python
+        # package; that's a fresh app start anyway.
         return send_file(
-            path,
+            str(ref),
             mimetype="application/javascript",
-            # Long-cache: the URL is version-agnostic but the file
-            # changes only when the user upgrades the plotly Python
-            # package; that's a fresh app start anyway.
             max_age=3600,
         )
 

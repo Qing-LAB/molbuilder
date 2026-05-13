@@ -191,11 +191,15 @@ class PySCFSpectraEngine:
         if cls._is_hybrid_functional(cfg.functional) and cfg.grid_level < 4:
             issues.append(Issue(
                 severity="warn",
-                message=(f"grid_level={cfg.grid_level} with hybrid "
-                         f"functional {cfg.functional!r}; recommended "
-                         f">= 4 for vibrational analysis "
-                         f"(XC-integration noise becomes the dominant "
-                         f"frequency error below this)"),
+                message=(f"Grid level {cfg.grid_level} is below the "
+                         f"recommended minimum of 4 for a hybrid "
+                         f"functional ({cfg.functional}).  Hybrid "
+                         f"functionals have a sharper exchange "
+                         f"contribution that needs a denser numerical "
+                         f"grid; below level 4 the grid-integration "
+                         f"noise typically dominates the frequency "
+                         f"error.  Raise the grid level for "
+                         f"publication-quality results."),
                 where="config.grid_level",
             ))
 
@@ -212,19 +216,25 @@ class PySCFSpectraEngine:
         if amp < 0.04:
             issues.append(Issue(
                 severity="warn",
-                message=(f"displacement_amplitude_ang={amp:g} Å is "
-                         f"below the contemporary-practice window "
-                         f"(0.04 Å); finite-difference noise on "
-                         f"ΔE_HOMO will likely dominate"),
+                message=(f"Displacement amplitude {amp:g} Å is "
+                         f"smaller than the typical defensible range "
+                         f"(0.04-0.20 Å).  At small amplitudes the "
+                         f"HOMO/LUMO energy shifts you're trying to "
+                         f"measure are comparable to SCF noise, and "
+                         f"the resulting orbital-energy data is "
+                         f"unreliable.  Raise to at least 0.04 Å."),
                 where="config.displacement_amplitude_ang",
             ))
         elif amp > 0.20:
             issues.append(Issue(
                 severity="warn",
-                message=(f"displacement_amplitude_ang={amp:g} Å is "
-                         f"above the contemporary-practice window "
-                         f"(0.20 Å); anharmonic-cubic mixing "
-                         f"in the potential is likely non-negligible"),
+                message=(f"Displacement amplitude {amp:g} Å is "
+                         f"larger than the typical defensible range "
+                         f"(0.04-0.20 Å).  At large amplitudes the "
+                         f"potential isn't linear in the displacement "
+                         f"any more -- anharmonic terms contaminate "
+                         f"the orbital-energy slope you want to "
+                         f"measure.  Lower to 0.20 Å or less."),
                 where="config.displacement_amplitude_ang",
             ))
 
@@ -233,21 +243,25 @@ class PySCFSpectraEngine:
         if method not in ("RKS", "UKS", "RHF", "UHF"):
             issues.append(Issue(
                 severity="error",
-                message=(f"method={cfg.method!r} is not supported by the "
-                         f"PySCF Spectra engine; expected one of "
-                         f"RKS / UKS / RHF / UHF"),
+                message=(f"SCF method '{cfg.method}' isn't supported "
+                         f"here.  Pick one of RKS (closed-shell DFT, "
+                         f"the usual default), UKS (open-shell DFT), "
+                         f"RHF (closed-shell Hartree-Fock), or UHF "
+                         f"(open-shell Hartree-Fock)."),
                 where="config.method",
             ))
-        # Compute_ir is reserved for v1.2 -- emit a non-blocking
-        # note if the user toggled it on.  See spec § 4 (reserved
-        # field, engine ignores in v1).
+        # compute_ir is a placeholder for a future release; warn
+        # politely if the user toggled it on so they know nothing
+        # will come of it yet.
         if cfg.compute_ir:
             issues.append(Issue(
                 severity="warn",
-                message=("compute_ir=True is reserved (IR add-on "
-                         "scheduled for v1.2); the v1 PySCF engine "
-                         "ignores this flag and emits Raman activities "
-                         "only"),
+                message=("IR intensities aren't implemented in this "
+                         "release -- the checkbox is reserved for a "
+                         "future version.  The current run will "
+                         "produce Raman activities (if enabled) but "
+                         "no IR data.  Untick the box to clear this "
+                         "notice."),
                 where="config.compute_ir",
             ))
 
@@ -277,9 +291,11 @@ class PySCFSpectraEngine:
                 if bad:
                     issues.append(Issue(
                         severity="error",
-                        message=(f"fixed_indices contains out-of-range "
-                                 f"atom indices {bad}; valid range is "
-                                 f"0..{n - 1} (0-based)"),
+                        message=(f"\"Fixed by atom index\" contains "
+                                 f"out-of-range numbers {bad}.  This "
+                                 f"structure has {n} atoms; valid "
+                                 f"indices are 0..{n - 1} (counting "
+                                 f"from zero)."),
                         where="config.fixed_indices",
                     ))
 
