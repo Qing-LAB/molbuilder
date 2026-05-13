@@ -44,14 +44,40 @@
       </div>
     </div>
 
-    <!-- ── 2. Generate ───────────────────────────── -->
-    <!-- Pulled up above the parameter form so it's visible without
-         scrolling.  Parameter form has sensible defaults; the user
-         can click Generate immediately and tune in step 3 below if
-         needed. -->
+    <!-- ── 2. Parameters ─────────────────────────── -->
     <div class="card-section">
       <header class="section-header">
-        <h2 class="step-num"><span class="step-dot">2</span> Generate</h2>
+        <h2 class="step-num"><span class="step-dot">2</span> Parameters</h2>
+        <p class="section-hint">
+          Defaults work for most cases.  Hover any label for the
+          per-field help.  When done, click <strong>Generate</strong>
+          in the right column.
+        </p>
+      </header>
+      <!-- Schema-rendered fieldsets land inside .param-grid so the
+           auto-fit grid lays them out responsively (same pattern
+           the Build tab uses for SIESTA / PySCF panels). -->
+      <div id="spectra-form-container" class="param-grid">
+        <p class="status">Loading form schema&hellip;</p>
+      </div>
+    </div>
+  </section><!-- /.card-input -->
+
+  <!-- ================================================================
+       RIGHT column: OUTPUT  (issues, script, results)
+       ================================================================ -->
+  <section class="card card-output">
+
+    <!-- ── Generate (action + Methods preview) ──────
+         Lives in the OUTPUT column on purpose: the action sits
+         right next to the artifacts it produces (Issues panel +
+         Generated-script preview below).  In two-column mode the
+         Generate button is at the top of the right column, paired
+         with the Issues window; in single-column mode it lands in
+         the natural flow between Parameters and Issues. -->
+    <div class="card-section">
+      <header class="section-header">
+        <h2>Generate</h2>
       </header>
       <div class="inline-row primary-actions">
         <button id="generate-btn" class="primary" type="button">
@@ -76,31 +102,8 @@
       </details>
     </div>
 
-    <!-- ── 3. Parameters ─────────────────────────── -->
-    <div class="card-section">
-      <header class="section-header">
-        <h2 class="step-num"><span class="step-dot">3</span> Parameters</h2>
-        <p class="section-hint">
-          Defaults work for most cases.  Tune here, then re-click
-          Generate above.  Hover any label for the per-field help.
-        </p>
-      </header>
-      <!-- Schema-rendered fieldsets land inside .param-grid so the
-           auto-fit grid lays them out responsively (same pattern
-           the Build tab uses for SIESTA / PySCF panels). -->
-      <div id="spectra-form-container" class="param-grid">
-        <p class="status">Loading form schema&hellip;</p>
-      </div>
-    </div>
-  </section><!-- /.card-input -->
-
-  <!-- ================================================================
-       RIGHT column: OUTPUT  (issues, script, results)
-       ================================================================ -->
-  <section class="card card-output">
-
-    <!-- ── Issues (always visible; sits up top so the user sees
-            blocking errors immediately) ──────────── -->
+    <!-- ── Issues (sits right below Generate so blocking errors
+            from preflight surface immediately after the click) ── -->
     <div class="card-section">
       <header class="section-header">
         <h2>Issues</h2>
