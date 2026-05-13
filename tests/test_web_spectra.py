@@ -230,13 +230,20 @@ class TestSpectraPage:
 
     def test_viewer_js_has_chart_renderer(self, web_client):
         """The chart-renderer function is in the JS module and
-        builds three traces (real / imaginary / no-Raman)."""
+        builds traces for both display modes (activity / density)."""
         js = web_client.get("/static/spectra/viewer.js").data.decode()
         assert "renderSpectrumChart" in js
-        # Three trace buckets.
-        assert '"Real"'      in js
-        assert '"Imaginary"' in js
-        assert '"No Raman"'  in js
+        # Trace buckets present.
+        assert '"Real"'              in js
+        assert '"Imaginary"'         in js
+        # Density-mode names (used when no mode has a Raman activity
+        # -- partial L2-done / L3-not-yet runs).
+        assert '"Real (freq only)"'      in js
+        assert '"Imaginary (freq only)"' in js
+        # Partial-L3 marker.
+        assert '"Raman pending"'     in js
+        # Detection of density mode.
+        assert "densityMode"         in js
         # Plotly entry point.
         assert "Plotly.react" in js
 

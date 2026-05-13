@@ -1139,32 +1139,70 @@
             return;
         }
 
-        // Bucket the modes into three traces so each gets its own
-        // hover + legend entry.  This is cheaper than per-bar colour
-        // (Plotly draws a single legend item per trace).  Each trace
-        // also tracks which mode-index each bar corresponds to, so
-        // the plotly_click handler can map x-axis hit back to the
-        // mode that owns the stick.
-        const real = { x: [], y: [], text: [], idx: [], color: [] };
-        const imag = { x: [], y: [], text: [], idx: [], color: [] };
-        const noRaman = { x: [], y: [], text: [], idx: [] };
-        const sel = state.selectedMode;
+        // Two display modes:
+        //
+        //   ACTIVITY MODE -- at least one mode has a Raman activity;
+        //     y-axis is the activity in Å⁴/amu.  Modes without
+        //     activity (partial L3) plot at y=0 with a "Raman not
+        //     yet computed" hover hint so the user knows what's
+        //     missing.
+        //
+        //   DENSITY MODE  -- no mode has a Raman activity yet (L2
+        //     done but L3 hasn't started, or compute_raman=False).
+        //     Every stick gets unit height so the frequency
+        //     distribution is visible; y-axis title tells the user
+        //     intensities are missing.  Otherwise the user just
+        //     sees a flat x-axis line with nothing on it.
+        const anyRaman   = modes.some(m =>
+            m.raman_activity_a4_amu !== null
+            && m.raman_activity_a4_amu !== undefined
+        );
+        const densityMode = !anyRaman;
+
+        // Bucket the modes into traces by real / imaginary so each
+        // gets its own hover + legend entry.  Modes pending Raman
+        // also get their own trace so the legend says "pending"
+        // explicitly rather than mixing into "Real" / "Imaginary".
+        const real    = { x: [], y: [], text: [], idx: [], color: [] };
+        const imag    = { x: [], y: [], text: [], idx: [], color: [] };
+        const pending = { x: [], y: [], text: [], idx: [] };
+        const sel     = state.selectedMode;
         for (const m of modes) {
             const f      = Number(m.frequency_cm1);
             const hasIm  = !!m.has_imag || f < 0;
             const raman  = m.raman_activity_a4_amu;
             const isSel  = (m.index_1based === sel);
-            const txt    = "Mode " + m.index_1based
-                         + "<br>ω = " + f.toFixed(1) + " cm⁻¹"
-                         + "<br>Raman = "
-                         + (raman === null || raman === undefined
-                            ? "n/a"
-                            : Number(raman).toFixed(2) + " Å⁴/amu");
+            const ramanText = (raman === null || raman === undefined)
+                ? "Raman: not yet computed"
+                : "Raman = " + Number(raman).toFixed(2) + " Å⁴/amu";
+            const txt = "Mode " + m.index_1based
+                      + "<br>ω = " + f.toFixed(1) + " cm⁻¹"
+                      + "<br>" + ramanText;
+
             if (raman === null || raman === undefined) {
-                noRaman.x.push(f);
-                noRaman.y.push(0);
-                noRaman.text.push(txt);
-                noRaman.idx.push(m.index_1based);
+                if (densityMode) {
+                    // No intensity data anywhere -- show the stick
+                    // at unit height in the appropriate real/imag
+                    // bucket so the legend still works.
+                    if (hasIm) {
+                        imag.x.push(f); imag.y.push(1); imag.text.push(txt);
+                        imag.idx.push(m.index_1based);
+                        imag.color.push(isSel ? "#ffd454" : "#e07070");
+                    } else {
+                        real.x.push(f); real.y.push(1); real.text.push(txt);
+                        real.idx.push(m.index_1based);
+                        real.color.push(isSel ? "#ffd454" : "#4a90d9");
+                    }
+                } else {
+                    // Partial L3 (some modes have activity, this one
+                    // doesn't yet) -- mark with a separate "pending"
+                    // trace so the user sees there are uncomputed
+                    // modes beyond the visible spectrum.
+                    pending.x.push(f);
+                    pending.y.push(0);
+                    pending.text.push(txt);
+                    pending.idx.push(m.index_1based);
+                }
             } else if (hasIm) {
                 imag.x.push(f);
                 imag.y.push(Number(raman));
@@ -1185,7 +1223,7 @@
         const traces = [];
         if (real.x.length) traces.push({
             type:        "bar",
-            name:        "Real",
+            name:        densityMode ? "Real (freq only)" : "Real",
             x:           real.x,
             y:           real.y,
             text:        real.text,
@@ -1198,7 +1236,7 @@
         });
         if (imag.x.length) traces.push({
             type:        "bar",
-            name:        "Imaginary",
+            name:        densityMode ? "Imaginary (freq only)" : "Imaginary",
             x:           imag.x,
             y:           imag.y,
             text:        imag.text,
@@ -1207,16 +1245,16 @@
             width:       6,
             customdata:  imag.idx,
         });
-        if (noRaman.x.length) traces.push({
+        if (pending.x.length) traces.push({
             type:        "scatter",
             mode:        "markers",
-            name:        "No Raman",
-            x:           noRaman.x,
-            y:           noRaman.y,
-            text:        noRaman.text,
+            name:        "Raman pending",
+            x:           pending.x,
+            y:           pending.y,
+            text:        pending.text,
             hoverinfo:   "text",
             marker:      { color: "#888", symbol: "x", size: 7 },
-            customdata:  noRaman.idx,
+            customdata:  pending.idx,
         });
 
         const layout = {
