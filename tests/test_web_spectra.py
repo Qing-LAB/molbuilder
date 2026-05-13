@@ -168,6 +168,58 @@ class TestSpectraPage:
         # fieldsets lay out in the responsive auto-fit grid.
         assert 'class="param-grid"' in body
 
+    def test_page_has_path_load_and_watch_controls(self, web_client):
+        """The Spectra page exposes a server-side-path load input
+        (primary) + Watch toggle.  Browser-side file upload is
+        relegated to a <details> fallback for cross-machine cases."""
+        body = web_client.get("/spectra").data.decode()
+        # Primary path input + three action buttons.
+        assert 'id="watch-path"'     in body
+        assert 'id="load-path-btn"'  in body
+        assert 'id="watch-btn"'      in body
+        assert 'id="watch-stop-btn"' in body
+        # Three phase indicator dots, one per phase.
+        for ph in ("frequencies", "raman", "es"):
+            assert f'data-phase="{ph}"' in body
+        # Upload fallback section present + closed by default.
+        assert 'class="upload-fallback"' in body
+
+    def test_viewer_js_has_path_load_and_watch_loop(self, web_client):
+        """The viewer JS exposes loadByPath (one-shot path load),
+        startWatch / stopWatch / watchTick (the live poller), and
+        the allPhasesComplete / updatePhaseIndicator helpers."""
+        js = web_client.get("/static/spectra/viewer.js").data.decode()
+        for sym in (
+            "loadByPath",
+            "startWatch",
+            "stopWatch",
+            "watchTick",
+            "allPhasesComplete",
+            "updatePhaseIndicator",
+            "WATCH_INTERVAL_MS",
+        ):
+            assert sym in js, f"missing {sym!r} in spectra/viewer.js"
+
+    def test_path_load_endpoint_works(self, web_client, tmp_path):
+        """End-to-end sanity: POST /api/spectra/load with {path}
+        succeeds for a real on-disk spectra.json (mirrors what the
+        new 'Load once' button does).  Regression check against a
+        future blueprint change accidentally breaking the path-input
+        mode of the load endpoint."""
+        from molbuilder.parsers.spectra_json import dump_spectra_json
+        results = _make_minimal_results()
+        p = tmp_path / "live.spectra.json"
+        dump_spectra_json(results, p)
+        r = web_client.post(
+            "/api/spectra/load",
+            data=json.dumps({"path": str(p)}),
+            content_type="application/json",
+        )
+        body = r.get_json()
+        assert r.status_code == 200, body
+        assert body["ok"]
+        assert body["results"]["engine"] == "pyscf"
+
     def test_plotly_loaded_from_cdn(self, web_client):
         """The template pulls Plotly from a pinned cdnjs build so the
         spectrum chart works without a local copy."""

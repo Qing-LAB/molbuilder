@@ -59,6 +59,13 @@
         esModeFreq:     null,
         esBarDiagram:   null,
         esSummary:      null,
+        // Load / live-watch by server-side path:
+        watchPath:      null,
+        loadPathBtn:    null,
+        watchBtn:       null,
+        watchStopBtn:   null,
+        watchStatus:    null,
+        phaseIndicator: null,
     };
 
     // Last successful render payload + interactive state.
@@ -73,7 +80,22 @@
         modeFilter:     "",       // current filter string
         sortColumn:     "index_1based",
         sortDir:        "asc",    // 'asc' | 'desc'
+        // Live-watch poller state.
+        watchTimer:     null,     // setInterval handle, or null
+        watchPath:      null,     // server-side path being polled
+        watchErrors:    0,        // consecutive transient-error counter
     };
+
+    // Poll interval for the live-watch loop.  2 s is the sweet spot:
+    // long enough that the engine's atomic-replace writes don't get
+    // caught mid-flight (they're sub-millisecond anyway) and short
+    // enough that the UI feels live.  Not exposed as a user knob.
+    const WATCH_INTERVAL_MS = 2000;
+
+    // After this many consecutive transient errors (network down,
+    // file mid-replace, etc.) the watcher gives up rather than
+    // hammering the API forever.
+    const WATCH_MAX_ERRORS = 5;
 
     // Hartree-to-eV conversion factor.  Used by the ES panel to
     // present MO energies in user-friendly units instead of Eh.
@@ -385,7 +407,204 @@
             return;
         }
         renderResults(r.body.results);
+        updatePhaseIndicator(r.body.results);
         setStatus(els.resultsStatus, "Loaded.", "ok");
+    }
+
+    // ----- Load once by server-side path -----------------------
+    //
+    // Same /api/spectra/load endpoint as the file-upload path, but
+    // with {path: "<server-side path>"} so the server reads the
+    // file directly.  This is the primary path for users running
+    // molbuilder on the same machine as their spectra.py job --
+    // no re-upload after every phase write.
+    async function loadByPath() {
+        const path = (els.watchPath.value || "").trim();
+        if (!path) {
+            setStatus(els.watchStatus, "Enter a path first.", "error");
+            return;
+        }
+        setStatus(els.watchStatus, "Loading " + path + "…", "muted");
+        let r;
+        try {
+            r = await fetch("/api/spectra/load", {
+                method:  "POST",
+                headers: { "Content-Type": "application/json" },
+                body:    JSON.stringify({ path: path }),
+            });
+        } catch (exc) {
+            setStatus(els.watchStatus,
+                      "Network error: " + exc.message, "error");
+            return;
+        }
+        const body = await r.json();
+        if (!body.ok) {
+            let msg = body.error || "Load failed.";
+            if (body.kind === "schema_mismatch") {
+                msg = "Schema version mismatch (expected "
+                    + body.expected_version + ", got "
+                    + body.actual_version + "). "
+                    + "Update molbuilder or use a matching script version.";
+            } else if (body.kind === "not_found") {
+                msg = "File not found at " + path
+                    + ".  If the run is still in equilibrium SCF, "
+                    + "click 'Start watching' to poll until the first "
+                    + "phase checkpoint appears.";
+            }
+            setStatus(els.watchStatus, msg, "error");
+            return;
+        }
+        renderResults(body.results);
+        updatePhaseIndicator(body.results);
+        setStatus(els.watchStatus, "Loaded.", "ok");
+    }
+
+    // ----- Live-watch poller (spec § 6.1) -----------------------
+    //
+    // Polls /api/spectra/load { path: <...> } every WATCH_INTERVAL_MS
+    // while a job is running.  The engine writes <job>.spectra.json
+    // atomically at each phase boundary, so each poll either:
+    //   * gets a 404 (file not written yet -- equilibrium SCF still
+    //     in flight); shows "Waiting..." and keeps polling.
+    //   * gets a parsed SpectraResults; re-renders the UI with
+    //     whatever phases are populated so far.
+    //
+    // Auto-stops when allPhasesComplete() returns true, when the
+    // user clicks Stop, or after WATCH_MAX_ERRORS consecutive
+    // transient failures.
+    function startWatch() {
+        const path = (els.watchPath.value || "").trim();
+        if (!path) {
+            setStatus(els.watchStatus, "Enter a path first.", "error");
+            return;
+        }
+        if (state.watchTimer) return;  // already watching
+        state.watchPath   = path;
+        state.watchErrors = 0;
+        els.watchBtn.disabled     = true;
+        els.watchStopBtn.disabled = false;
+        els.watchPath.disabled    = true;
+        setStatus(els.watchStatus,
+                  "Watching " + path + " every "
+                  + (WATCH_INTERVAL_MS / 1000) + " s...", "muted");
+        // First tick immediately so the user doesn't wait WATCH_INTERVAL_MS
+        // before seeing any feedback.
+        watchTick();
+        state.watchTimer = setInterval(watchTick, WATCH_INTERVAL_MS);
+    }
+
+    function stopWatch(reason) {
+        if (state.watchTimer) clearInterval(state.watchTimer);
+        state.watchTimer       = null;
+        state.watchPath        = null;
+        state.watchErrors      = 0;
+        els.watchBtn.disabled     = false;
+        els.watchStopBtn.disabled = true;
+        els.watchPath.disabled    = false;
+        if (reason) {
+            setStatus(els.watchStatus, reason,
+                      reason.startsWith("Run complete") ? "ok" : "muted");
+        }
+    }
+
+    async function watchTick() {
+        if (!state.watchPath) return;
+        let r;
+        try {
+            r = await fetch("/api/spectra/load", {
+                method:  "POST",
+                headers: { "Content-Type": "application/json" },
+                body:    JSON.stringify({ path: state.watchPath }),
+            });
+        } catch (exc) {
+            state.watchErrors++;
+            setStatus(els.watchStatus,
+                      "Network error (" + state.watchErrors + "/"
+                      + WATCH_MAX_ERRORS + "): " + exc.message, "error");
+            if (state.watchErrors >= WATCH_MAX_ERRORS) {
+                stopWatch("Stopped after " + WATCH_MAX_ERRORS
+                          + " consecutive network errors.");
+            }
+            return;
+        }
+        const body = await r.json();
+        if (!body.ok) {
+            // 404 (file not yet written) is the COMMON case during
+            // the equilibrium SCF -- treat it as "still warming up",
+            // not as a hard error.  Other kinds (malformed,
+            // schema_mismatch, field) stop the watcher.
+            if (body.kind === "not_found") {
+                setStatus(els.watchStatus,
+                          "Waiting for first checkpoint (equilibrium "
+                          + "SCF still running)...", "muted");
+                return;
+            }
+            stopWatch("Stopped: " + (body.error || "load failed"));
+            return;
+        }
+        state.watchErrors = 0;
+        // Render whatever phases are populated so far.
+        renderResults(body.results);
+        updatePhaseIndicator(body.results);
+        // Auto-stop when all configured phases are done.
+        if (allPhasesComplete(body.results)) {
+            stopWatch("Run complete ✓  ("
+                      + (body.results.modes || []).length
+                      + " modes; "
+                      + (body.results.config && body.results.config.compute_raman
+                         ? "Raman ✓ " : "")
+                      + (body.results.config
+                         && body.results.config.es_mode_selection
+                         && body.results.config.es_mode_selection !== "none"
+                         ? "ES ✓ " : "")
+                      + ")");
+        } else {
+            setStatus(els.watchStatus, _watchProgressLine(body.results), "muted");
+        }
+    }
+
+    function _watchProgressLine(results) {
+        // One-line summary of where the run is RIGHT NOW so the
+        // user knows what to expect.
+        const f = results.phase_frequencies;
+        const r = results.phase_raman;
+        const e = results.phase_es;
+        if (f !== "complete") return "Phase: harmonic Hessian (L2)";
+        if (results.config && results.config.compute_raman && r !== "complete")
+            return "Phase: Raman activities (L3)";
+        const sel = results.config && results.config.es_mode_selection;
+        if (sel && sel !== "none" && e !== "complete") {
+            const haveES = (results.modes || [])
+                .filter(m => m.electronic_structure).length;
+            const planned = (results.selected_mode_idxs_1based || []).length;
+            const planTxt = planned ? (" (" + haveES + "/" + planned + " modes)")
+                                    : "";
+            return "Phase: per-mode electronic structure (L4)" + planTxt;
+        }
+        return "Phase: still running";
+    }
+
+    function allPhasesComplete(results) {
+        // A run is "complete" when every phase the CONFIG asked for
+        // is complete.  L2 (frequencies) is always required.
+        if (results.phase_frequencies !== "complete") return false;
+        const cfg = results.config || {};
+        if (cfg.compute_raman && results.phase_raman !== "complete") return false;
+        if (cfg.es_mode_selection && cfg.es_mode_selection !== "none"
+            && results.phase_es !== "complete") return false;
+        return true;
+    }
+
+    function updatePhaseIndicator(results) {
+        if (!els.phaseIndicator) return;
+        els.phaseIndicator.hidden = false;
+        const dots = els.phaseIndicator.querySelectorAll(".phase-dot");
+        dots.forEach(dot => {
+            const ph = dot.dataset.phase;            // "frequencies"|"raman"|"es"
+            const v  = results["phase_" + ph] || "empty";
+            dot.className = "phase-dot phase-" + v;
+            dot.title = ph + ": " + v;
+        });
     }
 
     function renderResults(results) {
@@ -1087,6 +1306,13 @@
         els.esModeFreq        = $("es-mode-freq");
         els.esBarDiagram      = $("es-bar-diagram");
         els.esSummary         = $("es-summary");
+        // Load-by-path + live-watch.
+        els.watchPath         = $("watch-path");
+        els.loadPathBtn       = $("load-path-btn");
+        els.watchBtn          = $("watch-btn");
+        els.watchStopBtn      = $("watch-stop-btn");
+        els.watchStatus       = $("watch-status");
+        els.phaseIndicator    = $("phase-indicator");
 
         els.xyzLoadBtn.addEventListener("click", loadXyzFile);
         els.generateBtn.addEventListener("click", generateScript);
@@ -1094,6 +1320,9 @@
         els.downloadBtn.addEventListener("click", downloadScript);
         els.copyBtn.addEventListener("click", copyScript);
         els.loadResultsBtn.addEventListener("click", loadResults);
+        els.loadPathBtn.addEventListener("click", loadByPath);
+        els.watchBtn.addEventListener("click", startWatch);
+        els.watchStopBtn.addEventListener("click", () => stopWatch("Stopped."));
 
         // Mode-table interactions.
         els.modesTheadRow.addEventListener("click", onTableHeaderClick);

@@ -130,19 +130,73 @@
            aria-label="Generated spectra.py preview"></pre>
     </div>
 
-    <!-- ── Load existing results ────────────────── -->
+    <!-- ── Load / Watch results ─────────────────── -->
     <div class="card-section">
       <header class="section-header">
-        <h2>Load existing results</h2>
+        <h2>Results from a run</h2>
+        <p class="section-hint">
+          The primary path is to type the full server-side path
+          to <code>&lt;job&gt;.spectra.json</code> below.  "Watch"
+          polls every 2&nbsp;s and auto-stops when all configured
+          phases finish.  Browser file-upload is also offered as
+          a fallback for runs on a different machine.
+        </p>
       </header>
+
+      <!-- Primary: load (or watch) by server-side path.  This
+           is what most users want -- molbuilder typically runs
+           on the same machine as the spectra.py job, so reading
+           the file directly is faster + keeps the user from
+           re-uploading after every phase write. -->
+      <label class="field-block" for="watch-path">
+        <span class="field-label">Path on this server</span>
+        <input id="watch-path" type="text"
+               placeholder="/abs/path/to/job.spectra.json">
+      </label>
       <div class="inline-row">
-        <input id="results-file" type="file"
-               accept=".json,application/json">
-        <button id="load-results-btn" type="button">
-          Load <code>.spectra.json</code>
-        </button>
-        <span id="results-status" class="status"></span>
+        <button id="load-path-btn"  type="button">Load once</button>
+        <button id="watch-btn"      type="button">Start watching</button>
+        <button id="watch-stop-btn" type="button" disabled>Stop</button>
+        <span id="watch-status" class="status"></span>
       </div>
+
+      <!-- Phase-progress chips: three dots that fill in as L2 / L3 /
+           L4 land.  Hidden until first load / watch tick. -->
+      <div id="phase-indicator" class="phase-indicator" hidden
+           aria-label="Run-phase progress">
+        <span class="phase">
+          <span class="phase-label">Frequencies</span>
+          <span class="phase-dot" data-phase="frequencies"></span>
+        </span>
+        <span class="phase">
+          <span class="phase-label">Raman</span>
+          <span class="phase-dot" data-phase="raman"></span>
+        </span>
+        <span class="phase">
+          <span class="phase-label">Per-mode ES</span>
+          <span class="phase-dot" data-phase="es"></span>
+        </span>
+      </div>
+
+      <!-- Fallback: browser file upload.  Use when the JSON lives
+           on a different machine than molbuilder. -->
+      <details class="upload-fallback">
+        <summary>&hellip; or upload a file from your computer</summary>
+        <p class="hint">
+          Use this when the <code>.spectra.json</code> is on a
+          different machine than the molbuilder server.  The
+          browser sends only the file's bytes; the server-side
+          path isn't accessible (browser security).
+        </p>
+        <div class="inline-row">
+          <input id="results-file" type="file"
+                 accept=".json,application/json">
+          <button id="load-results-btn" type="button">
+            Upload <code>.spectra.json</code>
+          </button>
+          <span id="results-status" class="status"></span>
+        </div>
+      </details>
     </div>
 
     <!-- ── Results panel (only visible after load) ── -->

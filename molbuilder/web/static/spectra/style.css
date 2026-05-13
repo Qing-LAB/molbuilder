@@ -459,3 +459,72 @@ button > code {
 .is-locked input, .is-locked select, .is-locked textarea {
     pointer-events: none;
 }
+
+/* ---- Live-watch phase indicator ----
+ *
+ * Three chips that visualize the per-phase state (empty / running /
+ * complete) of the loaded or watched spectra.json.  The dot colour
+ * mirrors the PHASE_* string in molbuilder.spectra.results so the
+ * UI never disagrees with the backend's notion of "what's done". */
+.phase-indicator {
+    display: flex;
+    gap: 1.2rem;
+    flex-wrap: wrap;
+    margin: 0.6rem 0;
+    padding: 0.5rem 0.7rem;
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    background: var(--bg-input);
+    font-size: 0.85rem;
+}
+.phase {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: var(--text-secondary);
+}
+.phase-label { user-select: none; }
+.phase-dot {
+    display: inline-block;
+    width: 0.85em;
+    height: 0.85em;
+    border-radius: 50%;
+    background: var(--bg-card);
+    border: 1px solid var(--border-strong);
+    box-shadow: inset 0 0 0 2px var(--bg-input);
+}
+.phase-dot.phase-running {
+    background: #ffd454;
+    border-color: #ffd454;
+    box-shadow: inset 0 0 0 2px var(--bg-input);
+    animation: phase-pulse 1.4s ease-in-out infinite;
+}
+.phase-dot.phase-complete {
+    background: #6fcf6f;
+    border-color: #6fcf6f;
+    box-shadow: inset 0 0 0 2px var(--bg-input);
+}
+@keyframes phase-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.45; }
+}
+
+/* The upload-fallback <details> sits below the path-based primary
+ * input; collapsed by default so the path-mode is the obvious one. */
+.upload-fallback {
+    margin-top: 0.8rem;
+    padding: 0.55rem 0.75rem;
+    border: 1px dashed var(--border-soft);
+    border-radius: 6px;
+}
+.upload-fallback summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    user-select: none;
+}
+.upload-fallback p.hint {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    margin: 0.4rem 0;
+}
