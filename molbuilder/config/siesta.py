@@ -210,10 +210,15 @@ class SiestaConfig:
     })
     max_scf_iter: int = field(default=500, metadata={
         "section": "SCF",
-        "label": "MaxSCFIterations",
+        "label": "MaxSCFIterations (SCF cycles per geometry step)",
         "range": (10, 5000),
         "tier":  "advanced",
-        "help":  "max SCF iterations per geometry step",
+        "help":  "INNER loop: max self-consistency cycles SIESTA "
+                 "runs inside each geometry step.  A geometry "
+                 "optimisation runs at most relax_steps OUTER steps, "
+                 "and each outer step runs at most max_scf_iter inner "
+                 "SCF cycles (until DM.Tolerance is met).  500 is "
+                 "generous; bump higher if SCF is oscillating.",
     })
     electronic_temperature: float = field(default=300.0, metadata={
         "section": "SCF",
@@ -255,10 +260,18 @@ class SiestaConfig:
     })
     relax_steps: int = field(default=200, metadata={
         "section": "Relaxation",
-        "label": "MD step count",
+        "label": "MD.Num*Steps (max geometry-optimisation steps)",
         "range": (1, 10000),
         "tier":  "advanced",
-        "help":  "max relaxation steps (CG/Broyden/FIRE) or MD time steps (Verlet/Nose)",
+        "help":  "OUTER loop: max geometry steps the optimiser is "
+                 "allowed (each step runs a full SCF and computes "
+                 "forces, then moves atoms).  Maps to the SIESTA "
+                 "keyword that matches relax_type: "
+                 "MD.NumCGsteps for CG, MD.NumBroydenSteps for "
+                 "Broyden, MD.NumFIRESteps for FIRE, "
+                 "MD.FinalTimeStep for Verlet/Nose dynamics.  "
+                 "Tight final stages need MORE steps (small "
+                 "displacement cap = slow descent), not fewer.",
     })
     relax_force_tol: float = field(default=0.02, metadata={
         "section": "Relaxation",

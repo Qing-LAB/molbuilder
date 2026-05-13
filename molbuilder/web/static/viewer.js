@@ -1039,7 +1039,14 @@
             "p-mixing-weight":       0.01,
             "p-dm-tolerance":        1e-5,
             "p-dm-energy-tolerance": 1e-5,
-            "p-relax-steps":         30,
+            // 150 outer geometry steps for the final tight stage.
+            // Earlier value (30) was BACKWARDS for a tight stage:
+            // tight = small displacement cap (0.05 Å) + strict
+            // force tolerance (0.01 eV/Å) means each step covers
+            // ~4× less ground AND we're chasing a 4× smaller
+            // residual force.  30 steps would converge only if
+            // the previous stage already left us very close.
+            "p-relax-steps":         150,
             "p-force-tol":           0.01,
             "p-max-displ":           0.05,
         },
