@@ -2150,6 +2150,80 @@ class TestPySCFEnginePreflight:
         issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
         assert not any("spurious" in i.message for i in issues)
 
+    # ----- Scientific caveat banners -----
+
+    def test_top_n_selector_emits_raman_vs_epc_caveat(self):
+        """When user picks top_n / threshold, surface the Galperin
+        caveat -- Raman brightness != EPC strength."""
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        # Need a prior with phase_raman=complete so the soft-dep
+        # check doesn't drown out our advisory.
+        prior = _make_results(complete=True)
+        for sel in ("top_n", "threshold"):
+            cfg = SpectraConfig(es_mode_selection=sel)
+            issues = PySCFSpectraEngine.preflight(_struct_water(),
+                                                  cfg, prior=prior)
+            warns = [i for i in issues
+                     if i.where == "config.es_mode_selection"
+                     and i.severity == "warn"
+                     and "electron-phonon" in i.message]
+            assert len(warns) == 1, (sel, [i.message for i in issues])
+            assert "Galperin2007" in warns[0].message
+
+    def test_skip_selector_no_caveat(self):
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig(es_mode_selection="skip")
+        issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
+        assert not any("electron-phonon" in i.message for i in issues)
+
+    def test_explicit_with_empty_list_warns(self):
+        """selector=explicit + empty indices = run that produces
+        no orbital-energy data.  Warn so the user doesn't burn the
+        run discovering this."""
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig(es_mode_selection="explicit",
+                            es_explicit_indices=[])
+        issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
+        warns = [i for i in issues
+                 if i.where == "config.es_explicit_indices"
+                 and i.severity == "warn"
+                 and "no mode indices" in i.message]
+        assert len(warns) == 1
+
+    def test_explicit_with_indices_no_warn(self):
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig(es_mode_selection="explicit",
+                            es_explicit_indices=[1, 2])
+        issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
+        assert not any("no mode indices" in i.message for i in issues)
+
+    def test_large_system_suggests_freezing(self):
+        """For >30 free atoms with nothing fixed, suggest freezing
+        the metal slab / anchor to cut Hessian + Raman FD cost."""
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        from molbuilder.structure import Structure
+        # 40-atom toy system, all hydrogen so SCF wouldn't matter
+        # if this ever ran.  Geometry's irrelevant for the advisory.
+        struct = Structure(
+            elements  = ["H"] * 40,
+            positions = np.array([[i * 1.0, 0.0, 0.0] for i in range(40)]),
+        )
+        cfg = SpectraConfig()  # no atoms fixed
+        issues = PySCFSpectraEngine.preflight(struct, cfg)
+        warns = [i for i in issues
+                 if i.where == "config.fixed_indices"
+                 and i.severity == "warn"
+                 and "metal slab" in i.message]
+        assert len(warns) == 1
+
+    def test_small_system_no_freezing_suggestion(self):
+        """Water (3 atoms) shouldn't trigger the large-system
+        warning."""
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig()
+        issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
+        assert not any("metal slab" in i.message for i in issues)
+
     def test_unsupported_method_errors(self):
         from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
         cfg = SpectraConfig()

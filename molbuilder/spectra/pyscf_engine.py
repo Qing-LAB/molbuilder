@@ -250,6 +250,95 @@ class PySCFSpectraEngine:
                          f"(open-shell Hartree-Fock)."),
                 where="config.method",
             ))
+        # Selector-by-Raman scientific caveat.  top_n / threshold
+        # rank vibrational modes by Raman activity, but Raman
+        # brightness is NOT the same as electron-phonon coupling
+        # strength.  Transport-critical modes can be Raman-weak and
+        # would be silently dropped.  This is a SCIENTIFIC caveat
+        # (the user picked a valid option) -- warn, don't error.
+        if cfg.es_mode_selection in ("top_n", "threshold"):
+            issues.append(Issue(
+                severity="warn",
+                message=(
+                    f"Mode selection \"{cfg.es_mode_selection}\" ranks "
+                    f"vibrational modes by Raman activity, but Raman "
+                    f"brightness is NOT the same as electron-phonon "
+                    f"coupling strength.  A mode that's important for "
+                    f"transport (or any IETS/inelastic application) "
+                    f"can be Raman-weak and would be silently skipped "
+                    f"by this selector.  For transport-preparation "
+                    f"runs, look at the spectrum first with mode "
+                    f"selection = \"skip\", then re-run with "
+                    f"\"explicit\" listing the modes you care about, "
+                    f"or use \"all\" if cost allows.  Cf. "
+                    f"[Galperin2007]."
+                ),
+                where="config.es_mode_selection",
+            ))
+
+        # Empty explicit list: the run will produce no orbital-energy
+        # data even though the user asked for it.  Warn so they don't
+        # waste wall time discovering this after the run.
+        if (cfg.es_mode_selection == "explicit"
+                and not cfg.es_explicit_indices):
+            issues.append(Issue(
+                severity="warn",
+                message=(
+                    "Mode selection is set to \"explicit\" but no "
+                    "mode indices were entered.  No per-mode "
+                    "orbital-energy data will be computed.  Either "
+                    "add at least one mode index, or switch the "
+                    "selector to \"skip\", \"all\", \"top_n\", or "
+                    "\"threshold\"."
+                ),
+                where="config.es_explicit_indices",
+            ))
+
+        # Large-system cost advisory.  The Hessian cost scales like
+        # N_free² and the Raman finite-difference step adds 6·N_free
+        # SCFs.  For ~30+ free atoms this can dominate the run; if
+        # the user has metal-slab-or-similar anchors they should
+        # consider freezing them.
+        try:
+            n_atoms = (struct.n_atoms
+                       if hasattr(struct, "n_atoms")
+                       else len(struct.elements))
+        except Exception:
+            n_atoms = None
+        if n_atoms is not None:
+            # Conservative n_free estimate: total - explicit-index
+            # fixes - element-match fixes.  Doesn't account for
+            # overlap; the over-estimate of fixed atoms is fine
+            # here (we'd under-warn rather than spam).
+            n_fix_idx = len(cfg.fixed_indices)
+            try:
+                n_fix_elem = sum(
+                    1 for el in struct.elements
+                    if el in cfg.fixed_elements
+                )
+            except Exception:
+                n_fix_elem = 0
+            n_free_estimate = max(0, n_atoms - n_fix_idx - n_fix_elem)
+            if (n_free_estimate > 30
+                    and not cfg.fixed_elements
+                    and not cfg.fixed_indices):
+                issues.append(Issue(
+                    severity="warn",
+                    message=(
+                        f"This structure has {n_atoms} atoms, none "
+                        f"of them fixed -- the Hessian cost grows "
+                        f"~N² and the Raman finite-difference step "
+                        f"adds 6·N more SCFs.  If part of the system "
+                        f"is a metal slab, surface, or other anchor "
+                        f"you don't actually need to vibrate, freeze "
+                        f"it via \"Fixed by element\" or \"Fixed by "
+                        f"atom index\" -- the cost saving is "
+                        f"typically large.  Ignore this if the whole "
+                        f"system needs to vibrate."
+                    ),
+                    where="config.fixed_indices",
+                ))
+
         # Partial-Hessian projection advisory.  When SOME atoms are
         # fixed but FEWER THAN 3 (or 3+ but they're collinear), the
         # partial-Hessian path can't fully anchor the system in
