@@ -862,8 +862,8 @@ class TestSpectraConfigSchema:
                                            # freq_max_cm1, n_homo_below,
                                            # n_lumo_above
             ("SCF",                  3),   # conv_tol, max_cycle, grid_level
-            ("Runtime",              4),   # max_memory_mb, threads, verbose,
-                                           # verbose_comments
+            ("Runtime",              5),   # max_memory_mb, threads,
+                                           # use_gpu, verbose, verbose_comments
         ]
         got = [(s["name"], len(s["fields"])) for s in sch["sections"]]
         assert got == expected, got
@@ -2002,6 +2002,40 @@ class TestPySCFEnginePreflight:
                    and i.severity == "warn"
                    and "implemented" in i.message for i in issues)
 
+    def test_use_gpu_warns_when_gpu4pyscf_missing(self):
+        """Asking for GPU acceleration on a host where gpu4pyscf
+        isn't installed shouldn't be a hard error -- the generated
+        script will still fall back to CPU -- but the user should
+        know up front so they can install it or correct the toggle."""
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        import sys
+        # Make sure gpu4pyscf is NOT importable in this test process.
+        # (It isn't installed in the test env; this assertion docs
+        # that and also protects future test envs that might add it.)
+        if "gpu4pyscf" in sys.modules:
+            pytest.skip("gpu4pyscf is installed here; test is for "
+                        "the missing-package path only")
+        cfg = SpectraConfig(use_gpu=True)
+        issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
+        warns = [i for i in issues
+                 if i.severity == "warn" and i.where == "config.use_gpu"]
+        assert len(warns) == 1
+        # Message names the package + the install command.
+        assert "gpu4pyscf" in warns[0].message
+        assert "pip install" in warns[0].message
+        # And explicitly mentions the CPU fallback so the user knows
+        # this is non-fatal.
+        assert "fall" in warns[0].message.lower() \
+            or "cpu" in warns[0].message.lower()
+
+    def test_use_gpu_off_no_warn(self):
+        """When the user leaves GPU off, the GPU advisory shouldn't
+        fire even if gpu4pyscf isn't installed."""
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig(use_gpu=False)
+        issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
+        assert not any(i.where == "config.use_gpu" for i in issues)
+
     def test_unsupported_method_errors(self):
         from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
         cfg = SpectraConfig()
@@ -2537,6 +2571,84 @@ class TestPySCFScriptSchemaVersionInterpolated:
         assert f"MOLBUILDER_VERSION = {__version__!r}" in script
         # Negative: the old placeholder is gone.
         assert "'spectra-v1'" not in script
+
+
+class TestPySCFScriptGPU:
+    """The emitted script's GPU code path: USE_GPU constant in the
+    constants block, a try/except gpu4pyscf import that falls back
+    to CPU PySCF on failure, and the SCF construction uses _dft /
+    _scf pointers that get rebound to gpu4pyscf when the import
+    succeeds."""
+
+    def test_use_gpu_false_emits_constant_and_setup_block(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water_real(),
+                                       SpectraConfig(use_gpu=False))
+        # Constant present.
+        assert "USE_GPU                    = False" in script
+        # GPU setup block always emitted (its body just runs the
+        # CPU fallback when USE_GPU=False).
+        assert "GPU acceleration (optional, NVIDIA via gpu4pyscf)" in script
+        assert "_USING_GPU = False" in script
+        # Script must still compile.
+        compile(script, "<no-gpu>", "exec")
+
+    def test_use_gpu_true_emits_constant_and_setup_block(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water_real(),
+                                       SpectraConfig(use_gpu=True))
+        # Constant present + True.
+        assert "USE_GPU                    = True" in script
+        # gpu4pyscf import is in the setup block, guarded by try.
+        assert "from gpu4pyscf import dft as _gpu_dft" in script
+        assert "from gpu4pyscf import scf as _gpu_scf" in script
+        # And the fallback message is in there too -- so the user
+        # who runs the script on a non-GPU node knows what happened.
+        assert "Falling back to CPU PySCF" in script
+        # Compiles.
+        compile(script, "<gpu-on>", "exec")
+
+    def test_scf_construction_uses_indirect_pointers(self):
+        """The equilibrium SCF and _build_mf_at use _dft / _scf
+        instead of hardcoded pyscf.dft / pyscf.scf so the GPU
+        rebind takes effect for both paths.  Regression: earlier
+        the code said `dft.RKS(mol)` which would have ignored the
+        gpu4pyscf bind even with USE_GPU=True."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        cfg = SpectraConfig(
+            use_gpu=True,
+            compute_raman=True,             # exercises _build_mf_at
+            es_mode_selection="explicit",   # exercises L4 _build_mf_at calls
+            es_explicit_indices=[1],
+        )
+        script = render_spectra_script(_struct_water_real(), cfg)
+        # Equilibrium SCF + displaced SCFs use the indirect pointer.
+        assert "_dft.RKS(mol)" in script  # method=RKS (default)
+        assert "_dft_mod.RKS" in script   # inside _build_mf_at
+        # The hardcoded names must NOT appear in the SCF-construction
+        # call sites (only in the GPU setup's fallback assignment).
+        # We do allow "_dft = dft" once -- the CPU default-bind.
+        assert script.count("dft.RKS(mol)") == 1, (
+            "expected exactly one dft.RKS reference (the "
+            "equilibrium SCF call, via _dft); got "
+            f"{script.count('dft.RKS(mol)')}"
+        )
+
+    def test_raman_block_forces_cpu_even_with_gpu_on(self):
+        """gpu4pyscf doesn't yet expose analytic CPHF polarizability,
+        so the Raman finite-difference path must build CPU mf
+        objects even when USE_GPU=True.  Pinning: the polarizability
+        FD calls pass force_cpu=True."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        cfg = SpectraConfig(use_gpu=True, compute_raman=True,
+                            es_mode_selection="skip")
+        script = render_spectra_script(_struct_water_real(), cfg)
+        # The Raman block's three _build_mf_at call sites all pass
+        # force_cpu=True (one for the equilibrium polarizability,
+        # two for the ±FD displacements).  Match the closing-paren
+        # form so we don't count the docstring's explanation of
+        # the keyword as a fourth occurrence.
+        assert script.count("force_cpu=True)") == 3
 
 
 class TestPySCFScriptL4OutOfRangeGuard:

@@ -250,6 +250,30 @@ class PySCFSpectraEngine:
                          f"(open-shell Hartree-Fock)."),
                 where="config.method",
             ))
+        # GPU advisory: if the user asked for GPU acceleration, see
+        # whether gpu4pyscf is importable on the molbuilder host.
+        # The generated script is robust to a missing gpu4pyscf
+        # (CPU fallback), but checking here gives the user
+        # actionable warning at click-time rather than at run-time.
+        if cfg.use_gpu:
+            try:
+                import gpu4pyscf  # noqa: F401
+            except ImportError:
+                issues.append(Issue(
+                    severity="warn",
+                    message=(
+                        "GPU acceleration requested, but gpu4pyscf "
+                        "is not installed on this server.  The "
+                        "generated script will still work -- it "
+                        "falls back to CPU PySCF at runtime if "
+                        "gpu4pyscf isn't on the node that runs it.  "
+                        "Install with:  pip install "
+                        "gpu4pyscf-cuda12x (or cuda11x for older "
+                        "drivers).  Requires an NVIDIA GPU."
+                    ),
+                    where="config.use_gpu",
+                ))
+
         # compute_ir is a placeholder for a future release; warn
         # politely if the user toggled it on so they know nothing
         # will come of it yet.

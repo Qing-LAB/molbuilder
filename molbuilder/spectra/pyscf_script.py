@@ -108,6 +108,7 @@ def render_spectra_script(struct: Structure, cfg: SpectraConfig) -> str:
         methods_md=methods_md,
         bibliography_keys=bibliography_keys,
     )
+    lines += _emit_gpu_setup(cfg)
     lines += _emit_atomic_writer()
     lines += _emit_build_mol(struct, cfg)
     lines += _emit_frozen_mask()
@@ -209,6 +210,55 @@ def _emit_imports(cfg: SpectraConfig) -> List[str]:
     return out
 
 
+def _emit_gpu_setup(cfg: SpectraConfig) -> List[str]:
+    """GPU acceleration via gpu4pyscf (optional).
+
+    The emitted block runs AFTER the constants block (which defines
+    USE_GPU).  It binds two module-level names -- ``_dft`` and ``_scf``
+    -- to either the gpu4pyscf modules (if USE_GPU=True AND the
+    package is importable on the run node) or the stock PySCF
+    modules.  Downstream SCF construction always uses ``_dft.RKS`` /
+    ``_scf.RHF`` etc.; that way the same SCF code runs on CPU or
+    GPU without per-call branching.
+
+    The Raman polarizability step deliberately keeps using CPU
+    PySCF because gpu4pyscf doesn't yet expose analytic CPHF
+    polarizability; the Raman block builds its own CPU mf objects.
+    """
+    is_dft = cfg.method.upper() in ("RKS", "UKS")
+    out: List[str] = []
+    out.append("# ============================================================")
+    out.append("#  GPU acceleration (optional, NVIDIA via gpu4pyscf)")
+    out.append("# ============================================================")
+    out.append("# Defaults: CPU PySCF.  Patched to gpu4pyscf below if")
+    out.append("# USE_GPU is True and the package is importable on this")
+    out.append("# node.  Same script runs on CPU- or GPU-only nodes.")
+    if is_dft:
+        out.append("_dft = dft")
+    else:
+        out.append("_dft = None   # not used for HF methods")
+    out.append("_scf = scf")
+    out.append("_USING_GPU = False")
+    out.append("if USE_GPU:")
+    out.append("    try:")
+    if is_dft:
+        out.append("        from gpu4pyscf import dft as _gpu_dft")
+    out.append("        from gpu4pyscf import scf as _gpu_scf")
+    if is_dft:
+        out.append("        _dft = _gpu_dft")
+    out.append("        _scf = _gpu_scf")
+    out.append("        _USING_GPU = True")
+    out.append("        print('GPU acceleration ON (gpu4pyscf).')")
+    out.append("    except ImportError as _gpu_exc:")
+    out.append("        print('USE_GPU=True but gpu4pyscf is not "
+               "installed on this node:')")
+    out.append("        print(f'  {_gpu_exc}')")
+    out.append("        print('Falling back to CPU PySCF.  Install "
+               "with:  pip install gpu4pyscf-cuda12x')")
+    out.append("")
+    return out
+
+
 # --------------------------------------------------------------------- #
 # Constants + bibliography                                              #
 # --------------------------------------------------------------------- #
@@ -254,6 +304,9 @@ def _emit_constants(struct: Structure,
     out.append(f"GRID_LEVEL                 = {int(cfg.grid_level)!r}")
     out.append(f"MAX_MEMORY_MB              = {int(cfg.max_memory_mb)!r}")
     out.append(f"VERBOSE                    = {int(cfg.verbose)!r}")
+    out.append(f"USE_GPU                    = {bool(cfg.use_gpu)!r}  "
+               f"# try gpu4pyscf at runtime; fall back to CPU if it "
+               f"isn't installed")
     out.append("")
     out.append("# Frozen-atom mask (UNION of element + residue + explicit).")
     out.append("# The runtime block computes the final FREE_ATOM_IDXS from")
@@ -544,13 +597,16 @@ def _emit_equilibrium_scf(cfg: SpectraConfig) -> List[str]:
     out.append("# ============================================================")
     out.append("print('=== Stage: equilibrium SCF ===')")
     if method.endswith("KS"):
-        out.append(f"mf = dft.{scf_class}(mol)")
+        # _dft is gpu4pyscf.dft when USE_GPU AND the import succeeded;
+        # plain pyscf.dft otherwise.  Same RKS / UKS class names in
+        # both, so the rest of the SCF setup is identical.
+        out.append(f"mf = _dft.{scf_class}(mol)")
         out.append("mf.xc = FUNCTIONAL")
         out.append("if DISPERSION and DISPERSION.lower() != 'none':")
         out.append("    mf.disp = DISPERSION")
         out.append("mf.grids.level = GRID_LEVEL")
     else:
-        out.append(f"mf = scf.{scf_class}(mol)")
+        out.append(f"mf = _scf.{scf_class}(mol)")
     out.append("if DENSITY_FIT:")
     out.append("    mf = mf.density_fit()")
     out.append("mf.conv_tol  = SCF_CONV_TOL")
@@ -720,28 +776,39 @@ def _emit_displaced_scf_helpers(cfg: SpectraConfig) -> List[str]:
     out.append("# displacement (L4).")
     out.append("COORDS_EQ_ANG = np.asarray([[a[1], a[2], a[3]] for a in ATOMS])")
     out.append("")
-    out.append("def _build_mf_at(coords, *, density_fit=None):")
+    out.append("def _build_mf_at(coords, *, density_fit=None, force_cpu=False):")
     out.append("    '''Re-build mol at new coords + reconverge SCF.")
     out.append("")
     out.append("    density_fit=None  -> follow the global DENSITY_FIT flag.")
     out.append("    density_fit=False -> force the non-DF code path (the")
     out.append("                         polarizability CPHF in pyscf-properties")
     out.append("                         doesn't have a DF implementation yet, so")
-    out.append("                         the Raman FD calls force this).")
-    out.append("    density_fit=True  -> force DF on regardless of global.'''")
+    out.append("                         the Raman finite-difference calls force this).")
+    out.append("    density_fit=True  -> force DF on regardless of global.")
+    out.append("    force_cpu=True    -> use stock PySCF even when _USING_GPU is True.")
+    out.append("                         The Raman polarizability path needs this")
+    out.append("                         because gpu4pyscf doesn't yet expose")
+    out.append("                         analytic CPHF polarizability.'''")
     out.append("    _mol_new = mol.copy()")
     out.append("    _mol_new.atom = [[ELEMENTS[_i], tuple(coords[_i])]")
     out.append("                     for _i in range(N_ATOMS)]")
     out.append("    _mol_new.unit = 'Angstrom'")
     out.append("    _mol_new.build()")
+    out.append("    # Pick the right dft / scf module for this call.  _dft / _scf")
+    out.append("    # are gpu4pyscf when _USING_GPU else stock pyscf; force_cpu")
+    out.append("    # overrides to stock pyscf regardless.")
+    out.append("    _dft_mod = dft if force_cpu else _dft")
+    out.append("    _scf_mod = scf if force_cpu else _scf")
     out.append("    if METHOD.upper() in ('RKS', 'UKS'):")
-    out.append("        _mf2 = (dft.RKS if METHOD.upper() == 'RKS' else dft.UKS)(_mol_new)")
+    out.append("        _cls = _dft_mod.RKS if METHOD.upper() == 'RKS' else _dft_mod.UKS")
+    out.append("        _mf2 = _cls(_mol_new)")
     out.append("        _mf2.xc = FUNCTIONAL")
     out.append("        if DISPERSION and DISPERSION.lower() != 'none':")
     out.append("            _mf2.disp = DISPERSION")
     out.append("        _mf2.grids.level = GRID_LEVEL")
     out.append("    else:")
-    out.append("        _mf2 = (scf.RHF if METHOD.upper() == 'RHF' else scf.UHF)(_mol_new)")
+    out.append("        _cls = _scf_mod.RHF if METHOD.upper() == 'RHF' else _scf_mod.UHF")
+    out.append("        _mf2 = _cls(_mol_new)")
     out.append("    _use_df = DENSITY_FIT if density_fit is None else density_fit")
     out.append("    if _use_df:")
     out.append("        _mf2 = _mf2.density_fit()")
@@ -816,7 +883,12 @@ def _emit_raman_block(cfg: SpectraConfig) -> List[str]:
     out.append("# Build a non-DF mf at the equilibrium geometry for the")
     out.append("# polarizability calculations.  See module-docstring note re:")
     out.append("# DF + Polarizability incompatibility.")
-    out.append("_mf_nodf_eq = _build_mf_at(COORDS_EQ_ANG, density_fit=False)")
+    out.append("# Polarizability needs CPU (gpu4pyscf doesn't expose")
+    out.append("# analytic CPHF polarizability) AND non-DF (pyscf-properties")
+    out.append("# doesn't have a DF implementation).  These two flags are")
+    out.append("# orthogonal but both kick in for the Raman FD step only.")
+    out.append("_mf_nodf_eq = _build_mf_at(COORDS_EQ_ANG, density_fit=False,")
+    out.append("                           force_cpu=True)")
     out.append("alpha_eq = _polarizability(_mf_nodf_eq)")
     out.append("")
     out.append("# Build dα/dR_kα by central difference for each free-atom Cartesian.")
@@ -826,11 +898,13 @@ def _emit_raman_block(cfg: SpectraConfig) -> List[str]:
     out.append("        _mf_plus  = _build_mf_at(_displace(COORDS_EQ_ANG, ")
     out.append("                                          _atom_idx, _dir, ")
     out.append("                                          +RAMAN_FD_STEP_ANG),")
-    out.append("                                 density_fit=False)")
+    out.append("                                 density_fit=False,")
+    out.append("                                 force_cpu=True)")
     out.append("        _mf_minus = _build_mf_at(_displace(COORDS_EQ_ANG, ")
     out.append("                                           _atom_idx, _dir, ")
     out.append("                                           -RAMAN_FD_STEP_ANG),")
-    out.append("                                 density_fit=False)")
+    out.append("                                 density_fit=False,")
+    out.append("                                 force_cpu=True)")
     out.append("        _ap = _polarizability(_mf_plus)")
     out.append("        _am = _polarizability(_mf_minus)")
     out.append("        DALPHA_DR[_k_idx, _dir] = (_ap - _am) / (2 * RAMAN_FD_STEP_ANG)")

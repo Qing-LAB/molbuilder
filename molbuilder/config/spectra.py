@@ -423,6 +423,25 @@ class SpectraConfig:
                       "doesn't propagate the env, or to leave cores "
                       "free for other jobs.",
     })
+    use_gpu: bool = field(default=False, metadata={
+        "section": "Runtime",
+        "label":   "Use GPU (NVIDIA, via gpu4pyscf)",
+        "id_suffix": "use-gpu",
+        "tier":    "advanced",
+        "help":    "run the SCF and Hessian on an NVIDIA GPU via the "
+                   "gpu4pyscf extension (\"pip install "
+                   "gpu4pyscf-cuda12x\" on the machine that runs the "
+                   "script).  Speed-up is typically 10-50× over a "
+                   "16-core CPU for hybrid DFT.  The generated script "
+                   "tries gpu4pyscf at runtime and falls back to CPU "
+                   "PySCF automatically if it isn't installed, so "
+                   "leaving this on is safe even when the script may "
+                   "eventually run on a CPU-only node.  NVIDIA-only "
+                   "(AMD/Intel GPUs are not currently supported).  "
+                   "The Raman polarizability step stays on CPU "
+                   "regardless because gpu4pyscf doesn't yet expose "
+                   "analytic polarizability.",
+    })
     verbose: int = field(default=4, metadata={
         "section": "Runtime",
         "label":   "Log verbosity (verbose)",
