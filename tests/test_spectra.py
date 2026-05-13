@@ -2002,19 +2002,20 @@ class TestPySCFEnginePreflight:
                    and i.severity == "warn"
                    and "implemented" in i.message for i in issues)
 
-    def test_use_gpu_warns_when_gpu4pyscf_missing(self):
+    def test_use_gpu_warns_when_gpu4pyscf_missing(self, monkeypatch):
         """Asking for GPU acceleration on a host where gpu4pyscf
-        isn't installed shouldn't be a hard error -- the generated
-        script will still fall back to CPU -- but the user should
-        know up front so they can install it or correct the toggle."""
+        isn't installed should warn (not error) so the user has
+        time to install it before running the generated script,
+        but the generated script falls back to CPU anyway.
+
+        Simulates the missing-package state by setting
+        sys.modules['gpu4pyscf'] = None, the standard pytest trick
+        for forcing an ImportError on `import gpu4pyscf` regardless
+        of the installed environment.
+        """
         from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
         import sys
-        # Make sure gpu4pyscf is NOT importable in this test process.
-        # (It isn't installed in the test env; this assertion docs
-        # that and also protects future test envs that might add it.)
-        if "gpu4pyscf" in sys.modules:
-            pytest.skip("gpu4pyscf is installed here; test is for "
-                        "the missing-package path only")
+        monkeypatch.setitem(sys.modules, "gpu4pyscf", None)
         cfg = SpectraConfig(use_gpu=True)
         issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
         warns = [i for i in issues
@@ -2028,6 +2029,89 @@ class TestPySCFEnginePreflight:
         assert "fall" in warns[0].message.lower() \
             or "cpu" in warns[0].message.lower()
 
+    def test_use_gpu_no_warn_when_gpu4pyscf_and_modern_gpu(self, monkeypatch):
+        """When gpu4pyscf is importable AND the GPU is modern enough
+        (compute capability >= 7.0), no advisory should fire."""
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        import sys, types
+        # Inject a fake gpu4pyscf so the import succeeds.
+        monkeypatch.setitem(sys.modules, "gpu4pyscf",
+                            types.ModuleType("gpu4pyscf"))
+        # Inject a fake cupy that reports a modern GPU.
+        fake_cupy = types.ModuleType("cupy")
+        fake_cuda = types.ModuleType("cupy.cuda")
+        fake_runtime = types.ModuleType("cupy.cuda.runtime")
+        fake_runtime.getDeviceCount = lambda: 1
+        fake_runtime.getDeviceProperties = lambda i: {
+            "name": "Fake H100",   # modern card
+            "major": 9, "minor": 0,
+        }
+        fake_cuda.runtime = fake_runtime
+        fake_cupy.cuda = fake_cuda
+        monkeypatch.setitem(sys.modules, "cupy",         fake_cupy)
+        monkeypatch.setitem(sys.modules, "cupy.cuda",    fake_cuda)
+        monkeypatch.setitem(sys.modules, "cupy.cuda.runtime", fake_runtime)
+        cfg = SpectraConfig(use_gpu=True)
+        issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
+        gpu_warns = [i for i in issues if i.where == "config.use_gpu"]
+        assert gpu_warns == []
+
+    def test_use_gpu_warns_when_gpu_too_old(self, monkeypatch):
+        """Card has compute capability < 7.0 -- gpu4pyscf will fail
+        with cryptic CUDA errors during the SCF.  Warn before the
+        run, suggest disabling 'Use GPU'."""
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        import sys, types
+        monkeypatch.setitem(sys.modules, "gpu4pyscf",
+                            types.ModuleType("gpu4pyscf"))
+        fake_cupy = types.ModuleType("cupy")
+        fake_cuda = types.ModuleType("cupy.cuda")
+        fake_runtime = types.ModuleType("cupy.cuda.runtime")
+        fake_runtime.getDeviceCount = lambda: 1
+        fake_runtime.getDeviceProperties = lambda i: {
+            "name": "GTX 1080",   # Pascal, compute cap 6.1
+            "major": 6, "minor": 1,
+        }
+        fake_cuda.runtime = fake_runtime
+        fake_cupy.cuda = fake_cuda
+        monkeypatch.setitem(sys.modules, "cupy",              fake_cupy)
+        monkeypatch.setitem(sys.modules, "cupy.cuda",         fake_cuda)
+        monkeypatch.setitem(sys.modules, "cupy.cuda.runtime", fake_runtime)
+        cfg = SpectraConfig(use_gpu=True)
+        issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
+        gpu_warns = [i for i in issues
+                     if i.where == "config.use_gpu" and i.severity == "warn"]
+        assert len(gpu_warns) == 1
+        msg = gpu_warns[0].message
+        # Message names the actual card + compute capability the
+        # user can compare against the gpu4pyscf docs.
+        assert "GTX 1080" in msg
+        assert "6.1" in msg
+        # ... and the minimum requirement.
+        assert "7.0" in msg
+        # ... and the actionable "untick" suggestion.
+        assert "Use GPU" in msg
+
+    def test_use_gpu_warns_when_no_gpu(self, monkeypatch):
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        import sys, types
+        monkeypatch.setitem(sys.modules, "gpu4pyscf",
+                            types.ModuleType("gpu4pyscf"))
+        fake_cupy = types.ModuleType("cupy")
+        fake_cuda = types.ModuleType("cupy.cuda")
+        fake_runtime = types.ModuleType("cupy.cuda.runtime")
+        fake_runtime.getDeviceCount = lambda: 0
+        fake_cuda.runtime = fake_runtime
+        fake_cupy.cuda = fake_cuda
+        monkeypatch.setitem(sys.modules, "cupy",              fake_cupy)
+        monkeypatch.setitem(sys.modules, "cupy.cuda",         fake_cuda)
+        monkeypatch.setitem(sys.modules, "cupy.cuda.runtime", fake_runtime)
+        cfg = SpectraConfig(use_gpu=True)
+        issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
+        gpu_warns = [i for i in issues if i.where == "config.use_gpu"]
+        assert len(gpu_warns) == 1
+        assert "no NVIDIA GPU" in gpu_warns[0].message
+
     def test_use_gpu_off_no_warn(self):
         """When the user leaves GPU off, the GPU advisory shouldn't
         fire even if gpu4pyscf isn't installed."""
@@ -2035,6 +2119,36 @@ class TestPySCFEnginePreflight:
         cfg = SpectraConfig(use_gpu=False)
         issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
         assert not any(i.where == "config.use_gpu" for i in issues)
+
+    def test_few_fixed_atoms_warns_about_spurious_modes(self):
+        """Fixing 1 or 2 atoms can't fully anchor the free fragment
+        in space -- residual rigid-body motion leaks into the
+        vibrational analysis as near-zero modes.  Warn so the user
+        ignores those modes when interpreting the spectrum."""
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        for n in (1, 2):
+            cfg = SpectraConfig(fixed_indices=list(range(n)))
+            issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
+            warns = [i for i in issues
+                     if i.severity == "warn"
+                     and i.where == "config.fixed_indices"
+                     and "spurious" in i.message]
+            assert len(warns) == 1, (n, issues)
+
+    def test_three_or_more_fixed_atoms_no_spurious_warn(self):
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig(fixed_indices=[0, 1, 2])
+        issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
+        assert not any("spurious" in i.message for i in issues)
+
+    def test_element_freezing_doesnt_trigger_spurious_warn(self):
+        """Element-level freezing typically pins many atoms (a whole
+        metal slab); the spurious-modes warn shouldn't fire when the
+        user is freezing by element rather than by index."""
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        cfg = SpectraConfig(fixed_elements=["O"])
+        issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
+        assert not any("spurious" in i.message for i in issues)
 
     def test_unsupported_method_errors(self):
         from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
@@ -2055,10 +2169,16 @@ class TestPySCFEnginePreflight:
                    and i.severity == "error" for i in issues)
 
     def test_in_range_fixed_indices_ok(self):
+        """In-range fixed_indices should NOT produce a range-check
+        error.  (A separate test covers the WARN about spurious
+        rigid-body modes when fewer than 3 atoms are fixed.)"""
         from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
         cfg = SpectraConfig(fixed_indices=[0, 1])  # all valid for water
         issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
-        assert not any(i.where == "config.fixed_indices" for i in issues)
+        errors_from_indices = [i for i in issues
+                               if i.where == "config.fixed_indices"
+                               and i.severity == "error"]
+        assert errors_from_indices == []
 
     def test_selector_top_n_without_prior_l3_errors(self):
         """top_n / threshold selectors need a prior L3 run; the
@@ -2633,6 +2753,27 @@ class TestPySCFScriptGPU:
             "equilibrium SCF call, via _dft); got "
             f"{script.count('dft.RKS(mol)')}"
         )
+
+    def test_emitted_script_does_runtime_capability_check(self):
+        """The script must verify at runtime that the GPU is
+        modern enough to run gpu4pyscf, not just that gpu4pyscf
+        imports.  Pinning: the GPU setup block probes via cupy
+        and falls back to CPU when compute capability < 7."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water_real(),
+                                       SpectraConfig(use_gpu=True))
+        # Capability probe via cupy.
+        assert "import cupy as _cp" in script
+        assert "getDeviceCount" in script
+        assert "getDeviceProperties" in script
+        # Hard threshold: major >= 7.
+        assert "_maj < 7" in script
+        # Runtime exception path falls back to CPU with a clear
+        # message naming the actual GPU model + cap.
+        assert "Falling back to CPU PySCF" in script
+        # Two except branches: ImportError + RuntimeError.
+        assert "except ImportError" in script
+        assert "except Exception" in script
 
     def test_raman_block_forces_cpu_even_with_gpu_on(self):
         """gpu4pyscf doesn't yet expose analytic CPHF polarizability,

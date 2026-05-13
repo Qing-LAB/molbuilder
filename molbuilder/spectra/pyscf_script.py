@@ -239,22 +239,54 @@ def _emit_gpu_setup(cfg: SpectraConfig) -> List[str]:
         out.append("_dft = None   # not used for HF methods")
     out.append("_scf = scf")
     out.append("_USING_GPU = False")
+    # The runtime check has two layers:
+    # (1) ImportError if gpu4pyscf isn't installed.
+    # (2) RuntimeError if gpu4pyscf is installed but the local GPU
+    #     is missing / unusable / too old (cupy probe + compute-
+    #     capability >= 7).  This catches the "GPU is older than
+    #     gpu4pyscf supports" case that fails with cryptic CUDA
+    #     errors during the SCF, well after the import succeeded.
+    out.append("# Runtime GPU capability check.  gpu4pyscf requires")
+    out.append("# compute capability >= 7.0 (Volta / Turing / Ampere /")
+    out.append("# Hopper).  Older cards still import gpu4pyscf cleanly")
+    out.append("# but fail with cryptic CUDA errors during the SCF, so")
+    out.append("# we probe via cupy here and fall back to CPU PySCF if")
+    out.append("# the GPU isn't actually usable.")
     out.append("if USE_GPU:")
     out.append("    try:")
     if is_dft:
         out.append("        from gpu4pyscf import dft as _gpu_dft")
     out.append("        from gpu4pyscf import scf as _gpu_scf")
+    out.append("        import cupy as _cp")
+    out.append("        _n_dev = _cp.cuda.runtime.getDeviceCount()")
+    out.append("        if _n_dev == 0:")
+    out.append("            raise RuntimeError('no NVIDIA GPU detected')")
+    out.append("        _props = _cp.cuda.runtime.getDeviceProperties(0)")
+    out.append("        _name = _props.get('name', b'(unknown)')")
+    out.append("        if isinstance(_name, bytes):")
+    out.append("            _name = _name.decode('utf-8', errors='replace')")
+    out.append("        _maj = int(_props.get('major', 0))")
+    out.append("        _min = int(_props.get('minor', 0))")
+    out.append("        if _maj < 7:")
+    out.append("            raise RuntimeError(")
+    out.append("                f'GPU {_name} has compute capability '")
+    out.append("                f'{_maj}.{_min}; gpu4pyscf requires >= 7.0'")
+    out.append("            )")
     if is_dft:
         out.append("        _dft = _gpu_dft")
     out.append("        _scf = _gpu_scf")
     out.append("        _USING_GPU = True")
-    out.append("        print('GPU acceleration ON (gpu4pyscf).')")
+    out.append("        print(f'GPU acceleration ON (gpu4pyscf, {_name}, "
+               "compute capability {_maj}.{_min}).')")
     out.append("    except ImportError as _gpu_exc:")
-    out.append("        print('USE_GPU=True but gpu4pyscf is not "
-               "installed on this node:')")
-    out.append("        print(f'  {_gpu_exc}')")
-    out.append("        print('Falling back to CPU PySCF.  Install "
-               "with:  pip install gpu4pyscf-cuda12x')")
+    out.append("        print(f'USE_GPU=True but gpu4pyscf is not "
+               "installed on this node ({_gpu_exc}).')")
+    out.append("        print('Install with:  pip install gpu4pyscf-cuda12x')")
+    out.append("        print('Falling back to CPU PySCF.')")
+    out.append("    except Exception as _gpu_exc:")
+    out.append("        print(f'USE_GPU=True but the local GPU is not "
+               "usable: {_gpu_exc}.')")
+    out.append("        print('Falling back to CPU PySCF.')")
     out.append("")
     return out
 

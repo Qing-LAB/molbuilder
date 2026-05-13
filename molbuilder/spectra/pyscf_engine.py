@@ -250,29 +250,51 @@ class PySCFSpectraEngine:
                          f"(open-shell Hartree-Fock)."),
                 where="config.method",
             ))
-        # GPU advisory: if the user asked for GPU acceleration, see
-        # whether gpu4pyscf is importable on the molbuilder host.
-        # The generated script is robust to a missing gpu4pyscf
-        # (CPU fallback), but checking here gives the user
-        # actionable warning at click-time rather than at run-time.
+        # Partial-Hessian projection advisory.  When SOME atoms are
+        # fixed but FEWER THAN 3 (or 3+ but they're collinear), the
+        # partial-Hessian path can't fully anchor the system in
+        # space.  The result is 1-5 "spurious" near-zero modes that
+        # correspond to rigid-body motion of the free fragment, not
+        # real vibrations.  Three non-collinear anchor atoms remove
+        # all six translation+rotation DOFs; fewer leaves a residue.
+        n_fixed = len(cfg.fixed_indices) + len(cfg.fixed_elements) \
+            + len(cfg.fixed_residue_names)
+        # We can't resolve element / residue freezes into actual
+        # atom counts without the Structure's atom list -- but
+        # element / residue freezes typically pin many atoms (a
+        # whole metal slab, a whole residue).  Only warn for the
+        # genuinely-suspect case: fixed_indices has 1 or 2 entries
+        # AND nothing else is being frozen.
+        if (len(cfg.fixed_indices) in (1, 2)
+                and not cfg.fixed_elements
+                and not cfg.fixed_residue_names):
+            issues.append(Issue(
+                severity="warn",
+                message=(
+                    f"You've fixed only {len(cfg.fixed_indices)} "
+                    f"atom(s).  That isn't enough to fully anchor "
+                    f"the free fragment in space (you need at "
+                    f"least 3 non-collinear fixed atoms to remove "
+                    f"all 6 translation+rotation degrees of "
+                    f"freedom).  The vibrational analysis will "
+                    f"include {6 - 2 * len(cfg.fixed_indices)}-ish "
+                    f"spurious near-zero modes corresponding to "
+                    f"rigid-body motion of the free atoms.  These "
+                    f"won't crash the run but you should ignore "
+                    f"them in your spectrum interpretation."
+                ),
+                where="config.fixed_indices",
+            ))
+
+        # GPU advisory: if the user asked for GPU acceleration, check
+        # (1) whether gpu4pyscf is importable on the molbuilder host
+        # and (2) whether the host has a GPU that actually meets
+        # gpu4pyscf's minimum compute capability (7.0 = Volta).  The
+        # generated script is robust to a missing gpu4pyscf (CPU
+        # fallback), but checking here lets the user fix things
+        # before the run rather than after.
         if cfg.use_gpu:
-            try:
-                import gpu4pyscf  # noqa: F401
-            except ImportError:
-                issues.append(Issue(
-                    severity="warn",
-                    message=(
-                        "GPU acceleration requested, but gpu4pyscf "
-                        "is not installed on this server.  The "
-                        "generated script will still work -- it "
-                        "falls back to CPU PySCF at runtime if "
-                        "gpu4pyscf isn't on the node that runs it.  "
-                        "Install with:  pip install "
-                        "gpu4pyscf-cuda12x (or cuda11x for older "
-                        "drivers).  Requires an NVIDIA GPU."
-                    ),
-                    where="config.use_gpu",
-                ))
+            issues.extend(cls._gpu_capability_advisories())
 
         # compute_ir is a placeholder for a future release; warn
         # politely if the user toggled it on so they know nothing
@@ -403,6 +425,134 @@ class PySCFSpectraEngine:
     # ------------------------------------------------------------------ #
     # Helpers                                                            #
     # ------------------------------------------------------------------ #
+
+    # ------------------------------------------------------------------ #
+    # GPU capability check                                               #
+    # ------------------------------------------------------------------ #
+    #
+    # gpu4pyscf has two prerequisites: (a) the Python package itself,
+    # (b) an NVIDIA GPU with compute capability >= 7.0 (Volta).
+    # Older cards (Pascal/Maxwell/Kepler) still report success on
+    # `import gpu4pyscf` but fail with cryptic CUDA errors at run
+    # time -- exactly what users tend to hit.  Probe via cupy
+    # (gpu4pyscf's required dep) for actionable feedback up front.
+
+    GPU4PYSCF_MIN_COMPUTE_CAPABILITY = 7   # major version; 7.0 = Volta
+
+    @classmethod
+    def _gpu_capability_advisories(cls) -> List[Issue]:
+        """Return [] if gpu4pyscf + a supported GPU are available,
+        else one warn-severity Issue describing what's missing.
+        Always WARN (not ERROR) -- the generated script falls back
+        to CPU automatically, so an unusable GPU is annoying but
+        not fatal.
+        """
+        try:
+            import gpu4pyscf  # noqa: F401
+        except ImportError:
+            return [Issue(
+                severity="warn",
+                message=(
+                    "GPU acceleration requested, but gpu4pyscf is "
+                    "not installed on this server.  The generated "
+                    "script falls back to CPU PySCF automatically, "
+                    "so this is non-fatal.  To get the GPU speed-up: "
+                    "pip install gpu4pyscf-cuda12x  (or cuda11x for "
+                    "older drivers).  Requires an NVIDIA GPU."
+                ),
+                where="config.use_gpu",
+            )]
+
+        # gpu4pyscf is installed; probe the actual device via cupy.
+        try:
+            import cupy
+        except ImportError:
+            return [Issue(
+                severity="warn",
+                message=(
+                    "GPU acceleration requested -- gpu4pyscf is "
+                    "installed, but cupy (its required dependency) "
+                    "isn't.  Reinstall gpu4pyscf.  Script will fall "
+                    "back to CPU at runtime."
+                ),
+                where="config.use_gpu",
+            )]
+
+        # Count devices.  This will fail if the CUDA runtime isn't
+        # accessible (driver mismatch, no GPU present, etc.).
+        try:
+            n_devs = int(cupy.cuda.runtime.getDeviceCount())
+        except Exception as exc:
+            return [Issue(
+                severity="warn",
+                message=(
+                    f"GPU acceleration requested but the CUDA "
+                    f"runtime couldn't enumerate devices "
+                    f"({type(exc).__name__}: {exc}).  Check that "
+                    f"the NVIDIA driver is installed and the CUDA "
+                    f"toolkit version matches gpu4pyscf's build.  "
+                    f"Script will fall back to CPU."
+                ),
+                where="config.use_gpu",
+            )]
+        if n_devs == 0:
+            return [Issue(
+                severity="warn",
+                message=(
+                    "GPU acceleration requested but no NVIDIA GPU "
+                    "was detected on this host.  Script will fall "
+                    "back to CPU at runtime.  Untick \"Use GPU\" "
+                    "to silence this warning."
+                ),
+                where="config.use_gpu",
+            )]
+
+        # Inspect device 0's compute capability.
+        try:
+            props = cupy.cuda.runtime.getDeviceProperties(0)
+        except Exception as exc:
+            return [Issue(
+                severity="warn",
+                message=(
+                    f"GPU acceleration requested but the device "
+                    f"properties for GPU 0 couldn't be read "
+                    f"({type(exc).__name__}: {exc}).  Script will "
+                    f"fall back to CPU."
+                ),
+                where="config.use_gpu",
+            )]
+        name = props.get("name", "(unknown GPU)")
+        if isinstance(name, bytes):
+            name = name.decode("utf-8", errors="replace")
+        major = int(props.get("major", 0))
+        minor = int(props.get("minor", 0))
+        if major < cls.GPU4PYSCF_MIN_COMPUTE_CAPABILITY:
+            return [Issue(
+                severity="warn",
+                message=(
+                    f"GPU acceleration requested, but the detected "
+                    f"GPU ({name}, compute capability {major}.{minor}) "
+                    f"is older than gpu4pyscf supports.  gpu4pyscf "
+                    f"requires compute capability "
+                    f"{cls.GPU4PYSCF_MIN_COMPUTE_CAPABILITY}.0 or "
+                    f"newer (Volta / Turing / Ampere / Hopper / "
+                    f"Blackwell -- typically RTX 20xx, V100, A100, "
+                    f"H100 or any consumer GPU from 2018 onward).  "
+                    f"Running on a {major}.{minor}-class card will "
+                    f"either fail with cryptic CUDA errors or "
+                    f"silently fall back to slow paths.  The "
+                    f"generated script will detect this at runtime "
+                    f"and fall back to CPU automatically.  Untick "
+                    f"\"Use GPU\" to silence this warning and skip "
+                    f"the GPU code path entirely."
+                ),
+                where="config.use_gpu",
+            )]
+
+        # Everything checks out -- gpu4pyscf is installed and the
+        # detected GPU meets the minimum compute capability.  No
+        # warning.
+        return []
 
     @staticmethod
     def _is_hybrid_functional(name: str) -> bool:
