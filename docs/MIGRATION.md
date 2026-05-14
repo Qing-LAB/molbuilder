@@ -244,46 +244,129 @@ Tracked in `docs/design.md` but not blocking:
 
 ## 4. Bootstrap prompt for the new machine's Claude session
 
-Paste this verbatim into the first Claude Code conversation on the
-new machine.  It loads enough context that the assistant can act on
-the same conventions without you having to re-explain.  If
-`MEMORY.md` transferred via the auto-memory copy above, Claude will
-already see it — but this prompt is the belt-and-braces version.
+Paste the block below verbatim as the **first message** in a new
+Claude Code conversation on the new machine.  It is an active
+migration runner — Claude will execute the six steps in order,
+asking for confirmation before any destructive or long-running
+action, and report status at the end.  No feature work happens in
+this session; this is migration verification only.
 
-> I'm continuing the molbuilder project on a new machine.  Before
-> doing anything, read:
->
-> * `docs/MIGRATION.md` — the migration handoff (you're reading this)
-> * `docs/design.md` — the source-of-truth design document; my
->   convention is to read this before acting and to update it in
->   the same commit as any code change that touches a principle or
->   decision
-> * `docs/tabs/spectra/spec.md` — the Spectra-tab v1 spec
->
-> Project conventions to apply throughout this session:
->
-> 1. Author: `Quan <qqing@asu.edu>`.  Never add Co-Authored-By:
->    Claude trailers to commits.
-> 2. The GitHub PAT on this machine lacks `workflow` scope — do
->    not push changes under `.github/workflows/*`.
-> 3. The dataclass (`molbuilder.Structure` and peers) is the
->    lingua franca.  No parallel metadata in CLI / web layers.
-> 4. Layered architecture: small Unix-pipeable CLI scripts (click,
->    not argparse); web UI is a thin wrapper over the same Python
->    API.
-> 5. Code review must check target-platform correctness (SIESTA /
->    PySCF keyword spellings) and scientific defensibility of
->    defaults, not just "tests pass."
-> 6. 3DNA is non-commercial; no auto-download.  Missing-tool errors
->    point at `x3dna.org`.
-> 7. Tests use the `transport` conda env (`conda activate
->    transport`); without activation, amber backend tests skip
->    because `tleap` isn't on PATH.
->
-> The Spectra tab v1 just merged to main (commit `79dd3e1`).
-> `docs/MIGRATION.md` § 3.2 lists the next-priority gaps.  Start
-> by verifying the new-machine setup (§ 2.5) is green, then we'll
-> pick the next gap to work on together.
+```
+You are continuing the molbuilder project on a new machine.  The previous
+machine prepared a complete handoff.  Your job in this conversation is to
+execute the migration steps below in order and report the new environment's
+state, NOT to start any feature work.
+
+Rules for this session:
+- At every step: say what you're about to do, then do it, then state what
+  you found.  One short status line per step is enough.
+- Read-only operations (reading files, `git log`, `conda env list`, `pytest`)
+  proceed without asking.
+- Anything that installs software, creates a conda env, or downloads
+  packages: STOP first and ask me to confirm.
+- If a step fails, report the failure and stop — do not improvise fixes.
+
+STEP 1 — Locate the repo and load context
+
+- Run `pwd` and `git log -1 --oneline` to confirm you're in the molbuilder
+  repo at commit 79dd3e1 (the Spectra v1 merge) or later on main.
+- Read `docs/MIGRATION.md` — the single source of truth for this handoff.
+- Read `docs/design.md` § "Mission" and § "Design principles" (the rest
+  is reference material; don't read end-to-end yet).
+- Read `docs/tabs/spectra/spec.md` § 13 "Future extensions" so you know
+  the v1 / v1.1+ boundary.
+
+STEP 2 — Restore Claude auto-memory if not already in place
+
+Claude Code stores per-project memory under a hash of the project's
+absolute path:
+    ~/.claude/projects/<hash>/memory/
+
+The hash is derived from the path with `/` -> `-`.  If the new machine
+mounted the repo at the same absolute path as the old machine, the hash
+matches and the auto-memory directory at that hash may already exist.
+
+- List `~/.claude/projects/` and identify whichever directory's name
+  corresponds to this repo's absolute path.
+- If `memory/MEMORY.md` exists there: read it and report the entries.
+- If not: look for `./claude-memory.tgz` at the repo root.  Untar it into
+  `~/.claude/projects/`, preserving the directory name embedded in the
+  tarball (it's `./-mnt-y-GitHub-quantum-simulation-molbuilder/memory/`,
+  which assumes the old path; if the new machine's path differs, extract
+  into a temp directory first and copy the `memory/` subdirectory into
+  the new-machine hash dir).
+- Verify by reading the relocated `MEMORY.md` and listing the 9
+  feedback/project files it indexes.
+
+STEP 3 — Verify the conda env (`transport`)
+
+- Run `conda env list`.
+- If `transport` exists:
+  - Activate it.  Verify: `python -c "import pyscf, pytest, flask; print(pyscf.__version__)"`.
+  - Verify `which tleap` finds the env's tleap (Amber backend).
+  - Verify `python -c "from molbuilder.backends import available_backends; print(available_backends())"`
+    shows `'amber': True`.
+- If `transport` does NOT exist:
+  - Print the setup commands from MIGRATION.md § 2.3.
+  - STOP.  Ask me whether to run them.  Don't install anything without
+    confirmation.
+
+STEP 4 — Sanity-check the test suite
+
+Run with the transport env active:
+
+    pytest tests/ --ignore=tests/spectra/test_smoke.py \
+                  --ignore=tests/test_modify_e2e.py -q
+
+Expected: ~1220 passed in ~3 min, 0 failures.
+
+If any fail, report the failure list verbatim and stop.  Do not try to
+fix them — failures here mean the migration wasn't clean and we need to
+diagnose together.
+
+STEP 5 — Sanity-check the auto-memory transfer
+
+Answer these four questions WITHOUT using grep / Read / web search.  Just
+recall.  These prove the memory transfer worked end-to-end.
+
+1. Should we add a `Co-Authored-By: Claude` trailer to commits on this repo?
+2. Can we modify files under `.github/workflows/` and push them?
+3. Should I use argparse for a new CLI in molbuilder?
+4. What's the single source-of-truth document I should read before acting
+   on this project, per the user's standing convention?
+
+Expected answers: (1) No.  (2) No, the PAT lacks workflow scope.  (3) No,
+click is canonical.  (4) docs/design.md.
+
+If any answer is wrong, the auto-memory didn't transfer.  Report which
+ones, then read `docs/MIGRATION.md` § 1.2 to restore them by hand.
+
+STEP 6 — Status report
+
+In one short block, tell me:
+- Branch + HEAD commit
+- Whether auto-memory is loaded
+- Conda env status
+- Test count + pass/fail
+- Memory sanity-check results (4/4 correct, or which failed)
+- Anything I need to address before we continue feature work
+
+Then STOP and wait.  The next session decides what we work on; this
+session's job is done once you've reported status.
+```
+
+If you'd rather skip the active runner and just preload context for an
+interactive session, use this minimal version instead — same conventions,
+no execution steps:
+
+```
+I'm continuing the molbuilder project on a new machine.  Read
+docs/MIGRATION.md, docs/design.md (Mission + Design principles
+sections), and docs/tabs/spectra/spec.md § 13 before doing anything
+else.  Apply the conventions listed in MIGRATION.md § 4 throughout
+this session.  Spectra v1 just merged to main; MIGRATION.md § 3.2
+lists the next priorities — wait for me to pick one.
+```
 
 ---
 
