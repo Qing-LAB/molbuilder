@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>molbuilder &mdash; spectra (Raman / IR)</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/form-schema.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='spectra/style.css') }}">
+<!-- Plotly: served by molbuilder itself from the installed plotly
+     Python package's bundled JS (package_data/plotly.min.js).  No
+     CDN, no internet round-trip, no firewall to worry about.  The
+     /vendor/plotly.min.js route reads the file out of the running
+     plotly install. -->
+<script src="{{ url_for('vendor_plotly_js') }}"></script>
+<!-- 3Dmol.js: used by the per-mode eigenvector animation in the
+     Results section.  Loaded from cdnjs (same as the Build / Watch
+     tabs); local-serving 3Dmol is a follow-up since it isn't
+     bundled inside any Python package we depend on. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js"></script>
+</head>
+<body>
+
+{% set active_tab = "spectra" %}
+{% set page_tagline = "Post-relaxation harmonic vibrational analysis &mdash; frequencies, Raman activities, and per-mode electronic structure for transport preparation." %}
+{% include "_app_header.html" %}
+
+<main class="spectra-grid">
+
+  <!-- ================================================================
+       LEFT column: INPUT  (structure + parameters + generate)
+       ================================================================ -->
+  <section class="card card-input">
+
+    <!-- ── 1. Structure ──────────────────────────── -->
+    <div class="card-section">
+      <header class="section-header">
+        <h2 class="step-num"><span class="step-dot">1</span> Structure</h2>
+      </header>
+      <label class="field-block" for="xyz-text">
+        <span class="field-label">XYZ coordinates</span>
+        <textarea id="xyz-text" rows="6"
+                  placeholder="Paste an XYZ block, or upload a file below."></textarea>
+      </label>
+      <div class="inline-row">
+        <input id="xyz-file" type="file"
+               accept=".xyz,chemical/x-xyz,text/plain">
+        <button id="xyz-load-btn" type="button">Load file</button>
+        <span id="xyz-status" class="status"></span>
+      </div>
+    </div>
+
+    <!-- ── 2. Parameters ─────────────────────────── -->
+    <div class="card-section">
+      <header class="section-header">
+        <h2 class="step-num"><span class="step-dot">2</span> Parameters</h2>
+        <p class="section-hint">
+          Defaults work for most cases.  Hover any label for the
+          per-field help.  When done, click <strong>Generate</strong>
+          in the right column.
+        </p>
+      </header>
+      <!-- Schema-rendered fieldsets land inside .param-grid so the
+           auto-fit grid lays them out responsively (same pattern
+           the Build tab uses for SIESTA / PySCF panels). -->
+      <div id="spectra-form-container" class="param-grid">
+        <p class="status">Loading form schema&hellip;</p>
+      </div>
+    </div>
+  </section><!-- /.card-input -->
+
+  <!-- ================================================================
+       RIGHT column: OUTPUT  (issues, script, results)
+       ================================================================ -->
+  <section class="card card-output">
+
+    <!-- ── Generate (action + Methods preview) ──────
+         Lives in the OUTPUT column on purpose: the action sits
+         right next to the artifacts it produces (Issues panel +
+         Generated-script preview below).  In two-column mode the
+         Generate button is at the top of the right column, paired
+         with the Issues window; in single-column mode it lands in
+         the natural flow between Parameters and Issues. -->
+    <div class="card-section">
+      <header class="section-header">
+        <h2>Generate</h2>
+      </header>
+      <div class="inline-row primary-actions">
+        <button id="generate-btn" class="primary" type="button">
+          Generate <code>spectra.py</code>
+        </button>
+        <button id="methods-preview-btn" type="button">
+          Show Methods text
+        </button>
+        <span id="generate-status" class="status"></span>
+      </div>
+      <details class="prior-row">
+        <summary>Resume from a prior run (optional)</summary>
+        <p class="hint">
+          Point at an existing <code>&lt;job&gt;.spectra.json</code>
+          to enable the top-N / threshold mode selectors (they need
+          Raman activities that the prior run computed) and to skip
+          already-completed modes when resuming.  Leave empty for a
+          fresh job.
+        </p>
+        <input id="prior-path" type="text"
+               placeholder="/path/to/prev.spectra.json">
+      </details>
+    </div>
+
+    <!-- ── Issues (sits right below Generate so blocking errors
+            from configuration checks surface immediately after the
+            click) ── -->
+    <div class="card-section">
+      <header class="section-header">
+        <h2>Issues</h2>
+      </header>
+      <div id="issues-panel" class="issues-panel">
+        <p class="status muted">
+          No issues yet.  Click "Generate" to see configuration
+          checks.
+        </p>
+      </div>
+    </div>
+
+    <!-- ── Generated script ─────────────────────── -->
+    <div class="card-section">
+      <header class="section-header">
+        <h2>Generated script</h2>
+        <span id="script-summary" class="status muted"></span>
+      </header>
+      <div class="inline-row">
+        <button id="download-script-btn" type="button" disabled>
+          Download <code>spectra.py</code>
+        </button>
+        <button id="copy-script-btn" type="button" disabled>
+          Copy to clipboard
+        </button>
+      </div>
+      <pre id="script-preview" class="script-preview"
+           aria-label="Generated spectra.py preview"></pre>
+    </div>
+
+    <!-- ── Load / Watch results ─────────────────── -->
+    <div class="card-section">
+      <header class="section-header">
+        <h2>Results from a run</h2>
+        <p class="section-hint">
+          The primary path is to type the full server-side path
+          to <code>&lt;job&gt;.spectra.json</code> below.  "Watch"
+          polls every 2&nbsp;s and auto-stops when all configured
+          phases finish.  Browser file-upload is also offered as
+          a fallback for runs on a different machine.
+        </p>
+      </header>
+
+      <!-- Primary: load (or watch) by server-side path.  This
+           is what most users want -- molbuilder typically runs
+           on the same machine as the spectra.py job, so reading
+           the file directly is faster + keeps the user from
+           re-uploading after every phase write. -->
+      <label class="field-block" for="watch-path">
+        <span class="field-label">Path on this server</span>
+        <input id="watch-path" type="text"
+               placeholder="/abs/path/to/job.spectra.json">
+      </label>
+      <div class="inline-row">
+        <button id="load-path-btn"  type="button">Load once</button>
+        <button id="watch-btn"      type="button">Start watching</button>
+        <button id="watch-stop-btn" type="button" disabled>Stop</button>
+        <span id="watch-status" class="status"></span>
+      </div>
+
+      <!-- Phase-progress chips: three dots that fill in as each
+           computational phase (Frequencies, Raman, Per-mode ES)
+           lands.  Hidden until first load / watch tick. -->
+      <div id="phase-indicator" class="phase-indicator" hidden
+           aria-label="Run-phase progress">
+        <span class="phase">
+          <span class="phase-label">Frequencies</span>
+          <span class="phase-dot" data-phase="frequencies"></span>
+        </span>
+        <span class="phase">
+          <span class="phase-label">Raman</span>
+          <span class="phase-dot" data-phase="raman"></span>
+        </span>
+        <span class="phase">
+          <span class="phase-label">Per-mode ES</span>
+          <span class="phase-dot" data-phase="es"></span>
+        </span>
+      </div>
+
+      <!-- Fallback: browser file upload.  Use when the JSON lives
+           on a different machine than molbuilder. -->
+      <details class="upload-fallback">
+        <summary>&hellip; or upload a file from your computer</summary>
+        <p class="hint">
+          Use this when the <code>.spectra.json</code> is on a
+          different machine than the molbuilder server.  The
+          browser sends only the file's bytes; the server-side
+          path isn't accessible (browser security).
+        </p>
+        <div class="inline-row">
+          <input id="results-file" type="file"
+                 accept=".json,application/json">
+          <button id="load-results-btn" type="button">
+            Upload <code>.spectra.json</code>
+          </button>
+          <span id="results-status" class="status"></span>
+        </div>
+      </details>
+    </div>
+
+    <!-- ── Results panel (only visible after load) ── -->
+    <div id="results-summary" class="card-section results-summary" hidden>
+      <header class="section-header">
+        <h2>Results</h2>
+      </header>
+      <dl id="results-summary-list" class="results-meta"></dl>
+
+      <h3 class="subsection-h">Spectrum</h3>
+      <!-- Spectrum-controls row: Lorentzian-broadening FWHM input.
+           Sits above the chart so the user can tune the broadening
+           while looking at the line shape; defaults to a moderate
+           20 cm⁻¹ that suits typical Raman line widths. -->
+      <div class="spectrum-controls">
+        <label class="inline-label">
+          <span>Lorentzian FWHM</span>
+          <input id="broadening-fwhm" type="number"
+                 min="1" max="500" step="1" value="20">
+          <span class="unit">cm⁻¹</span>
+        </label>
+        <span class="hint">
+          Sum-of-Lorentzians overlay on the sticks.  Increase to
+          smooth narrow lines into the broader envelope expected
+          in solution / room-temperature Raman; decrease for
+          sharper gas-phase spectra.  Set to 0 to hide the overlay.
+        </span>
+      </div>
+      <!-- Plotly: stem-style frequency vs Raman activity, optionally
+           with a broadened envelope overlay.  Click a stick to
+           select the mode (synchronises with the table below and
+           the ES panel). -->
+      <div id="spectrum-chart" class="spectrum-chart"
+           aria-label="Raman spectrum (frequency vs activity)"></div>
+
+      <h3 class="subsection-h">Modes</h3>
+      <div class="modes-table-controls">
+        <input id="modes-filter" type="text"
+               placeholder="Filter (matches any visible column)"
+               aria-controls="modes-table">
+        <button id="modes-csv-btn" type="button">Export CSV</button>
+        <span id="modes-filter-count" class="status muted"></span>
+      </div>
+      <div class="modes-table-wrap">
+        <table id="modes-table" class="modes-table" tabindex="0"
+               aria-label="Vibrational modes (click row to select)">
+          <caption class="sr-only">
+            Vibrational modes table.  Sortable by column header
+            click.  Row click selects the mode and updates the
+            electronic-structure panel below.
+          </caption>
+          <thead>
+            <tr id="modes-thead-row">
+              <th data-col="index_1based"          data-numeric="1">#</th>
+              <th data-col="frequency_cm1"         data-numeric="1">ω (cm⁻¹)</th>
+              <th data-col="raman_activity_a4_amu" data-numeric="1">Raman (Å⁴/amu)</th>
+              <th data-col="has_imag">imag?</th>
+              <th data-col="has_es">ES?</th>
+              <th data-col="homo_eq_ev"   data-numeric="1" class="es-col">HOMO (eV)</th>
+              <th data-col="lumo_eq_ev"   data-numeric="1" class="es-col">LUMO (eV)</th>
+              <th data-col="gap_eq_ev"    data-numeric="1" class="es-col">Gap (eV)</th>
+              <th data-col="dgap_max_mev" data-numeric="1" class="es-col">ΔGap max (meV)</th>
+            </tr>
+          </thead>
+          <tbody id="modes-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- 3D structure + per-mode animation.  Visible whenever a
+           mode is selected AND the geometry is available (either
+           from the loaded spectra.json's equilibrium.elements/
+           positions_ang or from the XYZ pasted in step 1).  -->
+      <div id="mode-viewer-wrap" class="mode-viewer-wrap" hidden>
+        <header class="section-header subsection-h">
+          <h3>Mode visualisation</h3>
+          <span id="viewer-status" class="status muted"></span>
+        </header>
+        <div class="viewer-controls">
+          <label class="inline-label">
+            <span>Amplitude</span>
+            <input id="anim-amplitude" type="range"
+                   min="0.05" max="1.0" step="0.05" value="0.3">
+            <span id="anim-amplitude-val" class="unit">0.30 Å</span>
+          </label>
+          <label class="inline-label">
+            <span>Speed</span>
+            <input id="anim-speed" type="range"
+                   min="0.2" max="3.0" step="0.1" value="1.0">
+            <span id="anim-speed-val" class="unit">1.0×</span>
+          </label>
+          <button id="anim-toggle" type="button">Pause</button>
+        </div>
+        <div id="mode-viewer" class="mode-viewer"
+             aria-label="3D structure with vibrational mode animation">
+        </div>
+        <p class="viewer-hint hint">
+          The mode <em>shape</em> (which atoms move, in what direction,
+          relative amplitudes) is faithful from the diagonalisation.
+          The <em>animation amplitude</em> is a visualisation knob,
+          not a physical quantity -- thermal RMS amplitudes are
+          typically &lt;0.05 Å and too small to see, so this slider
+          exaggerates the motion the way Gaussian / Jmol / Avogadro
+          do.  Fixed atoms (greyed out) stay still.
+        </p>
+      </div>
+
+      <!-- ES panel sits inside results-summary so it shares the
+           hidden-until-loaded state.  Internally toggles whether
+           the bar diagram or a "no ES for this mode" placeholder
+           is rendered. -->
+      <div id="es-panel" class="es-panel" hidden>
+        <header class="section-header subsection-h">
+          <h3>Electronic structure (mode <span id="es-mode-idx">?</span>)</h3>
+          <span id="es-mode-freq" class="status muted"></span>
+        </header>
+        <div id="es-bar-diagram" class="es-bar-diagram"
+             aria-label="MO energies at -A / 0 / +A for the selected mode">
+        </div>
+        <dl id="es-summary" class="es-summary"></dl>
+      </div>
+    </div>
+  </section><!-- /.card-output -->
+</main>
+
+<!-- ================================================================
+     Methods-preview modal (spec § 9.4)
+     ================================================================ -->
+<dialog id="methods-modal" class="methods-modal">
+  <header class="methods-modal-header">
+    <h2>Methods (manuscript-ready prose)</h2>
+    <div class="methods-modal-actions">
+      <button id="methods-copy-btn" type="button">Copy</button>
+      <button id="methods-close-btn" type="button">Close</button>
+    </div>
+  </header>
+  <article id="methods-modal-body" class="methods-modal-body"></article>
+</dialog>
+
+<script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
+<script src="{{ url_for('static', filename='spectra/viewer.js') }}"></script>
+
+</body>
+</html>

@@ -12,6 +12,7 @@
 
 .app-tabs {
     display: flex;
+    flex-wrap: wrap;
     align-items: stretch;
     background: #141414;
     border-bottom: 1px solid #2a2a2a;

@@ -28,7 +28,7 @@ to avoid name collisions with the build viewer.
 
 from __future__ import annotations
 
-from flask import Flask, jsonify, render_template
+from flask import Flask, abort, jsonify, render_template, send_file
 
 
 # Cap multipart uploads at 50 MB.  Build side only needs ~10 MB for
@@ -47,12 +47,14 @@ def create_app() -> Flask:
     # self-contained (handlers, helpers, validation).  Both blueprints
     # use full route paths in their decorators (no url_prefix) -- the
     # paths read clearly at the call site.
-    from .blueprints.build  import bp as build_bp
-    from .blueprints.watch  import bp as watch_bp
-    from .blueprints.modify import bp as modify_bp
+    from .blueprints.build   import bp as build_bp
+    from .blueprints.watch   import bp as watch_bp
+    from .blueprints.modify  import bp as modify_bp
+    from .blueprints.spectra import bp as spectra_bp
     app.register_blueprint(build_bp)
     app.register_blueprint(watch_bp)
     app.register_blueprint(modify_bp)
+    app.register_blueprint(spectra_bp)
 
     # 413 Payload Too Large -- without this Flask returns its default
     # HTML 413 page, which the JS uploaders parse as ``r.json()`` and
@@ -99,5 +101,41 @@ def create_app() -> Flask:
             "available": available_backends(),
             "auto_name": auto_backend_name(),
         })
+
+    @app.route("/vendor/plotly.min.js")
+    def vendor_plotly_js():
+        """Serve plotly.min.js from the installed plotly Python
+        package so the browser doesn't need a CDN at all.
+
+        Plotly ships the JS bundle as package data; we read it via
+        ``importlib.resources`` rather than reaching into
+        ``plotly.__file__`` directly so this works for zip-packaged
+        installs, editable installs, and any other layout
+        ``importlib.resources`` supports.
+
+        Returns 404 if the plotly Python package isn't importable
+        or doesn't ship the JS bundle -- the caller (the Spectra
+        page) can degrade by showing the chart-unavailable message.
+        """
+        from importlib import resources
+        try:
+            # plotly>=5 publishes the bundle at
+            # ``plotly/package_data/plotly.min.js``; older versions
+            # used the same path.  files() returns a Traversable,
+            # which works the same for filesystem + zipfile installs.
+            ref = resources.files("plotly").joinpath(
+                "package_data", "plotly.min.js")
+        except ModuleNotFoundError:
+            abort(404)
+        if not ref.is_file():
+            abort(404)
+        # Long-cache: the URL is version-agnostic but the file
+        # changes only when the user upgrades the plotly Python
+        # package; that's a fresh app start anyway.
+        return send_file(
+            str(ref),
+            mimetype="application/javascript",
+            max_age=3600,
+        )
 
     return app

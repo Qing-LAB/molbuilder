@@ -1,0 +1,603 @@
+/* molbuilder Spectra-tab styles.
+ *
+ * Page chrome only: layout grid, cards, section headers, status
+ * messages, the spectrum chart container, the modes table, and the
+ * ES panel.
+ *
+ * The schema-driven form (rendered inside #spectra-form-container)
+ * picks up its styling from static/lib/form-schema.css -- which
+ * carries the fieldset / label / .param-grid rules that the Build
+ * tab uses too.  This page-level stylesheet does NOT restyle the
+ * form fields directly.
+ */
+@import url("../lib/tokens.css");
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                 system-ui, "Inter", sans-serif;
+    color: var(--text-primary);
+    background: var(--bg-page);
+}
+
+header {
+    padding: 1.4rem 2rem 1rem;
+    border-bottom: 1px solid var(--border-soft);
+}
+header h1 {
+    margin: 0;
+    font: 700 1.6rem/1.2 "Inter", system-ui, sans-serif;
+}
+header .tagline {
+    margin: 0.2rem 0 0;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+}
+
+/* ---- Two-column layout ---- */
+
+.spectra-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+    gap: 1.5rem;
+    padding: 1.25rem 1.5rem 2rem;
+    align-items: start;
+}
+@media (max-width: 1100px) {
+    .spectra-grid { grid-template-columns: 1fr; }
+}
+
+/* ---- Card / section model ----
+ *
+ * A `.card` is the column container; inside it, `.card-section`
+ * blocks separate concerns (Structure, Parameters, Generate;
+ * Issues, Generated script, Load, Results).  Sections use
+ * consistent vertical rhythm (1.4rem gap between sections,
+ * 0.7rem inside).
+ */
+
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: 12px;
+    padding: 1rem 1.4rem 1.2rem;
+}
+
+.card-section {
+    padding: 0.8rem 0;
+}
+.card-section + .card-section {
+    border-top: 1px solid var(--border-soft);
+}
+.card-section:first-of-type { padding-top: 0.4rem; }
+.card-section:last-of-type  { padding-bottom: 0; }
+
+/* Section headers: consistent layout, one source of truth.
+ * Step-numbered for the left column (Structure / Parameters /
+ * Generate), plain for the right column. */
+.section-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    margin: 0 0 0.6rem;
+}
+.section-header h2 {
+    margin: 0;
+    font: 600 1.02rem/1.2 "Inter", system-ui, sans-serif;
+    color: var(--text-primary);
+}
+.section-header h3 {
+    margin: 0;
+    font: 600 0.95rem/1.2 "Inter", system-ui, sans-serif;
+    color: var(--text-primary);
+}
+.section-hint {
+    margin: 0;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+}
+
+/* Numbered step indicator: small filled circle to the left of the
+ * left-column section titles ("Structure", "Parameters", "Generate").
+ * Optional -- the right column doesn't use them. */
+.step-num { display: inline-flex; align-items: center; gap: 0.55rem; }
+.step-dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    background: var(--bg-input);
+    border: 1px solid var(--border-strong);
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+/* Subsection heading inside a section (e.g. "Spectrum", "Modes"
+ * inside the Results section). */
+.subsection-h {
+    margin: 1.1rem 0 0.5rem;
+    font: 600 0.95rem/1.2 "Inter", system-ui, sans-serif;
+    color: var(--text-primary);
+}
+
+/* ---- Generic field/row helpers (used by structure + actions) ---- */
+
+.field-block {
+    display: grid;
+    gap: 0.3rem;
+    margin: 0 0 0.6rem;
+}
+.field-block > .field-label {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+.field-block > textarea,
+.field-block > input {
+    width: 100%;
+}
+
+textarea, input[type="text"], input[type="file"] {
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 0.45rem 0.65rem;
+    font-size: 0.9rem;
+}
+textarea {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85rem;
+    resize: vertical;
+    min-height: 96px;
+}
+textarea:focus, input[type="text"]:focus, input[type="file"]:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: var(--bg-input-focus);
+}
+
+button {
+    background: var(--bg-input);
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    padding: 0.42rem 0.95rem;
+    font-size: 0.9rem;
+    cursor: pointer;
+    transition: background 0.12s ease, border-color 0.12s ease;
+}
+button:hover { background: var(--bg-input-focus); }
+button:disabled { opacity: 0.45; cursor: not-allowed; }
+button.primary  { background: #2b5f9e; border-color: #3577b9; color: #fff; }
+button.primary:hover { background: #336dab; }
+button > code {
+    background: transparent;
+    padding: 0;
+    color: inherit;
+    font-size: 0.92em;
+}
+
+/* Horizontal rows of controls.  inline-row stays inline and wraps
+ * on narrow viewports.  primary-actions gives a bit more vertical
+ * breathing room for the main Generate row. */
+.inline-row {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin: 0.3rem 0;
+}
+.primary-actions { margin-top: 0.4rem; }
+
+/* Resume-from-prior collapsible. */
+.prior-row {
+    margin: 0.8rem 0 0;
+    padding: 0.55rem 0.75rem;
+    border: 1px dashed var(--border-soft);
+    border-radius: 6px;
+}
+.prior-row summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    user-select: none;
+}
+.prior-row p.hint {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    margin: 0.4rem 0;
+}
+.prior-row input[type="text"] { width: 100%; }
+
+/* ---- Status messages ---- */
+
+.status {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    min-height: 1.1em;
+}
+.status.ok    { color: #6fcf6f; }
+.status.error { color: #e07070; }
+.status.muted { color: var(--text-secondary); opacity: 0.75; }
+
+/* ---- Issues panel ---- */
+
+.issues-panel {
+    display: grid;
+    gap: 0.45rem;
+}
+.issue {
+    padding: 0.45rem 0.7rem;
+    border-radius: 6px;
+    border: 1px solid var(--border-soft);
+    font-size: 0.88rem;
+    line-height: 1.4;
+}
+.issue.error  { border-color: #80262f; background: #2d1518; }
+.issue.warn   { border-color: #7a652c; background: #2a2515; }
+.issue .badge {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    padding: 0.05rem 0.45rem;
+    border-radius: 3px;
+    margin-right: 0.4rem;
+    vertical-align: 1px;
+}
+.issue.error .badge { background: #80262f; color: #fff; }
+.issue.warn  .badge { background: #7a652c; color: #fff; }
+.issue .where {
+    margin-left: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    background: var(--bg-input);
+    padding: 0.05rem 0.4rem;
+    border-radius: 3px;
+}
+
+/* ---- Generated-script preview ---- */
+
+.script-preview {
+    background: var(--bg-code);
+    color: var(--text-primary);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    padding: 0.7rem 0.95rem;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.78rem;
+    line-height: 1.5;
+    max-height: 320px;
+    overflow: auto;
+    white-space: pre;
+    margin: 0.5rem 0 0;
+}
+.script-preview:empty { display: none; }
+
+/* ---- Results meta dictionary ---- */
+
+.results-meta {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.25rem 1rem;
+    font-size: 0.88rem;
+    margin: 0;
+}
+.results-meta dt { color: var(--text-secondary); }
+.results-meta dd { margin: 0; }
+
+/* ---- Spectrum chart ---- */
+
+.spectrum-controls {
+    display: flex;
+    gap: 0.9rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin: 0.3rem 0 0.5rem;
+    font-size: 0.85rem;
+}
+.spectrum-controls .inline-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--text-secondary);
+}
+.spectrum-controls input[type="number"] {
+    width: 5.5em;
+    padding: 0.2rem 0.4rem;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.spectrum-controls .unit { color: var(--text-secondary); }
+.spectrum-controls .hint {
+    color: var(--text-secondary);
+    opacity: 0.75;
+    font-size: 0.82rem;
+    flex: 1;
+    min-width: 200px;
+}
+
+.spectrum-chart {
+    width: 100%;
+    min-height: 280px;
+    margin: 0 0 0.4rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    padding: 4px;
+}
+.spectrum-chart:empty { min-height: 0; }
+
+/* ---- Modes table ---- */
+
+.modes-table-controls {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin: 0.4rem 0;
+}
+.modes-table-controls input[type="text"] {
+    flex: 1;
+    min-width: 160px;
+}
+
+.modes-table-wrap {
+    max-height: 360px;
+    overflow: auto;
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+}
+.modes-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+}
+.modes-table thead {
+    position: sticky;
+    top: 0;
+    background: var(--bg-card-hover);
+    z-index: 1;
+}
+.modes-table th,
+.modes-table td {
+    padding: 0.35rem 0.6rem;
+    border-bottom: 1px solid var(--border-soft);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.modes-table th:first-child,
+.modes-table td:first-child { text-align: left; }
+.modes-table th[hidden],
+.modes-table td[hidden] { display: none; }
+
+.modes-table th[data-col] {
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+}
+.modes-table th[data-col]:hover { background: var(--bg-input-focus); }
+.modes-table th.sort-asc::after,
+.modes-table th.sort-desc::after {
+    content: " ▲";
+    font-size: 0.7em;
+    margin-left: 4px;
+    color: var(--text-secondary);
+}
+.modes-table th.sort-desc::after { content: " ▼"; }
+
+.modes-table tbody tr { cursor: pointer; }
+.modes-table tbody tr:hover { background: var(--bg-card-hover); }
+.modes-table tbody tr.active {
+    background: rgba(255, 212, 84, 0.15);
+    outline: 1px solid #ffd454;
+    outline-offset: -1px;
+}
+.modes-table tbody tr.mode-imag td:nth-child(2) { color: #e07070; }
+
+.sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0);
+    border: 0;
+}
+
+/* ---- Mode-animation viewer (§ 9.2.3) ----
+ *
+ * 3Dmol.js renders the equilibrium structure inside #mode-viewer;
+ * the JS animates the selected mode's eigenvector sinusoidally.
+ * The viewer is hidden until a mode is selected AND the geometry
+ * is available. */
+.mode-viewer-wrap {
+    margin-top: 1.1rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--border-soft);
+}
+.mode-viewer {
+    width: 100%;
+    height: 340px;
+    margin: 0.5rem 0;
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    position: relative;       /* 3Dmol canvas positions absolutely */
+}
+.viewer-controls {
+    display: flex;
+    gap: 0.9rem;
+    align-items: center;
+    flex-wrap: wrap;
+    margin: 0.4rem 0;
+    font-size: 0.85rem;
+}
+.viewer-controls .inline-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    color: var(--text-secondary);
+}
+.viewer-controls input[type="range"] {
+    width: 9rem;
+}
+.viewer-hint {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    opacity: 0.85;
+    margin: 0.4rem 0 0;
+}
+
+/* ---- Electronic-structure panel (§ 9.2.4) ---- */
+
+.es-panel {
+    margin-top: 1.1rem;
+    padding-top: 0.9rem;
+    border-top: 1px solid var(--border-soft);
+}
+.es-bar-diagram {
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    padding: 4px;
+    margin: 0.5rem 0;
+}
+.es-bar-diagram svg { display: block; max-width: 100%; }
+.es-bar-diagram p.status { padding: 0.8rem; }
+
+.es-summary {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.25rem 1rem;
+    font-size: 0.88rem;
+    margin: 0;
+}
+.es-summary dt { color: var(--text-secondary); }
+.es-summary dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+/* ---- Methods modal ---- */
+
+.methods-modal {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border: 1px solid var(--border-strong);
+    border-radius: 12px;
+    max-width: 720px;
+    width: 92%;
+    padding: 0;
+    box-shadow: 0 12px 36px rgba(0,0,0,0.55);
+}
+.methods-modal::backdrop {
+    background: rgba(10, 12, 16, 0.7);
+}
+.methods-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.8rem 1.2rem;
+    border-bottom: 1px solid var(--border-soft);
+}
+.methods-modal-header h2 {
+    margin: 0;
+    font: 600 1.05rem/1.2 "Inter", system-ui, sans-serif;
+}
+.methods-modal-actions { display: flex; gap: 0.4rem; }
+.methods-modal-body {
+    padding: 1rem 1.4rem;
+    max-height: 60vh;
+    overflow: auto;
+    font-size: 0.92rem;
+    line-height: 1.55;
+}
+.methods-modal-body p { margin: 0 0 1em; }
+.methods-modal-body code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85em;
+    background: var(--bg-input);
+    padding: 0.05rem 0.3rem;
+    border-radius: 3px;
+}
+
+/* Selector compatibility: a locked es-* value field gets faded so
+ * the user sees which knob is active. */
+.is-locked { opacity: 0.45; }
+.is-locked input, .is-locked select, .is-locked textarea {
+    pointer-events: none;
+}
+
+/* ---- Live-watch phase indicator ----
+ *
+ * Three chips that visualize the per-phase state (empty / running /
+ * complete) of the loaded or watched spectra.json.  The dot colour
+ * mirrors the PHASE_* string in molbuilder.spectra.results so the
+ * UI never disagrees with the backend's notion of "what's done". */
+.phase-indicator {
+    display: flex;
+    gap: 1.2rem;
+    flex-wrap: wrap;
+    margin: 0.6rem 0;
+    padding: 0.5rem 0.7rem;
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    background: var(--bg-input);
+    font-size: 0.85rem;
+}
+.phase {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: var(--text-secondary);
+}
+.phase-label { user-select: none; }
+.phase-dot {
+    display: inline-block;
+    width: 0.85em;
+    height: 0.85em;
+    border-radius: 50%;
+    background: var(--bg-card);
+    border: 1px solid var(--border-strong);
+    box-shadow: inset 0 0 0 2px var(--bg-input);
+}
+.phase-dot.phase-running {
+    background: #ffd454;
+    border-color: #ffd454;
+    box-shadow: inset 0 0 0 2px var(--bg-input);
+    animation: phase-pulse 1.4s ease-in-out infinite;
+}
+.phase-dot.phase-complete {
+    background: #6fcf6f;
+    border-color: #6fcf6f;
+    box-shadow: inset 0 0 0 2px var(--bg-input);
+}
+@keyframes phase-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.45; }
+}
+
+/* The upload-fallback <details> sits below the path-based primary
+ * input; collapsed by default so the path-mode is the obvious one. */
+.upload-fallback {
+    margin-top: 0.8rem;
+    padding: 0.55rem 0.75rem;
+    border: 1px dashed var(--border-soft);
+    border-radius: 6px;
+}
+.upload-fallback summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    user-select: none;
+}
+.upload-fallback p.hint {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    margin: 0.4rem 0;
+}
