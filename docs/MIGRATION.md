@@ -91,19 +91,23 @@ and you can drop the directory in unchanged.  If the path differs,
 Claude Code will compute a different hash on first run — copy the
 contents into the new hash path, **not** the old one.
 
-Easiest path:
+The old machine ships the memory directory as `claude-memory.tgz`
+at the repo root.  It's gitignored — the tarball is a transfer
+artifact, not committed history.  Carry it along with the working
+tree to the new machine (Y: drive mount, scp, USB — your call).
 
 ```bash
-# On the old machine: archive the memory dir
-tar czf claude-memory.tgz -C /home/quan_qing/.claude/projects \
+# On the old machine: archive the memory dir.  Already done; the
+# tarball is at ./claude-memory.tgz at the repo root.
+tar czf claude-memory.tgz -C /home/<user>/.claude/projects \
     -mnt-y-GitHub-quantum-simulation-molbuilder/memory
 
 # On the new machine, after Claude Code has been launched once
 # (so the projects dir exists):
-ls /home/<user>/.claude/projects/    # find the auto-created hash dir
-# Then extract into that hash dir.  Example if the hash is the
-# same as the source:
-tar xzf claude-memory.tgz -C /home/<user>/.claude/projects/
+ls ~/.claude/projects/    # find the auto-created hash dir
+# Extract into that hash dir.  If the new machine uses the same
+# repo path, the tarball already has the expected directory name:
+tar xzf claude-memory.tgz -C ~/.claude/projects/
 ```
 
 If the hash differs and you'd rather not move files, paste the
@@ -276,27 +280,28 @@ STEP 1 — Locate the repo and load context
 - Read `docs/tabs/spectra/spec.md` § 13 "Future extensions" so you know
   the v1 / v1.1+ boundary.
 
-STEP 2 — Restore Claude auto-memory if not already in place
+STEP 2 — Restore Claude auto-memory
 
 Claude Code stores per-project memory under a hash of the project's
 absolute path:
     ~/.claude/projects/<hash>/memory/
 
-The hash is derived from the path with `/` -> `-`.  If the new machine
-mounted the repo at the same absolute path as the old machine, the hash
-matches and the auto-memory directory at that hash may already exist.
+The user manually copied ./claude-memory.tgz to the repo root on this
+machine.  The tarball is gitignored (so it never enters the GitHub
+remote) but is reachable from the working tree.
 
-- List `~/.claude/projects/` and identify whichever directory's name
-  corresponds to this repo's absolute path.
-- If `memory/MEMORY.md` exists there: read it and report the entries.
-- If not: look for `./claude-memory.tgz` at the repo root.  Untar it into
-  `~/.claude/projects/`, preserving the directory name embedded in the
-  tarball (it's `./-mnt-y-GitHub-quantum-simulation-molbuilder/memory/`,
-  which assumes the old path; if the new machine's path differs, extract
-  into a temp directory first and copy the `memory/` subdirectory into
-  the new-machine hash dir).
-- Verify by reading the relocated `MEMORY.md` and listing the 9
-  feedback/project files it indexes.
+- Run `ls ~/.claude/projects/` to find the hash directory for this
+  repo (Claude Code created it on first launch).
+- Check whether `<that-hash-dir>/memory/MEMORY.md` already exists.
+  - If yes: read it, list the indexed entries, report.
+  - If no: extract ./claude-memory.tgz:
+        tar xzf ./claude-memory.tgz -C ~/.claude/projects/
+    The tarball's embedded directory name assumes the old machine's
+    path; if the new machine's hash differs, extract into a temp dir
+    instead and move the `memory/` subdirectory into the new-machine
+    hash dir manually.  Then verify by reading the relocated
+    MEMORY.md.
+- Report which hash path the memory landed at.
 
 STEP 3 — Verify the conda env (`transport`)
 
