@@ -44,13 +44,19 @@ def _make_mode(index: int = 1,
                freq: float = 412.3,
                with_es: bool = False,
                raman: float = 12.5) -> ModeData:
+    # Tests don't exercise the canonical-vs-display distinction (no
+    # Placzek formula evaluation here), so we feed the same toy array
+    # into both eigenvector slots.  In a real run from
+    # render_spectra_script these would differ by a per-mode scaling.
+    _ev = np.array([[0.7, 0.0, 0.0],
+                    [-0.7, 0.0, 0.0]])
     return ModeData(
         index_1based          = index,
         frequency_cm1         = freq,
         raman_activity_a4_amu = raman,
         ir_intensity_km_mol   = None,
-        eigenvector_free      = np.array([[0.7, 0.0, 0.0],
-                                          [-0.7, 0.0, 0.0]]),
+        eigenvector_canonical = _ev,
+        eigenvector_display   = _ev,
         has_imag              = (freq < 0),
         electronic_structure  = _make_es() if with_es else None,
     )
@@ -110,12 +116,14 @@ def _modes_fixture() -> list[ModeData]:
         6      3656.0                  18.5    (high-freq O-H)
     """
     def _m(idx, freq, raman):
+        _ev = np.zeros((2, 3))
         return ModeData(
             index_1based          = idx,
             frequency_cm1         = freq,
             raman_activity_a4_amu = raman,
             ir_intensity_km_mol   = None,
-            eigenvector_free      = np.zeros((2, 3)),
+            eigenvector_canonical = _ev,
+            eigenvector_display   = _ev,
             has_imag              = False,
         )
     return [

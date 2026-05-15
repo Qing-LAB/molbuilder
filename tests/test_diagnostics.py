@@ -1,0 +1,280 @@
+"""Routing tables, Capabilities snapshot, singleton lifecycle.
+
+The module under test exposes three small dicts (``DEFAULT_ENV_NAMES``,
+``TOOL_TO_CATEGORY``, ``EXTENSION_TO_CATEGORY``), one frozen dataclass
+(:class:`Capabilities`), one probe (:func:`detect`), and four singleton
+lifecycle helpers.
+
+Singleton isolation is handled by an autouse fixture in
+``tests/conftest.py`` -- every test starts and ends with the snapshot
+reset.
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+from typing import Any, Dict, List
+from unittest.mock import MagicMock
+
+import pytest
+
+from molbuilder import diagnostics
+from molbuilder.diagnostics import (Capabilities, DEFAULT_ENV_NAMES,
+                                      EXTENSION_TO_CATEGORY,
+                                      TOOL_TO_CATEGORY, detect,
+                                      get_capabilities, initialize,
+                                      set_capabilities)
+
+
+# --------------------------------------------------------------------- #
+#  Routing tables                                                       #
+# --------------------------------------------------------------------- #
+
+
+def test_default_env_names_covers_the_four_categories():
+    assert set(DEFAULT_ENV_NAMES) == {"siesta", "pyscf", "mdtools", "tests"}
+
+
+def test_default_env_names_match_readme_install():
+    """The names are what docs/README_install.md tells users to create."""
+    assert DEFAULT_ENV_NAMES["siesta"]  == "molbuilder-siesta"
+    assert DEFAULT_ENV_NAMES["pyscf"]   == "molbuilder-pySCF"
+    assert DEFAULT_ENV_NAMES["mdtools"] == "molbuilder-MDtools"
+    assert DEFAULT_ENV_NAMES["tests"]   == "molbuilder-tests"
+
+
+def test_every_tool_routes_to_a_known_category():
+    """Each routed tool maps to a category we know how to dispatch."""
+    assert set(TOOL_TO_CATEGORY.values()) <= set(DEFAULT_ENV_NAMES)
+
+
+def test_every_extension_routes_to_a_known_category():
+    assert set(EXTENSION_TO_CATEGORY.values()) <= set(DEFAULT_ENV_NAMES)
+
+
+def test_known_tools_present():
+    """Spot-check the README-documented entries -- these are the four-env
+    contract surface."""
+    assert TOOL_TO_CATEGORY["tleap"]      == "mdtools"
+    assert TOOL_TO_CATEGORY["siesta"]     == "siesta"
+    assert TOOL_TO_CATEGORY["playwright"] == "tests"
+    assert EXTENSION_TO_CATEGORY[".fdf"]  == "siesta"
+    assert EXTENSION_TO_CATEGORY[".py"]   == "pyscf"
+
+
+# --------------------------------------------------------------------- #
+#  Capabilities -- pure lookups                                         #
+# --------------------------------------------------------------------- #
+
+
+def _caps(**overrides) -> Capabilities:
+    """Synthetic Capabilities for tests that want specific state."""
+    defaults: Dict[str, Any] = dict(
+        runtime_config = {},
+        conda_binary   = "/usr/bin/conda",
+        conda_envs     = frozenset(),
+    )
+    defaults.update(overrides)
+    return Capabilities(**defaults)
+
+
+def test_env_for_category_returns_default():
+    caps = _caps()
+    assert caps.env_for_category("siesta")  == "molbuilder-siesta"
+    assert caps.env_for_category("pyscf")   == "molbuilder-pySCF"
+    assert caps.env_for_category("mdtools") == "molbuilder-MDtools"
+    assert caps.env_for_category("tests")   == "molbuilder-tests"
+
+
+def test_env_for_category_unknown_returns_none():
+    assert _caps().env_for_category("not-a-real-category") is None
+
+
+def test_env_for_category_honours_config_override():
+    caps = _caps(runtime_config={
+        "envs": {"siesta": "my-siesta", "mdtools": "my-amber"},
+    })
+    assert caps.env_for_category("siesta")  == "my-siesta"
+    assert caps.env_for_category("mdtools") == "my-amber"
+    # Unspecified category falls back to compiled default.
+    assert caps.env_for_category("pyscf")   == "molbuilder-pySCF"
+
+
+def test_env_for_tool_known():
+    caps = _caps()
+    assert caps.env_for_tool("tleap")      == "molbuilder-MDtools"
+    assert caps.env_for_tool("siesta")     == "molbuilder-siesta"
+    assert caps.env_for_tool("playwright") == "molbuilder-tests"
+
+
+def test_env_for_tool_unknown_returns_none():
+    assert _caps().env_for_tool("ls") is None
+
+
+def test_env_for_tool_picks_up_override():
+    caps = _caps(runtime_config={"envs": {"mdtools": "amber26-dac"}})
+    assert caps.env_for_tool("tleap")    == "amber26-dac"
+    assert caps.env_for_tool("parmchk2") == "amber26-dac"
+
+
+def test_env_available():
+    caps = _caps(conda_envs={"molbuilder-MDtools", "other-env"})
+    assert caps.env_available("molbuilder-MDtools") is True
+    assert caps.env_available("not-there")          is False
+
+
+def test_routed_env_returns_name_when_routed_and_available():
+    caps = _caps(conda_envs={"molbuilder-MDtools"})
+    assert caps.routed_env("tleap") == "molbuilder-MDtools"
+
+
+def test_routed_env_none_when_env_missing():
+    caps = _caps(conda_envs=set())
+    assert caps.routed_env("tleap") is None
+
+
+def test_routed_env_none_when_unrouted():
+    caps = _caps(conda_envs={"random-env"})
+    assert caps.routed_env("ls") is None
+
+
+def test_tool_available_via_routed_env():
+    caps = _caps(conda_envs={"molbuilder-MDtools"})
+    assert caps.tool_available("tleap") is True
+
+
+def test_tool_available_via_host_path(monkeypatch):
+    monkeypatch.setattr(diagnostics.shutil, "which",
+                         lambda t: "/usr/bin/tleap" if t == "tleap" else None)
+    caps = _caps(conda_envs=set())
+    assert caps.tool_available("tleap") is True
+
+
+def test_tool_available_unreachable(monkeypatch):
+    monkeypatch.setattr(diagnostics.shutil, "which", lambda t: None)
+    caps = _caps(conda_envs=set())
+    assert caps.tool_available("tleap") is False
+
+
+def test_capabilities_is_frozen():
+    """No accidental attribute reassignment -- the snapshot is a stable
+    contract.  (The ``runtime_config`` *dict* is mutable by Python
+    semantics; treat it as read-only by convention -- see module
+    docstring.)"""
+    caps = _caps()
+    with pytest.raises((AttributeError, Exception)):
+        caps.conda_binary = "/somewhere/else"   # type: ignore[misc]
+
+
+# --------------------------------------------------------------------- #
+#  detect() -- composition of the probe                                 #
+# --------------------------------------------------------------------- #
+
+
+def _stub_conda_env_list(envs_list: List[str]):
+    """Return a fake subprocess.run that mimics ``conda env list --json``."""
+    def fake_run(argv, *args, **kwargs):
+        cp = MagicMock(spec=subprocess.CompletedProcess)
+        cp.returncode = 0
+        cp.stdout = json.dumps({"envs": envs_list})
+        cp.stderr = ""
+        return cp
+    return fake_run
+
+
+def test_detect_assembles_capabilities(monkeypatch):
+    monkeypatch.setattr(diagnostics, "read_config",
+                         lambda: {"envs": {"siesta": "my-siesta"}})
+    monkeypatch.setattr(diagnostics.shutil, "which",
+                         lambda t: "/usr/bin/conda" if t == "conda" else None)
+    monkeypatch.setattr(diagnostics.subprocess, "run",
+                         _stub_conda_env_list([
+                             "/home/u/miniconda3",
+                             "/home/u/miniconda3/envs/molbuilder-MDtools",
+                             "/home/u/miniconda3/envs/some-other",
+                         ]))
+    caps = detect()
+    assert caps.conda_binary == "/usr/bin/conda"
+    # Conda installation root (no /envs/ parent) is filtered out;
+    # only true named envs make it into the snapshot.
+    assert caps.conda_envs == frozenset({"molbuilder-MDtools", "some-other"})
+    assert caps.runtime_config == {"envs": {"siesta": "my-siesta"}}
+
+
+def test_detect_filters_out_conda_root_installation(monkeypatch):
+    """Base installation paths don't have ``/envs/`` as parent and
+    aren't addressable via ``conda run -n``."""
+    monkeypatch.setattr(diagnostics, "read_config", lambda: {})
+    monkeypatch.setattr(diagnostics.shutil, "which",
+                         lambda t: "/usr/bin/conda" if t == "conda" else None)
+    monkeypatch.setattr(diagnostics.subprocess, "run",
+                         _stub_conda_env_list([
+                             "/home/u/miniconda3",         # base; filter out
+                             "/opt/anaconda3",             # base; filter out
+                         ]))
+    caps = detect()
+    assert caps.conda_envs == frozenset()
+
+
+def test_detect_no_conda_gives_empty_envs(monkeypatch):
+    monkeypatch.setattr(diagnostics, "read_config", lambda: {})
+    monkeypatch.setattr(diagnostics.shutil, "which", lambda t: None)
+    monkeypatch.delenv("CONDA_EXE", raising=False)
+    caps = detect()
+    assert caps.conda_binary is None
+    assert caps.conda_envs   == frozenset()
+
+
+def test_detect_conda_failure_yields_empty_envs(monkeypatch):
+    """Non-zero exit / timeout / malformed JSON -> empty set, not raise."""
+    monkeypatch.setattr(diagnostics, "read_config", lambda: {})
+    monkeypatch.setattr(diagnostics.shutil, "which",
+                         lambda t: "/usr/bin/conda" if t == "conda" else None)
+    def failing_run(argv, *a, **kw):
+        cp = MagicMock(spec=subprocess.CompletedProcess)
+        cp.returncode = 1
+        cp.stdout = ""
+        cp.stderr = "boom"
+        return cp
+    monkeypatch.setattr(diagnostics.subprocess, "run", failing_run)
+    caps = detect()
+    assert caps.conda_binary == "/usr/bin/conda"
+    assert caps.conda_envs   == frozenset()
+
+
+# --------------------------------------------------------------------- #
+#  Singleton lifecycle                                                  #
+# --------------------------------------------------------------------- #
+
+
+def test_get_capabilities_auto_initialises(monkeypatch):
+    """First call to get_capabilities() runs detect; subsequent calls
+    return the same snapshot."""
+    monkeypatch.setattr(diagnostics, "detect",
+                         lambda: _caps(conda_binary="/test/conda"))
+    caps1 = get_capabilities()
+    caps2 = get_capabilities()
+    assert caps1 is caps2
+    assert caps1.conda_binary == "/test/conda"
+
+
+def test_initialize_rebinds_snapshot(monkeypatch):
+    counter = {"n": 0}
+    def fake_detect():
+        counter["n"] += 1
+        return _caps(conda_binary=f"/conda-v{counter['n']}")
+    monkeypatch.setattr(diagnostics, "detect", fake_detect)
+
+    initialize()
+    assert get_capabilities().conda_binary == "/conda-v1"
+
+    initialize()
+    assert get_capabilities().conda_binary == "/conda-v2"
+
+
+def test_set_capabilities_injects():
+    """Direct injection -- tests, dependency injection."""
+    injected = _caps(conda_binary="/injected/conda")
+    set_capabilities(injected)
+    assert get_capabilities() is injected

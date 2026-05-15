@@ -84,6 +84,18 @@
     <div class="card-section">
       <header class="section-header">
         <h2>Generate</h2>
+        <p class="section-hint">
+          Outputs:
+          frequencies in <strong>cm⁻¹</strong>,
+          Raman activities in <strong>Å⁴ / amu</strong>
+          (Placzek 45 a² + 7 γ²),
+          MO energies in <strong>Hartree</strong>.
+          Two normal-mode forms are stored per mode:
+          <code>eigenvector_canonical</code> (mass-weighted,
+          Σ&nbsp;m·|L|²&nbsp;=&nbsp;1; for post-hoc Raman / IR
+          re-computation) and <code>eigenvector_display</code>
+          (max(|L|)&nbsp;=&nbsp;1; for 3D animation).
+        </p>
       </header>
       <div class="inline-row primary-actions">
         <button id="generate-btn" class="primary" type="button">
@@ -144,13 +156,13 @@
     <!-- ── Load / Watch results ─────────────────── -->
     <div class="card-section">
       <header class="section-header">
-        <h2>Results from a run</h2>
+        <h2>Load results</h2>
         <p class="section-hint">
-          The primary path is to type the full server-side path
-          to <code>&lt;job&gt;.spectra.json</code> below.  "Watch"
-          polls every 2&nbsp;s and auto-stops when all configured
-          phases finish.  Browser file-upload is also offered as
-          a fallback for runs on a different machine.
+          Point at a <code>&lt;job&gt;.spectra.json</code> file produced
+          by an earlier run.  The primary path is the server-side
+          file path below; "Watch" polls every 2&nbsp;s and auto-stops
+          when all configured phases finish.  Browser file-upload is
+          offered as a fallback for runs on a different machine.
         </p>
       </header>
 

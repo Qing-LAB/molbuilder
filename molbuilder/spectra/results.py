@@ -54,7 +54,24 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 
-SCHEMA_VERSION = 1
+# SCHEMA_VERSION history (incremented when the on-disk JSON shape changes):
+#
+#   v1  -- initial release.  Single mode-eigenvector field
+#          ``eigenvector_free`` (used ambiguously for both 3D animation
+#          and Raman-projection in different code paths -- correctness
+#          bug, see decisions-log entry 2026-05-15).
+#   v2  -- two explicit eigenvector forms per mode:
+#            * eigenvector_canonical  -- Cartesian normal mode in the
+#                canonical mass-weighted convention sum_k m_k|L_k|^2 = 1
+#                (use for Placzek Raman, IR, electron-phonon...).
+#            * eigenvector_display    -- max(|L_k|) = 1 per mode
+#                (use for 3D animation, fixed-amplitude ES probe).
+#          Old ``eigenvector_free`` field is dropped from the wire
+#          format; ``from_dict`` continues to accept v1 documents as a
+#          best-effort fallback (both new arrays populated from the
+#          single legacy field, since the canonical normalisation is
+#          not recoverable from v1).
+SCHEMA_VERSION = 2
 
 
 # Phase status vocabulary -- per-layer flag carried on
@@ -232,16 +249,21 @@ class ModeElectronicStructure:
 class ModeData:
     """One vibrational mode.
 
-    The eigenvector is restricted to the *free* atoms (fixed atoms
-    don't move), so its shape is ``(n_free, 3)`` -- the global
-    ``free_atom_idxs`` on :class:`SpectraResults` maps free-atom
-    rows back to atom indices.
+    Each eigenvector is restricted to the *free* atoms (fixed atoms
+    don't move), shape ``(n_free, 3)``; the global
+    :attr:`SpectraResults.free_atom_idxs` maps free-atom rows back
+    to global atom indices.
+
+    Two normalisations of the same physical mode are provided so
+    consumers can pick the one their downstream task requires; they
+    differ only by a per-mode scaling factor and are interchangeable
+    for direction-of-motion purposes.  See the field docs below.
 
     Imaginary modes are reported with a negative frequency and
-    :attr:`has_imag` ``= True``.  v1's PySCF engine follows the
-    sign convention ``ω = sign(λ) * sqrt(|λ|)`` where λ is the
-    mass-weighted Hessian eigenvalue, so a saddle's "imaginary"
-    mode becomes a negative real number for plotting purposes.
+    :attr:`has_imag` ``= True``.  Sign convention follows
+    ``ω = sign(λ) * sqrt(|λ|)`` where λ is the mass-weighted Hessian
+    eigenvalue, so a saddle's "imaginary" mode becomes a negative
+    real number for plotting purposes.
 
     The optional :attr:`electronic_structure` is populated only for
     modes the user selected via the Model 2 selector (spec § 8).
@@ -262,9 +284,21 @@ class ModeData:
     raman_activity_a4_amu: Optional[float]
     ir_intensity_km_mol:   Optional[float]
 
-    # Mass-weighted normal-mode eigenvector, shape (n_free, 3),
-    # units Å * amu^(-1/2) per the harmonic-analysis convention.
-    eigenvector_free:      np.ndarray
+    # Cartesian normal mode in the canonical mass-weighted convention:
+    #     Σ_k m_k |L_k|² = 1     (m_k in atomic units of mass)
+    # Use for any physics that depends on the actual amplitude of
+    # nuclear motion -- Raman activity (Placzek 45a²+7γ² lands in
+    # Å⁴/amu directly), IR intensity, electron-phonon coupling
+    # gradients, normal-mode-analysis projections.
+    eigenvector_canonical: np.ndarray
+
+    # Same mode, rescaled per mode so that max(|L_k|) = 1.  Dimensionless.
+    # Use for 3D animation (each mode reaches the same peak amplitude
+    # on screen regardless of mass distribution) and for the fixed-
+    # amplitude electron-phonon "probe displacement" in Phase 4.
+    # DO NOT feed this into physical-amplitude formulas -- the units
+    # are wrong by a per-mode factor.
+    eigenvector_display:   np.ndarray
 
     # Sign-of-eigenvalue marker: negative-ω modes are flagged here
     # so the UI / parser / methods generator don't have to
@@ -276,20 +310,33 @@ class ModeData:
     __eq__ = _no_equality
 
     def __post_init__(self):
-        """Normalise + shape-validate the eigenvector.
+        """Validate the eigenvector shapes.
 
-        Eigenvector must be 2-D with the last axis = 3 (Cartesian
-        x/y/z displacement per free atom).  Number of free atoms
-        is implicit from the first axis -- cross-mode consistency
-        (every mode has the same n_free) is validated at the
-        SpectraResults level, not here.
+        Both eigenvector arrays must be 2-D with the last axis = 3
+        (Cartesian x/y/z per free atom) and the same first-axis
+        length (cross-mode consistency -- same n_free across all
+        modes in a SpectraResults -- is checked at the result level,
+        not here).
         """
-        self.eigenvector_free = _reject_complex_then_asarray(
-            self.eigenvector_free, field="ModeData.eigenvector_free")
-        if self.eigenvector_free.ndim != 2 or self.eigenvector_free.shape[1] != 3:
+        self.eigenvector_canonical = _reject_complex_then_asarray(
+            self.eigenvector_canonical,
+            field="ModeData.eigenvector_canonical")
+        self.eigenvector_display = _reject_complex_then_asarray(
+            self.eigenvector_display,
+            field="ModeData.eigenvector_display")
+        for name, arr in (("canonical", self.eigenvector_canonical),
+                          ("display",   self.eigenvector_display)):
+            if arr.ndim != 2 or arr.shape[1] != 3:
+                raise ValueError(
+                    f"ModeData.eigenvector_{name} must have shape "
+                    f"(n_free, 3); got {arr.shape}"
+                )
+        if self.eigenvector_canonical.shape != self.eigenvector_display.shape:
             raise ValueError(
-                f"ModeData.eigenvector_free must have shape (n_free, 3); "
-                f"got {self.eigenvector_free.shape}"
+                f"ModeData: eigenvector_canonical and eigenvector_display "
+                f"must have the same shape; got "
+                f"{self.eigenvector_canonical.shape} vs "
+                f"{self.eigenvector_display.shape}"
             )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -300,7 +347,8 @@ class ModeData:
                                       else float(self.raman_activity_a4_amu)),
             "ir_intensity_km_mol":   (None if self.ir_intensity_km_mol is None
                                       else float(self.ir_intensity_km_mol)),
-            "eigenvector_free":      self.eigenvector_free.tolist(),
+            "eigenvector_canonical": self.eigenvector_canonical.tolist(),
+            "eigenvector_display":   self.eigenvector_display.tolist(),
             "has_imag":              bool(self.has_imag),
             "electronic_structure":  (None if self.electronic_structure is None
                                       else self.electronic_structure.to_dict()),
@@ -309,6 +357,32 @@ class ModeData:
     @classmethod
     def from_dict(cls, d: Dict[str, Any]) -> "ModeData":
         es = d.get("electronic_structure")
+        # Resolve the eigenvector pair, accepting both schema versions:
+        #
+        #   v2 (current)  -- two explicit fields, used as-is.
+        #   v1 (legacy)   -- single ``eigenvector_free`` field; we treat
+        #                    it as the display form and copy it into the
+        #                    canonical slot too.  This is best-effort
+        #                    only: v1 didn't track the canonical
+        #                    normalisation separately, so a downstream
+        #                    re-projection (e.g. recomputing Raman from
+        #                    scratch) needs to re-run the harmonic
+        #                    analysis to get the correct canonical
+        #                    eigenvectors back.  The raman_activity /
+        #                    ir_intensity values stored in the v1 JSON
+        #                    themselves are unaffected; they were
+        #                    computed at emit time with whatever
+        #                    normalisation that v1 build had.
+        if "eigenvector_canonical" in d:
+            ev_canon = np.asarray(d["eigenvector_canonical"], dtype=float)
+            ev_disp  = np.asarray(
+                d.get("eigenvector_display", d.get("eigenvector_free")),
+                dtype=float,
+            )
+        else:
+            ev_free  = np.asarray(d["eigenvector_free"], dtype=float)
+            ev_canon = ev_free
+            ev_disp  = ev_free
         return cls(
             index_1based          = int(d["index_1based"]),
             frequency_cm1         = float(d["frequency_cm1"]),
@@ -316,7 +390,8 @@ class ModeData:
                                      else float(d["raman_activity_a4_amu"])),
             ir_intensity_km_mol   = (None if d.get("ir_intensity_km_mol") is None
                                      else float(d["ir_intensity_km_mol"])),
-            eigenvector_free      = np.asarray(d["eigenvector_free"], dtype=float),
+            eigenvector_canonical = ev_canon,
+            eigenvector_display   = ev_disp,
             has_imag              = bool(d.get("has_imag", False)),
             electronic_structure  = (None if es is None
                                      else ModeElectronicStructure.from_dict(es)),
@@ -421,8 +496,8 @@ class SpectraResults:
           * equilibrium_mo_energies_eh is a 1-D float array;
           * homo_idx is in range;
           * free_atom_idxs + fixed_atom_idxs partition [0, n_atoms_total);
-          * every mode's eigenvector_free has the same n_free
-            (= len(free_atom_idxs));
+          * every mode's two eigenvector arrays (canonical, display)
+            have the same n_free (= len(free_atom_idxs));
           * every mode's electronic_structure (when present) has
             the same window size.
 
@@ -507,11 +582,15 @@ class SpectraResults:
         # (in-progress write before phase 2 -- no harmonic analysis yet).
         if self.modes:
             n_free = len(free_set)
+            expected_shape = (n_free, 3)
             for m in self.modes:
-                if m.eigenvector_free.shape != (n_free, 3):
+                # The dataclass post_init already pinned canonical.shape
+                # == display.shape, so checking either is sufficient.
+                if m.eigenvector_canonical.shape != expected_shape:
                     raise ValueError(
                         f"SpectraResults: mode {m.index_1based} has eigenvector "
-                        f"shape {m.eigenvector_free.shape}, expected ({n_free}, 3)"
+                        f"shape {m.eigenvector_canonical.shape}, expected "
+                        f"{expected_shape}"
                     )
             # Cross-mode ES window-size consistency.
             es_window = None

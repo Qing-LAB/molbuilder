@@ -237,7 +237,7 @@ class TestWaterFrequenciesAllFree:
 
         # Eigenvector shape: (n_free, 3).  For water all-free,
         # n_free = 3 atoms (O, H, H in our ordering).
-        evec = np.asarray(stretch.eigenvector_free)
+        evec = np.asarray(stretch.eigenvector_display)
         assert evec.shape == (3, 3), (
             f"expected eigenvector shape (3, 3), got {evec.shape}"
         )
@@ -351,7 +351,7 @@ class TestPartialHessianMassWeighting:
 
         # Every mode's eigenvector has shape (N_FREE, 3) = (2, 3).
         for m in results.modes:
-            evec = np.asarray(m.eigenvector_free)
+            evec = np.asarray(m.eigenvector_display)
             assert evec.shape == (2, 3), (
                 f"mode {m.index_1based} eigenvector shape "
                 f"{evec.shape}; expected (2, 3) for two free atoms"
@@ -423,7 +423,7 @@ class TestPartialHessianMassWeighting:
             f"outside the [2500, 3300] cm⁻¹ window for B3LYP/def2-SVP"
         )
 
-        evec = np.asarray(stretch.eigenvector_free)
+        evec = np.asarray(stretch.eigenvector_display)
         assert evec.shape == (2, 3)
         amp_H, amp_Cl = np.linalg.norm(evec, axis=1)
 

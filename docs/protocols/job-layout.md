@@ -65,6 +65,7 @@ For a job with basename `my-job`:
 |---|---|---|---|
 | `my-job.fdf`            | molbuilder Build tab / `molbuilder fdf`   | SIESTA | input deck |
 | `my-job.py`             | molbuilder Build tab / `molbuilder pyscf` | python  | input script (PySCF) |
+| `my-job.run.sh`         | `molbuilder run my-job.fdf` / `molbuilder run my-job.py` | user's shell / SLURM / Cron | shell wrapper that activates the right conda env and executes the script -- see § "Run wrapper" below |
 | `my-job.molwatch.log`   | both generators (initial preview) + the inlined PySCF emitter (live frames) + SIESTA preview-writer | Watch tab parser, `molbuilder watch parse`, `molbuilder watch tail` | **canonical trajectory source** — preferred by every reader |
 | `my-job.out`            | the user's shell redirect (SIESTA) | Watch tab fallback parser | engine stdout — recommended redirect target |
 | `my-job.log`            | the generated PySCF script | Watch tab fallback parser | textual SCF log (PySCF) |
@@ -205,6 +206,111 @@ Pointing the Watch tab at `my-job/` resolves to all three
 trajectory with stage boundary markers.
 
 ---
+
+## Project-tree organisation
+
+A single job-layout-v1 directory sits at the bottom of a three-level
+organisational hierarchy under the (gitignored) `projects/` root:
+
+```
+projects/
+└── <project>/                  # e.g. "Au-thiol-junctions"
+    └── <topic>/                # canonical vocabulary (see below)
+        └── <structure>/        # ← the job-layout-v1 directory
+            ├── <basename>.fdf  (or .py)
+            ├── <basename>.run.sh
+            ├── <basename>.molwatch.log
+            └── ... (all other files share the same basename)
+```
+
+The hierarchy is **organisational only**.  The innermost `<structure>/`
+is exactly the flat one-job-per-directory shape rules 1 and 2 of this
+protocol describe — no subdirectories inside it; SIESTA's restart
+files (`.XV` / `.DM` / `.CG`) and the rest of the catalogue live at
+the same level next to the input deck.
+
+Canonical topic vocabulary (six values, hard-coded in
+`molbuilder.projects.CANONICAL_TOPICS`):
+
+| Topic | Used for |
+|---|---|
+| `optimization` | Geometry relaxation |
+| `frequency`    | Hessian / vibrational frequencies + RRHO thermo |
+| `spectrum`     | Raman / IR (and later UV-Vis) at an optimised geom |
+| `transport`    | NEGF / TBtrans device calculations |
+| `single-point` | Energy at a fixed geometry |
+| `scan`         | Potential-energy-surface scans |
+
+Topic names not in this set are rejected with `InvalidName` at path-
+construction time.  This is deliberate: an open vocabulary would
+fragment the workflow tree across users and break the "compare the
+same analysis across structures" intuition that motivated the
+topic-first ordering.
+
+Naming rules for each segment of the tree (`<project>`, `<topic>`,
+`<structure>`):
+
+* Must match `[A-Za-z0-9_-]+`.  Same character set rule 2 above
+  imposes on the basename, for the same reason — SIESTA's
+  basename-based file discovery would break otherwise.
+* `<topic>` additionally must be one of the canonical six.
+
+`molbuilder.projects` exposes:
+
+* `validate_name(name, kind=...)`, `validate_topic(name)`
+* `project_dir(p)`, `topic_dir(p, t)`, `structure_dir(p, t, s)`
+* `ensure_structure_dir(p, t, s)` -- mkdir -p
+* `list_projects()`, `list_topics(p)`, `list_structures(p, t)`
+* `find_geom_candidates(project=...)` -- scan the tree for files
+  matching `*_optimized.xyz` / `*.STRUCT_OUT` / `*.xyz` / `*.pdb`,
+  sorted by mtime descending.  This is the "intelligence" backing
+  the Build-tab "starting geometry" picker in the (future) web UI.
+
+## Run wrapper (`<basename>.run.sh`)
+
+`molbuilder run my-job.fdf` (or `.py`) emits a sibling
+`<basename>.run.sh` that activates the routed conda env and executes
+the tool.  Generated wrappers look like:
+
+```bash
+#!/usr/bin/env bash
+#
+# molbuilder run-wrapper -- SIESTA-MPI run on 4 ranks
+# Script: my-job.fdf
+# Target env: molbuilder-siesta
+#
+set -euo pipefail
+cd "$(dirname "$0")"
+
+exec conda run -n molbuilder-siesta --no-capture-output \
+    mpirun -np 4 siesta my-job.fdf > my-job.out
+```
+
+Routing:
+
+* `.fdf`  → `molbuilder-siesta` env, `mpirun -np N siesta ... > .out`
+  (or single-process if `--np` is omitted or < 2).
+* `.py`   → `molbuilder-pySCF` env, `python ...`.  No stdout
+  redirect — the inlined `_MolwatchEmitter` writes its own
+  `.molwatch.log` / `.log` files.
+
+The wrapper is **plain bash**: a user can read it, edit it, paste
+chunks into a SLURM script, or run it directly:
+
+```
+bash my-job.run.sh           # foreground
+nohup ./my-job.run.sh &      # background, detached
+```
+
+molbuilder does NOT manage the resulting process.  Monitoring is via
+the existing Watch tab pointed at the run directory; the watcher's
+discovery chain (above) finds the `.molwatch.log` as soon as the
+engine writes its first frame.
+
+The wrapper is regenerated freshly each time `molbuilder run` runs
+(it's per-invocation output, not state).  Edits between regenerations
+are lost — keep custom flags in a sibling wrapper if you need them
+preserved.
 
 ## What the protocol does NOT cover
 

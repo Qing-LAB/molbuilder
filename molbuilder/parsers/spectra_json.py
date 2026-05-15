@@ -168,14 +168,26 @@ def _strict_finite_float(s: str) -> float:
     return v
 
 
+# Schema versions this parser can read.  The *current* writer always
+# emits ``SCHEMA_VERSION`` from :mod:`molbuilder.spectra.results`;
+# older versions are accepted on read so previously-saved JSONs still
+# load.  When dropping support for an old version (e.g. v1 once no
+# tooling references it), remove it from this set.
+#
+# Per-version read-time handling lives in the typed-class
+# ``from_dict`` methods (see ``ModeData.from_dict`` for the v1 -> v2
+# eigenvector remap).
+_READABLE_SCHEMA_VERSIONS = {1, 2}
+
+
 def _validate_schema_version(actual: Any) -> None:
-    """Strict version check.  Rejects bool (``True == 1`` would
-    otherwise sneak past), non-int types, and wrong-version ints.
-    Centralised so the dict-input and file-input entry points
-    apply the same rule."""
+    """Version check against :data:`_READABLE_SCHEMA_VERSIONS`.
+    Rejects bool (``True == 1`` would otherwise sneak past), non-int
+    types, and unsupported version numbers.  Centralised so the
+    dict-input and file-input entry points apply the same rule."""
     if not isinstance(actual, int) or isinstance(actual, bool):
         raise SpectraJsonSchemaError(SCHEMA_VERSION, actual)
-    if actual != SCHEMA_VERSION:
+    if actual not in _READABLE_SCHEMA_VERSIONS:
         raise SpectraJsonSchemaError(SCHEMA_VERSION, actual)
 
 

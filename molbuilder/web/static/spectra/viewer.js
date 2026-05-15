@@ -1159,11 +1159,15 @@
     //      (fallback; only works while the user keeps the XYZ in
     //      the input form).
     //
-    // The mode shape is faithful (eigenvector_free carries the
-    // direction + relative amplitudes correctly).  The display
-    // amplitude is a user-tunable visualisation knob, not a
-    // physical quantity -- thermal RMS amplitudes are typically
-    // < 0.05 Å and too small to see.
+    // The mode shape is faithful (eigenvector_display carries the
+    // direction + relative amplitudes correctly, with max(|L|)=1 per
+    // mode so every mode reaches the same peak amplitude on screen).
+    // The display amplitude slider is a user-tunable visualisation
+    // knob, not a physical quantity -- thermal RMS amplitudes are
+    // typically < 0.05 Å and too small to see otherwise.  For
+    // physical-amplitude work (Raman re-projection, etc.), the JSON
+    // also ships eigenvector_canonical with the mass-weighted unit
+    // norm Σ_k m_k|L_k|² = 1.
 
     function _equilibriumGeometry() {
         // Return { elements, positions } or null if neither source
@@ -1242,7 +1246,7 @@
         const mode = (state.results.modes || []).find(
             m => m.index_1based === state.selectedMode
         );
-        if (!mode || !Array.isArray(mode.eigenvector_free)) {
+        if (!mode || !Array.isArray(mode.eigenvector_display)) {
             els.modeViewerWrap.hidden = true;
             _stopAnimation();
             return;
@@ -1314,7 +1318,7 @@
         // shape.  Free atoms get the mode eigenvector; fixed atoms
         // get zero.  free_atom_idxs maps eigenvector row -> atom.
         const free = state.results.free_atom_idxs || [];
-        const evec_free = mode.eigenvector_free;
+        const evec_free = mode.eigenvector_display;
         const nAtoms = geom.elements.length;
         const displacement = new Array(nAtoms);
         for (let i = 0; i < nAtoms; i++) displacement[i] = [0, 0, 0];

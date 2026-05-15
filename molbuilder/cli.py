@@ -26,10 +26,13 @@ import contextlib
 import os
 import sys
 import tempfile
+from pathlib import Path
 from typing import Iterable, Iterator, Optional, Sequence
 
 import click
 
+from .diagnostics import initialize as _initialize_diagnostics
+from .runtime_config import RuntimeConfigError, get_tls, read_config
 from .structure import Structure
 
 
@@ -1034,20 +1037,102 @@ def cmd_modify(input_path, output_path,
 
 
 # --------------------------------------------------------------------- #
+#  run subcommand (emit a shell wrapper for a generated script)         #
+# --------------------------------------------------------------------- #
+
+
+@cli.command("run", short_help="emit a shell wrapper that executes the script")
+@click.argument("script", type=click.Path(exists=True, dir_okay=False,
+                                            path_type=Path))
+@click.option("--env", "env_override", default=None,
+               help="override the routed conda env name "
+                    "(default: env_for_category by file extension)")
+@click.option("--np", "mpi_np", type=click.IntRange(min=1), default=None,
+               help="MPI rank count for SIESTA jobs (.fdf); "
+                    "ignored for .py scripts.  np=1 emits a "
+                    "single-process wrapper (no mpirun); np>=2 emits "
+                    "mpirun -np N")
+def cmd_run(script: Path,
+            env_override: Optional[str],
+            mpi_np: Optional[int]) -> int:
+    """Generate ``<basename>.run.sh`` next to SCRIPT.
+
+    Auto-routes by file extension:
+
+      .fdf  ->  mpirun + siesta in the molbuilder-siesta env
+      .py   ->  python in the molbuilder-pySCF env
+
+    The wrapper is plain bash -- edit it to add custom flags, source
+    it from a SLURM batch script, or run it directly:
+
+      bash my-job.run.sh           # foreground
+      nohup ./my-job.run.sh &      # background, detached
+
+    molbuilder does NOT manage the resulting process; monitoring is
+    via the existing Watch tab pointed at the run directory.
+    """
+    from .runwrap import write_run_wrapper, WrapperError
+    try:
+        wrapper = write_run_wrapper(script, env=env_override, mpi_np=mpi_np)
+    except WrapperError as exc:
+        raise click.UsageError(str(exc)) from None
+    click.echo(f"Wrote {wrapper}")
+    click.echo(f"Run:   bash {wrapper.name}")
+    return 0
+
+
+# --------------------------------------------------------------------- #
 #  serve subcommand (Flask web UI)                                      #
 # --------------------------------------------------------------------- #
+
+
+def _resolve_tls(cert_cli, key_cli):
+    """CLI flags > ./molbuilder.json > (None, None).
+
+    Reads cert/key from ``./molbuilder.json`` (via
+    :mod:`molbuilder.config`).  Both nested (``"tls": {"cert": ...,
+    "key": ...}``) and flat (top-level ``"cert"`` / ``"key"``) shapes
+    are accepted; see ``molbuilder.config`` for details.  Both must be
+    present + readable for TLS to engage; a partial pair is reported
+    and falls back to HTTP.
+    """
+    cert, key = cert_cli, key_cli
+    if cert and key:
+        return cert, key
+    try:
+        tls = get_tls(read_config())
+    except RuntimeConfigError as exc:
+        # Translate the L1 domain exception into the click surface
+        # (preserves the SystemExit(2) contract the older inline code had).
+        raise click.UsageError(str(exc)) from None
+    cert = cert or tls.get("cert")
+    key  = key  or tls.get("key")
+    if (cert and not key) or (key and not cert):
+        click.echo(
+            "molbuilder: cert/key pair incomplete -- falling back to HTTP",
+            err=True,
+        )
+        return None, None
+    return cert, key
 
 
 @cli.command("serve", short_help="run the browser UI (Flask + 3Dmol.js)")
 @click.option("--host",  default="127.0.0.1", show_default=True)
 @click.option("--port",  type=int, default=8000, show_default=True)
 @click.option("--debug", is_flag=True)
-def cmd_serve(host, port, debug):
+@click.option("--cert", type=click.Path(exists=True, dir_okay=False),
+              help="TLS cert (PEM).  Overrides molbuilder.json.")
+@click.option("--key",  type=click.Path(exists=True, dir_okay=False),
+              help="TLS key (PEM).  Overrides molbuilder.json.")
+def cmd_serve(host, port, debug, cert, key):
     """Start a Flask server with the molbuilder browser UI."""
     from .web.app import create_app
+    cert, key = _resolve_tls(cert, key)
+    ssl_ctx = (cert, key) if cert and key else None
+    scheme  = "https" if ssl_ctx else "http"
     app = create_app()
-    click.echo(f"molbuilder web UI starting at http://{host}:{port}", err=True)
-    app.run(host=host, port=port, debug=debug)
+    click.echo(f"molbuilder web UI starting at {scheme}://{host}:{port}", err=True)
+    app.run(host=host, port=port, debug=debug, ssl_context=ssl_ctx)
 
 
 # --------------------------------------------------------------------- #
@@ -1186,18 +1271,25 @@ def cmd_watch_tail(input_path, poll_ms, max_frames):
 @click.option("--host",  default="127.0.0.1", show_default=True)
 @click.option("--port",  type=int, default=5000, show_default=True)
 @click.option("--debug", is_flag=True)
-def cmd_watch_serve(host, port, debug):
+@click.option("--cert", type=click.Path(exists=True, dir_okay=False),
+              help="TLS cert (PEM).  Overrides molbuilder.json.")
+@click.option("--key",  type=click.Path(exists=True, dir_okay=False),
+              help="TLS key (PEM).  Overrides molbuilder.json.")
+def cmd_watch_serve(host, port, debug, cert, key):
     """Start a Flask server hosting both the build page (/) and the
     watch page (/watch).  Reads any file the server can access -- a
     non-loopback --host binding emits a security warning."""
     from .web.app import create_app
     from .web.blueprints.watch import warn_if_remote
     warn_if_remote(host)
+    cert, key = _resolve_tls(cert, key)
+    ssl_ctx = (cert, key) if cert and key else None
+    scheme  = "https" if ssl_ctx else "http"
     app = create_app()
-    click.echo(f"molbuilder web UI starting at http://{host}:{port}", err=True)
-    click.echo(f"  build page:  http://{host}:{port}/",      err=True)
-    click.echo(f"  watch page:  http://{host}:{port}/watch", err=True)
-    app.run(host=host, port=port, debug=debug, threaded=True)
+    click.echo(f"molbuilder web UI starting at {scheme}://{host}:{port}", err=True)
+    click.echo(f"  build page:  {scheme}://{host}:{port}/",      err=True)
+    click.echo(f"  watch page:  {scheme}://{host}:{port}/watch", err=True)
+    app.run(host=host, port=port, debug=debug, threaded=True, ssl_context=ssl_ctx)
 
 
 # --------------------------------------------------------------------- #
@@ -1226,6 +1318,24 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     """
     args = list(argv) if argv is not None else sys.argv[1:]
     asked_for_help = "--help" in args or "-h" in args
+    # Configure the root logger so warnings emitted by L1 modules
+    # (e.g. ``molbuilder.projects.list_projects`` skipping invalid
+    # directory names) actually reach the user.  Without this, Python's
+    # root logger has no handler attached and warnings vanish silently.
+    import logging
+    logging.basicConfig(level=logging.WARNING,
+                        format="%(levelname)s: %(message)s")
+    # Bind the diagnostics snapshot once per CLI invocation, so every
+    # backend's ``is_available`` and every ``run_tool`` dispatch read
+    # from a consistent view of "what this machine has".  Cheap (~50 ms);
+    # idempotent if called again.  Catch RuntimeConfigError so a
+    # malformed molbuilder.json produces the same `Error: ...; exit 2`
+    # surface as any other UsageError instead of a Python traceback.
+    try:
+        _initialize_diagnostics()
+    except RuntimeConfigError as e:
+        click.echo(f"Error: {e}", err=True)
+        sys.exit(2)
     try:
         rc = cli.main(args=args, standalone_mode=False)
     except click.UsageError as e:

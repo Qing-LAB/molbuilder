@@ -12,7 +12,24 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from molbuilder import diagnostics
 from molbuilder.structure import Structure
+
+
+@pytest.fixture(autouse=True)
+def _reset_diagnostics_singleton():
+    """Every test starts AND ends with no bound Capabilities snapshot.
+
+    Without this, a test that calls ``cli.main()`` or otherwise
+    triggers ``diagnostics.initialize()`` would leak its snapshot into
+    whatever runs next, creating order-dependent failures.  Tests that
+    want a specific snapshot inject it via
+    :func:`molbuilder.diagnostics.set_capabilities`; that injection is
+    cleaned up by this fixture afterwards.
+    """
+    diagnostics.reset_capabilities()
+    yield
+    diagnostics.reset_capabilities()
 
 
 @pytest.fixture(scope="session")

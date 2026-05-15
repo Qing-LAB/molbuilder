@@ -158,6 +158,47 @@ class TestPySCFScriptConstants:
         # Check that the HF path doesn't have the trailing ", dft" import line.
         assert "from pyscf import gto, scf, dft" not in s_hf
 
+    def test_config_literal_parses_as_python(self):
+        # The CONFIG = {...} block is emitted via pprint.pformat over
+        # _config_to_jsonable_dict(cfg).  If a future SpectraConfig field
+        # were a dataclass/enum/Path that asdict didn't flatten, pprint
+        # would emit a non-Python repr like <X object> or PosixPath(...),
+        # silently breaking the generated script's SyntaxError-free guarantee.
+        # Belt-and-suspenders: extract the literal and assert it parses.
+        import ast
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water(), SpectraConfig())
+        marker = "CONFIG = "
+        start = script.index(marker) + len(marker)
+        assert script[start] == "{", "CONFIG = … must be a dict literal"
+        # Walk to the matching closing brace, ignoring braces inside string
+        # literals (pprint emits Python repr, so single-quoted strings only).
+        depth = 0
+        in_str = False
+        end = None
+        for i in range(start, len(script)):
+            c = script[i]
+            if in_str:
+                if c == "\\":
+                    continue  # crude but pprint doesn't emit backslashes for our types
+                if c == "'":
+                    in_str = False
+                continue
+            if c == "'":
+                in_str = True
+            elif c == "{":
+                depth += 1
+            elif c == "}":
+                depth -= 1
+                if depth == 0:
+                    end = i + 1
+                    break
+        assert end is not None, "Unbalanced braces in CONFIG literal"
+        parsed = ast.literal_eval(script[start:end])
+        assert isinstance(parsed, dict)
+        # Sanity: at least one well-known SpectraConfig field made it through.
+        assert "engine" in parsed
+
 
 class TestPySCFScriptAtomicWriter:
     """The inlined atomic JSON writer is the same safety contract
@@ -542,18 +583,209 @@ class TestPySCFScriptGPU:
     def test_raman_block_forces_cpu_even_with_gpu_on(self):
         """gpu4pyscf doesn't yet expose analytic CPHF polarizability,
         so the Raman finite-difference path must build CPU mf
-        objects even when USE_GPU=True.  Pinning: the polarizability
-        FD calls pass force_cpu=True."""
+        objects even when USE_GPU=True.
+
+        Pinning: with raman=True, the script has 4 ``force_cpu=True``
+        call sites -- 3 in the Raman block (eq. polarizability + two
+        ±FD displacements) and 1 in the Hessian fallback branch added
+        for the GPU-coverage probe.  Together they enumerate every
+        place the script forces a CPU rebuild when running on GPU."""
         from molbuilder.spectra.pyscf_script import render_spectra_script
         cfg = SpectraConfig(use_gpu=True, compute_raman=True,
                             es_mode_selection="skip")
         script = render_spectra_script(_struct_water(), cfg)
-        # The Raman block's three _build_mf_at call sites all pass
-        # force_cpu=True (one for the equilibrium polarizability,
-        # two for the ±FD displacements).  Match the closing-paren
-        # form so we don't count the docstring's explanation of
-        # the keyword as a fourth occurrence.
-        assert script.count("force_cpu=True)") == 3
+        # Match the closing-paren form so we don't count the
+        # docstring's explanation of the keyword as an occurrence.
+        assert script.count("force_cpu=True)") == 4
+
+
+class TestPySCFScriptGPUCoverageProbe:
+    """Runtime probe (emitted right after equilibrium SCF) that decides
+    which stages run on GPU and which need a CPU rebuild.  Pre-probing
+    instead of try/except-fallback avoids wasting an SCF on a path that
+    can't continue.
+    """
+
+    def _render(self, **cfg_kwargs):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        return render_spectra_script(_struct_water(),
+                                      SpectraConfig(**cfg_kwargs))
+
+    # --------------- probe block presence + shape ----------------- #
+
+    def test_probe_emits_capability_flags(self):
+        """Both flags get assigned regardless of USE_GPU -- downstream
+        code reads them unconditionally."""
+        script = self._render(use_gpu=True)
+        assert "_GPU_HAS_HESSIAN" in script
+        assert "_GPU_HAS_POLARIZABILITY" in script
+
+    def test_probe_runs_only_when_using_gpu(self):
+        """The probe block guards its body with ``if _USING_GPU:`` so
+        a CPU-only invocation doesn't pay even the cost of construct-
+        ing a Hessian probe object."""
+        script = self._render(use_gpu=True)
+        assert "if _USING_GPU:" in script
+        # The actual probe instantiates Hessian and inspects its module.
+        assert "type(_h_probe).__module__.startswith('gpu4pyscf')" in script
+
+    def test_probe_reports_coverage_gaps_to_the_user(self):
+        """Scientists shouldn't have to read source to know what part
+        of their job is running on CPU.  The probe prints the gaps."""
+        script = self._render(use_gpu=True)
+        assert "GPU coverage gaps" in script
+        # When everything works, the "all good" branch reports it too.
+        assert "GPU coverage: SCF + Hessian." in script
+
+    # --------------- Hessian block consults the flag --------------- #
+
+    def test_hessian_block_consults_gpu_has_hessian(self):
+        """When the probe says gpu4pyscf doesn't cover Hessian for
+        this SCF type, the script rebuilds mf on CPU instead of
+        crashing on a CuPy-Hessian → harmonic_analysis(CPU) call."""
+        script = self._render(use_gpu=True)
+        # The branch reads as ``if _GPU_HAS_HESSIAN or not _USING_GPU``.
+        assert "_GPU_HAS_HESSIAN" in script
+        # The fallback path uses _build_mf_at(..., force_cpu=True).
+        assert "_mf_cpu_for_hess = _build_mf_at(" in script
+        assert "force_cpu=True" in script
+
+    def test_hessian_fallback_present_even_when_raman_off(self):
+        """The fallback branch is structural (Hessian always runs) --
+        it shouldn't be gated on the Raman block.  With raman=False
+        we still need the CPU-rebuild path for the Hessian step."""
+        script = self._render(use_gpu=True, compute_raman=False,
+                                es_mode_selection="skip")
+        assert "_mf_cpu_for_hess = _build_mf_at(" in script
+        # In this config the Raman block doesn't emit, so the ONLY
+        # ``force_cpu=True)`` site is the Hessian fallback.
+        assert script.count("force_cpu=True)") == 1
+
+
+class TestPySCFScriptCuPyToNumPyBridge:
+    """Reported bug 2026-05-14: GPU run crashed at line ~355 with
+    ``TypeError: Implicit conversion to a NumPy array is not allowed.
+    Please use .get() to construct a NumPy array explicitly.``
+    Root cause: ``np.asarray(mf.mo_energy)`` on a gpu4pyscf mf returns
+    a CuPy array; modern CuPy refuses the implicit conversion.
+
+    Fix: emit a tiny ``_as_numpy(x)`` helper in the generated script
+    that does the explicit ``.get()`` round-trip when ``x`` is CuPy
+    and is a no-op otherwise.  All gpu-mf attribute crossings go
+    through it.
+    """
+
+    def test_helper_definition_emitted(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water(),
+                                        SpectraConfig(use_gpu=True))
+        # The function lives in the helpers block.
+        assert "def _as_numpy(x):" in script
+        # And it's actually the .get()-or-fallthrough shape, not a
+        # placeholder.  We don't pin the exact wording -- just the
+        # two operations that make it work.
+        assert "type(x).__module__.startswith('cupy')" in script
+        assert ".get()" in script
+
+    def test_no_naked_np_asarray_on_mf_attributes(self):
+        """Every gpu-mf crossing must go through _as_numpy.  A future
+        edit that adds e.g. ``np.asarray(mf.mo_coeff)`` would crash on
+        GPU runs the same way the original report did."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        # Cover the two branches that emit different code paths:
+        # Raman ON (force-CPU polarizability rebuild) and ES loop ON
+        # (displaced SCFs on GPU).
+        for raman in (True, False):
+            for es_mode in ("all", "skip"):
+                cfg = SpectraConfig(use_gpu=True, compute_raman=raman,
+                                    es_mode_selection=es_mode)
+                script = render_spectra_script(_struct_water(), cfg)
+                # Naked ``np.asarray(<mf-like>.X)`` would re-introduce
+                # the bug.  Include the tail "." so we don't catch
+                # ``np.asarray(mol.atom_mass_list())`` which is CPU-only.
+                for bad_token in ("np.asarray(mf.",
+                                   "np.asarray(_mf.",
+                                   "np.asarray(_mf2."):
+                    assert bad_token not in script, (
+                        f"raman={raman} es_mode={es_mode}: "
+                        f"found {bad_token!r} -- use _as_numpy() instead "
+                        f"or this will crash on gpu4pyscf"
+                    )
+
+    def test_hessian_kernel_bridged_through_as_numpy(self):
+        """``mf.Hessian().kernel()`` returns CuPy on gpu4pyscf;
+        ``pyscf.hessian.thermo.harmonic_analysis`` is CPU-only and
+        would TypeError on a CuPy Hessian.  The bridge has to happen
+        right at the assignment, BEFORE harmonic_analysis sees it.
+
+        After the GPU-coverage probe shipped, the assignment is now
+        guarded by the ``_GPU_HAS_HESSIAN`` branch; the bridged form
+        appears in BOTH the GPU and CPU-fallback branches."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_view := _struct_water(),
+                                        SpectraConfig(use_gpu=True))
+        # The GPU branch (mf directly):
+        assert "HESS = _as_numpy(mf.Hessian().kernel())" in script
+        # The CPU-rebuild branch (when gpu4pyscf can't do Hessian for
+        # this SCF type) -- different mf object, same bridge:
+        assert "HESS = _as_numpy(_mf_cpu_for_hess.Hessian().kernel())" in script
+
+    def test_as_numpy_helper_actually_works(self):
+        """Behaviour pin (not just string presence): extract the
+        ``_as_numpy`` function from the rendered script, exec it in
+        a controlled namespace, and verify it converts:
+
+          * a NumPy array  -> NumPy (identity-ish, np.asarray)
+          * a CuPy-mocked object -> NumPy via .get()
+          * a scalar / list -> NumPy
+
+        A future refactor that breaks the helper would fail this test
+        even if the textual fingerprints (``.get()``,
+        ``startswith('cupy')``) survived elsewhere in the file."""
+        import re
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water(), SpectraConfig())
+
+        # Pull the `def _as_numpy(x): ... ` block out of the rendered
+        # script.  ``(?ms)`` lets ``.`` cross newlines AND anchors `^`
+        # to line starts; we stop at the next top-level (column-0) def.
+        match = re.search(r'(?ms)^def _as_numpy\(x\):.*?(?=^def |\Z)',
+                            script)
+        assert match is not None, "_as_numpy not found in rendered script"
+        func_src = match.group(0)
+
+        # Exec the helper into a fresh namespace.  Only ``np`` is
+        # needed; the helper uses no other module.
+        import numpy as np
+        ns = {"np": np}
+        exec(func_src, ns)
+        _as_numpy = ns["_as_numpy"]
+
+        # Case 1: real NumPy array passes through.
+        arr_np = np.array([1.0, 2.0, 3.0])
+        out = _as_numpy(arr_np)
+        assert isinstance(out, np.ndarray)
+        assert out.tolist() == [1.0, 2.0, 3.0]
+
+        # Case 2: CuPy-mocked object (module is "cupy*" + has .get()).
+        class _FakeCuPyArray:
+            def __init__(self, data): self._data = data
+            def get(self):          return np.asarray(self._data)
+        _FakeCuPyArray.__module__ = "cupy.core.core"  # mimic cupy path
+
+        out = _as_numpy(_FakeCuPyArray([5.0, 6.0]))
+        assert isinstance(out, np.ndarray)
+        assert out.tolist() == [5.0, 6.0]
+
+        # Case 3: plain Python scalar -- np.asarray wraps to 0-d.
+        out = _as_numpy(42.0)
+        assert isinstance(out, np.ndarray)
+        assert float(out) == 42.0
+
+        # Case 4: list -- np.asarray builds an ndarray.
+        out = _as_numpy([7, 8, 9])
+        assert isinstance(out, np.ndarray)
+        assert out.tolist() == [7, 8, 9]
 
 
 class TestPySCFScriptL4OutOfRangeGuard:

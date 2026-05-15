@@ -91,7 +91,7 @@ class TestModeData:
         assert m2.ir_intensity_km_mol is None
         assert m2.electronic_structure is None
         assert m2.has_imag is False
-        np.testing.assert_allclose(m2.eigenvector_free, m.eigenvector_free)
+        np.testing.assert_allclose(m2.eigenvector_display, m.eigenvector_display)
 
     def test_round_trip_with_es(self):
         m = _make_mode(with_es=True)
@@ -115,7 +115,8 @@ class TestModeData:
             frequency_cm1         = 500.0,
             raman_activity_a4_amu = None,
             ir_intensity_km_mol   = None,
-            eigenvector_free      = np.zeros((3, 3)),
+            eigenvector_canonical = np.zeros((3, 3)),
+            eigenvector_display   = np.zeros((3, 3)),
             has_imag              = False,
         )
         assert ModeData.from_dict(m.to_dict()).raman_activity_a4_amu is None
@@ -234,10 +235,14 @@ class TestSpectraResults:
         """The on-disk schema is v1 for the entire v1.x release line.
         Bumping requires a parser branch -- this test pins the
         current major-version invariant so a stray edit shows up
-        in code review."""
+        in code review.
+
+        v2 bump: split eigenvector_free into eigenvector_canonical +
+        eigenvector_display (see results.py SCHEMA_VERSION history).
+        """
         r = _make_results()
-        assert r.schema_version == 1
-        assert SCHEMA_VERSION == 1
+        assert r.schema_version == 2
+        assert SCHEMA_VERSION == 2
 
     def test_engine_metadata_passes_through(self):
         """engine_metadata is the escape valve for engine-specific
@@ -385,20 +390,22 @@ class TestPostInitValidation:
             frequency_cm1         = 100.0,
             raman_activity_a4_amu = None,
             ir_intensity_km_mol   = None,
-            eigenvector_free      = [[1, 0, 0], [-1, 0, 0]],   # list of int lists
+            eigenvector_canonical = [[1, 0, 0], [-1, 0, 0]],   # list of int lists
+            eigenvector_display   = [[1, 0, 0], [-1, 0, 0]],
             has_imag              = False,
         )
-        assert m.eigenvector_free.dtype == np.float64
+        assert m.eigenvector_display.dtype == np.float64
 
     def test_eigenvector_shape_validated(self):
-        """eigenvector_free must be (n_free, 3); wrong shapes raise."""
+        """eigenvector_canonical and eigenvector_display must each be (n_free, 3); wrong shapes raise."""
         with pytest.raises(ValueError, match="must have shape"):
             ModeData(
                 index_1based          = 1,
                 frequency_cm1         = 100.0,
                 raman_activity_a4_amu = None,
                 ir_intensity_km_mol   = None,
-                eigenvector_free      = np.zeros((3, 4)),       # last axis != 3
+                eigenvector_canonical = np.zeros((3, 4)),  # last axis != 3
+                eigenvector_display   = np.zeros((3, 4)),
                 has_imag              = False,
             )
         with pytest.raises(ValueError, match="must have shape"):
@@ -407,7 +414,8 @@ class TestPostInitValidation:
                 frequency_cm1         = 100.0,
                 raman_activity_a4_amu = None,
                 ir_intensity_km_mol   = None,
-                eigenvector_free      = np.zeros(6),            # 1-D, not 2-D
+                eigenvector_canonical = np.zeros(6),       # 1-D, not 2-D
+                eigenvector_display   = np.zeros(6),
                 has_imag              = False,
             )
 
@@ -504,7 +512,7 @@ class TestPostInitValidation:
             )
 
     def test_cross_mode_eigenvector_shape_consistency(self):
-        """Every mode's eigenvector_free must agree on n_free
+        """Every mode's eigenvectors (canonical + display) must agree on n_free
         (= len(free_atom_idxs)).  Catches "I shipped a wrong-shape
         mode in the middle of the list" bugs."""
         good_mode = _make_mode()                                 # n_free=2
@@ -516,7 +524,8 @@ class TestPostInitValidation:
             frequency_cm1         = 50.0,
             raman_activity_a4_amu = 1.0,
             ir_intensity_km_mol   = None,
-            eigenvector_free      = np.zeros((3, 3)),            # 3 atoms, not 2
+            eigenvector_canonical = np.zeros((3, 3)),  # 3 atoms, not 2
+            eigenvector_display   = np.zeros((3, 3)),
             has_imag              = False,
         )
         with pytest.raises(ValueError, match=r"eigenvector shape.*expected"):
@@ -551,7 +560,8 @@ class TestPostInitValidation:
             frequency_cm1         = 200.0,
             raman_activity_a4_amu = None,
             ir_intensity_km_mol   = None,
-            eigenvector_free      = np.array([[1.0, 0, 0], [-1.0, 0, 0]]),
+            eigenvector_canonical = np.array([[1.0, 0, 0], [-1.0, 0, 0]]),
+            eigenvector_display   = np.array([[1.0, 0, 0], [-1.0, 0, 0]]),
             has_imag              = False,
             electronic_structure  = ModeElectronicStructure(
                 amplitude_ang        = 0.1,
@@ -612,8 +622,10 @@ class TestPostInitValidation:
                 frequency_cm1         = 100.0,
                 raman_activity_a4_amu = None,
                 ir_intensity_km_mol   = None,
-                eigenvector_free      = np.array([[1+0j, 0, 0],
-                                                  [-1+0j, 0, 0]]),
+                eigenvector_canonical = np.array([[1+0j, 0, 0],
+                                                                       [-1+0j, 0, 0]]),
+                eigenvector_display   = np.array([[1+0j, 0, 0],
+                                                                       [-1+0j, 0, 0]]),
                 has_imag              = False,
             )
 
@@ -650,7 +662,8 @@ class TestPostInitValidation:
                 frequency_cm1         = 100.0,
                 raman_activity_a4_amu = None,
                 ir_intensity_km_mol   = None,
-                eigenvector_free      = np.zeros((2, 3), dtype=complex),
+                eigenvector_canonical = np.zeros((2, 3), dtype=complex),
+                eigenvector_display   = np.zeros((2, 3), dtype=complex),
                 has_imag              = False,
             )
 

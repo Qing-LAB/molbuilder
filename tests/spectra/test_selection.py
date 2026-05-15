@@ -157,13 +157,14 @@ class TestSelectModesWithPriorResume:
             equilibrium_homo_idx       = 2,
             modes                      = [
                 ModeData(
-                    index_1based         = idx,
-                    frequency_cm1        = 1000.0,
+                    index_1based          = idx,
+                    frequency_cm1         = 1000.0,
                     raman_activity_a4_amu = 1.0,
-                    ir_intensity_km_mol  = None,
-                    eigenvector_free     = np.zeros((2, 3)),
-                    has_imag             = False,
-                    electronic_structure = _make_es(),
+                    ir_intensity_km_mol   = None,
+                    eigenvector_canonical = np.zeros((2, 3)),
+                    eigenvector_display   = np.zeros((2, 3)),
+                    has_imag              = False,
+                    electronic_structure  = _make_es(),
                 ),
             ],
             selected_mode_idxs_1based  = [idx],
@@ -332,7 +333,7 @@ class TestSelectorEquivalence:
                 "frequency_cm1":         m.frequency_cm1,
                 "raman_activity_a4_amu": m.raman_activity_a4_amu,
                 "ir_intensity_km_mol":   m.ir_intensity_km_mol,
-                "eigenvector_free":      m.eigenvector_free.tolist(),
+                "eigenvector_display":      m.eigenvector_display.tolist(),
                 "has_imag":              m.has_imag,
                 "electronic_structure":  None,
             })
@@ -343,7 +344,8 @@ class TestSelectorEquivalence:
         against the prepared namespace.  Returns the value of
         `_selected` after execution."""
         # The inlined selector starts at the "if ES_MODE_SELECTION"
-        # marker and ends before the def _displaced_scf line.
+        # marker and ends at the "state['selected_mode_idxs_1based']"
+        # write that immediately follows it.
         start = script.find("if ES_MODE_SELECTION == 'all':")
         end   = script.find("state['selected_mode_idxs_1based']")
         assert start != -1 and end != -1 and end > start, (

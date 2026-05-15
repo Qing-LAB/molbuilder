@@ -52,7 +52,9 @@ def _make_minimal_results() -> SpectraResults:
         frequency_cm1         = 412.3,
         raman_activity_a4_amu = 12.5,
         ir_intensity_km_mol   = None,
-        eigenvector_free      = np.array([[0.7, 0., 0.],
+        eigenvector_canonical = np.array([[0.7, 0., 0.],
+                                          [-0.7, 0., 0.]]),
+        eigenvector_display   = np.array([[0.7, 0., 0.],
                                           [-0.7, 0., 0.]]),
         has_imag              = False,
     )

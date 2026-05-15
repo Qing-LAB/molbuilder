@@ -20,29 +20,42 @@ This backend is registered as ``"amber"`` for backwards compatibility
 with code/UI that already says ``backend="amber"``.
 
 Install:
-    conda install -c conda-forge ambertools
+    See ``docs/README_install.md`` § ``molbuilder-MDtools`` -- the
+    canonical place for ``tleap`` in the four-env model.  A
+    single-env developer setup that puts ``tleap`` on the host PATH
+    also works; this backend's :func:`is_available` checks both.
 
-Detected via: ``tleap`` on PATH.
+Detected via: the diagnostics :class:`~molbuilder.diagnostics.Capabilities`
+snapshot, which reports ``tleap`` as available iff its routed env
+exists, OR ``tleap`` was on host PATH at detect time.
 """
 
 from __future__ import annotations
 
 import math
 import os
-import shutil
 import subprocess
 import tempfile
 from typing import List, Optional
 
 import numpy as np
 
+from ...diagnostics import get_capabilities
+from ...envs import run_tool
 from ...structure import Structure
 from ._common import (parse_pdb_to_structure, select_chain,
                       verify_backbone_connectivity)
 
 
 def is_available() -> bool:
-    return shutil.which("tleap") is not None
+    """``tleap`` reachable, either via routed conda env or host PATH.
+
+    Pure O(1) hashmap lookups against the diagnostics
+    :class:`~molbuilder.diagnostics.Capabilities` snapshot -- no subprocess
+    here, no PATH scan.  Whoever bootstrapped the process (CLI / web
+    `create_app`) ran :func:`~molbuilder.diagnostics.initialize` first.
+    """
+    return get_capabilities().tool_available("tleap")
 
 
 def build(kind: str, sequence: str, form: str, terminal: str,
@@ -50,8 +63,10 @@ def build(kind: str, sequence: str, form: str, terminal: str,
     if not is_available():
         from . import BackendUnavailable
         raise BackendUnavailable(
-            "AmberTools `tleap` not found in PATH; install with "
-            "`conda install -c conda-forge ambertools`"
+            "AmberTools `tleap` not found.  Either:\n"
+            "  - install `tleap` on the host env's PATH, or\n"
+            "  - create the molbuilder-MDtools conda env (see "
+            "docs/README_install.md § molbuilder-MDtools)."
         )
     if kind not in ("dna", "rna"):
         raise ValueError(f"AmberTools backend supports kind in 'dna'|'rna'; got {kind!r}")
@@ -88,8 +103,13 @@ quit
 """)
 
         try:
-            result = subprocess.run(
-                ["tleap", "-f", in_path],
+            # run_tool dispatches to the host PATH if tleap is there,
+            # otherwise into the molbuilder-MDtools conda env via
+            # `conda run -n <env> --no-capture-output tleap -f ...`.
+            # Subprocess kwargs (capture_output, text, cwd, timeout)
+            # pass through unchanged.
+            result = run_tool(
+                "tleap", ["-f", in_path],
                 capture_output=True, text=True, cwd=workdir,
                 timeout=120,
             )

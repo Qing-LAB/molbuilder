@@ -340,7 +340,8 @@ class ModeData:
     frequency_cm1:         float
     raman_activity_a4_amu: Optional[float]            # None if compute_raman=False
     ir_intensity_km_mol:   Optional[float]            # always None in v1 (1c reserved)
-    eigenvector_free:      np.ndarray                 # shape (n_free, 3); mass-weighted
+    eigenvector_canonical: np.ndarray                 # shape (n_free, 3); canonical mass-weighted (Σ_k m_k |L_k|² = 1)
+    eigenvector_display:   np.ndarray                 # shape (n_free, 3); max(|L|)=1 per mode, for UI animation
     has_imag:              bool                       # |ω|^2 < 0  -> True; sign convention: imag freqs reported negative
 
     # Per-mode electronic structure (None when this mode wasn't selected)
@@ -453,7 +454,8 @@ The script writes exactly one JSON file per run:
       "raman_activity_a4_amu": 12.5,
       "ir_intensity_km_mol":  null,
       "has_imag":             false,
-      "eigenvector_free":     [[dx, dy, dz], ...],
+      "eigenvector_canonical": [[dx, dy, dz], ...],
+      "eigenvector_display":   [[dx, dy, dz], ...],
       "electronic_structure": null
     },
     {
@@ -462,7 +464,8 @@ The script writes exactly one JSON file per run:
       "raman_activity_a4_amu": 87.2,
       "ir_intensity_km_mol":  null,
       "has_imag":             false,
-      "eigenvector_free":     [[dx, dy, dz], ...],
+      "eigenvector_canonical": [[dx, dy, dz], ...],
+      "eigenvector_display":   [[dx, dy, dz], ...],
       "electronic_structure": {
         "amplitude_ang":        0.10,
         "mo_energies_eq_eh":    [...],
@@ -498,9 +501,23 @@ The script writes exactly one JSON file per run:
   displays them 1-based.
 * Mode indices are **1-based** everywhere (JSON + UI) to match
   spectroscopic literature convention.
-* `eigenvector_free` is mass-weighted (Q_i normal-mode coordinate
-  basis), shape `(n_free, 3)`, units Å·amu⁻¹ᐟ².  Visualisation
-  divides by √m before scaling.
+* Each mode ships **two normal-mode eigenvector arrays**, both shape
+  `(n_free, 3)`, both restricted to the free atoms:
+    * `eigenvector_canonical` -- Cartesian normal mode L_cart in the
+      canonical mass-weighted normalisation `Σ_k m_k |L_k|² = 1`
+      (m_k in atomic units of mass).  Use this for Placzek Raman
+      activity (the formula `45 a² + 7 γ²` gives Å⁴/amu in these
+      units), IR intensity, electron-phonon coupling gradients --
+      anything that depends on the physical amplitude of nuclear
+      motion.
+    * `eigenvector_display` -- same mode rescaled so `max(|L_k|)=1`.
+      Dimensionless.  Use this for 3D animation (every mode reaches
+      the same peak amplitude on screen) and for the fixed-amplitude
+      electron-phonon "probe displacement" in Phase 4.  Do NOT feed
+      this into physical-amplitude formulas.
+  SCHEMA_VERSION 1 had a single `eigenvector_free` field that
+  ambiguously served both roles; `from_dict` continues to accept
+  v1 documents and treats `eigenvector_free` as the display form.
 
 ## 6.1 Live-watch: atomic-replace JSON checkpointing
 

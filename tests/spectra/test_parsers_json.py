@@ -68,7 +68,9 @@ def _make_minimal_results(complete: bool = True) -> SpectraResults:
                 frequency_cm1         = 412.3,
                 raman_activity_a4_amu = 12.5,
                 ir_intensity_km_mol   = None,
-                eigenvector_free      = np.array([[0.7, 0.0, 0.0],
+                eigenvector_canonical = np.array([[0.7, 0.0, 0.0],
+                                                  [-0.7, 0.0, 0.0]]),
+                eigenvector_display   = np.array([[0.7, 0.0, 0.0],
                                                   [-0.7, 0.0, 0.0]]),
                 has_imag              = False,
             ),
@@ -257,11 +259,15 @@ class TestParseSpectraJsonFieldErrors:
         assert "engine" in str(exc_info.value)
 
     def test_modes_with_bad_shape_raises_field_error(self, tmp_path):
-        """ModeData.__post_init__ raises TypeError on wrong eigvec
-        shape; the parser wraps it as FieldError."""
+        """ModeData.__post_init__ raises ValueError on wrong eigvec
+        shape; the parser wraps it as FieldError.  Corrupt all three
+        eigenvector fields (canonical + display + legacy) since the
+        dataclass validates each independently."""
         payload = _make_minimal_results().to_dict()
-        # Corrupt the eigenvector to wrong shape.
-        payload["modes"][0]["eigenvector_free"] = [[0.7], [-0.7]]  # 2x1, not 2x3
+        bad = [[0.7], [-0.7]]  # 2x1, not 2x3
+        payload["modes"][0]["eigenvector_canonical"] = bad
+        payload["modes"][0]["eigenvector_display"]         = bad
+        payload["modes"][0]["eigenvector_free"]                          = bad
         p = _write_json(tmp_path, payload)
         with pytest.raises(SpectraJsonFieldError):
             parse_spectra_json(p)
@@ -632,7 +638,9 @@ class TestOptionalNullFields:
             frequency_cm1         = 500.0,
             raman_activity_a4_amu = None,   # compute_raman=False path
             ir_intensity_km_mol   = None,
-            eigenvector_free      = np.array([[0.7, 0.0, 0.0],
+            eigenvector_canonical = np.array([[0.7, 0.0, 0.0],
+                                              [-0.7, 0.0, 0.0]]),
+            eigenvector_display   = np.array([[0.7, 0.0, 0.0],
                                               [-0.7, 0.0, 0.0]]),
             has_imag              = False,
         )
@@ -679,7 +687,9 @@ class TestImaginaryModeRoundTrip:
             frequency_cm1         = -150.5,
             raman_activity_a4_amu = 0.0,
             ir_intensity_km_mol   = None,
-            eigenvector_free      = np.array([[0.5, 0.5, 0.0],
+            eigenvector_canonical = np.array([[0.5, 0.5, 0.0],
+                                              [-0.5, -0.5, 0.0]]),
+            eigenvector_display   = np.array([[0.5, 0.5, 0.0],
                                               [-0.5, -0.5, 0.0]]),
             has_imag              = True,
         )
@@ -690,7 +700,9 @@ class TestImaginaryModeRoundTrip:
             frequency_cm1         = 800.3,
             raman_activity_a4_amu = 5.0,
             ir_intensity_km_mol   = None,
-            eigenvector_free      = np.array([[0.0, 1.0, 0.0],
+            eigenvector_canonical = np.array([[0.0, 1.0, 0.0],
+                                              [0.0, -1.0, 0.0]]),
+            eigenvector_display   = np.array([[0.0, 1.0, 0.0],
                                               [0.0, -1.0, 0.0]]),
             has_imag              = False,
         )
@@ -833,7 +845,9 @@ class TestCrossModeInvariants:
             frequency_cm1         = 1500.0,
             raman_activity_a4_amu = 7.0,
             ir_intensity_km_mol   = None,
-            eigenvector_free      = np.array([[0.5, 0., 0.],
+            eigenvector_canonical = np.array([[0.5, 0., 0.],
+                                              [-0.5, 0., 0.]]),
+            eigenvector_display   = np.array([[0.5, 0., 0.],
                                               [-0.5, 0., 0.]]),
             has_imag              = False,
             electronic_structure  = ModeElectronicStructure(
@@ -863,9 +877,12 @@ class TestCrossModeInvariants:
         to the global free_atom_idxs is rejected by the parser."""
         payload = _make_minimal_results().to_dict()
         # fixture has n_free=2; corrupt one eigvec to have 3 rows.
-        payload["modes"][0]["eigenvector_free"] = [
-            [0.5, 0, 0], [-0.5, 0, 0], [0, 0, 0],
-        ]
+        # Corrupt the canonical field (the science-authoritative one);
+        # the parser's shape check is what we're pinning here.
+        bad = [[0.5, 0, 0], [-0.5, 0, 0], [0, 0, 0]]
+        payload["modes"][0]["eigenvector_canonical"] = bad
+        payload["modes"][0]["eigenvector_display"]         = bad
+        payload["modes"][0]["eigenvector_free"]                          = bad
         p = _write_json(tmp_path, payload)
         with pytest.raises(SpectraJsonFieldError):
             parse_spectra_json(p)
@@ -904,10 +921,13 @@ class TestNullForRequiredFields:
             parse_spectra_json(p)
 
     def test_null_eigenvector_rejected(self, tmp_path):
-        """eigenvector_free is mandatory -- not Optional like
-        raman_activity_a4_amu."""
+        """The eigenvector fields are mandatory -- not Optional like
+        raman_activity_a4_amu.  Test all three to pin that nulling
+        ANY of them is rejected (canonical, display, or legacy alias)."""
         payload = _make_minimal_results().to_dict()
-        payload["modes"][0]["eigenvector_free"] = None
+        payload["modes"][0]["eigenvector_canonical"] = None
+        payload["modes"][0]["eigenvector_display"]         = None
+        payload["modes"][0]["eigenvector_free"]                          = None
         p = _write_json(tmp_path, payload)
         with pytest.raises(SpectraJsonFieldError):
             parse_spectra_json(p)
@@ -1203,20 +1223,23 @@ class TestComprehensiveRoundTrip:
             ModeData(  # imaginary
                 index_1based=1, frequency_cm1=-120.5,
                 raman_activity_a4_amu=0.0, ir_intensity_km_mol=None,
-                eigenvector_free=np.array([[0.7, 0., 0.], [-0.7, 0., 0.]]),
+                eigenvector_canonical = np.array([[0.7, 0., 0.], [-0.7, 0., 0.]]),
+                eigenvector_display   = np.array([[0.7, 0., 0.], [-0.7, 0., 0.]]),
                 has_imag=True,
             ),
             ModeData(  # selected for ES
                 index_1based=2, frequency_cm1=1023.4,
                 raman_activity_a4_amu=87.2, ir_intensity_km_mol=None,
-                eigenvector_free=np.array([[0., 0.7, 0.], [0., -0.7, 0.]]),
+                eigenvector_canonical = np.array([[0., 0.7, 0.], [0., -0.7, 0.]]),
+                eigenvector_display   = np.array([[0., 0.7, 0.], [0., -0.7, 0.]]),
                 has_imag=False,
                 electronic_structure=es,
             ),
             ModeData(  # not selected (no ES) + no Raman activity
                 index_1based=3, frequency_cm1=3656.0,
                 raman_activity_a4_amu=None, ir_intensity_km_mol=None,
-                eigenvector_free=np.array([[0., 0., 0.7], [0., 0., -0.7]]),
+                eigenvector_canonical = np.array([[0., 0., 0.7], [0., 0., -0.7]]),
+                eigenvector_display   = np.array([[0., 0., 0.7], [0., 0., -0.7]]),
                 has_imag=False,
             ),
         ]
@@ -1538,8 +1561,10 @@ class TestComplexNumbersNotInWireFormat:
                 frequency_cm1         = 100.0,
                 raman_activity_a4_amu = 1.0,
                 ir_intensity_km_mol   = None,
-                eigenvector_free      = np.array([[1+2j, 0, 0],
-                                                  [-1-2j, 0, 0]]),
+                eigenvector_canonical = np.array([[1+2j, 0, 0],
+                                                           [-1-2j, 0, 0]]),
+                eigenvector_display   = np.array([[1+2j, 0, 0],
+                                                           [-1-2j, 0, 0]]),
                 has_imag              = False,
             )
 

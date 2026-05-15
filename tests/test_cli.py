@@ -1077,23 +1077,29 @@ def test_watch_tail_rejects_stdin(capsys):
 # --------------------------------------------------------------------- #
 
 
-def test_watch_serve_calls_create_app(monkeypatch):
+def test_watch_serve_calls_create_app(monkeypatch, tmp_path):
     """`molbuilder watch serve` must instantiate the unified Flask app
     via create_app() and start it bound to the requested host/port."""
     captured = {}
 
     class _FakeApp:
-        def run(self, host, port, debug, threaded):
+        def run(self, host, port, debug, threaded, ssl_context=None):
             captured["host"] = host
             captured["port"] = port
             captured["debug"] = debug
             captured["threaded"] = threaded
+            captured["ssl_context"] = ssl_context
     monkeypatch.setattr("molbuilder.web.app.create_app", lambda: _FakeApp())
+    # chdir-away so a repo-root molbuilder.json template doesn't flip
+    # ssl_context on under this test (the TLS path has its own coverage
+    # in tests/test_cli_tls.py).
+    monkeypatch.chdir(tmp_path)
     rc = cli.main(["watch", "serve", "--host", "127.0.0.1", "--port", "5050"])
     assert rc == 0
     assert captured["host"] == "127.0.0.1"
     assert captured["port"] == 5050
     assert captured["threaded"] is True
+    assert captured["ssl_context"] is None
 
 
 # --------------------------------------------------------------------- #

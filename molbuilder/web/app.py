@@ -30,6 +30,8 @@ from __future__ import annotations
 
 from flask import Flask, abort, jsonify, render_template, send_file
 
+from ..diagnostics import initialize as _initialize_diagnostics
+
 
 # Cap multipart uploads at 50 MB.  Build side only needs ~10 MB for
 # realistic PDBs (10k atoms ~= 1 MB at 80 bytes/line); the watch side
@@ -39,6 +41,21 @@ _MAX_UPLOAD_MB = 50
 
 
 def create_app() -> Flask:
+    # Configure the root logger so warnings from L1 modules (e.g.
+    # ``molbuilder.projects.list_projects`` skipping invalid directory
+    # names) reach the user.  Without this, Python's root logger has
+    # no handler attached and warnings vanish silently.  Mirrors the
+    # equivalent call in ``molbuilder.cli.main``.
+    import logging
+    logging.basicConfig(level=logging.WARNING,
+                        format="%(levelname)s: %(message)s")
+
+    # Bind the diagnostics snapshot before any blueprint registers /
+    # before any request handler runs.  All backend availability checks
+    # (e.g. ``/api/backends``) then read from a consistent view of the
+    # machine's envs / PATH / config.  Cheap (~50 ms once per process).
+    _initialize_diagnostics()
+
     app = Flask(__name__)
     app.config["JSON_SORT_KEYS"] = False
     app.config["MAX_CONTENT_LENGTH"] = _MAX_UPLOAD_MB * 1024 * 1024
