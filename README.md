@@ -45,16 +45,18 @@ python -m molbuilder serve --port 8000   # opens build / modify / watch / spectr
 # browser: http://localhost:8000/
 ```
 
-Four tabs in one Flask app — **Build** generates input files,
-**Modify** assembles junctions, **Watch** monitors a running
-calculation, **Spectra** runs harmonic vibrational + Raman analysis:
+Five tabs in one Flask app — **Projects** is the entry point for
+browsing existing runs on the server; **Build** generates input
+files; **Modify** assembles junctions; **Watch** monitors a running
+calculation; **Spectra** runs harmonic vibrational + Raman analysis:
 
 | Tab | URL | What it does |
 |---|---|---|
-| **Build**   | `/`         | sequence → structure → SIESTA `.fdf` / PySCF `.py` |
-| **Modify**  | `/modify`   | edit atoms, build metal-molecule-metal junctions, hand off to Build |
-| **Watch**   | `/watch`    | scrub frames, track energy / forces / SCF convergence live |
-| **Spectra** | `/spectra`  | harmonic frequencies + Raman activities + per-mode orbital probes |
+| **Projects** | `/projects` | column-view file explorer over `projects/<project>/<topic>/<structure>/`; selection is shared with the other tabs |
+| **Build**    | `/`         | sequence → structure → SIESTA `.fdf` / PySCF `.py` |
+| **Modify**   | `/modify`   | edit atoms, build metal-molecule-metal junctions, hand off to Build |
+| **Watch**    | `/watch`    | scrub frames, track energy / forces / SCF convergence live |
+| **Spectra**  | `/spectra`  | harmonic frequencies + Raman activities + per-mode orbital probes |
 
 ---
 

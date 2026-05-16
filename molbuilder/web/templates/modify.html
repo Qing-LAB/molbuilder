@@ -28,6 +28,15 @@
 <!-- ============================================================ -->
 
 <section class="loader-bar">
+  <!-- Projects-tab selection banner -- visible only when a .xyz/.pdb
+       is currently selected in the Projects tab. -->
+  <div id="projects-banner" class="projects-banner" hidden
+       role="status" aria-live="polite">
+    <span class="ps-label">Projects selection:</span>
+    <code class="ps-path"></code>
+    <button class="ps-use-btn" type="button">Use this file</button>
+    <button class="ps-clear"   type="button" title="Clear selection">×</button>
+  </div>
   <div class="loader">
     <label for="file-picker">Structure:</label>
     <input id="file-picker" type="file"
@@ -462,6 +471,25 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
 <script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-format.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-pick.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/projects-selection.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/viewer.js') }}"></script>
+<script>
+  // Projects-tab selection -> Modify file picker.  We construct a
+  // File from the fetched text and stuff it into the existing
+  // <input type=file>; the existing change handler does the rest.
+  molbuilderProjectsSelection.init({
+    bannerEl: document.getElementById("projects-banner"),
+    extensions: [".xyz", ".pdb"],
+    onLoad: async function (path, text) {
+      const filename = path.split("/").pop();
+      const file = new File([text], filename, {type: "text/plain"});
+      const inp = document.getElementById("file-picker");
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      inp.files = dt.files;
+      inp.dispatchEvent(new Event("change", {bubbles: true}));
+    },
+  });
+</script>
 </body>
 </html>

@@ -166,6 +166,18 @@
         </p>
       </header>
 
+      <!-- Projects-tab selection banner.  Hidden until the user has
+           selected a *.spectra.json file in the Projects tab; then
+           shows the path + a "Use this file" button that populates
+           the path input below and triggers Load. -->
+      <div id="projects-banner" class="projects-banner" hidden
+           role="status" aria-live="polite">
+        <span class="ps-label">Projects selection:</span>
+        <code class="ps-path"></code>
+        <button class="ps-use-btn" type="button">Use this file</button>
+        <button class="ps-clear"   type="button" title="Clear selection">×</button>
+      </div>
+
       <!-- Primary: load (or watch) by server-side path.  This
            is what most users want -- molbuilder typically runs
            on the same machine as the spectra.py job, so reading
@@ -360,7 +372,26 @@
 </dialog>
 
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/projects-selection.js') }}"></script>
 <script src="{{ url_for('static', filename='spectra/viewer.js') }}"></script>
+<script>
+  // Wire the Projects-tab selection banner: when the user has picked
+  // a .spectra.json in the Projects tab, show a "Use this file" button
+  // that populates #watch-path and clicks Load.
+  molbuilderProjectsSelection.init({
+    bannerEl: document.getElementById("projects-banner"),
+    extensions: [".spectra.json"],
+    onLoad: async function (path, _text) {
+      // We don't need to consume the text -- the existing path-based
+      // loader already knows how to read a server file.  Just stuff
+      // the path into the existing input + reuse the existing button.
+      const inp = document.getElementById("watch-path");
+      const btn = document.getElementById("load-path-btn");
+      if (inp) inp.value = path;
+      if (btn) btn.click();
+    },
+  });
+</script>
 
 </body>
 </html>

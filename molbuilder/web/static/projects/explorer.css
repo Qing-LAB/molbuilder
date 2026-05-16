@@ -1,0 +1,240 @@
+/* Projects tab — column-view file explorer.
+ *
+ * Layout:
+ *   .projects-page
+ *     .projects-header    -- status line + action buttons
+ *     .explorer           -- horizontally-scrolling columns
+ *       .col              -- one column per directory level
+ *         .col-header     -- absolute path / breadcrumb of this column
+ *         .col-list       -- entries (clickable)
+ *       .col.meta-col     -- variant: shows file metadata instead of entries
+ *     .projects-footer    -- contextual help
+ *
+ * Columns are sized fixed-width and laid out with flex.  Overflow
+ * scrolls horizontally so deep navigation is always reachable.
+ *
+ * Selection model:
+ *   .entry.is-selected    -- the currently-clicked entry in its column
+ *   .entry.is-dir         -- directory (gets the arrow indicator)
+ *   .entry.is-file        -- file (gets a file-type icon glyph)
+ */
+
+:root {
+  --col-w:        14rem;
+  --col-gap:      0.25rem;
+  --col-bg:       var(--surface, #fafafa);
+  --col-border:   var(--border, #d8d8d8);
+  --entry-hover:  rgba(0, 0, 0, 0.05);
+  --entry-sel:    var(--accent-bg, #d6e8ff);
+  --entry-sel-fg: var(--accent-fg, #14365b);
+  --dir-arrow:    "›";
+}
+
+.projects-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 8rem);   /* fit under the app-tabs header */
+  padding: 0.5rem 1rem 1rem;
+  box-sizing: border-box;
+}
+
+/* ---- Header / status line ---------------------------------------- */
+
+.projects-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface-elev, #fff);
+  border: 1px solid var(--col-border);
+  border-radius: 4px;
+  margin-bottom: 0.5rem;
+}
+
+.status-line {
+  font-size: 0.9rem;
+  color: var(--fg-muted, #555);
+}
+
+.status-label {
+  font-weight: 600;
+  margin-right: 0.5em;
+}
+
+.status-path {
+  font-family: var(--mono-font, monospace);
+  background: var(--col-bg);
+  padding: 0.1rem 0.4rem;
+  border-radius: 3px;
+  border: 1px solid var(--col-border);
+}
+
+.actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.actions button {
+  padding: 0.3rem 0.7rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  border: 1px solid var(--col-border);
+  background: var(--surface-elev, #fff);
+  border-radius: 3px;
+}
+
+.actions button:hover:not(:disabled) {
+  background: var(--entry-hover);
+}
+
+.actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---- Explorer columns -------------------------------------------- */
+
+.explorer {
+  display: flex;
+  gap: var(--col-gap);
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  background: var(--col-bg);
+  border: 1px solid var(--col-border);
+  border-radius: 4px;
+  padding: 0.25rem;
+  align-items: stretch;
+}
+
+.col {
+  flex: 0 0 var(--col-w);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-elev, #fff);
+  border: 1px solid var(--col-border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.col-header {
+  padding: 0.35rem 0.5rem;
+  font-size: 0.75rem;
+  font-family: var(--mono-font, monospace);
+  background: var(--col-bg);
+  border-bottom: 1px solid var(--col-border);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--fg-muted, #555);
+}
+
+.col-list {
+  flex: 1;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ---- Entries ----------------------------------------------------- */
+
+.entry {
+  display: flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  font-size: 0.9rem;
+  border-bottom: 1px solid transparent;
+  user-select: none;
+}
+
+.entry:hover {
+  background: var(--entry-hover);
+}
+
+.entry.is-selected {
+  background: var(--entry-sel);
+  color: var(--entry-sel-fg);
+}
+
+.entry-icon {
+  flex: 0 0 1.2rem;
+  text-align: center;
+  font-family: var(--mono-font, monospace);
+  opacity: 0.7;
+}
+
+.entry-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entry-arrow {
+  flex: 0 0 1rem;
+  text-align: right;
+  opacity: 0.4;
+}
+
+.entry.is-dir .entry-arrow::after {
+  content: var(--dir-arrow);
+}
+
+.col-list.is-empty::before {
+  content: "(empty)";
+  display: block;
+  padding: 0.5rem 0.75rem;
+  color: var(--fg-muted, #888);
+  font-style: italic;
+  font-size: 0.85rem;
+}
+
+/* ---- Metadata column (file detail view) -------------------------- */
+
+.col.meta-col {
+  flex: 0 0 18rem;
+}
+
+.meta-body {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.85rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.meta-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.2rem 0;
+  border-bottom: 1px dashed var(--col-border);
+}
+
+.meta-row:last-child {
+  border-bottom: none;
+}
+
+.meta-key {
+  font-weight: 600;
+  color: var(--fg-muted, #555);
+  margin-right: 0.5em;
+}
+
+.meta-val {
+  font-family: var(--mono-font, monospace);
+  text-align: right;
+  word-break: break-all;
+}
+
+/* ---- Footer ------------------------------------------------------ */
+
+.projects-footer {
+  margin-top: 0.5rem;
+}
+
+.projects-footer .hint {
+  font-size: 0.85rem;
+  color: var(--fg-muted, #555);
+  margin: 0;
+}

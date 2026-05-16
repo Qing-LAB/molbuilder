@@ -37,9 +37,13 @@ import os
 import shutil
 import subprocess
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Optional
+from pathlib import Path
+from typing import Any, Mapping, Optional, Tuple
 
-from .runtime_config import get_envs, read_config
+from .runtime_config import (
+    get_envs, get_file_picker_roots, read_config,
+)
+from .projects import projects_root
 
 
 # --------------------------------------------------------------------- #
@@ -152,6 +156,61 @@ class Capabilities:
         if self.routed_env(tool) is not None:
             return True
         return shutil.which(tool) is not None
+
+    # ----- file-picker roots (consults projects/ + CWD + config) ---- #
+
+    def file_picker_roots(self) -> Tuple[Tuple[Path, str], ...]:
+        """Resolved roots the ``/api/files`` picker is allowed to browse.
+
+        Returns a tuple of ``(absolute_path, label)`` pairs:
+
+        * ``(projects_root(), "projects")`` -- the canonical projects
+          tree.  Always present even if it doesn't exist yet, so the
+          UI can show a "no projects yet" state instead of a missing
+          root.
+        * ``(Path.cwd().resolve(), "CWD")`` -- the working directory
+          molbuilder was launched from.  Useful when ``molbuilder serve``
+          runs in a one-off scratch dir.
+        * Zero or more entries from ``molbuilder.json``'s
+          ``file_picker.roots`` list.  Each is expanded
+          (``~``, ``$VARS``), resolved to absolute, and dropped
+          silently if it doesn't exist on this machine -- a stale
+          config entry shouldn't break the picker.
+
+        Duplicate paths (e.g., user adds an entry that resolves to the
+        CWD) are de-duplicated; first occurrence wins so the default
+        label is preferred over a user-chosen one.
+        """
+        seen: set = set()
+        out: list = []
+
+        def _add(p: Path, label: str) -> None:
+            try:
+                resolved = p.expanduser().resolve()
+            except (OSError, RuntimeError):
+                # OSError = unreadable mount point; RuntimeError = symlink
+                # loop on Python < 3.13.  Silent drop is the right move
+                # for the file-picker boundary.
+                return
+            if resolved in seen:
+                return
+            seen.add(resolved)
+            out.append((resolved, label))
+
+        _add(projects_root(), "projects")
+        _add(Path.cwd(), "CWD")
+        for raw_entry in get_file_picker_roots(self.runtime_config):
+            # Expand env vars before tilde so $HOME/foo works the same
+            # as ~/foo and as /home/user/foo.
+            expanded = Path(os.path.expandvars(raw_entry))
+            try:
+                resolved = expanded.expanduser().resolve()
+            except (OSError, RuntimeError):
+                continue
+            if not resolved.exists():
+                continue   # silent drop -- see docstring
+            _add(resolved, resolved.name or str(resolved))
+        return tuple(out)
 
 
 # --------------------------------------------------------------------- #

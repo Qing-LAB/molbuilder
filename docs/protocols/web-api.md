@@ -332,6 +332,209 @@ on plots.
 
 ---
 
+## `/api/files/*` — Server-side file explorer
+
+Backend for the **Projects tab** — a persistent column-view file
+explorer that lets the user browse the *server's* filesystem and
+pick a file or directory.  Selection is shared state (sessionStorage)
+that other tabs (Spectra, Watch, Modify, Build) observe via the
+``storage`` event, JupyterLab-style.
+
+Solves the recurring UX problem that `<input type="file">` opens the
+*browser's* local file dialog, which is useless when the data already
+lives on the server.  The Projects tab is the canonical place to
+"walk into my project tree and find the right file to keep working
+on"; other tabs react to its current selection rather than each
+maintaining their own file picker.
+
+This API is **additive**: every tab keeps its existing local-file
+input + (where applicable) raw-text paste.  The Projects-tab
+selection is a third path, not a replacement.
+
+This is **not** a file manager: no upload, rename, delete, or move
+in v1.  The Projects tab is a navigation + selection widget.  Files
+get created by molbuilder's own generators (Build, run wrapper, the
+Phase 2 derive-job flow); they get deleted by the user at their
+shell.
+
+### Endpoints
+
+| route | method | query | response | status |
+|---|---|---|---|---|
+| `/api/files/roots` | GET | — | `{ok, roots: [{path, label, exists}, ...]}` | 200 |
+| `/api/files/list`  | GET | `path` (required), `ext` (optional, comma-sep filter) | `{ok, path, entries: [...]}` | 400 outside-root · 404 missing dir · 200 |
+| `/api/files/stat`  | GET | `path` (required) | `{ok, path, kind, size, mtime}` | 400 outside-root · 404 missing · 200 |
+| `/api/files/read`  | GET | `path` (required), `max_bytes` (optional, default 1 MB) | `{ok, path, kind, size, mtime, text}` | 400 outside-root · 404 missing · 413 too large · 200 |
+
+### Roots — what the picker is allowed to browse
+
+Resolved from `Capabilities.file_picker_roots()`:
+
+1. **Defaults**, always included:
+   * `<cwd>/projects/` -- the canonical projects hierarchy (`molbuilder.projects.projects_root()`); included even if it doesn't exist yet so the picker can show "create a project" UX later.
+   * `<cwd>` -- the working directory the server was launched from, so a one-off `molbuilder serve` in a scratch dir gives the user immediate access to its files.
+2. **User additions** from `molbuilder.json`:
+   ```jsonc
+   {
+     "file_picker": {
+       "roots": ["~/scratch", "/data/shared/molbuilder"]
+     }
+   }
+   ```
+   Each entry is expanded (`~`, `$VARS`), resolved to absolute, and
+   added to the list if it exists on this machine.  Non-existent
+   entries are dropped silently (a stale config entry on a fresh
+   machine shouldn't break the picker).
+
+Returned `roots` carry a `label` so the UI can show a friendly name
+(`"projects"`, `"CWD"`, basename of user roots) without the full
+path crowding the tree.
+
+### Path validation
+
+A single helper validates every `path` query arg:
+
+1. Expand `~` and environment variables.
+2. Resolve to absolute (`Path.resolve()` -- follows symlinks).
+3. Must equal-or-be-inside one of the allowed roots.
+4. Reject `..` components in the raw input (defense in depth -- step 3 already covers traversal, but rejecting `..` early gives a cleaner error).
+
+A path that survives validation is canonical absolute; that's what
+the response carries back.
+
+### Response shapes
+
+`/api/files/roots`:
+
+```json
+{
+  "ok": true,
+  "roots": [
+    {"path": "/home/qqing/molbuilder/projects", "label": "projects", "exists": true},
+    {"path": "/home/qqing/molbuilder",          "label": "CWD",      "exists": true},
+    {"path": "/data/shared/molbuilder",         "label": "shared",   "exists": false}
+  ]
+}
+```
+
+`/api/files/list` entries:
+
+```json
+{
+  "ok": true,
+  "path": "/home/qqing/molbuilder/projects/tunneling/spectrum",
+  "entries": [
+    {"name": "BDT_water", "kind": "directory", "size": null, "mtime": 1715773200.0},
+    {"name": "BDT_NH2",   "kind": "directory", "size": null, "mtime": 1715773100.0}
+  ]
+}
+```
+
+`kind` is one of `"directory"`, `"file"`, `"symlink"`, `"other"`.
+Hidden entries (starting with `.`) are filtered out by default --
+the picker is for project files, not dotfiles.
+
+### Job derivation — picker as entry point for new runs (Phase 2)
+
+A second, related workflow the picker enables: **start a new run job
+from an existing file** (e.g., take the optimized geometry out of an
+`optimization/<structure>/` run and start a `spectrum/<structure>/`
+calculation from it).
+
+Realised by:
+
+| route | method | body | response | status |
+|---|---|---|---|---|
+| `/api/files/derive_job` | POST | `{source_path, target_topic, target_structure?, target_project?, target_tab?}` | `{ok, target_path, structure_xyz, suggested_config}` | 400 invalid source · 400 invalid topic · 409 target exists · 200 |
+
+`derive_job` does NOT write any files itself.  It computes:
+
+* `target_path` -- the canonical `<project>/<target_topic>/<target_structure>/`
+  per `molbuilder.projects` (rejected if topic is not in
+  `CANONICAL_TOPICS`); defaults: `target_project` = source's project,
+  `target_structure` = source's structure name.
+* `structure_xyz` -- the geometry extracted from the source.  Source
+  types and what we extract:
+  * `<job>_optimized.xyz`            -> the XYZ directly.
+  * `<job>.molwatch.log`             -> last frame's coordinates.
+  * `<job>.spectra.json`             -> `equilibrium.positions_ang` + elements.
+  * `<job>.thermo.txt`               -> the relaxed geometry referenced in the header (resolved against the file's own dir).
+  * plain `.xyz` / `.pdb`            -> read as-is.
+* `suggested_config` -- a tiny dict the receiving tab pre-populates
+  its form with (e.g., from a spectra JSON: `{method, functional,
+  basis}` lifted from the source's `config` so the new job inherits
+  the same theory level unless the user changes it).
+
+The frontend then:
+1. Navigates to the target tab (`target_tab` defaults from `target_topic`:
+   `spectrum` → Spectra, `optimization` → Build, etc.).
+2. Pre-loads the structure + suggested config.
+3. The user reviews + clicks Generate.  The Generate flow uses
+   `target_path` as the output directory, and the user's tab
+   navigates Watch / Spectra at `target_path` for live monitoring
+   once the run starts.
+
+This keeps each calc dir self-contained (no symlinks; coordinates
+inlined into the new script) per the design.md 2026-05-14 decision.
+
+### Naming constraint (project / structure / topic)
+
+All names that participate in a `projects/<project>/<topic>/<structure>/`
+path MUST satisfy ``molbuilder.projects.validate_name`` -- i.e., the
+regex ``^[A-Za-z0-9_-]+$``.  Spaces, dots, slashes, unicode are
+rejected.  The constraint exists because SIESTA's filename discovery
+is basename-based; a structure named ``"my mol.run #1"`` would
+silently break that pipeline downstream.
+
+This is enforced at three layers and surfaces at each:
+
+* **Path construction** (``molbuilder.projects.*``): raises
+  ``InvalidName`` on bad input.  All directory-creating code paths
+  go through these constructors.
+* **`/api/files/derive_job`** (Phase 2): validates ``target_project``
+  and ``target_structure`` via the same helpers, returns HTTP 400
+  with the ``InvalidName`` message verbatim so the UI can echo it
+  next to the form field.
+* **Future "create new project" UI**: the form will validate
+  client-side against the same regex, then re-validate server-side
+  on submit.
+
+`topic` is even more constrained: must be one of the six
+``CANONICAL_TOPICS`` (``optimization``, ``frequency``, ``spectrum``,
+``transport``, ``single-point``, ``scan``).  Validated by
+``molbuilder.projects.validate_topic``.
+
+The picker itself does NOT filter on-disk directory names -- it shows
+what's there.  A user who hand-creates a directory named
+``my project/`` will see it in the picker tree (so they can find and
+rename it) but won't be able to use it as the target of a derive-job
+without renaming.
+
+### Projects-hierarchy convention
+
+The picker is intentionally *generic* -- it doesn't enforce the
+`<project>/<topic>/<structure>/` shape that `molbuilder.projects`
+documents, because users may want to load files from outside
+`projects/` too (browsing `~/Downloads/`, a one-off scratch dir).
+
+But when the user IS inside `projects/`, the path naturally
+reflects the hierarchy:
+
+```
+projects/<project>/<topic>/<structure>/<file>
+         └─ tree expandable ─┘ └─ FLAT directory; files only by ──┘
+                                   convention (no subdirs)
+```
+
+The frontend can detect "we're inside projects" by prefix-matching
+against the `projects` root and render topic-aware labels.  Beyond
+the topic level, the structure directory is flat by job-layout-v1
+convention; the picker will still show whatever exists there
+(including any subdirs the user created off-spec), so the contract
+stays honest about the actual filesystem state.
+
+---
+
 ## Request-size cap
 
 `MAX_CONTENT_LENGTH = 50 MB` on the Flask app.  Watch uploads (large

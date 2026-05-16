@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Projects &mdash; molbuilder</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='projects/explorer.css') }}">
+</head>
+<body>
+
+{% set active_tab = "projects" %}
+{% set page_tagline = "Walk the server's projects/ tree and pick a file. The other tabs (Build, Modify, Spectra, Watch) read your selection automatically &mdash; no need to type paths or re-upload." %}
+{% include "_app_header.html" %}
+
+<main class="projects-page">
+
+  <!-- Header / status strip -->
+  <header class="projects-header">
+    <div class="status-line">
+      <span class="status-label">Selection:</span>
+      <code id="status-path" class="status-path">(none)</code>
+    </div>
+    <div class="actions" id="actions-bar">
+      <!-- "Open in <Tab>" buttons appear here once a file is selected.
+           Populated by explorer.js based on file extension. -->
+    </div>
+  </header>
+
+  <!-- Column-view explorer -->
+  <section class="explorer" id="explorer">
+    <!-- Columns are inserted dynamically by explorer.js.  Each
+         column lists either the roots, the entries of a directory,
+         or (when the leaf is a file) a metadata panel. -->
+  </section>
+
+  <!-- Footer hint -->
+  <footer class="projects-footer">
+    <p class="hint">
+      Click a directory to drill in, or a file to select it.
+      Selection is shared with the other tabs: switch to
+      <strong>Spectra</strong> / <strong>Watch</strong> /
+      <strong>Modify</strong> and click the &ldquo;Use current
+      selection&rdquo; button there.  Read-only: no upload, rename,
+      or delete in v1.
+    </p>
+  </footer>
+
+</main>
+
+<script src="{{ url_for('static', filename='projects/explorer.js') }}"></script>
+</body>
+</html>

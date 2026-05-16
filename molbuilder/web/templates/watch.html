@@ -20,6 +20,16 @@
 {% include "_app_header.html" %}
 
 <section class="loader-bar">
+  <!-- Projects-tab selection banner.  Hidden until the user has
+       selected a .molwatch.log / .log / .xyz in Projects; then
+       offers "Use this file" to populate the path input below. -->
+  <div id="projects-banner" class="projects-banner" hidden
+       role="status" aria-live="polite">
+    <span class="ps-label">Projects selection:</span>
+    <code class="ps-path"></code>
+    <button class="ps-use-btn" type="button">Use this file</button>
+    <button class="ps-clear"   type="button" title="Clear selection">×</button>
+  </div>
   <div class="loader">
     <label for="path-input">Run directory or file:</label>
     <input id="path-input" type="text"
@@ -431,6 +441,20 @@ FILE mode (back-compat; also supported):
 
 <script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-pick.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/projects-selection.js') }}"></script>
 <script src="{{ url_for('static', filename='watch/viewer.js') }}"></script>
+<script>
+  // Projects-tab selection -> Watch loader.
+  molbuilderProjectsSelection.init({
+    bannerEl: document.getElementById("projects-banner"),
+    extensions: [".molwatch.log", ".log", ".out", ".xyz"],
+    onLoad: async function (path, _text) {
+      const inp = document.getElementById("path-input");
+      const btn = document.getElementById("load-btn");
+      if (inp) inp.value = path;
+      if (btn) btn.click();
+    },
+  });
+</script>
 </body>
 </html>
