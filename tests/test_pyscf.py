@@ -299,6 +299,20 @@ def test_dispersion_can_be_disabled(h2o):
     assert "mf.disp" not in text
 
 
+def test_dispersion_none_string_does_not_crash_pyscf(h2o):
+    # PySCF's check_disp raises NotImplementedError if mf.disp is the
+    # literal string "none" (only None / 0 / a real version like "d3bj"
+    # are accepted).  Make sure the string sentinel is treated like None.
+    text = render_script(h2o, PySCFConfig(dispersion="none"))
+    assert "mf.disp" not in text
+
+
+def test_preopt_dispersion_none_string_does_not_crash_pyscf(h2o):
+    text = render_script(h2o,
+                        PySCFConfig(preopt=True, preopt_dispersion="none"))
+    assert "mf1.disp" not in text
+
+
 def test_solvent_emits_pcm_block(h2o):
     text = render_script(h2o, PySCFConfig(solvent="water"))
     # The pcm import remains because importing it patches the .PCM()

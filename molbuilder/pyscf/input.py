@@ -420,7 +420,7 @@ def render_script(struct: Structure,
             out.append(f'mf = mf.density_fit(auxbasis="{cfg.auxbasis}")')
         else:
             out.append("mf = mf.density_fit()")
-    if cfg.dispersion and is_dft:
+    if cfg.dispersion and cfg.dispersion.lower() != "none" and is_dft:
         out.append(f'mf.disp = "{cfg.dispersion}"')
     if cfg.solvent:
         eps = _SOLVENTS.get(cfg.solvent.lower())
@@ -687,7 +687,7 @@ def _emit_preopt_block(cfg: PySCFConfig, charge: int, v: bool) -> List[str]:
     out.append(f'mf1.xc = "{cfg.preopt_functional}"')
     if cfg.preopt_density_fit:
         out.append("mf1 = mf1.density_fit()")
-    if cfg.preopt_dispersion:
+    if cfg.preopt_dispersion and cfg.preopt_dispersion.lower() != "none":
         out.append(f'mf1.disp = "{cfg.preopt_dispersion}"')
     out.append(f"mf1.conv_tol  = {cfg.scf_conv_tol:.0e}")
     out.append(f"mf1.max_cycle = {cfg.scf_max_cycle}")

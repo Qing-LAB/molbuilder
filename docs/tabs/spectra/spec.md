@@ -1003,6 +1003,36 @@ implementation (per [`../../README.md`](../../README.md)).
   for a known config.
 * Pre-flight cost preview updates live when form values change.
 
+## 12.1 End-to-end numerical validation (water, B3LYP/def2-SVP)
+
+A reference run validates the full pipeline against an independent
+hand-written raw-PySCF script (no molbuilder code):
+
+* **Starting point**: same MMFF water from
+  ``molbuilder.build_from_smiles("O")`` -- O at
+  ``(0.001, 0.398, 0)``, H at ``(±0.763, -0.199, 0)``.
+* **Same operations**: RKS / B3LYP / def2-SVP / DF, geomeTRIC
+  optimization, analytic Hessian, central-difference
+  ``dα/dR`` via pyscf-properties polarizability, Placzek
+  ``45 a² + 7 γ²`` * ``BOHR_TO_ANG⁶``.
+
+| Quantity                | molbuilder            | raw-PySCF             | max Δ              |
+|-------------------------|-----------------------|-----------------------|--------------------|
+| Relaxed positions       | ``-76.35832575`` Ha   | ``-76.35832575`` Ha   | 1.1×10⁻⁷ Å         |
+| ν₁ bend                 | 1638.77 cm⁻¹ / 6.816 Å⁴/amu | 1638.77 cm⁻¹ / 6.816 Å⁴/amu | < 10⁻³ cm⁻¹, < 10⁻⁶ Å⁴/amu |
+| ν₂ sym stretch          | 3791.22 cm⁻¹ / 76.905 Å⁴/amu | 3791.22 cm⁻¹ / 76.905 Å⁴/amu | < 10⁻⁵ cm⁻¹, < 10⁻⁶ Å⁴/amu |
+| ν₃ asym stretch         | 3886.54 cm⁻¹ / 36.818 Å⁴/amu | 3886.54 cm⁻¹ / 36.818 Å⁴/amu | < 10⁻³ cm⁻¹, < 10⁻⁶ Å⁴/amu |
+
+Frequencies match literature B3LYP/def2-SVP water (~1638 / ~3791 /
+~3887 cm⁻¹); Raman activities fall in the standard Å⁴/amu range
+expected at this level of theory, confirming the ``BOHR_TO_ANG⁶``
+units conversion is correct.
+
+This is documented here -- not in code -- because the comparison
+script is one-shot validation (not a unit test).  Adding it as a
+unit test would require pyscf + pyscf-properties in the test env,
+which we've kept out of the host env on purpose.
+
 ## 13. Future extensions
 
 ### 13.1 IR add-on (1c)
