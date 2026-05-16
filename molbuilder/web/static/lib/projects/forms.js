@@ -18,7 +18,7 @@ import {
   apiMkdir, apiCreateProject, apiUpload,
 } from "./api.js";
 import {
-  projects, getProjectsRoot, SS_DIR,
+  projects, getProjectsRoot, SS_DIR, atProjectsRoot,
 } from "./state.js";
 import { openDir } from "./list.js";
 
@@ -30,13 +30,12 @@ let elUploadForm, elUploadInput, elUploadError, elUploadContext;
 let elNewProjForm, elNewProjInput, elNewProjError, elNewProjSubdirs;
 
 // ----- "(in <current-dir>)" hints + depth-aware visibility ------- //
-
-function _atRoot(dir) {
-  const root = getProjectsRoot();
-  return !root || !dir
-    || dir === root
-    || dir === root.replace(/\/$/, "");
-}
+//
+// Two forms (+ New subdir, + Upload file) share the depth-0 hide
+// rule -- they're meaningless at the projects/ root because no
+// useful filename / dirname can land there.  The atProjectsRoot
+// predicate is centralised in state.js so every caller agrees on
+// what "at the root" means (handles trailing-slash edge cases).
 
 function _setSectionHiddenIfRoot(formEl, hidden) {
   const section = formEl ? formEl.closest("details") : null;
@@ -52,7 +51,7 @@ function _updateMkdirContext() {
     ? (projects.relativeToProjects(dir) || "projects/")
     : "current directory";
   elMkdirContext.title = dir || "";
-  _setSectionHiddenIfRoot(elMkdirForm, _atRoot(dir));
+  _setSectionHiddenIfRoot(elMkdirForm, atProjectsRoot(dir));
 }
 
 function _updateUploadContext() {
@@ -62,7 +61,7 @@ function _updateUploadContext() {
     ? (projects.relativeToProjects(dir) || "projects/")
     : "current directory";
   elUploadContext.title = dir || "";
-  _setSectionHiddenIfRoot(elUploadForm, _atRoot(dir));
+  _setSectionHiddenIfRoot(elUploadForm, atProjectsRoot(dir));
 }
 
 // ----- Mkdir form ------------------------------------------------ //

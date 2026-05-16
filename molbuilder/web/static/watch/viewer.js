@@ -704,6 +704,32 @@
         }, { displayModeBar: false, responsive: true });
 
         renderScfProgress();
+
+        // ----- Post-layout resize fix --------------------------- //
+        //
+        // The .plots-row CSS uses `grid-template-columns:
+        // repeat(auto-fit, minmax(280px, 1fr))`.  When
+        // renderScfProgress unhides the two SCF plots, the grid
+        // reflows from 2 cells to 4 cells -- each cell goes from
+        // ~50% of the row width down to ~25%.  Plotly's
+        // `responsive: true` config only listens for window
+        // resize, NOT for CSS-grid track changes, so the energy
+        // + force plots' SVGs stay at their original (wider) size
+        // and overlap into the neighbouring cells.  Same problem
+        // in reverse when SCF data goes away later.
+        //
+        // Fix: explicitly resize every visible plot once the
+        // visibility decisions are stable.  Plotly.Plots.resize
+        // is a no-op if the container size didn't actually
+        // change, so this is cheap to run unconditionally.
+        ["energy-plot", "force-plot",
+         "scf-energy-plot", "scf-gnorm-plot"].forEach((id) => {
+            const el = $(id);
+            if (el && !el.hidden) {
+                try { Plotly.Plots.resize(el); }
+                catch (_) { /* element not yet plotted; ignore */ }
+            }
+        });
     }
 
     /*  Render the SCF-iteration progress for the most recent step.

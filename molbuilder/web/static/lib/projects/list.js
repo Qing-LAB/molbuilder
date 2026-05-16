@@ -8,7 +8,7 @@
  *     preview.showPreview() / confirmAndDelete().  stopPropagation
  *     so the row click doesn't ALSO fire.
  *
- * Registers openDir as state.subscribeRefresh(handler) at init time
+ * Registers openDir as state.setRefreshHandler(handler) at init time
  * so state.refresh() / state.saveToWorkspace() can ask for a re-list
  * without importing list.js (avoids a circular dep).
  *
@@ -17,7 +17,7 @@
 
 import { apiList, apiDelete } from "./api.js";
 import {
-  setShared, getProjectsRoot, subscribeRefresh,
+  setShared, getProjectsRoot, setRefreshHandler,
 } from "./state.js";
 import { showPreview } from "./preview.js";
 
@@ -265,5 +265,5 @@ export function initList() {
   // Register ourselves as the refresh handler so state.refresh() +
   // state.writeFile()'s post-save re-list can call into us without
   // a circular import.
-  subscribeRefresh(openDir);
+  setRefreshHandler(openDir);
 }

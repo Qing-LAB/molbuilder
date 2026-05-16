@@ -14,7 +14,13 @@
      add `integrity="sha384-..." crossorigin="anonymous"` here. -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js"></script>
 </head>
-<body>
+<body class="has-projects-sidebar"><!--
+ has-projects-sidebar applies the body padding-left for the fixed
+ sidebar.  Set server-side so the first paint already has the
+ correct layout -- if we waited for the type=module sidebar JS to
+ add the class, Plotly + other layout-sensitive widgets would
+ initialise with the wider pre-sidebar geometry and look broken
+ until the next window-resize event triggered their re-layout. -->
 
 {% set active_tab = "build" %}
 {% set page_tagline = "Build a 3-D molecule from a peptide / DNA / RNA sequence, a SMILES string, or a chemical name &mdash; and turn it into a SIESTA <code>.fdf</code> or PySCF input." %}

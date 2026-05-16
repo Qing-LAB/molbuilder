@@ -34,7 +34,13 @@ async function init() {
   const sidebar = document.getElementById("projects-sidebar");
   if (!sidebar) return;                  // page didn't include the partial
 
-  document.body.classList.add("has-projects-sidebar");
+  // NOTE: `class="has-projects-sidebar"` is set on <body> in each
+  // template that includes the sidebar partial -- NOT here.  Adding
+  // it via JS races with the initial paint: any layout-sensitive
+  // widget that init'd before the type=module script ran (Plotly
+  // plots in Watch / Spectra; 3Dmol viewer; CSS-grid auto-fit
+  // dependent layouts) would have measured the WIDER pre-sidebar
+  // geometry and look broken until the next browser resize.
   // Resolve projects/ root from the backend's single-root contract.
   const roots = await apiRoots();
   if (roots.length === 0) {

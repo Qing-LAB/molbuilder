@@ -10,7 +10,7 @@
  * Does NOT own:
  *   * any DOM manipulation
  *   * directory listing (that's list.js -- which subscribes via
- *     subscribeRefresh + responds when state asks for a re-list)
+ *     setRefreshHandler + responds when state asks for a re-list)
  *
  * Spec: docs/protocols/selection.md.
  */
@@ -52,7 +52,7 @@ export function setShared(dir, file) {
 export function setProjectsRoot(root) { projectsRoot = root; }
 export function getProjectsRoot()     { return projectsRoot; }
 
-export function subscribeRefresh(handler) { refreshHandler = handler; }
+export function setRefreshHandler(handler) { refreshHandler = handler; }
 
 // ----- Public Inquire API (mounted on window.molbuilder.projects) //
 
@@ -60,6 +60,19 @@ export function relativeToProjects(path) {
   if (!path || !projectsRoot) return path || "";
   if (!path.startsWith(projectsRoot)) return path;
   return path.slice(projectsRoot.length).replace(/^\/+/, "") || "/";
+}
+
+/** True when ``dir`` is the projects/ root itself (or unset).
+ *  Used by callers that need to gate "no operation at depth 0"
+ *  behaviour: ``+ New subdir`` visibility, ``+ Upload`` visibility,
+ *  saveToWorkspace's silent-skip, etc.  Centralised here so every
+ *  caller agrees on what "at the root" means (handles trailing-
+ *  slash edge cases). */
+export function atProjectsRoot(dir) {
+  if (!dir) return true;
+  if (!projectsRoot) return true;
+  return dir === projectsRoot
+      || dir === projectsRoot.replace(/\/$/, "");
 }
 
 async function readCurrentFile() {
@@ -72,7 +85,17 @@ async function readCurrentFile() {
 
 async function refresh() {
   const dir = sessionStorage.getItem(SS_DIR) || projectsRoot;
-  if (!dir || !refreshHandler) return;
+  if (!dir) return;
+  if (!refreshHandler) {
+    // initList() registers itself as the refresh handler.  If we
+    // got here without one, the sidebar's init order is broken --
+    // log loud-but-non-fatal so a developer notices.
+    console.warn(
+      "molbuilder.projects.refresh(): no refresh handler registered.  "
+      + "list.js should call setRefreshHandler(openDir) at init time."
+    );
+    return;
+  }
   await refreshHandler(dir);
 }
 
@@ -129,12 +152,7 @@ async function writeFile(path, text, opts) {
  */
 async function saveToWorkspace(text, filename, opts) {
   const dir = sessionStorage.getItem(SS_DIR) || "";
-  if (!dir) return null;
-  if (projectsRoot
-      && (dir === projectsRoot
-          || dir === projectsRoot.replace(/\/$/, ""))) {
-    return null;
-  }
+  if (atProjectsRoot(dir)) return null;
   const path = dir.replace(/\/$/, "") + "/" + filename;
   return await writeFile(path, text, opts);
 }

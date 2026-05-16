@@ -405,6 +405,77 @@ class TestSidebarPartialAndShim:
         assert "document." not in body
         assert "window." not in body
 
+    def test_projects_module_dependency_direction(self, web, picker_root):
+        """Module deps form a DAG -- a circular import would still
+        work in ES modules but causes init-order subtleties.  Pin
+        the allowed direction:
+
+            api.js     -> (nothing in projects/)
+            state.js   -> api.js only
+            preview.js -> state.js, api.js
+            list.js    -> state.js, api.js, preview.js
+            forms.js   -> state.js, api.js, list.js
+
+        ``projects-sidebar.js`` (entry) imports all 5 modules and
+        is the only file allowed to.
+        """
+        def imports_from_projects(body):
+            import re
+            return set(re.findall(
+                r'from\s+"\.\/projects\/([a-z]+)\.js"|'
+                r'from\s+"\.\/([a-z]+)\.js"',
+                body,
+            ))
+        def flat(matches):
+            return {a or b for a, b in matches}
+
+        api    = flat(imports_from_projects(
+            web.get("/static/lib/projects/api.js").get_data(as_text=True)
+        ))
+        state  = flat(imports_from_projects(
+            web.get("/static/lib/projects/state.js").get_data(as_text=True)
+        ))
+        preview = flat(imports_from_projects(
+            web.get("/static/lib/projects/preview.js").get_data(as_text=True)
+        ))
+        list_  = flat(imports_from_projects(
+            web.get("/static/lib/projects/list.js").get_data(as_text=True)
+        ))
+        forms  = flat(imports_from_projects(
+            web.get("/static/lib/projects/forms.js").get_data(as_text=True)
+        ))
+
+        # api is a leaf -- depends on nothing else in projects/.
+        assert api == set(), f"api.js should be a leaf, imports {api}"
+
+        # state depends only on api.
+        assert state <= {"api"}, (
+            f"state.js may import from api only, found {state}"
+        )
+
+        # preview depends on state + api.
+        assert preview <= {"state", "api"}, (
+            f"preview.js may import from state, api only, found {preview}"
+        )
+
+        # list depends on state, api, preview (but NOT forms).
+        assert list_ <= {"state", "api", "preview"}, (
+            f"list.js may import from state/api/preview only, found {list_}"
+        )
+
+        # forms is the top of the per-module stack (besides the entry).
+        # It can depend on state, api, list, preview.
+        assert forms <= {"state", "api", "list", "preview"}, (
+            f"forms.js may import from state/api/list/preview only, "
+            f"found {forms}"
+        )
+
+        # The crucial negative: state must NOT import from list, forms,
+        # or preview (the cycle-breaking discipline).
+        assert "list"    not in state, "state.js cannot import from list.js (cycle)"
+        assert "forms"   not in state, "state.js cannot import from forms.js"
+        assert "preview" not in state, "state.js cannot import from preview.js"
+
     def test_projects_sidebar_css_served(self, web, picker_root):
         r = web.get("/static/lib/projects-sidebar.css")
         assert r.status_code == 200
@@ -435,6 +506,26 @@ class TestSidebarPartialAndShim:
         # Sidebar JS + CSS included.
         assert "projects-sidebar.js" in body, path
         assert "projects-sidebar.css" in body, path
+
+    @pytest.mark.parametrize("path", ["/", "/spectra", "/modify", "/watch"])
+    def test_body_class_server_side_for_layout(
+        self, web, picker_root, path,
+    ):
+        # `class="has-projects-sidebar"` must be on <body> at server
+        # render -- if we waited for the type=module sidebar JS to
+        # add the class, the first paint would happen with the
+        # WIDER pre-sidebar geometry (no padding-left for the
+        # sidebar's 18rem width), and Plotly + CSS-grid-auto-fit
+        # layouts would init at the wrong size and look broken
+        # until a browser resize fixed them.  This bit users at
+        # least once -- pin it.
+        body = web.get(path).get_data(as_text=True)
+        assert 'class="has-projects-sidebar"' in body, path
+        # And the JS should NOT be adding it (avoid double-toggle).
+        js = web.get(
+            "/static/lib/projects-sidebar.js",
+        ).get_data(as_text=True)
+        assert 'classList.add("has-projects-sidebar")' not in js
 
     @pytest.mark.parametrize("path", ["/spectra", "/modify", "/watch"])
     def test_subscriber_tabs_use_inquire_api(
@@ -756,14 +847,19 @@ class TestSidebarMkdirUI:
     def test_mkdir_section_depth_aware_visibility_in_js(
         self, web, picker_root,
     ):
-        # v5.3: lives in projects/forms.js.  Toggle keyed on
-        # closest("details") + section.hidden = atRoot.
-        body = web.get(
+        # v5.3.1: forms.js uses the centralised atProjectsRoot helper
+        # from state.js (the prior _atRoot duplicate was removed).
+        forms = web.get(
             "/static/lib/projects/forms.js",
         ).get_data(as_text=True)
-        assert 'closest("details")' in body
-        assert "_atRoot" in body or "atRoot" in body
-        assert "section.hidden" in body
+        assert 'closest("details")' in forms
+        assert "atProjectsRoot" in forms      # imports + uses the helper
+        assert "section.hidden" in forms
+        # Helper itself lives in state.js (single source of truth).
+        state = web.get(
+            "/static/lib/projects/state.js",
+        ).get_data(as_text=True)
+        assert "export function atProjectsRoot" in state
 
 
 class TestFilesWrite:
