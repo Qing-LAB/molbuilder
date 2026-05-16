@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <title>molwatch &mdash; live trajectory viewer</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/projects-sidebar.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='watch/style.css') }}">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js"></script>
 <!-- Plotly served from the installed plotly Python package via
@@ -18,6 +19,7 @@
 {% set active_tab = "watch" %}
 {% set page_tagline = "Live trajectory viewer for SIESTA and PySCF / geomeTRIC runs &mdash; scrub frames, see force vectors, and track SCF progress." %}
 {% include "_app_header.html" %}
+{% include "_projects_sidebar.html" %}
 
 <section class="loader-bar">
   <!-- Projects-tab selection banner.  Hidden until the user has
@@ -50,12 +52,6 @@ FILE mode (back-compat; also supported):
   <job>.molwatch.log     -- molbuilder unified log
   run.out / siesta.log   -- SIESTA's main output
   <job>_geom_optim.xyz   -- geomeTRIC streaming trajectory">
-    <!-- Hidden file picker; shown only when Load is clicked with an
-         empty path-input.  Picker-selected files are uploaded as
-         multipart and parsed once (no polling, since the browser
-         doesn't expose the file's filesystem path). -->
-    <input id="file-picker" type="file" hidden
-           accept=".out,.log,.xyz,.ANI,text/plain,chemical/x-xyz">
     <button id="load-btn">Load</button>
     <span id="status" class="status">No file loaded.</span>
   </div>
@@ -442,6 +438,7 @@ FILE mode (back-compat; also supported):
 <script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-pick.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/projects-selection.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='watch/viewer.js') }}"></script>
 <script>
   // Projects-tab selection -> Watch loader.

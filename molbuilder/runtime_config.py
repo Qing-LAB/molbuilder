@@ -25,8 +25,7 @@ Schema (all sections optional)::
         "envs": { "siesta":  "molbuilder-siesta",
                   "pyscf":   "molbuilder-pySCF",
                   "mdtools": "molbuilder-MDtools",
-                  "tests":   "molbuilder-tests" },
-        "file_picker": { "roots": ["~/scratch", "/data/shared/molbuilder"] }
+                  "tests":   "molbuilder-tests" }
     }
 
 For backwards compatibility with the flat shape shipped before the
@@ -152,27 +151,6 @@ def _normalise(raw: Mapping[str, Any]) -> Dict[str, Any]:
     if envs:
         out["envs"] = envs
 
-    # --- file_picker section ---------------------------------------- #
-    # Shape: {"roots": ["<path>", ...]}.  Each entry is a string;
-    # tilde + env-var expansion and absolute-path resolution happen
-    # in the consumer (Capabilities.file_picker_roots()) -- this layer
-    # just enforces the wire-format type.
-    fp = _read_section(raw, "file_picker")
-    if fp:
-        roots = fp.get("roots", [])
-        if not isinstance(roots, list):
-            raise RuntimeConfigError(
-                f"{CONFIG_FILENAME}: 'file_picker.roots' must be a list, "
-                f"got {type(roots).__name__}"
-            )
-        for entry in roots:
-            if not isinstance(entry, str) or not entry:
-                raise RuntimeConfigError(
-                    f"{CONFIG_FILENAME}: 'file_picker.roots' entries "
-                    f"must be non-empty strings; got {entry!r}."
-                )
-        out["file_picker"] = {"roots": list(roots)}
-
     return out
 
 
@@ -195,24 +173,10 @@ def get_envs(cfg: Mapping[str, Any]) -> Dict[str, str]:
     return dict(cfg.get("envs", {}))
 
 
-def get_file_picker_roots(cfg: Mapping[str, Any]) -> list:
-    """Return the ``file_picker.roots`` list, or ``[]``.
-
-    Each entry is a string as the user wrote it (possibly with ``~``
-    or environment variables); expansion and absolute-path resolution
-    happens in :meth:`molbuilder.diagnostics.Capabilities.file_picker_roots`.
-    """
-    fp = cfg.get("file_picker", {})
-    if not isinstance(fp, Mapping):
-        return []
-    return list(fp.get("roots", []))
-
-
 __all__ = [
     "CONFIG_FILENAME",
     "RuntimeConfigError",
     "read_config",
     "get_tls",
     "get_envs",
-    "get_file_picker_roots",
 ]

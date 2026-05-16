@@ -1,0 +1,42 @@
+{#- molbuilder Projects sidebar -- always-visible left panel.
+
+   Included by every main tab template (build, modify, watch, spectra)
+   after _app_header.html and before <main>.  CSS in lib/projects-
+   sidebar.css fixes the panel to the left edge under the app-tabs
+   header; CSS body { padding-left: var(--sidebar-w); } shifts the
+   main content right by the sidebar's width.
+
+   The sidebar's behaviour comes from lib/projects-sidebar.js:
+     * lists projects/<...> entries one level at a time
+     * breadcrumb at the top with clickable parent links
+     * clicking a directory drills in; clicking a file selects it
+     * selection is written to sessionStorage.molbuilder.current_{dir,file}
+       so subscriber tabs (their projects-selection.js shim) react
+       live via the storage / molbuilder.selection events
+
+   The toggle button in the header collapses the sidebar to a thin
+   strip when the user wants the main content to take the full width.
+-#}
+<aside class="projects-sidebar" id="projects-sidebar" aria-label="Projects file explorer">
+  <header class="ps-header">
+    <button id="ps-toggle" type="button" class="ps-toggle"
+            title="Collapse / expand the sidebar"
+            aria-controls="projects-sidebar"
+            aria-expanded="true">&#9776;</button>
+    <h2 class="ps-title">Projects</h2>
+  </header>
+
+  <nav class="ps-breadcrumb" id="ps-breadcrumb" aria-label="Path">
+    <!-- Crumbs are inserted by projects-sidebar.js as clickable
+         spans: projects / proj / topic / structure -->
+  </nav>
+
+  <ul class="ps-list" id="ps-list" aria-live="polite">
+    <!-- Current-directory entries inserted by projects-sidebar.js. -->
+  </ul>
+
+  <footer class="ps-footer">
+    <span class="ps-selection-label">Selected:</span>
+    <code class="ps-selection" id="ps-selection">(none)</code>
+  </footer>
+</aside>

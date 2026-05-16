@@ -1057,19 +1057,26 @@
     //  Wire DOM events.                                                //
     // --------------------------------------------------------------- //
     document.addEventListener("DOMContentLoaded", () => {
-        $("load-btn").addEventListener("click", () => {
-            const files = $("file-picker").files;
-            if (!files.length) {
-                setStatus("Pick a file first.", "error");
-                return;
-            }
-            loadFile(files[0]);
-        });
-        // Auto-submit on file pick: most users pick once and forget.
-        $("file-picker").addEventListener("change", () => {
-            const files = $("file-picker").files;
-            if (files.length) loadFile(files[0]);
-        });
+        // The legacy load-btn + file-picker (browser-local file dialog)
+        // were removed from the template -- the Projects sidebar is now
+        // the only structure-loading path.  Keep null-guarded wiring so
+        // a future restoration is a template-only change.
+        const loadBtn    = $("load-btn");
+        const filePicker = $("file-picker");
+        if (loadBtn && filePicker) {
+            loadBtn.addEventListener("click", () => {
+                const files = filePicker.files;
+                if (!files.length) {
+                    setStatus("Pick a file first.", "error");
+                    return;
+                }
+                loadFile(files[0]);
+            });
+            filePicker.addEventListener("change", () => {
+                const files = filePicker.files;
+                if (files.length) loadFile(files[0]);
+            });
+        }
         $("rep").addEventListener("change", applyStyle);
         $("show-indices").addEventListener("change", applyStyle);
         const showAxes = $("show-axes");
@@ -1365,5 +1372,35 @@
         // probe positions after a translate / center op without
         // round-tripping through xyz parsing.
         getState:           () => state,
+    };
+
+    // Public loader for the Projects sidebar's onLoad callback (and
+    // any future tab-coordination code).  Reuses /api/build/load's
+    // JSON path so we don't need a browser File object.
+    window.molbuilder = window.molbuilder || {};
+    window.molbuilder.loadXyzText = async function (text, filename) {
+        setStatus(`Loading ${filename}…`);
+        let r;
+        try {
+            const resp = await fetch("/api/build/load", {
+                method: "POST",
+                headers: {"Content-Type": "application/json"},
+                body: JSON.stringify({text: text, filename: filename}),
+            });
+            r = await resp.json();
+        } catch (e) {
+            setStatus("Network error: " + e.message, "error");
+            return;
+        }
+        if (!r.ok) {
+            setStatus(r.error || "Load failed.", "error");
+            return;
+        }
+        applyStructure(r);
+        const fmt = (r.source_format || "structure").toUpperCase();
+        setStatus(
+            `Loaded ${r.n_atoms}-atom ${fmt} from ${filename}.`,
+            "ok",
+        );
     };
 })();

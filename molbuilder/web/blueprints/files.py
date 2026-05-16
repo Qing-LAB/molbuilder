@@ -37,22 +37,11 @@ import os
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, jsonify, request
 
 from molbuilder import diagnostics
 
 bp = Blueprint("files", __name__)
-
-
-# --------------------------------------------------------------------- #
-#  Page route                                                           #
-# --------------------------------------------------------------------- #
-
-
-@bp.route("/projects")
-def projects_page():
-    """Projects tab -- column-view file explorer."""
-    return render_template("projects.html", active_tab="projects")
 
 
 # Default cap for read_file responses: 1 MB.  Spectra JSONs are

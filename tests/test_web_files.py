@@ -1,13 +1,14 @@
 """Tests for the /api/files/* server-side file picker endpoints.
 
 Covers:
-  * /api/files/roots             -- the configured roots are reachable
+  * /api/files/roots             -- the single projects/ root is reported
   * /api/files/list              -- happy path, ext filter, directory ordering
   * /api/files/stat              -- file + directory metadata
   * /api/files/read              -- text content + size cap behaviour
   * Path validation              -- '..' rejection, outside-root rejection
-  * Configurable roots           -- molbuilder.json file_picker.roots
-                                    extends the default (projects/ + CWD)
+  * Sidebar partial + JS         -- the persistent sidebar is included in
+                                    every tab and the supporting JS / CSS
+                                    is served
 
 Backend contract:  docs/protocols/web-api.md  §  /api/files/*
 """
@@ -27,12 +28,12 @@ from molbuilder import diagnostics
 
 @pytest.fixture
 def picker_root(tmp_path: Path):
-    """A tmp directory wired in as the *only* file-picker root.
+    """A tmp directory wired in as the picker's root.
 
-    Substitutes a stand-alone Capabilities snapshot via
-    diagnostics.set_capabilities so the picker sees just this tmp
-    tree, no projects/ and no CWD.  Test isolation: the conftest's
-    autouse diagnostics-reset fixture restores the singleton after.
+    Replaces the real ``projects/`` default with this tmp tree by
+    monkey-patching :meth:`Capabilities.file_picker_roots`.  Test
+    isolation: the conftest's autouse diagnostics-reset fixture
+    restores the singleton afterwards.
     """
     # Build a few sample files to browse:
     (tmp_path / "water.xyz").write_text(
@@ -46,17 +47,15 @@ def picker_root(tmp_path: Path):
     (sub / ".hidden").write_text("dotfile\n")
 
     caps = diagnostics.Capabilities(
-        runtime_config={
-            "file_picker": {"roots": [str(tmp_path)]},
-        },
+        runtime_config={},
         conda_binary=None,
         conda_envs=frozenset(),
     )
 
     # Monkey-patch file_picker_roots to return ONLY the tmp root,
-    # bypassing the projects/ + CWD defaults (we want test isolation).
+    # bypassing the real projects/ default.
     def _only_tmp_roots(self):
-        return ((tmp_path.resolve(), "tmp"),)
+        return ((tmp_path.resolve(), "projects"),)
 
     monkey_caps_class = type(caps)  # the frozen Capabilities dataclass
     old = monkey_caps_class.file_picker_roots
@@ -85,14 +84,17 @@ def web(picker_root):
 
 class TestFilesRoots:
 
-    def test_roots_lists_configured_root(self, web, picker_root):
+    def test_roots_lists_single_projects_root(self, web, picker_root):
+        # Single root by design (v1): just projects/.  No CWD, no
+        # user-configurable additions.  Plural return shape preserved
+        # so future re-addition of multi-root is a one-line change.
         r = web.get("/api/files/roots")
         assert r.status_code == 200
         j = r.get_json()
         assert j["ok"] is True
         assert len(j["roots"]) == 1
         assert j["roots"][0]["path"] == str(picker_root.resolve())
-        assert j["roots"][0]["label"] == "tmp"
+        assert j["roots"][0]["label"] == "projects"
         assert j["roots"][0]["exists"] is True
 
 
@@ -313,34 +315,62 @@ class TestPathTraversalDefense:
 # --------------------------------------------------------------------- #
 
 
-class TestProjectsPageAndShim:
-    """The Projects tab page renders + the projects-selection shim
-    is served + each subscriber tab includes both the shim and the
-    banner DOM."""
+class TestSidebarPartialAndShim:
+    """Every tab includes the persistent Projects sidebar partial,
+    the supporting JS / CSS are reachable, and subscriber tabs (those
+    that also load a file via the selection) include the banner DOM."""
 
-    def test_projects_page_renders(self, web, picker_root):
+    def test_projects_page_route_removed(self, web):
+        # The standalone /projects tab was retired in favour of the
+        # persistent sidebar.  Make sure the old route is gone so a
+        # bookmark lands on a clean 404 rather than a half-rendered
+        # leftover.
         r = web.get("/projects")
+        assert r.status_code == 404
+
+    def test_projects_sidebar_js_served(self, web, picker_root):
+        r = web.get("/static/lib/projects-sidebar.js")
         assert r.status_code == 200
         body = r.get_data(as_text=True)
-        assert 'id="explorer"' in body
-        assert 'id="status-path"' in body
-        # Tab nav must include the Projects entry.
-        assert ">Projects<" in body
-        assert "projects/explorer.js" in body
-        assert "projects/explorer.css" in body
+        # Single-column + breadcrumb design contract.
+        assert "openDir" in body
+        assert "renderBreadcrumb" in body
+        assert "molbuilder.current_dir" in body
+        assert "molbuilder.current_file" in body
+        assert "molbuilder.selection" in body
+        # Toggle persistence.
+        assert "molbuilder.sidebar_collapsed" in body
+
+    def test_projects_sidebar_css_served(self, web, picker_root):
+        r = web.get("/static/lib/projects-sidebar.css")
+        assert r.status_code == 200
+        body = r.get_data(as_text=True)
+        # The two key layout classes the partial relies on.
+        assert ".projects-sidebar" in body
+        assert ".ps-breadcrumb" in body
 
     def test_projects_selection_shim_served(self, web, picker_root):
         r = web.get("/static/lib/projects-selection.js")
         assert r.status_code == 200
         body = r.get_data(as_text=True)
-        # The shim must expose its public init() entry point and
-        # subscribe to both event channels (cross-tab storage,
-        # same-tab CustomEvent).
         assert "molbuilderProjectsSelection" in body
         assert "init" in body
         assert "molbuilder.current_file" in body
         assert "molbuilder.selection" in body
         assert 'addEventListener("storage"' in body
+
+    @pytest.mark.parametrize("path", ["/", "/spectra", "/modify", "/watch"])
+    def test_sidebar_included_in_every_tab(self, web, picker_root, path):
+        r = web.get(path)
+        assert r.status_code == 200, path
+        body = r.get_data(as_text=True)
+        # Sidebar partial markup is present.
+        assert 'id="projects-sidebar"' in body, path
+        assert 'id="ps-breadcrumb"' in body, path
+        assert 'id="ps-list"' in body, path
+        # Sidebar JS + CSS included.
+        assert "projects-sidebar.js" in body, path
+        assert "projects-sidebar.css" in body, path
 
     @pytest.mark.parametrize("path", ["/spectra", "/modify", "/watch"])
     def test_subscriber_tabs_include_banner_and_shim(
@@ -355,60 +385,74 @@ class TestProjectsPageAndShim:
         assert 'class="ps-path"' in body, path
         assert 'class="ps-use-btn"' in body, path
 
+    def test_projects_nav_entry_removed(self, web):
+        # The "Projects" app-tab entry was removed from _app_header.html
+        # when we pivoted to the sidebar (otherwise users get a dead
+        # tab link).  The sidebar's own <h2>Projects</h2> title
+        # legitimately contains the word "Projects", so we assert on
+        # the app-tab count + the absence of a Projects-href link.
+        import re
+        body = web.get("/").get_data(as_text=True)
+        # Build / Modify / Spectra / Watch -- exactly four app-tab
+        # *links*, no Projects entry.  The regex excludes the
+        # container <nav class="app-tabs"> (note the trailing s).
+        n_tabs = len(re.findall(r'class="app-tab(?: is-active)?"', body))
+        assert n_tabs == 4, f"expected 4 app-tabs, found {n_tabs}"
+        # No href="/projects" anywhere.
+        assert 'href="/projects"' not in body
 
-class TestRootsFromConfig:
-    """file_picker.roots in molbuilder.json adds roots beyond the
-    defaults (projects/, CWD)."""
 
-    def test_runtime_config_accepts_file_picker_roots(self, tmp_path):
-        # Round-trip through read_config to confirm the new section
-        # parses + survives _normalise.
-        from molbuilder.runtime_config import (
-            read_config, get_file_picker_roots,
+class TestNoLocalFileInputs:
+    """After the sidebar pivot, the browser-local <input type=file>
+    pickers were dropped from Spectra / Watch / Modify -- a script
+    running on the server can't read a laptop file anyway."""
+
+    @pytest.mark.parametrize("path,absent_id", [
+        ("/spectra", 'id="xyz-file"'),
+        ("/spectra", 'id="results-file"'),
+        ("/watch",   'id="file-picker"'),
+        ("/modify",  'id="file-picker"'),
+    ])
+    def test_file_input_not_emitted(self, web, picker_root, path, absent_id):
+        r = web.get(path)
+        body = r.get_data(as_text=True)
+        assert absent_id not in body, (
+            f"{absent_id} unexpectedly present in {path}; "
+            f"the sidebar should be the only file-loading path."
         )
-        cfg_file = tmp_path / "molbuilder.json"
-        cfg_file.write_text('{"file_picker": {"roots": ["~/scratch", '
-                            '"/data/shared"]}}')
-        cfg = read_config(cfg_file)
-        assert get_file_picker_roots(cfg) == ["~/scratch", "/data/shared"]
 
-    def test_runtime_config_rejects_non_list_roots(self, tmp_path):
-        from molbuilder.runtime_config import (
-            read_config, RuntimeConfigError,
-        )
-        cfg_file = tmp_path / "molbuilder.json"
-        cfg_file.write_text('{"file_picker": {"roots": "not-a-list"}}')
-        with pytest.raises(RuntimeConfigError, match="must be a list"):
-            read_config(cfg_file)
 
-    def test_runtime_config_rejects_empty_string_root(self, tmp_path):
-        from molbuilder.runtime_config import (
-            read_config, RuntimeConfigError,
-        )
-        cfg_file = tmp_path / "molbuilder.json"
-        cfg_file.write_text('{"file_picker": {"roots": ["valid", ""]}}')
-        with pytest.raises(RuntimeConfigError, match="non-empty strings"):
-            read_config(cfg_file)
+class TestRootsContract:
+    """Single-root contract: Capabilities.file_picker_roots() returns
+    exactly the projects/ entry.  file_picker.roots in molbuilder.json
+    was removed; passing it is silently ignored (unknown sections are
+    OK per the runtime_config contract)."""
 
-    def test_capabilities_includes_defaults_plus_config_roots(self, tmp_path):
-        # Without monkey-patching: real Capabilities.file_picker_roots
-        # should include projects/ + CWD + any existing config roots.
-        # Non-existent config roots are silently dropped.
+    def test_capabilities_returns_only_projects_root(self):
         from molbuilder.diagnostics import Capabilities
-        existing = tmp_path / "exists"
-        existing.mkdir()
-        caps = Capabilities(
-            runtime_config={
-                "file_picker": {
-                    "roots": [str(existing), "/nonexistent/never/here"],
-                },
-            },
-        )
+        caps = Capabilities(runtime_config={})
         roots = caps.file_picker_roots()
-        paths = [str(p) for p, _ in roots]
-        # Defaults always present.
-        assert any(p.endswith("/projects") for p in paths)
-        # Existing config root added.
-        assert str(existing.resolve()) in paths
-        # Non-existent config root silently dropped.
-        assert not any("nonexistent" in p for p in paths)
+        assert len(roots) == 1
+        path, label = roots[0]
+        assert label == "projects"
+        assert str(path).endswith("/projects")
+
+    def test_unknown_file_picker_section_ignored(self, tmp_path):
+        # The file_picker section is no longer recognised; passing it
+        # in molbuilder.json should NOT error (unknown-section graceful
+        # ignore), but it also has no effect -- the picker still
+        # returns just projects/.
+        from molbuilder.runtime_config import read_config
+        cfg_file = tmp_path / "molbuilder.json"
+        cfg_file.write_text('{"file_picker": {"roots": ["~/scratch"]}}')
+        cfg = read_config(cfg_file)
+        # The section is dropped during _normalise (unknown sections
+        # are silently ignored).
+        assert "file_picker" not in cfg
+
+    def test_get_file_picker_roots_removed_from_runtime_config(self):
+        # The accessor that v1 added was dropped during the single-
+        # root pivot.  Importing it should fail; this test pins the
+        # removal so a future revert is caught.
+        import molbuilder.runtime_config as rc
+        assert not hasattr(rc, "get_file_picker_roots")

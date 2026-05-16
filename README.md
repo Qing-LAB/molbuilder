@@ -45,14 +45,13 @@ python -m molbuilder serve --port 8000   # opens build / modify / watch / spectr
 # browser: http://localhost:8000/
 ```
 
-Five tabs in one Flask app — **Projects** is the entry point for
-browsing existing runs on the server; **Build** generates input
-files; **Modify** assembles junctions; **Watch** monitors a running
-calculation; **Spectra** runs harmonic vibrational + Raman analysis:
+Four tabs in one Flask app, plus a **persistent Projects sidebar**
+on the left of every page (JupyterLab-style file explorer rooted at
+`projects/`; click a file to select it, every tab reads the
+selection):
 
 | Tab | URL | What it does |
 |---|---|---|
-| **Projects** | `/projects` | column-view file explorer over `projects/<project>/<topic>/<structure>/`; selection is shared with the other tabs |
 | **Build**    | `/`         | sequence → structure → SIESTA `.fdf` / PySCF `.py` |
 | **Modify**   | `/modify`   | edit atoms, build metal-molecule-metal junctions, hand off to Build |
 | **Watch**    | `/watch`    | scrub frames, track energy / forces / SCF convergence live |

@@ -1719,12 +1719,21 @@
         els.animSpeedVal      = $("anim-speed-val");
         els.animToggle        = $("anim-toggle");
 
-        els.xyzLoadBtn.addEventListener("click", loadXyzFile);
+        // xyzLoadBtn + loadResultsBtn were the in-template file-upload
+        // buttons that used to flank an <input type=file>.  The
+        // Projects sidebar replaces both; the file inputs were dropped
+        // from spectra.html.  Null-guard so this initialisation block
+        // still runs on the trimmed page.
+        if (els.xyzLoadBtn) {
+            els.xyzLoadBtn.addEventListener("click", loadXyzFile);
+        }
         els.generateBtn.addEventListener("click", generateScript);
         els.methodsBtn.addEventListener("click", openMethodsModal);
         els.downloadBtn.addEventListener("click", downloadScript);
         els.copyBtn.addEventListener("click", copyScript);
-        els.loadResultsBtn.addEventListener("click", loadResults);
+        if (els.loadResultsBtn) {
+            els.loadResultsBtn.addEventListener("click", loadResults);
+        }
         els.loadPathBtn.addEventListener("click", loadByPath);
         els.watchBtn.addEventListener("click", startWatch);
         els.watchStopBtn.addEventListener("click", () => stopWatch("Stopped."));

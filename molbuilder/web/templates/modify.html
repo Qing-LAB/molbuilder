@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <title>molbuilder &mdash; modify a structure</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/projects-sidebar.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='modify/style.css') }}">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js"></script>
 </head>
@@ -12,6 +13,7 @@
 {% set active_tab = "modify" %}
 {% set page_tagline = "Modify a built or loaded structure &mdash; inspect atoms, prepare junctions, and hand the result back to the Build tab." %}
 {% include "_app_header.html" %}
+{% include "_projects_sidebar.html" %}
 
 <!-- ============================================================ -->
 <!--  Layout:                                                       -->
@@ -28,8 +30,12 @@
 <!-- ============================================================ -->
 
 <section class="loader-bar">
-  <!-- Projects-tab selection banner -- visible only when a .xyz/.pdb
-       is currently selected in the Projects tab. -->
+  <!-- Projects-sidebar selection banner -- visible only when a
+       .xyz / .pdb is currently selected in the sidebar.  Click
+       "Use this file" to load it; this is now the only path for
+       getting a structure into Modify.  (A laptop-side <input
+       type=file> was removed because the rendered scripts run on
+       the server and can't read the local file anyway.) -->
   <div id="projects-banner" class="projects-banner" hidden
        role="status" aria-live="polite">
     <span class="ps-label">Projects selection:</span>
@@ -38,10 +44,11 @@
     <button class="ps-clear"   type="button" title="Clear selection">×</button>
   </div>
   <div class="loader">
-    <label for="file-picker">Structure:</label>
-    <input id="file-picker" type="file"
-           accept=".xyz,.pdb,chemical/x-xyz,chemical/x-pdb,text/plain">
-    <button id="load-btn">Load</button>
+    <span class="loader-hint">
+      Pick a structure (<code>.xyz</code> / <code>.pdb</code>) in the
+      <strong>Projects</strong> sidebar on the left, then click
+      &ldquo;Use this file&rdquo; above.
+    </span>
     <span id="status" class="status">No structure loaded.</span>
   </div>
 </section>
@@ -472,22 +479,21 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
 <script src="{{ url_for('static', filename='lib/mol-format.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-pick.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/projects-selection.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/viewer.js') }}"></script>
 <script>
-  // Projects-tab selection -> Modify file picker.  We construct a
-  // File from the fetched text and stuff it into the existing
-  // <input type=file>; the existing change handler does the rest.
+  // Projects-sidebar selection -> Modify.  The viewer exposes a
+  // public loader on window.molbuilder.loadXyzText so we POST the
+  // text directly via /api/build/load's JSON path -- no DataTransfer,
+  // no synthetic file-input event.
   molbuilderProjectsSelection.init({
     bannerEl: document.getElementById("projects-banner"),
     extensions: [".xyz", ".pdb"],
     onLoad: async function (path, text) {
       const filename = path.split("/").pop();
-      const file = new File([text], filename, {type: "text/plain"});
-      const inp = document.getElementById("file-picker");
-      const dt = new DataTransfer();
-      dt.items.add(file);
-      inp.files = dt.files;
-      inp.dispatchEvent(new Event("change", {bubbles: true}));
+      if (window.molbuilder && window.molbuilder.loadXyzText) {
+        await window.molbuilder.loadXyzText(text, filename);
+      }
     },
   });
 </script>

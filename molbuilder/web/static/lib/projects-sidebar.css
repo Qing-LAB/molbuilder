@@ -1,0 +1,232 @@
+/* Persistent Projects sidebar -- always-visible left panel.
+ *
+ * Layout: fixed-position aside on the left, under the app-tabs
+ * header.  Body gets a matching left padding so the main content
+ * shifts right.  Toggle button collapses the panel to a thin strip
+ * with just the toggle (no list / breadcrumb).
+ *
+ * Markup contract:  templates/_projects_sidebar.html
+ * Behaviour:        static/lib/projects-sidebar.js
+ */
+
+:root {
+  --ps-w:           18rem;
+  --ps-w-collapsed: 2.4rem;
+  --ps-bg:          #181818;
+  --ps-fg:          #ddd;
+  --ps-fg-muted:    #999;
+  --ps-border:      #2a2a2a;
+  --ps-hover:       #232323;
+  --ps-selected:    #2d4a6e;
+  --ps-selected-fg: #fff;
+  --app-tabs-h:     3rem;   /* matches app-tab vertical size */
+}
+
+/* Shift the page content right to make room for the sidebar.
+ * Targets the <main> sibling rather than body so the app-tabs
+ * header stays full-width across the top. */
+body.has-projects-sidebar > main,
+body.has-projects-sidebar > .modify-grid,
+body.has-projects-sidebar > .loader-bar,
+body.has-projects-sidebar > section,
+body.has-projects-sidebar > footer {
+  margin-left: var(--ps-w);
+  transition: margin-left 0.18s ease;
+}
+
+body.sidebar-collapsed > main,
+body.sidebar-collapsed > .modify-grid,
+body.sidebar-collapsed > .loader-bar,
+body.sidebar-collapsed > section,
+body.sidebar-collapsed > footer {
+  margin-left: var(--ps-w-collapsed);
+}
+
+.projects-sidebar {
+  position: fixed;
+  left: 0;
+  top: var(--app-tabs-h);
+  bottom: 0;
+  width: var(--ps-w);
+  background: var(--ps-bg);
+  color: var(--ps-fg);
+  border-right: 1px solid var(--ps-border);
+  display: flex;
+  flex-direction: column;
+  font: 13px/1.4 system-ui, sans-serif;
+  z-index: 5;
+  transition: width 0.18s ease;
+  overflow: hidden;
+}
+
+body.sidebar-collapsed .projects-sidebar {
+  width: var(--ps-w-collapsed);
+}
+
+body.sidebar-collapsed .ps-title,
+body.sidebar-collapsed .ps-breadcrumb,
+body.sidebar-collapsed .ps-list,
+body.sidebar-collapsed .ps-footer {
+  display: none;
+}
+
+/* ---- Header --------------------------------------------------- */
+
+.ps-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--ps-border);
+  background: #141414;
+}
+
+.ps-toggle {
+  background: transparent;
+  border: 1px solid var(--ps-border);
+  color: var(--ps-fg);
+  padding: 0.1rem 0.5rem;
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.ps-toggle:hover {
+  background: var(--ps-hover);
+}
+
+.ps-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+/* ---- Breadcrumb ----------------------------------------------- */
+
+.ps-breadcrumb {
+  padding: 0.35rem 0.6rem;
+  border-bottom: 1px solid var(--ps-border);
+  font-size: 0.78rem;
+  color: var(--ps-fg-muted);
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+.ps-crumb {
+  cursor: pointer;
+  color: var(--ps-fg);
+  padding: 0 0.2em;
+  border-radius: 2px;
+}
+
+.ps-crumb:hover {
+  background: var(--ps-hover);
+}
+
+.ps-crumb-sep {
+  color: var(--ps-fg-muted);
+  margin: 0 0.1em;
+}
+
+.ps-crumb.is-current {
+  color: var(--ps-fg-muted);
+  cursor: default;
+}
+
+.ps-crumb.is-current:hover {
+  background: transparent;
+}
+
+/* ---- Entry list ----------------------------------------------- */
+
+.ps-list {
+  flex: 1;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ps-list.is-empty::before {
+  content: "(empty)";
+  display: block;
+  padding: 0.8rem 0.7rem;
+  color: var(--ps-fg-muted);
+  font-style: italic;
+  font-size: 0.85rem;
+}
+
+.ps-entry {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+  border-bottom: 1px solid transparent;
+  user-select: none;
+}
+
+.ps-entry:hover {
+  background: var(--ps-hover);
+}
+
+.ps-entry.is-selected {
+  background: var(--ps-selected);
+  color: var(--ps-selected-fg);
+}
+
+.ps-entry-icon {
+  flex: 0 0 1rem;
+  text-align: center;
+  font-family: monospace;
+  color: var(--ps-fg-muted);
+}
+
+.ps-entry.is-selected .ps-entry-icon {
+  color: var(--ps-selected-fg);
+}
+
+.ps-entry-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ps-entry-meta {
+  flex: 0 0 auto;
+  font-size: 0.7rem;
+  color: var(--ps-fg-muted);
+  font-family: monospace;
+}
+
+/* ---- Footer / current selection ------------------------------ */
+
+.ps-footer {
+  padding: 0.4rem 0.6rem;
+  border-top: 1px solid var(--ps-border);
+  background: #141414;
+  font-size: 0.78rem;
+  color: var(--ps-fg-muted);
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.ps-selection-label {
+  font-weight: 600;
+}
+
+.ps-selection {
+  flex: 1;
+  font-family: monospace;
+  background: #0d0d0d;
+  border: 1px solid var(--ps-border);
+  padding: 0.1rem 0.3rem;
+  border-radius: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ps-fg);
+}

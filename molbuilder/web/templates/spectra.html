@@ -6,6 +6,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-schema.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/projects-sidebar.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='spectra/style.css') }}">
 <!-- Plotly: served by molbuilder itself from the installed plotly
      Python package's bundled JS (package_data/plotly.min.js).  No
@@ -24,6 +25,7 @@
 {% set active_tab = "spectra" %}
 {% set page_tagline = "Post-relaxation harmonic vibrational analysis &mdash; frequencies, Raman activities, and per-mode electronic structure for transport preparation." %}
 {% include "_app_header.html" %}
+{% include "_projects_sidebar.html" %}
 
 <main class="spectra-grid">
 
@@ -40,14 +42,9 @@
       <label class="field-block" for="xyz-text">
         <span class="field-label">XYZ coordinates</span>
         <textarea id="xyz-text" rows="6"
-                  placeholder="Paste an XYZ block, or upload a file below."></textarea>
+                  placeholder="Paste an XYZ block, or pick a file in the Projects sidebar &rarr; click the &lsquo;Use this file&rsquo; banner above the Load results section."></textarea>
       </label>
-      <div class="inline-row">
-        <input id="xyz-file" type="file"
-               accept=".xyz,chemical/x-xyz,text/plain">
-        <button id="xyz-load-btn" type="button">Load file</button>
-        <span id="xyz-status" class="status"></span>
-      </div>
+      <span id="xyz-status" class="status"></span>
     </div>
 
     <!-- ── 2. Parameters ─────────────────────────── -->
@@ -159,10 +156,12 @@
         <h2>Load results</h2>
         <p class="section-hint">
           Point at a <code>&lt;job&gt;.spectra.json</code> file produced
-          by an earlier run.  The primary path is the server-side
-          file path below; "Watch" polls every 2&nbsp;s and auto-stops
-          when all configured phases finish.  Browser file-upload is
-          offered as a fallback for runs on a different machine.
+          by an earlier run.  Either pick it in the
+          <strong>Projects</strong> sidebar on the left and click
+          &ldquo;Use this file&rdquo; in the banner below, or paste
+          the absolute path into the input.  &ldquo;Watch&rdquo; polls
+          every 2&nbsp;s and auto-stops when all configured phases
+          finish.
         </p>
       </header>
 
@@ -214,25 +213,6 @@
         </span>
       </div>
 
-      <!-- Fallback: browser file upload.  Use when the JSON lives
-           on a different machine than molbuilder. -->
-      <details class="upload-fallback">
-        <summary>&hellip; or upload a file from your computer</summary>
-        <p class="hint">
-          Use this when the <code>.spectra.json</code> is on a
-          different machine than the molbuilder server.  The
-          browser sends only the file's bytes; the server-side
-          path isn't accessible (browser security).
-        </p>
-        <div class="inline-row">
-          <input id="results-file" type="file"
-                 accept=".json,application/json">
-          <button id="load-results-btn" type="button">
-            Upload <code>.spectra.json</code>
-          </button>
-          <span id="results-status" class="status"></span>
-        </div>
-      </details>
     </div>
 
     <!-- ── Results panel (only visible after load) ── -->
@@ -373,6 +353,7 @@
 
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/projects-selection.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='spectra/viewer.js') }}"></script>
 <script>
   // Wire the Projects-tab selection banner: when the user has picked

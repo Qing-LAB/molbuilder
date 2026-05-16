@@ -1083,21 +1083,29 @@
 
     /*  Load button has two behaviours:
      *    - path field has text -> POST {path:...} as JSON  (live watch)
-     *    - path field empty    -> open the hidden file picker;
-     *                              the picker's change handler uploads
-     *                              the file as multipart and the server
-     *                              parses it once (no polling).
+     *    - path field empty    -> setStatus prompts the user to pick
+     *                              from the Projects sidebar.  The
+     *                              browser-local file picker that used
+     *                              to live here was dropped (a server-
+     *                              side script can't read a laptop
+     *                              file; use the sidebar for files in
+     *                              projects/, or scp first if not).
      */
     $("load-btn").addEventListener("click", () => {
         const path = $("path-input").value.trim();
         if (path) {
             loadByPath(path);
         } else {
-            $("file-picker").click();   // open the native dialog
+            setStatus(
+                "Type a server-side path, or pick a file in the "
+                + "Projects sidebar on the left.",
+                "error",
+            );
         }
     });
 
-    $("file-picker").addEventListener("change", async (e) => {
+    const _filePicker = $("file-picker");
+    if (_filePicker) _filePicker.addEventListener("change", async (e) => {
         const file = e.target.files[0];
         if (!file) return;
         pause();

@@ -334,27 +334,31 @@ on plots.
 
 ## `/api/files/*` — Server-side file explorer
 
-Backend for the **Projects tab** — a persistent column-view file
-explorer that lets the user browse the *server's* filesystem and
-pick a file or directory.  Selection is shared state (sessionStorage)
-that other tabs (Spectra, Watch, Modify, Build) observe via the
-``storage`` event, JupyterLab-style.
+Backend for the **persistent Projects sidebar** -- a single-column
++ breadcrumb file explorer pinned to the left edge of every tab
+(JupyterLab-style).  Selection is shared state (sessionStorage)
+that subscriber tabs (Spectra, Watch, Modify) observe via the
+``storage`` event + a same-tab ``molbuilder.selection`` CustomEvent.
 
-Solves the recurring UX problem that `<input type="file">` opens the
-*browser's* local file dialog, which is useless when the data already
-lives on the server.  The Projects tab is the canonical place to
-"walk into my project tree and find the right file to keep working
-on"; other tabs react to its current selection rather than each
-maintaining their own file picker.
+Solves the recurring UX problem that `<input type="file">` opens
+the *browser's* local file dialog, which is useless when the data
+already lives on the server -- and any generated script that runs
+on the server can't read a laptop file anyway.  The sidebar is the
+canonical place to "walk into my project tree and find the right
+file to keep working on"; other tabs react to its current selection.
 
-This API is **additive**: every tab keeps its existing local-file
-input + (where applicable) raw-text paste.  The Projects-tab
-selection is a third path, not a replacement.
+The browser-local `<input type="file">` was **dropped** from
+Spectra / Watch / Modify in the sidebar pivot -- a server-side
+compute script can't read laptop files, so the picker created an
+ambiguous contract.  Raw-text paste (where each tab already
+exposed it) is preserved; the sidebar is the second loading path;
+upload-to-disk is a future feature (see § Phase 2 below) only if
+a real need shows up.
 
 This is **not** a file manager: no upload, rename, delete, or move
-in v1.  The Projects tab is a navigation + selection widget.  Files
-get created by molbuilder's own generators (Build, run wrapper, the
-Phase 2 derive-job flow); they get deleted by the user at their
+in v1.  The sidebar is a navigation + selection widget.  Files get
+created by molbuilder's own generators (Build, run wrapper, the
+future derive-job flow); they get deleted by the user at their
 shell.
 
 ### Endpoints
@@ -366,29 +370,27 @@ shell.
 | `/api/files/stat`  | GET | `path` (required) | `{ok, path, kind, size, mtime}` | 400 outside-root · 404 missing · 200 |
 | `/api/files/read`  | GET | `path` (required), `max_bytes` (optional, default 1 MB) | `{ok, path, kind, size, mtime, text}` | 400 outside-root · 404 missing · 413 too large · 200 |
 
-### Roots — what the picker is allowed to browse
+### Root — single, fixed (v1)
 
-Resolved from `Capabilities.file_picker_roots()`:
+`Capabilities.file_picker_roots()` returns exactly one entry:
+``(<cwd>/projects, "projects")``.  That's the canonical project
+hierarchy (`molbuilder.projects.projects_root()`); it's returned
+even if the directory doesn't exist yet so the UI can show a
+"no projects yet" empty state.
 
-1. **Defaults**, always included:
-   * `<cwd>/projects/` -- the canonical projects hierarchy (`molbuilder.projects.projects_root()`); included even if it doesn't exist yet so the picker can show "create a project" UX later.
-   * `<cwd>` -- the working directory the server was launched from, so a one-off `molbuilder serve` in a scratch dir gives the user immediate access to its files.
-2. **User additions** from `molbuilder.json`:
-   ```jsonc
-   {
-     "file_picker": {
-       "roots": ["~/scratch", "/data/shared/molbuilder"]
-     }
-   }
-   ```
-   Each entry is expanded (`~`, `$VARS`), resolved to absolute, and
-   added to the list if it exists on this machine.  Non-existent
-   entries are dropped silently (a stale config entry on a fresh
-   machine shouldn't break the picker).
+The plural return shape (a tuple of `(path, label)` pairs) is
+preserved so a future need for multi-root is a one-line change in
+``Capabilities`` -- but the contract today is **single-root, no
+CWD, no user-configurable additions** in `molbuilder.json`.
 
-Returned `roots` carry a `label` so the UI can show a friendly name
-(`"projects"`, `"CWD"`, basename of user roots) without the full
-path crowding the tree.
+The deliberate scope: ``projects/`` is molbuilder's source of truth
+for run-state.  Files outside (laptop downloads, scratch dirs)
+must be moved/copied into ``projects/<project>/<topic>/<structure>/``
+first -- the generators + the future derive-job flow keep that
+hierarchy honest.
+
+Returned `roots` carry a `label` so the sidebar can show a friendly
+breadcrumb root ("projects") without the full path crowding the UI.
 
 ### Path validation
 
