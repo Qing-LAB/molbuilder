@@ -44,7 +44,10 @@ docs/
 │   └── builders.md             #   build-backend contract (peptide/DNA/RNA/SMILES/name)
 └── tabs/                       # per-tab UI + (when needed) supporting assets
     ├── modify.md               #   Modify tab: atoms, junctions, electrode placement
-    └── watch.md                #   Watch tab: 3Dmol viewer + Plotly plots + control panels
+    ├── watch.md                #   Watch tab: 3Dmol viewer + Plotly plots + control panels
+    └── spectra/                #   Spectra tab: harmonic + Raman (+ scaffolded IR)
+        ├── spec.md             #     full spec; §12.1 = end-to-end Raman validation
+        └── references.bib      #     bibliography keys cited by emitted scripts + UI
 ```
 
 **Categories.** What each folder is for:

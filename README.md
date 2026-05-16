@@ -33,21 +33,28 @@ computing properties.
 
 ## Quick start
 
+molbuilder uses a **four-env conda model** — a user-named *host* env
+runs molbuilder and the web UI; each compute backend (SIESTA, PySCF,
+MDtools, the test runner) lives in its own named env that the host
+dispatches into via `conda run`.  Full setup recipe in
+[`docs/README_install.md`](docs/README_install.md).
+
 ```bash
-pip install -e .
-molbuilder serve --port 8000     # opens build / modify / watch UI
+# After the host env exists (see docs/README_install.md):
+python -m molbuilder serve --port 8000   # opens build / modify / watch / spectra UI
 # browser: http://localhost:8000/
 ```
 
-Three tabs in one Flask app — **Build** generates input files,
+Four tabs in one Flask app — **Build** generates input files,
 **Modify** assembles junctions, **Watch** monitors a running
-calculation:
+calculation, **Spectra** runs harmonic vibrational + Raman analysis:
 
 | Tab | URL | What it does |
 |---|---|---|
-| **Build**  | `/`         | sequence → structure → SIESTA `.fdf` / PySCF `.py` |
-| **Modify** | `/modify`   | edit atoms, build metal-molecule-metal junctions, hand off to Build |
-| **Watch**  | `/watch`    | scrub frames, track energy / forces / SCF convergence live |
+| **Build**   | `/`         | sequence → structure → SIESTA `.fdf` / PySCF `.py` |
+| **Modify**  | `/modify`   | edit atoms, build metal-molecule-metal junctions, hand off to Build |
+| **Watch**   | `/watch`    | scrub frames, track energy / forces / SCF convergence live |
+| **Spectra** | `/spectra`  | harmonic frequencies + Raman activities + per-mode orbital probes |
 
 ---
 
@@ -262,6 +269,10 @@ py = render_script(s, PySCFConfig(
 
 ## CLI
 
+All commands are invoked as `python -m molbuilder <subcommand>` from
+the host conda env.  The shorthand `molbuilder ...` works too once
+the host env is active.  The examples below use the short form.
+
 ```bash
 # Build subcommands
 molbuilder peptide ARNDC --out peptide.xyz
@@ -294,20 +305,21 @@ emit JSON; warnings + progress go to stderr.
 
 ## Install
 
-```bash
-pip install -e .                      # core: peptide / DNA / RNA / FDF / PySCF / web
-pip install -e ".[rdkit]"             # H-protonation + SMILES
-pip install -e ".[name]"              # PubChem name lookup
-pip install -e ".[all]"               # everything
-```
+See [`docs/README_install.md`](docs/README_install.md) for the full
+recipe.  Short version: build a *host* conda env (any name you pick,
+e.g. `molbuilder`) holding flask + click + numpy + ase + sisl + rdkit
++ openbabel + biopython + PeptideBuilder + plotly; then build the
+named backend envs you actually need (`molbuilder-pySCF`,
+`molbuilder-siesta`, `molbuilder-MDtools`, `molbuilder-tests`).
+molbuilder dispatches into them via `conda run -n <env> ...`; nothing
+gets pip-installed editable into the host.
 
-Flask is in core dependencies (the web UI is part of the toolkit,
-not an opt-in extra).  Conda alternative for the heaviest deps:
-
-```bash
-conda install -c conda-forge rdkit ase ambertools
-pip install PeptideBuilder pubchempy flask
-```
+Why four envs?  Because collapsing AmberTools + siesta-mpi + cupy +
+playwright into one env produces three independent unresolvable
+dependency conflicts (numpy 1.x vs 2.x, libnetcdf 4.10 vs 4.9.3, icu
+vs nodejs).  Keeping them separate lets each backend hold its own
+native pin set without poisoning the others -- see the
+[`design.md`](docs/design.md) decisions-log entry dated 2026-05-14.
 
 ### Optional: 3DNA for canonical helices
 
@@ -336,8 +348,10 @@ for the full install + license contract.
 
 | Document | What it covers |
 |---|---|
+| [`docs/README_install.md`](docs/README_install.md) | Four-env install recipe (host + molbuilder-{pySCF,siesta,MDtools,tests}) |
 | [`docs/design.md`](docs/design.md) | Durable design, architecture (L1/L2/L3 layering), principles, decisions log, anti-patterns |
 | [`docs/tabs/modify.md`](docs/tabs/modify.md) | Modify tab Python API + endpoints + UI walkthrough |
+| [`docs/tabs/spectra/spec.md`](docs/tabs/spectra/spec.md) | Spectra tab spec — schema, layers, atom-fixing semantics; **end-to-end Raman validation in §12.1** |
 | [`docs/protocols/job-layout.md`](docs/protocols/job-layout.md) | Directory + filename protocol (Build writes, Watch reads) |
 | [`docs/engines/siesta.md`](docs/engines/siesta.md) | SIESTA generator contract |
 | [`docs/engines/pyscf.md`](docs/engines/pyscf.md) | PySCF generator contract |
@@ -345,6 +359,21 @@ for the full install + license contract.
 | [`docs/engines/builders.md`](docs/engines/builders.md) | Per-backend behavior (peptide / DNA / RNA / SMILES / name) |
 | [`docs/types/parsers.md`](docs/types/parsers.md) | Trajectory parser registry + auto-detect |
 | [`molbuilder/data/README.md`](molbuilder/data/README.md) | Citations for every numeric value (FCC lattice constants, etc.) |
+
+### Scientific validation
+
+The **Raman pipeline** (build → relax → Hessian → finite-difference
+Raman) has been cross-checked end-to-end against an independent
+hand-written raw-PySCF reference script: bit-for-bit identical
+frequencies and Raman activities at B3LYP/def2-SVP water, within
+literature ballpark for the absolute scale.  Method + full result
+table: [`docs/tabs/spectra/spec.md § 12.1`](docs/tabs/spectra/spec.md).
+
+The **IR add-on** scaffold (when present) populates
+`ir_intensity_km_mol` in the spectra JSON, but the IR
+unit-conversion + prefactor have **not yet been validated** against
+an external reference — treat absolute IR magnitudes as preliminary
+until the same validation is applied to that path.
 
 ---
 
@@ -372,8 +401,9 @@ pytest tests/watch/ -q                      # parser + watch-app tests
 
 The Playwright E2E suite (`test_modify_e2e.py`) starts a live
 Werkzeug server on a random port and drives Chromium through the
-Modify tab.  Install the browser binary once with `playwright
-install chromium` after `pip install pytest-playwright`.
+Modify tab.  The `molbuilder-tests` env in
+[`docs/README_install.md`](docs/README_install.md) already wires up
+pytest-playwright + Chromium so the suite runs once the env exists.
 
 ---
 
