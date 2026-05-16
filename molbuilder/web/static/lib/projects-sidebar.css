@@ -79,35 +79,67 @@ body.has-projects-sidebar > nav.app-tabs {
   font-weight: 600;
 }
 
-.ps-icon-btn {
-  padding: 0.15rem 0.55rem;
-  font-size: 0.78rem;
-  cursor: pointer;
-  border: 1px solid var(--ps-border);
-  background: var(--ps-hover);
-  color: var(--ps-fg);
-  border-radius: 3px;
-}
+/* ---- Foldable "+ New project" / "+ New subdir" sections -------- */
+/* Each section is a <details> in the partial; users click to expand
+ * the form.  Two sections, separately collapsible.  Together they
+ * cover the v1 file-manipulation surface:
+ *   "+ New project" -- bootstrap full skeleton at projects/ root
+ *   "+ New subdir"  -- single dir at the user's current location */
 
-.ps-icon-btn:hover {
-  background: var(--ps-selected);
-  color: var(--ps-selected-fg);
-  border-color: var(--ps-selected);
-}
-
-/* "+ New subdir" inline form */
-.ps-mkdir-form {
-  padding: 0.45rem 0.7rem;
+.ps-create-section {
   border-bottom: 1px solid var(--ps-border);
   background: #141414;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  align-items: center;
 }
 
-.ps-mkdir-form input[type="text"] {
-  flex: 1 1 100%;
+.ps-create-summary {
+  padding: 0.35rem 0.7rem;
+  font-size: 0.85rem;
+  color: var(--ps-fg);
+  cursor: pointer;
+  user-select: none;
+  list-style: none;          /* drop default disclosure triangle */
+}
+.ps-create-summary::-webkit-details-marker { display: none; }
+.ps-create-summary::before {
+  content: "›";
+  display: inline-block;
+  width: 0.9em;
+  color: var(--ps-fg-muted);
+  transition: transform 0.12s ease;
+}
+.ps-create-section[open] .ps-create-summary::before {
+  transform: rotate(90deg);
+}
+.ps-create-summary:hover { color: var(--ps-selected-fg); background: var(--ps-hover); }
+
+.ps-create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.4rem 0.7rem 0.6rem;
+  background: #101010;
+}
+
+.ps-field-label {
+  font-size: 0.78rem;
+  color: var(--ps-fg-muted);
+}
+
+.ps-field-hint {
+  font-size: 0.7rem;
+  color: var(--ps-fg-muted);
+  font-family: monospace;
+}
+
+.ps-mkdir-context {
+  background: #0d0d0d;
+  border: 1px solid var(--ps-border);
+  padding: 0 0.3em;
+  border-radius: 2px;
+  color: var(--ps-fg);
+}
+
+.ps-create-form input[type="text"] {
   font-size: 0.85rem;
   padding: 0.25rem 0.45rem;
   background: #0d0d0d;
@@ -116,8 +148,27 @@ body.has-projects-sidebar > nav.app-tabs {
   border-radius: 3px;
 }
 
-.ps-mkdir-form button {
-  flex: 0 0 auto;
+.ps-create-note {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--ps-fg-muted);
+  line-height: 1.45;
+}
+
+.ps-create-note code {
+  background: #0d0d0d;
+  border: 1px solid var(--ps-border);
+  padding: 0 0.2em;
+  border-radius: 2px;
+  font-size: 0.92em;
+}
+
+.ps-create-actions {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.ps-create-actions button {
   font-size: 0.78rem;
   padding: 0.2rem 0.55rem;
   cursor: pointer;
@@ -127,14 +178,13 @@ body.has-projects-sidebar > nav.app-tabs {
   border-radius: 3px;
 }
 
-.ps-mkdir-form button[type="submit"]:hover {
+.ps-create-actions button[type="submit"]:hover {
   background: var(--ps-selected);
   color: var(--ps-selected-fg);
   border-color: var(--ps-selected);
 }
 
 .ps-mkdir-error {
-  flex: 1 1 100%;
   margin: 0;
   font-size: 0.78rem;
   color: #e07a7a;

@@ -558,20 +558,168 @@ class TestFilesMkdir:
         assert "not a directory" in r.get_json()["error"]
 
 
+class TestProjectsCreate:
+    """POST /api/projects/create bootstraps projects/<name>/ with every
+    CANONICAL_TOPICS subdir.  Strict conflict: 409 if the name exists.
+    Atomic: any subdir failure rolls back the whole project tree."""
+
+    def test_create_project_bootstraps_full_skeleton(self, web, picker_root):
+        r = web.post("/api/projects/create", json={"name": "myproj"})
+        assert r.status_code == 200
+        j = r.get_json()
+        assert j["ok"] is True
+        assert j["path"] == str((picker_root / "myproj").resolve())
+        # Every canonical subdir is created on disk.
+        from molbuilder.projects import CANONICAL_TOPICS
+        for topic in CANONICAL_TOPICS:
+            assert (picker_root / "myproj" / topic).is_dir(), topic
+        # Response carries the subdir list verbatim for the UI.
+        assert j["subdirs"] == list(CANONICAL_TOPICS)
+
+    def test_create_includes_structure_and_pseudopotential(
+        self, web, picker_root,
+    ):
+        # Both new storage-dir entries land alongside the run-topic
+        # dirs as part of the canonical skeleton.
+        r = web.post("/api/projects/create", json={"name": "with_storage"})
+        assert r.status_code == 200
+        assert (picker_root / "with_storage" / "structure").is_dir()
+        assert (picker_root / "with_storage" / "pseudopotential").is_dir()
+
+    def test_create_includes_user_freeform_topic(self, web, picker_root):
+        # 'user' lands at depth 1 alongside the other canonical topics.
+        # Free-form: any subdir name (regex-valid) is accepted inside.
+        r = web.post("/api/projects/create", json={"name": "with_user"})
+        assert r.status_code == 200
+        user_dir = picker_root / "with_user" / "user"
+        assert user_dir.is_dir()
+        # Verify it's reachable via /api/files/mkdir for an arbitrary
+        # name (free-form at depth 2; "free_subdir" passes the regex
+        # but is NOT in CANONICAL_TOPICS -- which would have rejected
+        # it at depth 1).
+        r2 = web.post(
+            "/api/files/mkdir",
+            json={"parent": str(user_dir), "name": "free_subdir"},
+        )
+        assert r2.status_code == 200
+        assert (user_dir / "free_subdir").is_dir()
+
+    def test_create_writes_readme_in_every_subdir(self, web, picker_root):
+        # Each canonical subdir gets a small README.md describing its
+        # purpose -- this is the "teaching" hint a new user sees when
+        # navigating the tree.
+        from molbuilder.projects import CANONICAL_TOPICS
+        web.post("/api/projects/create", json={"name": "readme_proj"})
+        proj = picker_root / "readme_proj"
+        # Project-level README (mentions every canonical topic).
+        root_readme = (proj / "README.md").read_text()
+        for t in CANONICAL_TOPICS:
+            assert t in root_readme, t
+        # Per-subdir READMEs (the heading should mention the topic name).
+        for t in CANONICAL_TOPICS:
+            content = (proj / t / "README.md").read_text()
+            assert content.startswith(f"# {t}/"), t
+
+    def test_user_topic_is_canonical(self):
+        from molbuilder.projects import CANONICAL_TOPICS
+        assert "user" in CANONICAL_TOPICS
+
+    def test_create_returns_409_on_name_conflict(self, web, picker_root):
+        # First create succeeds.
+        web.post("/api/projects/create", json={"name": "dup"})
+        # Second create returns 409 with a clear message.
+        r = web.post("/api/projects/create", json={"name": "dup"})
+        assert r.status_code == 409
+        body = r.get_json()
+        assert body["ok"] is False
+        assert "already exists" in body["error"]
+        # The original project tree is untouched -- the 409 is detection-
+        # only, no destructive side-effect.
+        assert (picker_root / "dup" / "structure").is_dir()
+
+    def test_create_409_when_project_dir_exists_from_hand(
+        self, web, picker_root,
+    ):
+        # Same 409 path applies when the dir already exists outside
+        # the /api/projects/create flow (e.g., user mkdir'd by hand).
+        (picker_root / "handmade").mkdir()
+        r = web.post("/api/projects/create", json={"name": "handmade"})
+        assert r.status_code == 409
+
+    def test_create_400_on_invalid_name(self, web, picker_root):
+        # validate_name regex: ^[A-Za-z0-9_-]+$ -- reject spaces, dots.
+        for bad in ["my project", "my.proj", "my/proj", "weird*name", ""]:
+            r = web.post("/api/projects/create", json={"name": bad})
+            assert r.status_code == 400, bad
+
+    def test_create_400_when_name_missing(self, web, picker_root):
+        r = web.post("/api/projects/create", json={})
+        assert r.status_code == 400
+        assert "missing 'name'" in r.get_json()["error"]
+
+
+class TestSidebarCreateUI:
+    """The foldable + New project / + New subdir sections live in the
+    partial; the JS wires them to the backend."""
+
+    def test_create_project_form_in_partial(self, web, picker_root):
+        body = web.get("/spectra").get_data(as_text=True)
+        # + New project section (foldable details + form + error slot)
+        assert 'class="ps-create-section"' in body
+        assert 'class="ps-create-summary">+ New project</summary>' in body
+        assert 'id="ps-newproject-form"' in body
+        assert 'id="ps-newproject-input"' in body
+        assert 'id="ps-newproject-error"' in body
+        assert 'id="ps-newproject-cancel"' in body
+        # Subdir-list note (populated by JS at startup)
+        assert 'id="ps-newproject-subdirs"' in body
+
+    def test_create_project_uses_canonical_subdir_list_in_js(
+        self, web, picker_root,
+    ):
+        # The JS hard-codes the CANONICAL_TOPICS_DISPLAY list to render
+        # the note ("structure/, pseudopotential/, ...").  Pin it so a
+        # future Python-side topic addition doesn't drift from the UI
+        # without a code review noticing.
+        r = web.get("/static/lib/projects-sidebar.js")
+        body = r.get_data(as_text=True)
+        for needle in ("structure", "pseudopotential", "optimization",
+                       "frequency", "spectrum", "transport",
+                       "single-point", "scan"):
+            assert f'"{needle}"' in body, needle
+        # And the POST handler.
+        assert "/api/projects/create" in body
+        assert "submitNewProject" in body
+
+
 class TestSidebarMkdirUI:
     """The "+ New subdir" button + inline form is in the partial,
     not the JS."""
 
-    def test_mkdir_button_and_form_in_sidebar_partial(self, web, picker_root):
-        # Any tab that includes the sidebar partial will carry the markup.
+    def test_mkdir_form_in_sidebar_partial(self, web, picker_root):
+        # Any tab that includes the sidebar partial carries the markup.
+        # The form is now inside a <details class="ps-create-section">,
+        # so visibility is HTML-controlled (no `hidden` attr).
         body = web.get("/spectra").get_data(as_text=True)
-        assert 'id="ps-mkdir-btn"' in body
         assert 'id="ps-mkdir-form"' in body
         assert 'id="ps-mkdir-input"' in body
         assert 'id="ps-mkdir-error"' in body
         assert 'id="ps-mkdir-cancel"' in body
-        # Inline form is hidden by default.
-        assert 'id="ps-mkdir-form" class="ps-mkdir-form" hidden' in body
+        # The + New subdir summary heading lives inside its details.
+        assert '+ New subdir</summary>' in body
+
+    def test_mkdir_section_depth_aware_visibility_in_js(
+        self, web, picker_root,
+    ):
+        # Sidebar JS hides the + New subdir <details> when current_dir
+        # is at the projects/ root (depth 0).  Pin the toggle logic so
+        # a future refactor doesn't accidentally drop it.
+        r = web.get("/static/lib/projects-sidebar.js")
+        body = r.get_data(as_text=True)
+        # The toggle is keyed on closest("details") + hidden = atRoot.
+        assert 'closest("details")' in body
+        assert "atRoot" in body
+        assert "section.hidden" in body
 
 
 class TestRootsContract:

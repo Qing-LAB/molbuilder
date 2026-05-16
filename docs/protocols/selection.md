@@ -102,18 +102,89 @@ The sidebar never:
 
 | Endpoint | Body | Validation | Status |
 |---|---|---|---|
-| `POST /api/files/mkdir` | `{parent, name}` | parent must be inside an allowed root; name validated against the depth-aware rule (project / topic / structure) | **Shipped v1** |
-| `POST /api/files/rename` | `{path, new_name}` | TBD | Deferred |
-| `DELETE /api/files/delete` | `{path, recursive}` | TBD; destructive, needs UX | Deferred |
-| `POST /api/files/upload` | multipart `{file, target_dir}` | actual disk write; conflict handling | Deferred |
+| `POST /api/projects/create` | `{name}` | name = `^[A-Za-z0-9_-]+$`; strict-create (409 if exists); atomic + READMEs | **Shipped** |
+| `POST /api/files/mkdir`     | `{parent, name}` | parent inside an allowed root; name validated against the depth-aware rule | **Shipped** |
+| `POST /api/files/rename`    | `{path, new_name}` | same depth-aware naming + conflict rules as mkdir | Deferred |
+| `DELETE /api/files/delete`  | `{path, recursive}` | TBD; destructive, needs UX | Deferred |
+| `POST /api/files/upload`    | multipart `{file, target_dir}` | (a) destination depth ≥ 1 (no upload at projects/ root); (b) inside an allowed root; (c) filename regex allows dots for extensions; (d) inside `user/` depth 2+ free-form; (e) name conflict at destination = 409 with clear UX | Deferred -- rules pinned now |
 
 `mkdir`'s name validation depends on the parent's depth inside the
 picker's root:
 
-* depth 0 (parent = `projects/`)              → `validate_name` (`^[A-Za-z0-9_-]+$`)
-* depth 1 (parent = `projects/<proj>/`)       → `validate_topic` (must be in CANONICAL_TOPICS)
-* depth 2 (parent = `projects/<proj>/<topic>/`) → `validate_name` (structure)
-* depth 3+ (inside a `<structure>/`)          → `validate_name` (ad-hoc subdir; job-layout v1 prefers flat structure dirs but doesn't enforce)
+* depth 0 (parent = `projects/`)              → ``validate_name`` (`^[A-Za-z0-9_-]+$`)
+* depth 1 (parent = `projects/<proj>/`)       → ``validate_topic`` (must be in `CANONICAL_TOPICS`; see § *Canonical topics*)
+* depth 2 (parent = `projects/<proj>/<topic>/`) → ``validate_name`` (structure name; same regex)
+* depth 3+ (inside a `<structure>/` or any `user/` descendant) → ``validate_name`` (ad-hoc subdir; the user is the decider)
+
+### Canonical topics
+
+``molbuilder.projects.CANONICAL_TOPICS`` (the names accepted at depth 1):
+
+| Topic | Flavour | Purpose |
+|---|---|---|
+| ``structure`` | storage | curated input structures (`.xyz` / `.pdb` / `.cif`); flat dir |
+| ``pseudopotential`` | storage | SIESTA pseudos for this project; flat dir |
+| ``optimization`` | run-topic | geometry relaxation runs |
+| ``frequency`` | run-topic | Hessian / harmonic frequencies / thermochemistry |
+| ``spectrum`` | run-topic | Raman / IR (see Spectra tab spec) |
+| ``transport`` | run-topic | electron transport (TBTrans / NEGF) |
+| ``single-point`` | run-topic | single-energy + property calcs at fixed geometry |
+| ``scan`` | run-topic | potential-energy-surface scans along a coordinate |
+| ``user`` | **free-form** | no rules below this dir; the user decides the structure |
+
+`user/` is the escape hatch from the strict depth-1 vocabulary.  Use
+it for notes, ad-hoc experiments, anything that doesn't fit the
+canonical analyses.  Inside `user/` (depth 2+), `validate_name`'s
+regex is the only constraint -- arbitrary subdir names are accepted.
+
+### Sidebar create-button visibility
+
+The sidebar exposes two foldable creation sections.  The order is
+fixed (project first, subdir second) and visibility is depth-aware:
+
+| User is at | `+ New project` | `+ New subdir` |
+|---|---|---|
+| `projects/` (depth 0) | visible | **hidden** -- keeps the root clean; only project dirs live there |
+| depth 1+ | visible (always; you can start a new project from anywhere) | visible |
+
+The visibility toggle is driven by `projects-sidebar.js`'s
+`updateMkdirContext` (`section.hidden = atRoot`).
+
+### Project bootstrap output
+
+`POST /api/projects/create` (the `+ New project` flow) writes:
+
+```
+projects/<name>/
+├── README.md               <- project-level layout reminder
+├── structure/
+│   └── README.md
+├── pseudopotential/
+│   └── README.md
+├── optimization/
+│   └── README.md
+├── frequency/
+│   └── README.md
+├── spectrum/
+│   └── README.md
+├── transport/
+│   └── README.md
+├── single-point/
+│   └── README.md
+├── scan/
+│   └── README.md
+└── user/
+    └── README.md
+```
+
+Each README is short (~5 lines), explains the dir's purpose, and
+points the reader at the relevant spec.  The bootstrap is atomic --
+partial-failure rolls the project dir back via ``shutil.rmtree``.
+
+Strict conflict semantics: the project dir must NOT already exist.
+409 is returned with a clear message ("project 'foo' already exists
+at /.../projects/foo.  Pick a different name; use '+ New subdir'
+from inside the existing project to add to it.")
 
 ## 7. Why this design
 

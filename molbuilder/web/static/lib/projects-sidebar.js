@@ -42,7 +42,8 @@
 
   // ----- DOM refs (resolved after DOMContentLoaded) ------------- //
   let elCrumb, elList, elActions, elSidebar;
-  let elMkdirBtn, elMkdirForm, elMkdirInput, elMkdirError;
+  let elMkdirForm, elMkdirInput, elMkdirError, elMkdirContext;
+  let elNewProjForm, elNewProjInput, elNewProjError, elNewProjSubdirs;
 
   // The root path of `projects/`, resolved from /api/files/roots
   // at startup.
@@ -66,6 +67,9 @@
     sessionStorage.setItem(SS_DIR,  dir  || "");
     sessionStorage.setItem(SS_FILE, file || "");
     publishChange();
+    // Keep the "New subdir" form's context label in sync with where
+    // the user is now (e.g. "spectrum/water_v2" instead of stale "/").
+    updateMkdirContext();
   }
 
   // ----- API helpers (private; the public API at the bottom calls them) //
@@ -86,6 +90,15 @@
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({parent: parent, name: name}),
+    });
+    return await r.json();
+  }
+
+  async function apiCreateProject(name) {
+    const r = await fetch("/api/projects/create", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({name: name}),
     });
     return await r.json();
   }
@@ -212,22 +225,53 @@
     }
   }
 
-  // ----- "New subdirectory" file-manipulation handler ----------- //
+  // ----- File-manipulation handlers ----------------------------- //
 
-  function showMkdirForm() {
-    elMkdirForm.hidden = false;
-    elMkdirError.textContent = "";
-    elMkdirInput.value = "";
-    elMkdirInput.focus();
+  // Update the "(in <current-dir>)" hint next to the New-subdir field
+  // every time the sidebar's current_dir changes, AND toggle the
+  // section's visibility based on depth:
+  //
+  //   depth 0 (projects/ root)   -> hide the section.  Keep the root
+  //                                 clean: only `+ New project` is
+  //                                 meaningful there.
+  //   depth 1+                   -> show the section.  At depth 1 the
+  //                                 backend validator requires the
+  //                                 name be a CANONICAL_TOPIC (incl.
+  //                                 'user'); at depth 2+ any valid
+  //                                 name is accepted.
+  function updateMkdirContext() {
+    if (!elMkdirContext) return;
+    const dir = sessionStorage.getItem(SS_DIR) || projectsRoot || "";
+
+    // Toggle the <details> section.  Container = the <details> element
+    // that wraps the form; we walk up the DOM once at init time and
+    // cache it for speed.
+    const section = elMkdirForm ? elMkdirForm.closest("details") : null;
+    if (section) {
+      const atRoot = !projectsRoot
+        || dir === projectsRoot
+        || dir === projectsRoot.replace(/\/$/, "")
+        || !dir;
+      section.hidden = atRoot;
+      // Force-close when hidden so re-show starts collapsed (avoids a
+      // stale half-open animation when navigating in/out of root).
+      if (atRoot) section.open = false;
+    }
+
+    elMkdirContext.textContent = dir
+      ? (window.molbuilder.projects.relativeToProjects(dir) || "projects/")
+      : "current directory";
+    elMkdirContext.title = dir || "";
   }
 
-  function hideMkdirForm() {
-    elMkdirForm.hidden = true;
+  function resetMkdirForm() {
+    elMkdirInput.value = "";
     elMkdirError.textContent = "";
   }
 
   async function submitMkdir(ev) {
     ev.preventDefault();
+    elMkdirError.textContent = "";
     const name = elMkdirInput.value.trim();
     if (!name) {
       elMkdirError.textContent = "Name cannot be empty.";
@@ -236,11 +280,39 @@
     const parent = sessionStorage.getItem(SS_DIR) || projectsRoot;
     const j = await apiMkdir(parent, name);
     if (!j.ok) {
+      // Surface backend message (409 for conflict, 400 for bad name,
+      // 403 for permission, etc.) directly so the user sees what's
+      // wrong without translation.
       elMkdirError.textContent = j.error || "mkdir failed.";
       return;
     }
-    hideMkdirForm();
+    resetMkdirForm();
     // Navigate into the newly-created dir so the user sees they're in it.
+    await openDir(j.path);
+  }
+
+  function resetNewProjectForm() {
+    elNewProjInput.value = "";
+    elNewProjError.textContent = "";
+  }
+
+  async function submitNewProject(ev) {
+    ev.preventDefault();
+    elNewProjError.textContent = "";
+    const name = elNewProjInput.value.trim();
+    if (!name) {
+      elNewProjError.textContent = "Name cannot be empty.";
+      return;
+    }
+    const j = await apiCreateProject(name);
+    if (!j.ok) {
+      // 409 (name conflict) lands here with a helpful message;
+      // 400 (invalid name) similarly.  Display verbatim.
+      elNewProjError.textContent = j.error || "create failed.";
+      return;
+    }
+    resetNewProjectForm();
+    // Navigate into the new project so the user sees the skeleton.
     await openDir(j.path);
   }
 
@@ -272,22 +344,45 @@
     elSidebar = document.getElementById("projects-sidebar");
     if (!elSidebar) return;          // page doesn't include the partial
 
-    elCrumb       = document.getElementById("ps-breadcrumb");
-    elList        = document.getElementById("ps-list");
-    elActions     = document.getElementById("ps-actions");
-    elMkdirBtn    = document.getElementById("ps-mkdir-btn");
-    elMkdirForm   = document.getElementById("ps-mkdir-form");
-    elMkdirInput  = document.getElementById("ps-mkdir-input");
-    elMkdirError  = document.getElementById("ps-mkdir-error");
+    elCrumb        = document.getElementById("ps-breadcrumb");
+    elList         = document.getElementById("ps-list");
+    elActions      = document.getElementById("ps-actions");
+    // "+ New subdir" form (any depth).
+    elMkdirForm    = document.getElementById("ps-mkdir-form");
+    elMkdirInput   = document.getElementById("ps-mkdir-input");
+    elMkdirError   = document.getElementById("ps-mkdir-error");
+    elMkdirContext = document.querySelector(".ps-mkdir-context");
+    // "+ New project" form (bootstraps the full skeleton).
+    elNewProjForm    = document.getElementById("ps-newproject-form");
+    elNewProjInput   = document.getElementById("ps-newproject-input");
+    elNewProjError   = document.getElementById("ps-newproject-error");
+    elNewProjSubdirs = document.getElementById("ps-newproject-subdirs");
 
     document.body.classList.add("has-projects-sidebar");
     measureSidebarTop();
     window.addEventListener("resize", measureSidebarTop);
 
-    if (elMkdirBtn)  elMkdirBtn.addEventListener("click", showMkdirForm);
+    // Form wiring.  Each form lives inside a <details> so users see
+    // the input only when they expand the section.
     if (elMkdirForm) elMkdirForm.addEventListener("submit", submitMkdir);
-    const cancelBtn = document.getElementById("ps-mkdir-cancel");
-    if (cancelBtn) cancelBtn.addEventListener("click", hideMkdirForm);
+    const mkdirCancel = document.getElementById("ps-mkdir-cancel");
+    if (mkdirCancel) mkdirCancel.addEventListener("click", resetMkdirForm);
+
+    if (elNewProjForm) elNewProjForm.addEventListener("submit", submitNewProject);
+    const newProjCancel = document.getElementById("ps-newproject-cancel");
+    if (newProjCancel) newProjCancel.addEventListener("click", resetNewProjectForm);
+    // Populate the "subdirs that will be created" note from the
+    // canonical list (kept in JS to avoid an extra API roundtrip;
+    // the backend still validates -- this is just a display hint).
+    if (elNewProjSubdirs) {
+      const CANONICAL_TOPICS_DISPLAY = [
+        "structure", "pseudopotential",
+        "optimization", "frequency", "spectrum",
+        "transport", "single-point", "scan",
+      ];
+      elNewProjSubdirs.innerHTML = CANONICAL_TOPICS_DISPLAY
+        .map((t) => `<code>${t}/</code>`).join(", ");
+    }
 
     const roots = await apiRoots();
     if (roots.length === 0) {

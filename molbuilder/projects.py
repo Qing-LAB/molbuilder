@@ -43,17 +43,39 @@ _log = logging.getLogger(__name__)
 
 PROJECTS_ROOT_NAME = "projects"
 
-# Six canonical topics — the "kind of analysis" axis.  Hard-coded so
-# the tree shape is consistent across users.  Ad-hoc topics would
-# fragment the workflow vocabulary; for anything outside this set,
-# pick the closest match or extend this tuple in a real release.
+# Canonical direct children of ``projects/<project>/``.  Three flavours
+# of subdir live at this level:
+#
+#   * **Run-topic dirs** (run-job parents).  Each ``<topic>/<structure>/``
+#     is one flat job-layout-v1 run directory.  Six canonical run-topics
+#     -- the "kind of analysis" axis.
+#
+#   * **Storage dirs** (flat file dirs).  ``structure/`` holds raw
+#     structure files (``.xyz`` / ``.pdb`` / ``.cif``) the user
+#     curates per project.  ``pseudopotential/`` holds the SIESTA
+#     pseudos the project uses (project-local cache; the SIESTA
+#     generator can populate this on demand from pseudo-dojo).
+#
+#   * **Free-form workspace** (``user/``).  No molbuilder rules apply
+#     inside it; the user is the decider.  Use it for notes, scratch
+#     files, organising experiments that don't fit the other topics.
+#     ``validate_topic`` still gates *its name* at depth 1 (must be
+#     in this tuple), but everything below ``user/`` is free-form.
+#
+# The flavour split is in docs + comments only; ``validate_topic``
+# treats every entry in this tuple identically.  Ad-hoc names at depth
+# 1 are rejected to keep the workflow vocabulary consistent across
+# projects; if a real new analysis category emerges, extend this tuple.
 CANONICAL_TOPICS: Tuple[str, ...] = (
-    "optimization",
-    "frequency",
-    "spectrum",
-    "transport",
-    "single-point",
-    "scan",
+    "structure",        # flat storage:  .xyz / .pdb / .cif
+    "pseudopotential",  # flat storage:  SIESTA pseudos (project-local cache)
+    "optimization",     # run topic
+    "frequency",        # run topic
+    "spectrum",         # run topic
+    "transport",        # run topic
+    "single-point",     # run topic
+    "scan",             # run topic
+    "user",             # free-form workspace; no rules inside it
 )
 
 
@@ -131,6 +153,165 @@ def ensure_structure_dir(project: str, topic: str, structure: str, *,
     d = structure_dir(project, topic, structure, base=base)
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+class ProjectExists(InvalidName):
+    """A project with this name already exists.  Strict-create only."""
+
+
+# Per-canonical-topic README content.  Written into the bootstrap'd
+# project as `<project>/<topic>/README.md` so a user navigating the
+# tree (or a colleague handed a project tarball) sees what each subdir
+# is for without reading docs.  Kept short -- ~5 lines max; deep dives
+# live in docs/protocols/job-layout.md.
+_TOPIC_READMES: Mapping[str, str] = {
+    "structure": (
+        "# structure/\n\n"
+        "Curated input structure files for this project.\n\n"
+        "Drop `.xyz`, `.pdb`, `.cif` files here.  Flat directory --\n"
+        "no subdirs by convention.  Use these as starting points for\n"
+        "runs in `optimization/`, `single-point/`, etc.\n"
+    ),
+    "pseudopotential": (
+        "# pseudopotential/\n\n"
+        "SIESTA pseudopotentials for this project.  Drop `.psml` /\n"
+        "`.psf` files here, one per element (`H.psml`, `O.psml`, ...).\n"
+        "When the SIESTA generator emits a run script for this project\n"
+        "it can populate this directory from a local pseudo-dojo install\n"
+        "or download as needed (see `molbuilder.pseudos` -- planned).\n"
+    ),
+    "optimization": (
+        "# optimization/\n\n"
+        "Geometry optimization runs.\n\n"
+        "Each subdirectory is one job-layout-v1 flat run dir, e.g.\n"
+        "`water_relax/water_relax.fdf` + `water_relax.molwatch.log` +\n"
+        "`water_relax_optimized.xyz`.\n"
+    ),
+    "frequency": (
+        "# frequency/\n\n"
+        "Vibrational frequency calculations (Hessian + harmonic\n"
+        "thermochemistry).  Used to confirm minima (no imaginary\n"
+        "modes) or characterise transition states, and to compute\n"
+        "ZPE / U / H / G / S at temperature.  Each subdirectory is\n"
+        "one job-layout-v1 flat run dir.\n"
+    ),
+    "spectrum": (
+        "# spectrum/\n\n"
+        "Vibrational spectroscopy runs (Raman, IR).  Each subdirectory\n"
+        "is one job-layout-v1 flat run dir, with `<job>.spectra.json`\n"
+        "carrying the typed SpectraResults (see `docs/tabs/spectra/spec.md`).\n"
+    ),
+    "transport": (
+        "# transport/\n\n"
+        "Electron transport calculations (TBTrans + NEGF, when wired).\n"
+        "Each subdirectory is one job-layout-v1 flat run dir.\n"
+    ),
+    "single-point": (
+        "# single-point/\n\n"
+        "Single-point energy / property calculations at a fixed geometry\n"
+        "(no optimization).  Common uses: higher-level energy after a\n"
+        "cheaper relax (e.g. PBE -> B3LYP); HOMO/LUMO, dipole, NMR\n"
+        "shieldings, partial charges on a relaxed structure.  Each\n"
+        "subdirectory is one job-layout-v1 flat run dir.\n"
+    ),
+    "scan": (
+        "# scan/\n\n"
+        "Potential-energy-surface scans -- a series of single-points\n"
+        "along a coordinate (bond length, angle, dihedral).  Used for\n"
+        "conformational analysis (torsional barriers), reaction\n"
+        "coordinates, binding curves, PES sampling.\n"
+    ),
+    "user": (
+        "# user/\n\n"
+        "Free-form workspace -- no molbuilder rules apply inside this\n"
+        "directory.  Use it for notes, scratch files, organising\n"
+        "experiments that don't fit the other canonical topics, or\n"
+        "any non-canonical directory structure you need.  The sidebar's\n"
+        "`+ New subdir` button lets you create arbitrary names here at\n"
+        "any depth.\n"
+    ),
+}
+
+
+def _project_root_readme(project: str) -> str:
+    """Project-level README content; reminds the user what the layout is."""
+    canonical_lines = "\n".join(
+        f"  {t}/" + " " * max(1, 18 - len(t)) + "-- see " + t + "/README.md"
+        for t in CANONICAL_TOPICS
+    )
+    return (
+        f"# {project}\n\n"
+        f"[Project description placeholder -- edit this file with the\n"
+        f" purpose, references, and any project-specific conventions.]\n\n"
+        f"## Layout\n\n"
+        f"This project follows the molbuilder canonical hierarchy.  Each\n"
+        f"subdirectory has a brief `README.md` explaining its purpose:\n\n"
+        f"```\n{canonical_lines}\n```\n\n"
+        f"See `docs/protocols/job-layout.md` for the full job-layout v1\n"
+        f"convention that the run-topic subdirectories follow.\n"
+    )
+
+
+def populate_project_skeleton(proj: Path, *, project_name: str) -> None:
+    """Populate an empty ``proj`` directory with the canonical skeleton.
+
+    Writes the project-level ``README.md`` then creates every
+    :data:`CANONICAL_TOPICS` subdir with its own ``README.md``.
+
+    Caller-supplied ``proj`` MUST already exist and be empty.  Callers
+    are responsible for the existence check (whether they got there via
+    :func:`create_project_skeleton` or by some other path -- e.g., the
+    web blueprint resolves the path against the picker root and creates
+    the empty dir first, then calls this).
+
+    Atomic-ish: this function does NOT rollback on partial failure --
+    that's the caller's responsibility (it knows whether the dir
+    pre-existed).  See :func:`create_project_skeleton` for the
+    rollback-on-failure wrapper.
+    """
+    (proj / "README.md").write_text(_project_root_readme(project_name))
+    for topic in CANONICAL_TOPICS:
+        sub = proj / topic
+        sub.mkdir(parents=False, exist_ok=False)
+        readme = _TOPIC_READMES.get(topic)
+        if readme:
+            (sub / "README.md").write_text(readme)
+
+
+def create_project_skeleton(project: str, *,
+                            base: Optional[Path] = None) -> Path:
+    """Bootstrap a new project under ``<base>/projects/`` with the full skeleton.
+
+    Combines :func:`project_dir` path resolution + the existence check +
+    :func:`populate_project_skeleton` + rollback-on-failure.
+
+    Strict: the project dir must NOT already exist.  Raises
+    :class:`ProjectExists` when it does -- callers translate to
+    HTTP 409 / a user-facing message.
+
+    For the web blueprint's path-resolution flow (which uses the
+    picker root, not ``base/projects/``), call
+    :func:`populate_project_skeleton` directly with a pre-created
+    empty dir instead.
+
+    Returns the absolute path of the new project root.
+    """
+    validate_name(project, kind="project")
+    proj = project_dir(project, base=base)
+    if proj.exists():
+        raise ProjectExists(
+            f"project {project!r} already exists at {proj!s}.  "
+            f"Pick a different name; use ``+ New subdir`` inside the "
+            f"existing project to add to it."
+        )
+    proj.mkdir(parents=True, exist_ok=False)
+    try:
+        populate_project_skeleton(proj, project_name=project)
+    except OSError:
+        import shutil
+        shutil.rmtree(proj, ignore_errors=True)
+        raise
+    return proj
 
 
 # ---------------------------------------------------------------- #
@@ -260,6 +441,7 @@ __all__ = [
     "PROJECTS_ROOT_NAME",
     "CANONICAL_TOPICS",
     "InvalidName",
+    "ProjectExists",
     "validate_name",
     "validate_topic",
     "projects_root",
@@ -267,6 +449,8 @@ __all__ = [
     "topic_dir",
     "structure_dir",
     "ensure_structure_dir",
+    "create_project_skeleton",
+    "populate_project_skeleton",
     "list_projects",
     "list_topics",
     "list_structures",

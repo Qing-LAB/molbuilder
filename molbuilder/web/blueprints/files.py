@@ -7,6 +7,8 @@ Routes:
     GET  /api/files/stat?path=...       file metadata
     GET  /api/files/read?path=...       text contents (size-capped)
     POST /api/files/mkdir               create a new subdirectory (validated name)
+    POST /api/projects/create           bootstrap a new project with every
+                                        canonical subdir (atomic, strict conflict)
 
 Full contract:  docs/protocols/web-api.md  §  ``/api/files/*``
 
@@ -42,7 +44,8 @@ from flask import Blueprint, jsonify, request
 
 from molbuilder import diagnostics
 from molbuilder.projects import (
-    CANONICAL_TOPICS, InvalidName, projects_root,
+    CANONICAL_TOPICS, InvalidName, ProjectExists,
+    populate_project_skeleton, projects_root,
     validate_name, validate_topic,
 )
 
@@ -502,6 +505,119 @@ def api_files_mkdir():
     return jsonify({
         "ok":   True,
         "path": str(new_path),
+    })
+
+
+# --------------------------------------------------------------------- #
+#  /api/projects/create -- "+ New project" bootstrap                    #
+# --------------------------------------------------------------------- #
+
+
+@bp.route("/api/projects/create", methods=["POST"])
+def api_projects_create():
+    """Create ``projects/<name>/`` with every CANONICAL_TOPICS subdir.
+
+    JSON body: ``{"name": "<project-name>"}``
+
+    Validation:
+      1. ``name`` must satisfy ``validate_name`` (``^[A-Za-z0-9_-]+$``).
+      2. ``projects/<name>/`` must NOT already exist; 409 if it does
+         (strict-create -- to add to an existing project, use
+         ``/api/files/mkdir`` from inside it).
+      3. The picker's root must resolve to the canonical
+         ``projects_root()`` -- the new project lives there.  Tests
+         that monkey-patch the picker root also see the new project
+         appear at THAT root (the picker root IS the projects/ root).
+
+    Atomic: if any subdir create fails after the project root is
+    created, the whole project dir is rmtree'd before raising so
+    the user doesn't end up with a half-built tree.
+
+    On success: returns ``{ok, path, subdirs}`` -- ``path`` is the
+    absolute path of the new project; ``subdirs`` is the list of
+    canonical subdir names created (mirror of ``CANONICAL_TOPICS``
+    for the convenience of the frontend's success display).
+    """
+    body = request.get_json(silent=True) or {}
+    name = body.get("name", "")
+    if not isinstance(name, str) or not name:
+        return jsonify({
+            "ok": False,
+            "error": "missing 'name' in request body",
+        }), 400
+
+    # Where the new project should live.  The picker's single root
+    # IS projects_root() at runtime; tests can swap it via a monkey-
+    # patched Capabilities, in which case the new project lands at
+    # the swapped root.  Use whichever root the picker is currently
+    # advertising so server + frontend stay consistent.
+    roots = _allowed_roots()
+    if not roots:
+        return jsonify({
+            "ok":   False,
+            "error": "no file-picker roots configured; cannot create project",
+        }), 500
+    root_path = roots[0][0]   # we ship single-root in v1
+
+    try:
+        # validate_name first so the error message hits the user
+        # before we touch disk.
+        validate_name(name, kind="project")
+    except InvalidName as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    project_path = root_path / name
+    if project_path.exists():
+        return jsonify({
+            "ok":   False,
+            "error": (f"project {name!r} already exists at "
+                      f"{str(project_path)!r}.  Pick a different name; "
+                      f"use '+ New subdir' from inside the existing "
+                      f"project to add to it."),
+        }), 409
+
+    # Create the empty project root inside the picker's root, then
+    # delegate to populate_project_skeleton to bootstrap the canonical
+    # subdirs + READMEs.  This split lets us use the picker's resolved
+    # root (which may differ from projects_root() in tests) rather than
+    # the cwd-derived path the create_project_skeleton convenience
+    # wrapper would assume.
+    project_path = root_path / name
+    try:
+        project_path.mkdir(parents=False, exist_ok=False)
+    except FileExistsError:
+        # Race with the existence check above.
+        return jsonify({
+            "ok":   False,
+            "error": f"project {name!r} already exists.",
+        }), 409
+    except PermissionError as exc:
+        return jsonify({
+            "ok": False,
+            "error": f"permission denied: {exc}",
+        }), 403
+    except OSError as exc:
+        return jsonify({
+            "ok": False,
+            "error": f"mkdir failed: {exc}",
+        }), 500
+
+    try:
+        populate_project_skeleton(project_path, project_name=name)
+    except OSError as exc:
+        # Rollback on partial failure so the user can retry cleanly.
+        import shutil
+        shutil.rmtree(project_path, ignore_errors=True)
+        return jsonify({
+            "ok": False,
+            "error": (f"failed to populate project {name!r} ({exc}); "
+                      f"the partial project tree has been rolled back."),
+        }), 500
+
+    return jsonify({
+        "ok":      True,
+        "path":    str(project_path),
+        "subdirs": list(CANONICAL_TOPICS),
     })
 
 
