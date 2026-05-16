@@ -91,6 +91,19 @@ def render_spectra_script(struct: Structure, cfg: SpectraConfig) -> str:
     ``_emit_<name>`` helper so the structure stays inspectable
     and the unit tests can assert on individual block contents.
     """
+    # v1 IR constraint: IR rides on the same displaced SCFs that
+    # Raman runs (dipole moment is essentially free after each
+    # converged mf), so compute_ir requires compute_raman.  A
+    # standalone IR FD loop would just duplicate that work; if a
+    # user ever wants IR-without-Raman the right answer is to enable
+    # both flags, accept the polarizability cost, and revisit later.
+    if cfg.compute_ir and not cfg.compute_raman:
+        raise ValueError(
+            "compute_ir=True requires compute_raman=True in v1 "
+            "(IR piggybacks on the Raman finite-difference loop; a "
+            "standalone IR-only FD path is a future feature)."
+        )
+
     # Compute the Methods prose + bibliography ONCE -- the header
     # docstring and the constants block both inline the same prose,
     # so calling render_methods_md three times (as the earlier code
@@ -173,6 +186,18 @@ def _emit_header_docstring(struct: Structure,
     out.append(f"    {cfg.job_name}.spectra.json     -- typed SpectraResults")
     out.append("                                          (see spec § 5 / § 6)")
     out.append("")
+    if cfg.compute_ir:
+        out.append("⚠  IR INTENSITY SCAFFOLD -- NOT YET VALIDATED  ⚠")
+        out.append("    `ir_intensity_km_mol` values in the JSON are computed")
+        out.append("    from finite-difference dipole derivatives + the")
+        out.append("    Gaussian/ORCA 42.2561 km/mol per (D/Å)²/amu prefactor.")
+        out.append("    The math is textbook, but absolute magnitudes have NOT")
+        out.append("    been cross-checked against an external code the way")
+        out.append("    Raman was (see docs/tabs/spectra/spec.md § 12.1 for")
+        out.append("    the Raman validation; § 13.1 for IR validation status).")
+        out.append("    Use for relative IR intensities + qualitative work;")
+        out.append("    quote absolute values only with the caveat.")
+        out.append("")
     out.append("Dependencies:")
     out.append("    pip install pyscf")
     out.append("")
@@ -370,6 +395,8 @@ def _emit_constants(struct: Structure,
     out.append("")
     out.append("# Spectrum knobs.")
     out.append(f"COMPUTE_RAMAN              = {bool(cfg.compute_raman)!r}")
+    out.append(f"COMPUTE_IR                 = {bool(cfg.compute_ir)!r}  "
+               f"# scaffold; values not yet validated against external code")
     out.append(f"DISPLACEMENT_AMPLITUDE_ANG = {float(cfg.displacement_amplitude_ang)!r}  "
                f"# L4 amplitude A; ±A·Q_i along each mode")
     out.append(f"RAMAN_FD_STEP_ANG          = {_RAMAN_FD_STEP_ANG!r}  "
@@ -1087,13 +1114,68 @@ def _emit_displaced_scf_helpers(cfg: SpectraConfig) -> List[str]:
     return out
 
 
+def _emit_ir_projection() -> List[str]:
+    """Per-mode IR intensity (km/mol) from the dipole-moment
+    derivative collected in the Raman FD loop.
+
+    This block emits inside ``_emit_raman_block`` after the Raman
+    activity loop has run -- it relies on ``DMU_DR`` and the
+    canonical normal modes already being in scope.
+
+    SCIENTIFIC VALIDATION STATUS: NOT YET VALIDATED against an
+    external code (Gaussian / ORCA / Turbomole).  The projection
+    math + Gaussian/ORCA km/mol prefactor are textbook, but the
+    absolute magnitudes have not been cross-checked the way the
+    Raman path was (see ``docs/tabs/spectra/spec.md § 12.1``).
+    Use for relative IR intensities and qualitative analysis;
+    quote absolute values only with the caveat.
+    """
+    out: List[str] = []
+    out.append("")
+    out.append("# ----- IR (scaffold; absolute magnitudes not yet validated) -----")
+    out.append("# Standard IR intensity formula for a normal mode of frequency ν_n")
+    out.append("# in km/mol, given the dipole-moment derivative dμ/dQ_n (3-vector):")
+    out.append("#")
+    out.append("#     I_n  =  (N_A · π) / (3 · c²)  ·  |dμ/dQ_n|²")
+    out.append("#")
+    out.append("# With μ in Debye, R in Å, Q the canonical mass-weighted normal")
+    out.append("# coordinate (units Å·√amu), the prefactor that converts the")
+    out.append("# squared derivative |dμ/dQ|² [D²/(Å²·amu)] to km/mol is the")
+    out.append("# Gaussian / ORCA / literature constant 42.2561 .  Derivation:")
+    out.append("#   K = N_A · π / (3·c²) · (D/Å)² / amu  →  km/mol")
+    out.append("# (CODATA 2018 N_A, c, e·a₀ → D; 1 Å = 10⁻¹⁰ m; 1 amu = 1.66054e-27 kg)")
+    out.append("# Same value cited by Gaussian whitepaper on IR intensities,")
+    out.append("# ORCA manual, and the psi4 source.")
+    out.append("#")
+    out.append("# NOTE: not yet cross-validated against Gaussian/ORCA numerically;")
+    out.append("# see docs/tabs/spectra/spec.md § 13.1 for validation status.")
+    out.append("_IR_PREFACTOR_KM_MOL_PER_D2_PER_A2_PER_AMU = 42.2561")
+    out.append("for _n in range(len(modes_payload)):")
+    out.append("    _L_canonical = NORM_MODES_CANONICAL[_n]")
+    out.append("    # dμ/dQ_n is a 3-vector; einsum sums DMU_DR over its k (atom)")
+    out.append("    # and α (direction) axes weighted by L_canonical, leaving the")
+    out.append("    # remaining axis i (dipole Cartesian component).")
+    out.append("    _dmudq = np.einsum('kai,ka->i', DMU_DR, _L_canonical)")
+    out.append("    _ir_intensity = (")
+    out.append("        _IR_PREFACTOR_KM_MOL_PER_D2_PER_A2_PER_AMU")
+    out.append("        * float(np.dot(_dmudq, _dmudq))")
+    out.append("    )")
+    out.append("    modes_payload[_n]['ir_intensity_km_mol'] = _ir_intensity")
+    return out
+
+
 def _emit_raman_block(cfg: SpectraConfig) -> List[str]:
     """Finite-difference dα/dR_k for k over free Cartesians;
     project onto modes; Raman activity per mode.
 
     Requires COORDS_EQ_ANG and _build_mf_at from the shared
     displaced-SCF helper block (always emitted before this when
-    compute_raman is True)."""
+    compute_raman is True).
+
+    When ``cfg.compute_ir`` is also True, this block additionally
+    captures dipole moments at each displaced SCF and projects
+    them onto the normal modes for IR intensities -- essentially
+    free, since the SCFs already converged for polarizability."""
     out: List[str] = []
     out.append("# ============================================================")
     out.append("#  Phase 3: Raman activities (finite-difference dα/dR)")
@@ -1141,6 +1223,17 @@ def _emit_raman_block(cfg: SpectraConfig) -> List[str]:
     out.append("    # the bridge is defensive in case the call path changes.")
     out.append("    return _as_numpy(_mf.Polarizability().polarizability())")
     out.append("")
+    if cfg.compute_ir:
+        out.append("def _dipole_debye(_mf):")
+        out.append("    '''Dipole moment in Debye at the converged mf.'''")
+        out.append("    # mf.dip_moment() defaults to unit='Debye'; we pass")
+        out.append("    # it explicitly so a future PySCF version that flips")
+        out.append("    # the default can't silently change our units.")
+        out.append("    # verbose=0 suppresses the per-call print; the mf is")
+        out.append("    # already converged so dip_moment() is essentially a")
+        out.append("    # one-line integral, not another SCF.")
+        out.append("    return _as_numpy(_mf.dip_moment(unit='Debye', verbose=0))")
+        out.append("")
     out.append("def _displace(coords, atom_idx, direction, delta):")
     out.append("    '''Return a copy of coords with one Cartesian shifted.'''")
     out.append("    new = coords.copy()")
@@ -1160,6 +1253,12 @@ def _emit_raman_block(cfg: SpectraConfig) -> List[str]:
     out.append("")
     out.append("# Build dα/dR_kα by central difference for each free-atom Cartesian.")
     out.append("DALPHA_DR = np.zeros((N_FREE, 3, 3, 3))   # (k, α_dir, i, j)")
+    if cfg.compute_ir:
+        out.append("# IR: dμ/dR_kα captured in the SAME displaced SCFs that")
+        out.append("# Raman uses -- the dipole moment is a one-line integral on")
+        out.append("# an already-converged mf, so this is essentially free.")
+        out.append("# Units: μ in Debye (set explicitly in _dipole_debye), R in Å.")
+        out.append("DMU_DR    = np.zeros((N_FREE, 3, 3))      # (k, α_dir, i)")
     out.append("for _k_idx, _atom_idx in enumerate(FREE_ATOM_IDXS):")
     out.append("    for _dir in range(3):")
     out.append("        _mf_plus  = _build_mf_at(_displace(COORDS_EQ_ANG, ")
@@ -1175,6 +1274,10 @@ def _emit_raman_block(cfg: SpectraConfig) -> List[str]:
     out.append("        _ap = _polarizability(_mf_plus)")
     out.append("        _am = _polarizability(_mf_minus)")
     out.append("        DALPHA_DR[_k_idx, _dir] = (_ap - _am) / (2 * RAMAN_FD_STEP_ANG)")
+    if cfg.compute_ir:
+        out.append("        _dp = _dipole_debye(_mf_plus)")
+        out.append("        _dm = _dipole_debye(_mf_minus)")
+        out.append("        DMU_DR[_k_idx, _dir] = (_dp - _dm) / (2 * RAMAN_FD_STEP_ANG)")
     out.append("    print(f'  Raman FD: atom {_atom_idx + 1}/{N_ATOMS} done')")
     out.append("")
     out.append("# Per-mode Raman activity in Å^4 / amu via Placzek's formula.")
@@ -1246,10 +1349,17 @@ def _emit_raman_block(cfg: SpectraConfig) -> List[str]:
     out.append("    _dadq = np.einsum('kaij,ka->ij', DALPHA_DR, _L_canonical)")
     out.append("    _act = _raman_activity(_dadq) * _RAMAN_AU2_TO_A4AMU")
     out.append("    modes_payload[_n]['raman_activity_a4_amu'] = float(_act)")
+    if cfg.compute_ir:
+        out.extend(_emit_ir_projection())
     out.append("state['modes'] = modes_payload")
     out.append("state['phase_raman'] = PHASE_COMPLETE")
     out.append("_atomic_write_json(state, JSON_PATH)")
-    out.append("print(f'Phase 3 done: Raman activities for {len(modes_payload)} modes')")
+    if cfg.compute_ir:
+        out.append("print(f'Phase 3 done: Raman + IR for "
+                   "{len(modes_payload)} modes')")
+    else:
+        out.append("print(f'Phase 3 done: Raman activities for "
+                   "{len(modes_payload)} modes')")
     out.append("")
     return out
 

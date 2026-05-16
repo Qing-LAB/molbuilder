@@ -122,9 +122,11 @@ class TestModeData:
         assert ModeData.from_dict(m.to_dict()).raman_activity_a4_amu is None
 
     def test_ir_intensity_reserved_for_future(self):
-        """v1 emitted scripts always set ir_intensity_km_mol=None.
-        Schema reserves the field so the 1c add-on (IR) is a
-        no-schema-change extension."""
+        """When compute_ir is off (default), ir_intensity_km_mol is
+        None on every mode.  The slot is reserved at the schema
+        level so the IR add-on activation is a no-schema-change
+        change.  When compute_ir=True, the field is populated;
+        round-trip preserves the float value."""
         m = _make_mode()
         assert m.ir_intensity_km_mol is None
         # Set it explicitly to a value to confirm the field accepts floats.

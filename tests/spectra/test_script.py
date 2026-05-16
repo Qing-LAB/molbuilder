@@ -826,3 +826,96 @@ class TestPySCFScriptL4OutOfRangeGuard:
             assert "1 <= i <= _n_modes_available" in script, sel
 
 
+class TestPySCFScriptIRScaffold:
+    """IR add-on scaffold (compute_ir=True): wires dipole capture
+    into the Raman FD loop and projects to ir_intensity_km_mol.
+    The science (absolute magnitude) is documented as not-yet-
+    validated against an external code; these tests pin the
+    emission shape + the v1 'compute_ir requires compute_raman'
+    constraint."""
+
+    def test_ir_block_absent_when_compute_ir_false(self):
+        """Default config: nothing IR-specific in the rendered script.
+        Keeps the cost-no-IR-no-pay invariant honest."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        s = render_spectra_script(_struct_water(),
+                                  SpectraConfig(compute_raman=True,
+                                                compute_ir=False))
+        assert "DMU_DR" not in s
+        assert "_dipole_debye" not in s
+        assert "ir_intensity_km_mol'] = " not in s  # no assignment
+        assert "42.2561" not in s
+        # The constant is still emitted so the JSON header records the flag.
+        assert "COMPUTE_IR" in s
+
+    def test_ir_block_present_when_compute_ir_true(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        s = render_spectra_script(_struct_water(),
+                                  SpectraConfig(compute_raman=True,
+                                                compute_ir=True))
+        # Capture machinery
+        assert "DMU_DR    = np.zeros((N_FREE, 3, 3))" in s
+        assert "_dipole_debye(_mf_plus)" in s
+        assert "_dipole_debye(_mf_minus)" in s
+        # Projection + prefactor
+        assert "42.2561" in s
+        assert "np.einsum('kai,ka->i', DMU_DR, _L_canonical)" in s
+        assert "modes_payload[_n]['ir_intensity_km_mol']" in s
+
+    def test_ir_prefactor_pinned_to_gaussian_constant(self):
+        """The 42.2561 km/mol per (D/Å)²/amu constant is the
+        Gaussian/ORCA/textbook value.  Pin it so a future edit can't
+        silently drift to a different convention."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        s = render_spectra_script(_struct_water(),
+                                  SpectraConfig(compute_raman=True,
+                                                compute_ir=True))
+        assert ("_IR_PREFACTOR_KM_MOL_PER_D2_PER_A2_PER_AMU = 42.2561"
+                in s)
+
+    def test_ir_unit_explicit_in_dipole_call(self):
+        """mf.dip_moment(unit='Debye') is set explicitly so a future
+        PySCF that flips the default can't change our units silently."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        s = render_spectra_script(_struct_water(),
+                                  SpectraConfig(compute_raman=True,
+                                                compute_ir=True))
+        assert "_mf.dip_moment(unit='Debye'" in s
+
+    def test_ir_validation_banner_in_header(self):
+        """The header docstring carries a NOT-YET-VALIDATED warning
+        when IR is on -- this is the user-facing trigger to read
+        spec.md §13.1 before quoting absolute IR magnitudes."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        s = render_spectra_script(_struct_water(),
+                                  SpectraConfig(compute_raman=True,
+                                                compute_ir=True))
+        assert "NOT YET VALIDATED" in s
+        assert "spec.md" in s    # pointer to the validation status
+
+    def test_ir_requires_compute_raman_in_v1(self):
+        """compute_ir=True + compute_raman=False raises at render-
+        time with a clear message -- IR rides on Raman's FD loop."""
+        import pytest
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        with pytest.raises(ValueError, match="compute_ir=True requires "
+                           "compute_raman=True"):
+            render_spectra_script(
+                _struct_water(),
+                SpectraConfig(compute_raman=False, compute_ir=True),
+            )
+
+    def test_phase_done_message_names_both(self):
+        """The print('Phase 3 done: ...') line should say Raman + IR
+        when both ran, not just Raman."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        s = render_spectra_script(_struct_water(),
+                                  SpectraConfig(compute_raman=True,
+                                                compute_ir=True))
+        assert "Phase 3 done: Raman + IR" in s
+        # And only-Raman config keeps its own message
+        s2 = render_spectra_script(_struct_water(),
+                                   SpectraConfig(compute_raman=True))
+        assert "Phase 3 done: Raman activities" in s2
+
+

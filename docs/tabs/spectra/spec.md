@@ -1035,19 +1035,83 @@ which we've kept out of the host env on purpose.
 
 ## 13. Future extensions
 
-### 13.1 IR add-on (1c)
+### 13.1 IR add-on — scaffold landed; absolute magnitudes NOT YET VALIDATED
 
-PySCF computes dipole derivatives natively.  Implementation:
+**Status (2026-05-15):** the IR pipeline is wired end-to-end.  Setting
+`compute_ir=True` (which requires `compute_raman=True` in v1) populates
+`ir_intensity_km_mol` on every mode with values in **km/mol**.
 
-* Flip `compute_ir` to `True`-capable in the form (currently
-  disabled).
-* Engine `render_script` emits the dipole-derivative block.
-* Engine `parse_output` populates `ir_intensity_km_mol` on each
-  `ModeData`.
-* Spectrum plot adds a toggle "Raman / IR / Both".
+**How the math works.**  PySCF's `mf.dip_moment(unit='Debye')` is
+essentially free after an already-converged SCF, so each of the
+6·N_FREE displaced SCFs that Raman is already running for `dα/dR`
+also yields `μ(±δ)`.  The script captures both in the same loop,
+forms `dμ/dR_kα = (μ(+δ) - μ(-δ)) / (2δ)`, projects onto each
+canonical mass-weighted normal mode `L_canonical`:
 
-Estimated effort: ~3-5 days.  No schema changes (the field is
-already reserved in `ModeData`).
+```
+dμ/dQ_n  =  Σ_{k,α} (dμ/dR_{k,α}) · L_canonical_{k,α,n}     (3-vector)
+```
+
+and applies the standard textbook IR-intensity formula:
+
+```
+I_n  =  K · |dμ/dQ_n|²
+K   =  N_A · π / (3 · c²)  ·  (D/Å)² / amu  →  km/mol
+    =  42.2561 km/mol per (D/Å)²/amu     (Gaussian / ORCA / psi4 value)
+```
+
+The 42.2561 constant is the same one quoted in the Gaussian
+whitepaper on IR intensities and the ORCA manual.  Code reference:
+`molbuilder/spectra/pyscf_script.py::_emit_ir_projection`.
+
+**Cost.**  Zero extra SCFs.  IR is computed inside the existing
+Raman FD loop; the only added work per displacement is one
+dipole-moment integral on the already-converged `mf` (microseconds).
+
+**What's NOT validated yet.**  The Raman path was cross-checked by
+running molbuilder's full pipeline AND a hand-written raw-PySCF
+script (see § 12.1) and showing bit-for-bit agreement plus
+literature-ballpark match on the absolute scale.  **The IR path has
+not yet been through that exercise.**  The projection math + the
+prefactor are textbook-correct; what's unverified is whether
+PySCF's `dip_moment()` returns the dipole in the convention this
+formula assumes (origin choice, sign, electron vs nuclear convention)
+and whether the 42.2561 constant matches PySCF's specific Debye
+convention to better than ~1%.
+
+**v1 constraint.**  `compute_ir=True` raises a clear `ValueError`
+at script-render time if `compute_raman=False`, on the grounds that
+a standalone IR path would either duplicate the displaced-SCF cost
+or change the script's structural shape — neither earns its
+complexity until a user actually needs IR without Raman.  Same
+unit-conversion machinery + the same Hessian → canonical
+mass-weighted modes are reused; nothing IR-specific touches the
+science layer.
+
+**To finish the IR add-on:**
+
+1. Run the equivalent of § 12.1 with `compute_ir=True`: a water
+   B3LYP/def2-SVP comparison against an independent hand-written
+   IR script (raw-pyscf dipole derivatives + same prefactor) AND
+   against a published Gaussian/ORCA IR table for the same level
+   of theory.  Acceptance bar: < 2% on absolute IR intensities,
+   identical relative pattern.
+2. If the absolute match fails: trace whether (a) PySCF's dipole
+   convention differs from the assumed one, (b) the prefactor needs
+   a different precision, (c) there's an origin / units bug in the
+   projection.
+3. Add a `tests/spectra/test_smoke.py` IR smoke check (gated on
+   `compute_ir=True` config + pyscf available) that the field is
+   non-None, finite, and > 0 for at least one mode.
+4. Drop the "NOT YET VALIDATED" banner from the script header +
+   the help text on `compute_ir`; move the discussion above into
+   a § 12.2 IR validation entry mirroring § 12.1.
+
+UI work for the spectrum plot toggle ("Raman / IR / Both") can
+proceed against the current scaffold data (the JSON has the field
+populated; values are usable for relative-intensity comparisons and
+qualitative analysis right now, just don't quote absolute km/mol in
+a publication until step 1 above is done).
 
 ### 13.2 SIESTA engine
 

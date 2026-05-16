@@ -254,13 +254,19 @@ class SpectraConfig:
     })
     compute_ir: bool = field(default=False, metadata={
         "section": "Spectrum",
-        "label":   "Compute IR intensities (not yet implemented)",
+        "label":   "Compute IR intensities (scaffold; not yet validated)",
         "tier":    "advanced",
-        "help":    "Reserved for a future release that will add IR "
-                   "absorption intensities (dipole-moment "
-                   "derivatives).  This checkbox does nothing today; "
-                   "leaving it off avoids surprises when it activates "
-                   "in a later version.",
+        "help":    "Compute IR absorption intensities (km/mol) from "
+                   "finite-difference dipole-moment derivatives.  "
+                   "v1 constraint: this rides on the Raman FD loop, "
+                   "so it requires compute_raman = True (otherwise "
+                   "you'd pay for displaced SCFs twice).  "
+                   "NOTE: the IR scaffold is wired end-to-end but the "
+                   "absolute km/mol values have NOT been validated "
+                   "against an external code (Gaussian/ORCA).  Use "
+                   "for relative intensities and qualitative analysis "
+                   "until the validation is complete; see docs/tabs/"
+                   "spectra/spec.md §13.1 for status.",
     })
     displacement_amplitude_ang: float = field(default=0.10, metadata={
         "section": "Spectrum",
