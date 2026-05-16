@@ -97,16 +97,11 @@
 
   <section class="ps-actions" id="ps-actions"
            aria-label="Current selection">
-    <!-- Just a status display.  Tabs that need the selection inquire
-         via window.molbuilder.projects.getCurrentFile(); the sidebar
-         itself never opens or loads anything. -->
+    <!-- Status display only.  Per-file actions (preview / delete)
+         live ON the entries themselves -- hover-revealed buttons in
+         the list rows.  Tabs that need the selection inquire via
+         window.molbuilder.projects.getCurrentFile(). -->
     <p class="ps-selection">No file selected.</p>
-    <div class="ps-actions-row">
-      <button id="ps-preview-btn" type="button" class="ps-action-btn"
-              disabled title="Pick a file in the list to preview it">
-        Preview
-      </button>
-    </div>
   </section>
 </aside>
 

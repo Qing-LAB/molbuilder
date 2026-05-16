@@ -313,62 +313,48 @@ body.has-projects-sidebar > nav.app-tabs {
   font-weight: normal;
 }
 
-.ps-actions-row {
-  display: flex;
-  gap: 0.35rem;
-  margin-top: 0.35rem;
-}
-
-.ps-action-btn {
+/* Per-entry action buttons (preview, delete) -- only visible on
+ * hover so they don't clutter the list.  Click stops propagation
+ * so the entry itself doesn't get selected/navigated.  Shared base
+ * via .ps-entry-action; each subclass overrides hover-color to
+ * differentiate (neutral for preview, red for delete). */
+.ps-entry-action {
   flex: 0 0 auto;
-  font-size: 0.78rem;
-  padding: 0.2rem 0.6rem;
-  cursor: pointer;
-  background: var(--ps-hover);
-  color: var(--ps-fg);
-  border: 1px solid var(--ps-border);
+  margin-left: 0.3rem;
+  padding: 0 0.4rem;
+  background: transparent;
+  color: var(--ps-fg-muted);
+  border: 1px solid transparent;
   border-radius: 3px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s ease, background 0.1s ease;
+}
+.ps-entry:hover .ps-entry-action {
+  opacity: 1;
+}
+.ps-entry.is-selected .ps-entry-action {
+  opacity: 1;
+  color: var(--ps-selected-fg);
 }
 
-.ps-action-btn:hover:not(:disabled) {
+/* Preview = neutral hover (same accent as a directory click). */
+.ps-entry-preview:hover {
   background: var(--ps-selected);
   color: var(--ps-selected-fg);
   border-color: var(--ps-selected);
 }
 
-.ps-action-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-/* Per-entry delete button -- only visible on hover, to avoid
- * cluttering the list.  Click stops propagation so the entry
- * itself doesn't get selected/navigated. */
+/* Delete = destructive red hover (matches the warning intent). */
 .ps-entry-delete {
-  flex: 0 0 auto;
-  margin-left: 0.3rem;
-  padding: 0 0.35rem;
-  background: transparent;
-  color: var(--ps-fg-muted);
-  border: 1px solid transparent;
-  border-radius: 3px;
-  font-size: 0.9rem;
-  line-height: 1;
-  cursor: pointer;
-  opacity: 0;
-  transition: opacity 0.1s ease;
-}
-.ps-entry:hover .ps-entry-delete {
-  opacity: 1;
+  font-size: 0.9rem;       /* the × glyph reads better slightly larger */
 }
 .ps-entry-delete:hover {
   background: #5a1f1f;
   color: #fff;
   border-color: #6e2929;
-}
-.ps-entry.is-selected .ps-entry-delete {
-  opacity: 1;
-  color: var(--ps-selected-fg);
 }
 
 /* ---- File-preview modal -------------------------------------- */
@@ -382,6 +368,15 @@ body.has-projects-sidebar > nav.app-tabs {
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* HTML's `hidden` attribute sets `display: none` via the UA
+ * stylesheet at very low specificity, which `display: flex` above
+ * overrides.  This rule restores `hidden` behaviour on the modal
+ * specifically -- without it, the modal renders visible from page
+ * load before any JS opens it. */
+.ps-preview-modal[hidden] {
+  display: none;
 }
 
 .ps-preview-backdrop {
@@ -405,6 +400,11 @@ body.has-projects-sidebar > nav.app-tabs {
 }
 
 .ps-preview-header {
+  /* flex-shrink: 0 prevents the header from collapsing to nothing
+   * when the body has more content than the window can fit -- the
+   * default flex-shrink:1 was letting long files squash the header
+   * out of existence and make the body appear on top of it. */
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -437,6 +437,7 @@ body.has-projects-sidebar > nav.app-tabs {
 .ps-preview-close:hover { background: var(--ps-hover); }
 
 .ps-preview-meta {
+  flex: 0 0 auto;             /* don't shrink, hold the path display */
   margin: 0;
   padding: 0.35rem 0.8rem;
   font-size: 0.75rem;
@@ -450,7 +451,12 @@ body.has-projects-sidebar > nav.app-tabs {
 }
 
 .ps-preview-body {
-  flex: 1;
+  /* flex: 1 fills the remaining vertical space.  min-height: 0 is
+   * the standard fix that lets the body actually scroll (default
+   * `min-height: auto` makes it expand to its content height,
+   * which pushes the layout out + can overlap siblings). */
+  flex: 1 1 auto;
+  min-height: 0;
   margin: 0;
   padding: 0.75rem 0.9rem;
   overflow: auto;
@@ -462,16 +468,17 @@ body.has-projects-sidebar > nav.app-tabs {
 }
 
 .ps-preview-error {
+  flex: 0 0 auto;
   margin: 0;
   padding: 0.4rem 0.8rem;
   color: #e07a7a;
   background: #2a1818;
   font-size: 0.85rem;
-  min-height: 0;            /* collapses when empty */
 }
 .ps-preview-error:empty { display: none; }
 
 .ps-preview-footer {
+  flex: 0 0 auto;
   display: flex;
   gap: 0.45rem;
   justify-content: flex-end;

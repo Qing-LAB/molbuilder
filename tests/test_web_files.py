@@ -779,12 +779,43 @@ class TestSidebarStubsUI:
         assert "elUploadForm" in body
         assert "elUploadContext" in body
 
-    def test_preview_button_in_actions(self, web, picker_root):
+    def test_preview_is_per_entry_not_sidebar_bottom_bar(
+        self, web, picker_root,
+    ):
+        # v5.1: Preview moved from a bottom-bar button to a per-entry
+        # hover button (alongside the delete ×).  The id="ps-preview-btn"
+        # global button is gone; preview elements are now created
+        # dynamically by renderList() and use the .ps-entry-preview class.
         body = web.get("/spectra").get_data(as_text=True)
-        assert 'id="ps-preview-btn"' in body
-        # Starts disabled (no file selected on page load).
-        assert 'id="ps-preview-btn"' in body
-        assert "disabled" in body.split('id="ps-preview-btn"', 1)[1].split(">", 1)[0]
+        # No global Preview button in the partial.
+        assert 'id="ps-preview-btn"' not in body
+        # The dead .ps-actions-row + .ps-action-btn styles are gone too.
+        assert 'class="ps-actions-row"' not in body
+
+    def test_preview_per_entry_handler_in_js(self, web):
+        # The per-entry button is built by renderList(); pin the
+        # class name + the showPreview() call from the entry handler.
+        body = web.get(
+            "/static/lib/projects-sidebar.js",
+        ).get_data(as_text=True)
+        assert "ps-entry-preview" in body
+        # The button reads "view" (matches the visual pattern -- short
+        # text label like the × of delete).
+        assert 'view.textContent = "view"' in body
+        # File-only: directories don't get a Preview button.
+        assert 'if (e.kind === "file")' in body
+
+    def test_preview_per_entry_styles_match_delete_hover_pattern(self, web):
+        # Both per-entry buttons inherit .ps-entry-action; the hover-
+        # reveal idiom (opacity 0 default, 1 on .ps-entry:hover) is in
+        # the shared rule.  Delete + Preview only differ in hover color.
+        body = web.get(
+            "/static/lib/projects-sidebar.css",
+        ).get_data(as_text=True)
+        assert ".ps-entry-action {" in body
+        assert ".ps-entry:hover .ps-entry-action" in body
+        assert ".ps-entry-preview:hover" in body
+        assert ".ps-entry-delete:hover" in body
 
     def test_preview_modal_markup_full(self, web, picker_root):
         body = web.get("/spectra").get_data(as_text=True)
@@ -832,13 +863,16 @@ class TestSidebarStubsUI:
 
     def test_delete_button_has_hover_visibility_css(self, web):
         # The × shows only on hover so it doesn't clutter the list.
+        # v5.1: the hover-reveal idiom moved to the shared
+        # .ps-entry-action class (preview + delete inherit it); the
+        # delete-specific rule only carries the destructive red hover.
         body = web.get(
             "/static/lib/projects-sidebar.css",
         ).get_data(as_text=True)
         assert ".ps-entry-delete" in body
-        # opacity 0 default + hover opacity 1 = the hover-reveal idiom.
         assert "opacity: 0" in body
-        assert ".ps-entry:hover .ps-entry-delete" in body
+        assert ".ps-entry:hover .ps-entry-action" in body
+        assert ".ps-entry-delete:hover" in body
 
 
 class TestRootsContract:

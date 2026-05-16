@@ -45,7 +45,7 @@
   let elMkdirForm, elMkdirInput, elMkdirError, elMkdirContext;
   let elNewProjForm, elNewProjInput, elNewProjError, elNewProjSubdirs;
   let elUploadForm, elUploadInput, elUploadError, elUploadContext;
-  let elPreviewBtn, elPreviewModal, elPreviewTitle, elPreviewMeta;
+  let elPreviewModal, elPreviewTitle, elPreviewMeta;
   let elPreviewBody, elPreviewError;
 
   // The root path of `projects/`, resolved from /api/files/roots
@@ -73,10 +73,10 @@
     // Keep all sidebar UI bits in sync with the new selection:
     //   * mkdir form's "(in <dir>)" hint + depth-0 hide rule
     //   * upload form's "(lands in <dir>)" hint + same hide rule
-    //   * preview button's disabled state (no file -> disabled)
+    // (Per-entry preview/delete buttons live on the list rows
+    //  themselves; no global state to sync for those.)
     updateMkdirContext();
     updateUploadContext();
-    refreshPreviewButton(file);
   }
 
   // ----- API helpers (private; the public API at the bottom calls them) //
@@ -248,17 +248,40 @@
         meta.textContent = humanSize(e.size);
         li.appendChild(meta);
       }
-      // Delete button: only on hover, only when the entry passes the
-      // depth-aware eligibility check.  Backend currently 501s; the
-      // UX flow (× -> confirm -> error -> done) is the future shape.
+      // Per-entry action buttons on hover (preview + delete).  Same
+      // visual + behavioural pattern: tiny text/icon button revealed
+      // by the entry's :hover; click stops propagation so it doesn't
+      // also select / navigate; backend may or may not be implemented
+      // (delete is stubbed today).  Order: preview first, delete last
+      // so destructive action is consistently on the far right.
+
+      if (e.kind === "file") {
+        const view = document.createElement("button");
+        view.type = "button";
+        view.className = "ps-entry-action ps-entry-preview";
+        view.textContent = "view";
+        view.title = "Preview " + e.name;
+        view.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          // Mark + publish selection so the preview reads the right
+          // file (in case the user clicked view on a non-selected
+          // entry); then open the modal.
+          markSelected(li);
+          setShared(currentPath, fullPath);
+          renderSelectionStatus(e.name, fullPath);
+          showPreview();
+        });
+        li.appendChild(view);
+      }
+
       if (_isDeletableEntry(e, currentPath)) {
         const del = document.createElement("button");
         del.type = "button";
-        del.className = "ps-entry-delete";
+        del.className = "ps-entry-action ps-entry-delete";
         del.textContent = "×";   // ×
         del.title = "Delete " + e.name;
         del.addEventListener("click", (ev) => {
-          ev.stopPropagation();        // don't select / navigate
+          ev.stopPropagation();
           confirmAndDelete(fullPath, e);
         });
         li.appendChild(del);
@@ -515,13 +538,9 @@
     elPreviewBody.textContent = payload.text;
   }
 
-  function refreshPreviewButton(file) {
-    if (!elPreviewBtn) return;
-    elPreviewBtn.disabled = !file;
-    elPreviewBtn.title = file
-      ? "Preview " + file.split("/").pop()
-      : "Pick a file in the list to preview it.";
-  }
+  // (refreshPreviewButton retired in v5.1 -- the Preview affordance is
+  //  now per-entry on hover in the list, not a separate bottom-bar
+  //  button.  setShared() no longer calls it.)
 
   // ----- Navigation --------------------------------------------- //
 
@@ -588,14 +607,14 @@
     const uploadCancel = document.getElementById("ps-upload-cancel");
     if (uploadCancel) uploadCancel.addEventListener("click", resetUploadForm);
 
-    // File-preview modal (view: functional; save: stub).
-    elPreviewBtn   = document.getElementById("ps-preview-btn");
+    // File-preview modal (view: functional; save: stub).  The Preview
+    // trigger is per-entry (renderList attaches a "view" button to
+    // each file row on hover), not a separate sidebar-level button.
     elPreviewModal = document.getElementById("ps-preview-modal");
     elPreviewTitle = document.getElementById("ps-preview-title");
     elPreviewMeta  = document.getElementById("ps-preview-meta");
     elPreviewBody  = document.getElementById("ps-preview-body");
     elPreviewError = document.getElementById("ps-preview-error");
-    if (elPreviewBtn) elPreviewBtn.addEventListener("click", showPreview);
     if (elPreviewModal) {
       elPreviewModal.querySelectorAll(
         ".ps-preview-close, .ps-preview-close-footer, .ps-preview-backdrop"
