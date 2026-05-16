@@ -1,7 +1,16 @@
 # Spec — Selection model (Projects sidebar + tab contract)
 
-**Module(s)**: `molbuilder/web/static/lib/projects-sidebar.js`,
-`molbuilder/web/templates/_projects_sidebar.html`,
+**Module(s)**: sidebar JS is split across small ES modules:
+
+  * `static/lib/projects-sidebar.js`     -- entry point (imports + bootstrap)
+  * `static/lib/projects/api.js`         -- HTTP wrappers (no DOM, no state)
+  * `static/lib/projects/state.js`       -- sessionStorage + Inquire API + writeFile/saveToWorkspace
+  * `static/lib/projects/list.js`        -- breadcrumb + entry list + per-entry buttons + openDir
+  * `static/lib/projects/forms.js`       -- + New project / + New subdir / + Upload file
+  * `static/lib/projects/preview.js`     -- file-preview modal
+
+Loaded via `<script type="module">` -- no bundler.  Template:
+`molbuilder/web/templates/_projects_sidebar.html`.  Backend:
 `molbuilder/web/blueprints/files.py`.
 **Tests**: `tests/test_web_files.py`.
 

@@ -328,36 +328,82 @@ class TestSidebarPartialAndShim:
         r = web.get("/projects")
         assert r.status_code == 404
 
-    def test_projects_sidebar_js_served(self, web, picker_root):
+    def test_projects_sidebar_entry_is_small_and_bootstraps(
+        self, web, picker_root,
+    ):
+        # v5.3 (split): entry file is ~50 LOC and only does imports +
+        # bootstrap.  Behaviour lives in projects/*.js modules.
         r = web.get("/static/lib/projects-sidebar.js")
         assert r.status_code == 200
         body = r.get_data(as_text=True)
-        # Single-column + breadcrumb design contract.
-        assert "openDir" in body
-        assert "renderBreadcrumb" in body
-        assert "molbuilder.current_dir" in body
-        assert "molbuilder.current_file" in body
-        # v5.2: dynamic top measurement was retired in favour of a
-        # full-viewport sidebar (top:0 -> bottom:0 via CSS).  The
-        # function is gone; the prior hardcoded 3rem also gone.
-        assert "measureSidebarTop" not in body
-        # Inquire-model public API (replaces the v2 tab-action buttons).
-        assert "window.molbuilder.projects" in body
+        # ES module imports for each sub-module.
+        assert 'from "./projects/api.js"' in body
+        assert 'from "./projects/state.js"' in body
+        assert 'from "./projects/list.js"' in body
+        assert 'from "./projects/forms.js"' in body
+        assert 'from "./projects/preview.js"' in body
+        # Mounts the public Inquire API on window.
+        assert "window.molbuilder.projects = projects" in body
+        # Bootstrap glue only -- behaviour has moved out.
+        assert "openDir" in body          # called once for initial nav
+        assert "initList" in body
+        assert "initForms" in body
+        assert "initPreview" in body
+        # No more module-level state declarations -- that's state.js's job.
+        assert "renderBreadcrumb" not in body
+        assert "submitMkdir" not in body
+        assert "_isDeletableEntry" not in body
+
+    def test_projects_state_module_exposes_inquire_api(
+        self, web, picker_root,
+    ):
+        r = web.get("/static/lib/projects/state.js")
+        assert r.status_code == 200
+        body = r.get_data(as_text=True)
+        # Inquire-API public methods.
         assert "getCurrentDir" in body
         assert "getCurrentFile" in body
         assert "onChange" in body
         assert "readCurrentFile" in body
         assert "relativeToProjects" in body
-        assert "refresh:" in body
-        # The "Open in <Tab>" extension-mapping dict was retired -- the
-        # sidebar no longer knows about tabs.
+        assert "refresh" in body
+        # writeFile primitive + saveToWorkspace convenience.
+        assert "writeFile" in body
+        assert "saveToWorkspace" in body
+        # sessionStorage keys (the cross-tab contract).
+        assert "molbuilder.current_dir" in body
+        assert "molbuilder.current_file" in body
+        # Retired surfaces stay retired.
         assert "OPEN_TARGETS" not in body
-        # File-manipulation: mkdir is the v1 ship.
-        assert "submitMkdir" in body
-        assert "/api/files/mkdir" in body
-        # Cruft from prior pivots that shouldn't return.
-        assert "sidebar_collapsed" not in body
         assert "molbuilderTabAutoLoad" not in body
+        assert "sidebar_collapsed" not in body
+        assert "measureSidebarTop" not in body
+
+    def test_projects_list_module_owns_rendering(self, web, picker_root):
+        r = web.get("/static/lib/projects/list.js")
+        assert r.status_code == 200
+        body = r.get_data(as_text=True)
+        assert "openDir" in body
+        assert "_renderBreadcrumb" in body
+        assert "_renderList" in body
+        # Delete eligibility + per-entry buttons.
+        assert "_isDeletableEntry" in body
+        assert "_UNDELETABLE_AT_DEPTH_1" in body
+        # Per-entry view + delete buttons (created in renderList).
+        assert "ps-entry-preview" in body
+        assert "ps-entry-delete" in body
+
+    def test_projects_api_module_is_pure_http(self, web, picker_root):
+        r = web.get("/static/lib/projects/api.js")
+        assert r.status_code == 200
+        body = r.get_data(as_text=True)
+        for fn in ("apiRoots", "apiList", "apiStat", "apiRead",
+                   "apiMkdir", "apiCreateProject", "apiUpload",
+                   "apiDelete", "apiWrite"):
+            assert "export async function " + fn in body, fn
+        # No DOM references in this module.
+        assert "document." not in body
+        assert "window." not in body
 
     def test_projects_sidebar_css_served(self, web, picker_root):
         r = web.get("/static/lib/projects-sidebar.css")
@@ -677,19 +723,18 @@ class TestSidebarCreateUI:
     def test_create_project_uses_canonical_subdir_list_in_js(
         self, web, picker_root,
     ):
-        # The JS hard-codes the CANONICAL_TOPICS_DISPLAY list to render
-        # the note ("structure/, pseudopotential/, ...").  Pin it so a
-        # future Python-side topic addition doesn't drift from the UI
-        # without a code review noticing.
-        r = web.get("/static/lib/projects-sidebar.js")
-        body = r.get_data(as_text=True)
+        # v5.3: form handlers moved to projects/forms.js + the HTTP
+        # call to projects/api.js.  Tested across the two modules.
+        forms = web.get(
+            "/static/lib/projects/forms.js",
+        ).get_data(as_text=True)
         for needle in ("structure", "pseudopotential", "optimization",
                        "frequency", "spectrum", "transport",
-                       "single-point", "scan"):
-            assert f'"{needle}"' in body, needle
-        # And the POST handler.
-        assert "/api/projects/create" in body
-        assert "submitNewProject" in body
+                       "single-point", "scan", "user"):
+            assert f'"{needle}"' in forms, needle
+        assert "_submitNewProject" in forms
+        api = web.get("/static/lib/projects/api.js").get_data(as_text=True)
+        assert "/api/projects/create" in api
 
 
 class TestSidebarMkdirUI:
@@ -711,14 +756,13 @@ class TestSidebarMkdirUI:
     def test_mkdir_section_depth_aware_visibility_in_js(
         self, web, picker_root,
     ):
-        # Sidebar JS hides the + New subdir <details> when current_dir
-        # is at the projects/ root (depth 0).  Pin the toggle logic so
-        # a future refactor doesn't accidentally drop it.
-        r = web.get("/static/lib/projects-sidebar.js")
-        body = r.get_data(as_text=True)
-        # The toggle is keyed on closest("details") + hidden = atRoot.
+        # v5.3: lives in projects/forms.js.  Toggle keyed on
+        # closest("details") + section.hidden = atRoot.
+        body = web.get(
+            "/static/lib/projects/forms.js",
+        ).get_data(as_text=True)
         assert 'closest("details")' in body
-        assert "atRoot" in body
+        assert "_atRoot" in body or "atRoot" in body
         assert "section.hidden" in body
 
 
@@ -855,18 +899,25 @@ class TestGenerateWritesToWorkspace:
     + refresh logic."""
 
     def test_save_to_workspace_api_exposed(self, web):
-        # Single source of truth for the generate-and-save flow.
-        body = web.get(
-            "/static/lib/projects-sidebar.js",
+        # v5.3: saveToWorkspace lives in projects/state.js; the HTTP
+        # call + overwrite gate live in projects/api.js.
+        state = web.get(
+            "/static/lib/projects/state.js",
         ).get_data(as_text=True)
-        assert "saveToWorkspace" in body
-        # Posts to /api/files/write, refreshes via openDir.
-        assert "/api/files/write" in body
-        # Strict no-overwrite by default: explicit opts.overwrite gate.
-        assert "if (opts.overwrite) body.overwrite = true" in body
-        # Returns null on skip (no dir / at root) so callers can
-        # fall back to Download silently.
-        assert "return null" in body
+        assert "saveToWorkspace" in state
+        # Returns null on skip (no dir / at root) so callers fall
+        # back silently.
+        assert "return null" in state
+        # Two-tier API: writeFile primitive too.
+        assert "writeFile" in state
+
+        api = web.get(
+            "/static/lib/projects/api.js",
+        ).get_data(as_text=True)
+        assert "/api/files/write" in api
+        # Strict no-overwrite gate (only sets body.overwrite when
+        # explicitly opted in).
+        assert "if (opts.overwrite) body.overwrite = true" in api
 
     def test_spectra_viewer_uses_save_to_workspace(self, web):
         body = web.get(
@@ -932,12 +983,11 @@ class TestSidebarStubsUI:
         assert '+ Upload file</summary>' in body
 
     def test_upload_section_depth_aware_visibility_in_js(self, web):
-        # Same string-grep pattern as the mkdir-section test; the
-        # toggle function name + closest("details") + atRoot all
-        # appear in the JS source.  E2E confirmation deferred.
-        body = web.get("/static/lib/projects-sidebar.js").get_data(as_text=True)
-        assert "updateUploadContext" in body
-        # The function reuses the same atRoot pattern.
+        # v5.3: lives in projects/forms.js.
+        body = web.get(
+            "/static/lib/projects/forms.js",
+        ).get_data(as_text=True)
+        assert "_updateUploadContext" in body
         assert "elUploadForm" in body
         assert "elUploadContext" in body
 
@@ -955,14 +1005,13 @@ class TestSidebarStubsUI:
         assert 'class="ps-actions-row"' not in body
 
     def test_preview_per_entry_handler_in_js(self, web):
-        # The per-entry button is built by renderList(); pin the
-        # class name + the showPreview() call from the entry handler.
+        # v5.3: per-entry button is built by renderList() in
+        # projects/list.js.
         body = web.get(
-            "/static/lib/projects-sidebar.js",
+            "/static/lib/projects/list.js",
         ).get_data(as_text=True)
         assert "ps-entry-preview" in body
-        # The button reads "view" (matches the visual pattern -- short
-        # text label like the × of delete).
+        # The button reads "view" (matches × of delete).
         assert 'view.textContent = "view"' in body
         # File-only: directories don't get a Preview button.
         assert 'if (e.kind === "file")' in body
@@ -1004,24 +1053,41 @@ class TestSidebarStubsUI:
         assert 'id="ps-preview-modal" class="ps-preview-modal" hidden' in body
 
     def test_preview_uses_existing_read_endpoint_in_js(self, web):
-        # Preview is fully functional for view; the JS calls
-        # window.molbuilder.projects.readCurrentFile() which wraps
-        # /api/files/read.  Pin so a future refactor doesn't switch
-        # to a hypothetical new endpoint without notice.
-        body = web.get("/static/lib/projects-sidebar.js").get_data(as_text=True)
-        assert "readCurrentFile" in body
-        assert "showPreview" in body
-        assert "openPreviewModal" in body
-        assert "closePreviewModal" in body
+        # v5.3: showPreview / openPreviewModal / closePreviewModal
+        # live in projects/preview.js; the read backing is in
+        # projects/state.js (readCurrentFile wraps /api/files/read).
+        preview = web.get(
+            "/static/lib/projects/preview.js",
+        ).get_data(as_text=True)
+        assert "showPreview" in preview
+        assert "openPreviewModal" in preview
+        assert "closePreviewModal" in preview
+        # Preview calls into state for the actual read.
+        assert "readCurrentFile" in preview
+        state = web.get(
+            "/static/lib/projects/state.js",
+        ).get_data(as_text=True)
+        assert "readCurrentFile" in state
+        api = web.get(
+            "/static/lib/projects/api.js",
+        ).get_data(as_text=True)
+        assert "/api/files/read" in api
 
     def test_delete_button_logic_in_js(self, web):
-        # Per-entry × button is rendered for deletable entries.  The
-        # eligibility check + confirm flow is in the JS; backend 501s.
-        body = web.get("/static/lib/projects-sidebar.js").get_data(as_text=True)
+        # v5.3: eligibility check + confirm flow in projects/list.js;
+        # HTTP call in projects/api.js (backend 501 stub).
+        body = web.get(
+            "/static/lib/projects/list.js",
+        ).get_data(as_text=True)
         assert "_isDeletableEntry" in body
         assert "ps-entry-delete" in body
-        assert "confirmAndDelete" in body
+        assert "_confirmAndDelete" in body
         assert "_UNDELETABLE_AT_DEPTH_1" in body
+        api = web.get(
+            "/static/lib/projects/api.js",
+        ).get_data(as_text=True)
+        assert "apiDelete" in api
+        assert "/api/files/delete" in api
 
     def test_delete_button_has_hover_visibility_css(self, web):
         # The × shows only on hover so it doesn't clutter the list.
