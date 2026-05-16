@@ -723,8 +723,8 @@ def test_modify_page_loads(web_client):
         'id="atom-list-body"',
         'id="atom-list"',
         'id="viewer"',
-        'id="file-picker"',
-        'id="load-btn"',
+        # file-picker + load-btn were removed in the Projects-sidebar
+        # pivot (sidebar is the only structure-loading path now).
         'id="rep"',
         'id="show-indices"',
         'id="clear-selection"',

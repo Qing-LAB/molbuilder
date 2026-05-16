@@ -1,23 +1,30 @@
 /* Persistent Projects sidebar.
  *
  * Layout: single-column directory listing with a clickable breadcrumb
- * at the top.  Click a directory entry → drill into it.  Click a
- * crumb → jump back to that level.  Click a file → select it (writes
- * shared sessionStorage state for subscriber tabs to react).
+ * at the top.  Click a directory → drill in.  Click a crumb → jump
+ * back to that level.  Click a file → select it (writes shared
+ * sessionStorage state; sidebar then renders contextual "Open in
+ * <Tab>" buttons in the actions area).
  *
- * Single root: `projects/` (from Capabilities.file_picker_roots,
- * which now returns just that single entry).  No CWD, no
- * user-configurable roots in v1.
+ * v2 (this revision):
+ *   * Drop the collapse toggle -- always open.
+ *   * JS-measure header + nav heights on load + resize so the
+ *     sidebar's `top:` matches the actual rendered offset (the
+ *     hardcoded `top: 3rem` of v1 didn't account for the page
+ *     header above the app-tabs nav).
+ *   * Replace the per-tab "Use this file" banner pattern with
+ *     contextual "Open in <Tab>" buttons in the sidebar itself.
+ *     Buttons navigate via `location.href = "/<tab>"`; the target
+ *     tab's auto-load hook (registered via window.molbuilderTabAutoLoad
+ *     by each tab's own JS) reads sessionStorage.molbuilder.current_file
+ *     on init and fires the tab's Load flow if the file type matches.
  *
- * Shared state (sessionStorage; cross-tab via 'storage' event,
- * same-tab via 'molbuilder.selection' CustomEvent):
+ * Single root: `projects/` (Capabilities.file_picker_roots() returns
+ * just that single entry).  No CWD, no user-configurable additions.
+ *
+ * Shared state (sessionStorage):
  *   molbuilder.current_dir   = absolute path of the displayed directory
  *   molbuilder.current_file  = absolute path of the selected file ("" if none)
- *
- * Subscriber tabs read this state via lib/projects-selection.js.
- *
- * The sidebar is hydrated on DOMContentLoaded; the calling template
- * just needs to include _projects_sidebar.html + this script.
  */
 
 (function () {
@@ -25,10 +32,34 @@
 
   const SS_DIR   = "molbuilder.current_dir";
   const SS_FILE  = "molbuilder.current_file";
-  const SS_COLLAPSED = "molbuilder.sidebar_collapsed";
+
+  // Map of (extension -> [{tab_path, label}, ...]).  The sidebar
+  // renders one "Open in <Tab>" button per entry whose extension
+  // matches the selected file's name.  Order matters because
+  // ".spectra.json" is checked before ".json" via length-sorted keys.
+  const OPEN_TARGETS = {
+    ".xyz":          [{tab: "/modify",  label: "Open in Modify"},
+                      {tab: "/",        label: "Open in Build"}],
+    ".pdb":          [{tab: "/modify",  label: "Open in Modify"}],
+    ".molwatch.log": [{tab: "/watch",   label: "Open in Watch"}],
+    ".spectra.json": [{tab: "/spectra", label: "Open in Spectra"}],
+    ".log":          [{tab: "/watch",   label: "Open in Watch"}],
+    ".out":          [{tab: "/watch",   label: "Open in Watch"}],
+  };
+  const EXT_KEYS = Object.keys(OPEN_TARGETS).sort(
+    (a, b) => b.length - a.length    // longest first: ".spectra.json" > ".json"
+  );
+
+  function pickTargets(name) {
+    const lower = name.toLowerCase();
+    for (const ext of EXT_KEYS) {
+      if (lower.endsWith(ext)) return OPEN_TARGETS[ext];
+    }
+    return [];
+  }
 
   // ----- DOM refs (resolved after DOMContentLoaded) ------------- //
-  let elCrumb, elList, elSelection, elToggle, elSidebar;
+  let elCrumb, elList, elActions, elActionsHint, elSidebar;
 
   // The root path of `projects/`, resolved from /api/files/roots
   // at startup.  All paths displayed in the sidebar are inside this.
@@ -51,9 +82,26 @@
   function setShared(dir, file) {
     sessionStorage.setItem(SS_DIR,  dir  || "");
     sessionStorage.setItem(SS_FILE, file || "");
+    // Tabs that mount auto-loaders subscribe to this CustomEvent
+    // (same-window).  Cross-window listeners can also use the
+    // standard 'storage' event.
     window.dispatchEvent(new CustomEvent("molbuilder.selection", {
       detail: {dir: dir || "", file: file || ""},
     }));
+  }
+
+  // ----- Dynamic sidebar top measurement ------------------------ //
+
+  function measureSidebarTop() {
+    // Top of sidebar = bottom of the last non-sidebar element above
+    // the main content (page <header> + .app-tabs nav).  Measuring
+    // both elements handles a wrapped multi-line tagline correctly.
+    const headerEl = document.querySelector("body > header");
+    const navEl    = document.querySelector("body > nav.app-tabs");
+    let topPx = 0;
+    if (headerEl) topPx += headerEl.offsetHeight;
+    if (navEl)    topPx += navEl.offsetHeight;
+    elSidebar.style.top = topPx + "px";
   }
 
   // ----- Rendering ---------------------------------------------- //
@@ -62,9 +110,6 @@
     elCrumb.innerHTML = "";
     if (!projectsRoot) return;
 
-    // Build the sequence of crumb hops from projectsRoot to currentPath.
-    // Each crumb shows a single path segment; the first is always
-    // "projects".
     const hops = [{label: "projects", path: projectsRoot}];
     if (currentPath && currentPath !== projectsRoot) {
       const rel = currentPath.slice(projectsRoot.length).replace(/^\/+/, "");
@@ -100,7 +145,6 @@
     elList.classList.toggle("is-empty", entries.length === 0);
     if (entries.length === 0) return;
 
-    // Track the currently-selected file so re-renders preserve highlight.
     const selectedFile = sessionStorage.getItem(SS_FILE) || "";
 
     for (const e of entries) {
@@ -139,7 +183,7 @@
         } else {
           markSelected(li);
           setShared(currentPath, fullPath);
-          updateSelectionLabel();
+          renderActions(e.name, fullPath);
         }
       });
       elList.appendChild(li);
@@ -159,21 +203,60 @@
     return (n / 1024 / 1024 / 1024).toFixed(1) + " G";
   }
 
-  function updateSelectionLabel() {
-    const file = sessionStorage.getItem(SS_FILE) || "";
-    const dir  = sessionStorage.getItem(SS_DIR)  || "";
-    let display = "(none)";
-    if (file && projectsRoot) {
-      display = file.startsWith(projectsRoot)
-        ? file.slice(projectsRoot.length).replace(/^\/+/, "") || file
-        : file;
-    } else if (dir && projectsRoot) {
-      display = dir.startsWith(projectsRoot)
-        ? dir.slice(projectsRoot.length).replace(/^\/+/, "") || "/"
-        : dir;
+  // ----- Action buttons (the "what now?" panel) ----------------- //
+
+  function renderActions(filename, fullPath) {
+    elActions.innerHTML = "";
+
+    const sel = document.createElement("div");
+    sel.className = "ps-action-selected";
+    sel.innerHTML = "Selected: <strong></strong>";
+    sel.querySelector("strong").textContent = filename;
+    sel.title = fullPath;
+    elActions.appendChild(sel);
+
+    const targets = pickTargets(filename);
+    if (targets.length === 0) {
+      const hint = document.createElement("p");
+      hint.className = "ps-actions-hint";
+      hint.textContent = "No quick-open target for this file type.";
+      elActions.appendChild(hint);
+      return;
     }
-    elSelection.textContent = display;
-    elSelection.title = file || dir || "";
+
+    const currentPath = window.location.pathname;
+    for (const t of targets) {
+      const btn = document.createElement("button");
+      btn.className = "ps-action-btn"
+        + (t.tab === currentPath ? " is-current-tab" : "");
+      btn.type = "button";
+      btn.textContent = t.tab === currentPath
+        ? "Load here (" + t.label.replace(/^Open in /, "") + ")"
+        : t.label;
+      btn.addEventListener("click", () => triggerOpenIn(t.tab));
+      elActions.appendChild(btn);
+    }
+  }
+
+  function triggerOpenIn(tabPath) {
+    // The target tab's auto-load hook (registered as
+    // window.molbuilderTabAutoLoad) reads sessionStorage.current_file
+    // on init.  If we're already on that tab, fire the auto-load
+    // directly without navigating.
+    const currentPath = window.location.pathname;
+    if (tabPath === currentPath && window.molbuilderTabAutoLoad) {
+      window.molbuilderTabAutoLoad();
+      return;
+    }
+    window.location.href = tabPath;
+  }
+
+  function clearActions() {
+    elActions.innerHTML = "";
+    const hint = document.createElement("p");
+    hint.className = "ps-actions-hint";
+    hint.textContent = "Click a file above to see open actions.";
+    elActions.appendChild(hint);
   }
 
   // ----- Navigation --------------------------------------------- //
@@ -189,45 +272,29 @@
       li.textContent = resp.error || "Failed to list directory.";
       elList.appendChild(li);
       setShared(absPath, "");
-      updateSelectionLabel();
+      clearActions();
       return;
     }
     renderBreadcrumb(resp.path);
     renderList(resp.entries, resp.path);
-    // Update the current dir; clear file selection because we just
-    // navigated (selection of a file is an explicit click below).
     setShared(resp.path, "");
-    updateSelectionLabel();
-  }
-
-  // ----- Collapse toggle ---------------------------------------- //
-
-  function applyCollapsed(collapsed) {
-    document.body.classList.toggle("sidebar-collapsed", !!collapsed);
-    elToggle.setAttribute("aria-expanded", String(!collapsed));
-    sessionStorage.setItem(SS_COLLAPSED, collapsed ? "1" : "0");
+    clearActions();
   }
 
   // ----- Init --------------------------------------------------- //
 
   async function init() {
-    elSidebar   = document.getElementById("projects-sidebar");
-    if (!elSidebar) return;        // page doesn't include the partial
+    elSidebar = document.getElementById("projects-sidebar");
+    if (!elSidebar) return;          // page doesn't include the partial
 
-    elCrumb     = document.getElementById("ps-breadcrumb");
-    elList      = document.getElementById("ps-list");
-    elSelection = document.getElementById("ps-selection");
-    elToggle    = document.getElementById("ps-toggle");
+    elCrumb       = document.getElementById("ps-breadcrumb");
+    elList        = document.getElementById("ps-list");
+    elActions     = document.getElementById("ps-actions");
+    elActionsHint = document.getElementById("ps-actions-hint");
 
     document.body.classList.add("has-projects-sidebar");
-    // Restore prior collapse state.
-    if (sessionStorage.getItem(SS_COLLAPSED) === "1") {
-      applyCollapsed(true);
-    }
-    elToggle.addEventListener("click", () => {
-      const isNowCollapsed = !document.body.classList.contains("sidebar-collapsed");
-      applyCollapsed(isNowCollapsed);
-    });
+    measureSidebarTop();
+    window.addEventListener("resize", measureSidebarTop);
 
     // Resolve projects/ from the API (single root).
     const roots = await apiRoots();
@@ -239,12 +306,31 @@
     }
     projectsRoot = roots[0].path;
 
-    // Navigate to the previously-displayed dir if it's still inside
-    // projects/, else start at the root.
+    // Restore prior dir from sessionStorage if it's still inside projects/.
     const lastDir = sessionStorage.getItem(SS_DIR) || "";
     const start = (lastDir && lastDir.startsWith(projectsRoot))
                 ? lastDir : projectsRoot;
     await openDir(start);
+
+    // If a file was already selected (e.g., user navigated here from
+    // another tab via "Open in X"), keep its highlight + show actions.
+    const file = sessionStorage.getItem(SS_FILE) || "";
+    if (file && file.startsWith(projectsRoot)) {
+      // Re-mark highlight inside the rendered list.
+      const li = elList.querySelector(
+        `.ps-entry[data-path="${cssEscape(file)}"]`
+      );
+      if (li) markSelected(li);
+      renderActions(file.split("/").pop(), file);
+    }
+  }
+
+  // Minimal CSS.escape polyfill (just enough for paths -- escape
+  // backslash + quote characters that could break the attribute
+  // selector).  Modern browsers have CSS.escape; this is a fallback.
+  function cssEscape(s) {
+    if (typeof CSS !== "undefined" && CSS.escape) return CSS.escape(s);
+    return s.replace(/["\\]/g, "\\$&");
   }
 
   if (document.readyState === "loading") {

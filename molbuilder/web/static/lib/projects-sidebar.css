@@ -1,9 +1,13 @@
 /* Persistent Projects sidebar -- always-visible left panel.
  *
- * Layout: fixed-position aside on the left, under the app-tabs
- * header.  Body gets a matching left padding so the main content
- * shifts right.  Toggle button collapses the panel to a thin strip
- * with just the toggle (no list / breadcrumb).
+ * Layout: fixed-position aside on the left, under the page header
+ * + app-tabs nav.  The `top:` value is set dynamically by
+ * projects-sidebar.js (measures both elements + listens for resize)
+ * so a variable-height tagline doesn't end up overlapping the sidebar.
+ *
+ * The body gets `class="has-projects-sidebar"` from the JS, which
+ * triggers `padding-left: var(--ps-w)` so the main content shifts
+ * right of the sidebar.
  *
  * Markup contract:  templates/_projects_sidebar.html
  * Behaviour:        static/lib/projects-sidebar.js
@@ -11,7 +15,6 @@
 
 :root {
   --ps-w:           18rem;
-  --ps-w-collapsed: 2.4rem;
   --ps-bg:          #181818;
   --ps-fg:          #ddd;
   --ps-fg-muted:    #999;
@@ -19,33 +22,33 @@
   --ps-hover:       #232323;
   --ps-selected:    #2d4a6e;
   --ps-selected-fg: #fff;
-  --app-tabs-h:     3rem;   /* matches app-tab vertical size */
 }
 
 /* Shift the page content right to make room for the sidebar.
- * Targets the <main> sibling rather than body so the app-tabs
- * header stays full-width across the top. */
-body.has-projects-sidebar > main,
-body.has-projects-sidebar > .modify-grid,
-body.has-projects-sidebar > .loader-bar,
-body.has-projects-sidebar > section,
-body.has-projects-sidebar > footer {
-  margin-left: var(--ps-w);
-  transition: margin-left 0.18s ease;
+ * Apply to body so EVERY descendant block-level child shifts,
+ * regardless of which template-specific class is on it. */
+body.has-projects-sidebar {
+  padding-left: var(--ps-w);
 }
 
-body.sidebar-collapsed > main,
-body.sidebar-collapsed > .modify-grid,
-body.sidebar-collapsed > .loader-bar,
-body.sidebar-collapsed > section,
-body.sidebar-collapsed > footer {
-  margin-left: var(--ps-w-collapsed);
+/* The app-tabs nav + page header should still span full width above
+ * the sidebar -- pull them back left to cover that area, since the
+ * body padding would otherwise leave a gap. */
+body.has-projects-sidebar > header,
+body.has-projects-sidebar > nav.app-tabs {
+  margin-left: calc(-1 * var(--ps-w));
+  padding-left: var(--ps-w);
+  box-sizing: border-box;
 }
 
 .projects-sidebar {
   position: fixed;
   left: 0;
-  top: var(--app-tabs-h);
+  /* top is set in JS after measuring header + nav heights so a
+     tagline that wraps to two lines doesn't overlap the sidebar.
+     Default 0 keeps the panel visually consistent during the brief
+     pre-JS load tick. */
+  top: 0;
   bottom: 0;
   width: var(--ps-w);
   background: var(--ps-bg);
@@ -55,45 +58,15 @@ body.sidebar-collapsed > footer {
   flex-direction: column;
   font: 13px/1.4 system-ui, sans-serif;
   z-index: 5;
-  transition: width 0.18s ease;
   overflow: hidden;
-}
-
-body.sidebar-collapsed .projects-sidebar {
-  width: var(--ps-w-collapsed);
-}
-
-body.sidebar-collapsed .ps-title,
-body.sidebar-collapsed .ps-breadcrumb,
-body.sidebar-collapsed .ps-list,
-body.sidebar-collapsed .ps-footer {
-  display: none;
 }
 
 /* ---- Header --------------------------------------------------- */
 
 .ps-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.4rem 0.6rem;
+  padding: 0.4rem 0.7rem;
   border-bottom: 1px solid var(--ps-border);
   background: #141414;
-}
-
-.ps-toggle {
-  background: transparent;
-  border: 1px solid var(--ps-border);
-  color: var(--ps-fg);
-  padding: 0.1rem 0.5rem;
-  cursor: pointer;
-  border-radius: 3px;
-  font-size: 1rem;
-  line-height: 1;
-}
-
-.ps-toggle:hover {
-  background: var(--ps-hover);
 }
 
 .ps-title {
@@ -105,7 +78,7 @@ body.sidebar-collapsed .ps-footer {
 /* ---- Breadcrumb ----------------------------------------------- */
 
 .ps-breadcrumb {
-  padding: 0.35rem 0.6rem;
+  padding: 0.35rem 0.7rem;
   border-bottom: 1px solid var(--ps-border);
   font-size: 0.78rem;
   color: var(--ps-fg-muted);
@@ -161,7 +134,7 @@ body.sidebar-collapsed .ps-footer {
   display: flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.3rem 0.6rem;
+  padding: 0.3rem 0.7rem;
   cursor: pointer;
   border-bottom: 1px solid transparent;
   user-select: none;
@@ -201,32 +174,69 @@ body.sidebar-collapsed .ps-footer {
   font-family: monospace;
 }
 
-/* ---- Footer / current selection ------------------------------ */
+/* ---- Actions area -------------------------------------------- */
 
-.ps-footer {
-  padding: 0.4rem 0.6rem;
+.ps-actions {
+  padding: 0.5rem 0.7rem;
   border-top: 1px solid var(--ps-border);
   background: #141414;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 40%;
+  overflow-y: auto;
+}
+
+.ps-actions-hint {
+  margin: 0;
   font-size: 0.78rem;
   color: var(--ps-fg-muted);
-  display: flex;
-  gap: 0.4rem;
-  align-items: center;
+  font-style: italic;
 }
 
-.ps-selection-label {
-  font-weight: 600;
-}
-
-.ps-selection {
-  flex: 1;
-  font-family: monospace;
-  background: #0d0d0d;
-  border: 1px solid var(--ps-border);
-  padding: 0.1rem 0.3rem;
-  border-radius: 2px;
+.ps-action-selected {
+  font-size: 0.78rem;
+  color: var(--ps-fg-muted);
+  border-bottom: 1px dashed var(--ps-border);
+  padding-bottom: 0.3rem;
+  margin-bottom: 0.1rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ps-action-selected strong {
   color: var(--ps-fg);
+  font-family: monospace;
+  font-weight: normal;
+}
+
+.ps-action-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.35rem 0.55rem;
+  background: var(--ps-hover);
+  color: var(--ps-fg);
+  border: 1px solid var(--ps-border);
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.ps-action-btn:hover {
+  background: var(--ps-selected);
+  color: var(--ps-selected-fg);
+  border-color: var(--ps-selected);
+}
+
+.ps-action-btn:active {
+  transform: translateY(1px);
+}
+
+.ps-action-btn.is-current-tab {
+  background: var(--ps-selected);
+  color: var(--ps-selected-fg);
+  border-color: var(--ps-selected);
+  font-weight: 600;
 }

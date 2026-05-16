@@ -338,26 +338,32 @@ class TestSidebarPartialAndShim:
         assert "molbuilder.current_dir" in body
         assert "molbuilder.current_file" in body
         assert "molbuilder.selection" in body
-        # Toggle persistence.
-        assert "molbuilder.sidebar_collapsed" in body
+        # Dynamic top measurement (the v1 hardcoded 3rem caused
+        # overlap with the header above the app-tabs nav).
+        assert "measureSidebarTop" in body
+        assert "offsetHeight" in body
+        # Action buttons + auto-load hand-off.
+        assert "renderActions" in body
+        assert "molbuilderTabAutoLoad" in body
+        # Collapse toggle was removed.
+        assert "sidebar_collapsed" not in body
 
     def test_projects_sidebar_css_served(self, web, picker_root):
         r = web.get("/static/lib/projects-sidebar.css")
         assert r.status_code == 200
         body = r.get_data(as_text=True)
-        # The two key layout classes the partial relies on.
+        # The key layout classes the partial relies on.
         assert ".projects-sidebar" in body
         assert ".ps-breadcrumb" in body
+        assert ".ps-actions" in body
+        # Body-padding shift for main content.
+        assert "padding-left: var(--ps-w)" in body
 
-    def test_projects_selection_shim_served(self, web, picker_root):
+    def test_projects_selection_shim_removed(self, web, picker_root):
+        # The per-tab projects-selection shim was retired -- the sidebar
+        # actions section took over (no more "Use this file" banner).
         r = web.get("/static/lib/projects-selection.js")
-        assert r.status_code == 200
-        body = r.get_data(as_text=True)
-        assert "molbuilderProjectsSelection" in body
-        assert "init" in body
-        assert "molbuilder.current_file" in body
-        assert "molbuilder.selection" in body
-        assert 'addEventListener("storage"' in body
+        assert r.status_code == 404
 
     @pytest.mark.parametrize("path", ["/", "/spectra", "/modify", "/watch"])
     def test_sidebar_included_in_every_tab(self, web, picker_root, path):
@@ -368,22 +374,25 @@ class TestSidebarPartialAndShim:
         assert 'id="projects-sidebar"' in body, path
         assert 'id="ps-breadcrumb"' in body, path
         assert 'id="ps-list"' in body, path
+        assert 'id="ps-actions"' in body, path
         # Sidebar JS + CSS included.
         assert "projects-sidebar.js" in body, path
         assert "projects-sidebar.css" in body, path
 
     @pytest.mark.parametrize("path", ["/spectra", "/modify", "/watch"])
-    def test_subscriber_tabs_include_banner_and_shim(
+    def test_subscriber_tabs_register_auto_load_hook(
         self, web, picker_root, path,
     ):
+        # Each subscriber tab now exposes window.molbuilderTabAutoLoad
+        # instead of including the (retired) projects-selection.js
+        # banner shim.  Pin both the new hook AND the absence of the
+        # old surface.
         r = web.get(path)
         assert r.status_code == 200
         body = r.get_data(as_text=True)
-        assert 'id="projects-banner"' in body, path
-        assert "projects-selection.js" in body, path
-        # The shim's CSS classes are required by the banner contract.
-        assert 'class="ps-path"' in body, path
-        assert 'class="ps-use-btn"' in body, path
+        assert "molbuilderTabAutoLoad" in body, path
+        assert "projects-selection.js" not in body, path
+        assert 'id="projects-banner"' not in body, path
 
     def test_projects_nav_entry_removed(self, web):
         # The "Projects" app-tab entry was removed from _app_header.html

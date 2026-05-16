@@ -1,42 +1,40 @@
 {#- molbuilder Projects sidebar -- always-visible left panel.
 
    Included by every main tab template (build, modify, watch, spectra)
-   after _app_header.html and before <main>.  CSS in lib/projects-
-   sidebar.css fixes the panel to the left edge under the app-tabs
-   header; CSS body { padding-left: var(--sidebar-w); } shifts the
-   main content right by the sidebar's width.
+   after _app_header.html.  Layout: fixed-position aside on the left
+   under the header + app-tabs nav; lib/projects-sidebar.js measures
+   their height on load + resize and sets the sidebar's `top:`
+   dynamically.  CSS in lib/projects-sidebar.css shifts the main
+   content right via body { padding-left: var(--ps-w); }.
 
-   The sidebar's behaviour comes from lib/projects-sidebar.js:
-     * lists projects/<...> entries one level at a time
-     * breadcrumb at the top with clickable parent links
-     * clicking a directory drills in; clicking a file selects it
-     * selection is written to sessionStorage.molbuilder.current_{dir,file}
-       so subscriber tabs (their projects-selection.js shim) react
-       live via the storage / molbuilder.selection events
-
-   The toggle button in the header collapses the sidebar to a thin
-   strip when the user wants the main content to take the full width.
+   v2 (this revision):
+     * Drop the collapse toggle.  Always open.
+     * Drop the "Use this file" banner pattern from per-tab loaders.
+     * Add an actions section at the bottom: when a file is selected,
+       render contextual "Open in <Tab>" buttons that navigate to the
+       relevant tab + trigger auto-load via sessionStorage.
 -#}
 <aside class="projects-sidebar" id="projects-sidebar" aria-label="Projects file explorer">
   <header class="ps-header">
-    <button id="ps-toggle" type="button" class="ps-toggle"
-            title="Collapse / expand the sidebar"
-            aria-controls="projects-sidebar"
-            aria-expanded="true">&#9776;</button>
     <h2 class="ps-title">Projects</h2>
   </header>
 
   <nav class="ps-breadcrumb" id="ps-breadcrumb" aria-label="Path">
-    <!-- Crumbs are inserted by projects-sidebar.js as clickable
-         spans: projects / proj / topic / structure -->
+    <!-- Crumbs inserted by projects-sidebar.js as clickable spans:
+         projects / proj / topic / structure -->
   </nav>
 
   <ul class="ps-list" id="ps-list" aria-live="polite">
     <!-- Current-directory entries inserted by projects-sidebar.js. -->
   </ul>
 
-  <footer class="ps-footer">
-    <span class="ps-selection-label">Selected:</span>
-    <code class="ps-selection" id="ps-selection">(none)</code>
-  </footer>
+  <section class="ps-actions" id="ps-actions"
+           aria-label="Actions for the selected file">
+    <!-- "Open in <Tab>" buttons inserted by projects-sidebar.js when
+         a file is selected.  Empty when no selection; a hint shows
+         in that case. -->
+    <p class="ps-actions-hint" id="ps-actions-hint">
+      Click a file above to see open actions.
+    </p>
+  </section>
 </aside>

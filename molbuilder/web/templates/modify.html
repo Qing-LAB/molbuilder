@@ -30,24 +30,11 @@
 <!-- ============================================================ -->
 
 <section class="loader-bar">
-  <!-- Projects-sidebar selection banner -- visible only when a
-       .xyz / .pdb is currently selected in the sidebar.  Click
-       "Use this file" to load it; this is now the only path for
-       getting a structure into Modify.  (A laptop-side <input
-       type=file> was removed because the rendered scripts run on
-       the server and can't read the local file anyway.) -->
-  <div id="projects-banner" class="projects-banner" hidden
-       role="status" aria-live="polite">
-    <span class="ps-label">Projects selection:</span>
-    <code class="ps-path"></code>
-    <button class="ps-use-btn" type="button">Use this file</button>
-    <button class="ps-clear"   type="button" title="Clear selection">×</button>
-  </div>
   <div class="loader">
     <span class="loader-hint">
       Pick a structure (<code>.xyz</code> / <code>.pdb</code>) in the
       <strong>Projects</strong> sidebar on the left, then click
-      &ldquo;Use this file&rdquo; above.
+      &ldquo;Load here (Modify)&rdquo;.
     </span>
     <span id="status" class="status">No structure loaded.</span>
   </div>
@@ -478,23 +465,28 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
 <script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-format.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-pick.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/projects-selection.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/viewer.js') }}"></script>
 <script>
-  // Projects-sidebar selection -> Modify.  The viewer exposes a
-  // public loader on window.molbuilder.loadXyzText so we POST the
-  // text directly via /api/build/load's JSON path -- no DataTransfer,
-  // no synthetic file-input event.
-  molbuilderProjectsSelection.init({
-    bannerEl: document.getElementById("projects-banner"),
-    extensions: [".xyz", ".pdb"],
-    onLoad: async function (path, text) {
-      const filename = path.split("/").pop();
-      if (window.molbuilder && window.molbuilder.loadXyzText) {
-        await window.molbuilder.loadXyzText(text, filename);
-      }
-    },
+  // Auto-load hook for the Projects sidebar: fetches the selected
+  // file's text via /api/files/read and hands it to the viewer's
+  // public loader (which POSTs to /api/build/load's JSON path).
+  window.molbuilderTabAutoLoad = async function () {
+    const file = sessionStorage.getItem("molbuilder.current_file") || "";
+    const lower = file.toLowerCase();
+    if (!(lower.endsWith(".xyz") || lower.endsWith(".pdb"))) return;
+    if (!(window.molbuilder && window.molbuilder.loadXyzText)) return;
+    try {
+      const r = await fetch(
+        "/api/files/read?path=" + encodeURIComponent(file)
+      );
+      const j = await r.json();
+      if (!j.ok) return;
+      await window.molbuilder.loadXyzText(j.text, file.split("/").pop());
+    } catch (e) { /* swallow -- sidebar shows the error on its side */ }
+  };
+  document.addEventListener("DOMContentLoaded", function () {
+    window.molbuilderTabAutoLoad();
   });
 </script>
 </body>
