@@ -892,6 +892,12 @@ class TestPySCFScriptIRScaffold:
                                                 compute_ir=True))
         assert "NOT YET VALIDATED" in s
         assert "spec.md" in s    # pointer to the validation status
+        # Charged-molecule caveat (origin-shift contamination) must be
+        # visible to a user reading the header.  Test prevents silent
+        # removal during a future header-doc refactor.
+        assert "CHARGED molecules" in s
+        # ASCII-only banner (no emoji, per project style rule).
+        assert "⚠" not in s
 
     def test_ir_requires_compute_raman_in_v1(self):
         """compute_ir=True + compute_raman=False raises at render-
