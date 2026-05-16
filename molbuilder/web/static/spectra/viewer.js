@@ -294,6 +294,29 @@
             ? `Generated with ${warns.length} warn(s).`
             : "Generated.";
         setStatus(els.generateStatus, summary, "ok");
+
+        // If a Projects sidebar dir is selected (and not the projects/
+        // root), also write the script to <current_dir>/<job>.spectra.py.
+        // Strict no-overwrite: if the file already exists, the 409
+        // message surfaces verbatim.  Download + Copy stay enabled as
+        // fallback for the "no dir selected" case.
+        //
+        // saveToWorkspace is the single source of truth for the
+        // generate-and-save flow (lib/projects-sidebar.js); each tab
+        // calls it instead of duplicating fetch + refresh logic.
+        const proj = (window.molbuilder || {}).projects;
+        if (!proj) return;
+        const r = await proj.saveToWorkspace(
+            state.lastScript, state.lastJobName + ".spectra.py");
+        if (!r) return;     // no current_dir / at root -- skip silently
+        if (r.ok) {
+            setStatus(els.generateStatus, "Wrote " + r.relPath, "ok");
+        } else {
+            setStatus(els.generateStatus,
+                "Generated, but " + r.error
+                + " Use Download / Copy below as fallback.",
+                "warn");
+        }
     }
 
     function clearOutputs() {

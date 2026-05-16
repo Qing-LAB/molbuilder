@@ -47,7 +47,27 @@ window.molbuilder.projects.onChange(callback)       // -> unsubscribe_fn
 window.molbuilder.projects.readCurrentFile()        // async -> {path, text} | null
 window.molbuilder.projects.relativeToProjects(path) // -> string  (display helper)
 window.molbuilder.projects.refresh()                // async -> Promise<void>
+window.molbuilder.projects.saveToWorkspace(text, filename, opts)
+                                                    // async -> null | {ok, path, relPath} | {ok:false, error}
 ```
+
+``saveToWorkspace`` is the single source of truth for the
+"generate-and-save" flow every tab needs.  Internally posts to
+``/api/files/write`` against ``<current_dir>/<filename>`` and
+auto-refreshes the sidebar on success.
+
+  * Returns ``null`` silently when ``current_dir`` is unset OR at
+    the picker root -- callers fall back to a local Download / Copy
+    button without showing an error.
+  * Returns ``{ok:true, path, relPath}`` on a successful write;
+    ``relPath`` is ``path`` shortened to ``projects/...`` for status.
+  * Returns ``{ok:false, error}`` on backend failure (409 conflict,
+    400 bad path, 403 perm denied).  Backend messages already say
+    what to do; callers display ``error`` verbatim.
+
+  ``opts.overwrite`` (default ``false``) opts in to clobbering an
+  existing file.  ``opts.expected_mtime`` (number) enables the
+  concurrent-edit detection used by the future edit-and-save flow.
 
 * `onChange(cb)` fires `cb({dir, file})` on every selection change
   AND once immediately on registration (so subscribers can initialise

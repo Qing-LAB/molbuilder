@@ -667,25 +667,137 @@ def api_files_upload():
 
 @bp.route("/api/files/write", methods=["POST"])
 def api_files_write():
-    """Stub: save edited text content back to a file.
+    """Write text content to a file inside an allowed picker root.
 
-    When implemented, accepts JSON ``{path, text, expected_mtime}``.
+    JSON body: ``{path, text, overwrite?, expected_mtime?}``
+
+    Two distinct call patterns share this endpoint:
+
+      1. **Generate-and-save** (Spectra / Build Generate buttons):
+         no ``expected_mtime``; the caller may set ``overwrite: true``
+         to clobber an existing file.  Without ``overwrite``, an
+         existing file at ``path`` returns 409.
+
+      2. **Edit-and-save** (file-preview modal's Save -- still a
+         stub on the UI side): ``expected_mtime`` is the mtime
+         captured at /api/files/read time.  If the file's current
+         mtime differs, 409 (someone else modified it).
+
     Validation:
-      * path must resolve inside an allowed root
-      * path must already exist as a regular file (no implicit create
-        -- that's what ``upload`` is for)
-      * ``expected_mtime`` from the prior /api/files/read must match
-        the file's current mtime; mismatch -> 409 (someone else edited
-        it).  This is the standard concurrent-edit detection pattern.
-      * Encoding: UTF-8.  Binary edits not supported (and probably
-        never will be from a text-editor UI).
+      * ``path`` must resolve inside an allowed root
+      * raw ``path`` must not contain ``..``
+      * path depth inside the picker root must be >= 1 (no writing
+        files directly into ``projects/``; the root stays clean and
+        only holds project dirs)
+      * parent directory must already exist (no implicit ``mkdir -p``;
+        use ``/api/files/mkdir`` for that)
+      * ``text`` must be a string (UTF-8 encoded by Flask's JSON
+        parser; binary writes are a separate future feature)
+
+    Returns ``{ok, path, size, mtime}`` on success.
     """
+    body = request.get_json(silent=True) or {}
+    raw_path = body.get("path", "")
+    text     = body.get("text", "")
+    overwrite      = bool(body.get("overwrite", False))
+    expected_mtime = body.get("expected_mtime", None)
+
+    if not isinstance(text, str):
+        return jsonify({
+            "ok": False,
+            "error": "'text' must be a string",
+        }), 400
+
+    try:
+        resolved = _resolve_within_roots(raw_path)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+
+    # Depth check: the file's PARENT must be at depth >= 1 inside the
+    # picker's root.  i.e., we can write to projects/<proj>/<...>/file,
+    # but not directly into projects/.
+    roots = _allowed_roots()
+    parent_depth_ok = False
+    for root_path, _label in roots:
+        try:
+            parent_rel = resolved.parent.relative_to(root_path)
+        except ValueError:
+            continue
+        # parent_rel.parts is the segments from root to the file's parent.
+        # depth 0 = parent is the root itself (writing directly under
+        # projects/), which we forbid.
+        if len(parent_rel.parts) >= 1:
+            parent_depth_ok = True
+            break
+    if not parent_depth_ok:
+        return jsonify({
+            "ok":   False,
+            "error": (f"cannot write directly into the picker root; "
+                      f"create or pick a subdirectory first.  Got: "
+                      f"{str(resolved)!r}"),
+        }), 400
+
+    parent = resolved.parent
+    if not parent.is_dir():
+        return jsonify({
+            "ok":   False,
+            "error": (f"parent directory does not exist: {str(parent)!r}.  "
+                      f"Use /api/files/mkdir to create it first."),
+        }), 400
+
+    # Conflict checks (both apply when relevant).
+    if resolved.exists():
+        if expected_mtime is not None:
+            try:
+                actual_mtime = resolved.stat().st_mtime
+            except OSError as exc:
+                return jsonify({"ok": False,
+                                "error": f"stat failed: {exc}"}), 500
+            # Float comparison with a tolerance; mtime resolutions vary
+            # across filesystems but ~ms is a safe threshold for
+            # "no concurrent edit".
+            if abs(actual_mtime - float(expected_mtime)) > 0.001:
+                return jsonify({
+                    "ok":   False,
+                    "error": (f"file was modified since you opened it "
+                              f"(expected mtime {expected_mtime}, "
+                              f"found {actual_mtime}).  Re-open the "
+                              f"file to see the latest content."),
+                    "actual_mtime": actual_mtime,
+                }), 409
+            # mtime matches: this is a valid edit-save; overwrite OK.
+        elif not overwrite:
+            return jsonify({
+                "ok":   False,
+                "error": (f"file already exists: {str(resolved)!r}.  "
+                          f"Set overwrite=true to replace it, or pick "
+                          f"a different name / directory."),
+            }), 409
+
+    try:
+        resolved.write_text(text, encoding="utf-8")
+    except PermissionError as exc:
+        return jsonify({
+            "ok": False,
+            "error": f"permission denied: {exc}",
+        }), 403
+    except OSError as exc:
+        return jsonify({
+            "ok": False,
+            "error": f"write failed: {exc}",
+        }), 500
+
+    try:
+        st = resolved.stat()
+    except OSError as exc:
+        return jsonify({"ok": False, "error": f"stat after write failed: {exc}"}), 500
+
     return jsonify({
-        "ok": False,
-        "error": ("/api/files/write is not implemented yet.  The "
-                  "Preview modal is currently view-only; edit + save "
-                  "will land in a follow-up."),
-    }), 501
+        "ok":    True,
+        "path":  str(resolved),
+        "size":  st.st_size,
+        "mtime": st.st_mtime,
+    })
 
 
 @bp.route("/api/files/delete", methods=["DELETE"])

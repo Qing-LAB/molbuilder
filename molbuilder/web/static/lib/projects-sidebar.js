@@ -141,16 +141,11 @@
     return await r.json();
   }
 
-  // ----- Dynamic sidebar top measurement ------------------------ //
-
-  function measureSidebarTop() {
-    const headerEl = document.querySelector("body > header");
-    const navEl    = document.querySelector("body > nav.app-tabs");
-    let topPx = 0;
-    if (headerEl) topPx += headerEl.offsetHeight;
-    if (navEl)    topPx += navEl.offsetHeight;
-    elSidebar.style.top = topPx + "px";
-  }
+  // (Dynamic top measurement retired in v5.2: the sidebar now spans
+  //  the FULL viewport height (top: 0 → bottom: 0 via CSS).  The
+  //  page <header> + app-tabs nav live to its right via the body's
+  //  padding-left shift; no scroll-coherence problem because the
+  //  sidebar no longer floats half-way down.)
 
   // ----- Rendering ---------------------------------------------- //
 
@@ -585,8 +580,8 @@
     elNewProjSubdirs = document.getElementById("ps-newproject-subdirs");
 
     document.body.classList.add("has-projects-sidebar");
-    measureSidebarTop();
-    window.addEventListener("resize", measureSidebarTop);
+    // (v5.2: sidebar now uses CSS-only top:0/bottom:0 full-viewport;
+    //  no JS height measurement or resize listener needed.)
 
     // Form wiring.  Each form lives inside a <details> so users see
     // the input only when they expand the section.
@@ -697,6 +692,75 @@
       const dir = sessionStorage.getItem(SS_DIR) || projectsRoot;
       if (!dir) return;
       await openDir(dir);
+    },
+    /**
+     * Write text to ``<current_dir>/<filename>`` via /api/files/write
+     * and refresh the sidebar listing on success.
+     *
+     * The "generate-and-save" pattern every tab needs: each Generate
+     * button used to duplicate this logic; this is the single source
+     * of truth.  Strict no-overwrite by default -- pass
+     * ``{overwrite: true}`` to clobber.
+     *
+     * @returns ``null`` when there's nothing to save against (no
+     *           sidebar partial, no current_dir, or current_dir is
+     *           at the projects/ root).  Callers that get null
+     *           should fall back to the local Download / Copy
+     *           button without showing an error.
+     *
+     * @returns ``{ok: true, path, relPath}`` on success.  The
+     *           sidebar's current directory is auto-refreshed so
+     *           the new file shows up immediately.  ``relPath`` is
+     *           ``path`` shortened to ``projects/...`` for status
+     *           display.
+     *
+     * @returns ``{ok: false, error}`` on backend failure -- 409
+     *           (file exists, no overwrite), 400 (bad path), 403
+     *           (perm denied), etc.  Caller displays ``error`` to
+     *           the user; backend messages already say what to do.
+     */
+    saveToWorkspace: async (text, filename, opts) => {
+      opts = opts || {};
+      const dir = sessionStorage.getItem(SS_DIR) || "";
+      if (!dir) return null;
+      // At projects/ root the backend would 400; skip silently so
+      // the caller's "no dir picked" fallback applies uniformly.
+      if (projectsRoot
+          && (dir === projectsRoot
+              || dir === projectsRoot.replace(/\/$/, ""))) {
+        return null;
+      }
+      const targetPath = dir.replace(/\/$/, "") + "/" + filename;
+      const body = {path: targetPath, text: text};
+      if (opts.overwrite) body.overwrite = true;
+      if (opts.expected_mtime != null) {
+        body.expected_mtime = opts.expected_mtime;
+      }
+      let w;
+      try {
+        const resp = await fetch("/api/files/write", {
+          method:  "POST",
+          headers: {"Content-Type": "application/json"},
+          body:    JSON.stringify(body),
+        });
+        w = await resp.json();
+      } catch (e) {
+        return {ok: false, error: "network error: " + e.message};
+      }
+      if (!w.ok) return {ok: false, error: w.error || "write failed"};
+      // Refresh the listing so the new file shows up; harmless if the
+      // user navigated away in the meantime.
+      try {
+        const cur = sessionStorage.getItem(SS_DIR);
+        if (cur) await openDir(cur);
+      } catch (_) { /* refresh failure shouldn't fail the save */ }
+      // Build relPath ourselves (don't recurse into relativeToProjects
+      // because that's a public method captured before saveToWorkspace
+      // was added; here we have direct access to projectsRoot).
+      const relPath = (projectsRoot && w.path.startsWith(projectsRoot))
+        ? w.path.slice(projectsRoot.length).replace(/^\/+/, "")
+        : w.path;
+      return {ok: true, path: w.path, relPath: relPath};
     },
   };
 

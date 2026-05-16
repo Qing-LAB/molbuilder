@@ -706,6 +706,25 @@
         return (s || "molecule").replace(/[^A-Za-z0-9._-]+/g, "_");
     }
 
+    // Shared helper: after Generate succeeds, write the rendered text
+    // to <current_dir>/<filename> via the projects Inquire API's
+    // saveToWorkspace().  Strict no-overwrite by default; status
+    // updates land in the caller's existing status element.
+    async function maybeWriteToWorkspace(text, filename, statusId) {
+        const proj = (window.molbuilder || {}).projects;
+        if (!proj) return;
+        const r = await proj.saveToWorkspace(text, filename);
+        if (!r) return;     // no current_dir / at root -- silent fallback
+        if (r.ok) {
+            setStatus(statusId, "Wrote " + r.relPath, "ok");
+        } else {
+            setStatus(statusId,
+                "Generated, but " + r.error
+                + " Use Download below as fallback.",
+                "warn");
+        }
+    }
+
     // ----- 3. Generate FDF -------------------------------------------
     $("generate-fdf").addEventListener("click", async () => {
         if (!state.xyz) {
@@ -738,6 +757,14 @@
             renderIssues("fdf-issues", issues);
             setStatus("fdf-status", fdfMsg,
                       issues.some(i => i.severity === "warn") ? "warn" : "ok");
+            // Also write to the Projects sidebar's current_dir if set.
+            // Filename uses the SystemLabel as the basename, matching
+            // SIESTA's filename convention + what the Download button
+            // would write.
+            const fdfLabel = (r.system_label || "siesta").replace(
+                /[^A-Za-z0-9._-]+/g, "_");
+            await maybeWriteToWorkspace(r.fdf, fdfLabel + ".fdf",
+                                        "fdf-status");
         } catch (e) {
             setStatus("fdf-status", "Network error: " + e.message, "error");
         }
@@ -819,6 +846,13 @@
             renderIssues("pyscf-issues", issues);
             setStatus("pyscf-status", pyMsg,
                       issues.some(i => i.severity === "warn") ? "warn" : "ok");
+            // Also write to the Projects sidebar's current_dir if set.
+            // Filename derives from job_name + ".py" (matches the
+            // Download button's filename).
+            const jobName = (r.job_name || "pyscf").replace(
+                /[^A-Za-z0-9._-]+/g, "_");
+            await maybeWriteToWorkspace(r.script, jobName + ".py",
+                                        "pyscf-status");
         } catch (e) {
             setStatus("pyscf-status", "Network error: " + e.message, "error");
         }

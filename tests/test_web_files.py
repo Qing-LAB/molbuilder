@@ -337,10 +337,10 @@ class TestSidebarPartialAndShim:
         assert "renderBreadcrumb" in body
         assert "molbuilder.current_dir" in body
         assert "molbuilder.current_file" in body
-        # Dynamic top measurement (the v1 hardcoded 3rem caused
-        # overlap with the header above the app-tabs nav).
-        assert "measureSidebarTop" in body
-        assert "offsetHeight" in body
+        # v5.2: dynamic top measurement was retired in favour of a
+        # full-viewport sidebar (top:0 -> bottom:0 via CSS).  The
+        # function is gone; the prior hardcoded 3rem also gone.
+        assert "measureSidebarTop" not in body
         # Inquire-model public API (replaces the v2 tab-action buttons).
         assert "window.molbuilder.projects" in body
         assert "getCurrentDir" in body
@@ -722,6 +722,171 @@ class TestSidebarMkdirUI:
         assert "section.hidden" in body
 
 
+class TestFilesWrite:
+    """POST /api/files/write covers two distinct workflows:
+
+      1. Generate-and-save (Spectra/Build): no expected_mtime; strict
+         no-overwrite by default (409 on conflict); the caller may
+         opt in with overwrite=true.
+      2. Edit-and-save (file-preview modal's Save -- still stubbed on
+         the UI side): expected_mtime check (409 on mismatch).
+
+    All cases gated by the same path-validation as the other
+    endpoints + a depth >= 1 rule (no writing directly into the
+    picker root)."""
+
+    def test_write_happy_path_creates_file(self, web, picker_root):
+        sub = picker_root / "myproj" / "topic_a"
+        sub.mkdir(parents=True)
+        target = str(sub / "out.txt")
+        r = web.post("/api/files/write",
+                     json={"path": target, "text": "hello world\n"})
+        assert r.status_code == 200
+        j = r.get_json()
+        assert j["ok"] is True
+        assert j["path"] == target
+        assert j["size"] > 0
+        assert j["mtime"] > 0
+        assert (sub / "out.txt").read_text() == "hello world\n"
+
+    def test_write_409_on_existing_file_no_overwrite(
+        self, web, picker_root,
+    ):
+        sub = picker_root / "myproj" / "topic_a"
+        sub.mkdir(parents=True)
+        (sub / "out.txt").write_text("original")
+        target = str(sub / "out.txt")
+        r = web.post("/api/files/write",
+                     json={"path": target, "text": "replacement"})
+        assert r.status_code == 409
+        body = r.get_json()
+        assert body["ok"] is False
+        assert "already exists" in body["error"]
+        # File is untouched -- conflict is detection-only.
+        assert (sub / "out.txt").read_text() == "original"
+
+    def test_write_with_overwrite_true_clobbers(self, web, picker_root):
+        sub = picker_root / "myproj" / "topic_a"
+        sub.mkdir(parents=True)
+        (sub / "out.txt").write_text("original")
+        target = str(sub / "out.txt")
+        r = web.post("/api/files/write",
+                     json={"path": target, "text": "new",
+                           "overwrite": True})
+        assert r.status_code == 200
+        assert (sub / "out.txt").read_text() == "new"
+
+    def test_write_mtime_mismatch_returns_409(self, web, picker_root):
+        # Edit-and-save flow: write with a wrong expected_mtime.
+        sub = picker_root / "myproj" / "topic_a"
+        sub.mkdir(parents=True)
+        (sub / "out.txt").write_text("original")
+        target = str(sub / "out.txt")
+        r = web.post("/api/files/write",
+                     json={"path": target, "text": "edit",
+                           "expected_mtime": 1.0})  # not the real mtime
+        assert r.status_code == 409
+        body = r.get_json()
+        assert body["ok"] is False
+        assert "modified since" in body["error"]
+        assert "actual_mtime" in body
+        # Original content preserved.
+        assert (sub / "out.txt").read_text() == "original"
+
+    def test_write_mtime_match_succeeds(self, web, picker_root):
+        sub = picker_root / "myproj" / "topic_a"
+        sub.mkdir(parents=True)
+        f = sub / "out.txt"
+        f.write_text("original")
+        target = str(f)
+        mtime = f.stat().st_mtime
+        r = web.post("/api/files/write",
+                     json={"path": target, "text": "edit",
+                           "expected_mtime": mtime})
+        assert r.status_code == 200
+        assert f.read_text() == "edit"
+
+    def test_write_at_root_depth_rejected(self, web, picker_root):
+        # Cannot write directly into projects/ root; depth >= 1
+        # required.  Keeps the root clean (only project dirs there).
+        target = str(picker_root / "orphan.txt")
+        r = web.post("/api/files/write",
+                     json={"path": target, "text": "x"})
+        assert r.status_code == 400
+        assert "picker root" in r.get_json()["error"]
+        assert not (picker_root / "orphan.txt").exists()
+
+    def test_write_outside_root_rejected(self, web, picker_root):
+        r = web.post("/api/files/write",
+                     json={"path": "/etc/evil", "text": "x"})
+        assert r.status_code == 400
+        assert "outside every configured root" in r.get_json()["error"]
+
+    def test_write_dot_dot_rejected(self, web, picker_root):
+        r = web.post("/api/files/write",
+                     json={"path": str(picker_root) + "/proj/../outside",
+                           "text": "x"})
+        assert r.status_code == 400
+        assert ".." in r.get_json()["error"]
+
+    def test_write_missing_parent_dir(self, web, picker_root):
+        sub = picker_root / "myproj"
+        sub.mkdir()
+        target = str(sub / "no" / "such" / "dir" / "file.txt")
+        r = web.post("/api/files/write",
+                     json={"path": target, "text": "x"})
+        assert r.status_code == 400
+        assert "parent directory does not exist" in r.get_json()["error"]
+
+    def test_write_rejects_non_string_text(self, web, picker_root):
+        sub = picker_root / "myproj" / "topic_a"
+        sub.mkdir(parents=True)
+        r = web.post("/api/files/write",
+                     json={"path": str(sub / "out.txt"), "text": 42})
+        assert r.status_code == 400
+        assert "string" in r.get_json()["error"]
+
+
+class TestGenerateWritesToWorkspace:
+    """Spectra + Build Generate buttons go through the unified
+    ``window.molbuilder.projects.saveToWorkspace()`` API after a
+    successful render.  Tests pin both layers: the API exists on the
+    sidebar JS, and each tab calls it instead of duplicating fetch
+    + refresh logic."""
+
+    def test_save_to_workspace_api_exposed(self, web):
+        # Single source of truth for the generate-and-save flow.
+        body = web.get(
+            "/static/lib/projects-sidebar.js",
+        ).get_data(as_text=True)
+        assert "saveToWorkspace" in body
+        # Posts to /api/files/write, refreshes via openDir.
+        assert "/api/files/write" in body
+        # Strict no-overwrite by default: explicit opts.overwrite gate.
+        assert "if (opts.overwrite) body.overwrite = true" in body
+        # Returns null on skip (no dir / at root) so callers can
+        # fall back to Download silently.
+        assert "return null" in body
+
+    def test_spectra_viewer_uses_save_to_workspace(self, web):
+        body = web.get(
+            "/static/spectra/viewer.js",
+        ).get_data(as_text=True)
+        # Tab calls the unified API; no direct fetch to /api/files/write.
+        assert "proj.saveToWorkspace" in body
+        assert "/api/files/write" not in body
+        assert ".spectra.py" in body
+
+    def test_build_viewer_uses_save_to_workspace(self, web):
+        body = web.get("/static/viewer.js").get_data(as_text=True)
+        # Tab calls the unified API.
+        assert "proj.saveToWorkspace" in body
+        assert "/api/files/write" not in body
+        # Both .fdf (FDF generate) and .py (PySCF generate) paths.
+        assert '".fdf"' in body
+        assert '".py"' in body
+
+
 class TestFileOperationStubs:
     """The upload / write / delete endpoints are intentionally 501
     stubs in v1.  The frontend renders the inline error from the
@@ -737,14 +902,11 @@ class TestFileOperationStubs:
         # The message points the user at the manual workaround.
         assert "scp" in body["error"] or "mv" in body["error"]
 
-    def test_write_returns_501_with_helpful_message(self, web):
-        r = web.post("/api/files/write")
-        assert r.status_code == 501
-        body = r.get_json()
-        assert body["ok"] is False
-        assert "not implemented" in body["error"]
-        # The message acknowledges the preview-is-view-only context.
-        assert "Preview" in body["error"] or "view-only" in body["error"]
+    # (test_write_returns_501_with_helpful_message retired in v5.2:
+    #  POST /api/files/write is now functional -- see TestFilesWrite.
+    #  The preview modal's Save button is still UI-disabled
+    #  ("coming soon") but the endpoint itself is live for the
+    #  Generate-and-save flow.)
 
     def test_delete_returns_501_with_helpful_message(self, web):
         r = web.delete("/api/files/delete")

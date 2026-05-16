@@ -25,29 +25,18 @@
 }
 
 /* Shift the page content right to make room for the sidebar.
- * Apply to body so EVERY descendant block-level child shifts,
- * regardless of which template-specific class is on it. */
+ * The sidebar fills the FULL viewport height (top: 0 -> bottom: 0),
+ * so the page header + app-tabs nav naturally live to its right
+ * (body's padding-left is the only shift; no negative-margin
+ * pull-back needed).  This avoids the awkward "sidebar starts
+ * half-way down the page" look when the user scrolls. */
 body.has-projects-sidebar {
   padding-left: var(--ps-w);
-}
-
-/* The app-tabs nav + page header should still span full width above
- * the sidebar -- pull them back left to cover that area, since the
- * body padding would otherwise leave a gap. */
-body.has-projects-sidebar > header,
-body.has-projects-sidebar > nav.app-tabs {
-  margin-left: calc(-1 * var(--ps-w));
-  padding-left: var(--ps-w);
-  box-sizing: border-box;
 }
 
 .projects-sidebar {
   position: fixed;
   left: 0;
-  /* top is set in JS after measuring header + nav heights so a
-     tagline that wraps to two lines doesn't overlap the sidebar.
-     Default 0 keeps the panel visually consistent during the brief
-     pre-JS load tick. */
   top: 0;
   bottom: 0;
   width: var(--ps-w);
