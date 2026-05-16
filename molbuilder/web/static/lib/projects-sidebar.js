@@ -1,71 +1,74 @@
-/* Persistent Projects sidebar.
+/* Persistent Projects sidebar -- "inquire model" v1.
  *
- * Layout: single-column directory listing with a clickable breadcrumb
- * at the top.  Click a directory → drill in.  Click a crumb → jump
- * back to that level.  Click a file → select it (writes shared
- * sessionStorage state; sidebar then renders contextual "Open in
- * <Tab>" buttons in the actions area).
+ * The sidebar's job:
+ *   1. Browse the projects/ tree (single root from /api/files/roots).
+ *   2. Track + publish two pieces of state:
+ *        molbuilder.current_dir   -- the user's working directory
+ *        molbuilder.current_file  -- the optional file selection
+ *   3. Offer file-MANIPULATION buttons that operate on the projects
+ *      tree itself (v1 ships: "+ New subdir").
  *
- * v2 (this revision):
- *   * Drop the collapse toggle -- always open.
- *   * JS-measure header + nav heights on load + resize so the
- *     sidebar's `top:` matches the actual rendered offset (the
- *     hardcoded `top: 3rem` of v1 didn't account for the page
- *     header above the app-tabs nav).
- *   * Replace the per-tab "Use this file" banner pattern with
- *     contextual "Open in <Tab>" buttons in the sidebar itself.
- *     Buttons navigate via `location.href = "/<tab>"`; the target
- *     tab's auto-load hook (registered via window.molbuilderTabAutoLoad
- *     by each tab's own JS) reads sessionStorage.molbuilder.current_file
- *     on init and fires the tab's Load flow if the file type matches.
+ * The sidebar's NON-job:
+ *   * It does not know about tabs, file extensions, or how files
+ *     get loaded into anything.  No "Open in <Tab>" buttons.
+ *   * Each tab pulls from the public API below when its own UI
+ *     triggers a load / generate.
  *
- * Single root: `projects/` (Capabilities.file_picker_roots() returns
- * just that single entry).  No CWD, no user-configurable additions.
+ * Public API (the "Inquire" surface; spec'd in docs/protocols/selection.md):
  *
- * Shared state (sessionStorage):
- *   molbuilder.current_dir   = absolute path of the displayed directory
- *   molbuilder.current_file  = absolute path of the selected file ("" if none)
+ *   window.molbuilder.projects.getCurrentDir()    -- always inside projects/
+ *   window.molbuilder.projects.getCurrentFile()   -- "" if nothing selected
+ *   window.molbuilder.projects.onChange(cb)       -- subscribe to selection changes
+ *                                                    cb is called with ({dir, file})
+ *                                                    returns an unsubscribe function
+ *   window.molbuilder.projects.readCurrentFile()  -- async; fetch text via /api/files/read
+ *                                                    returns {path, text} or null
+ *   window.molbuilder.projects.relativeToProjects(path)
+ *                                                 -- strip projects/ prefix for display
+ *   window.molbuilder.projects.refresh()          -- re-list the current dir; call this
+ *                                                    after a tab creates a new file
+ *
+ * Layout: fixed-position aside on the left; lib/projects-sidebar.js
+ * measures the page <header> + .app-tabs nav heights on init + resize
+ * and sets the sidebar's top: dynamically.  body { padding-left:
+ * var(--ps-w) } shifts the main content right.
  */
 
 (function () {
   "use strict";
 
-  const SS_DIR   = "molbuilder.current_dir";
-  const SS_FILE  = "molbuilder.current_file";
-
-  // Map of (extension -> [{tab_path, label}, ...]).  The sidebar
-  // renders one "Open in <Tab>" button per entry whose extension
-  // matches the selected file's name.  Order matters because
-  // ".spectra.json" is checked before ".json" via length-sorted keys.
-  const OPEN_TARGETS = {
-    ".xyz":          [{tab: "/modify",  label: "Open in Modify"},
-                      {tab: "/",        label: "Open in Build"}],
-    ".pdb":          [{tab: "/modify",  label: "Open in Modify"}],
-    ".molwatch.log": [{tab: "/watch",   label: "Open in Watch"}],
-    ".spectra.json": [{tab: "/spectra", label: "Open in Spectra"}],
-    ".log":          [{tab: "/watch",   label: "Open in Watch"}],
-    ".out":          [{tab: "/watch",   label: "Open in Watch"}],
-  };
-  const EXT_KEYS = Object.keys(OPEN_TARGETS).sort(
-    (a, b) => b.length - a.length    // longest first: ".spectra.json" > ".json"
-  );
-
-  function pickTargets(name) {
-    const lower = name.toLowerCase();
-    for (const ext of EXT_KEYS) {
-      if (lower.endsWith(ext)) return OPEN_TARGETS[ext];
-    }
-    return [];
-  }
+  const SS_DIR  = "molbuilder.current_dir";
+  const SS_FILE = "molbuilder.current_file";
 
   // ----- DOM refs (resolved after DOMContentLoaded) ------------- //
-  let elCrumb, elList, elActions, elActionsHint, elSidebar;
+  let elCrumb, elList, elActions, elSidebar;
+  let elMkdirBtn, elMkdirForm, elMkdirInput, elMkdirError;
 
   // The root path of `projects/`, resolved from /api/files/roots
-  // at startup.  All paths displayed in the sidebar are inside this.
+  // at startup.
   let projectsRoot = null;
 
-  // ----- API helpers -------------------------------------------- //
+  // ----- Selection change subscribers --------------------------- //
+  const subscribers = new Set();
+
+  function publishChange() {
+    const payload = {
+      dir:  sessionStorage.getItem(SS_DIR)  || "",
+      file: sessionStorage.getItem(SS_FILE) || "",
+    };
+    subscribers.forEach((cb) => {
+      try { cb(payload); } catch (e) { /* a bad subscriber shouldn't kill the loop */ }
+    });
+    // Cross-window listeners get the standard 'storage' event for free.
+  }
+
+  function setShared(dir, file) {
+    sessionStorage.setItem(SS_DIR,  dir  || "");
+    sessionStorage.setItem(SS_FILE, file || "");
+    publishChange();
+  }
+
+  // ----- API helpers (private; the public API at the bottom calls them) //
   async function apiRoots() {
     const r = await fetch("/api/files/roots");
     return (await r.json()).roots || [];
@@ -78,24 +81,23 @@
     return await r.json();
   }
 
-  // ----- Shared-state writers ----------------------------------- //
-  function setShared(dir, file) {
-    sessionStorage.setItem(SS_DIR,  dir  || "");
-    sessionStorage.setItem(SS_FILE, file || "");
-    // Tabs that mount auto-loaders subscribe to this CustomEvent
-    // (same-window).  Cross-window listeners can also use the
-    // standard 'storage' event.
-    window.dispatchEvent(new CustomEvent("molbuilder.selection", {
-      detail: {dir: dir || "", file: file || ""},
-    }));
+  async function apiMkdir(parent, name) {
+    const r = await fetch("/api/files/mkdir", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({parent: parent, name: name}),
+    });
+    return await r.json();
+  }
+
+  async function apiRead(path) {
+    const r = await fetch("/api/files/read?path=" + encodeURIComponent(path));
+    return await r.json();
   }
 
   // ----- Dynamic sidebar top measurement ------------------------ //
 
   function measureSidebarTop() {
-    // Top of sidebar = bottom of the last non-sidebar element above
-    // the main content (page <header> + .app-tabs nav).  Measuring
-    // both elements handles a wrapped multi-line tagline correctly.
     const headerEl = document.querySelector("body > header");
     const navEl    = document.querySelector("body > nav.app-tabs");
     let topPx = 0;
@@ -109,7 +111,6 @@
   function renderBreadcrumb(currentPath) {
     elCrumb.innerHTML = "";
     if (!projectsRoot) return;
-
     const hops = [{label: "projects", path: projectsRoot}];
     if (currentPath && currentPath !== projectsRoot) {
       const rel = currentPath.slice(projectsRoot.length).replace(/^\/+/, "");
@@ -120,7 +121,6 @@
         hops.push({label: part, path: accum});
       }
     }
-
     hops.forEach((hop, idx) => {
       if (idx > 0) {
         const sep = document.createElement("span");
@@ -144,9 +144,7 @@
     elList.innerHTML = "";
     elList.classList.toggle("is-empty", entries.length === 0);
     if (entries.length === 0) return;
-
     const selectedFile = sessionStorage.getItem(SS_FILE) || "";
-
     for (const e of entries) {
       const fullPath = currentPath.replace(/\/$/, "") + "/" + e.name;
       const li = document.createElement("li");
@@ -154,7 +152,6 @@
       li.dataset.path = fullPath;
       li.dataset.kind = e.kind;
       if (fullPath === selectedFile) li.classList.add("is-selected");
-
       const icon = document.createElement("span");
       icon.className = "ps-entry-icon";
       icon.textContent = (
@@ -163,27 +160,24 @@
                                  "·"
       );
       li.appendChild(icon);
-
       const name = document.createElement("span");
       name.className = "ps-entry-name";
       name.textContent = e.name;
       name.title = fullPath;
       li.appendChild(name);
-
       if (e.kind === "file" && e.size !== null) {
         const meta = document.createElement("span");
         meta.className = "ps-entry-meta";
         meta.textContent = humanSize(e.size);
         li.appendChild(meta);
       }
-
       li.addEventListener("click", () => {
         if (e.kind === "directory") {
           openDir(fullPath);
         } else {
           markSelected(li);
           setShared(currentPath, fullPath);
-          renderActions(e.name, fullPath);
+          renderSelectionStatus(e.name, fullPath);
         }
       });
       elList.appendChild(li);
@@ -203,60 +197,51 @@
     return (n / 1024 / 1024 / 1024).toFixed(1) + " G";
   }
 
-  // ----- Action buttons (the "what now?" panel) ----------------- //
+  // ----- Selection status (just a display, no tab actions) ------ //
 
-  function renderActions(filename, fullPath) {
-    elActions.innerHTML = "";
-
-    const sel = document.createElement("div");
-    sel.className = "ps-action-selected";
-    sel.innerHTML = "Selected: <strong></strong>";
-    sel.querySelector("strong").textContent = filename;
-    sel.title = fullPath;
-    elActions.appendChild(sel);
-
-    const targets = pickTargets(filename);
-    if (targets.length === 0) {
-      const hint = document.createElement("p");
-      hint.className = "ps-actions-hint";
-      hint.textContent = "No quick-open target for this file type.";
-      elActions.appendChild(hint);
-      return;
-    }
-
-    const currentPath = window.location.pathname;
-    for (const t of targets) {
-      const btn = document.createElement("button");
-      btn.className = "ps-action-btn"
-        + (t.tab === currentPath ? " is-current-tab" : "");
-      btn.type = "button";
-      btn.textContent = t.tab === currentPath
-        ? "Load here (" + t.label.replace(/^Open in /, "") + ")"
-        : t.label;
-      btn.addEventListener("click", () => triggerOpenIn(t.tab));
-      elActions.appendChild(btn);
+  function renderSelectionStatus(filename, fullPath) {
+    const sel = elActions.querySelector(".ps-selection");
+    if (!sel) return;
+    if (filename) {
+      sel.innerHTML = "Selected: <strong></strong>";
+      sel.querySelector("strong").textContent = filename;
+      sel.title = fullPath;
+    } else {
+      sel.textContent = "No file selected.";
+      sel.title = "";
     }
   }
 
-  function triggerOpenIn(tabPath) {
-    // The target tab's auto-load hook (registered as
-    // window.molbuilderTabAutoLoad) reads sessionStorage.current_file
-    // on init.  If we're already on that tab, fire the auto-load
-    // directly without navigating.
-    const currentPath = window.location.pathname;
-    if (tabPath === currentPath && window.molbuilderTabAutoLoad) {
-      window.molbuilderTabAutoLoad();
-      return;
-    }
-    window.location.href = tabPath;
+  // ----- "New subdirectory" file-manipulation handler ----------- //
+
+  function showMkdirForm() {
+    elMkdirForm.hidden = false;
+    elMkdirError.textContent = "";
+    elMkdirInput.value = "";
+    elMkdirInput.focus();
   }
 
-  function clearActions() {
-    elActions.innerHTML = "";
-    const hint = document.createElement("p");
-    hint.className = "ps-actions-hint";
-    hint.textContent = "Click a file above to see open actions.";
-    elActions.appendChild(hint);
+  function hideMkdirForm() {
+    elMkdirForm.hidden = true;
+    elMkdirError.textContent = "";
+  }
+
+  async function submitMkdir(ev) {
+    ev.preventDefault();
+    const name = elMkdirInput.value.trim();
+    if (!name) {
+      elMkdirError.textContent = "Name cannot be empty.";
+      return;
+    }
+    const parent = sessionStorage.getItem(SS_DIR) || projectsRoot;
+    const j = await apiMkdir(parent, name);
+    if (!j.ok) {
+      elMkdirError.textContent = j.error || "mkdir failed.";
+      return;
+    }
+    hideMkdirForm();
+    // Navigate into the newly-created dir so the user sees they're in it.
+    await openDir(j.path);
   }
 
   // ----- Navigation --------------------------------------------- //
@@ -272,13 +257,13 @@
       li.textContent = resp.error || "Failed to list directory.";
       elList.appendChild(li);
       setShared(absPath, "");
-      clearActions();
+      renderSelectionStatus("", "");
       return;
     }
     renderBreadcrumb(resp.path);
     renderList(resp.entries, resp.path);
     setShared(resp.path, "");
-    clearActions();
+    renderSelectionStatus("", "");
   }
 
   // ----- Init --------------------------------------------------- //
@@ -290,13 +275,20 @@
     elCrumb       = document.getElementById("ps-breadcrumb");
     elList        = document.getElementById("ps-list");
     elActions     = document.getElementById("ps-actions");
-    elActionsHint = document.getElementById("ps-actions-hint");
+    elMkdirBtn    = document.getElementById("ps-mkdir-btn");
+    elMkdirForm   = document.getElementById("ps-mkdir-form");
+    elMkdirInput  = document.getElementById("ps-mkdir-input");
+    elMkdirError  = document.getElementById("ps-mkdir-error");
 
     document.body.classList.add("has-projects-sidebar");
     measureSidebarTop();
     window.addEventListener("resize", measureSidebarTop);
 
-    // Resolve projects/ from the API (single root).
+    if (elMkdirBtn)  elMkdirBtn.addEventListener("click", showMkdirForm);
+    if (elMkdirForm) elMkdirForm.addEventListener("submit", submitMkdir);
+    const cancelBtn = document.getElementById("ps-mkdir-cancel");
+    if (cancelBtn) cancelBtn.addEventListener("click", hideMkdirForm);
+
     const roots = await apiRoots();
     if (roots.length === 0) {
       elList.classList.add("is-empty");
@@ -306,32 +298,63 @@
     }
     projectsRoot = roots[0].path;
 
-    // Restore prior dir from sessionStorage if it's still inside projects/.
     const lastDir = sessionStorage.getItem(SS_DIR) || "";
     const start = (lastDir && lastDir.startsWith(projectsRoot))
                 ? lastDir : projectsRoot;
     await openDir(start);
 
-    // If a file was already selected (e.g., user navigated here from
-    // another tab via "Open in X"), keep its highlight + show actions.
+    // If a file was already selected (cross-tab persistence), highlight it.
     const file = sessionStorage.getItem(SS_FILE) || "";
     if (file && file.startsWith(projectsRoot)) {
-      // Re-mark highlight inside the rendered list.
       const li = elList.querySelector(
         `.ps-entry[data-path="${cssEscape(file)}"]`
       );
       if (li) markSelected(li);
-      renderActions(file.split("/").pop(), file);
+      renderSelectionStatus(file.split("/").pop(), file);
     }
   }
 
-  // Minimal CSS.escape polyfill (just enough for paths -- escape
-  // backslash + quote characters that could break the attribute
-  // selector).  Modern browsers have CSS.escape; this is a fallback.
   function cssEscape(s) {
     if (typeof CSS !== "undefined" && CSS.escape) return CSS.escape(s);
     return s.replace(/["\\]/g, "\\$&");
   }
+
+  // ----- Public API (the "Inquire" surface) --------------------- //
+
+  window.molbuilder = window.molbuilder || {};
+  window.molbuilder.projects = {
+    getCurrentDir:  () => sessionStorage.getItem(SS_DIR)  || "",
+    getCurrentFile: () => sessionStorage.getItem(SS_FILE) || "",
+    onChange: (cb) => {
+      subscribers.add(cb);
+      // Fire once immediately so subscribers can initialise from the
+      // current state without a separate getCurrent* call.
+      try {
+        cb({
+          dir:  sessionStorage.getItem(SS_DIR)  || "",
+          file: sessionStorage.getItem(SS_FILE) || "",
+        });
+      } catch (e) { /* swallow */ }
+      return () => subscribers.delete(cb);
+    },
+    readCurrentFile: async () => {
+      const path = sessionStorage.getItem(SS_FILE) || "";
+      if (!path) return null;
+      const j = await apiRead(path);
+      if (!j.ok) return null;
+      return {path: j.path, text: j.text};
+    },
+    relativeToProjects: (path) => {
+      if (!path || !projectsRoot) return path || "";
+      if (!path.startsWith(projectsRoot)) return path;
+      return path.slice(projectsRoot.length).replace(/^\/+/, "") || "/";
+    },
+    refresh: async () => {
+      const dir = sessionStorage.getItem(SS_DIR) || projectsRoot;
+      if (!dir) return;
+      await openDir(dir);
+    },
+  };
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);

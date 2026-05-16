@@ -34,8 +34,11 @@
     <span class="loader-hint">
       Pick a structure (<code>.xyz</code> / <code>.pdb</code>) in the
       <strong>Projects</strong> sidebar on the left, then click
-      &ldquo;Load here (Modify)&rdquo;.
+      &ldquo;Load from current selection&rdquo;.
     </span>
+    <button id="load-from-selection-btn" type="button"
+            title="Reads window.molbuilder.projects.getCurrentFile()"
+            disabled>Load from current selection</button>
     <span id="status" class="status">No structure loaded.</span>
   </div>
 </section>
@@ -468,25 +471,35 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
 <script src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/viewer.js') }}"></script>
 <script>
-  // Auto-load hook for the Projects sidebar: fetches the selected
-  // file's text via /api/files/read and hands it to the viewer's
-  // public loader (which POSTs to /api/build/load's JSON path).
-  window.molbuilderTabAutoLoad = async function () {
-    const file = sessionStorage.getItem("molbuilder.current_file") || "";
-    const lower = file.toLowerCase();
-    if (!(lower.endsWith(".xyz") || lower.endsWith(".pdb"))) return;
-    if (!(window.molbuilder && window.molbuilder.loadXyzText)) return;
-    try {
-      const r = await fetch(
-        "/api/files/read?path=" + encodeURIComponent(file)
-      );
-      const j = await r.json();
-      if (!j.ok) return;
-      await window.molbuilder.loadXyzText(j.text, file.split("/").pop());
-    } catch (e) { /* swallow -- sidebar shows the error on its side */ }
-  };
+  // Inquire-model wiring (Proposal D); see docs/protocols/selection.md.
   document.addEventListener("DOMContentLoaded", function () {
-    window.molbuilderTabAutoLoad();
+    const proj    = (window.molbuilder || {}).projects;
+    const loadBtn = document.getElementById("load-from-selection-btn");
+    if (!proj || !loadBtn) return;
+
+    const MODIFY_EXTS = [".xyz", ".pdb"];
+
+    function refreshLoadBtn(file) {
+      const lower = (file || "").toLowerCase();
+      const ok = MODIFY_EXTS.some((e) => lower.endsWith(e));
+      loadBtn.disabled = !ok;
+      loadBtn.title = ok
+        ? "Load " + file
+        : "Pick a .xyz / .pdb in the Projects sidebar first.";
+    }
+    loadBtn.addEventListener("click", async function () {
+      const payload = await proj.readCurrentFile();
+      if (!payload) return;
+      if (window.molbuilder && window.molbuilder.loadXyzText) {
+        await window.molbuilder.loadXyzText(
+          payload.text, payload.path.split("/").pop(),
+        );
+      }
+    });
+
+    proj.onChange(function (sel) {
+      refreshLoadBtn(sel.file);
+    });
   });
 </script>
 </body>

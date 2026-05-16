@@ -337,16 +337,27 @@ class TestSidebarPartialAndShim:
         assert "renderBreadcrumb" in body
         assert "molbuilder.current_dir" in body
         assert "molbuilder.current_file" in body
-        assert "molbuilder.selection" in body
         # Dynamic top measurement (the v1 hardcoded 3rem caused
         # overlap with the header above the app-tabs nav).
         assert "measureSidebarTop" in body
         assert "offsetHeight" in body
-        # Action buttons + auto-load hand-off.
-        assert "renderActions" in body
-        assert "molbuilderTabAutoLoad" in body
-        # Collapse toggle was removed.
+        # Inquire-model public API (replaces the v2 tab-action buttons).
+        assert "window.molbuilder.projects" in body
+        assert "getCurrentDir" in body
+        assert "getCurrentFile" in body
+        assert "onChange" in body
+        assert "readCurrentFile" in body
+        assert "relativeToProjects" in body
+        assert "refresh:" in body
+        # The "Open in <Tab>" extension-mapping dict was retired -- the
+        # sidebar no longer knows about tabs.
+        assert "OPEN_TARGETS" not in body
+        # File-manipulation: mkdir is the v1 ship.
+        assert "submitMkdir" in body
+        assert "/api/files/mkdir" in body
+        # Cruft from prior pivots that shouldn't return.
         assert "sidebar_collapsed" not in body
+        assert "molbuilderTabAutoLoad" not in body
 
     def test_projects_sidebar_css_served(self, web, picker_root):
         r = web.get("/static/lib/projects-sidebar.css")
@@ -380,17 +391,23 @@ class TestSidebarPartialAndShim:
         assert "projects-sidebar.css" in body, path
 
     @pytest.mark.parametrize("path", ["/spectra", "/modify", "/watch"])
-    def test_subscriber_tabs_register_auto_load_hook(
+    def test_subscriber_tabs_use_inquire_api(
         self, web, picker_root, path,
     ):
-        # Each subscriber tab now exposes window.molbuilderTabAutoLoad
-        # instead of including the (retired) projects-selection.js
-        # banner shim.  Pin both the new hook AND the absence of the
-        # old surface.
+        # Each subscriber tab now pulls from window.molbuilder.projects
+        # on its own user-triggered events instead of registering a
+        # window.molbuilderTabAutoLoad auto-load shim.  Pin the new
+        # contract + the absence of every retired surface.
         r = web.get(path)
         assert r.status_code == 200
         body = r.get_data(as_text=True)
-        assert "molbuilderTabAutoLoad" in body, path
+        # Inquire API consumption: tab has the Load-from-selection btn
+        # AND wires it through window.molbuilder.projects.
+        assert 'id="load-from-selection-btn"' in body, path
+        assert "window.molbuilder" in body, path
+        assert ".projects" in body, path
+        # Retired surfaces stay retired.
+        assert "molbuilderTabAutoLoad" not in body, path
         assert "projects-selection.js" not in body, path
         assert 'id="projects-banner"' not in body, path
 
@@ -429,6 +446,132 @@ class TestNoLocalFileInputs:
             f"{absent_id} unexpectedly present in {path}; "
             f"the sidebar should be the only file-loading path."
         )
+
+
+class TestFilesMkdir:
+    """POST /api/files/mkdir creates a subdirectory inside an allowed
+    root, validated against molbuilder.projects naming rules.
+
+    Depth-aware validation:
+      * directly under projects/   -> project name; ^[A-Za-z0-9_-]+$
+      * under projects/<project>/  -> topic; must be in CANONICAL_TOPICS
+      * deeper                     -> structure / ad-hoc subdir; same regex
+    """
+
+    def test_mkdir_creates_subdir_inside_root(self, web, picker_root):
+        # picker_root is wired as projects/ for these tests.
+        r = web.post(
+            "/api/files/mkdir",
+            json={"parent": str(picker_root), "name": "new_project"},
+        )
+        assert r.status_code == 200
+        j = r.get_json()
+        assert j["ok"] is True
+        assert j["path"] == str((picker_root / "new_project").resolve())
+        assert (picker_root / "new_project").is_dir()
+
+    def test_mkdir_rejects_bad_name_at_root_level(self, web, picker_root):
+        # ^[A-Za-z0-9_-]+$ disallows spaces, dots, slashes.
+        r = web.post(
+            "/api/files/mkdir",
+            json={"parent": str(picker_root), "name": "bad name"},
+        )
+        assert r.status_code == 400
+        assert "outside [A-Za-z0-9_-]" in r.get_json()["error"]
+        assert not (picker_root / "bad name").exists()
+
+    def test_mkdir_rejects_non_canonical_topic_at_topic_depth(
+        self, web, picker_root,
+    ):
+        # Set up projects/<project>/ then try to create a non-canonical
+        # topic underneath.  The picker_root acts as projects/.
+        (picker_root / "myproj").mkdir()
+        r = web.post(
+            "/api/files/mkdir",
+            json={
+                "parent": str(picker_root / "myproj"),
+                "name": "Raman",   # not in CANONICAL_TOPICS
+            },
+        )
+        assert r.status_code == 400
+        body = r.get_json()
+        assert "not one of the canonical six" in body["error"]
+        assert not (picker_root / "myproj" / "Raman").exists()
+
+    def test_mkdir_accepts_canonical_topic_at_topic_depth(
+        self, web, picker_root,
+    ):
+        (picker_root / "myproj").mkdir()
+        r = web.post(
+            "/api/files/mkdir",
+            json={
+                "parent": str(picker_root / "myproj"),
+                "name": "spectrum",   # in CANONICAL_TOPICS
+            },
+        )
+        assert r.status_code == 200
+        assert (picker_root / "myproj" / "spectrum").is_dir()
+
+    def test_mkdir_409_when_already_exists(self, web, picker_root):
+        (picker_root / "preexisting").mkdir()
+        r = web.post(
+            "/api/files/mkdir",
+            json={"parent": str(picker_root), "name": "preexisting"},
+        )
+        assert r.status_code == 409
+        assert "already exists" in r.get_json()["error"]
+
+    def test_mkdir_400_for_missing_name(self, web, picker_root):
+        r = web.post(
+            "/api/files/mkdir", json={"parent": str(picker_root)},
+        )
+        assert r.status_code == 400
+        assert "missing 'name'" in r.get_json()["error"]
+
+    def test_mkdir_400_for_parent_outside_root(self, web, picker_root):
+        # Reuses the same outside-root rejection as /api/files/list.
+        r = web.post(
+            "/api/files/mkdir",
+            json={"parent": "/etc", "name": "evil"},
+        )
+        assert r.status_code == 400
+        assert "outside every configured root" in r.get_json()["error"]
+        assert not Path("/etc/evil").exists()  # paranoia
+
+    def test_mkdir_400_for_dot_dot_in_parent(self, web, picker_root):
+        r = web.post(
+            "/api/files/mkdir",
+            json={"parent": str(picker_root) + "/..",
+                  "name": "anything"},
+        )
+        assert r.status_code == 400
+        assert ".." in r.get_json()["error"]
+
+    def test_mkdir_400_for_parent_not_a_directory(self, web, picker_root):
+        # parent points at a regular file -> 400.
+        r = web.post(
+            "/api/files/mkdir",
+            json={"parent": str(picker_root / "water.xyz"),
+                  "name": "child"},
+        )
+        assert r.status_code == 400
+        assert "not a directory" in r.get_json()["error"]
+
+
+class TestSidebarMkdirUI:
+    """The "+ New subdir" button + inline form is in the partial,
+    not the JS."""
+
+    def test_mkdir_button_and_form_in_sidebar_partial(self, web, picker_root):
+        # Any tab that includes the sidebar partial will carry the markup.
+        body = web.get("/spectra").get_data(as_text=True)
+        assert 'id="ps-mkdir-btn"' in body
+        assert 'id="ps-mkdir-form"' in body
+        assert 'id="ps-mkdir-input"' in body
+        assert 'id="ps-mkdir-error"' in body
+        assert 'id="ps-mkdir-cancel"' in body
+        # Inline form is hidden by default.
+        assert 'id="ps-mkdir-form" class="ps-mkdir-form" hidden' in body
 
 
 class TestRootsContract:

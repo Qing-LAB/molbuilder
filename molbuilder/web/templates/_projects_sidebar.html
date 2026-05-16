@@ -1,27 +1,38 @@
 {#- molbuilder Projects sidebar -- always-visible left panel.
 
-   Included by every main tab template (build, modify, watch, spectra)
-   after _app_header.html.  Layout: fixed-position aside on the left
-   under the header + app-tabs nav; lib/projects-sidebar.js measures
-   their height on load + resize and sets the sidebar's `top:`
-   dynamically.  CSS in lib/projects-sidebar.css shifts the main
-   content right via body { padding-left: var(--ps-w); }.
+   Included by every main tab template (index, modify, watch, spectra)
+   after _app_header.html.
 
-   v2 (this revision):
-     * Drop the collapse toggle.  Always open.
-     * Drop the "Use this file" banner pattern from per-tab loaders.
-     * Add an actions section at the bottom: when a file is selected,
-       render contextual "Open in <Tab>" buttons that navigate to the
-       relevant tab + trigger auto-load via sessionStorage.
+   Behaviour contract:  lib/projects-sidebar.js -- the "inquire model"
+     * exposes window.molbuilder.projects.{getCurrentDir, getCurrentFile,
+       onChange, readCurrentFile, relativeToProjects, refresh}
+     * NO tab-specific buttons (no "Open in <Tab>"); the sidebar is a
+       pure file browser + state holder + file-MANIPULATION widget.
+
+   File-manipulation buttons (v1 ships just one):
+     * "+ New subdir" -- POST /api/files/mkdir; validated against the
+       projects naming rules (regex for project/structure names,
+       CANONICAL_TOPICS for the topic level).
 -#}
 <aside class="projects-sidebar" id="projects-sidebar" aria-label="Projects file explorer">
   <header class="ps-header">
     <h2 class="ps-title">Projects</h2>
+    <button id="ps-mkdir-btn" type="button" class="ps-icon-btn"
+            title="Create a new subdirectory at the current location">
+      + New subdir
+    </button>
   </header>
 
+  <form id="ps-mkdir-form" class="ps-mkdir-form" hidden>
+    <input id="ps-mkdir-input" type="text" autocomplete="off"
+           placeholder="Name (letters, digits, _, -)">
+    <button type="submit">Create</button>
+    <button id="ps-mkdir-cancel" type="button">Cancel</button>
+    <p id="ps-mkdir-error" class="ps-mkdir-error" role="alert"></p>
+  </form>
+
   <nav class="ps-breadcrumb" id="ps-breadcrumb" aria-label="Path">
-    <!-- Crumbs inserted by projects-sidebar.js as clickable spans:
-         projects / proj / topic / structure -->
+    <!-- Crumbs inserted by projects-sidebar.js. -->
   </nav>
 
   <ul class="ps-list" id="ps-list" aria-live="polite">
@@ -29,12 +40,10 @@
   </ul>
 
   <section class="ps-actions" id="ps-actions"
-           aria-label="Actions for the selected file">
-    <!-- "Open in <Tab>" buttons inserted by projects-sidebar.js when
-         a file is selected.  Empty when no selection; a hint shows
-         in that case. -->
-    <p class="ps-actions-hint" id="ps-actions-hint">
-      Click a file above to see open actions.
-    </p>
+           aria-label="Current selection">
+    <!-- Just a status display.  Tabs that need the selection inquire
+         via window.molbuilder.projects.getCurrentFile(); the sidebar
+         itself never opens or loads anything. -->
+    <p class="ps-selection">No file selected.</p>
   </section>
 </aside>

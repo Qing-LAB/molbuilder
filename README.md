@@ -354,6 +354,7 @@ for the full install + license contract.
 | [`docs/tabs/modify.md`](docs/tabs/modify.md) | Modify tab Python API + endpoints + UI walkthrough |
 | [`docs/tabs/spectra/spec.md`](docs/tabs/spectra/spec.md) | Spectra tab spec — schema, layers, atom-fixing semantics; **end-to-end Raman validation in §12.1** |
 | [`docs/protocols/job-layout.md`](docs/protocols/job-layout.md) | Directory + filename protocol (Build writes, Watch reads) |
+| [`docs/protocols/selection.md`](docs/protocols/selection.md) | Projects-sidebar selection model + tab Inquire-API contract |
 | [`docs/engines/siesta.md`](docs/engines/siesta.md) | SIESTA generator contract |
 | [`docs/engines/pyscf.md`](docs/engines/pyscf.md) | PySCF generator contract |
 | [`docs/types/structure.md`](docs/types/structure.md) | `Structure` dataclass + readers / writers |

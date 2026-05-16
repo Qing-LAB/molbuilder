@@ -1,4 +1,4 @@
-"""Files blueprint -- server-side file explorer for the Projects tab.
+"""Files blueprint -- server-side file explorer for the Projects sidebar.
 
 Routes:
 
@@ -6,6 +6,7 @@ Routes:
     GET  /api/files/list?path=...&ext=  directory listing
     GET  /api/files/stat?path=...       file metadata
     GET  /api/files/read?path=...       text contents (size-capped)
+    POST /api/files/mkdir               create a new subdirectory (validated name)
 
 Full contract:  docs/protocols/web-api.md  §  ``/api/files/*``
 
@@ -40,6 +41,10 @@ from typing import List, Optional, Tuple
 from flask import Blueprint, jsonify, request
 
 from molbuilder import diagnostics
+from molbuilder.projects import (
+    CANONICAL_TOPICS, InvalidName, projects_root,
+    validate_name, validate_topic,
+)
 
 bp = Blueprint("files", __name__)
 
@@ -363,6 +368,140 @@ def api_files_read():
         "size":  st.st_size,
         "mtime": st.st_mtime,
         "text":  text,
+    })
+
+
+# --------------------------------------------------------------------- #
+#  /api/files/mkdir                                                     #
+# --------------------------------------------------------------------- #
+
+
+def _validate_subdir_name(parent_abs: Path, name: str) -> None:
+    """Reject names that violate the projects-hierarchy naming rules.
+
+    The rules depend on the parent path's depth inside ``projects/``:
+
+      * Directly under ``projects/`` -> the name becomes a *project*
+        (e.g. ``projects/<name>``).  ``validate_name`` applies the
+        ``^[A-Za-z0-9_-]+$`` regex.
+      * Under ``projects/<project>/`` -> the name is a *topic* and must
+        be one of :data:`molbuilder.projects.CANONICAL_TOPICS`.
+        ``validate_topic`` enforces this.
+      * Under ``projects/<project>/<topic>/`` -> the name is a
+        *structure*; same regex as project.
+      * Deeper than that -- inside a structure dir, which is supposed
+        to be flat per job-layout v1 -- the name is allowed as an
+        ad-hoc subdir (the same name regex), but the design.md
+        2026-05-14 row warns against this convention-wise.
+
+    "Depth inside projects/" is computed relative to whichever root
+    surfaced the parent path -- the picker's single root from
+    ``Capabilities.file_picker_roots()`` IS the projects/ root, so
+    we use that here.  This decouples the validator from the
+    real-cwd projects_root() and lets tests substitute a tmp tree.
+
+    Raises :class:`molbuilder.projects.InvalidName` on rejection.
+    """
+    roots = _allowed_roots()
+    root = None
+    for root_path, _label in roots:
+        try:
+            parent_abs.relative_to(root_path)
+        except ValueError:
+            continue
+        root = root_path
+        break
+    if root is None:
+        raise InvalidName(
+            f"parent {parent_abs!s} is outside the picker's roots; "
+            f"the picker shouldn't have surfaced it."
+        )
+    rel_parts = parent_abs.relative_to(root).parts
+    depth = len(rel_parts)
+    if depth == 1:
+        # Parent is projects/<project>/ -- the new name is a topic.
+        validate_topic(name)
+    else:
+        # All other cases use the same regex (project name, structure
+        # name, ad-hoc subdir).
+        validate_name(
+            name,
+            kind=("project" if depth == 0
+                  else "structure" if depth == 2
+                  else "subdir"),
+        )
+
+
+@bp.route("/api/files/mkdir", methods=["POST"])
+def api_files_mkdir():
+    """Create a new subdirectory inside an allowed root.
+
+    JSON body: ``{"parent": "<abs-path>", "name": "<new-dir-name>"}``
+
+    Validation:
+      1. ``parent`` must resolve inside an allowed root (same check as
+         every read endpoint).
+      2. ``name`` must satisfy the naming rule for its depth inside
+         ``projects/`` -- see :func:`_validate_subdir_name`.
+      3. The new path must not already exist (409 Conflict if it does).
+
+    On success: returns ``{ok, path}`` with the absolute path of the
+    new directory.  The sidebar's response is to navigate into it.
+    """
+    body = request.get_json(silent=True) or {}
+    parent_raw = body.get("parent", "")
+    name = body.get("name", "")
+
+    try:
+        parent = _resolve_within_roots(parent_raw)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+    if not parent.is_dir():
+        return jsonify({
+            "ok": False,
+            "error": f"parent path is not a directory: {str(parent)!r}",
+        }), 400
+
+    if not isinstance(name, str) or not name:
+        return jsonify({
+            "ok": False,
+            "error": "missing 'name' in request body",
+        }), 400
+
+    try:
+        _validate_subdir_name(parent, name)
+    except InvalidName as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+
+    new_path = parent / name
+    if new_path.exists():
+        return jsonify({
+            "ok":   False,
+            "error": f"path already exists: {str(new_path)!r}",
+        }), 409
+
+    try:
+        new_path.mkdir(parents=False, exist_ok=False)
+    except FileExistsError:
+        # Race condition with another writer; mirrors the 409 above.
+        return jsonify({
+            "ok":   False,
+            "error": f"path already exists: {str(new_path)!r}",
+        }), 409
+    except PermissionError as exc:
+        return jsonify({
+            "ok": False,
+            "error": f"permission denied: {exc}",
+        }), 403
+    except OSError as exc:
+        return jsonify({
+            "ok": False,
+            "error": f"mkdir failed: {exc}",
+        }), 500
+
+    return jsonify({
+        "ok":   True,
+        "path": str(new_path),
     })
 
 

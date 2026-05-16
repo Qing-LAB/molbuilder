@@ -33,6 +33,7 @@ docs/
 │   ├── web-api.md              #   build-side Flask endpoints
 │   ├── watch-api.md            #   watch-side Flask endpoints
 │   ├── cli.md                  #   click-based CLI surface
+│   ├── selection.md            #   Projects sidebar + tab Inquire-API contract
 │   └── job-layout.md           #   on-disk run-directory convention (job-layout v1)
 ├── types/                      # L1 data-type contracts
 │   ├── structure.md            #   Structure dataclass + XYZ/PDB I/O

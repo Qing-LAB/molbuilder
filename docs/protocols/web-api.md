@@ -363,12 +363,22 @@ shell.
 
 ### Endpoints
 
-| route | method | query | response | status |
+| route | method | query / body | response | status |
 |---|---|---|---|---|
 | `/api/files/roots` | GET | — | `{ok, roots: [{path, label, exists}, ...]}` | 200 |
 | `/api/files/list`  | GET | `path` (required), `ext` (optional, comma-sep filter) | `{ok, path, entries: [...]}` | 400 outside-root · 404 missing dir · 200 |
 | `/api/files/stat`  | GET | `path` (required) | `{ok, path, kind, size, mtime}` | 400 outside-root · 404 missing · 200 |
 | `/api/files/read`  | GET | `path` (required), `max_bytes` (optional, default 1 MB) | `{ok, path, kind, size, mtime, text}` | 400 outside-root · 404 missing · 413 too large · 200 |
+| `/api/files/mkdir` | POST | JSON `{parent, name}` | `{ok, path}` | 400 outside-root · 400 invalid name · 403 perm denied · 409 already exists · 200 |
+
+### Sidebar selection contract
+
+The frontend half of this API -- the `window.molbuilder.projects.*`
+Inquire API the persistent left sidebar exposes, and the rules tabs
+follow when reacting to selections -- is spec'd in its own document:
+**[`docs/protocols/selection.md`](selection.md)**.  Read that for the
+sidebar interaction rules, the per-tab "Load from current selection"
+contract, and the anti-patterns retired during the design iterations.
 
 ### Root — single, fixed (v1)
 
