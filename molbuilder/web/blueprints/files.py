@@ -9,6 +9,9 @@ Routes:
     POST /api/files/mkdir               create a new subdirectory (validated name)
     POST /api/projects/create           bootstrap a new project with every
                                         canonical subdir (atomic, strict conflict)
+    POST /api/files/upload              (stub) multipart upload -- 501 in v1
+    POST /api/files/write               (stub) save edited text -- 501 in v1
+    DELETE /api/files/delete            (stub) remove file or empty dir -- 501 in v1
 
 Full contract:  docs/protocols/web-api.md  §  ``/api/files/*``
 
@@ -619,6 +622,93 @@ def api_projects_create():
         "path":    str(project_path),
         "subdirs": list(CANONICAL_TOPICS),
     })
+
+
+# --------------------------------------------------------------------- #
+#  Stubs (501 Not Implemented) -- design captured; behaviour deferred   #
+# --------------------------------------------------------------------- #
+#
+# The frontend renders these endpoints' shape today so the design is
+# committed to + the UX surface is reviewable.  When the real feature
+# lands, swap the body of each route for the actual implementation.
+#
+# Why 501 and not a silent no-op:
+#   * 501 is the standards-correct response for a documented endpoint
+#     whose method is not yet implemented; clients can dispatch on it.
+#   * Returning {ok: false} in the standard error shape means the
+#     existing inline-error UI in the sidebar renders the message
+#     immediately, no special-case branch needed.
+#   * Tests pin both the status code (501) AND the error text so a
+#     future "oops we shipped the stub" lands loudly.
+
+
+@bp.route("/api/files/upload", methods=["POST"])
+def api_files_upload():
+    """Stub: actual upload-to-disk for laptop->server file transfer.
+
+    When implemented (task #56), accepts multipart ``file`` + form
+    ``target_dir``.  Restrictions (already captured in
+    ``docs/protocols/selection.md``):
+
+      * target_dir must resolve inside an allowed picker root
+      * target_dir depth must be >= 1 (no upload at projects/ root)
+      * filename validated by a *different* regex than ``validate_name``
+        (allows dots for extensions; e.g. ``^[A-Za-z0-9_.-]+$``)
+      * inside ``user/`` (depth 2+): free-form
+      * name conflict at destination -> 409
+    """
+    return jsonify({
+        "ok": False,
+        "error": ("/api/files/upload is not implemented yet (task #56).  "
+                  "For now, move files into the projects tree via your "
+                  "shell (scp / mv) and refresh the sidebar."),
+    }), 501
+
+
+@bp.route("/api/files/write", methods=["POST"])
+def api_files_write():
+    """Stub: save edited text content back to a file.
+
+    When implemented, accepts JSON ``{path, text, expected_mtime}``.
+    Validation:
+      * path must resolve inside an allowed root
+      * path must already exist as a regular file (no implicit create
+        -- that's what ``upload`` is for)
+      * ``expected_mtime`` from the prior /api/files/read must match
+        the file's current mtime; mismatch -> 409 (someone else edited
+        it).  This is the standard concurrent-edit detection pattern.
+      * Encoding: UTF-8.  Binary edits not supported (and probably
+        never will be from a text-editor UI).
+    """
+    return jsonify({
+        "ok": False,
+        "error": ("/api/files/write is not implemented yet.  The "
+                  "Preview modal is currently view-only; edit + save "
+                  "will land in a follow-up."),
+    }), 501
+
+
+@bp.route("/api/files/delete", methods=["DELETE"])
+def api_files_delete():
+    """Stub: remove a file or empty directory.
+
+    When implemented, accepts JSON ``{path, recursive}``.
+    Validation (same shape as create rules):
+      * path must resolve inside an allowed picker root
+      * path must NOT be a configured root (no deleting projects/)
+      * path must NOT be a CANONICAL_TOPIC subdir directly under a
+        project (would orphan the project layout; user goes to the
+        shell for that)
+      * ``recursive=true`` required for non-empty directories
+      * The confirmation modal in the UI is mandatory; the backend
+        does NOT add a second confirmation -- one is enough.
+    """
+    return jsonify({
+        "ok": False,
+        "error": ("/api/files/delete is not implemented yet.  For "
+                  "destructive operations, use your shell (rm) and "
+                  "refresh the sidebar."),
+    }), 501
 
 
 __all__ = ["bp"]

@@ -722,6 +722,125 @@ class TestSidebarMkdirUI:
         assert "section.hidden" in body
 
 
+class TestFileOperationStubs:
+    """The upload / write / delete endpoints are intentionally 501
+    stubs in v1.  The frontend renders the inline error from the
+    standard ``{ok:false, error:...}`` shape; design captured in
+    ``docs/protocols/selection.md`` for the eventual real impls."""
+
+    def test_upload_returns_501_with_helpful_message(self, web):
+        r = web.post("/api/files/upload")
+        assert r.status_code == 501
+        body = r.get_json()
+        assert body["ok"] is False
+        assert "not implemented" in body["error"]
+        # The message points the user at the manual workaround.
+        assert "scp" in body["error"] or "mv" in body["error"]
+
+    def test_write_returns_501_with_helpful_message(self, web):
+        r = web.post("/api/files/write")
+        assert r.status_code == 501
+        body = r.get_json()
+        assert body["ok"] is False
+        assert "not implemented" in body["error"]
+        # The message acknowledges the preview-is-view-only context.
+        assert "Preview" in body["error"] or "view-only" in body["error"]
+
+    def test_delete_returns_501_with_helpful_message(self, web):
+        r = web.delete("/api/files/delete")
+        assert r.status_code == 501
+        body = r.get_json()
+        assert body["ok"] is False
+        assert "not implemented" in body["error"]
+        assert "shell" in body["error"] or "rm" in body["error"]
+
+
+class TestSidebarStubsUI:
+    """The stub features ship with their full UI surface so the design
+    is reviewable.  Markup checks here; behaviour is exercised at the
+    E2E layer (deferred Playwright suite)."""
+
+    def test_upload_section_in_partial(self, web, picker_root):
+        body = web.get("/spectra").get_data(as_text=True)
+        assert 'id="ps-upload-form"' in body
+        assert 'id="ps-upload-input"' in body
+        assert 'id="ps-upload-error"' in body
+        assert 'class="ps-upload-context"' in body
+        # The summary heading is the user-facing label.
+        assert '+ Upload file</summary>' in body
+
+    def test_upload_section_depth_aware_visibility_in_js(self, web):
+        # Same string-grep pattern as the mkdir-section test; the
+        # toggle function name + closest("details") + atRoot all
+        # appear in the JS source.  E2E confirmation deferred.
+        body = web.get("/static/lib/projects-sidebar.js").get_data(as_text=True)
+        assert "updateUploadContext" in body
+        # The function reuses the same atRoot pattern.
+        assert "elUploadForm" in body
+        assert "elUploadContext" in body
+
+    def test_preview_button_in_actions(self, web, picker_root):
+        body = web.get("/spectra").get_data(as_text=True)
+        assert 'id="ps-preview-btn"' in body
+        # Starts disabled (no file selected on page load).
+        assert 'id="ps-preview-btn"' in body
+        assert "disabled" in body.split('id="ps-preview-btn"', 1)[1].split(">", 1)[0]
+
+    def test_preview_modal_markup_full(self, web, picker_root):
+        body = web.get("/spectra").get_data(as_text=True)
+        # Modal scaffolding: backdrop, window, header (title + close),
+        # body (pre for text), error slot, footer (Save + Close).
+        assert 'id="ps-preview-modal"' in body
+        assert 'class="ps-preview-backdrop"' in body
+        assert 'id="ps-preview-title"' in body
+        assert 'id="ps-preview-meta"' in body
+        assert 'id="ps-preview-body"' in body
+        assert 'id="ps-preview-error"' in body
+        # Save is visible but disabled in v1 (write endpoint stubbed).
+        assert 'id="ps-preview-save-btn"' in body
+        between = body.split(
+            'id="ps-preview-save-btn"', 1,
+        )[1].split(">", 1)[0]
+        assert "disabled" in between
+        assert "coming soon" in between or "not implemented" in between
+
+    def test_preview_modal_starts_hidden(self, web, picker_root):
+        # The hidden attribute ensures it doesn't flash on first paint
+        # before JS runs.
+        body = web.get("/spectra").get_data(as_text=True)
+        assert 'id="ps-preview-modal" class="ps-preview-modal" hidden' in body
+
+    def test_preview_uses_existing_read_endpoint_in_js(self, web):
+        # Preview is fully functional for view; the JS calls
+        # window.molbuilder.projects.readCurrentFile() which wraps
+        # /api/files/read.  Pin so a future refactor doesn't switch
+        # to a hypothetical new endpoint without notice.
+        body = web.get("/static/lib/projects-sidebar.js").get_data(as_text=True)
+        assert "readCurrentFile" in body
+        assert "showPreview" in body
+        assert "openPreviewModal" in body
+        assert "closePreviewModal" in body
+
+    def test_delete_button_logic_in_js(self, web):
+        # Per-entry × button is rendered for deletable entries.  The
+        # eligibility check + confirm flow is in the JS; backend 501s.
+        body = web.get("/static/lib/projects-sidebar.js").get_data(as_text=True)
+        assert "_isDeletableEntry" in body
+        assert "ps-entry-delete" in body
+        assert "confirmAndDelete" in body
+        assert "_UNDELETABLE_AT_DEPTH_1" in body
+
+    def test_delete_button_has_hover_visibility_css(self, web):
+        # The × shows only on hover so it doesn't clutter the list.
+        body = web.get(
+            "/static/lib/projects-sidebar.css",
+        ).get_data(as_text=True)
+        assert ".ps-entry-delete" in body
+        # opacity 0 default + hover opacity 1 = the hover-reveal idiom.
+        assert "opacity: 0" in body
+        assert ".ps-entry:hover .ps-entry-delete" in body
+
+
 class TestRootsContract:
     """Single-root contract: Capabilities.file_picker_roots() returns
     exactly the projects/ entry.  file_picker.roots in molbuilder.json

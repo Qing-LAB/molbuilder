@@ -44,6 +44,9 @@
   let elCrumb, elList, elActions, elSidebar;
   let elMkdirForm, elMkdirInput, elMkdirError, elMkdirContext;
   let elNewProjForm, elNewProjInput, elNewProjError, elNewProjSubdirs;
+  let elUploadForm, elUploadInput, elUploadError, elUploadContext;
+  let elPreviewBtn, elPreviewModal, elPreviewTitle, elPreviewMeta;
+  let elPreviewBody, elPreviewError;
 
   // The root path of `projects/`, resolved from /api/files/roots
   // at startup.
@@ -67,9 +70,13 @@
     sessionStorage.setItem(SS_DIR,  dir  || "");
     sessionStorage.setItem(SS_FILE, file || "");
     publishChange();
-    // Keep the "New subdir" form's context label in sync with where
-    // the user is now (e.g. "spectrum/water_v2" instead of stale "/").
+    // Keep all sidebar UI bits in sync with the new selection:
+    //   * mkdir form's "(in <dir>)" hint + depth-0 hide rule
+    //   * upload form's "(lands in <dir>)" hint + same hide rule
+    //   * preview button's disabled state (no file -> disabled)
     updateMkdirContext();
+    updateUploadContext();
+    refreshPreviewButton(file);
   }
 
   // ----- API helpers (private; the public API at the bottom calls them) //
@@ -101,6 +108,32 @@
       body: JSON.stringify({name: name}),
     });
     return await r.json();
+  }
+
+  async function apiUpload(targetDir, file) {
+    const fd = new FormData();
+    fd.append("target_dir", targetDir);
+    fd.append("file", file);
+    const r = await fetch("/api/files/upload", {method: "POST", body: fd});
+    // 501 still returns valid JSON; the inline error UX renders it.
+    try { return await r.json(); }
+    catch (_) {
+      return {ok: false, error: "upload server returned non-JSON (status "
+                                 + r.status + ")"};
+    }
+  }
+
+  async function apiDelete(path, recursive) {
+    const r = await fetch("/api/files/delete", {
+      method: "DELETE",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({path: path, recursive: !!recursive}),
+    });
+    try { return await r.json(); }
+    catch (_) {
+      return {ok: false, error: "delete server returned non-JSON (status "
+                                 + r.status + ")"};
+    }
   }
 
   async function apiRead(path) {
@@ -153,6 +186,37 @@
     });
   }
 
+  // Names that may NOT be deleted via the sidebar -- ever -- because
+  // doing so would orphan the projects layout.  Mirrors
+  // CANONICAL_TOPICS (kept in JS to avoid an extra round-trip; the
+  // backend will also refuse via _validate_subdir_name's depth rules).
+  const _UNDELETABLE_AT_DEPTH_1 = new Set([
+    "structure", "pseudopotential",
+    "optimization", "frequency", "spectrum",
+    "transport", "single-point", "scan",
+    "user",
+  ]);
+
+  function _isDeletableEntry(entry, currentPath) {
+    // At depth 0 (currentPath == projectsRoot): every entry is a
+    // project; user goes to the shell to delete those.
+    if (!projectsRoot) return false;
+    if (currentPath === projectsRoot
+        || currentPath === projectsRoot.replace(/\/$/, "")) {
+      return false;
+    }
+    // At depth 1 (one level inside a project): canonical-topic dirs
+    // are off-limits.  Detect "depth 1" by checking the parent path
+    // is exactly projects/<one-segment>.
+    const rel = currentPath.slice(projectsRoot.length).replace(/^\/+/, "");
+    const depth = rel.split("/").filter(Boolean).length;
+    if (depth === 1 && entry.kind === "directory"
+        && _UNDELETABLE_AT_DEPTH_1.has(entry.name)) {
+      return false;
+    }
+    return true;
+  }
+
   function renderList(entries, currentPath) {
     elList.innerHTML = "";
     elList.classList.toggle("is-empty", entries.length === 0);
@@ -184,6 +248,21 @@
         meta.textContent = humanSize(e.size);
         li.appendChild(meta);
       }
+      // Delete button: only on hover, only when the entry passes the
+      // depth-aware eligibility check.  Backend currently 501s; the
+      // UX flow (× -> confirm -> error -> done) is the future shape.
+      if (_isDeletableEntry(e, currentPath)) {
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "ps-entry-delete";
+        del.textContent = "×";   // ×
+        del.title = "Delete " + e.name;
+        del.addEventListener("click", (ev) => {
+          ev.stopPropagation();        // don't select / navigate
+          confirmAndDelete(fullPath, e);
+        });
+        li.appendChild(del);
+      }
       li.addEventListener("click", () => {
         if (e.kind === "directory") {
           openDir(fullPath);
@@ -195,6 +274,26 @@
       });
       elList.appendChild(li);
     }
+  }
+
+  async function confirmAndDelete(fullPath, entry) {
+    const what = entry.kind === "directory" ? "directory" : "file";
+    // Native confirm() is enough for v1: the stub backend returns
+    // 501 anyway so the user never gets to the destructive step.
+    // When the real backend lands we replace this with a modal.
+    if (!window.confirm(
+      "Delete " + what + " '" + entry.name + "'?\n\n"
+      + "This cannot be undone."
+    )) return;
+    const j = await apiDelete(fullPath, entry.kind === "directory");
+    if (!j.ok) {
+      // Today: 501 stub message.  Tomorrow: real backend's 403/409/etc.
+      window.alert(j.error || "Delete failed.");
+      return;
+    }
+    // Future: refresh the listing after a successful delete.
+    const dir = sessionStorage.getItem(SS_DIR) || projectsRoot;
+    if (dir) await openDir(dir);
   }
 
   function markSelected(li) {
@@ -316,6 +415,114 @@
     await openDir(j.path);
   }
 
+  // ----- Upload handler (stub) ---------------------------------- //
+  // POSTs multipart to /api/files/upload which currently 501s; the
+  // 501 message lands in the inline error slot exactly like the
+  // future real implementation's 400/409 would.  No special-case
+  // handling needed when the real backend lands.
+
+  function resetUploadForm() {
+    if (elUploadInput) elUploadInput.value = "";
+    if (elUploadError) elUploadError.textContent = "";
+  }
+
+  function updateUploadContext() {
+    if (!elUploadContext) return;
+    const dir = sessionStorage.getItem(SS_DIR) || projectsRoot || "";
+    elUploadContext.textContent = dir
+      ? (window.molbuilder.projects.relativeToProjects(dir) || "projects/")
+      : "current directory";
+    elUploadContext.title = dir || "";
+    // Same depth-0 hiding as + New subdir: no upload at projects/ root.
+    const section = elUploadForm ? elUploadForm.closest("details") : null;
+    if (section) {
+      const atRoot = !projectsRoot
+        || dir === projectsRoot
+        || dir === projectsRoot.replace(/\/$/, "")
+        || !dir;
+      section.hidden = atRoot;
+      if (atRoot) section.open = false;
+    }
+  }
+
+  async function submitUpload(ev) {
+    ev.preventDefault();
+    elUploadError.textContent = "";
+    if (!elUploadInput.files || elUploadInput.files.length === 0) {
+      elUploadError.textContent = "Pick a file to upload first.";
+      return;
+    }
+    const file = elUploadInput.files[0];
+    const target = sessionStorage.getItem(SS_DIR) || projectsRoot;
+    const j = await apiUpload(target, file);
+    if (!j.ok) {
+      // Today this is the 501 message from the stub; tomorrow it's
+      // the real backend's 409 / 400 / 403 -- same code path either
+      // way, no special-case branch.
+      elUploadError.textContent = j.error || "upload failed.";
+      return;
+    }
+    resetUploadForm();
+    // After a real upload lands the file in current_dir, refresh the
+    // listing so the user sees it.  Today this branch is unreached
+    // (501), but the future-implementation hook is ready.
+    await openDir(target);
+  }
+
+  // ----- File-preview modal (view: functional; save: stub) ------ //
+
+  function openPreviewModal() {
+    if (!elPreviewModal) return;
+    elPreviewModal.hidden = false;
+    document.addEventListener("keydown", _previewKeydown);
+  }
+
+  function closePreviewModal() {
+    if (!elPreviewModal) return;
+    elPreviewModal.hidden = true;
+    document.removeEventListener("keydown", _previewKeydown);
+  }
+
+  function _previewKeydown(ev) {
+    if (ev.key === "Escape") closePreviewModal();
+  }
+
+  async function showPreview() {
+    const path = sessionStorage.getItem(SS_FILE) || "";
+    if (!path) return;
+    elPreviewTitle.textContent = path.split("/").pop();
+    elPreviewMeta.textContent  = path;
+    elPreviewBody.textContent  = "Loading...";
+    elPreviewError.textContent = "";
+    openPreviewModal();
+    const payload = await window.molbuilder.projects.readCurrentFile();
+    if (!payload) {
+      elPreviewBody.textContent = "";
+      // The /api/files/read endpoint surfaces 413 (too large) + 400
+      // (non-UTF-8) + 404 with specific messages; use stat to fetch
+      // the actual message instead of a generic fallback.
+      try {
+        const r = await fetch(
+          "/api/files/read?path=" + encodeURIComponent(path)
+        );
+        const j = await r.json();
+        elPreviewError.textContent = j.error || "Failed to read file.";
+      } catch (e) {
+        elPreviewError.textContent = "Network error reading file: " + e.message;
+      }
+      return;
+    }
+    elPreviewBody.textContent = payload.text;
+  }
+
+  function refreshPreviewButton(file) {
+    if (!elPreviewBtn) return;
+    elPreviewBtn.disabled = !file;
+    elPreviewBtn.title = file
+      ? "Preview " + file.split("/").pop()
+      : "Pick a file in the list to preview it.";
+  }
+
   // ----- Navigation --------------------------------------------- //
 
   async function openDir(absPath) {
@@ -371,6 +578,29 @@
     if (elNewProjForm) elNewProjForm.addEventListener("submit", submitNewProject);
     const newProjCancel = document.getElementById("ps-newproject-cancel");
     if (newProjCancel) newProjCancel.addEventListener("click", resetNewProjectForm);
+
+    // Upload form (stub backend; UX is wired).
+    elUploadForm    = document.getElementById("ps-upload-form");
+    elUploadInput   = document.getElementById("ps-upload-input");
+    elUploadError   = document.getElementById("ps-upload-error");
+    elUploadContext = document.querySelector(".ps-upload-context");
+    if (elUploadForm) elUploadForm.addEventListener("submit", submitUpload);
+    const uploadCancel = document.getElementById("ps-upload-cancel");
+    if (uploadCancel) uploadCancel.addEventListener("click", resetUploadForm);
+
+    // File-preview modal (view: functional; save: stub).
+    elPreviewBtn   = document.getElementById("ps-preview-btn");
+    elPreviewModal = document.getElementById("ps-preview-modal");
+    elPreviewTitle = document.getElementById("ps-preview-title");
+    elPreviewMeta  = document.getElementById("ps-preview-meta");
+    elPreviewBody  = document.getElementById("ps-preview-body");
+    elPreviewError = document.getElementById("ps-preview-error");
+    if (elPreviewBtn) elPreviewBtn.addEventListener("click", showPreview);
+    if (elPreviewModal) {
+      elPreviewModal.querySelectorAll(
+        ".ps-preview-close, .ps-preview-close-footer, .ps-preview-backdrop"
+      ).forEach((n) => n.addEventListener("click", closePreviewModal));
+    }
     // Populate the "subdirs that will be created" note from the
     // canonical list (kept in JS to avoid an extra API roundtrip;
     // the backend still validates -- this is just a display hint).

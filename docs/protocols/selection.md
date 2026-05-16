@@ -104,9 +104,11 @@ The sidebar never:
 |---|---|---|---|
 | `POST /api/projects/create` | `{name}` | name = `^[A-Za-z0-9_-]+$`; strict-create (409 if exists); atomic + READMEs | **Shipped** |
 | `POST /api/files/mkdir`     | `{parent, name}` | parent inside an allowed root; name validated against the depth-aware rule | **Shipped** |
-| `POST /api/files/rename`    | `{path, new_name}` | same depth-aware naming + conflict rules as mkdir | Deferred |
-| `DELETE /api/files/delete`  | `{path, recursive}` | TBD; destructive, needs UX | Deferred |
-| `POST /api/files/upload`    | multipart `{file, target_dir}` | (a) destination depth ≥ 1 (no upload at projects/ root); (b) inside an allowed root; (c) filename regex allows dots for extensions; (d) inside `user/` depth 2+ free-form; (e) name conflict at destination = 409 with clear UX | Deferred -- rules pinned now |
+| `GET  /api/files/read`      | `path=...&max_bytes=...` | text content (size-capped); used by the file-preview modal | **Shipped** |
+| `POST /api/files/rename`    | `{path, new_name}` | same depth-aware naming + conflict rules as mkdir | Deferred (not stubbed) |
+| `POST /api/files/upload`    | multipart `{file, target_dir}` | (a) destination depth ≥ 1; (b) inside an allowed root; (c) filename regex allows dots for extensions; (d) inside `user/` depth 2+ free-form; (e) name conflict at destination = 409 | **Stub** (returns 501 with explanatory message; UI surface fully wired) |
+| `POST /api/files/write`     | `{path, text, expected_mtime}` | path inside allowed root; mtime-based conflict detection (409 on mismatch); UTF-8 only | **Stub** (501; the file-preview modal's Save button is disabled with `title="coming soon"`) |
+| `DELETE /api/files/delete`  | `{path, recursive}` | path inside allowed root; cannot delete picker root or a canonical-topic dir at depth 1; recursive flag required for non-empty dirs | **Stub** (501; UI shows per-entry × on hover at eligible depths + JS confirm dialog before sending the request) |
 
 `mkdir`'s name validation depends on the parent's depth inside the
 picker's root:

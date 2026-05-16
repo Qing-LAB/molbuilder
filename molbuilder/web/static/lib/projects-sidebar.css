@@ -312,3 +312,188 @@ body.has-projects-sidebar > nav.app-tabs {
   font-family: monospace;
   font-weight: normal;
 }
+
+.ps-actions-row {
+  display: flex;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.ps-action-btn {
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+  background: var(--ps-hover);
+  color: var(--ps-fg);
+  border: 1px solid var(--ps-border);
+  border-radius: 3px;
+}
+
+.ps-action-btn:hover:not(:disabled) {
+  background: var(--ps-selected);
+  color: var(--ps-selected-fg);
+  border-color: var(--ps-selected);
+}
+
+.ps-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Per-entry delete button -- only visible on hover, to avoid
+ * cluttering the list.  Click stops propagation so the entry
+ * itself doesn't get selected/navigated. */
+.ps-entry-delete {
+  flex: 0 0 auto;
+  margin-left: 0.3rem;
+  padding: 0 0.35rem;
+  background: transparent;
+  color: var(--ps-fg-muted);
+  border: 1px solid transparent;
+  border-radius: 3px;
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+.ps-entry:hover .ps-entry-delete {
+  opacity: 1;
+}
+.ps-entry-delete:hover {
+  background: #5a1f1f;
+  color: #fff;
+  border-color: #6e2929;
+}
+.ps-entry.is-selected .ps-entry-delete {
+  opacity: 1;
+  color: var(--ps-selected-fg);
+}
+
+/* ---- File-preview modal -------------------------------------- */
+/* Floats centered over the whole page; hidden by default; opened
+ * via the actions section's Preview button. */
+
+.ps-preview-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;       /* above the sidebar (z-index 5) + everything else */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ps-preview-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.ps-preview-window {
+  position: relative;
+  width: min(900px, 92vw);
+  max-height: 80vh;
+  background: #1e1e1e;
+  color: var(--ps-fg);
+  border: 1px solid var(--ps-border);
+  border-radius: 5px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.6);
+}
+
+.ps-preview-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.8rem;
+  background: #141414;
+  border-bottom: 1px solid var(--ps-border);
+}
+
+.ps-preview-title {
+  margin: 0;
+  flex: 1;
+  font-size: 1rem;
+  font-family: monospace;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ps-preview-close {
+  background: transparent;
+  border: 1px solid var(--ps-border);
+  color: var(--ps-fg);
+  padding: 0 0.55rem;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.ps-preview-close:hover { background: var(--ps-hover); }
+
+.ps-preview-meta {
+  margin: 0;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.75rem;
+  font-family: monospace;
+  color: var(--ps-fg-muted);
+  background: #141414;
+  border-bottom: 1px solid var(--ps-border);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ps-preview-body {
+  flex: 1;
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  overflow: auto;
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: var(--ps-fg);
+  background: #0e0e0e;
+  white-space: pre;
+}
+
+.ps-preview-error {
+  margin: 0;
+  padding: 0.4rem 0.8rem;
+  color: #e07a7a;
+  background: #2a1818;
+  font-size: 0.85rem;
+  min-height: 0;            /* collapses when empty */
+}
+.ps-preview-error:empty { display: none; }
+
+.ps-preview-footer {
+  display: flex;
+  gap: 0.45rem;
+  justify-content: flex-end;
+  padding: 0.55rem 0.8rem;
+  background: #141414;
+  border-top: 1px solid var(--ps-border);
+}
+.ps-preview-footer button {
+  font-size: 0.85rem;
+  padding: 0.3rem 0.8rem;
+  cursor: pointer;
+  background: var(--ps-hover);
+  color: var(--ps-fg);
+  border: 1px solid var(--ps-border);
+  border-radius: 3px;
+}
+.ps-preview-footer button:hover:not(:disabled) {
+  background: var(--ps-selected);
+  color: var(--ps-selected-fg);
+  border-color: var(--ps-selected);
+}
+.ps-preview-footer button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

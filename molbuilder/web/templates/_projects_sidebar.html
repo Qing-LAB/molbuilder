@@ -65,6 +65,28 @@
     </form>
   </details>
 
+  <!-- Upload file: laptop -> server transfer.  Stub in v1 (backend
+       returns 501; frontend renders the message inline).  Same depth-
+       aware visibility as + New subdir; same naming + location rules
+       (target = current_dir; filename has its own regex). -->
+  <details class="ps-create-section">
+    <summary class="ps-create-summary">+ Upload file</summary>
+    <form id="ps-upload-form" class="ps-create-form" enctype="multipart/form-data">
+      <label class="ps-field-label" for="ps-upload-input">
+        Pick a file
+        <small class="ps-field-hint">
+          (lands in <span class="ps-upload-context">current directory</span>)
+        </small>
+      </label>
+      <input id="ps-upload-input" type="file">
+      <div class="ps-create-actions">
+        <button type="submit">Upload</button>
+        <button id="ps-upload-cancel" type="button">Reset</button>
+      </div>
+      <p id="ps-upload-error" class="ps-mkdir-error" role="alert"></p>
+    </form>
+  </details>
+
   <nav class="ps-breadcrumb" id="ps-breadcrumb" aria-label="Path">
     <!-- Crumbs inserted by projects-sidebar.js. -->
   </nav>
@@ -79,5 +101,40 @@
          via window.molbuilder.projects.getCurrentFile(); the sidebar
          itself never opens or loads anything. -->
     <p class="ps-selection">No file selected.</p>
+    <div class="ps-actions-row">
+      <button id="ps-preview-btn" type="button" class="ps-action-btn"
+              disabled title="Pick a file in the list to preview it">
+        Preview
+      </button>
+    </div>
   </section>
 </aside>
+
+<!-- File-preview modal (lives outside the sidebar so it can float
+     centered over the whole page).  Hidden by default; opened by the
+     sidebar's Preview button + closed by Escape / Close button /
+     backdrop click.  Read-only in v1 -- the Save button is visible
+     but disabled so the future feature surface is reviewable. -->
+<div id="ps-preview-modal" class="ps-preview-modal" hidden
+     role="dialog" aria-modal="true" aria-labelledby="ps-preview-title">
+  <div class="ps-preview-backdrop"></div>
+  <div class="ps-preview-window">
+    <header class="ps-preview-header">
+      <h3 id="ps-preview-title" class="ps-preview-title">(no file)</h3>
+      <button type="button" class="ps-preview-close" aria-label="Close">
+        ×
+      </button>
+    </header>
+    <p class="ps-preview-meta" id="ps-preview-meta"></p>
+    <pre id="ps-preview-body" class="ps-preview-body"
+         aria-label="File content"></pre>
+    <p id="ps-preview-error" class="ps-preview-error" role="alert"></p>
+    <footer class="ps-preview-footer">
+      <button id="ps-preview-save-btn" type="button" disabled
+              title="Save is not implemented yet (task: edit + save endpoint).">
+        Save
+      </button>
+      <button type="button" class="ps-preview-close-footer">Close</button>
+    </footer>
+  </div>
+</div>
