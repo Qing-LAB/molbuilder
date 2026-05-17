@@ -115,6 +115,12 @@ def test_geometric_optparams_accepts_pyscf_optimize_kwargs():
     no dependency on PySCF -- if either side renames or rejects the
     keys, this fails at unit-test time with a clean message rather
     than letting a generated script crash at user runtime.
+
+    ``importorskip`` makes this skip cleanly in any env that doesn't
+    have geomeTRIC (the host env, typically).  To actually run it,
+    invoke pytest from a Python that has geomeTRIC importable
+    (``conda run -n molbuilder-pySCF python -m pytest -k geometric``).
+    No env mutation required; this is the standard pytest pattern.
     """
     pytest.importorskip("geometric")
     from geometric.optimize import OptParams
