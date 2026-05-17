@@ -304,16 +304,23 @@
         // saveToWorkspace is the single source of truth for the
         // generate-and-save flow (lib/projects-sidebar.js); each tab
         // calls it instead of duplicating fetch + refresh logic.
+        //
+        // Variable name: `wrote` (not `r`) because the outer scope
+        // already has `let r` for the render-fetch result above --
+        // a `const r` here is a parse-time SyntaxError that breaks
+        // the WHOLE module, leaving the schema form stuck at
+        // "Loading from schema...".
         const proj = (window.molbuilder || {}).projects;
         if (!proj) return;
-        const r = await proj.saveToWorkspace(
+        const wrote = await proj.saveToWorkspace(
             state.lastScript, state.lastJobName + ".spectra.py");
-        if (!r) return;     // no current_dir / at root -- skip silently
-        if (r.ok) {
-            setStatus(els.generateStatus, "Wrote " + r.relPath, "ok");
+        if (!wrote) return;     // no current_dir / at root -- skip silently
+        if (wrote.ok) {
+            setStatus(els.generateStatus,
+                      "Wrote " + wrote.relPath, "ok");
         } else {
             setStatus(els.generateStatus,
-                "Generated, but " + r.error
+                "Generated, but " + wrote.error
                 + " Use Download / Copy below as fallback.",
                 "warn");
         }
