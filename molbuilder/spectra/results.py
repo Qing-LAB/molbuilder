@@ -71,7 +71,19 @@ import numpy as np
 #          best-effort fallback (both new arrays populated from the
 #          single legacy field, since the canonical normalisation is
 #          not recoverable from v1).
-SCHEMA_VERSION = 2
+#  v3 (2026-05-21): rename ``fixed_atom_idxs`` -> ``frozen_atom_idxs``
+#          (terminology unification, design.md 2026-05-21).  No
+#          backward compatibility: v1/v2 documents fail to load
+#          with a clear schema-version error rather than silently
+#          coercing.  Re-run / re-export the spectra.json to land
+#          on v3.
+#  v4 (2026-05-22): add ``runtime_info`` dict carrying CPU/thread
+#          and GPU facts the running script collected.  Lets the
+#          /results page show "20 threads, BLAS=1, GPU ON (RTX 4090,
+#          CC 8.9)" so a user can verify the run matched their
+#          configuration intent.  No backward compatibility: v3
+#          documents fail with a clear schema-version error.
+SCHEMA_VERSION = 4
 
 
 # Phase status vocabulary -- per-layer flag carried on
@@ -249,7 +261,7 @@ class ModeElectronicStructure:
 class ModeData:
     """One vibrational mode.
 
-    Each eigenvector is restricted to the *free* atoms (fixed atoms
+    Each eigenvector is restricted to the *free* atoms (frozen atoms
     don't move), shape ``(n_free, 3)``; the global
     :attr:`SpectraResults.free_atom_idxs` maps free-atom rows back
     to global atom indices.
@@ -436,8 +448,8 @@ class SpectraResults:
 
     structure_hash:       str                    # "sha256:..." of canonical XYZ
     n_atoms_total:        int
-    free_atom_idxs:       List[int]              # 0-based, complement of fixed
-    fixed_atom_idxs:      List[int]              # 0-based
+    free_atom_idxs:       List[int]              # 0-based, complement of frozen
+    frozen_atom_idxs:      List[int]              # 0-based
 
     # Reference SCF + MO spectrum at the input (un-displaced) geometry.
     equilibrium_scf_eh:        float
@@ -487,6 +499,18 @@ class SpectraResults:
     # fields and the UI can ignore it.
     engine_metadata:           Dict[str, Any] = field(default_factory=dict)
 
+    # Runtime facts captured by the emitted script when it ran:
+    # n_threads_pyscf, n_threads_omp, n_threads_blas, physical_cores,
+    # logical_cores, gpu_requested, gpu_used, gpu_name,
+    # gpu_compute_capability, cuda_version, hostname.  Lets the
+    # /results page display "this run used 20 PySCF threads, BLAS=1,
+    # GPU ON (RTX 4090, CC 8.9, CUDA 12.4)" so users can verify
+    # the resources actually matched what they expected -- a 40-on-
+    # 20-cores oversubscription leaves a clear trail.  Optional
+    # (older v4 results may not have all keys; the UI no-ops on
+    # missing keys).
+    runtime_info:              Dict[str, Any] = field(default_factory=dict)
+
     __eq__ = _no_equality
 
     def __post_init__(self):
@@ -495,7 +519,7 @@ class SpectraResults:
         At the SpectraResults level we can check that:
           * equilibrium_mo_energies_eh is a 1-D float array;
           * homo_idx is in range;
-          * free_atom_idxs + fixed_atom_idxs partition [0, n_atoms_total);
+          * free_atom_idxs + frozen_atom_idxs partition [0, n_atoms_total);
           * every mode's two eigenvector arrays (canonical, display)
             have the same n_free (= len(free_atom_idxs));
           * every mode's electronic_structure (when present) has
@@ -523,17 +547,17 @@ class SpectraResults:
                 f"out of range [0, {n_mos})"
             )
         # Free + fixed atom partition.
-        free_set  = set(int(i) for i in self.free_atom_idxs)
-        fixed_set = set(int(i) for i in self.fixed_atom_idxs)
-        if free_set & fixed_set:
+        free_set   = set(int(i) for i in self.free_atom_idxs)
+        frozen_set = set(int(i) for i in self.frozen_atom_idxs)
+        if free_set & frozen_set:
             raise ValueError(
-                f"SpectraResults: free_atom_idxs and fixed_atom_idxs overlap "
-                f"at indices {sorted(free_set & fixed_set)}"
+                f"SpectraResults: free_atom_idxs and frozen_atom_idxs overlap "
+                f"at indices {sorted(free_set & frozen_set)}"
             )
-        if len(free_set) + len(fixed_set) != self.n_atoms_total:
+        if len(free_set) + len(frozen_set) != self.n_atoms_total:
             raise ValueError(
-                f"SpectraResults: free ({len(free_set)}) + fixed "
-                f"({len(fixed_set)}) atom counts != n_atoms_total "
+                f"SpectraResults: free ({len(free_set)}) + frozen "
+                f"({len(frozen_set)}) atom counts != n_atoms_total "
                 f"({self.n_atoms_total})"
             )
         # Phase status validation.
@@ -617,7 +641,7 @@ class SpectraResults:
             "structure_hash":       str(self.structure_hash),
             "n_atoms_total":        int(self.n_atoms_total),
             "free_atom_idxs":       [int(i) for i in self.free_atom_idxs],
-            "fixed_atom_idxs":      [int(i) for i in self.fixed_atom_idxs],
+            "frozen_atom_idxs":      [int(i) for i in self.frozen_atom_idxs],
 
             "equilibrium": {
                 "scf_energy_eh":     float(self.equilibrium_scf_eh),
@@ -643,6 +667,7 @@ class SpectraResults:
             "phase_raman":          str(self.phase_raman),
             "phase_es":             str(self.phase_es),
             "engine_metadata":      dict(self.engine_metadata),
+            "runtime_info":         dict(self.runtime_info),
         }
 
     @classmethod
@@ -658,7 +683,7 @@ class SpectraResults:
             structure_hash       = str(d["structure_hash"]),
             n_atoms_total        = int(d["n_atoms_total"]),
             free_atom_idxs       = [int(i) for i in d["free_atom_idxs"]],
-            fixed_atom_idxs      = [int(i) for i in d["fixed_atom_idxs"]],
+            frozen_atom_idxs      = [int(i) for i in d["frozen_atom_idxs"]],
 
             equilibrium_scf_eh         = float(eq["scf_energy_eh"]),
             equilibrium_mo_energies_eh = np.asarray(eq["mo_energies_eh"], dtype=float),
@@ -689,6 +714,7 @@ class SpectraResults:
             phase_raman          = str(d.get("phase_raman",       PHASE_EMPTY)),
             phase_es             = str(d.get("phase_es",          PHASE_EMPTY)),
             engine_metadata      = dict(d.get("engine_metadata", {})),
+            runtime_info         = dict(d.get("runtime_info", {})),
         )
 
 

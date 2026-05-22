@@ -91,17 +91,20 @@ auto-refreshes the sidebar on success.
 
 Each tab that wants to consume sidebar selections:
 
-1. **Renders its own "Load from current selection" UI**.  Typically
-   a button (`<button id="load-from-selection-btn">`) next to the
-   tab's existing input path / paste textarea.  The button is
-   `disabled` until the current selection's extension matches what
-   the tab handles.
-2. **Subscribes via `onChange`** on `DOMContentLoaded` to toggle the
-   button's enabled state live.  No polling, no auto-load on tab
-   arrival -- the user makes the explicit click.
-3. **On button click**, calls `getCurrentFile()` (or
-   `readCurrentFile()` if it wants the text), then runs its own
-   existing loader.
+1. **Subscribes via `onChange`** on `DOMContentLoaded` and reacts
+   when the current selection changes.  No polling.  /modify uses
+   the auto-load pattern (see below); other tabs may choose an
+   explicit-button pattern instead.
+2. **Auto-load pattern** (e.g. /modify since 2026-05-20): the
+   tab's bootstrap subscribes to `onChange` and forwards XYZ picks
+   directly to its loader (in /modify's case,
+   `store.setSourceFile`, which fetches + mounts the structure).
+   The user picks a file and the tab updates without an extra
+   click.
+3. **Explicit-button pattern** (legacy / one-off tabs): a tab may
+   render its own action button keyed off `onChange` to gate
+   enablement.  Useful when loading the file has side effects the
+   user should consent to.
 4. **Workspace indicator (optional)**: displays the current dir near
    the tab's Generate button so the user knows where new output will
    land.  Updates live via the same `onChange` subscription.

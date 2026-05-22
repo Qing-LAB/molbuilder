@@ -219,6 +219,22 @@ function _renderList(entries, currentPath) {
  * registration below.
  */
 export async function openDir(absPath) {
+  // Read the current file selection BEFORE we clobber sessionStorage.
+  // ``state.writeFile`` (lib/projects/state.js) calls refreshHandler(cur)
+  // -> openDir() after every successful write -- which means every
+  // "Generate script + Save", every "Modify + Save", and every project-
+  // tree mutation re-runs this function with absPath = parent_dir.
+  // The pre-2026-05-18 behaviour was to always ``setShared(resp.path, "")``
+  // at the bottom -- which wiped the user's selection out of sessionStorage
+  // on every save, silently breaking every load-from-selection downstream.
+  //
+  // Preservation rule: if the previously-selected file STILL appears in
+  // the new listing (same parent dir, file still exists), keep it
+  // selected.  Otherwise blank.  Comparison is by exact full-path match,
+  // not by basename, so file rename / replace correctly drops the stale
+  // selection.
+  const prevFile = sessionStorage.getItem("molbuilder.current_file") || "";
+
   const resp = await apiList(absPath);
   if (!resp.ok) {
     _renderBreadcrumb(absPath);
@@ -228,14 +244,46 @@ export async function openDir(absPath) {
     li.style.cssText = "padding: 0.7rem; color: #e07a7a;";
     li.textContent = resp.error || "Failed to list directory.";
     elList.appendChild(li);
+    // Listing failed -- we don't know the new state of resp.path's
+    // children, so we can't decide whether to keep prevFile.  Blank
+    // it (same as the pre-fix behaviour for the error path).
     setShared(absPath, "");
     _renderSelectionStatus("", "");
     return;
   }
   _renderBreadcrumb(resp.path);
   _renderList(resp.entries, resp.path);
-  setShared(resp.path, "");
-  _renderSelectionStatus("", "");
+
+  // Determine whether prevFile survives the refresh.
+  let keptFile = "";
+  if (prevFile) {
+    const dirSlash = resp.path.replace(/\/$/, "") + "/";
+    if (prevFile.startsWith(dirSlash)) {
+      // prevFile claims to live inside the directory we just listed.
+      // Verify it's still in the entry list (and is a file, not a
+      // directory) -- the file may have been deleted or renamed.
+      const expectedName = prevFile.slice(dirSlash.length);
+      const stillPresent = resp.entries.some(
+        (e) => e.kind === "file" && e.name === expectedName
+      );
+      if (stillPresent) keptFile = prevFile;
+    }
+    // else: prevFile is inside a different directory -- the user
+    // navigated away.  Drop it.
+  }
+  setShared(resp.path, keptFile);
+  if (keptFile) {
+    const name = keptFile.slice(keptFile.lastIndexOf("/") + 1);
+    _renderSelectionStatus(name, keptFile);
+    // Re-mark the entry visually (the freshly-rendered list won't have
+    // the selection class until we set it).
+    const li = elList.querySelector(
+      `.ps-entry[data-path="${_cssEscape(keptFile)}"]`
+    );
+    if (li) li.classList.add("is-selected");
+  } else {
+    _renderSelectionStatus("", "");
+  }
 }
 
 /**

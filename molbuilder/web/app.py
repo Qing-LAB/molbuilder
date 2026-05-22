@@ -1,36 +1,70 @@
 """Flask app factory for the molbuilder UI.
 
-The UI has three halves served by one process:
+The UI has five tabs served by one process, each owned by a
+blueprint under ``web/blueprints/``:
 
-  * Build   at  ``GET /``         (build page; routes under
-                                   ``/api/build/*`` -- see
-                                   ``web/blueprints/build.py``)
-  * Watch   at  ``GET /watch``    (watch page; routes under
-                                   ``/api/watch/*`` -- see
-                                   ``web/blueprints/watch.py``)
-  * Modify  at  ``GET /modify``   (modify page; M2 = read-only
-                                   inspection.  Edit ops + their
-                                   ``/api/modify/*`` routes land
-                                   in M3-M5 -- see
-                                   ``docs/tabs/modify.md``.)
+  * Build    at  ``GET /``         (web/blueprints/build.py)
+  * Modify   at  ``GET /modify``   (web/blueprints/modify.py)
+  * Spectra  at  ``GET /spectra``  (web/blueprints/spectra.py)
+  * Results  at  ``GET /results``  (web/blueprints/results.py)
+  * Watch    at  ``GET /watch``    (web/blueprints/watch.py; legacy
+                                    after the tab-merge -- /results
+                                    is the canonical post-run inspector)
 
-Two top-level routes stay on the app rather than on any blueprint
-because all three halves consume them:
+Plus the file-picker + project mutations under
+``web/blueprints/files.py``, the inspector partial endpoints under
+``results.py`` (``/partials/trajectory-inspector`` etc.), the
+optional auth surface in ``auth.py`` + ``auth_providers/``, and a
+small set of app-level routes that don't fit any one blueprint:
 
-  * ``GET /api/health``    liveness
-  * ``GET /api/backends``  available builder backends (used by both
-                           tabs' Backend pickers)
+  * ``GET /api/health``               liveness
+  * ``GET /api/backends``             available builder backends
+  * ``GET /vendor/plotly.min.js``     plotly JS served from the
+                                       installed Python package's
+                                       package_data (so /spectra
+                                       and /results work offline)
 
-The page templates and static assets live under ``templates/`` and
-``static/``; the watch viewer's assets live under ``static/watch/``
-to avoid name collisions with the build viewer.
+The page templates live under ``templates/``; static assets under
+``static/``, with per-tab subdirectories (e.g. ``static/spectra/``,
+``static/watch/``) for tab-specific JS/CSS that doesn't belong in
+``static/lib/`` (the shared layer).  Inspector cores -- code that
+both /results and a legacy tab call into -- live under
+``static/lib/<concept>/`` (e.g. ``static/lib/trajectory/core.js``).
 """
 
 from __future__ import annotations
 
-from flask import Flask, abort, jsonify, render_template, send_file
+from flask import Flask, abort, jsonify, render_template, request, send_file
 
 from ..diagnostics import initialize as _initialize_diagnostics
+
+
+def _maybe_install_auth(app, cfg) -> None:
+    """Install the auth layer from the already-loaded ``cfg`` dict.
+
+    Quietly no-op when the config has no ``auth`` section -- the
+    localhost-only single-user shape stays auth-free.  Reads from
+    the pre-loaded cfg (not the filesystem) so ``create_app(config=...)``
+    can swap in a test config without touching ``molbuilder.json``.
+    """
+    from ..runtime_config import get_auth, get_secret_key_file
+    auth_cfg = get_auth(cfg)
+    if not auth_cfg:
+        return  # no auth configured; nothing to do
+    from .auth import init_auth
+    init_auth(app, auth_cfg, get_secret_key_file(cfg))
+
+
+def request_is_https() -> bool:
+    """True when the current request reached us over HTTPS, either
+    directly (Flask's TLS) or via a reverse proxy that set
+    ``X-Forwarded-Proto``.  Used by the HSTS header decision -- we
+    only send HSTS over already-HTTPS responses so a misconfigured
+    plain-HTTP deploy doesn't lock browsers out."""
+    if request.is_secure:
+        return True
+    fwd = request.headers.get("X-Forwarded-Proto", "").lower()
+    return fwd == "https"
 
 
 # Cap multipart uploads at 50 MB.  Build side only needs ~10 MB for
@@ -40,7 +74,22 @@ from ..diagnostics import initialize as _initialize_diagnostics
 _MAX_UPLOAD_MB = 50
 
 
-def create_app() -> Flask:
+def create_app(*, config=None) -> Flask:
+    """Build the molbuilder Flask app.
+
+    Parameters:
+        config: optional pre-loaded ``runtime_config`` dict.  When
+                ``None`` (production default), the config is read
+                from ``./molbuilder.json`` via
+                :func:`molbuilder.runtime_config.read_config`.  Tests
+                pass an explicit dict (often ``{}`` for the no-auth
+                / no-TLS default) so they never touch the developer's
+                per-machine config file -- removing a hidden coupling
+                between CWD state and what the test client sees.
+
+                This parameter is the supported injection seam; do NOT
+                add other CWD-reading side effects without honouring it.
+    """
     # Configure the root logger so warnings from L1 modules (e.g.
     # ``molbuilder.projects.list_projects`` skipping invalid directory
     # names) reach the user.  Without this, Python's root logger has
@@ -56,24 +105,47 @@ def create_app() -> Flask:
     # machine's envs / PATH / config.  Cheap (~50 ms once per process).
     _initialize_diagnostics()
 
+    # Load config from disk only when the caller didn't pass one.
+    if config is None:
+        try:
+            from ..runtime_config import read_config
+            config = read_config()
+        except Exception as exc:
+            # Bad config is loud, not silent: refuse to start.  Same
+            # pattern as the TLS resolver in cli.py.
+            logging.error(
+                "molbuilder: failed to read config from "
+                "molbuilder.json: %s", exc,
+            )
+            raise
+
     app = Flask(__name__)
     app.config["JSON_SORT_KEYS"] = False
     app.config["MAX_CONTENT_LENGTH"] = _MAX_UPLOAD_MB * 1024 * 1024
+
+    # Optional auth.  When the cfg has no ``auth`` section the call is
+    # a no-op (the localhost-only default).  See molbuilder/web/auth.py
+    # + docs/deployment.md for the auth-enabled shape.
+    _maybe_install_auth(app, config)
 
     # Build + Watch route groups live on Blueprints so each half is
     # self-contained (handlers, helpers, validation).  Both blueprints
     # use full route paths in their decorators (no url_prefix) -- the
     # paths read clearly at the call site.
-    from .blueprints.build   import bp as build_bp
-    from .blueprints.watch   import bp as watch_bp
-    from .blueprints.modify  import bp as modify_bp
-    from .blueprints.spectra import bp as spectra_bp
-    from .blueprints.files   import bp as files_bp
+    from .blueprints.build     import bp as build_bp
+    from .blueprints.watch     import bp as watch_bp
+    from .blueprints.modify    import bp as modify_bp
+    from .blueprints.spectra   import bp as spectra_bp
+    from .blueprints.files     import bp as files_bp
+    from .blueprints.results   import bp as results_bp
+    from .blueprints.selection import bp as selection_bp
     app.register_blueprint(build_bp)
     app.register_blueprint(watch_bp)
     app.register_blueprint(modify_bp)
     app.register_blueprint(spectra_bp)
     app.register_blueprint(files_bp)
+    app.register_blueprint(results_bp)
+    app.register_blueprint(selection_bp)
 
     # 413 Payload Too Large -- without this Flask returns its default
     # HTML 413 page, which the JS uploaders parse as ``r.json()`` and
@@ -90,6 +162,78 @@ def create_app() -> Flask:
                       f"(MAX_CONTENT_LENGTH).  Shrink the file or "
                       f"point the loader at the path on disk."),
         }), 413
+
+    # --- Security headers ----------------------------------------- #
+    #
+    # Defense-in-depth headers for the internet-deployment use case
+    # (see docs/deployment.md).  Each header below has a specific
+    # threat it mitigates; we set the most restrictive value that
+    # still lets the app work.
+    #
+    # NOTE: these are CODE-LEVEL defaults.  Operators putting molbuilder
+    # behind a reverse proxy (the recommended deployment shape) can
+    # override / add headers at the proxy layer too -- both belt and
+    # suspenders are fine, headers compose.
+    @app.after_request
+    def _add_security_headers(response):
+        # Content-Security-Policy: the heaviest one.  Default-src
+        # 'self' means JS / CSS / fonts only load from molbuilder's
+        # own origin.  We DON'T allow inline scripts (no script-src
+        # 'unsafe-inline') because the project already audits for
+        # no inline-event-handler markup -- if XSS ever lands, CSP
+        # blocks the attacker's payload from loading additional
+        # JS or beaconing data out.
+        #
+        # 'unsafe-inline' is allowed for STYLE only because 3Dmol +
+        # the inspector cards use a small amount of inline style=
+        # (e.g., structure-inspector's height = "420px").  Dropping
+        # this would mean a wider CSS refactor; the risk delta of
+        # inline style is small (CSS injection at worst, not JS).
+        #
+        # img-src 'self' data: covers Plotly's data-URI tiles.
+        # connect-src 'self' covers our /api/* fetches.
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; "
+            "script-src 'self'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data:; "
+            "connect-src 'self'; "
+            "font-src 'self'; "
+            "object-src 'none'; "
+            "frame-ancestors 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'",
+        )
+        # Prevents the browser from MIME-sniffing a response away from
+        # its declared Content-Type.  Cheap; no behavior change.
+        response.headers.setdefault(
+            "X-Content-Type-Options", "nosniff",
+        )
+        # Block click-jacking by refusing to render any molbuilder
+        # page inside an iframe.  ``frame-ancestors 'none'`` in CSP
+        # is the modern equivalent; X-Frame-Options is the legacy
+        # fallback for older browsers.
+        response.headers.setdefault(
+            "X-Frame-Options", "DENY",
+        )
+        # Don't leak the full request URL to off-site links the user
+        # clicks (project paths, file names) -- the molbuilder origin
+        # only.
+        response.headers.setdefault(
+            "Referrer-Policy", "same-origin",
+        )
+        # Browsers respect HSTS only when delivered over HTTPS; the
+        # serve-time TLS guard (docs/deployment.md) refuses non-loop-
+        # back binds without --cert/--key, so this header lands the
+        # moment the operator actually exposes molbuilder.  1-year
+        # max-age is the standard "this is permanent" signal.
+        if request_is_https():
+            response.headers.setdefault(
+                "Strict-Transport-Security",
+                "max-age=31536000; includeSubDomains",
+            )
+        return response
 
     @app.route("/")
     def index():

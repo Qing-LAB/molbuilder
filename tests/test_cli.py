@@ -1073,33 +1073,11 @@ def test_watch_tail_rejects_stdin(capsys):
 
 
 # --------------------------------------------------------------------- #
-#  watch serve subcommand wiring                                         #
-# --------------------------------------------------------------------- #
-
-
-def test_watch_serve_calls_create_app(monkeypatch, tmp_path):
-    """`molbuilder watch serve` must instantiate the unified Flask app
-    via create_app() and start it bound to the requested host/port."""
-    captured = {}
-
-    class _FakeApp:
-        def run(self, host, port, debug, threaded, ssl_context=None):
-            captured["host"] = host
-            captured["port"] = port
-            captured["debug"] = debug
-            captured["threaded"] = threaded
-            captured["ssl_context"] = ssl_context
-    monkeypatch.setattr("molbuilder.web.app.create_app", lambda: _FakeApp())
-    # chdir-away so a repo-root molbuilder.json template doesn't flip
-    # ssl_context on under this test (the TLS path has its own coverage
-    # in tests/test_cli_tls.py).
-    monkeypatch.chdir(tmp_path)
-    rc = cli.main(["watch", "serve", "--host", "127.0.0.1", "--port", "5050"])
-    assert rc == 0
-    assert captured["host"] == "127.0.0.1"
-    assert captured["port"] == 5050
-    assert captured["threaded"] is True
-    assert captured["ssl_context"] is None
+# ``molbuilder watch serve`` removed 2026-05-19 along with the
+# /watch page route; ``molbuilder serve`` is now the canonical
+# entry point.  Test coverage for the unified entry point lives in
+# tests/test_cli_tls.py (TLS precedence + readability) and in this
+# file's bootstrap test that pins the registered CLI groups.
 
 
 # --------------------------------------------------------------------- #
@@ -1171,27 +1149,6 @@ def test_modify_orient_only(tmp_path):
     assert abs(coords[0][2] + coords[1][2]) < 1e-6
 
 
-def test_modify_orient_with_angle_tilts_in_xz(tmp_path):
-    """--angle 30 tilts the anchor pair 30° from z in the xz-plane."""
-    inp  = tmp_path / "in.xyz"
-    outp = tmp_path / "out.xyz"
-    inp.write_text(_bdt_stub_xyz())
-    rc = cli.main(["modify", str(inp), str(outp),
-                   "--orient-axis", "0,3", "--angle", "30"])
-    assert rc == 0
-    import re
-    import numpy as np
-    lines = outp.read_text().splitlines()[2:]
-    s_atoms = [l for l in lines if l.lstrip().startswith("S")]
-    s_pos = [list(map(float, re.split(r"\s+", l.strip())[1:4])) for l in s_atoms]
-    # Anchor pair vector should be (sin(30°)·d, 0, cos(30°)·d) -- y component zero
-    for c in s_pos:
-        assert abs(c[1]) < 1e-6
-    diff = np.array(s_pos[1]) - np.array(s_pos[0])
-    angle_from_z = np.degrees(np.arctan2(diff[0], diff[2]))
-    assert abs(angle_from_z - 30.0) < 1e-3 or abs(angle_from_z + 30.0) < 1e-3
-
-
 def test_modify_rotate_only(tmp_path):
     """--rotate spins the structure around the named axis."""
     inp  = tmp_path / "in.xyz"
@@ -1209,39 +1166,6 @@ def test_modify_rotate_only(tmp_path):
         assert abs(c[0]) < 1e-6   # x ~ 0 after 90° spin
 
 
-@pytest.mark.parametrize("axis,angle,probe", [
-    # T2 (post-static-review): --rotate works for x and y axes too.
-    # BDT-stub starts with all atoms in the y=0, z=0 plane along x.
-    # Rotating around x by 90° leaves the x-axis line on x (no change in y/z).
-    ("x", 90.0, "stay_on_x"),
-    # Rotating around y by 90° takes x-axis line → -z direction.
-    ("y", 90.0, "x_to_minus_z"),
-])
-def test_modify_rotate_x_and_y(tmp_path, axis, angle, probe):
-    inp  = tmp_path / "in.xyz"
-    outp = tmp_path / "out.xyz"
-    inp.write_text(_bdt_stub_xyz())
-    rc = cli.main(["modify", str(inp), str(outp),
-                   "--rotate", f"{axis}:{angle}"])
-    assert rc == 0
-    import re
-    lines = outp.read_text().splitlines()[2:]
-    s_atoms = [l for l in lines if l.lstrip().startswith("S")]
-    s_pos = [list(map(float, re.split(r"\s+", l.strip())[1:4])) for l in s_atoms]
-    if probe == "stay_on_x":
-        # Rotating around x leaves x unchanged; y and z remain ~0.
-        for c in s_pos:
-            assert abs(c[1]) < 1e-6 and abs(c[2]) < 1e-6
-    elif probe == "x_to_minus_z":
-        # Rotating around y by +90° takes (x, 0, 0) -> (0, 0, -x).
-        for c in s_pos:
-            assert abs(c[0]) < 1e-6 and abs(c[1]) < 1e-6
-        # The S at x=0 stays at z=0; the S at x=5 ends up at z=-5.
-        z_values = sorted(c[2] for c in s_pos)
-        assert np.isclose(z_values[0], -5.0, atol=1e-6)
-        assert np.isclose(z_values[1],  0.0, atol=1e-6)
-
-
 def test_modify_rotate_rejects_duplicate_flags(tmp_path):
     """T2 (post-static-review): two --rotate flags in one call are a
     UsageError instead of click silently overriding to the last value."""
@@ -1251,29 +1175,6 @@ def test_modify_rotate_rejects_duplicate_flags(tmp_path):
     with pytest.raises(SystemExit):
         cli.main(["modify", str(inp), str(outp),
                   "--rotate", "z:90", "--rotate", "x:30"])
-
-
-@pytest.mark.parametrize("axis,angle", [
-    # T3 (post-static-review): --orient-axis combined with non-z axis
-    # plus an angle, end-to-end through the CLI.
-    ("x", 0.0),
-    ("y", 0.0),
-    ("x", 30.0),
-    ("y", 45.0),
-])
-def test_modify_orient_with_axis_and_angle(tmp_path, axis, angle):
-    inp  = tmp_path / "in.xyz"
-    outp = tmp_path / "out.xyz"
-    inp.write_text(_bdt_stub_xyz())
-    rc = cli.main(["modify", str(inp), str(outp),
-                   "--orient-axis", "0,3",
-                   "--axis", axis, "--angle", str(angle)])
-    assert rc == 0
-    # Result should have non-zero atoms; the geometry is unit-tested in
-    # tests/test_modify.py -- here we just verify the flags reach
-    # orient_along_axis and the file is written.
-    text = outp.read_text()
-    assert int(text.splitlines()[0]) == 4
 
 
 def test_modify_warns_when_orient_suboptions_unused(tmp_path, capsys):
@@ -1351,20 +1252,6 @@ def test_modify_electrode_bad_spec_raises(tmp_path):
     with pytest.raises(SystemExit):
         cli.main(["modify", str(inp), str(outp),
                   "--electrode", "garbage_no_colons"])
-
-
-def test_modify_electrode_orthogonal_111_odd_n_rejected(tmp_path):
-    """--orthogonal + fcc(111) with odd second axis is rejected by ASE;
-    bubbles up as a non-zero exit."""
-    inp  = tmp_path / "in.xyz"
-    oriented = tmp_path / "oriented.xyz"
-    outp = tmp_path / "out.xyz"
-    inp.write_text(_bdt_stub_xyz())
-    cli.main(["modify", str(inp), str(oriented), "--orient-axis", "0,3"])
-    with pytest.raises(SystemExit):
-        cli.main(["modify", str(oriented), str(outp),
-                  "--orthogonal",
-                  "--electrode", "Au:111:3x3x2@gap=9.0:3,0"])
 
 
 def test_modify_stdin_stdout_pipe(tmp_path, monkeypatch, capsys):

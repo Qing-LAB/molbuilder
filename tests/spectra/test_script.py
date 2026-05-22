@@ -73,8 +73,8 @@ class TestPySCFScriptCompiles:
         # Hybrid-low-grid (should compile fine, just a preflight warn)
         dict(grid_level=2),
         # Freeze atoms
-        dict(fixed_elements=["H"]),
-        dict(fixed_indices=[1, 2]),
+        dict(frozen_elements=["H"]),
+        dict(frozen_indices=[1, 2]),
         # Frequency window
         dict(es_mode_selection="all", freq_min_cm1=500.0, freq_max_cm1=3500.0),
     ])
@@ -314,14 +314,14 @@ class TestPySCFScriptStructure:
         from molbuilder.spectra.pyscf_script import render_spectra_script
         script = render_spectra_script(
             _struct_water(),
-            SpectraConfig(fixed_elements=["O"], fixed_indices=[1]),
+            SpectraConfig(frozen_elements=["O"], frozen_indices=[1]),
         )
         # The freeze rule values are inlined.
         assert "'O'" in script
         # The runtime union logic is present.
-        assert "FIXED_ATOM_IDXS" in script
+        assert "FROZEN_ATOM_IDXS" in script
         assert "FREE_ATOM_IDXS" in script
-        assert "FIXED_ELEMENTS" in script
+        assert "FROZEN_ELEMENTS" in script
 
     def test_engine_renders_script_via_pyscf_script_module(self):
         """The engine's render_script() should delegate to the
@@ -496,6 +496,98 @@ class TestPySCFScriptSchemaVersionInterpolated:
         assert f"MOLBUILDER_VERSION = {__version__!r}" in script
         # Negative: the old placeholder is gone.
         assert "'spectra-v1'" not in script
+
+
+class TestPySCFScriptThreadingSetup:
+    """The threading-setup block: emitted BEFORE numpy/pyscf import,
+    pins BLAS to 1 thread per worker, sizes PySCF OMP to physical
+    cores by default (not logical) -- the canonical anti-oversub-
+    scription recipe.  A user seeing load=40 on a 20-core/40-HT
+    host is the regression scenario this block exists to prevent.
+    """
+
+    def test_threading_block_emitted_before_pyscf_import(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water(), SpectraConfig())
+        # The block runs BEFORE ``from pyscf import gto, scf, dft``
+        # so the env-var caps take effect at pyscf import time.
+        thread_setup_at = script.index("Threading setup")
+        pyscf_import_at = script.index("from pyscf import")
+        assert thread_setup_at < pyscf_import_at, (
+            "_emit_threading_setup() must run BEFORE the pyscf "
+            "import -- env vars are read at import time."
+        )
+
+    def test_blas_capped_to_one_thread(self):
+        """OPENBLAS_NUM_THREADS=1 and MKL_NUM_THREADS=1: this is the
+        load=N*N oversubscription fix.  Without these caps each
+        PySCF worker spawns its own BLAS thread pool and the
+        observed load is OMP * BLAS = up to logical_cores² on
+        a hyperthreaded host."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water(), SpectraConfig())
+        assert "OPENBLAS_NUM_THREADS" in script
+        assert "MKL_NUM_THREADS" in script
+        # Both pinned to '1' (not the OMP count).
+        assert "'OPENBLAS_NUM_THREADS', '1'" in script
+        assert "'MKL_NUM_THREADS',      '1'" in script
+
+    def test_pyscf_num_threads_called_after_import(self):
+        """``pyscf.lib.num_threads(N)`` is the canonical post-
+        import setter (env vars don't re-thread already-imported
+        modules).  Verify the script calls it."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water(), SpectraConfig())
+        # The call site is the _emit_pyscf_thread_pool block.
+        assert "_pyscf_lib.num_threads(_MB_REQUESTED_THREADS)" in script
+
+    def test_default_threads_auto_detects_physical_cores(self):
+        """cfg.threads=None -> the script computes physical cores at
+        run time via /proc/cpuinfo + psutil fallback.  Hard-coding
+        os.cpu_count() would give logical cores (HT) which is what
+        caused the user's load=40 bug."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water(),
+                                       SpectraConfig(threads=None))
+        assert "_mb_count_physical_cores" in script
+        assert "_MB_REQUESTED_THREADS = _mb_count_physical_cores()" in script
+        # Sanity-check the helper logic.
+        assert "/proc/cpuinfo" in script
+        assert "psutil" in script
+
+    def test_explicit_threads_overrides_auto(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water(),
+                                       SpectraConfig(threads=12))
+        assert "_MB_REQUESTED_THREADS = 12" in script
+        # Auto-detection helper is still defined (for the
+        # physical_cores / logical_cores runtime-info fields) but
+        # not called for the requested count.
+        assert "_MB_REQUESTED_THREADS = _mb_count_physical_cores()" not in script
+
+    def test_runtime_info_dict_populated(self):
+        """The script builds a _RUNTIME_INFO dict the JSON dump
+        copies into ``runtime_info`` so the /results page can show
+        what CPU/GPU configuration the run actually used."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water(), SpectraConfig())
+        for key in (
+            "'n_threads_pyscf'", "'n_threads_omp'", "'n_threads_blas'",
+            "'physical_cores'", "'logical_cores'",
+            "'gpu_requested'", "'gpu_used'", "'gpu_name'", "'hostname'",
+        ):
+            assert key in script, (
+                f"_RUNTIME_INFO missing the {key} field; the "
+                f"/results page won't be able to show it."
+            )
+        # And the state dict's 'runtime_info' picks it up.
+        assert "'runtime_info':              dict(_RUNTIME_INFO)" in script
+
+    def test_compiles_clean_with_threading_block(self):
+        """Sanity: the threading block is real Python."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        script = render_spectra_script(_struct_water(), SpectraConfig())
+        compile(script, "<water-threading>", "exec")
 
 
 class TestPySCFScriptGPU:

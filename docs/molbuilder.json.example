@@ -1,0 +1,115 @@
+{
+  "_comment_about_this_file":
+    "Template molbuilder.json showing every supported section.  Copy to ./molbuilder.json (repo root) or ~/.molbuilder/molbuilder.json, then DELETE the keys you don't need.  JSON doesn't support real comments, so each section is prefixed with a _comment_<section> key; molbuilder silently ignores any key starting with an underscore.  Full schema reference: docs/deployment.md § 'Config reference'.",
+
+  "_comment_tls":
+    "TLS certificate paths.  Required for any non-loopback bind (the serve command refuses --host != 127.0.0.1 without TLS or --allow-insecure-binding).  Get a free Let's Encrypt cert via certbot, or use your institution's wildcard cert.  Omit this whole section for localhost-only deployments.",
+  "tls": {
+    "cert": "/etc/letsencrypt/live/molbuilder.your-host.edu/fullchain.pem",
+    "key":  "/etc/letsencrypt/live/molbuilder.your-host.edu/privkey.pem"
+  },
+
+  "_comment_envs":
+    "Conda env name overrides.  molbuilder dispatches PySCF / SIESTA / MDTools work into the matching env (so PySCF imports don't pollute the host env).  Defaults are 'molbuilder-pySCF' / 'molbuilder-siesta' / 'molbuilder-MDtools' / 'molbuilder-tests'; only set this section if you renamed your envs.",
+  "envs": {
+    "siesta":  "molbuilder-siesta",
+    "pyscf":   "molbuilder-pySCF",
+    "mdtools": "molbuilder-MDtools",
+    "tests":   "molbuilder-tests"
+  },
+
+  "_comment_auth":
+    "Optional authentication.  Omit the entire 'auth' section for localhost-only single-user deployments (no login screen).  When present, each entry in 'providers' becomes a separate sign-in button on the login page; molbuilder NEVER sees passwords -- it only receives the verified identity (email) from each provider and matches it against THAT provider's own 'allowed_users' list.  Setup walkthroughs per kind: docs/deployment.md.",
+  "auth": {
+
+    "_comment_trust_proxy":
+      "ProxyFix opt-in.  Leave at false (the default) for direct-TLS deploys (`molbuilder serve --cert --key` with NO reverse proxy in front).  Set to true ONLY when an actual proxy (Caddy / nginx / Traefik / Cloudflare) sits in front of molbuilder and scrubs client-supplied X-Forwarded-* headers before adding its own -- otherwise an attacker can spoof those headers and influence the redirect URIs molbuilder hands to OAuth / CAS providers.",
+    "trust_proxy": false,
+
+    "_comment_providers":
+      "List one entry per sign-in option you want on the login page.  Order is preserved (top-listed appears first / highest).  Supported kinds today: 'google', 'github', 'microsoft', 'orcid' (OAuth 2.0 / OIDC), and 'cas' (Apereo CAS, e.g. ASURITE).  Each 'id' must be unique and URL-safe (it keys the route path /login/<id>).  Each entry has its OWN allowed_users -- there is no global allowlist; an email allowed via Google is NOT implicitly allowed via GitHub.  Failing to list any users in a provider's allowed_users means nobody can sign in via that provider (fail-closed).",
+    "providers": [
+
+      {
+        "_comment_google":
+          "Setup: https://console.cloud.google.com/apis/credentials -> Create Credentials -> OAuth client ID -> Web application.  Register redirect URI 'https://<your-host>/oauth-callback/google'.  client_secret_file is preferred over a literal client_secret (mode-0600 file with just the GOCSPX-... value).  Optional 'hosted_domain' restricts to Google Workspace tenants by domain (IdP-side filter, stricter than allowed_users alone).",
+        "id":                 "google",
+        "label":              "Sign in with Google",
+        "kind":               "google",
+        "client_id":          "1234567890-abcdefghijklmnop.apps.googleusercontent.com",
+        "client_secret_file": "~/.molbuilder/google_client_secret",
+        "hosted_domain":      [],
+        "allowed_users": [
+          "user1@example.edu",
+          "user2@gmail.com"
+        ]
+      },
+
+      {
+        "_comment_cas":
+          "Apereo CAS protocol.  Used for institutional SSO (e.g. ASU's CAS at weblogin.asu.edu).  CAS rarely releases an email attribute, so molbuilder synthesises one from {principal}@{email_domain} -- set email_domain to the domain that matches what's in allowed_users.  If your CAS DOES release a mail attribute, set 'email_attribute' to its CAS attribute name (e.g. \"mail\") and the synthesise step is bypassed.  service_url is auto-derived from the request when null.",
+        "id":                   "asu_cas",
+        "label":                "Sign in with ASURITE ID",
+        "kind":                 "cas",
+        "version":              3,
+        "login_url":            "https://weblogin.example.edu/cas/login",
+        "service_validate_url": "https://weblogin.example.edu/cas/serviceValidate",
+        "service_url":          null,
+        "ca_certs":             null,
+        "email_attribute":      null,
+        "email_domain":         "example.edu",
+        "allowed_users": [
+          "user1@example.edu",
+          "user2@example.edu"
+        ]
+      },
+
+      {
+        "_comment_github":
+          "Setup: https://github.com/settings/developers -> OAuth Apps -> New OAuth App.  Authorization callback URL = 'https://<your-host>/oauth-callback/github'.  GitHub returns the user's PRIMARY+VERIFIED email even when hidden from their public profile (we request the user:email scope).  Optional 'allowed_organizations' restricts access to members of these orgs (IdP-side filter via the user:read:org scope).",
+        "id":                    "github",
+        "label":                 "Sign in with GitHub",
+        "kind":                  "github",
+        "client_id":             "Iv1.abcdefghijklmnop",
+        "client_secret_file":    "~/.molbuilder/github_client_secret",
+        "allowed_organizations": [],
+        "allowed_users": [
+          "user1@example.edu"
+        ]
+      },
+
+      {
+        "_comment_microsoft":
+          "Microsoft / Azure AD OIDC.  Setup: https://portal.azure.com -> Microsoft Entra ID -> App registrations -> New registration.  Redirect URI (type 'Web') = 'https://<your-host>/oauth-callback/microsoft'.  Generate a client secret under 'Certificates & secrets'.  tenant_id is one of: 'common' (any Microsoft account incl. personal), 'organizations' (any work/school), a tenant GUID, or a verified domain like 'asu.onmicrosoft.com' (restricts to that tenant only).",
+        "id":                 "microsoft",
+        "label":              "Sign in with Microsoft",
+        "kind":               "microsoft",
+        "client_id":          "abc12345-de67-89f0-1234-56789abcdef0",
+        "client_secret_file": "~/.molbuilder/microsoft_client_secret",
+        "tenant_id":          "common",
+        "allowed_users": [
+          "user1@example.edu"
+        ]
+      },
+
+      {
+        "_comment_orcid":
+          "ORCID OAuth 2.0 / OIDC.  Useful when collaborators have ORCIDs but no Google/GitHub.  Setup: https://orcid.org/developer-tools -> Register a Public API client.  Redirect URI = 'https://<your-host>/oauth-callback/orcid'.  ORCID returns the user's email ONLY if they marked it public; when absent molbuilder uses the 16-digit ORCID iD itself as the identity (so allowed_users in that case contains ORCID iDs like '0000-0001-2345-6789' rather than email addresses).",
+        "id":                 "orcid",
+        "label":              "Sign in with ORCID",
+        "kind":               "orcid",
+        "client_id":          "APP-1234567890ABCDEF",
+        "client_secret_file": "~/.molbuilder/orcid_client_secret",
+        "allowed_users": [
+          "user1@example.edu",
+          "0000-0001-2345-6789"
+        ]
+      }
+
+    ]
+  },
+
+  "_comment_secret_key_file":
+    "Path to the Flask session-signing key.  Auto-generated on first run (32 random bytes, mode 0600).  Required when 'auth' is set; quietly ignored otherwise.  If omitted while auth is on, molbuilder generates an ephemeral per-process key and warns -- sessions then invalidate on every restart, which is annoying but safe.",
+  "secret_key_file": "~/.molbuilder/secret.key"
+}

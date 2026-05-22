@@ -11,10 +11,13 @@ generating **SIESTA** or **PySCF** input for that geometry, and
 watching the resulting DFT optimisation live in a browser.
 
 ```
-sequence ──► Structure ──► (modify) ──► SIESTA .fdf  ──► siesta ──┐
-                                    └─► PySCF .py    ──► python  ─┴──► .molwatch.log
-                                                                              │
-                                                            ◄──── live watch ─┘
+                          Build / Modify          Spectra
+sequence ──► Structure ──► SIESTA .fdf  ──► siesta ──┐
+                       ├─► PySCF .py    ──► python  ─┴──► .molwatch.log  ─┐
+                       └─► spectra.py   ──► python  ───► .spectra.json   ─┤
+                                                                          │
+                                                              Results / Watch
+                                                            ◄───────────── ┘
 ```
 
 The **Modify** tab is the headline feature.  It takes a relaxed
@@ -45,7 +48,7 @@ python -m molbuilder serve --port 8000   # opens build / modify / watch / spectr
 # browser: http://localhost:8000/
 ```
 
-Four tabs in one Flask app, plus a **persistent Projects sidebar**
+Five tabs in one Flask app, plus a **persistent Projects sidebar**
 on the left of every page (JupyterLab-style file explorer rooted at
 `projects/`; click a file to select it, every tab reads the
 selection):
@@ -54,8 +57,9 @@ selection):
 |---|---|---|
 | **Build**    | `/`         | sequence → structure → SIESTA `.fdf` / PySCF `.py` |
 | **Modify**   | `/modify`   | edit atoms, build metal-molecule-metal junctions, hand off to Build |
-| **Watch**    | `/watch`    | scrub frames, track energy / forces / SCF convergence live |
 | **Spectra**  | `/spectra`  | harmonic frequencies + Raman activities + per-mode orbital probes |
+| **Results**  | `/results`  | unified inspector — pick a file in the sidebar, the matching inspector renders (in progress: trajectory + spectra inspectors lifting from /watch + /spectra; structure + source inspectors work today) |
+| **Watch**    | `/watch`    | legacy trajectory viewer (full feature set; will be absorbed into Results once 1B+1C+1D + step 2 lifts complete — see [`docs/protocols/results-tab.md`](docs/protocols/results-tab.md)) |
 
 ---
 
@@ -168,7 +172,69 @@ is at [`docs/protocols/job-layout.md`](docs/protocols/job-layout.md).
 
 ---
 
-## The Watch tab
+## The Spectra tab
+
+Generate runnable PySCF scripts for **harmonic vibrational analysis**
+(frequencies + Raman activities + optional per-mode electronic
+structure probes).  Output is a `<job>.spectra.py` script you run
+externally; results land in `<job>.spectra.json` with mass-weighted
+canonical eigenvectors (for post-hoc Raman/IR re-projection) plus
+display-normalised eigenvectors (for 3-D animation).
+
+Live capabilities today:
+* Schema-driven parameter form (everything below shown inline with
+  per-field tooltips, ranges, defaults)
+* Methods-text preview (manuscript-ready prose for the methods
+  section of a paper)
+* Issues panel (validator surfaces configuration mistakes before
+  you hit Generate)
+* Mode-eigenvector 3-D animation + Lorentzian-broadened spectrum
+  chart + modes table with CSV export (when inspecting a finished
+  `.spectra.json`)
+* Live polling of an in-progress run (refreshes the inspector
+  every 2s; auto-stops when all phases finish)
+
+**Note:** the inspection side of Spectra (mode viewer / chart /
+table) is in the middle of being lifted into the unified **Results**
+tab.  See [`docs/protocols/results-tab.md`](docs/protocols/results-tab.md).
+
+Full spec including the JSON schema, per-mode probe semantics, and
+the validated Raman / preliminary IR magnitudes:
+[`docs/tabs/spectra/spec.md`](docs/tabs/spectra/spec.md).
+
+---
+
+## The Results tab (in progress)
+
+The `/results` tab is a **unified inspector** that replaces the
+per-tab "load a file" UIs sprinkled across Spectra and Watch.  Pick
+any file in the Projects sidebar; `/results` dispatches to the right
+inspector for that file type based on its extension.
+
+| File pattern | Inspector |
+|---|---|
+| `*.xyz`, `*.pdb` | Structure preview (3Dmol) — **live** |
+| `*.fdf`, `*.py`, `*.json`, `*.log`, `*.out`, `*.txt`, `*.md` | Source listing (read-only) — **live** |
+| `*.molwatch.log` | Trajectory inspector — **placeholder** (real lift from `/watch` in progress; today the placeholder shows the file metadata and links back to `/watch` for full inspection) |
+| `*.spectra.json` | Spectra inspector — **placeholder** (real lift from `/spectra` in progress; placeholder behaves the same way) |
+| anything else | Fallback message listing supported types |
+
+Architecture (the part that's solid):
+* **Inspector Registry** at `lib/inspectors/registry.js` — each
+  inspector self-registers; the dispatcher knows nothing about
+  specific file types.
+* Adding a new file type = one new `lib/inspectors/<name>.js` +
+  one `<script>` tag in `results.html`.  No edit to the dispatcher.
+* Mount lifecycle is explicit: each inspector returns a
+  `dispose()` handle so file-swap cleanly tears down 3Dmol viewers,
+  Plotly charts, and polling timers.
+
+Full design spec including remaining migration steps:
+[`docs/protocols/results-tab.md`](docs/protocols/results-tab.md).
+
+---
+
+## The Watch tab (legacy)
 
 ![Watch tab — molwatch.log loaded, structure in viewer, Inspect tab visible on the right, energy/force plots below](docs/img/watch-tab.png)
 
@@ -345,14 +411,59 @@ for the full install + license contract.
 
 ---
 
+## Deployment
+
+The default `python -m molbuilder serve` binds `127.0.0.1` —
+reachable only from the same machine.  No auth, no TLS.  Right
+default for a personal research tool on your own laptop.
+
+For anything beyond localhost:
+
+| Goal | What you need | Doc |
+|---|---|---|
+| **LAN** (lab workstation reachable from your laptop) | TLS cert/key for non-loopback bind | [`docs/deployment.md`](docs/deployment.md) § 1 |
+| **Internet** (collaborators reach it from anywhere) | Built-in sign-in — pick from Google / GitHub / Microsoft / ORCID / Apereo CAS (e.g. ASURITE); enable one or several with one button each on the login page; each provider has its own `allowed_users` list | [`docs/deployment.md`](docs/deployment.md) § 2a |
+| **Internet, your auth already exists** (campus SSO, Cloudflare Access, etc.) | Put molbuilder behind your auth gateway (reverse proxy) | [`docs/deployment.md`](docs/deployment.md) § 2b |
+
+Configuration lives in **one file** at the repo root:
+`molbuilder.json` (gitignored).  Copy the template:
+
+```bash
+cp docs/molbuilder.json.example molbuilder.json
+$EDITOR molbuilder.json         # delete sections you don't need
+molbuilder serve --host 0.0.0.0 --port 443
+```
+
+The template has inline `_comment_*` keys explaining every field
+(JSON doesn't support comments, but molbuilder's parser ignores
+`_comment_*` keys silently — they ride along as documentation).
+
+**What molbuilder does on its own** for any non-default deployment:
+TLS-or-loopback guard at startup, Content-Security-Policy +
+X-Frame-Options + X-Content-Type-Options + Referrer-Policy
+headers, self-hosted 3Dmol (no CDN trust), path validation on
+every file-ops endpoint, filename validation on upload, 50 MB
+upload cap.
+
+**What molbuilder explicitly does NOT do** (delegate to deployment
+layer): account management, CSRF tokens, rate limiting, audit
+logging, per-user `projects/` isolation.  See
+[`docs/deployment.md`](docs/deployment.md) for which deployment
+shape covers which of these.
+
+---
+
 ## Documentation
 
 | Document | What it covers |
 |---|---|
 | [`docs/README_install.md`](docs/README_install.md) | Four-env install recipe (host + molbuilder-{pySCF,siesta,MDtools,tests}) |
+| [`docs/deployment.md`](docs/deployment.md) | **Deployment** — localhost / LAN / internet (built-in sign-in for Google / GitHub / Microsoft / ORCID / CAS, or reverse-proxy auth), TLS, config reference, security headers |
+| [`docs/molbuilder.json.example`](docs/molbuilder.json.example) | **Config template** — every supported section with inline `_comment_*` annotations; copy → edit → run |
 | [`docs/design.md`](docs/design.md) | Durable design, architecture (L1/L2/L3 layering), principles, decisions log, anti-patterns |
 | [`docs/tabs/modify.md`](docs/tabs/modify.md) | Modify tab Python API + endpoints + UI walkthrough |
 | [`docs/tabs/spectra/spec.md`](docs/tabs/spectra/spec.md) | Spectra tab spec — schema, layers, atom-fixing semantics; **end-to-end Raman validation in §12.1** |
+| [`docs/protocols/results-tab.md`](docs/protocols/results-tab.md) | **Results tab design** — inspector registry, migration plan (1A done; 1B–D + 2 pending) |
 | [`docs/protocols/job-layout.md`](docs/protocols/job-layout.md) | Directory + filename protocol (Build writes, Watch reads) |
 | [`docs/protocols/selection.md`](docs/protocols/selection.md) | Projects-sidebar selection model + tab Inquire-API contract |
 | [`docs/engines/siesta.md`](docs/engines/siesta.md) | SIESTA generator contract |

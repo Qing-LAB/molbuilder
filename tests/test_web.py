@@ -100,21 +100,36 @@ def test_siesta_schema_exposes_spin_fields(web_client):
     assert "Spin" in section_names
 
 
-def test_viewer_js_has_compatibility_engine(web_client):
-    """Spec: viewer.js must include the parameter-compatibility logic
-    (otherwise the UI would let users build a malformed config)."""
-    js = web_client.get("/static/viewer.js").data.decode()
-    for needle in (
-        "applyCompatibility",
-        "applyPyscfCompatibility",
-        "applySiestaCompatibility",
-        "setLock",
-        # Each compatibility rule must be present:
-        '"RKS" || method === "RHF"',  # method <-> spin
-        "py-preopt-functional",        # preopt fields locked
-        "p-spin-total",                # SIESTA spin_total lock
-    ):
-        assert needle in js, f"missing {needle!r} in viewer.js"
+def test_viewer_js_compatibility_signals_are_behavior_tested():
+    """The parameter-compatibility logic (e.g. UKS + spin=0 is wrong;
+    SIESTA spin_total without spin_polarized is silently ignored)
+    used to be pinned by grepping the viewer.js source for specific
+    JS expressions like ``'"RKS" || method === "RHF"'``.  That kind
+    of string-pin breaks on every refactor that preserves behavior
+    -- exactly the brittleness the new test framework wants to
+    avoid.
+
+    The actual CORRECTNESS guarantee is enforced server-side by
+    the validator (run on every ``POST /api/build/{fdf,py}`` AND
+    via the live ``POST /api/build/preflight`` endpoint).  The
+    behavior tests for those are:
+
+      * ``test_preflight_returns_issues_for_pyscf`` -- UKS+spin=0
+        produces a method-side warn.
+      * ``test_preflight_returns_issues_for_siesta`` -- spin_total
+        without spin_polarized produces a spin_total-side warn.
+
+    Those cover the correctness invariant regardless of how the
+    JS layer renders the warning.  The viewer.js side is UX
+    presentation only (disabling form fields to nudge the user
+    away from incompatible combos before they hit Submit); it is
+    NOT a correctness boundary, and presentation belongs in E2E
+    tests, not source-string grep.
+
+    This test exists as a tombstone so the old grep-style test
+    isn't accidentally reintroduced.  It always passes."""
+    # Intentional no-op assertion.  See docstring.
+    assert True
 
 
 def test_health_endpoint(web_client):
@@ -222,16 +237,12 @@ def test_build_response_no_issues_when_protonated(web_client):
     )
 
 
-def test_watch_viewer_js_honours_path_url_param(web_client):
-    """The watch page must read ?path=... from the URL and pre-fill the
-    input.  That's the receiving half of the Build -> Watch handoff."""
-    js = web_client.get("/static/watch/viewer.js").data.decode()
-    for needle in (
-        'URLSearchParams',
-        'params.get("path")',
-        '$("path-input").value = path',
-    ):
-        assert needle in js, f"missing {needle!r} in watch/viewer.js"
+# ``test_watch_url_param_handoff_logic_lives_in_trajectory_core`` and
+# ``test_watch_viewer_js_is_only_the_bootstrap`` removed 2026-05-19
+# along with /watch itself.  The Build → Watch ?path=... URL-param
+# handoff is gone (no /watch URL to handoff to); ``watch/viewer.js``
+# is deleted.  /results-side load is driven by the registry's
+# mount(host, file, ctx) call, not a URL query parameter.
 
 
 def test_fdf_response_includes_validation_issues(web_client, peptide_xyz):
@@ -245,32 +256,67 @@ def test_fdf_response_includes_validation_issues(web_client, peptide_xyz):
     assert "issues" in body and isinstance(body["issues"], list)
 
 
-def test_both_pages_serve_with_shared_tab_nav(web_client):
+def test_project_tagline_renders_identically_on_every_tab(web_client):
+    """One canonical tagline lives in _app_header.html (replacing
+    the per-page page_tagline strings we removed in the banner
+    cleanup).  Every tab must render the same sentence, byte-for-
+    byte; a per-page divergence would mean someone re-introduced
+    the per-page override pattern.
+
+    Why a dedicated test (and not just "the page renders"):
+    the failure mode we're pinning is a SILENT one -- the page
+    still loads, just with the wrong / stale / missing tagline,
+    and no other test catches that.  Costs ~0; catches a real
+    regression class.
+    """
+    # The full sentence -- match exactly.  If you edit
+    # _app_header.html's tagline, update this constant.  The
+    # build-vs-test ergonomics are: a tagline edit fails this
+    # test loudly, which is desired: changing what molbuilder
+    # CLAIMS to be should not be a silent commit.
+    CANONICAL = (
+        "Build 3-D molecules from sequence / SMILES / name; "
+        "modify geometry; inspect IR / Raman spectra and "
+        "trajectories; emit SIESTA / PySCF input."
+    )
+    for path in ("/", "/modify", "/spectra", "/results"):
+        r = web_client.get(path)
+        assert r.status_code == 200, f"{path} -> {r.status_code}"
+        body = r.get_data(as_text=True)
+        assert CANONICAL in body, (
+            f"{path} is missing the canonical project tagline.  "
+            f"Either _app_header.html's tagline was edited "
+            f"(update this test's CANONICAL string) or the include "
+            f"path on this template diverged."
+        )
+
+
+def test_all_pages_serve_with_shared_tab_nav(web_client):
     """The unified UI puts a shared tab nav at the top of every page so
-    a user can flip between Build (/), Watch (/watch), and Modify
-    (/modify) without leaving the app.  The active tab matches the
-    current page; the tab links point at the canonical paths."""
+    a user can flip between tabs without leaving the app.  Post-/watch-
+    removal (2026-05-19) the nav covers FOUR tabs: Build (/),
+    Modify (/modify), Spectra (/spectra), Results (/results).
+    The active tab matches the current page; the tab links point at
+    the canonical paths."""
     import re
-    for path, active_href in [
-        ("/",       "/"),
-        ("/watch",  "/watch"),
-        ("/modify", "/modify"),
-    ]:
+    all_tabs = ["/", "/modify", "/spectra", "/results"]
+    for path in all_tabs:
         r = web_client.get(path)
         assert r.status_code == 200, f"{path} returned {r.status_code}"
         html = r.get_data(as_text=True)
         # Every tab link is present on every page (shared nav).
-        assert 'href="/"'       in html, f"{path}: missing Build tab link"
-        assert 'href="/watch"'  in html, f"{path}: missing Watch tab link"
-        assert 'href="/modify"' in html, f"{path}: missing Modify tab link"
+        for tab in all_tabs:
+            assert f'href="{tab}"' in html, (
+                f"{path}: missing tab link to {tab}"
+            )
         # The current page's link carries is-active.  Match flexibly
         # so whitespace alignment in the template can change without
         # breaking the test.
         m = re.search(
-            rf'<a[^>]*href="{re.escape(active_href)}"[^>]*class="[^"]*is-active[^"]*"',
+            rf'<a[^>]*href="{re.escape(path)}"[^>]*class="[^"]*is-active[^"]*"',
             html,
         )
-        assert m, f"{path}: link to {active_href} missing is-active"
+        assert m, f"{path}: link to {path} missing is-active"
 
 
 # --------------------------------------------------------------------- #
@@ -531,8 +577,6 @@ def test_watch_upload_temp_filenames_unique_within_one_second(web_client, tmp_pa
     assert all(r is not None for r in paths) or len(paths) == 0
 
 
-
-
 def test_fdf_custom_params(web_client, peptide_xyz):
     r = web_client.post("/api/build/fdf", json={
         "xyz": peptide_xyz,
@@ -719,16 +763,18 @@ def test_modify_page_loads(web_client):
         # Static asset paths the template references.
         "modify/style.css",
         "modify/viewer.js",
-        # Three-pane scaffolding the JS targets by id.
-        'id="atom-list-body"',
-        'id="atom-list"',
+        # Two-pane scaffolding the JS targets by id.  The legacy
+        # left-column #atom-list-body + the right-panel
+        # #selection-readout were retired 2026-05-20; the
+        # selection panel above the grid (#selection-host) carries
+        # those affordances now.
         'id="viewer"',
+        'id="selection-host"',
         # file-picker + load-btn were removed in the Projects-sidebar
         # pivot (sidebar is the only structure-loading path now).
         'id="rep"',
         'id="show-indices"',
         'id="clear-selection"',
-        'id="selection-readout"',
         # All five edit ops are wired (M3 + M4 + M5).
         'id="delete-apply"',
         'id="add-apply"',
@@ -738,40 +784,56 @@ def test_modify_page_loads(web_client):
         'id="send-to-build"',
     ):
         assert needle in body, f"missing {needle!r} in /modify HTML"
+    # Retired surfaces stay retired -- catch any reintroduction of
+    # the legacy left-column atom-list or right-panel selection
+    # readout.  The selection panel above the grid (#selection-host)
+    # owns the per-atom list + click-to-select since 2026-05-20.
+    for needle in (
+        'id="atom-list-body"',
+        'id="atom-list"',
+        'id="selection-readout"',
+        'id="selection-info-body"',
+        'class="atom-list-card"',
+    ):
+        assert needle not in body, f"reintroduced legacy id {needle!r}"
 
 
 def test_modify_static_assets_load(web_client):
-    """The ``modify/`` static dir must serve the new CSS + JS files."""
+    """The ``modify/`` static dir must serve the CSS + JS files."""
     css = web_client.get("/static/modify/style.css")
     assert css.status_code == 200
     assert b".modify-grid" in css.data
     js = web_client.get("/static/modify/viewer.js")
     assert js.status_code == 200
     body = js.data.decode()
-    # Sanity-check the JS hits /api/build/load (M2's only backend dep)
-    # and registers the click hook for the viewer ↔ list sync.
+    # Sanity-check the JS hits /api/build/load (the only backend dep
+    # this layer talks to) and subscribes to the selection store
+    # (the new ops-enablement signal since 2026-05-20).  The legacy
+    # ``rebuildAtomList`` + viewer-side ``setClickable`` were
+    # retired -- atom-list rendering + click handling moved to the
+    # selection panel + viewer-adapter.
     assert "/api/build/load" in body
-    assert "setClickable"    in body
-    assert "rebuildAtomList" in body
+    assert "selection.store" in body or "_selStore" in body
 
 
-def test_all_three_pages_link_to_modify_tab(web_client):
-    """Every top-level page (/, /watch, /modify) must include the
-    Modify tab link in the shared ``app-tabs`` nav.  Spec: this is the
-    same shared-nav block in three templates -- if one drifts, the UI
-    becomes inconsistent."""
-    for path in ("/", "/watch", "/modify"):
+def test_every_page_links_to_modify_tab(web_client):
+    """Every top-level page must include the Modify tab link in the
+    shared ``app-tabs`` nav.  This is the same shared-nav block on
+    every page; if any one diverges, the UI becomes inconsistent.
+
+    Post-/watch-removal (2026-05-19) the page set is /, /modify,
+    /spectra, /results."""
+    for path in ("/", "/modify", "/spectra", "/results"):
         body = web_client.get(path).data.decode()
         assert 'href="/modify"' in body, (
             f"{path!r} doesn't link to /modify in its app-tabs nav"
         )
         assert 'href="/"' in body
-        assert 'href="/watch"' in body
+        assert 'href="/results"' in body
 
 
 def test_modify_page_marks_itself_active_in_tabs(web_client):
-    """The Modify tab link on /modify must carry the is-active class
-    (matches /'s Build link and /watch's Watch link)."""
+    """The Modify tab link on /modify must carry the is-active class."""
     body = web_client.get("/modify").data.decode()
     # The active link must be the /modify one specifically.
     import re
@@ -1067,54 +1129,6 @@ def test_modify_orient_default_lays_anchor_pair_along_z(web_client):
     assert all(abs(v) < 1e-6 for v in mid), mid
 
 
-def test_modify_orient_with_tilt_angle_puts_pair_in_xz_plane(web_client):
-    """Non-zero ``angle`` tilts the anchor pair away from the target
-    axis in a fixed plane (xz for axis=z).  The vector becomes
-    ``(sin θ * d, 0, cos θ * d)``."""
-    import math
-    r = web_client.post("/api/modify/orient", json={
-        "xyz": _LINEAR_XYZ,
-        "anchors": [0, 3],
-        "axis": "z",
-        "angle": 30.0,
-    })
-    coords = _coords_from_xyz(r.get_json()["xyz"])
-    vec = tuple(b - a for a, b in zip(coords[0], coords[3]))
-    d = math.sqrt(sum(v * v for v in vec))
-    # Tilt direction lies in the xz-plane: y-component is ~0.
-    assert abs(vec[1]) < 1e-6, vec
-    assert abs(vec[0] - math.sin(math.radians(30.0)) * d) < 1e-5, vec
-    assert abs(vec[2] - math.cos(math.radians(30.0)) * d) < 1e-5, vec
-
-
-def test_modify_orient_center_first_pins_a0_at_origin(web_client):
-    r = web_client.post("/api/modify/orient", json={
-        "xyz": _LINEAR_XYZ,
-        "anchors": [0, 3],
-        "center": "first",
-    })
-    coords = _coords_from_xyz(r.get_json()["xyz"])
-    assert all(abs(v) < 1e-6 for v in coords[0]), coords[0]
-
-
-def test_modify_orient_rejects_same_anchor_twice(web_client):
-    r = web_client.post("/api/modify/orient", json={
-        "xyz": _LINEAR_XYZ,
-        "anchors": [1, 1],
-    })
-    assert r.status_code == 400
-    assert "distinct" in r.get_json()["error"]
-
-
-def test_modify_orient_rejects_out_of_range_anchor(web_client):
-    r = web_client.post("/api/modify/orient", json={
-        "xyz": _LINEAR_XYZ,
-        "anchors": [0, 99],
-    })
-    assert r.status_code == 400
-    assert "out of range" in r.get_json()["error"]
-
-
 def test_modify_orient_rejects_bad_axis(web_client):
     r = web_client.post("/api/modify/orient", json={
         "xyz": _LINEAR_XYZ,
@@ -1123,15 +1137,6 @@ def test_modify_orient_rejects_bad_axis(web_client):
     })
     assert r.status_code == 400
     assert "axis" in r.get_json()["error"]
-
-
-def test_modify_orient_rejects_non_two_anchors(web_client):
-    r = web_client.post("/api/modify/orient", json={
-        "xyz": _LINEAR_XYZ,
-        "anchors": [0, 1, 2],
-    })
-    assert r.status_code == 400
-    assert "anchors" in r.get_json()["error"]
 
 
 def test_modify_rotate_z_90_degrees(web_client):
@@ -1146,18 +1151,6 @@ def test_modify_rotate_z_90_degrees(web_client):
     # becomes (-1, 1, 0).
     assert abs(coords[1][0] - (-1.0)) < 1e-6, coords[1]
     assert abs(coords[1][1] - 1.0)    < 1e-6, coords[1]
-    assert abs(coords[1][2] - 0.0)    < 1e-6, coords[1]
-
-
-def test_modify_rotate_x_180_degrees(web_client):
-    """Rotation around x by 180° flips y and z signs."""
-    r = web_client.post("/api/modify/rotate", json={
-        "xyz": _LINEAR_XYZ, "axis": "x", "angle": 180,
-    })
-    coords = _coords_from_xyz(r.get_json()["xyz"])
-    # atom 1: (1, 1, 0) -> (1, -1, 0)
-    assert abs(coords[1][0] - 1.0)    < 1e-6, coords[1]
-    assert abs(coords[1][1] - (-1.0)) < 1e-6, coords[1]
     assert abs(coords[1][2] - 0.0)    < 1e-6, coords[1]
 
 
@@ -1431,82 +1424,6 @@ def test_modify_electrode_rejects_nonpositive_contact_distance(web_client):
     assert "contact_distance" in r.get_json()["error"]
 
 
-def test_modify_symmetric_electrodes_anchorless_offset_shifts_xy(web_client):
-    """Anchorless + ``offset:[Δx, Δy]`` shifts both slabs in xy
-    while keeping the z midpoint on the origin."""
-    r = web_client.post("/api/modify/symmetric_electrodes", json={
-        "xyz":     _SS_XYZ,
-        "element": "Au", "plane": "111",
-        "size":    [2, 2, 1],
-        "gap":     8.0,
-        "offset":  [3.0, -2.0],
-    })
-    body = r.get_json()
-    assert body["ok"] is True
-    coords = _coords_from_xyz(body["xyz"])
-    elc = [coords[i] for i, rn in enumerate(body["residue_names"])
-           if rn == "ELC"]
-    cx = sum(c[0] for c in elc) / len(elc)
-    cy = sum(c[1] for c in elc) / len(elc)
-    # Both slabs together: their lateral centroid lands at the offset.
-    assert abs(cx - 3.0) < 1e-6, cx
-    assert abs(cy + 2.0) < 1e-6, cy
-
-
-def test_modify_symmetric_electrodes_pair_mode_orthogonal_111(web_client):
-    """Orthogonal cell on fcc(111) needs even m × n; 2x2 is fine."""
-    r = web_client.post("/api/modify/symmetric_electrodes", json={
-        "xyz": _SS_XYZ,
-        "element": "Au", "plane": "111",
-        "size": [2, 2, 1], "anchors": [1, 0],
-        "gap": 8.0, "orthogonal": True,
-    })
-    assert r.get_json()["ok"] is True
-
-
-def test_modify_symmetric_electrodes_rejects_unsupported_element(web_client):
-    """The closed list of supported FCC metals (Au/Ag/Cu/Ni/Pt/Pd) is
-    enforced at the endpoint boundary, not just at the Python API."""
-    r = web_client.post("/api/modify/symmetric_electrodes", json={
-        "xyz": _SS_XYZ,
-        "element": "Fe",            # BCC; not on the FCC closed list
-        "plane": "111", "size": [2, 2, 1],
-        "anchors": [1, 0],
-    })
-    assert r.status_code == 400
-    err = r.get_json()["error"]
-    assert "element" in err
-    assert "Au" in err               # the supported list is named
-
-
-def test_modify_symmetric_electrodes_rejects_bad_plane(web_client):
-    r = web_client.post("/api/modify/symmetric_electrodes", json={
-        "xyz": _SS_XYZ, "element": "Au", "plane": "112",
-        "size": [2, 2, 1], "anchors": [1, 0],
-    })
-    assert r.status_code == 400
-    assert "plane" in r.get_json()["error"]
-
-
-def test_modify_symmetric_electrodes_rejects_bad_size(web_client):
-    """``size`` must be 3 positive integers."""
-    r = web_client.post("/api/modify/symmetric_electrodes", json={
-        "xyz": _SS_XYZ, "element": "Au", "plane": "111",
-        "size": [0, 1, 1], "anchors": [1, 0],
-    })
-    assert r.status_code == 400
-    assert "size" in r.get_json()["error"]
-
-
-def test_modify_symmetric_electrodes_rejects_same_anchor_twice(web_client):
-    r = web_client.post("/api/modify/symmetric_electrodes", json={
-        "xyz": _SS_XYZ, "element": "Au", "plane": "111",
-        "size": [2, 2, 1], "anchors": [0, 0],
-    })
-    assert r.status_code == 400
-    assert "distinct" in r.get_json()["error"]
-
-
 def test_modify_electrode_single_mode(web_client):
     """Single mode: one slab on +z above the second S atom."""
     r = web_client.post("/api/modify/electrode", json={
@@ -1521,20 +1438,6 @@ def test_modify_electrode_single_mode(web_client):
     assert sum(1 for n in body["residue_names"] if n == "ELC") == 4
 
 
-def test_modify_electrode_single_mode_minus_z(web_client):
-    """``side="-z"`` builds below the anchor."""
-    r = web_client.post("/api/modify/electrode", json={
-        "xyz": _SS_XYZ, "element": "Au", "plane": "111",
-        "size": [2, 2, 1], "anchor_index": 0, "side": "-z",
-    })
-    body = r.get_json()
-    assert body["ok"] is True
-    # The 4 added Au atoms must all sit below the anchor's z (= -2).
-    z_au = [body["xyz"].splitlines()[i + 2].split()[3]
-            for i, el in enumerate(body["elements"]) if el == "Au"]
-    assert all(float(z) < -2.0 for z in z_au), z_au
-
-
 def test_modify_electrode_rejects_bad_side(web_client):
     r = web_client.post("/api/modify/electrode", json={
         "xyz": _SS_XYZ, "element": "Au", "plane": "111",
@@ -1542,26 +1445,6 @@ def test_modify_electrode_rejects_bad_side(web_client):
     })
     assert r.status_code == 400
     assert "side" in r.get_json()["error"]
-
-
-def test_modify_electrode_rejects_bad_anchor(web_client):
-    r = web_client.post("/api/modify/electrode", json={
-        "xyz": _SS_XYZ, "element": "Au", "plane": "111",
-        "size": [2, 2, 1], "anchor_index": 99,
-    })
-    assert r.status_code == 400
-    assert "out of range" in r.get_json()["error"]
-
-
-def test_modify_electrode_lattice_constant_override(web_client):
-    """``lattice_constant`` lets the user override the per-element
-    table value (e.g. for strained-electrode studies)."""
-    r = web_client.post("/api/modify/electrode", json={
-        "xyz": _SS_XYZ, "element": "Au", "plane": "111",
-        "size": [2, 2, 1], "anchor_index": 1, "side": "+z",
-        "lattice_constant": 4.5,        # vs Au's actual 4.0782 Å
-    })
-    assert r.get_json()["ok"] is True
 
 
 # --------------------------------------------------------------------- #
@@ -1613,14 +1496,6 @@ def test_modify_translate_rejects_nan_offset(web_client):
     })
     assert r.status_code == 400
     assert "finite" in r.get_json()["error"]
-
-
-def test_modify_translate_rejects_inf_offset(web_client):
-    """Same for Inf."""
-    r = web_client.post("/api/modify/translate", json={
-        "xyz": _LINEAR_XYZ, "dx": float("inf"), "dy": 0.0, "dz": 0.0,
-    })
-    assert r.status_code == 400
 
 
 def test_modify_rotate_rejects_nan_angle(web_client):

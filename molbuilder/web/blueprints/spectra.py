@@ -64,8 +64,10 @@ from ._shared import (
     dataclass_to_form_schema as _dataclass_to_form_schema,
     issues_to_json as _issues_to_json,
 )
+from .files import _PickerError, _resolve_within_roots
 
 from molbuilder.config.spectra import SpectraConfig
+from molbuilder.parsers import molstruct_json as _molstruct_json
 from molbuilder.parsers.spectra_json import (
     SpectraJsonError,
     SpectraJsonFieldError,
@@ -130,11 +132,172 @@ def api_spectra_schema():
     so the workflow-order (System -> Method -> Frozen atoms ->
     Spectrum -> Electronic structure -> SCF -> Runtime) is stable
     independent of field declaration order in the dataclass.
+
+    Optional ``?structure_path=...`` query: when supplied AND a
+    .molstruct.json sidecar sits next to the XYZ AND the sidecar
+    carries a non-empty ``frozen_atoms`` set, the schema's
+    ``frozen_indices`` field default is overridden with the
+    comma-separated form of those indices.  This is the option-2
+    "sidecar feeds defaults, form is authoritative" contract for
+    the frozen-atom boundary condition: the sidecar's data appears
+    pre-filled in the form so the user can SEE what's frozen
+    before generating the script; editing the field overrides the
+    pre-fill (form values are authoritative at render time).
+
+    Sidecar load errors (missing structure, malformed sidecar,
+    atom-count mismatch) are non-fatal here -- the endpoint
+    returns the static schema with an additional ``notice`` field
+    explaining why the pre-fill was skipped, so the user is
+    informed without blocking the form.  The path is validated
+    via ``files._resolve_within_roots`` so this endpoint inherits
+    the same allow-list as /api/files/*.
     """
-    return jsonify({
-        "ok": True,
-        "schema": _dataclass_to_form_schema(SpectraConfig, "s"),
-    })
+    schema = _dataclass_to_form_schema(SpectraConfig, "s")
+    response: Dict[str, Any] = {"ok": True, "schema": schema}
+
+    structure_path = request.args.get("structure_path") or ""
+    if structure_path:
+        notice = _seed_frozen_indices_from_sidecar(schema, structure_path)
+        if notice:
+            response["notice"] = notice
+    return jsonify(response)
+
+
+def _seed_frozen_indices_from_sidecar(
+    schema: Dict[str, Any],
+    structure_path: str,
+) -> Optional[str]:
+    """Override ``frozen_indices.default`` in the schema with the
+    sidecar's frozen-atom indices for ``structure_path``.
+
+    Returns ``None`` on success (default override applied OR
+    nothing to override).  Returns a short, user-facing string
+    explaining why the pre-fill was skipped (e.g. "sidecar atom
+    count doesn't match the structure -- re-export from /modify")
+    when something went wrong but in a recoverable way.
+
+    The function mutates ``schema`` in place; no return on success.
+    """
+    try:
+        resolved = _resolve_within_roots(structure_path)
+    except _PickerError as exc:
+        return f"structure_path rejected: {exc.message}"
+    if not resolved.exists():
+        return f"structure_path not found: {resolved.name}"
+    ext = resolved.suffix.lower()
+    if ext not in (".xyz", ".pdb"):
+        return (f"structure_path must be .xyz or .pdb "
+                f"(got {resolved.suffix!r})")
+
+    sidecar_path = _molstruct_json.sidecar_path_for(resolved)
+    if not sidecar_path.exists():
+        # No sidecar = nothing to seed, no notice needed.
+        return None
+
+    try:
+        sidecar_data = _molstruct_json.load(sidecar_path)
+    except _molstruct_json.MolstructJsonError as exc:
+        return (f"sidecar at {sidecar_path.name} could not be read "
+                f"({exc}); frozen-atom field not pre-filled")
+
+    frozen = list(sidecar_data.get("frozen_atoms") or [])
+    if not frozen:
+        return None
+
+    # Validate against the actual atom count so a stale sidecar
+    # doesn't pre-fill indices that no longer point at real atoms.
+    # ``read_text`` defaults to strict UTF-8; a binary or garbled
+    # XYZ/PDB file raises UnicodeDecodeError (NOT OSError) -- catch
+    # both so this code path never 500s the schema endpoint.
+    try:
+        text = resolved.read_text()
+        struct = (Structure.from_xyz(text) if ext == ".xyz"
+                  else Structure.from_pdb(text))
+    except (ValueError, IndexError, OSError, UnicodeDecodeError) as exc:
+        return (f"could not parse {resolved.name} to check sidecar "
+                f"({exc}); frozen-atom field not pre-filled")
+    if sidecar_data.get("n_atoms_total") != struct.n_atoms:
+        return (f"sidecar atom count ({sidecar_data.get('n_atoms_total')}) "
+                f"differs from structure ({struct.n_atoms}); re-export "
+                f"the sidecar from /modify.  Frozen-atom field not pre-filled.")
+
+    # Find the frozen_indices field in the schema (the section is
+    # "Frozen atoms"; the field name is "frozen_indices") and
+    # override its default with a comma-separated string.  Match
+    # the renderer's text-input format so the form value matches
+    # what coerce_to_field_type expects on submit.
+    formatted = ", ".join(str(i) for i in sorted(set(frozen)))
+    for section in schema.get("sections", []):
+        for field in section.get("fields", []):
+            if field.get("name") == "frozen_indices":
+                field["default"] = formatted
+                return None
+    # Schema topology unexpectedly missing the field.  This means
+    # SpectraConfig was refactored without updating this code path
+    # -- a programmer error, not a user-facing one.  Return a
+    # notice so the user gets SOME signal (the form will silently
+    # NOT pre-fill); the unit test
+    # ``test_sidecar_frozen_atoms_prefills_field_default`` catches
+    # the regression at CI time.
+    return ("frozen_indices field unexpectedly missing from the form "
+            "schema; pre-fill skipped (this is a programmer bug)")
+
+
+def _apply_sidecar_if_possible(
+    struct: Structure, structure_path: str,
+) -> Optional[str]:
+    """Best-effort sidecar application for the render endpoint.
+
+    Sets ``struct.frozen_atoms`` + ``struct.regions`` from the
+    .molstruct.json sidecar next to ``structure_path`` so the
+    preflight stage-3 guards (design.md "Sidecar-driven boundary
+    conditions") see the real boundary-condition data.
+
+    Returns ``None`` on either (a) success: sidecar applied OR
+    (b) clean no-op: no sidecar file next to the structure, or
+    structure_path was empty.  Returns a short, user-facing notice
+    string when the sidecar exists but couldn't be applied
+    (path rejected, malformed JSON, atom-count mismatch) -- the
+    caller surfaces this as a preflight warn-severity Issue so
+    the user knows the sidecar's boundary conditions were
+    silently NOT honored.
+
+    Note: failure to apply is non-fatal because the user could be
+    running /spectra against a re-cropped or hand-pasted XYZ; the
+    form's frozen_indices is still authoritative.  The notice
+    tells the user the sidecar wasn't a factor, so they can't be
+    surprised later by "I thought I had those atoms frozen!"
+    """
+    try:
+        resolved = _resolve_within_roots(structure_path)
+    except _PickerError as exc:
+        return (f"sidecar lookup skipped: structure_path rejected "
+                f"({exc.message}); the form's freeze rules are the "
+                f"sole boundary condition for this run.")
+    if not resolved.exists():
+        return (f"sidecar lookup skipped: {resolved.name!s} not on "
+                f"disk; the form's freeze rules are the sole "
+                f"boundary condition for this run.")
+    if resolved.suffix.lower() not in (".xyz", ".pdb"):
+        return None        # caller's structure_path wasn't a structure file -- not our problem
+    sidecar_path = _molstruct_json.sidecar_path_for(resolved)
+    if not sidecar_path.exists():
+        # No sidecar to apply -- nothing was lost; quiet success.
+        return None
+    try:
+        sidecar_data = _molstruct_json.load(sidecar_path)
+        _molstruct_json.apply_to_structure(struct, sidecar_data)
+    except _molstruct_json.MolstructJsonError as exc:
+        # Surface this as a notice so the user knows the sidecar's
+        # frozen / region data did NOT flow into preflight.  Per
+        # "no silent absorption" (design.md three-stage contract),
+        # the user must know when their sidecar isn't a factor.
+        return (f"sidecar at {sidecar_path.name} could not be "
+                f"applied ({exc}); the form's freeze rules are "
+                f"the sole boundary condition for this run.  "
+                f"Re-export the sidecar from /modify to re-enable "
+                f"sidecar-driven divergence checks.")
+    return None
 
 
 # ===================================================================== #
@@ -149,10 +312,16 @@ def api_spectra_render():
     Body (JSON)::
 
         {
-          "xyz":         "<xyz text>",
-          "params":      {<SpectraConfig dict>},
-          "prior_path":  "<optional path to a prior .spectra.json>"
+          "structure_text": "<XYZ or PDB text content>",
+          "params":         {<SpectraConfig dict>},
+          "structure_path": "<optional path to the on-disk .xyz/.pdb>",
+          "prior_path":     "<optional path to a prior .spectra.json>"
         }
+
+    The ``structure_text`` field accepts either XYZ or PDB content;
+    the server sniffs the format by the first line (integer ->
+    XYZ; non-integer -> PDB).  Renamed 2026-05-22 from the
+    misleading ``"xyz"`` field name.
 
     Returns on success::
 
@@ -175,23 +344,56 @@ def api_spectra_render():
     specific scientific advisories).  Errors with
     ``severity == "error"`` block rendering; warnings pass
     through and the script is still generated.
+
+    The ``structure_path`` (optional) lets the server read the
+    .molstruct.json sidecar next to the on-disk XYZ and apply its
+    ``frozen_atoms`` + ``regions`` to the Structure BEFORE preflight
+    runs.  This is what makes stage-3 of the three-stage contract
+    (design.md "Sidecar-driven boundary conditions") work end-to-end:
+    Pattern A (divergence WARN) and Pattern B (unrecognized-label
+    WARN) need ``struct.frozen_atoms`` / ``struct.regions`` to be
+    populated -- which only happens when the sidecar is applied.
+    If the structure_path is omitted (e.g. the user pasted raw XYZ
+    text without a sidebar pick), the sidecar guards quietly stay
+    inert; preflight still validates the inline form fields.
     """
     body = request.get_json(silent=True) or {}
-    xyz_text: Optional[str] = body.get("xyz")
+    structure_text: Optional[str] = body.get("structure_text")
     params: Dict[str, Any] = body.get("params") or {}
+    structure_path: Optional[str] = body.get("structure_path")
     prior_path: Optional[str] = body.get("prior_path")
 
-    if not xyz_text:
-        return jsonify({"ok": False, "error": "no xyz provided"}), 400
+    if not structure_text:
+        return jsonify({"ok": False,
+                        "error": "no 'structure_text' provided"}), 400
 
-    # Parse XYZ.  Errors surface as 400 -- the form's previous step
-    # would have populated this from Build; a parse failure here is
-    # a wire-level fault.
+    # Parse the structure text.  Sniff XYZ vs PDB by the first
+    # line (matches /api/build/load's auto-detect logic): an
+    # integer = XYZ; anything else falls through to PDB.  Errors
+    # surface as 400.
     try:
-        struct = Structure.from_xyz(xyz_text, title="from-browser")
+        first_line = (structure_text.lstrip().splitlines()[0]
+                      if structure_text.strip() else "")
+        if first_line.strip().isdigit():
+            struct = Structure.from_xyz(structure_text, title="from-browser")
+        else:
+            # PDB / unknown: dispatch to from_pdb, which itself
+            # raises if there's no ATOM/HETATM in the input.
+            struct = Structure.from_pdb(structure_text, title="from-browser")
     except (ValueError, IndexError) as exc:
         return jsonify({"ok": False,
-                        "error": f"could not parse xyz: {exc}"}), 400
+                        "error": f"could not parse structure text: {exc}"}), 400
+
+    # Apply the sidecar (if any) so preflight's stage-3 guards see
+    # the real ``struct.frozen_atoms`` + ``struct.regions``.  A
+    # sidecar that exists but fails to apply (malformed, atom-count
+    # mismatch) is surfaced as a warn-severity Issue rather than
+    # silently dropped -- per the "no silent absorption" rule in
+    # design.md's three-stage contract.  No-sidecar-on-disk is a
+    # quiet success: there's nothing to honor.
+    sidecar_notice: Optional[str] = None
+    if structure_path:
+        sidecar_notice = _apply_sidecar_if_possible(struct, structure_path)
 
     # Build SpectraConfig from form params.  Coercion failures
     # surface as an error-severity Issue rather than HTTP 400 so
@@ -230,6 +432,16 @@ def api_spectra_render():
     issues = list(engine.preflight(struct, cfg, prior=prior))
     if prior_warn is not None:
         issues.append(prior_warn)
+    # Surface the sidecar-application failure (if any) so the user
+    # sees that their sidecar's frozen / region data is NOT a
+    # factor in this run -- no silent absorption.
+    if sidecar_notice is not None:
+        from molbuilder.issues import Issue
+        issues.append(Issue(
+            severity="warn",
+            message=sidecar_notice,
+            where="structure_path",
+        ))
 
     # Block render on any error-severity issue.
     if any(i.severity == "error" for i in issues):

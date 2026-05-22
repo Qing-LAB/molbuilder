@@ -279,8 +279,12 @@ class TestPySCFEnginePreflight:
         assert not any(i.where == "config.grid_level" for i in issues)
 
     def test_displacement_below_window_warns(self):
+        """Window lower bound is 0.02 Å (lowered 2026-05-19 to match
+        the new SpectraConfig default).  Anything smaller surfaces
+        a warn so the user gets a clear signal that the FD noise
+        floor may dominate."""
         from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
-        cfg = SpectraConfig(displacement_amplitude_ang=0.03)
+        cfg = SpectraConfig(displacement_amplitude_ang=0.01)
         issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
         assert any(i.where == "config.displacement_amplitude_ang"
                    and i.severity == "warn" for i in issues)
@@ -293,7 +297,8 @@ class TestPySCFEnginePreflight:
                    and i.severity == "warn" for i in issues)
 
     def test_default_displacement_no_warn(self):
-        """Default 0.10 Å is the defensible production value."""
+        """Default 0.02 Å is the linear-response production value
+        (lowered from 0.10 on 2026-05-19; see SpectraConfig)."""
         from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
         cfg = SpectraConfig()
         issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
@@ -427,24 +432,24 @@ class TestPySCFEnginePreflight:
         issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
         assert not any(i.where == "config.use_gpu" for i in issues)
 
-    def test_few_fixed_atoms_warns_about_spurious_modes(self):
+    def test_few_frozen_atoms_warns_about_spurious_modes(self):
         """Fixing 1 or 2 atoms can't fully anchor the free fragment
         in space -- residual rigid-body motion leaks into the
         vibrational analysis as near-zero modes.  Warn so the user
         ignores those modes when interpreting the spectrum."""
         from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
         for n in (1, 2):
-            cfg = SpectraConfig(fixed_indices=list(range(n)))
+            cfg = SpectraConfig(frozen_indices=list(range(n)))
             issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
             warns = [i for i in issues
                      if i.severity == "warn"
-                     and i.where == "config.fixed_indices"
+                     and i.where == "config.frozen_indices"
                      and "spurious" in i.message]
             assert len(warns) == 1, (n, issues)
 
-    def test_three_or_more_fixed_atoms_no_spurious_warn(self):
+    def test_three_or_more_frozen_atoms_no_spurious_warn(self):
         from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
-        cfg = SpectraConfig(fixed_indices=[0, 1, 2])
+        cfg = SpectraConfig(frozen_indices=[0, 1, 2])
         issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
         assert not any("spurious" in i.message for i in issues)
 
@@ -453,7 +458,7 @@ class TestPySCFEnginePreflight:
         metal slab); the spurious-modes warn shouldn't fire when the
         user is freezing by element rather than by index."""
         from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
-        cfg = SpectraConfig(fixed_elements=["O"])
+        cfg = SpectraConfig(frozen_elements=["O"])
         issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
         assert not any("spurious" in i.message for i in issues)
 
@@ -518,7 +523,7 @@ class TestPySCFEnginePreflight:
         cfg = SpectraConfig()  # no atoms fixed
         issues = PySCFSpectraEngine.preflight(struct, cfg)
         warns = [i for i in issues
-                 if i.where == "config.fixed_indices"
+                 if i.where == "config.frozen_indices"
                  and i.severity == "warn"
                  and "metal slab" in i.message]
         assert len(warns) == 1
@@ -542,24 +547,125 @@ class TestPySCFEnginePreflight:
         assert any(i.where == "config.method"
                    and i.severity == "error" for i in issues)
 
-    def test_out_of_range_fixed_indices_errors(self):
+    def test_out_of_range_frozen_indices_errors(self):
         from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
-        cfg = SpectraConfig(fixed_indices=[0, 1, 99])  # water has 3 atoms
+        cfg = SpectraConfig(frozen_indices=[0, 1, 99])  # water has 3 atoms
         issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
-        assert any(i.where == "config.fixed_indices"
+        assert any(i.where == "config.frozen_indices"
                    and i.severity == "error" for i in issues)
 
-    def test_in_range_fixed_indices_ok(self):
-        """In-range fixed_indices should NOT produce a range-check
+    def test_in_range_frozen_indices_ok(self):
+        """In-range frozen_indices should NOT produce a range-check
         error.  (A separate test covers the WARN about spurious
         rigid-body modes when fewer than 3 atoms are fixed.)"""
         from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
-        cfg = SpectraConfig(fixed_indices=[0, 1])  # all valid for water
+        cfg = SpectraConfig(frozen_indices=[0, 1])  # all valid for water
         issues = PySCFSpectraEngine.preflight(_struct_water(), cfg)
         errors_from_indices = [i for i in issues
-                               if i.where == "config.fixed_indices"
+                               if i.where == "config.frozen_indices"
                                and i.severity == "error"]
         assert errors_from_indices == []
+
+    # ------- Three-stage contract: stage-3 preflight enforcement ----- #
+    # design.md "Sidecar-driven boundary conditions -- the three-stage
+    # contract".  The script honors cfg.frozen_indices verbatim; the
+    # preflight surfaces (A) divergence between struct.frozen_atoms
+    # and cfg.frozen_indices, (B) unconsumed sidecar labels (regions)
+    # so the user is never silently surprised by the boundary
+    # conditions the script will use.
+
+    def test_sidecar_frozen_divergence_warns(self):
+        """Pattern A: struct.frozen_atoms has indices NOT in
+        cfg.frozen_indices -> WARN.  The user is about to generate a
+        script that does NOT freeze atoms the sidecar marked as
+        frozen; surface it before Generate, not silently."""
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        struct = _struct_water()
+        struct.frozen_atoms = [0]                 # sidecar says freeze atom 0
+        cfg = SpectraConfig(frozen_indices=[1])   # form says freeze atom 1
+        issues = PySCFSpectraEngine.preflight(struct, cfg)
+        warns = [i for i in issues
+                 if i.severity == "warn"
+                 and i.where == "config.frozen_indices"
+                 and "sidecar" in i.message
+                 and "[0]" in i.message]
+        assert len(warns) == 1, [i.message for i in issues]
+
+    def test_sidecar_frozen_subset_no_warn(self):
+        """Form-set ⊇ sidecar-set -> NO divergence warn.  The script
+        will freeze everything the sidecar wanted plus possibly
+        more; no silent omission."""
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        struct = _struct_water()
+        struct.frozen_atoms = [0]
+        cfg = SpectraConfig(frozen_indices=[0, 1])
+        issues = PySCFSpectraEngine.preflight(struct, cfg)
+        divergence_warns = [
+            i for i in issues
+            if i.where == "config.frozen_indices"
+            and i.severity == "warn"
+            and "sidecar" in i.message
+        ]
+        assert divergence_warns == []
+
+    def test_no_sidecar_frozen_no_warn(self):
+        """Struct without frozen_atoms (the common case) -> no
+        divergence warn fires; regression against false positives."""
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        struct = _struct_water()
+        cfg = SpectraConfig(frozen_indices=[0])
+        issues = PySCFSpectraEngine.preflight(struct, cfg)
+        divergence_warns = [
+            i for i in issues
+            if i.where == "config.frozen_indices"
+            and i.severity == "warn"
+            and "sidecar" in i.message
+        ]
+        assert divergence_warns == []
+
+    def test_sidecar_regions_unrecognized_warn(self):
+        """Pattern B: struct.regions is non-empty -> WARN that the
+        spectra engine does not consume regions.  The user is told
+        their region labels (set in /modify for transport workflows)
+        are ignored here, not silently absorbed."""
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        struct = _struct_water()
+        struct.regions = {"L-electrode": [0], "bridge": [1, 2]}
+        cfg = SpectraConfig()
+        issues = PySCFSpectraEngine.preflight(struct, cfg)
+        notices = [i for i in issues
+                   if i.where == "structure.regions"
+                   and "do" in i.message.lower()
+                   and "consume" in i.message.lower()]
+        assert len(notices) == 1, [i.message for i in issues]
+        # The notice should name the actual labels so the user
+        # can see WHICH labels are being ignored.
+        assert "L-electrode" in notices[0].message
+        assert "bridge" in notices[0].message
+
+    def test_no_regions_no_unrecognized_warn(self):
+        """Struct without regions -> no Pattern-B notice; regression
+        against false positives."""
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        struct = _struct_water()
+        cfg = SpectraConfig()
+        issues = PySCFSpectraEngine.preflight(struct, cfg)
+        assert not any(
+            i.where == "structure.regions" for i in issues
+        )
+
+    def test_empty_regions_no_unrecognized_warn(self):
+        """A regions dict with only empty lists -> no notice
+        (skipping empty entries; if there's nothing in the region,
+        there's nothing to ignore)."""
+        from molbuilder.spectra.pyscf_engine import PySCFSpectraEngine
+        struct = _struct_water()
+        struct.regions = {"L-electrode": [], "bridge": []}
+        cfg = SpectraConfig()
+        issues = PySCFSpectraEngine.preflight(struct, cfg)
+        assert not any(
+            i.where == "structure.regions" for i in issues
+        )
 
     def test_selector_top_n_without_prior_l3_errors(self):
         """top_n / threshold selectors need a prior L3 run; the

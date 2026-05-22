@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>molbuilder &mdash; results</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
+{# Cross-tab page chrome -- body theme, header, main, .card, generic
+   form controls, .status, scrollbars.  Splits responsibility cleanly:
+   page-shell.css covers what every tab needs; per-tab + per-inspector
+   stylesheets layer their specifics on top. -#}
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/projects-sidebar.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='results/style.css') }}">
+{# Trajectory inspector styles -- the inspector's DOM (rendered from
+   _trajectory_inspector.html into #inspector-host at mount time)
+   uses the classes defined here.  Linked unconditionally because
+   the cost is small + the alternative (lazy-loading the CSS on
+   inspector mount) introduces a FOUC. -#}
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/trajectory-inspector.css') }}">
+{# Spectra inspector styles.  When the spectra-inspector lift lands
+   (#58 step 2.4), lib/inspectors/spectra.js fetches
+   _spectra_inspector.html and assigns it to #inspector-host.  That
+   partial uses .card-section / .modes-table / .spectrum-chart /
+   .phase-indicator / .mode-viewer-wrap / .es-bar-diagram etc., all
+   defined in static/spectra/style.css.  Linking spectra/style.css
+   here puts those rules in scope on /results -- WITHOUT this link,
+   the partial would render unstyled.
+
+   ~15 KB of which ~3 KB is unused on /results (.methods-modal,
+   .is-locked, .prior-row -- generate-side only).  Acceptable
+   overhead; the alternative is a CSS extraction (Top-5 review
+   item from the 2026-05-18 audit) that's tracked as a separate
+   cleanup task. -#}
+<link rel="stylesheet" href="{{ url_for('static', filename='spectra/style.css') }}">
+{# 3Dmol: structure + trajectory inspectors both mount a viewer.
+   Plotly: trajectory inspector charts energy / force / SCF traces. #}
+<script src="{{ url_for('static', filename='vendor/3Dmol-min.js') }}"></script>
+<script src="{{ url_for('vendor_plotly_js') }}"></script>
+{# molbuilder-runtime.js MUST load before any other molbuilder script.
+   Defines window.molbuilder.runtime (register/whenReady).  See
+   design.md "Module init contract". #}
+<script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
+</head>
+<body class="has-projects-sidebar">
+
+{% set active_tab = "results" %}
+{% include "_app_header.html" %}
+{% include "_projects_sidebar.html" %}
+
+<main class="results-main">
+
+  <header class="results-status">
+    <span id="results-current-file" class="results-file-readout">
+      No file selected.
+    </span>
+    <span id="results-current-kind" class="results-file-kind"></span>
+  </header>
+
+  {# The inspector host is the single mount point.  The active
+     inspector (picked by registry.pick() against the sidebar's
+     current_file) injects its own DOM here.  Switching files
+     calls dispose() on the previous inspector + mount() for the
+     new one; the host's contents are exclusively owned by the
+     active inspector while mounted.  See
+     docs/protocols/results-tab.md for the contract. #}
+  <section id="inspector-host" class="results-inspector-host">
+    {# Fallback content shown by results/viewer.js whenever the
+       registry's pick() returns null OR no file is selected.  The
+       supported-types list serves two purposes: it tells the user
+       which file extensions /results will react to, and it
+       documents the dispatch contract -- adding a new file type to
+       the registry should add a line here so the empty-state
+       cheatsheet stays accurate. #}
+    <div id="results-fallback" class="results-fallback">
+      <h2 class="inspector-card-title">Pick a file to inspect</h2>
+      <p class="inspector-card-note">
+        Select a file in the <strong>Projects</strong> sidebar on the
+        left.  /results auto-mounts the matching inspector based on
+        the file&rsquo;s extension &mdash; no &ldquo;load&rdquo;
+        button needed.
+      </p>
+      <ul class="results-supported-list">
+        <li>
+          <code>*.molwatch.log</code> <code>*.out</code>
+          &mdash; trajectory + SCF history + force vectors
+        </li>
+        <li>
+          <code>*.spectra.json</code>
+          &mdash; vibrational spectra (Raman / IR) + 3D mode
+          animation
+        </li>
+        <li>
+          <code>*.xyz</code> <code>*.pdb</code>
+          &mdash; structure preview (3D viewer + atom info)
+        </li>
+        <li>
+          <code>*.fdf</code> <code>*.py</code> <code>*.json</code>
+          <code>*.log</code> <code>*.txt</code> <code>*.md</code>
+          &mdash; source listing (text view)
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+{# Script order matters: the registry must be present BEFORE any
+   inspector module loads (each inspector self-registers at script
+   load time).  mol-viewer + xyz-io are dependencies of the
+   structure inspector.  mol-style + mol-pick are dependencies of
+   the trajectory core (style spec builder + atom-pick gestures).
+   trajectory/core.js exposes window.molbuilder.trajectoryInspector;
+   no auto-bootstrap, so it sits idle until lib/inspectors/trajectory.js
+   asks to mount.
+
+   INSPECTOR REGISTRATION ORDER IS LOAD-BEARING.  ``pick()`` returns
+   the FIRST match, so inspectors with more-specific predicates
+   (compound extensions like ``.molwatch.log`` / ``.spectra.json``)
+   MUST register BEFORE the source inspector (which matches generic
+   ``.log`` / ``.json``).  See lib/inspectors/registry.js §
+   "Ordering".  Pinned by
+   tests/test_results_blueprint.py::TestInspectorRegistrationOrder. #}
+<script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/mol-pick.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/mol-viewer.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/xyz-io.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/path-utils.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/trajectory/core.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/spectra/core.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/inspectors/registry.js') }}"></script>
+{# Specific (compound-extension) inspectors register first... #}
+<script src="{{ url_for('static', filename='lib/inspectors/trajectory.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/inspectors/spectra.js') }}"></script>
+{# ...then specific-but-not-compound (.xyz/.pdb)... #}
+<script src="{{ url_for('static', filename='lib/inspectors/structure.js') }}"></script>
+{# ...then the catch-all source inspector (matches .log / .json /
+   .py / .fdf / .out / .txt / .md -- LAST so the specific inspectors
+   above get first crack at compound extensions). #}
+<script src="{{ url_for('static', filename='lib/inspectors/source.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
+<script src="{{ url_for('static', filename='results/viewer.js') }}"></script>
+</body>
+</html>

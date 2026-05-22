@@ -25,7 +25,7 @@ import pytest
 from click.testing import CliRunner
 
 from molbuilder import cli
-from molbuilder.cli import _resolve_tls
+from molbuilder.cli import _check_tls_readable, _resolve_tls
 
 
 # --------------------------------------------------------------------- #
@@ -115,6 +115,127 @@ def test_resolve_ignores_unknown_keys(monkeypatch, tmp_path):
 
 
 # --------------------------------------------------------------------- #
+#  _check_tls_readable -- pre-flight readability gate                   #
+# --------------------------------------------------------------------- #
+#
+# The 2026-05-18 bug report: `serve` with a molbuilder.json pointing at
+# /etc/letsencrypt/live/<domain>/{fullchain,privkey}.pem (root-owned,
+# privkey 0600) crashed deep in Werkzeug with a bare
+# ``PermissionError: [Errno 13] Permission denied`` -- no indication
+# of which file failed.  ``_check_tls_readable`` runs before
+# ``app.run`` and surfaces a click.UsageError naming the bad path +
+# pointing at the reverse-proxy approach in docs/deployment.md.
+
+
+def test_check_tls_readable_noop_on_falsy_inputs():
+    """No TLS configured -- the call is a no-op (no exception).  Pins
+    the "skip when there's nothing to check" branch so callers don't
+    have to gate on ``if cert and key`` themselves."""
+    assert _check_tls_readable(None, None) is None
+    assert _check_tls_readable("", "") is None
+    assert _check_tls_readable("/path", None) is None
+    assert _check_tls_readable(None, "/path") is None
+
+
+def test_check_tls_readable_accepts_readable_pair(tmp_path):
+    """Happy path: both files exist + are readable to this process."""
+    cert = tmp_path / "cert.pem"
+    key  = tmp_path / "key.pem"
+    cert.write_bytes(b"---PEM---\n")
+    key.write_bytes(b"---PEM---\n")
+    # Returns None on success; absence of an exception is the contract.
+    assert _check_tls_readable(str(cert), str(key)) is None
+
+
+def test_check_tls_readable_rejects_missing_cert(tmp_path):
+    """Missing cert path -- the error names the cert path + the OS
+    reason (No such file or directory).  Catches the "operator typoed
+    the path in molbuilder.json" case BEFORE the server tries to
+    bind."""
+    key = tmp_path / "key.pem"
+    key.write_bytes(b"---PEM---\n")
+    missing_cert = tmp_path / "does-not-exist.pem"
+    with pytest.raises(click.UsageError) as excinfo:
+        _check_tls_readable(str(missing_cert), str(key))
+    msg = str(excinfo.value)
+    assert "cert:" in msg
+    assert str(missing_cert) in msg
+    # Either "No such file" or "FileNotFoundError" -- both are
+    # acceptable surfaces of the same condition.
+    assert ("No such file" in msg or "FileNotFoundError" in msg), msg
+
+
+def test_check_tls_readable_rejects_missing_key(tmp_path):
+    """Missing key path -- error names ``key:`` (not ``cert:``) so the
+    operator knows which file to fix."""
+    cert = tmp_path / "cert.pem"
+    cert.write_bytes(b"---PEM---\n")
+    missing_key = tmp_path / "does-not-exist.pem"
+    with pytest.raises(click.UsageError) as excinfo:
+        _check_tls_readable(str(cert), str(missing_key))
+    msg = str(excinfo.value)
+    assert "key:" in msg
+    assert str(missing_key) in msg
+
+
+def test_check_tls_readable_reports_both_failures_at_once(tmp_path):
+    """Both paths bad -- both surface in one error so the operator
+    fixes them together rather than playing whack-a-mole (fix cert,
+    rerun, see key error, fix key, rerun).  Saves a server restart
+    cycle."""
+    missing_cert = tmp_path / "no-cert.pem"
+    missing_key  = tmp_path / "no-key.pem"
+    with pytest.raises(click.UsageError) as excinfo:
+        _check_tls_readable(str(missing_cert), str(missing_key))
+    msg = str(excinfo.value)
+    assert str(missing_cert) in msg
+    assert str(missing_key)  in msg
+
+
+def test_check_tls_readable_rejects_unreadable_key_mode_0000(tmp_path):
+    """The actual incident from 2026-05-18: cert exists, key exists,
+    but key has mode 0 (analogue of root-owned 0600 cert that the
+    molbuilder user can't read).  Real Let's Encrypt setups put 0600
+    on privkey + the cert install is owned by root; running molbuilder
+    as a non-root user trips this.
+
+    Skipped when running as root since root can read mode-0 files."""
+    import os
+    if os.geteuid() == 0:
+        pytest.skip("root bypasses mode bits; test only meaningful "
+                    "as non-root")
+    cert = tmp_path / "cert.pem"
+    key  = tmp_path / "key.pem"
+    cert.write_bytes(b"---PEM---\n")
+    key.write_bytes(b"---PEM---\n")
+    key.chmod(0o000)
+    try:
+        with pytest.raises(click.UsageError) as excinfo:
+            _check_tls_readable(str(cert), str(key))
+        msg = str(excinfo.value)
+        assert "key:" in msg
+        assert str(key) in msg
+        assert "Permission denied" in msg, msg
+    finally:
+        # Restore so tmp_path teardown can rm-rf cleanly.
+        key.chmod(0o600)
+
+
+def test_check_tls_readable_error_mentions_deployment_doc(tmp_path):
+    """The error body must point at the recommended deploy shape so
+    the operator doesn't reach for ``chmod 0644 privkey.pem`` (which
+    weakens security to make the error go away).  Pins that the
+    docs/deployment.md mention + the reverse-proxy suggestion both
+    show up in the failure message."""
+    with pytest.raises(click.UsageError) as excinfo:
+        _check_tls_readable(str(tmp_path / "no.pem"),
+                            str(tmp_path / "no.key"))
+    msg = str(excinfo.value)
+    assert "reverse proxy" in msg
+    assert "docs/deployment.md" in msg
+
+
+# --------------------------------------------------------------------- #
 #  serve / watch serve -- end-to-end wiring                             #
 # --------------------------------------------------------------------- #
 
@@ -197,41 +318,10 @@ def test_serve_help_advertises_cert_and_key():
     assert "--key" in res.output
 
 
-def test_watch_serve_no_tls_passes_none_ssl_context(
-        monkeypatch, tmp_path, capture_flask_run):
-    monkeypatch.chdir(tmp_path)
-    res = CliRunner().invoke(cli.cli, [
-        "watch", "serve", "--host", "127.0.0.1", "--port", "0"])
-    assert res.exit_code == 0, res.output
-    kwargs = capture_flask_run[-1]["kwargs"]
-    assert kwargs["ssl_context"] is None
-    assert kwargs["threaded"] is True   # preserved
-    assert "http://" in res.stderr
-
-
-def test_watch_serve_json_engages_https(
-        monkeypatch, tmp_path, capture_flask_run):
-    monkeypatch.chdir(tmp_path)
-    cert = _touch(tmp_path / "c.pem")
-    key  = _touch(tmp_path / "k.pem")
-    (tmp_path / "molbuilder.json").write_text(json.dumps(
-        {"cert": cert, "key": key}))
-    res = CliRunner().invoke(cli.cli, [
-        "watch", "serve", "--host", "127.0.0.1", "--port", "0"])
-    assert res.exit_code == 0, res.output
-    kwargs = capture_flask_run[-1]["kwargs"]
-    assert kwargs["ssl_context"] == (cert, key)
-    assert kwargs["threaded"] is True
-    # Both helper log lines mention the resolved scheme.
-    assert "https://127.0.0.1:0/" in res.stderr
-    assert "https://127.0.0.1:0/watch" in res.stderr
-
-
-def test_watch_serve_help_advertises_cert_and_key():
-    res = CliRunner().invoke(cli.cli, ["watch", "serve", "--help"])
-    assert res.exit_code == 0
-    assert "--cert" in res.output
-    assert "--key" in res.output
+# ``molbuilder watch serve`` (legacy alias of ``molbuilder serve``)
+# removed 2026-05-19 along with the /watch page; TLS-wiring tests
+# for the canonical ``molbuilder serve`` command above already
+# cover the same precedence + readability paths.
 
 
 # --------------------------------------------------------------------- #

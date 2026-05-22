@@ -82,8 +82,17 @@ def deprotonated_diester() -> Structure:
 
 @pytest.fixture
 def web_client():
-    """Flask test client; skips the test if Flask isn't installed."""
+    """Flask test client; skips the test if Flask isn't installed.
+
+    Passes ``config={}`` explicitly so ``create_app`` does NOT read
+    the repo-root ``molbuilder.json`` (which may have auth/TLS
+    enabled in a developer's working tree).  Tests against the
+    no-auth/no-TLS default isolate the page-render + API surface
+    from per-machine config state.  Tests that need an auth-enabled
+    or otherwise non-default app build their own fixture and pass
+    the matching ``config`` dict.
+    """
     pytest.importorskip("flask")
     from molbuilder.web.app import create_app
-    app = create_app()
+    app = create_app(config={})
     return app.test_client()

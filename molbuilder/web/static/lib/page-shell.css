@@ -1,0 +1,188 @@
+/* Shared page-shell styles -- the cross-tab chrome.
+ *
+ * Linked from every full-page tab: /, /modify, /spectra, /results,
+ * /watch (each via an explicit <link> in the template).  Each page's
+ * own ``style.css`` adds tab-specific rules ON TOP of what's here;
+ * this file owns the rules that should look the same regardless of
+ * which tab you're on.
+ *
+ * Cascade discipline (2026-05-19 cleanup):
+ *   * ``body { ... }`` -- canonical here.  Per-tab duplicates were
+ *     removed; every page inherits these rules.
+ *   * ``.card { ... }`` -- canonical here.  index/build dropped its
+ *     identical duplicate; modify + spectra keep their own .card
+ *     rules because they're INTENTIONALLY different (different
+ *     border, radius, padding for the per-page card vocabulary).
+ *   * ``header { ... }`` -- per-tab.  Each page has a different
+ *     header padding + border treatment by design; the per-tab
+ *     headers stay.
+ *
+ * Do NOT add NEW rules to per-tab stylesheets that page-shell.css
+ * already covers -- they'd silently override the canonical version.
+ *
+ * Scope:
+ *   * body + header + main + .card -- the outer page chrome
+ *   * generic form controls (input / select / button / checkbox /
+ *     range) -- the project's design-token-driven defaults
+ *   * .status helper + scrollbar treatment
+ *
+ * Out of scope (lives in per-tab / per-inspector stylesheets):
+ *   * any class specific to a tab (.viewer-card, .modes-table,
+ *     .results-fallback, ...)
+ *   * /watch's .loader-bar + .workflow-card -- those live in
+ *     lib/trajectory-inspector.css for now (the file /watch already
+ *     loads); they're tab-specific even though the file name says
+ *     "trajectory-inspector".  Future cleanup may break those out.
+ *
+ * Tokens come from lib/tokens.css; this file references them via
+ * var(--...).  Pages MUST link tokens.css EXPLICITLY before this
+ * file -- we don't @import it here because the explicit-link form
+ * makes the dependency order visible in each template's <head>.
+ * Required link order in every page that uses the shared chrome:
+ *
+ *   1. lib/tokens.css        (the variable definitions)
+ *   2. lib/tabs.css          (the cross-tab nav)
+ *   3. lib/page-shell.css    (THIS FILE -- shared body / form defaults)
+ *   4. ...page-specific stylesheets...
+ *
+ * Without this file (its previous home was lib/trajectory-inspector.css),
+ * /results used to get its body theme by side-effect from linking the
+ * trajectory CSS -- a documented hidden dependency from the 2026-05-18
+ * audit.  Splitting fixes that: every page links page-shell.css
+ * explicitly + the trajectory CSS gets to be just about the inspector.
+ */
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+                 system-ui, "Inter", sans-serif;
+    color: var(--text-primary);
+    background: var(--bg-page);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+/* ---- Page header (banner above the tabs nav) -------------------- */
+
+header {
+    padding: 14px 22px 12px;
+    border-bottom: 1px solid var(--border-strong);
+    background: linear-gradient(180deg,
+                                rgba(107, 166, 255, 0.05) 0%,
+                                rgba(107, 166, 255, 0.00) 100%),
+                var(--bg-card);
+}
+header h1 {
+    margin: 0;
+    font-size: 1.5rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+}
+header .tagline {
+    margin: 6px 0 0;
+    color: var(--text-secondary);
+    font-size: 0.92rem;
+}
+
+/* ---- Main layout container -------------------------------------- */
+
+main {
+    padding: var(--gap) 22px 22px;
+    display: flex;
+    flex-direction: column;
+    gap: var(--gap);
+}
+
+/* ---- Generic card surface --------------------------------------- */
+
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius);
+    padding: 14px 18px 18px;
+    box-shadow: var(--shadow-card);
+}
+
+/* ---- Generic form controls -------------------------------------- */
+
+input[type="text"],
+input[type="number"],
+select {
+    font: inherit;
+    color: var(--text-primary);
+    background: var(--bg-input);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    padding: 4px 8px;
+    transition: border-color 120ms, background 120ms, box-shadow 120ms;
+}
+input:hover:not([type="checkbox"]):not([type="range"]),
+select:hover {
+    border-color: var(--accent-strong);
+}
+input:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+    background: var(--bg-input-focus);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+input[type="checkbox"] {
+    accent-color: var(--accent);
+    cursor: pointer;
+    margin: 0;
+}
+input[type="range"] {
+    accent-color: var(--accent);
+    width: 100%;
+    background: transparent;
+    cursor: pointer;
+}
+
+button {
+    font: inherit;
+    cursor: pointer;
+    color: var(--text-primary);
+    background: var(--bg-input);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    padding: 4px 12px;
+    transition: background 120ms, border-color 120ms, color 120ms;
+}
+button:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--accent-strong);
+    color: var(--text-primary);
+}
+button:disabled {
+    color: var(--text-muted);
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+/* ---- Status helper ---------------------------------------------- */
+
+.status {
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    margin-left: 4px;
+    /* Multi-line error messages render with their newlines preserved. */
+    white-space: pre-line;
+    line-height: 1.4;
+}
+.status.error { color: var(--error); }
+.status.ok    { color: var(--success); }
+
+/* ---- Custom scrollbars (WebKit only; Firefox uses its own) ------ */
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 5px;
+    border: 2px solid var(--bg-page);
+}
+::-webkit-scrollbar-thumb:hover { background: #4a5160; }

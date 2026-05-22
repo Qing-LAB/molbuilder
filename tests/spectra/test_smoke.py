@@ -313,8 +313,8 @@ class TestWaterRaman:
 
 
 class TestPartialHessianMassWeighting:
-    """Specifically exercises the partial-Hessian path (fixed atoms)
-    where the mass-weighting bug lived.  Fixes one O atom and lets
+    """Specifically exercises the partial-Hessian path (frozen atoms)
+    where the mass-weighting bug lived.  Freezes one O atom and lets
     the two Hs vibrate; the resulting eigenvectors should still show
     physical per-atom displacements.
 
@@ -325,17 +325,17 @@ class TestPartialHessianMassWeighting:
     """
 
     @pytest.mark.smoke
-    def test_water_with_one_fixed_atom(self):
-        """Water with the O fixed -- the partial-Hessian gives
+    def test_water_with_one_frozen_atom(self):
+        """Water with the O frozen -- the partial-Hessian gives
         (2 free atoms × 3) = 6 modes.  At least some should be
         finite-frequency stretches; eigenvectors should have only
-        the unfixed atoms moving (which is guaranteed by the
+        the unfrozen atoms moving (which is guaranteed by the
         free-atom restriction, but also: the per-mode max-abs
         amplitude should be reasonable, not 1e6)."""
         cfg = SpectraConfig(
             compute_raman=False,
             es_mode_selection="skip",
-            fixed_indices=[0],   # fix the O
+            frozen_indices=[0],   # freeze the O
             scf_conv_tol=1e-7,
             scf_max_cycle=80,
         )

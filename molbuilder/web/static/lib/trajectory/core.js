@@ -1,5 +1,18 @@
-/* SIESTA live viewer -- 3Dmol viewport + Plotly traces.
+/* Trajectory inspector core -- 3Dmol viewport + Plotly traces.
  *
+ * THE shared trajectory-inspector implementation.  Mounted by the
+ * /results tab via the registry adapter (lib/inspectors/trajectory.js),
+ * which fetches _trajectory_inspector.html from
+ * GET /partials/trajectory-inspector and calls this module's exported
+ * ``mount(host, opts)`` against the resulting host element.
+ *
+ * History note: this module was originally lifted out of
+ * static/watch/viewer.js in early 2026-05.  The /watch page route
+ * was retired 2026-05-19 (this module became /results-only); the
+ * lift is preserved because the core implementation was clean +
+ * already root-scoped, so no rewrite was needed.
+ *
+ * --- How the viewer + plots stay fast --------------------------------
  * Frames are loaded once into a 3Dmol "movie" model (addModelsAsFrames)
  * and the slider / playback simply calls viewer.setFrame(idx), which is
  * fast (no DOM rebuild).  When the server reports a new mtime we rebuild
@@ -7,14 +20,91 @@
  *
  * Polling cadence: ~15 s (CG steps from SIESTA on a real workload take
  * far longer than that, so the network traffic is negligible).
+ *
+ * --- DOM scoping convention ------------------------------------------
+ * The inspector body lives inside ``mountInspector(rootEl)`` so DOM
+ * queries are scoped.  All inside-partial ids (defined in
+ * ``_trajectory_inspector.html``) go through ``$()`` (scoped to
+ * rootEl, which is the host element on /results).  ``$doc()`` is
+ * kept as a vestigial helper for the few status / banner ids that
+ * used to live on /watch's loader bar; with /watch gone, every
+ * ``$doc()`` lookup returns null on /results, and the call sites
+ * guard against that (silent no-op).  See the per-call-site
+ * comments below for which $doc lookups are still meaningfully
+ * used.
  */
 
-(function () {
+(function (root) {
     "use strict";
+
+    // Page-level lookup -- kept as a vestigial helper from the
+    // /watch era.  Today every site that uses $doc() targets an id
+    // that's no longer rendered on /results (status banner, loader-
+    // bar inputs); the helper returns null and the call sites
+    // short-circuit.  Future cleanup: replace the few remaining
+    // $doc() calls with explicit nulls + delete the helper.
+    const $doc = (id) => document.getElementById(id);
+
+    /**
+     * Mount the trajectory inspector inside ``rootEl``.
+     *
+     * Parameters:
+     *   rootEl  -- DOM element (or document) that contains the
+     *              trajectory-inspector partial's id'd elements.
+     *              On /results this is the #inspector-host element
+     *              after the adapter has injected the partial HTML.
+     *   opts    -- optional {file?: string}.  If ``file`` is set,
+     *              the inspector calls loadByPath(file) once the
+     *              UI wiring is in place, so the registry-side
+     *              dispatch can mount + auto-load in one call.
+     *
+     * Returns a handle ``{dispose(), load(path)}``:
+     *   dispose() -- stops polling + playback timers, removes the
+     *                window resize listener, tears down 3Dmol's
+     *                models/shapes/labels.  After dispose() the
+     *                rootEl's contents are no longer owned by the
+     *                inspector; caller may clear/replace freely.
+     *   load(path) -- swap the displayed trajectory to ``path``
+     *                 without re-mounting.  Used by the registry-
+     *                 side dispatch when the user picks a new
+     *                 ``.molwatch.log`` / ``.out`` while the
+     *                 inspector is already mounted -- avoids a
+     *                 full unmount/remount cycle.
+     */
+    function mountInspector(rootEl, opts) {
+    opts = opts || {};
 
     const POLL_MS = 15000;
 
-    const $ = (id) => document.getElementById(id);
+    // Inside-partial lookup: scoped to the inspector's root element
+    // (i.e., the #inspector-host on /results after the adapter has
+    // injected _trajectory_inspector.html).
+    const $ = (id) => rootEl.querySelector("#" + id);
+
+    // ----- Listener bookkeeping ---------------------------------
+    //
+    // Every element-level addEventListener inside mountInspector
+    // goes through _on() so the registered teardown closure is
+    // captured in _cleanups[].  dispose() walks _cleanups in
+    // reverse + then runs the per-resource teardowns (polling
+    // timer, playback timer, resize rAF, 3Dmol viewer).
+    //
+    // The window-level listeners (``resize``, ``pagehide`` on the
+    // legacy /watch handoff) MUST be tracked here -- they survive
+    // the host's innerHTML clear, so without explicit removal
+    // every /results mount→dispose→mount cycle would accumulate
+    // them.  Element listeners on partial-declared ids are GC'd
+    // with their nodes; tracking them is defensive (and matches
+    // the spectra core's dispose contract for cross-inspector
+    // consistency).
+    const _cleanups = [];
+    function _on(target, event, handler, opts) {
+        if (!target) return;
+        target.addEventListener(event, handler, opts);
+        _cleanups.push(function () {
+            target.removeEventListener(event, handler, opts);
+        });
+    }
 
     /* ------------------------------------------------------------------ */
     /*  State                                                              */
@@ -37,19 +127,36 @@
         // those doesn't clobber the picks.
         pickedAtoms: [],
         pickShapes:  [],
+        // AbortControllers for in-flight HTTP requests.  Separate
+        // load + poll so a new file load supersedes the previous
+        // load but doesn't kill the poll cadence, and a poll never
+        // cancels a load.  dispose() aborts both.  Without these,
+        // rapid file-switching on /results can race responses (late
+        // poll arrives after load, late load arrives after dispose,
+        // etc.) -- typically harmless because the receiver checks
+        // ``state.viewer`` before mutating it, but cleanly aborting
+        // is cheaper than checking and matches the adapter-level
+        // AbortController pattern in lib/inspectors/trajectory.js.
+        loadAbort:  null,
+        pollAbort:  null,
     };
 
-    const viewer = $3Dmol.createViewer("viewer", {
-        backgroundColor: "white",
-        defaultcolors: $3Dmol.elementColors.Jmol,
-    });
+    // Pass the resolved DOM element (not the literal id string) so
+    // the viewer factory mounts inside our scoped root rather than
+    // wherever the document happens to expose an ``id="viewer"``.
+    const viewer = window.molbuilder.viewer.create($("viewer"));
 
     /* ------------------------------------------------------------------ */
     /*  Status banner                                                      */
     /* ------------------------------------------------------------------ */
 
     function setStatus(msg, kind) {
-        const el = $("status");
+        // Status banner lives in /watch's loader bar (page-level,
+        // not in the inspector partial).  Silent no-op when the
+        // inspector mounts in a host without it -- /results has
+        // its own per-inspector error rendering via ctx.showError.
+        const el = $doc("status");
+        if (!el) return;
         el.textContent = msg;
         el.className = "status" + (kind ? " " + kind : "");
     }
@@ -491,12 +598,40 @@
             // and 3Dmol's atom.serial); the displayed ``#`` column is
             // 1-based to match the overlay labels in the Overlays tab.
             tr.dataset.atomIndex = String(i);
-            tr.innerHTML =
-                '<td class="col-idx">' + (i + 1) + '</td>' +
-                '<td class="col-el">'  + (r[0] || "?") + '</td>' +
-                '<td class="col-coord">' + r[1].toFixed(2) + '</td>' +
-                '<td class="col-coord">' + r[2].toFixed(2) + '</td>' +
-                '<td class="col-coord">' + r[3].toFixed(2) + '</td>';
+
+            // Build cells via createElement + textContent.  ``r[0]``
+            // (element symbol) comes from the parsed trajectory file;
+            // a maliciously-crafted .molwatch.log with an element
+            // string like ``<img src=x onerror=...>`` would XSS via
+            // innerHTML interpolation.  textContent escapes the value.
+            const cellIdx = document.createElement("td");
+            cellIdx.className = "col-idx";
+            cellIdx.textContent = String(i + 1);
+            const cellEl = document.createElement("td");
+            cellEl.className = "col-el";
+            cellEl.textContent = r[0] || "?";
+            const cellX = document.createElement("td");
+            cellX.className = "col-coord";
+            cellX.textContent = r[1].toFixed(2);
+            const cellY = document.createElement("td");
+            cellY.className = "col-coord";
+            cellY.textContent = r[2].toFixed(2);
+            const cellZ = document.createElement("td");
+            cellZ.className = "col-coord";
+            cellZ.textContent = r[3].toFixed(2);
+            tr.appendChild(cellIdx);
+            tr.appendChild(cellEl);
+            tr.appendChild(cellX);
+            tr.appendChild(cellY);
+            tr.appendChild(cellZ);
+
+            // Intentional NOT routed through _on(): the row gets GC'd
+            // with the tbody clear on the next renderAtomList() call,
+            // taking the listener with it.  Tracking these in
+            // _cleanups would grow the array unboundedly across
+            // re-renders without practical benefit.  A future
+            // event-delegation refactor (one tbody listener +
+            // event.target.closest("tr")) would let us track via _on.
             tr.addEventListener("click", () => togglePick(i));
             frag.appendChild(tr);
         }
@@ -896,11 +1031,21 @@
     /* ------------------------------------------------------------------ */
 
     async function pollOnce() {
+        // Each poll tick supersedes the previous in-flight poll --
+        // if a previous tick is still on the wire we don't care
+        // about it any more (state.mtime in the URL pins what we're
+        // checking against, and an answer to an old mtime is stale
+        // by the time it arrives).
+        if (state.pollAbort) state.pollAbort.abort();
+        state.pollAbort = new AbortController();
+        const signal = state.pollAbort.signal;
         try {
             const url = state.mtime !== null
                 ? "/api/watch/data?mtime=" + encodeURIComponent(state.mtime)
                 : "/api/watch/data";
-            const r = await fetch(url).then(x => x.json());
+            const r = await fetch(url, { signal: signal })
+                .then(x => x.json());
+            if (signal.aborted) return;
             if (!r.ok) {
                 setStatus(r.error || "Server error.", "error");
                 return;
@@ -916,6 +1061,10 @@
             }
             applyNewData(r);
         } catch (e) {
+            // AbortError: another poll superseded this one, or
+            // dispose() ran.  Silent -- the next tick (or the
+            // unmount) is the authoritative state.
+            if (e.name === "AbortError") return;
             setStatus("Network error: " + e.message, "error");
         }
     }
@@ -1107,69 +1256,12 @@
     /*  UI wiring                                                          */
     /* ------------------------------------------------------------------ */
 
-    /*  Load button has two behaviours:
-     *    - path field has text -> POST {path:...} as JSON  (live watch)
-     *    - path field empty    -> setStatus prompts the user to pick
-     *                              from the Projects sidebar.  The
-     *                              browser-local file picker that used
-     *                              to live here was dropped (a server-
-     *                              side script can't read a laptop
-     *                              file; use the sidebar for files in
-     *                              projects/, or scp first if not).
-     */
-    $("load-btn").addEventListener("click", () => {
-        const path = $("path-input").value.trim();
-        if (path) {
-            loadByPath(path);
-        } else {
-            setStatus(
-                "Type a server-side path, or pick a file in the "
-                + "Projects sidebar on the left.",
-                "error",
-            );
-        }
-    });
-
-    const _filePicker = $("file-picker");
-    if (_filePicker) _filePicker.addEventListener("change", async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        pause();
-        clearAtomPicks();
-        setStatus("Uploading " + file.name + "\u2026", "");
-        const fd = new FormData();
-        fd.append("file", file);
-        try {
-            const r = await fetch("/api/watch/load", { method: "POST", body: fd })
-                            .then(x => x.json());
-            if (!r.ok) {
-                setStatus(r.error || "Upload failed.", "error");
-                return;
-            }
-            // Reflect the upload in the path field so it's clear what
-            // was loaded; prefix tells the user it isn't being polled.
-            $("path-input").value = "(uploaded) " + file.name;
-            state.firstFit = true;
-            applyNewData({
-                mtime:  r.mtime,
-                data:   r.data,
-                format: r.format,
-                label:  r.label,
-            });
-            // Uploaded files are one-shot; skip the polling timer
-            // because the temp file's mtime never advances.
-            if (r.uploaded) {
-                stopPolling();
-            } else {
-                startPolling();
-            }
-        } catch (err) {
-            setStatus("Network error: " + err.message, "error");
-        } finally {
-            // Reset so picking the same file again still fires "change".
-            e.target.value = "";
-        }
-    });
+    // Loader-bar wiring (/watch's path-input + Load button) was
+    // removed 2026-05-19 along with /watch itself.  /results drives
+    // loading via the registry's mount(host, file, ctx) -- the
+    // sidebar selection IS the load trigger; no loader-bar UI on
+    // /results.  The applyHandoff IIFE (legacy Build→Watch
+    // ?path=... query-param pre-fill) is gone for the same reason.
 
     async function loadByPath(path) {
         pause();
@@ -1177,13 +1269,20 @@
         // the picked indices may not exist in the new model.
         clearAtomPicks();
         setStatus("Loading\u2026", "");
+        // Cancel any previous in-flight load (rapid file-switching
+        // case).  Start a new controller; dispose() will abort it.
+        if (state.loadAbort) state.loadAbort.abort();
+        state.loadAbort = new AbortController();
+        const signal = state.loadAbort.signal;
         try {
             const r = await fetch("/api/watch/load", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ path: path }),
+                signal: signal,
             }).then(x => x.json());
 
+            if (signal.aborted) return;
             if (!r.ok) {
                 setStatus(r.error || "Load failed.", "error");
                 return;
@@ -1219,50 +1318,36 @@
                         + "/  \u2014 mtime " + ts + ".";
                 }
                 setStatus(msg, "ok");
-                $("path-input").value = r.path;
+                const _pi = $doc("path-input");
+                if (_pi) _pi.value = r.path;
             }
             startPolling();
         } catch (e) {
+            // AbortError fires when the user picks another file
+            // (or dispose() runs) before this fetch completes.  Not
+            // a failure -- the new load (or the dispose) is the
+            // authoritative action; surfacing "Network error" here
+            // would be misleading.
+            if (e.name === "AbortError") return;
             setStatus("Network error: " + e.message, "error");
         }
     }
 
-    $("path-input").addEventListener("keydown", (e) => {
-        if (e.key === "Enter") $("load-btn").click();
-    });
+    // Loader-bar keydown (Enter on path-input → click Load) and the
+    // Build→Watch ?path=<file> URL-handoff IIFE were removed
+    // 2026-05-19 along with /watch.  On /results the path is set by
+    // the registry's mount(host, file, ctx) call -- no URL query
+    // pre-fill, no Enter-to-load shortcut.
 
-    // Honour the "Watch this run" handoff from the Build page:
-    // /watch?path=<system_label>.molwatch.log pre-fills the input
-    // with the predicted log filename.  We do NOT auto-trigger Load
-    // because the user typically still needs to prepend the absolute
-    // path of the directory where they'll run the calculation -- the
-    // browser-side server has no way to know that.  Surface a hint
-    // in the status banner so they know what to do next.
-    (function applyHandoff() {
-        const params = new URLSearchParams(window.location.search);
-        const path = params.get("path");
-        if (!path) return;
-        $("path-input").value = path;
-        setStatus(
-            `Path pre-filled from Build (${path}).  Edit to add the absolute ` +
-            `directory you'll run in, then press Enter or click Load.`,
-            "warn",
-        );
-        // Move focus into the input and select the filename so the
-        // user can type the prefix without manual selection.
-        $("path-input").focus();
-        try { $("path-input").setSelectionRange(0, 0); } catch (e) { /* ok */ }
-    })();
-
-    $("frame-slider").addEventListener("input", (e) => {
+    _on($("frame-slider"), "input", (e) => {
         showFrame(parseInt(e.target.value, 10));
     });
 
-    $("rep").addEventListener("change", applyStyleAndRewireClicks);
-    $("radius").addEventListener("input", applyStyleAndRewireClicks);
-    $("colorscheme").addEventListener("change", applyStyleAndRewireClicks);
-    $("show-cell").addEventListener("change", drawCell);
-    $("bg").addEventListener("change", (e) => {
+    _on($("rep"),         "change", applyStyleAndRewireClicks);
+    _on($("radius"),      "input",  applyStyleAndRewireClicks);
+    _on($("colorscheme"), "change", applyStyleAndRewireClicks);
+    _on($("show-cell"),   "change", drawCell);
+    _on($("bg"), "change", (e) => {
         viewer.setBackgroundColor(e.target.value);
         // Cell line colour is bg-contrast-driven; redraw with the
         // new colour so the box stays visible on the new background.
@@ -1270,35 +1355,32 @@
     });
 
     /* Overlays */
-    $("show-indices").addEventListener("change", drawIndices);
-    $("show-forces").addEventListener("change",  drawForces);
-    $("force-scale").addEventListener("input", (e) => {
+    _on($("show-indices"), "change", drawIndices);
+    _on($("show-forces"),  "change", drawForces);
+    _on($("force-scale"), "input", (e) => {
         $("force-scale-val").textContent = parseFloat(e.target.value).toFixed(1);
         drawForces();
     });
-    $("force-min").addEventListener("input",      drawForces);
-    $("highlight-max").addEventListener("change", drawForces);
+    _on($("force-min"),     "input",  drawForces);
+    _on($("highlight-max"), "change", drawForces);
 
-    $("play").addEventListener("click",  play);
-    $("pause").addEventListener("click", pause);
-    $("prev").addEventListener("click",  () => step(-1));
-    $("next").addEventListener("click",  () => step(1));
-    $("speed").addEventListener("change", () => {
+    _on($("play"),  "click", play);
+    _on($("pause"), "click", pause);
+    _on($("prev"),  "click", () => step(-1));
+    _on($("next"),  "click", () => step(1));
+    _on($("speed"), "change", () => {
         if (state.playTimer) play();    // restart with new cadence
     });
 
     /* ---- Inspect-tab: Clear-picks button ------------------------- */
-    const inspectClearBtn = $("inspect-clear");
-    if (inspectClearBtn) {
-        inspectClearBtn.addEventListener("click", clearAtomPicks);
-    }
+    _on($("inspect-clear"), "click", clearAtomPicks);
 
     /* ---- Save current frame as XYZ ------------------------------- */
     /* Hands the displayed structure off to the next step in the
        user's pipeline -- e.g., dropping the relaxed molecule into a
        tunneling-gap setup as a bridge.  The output is plain XYZ
        (Angstrom), which any chemistry tool reads. */
-    $("save-frame").addEventListener("click", () => {
+    _on($("save-frame"), "click", () => {
         if (!state.data || !state.data.frames.length) return;
         const idx = state.currentFrame;
         const frame = state.data.frames[idx];
@@ -1359,11 +1441,14 @@
     /* ---- Tabs (Style / Overlays / Playback) ---------------------- */
     /* Compact controls: only one panel visible at a time so the
        aside never outgrows the viewer height.  CSS does the visibility
-       toggle via `is-active`; we just sync the classes here. */
-    document.querySelectorAll(".ctab").forEach((btn) => {
-        btn.addEventListener("click", () => {
+       toggle via `is-active`; we just sync the classes here.
+       Queries are scoped to rootEl -- the page may host OTHER
+       inspectors (spectra etc.) that also use a .ctab/.ctab-panel
+       convention; a document-wide query would cross-fire. */
+    rootEl.querySelectorAll(".ctab").forEach((btn) => {
+        _on(btn, "click", () => {
             const target = btn.dataset.tab;
-            document.querySelectorAll(".ctab").forEach((b) => {
+            rootEl.querySelectorAll(".ctab").forEach((b) => {
                 const active = (b === btn);
                 b.classList.toggle("is-active", active);
                 // Sync aria-selected so screen readers track the
@@ -1371,7 +1456,7 @@
                 // doesn't reach assistive tech.
                 b.setAttribute("aria-selected", active ? "true" : "false");
             });
-            document.querySelectorAll(".ctab-panel").forEach(
+            rootEl.querySelectorAll(".ctab-panel").forEach(
                 (p) => p.classList.toggle(
                     "is-active", p.dataset.panel === target
                 )
@@ -1395,21 +1480,98 @@
             }
         });
     };
-    window.addEventListener("resize", _onResize, { passive: true });
+    _on(window, "resize", _onResize, { passive: true });
 
-    // ----- Persist file path across Build ↔ Watch navigation -----
-    // Navigating to /build and back is a full page reload; save the
-    // path-input value so the user doesn't have to retype the path.
-    const WATCH_PATH_KEY = "watch-path";
-    const pathEl = $("path-input");
-    const savedPath = sessionStorage.getItem(WATCH_PATH_KEY);
-    if (savedPath && !pathEl.value) {
-        pathEl.value = savedPath;
+    // ``WATCH_PATH_KEY`` sessionStorage persistence (Build ↔ Watch
+    // handoff for the legacy /watch loader bar) was removed
+    // 2026-05-19 along with /watch.  On /results, file selection is
+    // driven by the sidebar's ``projects.onChange`` event + the
+    // registry's mount(host, file, ctx) -- no loader-bar input
+    // exists to persist.
+
+    // ---- Auto-load + handle assembly --------------------------- //
+    //
+    // If the caller asked for an initial file (Stage 1D's
+    // /results-side mount), load it now.  /watch's auto-bootstrap
+    // never passes opts.file -- the user types into the loader bar
+    // there.  The applyHandoff block above already handled URL-
+    // param pre-fill for the /watch case.
+    if (opts.file) {
+        loadByPath(opts.file);
     }
-    pathEl.addEventListener("input", () => {
-        sessionStorage.setItem(WATCH_PATH_KEY, pathEl.value);
-    });
-    window.addEventListener("pagehide", () => {
-        sessionStorage.setItem(WATCH_PATH_KEY, pathEl.value);
-    });
-})();
+
+    // The handle the caller uses to dispose + control the mounted
+    // inspector.  Required for /results' registry-based dispatch
+    // (the registry calls dispose() before mounting the next
+    // inspector); /watch's bootstrap holds the handle for
+    // completeness but never disposes (the tab lives forever).
+    return {
+        /**
+         * Tear down every long-lived resource this mount created:
+         * polling timer, playback timer, window resize listener,
+         * and the 3Dmol viewer's models/shapes/labels (releases
+         * the WebGL context's bookkeeping; the canvas itself is
+         * freed when the host's innerHTML is cleared by the
+         * caller).
+         */
+        dispose() {
+            // Walk listener teardowns in reverse so the most recent
+            // registration tears down first (LIFO -- matches the
+            // order they'd be attached in a remount cycle).  Each
+            // teardown is the closure ``_on()`` pushed at register
+            // time; covers the window resize listener AND every
+            // element-level listener attached during mount.
+            // Per-cleanup catch keeps one buggy teardown from
+            // blocking the rest.
+            while (_cleanups.length) {
+                try { _cleanups.pop()(); } catch (_) {}
+            }
+            // Abort in-flight HTTP requests so their then-handlers
+            // don't fire against torn-down DOM (the dispose path is
+            // typically triggered by /results' registry mid-fetch
+            // when the user picks a different file).
+            if (state.loadAbort) { state.loadAbort.abort(); state.loadAbort = null; }
+            if (state.pollAbort) { state.pollAbort.abort(); state.pollAbort = null; }
+            stopPolling();
+            if (state.playTimer) {
+                clearInterval(state.playTimer);
+                state.playTimer = null;
+            }
+            cancelAnimationFrame(_resizeRAF);
+            if (viewer) {
+                // ``viewer.clear()`` removes models + shapes + labels
+                // in one call -- matches the spectra core's dispose
+                // pattern for cross-inspector consistency.  The
+                // fine-grained removeAllShapes/Labels/Models calls
+                // it replaced were equivalent (3Dmol's clear() is
+                // the documented one-liner; the three-line form was
+                // a 2026-04 artefact from an earlier version that
+                // had per-bucket viewer instances).
+                try { viewer.clear(); } catch (_) { /* already torn down */ }
+            }
+        },
+        /**
+         * Swap the displayed trajectory without re-mounting the
+         * inspector.  Equivalent to typing into the path input on
+         * /watch and clicking Load.  Used by /watch's loader-bar
+         * Load button + (planned) by the registry-side dispatch
+         * when the user picks a new ``.molwatch.log`` while the
+         * trajectory inspector is already mounted.
+         */
+        load(path) { return loadByPath(path); },
+    };
+
+    }   // ----- end of mountInspector(rootEl, opts) -----
+
+    // Export for both consumers (watch/viewer.js bootstrap on /watch,
+    // lib/inspectors/trajectory.js on /results).  Each consumer is
+    // responsible for picking when + where to mount; this module
+    // does NOT self-bootstrap on page load.  Loading the script
+    // alone is a no-op -- safe to include on any page that might
+    // need the inspector later.
+    root.molbuilder = root.molbuilder || {};
+    root.molbuilder.trajectoryInspector = {
+        mount: mountInspector,
+    };
+
+})(typeof window !== "undefined" ? window : this);

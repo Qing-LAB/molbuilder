@@ -16,10 +16,10 @@ pipeline without re-building it from scratch.
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from io import StringIO
 from pathlib import Path
-from typing import List, Optional, Sequence, Union
+from typing import Dict, List, Optional, Sequence, Union
 
 import numpy as np
 
@@ -74,9 +74,43 @@ class Structure:
         residue_names[i]   3-letter residue name ("ALA", "DA",  "SEP", ...)
         chain_ids[i]   single-character chain id ("A" by default)
 
-    None of the optional fields are required to write XYZ -- they only
-    matter for PDB (which uses them) and the various viewers / loaders
-    that consume PDB.
+    None of the per-atom optional fields are required to write XYZ --
+    they only matter for PDB (which uses them) and the various viewers
+    / loaders that consume PDB.
+
+    Two transport-oriented attributes (added 2026-05-20) carry
+    information about which atoms are which in a molecular junction:
+
+        regions       atom-index lists keyed by region label
+                      (e.g. ``{"L-electrode": [0..11],
+                              "R-electrode": [30..41],
+                              "bridge":      [12..29]}``).
+                      Region membership is NOT mutually exclusive --
+                      an atom may carry multiple labels at once
+                      (e.g. ``"L-electrode"`` + ``"interface"``).
+                      Engines that need a disjoint partition (e.g.
+                      TranSIESTA 2-terminal) enforce that as a
+                      separate preflight at engine-load time.
+                      Empty by default; populated by the modify-tab
+                      "Mark region" workflow + by builders that
+                      assemble junctions with explicit electrode
+                      regions.
+
+        frozen_atoms  0-based indices of atoms whose positions stay
+                      fixed during downstream relaxations and
+                      Hessian builds.  ("Frozen" is molbuilder's
+                      canonical term; some QC contexts call this
+                      "fixed atoms".  The two names are
+                      synonymous; we standardise on "frozen" to
+                      match the spectroscopy literature.)  Carried
+                      through from build / modify time; consumed
+                      by SpectraConfig (relax + Hessian) and
+                      TransportConfig (NEGF lead-fixing).  Sorted +
+                      deduped on validation.  Empty default.
+
+    Both fields are pure metadata -- nothing in this module reads
+    them.  Downstream consumers (spectra, transport) decide what to
+    do with them.
     """
 
     elements: List[str]
@@ -86,6 +120,10 @@ class Structure:
     residue_names: Optional[List[str]] = None
     chain_ids:     Optional[List[str]] = None
     title:         str = ""
+    # Transport-oriented metadata (2026-05-20).  Defaults keep every
+    # existing call site working without change.
+    regions:       Dict[str, List[int]] = field(default_factory=dict)
+    frozen_atoms:  List[int]            = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.positions = np.asarray(self.positions, dtype=float).reshape(-1, 3)
@@ -107,6 +145,63 @@ class Structure:
         ):
             if len(arr) != n:
                 raise ValueError(f"{name} has length {len(arr)}, expected {n}")
+
+        # Validate transport metadata.  Both fields default to empty,
+        # so a caller that doesn't care about regions / frozen atoms
+        # sees no behaviour change.
+        self._validate_regions(n)
+        self._validate_frozen_atoms(n)
+
+    def _validate_regions(self, n: int) -> None:
+        """Per-atom index in [0, n); region names are non-empty
+        strings.  Indices within each region are sorted + deduped
+        in place for stable equality + serialisation.
+
+        Region MEMBERSHIP is NOT mutually exclusive: an atom may
+        appear in multiple regions (e.g. ``"L-electrode"`` +
+        ``"interface"``).  This is freeform user labelling.
+
+        Engines that need disjoint regions for physics reasons
+        (e.g. TranSIESTA 2-terminal: L-electrode / R-electrode /
+        bridge must partition the device atoms) enforce that as a
+        separate preflight check at engine-load time -- the data
+        model itself doesn't constrain it.
+        """
+        if not self.regions:
+            return
+        normalised: Dict[str, List[int]] = {}
+        for region_name, idxs in self.regions.items():
+            if not isinstance(region_name, str) or not region_name:
+                raise ValueError(
+                    f"Structure.regions: region label must be a "
+                    f"non-empty string; got {region_name!r}"
+                )
+            unique: set = set()
+            for raw in idxs:
+                idx = int(raw)
+                if not 0 <= idx < n:
+                    raise ValueError(
+                        f"Structure.regions[{region_name!r}]: atom "
+                        f"index {idx} out of range [0, {n})"
+                    )
+                unique.add(idx)
+            normalised[region_name] = sorted(unique)
+        self.regions = normalised
+
+    def _validate_frozen_atoms(self, n: int) -> None:
+        """0-based indices in [0, n); sorted + deduped in place."""
+        if not self.frozen_atoms:
+            return
+        unique: set = set()
+        for raw in self.frozen_atoms:
+            idx = int(raw)
+            if not 0 <= idx < n:
+                raise ValueError(
+                    f"Structure.frozen_atoms: atom index {idx} out of "
+                    f"range [0, {n})"
+                )
+            unique.add(idx)
+        self.frozen_atoms = sorted(unique)
 
     # ------------------------------------------------------------------ #
     #  Convenience accessors                                              #
@@ -274,13 +369,37 @@ class Structure:
                 continue
             element = line[76:78].strip()
             if not element:
-                # Fall back to the leading alphabetic chars of the atom name.
-                # Single-char element ambiguity (e.g. 'CA' = calcium vs.
-                # alpha carbon) is resolved by PDB convention: protein
-                # backbone atoms use the second column for the element,
-                # so 'CA' on a protein is C; we honour that by taking the
-                # first letter only when the element column is empty.
-                element = "".join(c for c in atom_name if c.isalpha())[:1].upper()
+                # Element column 77-78 empty -- fall back to PDB-format
+                # column rules + a known-symbols check:
+                #
+                #  * cols 13-14 hold the element symbol when the first
+                #    character is non-blank (typical for two-letter
+                #    elements like Zn, Fe, Cl);
+                #  * cols 14-15 hold the element when col 13 is blank
+                #    (one-letter elements like C, N, O on protein
+                #    backbones; "CA" = alpha carbon, not calcium).
+                #
+                # We try the two-letter form first against the known
+                # symbol set (ase.data.atomic_numbers); fall through to
+                # the single-letter form if not matched.  This fixes
+                # the previous bug where "FE", "ZN", "MG", "NA", ...
+                # silently degraded to "F", "Z", "M", "N", which are
+                # the wrong elements (or invalid symbols).
+                try:
+                    from ase.data import atomic_numbers as _ase_atomic_numbers
+                    _known = _ase_atomic_numbers
+                except Exception:
+                    _known = None
+                raw = (line[12:14] if len(line) >= 14 else "").strip()
+                cand2 = raw[:2].capitalize() if len(raw) >= 2 else ""
+                cand1 = raw[:1].upper() if raw else ""
+                if cand2 and _known and cand2 in _known:
+                    element = cand2
+                elif cand1:
+                    element = cand1
+                else:
+                    # Last resort: leading alphabetic chars of atom_name.
+                    element = "".join(c for c in atom_name if c.isalpha())[:1].upper()
             elements.append(element)
             positions.append([x, y, z])
             atom_names.append(atom_name)

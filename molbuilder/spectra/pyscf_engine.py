@@ -202,34 +202,37 @@ class PySCFSpectraEngine:
                 where="config.grid_level",
             ))
 
-        # Displacement amplitude.  The [0.04, 0.20] Å range is an
-        # empirical, contemporary-practice heuristic -- not derived
-        # from a single source.  Below 0.04 Å the finite-difference
-        # noise on ΔE_HOMO dominates (at SCF conv_tol=1e-9, ΔE is
-        # ~1e-7 Ha and the FD noise scales as conv_tol/δ).  Above
-        # 0.20 Å cubic anharmonicity in the potential becomes
-        # significant (cf. Mills1972 for the general anharmonic-
-        # coupling framework, although that source doesn't pin the
-        # specific numerical bounds used here).
+        # Displacement amplitude.  The [0.02, 0.20] Å acceptance
+        # range is empirical -- not derived from a single source.
+        # The lower bound was relaxed from 0.04 to 0.02 on 2026-
+        # 05-19 to match the SpectraConfig default; 0.02 Å keeps
+        # the probe inside the linear-response regime (ΔE_orbital
+        # ∝ A), at the cost of needing a tight SCF tolerance to
+        # resolve the smaller ΔE.  The script's default
+        # ``conv_tol = 1e-10`` is sufficient (FD noise on ΔE_HOMO
+        # at 0.02 Å is ~1e-8 Ha << ΔE for a typical bond-stretch
+        # mode).  Above 0.20 Å cubic anharmonicity in the
+        # potential becomes significant (cf. Mills1972 §2.4).
         amp = cfg.displacement_amplitude_ang
-        if amp < 0.04:
+        if amp < 0.02:
             issues.append(Issue(
                 severity="warn",
                 message=(f"Displacement amplitude {amp:g} Å is "
-                         f"smaller than the typical defensible range "
-                         f"(0.04-0.20 Å).  At small amplitudes the "
-                         f"HOMO/LUMO energy shifts you're trying to "
-                         f"measure are comparable to SCF noise, and "
-                         f"the resulting orbital-energy data is "
-                         f"unreliable.  Raise to at least 0.04 Å."),
+                         f"smaller than the accepted range "
+                         f"(0.02-0.20 Å).  At this scale the "
+                         f"finite-difference orbital-energy slope "
+                         f"is at or below the noise floor of "
+                         f"conv_tol=1e-10 SCF; either tighten "
+                         f"conv_tol further or raise the "
+                         f"displacement to at least 0.02 Å."),
                 where="config.displacement_amplitude_ang",
             ))
         elif amp > 0.20:
             issues.append(Issue(
                 severity="warn",
                 message=(f"Displacement amplitude {amp:g} Å is "
-                         f"larger than the typical defensible range "
-                         f"(0.04-0.20 Å).  At large amplitudes the "
+                         f"larger than the accepted range "
+                         f"(0.02-0.20 Å).  At large amplitudes the "
                          f"potential isn't linear in the displacement "
                          f"any more -- anharmonic terms contaminate "
                          f"the orbital-energy slope you want to "
@@ -306,40 +309,40 @@ class PySCFSpectraEngine:
             n_atoms = None
         if n_atoms is not None:
             # Conservative n_free estimate: total - explicit-index
-            # fixes - element-match fixes.  Doesn't account for
-            # overlap; the over-estimate of fixed atoms is fine
+            # freezes - element-match freezes.  Doesn't account for
+            # overlap; the over-estimate of frozen atoms is fine
             # here (we'd under-warn rather than spam).
-            n_fix_idx = len(cfg.fixed_indices)
+            n_frz_idx = len(cfg.frozen_indices)
             try:
-                n_fix_elem = sum(
+                n_frz_elem = sum(
                     1 for el in struct.elements
-                    if el in cfg.fixed_elements
+                    if el in cfg.frozen_elements
                 )
             except Exception:
-                n_fix_elem = 0
-            n_free_estimate = max(0, n_atoms - n_fix_idx - n_fix_elem)
+                n_frz_elem = 0
+            n_free_estimate = max(0, n_atoms - n_frz_idx - n_frz_elem)
             if (n_free_estimate > 30
-                    and not cfg.fixed_elements
-                    and not cfg.fixed_indices):
+                    and not cfg.frozen_elements
+                    and not cfg.frozen_indices):
                 issues.append(Issue(
                     severity="warn",
                     message=(
                         f"This structure has {n_atoms} atoms, none "
-                        f"of them fixed -- the Hessian cost grows "
+                        f"of them frozen -- the Hessian cost grows "
                         f"~N² and the Raman finite-difference step "
                         f"adds 6·N more SCFs.  If part of the system "
                         f"is a metal slab, surface, or other anchor "
                         f"you don't actually need to vibrate, freeze "
-                        f"it via \"Fixed by element\" or \"Fixed by "
-                        f"atom index\" -- the cost saving is "
+                        f"it via \"Freeze by element\" or \"Freeze "
+                        f"by atom index\" -- the cost saving is "
                         f"typically large.  Ignore this if the whole "
                         f"system needs to vibrate."
                     ),
-                    where="config.fixed_indices",
+                    where="config.frozen_indices",
                 ))
 
         # Partial-Hessian projection advisory.  When SOME atoms are
-        # fixed but FEWER THAN 3 (or 3+ but they're collinear), the
+        # frozen but FEWER THAN 3 (or 3+ but they're collinear), the
         # partial-Hessian path can't fully anchor the system in
         # space.  The result is 1-5 "spurious" near-zero modes that
         # correspond to rigid-body motion of the free fragment, not
@@ -349,27 +352,27 @@ class PySCFSpectraEngine:
         # atom counts without the Structure's atom list -- but
         # element / residue freezes typically pin many atoms (a
         # whole metal slab, a whole residue).  Only warn for the
-        # genuinely-suspect case: fixed_indices has 1 or 2 entries
+        # genuinely-suspect case: frozen_indices has 1 or 2 entries
         # AND nothing else is being frozen.
-        if (len(cfg.fixed_indices) in (1, 2)
-                and not cfg.fixed_elements
-                and not cfg.fixed_residue_names):
+        if (len(cfg.frozen_indices) in (1, 2)
+                and not cfg.frozen_elements
+                and not cfg.frozen_residue_names):
             issues.append(Issue(
                 severity="warn",
                 message=(
-                    f"You've fixed only {len(cfg.fixed_indices)} "
+                    f"You've frozen only {len(cfg.frozen_indices)} "
                     f"atom(s).  That isn't enough to fully anchor "
                     f"the free fragment in space (you need at "
-                    f"least 3 non-collinear fixed atoms to remove "
+                    f"least 3 non-collinear frozen atoms to remove "
                     f"all 6 translation+rotation degrees of "
                     f"freedom).  The vibrational analysis will "
-                    f"include {6 - 2 * len(cfg.fixed_indices)}-ish "
+                    f"include {6 - 2 * len(cfg.frozen_indices)}-ish "
                     f"spurious near-zero modes corresponding to "
                     f"rigid-body motion of the free atoms.  These "
                     f"won't crash the run but you should ignore "
                     f"them in your spectrum interpretation."
                 ),
-                where="config.fixed_indices",
+                where="config.frozen_indices",
             ))
 
         # GPU advisory: if the user asked for GPU acceleration, check
@@ -410,7 +413,7 @@ class PySCFSpectraEngine:
         # the structure's atom range.  Element / residue rules are
         # checked at script-render time when we have the full
         # frozen mask.
-        if cfg.fixed_indices:
+        if cfg.frozen_indices:
             n = struct.n_atoms if hasattr(struct, "n_atoms") else None
             if n is None:
                 # Duck-typed: fall back to len(elements).
@@ -419,17 +422,85 @@ class PySCFSpectraEngine:
                 except Exception:
                     n = None
             if n is not None:
-                bad = [i for i in cfg.fixed_indices if not 0 <= int(i) < n]
+                bad = [i for i in cfg.frozen_indices if not 0 <= int(i) < n]
                 if bad:
                     issues.append(Issue(
                         severity="error",
-                        message=(f"\"Fixed by atom index\" contains "
+                        message=(f"\"Freeze by atom index\" contains "
                                  f"out-of-range numbers {bad}.  This "
                                  f"structure has {n} atoms; valid "
                                  f"indices are 0..{n - 1} (counting "
                                  f"from zero)."),
-                        where="config.fixed_indices",
+                        where="config.frozen_indices",
                     ))
+
+        # Boundary-condition guards (design.md "Sidecar-driven
+        # boundary conditions — the three-stage contract"):
+        #
+        # The contract:  sidecar -> form (cfg) -> script must be
+        # explicit, consistent, fully respected.  The script render
+        # itself emits cfg.frozen_indices verbatim (no silent merge);
+        # these two preflight checks make divergence + unconsumed
+        # labels visible so nothing is silently absorbed.
+
+        # Pattern A: divergence warn.  If the structure's sidecar
+        # ``frozen_atoms`` (populated via the /modify selection
+        # panel) carries indices NOT in cfg.frozen_indices, the
+        # user is about to generate a script that does NOT freeze
+        # atoms the sidecar said were frozen.  Surface it so the
+        # user can either (a) re-load the structure to pull the
+        # sidecar values into the form, (b) include them
+        # manually, (c) clear them in /modify, or (d) intentionally
+        # override.  Either way: explicit, not silent.
+        sidecar_frozen = getattr(struct, "frozen_atoms", None) or []
+        if sidecar_frozen:
+            in_cfg = set(int(i) for i in cfg.frozen_indices)
+            missing = sorted(set(sidecar_frozen) - in_cfg)
+            if missing:
+                issues.append(Issue(
+                    severity="warn",
+                    message=(
+                        f"The structure's sidecar has {len(sidecar_frozen)} "
+                        f"frozen atom(s) (indices {sorted(sidecar_frozen)}) "
+                        f"but the form's \"Freeze by atom index\" doesn't "
+                        f"include {missing}.  The generated script will "
+                        f"freeze only what the form lists.  Either "
+                        f"include those indices in the form, clear them "
+                        f"in /modify, or accept the override."
+                    ),
+                    where="config.frozen_indices",
+                ))
+
+        # Pattern B: unrecognized-label notice.  The selection panel
+        # also writes ``regions`` (L-electrode, bridge, interface,
+        # …) for transport-engine workflows.  The spectra engine
+        # does NOT consume regions; the partial-Hessian path
+        # operates on the frozen / free atom partition alone.
+        # Surface this explicitly so the user knows their region
+        # labels are NOT influencing the spectrum calculation --
+        # they're carried forward in the sidecar for /transport
+        # but inert here.  Pinned by the three-stage contract:
+        # "every label NOT understood by the current engine MUST
+        # be named explicitly in a preflight issue."
+        regions = getattr(struct, "regions", None) or {}
+        non_empty_regions = sorted(
+            name for name, idxs in regions.items() if idxs
+        )
+        if non_empty_regions:
+            issues.append(Issue(
+                severity="warn",
+                message=(
+                    f"This structure carries region label(s) "
+                    f"{non_empty_regions}, which the PySCF spectra "
+                    f"engine does NOT consume.  They will be ignored "
+                    f"for the Hessian / Raman calculation but stay "
+                    f"in the sidecar for /transport.  If you meant "
+                    f"these atoms to be frozen during the spectrum "
+                    f"run, mark them as such via /modify -> Assign "
+                    f"to \"frozen_atoms\"."
+                ),
+                where="structure.regions",
+            ))
 
         return issues
 

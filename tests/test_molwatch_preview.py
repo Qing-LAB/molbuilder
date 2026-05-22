@@ -20,7 +20,7 @@ import numpy as np
 import pytest
 
 import molbuilder
-from molbuilder.molwatch_log import write_initial_preview
+from molbuilder.trajectory_log import write_initial_preview
 from molbuilder.parsers import trajectory_to_legacy_dict
 from molbuilder.pyscf import PySCFConfig, render_script
 from molbuilder.siesta import SiestaConfig, convert

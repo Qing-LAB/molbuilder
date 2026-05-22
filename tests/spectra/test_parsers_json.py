@@ -58,7 +58,7 @@ def _make_minimal_results(complete: bool = True) -> SpectraResults:
         structure_hash             = "sha256:abc123",
         n_atoms_total              = 2,
         free_atom_idxs             = [0, 1],
-        fixed_atom_idxs            = [],
+        frozen_atom_idxs            = [],
         equilibrium_scf_eh         = -76.4123,
         equilibrium_mo_energies_eh = np.array([-1.0, -0.5, -0.2, 0.1, 0.3]),
         equilibrium_homo_idx       = 2,
@@ -211,8 +211,9 @@ class TestParseSpectraJsonSchemaVersion:
         assert exc_info.value.actual is None
 
     def test_future_schema_version_rejected(self, tmp_path):
-        """A schema_version=2 file (future engine) is rejected here;
-        users who hit this get an "update molbuilder" message."""
+        """A future schema_version (e.g. v4, written by a newer
+        molbuilder) is rejected here; users who hit this get an
+        "update molbuilder" message."""
         payload = _make_minimal_results().to_dict()
         payload["schema_version"] = SCHEMA_VERSION + 1
         p = _write_json(tmp_path, payload)
@@ -436,7 +437,7 @@ class TestParseRejectsNonFinite:
         # Python's json.dumps (which we configure to reject NaN
         # in the writer path anyway).
         raw = (
-            '{"schema_version": 1, "engine": "pyscf", '
+            '{"schema_version": 4, "engine": "pyscf", '
             '"equilibrium_scf_eh": NaN}'
         )
         p.write_text(raw, encoding="utf-8")
@@ -448,7 +449,7 @@ class TestParseRejectsNonFinite:
     def test_infinity_token_rejected(self, tmp_path):
         p = tmp_path / "with_inf.spectra.json"
         raw = (
-            '{"schema_version": 1, "engine": "pyscf", '
+            '{"schema_version": 4, "engine": "pyscf", '
             '"equilibrium_scf_eh": Infinity}'
         )
         p.write_text(raw, encoding="utf-8")
@@ -458,7 +459,7 @@ class TestParseRejectsNonFinite:
     def test_negative_infinity_token_rejected(self, tmp_path):
         p = tmp_path / "with_neginf.spectra.json"
         raw = (
-            '{"schema_version": 1, "engine": "pyscf", '
+            '{"schema_version": 4, "engine": "pyscf", '
             '"equilibrium_scf_eh": -Infinity}'
         )
         p.write_text(raw, encoding="utf-8")
@@ -715,7 +716,7 @@ class TestImaginaryModeRoundTrip:
             structure_hash             = "sha256:abc",
             n_atoms_total              = 2,
             free_atom_idxs             = [0, 1],
-            fixed_atom_idxs            = [],
+            frozen_atom_idxs            = [],
             equilibrium_scf_eh         = -76.0,
             equilibrium_mo_energies_eh = np.array([-1.0, 0.0, 1.0]),
             equilibrium_homo_idx       = 1,
@@ -758,7 +759,7 @@ class TestEmptyModesList:
             structure_hash             = "sha256:abc",
             n_atoms_total              = 2,
             free_atom_idxs             = [0, 1],
-            fixed_atom_idxs            = [],
+            frozen_atom_idxs            = [],
             equilibrium_scf_eh         = -76.0,
             equilibrium_mo_energies_eh = np.array([-1.0, 0.0]),
             equilibrium_homo_idx       = 0,
@@ -792,10 +793,10 @@ class TestCrossModeInvariants:
     defence against."""
 
     def test_free_fixed_overlap_surfaces_as_field_error(self, tmp_path):
-        """free_atom_idxs ∩ fixed_atom_idxs must be empty."""
+        """free_atom_idxs ∩ frozen_atom_idxs must be empty."""
         payload = _make_minimal_results().to_dict()
         payload["free_atom_idxs"]  = [0, 1]
-        payload["fixed_atom_idxs"] = [1]   # overlap on atom 1
+        payload["frozen_atom_idxs"] = [1]   # overlap on atom 1
         p = _write_json(tmp_path, payload)
         with pytest.raises(SpectraJsonFieldError) as exc_info:
             parse_spectra_json(p)
@@ -806,7 +807,7 @@ class TestCrossModeInvariants:
         payload = _make_minimal_results().to_dict()
         payload["n_atoms_total"]   = 5
         payload["free_atom_idxs"]  = [0, 1]   # only 2
-        payload["fixed_atom_idxs"] = []       # plus 0 -> != 5
+        payload["frozen_atom_idxs"] = []       # plus 0 -> != 5
         p = _write_json(tmp_path, payload)
         with pytest.raises(SpectraJsonFieldError):
             parse_spectra_json(p)
@@ -1187,7 +1188,7 @@ class TestGeometryRoundTrip:
                 engine="pyscf", engine_version="x",
                 molbuilder_version="y", timestamp="t",
                 structure_hash="h", n_atoms_total=1,
-                free_atom_idxs=[0], fixed_atom_idxs=[],
+                free_atom_idxs=[0], frozen_atom_idxs=[],
                 equilibrium_scf_eh=-1.0,
                 equilibrium_mo_energies_eh=np.zeros(3),
                 equilibrium_homo_idx=0,
@@ -1252,7 +1253,7 @@ class TestComprehensiveRoundTrip:
             structure_hash             = "sha256:abc123",
             n_atoms_total              = 2,
             free_atom_idxs             = [0, 1],
-            fixed_atom_idxs            = [],
+            frozen_atom_idxs            = [],
             equilibrium_scf_eh         = -76.41234567890123,
             equilibrium_mo_energies_eh = np.array([
                 -1.234567e-1, -2.345678e-2, 0.0, 1.0e-3, 2.0e-3,
@@ -1299,7 +1300,7 @@ class TestComprehensiveRoundTrip:
         assert loaded.structure_hash          == original.structure_hash
         assert loaded.n_atoms_total           == original.n_atoms_total
         assert loaded.free_atom_idxs          == original.free_atom_idxs
-        assert loaded.fixed_atom_idxs         == original.fixed_atom_idxs
+        assert loaded.frozen_atom_idxs         == original.frozen_atom_idxs
         # Floats: exact round-trip.
         assert loaded.equilibrium_scf_eh      == original.equilibrium_scf_eh
         np.testing.assert_array_equal(
@@ -1366,11 +1367,11 @@ class TestNumericFormats:
         accepts both indifferently."""
         # Hand-craft the JSON with an uppercase-E literal.
         body = (
-            '{"schema_version": 1, "engine": "pyscf", '
+            '{"schema_version": 4, "engine": "pyscf", '
             '"engine_version": "x", "molbuilder_version": "y", '
             '"timestamp": "t", "structure_hash": "h", '
             '"n_atoms_total": 2, "free_atom_idxs": [0, 1], '
-            '"fixed_atom_idxs": [], '
+            '"frozen_atom_idxs": [], '
             '"equilibrium": {"scf_energy_eh": -1.5E-10, '
             '  "mo_energies_eh": [-1.0, 0.5], "homo_idx": 0}, '
             '"modes": [], '
@@ -1409,7 +1410,7 @@ class TestNumericFormats:
         silently.  parse_float catches this and surfaces as
         MalformedError."""
         body = (
-            '{"schema_version": 1, "engine": "pyscf", '
+            '{"schema_version": 4, "engine": "pyscf", '
             '"equilibrium": {"scf_energy_eh": 1e500}}'
         )
         p = tmp_path / "overflow.spectra.json"
@@ -1421,7 +1422,7 @@ class TestNumericFormats:
 
     def test_negative_overflow_literal_rejected(self, tmp_path):
         body = (
-            '{"schema_version": 1, "engine": "pyscf", '
+            '{"schema_version": 4, "engine": "pyscf", '
             '"equilibrium": {"scf_energy_eh": -1e500}}'
         )
         p = tmp_path / "negoverflow.spectra.json"
@@ -1454,11 +1455,11 @@ class TestNumericFormats:
         """``1e-500`` underflows to ``0.0`` -- mathematically zero,
         a valid finite IEEE 754 value.  The parser accepts it."""
         body = (
-            '{"schema_version": 1, "engine": "pyscf", '
+            '{"schema_version": 4, "engine": "pyscf", '
             '"engine_version": "x", "molbuilder_version": "y", '
             '"timestamp": "t", "structure_hash": "h", '
             '"n_atoms_total": 2, "free_atom_idxs": [0, 1], '
-            '"fixed_atom_idxs": [], '
+            '"frozen_atom_idxs": [], '
             '"equilibrium": {"scf_energy_eh": 1e-500, '
             '  "mo_energies_eh": [-1.0, 0.5], "homo_idx": 0}, '
             '"modes": [], '
@@ -1483,7 +1484,7 @@ class TestNumericFormats:
         output and would expect them to load -- they shouldn't:
         the wire format is JSON, not free-form scientific text)."""
         body = (
-            '{"schema_version": 1, "engine": "pyscf", '
+            '{"schema_version": 4, "engine": "pyscf", '
             '"equilibrium": {"scf_energy_eh": -76.4d-1}}'
         )
         p = tmp_path / "fortran.spectra.json"
@@ -1494,7 +1495,7 @@ class TestNumericFormats:
     def test_hex_float_rejected(self, tmp_path):
         """C99-style hex floats (``0x1.fp10``) aren't JSON either."""
         body = (
-            '{"schema_version": 1, "engine": "pyscf", '
+            '{"schema_version": 4, "engine": "pyscf", '
             '"equilibrium": {"scf_energy_eh": 0x1.fp10}}'
         )
         p = tmp_path / "hexfloat.spectra.json"
@@ -1506,7 +1507,7 @@ class TestNumericFormats:
         """JSON forbids a leading ``+`` on numbers (``+1.5`` is
         invalid).  The lexer will catch this."""
         body = (
-            '{"schema_version": 1, "engine": "pyscf", '
+            '{"schema_version": 4, "engine": "pyscf", '
             '"equilibrium": {"scf_energy_eh": +1.5}}'
         )
         p = tmp_path / "leading_plus.spectra.json"
@@ -1517,7 +1518,7 @@ class TestNumericFormats:
     def test_leading_decimal_point_rejected(self, tmp_path):
         """``.5`` (no leading zero) isn't valid JSON either."""
         body = (
-            '{"schema_version": 1, "engine": "pyscf", '
+            '{"schema_version": 4, "engine": "pyscf", '
             '"equilibrium": {"scf_energy_eh": .5}}'
         )
         p = tmp_path / "leading_dot.spectra.json"
@@ -1529,7 +1530,7 @@ class TestNumericFormats:
         """``5.`` (trailing dot, no fractional digits) isn't
         valid JSON."""
         body = (
-            '{"schema_version": 1, "engine": "pyscf", '
+            '{"schema_version": 4, "engine": "pyscf", '
             '"equilibrium": {"scf_energy_eh": 5.}}'
         )
         p = tmp_path / "trailing_dot.spectra.json"

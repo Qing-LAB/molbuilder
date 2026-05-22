@@ -3,16 +3,29 @@
 <head>
 <meta charset="utf-8">
 <title>molbuilder &mdash; build a molecule from a sequence</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/projects-sidebar.css') }}">
+{# lib/form-schema.css styles the .param-grid / .param-section /
+   .schema-int-triple classes that form-schema.js produces when it
+   renders the SIESTA + PySCF parameter forms below (see
+   #siesta-form-container / #pyscf-form-container).  Linked here
+   AFTER page-shell.css + BEFORE style.css so the layering goes
+   shell → form-schema → per-page.  Missing link was flagged by the
+   2026-05-19 review (forms rendered unstyled). #}
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/form-schema.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-<!-- 3Dmol.js: pin to a specific cdnjs build for reproducibility.
-     cdnjs delivers an immutable artifact per version, so bumping the
-     URL is an explicit code change rather than a silent dependency
-     drift.  If you operate in a high-security environment, generate the
-     SRI hash from this exact file (e.g. via openssl dgst -sha384) and
-     add `integrity="sha384-..." crossorigin="anonymous"` here. -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js"></script>
+<!-- 3Dmol.js: self-hosted under static/vendor/.  The CDN reference
+     was dropped in the internet-deployment hardening round (CSP no
+     longer allows third-party script sources).  Version + license +
+     citation: molbuilder/web/static/vendor/README.md. -->
+<script src="{{ url_for('static', filename='vendor/3Dmol-min.js') }}"></script>
+{# molbuilder-runtime.js MUST load before any other molbuilder script.
+   It defines window.molbuilder.runtime which other modules call to
+   register themselves + advertise readiness.  See design.md "Module
+   init contract" + the module's own docstring. #}
+<script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
 </head>
 <body class="has-projects-sidebar"><!--
  has-projects-sidebar applies the body padding-left for the fixed
@@ -23,7 +36,6 @@
  until the next window-resize event triggered their re-layout. -->
 
 {% set active_tab = "build" %}
-{% set page_tagline = "Build a 3-D molecule from a peptide / DNA / RNA sequence, a SMILES string, or a chemical name &mdash; and turn it into a SIESTA <code>.fdf</code> or PySCF input." %}
 {% include "_app_header.html" %}
 {% include "_projects_sidebar.html" %}
 
@@ -307,7 +319,7 @@
            attribute that drives the colour + icon. -->
       <ul id="fdf-issues" class="issues-panel" hidden
           aria-label="SIESTA configuration validation issues"></ul>
-      <p class="hint">After generating, switch to the <strong>Watch</strong> tab (top nav) to load and monitor the run live.</p>
+      <p class="hint">After generating, switch to the <strong>Results</strong> tab (top nav) to load and monitor the run live &mdash; pick the resulting <code>.molwatch.log</code> or SIESTA <code>.out</code> in the Projects sidebar and the trajectory inspector mounts automatically.</p>
 
       <pre id="fdf-output" class="fdf-output" hidden></pre>
       </div><!-- /#tab-siesta -->
@@ -338,7 +350,7 @@
       </div>
       <ul id="pyscf-issues" class="issues-panel" hidden
           aria-label="PySCF configuration validation issues"></ul>
-      <p class="hint">After generating, switch to the <strong>Watch</strong> tab (top nav) to load and monitor the run live.</p>
+      <p class="hint">After generating, switch to the <strong>Results</strong> tab (top nav) to load and monitor the run live &mdash; pick the resulting <code>.molwatch.log</code> or SIESTA <code>.out</code> in the Projects sidebar and the trajectory inspector mounts automatically.</p>
 
       <pre id="pyscf-output" class="fdf-output" hidden></pre>
       </div><!-- /#tab-pyscf -->
@@ -352,6 +364,7 @@
 
 <script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-format.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/mol-viewer.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='viewer.js') }}"></script>

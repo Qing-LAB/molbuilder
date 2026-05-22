@@ -62,7 +62,13 @@ x3dna-v*/
 **/.claude/
 claude-memory.tgz
 
-# Per-machine config (TLS cert/key paths for `serve` / `watch serve`)
+# Per-machine config (TLS cert/key paths, OAuth client_id +
+# client_secret_file paths, allowed_users allowlist, conda env
+# name overrides).  NEVER commit the live file -- it likely
+# points at credential files on disk (Let's Encrypt key, Google
+# OAuth client_secret).  The committed template is
+# ``docs/molbuilder.json.example`` (the ``.example`` suffix
+# keeps it from matching the pattern below).
 molbuilder.json
 
 projects/*

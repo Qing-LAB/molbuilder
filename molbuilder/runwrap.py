@@ -76,17 +76,46 @@ def render_run_wrapper(script_path: Path, *,
     basename = script_path.stem
     script_name = script_path.name
 
+    # Pre-command env exports.  Empty by default; SIESTA-MPI adds
+    # BLAS/OpenMP thread pinning so each MPI rank doesn't spawn its
+    # own pool of threads on top of the rank count (M×N
+    # oversubscription on a host with M cores and N MPI ranks).
+    env_prefix = ""
     if category == "siesta":
         if mpi_np is not None and mpi_np >= 2:
             inner = (f"mpirun -np {mpi_np} siesta {script_name} "
                       f"> {basename}.out")
             description = f"SIESTA-MPI run on {mpi_np} ranks"
+            # Pin BLAS / OpenMP thread count to 1 per process so the
+            # only parallelism is MPI.  SIESTA links MKL (via
+            # mkl-spblas) or OpenBLAS depending on the build; both
+            # honour their own NUM_THREADS env var, OMP_NUM_THREADS
+            # is the OpenMP fallback.  Without these exports each of
+            # the N MPI ranks would spawn N more threads (default =
+            # cpu count), so an 8-rank job on a 32-core host
+            # produces 8x32=256 threads competing for 32 cores --
+            # classic "SIESTA hits 100% CPU on every core but runs
+            # slower than 1-rank" pathology.  Users who DO want
+            # hybrid MPI+OpenMP (rare) can edit the wrapper after
+            # generation.
+            env_prefix = (
+                "# Thread pinning: one BLAS/OpenMP thread per MPI rank.\n"
+                "# Drop these exports if you want hybrid MPI + OpenMP.\n"
+                "export OMP_NUM_THREADS=1\n"
+                "export MKL_NUM_THREADS=1\n"
+                "export OPENBLAS_NUM_THREADS=1\n"
+                "\n"
+            )
         else:
             inner = f"siesta {script_name} > {basename}.out"
             description = "SIESTA (single-process)"
+            # Single-process: do NOT pin threads.  Without MPI the
+            # user wants BLAS / OpenMP threading -- it's the ONLY
+            # parallelism available.
     else:                                          # pyscf
         inner = f"python {script_name}"
         description = "PySCF run"
+        # PySCF uses BLAS threading deliberately; no pinning.
 
     return (
         f"#!/usr/bin/env bash\n"
@@ -105,6 +134,7 @@ def render_run_wrapper(script_path: Path, *,
         f"set -euo pipefail\n"
         f"cd \"$(dirname \"$0\")\"\n"
         f"\n"
+        f"{env_prefix}"
         f"exec conda run -n {target_env} --no-capture-output \\\n"
         f"    {inner}\n"
     )

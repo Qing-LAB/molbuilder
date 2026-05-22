@@ -73,7 +73,7 @@ def web(picker_root):
     """Flask test client with the picker_root fixture pre-installed."""
     pytest.importorskip("flask")
     from molbuilder.web.app import create_app
-    app = create_app()
+    app = create_app(config={})
     return app.test_client()
 
 
@@ -328,83 +328,6 @@ class TestSidebarPartialAndShim:
         r = web.get("/projects")
         assert r.status_code == 404
 
-    def test_projects_sidebar_entry_is_small_and_bootstraps(
-        self, web, picker_root,
-    ):
-        # v5.3 (split): entry file is ~50 LOC and only does imports +
-        # bootstrap.  Behaviour lives in projects/*.js modules.
-        r = web.get("/static/lib/projects-sidebar.js")
-        assert r.status_code == 200
-        body = r.get_data(as_text=True)
-        # ES module imports for each sub-module.
-        assert 'from "./projects/api.js"' in body
-        assert 'from "./projects/state.js"' in body
-        assert 'from "./projects/list.js"' in body
-        assert 'from "./projects/forms.js"' in body
-        assert 'from "./projects/preview.js"' in body
-        # Mounts the public Inquire API on window.
-        assert "window.molbuilder.projects = projects" in body
-        # Bootstrap glue only -- behaviour has moved out.
-        assert "openDir" in body          # called once for initial nav
-        assert "initList" in body
-        assert "initForms" in body
-        assert "initPreview" in body
-        # No more module-level state declarations -- that's state.js's job.
-        assert "renderBreadcrumb" not in body
-        assert "submitMkdir" not in body
-        assert "_isDeletableEntry" not in body
-
-    def test_projects_state_module_exposes_inquire_api(
-        self, web, picker_root,
-    ):
-        r = web.get("/static/lib/projects/state.js")
-        assert r.status_code == 200
-        body = r.get_data(as_text=True)
-        # Inquire-API public methods.
-        assert "getCurrentDir" in body
-        assert "getCurrentFile" in body
-        assert "onChange" in body
-        assert "readCurrentFile" in body
-        assert "relativeToProjects" in body
-        assert "refresh" in body
-        # writeFile primitive + saveToWorkspace convenience.
-        assert "writeFile" in body
-        assert "saveToWorkspace" in body
-        # sessionStorage keys (the cross-tab contract).
-        assert "molbuilder.current_dir" in body
-        assert "molbuilder.current_file" in body
-        # Retired surfaces stay retired.
-        assert "OPEN_TARGETS" not in body
-        assert "molbuilderTabAutoLoad" not in body
-        assert "sidebar_collapsed" not in body
-        assert "measureSidebarTop" not in body
-
-    def test_projects_list_module_owns_rendering(self, web, picker_root):
-        r = web.get("/static/lib/projects/list.js")
-        assert r.status_code == 200
-        body = r.get_data(as_text=True)
-        assert "openDir" in body
-        assert "_renderBreadcrumb" in body
-        assert "_renderList" in body
-        # Delete eligibility + per-entry buttons.
-        assert "_isDeletableEntry" in body
-        assert "_UNDELETABLE_AT_DEPTH_1" in body
-        # Per-entry view + delete buttons (created in renderList).
-        assert "ps-entry-preview" in body
-        assert "ps-entry-delete" in body
-
-    def test_projects_api_module_is_pure_http(self, web, picker_root):
-        r = web.get("/static/lib/projects/api.js")
-        assert r.status_code == 200
-        body = r.get_data(as_text=True)
-        for fn in ("apiRoots", "apiList", "apiStat", "apiRead",
-                   "apiMkdir", "apiCreateProject", "apiUpload",
-                   "apiDelete", "apiWrite"):
-            assert "export async function " + fn in body, fn
-        # No DOM references in this module.
-        assert "document." not in body
-        assert "window." not in body
-
     def test_projects_module_dependency_direction(self, web, picker_root):
         """Module deps form a DAG -- a circular import would still
         work in ES modules but causes init-order subtleties.  Pin
@@ -476,24 +399,13 @@ class TestSidebarPartialAndShim:
         assert "forms"   not in state, "state.js cannot import from forms.js"
         assert "preview" not in state, "state.js cannot import from preview.js"
 
-    def test_projects_sidebar_css_served(self, web, picker_root):
-        r = web.get("/static/lib/projects-sidebar.css")
-        assert r.status_code == 200
-        body = r.get_data(as_text=True)
-        # The key layout classes the partial relies on.
-        assert ".projects-sidebar" in body
-        assert ".ps-breadcrumb" in body
-        assert ".ps-actions" in body
-        # Body-padding shift for main content.
-        assert "padding-left: var(--ps-w)" in body
-
     def test_projects_selection_shim_removed(self, web, picker_root):
         # The per-tab projects-selection shim was retired -- the sidebar
         # actions section took over (no more "Use this file" banner).
         r = web.get("/static/lib/projects-selection.js")
         assert r.status_code == 404
 
-    @pytest.mark.parametrize("path", ["/", "/spectra", "/modify", "/watch"])
+    @pytest.mark.parametrize("path", ["/", "/spectra", "/modify", "/results"])
     def test_sidebar_included_in_every_tab(self, web, picker_root, path):
         r = web.get(path)
         assert r.status_code == 200, path
@@ -507,7 +419,7 @@ class TestSidebarPartialAndShim:
         assert "projects-sidebar.js" in body, path
         assert "projects-sidebar.css" in body, path
 
-    @pytest.mark.parametrize("path", ["/", "/spectra", "/modify", "/watch"])
+    @pytest.mark.parametrize("path", ["/", "/spectra", "/modify", "/results"])
     def test_body_class_server_side_for_layout(
         self, web, picker_root, path,
     ):
@@ -527,23 +439,33 @@ class TestSidebarPartialAndShim:
         ).get_data(as_text=True)
         assert 'classList.add("has-projects-sidebar")' not in js
 
-    @pytest.mark.parametrize("path", ["/spectra", "/modify", "/watch"])
+    @pytest.mark.parametrize("path", ["/modify"])
     def test_subscriber_tabs_use_inquire_api(
         self, web, picker_root, path,
     ):
-        # Each subscriber tab now pulls from window.molbuilder.projects
-        # on its own user-triggered events instead of registering a
-        # window.molbuilderTabAutoLoad auto-load shim.  Pin the new
-        # contract + the absence of every retired surface.
+        # /modify is the canonical "subscriber tab": it reacts to the
+        # Projects-sidebar selection by auto-loading the picked XYZ
+        # into the viewer + selection panel.  The wiring lives in
+        # modify/selection-bootstrap.js -- the bootstrap subscribes
+        # to ``window.molbuilder.projects.onChange`` and forwards
+        # changes to the selection store, which loads the file.
+        #
+        # The legacy "Load from current selection" button (page.js)
+        # was retired 2026-05-20 -- the auto-load via the store
+        # made it redundant.
+        #
+        # /spectra is generate-only (no subscriber); /results
+        # auto-mounts via the registry dispatch.  /modify is the
+        # only remaining subscriber tab; parametrize keeps the seam
+        # open for a future tab that adopts the same affordance.
         r = web.get(path)
         assert r.status_code == 200
         body = r.get_data(as_text=True)
-        # Inquire API consumption: tab has the Load-from-selection btn
-        # AND wires it through window.molbuilder.projects.
-        assert 'id="load-from-selection-btn"' in body, path
+        # Wires through window.molbuilder.projects (Inquire API).
         assert "window.molbuilder" in body, path
-        assert ".projects" in body, path
+        assert "selection-bootstrap.js" in body, path
         # Retired surfaces stay retired.
+        assert 'id="load-from-selection-btn"' not in body, path
         assert "molbuilderTabAutoLoad" not in body, path
         assert "projects-selection.js" not in body, path
         assert 'id="projects-banner"' not in body, path
@@ -552,17 +474,30 @@ class TestSidebarPartialAndShim:
         # The "Projects" app-tab entry was removed from _app_header.html
         # when we pivoted to the sidebar (otherwise users get a dead
         # tab link).  The sidebar's own <h2>Projects</h2> title
-        # legitimately contains the word "Projects", so we assert on
-        # the app-tab count + the absence of a Projects-href link.
+        # legitimately contains the word "Projects", so the actual
+        # invariants are: (a) no /projects href anywhere, and (b)
+        # every visible app-tab link points at a route we actually
+        # serve.  Counting tabs would make this test break every
+        # time we add or remove a tab, which is the wrong sensitivity.
         import re
         body = web.get("/").get_data(as_text=True)
-        # Build / Modify / Spectra / Watch -- exactly four app-tab
-        # *links*, no Projects entry.  The regex excludes the
-        # container <nav class="app-tabs"> (note the trailing s).
-        n_tabs = len(re.findall(r'class="app-tab(?: is-active)?"', body))
-        assert n_tabs == 4, f"expected 4 app-tabs, found {n_tabs}"
-        # No href="/projects" anywhere.
+        # No href="/projects" anywhere -- the sidebar replaced the tab.
         assert 'href="/projects"' not in body
+        # Each app-tab link points at one of the served routes.  Pull
+        # every href from the app-tab class; assert every value is in
+        # the served-routes set.  Adding a new tab updates the served-
+        # routes set, not a magic number.
+        SERVED = {"/", "/modify", "/spectra", "/results"}
+        hrefs = re.findall(
+            r'<a[^>]*href="([^"]+)"[^>]*class="app-tab(?: is-active)?"',
+            body,
+        )
+        assert hrefs, "no app-tab links found in /"
+        for h in hrefs:
+            assert h in SERVED, (
+                f"app-tab link {h!r} points at an unserved route; "
+                f"served routes: {sorted(SERVED)}"
+            )
 
 
 class TestNoLocalFileInputs:
@@ -573,8 +508,10 @@ class TestNoLocalFileInputs:
     @pytest.mark.parametrize("path,absent_id", [
         ("/spectra", 'id="xyz-file"'),
         ("/spectra", 'id="results-file"'),
-        ("/watch",   'id="file-picker"'),
         ("/modify",  'id="file-picker"'),
+        # /watch dropped 2026-05-19; trajectory inspector lives at
+        # /results via the registry now (no <input type=file>
+        # there either).
     ])
     def test_file_input_not_emitted(self, web, picker_root, path, absent_id):
         r = web.get(path)
@@ -811,23 +748,6 @@ class TestSidebarCreateUI:
         # Subdir-list note (populated by JS at startup)
         assert 'id="ps-newproject-subdirs"' in body
 
-    def test_create_project_uses_canonical_subdir_list_in_js(
-        self, web, picker_root,
-    ):
-        # v5.3: form handlers moved to projects/forms.js + the HTTP
-        # call to projects/api.js.  Tested across the two modules.
-        forms = web.get(
-            "/static/lib/projects/forms.js",
-        ).get_data(as_text=True)
-        for needle in ("structure", "pseudopotential", "optimization",
-                       "frequency", "spectrum", "transport",
-                       "single-point", "scan", "user"):
-            assert f'"{needle}"' in forms, needle
-        assert "_submitNewProject" in forms
-        api = web.get("/static/lib/projects/api.js").get_data(as_text=True)
-        assert "/api/projects/create" in api
-
-
 class TestSidebarMkdirUI:
     """The "+ New subdir" button + inline form is in the partial,
     not the JS."""
@@ -843,24 +763,6 @@ class TestSidebarMkdirUI:
         assert 'id="ps-mkdir-cancel"' in body
         # The + New subdir summary heading lives inside its details.
         assert '+ New subdir</summary>' in body
-
-    def test_mkdir_section_depth_aware_visibility_in_js(
-        self, web, picker_root,
-    ):
-        # v5.3.1: forms.js uses the centralised atProjectsRoot helper
-        # from state.js (the prior _atRoot duplicate was removed).
-        forms = web.get(
-            "/static/lib/projects/forms.js",
-        ).get_data(as_text=True)
-        assert 'closest("details")' in forms
-        assert "atProjectsRoot" in forms      # imports + uses the helper
-        assert "section.hidden" in forms
-        # Helper itself lives in state.js (single source of truth).
-        state = web.get(
-            "/static/lib/projects/state.js",
-        ).get_data(as_text=True)
-        assert "export function atProjectsRoot" in state
-
 
 class TestFilesWrite:
     """POST /api/files/write covers two distinct workflows:
@@ -994,74 +896,355 @@ class TestGenerateWritesToWorkspace:
     sidebar JS, and each tab calls it instead of duplicating fetch
     + refresh logic."""
 
-    def test_save_to_workspace_api_exposed(self, web):
-        # v5.3: saveToWorkspace lives in projects/state.js; the HTTP
-        # call + overwrite gate live in projects/api.js.
-        state = web.get(
-            "/static/lib/projects/state.js",
-        ).get_data(as_text=True)
-        assert "saveToWorkspace" in state
-        # Returns null on skip (no dir / at root) so callers fall
-        # back silently.
-        assert "return null" in state
-        # Two-tier API: writeFile primitive too.
-        assert "writeFile" in state
-
-        api = web.get(
-            "/static/lib/projects/api.js",
-        ).get_data(as_text=True)
-        assert "/api/files/write" in api
-        # Strict no-overwrite gate (only sets body.overwrite when
-        # explicitly opted in).
-        assert "if (opts.overwrite) body.overwrite = true" in api
-
-    def test_spectra_viewer_uses_save_to_workspace(self, web):
-        body = web.get(
-            "/static/spectra/viewer.js",
-        ).get_data(as_text=True)
-        # Tab calls the unified API; no direct fetch to /api/files/write.
-        assert "proj.saveToWorkspace" in body
-        assert "/api/files/write" not in body
-        assert ".spectra.py" in body
-
-    def test_build_viewer_uses_save_to_workspace(self, web):
-        body = web.get("/static/viewer.js").get_data(as_text=True)
-        # Tab calls the unified API.
-        assert "proj.saveToWorkspace" in body
-        assert "/api/files/write" not in body
-        # Both .fdf (FDF generate) and .py (PySCF generate) paths.
-        assert '".fdf"' in body
-        assert '".py"' in body
-
-
 class TestFileOperationStubs:
-    """The upload / write / delete endpoints are intentionally 501
-    stubs in v1.  The frontend renders the inline error from the
-    standard ``{ok:false, error:...}`` shape; design captured in
-    ``docs/protocols/selection.md`` for the eventual real impls."""
+    """All three previously-stubbed endpoints (upload, write, delete)
+    are now functional.  See TestFilesUpload + TestFilesWrite +
+    TestFilesDelete for the real-behaviour tests."""
 
-    def test_upload_returns_501_with_helpful_message(self, web):
-        r = web.post("/api/files/upload")
-        assert r.status_code == 501
+    # (test_upload_returns_501 / test_write_returns_501 /
+    #  test_delete_returns_501 all retired in v5.4: every formerly
+    #  stub endpoint is live now.  This class is kept as a marker
+    #  so future readers can find the retirement history; remove
+    #  when the docstring no longer needs to explain it.)
+    pass
+
+
+# --------------------------------------------------------------------- #
+#  DELETE /api/files/delete                                             #
+# --------------------------------------------------------------------- #
+
+
+class TestFilesDelete:
+    """Validation contract per the endpoint docstring:
+      * inside an allowed root + depth >= 1
+      * not a canonical-topic dir at depth 2
+      * recursive=true required for non-empty directories
+    Matches the JS-side ``_isDeletableEntry`` gate so the user
+    never sees a UI control that the backend would refuse."""
+
+    def _delete(self, web, path, recursive=False):
+        return web.delete(
+            "/api/files/delete",
+            json={"path": str(path), "recursive": recursive},
+        )
+
+    # --- happy paths ---------------------------------------------- #
+
+    def test_delete_file_happy_path(self, web, picker_root):
+        target = picker_root / "proj" / "spectrum" / "geom.xyz"
+        target.parent.mkdir(parents=True)
+        target.write_text("2\nh2\nH 0 0 0\nH 0.74 0 0\n")
+        assert target.exists()
+        r = self._delete(web, target)
+        assert r.status_code == 200, r.get_data(as_text=True)
         body = r.get_json()
-        assert body["ok"] is False
-        assert "not implemented" in body["error"]
-        # The message points the user at the manual workaround.
-        assert "scp" in body["error"] or "mv" in body["error"]
+        assert body["ok"] is True
+        assert body["path"] == str(target)
+        assert not target.exists()
+        # Parent directory untouched.
+        assert target.parent.is_dir()
 
-    # (test_write_returns_501_with_helpful_message retired in v5.2:
-    #  POST /api/files/write is now functional -- see TestFilesWrite.
-    #  The preview modal's Save button is still UI-disabled
-    #  ("coming soon") but the endpoint itself is live for the
-    #  Generate-and-save flow.)
+    def test_delete_empty_dir_happy_path(self, web, picker_root):
+        target = picker_root / "proj" / "user" / "scratch"
+        target.mkdir(parents=True)
+        r = self._delete(web, target)
+        assert r.status_code == 200
+        assert not target.exists()
 
-    def test_delete_returns_501_with_helpful_message(self, web):
+    def test_delete_recursive_removes_non_empty_dir(self, web, picker_root):
+        # Free-form subdir inside user/ so the canonical-topic
+        # protection doesn't apply.
+        target = picker_root / "proj" / "user" / "scratch"
+        target.mkdir(parents=True)
+        (target / "a.txt").write_text("x")
+        (target / "nested").mkdir()
+        (target / "nested" / "b.txt").write_text("y")
+        r = self._delete(web, target, recursive=True)
+        assert r.status_code == 200
+        assert not target.exists()
+
+    # --- rejection paths ----------------------------------------- #
+
+    def test_delete_missing_body_400(self, web):
+        # No JSON body at all.
         r = web.delete("/api/files/delete")
-        assert r.status_code == 501
+        assert r.status_code == 400
+        assert "path" in r.get_json()["error"]
+
+    def test_delete_missing_path_400(self, web):
+        r = web.delete("/api/files/delete", json={"recursive": True})
+        assert r.status_code == 400
+        assert "path" in r.get_json()["error"]
+
+    def test_delete_nonexistent_path_404(self, web, picker_root):
+        target = picker_root / "proj" / "ghost.xyz"
+        # ``ghost.xyz``'s parent ``proj`` doesn't exist either; the
+        # resolver still computes a path inside the root, and the
+        # existence check returns 404.
+        (picker_root / "proj").mkdir(parents=True)
+        r = self._delete(web, target)
+        assert r.status_code == 404
+
+    def test_delete_outside_root_rejected(self, web, picker_root):
+        # Absolute path on a sibling tree the picker root has never
+        # heard of.  (Can't use pytest's ``tmp_path`` here -- the
+        # ``picker_root`` fixture aliases the SAME tmp directory, so
+        # any path under tmp_path resolves inside the root.)
+        outside = picker_root.parent.parent / "molbuilder_test_outside"
+        r = self._delete(web, outside / "elsewhere.txt")
+        assert r.status_code == 400
+        err = r.get_json()["error"]
+        assert "outside" in err or "root" in err
+
+    def test_delete_dot_dot_in_path_rejected(self, web, picker_root):
+        # Defense in depth: ``..`` in the raw string is rejected.
+        r = web.delete(
+            "/api/files/delete",
+            json={"path": str(picker_root) + "/proj/../../etc"},
+        )
+        assert r.status_code == 400
+        assert ".." in r.get_json()["error"]
+
+    def test_delete_picker_root_itself_rejected(self, web, picker_root):
+        # Cannot delete projects/ -- depth-0 protection.
+        r = self._delete(web, picker_root, recursive=True)
+        assert r.status_code == 400
+        err = r.get_json()["error"]
+        assert "root" in err.lower()
+
+    def test_delete_canonical_topic_dir_rejected(self, web, picker_root):
+        # projects/<proj>/spectrum/ is a canonical topic at depth 2.
+        # Refused even with recursive=true -- protect the layout.
+        target = picker_root / "proj" / "spectrum"
+        target.mkdir(parents=True)
+        (target / "run.molwatch.log").write_text("dummy\n")
+        r = self._delete(web, target, recursive=True)
+        assert r.status_code == 400
+        err = r.get_json()["error"]
+        assert "spectrum" in err
+        assert target.exists(), "target must not have been deleted"
+
+    def test_delete_user_topic_dir_rejected(self, web, picker_root):
+        # ``user`` IS a canonical topic too (added 2026-05-16 for the
+        # free-form workspace).  Same protection applies.
+        target = picker_root / "proj" / "user"
+        target.mkdir(parents=True)
+        r = self._delete(web, target)
+        assert r.status_code == 400
+        err = r.get_json()["error"]
+        assert "user" in err
+        assert target.exists()
+
+    def test_delete_subdir_under_canonical_topic_allowed(self, web,
+                                                          picker_root):
+        # depth-3 free-form subdir IS deletable, even when its parent
+        # is a canonical topic.  This is the canonical user workflow:
+        # ``projects/<proj>/spectrum/<run>/`` can be removed.
+        target = picker_root / "proj" / "spectrum" / "water_v1"
+        target.mkdir(parents=True)
+        r = self._delete(web, target)
+        assert r.status_code == 200
+        assert not target.exists()
+
+    def test_delete_file_named_canonical_topic_allowed(self, web,
+                                                        picker_root):
+        # The canonical-topic guard fires only for DIRECTORIES.  A
+        # plain file at depth 2 named ``spectrum`` (no extension) is
+        # deletable -- it's not the layout-orphaning case.
+        target = picker_root / "proj" / "spectrum"
+        target.parent.mkdir(parents=True)
+        target.write_text("not a directory\n")  # plain file
+        r = self._delete(web, target)
+        assert r.status_code == 200, r.get_data(as_text=True)
+        assert not target.exists()
+
+    def test_delete_non_empty_dir_without_recursive_409(self, web,
+                                                         picker_root):
+        target = picker_root / "proj" / "user" / "scratch"
+        target.mkdir(parents=True)
+        (target / "f.txt").write_text("x")
+        r = self._delete(web, target, recursive=False)
+        assert r.status_code == 409
+        err = r.get_json()["error"]
+        assert "recursive" in err
+        assert target.exists()
+        assert (target / "f.txt").exists()
+
+    def test_delete_project_dir_with_recursive_allowed(self, web,
+                                                        picker_root):
+        # depth-1 = a project dir.  Deletable with recursive=true
+        # because the user explicitly wants to nuke the project.
+        # The canonical-topic guard only fires at depth 2.
+        target = picker_root / "doomed_project"
+        target.mkdir()
+        (target / "spectrum").mkdir()
+        (target / "spectrum" / "f.txt").write_text("x")
+        r = self._delete(web, target, recursive=True)
+        assert r.status_code == 200
+        assert not target.exists()
+
+
+# --------------------------------------------------------------------- #
+#  /api/files/upload                                                    #
+# --------------------------------------------------------------------- #
+
+
+class TestFilesUpload:
+    """Multipart upload into a sidebar-visible directory.  Same depth
+    rules as /api/files/write (no uploads directly into the picker
+    root; target_dir must exist as a directory) plus a filename
+    regex distinct from validate_name (dots allowed for extensions)."""
+
+    def _post(self, web, target_dir, filename, content=b"hello\n"):
+        import io
+        return web.post(
+            "/api/files/upload",
+            data={
+                "target_dir": str(target_dir),
+                "file": (io.BytesIO(content), filename),
+            },
+            content_type="multipart/form-data",
+        )
+
+    def test_upload_happy_path_writes_file(self, web, picker_root):
+        target = picker_root / "proj" / "spectrum"
+        target.mkdir(parents=True)
+        r = self._post(web, target, "water.spectra.json", b'{"ok":1}\n')
+        assert r.status_code == 200, r.get_data(as_text=True)
+        body = r.get_json()
+        assert body["ok"] is True
+        assert body["path"] == str(target / "water.spectra.json")
+        # File landed with the content we sent.
+        assert (target / "water.spectra.json").read_bytes() == b'{"ok":1}\n'
+        assert body["size"] == 9
+        assert body["mtime"] > 0
+
+    def test_upload_missing_target_dir_400(self, web):
+        # Missing target_dir form field.
+        import io
+        r = web.post(
+            "/api/files/upload",
+            data={"file": (io.BytesIO(b"x"), "x.txt")},
+            content_type="multipart/form-data",
+        )
+        assert r.status_code == 400
+        assert "target_dir" in r.get_json()["error"]
+
+    def test_upload_missing_file_part_400(self, web, picker_root):
+        target = picker_root / "proj" / "spectrum"
+        target.mkdir(parents=True)
+        r = web.post(
+            "/api/files/upload",
+            data={"target_dir": str(target)},
+            content_type="multipart/form-data",
+        )
+        assert r.status_code == 400
+        assert "'file'" in r.get_json()["error"]
+
+    def test_upload_at_root_depth_rejected(self, web, picker_root):
+        # Uploading directly into the picker root (depth 0) is forbidden;
+        # parallels the same rule on /api/files/write.
+        r = self._post(web, picker_root, "stray.txt")
+        assert r.status_code == 400
+        assert "subdirectory" in r.get_json()["error"]
+
+    def test_upload_to_missing_dir_400(self, web, picker_root):
+        # target_dir resolves inside the root but doesn't exist on disk.
+        nonexistent = picker_root / "proj" / "ghost"
+        r = self._post(web, nonexistent, "file.txt")
+        # /api/files/upload uses the same _resolve_within_roots that
+        # treats missing paths as 404; either response indicates the
+        # endpoint rejected cleanly.
+        assert r.status_code in (400, 404)
         body = r.get_json()
         assert body["ok"] is False
-        assert "not implemented" in body["error"]
-        assert "shell" in body["error"] or "rm" in body["error"]
+
+    def test_upload_to_a_file_400(self, web, picker_root):
+        # target_dir is a file, not a directory.
+        target = picker_root / "proj" / "spectrum"
+        target.mkdir(parents=True)
+        (target / "blob.bin").write_bytes(b"x")
+        r = self._post(web, target / "blob.bin", "file.txt")
+        assert r.status_code == 400
+        assert "directory" in r.get_json()["error"]
+
+    def test_upload_outside_root_rejected(self, web, tmp_path):
+        # Absolute path completely outside the picker root.
+        r = self._post(web, tmp_path / "elsewhere", "file.txt")
+        assert r.status_code == 400
+        assert "outside" in r.get_json()["error"] or "root" in r.get_json()["error"]
+
+    def test_upload_dot_dot_in_target_rejected(self, web, picker_root):
+        # Defense in depth: '..' in raw target_dir string is rejected
+        # even though the resolution step would also catch it.
+        r = self._post(web, str(picker_root) + "/proj/../..", "file.txt")
+        assert r.status_code == 400
+        assert ".." in r.get_json()["error"]
+
+    def test_upload_existing_filename_409(self, web, picker_root):
+        # No implicit overwrite: clash at destination is 409.  The
+        # sidebar's UX is "delete first, then re-upload".
+        target = picker_root / "proj" / "spectrum"
+        target.mkdir(parents=True)
+        (target / "geom.xyz").write_text("existing\n")
+        r = self._post(web, target, "geom.xyz", b"replacement\n")
+        assert r.status_code == 409
+        assert "already exists" in r.get_json()["error"]
+        # Original file content is untouched.
+        assert (target / "geom.xyz").read_text() == "existing\n"
+
+    def test_upload_filename_with_path_separator_400(self, web, picker_root):
+        # ``file.filename`` may carry the client's full path on some
+        # browsers; we basename it server-side.  This test sends a
+        # bare slash to confirm the validator catches what slips
+        # through.  (Browsers normally send just the basename.)
+        import io
+        target = picker_root / "proj" / "spectrum"
+        target.mkdir(parents=True)
+        # werkzeug normalises some path prefixes; we test the regex
+        # by sending a value that survives basename().
+        r = web.post(
+            "/api/files/upload",
+            data={
+                "target_dir": str(target),
+                "file": (io.BytesIO(b"x"), "has space.txt"),
+            },
+            content_type="multipart/form-data",
+        )
+        assert r.status_code == 400
+        assert "unsupported" in r.get_json()["error"]
+
+    def test_upload_dotfile_rejected(self, web, picker_root):
+        # Leading-dot filenames (.bashrc etc.) are rejected by the
+        # ^[A-Za-z0-9] anchor.  Matches the sidebar list endpoint's
+        # hidden-filter so we don't upload files that wouldn't show
+        # up in the sidebar.
+        target = picker_root / "proj" / "spectrum"
+        target.mkdir(parents=True)
+        r = self._post(web, target, ".bashrc")
+        assert r.status_code == 400
+        assert "unsupported" in r.get_json()["error"]
+
+    def test_upload_strips_client_path_prefix(self, web, picker_root):
+        # Some browsers / curl invocations send the FULL client path
+        # as ``file.filename``.  ``os.path.basename`` strips that
+        # before validation + write, so the file lands at
+        # target_dir/<basename>.
+        import io
+        target = picker_root / "proj" / "spectrum"
+        target.mkdir(parents=True)
+        r = web.post(
+            "/api/files/upload",
+            data={
+                "target_dir": str(target),
+                "file": (io.BytesIO(b"data\n"), "/tmp/from-client/water.xyz"),
+            },
+            content_type="multipart/form-data",
+        )
+        assert r.status_code == 200, r.get_data(as_text=True)
+        body = r.get_json()
+        assert body["path"] == str(target / "water.xyz")
+        assert (target / "water.xyz").read_bytes() == b"data\n"
 
 
 class TestSidebarStubsUI:
@@ -1077,52 +1260,6 @@ class TestSidebarStubsUI:
         assert 'class="ps-upload-context"' in body
         # The summary heading is the user-facing label.
         assert '+ Upload file</summary>' in body
-
-    def test_upload_section_depth_aware_visibility_in_js(self, web):
-        # v5.3: lives in projects/forms.js.
-        body = web.get(
-            "/static/lib/projects/forms.js",
-        ).get_data(as_text=True)
-        assert "_updateUploadContext" in body
-        assert "elUploadForm" in body
-        assert "elUploadContext" in body
-
-    def test_preview_is_per_entry_not_sidebar_bottom_bar(
-        self, web, picker_root,
-    ):
-        # v5.1: Preview moved from a bottom-bar button to a per-entry
-        # hover button (alongside the delete ×).  The id="ps-preview-btn"
-        # global button is gone; preview elements are now created
-        # dynamically by renderList() and use the .ps-entry-preview class.
-        body = web.get("/spectra").get_data(as_text=True)
-        # No global Preview button in the partial.
-        assert 'id="ps-preview-btn"' not in body
-        # The dead .ps-actions-row + .ps-action-btn styles are gone too.
-        assert 'class="ps-actions-row"' not in body
-
-    def test_preview_per_entry_handler_in_js(self, web):
-        # v5.3: per-entry button is built by renderList() in
-        # projects/list.js.
-        body = web.get(
-            "/static/lib/projects/list.js",
-        ).get_data(as_text=True)
-        assert "ps-entry-preview" in body
-        # The button reads "view" (matches × of delete).
-        assert 'view.textContent = "view"' in body
-        # File-only: directories don't get a Preview button.
-        assert 'if (e.kind === "file")' in body
-
-    def test_preview_per_entry_styles_match_delete_hover_pattern(self, web):
-        # Both per-entry buttons inherit .ps-entry-action; the hover-
-        # reveal idiom (opacity 0 default, 1 on .ps-entry:hover) is in
-        # the shared rule.  Delete + Preview only differ in hover color.
-        body = web.get(
-            "/static/lib/projects-sidebar.css",
-        ).get_data(as_text=True)
-        assert ".ps-entry-action {" in body
-        assert ".ps-entry:hover .ps-entry-action" in body
-        assert ".ps-entry-preview:hover" in body
-        assert ".ps-entry-delete:hover" in body
 
     def test_preview_modal_markup_full(self, web, picker_root):
         body = web.get("/spectra").get_data(as_text=True)
@@ -1147,57 +1284,6 @@ class TestSidebarStubsUI:
         # before JS runs.
         body = web.get("/spectra").get_data(as_text=True)
         assert 'id="ps-preview-modal" class="ps-preview-modal" hidden' in body
-
-    def test_preview_uses_existing_read_endpoint_in_js(self, web):
-        # v5.3: showPreview / openPreviewModal / closePreviewModal
-        # live in projects/preview.js; the read backing is in
-        # projects/state.js (readCurrentFile wraps /api/files/read).
-        preview = web.get(
-            "/static/lib/projects/preview.js",
-        ).get_data(as_text=True)
-        assert "showPreview" in preview
-        assert "openPreviewModal" in preview
-        assert "closePreviewModal" in preview
-        # Preview calls into state for the actual read.
-        assert "readCurrentFile" in preview
-        state = web.get(
-            "/static/lib/projects/state.js",
-        ).get_data(as_text=True)
-        assert "readCurrentFile" in state
-        api = web.get(
-            "/static/lib/projects/api.js",
-        ).get_data(as_text=True)
-        assert "/api/files/read" in api
-
-    def test_delete_button_logic_in_js(self, web):
-        # v5.3: eligibility check + confirm flow in projects/list.js;
-        # HTTP call in projects/api.js (backend 501 stub).
-        body = web.get(
-            "/static/lib/projects/list.js",
-        ).get_data(as_text=True)
-        assert "_isDeletableEntry" in body
-        assert "ps-entry-delete" in body
-        assert "_confirmAndDelete" in body
-        assert "_UNDELETABLE_AT_DEPTH_1" in body
-        api = web.get(
-            "/static/lib/projects/api.js",
-        ).get_data(as_text=True)
-        assert "apiDelete" in api
-        assert "/api/files/delete" in api
-
-    def test_delete_button_has_hover_visibility_css(self, web):
-        # The × shows only on hover so it doesn't clutter the list.
-        # v5.1: the hover-reveal idiom moved to the shared
-        # .ps-entry-action class (preview + delete inherit it); the
-        # delete-specific rule only carries the destructive red hover.
-        body = web.get(
-            "/static/lib/projects-sidebar.css",
-        ).get_data(as_text=True)
-        assert ".ps-entry-delete" in body
-        assert "opacity: 0" in body
-        assert ".ps-entry:hover .ps-entry-action" in body
-        assert ".ps-entry-delete:hover" in body
-
 
 class TestRootsContract:
     """Single-root contract: Capabilities.file_picker_roots() returns

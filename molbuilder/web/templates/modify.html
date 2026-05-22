@@ -3,15 +3,21 @@
 <head>
 <meta charset="utf-8">
 <title>molbuilder &mdash; modify a structure</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/projects-sidebar.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='modify/style.css') }}">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/selection-panel.css') }}">
+<script src="{{ url_for('static', filename='vendor/3Dmol-min.js') }}"></script>
+{# molbuilder-runtime.js MUST load before any other molbuilder script.
+   Defines window.molbuilder.runtime (register/whenReady).  See
+   design.md "Module init contract". #}
+<script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
 </head>
 <body class="has-projects-sidebar">
 
 {% set active_tab = "modify" %}
-{% set page_tagline = "Modify a built or loaded structure &mdash; inspect atoms, prepare junctions, and hand the result back to the Build tab." %}
 {% include "_app_header.html" %}
 {% include "_projects_sidebar.html" %}
 
@@ -33,46 +39,19 @@
   <div class="loader">
     <span class="loader-hint">
       Pick a structure (<code>.xyz</code> / <code>.pdb</code>) in the
-      <strong>Projects</strong> sidebar on the left, then click
-      &ldquo;Load from current selection&rdquo;.
+      <strong>Projects</strong> sidebar — the viewer + selection
+      panel below update automatically.
     </span>
-    <button id="load-from-selection-btn" type="button"
-            title="Reads window.molbuilder.projects.getCurrentFile()"
-            disabled>Load from current selection</button>
     <span id="status" class="status">No structure loaded.</span>
   </div>
 </section>
 
 <main class="modify-grid">
 
-  <!-- LEFT: Atom list -->
-  <aside class="card atom-list-card">
-    <header class="card-header">
-      <h2>Atoms</h2>
-      <span id="atom-count" class="muted">0 atoms</span>
-    </header>
-    <div class="atom-list-wrap">
-      <table id="atom-list" class="atom-list" aria-label="Atom list">
-        <thead>
-          <tr>
-            <th class="col-idx">#</th>
-            <th class="col-el">Element</th>
-            <th class="col-name">Name</th>
-            <th class="col-res">Residue</th>
-          </tr>
-        </thead>
-        <tbody id="atom-list-body">
-          <!-- One <tr data-atom-index="N"> per atom; populated by
-               viewer.js after a structure is loaded. -->
-        </tbody>
-      </table>
-    </div>
-    <p class="hint">
-      Click a row to highlight that atom in the viewer (and vice versa).
-      Shift-click to multi-select &mdash; the orient op reads a
-      two-atom selection as the anchor pair.
-    </p>
-  </aside>
+  {# Selection-panel host -- compact vertical card next to the
+     viewer.  Filled by modify/selection-bootstrap.js after fetching
+     /partials/selection-panel. #}
+  <div id="selection-host" class="selection-host"></div>
 
   <!-- MIDDLE: 3D viewer -->
   <section class="card viewer-card">
@@ -104,6 +83,22 @@ Use this whenever zoom/rotate feels off-centre; after adding slabs the bounding 
 is dominated by the slabs and 3Dmol's auto-pivot drifts off the molecule.">Focus molecule</button>
       <button id="clear-selection" class="ghost">Clear selection</button>
     </div>
+
+    <!-- Send-to-Build handoff bar.  Sits directly below the 3D
+         viewer + viewer-controls so it's visible regardless of
+         which edit-panel sub-tab (Atom / Pose / Geom / Junction)
+         is active.  The handoff is a structure-level action --
+         it ships the current geometry to /build for downstream
+         SIESTA / PySCF input generation -- so visually attaching
+         it to the viewer (the structure's primary surface) is
+         the right semantic.  Style-wise: a dedicated row, NOT
+         folded into viewer-controls (which are display toggles,
+         a different verb class). -->
+    <div class="viewer-handoff">
+      <button id="send-to-build" class="full-btn" disabled>
+        Send to Build tab
+      </button>
+    </div>
   </section>
 
   <!-- RIGHT: Edit panel -->
@@ -113,26 +108,12 @@ is dominated by the slabs and 3Dmol's auto-pivot drifts off the molecule.">Focus
       <span id="edit-status" class="muted"></span>
     </header>
     <div class="edit-panel">
-      <!-- Selection: always visible at the top of the edit panel.
-           Every op below this reads from the current selection. -->
-      <fieldset class="op-block selection-block">
-        <legend>Selection</legend>
-        <div id="selection-readout" class="readout">No atoms selected.</div>
-        <table id="selection-info" class="selection-info" hidden>
-          <thead>
-            <tr>
-              <th class="col-idx">#</th>
-              <th class="col-el">El</th>
-              <th class="col-name">Name</th>
-              <th class="col-res">Res</th>
-              <th class="col-coord">x (Å)</th>
-              <th class="col-coord">y (Å)</th>
-              <th class="col-coord">z (Å)</th>
-            </tr>
-          </thead>
-          <tbody id="selection-info-body"></tbody>
-        </table>
-      </fieldset>
+      <!-- The "Selection" summary that used to sit at the top of
+           this panel was retired 2026-05-20.  The selection-panel
+           card above the grid (see #selection-host) renders the
+           per-atom list with checkboxes + region labels; the
+           per-op anchor readouts below populate themselves from
+           the live selection store. -->
 
       <!-- Sub-tabs split the op fieldsets into the three workflow
            phases.  Default-open is "Atom" (the most common starting
@@ -440,17 +421,6 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
         </div>
       </fieldset>
 
-      <!-- Send-to-Build handoff: writes the current structure to
-           sessionStorage under the same ``builder-structure`` key
-           Phase 1 uses for tab-navigation persistence, then
-           navigates to /. -->
-      <fieldset class="op-block">
-        <legend>Hand off</legend>
-        <button id="send-to-build" class="full-btn" disabled>
-          Send to Build tab
-        </button>
-      </fieldset>
-
       </div><!-- /.optab-panel data-op-panel="junction" -->
     </div>
   </aside>
@@ -468,39 +438,18 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
 <script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-format.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-pick.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/mol-viewer.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/viewer.js') }}"></script>
-<script>
-  // Inquire-model wiring (Proposal D); see docs/protocols/selection.md.
-  document.addEventListener("DOMContentLoaded", function () {
-    const proj    = (window.molbuilder || {}).projects;
-    const loadBtn = document.getElementById("load-from-selection-btn");
-    if (!proj || !loadBtn) return;
-
-    const MODIFY_EXTS = [".xyz", ".pdb"];
-
-    function refreshLoadBtn(file) {
-      const lower = (file || "").toLowerCase();
-      const ok = MODIFY_EXTS.some((e) => lower.endsWith(e));
-      loadBtn.disabled = !ok;
-      loadBtn.title = ok
-        ? "Load " + file
-        : "Pick a .xyz / .pdb in the Projects sidebar first.";
-    }
-    loadBtn.addEventListener("click", async function () {
-      const payload = await proj.readCurrentFile();
-      if (!payload) return;
-      if (window.molbuilder && window.molbuilder.loadXyzText) {
-        await window.molbuilder.loadXyzText(
-          payload.text, payload.path.split("/").pop(),
-        );
-      }
-    });
-
-    proj.onChange(function (sel) {
-      refreshLoadBtn(sel.file);
-    });
-  });
-</script>
+{# Selection panel (atom-selection card).  Loads its state core +
+   panel JS, then the modify-side bootstrap that fetches the
+   partial, mounts it, and connects to the page's structure
+   loader + 3Dmol viewer.  See lib/selection-panel.js for the
+   public surface and molbuilder/web/blueprints/selection.py for
+   the L2 API + bookkeeping semantics. #}
+<script src="{{ url_for('static', filename='lib/selection/store.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/selection-panel.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/selection/viewer-adapter.js') }}"></script>
+<script src="{{ url_for('static', filename='modify/selection-bootstrap.js') }}"></script>
 </body>
 </html>

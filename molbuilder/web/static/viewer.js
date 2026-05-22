@@ -21,10 +21,7 @@
         pyscf: null,
     };
 
-    const viewer = $3Dmol.createViewer("viewer", {
-        backgroundColor: "white",
-        defaultcolors: $3Dmol.elementColors.Jmol,
-    });
+    const viewer = window.molbuilder.viewer.create("viewer");
 
     // Keep the 3Dmol canvas in sync with the user-resizable container.
     // 3Dmol's WebGL context doesn't auto-track its parent box; we have
@@ -331,6 +328,27 @@
         return 1;
     }
 
+    function clearStructureInfo(reason) {
+        // Wipe the info readout when a load attempt FAILS or when
+        // the user picks a non-loadable file in the sidebar.  Without
+        // this, the readout keeps showing the LAST successful load
+        // ("3 atoms, formula H2O") even after the user picked a
+        // junction.pdb that failed to parse -- a lie to the user
+        // about what's currently loaded.  ``reason`` is the
+        // short string to show in #info-title (e.g. "load failed",
+        // "no structure built").  The atoms/residues/formula slots
+        // go to the em-dash placeholder so the user can't read
+        // numbers off them.
+        const title = $("info-title");
+        const atoms = $("info-atoms");
+        const resi  = $("info-residues");
+        const form  = $("info-formula");
+        if (title) title.textContent = reason || "no structure built";
+        if (atoms) atoms.textContent = "—";   // em-dash
+        if (resi)  resi.textContent  = "—";
+        if (form)  form.textContent  = "—";
+    }
+
     function applyStructureResult(r) {
         state.xyz = r.xyz;
         state.pdb = r.pdb;
@@ -592,6 +610,7 @@
                             .then(x => x.json());
             if (!r.ok) {
                 setStatus("load-status", r.error || "Load failed.", "error");
+                clearStructureInfo("load failed");
                 return;
             }
             applyStructureResult(r);
@@ -600,8 +619,128 @@
                 "ok");
         } catch (e) {
             setStatus("load-status", "Network error: " + e.message, "error");
+            clearStructureInfo("load failed");
         }
     });
+
+    // ----- Sidebar-driven loading (Projects sidebar -> Build) ------- //
+    //
+    // The Projects sidebar publishes its current pick via
+    // ``window.molbuilder.projects.onChange``.  Each onChange fire
+    // brings ``{dir, file}``; when ``file`` ends with ``.xyz`` or
+    // ``.pdb`` we fetch its content via /api/files/read and POST to
+    // /api/build/load (same endpoint the file-upload button uses),
+    // so picking a structure in the sidebar auto-loads it into
+    // Build without making the user re-upload via the OS dialog.
+    //
+    // The previous behaviour was "Build doesn't listen to the
+    // sidebar at all" -- which broke the natural workflow of
+    // "navigate to my project, click my .pdb, see it in Build".
+    // /modify already had this wiring; this brings Build to parity.
+    //
+    // Race safety: every subscribe fire takes a monotonic seq; if a
+    // later pick supersedes this one before the two-step fetch
+    // finishes, we discard the older response.  ``lastLoadedFile``
+    // also debounces against same-file refires (onChange publishes
+    // on every set, not only on diffs).
+    let _sidebarLoadSeq = 0;
+    let _sidebarLastFile = "";
+
+    // Subscribe via the module-init contract (design.md "Module init
+    // contract"): the projects-sidebar module loads as
+    // ``<script type="module">`` (deferred), so it's NOT available
+    // when this classic-script viewer.js's IIFE runs.  We wait for
+    // ``runtime.whenReady("projects")`` to resolve -- replaces the
+    // earlier polling hack with a structural answer.  If the runtime
+    // isn't loaded (legacy / test-isolation path), fall back to a
+    // simple "skip the wiring" so the rest of viewer.js still works.
+    if (window.molbuilder && window.molbuilder.runtime
+        && typeof window.molbuilder.runtime.whenReady === "function") {
+        window.molbuilder.runtime.whenReady("projects").then((_proj) => {
+        _proj.onChange(async (sel) => {
+            const f = (sel && sel.file) ? String(sel.file) : "";
+            const ext = f.toLowerCase().split(".").pop();
+            if (ext !== "xyz" && ext !== "pdb") {
+                // User picked a non-structure file (or no file).  The
+                // load-status line still carries whatever the last
+                // successful load said -- leaving it would lie to the
+                // user ("Loaded 3-atom XYZ from water.xyz" while
+                // they're now looking at junction.log).  Sync BOTH
+                // the status line AND the info readout so the user
+                // sees a consistent state: their pick did NOT load.
+                if (f) {
+                    const filename = f.split("/").pop();
+                    setStatus("load-status",
+                        `${filename} is not a structure file `
+                        + `(Build accepts .xyz / .pdb only).`,
+                        "warn");
+                    // Don't clear info -- the previous valid load is
+                    // still showing in the viewer + the structure
+                    // panel; surfacing a "no structure" placeholder
+                    // would over-correct.  The status line tells the
+                    // user this pick wasn't a load attempt.
+                } else {
+                    setStatus("load-status", "");
+                }
+                _sidebarLastFile = f;
+                return;
+            }
+            if (f === _sidebarLastFile) return;
+            _sidebarLastFile = f;
+            const mySeq = ++_sidebarLoadSeq;
+            const filename = f.split("/").pop();
+            setStatus("load-status", `Loading ${filename}…`);
+            let text;
+            try {
+                const rr = await fetch(
+                    "/api/files/read?path=" + encodeURIComponent(f)
+                );
+                const rb = await rr.json();
+                if (!rr.ok || !rb.ok) {
+                    setStatus("load-status",
+                        rb.error || "Read failed.", "error");
+                    clearStructureInfo("load failed: " + filename);
+                    return;
+                }
+                text = rb.text;
+            } catch (e) {
+                setStatus("load-status",
+                    "Network error reading " + filename + ": " + e.message,
+                    "error");
+                clearStructureInfo("load failed: " + filename);
+                return;
+            }
+            if (mySeq !== _sidebarLoadSeq) return;     // superseded
+            try {
+                const r = await fetch("/api/build/load", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        text: text,
+                        filename: filename,
+                        format: ext,
+                    }),
+                }).then((x) => x.json());
+                if (mySeq !== _sidebarLoadSeq) return;
+                if (!r.ok) {
+                    setStatus("load-status",
+                        r.error || "Load failed.", "error");
+                    clearStructureInfo("load failed: " + filename);
+                    return;
+                }
+                applyStructureResult(r);
+                setStatus("load-status",
+                    `Loaded ${r.n_atoms}-atom ${ext.toUpperCase()} `
+                    + `from ${filename}.`, "ok");
+            } catch (e) {
+                if (mySeq !== _sidebarLoadSeq) return;
+                setStatus("load-status",
+                    "Network error: " + e.message, "error");
+                clearStructureInfo("load failed: " + filename);
+            }
+        });
+        });   // close runtime.whenReady("projects").then(...)
+    }
 
     // formula() lives in static/lib/mol-format.js; loaded by the
     // template above.  Local alias keeps callers below readable.
@@ -809,9 +948,9 @@
         //      dataclass field rendered by the schema; we layer the
         //      stage-number on top of the collected params.
         if (!formSchemas.siesta) return {};
-        const container = $("siesta-form-container");
-        const params = window.molbuilder.formSchema.collectForm(
-            container, formSchemas.siesta
+        const fs = (window.molbuilder || {}).formSchema;
+        const params = fs.collectForm(
+            $("siesta-form-container"), formSchemas.siesta
         );
         params.system_name = params.system_label;
         params.stage       = stageNumberFromPreset();
@@ -883,9 +1022,9 @@
         //      the dataclass alone; the server's auto-detect path
         //      runs only when no charge key is present).
         if (!formSchemas.pyscf) return {};
-        const container = $("pyscf-form-container");
-        const params = window.molbuilder.formSchema.collectForm(
-            container, formSchemas.pyscf
+        const fs = (window.molbuilder || {}).formSchema;
+        const params = fs.collectForm(
+            $("pyscf-form-container"), formSchemas.pyscf
         );
         params.stage = stageNumberFromPreset();
         if (params.dispersion === "none") params.dispersion = null;
@@ -943,34 +1082,11 @@
         sessionStorage.setItem("builder-form", JSON.stringify(saved));
     }
 
-    // Map legacy (pre-schema-driven cutover) input IDs to the
-    // current schema-derived ones.  Users with sessionStorage from
-    // before the 2026-05-11 cutover get one-shot migration of the
-    // few fields whose IDs changed: basis_size went from p-basis ->
-    // p-basis-size, and the kgrid sub-inputs went from p-kx/p-ky/p-kz
-    // to p-k-x/p-k-y/p-k-z.  Add an entry here if a future rename
-    // would otherwise drop a field's value on first reload.
-    const LEGACY_ID_MIGRATION = {
-        "p-basis": "p-basis-size",
-        "p-kx":    "p-k-x",
-        "p-ky":    "p-k-y",
-        "p-kz":    "p-k-z",
-    };
-
     function restoreFormState() {
         let saved;
         try { saved = JSON.parse(sessionStorage.getItem("builder-form") || "null"); }
         catch (_) { return; }
         if (!saved) return;
-        // Apply legacy-key migration: copy values stored under the
-        // old id to the new one BEFORE the per-id restore loop.
-        // Don't overwrite a value already saved under the new id
-        // (the user has clearly used the new form since the cutover).
-        for (const [oldId, newId] of Object.entries(LEGACY_ID_MIGRATION)) {
-            if (oldId in saved && !(newId in saved)) {
-                saved[newId] = saved[oldId];
-            }
-        }
         getFormIds().forEach(id => {
             const el = $(id);
             if (!el || !(id in saved)) return;

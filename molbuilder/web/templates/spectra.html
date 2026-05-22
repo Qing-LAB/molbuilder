@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <title>molbuilder &mdash; spectra (Raman / IR)</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-schema.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/projects-sidebar.css') }}">
@@ -15,15 +16,19 @@
      plotly install. -->
 <script src="{{ url_for('vendor_plotly_js') }}"></script>
 <!-- 3Dmol.js: used by the per-mode eigenvector animation in the
-     Results section.  Loaded from cdnjs (same as the Build / Watch
-     tabs); local-serving 3Dmol is a follow-up since it isn't
-     bundled inside any Python package we depend on. -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js"></script>
+     Results section.  Self-hosted under static/vendor/ -- the CDN
+     reference was dropped in the internet-deployment hardening round
+     (CSP no longer allows third-party script sources).  See
+     molbuilder/web/static/vendor/README.md for version + citation. -->
+<script src="{{ url_for('static', filename='vendor/3Dmol-min.js') }}"></script>
+{# molbuilder-runtime.js MUST load before any other molbuilder script.
+   Defines window.molbuilder.runtime (register/whenReady).  See
+   design.md "Module init contract". #}
+<script src="{{ url_for('static', filename='lib/molbuilder-runtime.js') }}"></script>
 </head>
 <body class="has-projects-sidebar">
 
 {% set active_tab = "spectra" %}
-{% set page_tagline = "Post-relaxation harmonic vibrational analysis &mdash; frequencies, Raman activities, and per-mode electronic structure for transport preparation." %}
 {% include "_app_header.html" %}
 {% include "_projects_sidebar.html" %}
 
@@ -39,10 +44,10 @@
       <header class="section-header">
         <h2 class="step-num"><span class="step-dot">1</span> Structure</h2>
       </header>
-      <label class="field-block" for="xyz-text">
-        <span class="field-label">XYZ coordinates</span>
-        <textarea id="xyz-text" rows="6"
-                  placeholder="Paste an XYZ block, or pick a file in the Projects sidebar &rarr; click the &lsquo;Use this file&rsquo; banner above the Load results section."></textarea>
+      <label class="field-block" for="structure-text">
+        <span class="field-label">Structure coordinates (XYZ or PDB)</span>
+        <textarea id="structure-text" rows="6"
+                  placeholder="Paste an XYZ or PDB block, or pick a .xyz/.pdb file in the Projects sidebar."></textarea>
       </label>
       <span id="xyz-status" class="status"></span>
     </div>
@@ -150,185 +155,23 @@
            aria-label="Generated spectra.py preview"></pre>
     </div>
 
-    <!-- ── Load / Watch results ─────────────────── -->
-    <div class="card-section">
-      <header class="section-header">
-        <h2>Load results</h2>
-        <p class="section-hint">
-          Point at a <code>&lt;job&gt;.spectra.json</code> file produced
-          by an earlier run.  Either pick it in the
-          <strong>Projects</strong> sidebar on the left and click
-          &ldquo;Use this file&rdquo; in the banner below, or paste
-          the absolute path into the input.  &ldquo;Watch&rdquo; polls
-          every 2&nbsp;s and auto-stops when all configured phases
-          finish.
-        </p>
-      </header>
+    {#- Inspect-side intentionally absent from /spectra (step 2.5
+        of the tab-merge lift, completed 2026-05-18).  The same
+        controls (load-results banner, results summary + chart,
+        modes table, mode-eigenvector viewer, ES bar diagram) now
+        live exclusively in ``_spectra_inspector.html`` and are
+        served by GET /partials/spectra-inspector to the /results
+        tab's inspector registry.
 
-      <!-- Primary: load (or watch) by server-side path.  This
-           is what most users want -- molbuilder typically runs
-           on the same machine as the spectra.py job, so reading
-           the file directly is faster + keeps the user from
-           re-uploading after every phase write. -->
-      <label class="field-block" for="watch-path">
-        <span class="field-label">Path on this server</span>
-        <input id="watch-path" type="text"
-               placeholder="/abs/path/to/job.spectra.json">
-      </label>
-      <div class="inline-row">
-        <button id="load-path-btn"  type="button">Load once</button>
-        <button id="watch-btn"      type="button">Start watching</button>
-        <button id="watch-stop-btn" type="button" disabled>Stop</button>
-        <button id="load-from-selection-btn" type="button"
-                title="Reads window.molbuilder.projects.getCurrentFile()"
-                disabled>Load from current selection</button>
-        <span id="watch-status" class="status"></span>
-      </div>
-      <p id="workspace-indicator" class="hint workspace-indicator">
-        Workspace:
-        <code class="workspace-path">(no directory selected)</code>
-      </p>
+        Why generate-only:  /spectra is the "I want to design a
+        spectra calculation" surface; /results is the "I want to
+        look at the output of a calculation" surface.  Conflating
+        both on /spectra meant we shipped two ways to inspect the
+        same file, with the same code path -- pure UX debt.
 
-      <!-- Phase-progress chips: three dots that fill in as each
-           computational phase (Frequencies, Raman, Per-mode ES)
-           lands.  Hidden until first load / watch tick. -->
-      <div id="phase-indicator" class="phase-indicator" hidden
-           aria-label="Run-phase progress">
-        <span class="phase">
-          <span class="phase-label">Frequencies</span>
-          <span class="phase-dot" data-phase="frequencies"></span>
-        </span>
-        <span class="phase">
-          <span class="phase-label">Raman</span>
-          <span class="phase-dot" data-phase="raman"></span>
-        </span>
-        <span class="phase">
-          <span class="phase-label">Per-mode ES</span>
-          <span class="phase-dot" data-phase="es"></span>
-        </span>
-      </div>
-
-    </div>
-
-    <!-- ── Results panel (only visible after load) ── -->
-    <div id="results-summary" class="card-section results-summary" hidden>
-      <header class="section-header">
-        <h2>Results</h2>
-      </header>
-      <dl id="results-summary-list" class="results-meta"></dl>
-
-      <h3 class="subsection-h">Spectrum</h3>
-      <!-- Spectrum-controls row: Lorentzian-broadening FWHM input.
-           Sits above the chart so the user can tune the broadening
-           while looking at the line shape; defaults to a moderate
-           20 cm⁻¹ that suits typical Raman line widths. -->
-      <div class="spectrum-controls">
-        <label class="inline-label">
-          <span>Lorentzian FWHM</span>
-          <input id="broadening-fwhm" type="number"
-                 min="1" max="500" step="1" value="20">
-          <span class="unit">cm⁻¹</span>
-        </label>
-        <span class="hint">
-          Sum-of-Lorentzians overlay on the sticks.  Increase to
-          smooth narrow lines into the broader envelope expected
-          in solution / room-temperature Raman; decrease for
-          sharper gas-phase spectra.  Set to 0 to hide the overlay.
-        </span>
-      </div>
-      <!-- Plotly: stem-style frequency vs Raman activity, optionally
-           with a broadened envelope overlay.  Click a stick to
-           select the mode (synchronises with the table below and
-           the ES panel). -->
-      <div id="spectrum-chart" class="spectrum-chart"
-           aria-label="Raman spectrum (frequency vs activity)"></div>
-
-      <h3 class="subsection-h">Modes</h3>
-      <div class="modes-table-controls">
-        <input id="modes-filter" type="text"
-               placeholder="Filter (matches any visible column)"
-               aria-controls="modes-table">
-        <button id="modes-csv-btn" type="button">Export CSV</button>
-        <span id="modes-filter-count" class="status muted"></span>
-      </div>
-      <div class="modes-table-wrap">
-        <table id="modes-table" class="modes-table" tabindex="0"
-               aria-label="Vibrational modes (click row to select)">
-          <caption class="sr-only">
-            Vibrational modes table.  Sortable by column header
-            click.  Row click selects the mode and updates the
-            electronic-structure panel below.
-          </caption>
-          <thead>
-            <tr id="modes-thead-row">
-              <th data-col="index_1based"          data-numeric="1">#</th>
-              <th data-col="frequency_cm1"         data-numeric="1">ω (cm⁻¹)</th>
-              <th data-col="raman_activity_a4_amu" data-numeric="1">Raman (Å⁴/amu)</th>
-              <th data-col="has_imag">imag?</th>
-              <th data-col="has_es">ES?</th>
-              <th data-col="homo_eq_ev"   data-numeric="1" class="es-col">HOMO (eV)</th>
-              <th data-col="lumo_eq_ev"   data-numeric="1" class="es-col">LUMO (eV)</th>
-              <th data-col="gap_eq_ev"    data-numeric="1" class="es-col">Gap (eV)</th>
-              <th data-col="dgap_max_mev" data-numeric="1" class="es-col">ΔGap max (meV)</th>
-            </tr>
-          </thead>
-          <tbody id="modes-tbody"></tbody>
-        </table>
-      </div>
-
-      <!-- 3D structure + per-mode animation.  Visible whenever a
-           mode is selected AND the geometry is available (either
-           from the loaded spectra.json's equilibrium.elements/
-           positions_ang or from the XYZ pasted in step 1).  -->
-      <div id="mode-viewer-wrap" class="mode-viewer-wrap" hidden>
-        <header class="section-header subsection-h">
-          <h3>Mode visualisation</h3>
-          <span id="viewer-status" class="status muted"></span>
-        </header>
-        <div class="viewer-controls">
-          <label class="inline-label">
-            <span>Amplitude</span>
-            <input id="anim-amplitude" type="range"
-                   min="0.05" max="1.0" step="0.05" value="0.3">
-            <span id="anim-amplitude-val" class="unit">0.30 Å</span>
-          </label>
-          <label class="inline-label">
-            <span>Speed</span>
-            <input id="anim-speed" type="range"
-                   min="0.2" max="3.0" step="0.1" value="1.0">
-            <span id="anim-speed-val" class="unit">1.0×</span>
-          </label>
-          <button id="anim-toggle" type="button">Pause</button>
-        </div>
-        <div id="mode-viewer" class="mode-viewer"
-             aria-label="3D structure with vibrational mode animation">
-        </div>
-        <p class="viewer-hint hint">
-          The mode <em>shape</em> (which atoms move, in what direction,
-          relative amplitudes) is faithful from the diagonalisation.
-          The <em>animation amplitude</em> is a visualisation knob,
-          not a physical quantity -- thermal RMS amplitudes are
-          typically &lt;0.05 Å and too small to see, so this slider
-          exaggerates the motion the way Gaussian / Jmol / Avogadro
-          do.  Fixed atoms (greyed out) stay still.
-        </p>
-      </div>
-
-      <!-- ES panel sits inside results-summary so it shares the
-           hidden-until-loaded state.  Internally toggles whether
-           the bar diagram or a "no ES for this mode" placeholder
-           is rendered. -->
-      <div id="es-panel" class="es-panel" hidden>
-        <header class="section-header subsection-h">
-          <h3>Electronic structure (mode <span id="es-mode-idx">?</span>)</h3>
-          <span id="es-mode-freq" class="status muted"></span>
-        </header>
-        <div id="es-bar-diagram" class="es-bar-diagram"
-             aria-label="MO energies at -A / 0 / +A for the selected mode">
-        </div>
-        <dl id="es-summary" class="es-summary"></dl>
-      </div>
-    </div>
+        How to inspect a ``.spectra.json``: pick it in the Projects
+        sidebar; /results auto-dispatches to the spectra inspector.
+    -#}
   </section><!-- /.card-output -->
 </main>
 
@@ -346,51 +189,18 @@
   <article id="methods-modal-body" class="methods-modal-body"></article>
 </dialog>
 
+<script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/mol-viewer.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/xyz-io.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
+{# Shared inspector core -- exposes window.molbuilder.spectraInspector
+   .mount, which spectra/viewer.js calls below for the /spectra page
+   and lib/inspectors/spectra.js calls on /results.  Script-order
+   load-bearing: this MUST precede spectra/viewer.js so the bootstrap
+   finds the mount API. #}
+<script src="{{ url_for('static', filename='lib/spectra/core.js') }}"></script>
 <script src="{{ url_for('static', filename='spectra/viewer.js') }}"></script>
-<script>
-  // Inquire-model wiring (Proposal D).  The sidebar publishes
-  // current_dir + current_file; we pull when we need them.
-  document.addEventListener("DOMContentLoaded", function () {
-    const proj    = (window.molbuilder || {}).projects;
-    const loadBtn = document.getElementById("load-from-selection-btn");
-    const wsPath  = document.querySelector("#workspace-indicator .workspace-path");
-    const pathInp = document.getElementById("watch-path");
-    const loadPathBtn = document.getElementById("load-path-btn");
-    if (!proj) return;   // sidebar didn't initialise; tab still works standalone
-
-    // The "Load from current selection" button: enabled iff the
-    // current selection is a .spectra.json; click feeds it through
-    // the existing path-based loader.
-    function refreshLoadBtn(file) {
-      const ok = file && file.toLowerCase().endsWith(".spectra.json");
-      loadBtn.disabled = !ok;
-      loadBtn.title = ok
-        ? "Load " + file
-        : "Pick a .spectra.json in the Projects sidebar first.";
-    }
-    loadBtn.addEventListener("click", function () {
-      const file = proj.getCurrentFile();
-      if (!file) return;
-      pathInp.value = file;
-      loadPathBtn.click();
-    });
-
-    // Workspace indicator: shows the sidebar's current dir, relative
-    // to projects/.  Updates live via the projects.onChange API.
-    function refreshWorkspace(dir) {
-      const rel = dir ? proj.relativeToProjects(dir) : "";
-      wsPath.textContent = rel || "(no directory selected)";
-      wsPath.title = dir || "";
-    }
-
-    proj.onChange(function (sel) {
-      refreshLoadBtn(sel.file);
-      refreshWorkspace(sel.dir);
-    });
-  });
-</script>
 
 </body>
 </html>

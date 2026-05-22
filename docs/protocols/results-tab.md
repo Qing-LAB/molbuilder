@@ -1,0 +1,304 @@
+# Spec — `/results` tab (post-merge unified inspector)
+
+**Status**: canonical spec for task #58 (signed off 2026-05-16).
+See § 2 for the locked-in decisions.
+
+**Module(s) the spec affects** (after merge):
+
+  * `molbuilder/web/templates/results.html`           — new
+  * `molbuilder/web/static/results/viewer.js`         — new (or split into modules)
+  * `molbuilder/web/templates/spectra.html`           — shrinks (Inspect panel moves out)
+  * `molbuilder/web/templates/watch.html`             — becomes legacy-only
+  * `molbuilder/web/blueprints/{watch,spectra}.py`    — endpoints reused, no new HTTP routes
+  * `tests/test_pages_no_js_errors.py`                — add `/results` to the route list
+
+---
+
+## 1. Why this tab exists
+
+Today the user has two tabs for "look at what a finished computation
+produced":
+
+  * **Watch** — live + post-mortem inspection of a `.molwatch.log`
+    trajectory (frames, energies, SCF history, max-force plot).
+  * **Spectra** — generates AND inspects `.spectra.json` (config form
+    + script generator + results viewer + 3D eigenmode animation +
+    issues panel + CSV export).
+
+The user-facing workflow ("I have a finished run; open it") doesn't
+care which kind of run produced it.  The two tabs do file-type
+dispatch the user has to do mentally ("this is a trajectory; click
+Watch.  this is a spectrum; click Spectra.").  The merge makes the
+sidebar's existing file-selection the dispatch mechanism: the user
+clicks a file in the projects sidebar, `/results` shows the right
+inspector for that file type.
+
+A side effect of this merge is that **Spectra becomes generate-only**:
+form + script-generator + Save-to-workspace, nothing else.  Inspection
+moves to `/results`.
+
+---
+
+## 2. Locked-in decisions
+
+### 2.1 Route topology
+
+**Decision: new top-level `/results`; keep `/watch` working but
+remove from the primary tab nav.**
+
+Considered alternatives (rejected):
+* `/results` absorbs `/watch` via 301 — would break existing
+  bookmarks and external links to `/watch` during the cutover.
+* Three-way Spectra subtabs (`Generate` / `Trajectory` / `Spectra
+  results`) — forces every trajectory-inspection workflow through
+  the Spectra tab, which is the wrong mental model for non-spectra
+  trajectories.
+
+Future release (not this task) will 301 `/watch` → `/results` and
+delete the legacy templates.
+
+### 2.2 File-type dispatch
+
+`/results` opens whatever file the sidebar has selected.  Dispatch
+table:
+
+| Selected file | Inspector | Notes |
+|---|---|---|
+| `*.molwatch.log` | trajectory view | the current Watch UI, moved into the results tab |
+| `*.spectra.json` | spectra results view | the current Spectra Inspect panel, moved into the results tab |
+| `*.fdf.out`, `*.log` (SIESTA) | (later) | scope creep; defer |
+| `*.xyz` | "structure preview" with `Open in Modify` button | thin; uses existing 3Dmol viewer |
+| `*.pdb` | same as `*.xyz` | |
+| `*.fdf`, `*.py` (inputs) | source listing + "Open in Build" CTA | one-screen; no editing |
+| anything else | "No inspector for this file type" with `Preview` (text view) fallback | parallels the existing sidebar preview |
+
+**Out of scope for v1**: comparing two runs side-by-side, multi-file
+selection, anything that needs simultaneously-loaded trajectories.
+
+### 2.3 What Spectra keeps vs sheds
+
+After the merge, Spectra is **generate-only**:
+
+| Spectra surface today | After merge |
+|---|---|
+| Parameter form (`spectra-form-container`) | KEEP |
+| Methods modal | KEEP |
+| "Generate script" button + script preview / download / copy | KEEP |
+| "Save to workspace" | KEEP |
+| Issues panel | KEEP (script-side issues only — runtime issues move to /results) |
+| Live polling for `.spectra.json` updates | MOVE to /results |
+| Mode-eigenvector 3D animation viewer | MOVE to /results |
+| Per-mode CSV export | MOVE to /results |
+| Equilibrium-geometry XYZ download | MOVE to /results |
+
+Spectra's left-side workspace selection ("Load from current
+selection") stops being a load-into-this-tab operation; it becomes a
+"jump to /results with this file" shortcut (or just disappears,
+since the sidebar selection is already global state).
+
+### 2.4 Handoff direction
+
+| From | To today | After merge |
+|---|---|---|
+| Build "Send to Watch" | `/watch?path=...` | **dropped** (no equivalent — user opens /results via sidebar) |
+| Build "Send to Modify" | `/modify` (sessionStorage) | KEEP unchanged |
+| Modify "Send to Build" | `/` (sessionStorage) | KEEP unchanged |
+| Spectra "Load from current selection" → Inspect | within-tab | becomes "open in /results" (since Spectra no longer inspects) |
+
+Net effect: no tab has an explicit "Send to /results" button.  The
+projects sidebar IS the path into /results; clicking a file there
+in /results context loads it.
+
+### 2.5 `/watch` legacy lifetime
+
+Leave the `/watch` route + templates + JS alone for one release
+cycle.  Remove from the primary tab nav at merge time.  In the
+next release, redirect `/watch` to `/results` and delete the
+files.  Timeline documented in `docs/tabs/watch.md`.
+
+### 2.6 Sidebar integration
+
+`/results` uses the same `_projects_sidebar.html` partial every
+other tab does.  The sidebar already publishes
+`molbuilder.current_file`; `/results` reacts to changes (via the
+existing `projects.onChange` subscriber API) by re-rendering the
+inspector for the new file.
+
+---
+
+## 3. Structural plan (assumes the recommendations above)
+
+### 3.1 New files
+
+Implementation pivoted from "four pre-rendered panels with show/hide"
+to a SINGLE `#inspector-host` element whose contents are exclusively
+owned by the active inspector — see the Inspector Registry
+foundation (task #78).  The registry's `pick(file)` returns the
+matching inspector module; the dispatch in `results/viewer.js` calls
+`previous.dispose()` then `next.mount(host, file, ctx)` on every
+sidebar selection change.  Each inspector creates its own DOM inside
+the host; no template-side panel ids are required.
+
+* `molbuilder/web/templates/results.html` — page shell + sidebar
+  include + one `<section id="inspector-host">` mount point.
+* `molbuilder/web/static/lib/inspectors/registry.js` — the
+  Inspector Registry (match → pick → mount → dispose contract).
+* `molbuilder/web/static/lib/inspectors/{source,structure,trajectory,spectra}.js`
+  — one module per file-type, each implementing the registry's
+  Inspector interface.  Source and structure are pure JS (build
+  DOM via createElement).  Trajectory delegates to a shared core
+  module (`lib/trajectory/core.js`), see § 3.2.
+* `molbuilder/web/static/results/viewer.js` — dispatch + glue.
+  Loads on `DOMContentLoaded`; subscribes to
+  `window.molbuilder.projects.onChange`; calls
+  `registry.pick(file)` and `mount`/`dispose` accordingly.
+* `molbuilder/web/static/results/style.css`
+* `molbuilder/web/blueprints/results.py` — `GET /results` + `GET
+  /partials/trajectory-inspector` (server-rendered partial HTML
+  consumed by the trajectory inspector wrapper).  All other data
+  comes via existing `/api/watch/*` + `/api/spectra/*` +
+  `/api/files/*` endpoints.
+
+### 3.2 Moved JS — three-layer modularization
+
+Trajectory inspector (step 1, done):
+  * `static/lib/trajectory/core.js`  — THE shared trajectory-
+    inspector implementation.  Exports
+    `window.molbuilder.trajectoryInspector.mount(host, opts)`.
+    Self-contained (no auto-bootstrap on page load); safe to
+    include on any page.  Used by both consumers below.
+  * `static/watch/viewer.js`         — `/watch` page bootstrap
+    only.  Calls `trajectoryInspector.mount(document)` on
+    `DOMContentLoaded` so the inspector mounts against the page's
+    loader-bar elements.
+  * `static/lib/inspectors/trajectory.js` — registry adapter.
+    Fetches the inspector partial from
+    `GET /partials/trajectory-inspector`, assigns to the host's
+    innerHTML (trusted server render), calls
+    `trajectoryInspector.mount(host, {file})`.
+
+Spectra inspector (step 2, DONE):
+  * Same three-layer pattern as trajectory.  The shared
+    `static/lib/spectra/core.js` carries the entire inspector body
+    (form, modes table, Plotly chart, 3Dmol mode-animation viewer,
+    live-watch poller) wrapped in `mountInspector(rootEl, opts)`.
+    `static/spectra/viewer.js` is a 47-line bootstrap that calls
+    `window.molbuilder.spectraInspector.mount(document)` on
+    DOMContentLoaded; `static/lib/inspectors/spectra.js` is the
+    registry adapter that fetches `_spectra_inspector.html` from
+    `GET /partials/spectra-inspector` and mounts the core into the
+    host element.
+  * `init()` inside the core gates on
+    `hasGenerateSide = Boolean(els.formContainer)` and
+    `hasInspectSide = Boolean(els.watchPath)` so the same module
+    mounts cleanly on either consumer: /spectra exposes the
+    generate-side form (form rendering, render-script flow, methods
+    preview) and the inspect side is absent; /results' inspector
+    host has the inspect side only.
+
+The shared-core pattern (rather than a thin wrapper that re-exports
+the legacy module) means:
+
+* Dependency direction reads correctly: inspectors → trajectory/,
+  not inspectors → watch/.
+* A bug fix in `lib/trajectory/core.js` benefits both consumers
+  immediately; no fork.
+* The `/watch` page bootstrap can't accidentally regress the
+  inspector — it lives in its own file with a tiny surface.
+
+### 3.3 Endpoints unchanged
+
+No new HTTP routes.  `/results` reuses:
+
+  * `/api/watch/load` + `/api/watch/data` (trajectory loading)
+  * `/api/spectra/*` (script generation lives here too — the
+    Spectra-tab form posts to the same endpoints)
+  * `/api/files/*` (file reads for source / structure previews)
+
+### 3.4 Template + nav
+
+  * `_app_header.html` (or wherever the tab nav lives) — add
+    `Results` link; remove `Watch` from the primary nav (but keep
+    it routable).
+  * `_projects_sidebar.html` — no changes; the sidebar is the
+    dispatch mechanism.
+
+### 3.5 Tests
+
+  * `tests/test_pages_no_js_errors.py` — add `/results` to the
+    parametrized route list; add a `results-form-container`-style
+    ready selector.
+  * `tests/test_results_dispatch.py` (new) — for each file
+    extension in the dispatch table, assert the right inspector
+    container becomes visible (Playwright E2E, gated on the same
+    importorskip as the existing E2E tests).
+  * Existing Spectra blueprint + Watch blueprint tests UNCHANGED —
+    the endpoints don't move; only the UI does.
+
+---
+
+## 4. Migration order
+
+1. **Extract trajectory inspector** (DONE) — `lib/trajectory/core.js`
+   shared module; `static/watch/viewer.js` shrunk to /watch
+   bootstrap only; `lib/inspectors/trajectory.js` mounts via the
+   shared core after fetching `_trajectory_inspector.html` from
+   the new `/partials/trajectory-inspector` endpoint.
+2. **Extract spectra inspector** (DONE 2026-05-18; sub-stages
+   2.1..2.6 mirror the trajectory lift):
+   * 2.1 (DONE) — extract inspect-side DOM into
+     `_spectra_inspector.html`; spectra.html includes it; add
+     `GET /partials/spectra-inspector` endpoint with the same
+     wire contract as the trajectory partial.
+   * 2.2 (DONE) — extract inspect-side JS from
+     `static/spectra/viewer.js` into `static/lib/spectra/core.js`,
+     wrapped in `mountInspector(rootEl, opts) -> handle`.  Returns
+     `{dispose()}` so the registry can tear down timers + Plotly
+     listeners between inspector swaps.
+   * 2.3 (DONE) — load `lib/spectra/core.js` on /results (script
+     tag in results.html, before the inspector adapter).
+   * 2.4 (DONE) — `lib/inspectors/spectra.js` rewritten as the real
+     adapter (fetches the partial, mounts the core, chains dispose).
+   * 2.5 (DONE) — `{% include %}` dropped from `spectra.html`;
+     /spectra is now generate-only.  `static/spectra/page.js`
+     deleted (its load-from-selection + workspace-indicator wiring
+     concerned ids that are no longer on /spectra); `viewer.js`
+     reduced to a thin bootstrap.
+   * 2.6 (DONE) — design.md changelog entry; this file updated;
+     tests/spectra/test_blueprint.py id-pins repointed at the
+     partial endpoint + the core module (44 tests pass).
+3. Add `results.py` blueprint + `results.html` template + `results/`
+   static dir (DONE).
+4. Wire dispatch: subscribe to `projects.onChange`, route file
+   extension to inspector, mount the inspector module (DONE for
+   trajectory; pending for spectra).
+5. Remove inspect-side UI from Spectra tab (form-only).
+6. Remove `Watch` from primary nav; keep route working.
+7. Add E2E dispatch tests + extend `tests/test_pages_no_js_errors.py`.
+8. Update `docs/tabs/`: add `results.md`, mark `watch.md` as
+   legacy, mark `spectra/spec.md` as form-only.
+
+Each step is independently shippable — if step 4 breaks, the
+inspectors still work via legacy `/watch` and `/spectra`.
+
+---
+
+## 5. What this design does NOT include
+
+* No multi-file comparison ("diff two runs"). Bigger feature; later.
+* No re-running a script from `/results`. The user goes back to
+  Spectra / Build / cli to re-run.
+* No new file format support beyond what /watch and /spectra already
+  read.  Adding `.fdf.out` parsing is its own task.
+* No write operations from `/results` itself (other than the
+  existing CSV / XYZ export buttons that move with the inspectors).
+
+---
+
+## 6. References
+
+* Sidebar selection contract: [`./selection.md`](./selection.md)
+* Job-layout: [`./job-layout.md`](./job-layout.md)
+* Spectra spec (will shrink to generate-only after the merge):
+  [`../tabs/spectra/spec.md`](../tabs/spectra/spec.md)
+* Watch spec (will move to legacy status): [`../tabs/watch.md`](../tabs/watch.md)

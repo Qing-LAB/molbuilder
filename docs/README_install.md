@@ -15,7 +15,8 @@ cd molbuilder
 
 conda create -n molbuilder -c conda-forge -y python=3.12 pip \
     numpy ase sisl rdkit openbabel biopython \
-    flask click plotly pytest pyflakes
+    flask click plotly authlib python-cas \
+    pytest pyflakes
 conda run -n molbuilder python -m pip install PeptideBuilder pubchempy
 
 conda activate molbuilder
@@ -23,6 +24,14 @@ python -m molbuilder serve
 ```
 
 Open <http://127.0.0.1:5000>.
+
+`authlib` and `python-cas` are only loaded when `molbuilder.json`
+has an `auth` section configured.  `authlib` powers the OAuth/OIDC
+backends (Google, GitHub, Microsoft, ORCID); `python-cas` powers
+the Apereo CAS backend (e.g. for ASURITE sign-in).  Installing them
+upfront means a later flip to auth-on is one config edit, not a
+conda re-install.  See [`docs/deployment.md`](deployment.md) § 2a
+for the per-backend setup walkthroughs.
 
 Two small things in the snippet above worth noting:
 
@@ -114,9 +123,23 @@ conda create -n molbuilder -c conda-forge -y python=3.12 pip \
     numpy ase sisl \
     rdkit openbabel biopython \
     flask click plotly \
+    authlib python-cas \
     pytest pyflakes
 conda run -n molbuilder python -m pip install PeptideBuilder pubchempy
 ```
+
+`authlib` and `python-cas` are the optional sign-in dependencies:
+
+- `authlib` is loaded only when ``molbuilder.json`` has an OAuth
+  provider configured (`kind: google | github | microsoft | orcid`).
+- `python-cas` is loaded only when an Apereo CAS provider is
+  configured (`kind: cas` -- e.g. for ASURITE sign-in).
+
+Both are absent from a no-auth localhost deployment.  Pre-installing
+them means a later switch from no-auth → any sign-in mode is a
+single ``molbuilder.json`` edit, not an env modification.  See
+[`deployment.md`](deployment.md) for the per-backend setup
+walkthroughs.
 
 Run molbuilder *from* this env — **do NOT `pip install -e .`**; invoke
 the package directly from the repo:

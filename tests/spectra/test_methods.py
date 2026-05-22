@@ -150,9 +150,10 @@ class TestRenderMethodsMdPreRun:
         assert "Galperin2007" in md
         assert "Frederiksen2007" in md
         assert "Mills1972" in md
-        # Default amplitude 0.10 Å should appear.
-        assert "0.1" in md
-        assert "A = 0.1" in md or "A=0.1" in md or "0.1 Å" in md
+        # Default amplitude 0.02 Å should appear (lowered from 0.10
+        # to 0.02 on 2026-05-19 -- see SpectraConfig docstring).
+        assert "0.02" in md
+        assert "A = 0.02" in md or "A=0.02" in md or "0.02 Å" in md
 
     def test_selector_top_n_named_in_prose(self):
         from molbuilder.spectra import render_methods_md
@@ -377,14 +378,14 @@ class TestRenderMethodsMdWithStruct:
         # 3*5 - 6 = 9 modes for all-free.
         assert "9 non-translational" in md or "9 " in md
 
-    def test_struct_with_fixed_elements_counts_correctly(self):
-        """Fixed-by-element subtracts the right atoms from n_free."""
+    def test_struct_with_frozen_elements_counts_correctly(self):
+        """Freeze-by-element subtracts the right atoms from n_free."""
         from molbuilder.spectra import render_methods_md
 
         class _Atom:
             def __init__(self, sym):
                 self.symbol = sym
-        # 4 Au + 3 organic = 7 atoms; fix Au -> n_free=3.
+        # 4 Au + 3 organic = 7 atoms; freeze Au -> n_free=3.
         atoms = ([_Atom("Au")] * 4 + [_Atom("C"), _Atom("H"), _Atom("H")])
 
         class _S:
@@ -392,11 +393,11 @@ class TestRenderMethodsMdWithStruct:
         struct = _S()
         struct.atoms = atoms
 
-        cfg = SpectraConfig(fixed_elements=["Au"])
+        cfg = SpectraConfig(frozen_elements=["Au"])
         md = render_methods_md(cfg, struct=struct)
-        # 3 free, 4 fixed.
+        # 3 free, 4 frozen.
         assert "3 free" in md
-        assert "4 held fixed" in md
+        assert "4 frozen" in md
 
     def test_real_structure_dataclass_works(self):
         """A real molbuilder.Structure (elements as List[str], not
@@ -415,8 +416,8 @@ class TestRenderMethodsMdWithStruct:
         # 3*3 - 6 = 3 modes for water.
         assert "3 non-translational" in md
 
-    def test_real_structure_with_fixed_elements(self):
-        """Real Structure + fixed_elements=['Au'] -> Au atoms
+    def test_real_structure_with_frozen_elements(self):
+        """Real Structure + frozen_elements=['Au'] -> Au atoms
         removed from the free count."""
         from molbuilder.spectra import render_methods_md
         from molbuilder.structure import Structure
@@ -427,9 +428,9 @@ class TestRenderMethodsMdWithStruct:
                                   [4., 0., 0.],
                                   [5., 0., 0.]]),
         )
-        cfg = SpectraConfig(fixed_elements=["Au"])
+        cfg = SpectraConfig(frozen_elements=["Au"])
         md = render_methods_md(cfg, struct=struct)
         assert "2 free" in md
-        assert "2 held fixed" in md
+        assert "2 frozen" in md
 
 

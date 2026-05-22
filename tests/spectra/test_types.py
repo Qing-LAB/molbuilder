@@ -178,7 +178,7 @@ class TestSpectraResults:
             structure_hash             = "sha256:abc",
             n_atoms_total              = 3,
             free_atom_idxs             = [0, 1, 2],
-            fixed_atom_idxs            = [],
+            frozen_atom_idxs            = [],
             equilibrium_scf_eh         = -76.41,
             equilibrium_mo_energies_eh = np.array([-1.0, -0.5, -0.2, 0.1]),
             equilibrium_homo_idx       = 2,
@@ -204,7 +204,7 @@ class TestSpectraResults:
         sensible defaults so the parser doesn't bomb on a partial
         early-phase write."""
         d = {
-            "schema_version":     1,
+            "schema_version":     4,
             "engine":             "pyscf",
             "engine_version":     "2.6.0",
             "molbuilder_version": "1.2.0",
@@ -212,7 +212,7 @@ class TestSpectraResults:
             "structure_hash":     "sha256:abc",
             "n_atoms_total":      1,
             "free_atom_idxs":     [0],
-            "fixed_atom_idxs":    [],
+            "frozen_atom_idxs":    [],
             "equilibrium": {
                 "scf_energy_eh":  -1.0,
                 "mo_energies_eh": [-0.5, 0.5],
@@ -221,30 +221,36 @@ class TestSpectraResults:
             "modes":              [],
             "config":             {},
             # Intentionally omitted: methods_text, bibliography_keys,
-            # selected_mode_idxs_1based, engine_metadata, phase_*.
+            # selected_mode_idxs_1based, engine_metadata,
+            # runtime_info, phase_*.
         }
         r = SpectraResults.from_dict(d)
         assert r.methods_text == ""
         assert r.bibliography_keys == []
         assert r.selected_mode_idxs_1based == []
         assert r.engine_metadata == {}
+        assert r.runtime_info == {}
         # Missing phase_* fields default to PHASE_EMPTY.
         assert r.phase_frequencies == PHASE_EMPTY
         assert r.phase_raman       == PHASE_EMPTY
         assert r.phase_es          == PHASE_EMPTY
 
     def test_schema_version_pinned(self):
-        """The on-disk schema is v1 for the entire v1.x release line.
-        Bumping requires a parser branch -- this test pins the
-        current major-version invariant so a stray edit shows up
-        in code review.
+        """Pin the current on-disk schema version.  A stray edit to
+        SCHEMA_VERSION should fail this test and prompt the author
+        to add a parser-branch entry in spectra_json.py and a row
+        in results.py's SCHEMA_VERSION history comment.
 
-        v2 bump: split eigenvector_free into eigenvector_canonical +
-        eigenvector_display (see results.py SCHEMA_VERSION history).
+        v2: split eigenvector_free into eigenvector_canonical +
+            eigenvector_display.
+        v3 (2026-05-21): rename ``fixed_atom_idxs`` ->
+            ``frozen_atom_idxs`` (terminology unification).
+        v4 (2026-05-22): add ``runtime_info`` (n_threads, GPU info,
+            hostname); same "no backward compat" rule.
         """
         r = _make_results()
-        assert r.schema_version == 2
-        assert SCHEMA_VERSION == 2
+        assert r.schema_version == 4
+        assert SCHEMA_VERSION == 4
 
     def test_engine_metadata_passes_through(self):
         """engine_metadata is the escape valve for engine-specific
@@ -433,7 +439,7 @@ class TestPostInitValidation:
             structure_hash             = "sha256:abc",
             n_atoms_total              = 1,
             free_atom_idxs             = [0],
-            fixed_atom_idxs            = [],
+            frozen_atom_idxs            = [],
             equilibrium_scf_eh         = -1.0,
             equilibrium_mo_energies_eh = [-1, 0, 1],            # int list
             equilibrium_homo_idx       = 1,
@@ -456,7 +462,7 @@ class TestPostInitValidation:
                 structure_hash             = "h",
                 n_atoms_total              = 1,
                 free_atom_idxs             = [0],
-                fixed_atom_idxs            = [],
+                frozen_atom_idxs            = [],
                 equilibrium_scf_eh         = 0.0,
                 equilibrium_mo_energies_eh = np.zeros(3),
                 equilibrium_homo_idx       = 5,                 # out of range
@@ -479,7 +485,7 @@ class TestPostInitValidation:
                 structure_hash             = "h",
                 n_atoms_total              = 3,
                 free_atom_idxs             = [0, 1, 2],
-                fixed_atom_idxs            = [1, 2],            # overlaps with free
+                frozen_atom_idxs            = [1, 2],            # overlaps with free
                 equilibrium_scf_eh         = 0.0,
                 equilibrium_mo_energies_eh = np.zeros(3),
                 equilibrium_homo_idx       = 0,
@@ -502,7 +508,7 @@ class TestPostInitValidation:
                 structure_hash             = "h",
                 n_atoms_total              = 10,                # claim 10
                 free_atom_idxs             = [0, 1],            # only 2 free
-                fixed_atom_idxs            = [2, 3],            # only 2 fixed
+                frozen_atom_idxs            = [2, 3],            # only 2 fixed
                 equilibrium_scf_eh         = 0.0,               # total = 4, not 10
                 equilibrium_mo_energies_eh = np.zeros(3),
                 equilibrium_homo_idx       = 0,
@@ -540,7 +546,7 @@ class TestPostInitValidation:
                 structure_hash             = "h",
                 n_atoms_total              = 2,
                 free_atom_idxs             = [0, 1],             # 2 free
-                fixed_atom_idxs            = [],
+                frozen_atom_idxs            = [],
                 equilibrium_scf_eh         = 0.0,
                 equilibrium_mo_energies_eh = np.zeros(3),
                 equilibrium_homo_idx       = 0,
@@ -586,7 +592,7 @@ class TestPostInitValidation:
                 structure_hash             = "h",
                 n_atoms_total              = 2,
                 free_atom_idxs             = [0, 1],
-                fixed_atom_idxs            = [],
+                frozen_atom_idxs            = [],
                 equilibrium_scf_eh         = 0.0,
                 equilibrium_mo_energies_eh = np.zeros(3),
                 equilibrium_homo_idx       = 0,
@@ -642,7 +648,7 @@ class TestPostInitValidation:
                 structure_hash             = "h",
                 n_atoms_total              = 1,
                 free_atom_idxs             = [0],
-                fixed_atom_idxs            = [],
+                frozen_atom_idxs            = [],
                 equilibrium_scf_eh         = -1.0,
                 equilibrium_mo_energies_eh = np.array([1+0j, 0, -1+0j]),
                 equilibrium_homo_idx       = 1,
@@ -681,7 +687,7 @@ class TestPostInitValidation:
             structure_hash             = "h",
             n_atoms_total              = 1,
             free_atom_idxs             = [0],
-            fixed_atom_idxs            = [],
+            frozen_atom_idxs            = [],
             equilibrium_scf_eh         = -1.0,
             equilibrium_mo_energies_eh = np.zeros(3),
             equilibrium_homo_idx       = 0,
@@ -731,7 +737,7 @@ class TestPhaseStatus:
                 structure_hash             = "h",
                 n_atoms_total              = 1,
                 free_atom_idxs             = [0],
-                fixed_atom_idxs            = [],
+                frozen_atom_idxs            = [],
                 equilibrium_scf_eh         = 0.0,
                 equilibrium_mo_energies_eh = np.zeros(3),
                 equilibrium_homo_idx       = 0,

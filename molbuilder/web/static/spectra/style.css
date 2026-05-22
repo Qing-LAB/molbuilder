@@ -16,13 +16,10 @@
 
 html, body { height: 100%; }
 
-body {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
-                 system-ui, "Inter", sans-serif;
-    color: var(--text-primary);
-    background: var(--bg-page);
-}
+/* ``body { ... }`` removed 2026-05-19; the canonical rules live in
+ * lib/page-shell.css.  Header rules below stay per-page (the spectra
+ * page uses different padding + border treatment than the shared
+ * default). */
 
 header {
     padding: 1.4rem 2rem 1rem;
@@ -582,22 +579,8 @@ button > code {
     50%      { opacity: 0.45; }
 }
 
-/* The upload-fallback <details> sits below the path-based primary
- * input; collapsed by default so the path-mode is the obvious one. */
-.upload-fallback {
-    margin-top: 0.8rem;
-    padding: 0.55rem 0.75rem;
-    border: 1px dashed var(--border-soft);
-    border-radius: 6px;
-}
-.upload-fallback summary {
-    cursor: pointer;
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-    user-select: none;
-}
-.upload-fallback p.hint {
-    color: var(--text-secondary);
-    font-size: 0.85rem;
-    margin: 0.4rem 0;
-}
+/* .upload-fallback rules removed 2026-05-18: the <details> block
+ * they styled (an in-template upload-as-fallback affordance under
+ * the path-based primary input) was dropped when the projects
+ * sidebar took over file selection.  No DOM in any served template
+ * carries this class today. */

@@ -115,7 +115,9 @@ def render_spectra_script(struct: Structure, cfg: SpectraConfig) -> str:
 
     lines: List[str] = []
     lines += _emit_header_docstring(struct, cfg, methods_md=methods_md)
+    lines += _emit_threading_setup(cfg)
     lines += _emit_imports(cfg)
+    lines += _emit_pyscf_thread_pool(cfg)
     lines += _emit_constants(
         struct, cfg,
         methods_md=methods_md,
@@ -221,6 +223,144 @@ def _emit_header_docstring(struct: Structure,
 # --------------------------------------------------------------------- #
 
 
+def _emit_threading_setup(cfg: SpectraConfig) -> List[str]:
+    """Emit the threading-control block.  Runs BEFORE any heavy
+    import (numpy / pyscf / gpu4pyscf) so the BLAS thread pool +
+    OpenMP thread count are sized correctly when those libraries
+    initialise.
+
+    Why this matters: PySCF spawns one OpenMP thread per logical
+    core by default.  Each thread enters BLAS (OpenBLAS / MKL /
+    Accelerate), which spawns ITS OWN thread pool, also typically
+    sized to logical cores.  Result: load = N_omp x N_blas, often
+    2-4x physical cores -- on a 20-core/40-HT host, the user
+    reported load=40 (matches OMP=logical=40 even before BLAS
+    multiplies it).
+
+    The canonical fix (per PySCF threading docs + Intel MKL
+    guidance):
+      * Cap BLAS to 1 thread per worker:
+            OPENBLAS_NUM_THREADS=1, MKL_NUM_THREADS=1
+        (env-var-only knobs read at numpy/scipy import time).
+      * Let PySCF do the parallelism, sized to PHYSICAL cores
+        (not logical) by default.  Hyperthreading rarely helps
+        bandwidth-bound QC kernels and can hurt cache locality.
+        Set both ``OMP_NUM_THREADS`` (read at numpy import) and
+        call ``pyscf.lib.num_threads(N)`` AFTER the pyscf import
+        (the env-var alone doesn't re-thread an already-imported
+        module).  See _emit_pyscf_thread_pool below.
+
+    ``cfg.threads = None`` (the default) -> auto-detect physical
+    cores.  Set explicitly to override (e.g. cluster scheduler
+    gave 8 cores; bench at 8).  We use ``os.environ.setdefault``
+    so a user who pre-exports an env var still wins -- their
+    explicit choice trumps our auto.
+    """
+    out: List[str] = []
+    out.append("# ============================================================")
+    out.append("#  Threading setup -- runs BEFORE numpy/pyscf import.")
+    out.append("# ============================================================")
+    out.append("# Cap BLAS to 1 thread per worker so OMP threads * BLAS")
+    out.append("# threads doesn't multiply.  PySCF does its own parallel")
+    out.append("# loops; we size them to PHYSICAL cores (not logical).")
+    out.append("# Hyperthreading rarely helps QC kernels (memory bandwidth")
+    out.append("# bound) and can hurt cache locality.  See the engine")
+    out.append("# docstring for the full rationale.")
+    out.append("import os")
+    out.append("")
+    out.append("def _mb_count_physical_cores():")
+    out.append("    \"\"\"Return the host's physical (not logical) core count.")
+    out.append("    Tries psutil if installed, then /proc/cpuinfo on Linux,")
+    out.append("    falls back to os.cpu_count() // 2 (a hyperthreaded box's")
+    out.append("    best-guess).  Final fallback: 1.\"\"\"")
+    out.append("    try:")
+    out.append("        import psutil")
+    out.append("        n = psutil.cpu_count(logical=False)")
+    out.append("        if n: return int(n)")
+    out.append("    except Exception:")
+    out.append("        pass")
+    out.append("    try:")
+    out.append("        with open('/proc/cpuinfo') as fp:")
+    out.append("            seen = set()")
+    out.append("            phys, core = None, None")
+    out.append("            for line in fp:")
+    out.append("                if line.startswith('physical id'):")
+    out.append("                    phys = line.split(':')[1].strip()")
+    out.append("                elif line.startswith('core id'):")
+    out.append("                    core = line.split(':')[1].strip()")
+    out.append("                    if phys is not None:")
+    out.append("                        seen.add((phys, core))")
+    out.append("                        phys = core = None")
+    out.append("            if seen: return len(seen)")
+    out.append("    except Exception:")
+    out.append("        pass")
+    out.append("    logical = os.cpu_count() or 1")
+    out.append("    # Assume hyperthreading on x86_64 if logical is even and > 1.")
+    out.append("    return max(1, logical // 2) if logical >= 2 else logical")
+    out.append("")
+    if cfg.threads is None:
+        out.append("# cfg.threads = None -> auto: physical-core count.")
+        out.append("_MB_REQUESTED_THREADS = _mb_count_physical_cores()")
+    else:
+        out.append(f"# cfg.threads explicitly = {cfg.threads}; honor user choice.")
+        out.append(f"_MB_REQUESTED_THREADS = {int(cfg.threads)}")
+    out.append("_MB_PHYSICAL_CORES = _mb_count_physical_cores()")
+    out.append("_MB_LOGICAL_CORES  = os.cpu_count() or 1")
+    out.append("")
+    out.append("# setdefault so a user's pre-exported OMP_NUM_THREADS wins.")
+    out.append("os.environ.setdefault('OMP_NUM_THREADS',      str(_MB_REQUESTED_THREADS))")
+    out.append("os.environ.setdefault('OPENBLAS_NUM_THREADS', '1')")
+    out.append("os.environ.setdefault('MKL_NUM_THREADS',      '1')")
+    out.append("os.environ.setdefault('NUMEXPR_NUM_THREADS',  str(_MB_REQUESTED_THREADS))")
+    out.append("os.environ.setdefault('VECLIB_MAXIMUM_THREADS', '1')  # macOS Accelerate")
+    out.append("")
+    out.append("# Runtime-info bag -- the final JSON dump copies this into")
+    out.append("# results['runtime_info'] so the /results page can show what")
+    out.append("# CPU/GPU configuration the run actually used.")
+    out.append("_RUNTIME_INFO = {")
+    out.append("    'n_threads_pyscf':  _MB_REQUESTED_THREADS,  # may be overwritten below")
+    out.append("    'n_threads_omp':    int(os.environ['OMP_NUM_THREADS']),")
+    out.append("    'n_threads_blas':   int(os.environ['OPENBLAS_NUM_THREADS']),")
+    out.append("    'physical_cores':   _MB_PHYSICAL_CORES,")
+    out.append("    'logical_cores':    _MB_LOGICAL_CORES,")
+    out.append("    'gpu_requested':    " + repr(bool(cfg.use_gpu)) + ",")
+    out.append("    'gpu_used':         False,         # filled in by _emit_gpu_setup")
+    out.append("    'gpu_name':         None,")
+    out.append("    'cuda_version':     None,")
+    out.append("    'hostname':         __import__('socket').gethostname(),")
+    out.append("}")
+    out.append("print(")
+    out.append("    f'molbuilder: requested {_MB_REQUESTED_THREADS} PySCF threads '")
+    out.append("    f'(physical={_MB_PHYSICAL_CORES}, logical={_MB_LOGICAL_CORES}, '")
+    out.append("    f'BLAS=1).  Override via cfg.threads or OMP_NUM_THREADS env var.'")
+    out.append(")")
+    out.append("")
+    return out
+
+
+def _emit_pyscf_thread_pool(cfg: SpectraConfig) -> List[str]:
+    """Sized the in-process PySCF OpenMP pool AFTER import.
+
+    Per the PySCF docs: env vars are read at module import time;
+    once pyscf.lib is imported, ``OMP_NUM_THREADS`` no longer
+    affects the pool.  The canonical knob from then on is
+    ``pyscf.lib.num_threads(N)``.  Setting both belt + braces
+    handles users who modify the env mid-script.
+    """
+    out: List[str] = []
+    out.append("# PySCF post-import thread-pool size.  ``pyscf.lib`` reads")
+    out.append("# OMP_NUM_THREADS at import time, but the canonical setter")
+    out.append("# AFTER import is lib.num_threads(N).  We resize so the")
+    out.append("# pool actually matches what _emit_threading_setup decided.")
+    out.append("from pyscf import lib as _pyscf_lib")
+    out.append("_pyscf_lib.num_threads(_MB_REQUESTED_THREADS)")
+    out.append("_RUNTIME_INFO['n_threads_pyscf'] = int(_pyscf_lib.num_threads())")
+    out.append("print(f'molbuilder: pyscf.lib.num_threads()'")
+    out.append("      f' = {_RUNTIME_INFO[\"n_threads_pyscf\"]}')")
+    out.append("")
+    return out
+
+
 def _emit_imports(cfg: SpectraConfig) -> List[str]:
     out: List[str] = []
     out.append("import json")
@@ -318,9 +458,22 @@ def _emit_gpu_setup(cfg: SpectraConfig) -> List[str]:
         out.append("        _dft = _gpu_dft")
     out.append("        _scf = _gpu_scf")
     out.append("        _USING_GPU = True")
+    out.append("        _RUNTIME_INFO['gpu_used'] = True")
+    out.append("        _RUNTIME_INFO['gpu_name'] = _name")
+    out.append("        _RUNTIME_INFO['gpu_compute_capability'] = "
+               "f'{_maj}.{_min}'")
+    out.append("        try:")
+    out.append("            _cv = _cp.cuda.runtime.runtimeGetVersion()")
+    out.append("            _RUNTIME_INFO['cuda_version'] = "
+               "f'{_cv // 1000}.{(_cv % 1000) // 10}'")
+    out.append("        except Exception:")
+    out.append("            pass")
     out.append("        print(f'GPU acceleration ON (gpu4pyscf, {_name}, "
                "compute capability {_maj}.{_min}).')")
     out.append("    except ImportError as _gpu_exc:")
+    out.append("        _RUNTIME_INFO['gpu_used'] = False")
+    out.append("        _RUNTIME_INFO['gpu_name'] = "
+               "f'gpu4pyscf not installed: {_gpu_exc}'")
     out.append("        print(f'USE_GPU=True but gpu4pyscf is not "
                "installed on this node ({_gpu_exc}).')")
     out.append("        # Install with the wheel matching your CUDA driver's")
@@ -332,6 +485,9 @@ def _emit_gpu_setup(cfg: SpectraConfig) -> List[str]:
     out.append("        print('Install: see docs/README_install.md -> molbuilder-pySCF')")
     out.append("        print('Falling back to CPU PySCF.')")
     out.append("    except Exception as _gpu_exc:")
+    out.append("        _RUNTIME_INFO['gpu_used'] = False")
+    out.append("        _RUNTIME_INFO['gpu_name'] = "
+               "f'GPU unusable: {_gpu_exc}'")
     out.append("        print(f'USE_GPU=True but the local GPU is not "
                "usable: {_gpu_exc}.')")
     out.append("        print('Falling back to CPU PySCF.')")
@@ -391,9 +547,9 @@ def _emit_constants(struct: Structure,
     out.append("# Frozen-atom mask (UNION of element + residue + explicit).")
     out.append("# The runtime block computes the final FREE_ATOM_IDXS from")
     out.append("# this triplet against the molecule built below.")
-    out.append(f"FIXED_ELEMENTS             = {list(cfg.fixed_elements)!r}")
-    out.append(f"FIXED_RESIDUE_NAMES        = {list(cfg.fixed_residue_names)!r}")
-    out.append(f"FIXED_INDICES_USER         = {list(cfg.fixed_indices)!r}  "
+    out.append(f"FROZEN_ELEMENTS            = {list(cfg.frozen_elements)!r}")
+    out.append(f"FROZEN_RESIDUE_NAMES       = {list(cfg.frozen_residue_names)!r}")
+    out.append(f"FROZEN_INDICES_USER        = {list(cfg.frozen_indices)!r}  "
                f"# 0-based")
     out.append("")
     out.append("# Spectrum knobs.")
@@ -608,21 +764,21 @@ def _emit_frozen_mask() -> List[str]:
     out.append("# ============================================================")
     out.append("#  Frozen-atom mask")
     out.append("# ============================================================")
-    out.append("# Union of three rules; an atom is FIXED if it matches any:")
-    out.append("#   1. its element is in FIXED_ELEMENTS")
-    out.append("#   2. its 0-based index is in FIXED_INDICES_USER")
+    out.append("# Union of three rules; an atom is FROZEN if it matches any:")
+    out.append("#   1. its element is in FROZEN_ELEMENTS")
+    out.append("#   2. its 0-based index is in FROZEN_INDICES_USER")
     out.append("#   3. (residue freezing is no-op without PDB info -- the")
     out.append("#       molbuilder layer that emitted this script would have")
     out.append("#       resolved residue names to indices already.)")
-    out.append("_fixed = set(int(i) for i in FIXED_INDICES_USER if 0 <= int(i) < N_ATOMS)")
+    out.append("_frozen = set(int(i) for i in FROZEN_INDICES_USER if 0 <= int(i) < N_ATOMS)")
     out.append("for _i, _el in enumerate(ELEMENTS):")
-    out.append("    if _el in FIXED_ELEMENTS:")
-    out.append("        _fixed.add(_i)")
-    out.append("FIXED_ATOM_IDXS = sorted(_fixed)")
-    out.append("FREE_ATOM_IDXS  = [i for i in range(N_ATOMS) if i not in _fixed]")
-    out.append("N_FREE          = len(FREE_ATOM_IDXS)")
+    out.append("    if _el in FROZEN_ELEMENTS:")
+    out.append("        _frozen.add(_i)")
+    out.append("FROZEN_ATOM_IDXS = sorted(_frozen)")
+    out.append("FREE_ATOM_IDXS   = [i for i in range(N_ATOMS) if i not in _frozen]")
+    out.append("N_FREE           = len(FREE_ATOM_IDXS)")
     out.append("print(f'Atoms: {N_ATOMS} total, {N_FREE} free, "
-               "{len(FIXED_ATOM_IDXS)} fixed')")
+               "{len(FROZEN_ATOM_IDXS)} frozen')")
     out.append("")
     return out
 
@@ -684,7 +840,7 @@ def _emit_initial_state() -> List[str]:
     out.append("    'structure_hash':     STRUCTURE_HASH,")
     out.append("    'n_atoms_total':      N_ATOMS,")
     out.append("    'free_atom_idxs':     FREE_ATOM_IDXS,")
-    out.append("    'fixed_atom_idxs':    FIXED_ATOM_IDXS,")
+    out.append("    'frozen_atom_idxs':   FROZEN_ATOM_IDXS,")
     out.append("    'equilibrium':        {")
     out.append("        'scf_energy_eh':  0.0,            # placeholder until SCF")
     out.append("        'mo_energies_eh': [],")
@@ -699,6 +855,11 @@ def _emit_initial_state() -> List[str]:
     out.append("    'phase_raman':               PHASE_EMPTY,")
     out.append("    'phase_es':                  PHASE_EMPTY,")
     out.append("    'engine_metadata':           {},")
+    out.append("    # Runtime facts collected by _emit_threading_setup +")
+    out.append("    # _emit_gpu_setup (n_threads, gpu name, etc.).  Visible")
+    out.append("    # on the /results page so users can verify the run")
+    out.append("    # actually used the resources they expected.")
+    out.append("    'runtime_info':              dict(_RUNTIME_INFO),")
     out.append("}")
     out.append("# We deliberately don't write the initial state yet -- the")
     out.append("# SpectraResults shape requires non-empty MO energies +")

@@ -80,6 +80,75 @@ def test_render_siesta_redirects_stdout_per_job_layout_v1():
 
 
 # --------------------------------------------------------------------- #
+#  SIESTA-MPI thread pinning                                            #
+#                                                                       #
+#  User report (2026-05-19): N-rank ``mpirun -np N siesta`` was         #
+#  spawning N×CPU_COUNT threads because each MPI rank inherits the      #
+#  default BLAS / OpenMP thread count (= number of cores).  Manual      #
+#  workaround was ``export OMP_NUM_THREADS=1`` etc. before mpirun.      #
+#  The wrapper now does this automatically for SIESTA-MPI runs.         #
+# --------------------------------------------------------------------- #
+
+
+def test_render_siesta_mpi_emits_thread_pinning_exports():
+    """SIESTA + mpi_np >= 2 must emit OMP/MKL/OPENBLAS=1 exports
+    BEFORE the exec line so each rank inherits them."""
+    _bind()
+    text = render_run_wrapper(Path("/x/y.fdf"), mpi_np=4)
+    for needle in (
+        "export OMP_NUM_THREADS=1",
+        "export MKL_NUM_THREADS=1",
+        "export OPENBLAS_NUM_THREADS=1",
+    ):
+        assert needle in text, (
+            f"missing {needle!r} -- SIESTA-MPI ranks will oversubscribe "
+            f"the host with N×CPU_COUNT threads"
+        )
+    # Exports must precede the exec line so the subshell `conda run`
+    # creates inherits them (Bash propagates ``export``ed vars to
+    # subprocesses by default).
+    exec_ix = text.find("exec conda run")
+    omp_ix = text.find("export OMP_NUM_THREADS=1")
+    assert 0 <= omp_ix < exec_ix, (
+        "OMP_NUM_THREADS export must come BEFORE the exec line; "
+        "post-exec exports are ignored (the shell never gets back)"
+    )
+
+
+def test_render_siesta_single_process_does_not_pin_threads():
+    """Without mpirun, the user wants BLAS / OpenMP threading -- it's
+    the ONLY parallelism available.  Pinning to 1 would cripple a
+    single-process SIESTA run."""
+    _bind()
+    text = render_run_wrapper(Path("/x/y.fdf"))     # no mpi_np
+    assert "export OMP_NUM_THREADS" not in text, (
+        "single-process SIESTA must keep BLAS / OpenMP threading; "
+        "pinning to 1 would serialise everything"
+    )
+
+
+def test_render_siesta_mpi_np_one_does_not_pin_threads():
+    """np=1 is single-process semantically (the gate is np>=2).  Same
+    rule as no-mpi: keep BLAS threading."""
+    _bind()
+    text = render_run_wrapper(Path("/x/y.fdf"), mpi_np=1)
+    assert "export OMP_NUM_THREADS" not in text
+
+
+def test_render_pyscf_does_not_pin_threads():
+    """PySCF parallelism is BLAS/OpenMP threading; never pin those
+    to 1 for a PySCF wrapper."""
+    _bind()
+    text = render_run_wrapper(Path("/x/y.py"))
+    for needle in ("OMP_NUM_THREADS", "MKL_NUM_THREADS",
+                    "OPENBLAS_NUM_THREADS"):
+        assert needle not in text, (
+            f"PySCF wrapper unexpectedly pins {needle!r} -- this "
+            f"serialises PySCF's main parallelism path"
+        )
+
+
+# --------------------------------------------------------------------- #
 #  PySCF (.py) wrapper text                                             #
 # --------------------------------------------------------------------- #
 

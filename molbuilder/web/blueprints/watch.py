@@ -1,8 +1,12 @@
-"""Watch blueprint -- live trajectory viewer for SIESTA / PySCF / future.
+"""Trajectory-loader API endpoints (live-update polling + parser
+auto-detection).  Filename + module name kept as ``watch`` for
+git-history continuity; the page route (``/watch``) was retired
+2026-05-19 -- this module now exposes ONLY the JSON API endpoints
+consumed by the /results trajectory inspector (see
+``lib/inspectors/trajectory.js`` + ``lib/trajectory/core.js``).
 
 Routes (registered with no url_prefix; each carries its own full path):
 
-    GET  /watch                browser UI page
     GET  /api/watch/formats    parser registry summary
     POST /api/watch/load       JSON {"path": "..."} or multipart upload
                                 ``path`` may be either a single file or
@@ -10,21 +14,22 @@ Routes (registered with no url_prefix; each carries its own full path):
                                 ``docs/protocols/job-layout.md``).
     GET  /api/watch/data       poll for changes (mtime-based)
 
-The user opens /watch, paste an absolute path to the output file or
-the **run directory** containing it, and clicks *Load*.  The
-directory branch follows the discovery chain in
-``docs/protocols/job-layout.md``: ``*.molwatch.log`` first, then ``*.fdf``
-parsed for SystemLabel, then ``*.py`` parsed for job_name, then a
-generic ``*.out`` / ``*_geom_optim.xyz`` fallback.  The page polls
-/api/watch/data roughly every 15 seconds; when the file's mtime
-advances the parser re-runs and the viewer + plots refresh.
+Flow on /results: the user picks a trajectory file in the Projects
+sidebar; the registry mounts the trajectory inspector; the inspector
+core POSTs to /api/watch/load with the absolute path, then polls
+/api/watch/data every ~15 s while the mtime advances.  The directory
+branch of /api/watch/load follows the discovery chain in
+``docs/protocols/job-layout.md``: ``*.molwatch.log`` first, then
+``*.fdf`` parsed for SystemLabel, then ``*.py`` parsed for job_name,
+then a generic ``*.out`` / ``*_geom_optim.xyz`` fallback.
 
 Format support is plugin-style: see ``molbuilder/parsers/`` for the
 registered parsers and the auto-detection registry.
 
 State model: a single global "current file" dict guarded by a Lock.
-This is intentional -- the watch app is single-user / single-tab by
-design (see docs/design.md "Watch -- live trajectory viewer").
+This is intentional -- the trajectory inspector is single-user /
+single-tab by design (one inspector mounted at a time; see
+docs/design.md for the original rationale).
 """
 
 from __future__ import annotations
@@ -37,7 +42,7 @@ import tempfile
 from threading import Lock
 from typing import Any, Dict, List, Optional, Tuple
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, jsonify, request
 
 from molbuilder.parsers import (
     UnknownFormatError,
@@ -83,11 +88,40 @@ _last_temp_upload: Optional[str] = None
 def _cleanup_last_temp_upload() -> None:                # pragma: no cover
     global _last_temp_upload
     if _last_temp_upload:
-        try:
-            os.remove(_last_temp_upload)
-        except OSError:
-            pass
+        _remove_temp_quietly(_last_temp_upload)
         _last_temp_upload = None
+
+
+def _parser_name(parser_cls_or_none) -> Optional[str]:
+    """Return the stable ``.name`` identifier on a TrajectoryParser
+    subclass (e.g., ``"siesta"``, ``"molwatch"``), or ``None`` when
+    no parser is registered yet.  Used by ``_refresh_if_changed`` to
+    detect concurrent-load swaps without relying on class-object
+    identity (``is``) -- the name attribute is the documented
+    stable identifier shared with engine_metadata + error messages.
+    """
+    return getattr(parser_cls_or_none, "name", None) \
+        if parser_cls_or_none is not None else None
+
+
+def _remove_temp_quietly(path: str) -> None:
+    """Best-effort delete of a temp-upload file with smarter error
+    handling than ``try / except OSError: pass``.
+
+    File-already-gone is benign (the user may have raced an external
+    sweep on /tmp).  Other OSErrors (permission denied, EBUSY) are
+    NOT benign -- the temp file leaks and the operator should know.
+    Log to stderr rather than swallow so degraded /tmp permissions
+    surface in the server log instead of silently leaking files.
+    """
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        # Race-with-something-else-deleting-it; benign.
+        pass
+    except OSError as exc:
+        print(f"[watch] failed to remove temp upload {path!r}: "
+              f"{type(exc).__name__}: {exc}", file=sys.stderr)
 
 
 # --------------------------------------------------------------------- #
@@ -329,8 +363,19 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
             # different run (different directory OR different parser
             # class).  Mirror the single-file branch's identity check
             # so a stale parse never overwrites fresher state.
+            #
+            # Compare by ``parser.name`` (the documented stable
+            # identifier on TrajectoryParser subclasses -- see
+            # parsers/base.py) rather than ``is`` on the class
+            # object.  ``is`` works today because detect_parser
+            # returns module-level class refs, but it's fragile to
+            # any future detection refactor (factory functions,
+            # dynamic class registration).  The name attribute is
+            # the same identifier the rest of the system uses
+            # (engine_metadata, error messages, etc.).
             if (_state["run_dir"] == run_dir
-                    and _state["parser"] is parser_cls):
+                    and _parser_name(_state["parser"])
+                        == parser_cls.name):
                 _state["path"]  = active_path
                 _state["data"]  = new_data
                 _state["mtime"] = active_mtime
@@ -352,8 +397,13 @@ def _refresh_if_changed() -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
 
     # ---- Re-acquire to commit (skip if a concurrent /api/load
     #      already swapped to a different file under us) ---------
+    #
+    # Parser comparison by ``.name`` -- see the multi-stage branch
+    # above for the rationale (``is`` works today but is fragile
+    # to future detection refactors).
     with _lock:
-        if _state["path"] == path and _state["parser"] is parser_cls:
+        if (_state["path"] == path
+                and _parser_name(_state["parser"]) == parser_cls.name):
             _state["data"]  = new_data
             _state["mtime"] = mtime
         return dict(_state), None
@@ -484,9 +534,13 @@ def _merge_molwatch_trajectories(paths: List[str]) -> Tuple[Dict[str, Any],
     return merged, stages
 
 
-@bp.route("/watch")
-def watch_page():
-    return render_template("watch.html")
+# /watch page route removed 2026-05-19: the trajectory inspector is
+# now served by /results via the registry adapter, which fetches
+# _trajectory_inspector.html from GET /partials/trajectory-inspector
+# (in web/blueprints/results.py).  This module retains the
+# /api/watch/* endpoints below -- those are the canonical API for
+# loading + polling a trajectory file and are consumed by the
+# /results adapter.  KEEP the API; the page is gone.
 
 
 @bp.route("/api/watch/formats")
@@ -690,15 +744,13 @@ def _api_load_multipart(uploaded_file):
         parser_cls = detect_parser(tmp_path)
     except UnknownFormatError as exc:
         # Don't keep an unrecognised upload around.
-        try: os.remove(tmp_path)
-        except OSError: pass
+        _remove_temp_quietly(tmp_path)
         return jsonify({"ok": False, "error": str(exc)}), 400
 
     with _lock:
         # Clean up any previous upload's temp file.
         if _last_temp_upload and _last_temp_upload != tmp_path:
-            try: os.remove(_last_temp_upload)
-            except OSError: pass
+            _remove_temp_quietly(_last_temp_upload)
         _last_temp_upload = tmp_path
         _state["path"]     = tmp_path
         _state["mtime"]    = None
@@ -744,23 +796,13 @@ def api_data():
     })
 
 
-_LOCAL_HOSTS = {"127.0.0.1", "localhost", "::1"}
-
-
-def warn_if_remote(host: str) -> None:
-    """Emit a stderr warning when the watch app is bound to a non-loopback
-    interface.  /api/watch/load reads any file the server can access, so
-    exposing it on a network interface is effectively a remote
-    arbitrary-file-read endpoint.  Called from molbuilder.cli when the
-    user starts the watch server with a non-loopback --host."""
-    if host in _LOCAL_HOSTS:
-        return
-    import sys as _sys
-    print(f"WARNING: --host={host} exposes /api/watch/load to the network.",
-          file=_sys.stderr)
-    print("         The endpoint reads ANY local file the server can",
-          file=_sys.stderr)
-    print("         access.  Only do this on a trusted single-user",
-          file=_sys.stderr)
-    print("         machine, or add a reverse-proxy with auth in front.",
-          file=_sys.stderr)
+# ``warn_if_remote()`` + ``_LOCAL_HOSTS`` (legacy helpers that printed a
+# stderr warning when --host bound a non-loopback interface) were
+# removed 2026-05-19 along with the ``molbuilder watch serve`` CLI
+# subcommand: ``molbuilder serve`` is the canonical entry point now,
+# and its ``_enforce_tls_for_remote_bind`` guard (in cli.py) already
+# refuses a non-loopback bind without TLS or
+# ``--allow-insecure-binding``.  The arbitrary-file-read concern
+# documented here applies to /api/watch/* regardless of which CLI
+# command started the server -- see docs/deployment.md for the
+# recommended reverse-proxy + auth shape.

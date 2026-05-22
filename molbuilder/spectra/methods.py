@@ -209,8 +209,8 @@ def _paragraph_vibrational(cfg: SpectraConfig,
             n_free = _count_free_atoms(struct, cfg)
             n_modes = max(0, 3 * n_free - 6) if n_free >= 2 else 0
             atom_clause = (f" The system contains {n_atoms} atoms "
-                           f"({n_free} free, {n_atoms - n_free} held "
-                           f"fixed during the Hessian), giving "
+                           f"({n_free} free, {n_atoms - n_free} frozen "
+                           f"during the Hessian), giving "
                            f"{n_modes} non-translational / non-rotational "
                            f"vibrational modes.")
 
@@ -418,20 +418,20 @@ def _count_free_atoms(struct: Structure, cfg: SpectraConfig) -> int:
     n_total = _count_structure_atoms(struct)
     if n_total == 0:
         return 0
-    if not (cfg.fixed_elements or cfg.fixed_indices):
+    if not (cfg.frozen_elements or cfg.frozen_indices):
         return n_total
-    fixed: set = set()
-    if cfg.fixed_elements:
-        elem_set = {e.strip() for e in cfg.fixed_elements if e.strip()}
+    frozen: set = set()
+    if cfg.frozen_elements:
+        elem_set = {e.strip() for e in cfg.frozen_elements if e.strip()}
         symbols = _structure_element_symbols(struct)
         for i, sym in enumerate(symbols):
             if sym in elem_set:
-                fixed.add(i)
-    if cfg.fixed_indices:
-        for i in cfg.fixed_indices:
+                frozen.add(i)
+    if cfg.frozen_indices:
+        for i in cfg.frozen_indices:
             if 0 <= int(i) < n_total:
-                fixed.add(int(i))
-    return max(0, n_total - len(fixed))
+                frozen.add(int(i))
+    return max(0, n_total - len(frozen))
 
 
 __all__ = ["render_methods_md", "extract_citation_keys"]

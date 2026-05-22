@@ -31,9 +31,15 @@ entry point:
       DFT in PySCF).
     * Grid level 4 (hybrid-functional safe; v1 spec § 11.4 warns
       when < 4 with a hybrid).
-    * Displacement amplitude 0.10 Å -- a defensible production
-      value (anharmonic-cubic mixing < 1 % per Mills 1972 §2.4;
-      finite-difference noise on ΔE_HOMO suppressed).
+    * Displacement amplitude 0.02 Å -- chosen to stay well inside
+      the linear-response regime where ΔE_orbital is proportional to
+      the displacement.  At this amplitude the anharmonic-cubic
+      contamination (Mills 1972 §2.4) is negligible and the
+      orbital-shift slope is the physically meaningful number; the
+      trade-off is that the absolute orbital-energy differences are
+      small (~meV) and benefit from a tight SCF convergence.  See
+      the ``displacement_amplitude_ang`` field below for the
+      contemporary-practice context (0.02-0.15 Å).
     * Per-mode electronic structure off by default
       (``es_mode_selection = "skip"``) so a first-pass run is
       cheap; users opt in to ``top_n`` / ``explicit`` after they
@@ -86,12 +92,15 @@ class SpectraConfig:
             "molecules and metal-molecule junctions."
         ),
         "Frozen atoms": (
-            "Atoms held in place during the vibrational analysis.  "
+            "Atoms held in place during the vibrational analysis "
+            "('frozen' = 'fixed' in this codebase; molbuilder uses "
+            "'frozen' as the canonical term across UI, data, and "
+            "engines, matching the quantum-chemistry literature).  "
             "Most common use: freeze a metal slab in a "
             "molecule-metal junction so the vibrational modes "
-            "describe only the molecule.  Three rules are "
-            "combined with OR: an atom is fixed if it matches by "
-            "element, by residue name (PDB only), or by index."
+            "describe only the molecule.  Three rules are combined "
+            "with OR: an atom is frozen if it matches by element, "
+            "by residue name (PDB only), or by index."
         ),
         "Spectrum": (
             "Which spectrum-related quantities to compute.  "
@@ -199,20 +208,24 @@ class SpectraConfig:
 
     # ----------------- Frozen atoms -----------------
     #
-    # Three filters combined with UNION semantics: an atom is fixed
+    # Three filters combined with UNION semantics: an atom is frozen
     # if it matches ANY of element / residue-name / explicit-index.
+    # ("Frozen" is the canonical term across molbuilder -- field
+    # names, sidecar key, UI labels.  Some quantum-chemistry contexts
+    # use "fixed atoms" for the same concept; we standardise on
+    # "frozen" to match the spectroscopy literature.)
     # See spec.md § 7 for the algorithm.
     #
     # The three lists are stored as native Python types here; the
     # form sends comma-separated strings, which the server's
     # `_shared.coerce_to_field_type` splits / parses (existing
-    # Sequence[str] handler covers fixed_elements + fixed_residue_names;
-    # fixed_indices is parsed by a small helper at config-from-params
+    # Sequence[str] handler covers frozen_elements + frozen_residue_names;
+    # frozen_indices is parsed by a small helper at config-from-params
     # time -- see the engine's `preflight`).
 
-    fixed_elements: List[str] = field(default_factory=list, metadata={
+    frozen_elements: List[str] = field(default_factory=list, metadata={
         "section": "Frozen atoms",
-        "label":   "Fixed by element",
+        "label":   "Freeze by element",
         "help":    "comma-separated element symbols whose atoms are "
                    "held in place during the vibrational analysis "
                    "(e.g. \"Au\" to freeze a gold electrode in a "
@@ -222,18 +235,18 @@ class SpectraConfig:
                    "from the SCF or from the displaced-geometry "
                    "calculations.",
     })
-    fixed_residue_names: List[str] = field(default_factory=list, metadata={
+    frozen_residue_names: List[str] = field(default_factory=list, metadata={
         "section": "Frozen atoms",
-        "label":   "Fixed by residue name",
+        "label":   "Freeze by residue name",
         "help":    "comma-separated PDB residue names whose atoms "
                    "are held in place (e.g. \"ALA,GLY\" to freeze "
                    "specific peptide residues).  Requires the input "
                    "structure to carry residue labels -- works for "
                    "PDB-derived structures, not bare XYZ.",
     })
-    fixed_indices: List[int] = field(default_factory=list, metadata={
+    frozen_indices: List[int] = field(default_factory=list, metadata={
         "section": "Frozen atoms",
-        "label":   "Fixed by atom index",
+        "label":   "Freeze by atom index",
         "help":    "comma-separated 0-based atom indices, optionally "
                    "with ranges (e.g. \"0-35, 100, 150-200\").  Use "
                    "when you need finer control than element- or "
@@ -268,7 +281,7 @@ class SpectraConfig:
                    "until the validation is complete; see docs/tabs/"
                    "spectra/spec.md §13.1 for status.",
     })
-    displacement_amplitude_ang: float = field(default=0.10, metadata={
+    displacement_amplitude_ang: float = field(default=0.02, metadata={
         "section": "Spectrum",
         "label":   "Displacement amplitude",
         "unit":    "Å",
@@ -277,15 +290,18 @@ class SpectraConfig:
         "help":    "how far atoms are pushed along each mode "
                    "eigenvector when probing how the orbitals shift "
                    "(only used by the per-mode electronic-structure "
-                   "step).  Larger amplitude = more sensitivity to "
-                   "the mode but more anharmonic contamination of "
-                   "the linear response; smaller amplitude = cleaner "
-                   "but noisier orbital-energy differences.  0.05-"
-                   "0.15 Å is the contemporary-practice range; above "
-                   "~0.20 Å anharmonic mixing becomes non-negligible "
-                   "(see [Mills1972] for the general framework); "
-                   "below ~0.04 Å the orbital-energy noise from the "
-                   "SCF tolerance tends to dominate the signal.",
+                   "step).  The default 0.02 Å sits inside the "
+                   "linear-response regime where ΔE_orbital is "
+                   "proportional to the displacement, so the slope "
+                   "you extract is the physically meaningful number "
+                   "rather than a finite-difference-amplitude "
+                   "artefact.  Trade-off: orbital-energy differences "
+                   "shrink to ~meV at small amplitude and need a "
+                   "tight SCF tolerance (default ``conv_tol=1e-10`` "
+                   "is sufficient).  Above ~0.10 Å anharmonic "
+                   "mixing starts to contaminate the response (see "
+                   "[Mills1972] §2.4); above ~0.20 Å the linear-"
+                   "response assumption breaks outright.",
     })
 
     # ----------------- Electronic structure -----------------
@@ -484,13 +500,19 @@ class SpectraConfig:
     threads: Optional[int] = field(default=None, metadata={
         "section":    "Runtime",
         "label":      "CPU threads",
-        "null_label": "(inherit from the environment)",
+        "null_label": "(auto: physical cores)",
         "tier":       "advanced",
-        "help":       "how many CPU threads to use.  Leave blank to "
-                      "inherit from OMP_NUM_THREADS (or auto-detect).  "
-                      "Set explicitly if your cluster scheduler "
-                      "doesn't propagate the env, or to leave cores "
-                      "free for other jobs.",
+        "help":       "how many CPU threads PySCF uses.  Default "
+                      "(blank) auto-detects PHYSICAL cores (not "
+                      "logical/HT) -- hyperthreading rarely helps "
+                      "QC kernels and can hurt cache locality.  The "
+                      "emitted script also pins BLAS to 1 thread "
+                      "per worker (OPENBLAS_NUM_THREADS=1, "
+                      "MKL_NUM_THREADS=1) so PySCF threads * BLAS "
+                      "threads don't multiply -- the canonical "
+                      "anti-oversubscription recipe.  Set explicitly "
+                      "to bench, or to leave cores free for other "
+                      "jobs on a shared node.",
     })
     use_gpu: bool = field(default=False, metadata={
         "section": "Runtime",

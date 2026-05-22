@@ -1,0 +1,213 @@
+{#- molbuilder shared trajectory-inspector scaffolding.
+
+    Included by:
+      * watch.html               -- the /watch page (legacy)
+      * results.html (planned)   -- the /results trajectory panel,
+                                    once migration step 4 wires up
+                                    the dispatch.
+
+    This partial is the DOM contract for what the trajectory-side
+    of static/watch/viewer.js (and the future lib/trajectory-
+    inspector.js) reaches via getElementById.  Moving these blocks
+    into one file is migration step 1, stage A: structural seam
+    only, no JS change.  Stages B + C scope the JS lookups, lift
+    the logic into lib/, and make /results call the same lib.
+
+    Hardcoded element ids are the API: the JS finds elements by
+    these names.  Renaming any of them is a wire-format change --
+    update the JS at the same time.
+
+    Page-specific bits intentionally NOT in this partial:
+      * the loader bar (path-input + Load button + status banner)
+        -- /watch loads from a path field; /results loads from the
+        sidebar selection.  Different UX, different markup.
+      * the staged-relaxation workflow guide -- /watch tutorial
+        content, not part of the inspector itself.
+-#}
+
+<!-- Fixed-position run-state badge.  One obvious location for the
+     "is the simulation finished or still running?" signal -- not
+     buried in the bottom status banner.  Three states + initial-
+     blank; populated by viewer.js after the first /api/watch/load
+     response lands.  Authoritative when the writer emitted
+     end-of-run markers; defaults to "ongoing" otherwise. -->
+<div id="run-state-badge" class="run-state run-state-blank" hidden>
+  <span class="run-state-label" id="run-state-label"></span>
+  <span class="run-state-detail" id="run-state-detail"></span>
+</div>
+
+<section class="card viewer-card">
+<section class="viewer-row">
+  <div id="viewer"></div>
+
+  <aside class="controls">
+    <!-- Always-visible frame strip: the slider is the most-used
+         control, so it sits above the tabs and is reachable
+         regardless of which tab panel is open. -->
+    <div class="frame-strip">
+      <div class="frame-strip-row">
+        <span class="frame-counter">Frame
+          <b id="frame-idx">0</b> / <b id="frame-tot">0</b>
+        </span>
+        <span class="frame-strip-buttons">
+          <button id="prev" title="Previous frame">&lsaquo;</button>
+          <button id="play" title="Play">&#9654;</button>
+          <button id="pause" title="Pause">&#9208;</button>
+          <button id="next" title="Next frame">&rsaquo;</button>
+        </span>
+      </div>
+      <input id="frame-slider" type="range"
+             min="0" max="0" value="0" step="1"
+             aria-label="Frame slider">
+    </div>
+
+    <!-- Three tab panels condense the previous stacked fieldsets;
+         only one is visible at a time so the controls aside never
+         outgrows the viewer height. -->
+    <nav class="control-tabs" role="tablist" aria-label="Viewer controls">
+      <button class="ctab is-active" data-tab="style"    role="tab" aria-selected="true">Style</button>
+      <button class="ctab"           data-tab="overlays" role="tab" aria-selected="false">Overlays</button>
+      <button class="ctab"           data-tab="inspect"  role="tab" aria-selected="false">Inspect</button>
+      <button class="ctab"           data-tab="playback" role="tab" aria-selected="false">Playback</button>
+    </nav>
+
+    <div class="ctab-panel is-active" data-panel="style" role="tabpanel">
+      <label>Representation
+        <select id="rep">
+          <option value="stick" selected>stick</option>
+          <option value="ballstick">ball &amp; stick</option>
+          <option value="sphere">sphere (CPK)</option>
+          <option value="line">line</option>
+        </select>
+      </label>
+
+      <label>Atom radius scale
+        <input id="radius" type="range" min="0.2" max="2.5" step="0.05" value="1.0">
+      </label>
+
+      <label>Color scheme
+        <select id="colorscheme">
+          <option value="Jmol" selected>Jmol (CPK)</option>
+          <option value="rasmol">Rasmol</option>
+          <option value="default">3Dmol default</option>
+        </select>
+      </label>
+
+      <label>Background
+        <select id="bg">
+          <option value="white" selected>white</option>
+          <option value="0xeeeeee">light grey</option>
+          <option value="black">black</option>
+        </select>
+      </label>
+
+      <label class="check"><input type="checkbox" id="show-cell" checked>
+        Show unit cell</label>
+    </div>
+
+    <div class="ctab-panel" data-panel="overlays" role="tabpanel">
+      <label class="check"><input type="checkbox" id="show-indices">
+        Show atom indices</label>
+      <label class="check"
+        title="Renders a coloured arrow at each atom whose force magnitude exceeds the threshold below.&#10;The longest arrow gets a 'highlight' gold tint when 'Highlight largest force' is ticked.&#10;Forces are only available when the parser captured them (molwatch logs and SIESTA .out always do; geomeTRIC trajectory .xyz does NOT).">
+        <input type="checkbox" id="show-forces">
+        Show force vectors</label>
+      <!-- Diagnostic readout so the user can tell the difference
+           between "toggle is off", "no forces in the data", and
+           "forces present but all below the threshold".  Updated
+           by drawForces() on every invocation. -->
+      <span id="forces-status" class="readout" aria-live="polite"></span>
+      <label>Arrow length scale (&Aring; per eV/&Aring;)
+        <span class="row-with-readout">
+          <input id="force-scale" type="range" min="0.1" max="5.0" step="0.1" value="1.0">
+          <span id="force-scale-val" class="readout">1.0</span>
+        </span>
+      </label>
+      <label>Hide |F| smaller than (eV/&Aring;)
+        <input id="force-min" type="number" min="0" max="10" step="0.01" value="0.01">
+      </label>
+      <label class="check"><input type="checkbox" id="highlight-max" checked>
+        Highlight largest force</label>
+    </div>
+
+    <div class="ctab-panel" data-panel="inspect" role="tabpanel">
+      <p class="hint" id="inspect-hint">
+        Click two atoms — in the viewer or in the list below — to
+        measure their distance.  Updates per frame as the
+        trajectory plays.
+      </p>
+      <div class="inspect-list-wrap">
+        <table class="inspect-list" aria-label="Atom list">
+          <thead>
+            <tr>
+              <th class="col-idx">#</th>
+              <th class="col-el">El</th>
+              <th class="col-coord">x</th>
+              <th class="col-coord">y</th>
+              <th class="col-coord">z</th>
+            </tr>
+          </thead>
+          <tbody id="inspect-atom-list-body"></tbody>
+        </table>
+      </div>
+      <table id="inspect-table" class="inspect-table" hidden>
+        <tbody>
+          <tr><th>A</th>     <td id="inspect-a">—</td></tr>
+          <tr><th>B</th>     <td id="inspect-b">—</td></tr>
+          <tr><th>|A&minus;B|</th><td id="inspect-d" class="inspect-distance">—</td></tr>
+        </tbody>
+      </table>
+      <button id="inspect-clear" class="full-btn" disabled
+        title="Drop the current atom picks.&#10;Loading a new file or trajectory also resets the selection.">
+        Clear selection
+      </button>
+    </div>
+
+    <div class="ctab-panel" data-panel="playback" role="tabpanel">
+      <label>Speed (ms / frame)
+        <input id="speed" type="number" min="20" max="3000" step="20" value="150">
+      </label>
+      <label class="check"><input type="checkbox" id="loop" checked>
+        Loop playback</label>
+      <p class="hint">Use the buttons and slider above to scrub frames.</p>
+
+      <hr class="panel-sep">
+
+      <button id="save-frame" class="full-btn"
+        title="Download the currently displayed frame as a standard .xyz file (Angstrom).&#10;Useful for handing the relaxed structure to the next step (tunneling-gap construction, transport calc, etc.)."
+        disabled>
+        Save current frame as XYZ
+      </button>
+      <p class="hint">Exports frame N's coordinates so you can use the
+        relaxed structure as input to the next step (e.g., dropping the
+        molecule into a tunneling gap as a bridge).</p>
+    </div>
+  </aside>
+</section><!-- /.viewer-row -->
+</section><!-- /.card.viewer-card -->
+
+<!-- SCF-progress banner -- engine-agnostic title/status for the
+     most-recent opt step's SCF cycles.  Banner sits above the plot
+     row; the two SCF plots live INSIDE the same plots-row grid
+     below so all four (energy + force + scf-energy + scf-gnorm)
+     can line up side-by-side at wide widths.  The banner +
+     individual SCF plots are hidden when scf_history is empty. -->
+<section class="scf-banner-row" id="scf-section" hidden>
+  <div class="scf-banner">
+    <strong id="scf-title">SCF progress</strong>
+    <span id="scf-status" class="scf-status"></span>
+  </div>
+</section>
+
+<!-- Plots row: 4 plots when there's space, 2 when narrower, 1 on
+     phones.  ``auto-fit`` with a minimum 280px reflows
+     automatically.  Individual SCF plots are ``hidden`` when no
+     SCF data is available; CSS ``display: none`` on the hidden
+     attribute removes them from the grid so the remaining cells
+     redistribute. -->
+<section class="plots-row">
+  <div id="energy-plot"     class="plot"></div>
+  <div id="force-plot"      class="plot"></div>
+  <div id="scf-energy-plot" class="plot" hidden></div>
+  <div id="scf-gnorm-plot"  class="plot" hidden></div>
+</section>

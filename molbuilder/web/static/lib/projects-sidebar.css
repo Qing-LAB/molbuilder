@@ -5,9 +5,13 @@
  * projects-sidebar.js (measures both elements + listens for resize)
  * so a variable-height tagline doesn't end up overlapping the sidebar.
  *
- * The body gets `class="has-projects-sidebar"` from the JS, which
- * triggers `padding-left: var(--ps-w)` so the main content shifts
- * right of the sidebar.
+ * Every page hard-codes ``<body class="has-projects-sidebar">``
+ * server-side (in each template's body tag); the JS NEVER adds this
+ * class.  Server-side is load-bearing: the body must have the
+ * padding-left from first paint so layout-sensitive widgets
+ * (Plotly, 3Dmol) initialise with the post-sidebar geometry instead
+ * of re-laying-out after the sidebar JS finishes -- see the
+ * extended explanation in lib/projects-sidebar.js's IIFE header.
  *
  * Markup contract:  templates/_projects_sidebar.html
  * Behaviour:        static/lib/projects-sidebar.js

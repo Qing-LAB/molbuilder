@@ -41,7 +41,8 @@ this document points to them):
 | Feature | Spec |
 |---|---|
 | Build tab (web UI) + `/api/build/*` | `docs/protocols/web-api.md` |
-| Watch tab (web UI) + `/api/watch/*` | `docs/tabs/watch.md`, `docs/protocols/watch-api.md` |
+| Watch tab (web UI) + `/api/watch/*` | `docs/tabs/watch.md`, `docs/protocols/watch-api.md` (Watch is going legacy — see `/results` spec) |
+| **`/results` tab** (post-merge unified inspector) | **`docs/protocols/results-tab.md`** |
 | **Modify tab** (web UI) + `/api/modify/*` + `molbuilder modify` CLI | **`docs/tabs/modify.md`** |
 | **Job layout** (basename + filename protocol; Build writes, Watch reads) | **`docs/protocols/job-layout.md`** |
 | SIESTA FDF generator | `docs/engines/siesta.md` |
@@ -637,6 +638,17 @@ These have been considered and rejected; do not reintroduce them.
 | 2026-05-14 | **Projects hierarchy is `<project>/<topic>/<structure>/`** (topic-first, not structure-first).  Six canonical topics hard-coded in `molbuilder.projects.CANONICAL_TOPICS`; non-canonical names rejected at path-construction time.  Innermost `<structure>/` is a flat job-layout-v1 directory (no subdirs inside).  `molbuilder run <script>` emits a sibling `<basename>.run.sh` shell wrapper that activates the routed conda env and execs the tool; molbuilder does NOT manage the resulting process — monitoring is the existing Watch tab pointed at the run directory.  Cross-stage input chaining (e.g. spectrum reading from a prior optimization) is done at generation time by inlining coordinates into the new script, not via FS symlinks or runtime path resolution — keeps each calc dir self-contained and tool-agnostic.  See `docs/protocols/job-layout.md` § "Project-tree organisation" and § "Run wrapper". | Topic-first lets "compare the same analysis across structures" (Raman across the gold-thiol variants) be a simple `ls projects/<proj>/spectrum/`, which matches the most common review intuition; structure-first would scatter that across multiple subtrees.  Hard-coded vocab prevents the fragmentation of running "raman", "Raman", "raman-spectra", "spectra-raman" subtrees across teammates.  Shell wrapper instead of direct subprocess-spawn keeps molbuilder out of the "background process manager" business — that role is owned by the user's shell / cluster scheduler, and the wrapper composes with both transparently. |
 | 2026-05-15 | **SCHEMA_VERSION bump to 2 + field-name trim + legacy alias retirement.**  Field names: ``eigenvector_canonical_cart_mass_weighted`` → ``eigenvector_canonical``; ``eigenvector_display_max_abs_unit`` → ``eigenvector_display`` (the normalisation convention each carries is documented in the ``ModeData`` docstring so the field name doesn't have to repeat it).  Dropped the v1-era ``eigenvector_free`` from the JSON wire format and from the ``ModeData`` Python attribute -- it was only consumed by ``viewer.js``, which now reads ``eigenvector_display`` directly.  ``ModeData.from_dict`` and ``parsers.spectra_json`` continue to accept v1 documents on read (``_READABLE_SCHEMA_VERSIONS = {1, 2}``); v1's single ``eigenvector_free`` field is copied into both canonical and display slots (best-effort -- the true canonical normalisation isn't recoverable after the fact).  Doc updates: ``docs/tabs/spectra/spec.md`` describes both forms with conventions and the v1 → v2 transition; ``test_types.py::test_schema_version_pinned`` updated to ``SCHEMA_VERSION == 2``. | Long field names cluttered the JSON and the call sites without adding information beyond what the class docstring already carries -- the trim makes the wire format readable while keeping the convention precise.  Dropping the legacy alias removes one consistency surface to maintain (was: keep three names in sync; now: two).  Keeping v1 readable on input is correct: users have saved spectra files in the wild (e.g., ``projects/tunneling/BDT_Raman/spectra.spectra.json``) that should still load. |
 | 2026-05-15 | **Spectra script scientific-correctness pass.**  Two real-numbers bugs and one schema clarification.  (1) Imaginary-mode wavenumber handling was inconsistent across PySCF versions: the all-free Hessian path either lost the magnitude (purely-imaginary complex `0+500j` → `FREQ_CM1=0`) or mis-flagged the mode (signed real `-500` → `HAS_IMAG=False`).  Introduced a ``_signed_wavenumber(w)`` helper in the generated script that normalises both shapes to "signed real cm⁻¹"; ``HAS_IMAG = (f < 0)`` then matches the partial-Hessian path's convention.  (2) Normal-mode normalisation differed between the two Hessian paths: the all-free path stored PySCF's mass-weighted ``norm_mode`` (canonical convention) while the partial path normalised to ``max(|L|)=1`` for UI animation, then used the SAME array for the Raman projection -- meaning ``raman_activity_a4_amu`` was in different units depending on which path ran.  Now both paths compute and keep ``NORM_MODES_CANONICAL`` (mass-weighted, ``Σ_k m_k |L_k|² = 1``, used for the Placzek 45a²+7γ² projection) and ``NORM_MODES_DISPLAY`` (max-abs=1, used for animation and the fixed-amplitude ES probe).  The output JSON exposes both under explicit labels: ``eigenvector_canonical_cart_mass_weighted`` (science) and ``eigenvector_display_max_abs_unit`` (UI), with ``eigenvector_free`` retained as a legacy alias of the display form for the current 3Dmol viewer until SCHEMA_VERSION bumps. | (1) PySCF's freq_wavenumber shape has shifted across releases without a documented stable convention; the script needs to normalise both at the boundary.  (2) Mixing "science" and "UI" normalisations under one field name produced answers that quietly disagreed with literature and with the all-free path -- exactly the kind of bug that doesn't trip a test but lands in a publication.  Storing both forms with self-describing names makes the consumer's choice explicit; the new comments in the Hessian and Raman blocks state which form goes with which use case and why.  See ``pyscf_script._emit_hessian_block`` (rewritten) and ``pyscf_script._emit_raman_block`` (projection now reads NORM_MODES_CANONICAL not the JSON alias). |
+| 2026-05-20 | **/watch retirement + post-removal cleanup.**  Phase 1: ``lib/trajectory/core.js`` adopted the ``_on()``/``_cleanups`` dispose pattern from ``lib/spectra/core.js`` (16 element-listener registrations rerouted; dispose walks cleanups in reverse before per-resource teardowns).  Phase 2: deleted ``templates/watch.html``, ``static/watch/{viewer,page}.js``, the ``/watch`` route + ``cmd_watch_serve`` + ``warn_if_remote``, the ``WATCH_PATH_KEY`` sessionStorage block, the loader-bar + applyHandoff wiring inside ``lib/trajectory/core.js``, the ``.loader-bar`` + ``.workflow-*`` CSS, and the Watch tab from ``_app_header.html``.  KEPT: ``_trajectory_inspector.html`` (served by ``GET /partials/trajectory-inspector``), all ``/api/watch/*`` endpoints (consumed by the /results trajectory inspector), ``molbuilder watch parse``/``tail`` CLI utilities.  Phase 3: deleted duplicate ``body { ... }`` rules from per-tab stylesheets (page-shell.css is canonical); deleted duplicate ``.card { ... }`` from the build-tab stylesheet (modify + spectra keep their intentional overrides); per-page ``header { }`` rules stay (intentionally divergent padding/border per page).  Phase 4: added the missing ``form-schema.css`` link to ``templates/index.html``.  Phase 5: ``molbuilder/runwrap.py`` SIESTA-MPI wrapper now emits ``export OMP_NUM_THREADS=1`` + ``MKL_NUM_THREADS=1`` + ``OPENBLAS_NUM_THREADS=1`` before ``mpirun`` so each MPI rank doesn't oversubscribe with BLAS threads (single-process SIESTA + PySCF wrappers untouched -- they want the BLAS threading).  Post-removal audit fixes (six review groups): #1 rewired ``_run_watch_serve_entrypoint`` to alias ``molbuilder serve`` instead of the deleted ``molbuilder watch serve``; #2 added ``AbortController`` to the four inner fetches in trajectory + spectra cores (loadByPath, pollOnce, generateScript) -- each abort()s its previous in-flight + dispose() aborts all in-flight; #3 repointed ten ``/watch``-driving tests in ``test_modify_e2e.py`` to ``/results``; #4-#10 swept stale ``/watch``-era prose across templates + docstrings; #5 exposed ``handle.load(path)`` on the spectra core (parity with trajectory); #13 harmonised dispose's 3Dmol cleanup to ``viewer.clear()`` across both inspectors; #15-#16 added five static tests in ``TestInspectorErrorRendering`` + two Playwright behavioural tests in ``TestInspectorErrorCardRuntime`` pinning that adapter ``.catch()`` handlers render an ``.inspector-card.error-card`` AND that user-triggered ``AbortError``s do NOT trigger the error card (so a rapid file-switch doesn't show a spurious error).  Deferred (#11 rename watch.py → api_trajectory.py, #12 extract ``_on()`` into a shared module, #14 extract ``.ctab`` wiring) -- each is high-churn-low-value at current scale; the duplication is ~20 lines and lives in two modules that are each their own entry point, not shared libraries.  714 tests pass after the sweep; 1900 across the full suite. | Two architectural milestones land: (a) /results is now the single canonical inspection surface, fully replacing /watch -- one URL, one inspector dispatch via the Inspector Registry, no parallel /watch.html maintenance burden.  (b) trajectory and spectra cores have the same dispose contract structure (``_cleanups`` + per-resource teardowns + AbortControllers), so the next inspector author has a single reference shape rather than two divergent ones to choose from.  The post-removal audit found and fixed real follow-up bugs the migration could have left behind (dead entrypoint shim that would have crashed on legacy ``molwatch`` invocations; race-prone fetches; stale docs that lie to the next reader); doing the audit AS a follow-up phase rather than mixed into the removal kept each diff focused and reviewable.  Per the user's policy "do the fucking correct thing": the removal didn't paper over /watch with redirects -- it actually deleted the route, the assets, the CSS, and every test that pinned the removed surface; the API that /results genuinely needs stayed; the docstrings tell the new story; the entrypoint scripts still work for legacy callers via an alias.  Total cleanup: 11 phases / sub-phases / audit findings landed across 2026-05-18 → 2026-05-20. |
+| 2026-05-18 | **Spectra inspector lift complete (migration step 2.2–2.5 of task #58); /spectra is generate-only.**  Mirrors the trajectory-inspector lift (steps 1.1–1.6) for the spectra inspector.  (2.2) ``static/spectra/viewer.js`` body lifted into ``static/lib/spectra/core.js`` wrapped in ``mountInspector(rootEl, opts)``; the IIFE exports ``window.molbuilder.spectraInspector.mount`` and returns a ``{dispose()}`` handle that stops the live-watch poller (``state.watchTimer``), cancels the mode-animation rAF loop (``state.animTimer``), tears down the 3Dmol mode viewer, and purges the Plotly spectrum chart.  All ``document.getElementById``/``querySelectorAll`` lookups rewired through a rootEl-scoped ``$ = (id) => rootEl.querySelector("#" + id)``; two call sites that escaped to ``document`` (the ES-field disable loop + the ``.modes-table .es-col`` toggle) now go through ``$``/``rootEl.querySelectorAll`` so the inspector mounts cleanly on either /spectra (``document``) or /results (``#inspector-host``-rooted partial container).  init() splits into ``hasGenerateSide`` and ``hasInspectSide`` blocks gated on the presence of ``spectra-form-container``/``watch-path``, so the same module is the single source of truth for both consumers without conditional listeners leaking across.  (2.3) ``results.html`` loads ``lib/spectra/core.js`` before ``lib/inspectors/spectra.js`` (script-order load-bearing -- the inspector adapter reads the mount API at module-eval time).  (2.4) ``lib/inspectors/spectra.js`` rewritten from a placeholder card into a real adapter that fetches ``GET /partials/spectra-inspector``, assigns the response HTML to ``host.innerHTML`` (same trust-boundary justification as the trajectory adapter: same-origin autoescaped Jinja render with no user input), calls ``api.mount(host, {file})``, and chains the inner handle's ``dispose()`` into the registry's tear-down.  ``AbortController`` cancels in-flight fetches when the user switches files mid-mount; ``_renderError`` falls back to the same textContent+createElement error card the trajectory adapter uses.  (2.5) ``{% include "_spectra_inspector.html" %}`` dropped from ``spectra.html``; /spectra is now generate-only (form + Methods preview + script preview).  ``static/spectra/page.js`` deleted -- its load-from-selection-button + workspace-indicator wiring concerned the inspect-side ids that no longer live on /spectra; ``spectra/viewer.js`` reduced to a 47-line bootstrap that calls ``mount(document)`` on DOMContentLoaded.  Tests: 44 in ``tests/spectra/test_blueprint.py`` pass after repointing inspect-side id pins at ``/partials/spectra-inspector`` and symbol pins at ``/static/lib/spectra/core.js`` (the old pins at ``/static/spectra/viewer.js`` would now be checking a 47-line bootstrap stub); new ``test_page_is_generate_only_after_step_2_5`` pins the 20 inspect-side ids that MUST NOT appear on /spectra so a regression bringing back the include lands as a clear failure.  ``tests/test_xss_audit.py`` ALLOWLIST entries moved from ``spectra/viewer.js`` to ``lib/spectra/core.js`` (same patterns, code lifted); ``lib/inspectors/spectra.js`` added to the ALLOWLIST for its single trusted ``host.innerHTML = partialHtml`` site (matches the trajectory adapter's allowlist line); ``lib/inspectors/spectra.js`` dropped from the PURE_FILES list since it now has the trusted-innerHTML site.  150 XSS-audit tests + 44 spectra-blueprint tests + 244 results+xss+no-inline+no-js-errors tests all pass. | Closes the merge half of task #58: /results is now the single canonical "look at the output of a calculation" surface, and /spectra is the single canonical "design a spectra calculation" surface.  Two architectural wins fall out: (a) the spectra inspector code lives in exactly one place (lib/spectra/core.js) instead of being conceptually duplicated across /spectra and /results, so a bug fix lands once and both consumers pick it up; (b) the /results inspector ecosystem now has TWO live inspectors (trajectory + spectra) plus the two simpler ones (structure + source), which exercises the Inspector Registry's partial-fetch + dispose contract against real complexity, not just placeholders.  The hasGenerateSide/hasInspectSide gates inside init() are the textbook seam for "same module, different consumers": both consumers' DOM shapes are recognised at mount time and the module wires only what's present, no per-consumer fork.  Per the user's "do the fucking right thing. this is serious programming" mandate from earlier this session: the lift didn't paper over the old code, it actually moved + cleaned up the dead bootstrap, deleted the obsolete spectra/page.js, repointed the tests at the new homes, and treated every behavioural assertion as a contract worth re-pinning at its new location rather than a test to delete-and-forget. |
+| 2026-05-17 | **Round-3 fresh-eyes review: 4 P0 fixes; mount-handle contract + XSS safety + opts.file land.**  Third review pass with a sharper lens ("could I write Stage 1C against this code TODAY?") surfaced 4 real bugs the prior rounds missed.  (1) XSS via ``innerHTML`` string-concat with ``_basename(file)`` in both placeholder inspectors (``trajectory.js`` + ``spectra.js``).  In practice filename validation upstream blocks metachars, but the inspectors were doing zero defense in depth -- a shell-cp'd file with `<` in its name would inject HTML.  Rewrote both placeholders with textContent + createElement DOM construction.  (2) ``mountInspector(rootEl)`` returned ``undefined`` -- Stage 1C/1D had nothing to ``dispose()``.  Now returns ``{dispose(), load(path)}`` handle.  (3) Timer + listener leaks on rapid mount: ``state.pollTimer`` (15s poll), ``state.playTimer`` (frame playback), and ``window.addEventListener("resize", _onResize)`` all created inside mountInspector but never torn down.  Stage 1D would have leaked them on every file selection on /results.  ``dispose()`` now stops both timers + removes the resize listener + tears down 3Dmol bookkeeping (removeAllShapes/Labels/Models).  (4) ``mountInspector`` took no ``opts`` -- Stage 1D needs to pass an initial file to load.  New signature ``mountInspector(rootEl, opts={file?})``; if ``opts.file`` set, auto-loads via ``loadByPath(opts.file)``.  Plus: IIFE refactored to ``(function (root) {})(window)`` so the new ``root.molbuilder.trajectoryInspector = {mount: mountInspector}`` export lands cleanly -- Stage 1C's registry-side trajectory inspector now has a clean delegation point (``window.molbuilder.trajectoryInspector.mount(host, {file, ctx})``) and doesn't need to fork the inspector code.  Tests: 8 new pins in ``test_trajectory_inspector_partial.py`` (``TestMountInspectorHandle`` + ``TestInspectorPlaceholderNoInnerHTMLInterp``) covering signature + handle contract + dispose cleanups + export + no-innerHTML-interp.  Plus one pre-existing test signature pin updated from strict-arity to ``mountInspector(rootEl\b`` to accept the extra opts arg.  27 trajectory-partial + 33 results-blueprint + 1 web tests all pass after the changes. | Earlier rounds caught the LAYOUT issues (root-scoping, partial extraction, guard pattern) but missed the CONTRACT issues (no return handle, no opts, XSS).  Reading each file with the question "could I write the next stage against this?" found gaps a generic code review never asks about.  The 4 P0 fixes mean Stage 1C is now a genuinely mechanical move (``lib/inspectors/trajectory.js``'s mount() becomes a 5-line clone-and-delegate to ``window.molbuilder.trajectoryInspector.mount``); without these, Stage 1C would have had to invent new contracts under time pressure and likely introduced inconsistencies.  Per the user's "we need a clean and correct design and implementation from bottom up": the foundation is now demonstrably ready -- the contract is explicit, the lifecycle is owned end-to-end, and security defense-in-depth replaces "safe by upstream convention". |
+| 2026-05-17 | **Use-case-driven review pass: NPE guards on watch/viewer.js + 6 Stage-1D gaps captured.**  Second-round review evaluated the code in the true context of the next step (Stage 1C/1D mounting the trajectory inspector inside /results' host).  Surfaced one real bug: my Stage 1B refactor left 8 unguarded ``$doc("X").<member>`` dereferences inside ``mountInspector(rootEl)``.  Today's only caller passes ``document``, so /watch works.  But Stage 1D's planned call site ``mountInspector(panel)`` against /results' inspector-host -- which has no loader bar -- would throw NPE at ``$doc("path-input").value`` etc.  Fix: every page-level $doc lookup now goes through a captured-and-guarded local (``const _el = $doc("id"); if (_el) _el.foo``).  Plus ``setStatus`` short-circuits when the status banner is absent.  New test in ``test_trajectory_inspector_partial.py::TestViewerJsRootScoping::test_no_unguarded_dollar_doc_dereference`` blocks regressions.  ``test_web.py::test_watch_viewer_js_honours_path_url_param`` relaxed to semantic ingredients (URLSearchParams + applyHandoff function name + path-input id presence) instead of pinning a specific JS expression that broke twice in 24 hours due to refactor churn.  Captured 6 Stage-1D readiness gaps in REVIEW_FINDINGS.md: partial-cloning mechanism (recommend ``<template>`` clone), ``opts.file`` parameter for inspector mount, Plotly script tag on /results, trajectory CSS sharing between /watch and /results, dispatcher de-dupe on same-file no-op events, 3Dmol+Plotly+timer disposal cleanup.  Each gap has a concrete recommended fix sized for a focused commit. | The user's mandate was "evaluate the code in the true context of our next step" -- generic static review only catches generic code smells; use-case-driven review catches the bugs that surface when call sites change.  The NPE-guard pattern + the documented gaps mean Stage 1C lands against a code base that won't surprise the user at runtime, and Stage 1D has a clear punch list of "five small concrete changes" rather than "figure out what's missing as you go".  Per the user's words: "we have a solid foundation for next step" -- the foundation is now demonstrably ready (existing tests still pass; new invariant test blocks the class of bug from creeping back; explicit gap inventory means no surprises). |
+| 2026-05-17 | **Static-review cleanup pass: 5 P1/P2 fixes before the next inspector lands.**  Holistic review of the registry foundation surfaced six real issues (out of 12 candidate findings from an Explore-agent pass + my verification); five fixed, one rejected as misdiagnosed.  (1) Mount-context construction moved OUT of ``registry.mount()`` and INTO the dispatcher via a new ``createDefaultContext(host)`` helper -- so a future dispatcher with caching / telemetry / custom error UI swaps contexts by passing its own object, no patching the registry.  ``mount(host, file, ctx)`` now REQUIRES ctx (TypeError otherwise) -- explicit beats magic defaults.  (2) ``setFile`` dropped from the Inspector handle contract -- YAGNI, no inspector uses it; reintroduce only when a real need shows up.  (3) ``_basename()`` -- duplicated across 5 inspector modules + 2 viewer.js files -- centralised in new ``lib/path-utils.js`` (``window.molbuilder.path.basename``).  Each inspector now imports via a tiny fallback-safe const.  (4) Backend depth-check duplicated between ``/api/files/write`` + ``/api/files/upload`` + ``/api/files/delete`` -- extracted ``_depth_inside_root(resolved) -> Optional[int]`` helper; all three endpoints share one implementation of the security boundary.  (5) Dead code in ``source.js`` -- ``r.truncated`` branch was checking a field the backend never sets (``/api/files/read`` returns 413 on oversize, no separate truncate path); removed + comment clarifies the all-or-nothing read semantics.  (6) Dispatcher startup validation in ``results/viewer.js`` -- logs a loud ``console.error`` when the registry is empty at init, catching "inspector ``<script>`` tag failed to load / parse" before the user sees a blank panel.  Tests: 2 new pins in ``test_results_blueprint.py`` (createDefaultContext export + dispatcher-build-mount-context-once invariant + registry-validation-at-init).  Rejected findings: "fetch listener leak" (the disposed flag actually gates the write -- Promise just resolves to no-op), "mount error swallowing" (ctx.showError IS called; intentional graceful degradation), "registration order untested" (already covered by test_pick_dispatches_compound_log_to_trajectory).  37 backend file-ops tests still pass after the depth-helper extraction; 33 /results blueprint tests pass after the contract refactor. | Per the user's mandate: "rather than packaging piles of hacking or patched code into sealed pockets, use higher-level data structure design and isolation of modules" -- the registry foundation now (a) has a single, clean injection point for mount-context customisation (vs. the magic default that was buried inside mount()), (b) doesn't carry unused interface surface (setFile), (c) shares the basename helper across the inspector ecosystem instead of duplicating, (d) shares the security-boundary depth check across all three write-side endpoints, and (e) refuses to start without verifying its preconditions.  Stage 1C (trajectory inspector lift) now has a fully solid foundation -- the next inspector that lands plugs into a clean contract with explicit context injection, shared utilities, and zero dead code paths to step on. |
+| 2026-05-17 | **Trajectory inspector root-scoping (migration step 1B of task #58).**  ``static/watch/viewer.js``'s IIFE body is now wrapped in a function ``mountInspector(rootEl)``; the auto-bootstrap at the bottom calls ``mountInspector(document)`` so /watch behaves identically.  Inside the function: 38 ``$("id")`` call sites on partial-declared ids stay on a SCOPED helper (``$ = (id) => rootEl.querySelector("#" + id)``); 4 page-level loader-bar ids (``path-input``, ``load-btn``, ``status``, ``file-picker`` -- all in watch.html OUTSIDE the partial) moved to ``$doc()`` which stays document-wide.  This is the mechanical refactor stage 1C will lift into ``lib/inspectors/_trajectory_core.js`` next session: same code, but called by the registry's trajectory inspector when /results mounts a ``.molwatch.log``.  Static validation script confirms all 38 scoped ids match the partial's declared set, 4 $doc ids are all page-level, exactly one ``document.getElementById`` call site (inside ``$doc``'s own definition), braces balanced (232 pairs).  Tests: 7 new in ``test_trajectory_inspector_partial.py::TestViewerJsRootScoping`` pin every invariant (mountInspector function exists, bootstrap call present, $ uses rootEl, no direct document.getElementById leaks, scoped ids match partial, $doc helper is document-scoped, page-level ids don't go through $).  One stale string-pin in ``test_web.py::test_watch_viewer_js_honours_path_url_param`` updated from ``$("path-input")`` to ``$doc("path-input")``.  119 passed in the watch+sidebar sweep after the fix; no behavior change on /watch. | Sets up stage 1C (lifting the body to lib/) as a mechanical move-and-rename rather than a careful refactor.  Per the user's "clean and correct from bottom up" mandate: instead of duplicating code between /watch and /results, this stage proves the inspector body CAN be scoped to an arbitrary host element while preserving every /watch behavior.  Test pins make accidental regression of the scoping invariants impossible -- the next refactor that drops the ``$doc`` helper or rewires a partial-id back through ``document.getElementById`` lands with a clear failure rather than a runtime mystery on /results. |
+| 2026-05-17 | **Inspector Registry architecture lands; /results is registry-driven (task #58 mid-stage).**  Higher-level data-structure refactor that replaces /results' hardcoded "5-panel template + 5-match-rule literal in dispatch JS" with a single Inspector interface + a registry.  New surface in ``static/lib/inspectors/``: ``registry.js`` (the contract + ``register/pick/mount/list/_clear`` API), plus four self-registering inspector modules: ``source.js`` (real -- read-only listing of .fdf/.py/.out/.log/.json/.txt/.md via /api/files/read), ``structure.js`` (real -- 3-D preview of .xyz/.pdb via mol-viewer.js factory + an "Open in Modify" link), ``trajectory.js`` (placeholder -- the real lift from watch/viewer.js is migration step 1B+C+D), ``spectra.js`` (placeholder -- the real lift is migration step 2).  Interface: ``{name, displayName, match(filepath), mount(host, file, ctx) -> {dispose, setFile?}}``.  Mount context provides ``showError`` + ``readFile`` wrappers so inspectors don't reinvent HTTP plumbing.  Registry orders by registration; first-match wins (compound extensions like ``.molwatch.log`` MUST register before ``.log``-claiming inspectors).  ``register()`` is idempotent on ``name`` -- swap a placeholder for a real implementation with one require + no other code changes.  Template collapses from 5 panels to one ``#inspector-host`` + a fallback section the dispatch detaches at mount time.  ``results/viewer.js`` is now 3 logical steps: subscribe to projects.onChange, call ``registry.mount(host, file)``, dispose the previous handle before the next mount (timer/listener-leak guard).  Per-inspector style under ``static/results/style.css``'s ``.inspector-card``/``.source-card``/``.structure-card`` namespace.  Tests: 31 in ``test_results_blueprint.py`` (route + sidebar + script load-order invariants + module-served checks + interface introspection + per-extension match pins + dispatch JS code-shape) + 17 Playwright-gated tests in ``test_inspector_registry_e2e.py`` (live registry behavior: pick null on unknown, compound > plain ordering, idempotent register, mount returns dispose-able handle, dispose clears host).  ``pyproject.toml`` package-data globs widened for ``lib/inspectors/*.js``. | The architectural shape Initiative 2 needed BEFORE the bulky trajectory/spectra lifts: each future inspector is a self-contained module that adds via ``<script>`` tag + a register call -- no template edits, no dispatch-rule edits.  ``source`` + ``structure`` ship as REAL functional inspectors (the .xyz/.pdb peek + the .fdf/.py source view are both useful today) so the architecture is exercised against working code, not just placeholders.  Placeholders for trajectory + spectra preserve user agency (link straight to /watch and /spectra respectively) and document where the real lift goes.  Per user mandate: "we need a clean and correct design and implementation from bottom up" -- the registry IS the bottom-up architecture; everything else slots into it. |
+| 2026-05-17 | **`DELETE /api/files/delete` is live (closes Initiative 1).**  Replaces the 501 stub.  Validation contract matches the JS-side ``_isDeletableEntry`` gate already shipping in the sidebar's per-entry × button: (a) path resolves inside an allowed picker root, (b) depth >= 1 (refuse to delete the picker root itself), (c) if path is a directory AND its name is in ``CANONICAL_TOPICS`` AND it sits at depth 2 directly under a project, refuse (would orphan the layout; user goes to shell + recreates via + New project), (d) non-empty directories require explicit ``recursive=true``.  The depth-2 canonical-topic guard fires only for directories -- a plain file at depth 2 named "spectrum" is still deletable.  No second-confirm at the backend: the sidebar's native confirm() dialog is the single confirmation point.  15 new tests in ``tests/test_web_files.py::TestFilesDelete``: 3 happy paths (file, empty dir, recursive non-empty), 12 rejection paths (missing body/path, 404, outside-root, ``..``, picker-root, two canonical-topics, file-named-topic OK, depth-3-under-topic OK, recursive flag, project dir with recursive). | All formerly-stubbed file-I/O endpoints (write, upload, delete) are now functional -- Initiative 1 ("sidebar as canonical entry point for all file I/O") closes for the v1 op set.  Edit-and-save in the preview modal remains UI-disabled but the backend ``/api/files/write`` with ``expected_mtime`` is ready when the modal is wired.  Rename is the only file op without a design yet; defer until a real use case shows up. |
+| 2026-05-17 | **Trajectory-inspector partial extracted (migration step 1, stage A of task #58).**  Moved the run-state badge + viewer card + viewer-row (3Dmol mount + frame strip + four ctab panels) + SCF banner + plots row out of ``templates/watch.html`` into a new shared partial ``templates/_trajectory_inspector.html``.  ``watch.html`` now consumes it via ``{% include %}``.  Page-specific markup (loader bar with path-input + Load button + status banner; staged-relaxation workflow guide) stays in ``watch.html`` -- the loader bar's path-input + Load button UX is /watch-specific (the /results tab in step 4 will drive loading from the sidebar selection instead).  Zero JS changes: ``watch/viewer.js`` reaches the same ids unchanged.  8 new tests in ``tests/test_trajectory_inspector_partial.py`` pin: (a) the partial declares the canonical 40-id set, (b) the partial contains no page-specific markup (with Jinja+HTML comments stripped so the partial's docstring can name the excluded ids), (c) watch.html includes the partial, (d) watch.html no longer inlines any partial-owned id (no duplicate render), (e) every partial id round-trips into rendered /watch HTML, (f) no duplicate ids in rendered /watch, (g) page-specific ids preserved.  Validation script confirmed 68 unique ids in rendered HTML, all 40 partial ids present, all 5 canonical page-specific ids preserved. | The structural seam migration steps B + C + D (JS-side root-scoping + lib factory + /results trajectory panel inclusion) build on.  Done as its own milestone so any future regression in the markup-extraction lands with a clear failure mode (the new test suite catches "partial leaks page-specific markup" / "watch.html inlines a partial-owned id" / "rendered HTML has duplicate ids") without entangling with the JS refactor risk.  Stages B + C + D remain pending for a focused follow-up session; each is on the same magnitude as stage A and earns its own milestone + tests.  Per the user's policy: "we need a clean and correct design and implementation from bottom up" -- this stage is the bottom. |
+| 2026-05-16 | **`/results` dispatch shell lands (migration step 3 of task #58).**  New route ``GET /results`` served by ``web/blueprints/results.py``; template ``results.html`` carries five inspector containers (trajectory / spectra / structure / source / none) all hidden at page-load except the fallback.  ``static/results/viewer.js`` subscribes to ``window.molbuilder.projects.onChange``; on each selection change it picks one panel via a deterministic dispatch table (``.molwatch.log`` → trajectory; ``.spectra.json`` → spectra; ``.xyz``/``.pdb`` → structure; ``.fdf``/``.py`` → source; else → fallback) and toggles ``hidden``.  Compound extensions are matched BEFORE plain ones so the trajectory / spectra inspectors win over a generic source view.  Each panel is a placeholder in step 3 -- real inspectors lift here from Watch + Spectra in migration steps 1 + 2 (see ``docs/protocols/results-tab.md`` § 4).  Tab nav grows a "Results" entry; ``Watch`` stays until step 6 so trajectory inspection has a working home during the migration window.  17 tests in ``tests/test_results_blueprint.py`` (route + sidebar inclusion + 5 panel ids + hidden-by-default + status header + nav inclusion + active-tab marker + non-cross-active + dispatch JS string pins for every documented extension).  ``/results`` added to the cross-page no-JS-errors guard (``tests/test_pages_no_js_errors.py``). | Builds the seam the rest of the merge (steps 1, 2, 4) plugs into without disturbing the existing tabs; ``/watch`` and ``/spectra`` both still work unchanged.  Doing the shell first means the dispatch architecture is validated -- it routes correctly today, just to placeholders -- so when the inspector modules lift in, the only new variable is the inspector itself.  Per-extension matching in the JS (rather than via a server-side ``GET /api/results/<file>`` lookup) keeps the seam clean: no new HTTP endpoints, no new wire contract; just a thin selector that calls the existing ``/api/watch/*`` + ``/api/spectra/*`` + ``/api/files/*`` endpoints once a real inspector mounts.  Compound-extension priority matters because future ``.log`` / ``.json`` plain-source views must NOT pre-empt the canonical inspectors. |
+| 2026-05-16 | **Upload feature lands (task #56) — `/api/files/upload` is no longer a stub.**  POST multipart with ``target_dir`` + ``file``; same depth-aware rule as ``/api/files/write`` (target_dir must be inside the picker root + at depth >= 1 + already exist).  Filename validated by ``_UPLOAD_FILENAME_RE = ^[A-Za-z0-9][A-Za-z0-9._-]*$`` -- distinct from ``validate_name`` so extensions work but path separators / spaces / leading dots / shell metacharacters are out.  No implicit overwrite (409 on name clash; user deletes first).  ``os.path.basename(upload.filename)`` defangs any client-supplied path prefix.  Size cap honours the global ``MAX_CONTENT_LENGTH = 50 MB`` from app.py (413 handler already in place).  12 new tests in ``tests/test_web_files.py::TestFilesUpload`` (happy path + missing fields + depth-0 + missing dir + dir-is-a-file + outside-root + ``..`` rejection + 409 + bad-chars + dotfile + client-prefix stripping).  Frontend wiring was already in place from sidebar v5; this commit replaces the stub with real behaviour without touching the UI. | Pre-merge prep for the ``/results`` tab work (task #58): the inspect tab will routinely ingest user-supplied ``.molwatch.log`` and ``.spectra.json`` files, and the existing "scp / mv into projects/" workaround is friction.  Reuses the same path-validation + depth-check helpers as ``/api/files/write`` so the security boundary is shared (one place to audit).  Restrictive filename regex matches the sidebar's own hidden-filter (no leading dots) so a successful upload always becomes visible in the next sidebar list call.  Keeping ``DELETE /api/files/delete`` as a 501 stub for now -- destructive ops want their own UX round. |
 | 2026-05-16 | **Projects sidebar v5: upload + delete stubs (501) + file-preview modal (view fully functional, save stubbed).**  Sidebar grows three new affordances whose UX is fully wired today but whose destructive / write-side behaviour is deferred to focused follow-ups: (a) ``+ Upload file`` foldable section below ``+ New subdir`` (same depth-aware visibility -- hidden at projects/ root); submit POSTs multipart to ``/api/files/upload`` which currently 501s with an explanatory message ("scp / mv into projects/ for now"); the inline-error UX renders the message exactly like the future real backend's 409/403/etc. would.  (b) Per-entry × button on hover for deletable entries; JS-side ``_isDeletableEntry`` gates at depth 0 (cannot delete projects from UI) + depth 1 (cannot delete canonical-topic dirs); native confirm() dialog before sending; ``DELETE /api/files/delete`` 501s for now.  (c) Preview modal (body-level floating window): actions section grows a Preview button enabled when a file is selected; click fetches via ``/api/files/read`` (already shipped) and renders the text in a ``<pre>``; Save button visible-but-disabled with ``title="Save is not implemented yet"``; Esc / Close / backdrop click all dismiss.  This is *fully functional* for view -- the 413 / non-UTF-8 / 404 errors from the read endpoint surface inline in the modal's error slot.  11 new tests in test_web_files.py (3 backend-501 pins; 8 sidebar markup + JS-source pins).  74 file-tests total. | Two interleaved goals: (1) commit to the UX surface so the user can review what each future feature will feel like without waiting for backend work; (2) ship the read-side preview feature whose backend (``/api/files/read``) was already done -- the only cost is the modal, and the user immediately gets "peek at any .spectra.json / .fdf / .py / README without leaving the UI" for free.  Choosing 501 + the standard ``{ok:false, error:...}`` shape (rather than a frontend-only "coming soon" toast) means the inline-error UX is the same code path the real backends will use; no special-case branch to retire later.  The per-entry × on hover (vs. a separate "Delete selected" button) keeps the action close to the target while avoiding clutter; the JS-side eligibility check matches the future backend's depth rules so the user never sees a control they can't use.  See ``docs/protocols/selection.md`` § File-manipulation endpoints for the row-by-row status. |
 | 2026-05-16 | **Projects sidebar v4: `+ New project` form, `user` canonical topic, per-subdir READMEs, pseudopotential design.**  (1) Sidebar gains a foldable ``+ New project`` form (above the existing ``+ New subdir``) that bootstraps the full canonical skeleton via ``POST /api/projects/create``: strict-conflict (409 with clear message if the name exists), atomic (partial-failure rolls the project dir back via ``shutil.rmtree``).  Wraps a new ``molbuilder.projects.populate_project_skeleton(path, project_name)`` helper that the web blueprint + future CLI / Python API can share.  (2) Extended ``CANONICAL_TOPICS`` with ``user`` -- a free-form workspace at depth 1 where the user is the decider; depth 2+ inside ``user/`` accepts any ``validate_name``-valid name, no canonical-topic restriction.  Preserves the strict depth-1 vocabulary across the other 8 entries (workflow consistency across projects) while letting users opt out cleanly when they need ad-hoc structure.  (3) The bootstrap writes a short ``README.md`` in every canonical subdir + a project-level ``README.md`` describing the layout -- teaches a new user (or a colleague handed a project tarball) what each dir is for without leaving the file tree.  Content lives in ``molbuilder.projects._TOPIC_READMES``.  (4) Sidebar JS hides the ``+ New subdir`` foldable section when ``current_dir`` is at the ``projects/`` root -- keeps the root clean (only project dirs there).  ``+ New project`` stays visible everywhere.  (5) Captured the future pseudopotential-management design (task #55): integrated into the SIESTA script generator as a reusable ``molbuilder.pseudos`` module; the rendered script checks the project-local ``pseudopotential/`` dir at run-time, falls back to a configurable pseudo-dojo download.  The ``pseudopotential/`` subdir + its README are the storage half of that contract today.  (6) Captured the upload-feature naming rules (task #56): same depth-aware location rules apply; filename validation will need a regex that allows dots for extensions (different from the dir-name regex).  4 new tests (user topic, READMEs, free-form-inside-user, depth-aware visibility); 63 file-tests total. | The ``+ New project`` form is the natural entry to setting up a new run -- one click bootstraps every canonical dir + the READMEs guide the user through what each is for, so they don't have to read docs before exploring.  The ``user`` topic resolves the tension between "consistent vocabulary across projects" (strict depth 1) and "user is the decider" (the user's framing): both win, with ``user/`` as the explicit escape hatch.  Per-subdir READMEs cost nothing to write and pay back every time a new user or a returning user lands on the project tree.  The depth-aware ``+ New subdir`` visibility implements the user's "clean root" preference -- the projects/ root has exactly one creation affordance, and it's the right one.  Pseudopotential management lands in a separate PR with focused design (default pseudo-dojo set per functional, per-project vs global cache, HPC offline mode, first-time consent prompt). |
 | 2026-05-16 | **Projects sidebar v3: Inquire model + `+ New subdir` button.**  Sidebar reduced to a pure file browser + state holder + file-manipulation widget; tabs pull from the new ``window.molbuilder.projects.{getCurrentDir,getCurrentFile,onChange,readCurrentFile,relativeToProjects,refresh}`` API on their own user-triggered events (no more sidebar-side "Open in <Tab>" buttons, no per-tab auto-load hooks).  The Inquire API + sidebar interaction rules + file-manipulation endpoint surface are spec'd in ``docs/protocols/selection.md``.  v1 ships one file-manipulation operation: ``POST /api/files/mkdir`` with depth-aware naming validation -- depth 0 (under projects/) and depth 2 (under a topic) use ``molbuilder.projects.validate_name`` (regex), depth 1 (under a project) uses ``validate_topic`` (CANONICAL_TOPICS).  Each subscriber tab grows a small "Load from current selection" button (disabled until current_file's extension matches the tab's accept list), wired via ``proj.onChange`` so the enable/disable state updates live.  Spectra additionally renders a workspace indicator showing the current_dir as the implicit output target for the next Generate.  51 tests in ``tests/test_web_files.py``. | The pull-based design proposed by the user; pivots from the v2 push-based (sidebar dispatched cross-tab actions) to a clean separation: sidebar = file browser, tabs = action owners.  Smaller code (no OPEN_TARGETS dict, no projects-selection shim), clearer ownership (each tab independently testable), and easier to extend (new tab? sidebar unchanged).  The ``+ New subdir`` button enables the "set up a new run" workflow without leaving the browser: navigate to projects/proj/spectrum/ → click "+ New subdir" → "water_v2" → sidebar lands in projects/proj/spectrum/water_v2/ → switch to Spectra → Generate (output lands in water_v2/, via the workspace indicator's awareness of current_dir).  Rename / Delete / Upload are deferred -- each is a real feature deserving its own design + UX round.  See ``docs/protocols/selection.md`` § 8 for the explicit anti-patterns this design retires. |
@@ -647,6 +659,298 @@ These have been considered and rejected; do not reintroduce them.
 | 2026-05-15 | **GPU coverage probe in the spectra script.**  The generated PySCF spectra script runs a small runtime probe right after the equilibrium SCF converges: it instantiates ``mf.Hessian()`` (no compute, just an object) and inspects its class's ``__module__``.  If the module is ``gpu4pyscf.*`` the script runs ``mf.Hessian().kernel()`` directly on the GPU; otherwise it rebuilds ``mf`` on CPU via the existing ``_build_mf_at(..., force_cpu=True)`` path and runs the Hessian there.  Two flat flags (``_GPU_HAS_HESSIAN``, ``_GPU_HAS_POLARIZABILITY``) carry the result; the latter is hard-coded False because gpu4pyscf does not yet expose analytic CPHF (the Raman polarizability path already forces CPU at the call site).  A scientist sees one of two lines printed: ``GPU coverage gaps: ['Hessian']`` (with CPU rebuild) or ``GPU coverage: SCF + Hessian.`` (full GPU path). | gpu4pyscf's coverage matrix is a moving target -- as of 2026-05 it covers RKS/UKS Hessian but lags on others, and polarizability is unimplemented.  Hard-coding the matrix in the generator would drift; probing at runtime adapts to whatever the user has installed.  The "instantiate + check module" approach (instead of ``try: mf.Hessian().kernel(); except``) avoids wasting an SCF on a path that can't continue: the probe is free, the SCF-rebuild cost is paid only when there's a gap.  See ``pyscf_script._emit_gpu_coverage_probe``. |
 | 2026-05-14 | **Capabilities snapshot** (`molbuilder.diagnostics.Capabilities`) is the single source of truth for "what's available on this machine" (conda binary, set of conda env names, parsed `molbuilder.json`).  Host-PATH lookups happen on demand via `shutil.which` inside `Capabilities.tool_available`, not pre-probed -- which is cheap and sidesteps a leaky abstraction (pre-probed PATH would have looked frozen but masked stale state).  Built once at startup by `detect()`, queried O(1) thereafter, frozen so callers cannot mutate.  Backends' `is_available()` reads from it; `run_tool` dispatches based on it.  Tests inject synthetic snapshots via `set_capabilities()` instead of mocking `subprocess.run`.  The bootstrap point is `cli.py:main()` (which calls `diagnostics.initialize()` before click handles the command) and `web/app.py:create_app()` (which calls it before any blueprint registers).  `runtime_config.py` is UI-agnostic (raises `RuntimeConfigError`); `cli.py` translates that to `click.UsageError`, web layer would translate to HTTP 400. | Replaces per-call `shutil.which` + `subprocess.run("conda env list")` + `read_config()` probes that the Phase 1 first draft scattered across modules.  Single snapshot enables: (a) O(1) availability queries, (b) consistent view across all backends and the `/api/backends` endpoint, (c) zero-subprocess tests via direct construction, (d) explicit refresh semantics for the long-running web app.  See code review 2026-05-14: PATH-first preference was a leaky abstraction (system tools silently shadowing curated envs); env-first dispatch now matches the four-env model's intent. |
 | 2026-05-14 | **Four-env model**: molbuilder coordinates from a user-named *host env* and dispatches to four named backend envs — `molbuilder-siesta`, `molbuilder-pySCF`, `molbuilder-MDtools`, `molbuilder-tests`.  Heavy tools live in their named env and are invoked by subprocess (`conda run -n <env> ...`); build-time chemistry (rdkit, openbabel, ase, sisl, PeptideBuilder, biopython) stays in-process from the host.  Env recipes live in `docs/README_install.md`; molbuilder does NOT auto-bootstrap conda or auto-create the envs — users follow the documented recipes for whichever tools they actually need.  `molbuilder/__main__.py` added so `python -m molbuilder ...` works without `pip install -e .` from the host env.  Implementation work (`molbuilder.envs.run_in_env`, amber-backend subprocess wrap, `available_backends()` probe extension, `molbuilder run` subcommand + Flask `/api/runs/start`) is deferred — this decision documents the contract only. | Solver experiments (this session, 2026-05-14) showed that collapsing AmberTools-dac=26 + siesta-mpi + playwright + cupy-cuda13x into a single env produces three independent unresolvable conflicts: ambertools needs `numpy<2` (cupy needs `numpy>=2`); ambertools needs `libnetcdf>=4.10` (siesta-mpi linked against 4.9.3); ambertools' X11 stack needs an `icu` version playwright's `nodejs` can't accept.  Naming the envs and letting the user prepare them lets each backend keep its native pin set without poisoning the others.  The `molbuilder-MDtools` env stays separate from the host *specifically* to free the host from ambertools-dac's numpy-1.x lock (which is in numpy upstream-maintenance-only mode since 2024-06); merging would re-couple host releases to dacase's release cadence indefinitely.  The host's "user picks the name" choice mirrors Principle-#1's anti-coupling: molbuilder doesn't need to control where users put their envs, only what names the env-dispatch helper looks for. |
+| 2026-05-21 | **Terminology unification: "frozen" is canonical for held-in-place atoms.**  "Fixed atoms" and "frozen atoms" mean the same thing in computational chemistry; molbuilder previously mixed both (UI sections said "Frozen atoms", but the Python dataclass field was `Structure.fixed_atoms`, the sidecar key was `"fixed_atoms"`, the HTTP target was `"fixed_atoms"`, and `SpectraConfig.fixed_{elements,residue_names,indices}` carried `fixed_`).  Renamed across the stack to use **"frozen"** exclusively: `Structure.frozen_atoms`, sidecar `frozen_atoms` key, HTTP target `"frozen_atoms"`, atom-list response `is_frozen`, JS panel `FROZEN_TARGET` / `FROZEN_TAG_LABEL` / `tag-frozen`, viewer-adapter `FROZEN_MARKER`, `SpectraConfig.frozen_{elements,residue_names,indices}`, `SpectraResults.frozen_atom_idxs`, generated script vars `FROZEN_ELEMENTS` / `FROZEN_INDICES_USER` / `FROZEN_ATOM_IDXS` (`FREE_ATOM_IDXS` kept as the complement).  Sidecar schema bumped v2 → v3; the parser refuses v1/v2 (`"fixed_atoms"` key) with a clear error rather than silently coercing — per user direction, no backward compatibility, internal data structure unifies to one.  Re-export sidecars from /modify to produce v3 files. | "Frozen" is the more widely accepted scientific term in the spectroscopy / quantum-chemistry literature ("frozen-atom partial Hessian", "frozen-core approximation"), which is the primary user-facing context for this concept in molbuilder.  Unifying the dataclass field, the sidecar key, the HTTP wire format, and the UI labels removes the parallel-metadata cognitive load the old mix imposed and makes the dataclass-as-source-of-truth rule actually true again (Principle: "no parallel metadata in CLI/web layers").  The v3 schema bump is the explicit boundary: a sidecar either uses `frozen_atoms` (v3, current) or doesn't load.  Hard cut beats silent coercion because the coercion's "1.5 → 1" semantics had already produced a class of latent bugs (see review history); refusing the load forces a re-export which surfaces the rename to the user once instead of confusing them later. |
+
+---
+
+## Module init contract — runtime registry + ready Promises
+
+> **Founding directive (2026-05-21).** *"can we structurally and
+> logically make sure the sequence how these modules are init and
+> connected to each other? is there a data structure or a global api
+> that we can integrate?"*  The answer is yes — a single tiny
+> registry replaces the previous "grab `window.molbuilder.foo` and
+> hope script-tag order is right" pattern.  Any code that exposes a
+> global namespace MUST use it.  Reviewers reject polling /
+> guess-and-check patterns by reference to this contract.
+
+### The problem
+
+Classic `<script>` tags execute in document order.  `<script
+type="module">` tags execute AFTER all classic scripts + the
+initial parse complete.  Mixing them in one page means a classic
+script that does `(window.molbuilder || {}).projects` at IIFE time
+sees `undefined` because the projects-sidebar module hasn't
+initialised yet.  We hit this bug for real in Build's sidebar
+wiring: picking a `.pdb` did nothing because the consumer
+captured `_proj = undefined` at IIFE time and silently never
+re-checked.
+
+### The contract
+
+A tiny runtime module loaded FIRST in every template:
+
+```html
+<script src="lib/molbuilder-runtime.js"></script>   <!-- before any other molbuilder script -->
+```
+
+Exposes:
+
+```js
+window.molbuilder.runtime.register(name, api)         // producer: "I'm ready"
+window.molbuilder.runtime.whenReady(name) -> Promise  // consumer: await readiness
+window.molbuilder.runtime.get(name)                   // sync peek (debugging)
+window.molbuilder.runtime.listRegistered()            // diagnostics
+window.molbuilder.runtime.listPending()               // diagnostics: who's waiting for whom
+```
+
+**Producer side** (any module that exposes a global namespace) adds
+ONE line to its IIFE:
+
+```js
+window.molbuilder.runtime.register("selection.store", store);
+```
+
+**Consumer side** (anyone that depends on another module's API):
+
+```js
+window.molbuilder.runtime.whenReady("projects").then((proj) => {
+    proj.onChange((sel) => { ... });
+});
+```
+
+No more `if (window.molbuilder && window.molbuilder.foo)`.  No more
+`setTimeout(check, 100)` polling.  No more "this code happens to
+work because the script tags are in the right order."
+
+### Module name registry
+
+Names are flat, dotted, lowercased.  Current modules:
+
+| Name | Module file | Notes |
+|---|---|---|
+| `viewer` | `lib/mol-viewer.js` | 3Dmol viewer factory |
+| `style` | `lib/mol-style.js` | style-spec builder |
+| `fmt` | `lib/mol-format.js` | formula formatter |
+| `formSchema` | `lib/form-schema.js` | dataclass-driven form renderer |
+| `projects` | `lib/projects-sidebar.js` | Projects sidebar (file picker) |
+| `selection.store` | `lib/selection/store.js` | Selection state + HTTP |
+| `selection.panel` | `lib/selection-panel.js` | Selection DOM panel |
+| `selection.viewerAdapter` | `lib/selection/viewer-adapter.js` | Selection 3Dmol overlay |
+| `modify.viewer` | `modify/viewer.js` | per-tab 3Dmol viewer |
+| `modify.loadXyzText` | `modify/viewer.js` | XYZ loader callback |
+| `inspectors` | `lib/inspectors/registry.js` | Inspector dispatch |
+
+Adding a new module-with-a-global: pick a name in this scheme, call
+`register()` at the END of the IIFE, add a row to this table.
+
+### Backward compatibility
+
+The registry is **additive**.  Producers also keep their existing
+`window.molbuilder.<foo> = api` assignments — unmigrated consumers
+keep working without change.  Migrate at your own pace; the
+registry is the new contract but the old globals stay as escape
+hatches.
+
+### Diagnostics
+
+From devtools:
+
+```js
+window.molbuilder.runtime.listRegistered()
+// e.g. ["modify.loadXyzText", "modify.viewer", "projects",
+//       "selection.panel", "selection.store", "selection.viewerAdapter"]
+
+window.molbuilder.runtime.listPending()
+// names with waiters but no registration yet -- diagnoses
+// "consumer hung forever" bugs.
+```
+
+### Migration log
+
+| Date | What | Why |
+|---|---|---|
+| 2026-05-21 | Land `lib/molbuilder-runtime.js`; register `projects`, `selection.store`, `selection.panel`, `selection.viewerAdapter`, `modify.viewer`, `modify.loadXyzText`.  Migrate Build's `viewer.js` sidebar wiring + Spectra's `core.js` onChange subscription to `whenReady`. | Build's `.pdb` sidebar pick was silently doing nothing because the consumer captured a `window.molbuilder.projects` snapshot at IIFE time, before the deferred `type="module"` sidebar script had initialised.  Polling fixes the symptom; the registry fixes the structure. |
+
+### Tests
+
+  * `tests/test_runtime_registry_js.py` (planned) — pure-JS unit
+    tests of register / whenReady / list*.
+  * `tests/test_modify_e2e.py::test_runtime_modules_registered` —
+    smoke-test that the expected modules register on /modify.
+  * The `whenReady` migration is regression-tested by the existing
+    `test_send_to_build_visible_across_all_op_subtabs` (which
+    drives a sidebar pick + waits for the Build load to land).
+
+---
+
+## Sidecar-driven boundary conditions — the three-stage contract
+
+> **Founding guidance (verbatim, 2026-05-21).**  This contract is the
+> direct codification of the user's explicit design directives.  The
+> quotes below are preserved as the load-bearing principle every
+> implementation in this area must satisfy:
+>
+> > *"fixed atoms will be used in many modeling scenarios so we
+> > need to make sure this is reserved [preserved]."*
+> >
+> > *"we just need to make sure that the script/input generator
+> > fully respects the frozen setting because our modeling would
+> > require scientifically correctness with the correct assumption.
+> > the starting facts/boundary condition of simulation must be
+> > explicit, consistent and fully respected from config to actual
+> > calculation."*
+> >
+> > *"when building script/input files the atom information is
+> > built into the script/input file. therefore i find option 2
+> > [pre-fill the form from sidecar; form is authoritative] to be
+> > more solid."*
+> >
+> > *"UI → config makes sure user's intention is captured
+> > correctly, config → script/input faithfully delivers the
+> > information and the generator understands what those labels
+> > mean and correctly use it for boundary conditions. if labels
+> > are not consistent or not recognized, the script should give
+> > explicit warning so that the user know there could be an
+> > issue. no silent absorption of config."*
+>
+> Any code in this repository that touches sidecar metadata,
+> simulation boundary conditions, or label-driven config flow
+> MUST satisfy this contract.  Reviewers reject "silent
+> absorption" patterns by reference to these quotes.
+
+The boundary conditions of a simulation (which atoms are frozen,
+which regions partition the system, fixed cell vectors when they
+exist, …) are user input.  molbuilder routes them through a strict
+three-stage contract: **UI → config → script**.  Each stage has an
+explicit, testable obligation, and divergence between stages
+surfaces as a visible issue — never as silent absorption.
+
+Today the contract is fully implemented for `frozen_atoms` against
+the PySCF spectra engine; the design is the template every future
+engine + every future label type follows.
+
+### Stage 1 — UI → config: capture the user's intention correctly
+
+The `/modify` selection panel writes `Structure.frozen_atoms` into
+the sidecar (`.molstruct.json` v3, key `frozen_atoms`).  When the
+user opens `/spectra` against a structure that has a sidecar, the
+schema endpoint (`GET /api/build/schema/spectra?structure_path=…`)
+reads the sidecar and **pre-fills** the form's "Freeze by atom
+index" field with the comma-separated indices.  The user **sees**
+what's about to be frozen before clicking Generate.
+
+The form is then **authoritative**.  The user can:
+
+  * leave the pre-fill alone (the script will freeze those atoms),
+  * add more indices (script will freeze the union),
+  * clear the field (script will freeze nothing — a deliberate
+    override).
+
+Pre-fill makes the boundary condition **visible**; the
+user-editable form makes it **consistent** (one source of truth at
+the moment of Generate).  If the sidecar can't be applied (atom
+count mismatch, corrupt JSON), the schema response carries a
+human-readable `notice` field rather than silently failing.
+
+### Stage 2 — config → script: faithfully deliver, no silent merge
+
+The script generator (`molbuilder/spectra/pyscf_script.py`) emits
+`FROZEN_INDICES_USER = list(cfg.frozen_indices)` as a Python
+literal.  Nothing else.  The script does **not** read any sidecar
+at run time; it does **not** silently union with `struct.frozen_atoms`
+at emit time.  Whatever the user committed in the form lands in
+the script verbatim — that's the script's promise.
+
+The runtime `_emit_frozen_mask()` then computes:
+
+```python
+_frozen = set(FROZEN_INDICES_USER) ∪ {i : ELEMENTS[i] ∈ FROZEN_ELEMENTS}
+FROZEN_ATOM_IDXS = sorted(_frozen)
+FREE_ATOM_IDXS   = [i for i in range(N_ATOMS) if i not in _frozen]
+```
+
+The partial-Hessian path then operates on `FREE_ATOM_IDXS`.  No
+hidden inputs, no engine-private state, no silent extension of the
+frozen set.
+
+### Stage 3 — engine understands the labels and warns on what it can't use
+
+The engine's `preflight()` is the contract enforcer.  Two checks
+at the engine layer, plus one at the render-endpoint boundary:
+
+**A. Divergence warn — sidecar set vs config set.**
+If `struct.frozen_atoms` is non-empty AND
+`struct.frozen_atoms ⊄ cfg.frozen_indices`, preflight emits a
+WARN-severity `Issue` (where: `config.frozen_indices`) naming
+the divergent indices.  The user is told **before** Generate
+that the script is about to omit a subset of the sidecar's
+frozen atoms.  This catches the case where the user navigated
+to `/spectra` before picking the structure (form pre-fill
+hadn't run) or where the sidecar was updated in another tab
+since the schema was last fetched.
+
+**B. Unrecognized-label notice — labels the engine can't use.**
+The selection panel writes both `frozen_atoms` AND `regions`
+(e.g. `L-electrode`, `bridge`).  Only `frozen_atoms` is
+meaningful to the spectra engine; `regions` are reserved for
+the transport engine.  If a structure carries regions and the
+user runs `/spectra`, preflight emits an INFO/WARN notice
+explaining: "the structure has regions [L-electrode, bridge,
+…], which the spectra engine doesn't consume.  These don't
+affect the calculation but stay in the sidecar for /transport."
+Same shape applies to future engines + future label types:
+every label that's NOT understood by the current engine MUST be
+named explicitly in a preflight issue.  **No silent absorption.**
+
+**C. Sidecar-failed-to-apply notice — at the render endpoint.**
+The render endpoint loads the sidecar (when `structure_path` is
+supplied) and applies it to the Structure before preflight runs
+— that's what activates checks A + B.  If the sidecar exists
+but FAILS to apply (path rejected, malformed JSON, atom-count
+mismatch with the pasted XYZ), the endpoint emits a
+WARN-severity `Issue` (where: `structure_path`) explaining
+that "the form's freeze rules are the sole boundary condition
+for this run".  Without this, a stale or wrong-structure
+sidecar would silently produce a render with `struct.frozen_atoms
+= []` and the user would never know their sidecar didn't flow
+through.  Implementation: `_apply_sidecar_if_possible` returns
+a notice string instead of silently catching the error.
+
+### Why this matters
+
+Boundary conditions ARE the calculation's starting facts.  A
+script that silently freezes more (or fewer) atoms than the user
+configured is not a different number — it's a different
+calculation.  Scientific correctness requires that the user can
+look at the form (config) and the issues panel (engine
+understanding) and know exactly what's going to happen.  This
+contract gives that:
+
+  * **Explicit**: every relevant label appears in the form or in
+    an issue; nothing is implicit.
+  * **Consistent**: at the moment of Generate, the form is the
+    single source of truth.
+  * **Fully respected**: the script does what the form says.
+
+### Extending to new engines / new label types
+
+When adding a new engine (e.g. the future transport engine,
+#135) or a new label type (e.g. surface-anchor markers), the
+contract requires:
+
+  1. Decide which sidecar labels the engine consumes.  Document
+     in the engine module's docstring.
+  2. Add a schema-endpoint pre-fill if the label maps to a form
+     field (mirror `_seed_frozen_indices_from_sidecar` in
+     `web/blueprints/spectra.py`).
+  3. Add a preflight divergence warn matching pattern A above.
+  4. Add a preflight unrecognized-label notice matching pattern B
+     above for every sidecar field the engine does NOT consume.
+
+Tests should pin each: a regression where a future engine
+silently absorbs a label, or silently drops one, must fail
+loudly.
 
 ---
 
@@ -655,8 +959,7 @@ These have been considered and rejected; do not reintroduce them.
 The L1/L2/L3 split below is the as-shipped layout.  Re-export shims
 keep external imports stable across the deliberate splits (`config/`
 re-exported from `molbuilder.siesta` / `molbuilder.pyscf`,
-`trajectory_log/` aliased as `molwatch_log/`, `builders.backends.*`
-aliased as `molbuilder.backends.*`).
+`builders.backends.*` aliased as `molbuilder.backends.*`).
 
 ```
 molbuilder/
@@ -675,7 +978,6 @@ molbuilder/
     __init__.py
     format.py              # write_initial_preview, molwatch_log_basename
     emitter.py             # MolwatchEmitter (inlined into generated PySCF scripts)
-  molwatch_log/            # back-compat shim -> trajectory_log
 
   # ----- L2: domain verbs -----
   peptide.py               # build_peptide

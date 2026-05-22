@@ -9,9 +9,9 @@ Routes:
     POST /api/files/mkdir               create a new subdirectory (validated name)
     POST /api/projects/create           bootstrap a new project with every
                                         canonical subdir (atomic, strict conflict)
-    POST /api/files/upload              (stub) multipart upload -- 501 in v1
-    POST /api/files/write               (stub) save edited text -- 501 in v1
-    DELETE /api/files/delete            (stub) remove file or empty dir -- 501 in v1
+    POST /api/files/upload              multipart upload into current dir
+    POST /api/files/write               save edited text (overwrite + mtime-conflict gated)
+    DELETE /api/files/delete            remove file or directory (recursive optional)
 
 Full contract:  docs/protocols/web-api.md  §  ``/api/files/*``
 
@@ -40,6 +40,8 @@ The picker is a *navigation + selection* widget, not a file manager.
 from __future__ import annotations
 
 import os
+import re
+import shutil
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -87,6 +89,27 @@ def _allowed_roots() -> Tuple[Tuple[Path, str], ...]:
     :func:`diagnostics.set_capabilities`.
     """
     return diagnostics.get_capabilities().file_picker_roots()
+
+
+def _depth_inside_root(resolved: Path) -> Optional[int]:
+    """Depth of ``resolved`` inside whichever allowed picker root
+    contains it; ``None`` when no root contains it.
+
+    Depth 0 = the root itself; depth 1 = a project directory under
+    the root; depth 2 = a topic directory under a project; etc.
+
+    Shared by every endpoint whose validation includes a depth
+    rule (currently /api/files/write + /api/files/delete + the
+    /api/files/upload target_dir check).  Single source so all
+    three endpoints stay in lockstep on the security boundary.
+    """
+    for root_path, _label in _allowed_roots():
+        try:
+            rel = resolved.relative_to(root_path)
+        except ValueError:
+            continue
+        return len(rel.parts)
+    return None
 
 
 def _resolve_within_roots(raw_path: str) -> Path:
@@ -642,27 +665,139 @@ def api_projects_create():
 #     future "oops we shipped the stub" lands loudly.
 
 
+# Upload filename regex.  Allows the dot that ``validate_name``
+# forbids (filenames need extensions), plus underscore / hyphen /
+# letters / digits.  Deliberately conservative: no spaces, no shell
+# metacharacters, no leading dot (so dotfiles can't be uploaded
+# accidentally and the list endpoint's hidden-filter still applies).
+_UPLOAD_FILENAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def _validate_upload_filename(name: str) -> Optional[str]:
+    """Return an error message if ``name`` is unsuitable as an upload
+    target filename; None when OK.
+
+    Separate from ``molbuilder.projects.validate_name`` because that
+    one is for directory / project names and forbids the dot that
+    filenames need for extensions.
+    """
+    if not name:
+        return "filename is empty"
+    if "/" in name or "\\" in name:
+        return f"filename may not contain path separators: {name!r}"
+    if name in (".", ".."):
+        return f"filename {name!r} is not a real filename"
+    if not _UPLOAD_FILENAME_RE.match(name):
+        return (
+            f"filename {name!r} contains unsupported characters; "
+            f"allowed: letters, digits, '.', '_', '-' "
+            f"(must start with a letter or digit)"
+        )
+    return None
+
+
 @bp.route("/api/files/upload", methods=["POST"])
 def api_files_upload():
-    """Stub: actual upload-to-disk for laptop->server file transfer.
+    """Multipart upload into a sidebar-visible directory.
 
-    When implemented (task #56), accepts multipart ``file`` + form
-    ``target_dir``.  Restrictions (already captured in
-    ``docs/protocols/selection.md``):
+    Form fields:
+      * ``target_dir`` -- absolute path of the destination directory.
+        Must resolve inside an allowed picker root + be at depth >= 1
+        (no uploads directly under ``projects/``) + already exist.
+      * ``file``       -- the multipart file part.  ``file.filename``
+        is validated against the upload-filename regex below.
 
-      * target_dir must resolve inside an allowed picker root
-      * target_dir depth must be >= 1 (no upload at projects/ root)
-      * filename validated by a *different* regex than ``validate_name``
-        (allows dots for extensions; e.g. ``^[A-Za-z0-9_.-]+$``)
-      * inside ``user/`` (depth 2+): free-form
-      * name conflict at destination -> 409
+    Behaviour:
+      * No implicit overwrite: name conflict at destination is 409.
+        UI deletes first if the user wants to replace.
+      * Max upload size is enforced globally by Flask's
+        ``MAX_CONTENT_LENGTH`` (50 MB; the app-level 413 handler
+        catches oversize uploads with a clean message).
+      * Returns the same shape as ``/api/files/write``
+        (``{ok, path, size, mtime}``) so the sidebar refresh code
+        path is identical for both write modes.
     """
+    target_dir_raw = (request.form.get("target_dir") or "").strip()
+    if not target_dir_raw:
+        return jsonify({
+            "ok": False,
+            "error": "missing 'target_dir' form field",
+        }), 400
+
+    upload = request.files.get("file")
+    if upload is None or not upload.filename:
+        return jsonify({
+            "ok": False,
+            "error": "missing 'file' multipart part",
+        }), 400
+
+    # Validate the destination directory.
+    try:
+        target_dir = _resolve_within_roots(target_dir_raw)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+
+    if not target_dir.is_dir():
+        return jsonify({
+            "ok": False,
+            "error": (f"target_dir does not exist or is not a directory: "
+                      f"{str(target_dir)!r}.  Use /api/files/mkdir to "
+                      f"create it first."),
+        }), 400
+
+    # Depth check: target_dir must be at depth >= 1 inside an
+    # allowed picker root (matches the /api/files/write rule -- no
+    # writes directly into projects/ itself).  Shared helper.
+    depth = _depth_inside_root(target_dir)
+    if depth is None or depth < 1:
+        return jsonify({
+            "ok": False,
+            "error": (f"cannot upload directly into the picker root; "
+                      f"create or pick a subdirectory first.  Got: "
+                      f"{str(target_dir)!r}"),
+        }), 400
+
+    # Validate the filename.  We use the basename of upload.filename
+    # to defang any client-supplied path prefix.
+    filename = os.path.basename(upload.filename)
+    err = _validate_upload_filename(filename)
+    if err is not None:
+        return jsonify({"ok": False, "error": err}), 400
+
+    dest = target_dir / filename
+    if dest.exists():
+        return jsonify({
+            "ok": False,
+            "error": (f"file already exists: {str(dest)!r}.  "
+                      f"Delete it first via the sidebar (or your shell) "
+                      f"and re-upload."),
+        }), 409
+
+    try:
+        upload.save(str(dest))
+    except PermissionError as exc:
+        return jsonify({
+            "ok": False,
+            "error": f"permission denied: {exc}",
+        }), 403
+    except OSError as exc:
+        return jsonify({
+            "ok": False,
+            "error": f"upload write failed: {exc}",
+        }), 500
+
+    try:
+        st = dest.stat()
+    except OSError as exc:
+        return jsonify({"ok": False,
+                        "error": f"stat after upload failed: {exc}"}), 500
+
     return jsonify({
-        "ok": False,
-        "error": ("/api/files/upload is not implemented yet (task #56).  "
-                  "For now, move files into the projects tree via your "
-                  "shell (scp / mv) and refresh the sidebar."),
-    }), 501
+        "ok":    True,
+        "path":  str(dest),
+        "size":  st.st_size,
+        "mtime": st.st_mtime,
+    })
 
 
 @bp.route("/api/files/write", methods=["POST"])
@@ -713,23 +848,12 @@ def api_files_write():
     except _PickerError as exc:
         return jsonify({"ok": False, "error": exc.message}), exc.status
 
-    # Depth check: the file's PARENT must be at depth >= 1 inside the
-    # picker's root.  i.e., we can write to projects/<proj>/<...>/file,
-    # but not directly into projects/.
-    roots = _allowed_roots()
-    parent_depth_ok = False
-    for root_path, _label in roots:
-        try:
-            parent_rel = resolved.parent.relative_to(root_path)
-        except ValueError:
-            continue
-        # parent_rel.parts is the segments from root to the file's parent.
-        # depth 0 = parent is the root itself (writing directly under
-        # projects/), which we forbid.
-        if len(parent_rel.parts) >= 1:
-            parent_depth_ok = True
-            break
-    if not parent_depth_ok:
+    # Depth check: the file's PARENT must be at depth >= 1 inside
+    # the picker's root.  i.e., write to projects/<proj>/<...>/file
+    # but not directly into projects/ itself.  Shared with /upload
+    # + /delete via the _depth_inside_root helper.
+    parent_depth = _depth_inside_root(resolved.parent)
+    if parent_depth is None or parent_depth < 1:
         return jsonify({
             "ok":   False,
             "error": (f"cannot write directly into the picker root; "
@@ -802,25 +926,141 @@ def api_files_write():
 
 @bp.route("/api/files/delete", methods=["DELETE"])
 def api_files_delete():
-    """Stub: remove a file or empty directory.
+    """Remove a file or directory inside an allowed picker root.
 
-    When implemented, accepts JSON ``{path, recursive}``.
-    Validation (same shape as create rules):
-      * path must resolve inside an allowed picker root
-      * path must NOT be a configured root (no deleting projects/)
-      * path must NOT be a CANONICAL_TOPIC subdir directly under a
-        project (would orphan the project layout; user goes to the
-        shell for that)
-      * ``recursive=true`` required for non-empty directories
-      * The confirmation modal in the UI is mandatory; the backend
-        does NOT add a second confirmation -- one is enough.
+    JSON body: ``{path, recursive?}``
+
+    Validation contract (matches the stub docstring + the JS
+    ``_isDeletableEntry`` gate so the user never sees a control
+    they can't use):
+
+      * ``path`` must resolve inside an allowed picker root.
+      * ``path`` must NOT be the picker root itself (depth 0:
+        refuses to delete ``projects/``).
+      * ``path`` must NOT be a canonical-topic subdir directly
+        under a project (depth 2 inside the root, name in
+        :data:`molbuilder.projects.CANONICAL_TOPICS`).  Deleting
+        ``projects/<proj>/spectrum/`` would orphan the project
+        layout; users do that explicitly in their shell.
+      * ``recursive=true`` is required for non-empty directories.
+        Empty directories + plain files can be deleted without it.
+
+    The frontend (sidebar's per-entry × button) is responsible for
+    the confirm() dialog; the backend does NOT add a second
+    confirmation -- one is enough and double confirms feel patronising.
+
+    Returns ``{ok, path}`` on success.
     """
+    body = request.get_json(silent=True) or {}
+    raw_path  = body.get("path", "")
+    recursive = bool(body.get("recursive", False))
+
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        return jsonify({
+            "ok": False,
+            "error": "missing 'path' in request body",
+        }), 400
+
+    try:
+        resolved = _resolve_within_roots(raw_path)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+
+    if not resolved.exists():
+        return jsonify({
+            "ok":   False,
+            "error": f"path does not exist: {str(resolved)!r}",
+        }), 404
+
+    # Depth check + canonical-topic protection.  We need both the
+    # depth (for the root-protection + recursive-flag rules) AND
+    # the path parts (for the canonical-topic name lookup at depth
+    # 2).  Walk the roots once for the parts; _depth_inside_root
+    # is the same loop but returns just the length.
+    rel_parts: Optional[Tuple[str, ...]] = None
+    for root_path, _label in _allowed_roots():
+        try:
+            rel = resolved.relative_to(root_path)
+        except ValueError:
+            continue
+        rel_parts = rel.parts
+        break
+
+    if rel_parts is None:
+        # _resolve_within_roots already verified containment, so
+        # this branch is defensive (could only fire if roots
+        # changed mid-request, which the Capabilities snapshot
+        # prevents).
+        return jsonify({
+            "ok":   False,
+            "error": f"path {str(resolved)!r} not inside any picker root",
+        }), 400
+
+    depth = len(rel_parts)
+
+    if depth == 0:
+        return jsonify({
+            "ok":   False,
+            "error": ("refusing to delete the picker root itself; "
+                      "this would wipe every project at once"),
+        }), 400
+
+    # Depth 2 = directly under a project.  If the leaf name is a
+    # canonical topic AND it's a directory, refuse: deleting the
+    # spectrum/ or struct/ subdir orphans the project layout.  Files
+    # at depth 2 (e.g. projects/<proj>/README.md) are fine to delete.
+    if depth == 2 and resolved.is_dir() and rel_parts[1] in CANONICAL_TOPICS:
+        return jsonify({
+            "ok":   False,
+            "error": (f"refusing to delete canonical-topic directory "
+                      f"{rel_parts[1]!r} via the UI (would orphan the "
+                      f"project layout).  Use your shell + recreate "
+                      f"the project via + New project if needed."),
+        }), 400
+
+    # Non-empty dir requires explicit recursive flag.  Empty dirs
+    # and plain files can be deleted without it.
+    if resolved.is_dir():
+        # any() short-circuits as soon as it finds one entry --
+        # cheaper than iterating the whole directory.
+        try:
+            non_empty = any(resolved.iterdir())
+        except OSError as exc:
+            return jsonify({
+                "ok": False,
+                "error": f"could not enumerate directory: {exc}",
+            }), 500
+        if non_empty and not recursive:
+            return jsonify({
+                "ok":   False,
+                "error": (f"directory is not empty: {str(resolved)!r}.  "
+                          f"Pass recursive=true to delete it and "
+                          f"everything inside."),
+            }), 409
+
+    try:
+        if resolved.is_dir():
+            if recursive:
+                shutil.rmtree(resolved)
+            else:
+                resolved.rmdir()
+        else:
+            resolved.unlink()
+    except PermissionError as exc:
+        return jsonify({
+            "ok": False,
+            "error": f"permission denied: {exc}",
+        }), 403
+    except OSError as exc:
+        return jsonify({
+            "ok": False,
+            "error": f"delete failed: {exc}",
+        }), 500
+
     return jsonify({
-        "ok": False,
-        "error": ("/api/files/delete is not implemented yet.  For "
-                  "destructive operations, use your shell (rm) and "
-                  "refresh the sidebar."),
-    }), 501
+        "ok":   True,
+        "path": str(resolved),
+    })
 
 
 __all__ = ["bp"]

@@ -98,3 +98,102 @@ def test_pdb_round_trip_identity(water_structure):
     assert s2.atom_names    == s.atom_names
     assert s2.residue_names == s.residue_names
     assert s2.chain_ids     == s.chain_ids
+
+
+# --------------------------------------------------------------------- #
+#  Transport-oriented metadata: regions + frozen_atoms                    #
+#                                                                        #
+#  Both are validated in __post_init__: indices must be in range,       #
+#  region membership is NOT mutually exclusive (multi-label model);     #
+#  frozen_atoms is normalised to sorted-unique.  These tests pin the    #
+#  contract the transport pipeline relies on -- malformed input must    #
+#  fail loudly at the Structure boundary, not silently propagate into   #
+#  engine scripts.                                                       #
+# --------------------------------------------------------------------- #
+
+
+class TestStructureRegions:
+    def test_default_is_empty(self, water_structure):
+        assert water_structure.regions == {}
+
+    def test_basic_assignment_round_trips(self):
+        s = Structure(
+            elements=["C", "C", "C", "C"],
+            positions=np.zeros((4, 3)),
+            regions={"L-electrode": [0, 1], "R-electrode": [3]},
+        )
+        assert s.regions == {"L-electrode": [0, 1], "R-electrode": [3]}
+
+    def test_indices_are_normalised_to_sorted_unique(self):
+        """The constructor should sort + dedupe per region so engines
+        don't see duplicates or reverse-order lists from sloppy input."""
+        s = Structure(
+            elements=["C"] * 4,
+            positions=np.zeros((4, 3)),
+            regions={"bridge": [3, 1, 1, 0]},
+        )
+        assert s.regions["bridge"] == [0, 1, 3]
+
+    def test_out_of_range_index_raises(self):
+        with pytest.raises(ValueError, match="out of range"):
+            Structure(
+                elements=["C", "C"], positions=np.zeros((2, 3)),
+                regions={"L-electrode": [5]},
+            )
+
+    def test_negative_index_raises(self):
+        with pytest.raises(ValueError, match="out of range"):
+            Structure(
+                elements=["C", "C"], positions=np.zeros((2, 3)),
+                regions={"L-electrode": [-1]},
+            )
+
+    def test_atom_can_belong_to_multiple_regions(self):
+        """Region membership is NOT mutually exclusive.  An atom may
+        carry several labels (e.g. ``"L-electrode"`` + ``"interface"``);
+        engines that need a disjoint partition enforce that
+        separately at engine-load time."""
+        s = Structure(
+            elements=["C"] * 3, positions=np.zeros((3, 3)),
+            regions={"L-electrode": [0, 1], "bridge": [1, 2]},
+        )
+        assert s.regions["L-electrode"] == [0, 1]
+        assert s.regions["bridge"] == [1, 2]
+
+    def test_empty_label_raises(self):
+        with pytest.raises(ValueError, match="region label"):
+            Structure(
+                elements=["C"], positions=np.zeros((1, 3)),
+                regions={"": [0]},
+            )
+
+
+class TestStructureFrozenAtoms:
+    def test_default_is_empty(self, water_structure):
+        assert water_structure.frozen_atoms == []
+
+    def test_sorted_unique_normalisation(self):
+        s = Structure(
+            elements=["C"] * 4, positions=np.zeros((4, 3)),
+            frozen_atoms=[3, 1, 1, 0],
+        )
+        assert s.frozen_atoms == [0, 1, 3]
+
+    def test_out_of_range_raises(self):
+        with pytest.raises(ValueError, match="out of range"):
+            Structure(
+                elements=["C", "C"], positions=np.zeros((2, 3)),
+                frozen_atoms=[7],
+            )
+
+    def test_can_overlap_a_region_atom(self):
+        """A fixed atom MAY also be tagged as part of a region (typical
+        for electrode buffer-layer atoms held in place during relax).
+        The two lists are independent invariants."""
+        s = Structure(
+            elements=["C"] * 4, positions=np.zeros((4, 3)),
+            regions={"L-electrode": [0, 1]},
+            frozen_atoms=[0, 1],
+        )
+        assert s.regions["L-electrode"] == [0, 1]
+        assert s.frozen_atoms == [0, 1]

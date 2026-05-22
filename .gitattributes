@@ -4,6 +4,10 @@
 # from a CRLF-normalised checkout.
 * text=auto eol=lf
 
+# Vendored minified JS: keep out of normal diff output (giant
+# single-line files; treat as binary for diff/merge purposes).
+molbuilder/web/static/vendor/*.js -diff -merge linguist-vendored
+
 # Always-binary patterns -- never get the LF treatment.
 *.png  binary
 *.jpg  binary

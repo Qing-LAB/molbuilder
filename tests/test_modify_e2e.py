@@ -1,10 +1,24 @@
 """End-to-end browser tests for the Modify tab.
 
-Covers M2 (UI skeleton: file load, atom list ↔ viewer click sync,
-3Dmol axis overlay) through M4 (orient + rotate, anchor-pair
-selection, info panel) plus Phase 1 cross-tab persistence (the
-structure + selection + camera survive Build ↔ Watch ↔ Modify
-navigation via sessionStorage).
+Covers M2 (UI skeleton: file load, 3Dmol axis overlay) through M4
+(orient + rotate, anchor-pair selection) plus Phase 1 cross-tab
+persistence (the structure + selection + camera survive Build ↔
+Watch ↔ Modify navigation via sessionStorage).
+
+.. note:: 2026-05-20
+
+   The legacy left-column ``#atom-list-body`` atom-list table +
+   click-to-select handler were retired in Phase B.1.12 when the
+   selection store became the canonical source of truth.  All tests
+   that used to drive selection by clicking ``#atom-list-body tr``
+   now drive it via the ``_set_selection`` helper, which calls
+   ``window.molbuilder.selection.store.setSelection(indices)`` and
+   waits for the test hook to observe the new state.  Tests that
+   counted ``#atom-list-body tr`` to detect structure-size changes
+   now poll ``window.__molbuilder_modify_test.getNAtoms()`` for the
+   same signal.  The right-edit-panel ``#selection-info`` table was
+   retired in the same pass; the tests that pinned its row contents
+   were retired with it.  Phase B.1.13 = this rewrite.
 
 What pytest can't reach
 =======================
@@ -84,7 +98,7 @@ def flask_server():
 
     from molbuilder.web.app import create_app
 
-    app = create_app()
+    app = create_app(config={})
     server = make_server("127.0.0.1", 0, app, threaded=True)
     port = server.server_port
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -112,7 +126,15 @@ def water_xyz_file(tmp_path):
 
 def _open_modify(page, base_url):
     """Navigate to /modify, capture JS errors, and wait for the JS to
-    finish wiring (the load button is reachable as a proxy)."""
+    finish wiring.
+
+    Pre-2026-05-18 this waited for ``#load-btn`` (the browser-local
+    file dialog's submit button); that button + the sibling
+    ``#file-picker`` were deleted when the Projects sidebar took
+    over file selection.  We now wait for the in-page loader API
+    that ``modify/viewer.js`` installs at the END of DOMContentLoaded
+    -- by then, every event handler the tests rely on is wired.
+    """
     errors = []
     page.on("pageerror", lambda exc: errors.append(("pageerror", str(exc))))
     page.on("console", lambda msg: (
@@ -120,25 +142,80 @@ def _open_modify(page, base_url):
         if msg.type == "error" else None
     ))
     page.goto(f"{base_url}/modify")
-    # Wait for the JS DOMContentLoaded handler to bind events.
-    page.wait_for_selector("#load-btn")
+    page.wait_for_function(
+        "() => !!window.molbuilder"
+        "       && typeof window.molbuilder.loadStructureText === 'function'"
+    )
     return errors
 
 
 def _load_water(page, water_xyz_file):
-    """Upload the water.xyz fixture and wait for the atom list to
-    populate (3 rows for O + 2H)."""
+    """Load the water.xyz fixture and wait for the structure to
+    populate (3 atoms for O + 2H)."""
     _load_file(page, water_xyz_file, expected_atoms=3)
 
 
 def _load_file(page, xyz_path, expected_atoms):
-    """Upload an arbitrary XYZ file and wait for the atom list to
-    show ``expected_atoms`` rows.  Handles the auto-submit-on-pick
-    handler the file-picker fires."""
-    page.set_input_files("#file-picker", xyz_path)
+    """Load an XYZ fixture by feeding its text to the in-page loader
+    API.
+
+    The legacy left-column ``#atom-list-body`` was retired
+    2026-05-20 along with the click-to-select UI; the selection
+    panel above the modify-grid carries the atom list now.  For
+    tests we drive selection via the store (``_set_selection``)
+    so we don't depend on the panel's atom-list being populated
+    -- we just need the viewer to have the structure loaded so
+    the modify ops can act on it.  ``getNAtoms`` reads
+    ``state.n_atoms`` directly from viewer.js.
+    """
+    from pathlib import Path
+    p = Path(str(xyz_path))
+    text = p.read_text()
+    filename = p.name
+    page.evaluate(
+        "([text, filename]) => window.molbuilder.loadStructureText(text, filename)",
+        [text, filename],
+    )
     page.wait_for_function(
-        f"() => document.querySelectorAll('#atom-list-body tr').length"
-        f" === {int(expected_atoms)}"
+        f"() => window.__molbuilder_modify_test "
+        f"      && window.__molbuilder_modify_test.getNAtoms() "
+        f"         === {int(expected_atoms)}"
+    )
+
+
+def _set_selection(page, indices):
+    """Drive the canonical selection state via the store.  Replaces
+    the old "click row N in the atom list" pattern.  Indices are
+    0-based atom indices (same as everywhere else in the codebase).
+    Awaits the microtask so subsequent reads see the new state.
+    """
+    page.evaluate(
+        "(indices) => window.molbuilder.selection.store.setSelection(indices)",
+        list(indices),
+    )
+    page.wait_for_function(
+        f"(want) => JSON.stringify("
+        f"  window.__molbuilder_modify_test.getSelected()"
+        f") === JSON.stringify(want)",
+        arg=sorted(set(indices)),
+    )
+
+
+def _get_selection(page):
+    """Read the current selection from the test hook (which itself
+    reads live from the store).  Returns a sorted list of indices."""
+    return page.evaluate(
+        "() => window.__molbuilder_modify_test.getSelected()"
+    )
+
+
+def _clear_selection(page):
+    """Empty the store's selection."""
+    page.evaluate(
+        "() => window.molbuilder.selection.store.clearSelection()"
+    )
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getSelected().length === 0"
     )
 
 
@@ -176,20 +253,66 @@ def test_modify_page_loads_without_js_errors(page, flask_server):
     assert page.locator("a.app-tab.is-active").inner_text() == "Modify"
 
 
-def test_load_water_populates_atom_list(page, flask_server, water_xyz_file):
-    """Uploading water.xyz -> 3 rows in the atom list, status text
-    flips to ok, atom-count readout reads ''3 atoms''."""
+def test_runtime_modules_registered_on_modify(page, flask_server):
+    """Pin the module-init contract (design.md "Module init contract"):
+    every module-with-a-global on /modify MUST call
+    ``runtime.register(name, api)`` so consumers can ``whenReady``
+    instead of polling for ``window.molbuilder.foo``.
+
+    Regression target: a future module-with-a-global that forgets
+    to register would still work for same-tick consumers (because of
+    the backward-compat global) but break any consumer that
+    legitimately uses ``whenReady``.  This test catches that drift."""
+    page.goto(f"{flask_server}/modify")
+    page.wait_for_function(
+        "() => window.molbuilder && window.molbuilder.runtime "
+        "      && window.molbuilder.runtime.listRegistered()"
+        "                 .includes('selection.store')",
+        timeout=10000,
+    )
+    registered = page.evaluate(
+        "() => window.molbuilder.runtime.listRegistered()"
+    )
+    # The expected set is the module-name registry from design.md;
+    # adding a module requires updating BOTH the table there and
+    # this assert (intentional friction so the rename gets caught).
+    for required in (
+        "projects",
+        "selection.store",
+        "selection.panel",
+        "selection.viewerAdapter",
+        "modify.viewer",
+        "modify.loadStructureText",
+    ):
+        assert required in registered, (
+            f"runtime is missing the {required!r} registration; "
+            f"see design.md \"Module init contract\".  "
+            f"Got: {registered}"
+        )
+    # listPending should be empty -- a non-empty list means a
+    # consumer is hung forever waiting for a producer that never
+    # called register().
+    pending = page.evaluate(
+        "() => window.molbuilder.runtime.listPending()"
+    )
+    assert pending == [], (
+        f"runtime has dangling whenReady() waiters; producers never "
+        f"registered: {pending}"
+    )
+
+
+def test_load_water_populates_structure(page, flask_server, water_xyz_file):
+    """Loading water.xyz -> viewer state has 3 atoms; status text
+    flips to ok.  The legacy left-column #atom-list-body was retired
+    2026-05-20; the structure is checked via the in-page test hook
+    instead.  (The selection panel's atom list is exercised by
+    Playwright tests that talk to the panel directly.)"""
     errors = _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
-    rows = page.locator("#atom-list-body tr")
-    assert rows.count() == 3
-    # First row is the oxygen.
-    assert rows.nth(0).locator(".col-el").inner_text() == "O"
-    assert rows.nth(1).locator(".col-el").inner_text() == "H"
-    # Atom-count badge.
-    assert page.locator("#atom-count").inner_text() == "3 atoms"
-    # Status flipped to ok.  Compound-class convention shared with
-    # Build + Watch: class becomes "status ok", not "status-ok".
+    assert page.evaluate(
+        "() => window.__molbuilder_modify_test.getNAtoms()"
+    ) == 3
+    # Status flipped to ok.
     status_class = page.locator("#status").get_attribute("class") or ""
     assert "status" in status_class.split() and "ok" in status_class.split(), (
         f"#status class should be 'status ok', got {status_class!r}"
@@ -198,72 +321,16 @@ def test_load_water_populates_atom_list(page, flask_server, water_xyz_file):
 
 
 # --------------------------------------------------------------------- #
-#  M2: list -> viewer click sync                                        #
-# --------------------------------------------------------------------- #
-
-
-def test_clicking_row_highlights_row_and_viewer(
-        page, flask_server, water_xyz_file):
-    """Plain row click -> single-select.  Row gets ``.is-selected``;
-    the viewer's selected-atom set in JS state matches.  We probe the
-    JS state directly because 3Dmol's highlight overlay lives on the
-    GL canvas (no DOM hook)."""
-    _open_modify(page, flask_server)
-    _load_water(page, water_xyz_file)
-    page.locator("#atom-list-body tr").nth(1).click()  # H1
-    selected = page.evaluate(
-        "() => Array.from(document.querySelectorAll("
-        "'#atom-list-body tr.is-selected'))"
-        ".map(tr => Number(tr.dataset.atomIndex))"
-    )
-    assert selected == [1]
-    # The selection readout in the right panel reflects the pick.
-    # User-facing labels are 1-based: 0-based atom 1 -> "#2".
-    assert "#2 H" in page.locator("#selection-readout").inner_text()
-
-
-def test_shift_click_multi_select(
-        page, flask_server, water_xyz_file):
-    """Shift-click adds atoms to the selection (orient reads a
-    two-atom selection as the anchor pair).  Plain click on a
-    third row clears + reselects."""
-    _open_modify(page, flask_server)
-    _load_water(page, water_xyz_file)
-
-    rows = page.locator("#atom-list-body tr")
-    rows.nth(0).click()
-    rows.nth(2).click(modifiers=["Shift"])
-    # Both rows have .is-selected.
-    assert rows.nth(0).get_attribute("class") and "is-selected" in (
-        rows.nth(0).get_attribute("class") or ""
-    )
-    assert "is-selected" in (rows.nth(2).get_attribute("class") or "")
-    # Plain click on row 1 collapses the selection back to {1}.
-    rows.nth(1).click()
-    selected = page.evaluate(
-        "() => Array.from(document.querySelectorAll("
-        "'#atom-list-body tr.is-selected'))"
-        ".map(tr => Number(tr.dataset.atomIndex))"
-    )
-    assert selected == [1]
-
-
-def test_clear_selection_button_empties_state(
-        page, flask_server, water_xyz_file):
-    """The ''Clear selection'' button drops every selected atom and
-    blanks the readout."""
-    _open_modify(page, flask_server)
-    _load_water(page, water_xyz_file)
-    page.locator("#atom-list-body tr").nth(0).click()
-    assert "No atoms selected." not in page.locator("#selection-readout").inner_text()
-    page.locator("#clear-selection").click()
-    assert page.locator("#selection-readout").inner_text() == "No atoms selected."
-    sel_rows = page.locator("#atom-list-body tr.is-selected")
-    assert sel_rows.count() == 0
-
-
-# --------------------------------------------------------------------- #
-#  M2: viewer -> list direction (via the JS click callback)             #
+#  Selection-store contracts                                            #
+#                                                                       #
+#  The legacy "plain click = single-select, shift-click = multi-select" #
+#  + #selection-readout + #selection-info-body tests were retired       #
+#  2026-05-20 along with the UI that backed them.  The selection store  #
+#  (window.molbuilder.selection.store) is now the canonical state,      #
+#  edited via ``toggleAtom`` / ``setSelection`` / ``applyFilter``.  The #
+#  tests below pin the contracts a /modify user actually relies on:     #
+#  the store updates state.selection, viewer.js re-renders button       #
+#  enablement, the test hook reads live from the store.                 #
 # --------------------------------------------------------------------- #
 
 
@@ -271,14 +338,10 @@ def test_3dmol_atom_serial_matches_zero_based_index(
         page, flask_server, water_xyz_file):
     """Probe what 3Dmol stores as ``atom.serial`` for XYZ-loaded atoms.
 
-    The viewer-click callback uses ``atom.serial`` as the index into
-    ``state.selected``.  ``state`` is 0-based (matches the
-    ``data-atom-index`` on each ``<tr>``).  3Dmol historically uses
-    1-based serials for PDB; if XYZ also uses 1-based, the viewer
-    click would be off-by-one and would highlight the WRONG row.
-
-    This test catches that class of regression by inspecting the
-    3Dmol atom records via the test hook."""
+    The viewer-adapter forwards ``atom.serial`` to
+    ``store.toggleAtom`` -- if 3Dmol used 1-based serials, every
+    viewer click would land on the wrong atom.  This test pins the
+    0-based contract by reading atom records via the test hook."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
     atoms = page.evaluate("""() => {
@@ -289,71 +352,469 @@ def test_3dmol_atom_serial_matches_zero_based_index(
             clickable: a.clickable,
         }));
     }""")
-    # Three atoms.  serial values must match 0..n-1 -- otherwise the
-    # viewer-click direction silently maps to the wrong row.
     serials = [a["serial"] for a in atoms]
     assert serials == [0, 1, 2], (
         f"3Dmol XYZ atom serials are not 0-based: {atoms!r}"
     )
-    # All atoms must carry clickable=true after applyStructure.
+    # setClickable runs every render now (the viewer-adapter re-arms
+    # to survive model swaps); atoms should carry clickable=true.
     assert all(a["clickable"] for a in atoms), (
-        f"setClickable({{}}, true, ...) didn't propagate to atoms: {atoms!r}"
+        f"clickable flag didn't propagate to atoms: {atoms!r}"
     )
 
 
-def test_viewer_atom_click_callback_highlights_correct_row(
+def test_store_set_selection_persists_through_test_hook(
         page, flask_server, water_xyz_file):
-    """Drive the viewer -> list direction directly through the click
-    callback (since clicking WebGL canvas pixels at a known atom
-    position would require projecting through the camera matrix and
-    is brittle).  Spec contract: clicking atom N in the viewer must
-    leave row N (and only row N) with ``.is-selected``."""
+    """``store.setSelection`` writes state.selection; the test hook
+    reads it live.  Pins the round-trip the rest of the suite uses
+    to drive selection state."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
-    # Synthesise the click that 3Dmol would dispatch: pass an atom
-    # record ``{serial: 1}`` (the first H) along with a fake event.
-    page.evaluate("""() => {
-        const hook = window.__molbuilder_modify_test;
-        const fakeAtom  = { serial: 1 };
-        const fakeViewer = hook.getViewer();
-        const fakeEvent  = { shiftKey: false };
-        hook.onViewerAtomClick(fakeAtom, fakeViewer, fakeEvent);
-    }""")
-    selected = page.evaluate(
-        "() => window.__molbuilder_modify_test.getSelected()"
-    )
-    assert selected == [1], f"expected [1], got {selected!r}"
-    # And the DOM row reflects it.
-    rows = page.locator("#atom-list-body tr.is-selected")
-    assert rows.count() == 1
-    assert rows.first.get_attribute("data-atom-index") == "1"
+    _set_selection(page, [0, 2])
+    assert _get_selection(page) == [0, 2]
+    _set_selection(page, [1])
+    assert _get_selection(page) == [1]
+    _clear_selection(page)
+    assert _get_selection(page) == []
 
 
-def test_viewer_click_with_shift_extends_selection(
+def test_store_toggle_atom_flips_membership(
         page, flask_server, water_xyz_file):
-    """Shift-modifier on a viewer click extends the selection (matches
-    list-row shift-click).  Critical for M4 anchor-pair selection."""
+    """Each ``store.toggleAtom`` call flips the atom's membership in
+    state.selection (client-side; no HTTP).  Replaces the old
+    plain-click / shift-click semantics with the new
+    "every click toggles" model."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
-    page.evaluate("""() => {
-        const hook = window.__molbuilder_modify_test;
-        const v = hook.getViewer();
-        hook.onViewerAtomClick({ serial: 0 }, v, { shiftKey: false });
-        hook.onViewerAtomClick({ serial: 2 }, v, { shiftKey: true });
-    }""")
-    selected = page.evaluate(
-        "() => window.__molbuilder_modify_test.getSelected().sort()"
+    toggle = ("(i) => "
+              "window.molbuilder.selection.store.toggleAtom(i)")
+    page.evaluate(toggle, 0)
+    page.evaluate(toggle, 2)
+    assert _get_selection(page) == [0, 2]
+    page.evaluate(toggle, 0)   # toggle off
+    assert _get_selection(page) == [2]
+
+
+_PANEL_URL_FOR_FIXTURE = "/partials/selection-panel"
+
+
+def _wait_panel_ready(page):
+    """Wait until the selection-panel partial is mounted into
+    #selection-host.  Selection-panel.js fetches the partial async
+    on DOMContentLoaded; tests that interact with panel DOM must
+    wait for that mount to complete or the locators race the
+    fetch.
+
+    ``state="attached"`` (not the default "visible") because the
+    mode-radio inputs are intentionally hidden via
+    ``opacity:0;width:0;height:0`` -- the user clicks the
+    surrounding label/span pill, not the radio dot itself
+    (segmented-control styling).  A naive ``wait_for_selector``
+    with the default visibility requirement times out forever
+    against a perfectly-mounted panel."""
+    page.wait_for_selector("#selection-mode-click", state="attached")
+
+
+# --------------------------------------------------------------------- #
+#  Selection panel -- DOM-driven UI tests                               #
+#                                                                       #
+#  Every other test in this file drives selection via _set_selection    #
+#  (which goes straight to store.setSelection); that's correct for      #
+#  exercising the ops + state, but it bypasses the panel completely.    #
+#  The tests below click panel DOM directly so the panel -> store ->    #
+#  view round-trip is actually exercised end-to-end.                    #
+# --------------------------------------------------------------------- #
+
+
+def test_panel_partial_mounts_under_modify(
+        page, flask_server, water_xyz_file):
+    """The selection panel partial is fetched + mounted by
+    selection-bootstrap.js on DOMContentLoaded, and the panel
+    subscribes to the store.  Pinning BOTH is the contract -- a
+    panel whose DOM mounted but whose subscribe() never fired
+    would render a frozen count display, which is exactly the
+    kind of silent regression this test exists to catch.
+    """
+    _open_modify(page, flask_server)
+    _wait_panel_ready(page)
+    # Required IDs come from the partial; confirm the structural
+    # ones that other tests depend on.
+    for required in (
+        "selection-mode-click", "selection-mode-filter",
+        "selection-click-section", "selection-filter-section",
+        "selection-apply-filter", "selection-select-all",
+        "selection-assign-target", "selection-assign-new-label",
+        "selection-count",
+    ):
+        assert page.locator("#" + required).count() == 1, (
+            f"selection panel missing required id #{required}"
+        )
+    # Mounting the DOM is half the contract; subscribe-wired is the
+    # other half.  Drive a store change and watch the count cell
+    # react -- if subscribe() never fired, the cell stays at its
+    # initial "no structure" / "0 atoms" text.
+    _load_water(page, water_xyz_file)
+    _set_selection(page, [1])
+    page.wait_for_function(
+        '() => document.getElementById("selection-count")'
+        '      .textContent.trim() === "1 / 3 atoms"'
     )
-    assert selected == [0, 2], f"shift-click didn't multi-select: {selected!r}"
+
+
+def test_panel_mode_swap_preserves_selection(
+        page, flask_server, water_xyz_file):
+    """The spec (atom-selection.md §3) promises state.selection is
+    shared across modes; switching modes is a pure UI swap.  Set a
+    selection in click mode, flip to filter, flip back, and confirm:
+
+      * the store still carries the same indices,
+      * the re-rendered atom-list checkboxes reflect the preserved
+        selection -- the render path is the actual regression risk;
+        the store is the boring part.
+    """
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    _wait_panel_ready(page)
+    _set_selection(page, [0, 2])
+    # Flip to filter mode -- the click section hides, but selection
+    # must persist in the store.
+    page.locator("#selection-mode-filter").click(force=True)
+    page.wait_for_function(
+        "() => document.getElementById('selection-filter-section')"
+        "      .hidden === false"
+    )
+    assert _get_selection(page) == [0, 2], (
+        "selection was cleared when switching modes"
+    )
+    page.locator("#selection-mode-click").click(force=True)
+    page.wait_for_function(
+        "() => document.getElementById('selection-click-section')"
+        "      .hidden === false"
+    )
+    assert _get_selection(page) == [0, 2], (
+        "selection was cleared when switching back to click"
+    )
+    # And the atom-list checkboxes mirror the preserved selection.
+    checked = page.evaluate("""() => {
+        const rows = document.querySelectorAll(
+            '#selection-atom-list tr');
+        const out = [];
+        rows.forEach((tr) => {
+            const cb = tr.querySelector('input[type="checkbox"]');
+            if (cb && cb.checked) {
+                out.push(parseInt(tr.dataset.atomIndex, 10));
+            }
+        });
+        return out.sort((a, b) => a - b);
+    }""")
+    assert checked == [0, 2], (
+        f"atom-list checkboxes did not reflect preserved selection "
+        f"after mode round-trip; got {checked}"
+    )
+
+
+def test_panel_add_filter_button_flips_mode_to_filter(
+        page, flask_server, water_xyz_file):
+    """The + Add filter button must flip mode to filter even if the
+    user was in click mode -- otherwise the newly-added filter row
+    would be hidden and the user wouldn't see it.  (panel.js:
+    addFilterBtn handler.)"""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    _wait_panel_ready(page)
+    # Confirm click mode is the default.
+    assert page.locator("#selection-mode-click").is_checked()
+    page.locator("#selection-add-filter").click()
+    page.wait_for_function(
+        "() => document.getElementById('selection-mode-filter').checked"
+    )
+    # The filter editor section is visible now.
+    assert page.locator("#selection-filter-section").is_visible()
+    # And exactly one filter row was added.
+    assert page.locator(".selection-filter-row").count() == 1
+
+
+def test_panel_apply_filter_with_no_filters_clears_selection(
+        page, flask_server, water_xyz_file):
+    """store.applyFilter() with an empty filter list treats it as
+    'select nothing' and replaces state.selection with [] WITHOUT
+    making a server round-trip (store.js _filtersToRule -> null
+    branch returns before posting to /api/selection/eval).
+
+    Tested two ways:
+      * via the panel's Apply button so the panel -> store wiring
+        is in the test;
+      * via a page.route interceptor that fails if /api/selection/eval
+        is ever called -- a future regression that posts ``rule: null``
+        to the server would fail loudly here instead of being masked
+        by a server tolerant of the bad rule.
+    """
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    _wait_panel_ready(page)
+    _set_selection(page, [0, 1, 2])
+    # Intercept eval requests; any call here is a contract violation.
+    eval_calls = []
+    page.route("**/api/selection/eval", lambda route: (
+        eval_calls.append(route.request.url),
+        route.fulfill(status=599, body="forbidden by test")
+    )[1])
+    # Flip to filter mode; the filter list is empty.
+    page.locator("#selection-mode-filter").click(force=True)
+    page.wait_for_function(
+        "() => document.getElementById('selection-mode-filter').checked"
+    )
+    page.locator("#selection-apply-filter").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getSelected().length === 0"
+    )
+    assert _get_selection(page) == []
+    page.unroute("**/api/selection/eval")
+    assert eval_calls == [], (
+        f"empty-filter Apply must NOT hit /api/selection/eval; "
+        f"got {len(eval_calls)} call(s): {eval_calls}"
+    )
+
+
+def test_panel_apply_filter_with_empty_row_skips_that_row(
+        page, flask_server, water_xyz_file):
+    """If the user adds a filter row but leaves its value empty
+    (e.g. just clicked + Add filter then Apply), the empty row
+    must be SKIPPED -- not sent to the server as
+    ``{op: by_index_range, expression: ""}`` which evaluates to
+    [] and under AND combinator would silently wipe the selection.
+
+    Distinct from test_panel_apply_filter_with_no_filters_clears_selection
+    which exercises the state.filters.length === 0 branch.  Here
+    state.filters has one entry, but the entry has no value -- a
+    half-typed filter that must not poison the rule.
+    """
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    _wait_panel_ready(page)
+    _set_selection(page, [0, 1, 2])
+    # Seed a filter row that pins an O atom, then add an empty
+    # by_index row.  Combinator OR.  The expected result is just
+    # the O atom (atom 0); a buggy _filterToRule that sent the
+    # empty row as expression:"" would intersect (under AND) or
+    # contribute nothing (under OR) -- under OR the test would
+    # still pass with the wrong rule, so we test AND explicitly
+    # which is the failure mode.
+    page.evaluate("""() => {
+        const s = window.molbuilder.selection.store;
+        s.setFilters([
+            {kind: "by_element", value: "O"},
+            {kind: "by_index",   value: ""}
+        ]);
+        s.setCombinator("and");
+    }""")
+    page.locator("#selection-mode-filter").click(force=True)
+    page.wait_for_function(
+        "() => document.getElementById('selection-mode-filter').checked"
+    )
+    page.locator("#selection-apply-filter").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getSelected().length === 1"
+    )
+    # Just atom 0 (the O) -- the empty by_index row was skipped
+    # rather than intersected as an empty operand.
+    assert _get_selection(page) == [0], (
+        "empty by_index filter was not skipped when building the "
+        f"rule; got selection {_get_selection(page)} (expected [0])"
+    )
+
+
+def test_panel_select_all_checkbox_tri_state(
+        page, flask_server, water_xyz_file):
+    """The #selection-select-all checkbox is tri-state:
+      * unchecked when nothing is selected,
+      * indeterminate when some atoms are selected,
+      * checked when every atom is selected.
+    (panel.js renderAtomList -- the all/none/partial branches.)"""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    _wait_panel_ready(page)
+
+    state = page.evaluate("""() => {
+        const c = document.getElementById('selection-select-all');
+        return {checked: c.checked, indeterminate: c.indeterminate};
+    }""")
+    assert state == {"checked": False, "indeterminate": False}
+
+    _set_selection(page, [0])
+    state = page.evaluate("""() => {
+        const c = document.getElementById('selection-select-all');
+        return {checked: c.checked, indeterminate: c.indeterminate};
+    }""")
+    assert state == {"checked": False, "indeterminate": True}
+
+    _set_selection(page, [0, 1, 2])
+    state = page.evaluate("""() => {
+        const c = document.getElementById('selection-select-all');
+        return {checked: c.checked, indeterminate: c.indeterminate};
+    }""")
+    assert state == {"checked": True, "indeterminate": False}
+
+
+def test_panel_select_all_click_selects_then_clears(
+        page, flask_server, water_xyz_file):
+    """Clicking the select-all checkbox toggles between select-all
+    and clear-selection per the on-change handler in
+    selection-panel.js."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    _wait_panel_ready(page)
+    page.locator("#selection-select-all").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getSelected().length === 3"
+    )
+    assert _get_selection(page) == [0, 1, 2]
+    page.locator("#selection-select-all").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getSelected().length === 0"
+    )
+
+
+def test_panel_assign_target_new_option_reveals_label_input(
+        page, flask_server, water_xyz_file):
+    """Picking the '+ new region label…' option un-hides the
+    free-text input so the user can type a label.  (panel.js
+    renderAssignVisibility.)"""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    _wait_panel_ready(page)
+    new_input = page.locator("#selection-assign-new-label")
+    assert new_input.is_hidden(), (
+        "new-label input should start hidden when target is a built-in"
+    )
+    page.locator("#selection-assign-target").select_option("__new__")
+    page.wait_for_function(
+        "() => document.getElementById('selection-assign-new-label')"
+        "      .hidden === false"
+    )
+    assert new_input.is_visible()
+
+
+def test_panel_assign_writes_label_to_atoms(
+        page, flask_server, water_xyz_file):
+    """End-to-end Assign flow: pick atoms via the store, pick a
+    built-in target in the dropdown, click Assign, and confirm
+    the label appears on those atoms' tag column.  This is the
+    single most error-prone code path in the panel (set vs union
+    vs difference semantics across onAssign / onAddToTarget /
+    onRemoveFromTarget) and had no panel-level coverage.
+    """
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    _wait_panel_ready(page)
+    _set_selection(page, [0, 1])
+    # The dropdown is seeded with BUILTIN_TARGETS at mount; pick
+    # the canonical L-electrode region.
+    page.locator("#selection-assign-target").select_option("L-electrode")
+    page.locator("#selection-assign-btn").click()
+    # writeLabel re-fetches atoms on success (store.js).  The
+    # atom-list rows will re-render with the new label tag; wait
+    # for that DOM signal so we don't read mid-render.
+    page.wait_for_function(
+        '() => {'
+        '  const rows = document.querySelectorAll('
+        '    \'#selection-atom-list tr[data-atom-index]\');'
+        '  if (rows.length !== 3) return false;'
+        '  const r0 = rows[0].querySelector(".col-labels");'
+        '  const r1 = rows[1].querySelector(".col-labels");'
+        '  return r0 && r1'
+        '         && r0.textContent.includes("L-electrode")'
+        '         && r1.textContent.includes("L-electrode");'
+        '}'
+    )
+    # And the third atom is NOT labelled (Assign is REPLACE
+    # semantics on the target, scoped to the current selection;
+    # the unselected atom shouldn't have suddenly gained the tag).
+    third_text = page.evaluate(
+        '() => document.querySelector('
+        '  \'#selection-atom-list tr[data-atom-index="2"] .col-labels\''
+        ').textContent'
+    )
+    assert "L-electrode" not in third_text, (
+        f"unselected atom 2 should not have been labelled; "
+        f"got tag text {third_text!r}"
+    )
+
+
+def test_panel_filter_drafts_persist_through_file_switch(
+        page, flask_server, water_xyz_file, tmp_path):
+    """Spec contract: filter drafts (state.filters) persist when
+    setSourceFile swaps the structure, even though state.selection
+    clears.  Future "defensively wipe filters on file switch"
+    refactors should fail this test loudly.
+
+    Verifies the comment block at lines 280-282 of
+    selection-bootstrap.js ('filter drafts persist; the user must
+    explicitly applyFilter() against the new structure').
+    """
+    other = tmp_path / "other.xyz"
+    other.write_text("3\nh2o-2\nO 0 0 0\nH 0.957 0 0\nH -0.24 0.927 0\n")
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    _wait_panel_ready(page)
+    # Add a filter draft from the store side -- equivalent to the
+    # user clicking + Add filter and typing.  No applyFilter() is
+    # called; the draft lives in state.filters.
+    page.evaluate(
+        "() => window.molbuilder.selection.store.addFilter("
+        "  {kind: 'by_element', value: 'O'})"
+    )
+    page.wait_for_function(
+        "() => window.molbuilder.selection.store"
+        "      .getState().filters.length === 1"
+    )
+    # Switch source files through the store.
+    _load_file(page, str(other), expected_atoms=3)
+    drafts = page.evaluate(
+        "() => window.molbuilder.selection.store.getState().filters"
+    )
+    assert len(drafts) == 1 and drafts[0]["kind"] == "by_element", (
+        f"filter drafts were wiped on file switch; got {drafts}"
+    )
+
+
+def test_panel_atom_row_checkbox_toggles_store_selection(
+        page, flask_server, water_xyz_file):
+    """The per-row checkbox in #selection-atom-list calls
+    store.toggleAtom so the store -- not panel-local state --
+    is the source of truth.  Drive selection by clicking the
+    checkbox; assert the store updated."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    _wait_panel_ready(page)
+    page.wait_for_function(
+        "() => document.querySelectorAll("
+        "  '#selection-atom-list tr').length === 3"
+    )
+    page.locator(
+        '#selection-atom-list tr[data-atom-index="1"] input[type="checkbox"]'
+    ).click()
+    page.wait_for_function(
+        "() => JSON.stringify("
+        "  window.__molbuilder_modify_test.getSelected()) === '[1]'"
+    )
+    assert _get_selection(page) == [1]
+    # And the row carries the .is-selected class so the visual state
+    # follows the store.
+    page.wait_for_function(
+        '() => document.querySelector('
+        '  \'#selection-atom-list tr[data-atom-index="1"]\''
+        ').classList.contains("is-selected")'
+    )
 
 
 def test_clickable_survives_repeated_apply_style(
         page, flask_server, water_xyz_file):
-    """Whenever the user changes the representation dropdown the JS
-    calls ``viewer.setStyle({}, ...)`` which historically reset the
-    clickable flag in older 3Dmol builds.  Verify our atoms stay
-    clickable after a style change so the viewer->list direction
-    keeps working past the first click."""
+    """``viewer.setStyle({}, ...)`` historically reset the clickable
+    flag in older 3Dmol builds.  The viewer-adapter re-arms
+    setClickable on every render so this regression doesn't bite,
+    but pin it explicitly: cycling the rep dropdown must leave atoms
+    clickable."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
 
@@ -423,35 +884,36 @@ def test_slider_drag_updates_distance_readout(
 def test_delete_button_disabled_without_selection(
         page, flask_server, water_xyz_file):
     """The Delete button is disabled whenever the selection is empty.
-    Re-enables on first row click; re-disables on Clear selection."""
+    Re-enables when the store has a selection; re-disables when the
+    store is cleared.  Routes through the selection store, which
+    fires the subscriber that toggles button enablement."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
     delete_btn = page.locator("#delete-apply")
     assert delete_btn.is_disabled()
-    page.locator("#atom-list-body tr").nth(1).click()
+    _set_selection(page, [1])
     assert delete_btn.is_enabled()
-    page.locator("#clear-selection").click()
+    _clear_selection(page)
     assert delete_btn.is_disabled()
 
 
 def test_apply_delete_drops_selected_row(
         page, flask_server, water_xyz_file):
-    """Click row 0 (the O), click Apply Delete -> atom list shrinks
-    from 3 to 2.  The remaining elements are both H (the two H atoms
-    survive)."""
+    """Select index 0 (the O), click Apply Delete -> structure shrinks
+    from 3 to 2 atoms.  The two H atoms survive (verified by reading
+    elements from the live viewer state)."""
     errors = _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
 
-    page.locator("#atom-list-body tr").nth(0).click()  # O
+    _set_selection(page, [0])  # O
     page.locator("#delete-apply").click()
     page.wait_for_function(
-        "() => document.querySelectorAll('#atom-list-body tr').length === 2"
+        "() => window.__molbuilder_modify_test.getNAtoms() === 2"
     )
-    rows = page.locator("#atom-list-body tr")
-    assert rows.count() == 2
-    elements = [
-        rows.nth(i).locator(".col-el").inner_text() for i in range(2)
-    ]
+    elements = page.evaluate("""() => {
+        const v = window.__molbuilder_modify_test.getViewer();
+        return v.selectedAtoms({}).map((a) => a.elem);
+    }""")
     assert elements == ["H", "H"]
     assert page.locator("#atom-count").inner_text() == "2 atoms"
     assert errors == [], f"JS errors during delete: {errors}"
@@ -461,14 +923,14 @@ def test_add_button_disabled_without_single_selection(
         page, flask_server, water_xyz_file):
     """The Add button is enabled only when EXACTLY ONE atom is the
     anchor (single-select).  Multi-select disables it; empty selection
-    disables it."""
+    disables it.  Selection set via the store."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
     add_btn = page.locator("#add-apply")
     assert add_btn.is_disabled()
-    page.locator("#atom-list-body tr").nth(0).click()
+    _set_selection(page, [0])
     assert add_btn.is_enabled()
-    page.locator("#atom-list-body tr").nth(1).click(modifiers=["Shift"])
+    _set_selection(page, [0, 1])
     # Now two atoms selected -> Add disabled, anchor readout updated.
     assert add_btn.is_disabled()
     anchor = page.locator("#add-anchor-readout").inner_text()
@@ -496,7 +958,7 @@ def test_apply_button_disables_during_fetch(
 
     page.route("**/api/modify/delete", _slow_route)
 
-    page.locator("#atom-list-body tr").nth(0).click()  # select O
+    _set_selection(page, [0])  # select O
     btn = page.locator("#delete-apply")
     assert btn.is_enabled(), "Apply should be enabled before click"
 
@@ -516,20 +978,21 @@ def test_apply_button_disables_during_fetch(
     assert disabled is True, "Apply button was not disabled mid-fetch"
     # Wait for the response to land + UI to settle.
     page.wait_for_function(
-        "() => document.querySelectorAll('#atom-list-body tr').length === 2",
+        "() => window.__molbuilder_modify_test.getNAtoms() === 2"
     )
     page.unroute("**/api/modify/delete")
 
 
 def test_apply_add_atom_appends_h_at_offset(
         page, flask_server, water_xyz_file):
-    """End-to-end: anchor=O, element=H, dz=1.0 -> atom list grows to
-    4, last row is H in residue MOD."""
+    """End-to-end: anchor=O, element=H, dz=1.0 -> structure grows to
+    4 atoms, last atom is H tagged residue MOD.  Residue tag is read
+    from the viewer's live atom record."""
     errors = _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
 
     # Anchor = the O.
-    page.locator("#atom-list-body tr").nth(0).click()
+    _set_selection(page, [0])
     # Set dx/dy=0, dz=1.0.  The default slider value for dz is 1.0
     # so this is mostly a sanity-check that the default sticks.
     page.locator("#add-dx").evaluate(
@@ -543,13 +1006,16 @@ def test_apply_add_atom_appends_h_at_offset(
     # Element field defaults to "H".  Apply.
     page.locator("#add-apply").click()
     page.wait_for_function(
-        "() => document.querySelectorAll('#atom-list-body tr').length === 4"
+        "() => window.__molbuilder_modify_test.getNAtoms() === 4"
     )
-    rows = page.locator("#atom-list-body tr")
-    assert rows.count() == 4
-    last = rows.nth(3)
-    assert last.locator(".col-el").inner_text() == "H"
-    assert "MOD" in last.locator(".col-res").inner_text()
+    last = page.evaluate("""() => {
+        const v = window.__molbuilder_modify_test.getViewer();
+        const atoms = v.selectedAtoms({});
+        const a = atoms[atoms.length - 1];
+        return {elem: a.elem, resn: a.resn || a.resi_name || ""};
+    }""")
+    assert last["elem"] == "H"
+    assert "MOD" in (last["resn"] or "")
     assert errors == [], f"JS errors during add_atom: {errors}"
 
 
@@ -558,28 +1024,12 @@ def test_apply_add_atom_appends_h_at_offset(
 # --------------------------------------------------------------------- #
 
 
-def test_selection_info_table_shows_atom_details(
-        page, flask_server, water_xyz_file):
-    """When an atom is selected, the right-panel ``Selection`` block
-    shows a per-atom info row with index, element, atom name, residue,
-    and (x, y, z) coordinates.  No selection -> table hidden."""
-    _open_modify(page, flask_server)
-    _load_water(page, water_xyz_file)
-    info_table = page.locator("#selection-info")
-    assert info_table.is_hidden(), "info table should hide when no selection"
-
-    page.locator("#atom-list-body tr").nth(1).click()  # H1 at (0.957, 0, 0)
-    info_table.wait_for(state="visible")
-    rows = page.locator("#selection-info-body tr")
-    assert rows.count() == 1
-    cells = rows.first.locator("td")
-    # Displayed index is 1-based; 0-based atom 1 -> "2".
-    assert cells.nth(0).inner_text() == "2"          # 1-based index
-    assert cells.nth(1).inner_text() == "H"          # element
-    # Coordinates -- formatted as f"{v:.3f}".
-    assert cells.nth(4).inner_text() == "0.957"
-    assert cells.nth(5).inner_text() == "0.000"
-    assert cells.nth(6).inner_text() == "0.000"
+# The legacy per-atom ``#selection-info`` table on the right-edit
+# panel (and its body ``#selection-info-body``) were removed
+# 2026-05-20 along with the rest of the right-column Selection
+# fieldset; the new selection panel above the modify-grid carries
+# the count + an actions block.  The test that pinned the table's
+# row content was retired with it.
 
 
 def test_axes_have_fixed_length_at_origin(
@@ -646,16 +1096,17 @@ def test_axes_have_fixed_length_at_origin(
 
 def test_selected_atom_adds_halo_marker_shape(
         page, flask_server, water_xyz_file):
-    """Selecting an atom adds a halo marker shape; clearing the
-    selection removes it.  Behavioural contract -- counts the
-    viewer's shape array before and after.  Avoids probing 3Dmol's
-    internal shape representation, which varies across versions."""
+    """Selecting an atom adds a halo overlay shape (added via the
+    viewer-adapter's _addSphereOverlay path); clearing the selection
+    removes it.  Behavioural contract -- counts the viewer's shape
+    array before and after.  We drive selection via the store
+    (toggleAtom / clearSelection) since the row-click UI is gone."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
     n_before = page.evaluate(
         "() => window.__molbuilder_modify_test.getViewer().shapes.length"
     )
-    page.locator("#atom-list-body tr").nth(0).click()
+    _set_selection(page, [0])
     page.wait_for_function(
         f"() => window.__molbuilder_modify_test.getViewer().shapes.length"
         f" > {n_before}"
@@ -668,7 +1119,7 @@ def test_selected_atom_adds_halo_marker_shape(
     # a wireframe sphere is built from many cylinder line segments
     # under the hood); we accept any positive delta.
     assert n_with_halo > n_before, (n_before, n_with_halo)
-    page.locator("#clear-selection").click()
+    _clear_selection(page)
     page.wait_for_function(
         f"() => window.__molbuilder_modify_test.getViewer().shapes.length"
         f" === {n_before}"
@@ -734,16 +1185,16 @@ def test_orient_button_enabled_only_with_two_anchors(
     _open_op_tab(page, "pose")
     btn = page.locator("#orient-apply")
     assert btn.is_disabled(), "no selection -> Orient disabled"
-    page.locator("#atom-list-body tr").nth(0).click()
+    _set_selection(page, [0])
     assert btn.is_disabled(), "one selection -> still disabled"
-    page.locator("#atom-list-body tr").nth(2).click(modifiers=["Shift"])
+    _set_selection(page, [0, 2])
     assert btn.is_enabled(), "two selections -> Orient enabled"
     # Anchor readout reflects both atoms.  Displayed labels are 1-based;
     # 0-based atoms 0 and 2 -> "#1" and "#3".
     readout = page.locator("#orient-anchor-readout").inner_text()
     assert "#1" in readout and "#3" in readout
     # Adding a third disables again.
-    page.locator("#atom-list-body tr").nth(1).click(modifiers=["Shift"])
+    _set_selection(page, [0, 1, 2])
     assert btn.is_disabled(), "three selections -> Orient disabled"
 
 
@@ -758,8 +1209,7 @@ def test_apply_orient_lays_anchor_pair_along_z(
     errors = _open_modify(page, flask_server)
     _load_file(page, str(diag_xyz), expected_atoms=4)
 
-    page.locator("#atom-list-body tr").nth(0).click()
-    page.locator("#atom-list-body tr").nth(3).click(modifiers=["Shift"])
+    _set_selection(page, [0, 3])
     _open_op_tab(page, "pose")
     page.locator("#orient-apply").click()
     # Wait for the response to land + UI to settle.
@@ -866,10 +1316,10 @@ def test_undo_disabled_after_non_slab_ops(
     # mutation, undo stays disabled because deletes don't push
     # history under the slab-only policy.
     _open_op_tab(page, "atom")
-    page.locator("#atom-list-body tr").nth(0).click()
+    _set_selection(page, [0])
     page.locator("#delete-apply").click()
     page.wait_for_function(
-        "() => document.querySelectorAll('#atom-list-body tr').length === 2"
+        "() => window.__molbuilder_modify_test.getNAtoms() === 2"
     )
     _open_op_tab(page, "junction")
     assert page.locator("#undo-op").is_disabled()
@@ -896,13 +1346,13 @@ def test_undo_after_electrode_op_restores_pre_slab_structure(
     # Anchorless pair mode: no selection needed.
     page.locator("#elc-apply").click()
     page.wait_for_function(
-        "() => document.querySelectorAll('#atom-list-body tr').length === 11"
+        "() => window.__molbuilder_modify_test.getNAtoms() === 11"
     )
     undo = page.locator("#undo-op")
     assert undo.is_enabled()
     undo.click()
     page.wait_for_function(
-        "() => document.querySelectorAll('#atom-list-body tr').length === 3"
+        "() => window.__molbuilder_modify_test.getNAtoms() === 3"
     )
     assert undo.is_disabled()
 
@@ -1000,53 +1450,61 @@ def test_modify_page_resources_load_with_200(page, flask_server):
 
 def test_modify_structure_survives_navigation_to_watch_and_back(
         page, flask_server, water_xyz_file):
-    """Load a structure on Modify, click the Watch tab, then click
-    the Modify tab again.  The atom list should still show the
-    original 3 rows -- without Phase 1 it would be empty (closure
-    state was destroyed on the navigation)."""
+    """Load a structure on Modify, click off to /results, then click
+    the Modify tab again.  The structure must still be present in
+    the viewer state -- without Phase 1 it would be empty (closure
+    state was destroyed on the navigation).  /watch was retired
+    2026-05-19; /results is the canonical "other tab" for
+    session-storage round-trip tests."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
-    # Sanity: 3 rows are present before we leave.
-    assert page.locator("#atom-list-body tr").count() == 3
-    # Click off to /watch (full reload).
-    page.locator('a.app-tab[href="/watch"]').click()
-    page.wait_for_url(f"{flask_server}/watch")
+    # Sanity: 3 atoms are present before we leave.
+    assert page.evaluate(
+        "() => window.__molbuilder_modify_test.getNAtoms()"
+    ) == 3
+    page.locator('a.app-tab[href="/results"]').click()
+    page.wait_for_url(f"{flask_server}/results")
     # And back.
     page.locator('a.app-tab[href="/modify"]').click()
     page.wait_for_url(f"{flask_server}/modify")
-    # Atom list should be repopulated by the restore.
+    # Structure restored by Phase 1 sessionStorage round-trip.
     page.wait_for_function(
-        "() => document.querySelectorAll('#atom-list-body tr').length === 3"
+        "() => window.__molbuilder_modify_test"
+        "      && window.__molbuilder_modify_test.getNAtoms() === 3"
     )
-    # Element column for the first row is still O (not e.g. "" if
-    # restore mangled the metadata).
-    rows = page.locator("#atom-list-body tr")
-    assert rows.nth(0).locator(".col-el").inner_text() == "O"
+    # First atom is still O (not e.g. "" if restore mangled metadata).
+    first_elem = page.evaluate("""() => {
+        const v = window.__molbuilder_modify_test.getViewer();
+        return v.selectedAtoms({})[0].elem;
+    }""")
+    assert first_elem == "O"
 
 
 def test_modify_selection_survives_navigation(
         page, flask_server, water_xyz_file):
     """Select an atom on Modify, navigate away, come back.  The
-    selected row stays highlighted -- the saved state includes the
-    selection set."""
+    selection survives -- saveModifyState() snapshots state.selected
+    via selectedIndices(), and restoreModifyState() pushes it back
+    into the store with setSelection().  Verified via the test hook
+    which reads the store live."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
-    page.locator("#atom-list-body tr").nth(1).click()
-    # Confirm selection before nav.
-    assert "is-selected" in (
-        page.locator("#atom-list-body tr").nth(1).get_attribute("class") or ""
-    )
-    page.locator('a.app-tab[href="/watch"]').click()
-    page.wait_for_url(f"{flask_server}/watch")
+    _set_selection(page, [1])
+    page.locator('a.app-tab[href="/results"]').click()
+    page.wait_for_url(f"{flask_server}/results")
     page.locator('a.app-tab[href="/modify"]').click()
     page.wait_for_url(f"{flask_server}/modify")
+    # Structure restored.
     page.wait_for_function(
-        "() => document.querySelectorAll('#atom-list-body tr').length === 3"
+        "() => window.__molbuilder_modify_test"
+        "      && window.__molbuilder_modify_test.getNAtoms() === 3"
     )
-    # The selection survives.
-    selected = page.locator("#atom-list-body tr.is-selected")
-    assert selected.count() == 1
-    assert selected.first.get_attribute("data-atom-index") == "1"
+    # And the selection restored into the store.
+    page.wait_for_function(
+        "() => JSON.stringify("
+        "  window.__molbuilder_modify_test.getSelected()) === '[1]'"
+    )
+    assert _get_selection(page) == [1]
 
 
 def test_modify_state_after_op_survives_navigation(
@@ -1056,23 +1514,24 @@ def test_modify_state_after_op_survives_navigation(
     state must be what restores -- NOT the 3-atom pre-load."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
-    page.locator("#atom-list-body tr").nth(0).click()  # O
+    _set_selection(page, [0])  # O
     page.locator("#delete-apply").click()
     page.wait_for_function(
-        "() => document.querySelectorAll('#atom-list-body tr').length === 2"
+        "() => window.__molbuilder_modify_test.getNAtoms() === 2"
     )
-    page.locator('a.app-tab[href="/watch"]').click()
-    page.wait_for_url(f"{flask_server}/watch")
+    page.locator('a.app-tab[href="/results"]').click()
+    page.wait_for_url(f"{flask_server}/results")
     page.locator('a.app-tab[href="/modify"]').click()
     page.wait_for_url(f"{flask_server}/modify")
     # Post-delete state is what restores.
     page.wait_for_function(
-        "() => document.querySelectorAll('#atom-list-body tr').length === 2"
+        "() => window.__molbuilder_modify_test"
+        "      && window.__molbuilder_modify_test.getNAtoms() === 2"
     )
-    rows = page.locator("#atom-list-body tr")
-    elements = [
-        rows.nth(i).locator(".col-el").inner_text() for i in range(2)
-    ]
+    elements = page.evaluate("""() => {
+        const v = window.__molbuilder_modify_test.getViewer();
+        return v.selectedAtoms({}).map((a) => a.elem);
+    }""")
     assert elements == ["H", "H"]
 
 
@@ -1106,8 +1565,10 @@ def test_modify_handles_storage_quota_exceeded_gracefully(
     page.wait_for_timeout(150)
     page_errors = [e for e in errors if e[0] == "pageerror"]
     assert page_errors == [], f"unexpected pageerror: {page_errors}"
-    # Atom list still rendered; the page didn't break.
-    assert page.locator("#atom-list-body tr").count() == 3
+    # Structure still rendered; the page didn't break.
+    assert page.evaluate(
+        "() => window.__molbuilder_modify_test.getNAtoms()"
+    ) == 3
 
 
 # --------------------------------------------------------------------- #
@@ -1136,8 +1597,13 @@ def test_build_structure_survives_navigation(page, flask_server):
     n_atoms_before = page.locator("#info-atoms").inner_text()
     assert n_atoms_before and n_atoms_before != "—"
     # Click Watch (full navigation).
-    page.locator('a.app-tab[href="/watch"]').click()
-    page.wait_for_url(f"{flask_server}/watch")
+    # Navigate to /results (the previous test pinned /watch; the
+    # contract here is "navigate ELSEWHERE and back"; /results is
+    # equally valid as the away page).  /watch was retired
+    # 2026-05-19; /results is now the canonical "other tab" for
+    # session-storage round-trip tests.
+    page.locator('a.app-tab[href="/results"]').click()
+    page.wait_for_url(f"{flask_server}/results")
     # And back.
     page.locator('a.app-tab[href="/"]').click()
     page.wait_for_url(f"{flask_server}/")
@@ -1190,42 +1656,33 @@ def test_modify_chain_ids_round_trip_through_op(
     in the JS state initializer, so every body sent ``chain_ids:
     undefined`` and the server fell back to defaults silently.
     Verify the JS-side state actually carries chain_ids, and that
-    they survive an op round-trip without resetting."""
+    they survive an op round-trip without resetting.
+
+    Probed via the test hook's ``getState()`` (the legacy atom-list
+    DOM that this test used to read was retired 2026-05-20)."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
     # The /api/build/load response sets chain_ids = ["A", "A", "A"];
     # the JS must carry them through.
     chain_ids = page.evaluate(
-        "() => window.__molbuilder_modify_test.getViewer() && "
-        "window.__molbuilder_modify_test.getNAtoms() && "
-        "/* read state via the same hook the other tests use */ "
-        "JSON.parse(JSON.stringify("
-        "  Array.from(document.querySelectorAll("
-        "    '#atom-list-body tr')).map(tr => tr.dataset.atomIndex)))"
+        "() => window.__molbuilder_modify_test.getState().chain_ids"
     )
-    # The atom list rendered, so chain_ids ran through the data path.
-    assert chain_ids == ["0", "1", "2"]
+    assert isinstance(chain_ids, list) and len(chain_ids) == 3
     # Run a delete op (which round-trips chain_ids through the body).
-    page.locator("#atom-list-body tr").nth(2).click()  # last H
+    _set_selection(page, [2])  # last H
     page.locator("#delete-apply").click()
     page.wait_for_function(
-        "() => document.querySelectorAll('#atom-list-body tr').length === 2"
+        "() => window.__molbuilder_modify_test.getNAtoms() === 2"
     )
     # If chain_ids had been undefined, the server would have applied
     # default ["A"]*n; that's still the value here so we can't catch
     # the regression by comparing values directly -- but we can
-    # assert chain_ids is now a real array of length n_atoms in
-    # the state, which fails if the initializer is missing the slot.
-    has_chain_ids = page.evaluate("""() => {
-        // Probe via the test hook -- if state.chain_ids was never
-        // declared, getSelected/getViewer would still work but a
-        // future op like Apply Add would silently drop the array.
-        // We assert via observable behaviour: the body the JS would
-        // send carries a real chain_ids list of length n_atoms.
-        const tr = document.querySelectorAll('#atom-list-body tr');
-        return tr.length === 2;
-    }""")
-    assert has_chain_ids is True
+    # assert chain_ids is still a real array of length n_atoms in
+    # the post-op state.
+    post = page.evaluate(
+        "() => window.__molbuilder_modify_test.getState().chain_ids"
+    )
+    assert isinstance(post, list) and len(post) == 2
 
 
 def test_modify_uses_sessionstorage_not_localstorage(
@@ -1284,16 +1741,16 @@ def test_electrode_apply_button_state_matches_selection_and_mode(
     # No selection in pair mode -> enabled (canonical origin-centred).
     assert btn.is_enabled()
     # One atom selected -> disabled (ambiguous: not 0, not 2).
-    page.locator("#atom-list-body tr").nth(0).click()
+    _set_selection(page, [0])
     assert btn.is_disabled()
     # Two atoms selected -> enabled (legacy anchor-pair midpoint mode).
-    page.locator("#atom-list-body tr").nth(1).click(modifiers=["Shift"])
+    _set_selection(page, [0, 1])
     assert btn.is_enabled()
     # Switch to single mode -> two anchors is wrong; disabled.
     page.locator("#elc-mode").select_option("single")
     assert btn.is_disabled()
     # One anchor in single mode -> enabled.
-    page.locator("#atom-list-body tr").nth(0).click()
+    _set_selection(page, [0])
     assert btn.is_enabled()
 
 
@@ -1329,11 +1786,11 @@ def test_electrode_side_picker_only_visible_in_single_mode(
 def test_apply_electrode_pair_mode_builds_au_junction(
         page, flask_server, ss_pair_xyz_file):
     """End-to-end: 2-atom S pair -> select both -> Apply pair-mode
-    Au(111) 2x2x1 -> atom list grows to 10 (2 S + 8 Au)."""
+    Au(111) 2x2x1 -> structure grows to 10 atoms (2 S + 8 Au).
+    Elements are read from the live viewer state."""
     errors = _open_modify(page, flask_server)
     _load_file(page, ss_pair_xyz_file, expected_atoms=2)
-    page.locator("#atom-list-body tr").nth(0).click()
-    page.locator("#atom-list-body tr").nth(1).click(modifiers=["Shift"])
+    _set_selection(page, [0, 1])
     _open_op_tab(page, "junction")
     # Set 2x2x1 size for a tractable junction.
     for input_id, val in [("elc-m", "2"), ("elc-n", "2"), ("elc-layers", "1")]:
@@ -1347,12 +1804,12 @@ def test_apply_electrode_pair_mode_builds_au_junction(
         )
     page.locator("#elc-apply").click()
     page.wait_for_function(
-        "() => document.querySelectorAll('#atom-list-body tr').length === 10"
+        "() => window.__molbuilder_modify_test.getNAtoms() === 10"
     )
-    rows = page.locator("#atom-list-body tr")
-    elements = [
-        rows.nth(i).locator(".col-el").inner_text() for i in range(10)
-    ]
+    elements = page.evaluate("""() => {
+        const v = window.__molbuilder_modify_test.getViewer();
+        return v.selectedAtoms({}).map((a) => a.elem);
+    }""")
     assert sum(1 for e in elements if e == "Au") == 8
     assert sum(1 for e in elements if e == "S")  == 2
     assert errors == [], f"JS errors during electrode apply: {errors}"
@@ -1423,10 +1880,14 @@ def test_send_to_build_handoff_renders_structure_in_build(
 
 def test_op_subtabs_default_to_atom_and_swap_on_click(
         page, flask_server, water_xyz_file):
-    """The edit panel splits the ops into Atom / Pose / Junction
-    sub-tabs.  Default-active is Atom (the most common starting
-    op).  Clicking Pose shows orient + rotate; clicking Junction
-    shows electrode + send-to-build."""
+    """The edit panel splits the ops into Atom / Pose / Geom /
+    Junction sub-tabs.  Default-active is Atom (the most common
+    starting op).  Clicking Pose shows orient + rotate; clicking
+    Junction shows the electrode panel.
+
+    The Send-to-Build handoff is OUTSIDE the op-tabs (2026-05-21)
+    so it's reachable from any sub-tab.  Pinned by
+    test_send_to_build_visible_across_all_op_subtabs below."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
 
@@ -1450,24 +1911,54 @@ def test_op_subtabs_default_to_atom_and_swap_on_click(
     page.locator('.optab[data-op-tab="junction"]').click()
     assert junction_panel.is_visible()
     assert page.locator("#elc-apply").is_visible()
-    assert page.locator("#send-to-build").is_visible()
 
 
-def test_selection_block_visible_across_subtabs(
+def test_send_to_build_visible_across_all_op_subtabs(
         page, flask_server, water_xyz_file):
-    """The Selection block stays above the sub-tabs (always visible)
-    so the user can see what's selected regardless of which op tab
-    is open.  Click an atom, switch to Pose, the selection info row
-    is still rendered."""
+    """The Send-to-Build button is the tab-level handoff action;
+    it lives in a ``.viewer-handoff`` bar UNDER the 3D viewer
+    (inside the viewer-card) so the user can ship the current
+    structure to /build regardless of which edit-panel sub-tab is
+    active.  Pinned 2026-05-21 after the move out of the Junction
+    op-panel where it used to be buried.
+
+    Also verifies the button is hosted in the viewer column
+    (.viewer-card .viewer-handoff), NOT in the edit-card -- the
+    handoff is structure-level (attaches to the structure surface,
+    the viewer), not op-level."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
-    page.locator("#atom-list-body tr").nth(0).click()
-    info = page.locator("#selection-info")
-    assert info.is_visible()
+
+    send_btn = page.locator("#send-to-build")
+    # Hosted under the viewer card, not the edit card.
+    assert page.locator(".viewer-card .viewer-handoff #send-to-build").count() == 1, (
+        "Send to Build button is NOT inside .viewer-card .viewer-handoff"
+    )
+
+    # Atom is the default-open op-tab; the handoff button must be
+    # visible while the edit-panel is on Atom.
+    assert page.locator('.optab-panel[data-op-panel="atom"]').is_visible()
+    assert send_btn.is_visible(), "Send to Build hidden on Atom sub-tab"
+
+    # Pose sub-tab.
     page.locator('.optab[data-op-tab="pose"]').click()
-    assert info.is_visible()
+    assert send_btn.is_visible(), "Send to Build hidden on Pose sub-tab"
+
+    # Geom sub-tab.
+    page.locator('.optab[data-op-tab="geom"]').click()
+    assert send_btn.is_visible(), "Send to Build hidden on Geom sub-tab"
+
+    # Junction sub-tab (where it used to live).
     page.locator('.optab[data-op-tab="junction"]').click()
-    assert info.is_visible()
+    assert send_btn.is_visible(), "Send to Build hidden on Junction sub-tab"
+
+
+# The legacy in-edit-panel ``#selection-info`` block was retired
+# 2026-05-20: the new selection panel lives in its own column (left
+# of the viewer in the 3-col grid) and is naturally visible across
+# every op sub-tab without needing a per-sub-tab pinning test.  The
+# replacement test would just assert that ``#selection-host`` is
+# visible, which is already implied by the layout tests below.
 
 
 def test_modify_layout_stacks_on_narrow_viewport(
@@ -1684,16 +2175,48 @@ def test_watch_show_forces_renders_arrows(
 
 
 def _load_watch_log(page, base_url, log_path):
-    page.goto(f"{base_url}/watch", wait_until="domcontentloaded")
-    page.wait_for_selector("#path-input")
-    page.fill("#path-input", log_path)
-    page.click("#load-btn")
+    """Mount the trajectory inspector with ``log_path`` on /results.
+
+    Replaces the legacy "go to /watch, type into #path-input, click
+    Load" flow (2026-05-19 /watch removal).  /results' registry
+    adapter calls the trajectory core's mount() with opts.file,
+    which auto-loads via the same POST /api/watch/load endpoint --
+    the behavioural surface tested below (frame slider, atom list,
+    picks, force arrows, run-state badge) is identical, just
+    mounted on /results instead of /watch.
+    """
+    page.goto(f"{base_url}/results", wait_until="domcontentloaded")
+    # Registry + inspector modules self-register at script load;
+    # wait until the dispatch chain is ready.
+    page.wait_for_function(
+        "() => window.molbuilder "
+        "&& window.molbuilder.inspectors "
+        "&& window.molbuilder.inspectors.list().length >= 4",
+        timeout=5000,
+    )
+    # Drive the registry mount directly with the file path.  This
+    # mirrors what the sidebar's onChange handler does on a real file
+    # selection (results/viewer.js calls reg.mount(host, file, ctx)).
+    page.evaluate(
+        """(log_path) => {
+            const host = document.getElementById("inspector-host");
+            const reg  = window.molbuilder.inspectors;
+            const ctx  = reg.createDefaultContext(host);
+            window._testHandle = reg.mount(host, log_path, ctx);
+        }""",
+        log_path,
+    )
+    # The trajectory adapter fetches /partials/trajectory-inspector
+    # async, injects it, then calls the core's mount(host,{file}).
+    # Wait for both: the partial's ids land, then loadByPath
+    # completes (frame-tot becomes non-zero OR the atom list
+    # populates -- accommodates fixture trajectories that have one
+    # frame with N atoms).
+    page.wait_for_selector("#frame-tot", timeout=8000)
     page.wait_for_function(
         "() => document.querySelector('#frame-tot')"
-        " && document.querySelector('#frame-tot').textContent !== '0'"
-        " || (document.querySelector('#frame-tot')"
-        "     && document.querySelector('#frame-tot').textContent === '0'"
-        "     && document.querySelectorAll('#inspect-atom-list-body tr').length > 0)",
+        " && (document.querySelector('#frame-tot').textContent !== '0'"
+        "  || document.querySelectorAll('#inspect-atom-list-body tr').length > 0)",
         timeout=8000,
     )
 

@@ -47,11 +47,11 @@ class TestSpectraConfigDefaults:
         assert cfg.dispersion == "d3bj"
         assert cfg.density_fit is True
 
-    def test_atom_fix_lists_empty_by_default(self):
+    def test_atom_freeze_lists_empty_by_default(self):
         cfg = SpectraConfig()
-        assert cfg.fixed_elements      == []
-        assert cfg.fixed_residue_names == []
-        assert cfg.fixed_indices       == []
+        assert cfg.frozen_elements      == []
+        assert cfg.frozen_residue_names == []
+        assert cfg.frozen_indices       == []
 
     def test_es_off_by_default(self):
         """First-pass run should be cheap -- spectrum only, no
@@ -66,10 +66,14 @@ class TestSpectraConfigDefaults:
         assert cfg.compute_ir is False
 
     def test_displacement_amplitude_production_default(self):
-        """0.10 Å is the production-defensible value (Mills 1972
-        §2.4)."""
+        """0.02 Å keeps ES probes inside the linear-response regime
+        (ΔE_orbital ∝ displacement) and well below the threshold
+        where Mills 1972 §2.4 anharmonic mixing becomes meaningful.
+        Lowered from 0.10 → 0.02 on 2026-05-19; see docstring on
+        ``SpectraConfig.displacement_amplitude_ang`` for the
+        trade-off rationale."""
         cfg = SpectraConfig()
-        assert cfg.displacement_amplitude_ang == pytest.approx(0.10)
+        assert cfg.displacement_amplitude_ang == pytest.approx(0.02)
 
 
 class TestSpectraConfigFieldMetadata:

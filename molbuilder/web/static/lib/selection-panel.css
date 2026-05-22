@@ -1,0 +1,531 @@
+/* Selection panel -- compact single-column card.
+ *
+ * Used by /modify (and later /spectra) via the _selection_panel.html
+ * partial.  Designed to sit beside the 3D viewer, so the layout is a
+ * narrow vertical stack rather than a two-column body.
+ *
+ * Visual stack (top-to-bottom):
+ *   1. Header        -- title + live count.
+ *   2. Mode toggle   -- Click vs Filter (segmented control).
+ *   3. Mode body     -- exactly ONE of these is visible at a time:
+ *      * Click mode    -> scrollable atom list (max-height ~340px).
+ *      * Filter mode   -> combinator + filter rows + Apply filter.
+ *   4. Clear selection.
+ *   5. Assign block  -- Target + Assign / Add / Remove.
+ *   6. Inline error.
+ */
+
+.selection-card {
+    margin: 0;
+}
+
+.selection-card .card-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.6rem;
+}
+
+.selection-status {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.8rem;
+    font: 13px/1.4 system-ui, sans-serif;
+    color: #aaa;
+}
+
+.selection-count {
+    color: #ddd;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+.selection-loading {
+    color: #4a9eff;
+    font-style: italic;
+}
+
+/* ---------- Click-mode body -------------------------------------- */
+
+.selection-click-section {
+    margin-top: 0.5rem;
+}
+
+/* ---------- Mode toggle -------------------------------------------- */
+
+/* Compact segmented control.  Two pills side-by-side, single row,
+ * no descriptive hint text (the title attribute carries the
+ * tooltip for users who hover).
+ */
+.selection-mode {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    margin: 0 0 0.6rem;
+    padding: 2px;
+    background: #1a1a1a;
+    border: 1px solid #2a2a2a;
+    border-radius: 4px;
+}
+
+.selection-mode-option {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.3rem 0.6rem;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.12s, color 0.12s;
+}
+.selection-mode-option:hover {
+    background: #232323;
+}
+.selection-mode-option:has(input:checked) {
+    background: #15263a;
+    box-shadow: inset 0 0 0 1px #2a5a78;
+}
+.selection-mode-option input[type="radio"] {
+    /* The label text is enough; hide the radio dot.  ``:has()``
+       above is what styles the selected pill. */
+    position: absolute;
+    opacity: 0;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+}
+.selection-mode-option > span {
+    color: #aaa;
+    font: 600 12px/1.2 system-ui, sans-serif;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+}
+.selection-mode-option:has(input:checked) > span {
+    color: #cce6ff;
+}
+
+/* ---------- Filter rows ------------------------------------------- */
+
+.selection-filter-section {
+    margin-bottom: 0.6rem;
+    padding: 0.5rem;
+    background: #161616;
+    border: 1px solid #232323;
+    border-radius: 4px;
+}
+
+.selection-combinator-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.4rem;
+}
+
+/* Used by both Combine and Target labels: small, muted, fixed-width
+ * caption that introduces a dropdown/input. */
+.selection-mini-label {
+    color: #888;
+    font: 600 11px/1.2 system-ui, sans-serif;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.selection-combinator-select {
+    flex: 1;
+    background: #0e0e0e;
+    color: #ddd;
+    border: 1px solid #333;
+    border-radius: 3px;
+    padding: 0.25rem 0.4rem;
+    font: 12px system-ui, sans-serif;
+}
+
+/* Filter-mode action row: + Add filter (left) + Apply filter
+ * (right, primary).  Apply filter is the EXPLICIT commit step
+ * that materialises the filter draft into state.selection.
+ */
+.selection-filter-actions {
+    display: flex;
+    gap: 0.4rem;
+    margin-top: 0.4rem;
+}
+
+.selection-add-filter-btn {
+    flex: 1;
+    padding: 0.3rem 0.6rem;
+    font-size: 12px;
+}
+
+.selection-apply-filter-btn {
+    flex: 1;
+    padding: 0.35rem 0.6rem;
+    font: 600 12px/1.2 system-ui, sans-serif;
+    background: #1b3a52;
+    color: #cce6ff;
+    border: 1px solid #2a5a78;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.selection-apply-filter-btn:hover {
+    background: #234a66;
+    border-color: #3a7090;
+    color: #fff;
+}
+
+.selection-filter-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.selection-filter-empty {
+    margin: 0;
+    color: #888;
+    font: italic 11px/1.3 system-ui, sans-serif;
+}
+
+/* Grid layout so kind selector + text input + × align in a column
+ * across rows.  The text-input column flexes, the others are
+ * fixed-width. */
+.selection-filter-row {
+    display: grid;
+    grid-template-columns: minmax(0, 7em) minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.25rem 0.35rem;
+    background: #1c1c1c;
+    border: 1px solid #2a2a2a;
+    border-radius: 3px;
+}
+
+.selection-filter-kind {
+    background: #0e0e0e;
+    color: #ddd;
+    border: 1px solid #333;
+    border-radius: 3px;
+    padding: 0.2rem 0.35rem;
+    font: 12px system-ui, sans-serif;
+    min-width: 0;
+}
+
+.selection-filter-text {
+    background: #0e0e0e;
+    color: #ddd;
+    border: 1px solid #333;
+    border-radius: 3px;
+    padding: 0.2rem 0.4rem;
+    font: 12px ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+    min-width: 0;
+}
+
+.selection-filter-remove {
+    background: transparent;
+    color: #888;
+    border: 1px solid #333;
+    border-radius: 3px;
+    width: 1.8em;
+    height: 1.8em;
+    padding: 0;
+    font-size: 16px;
+    line-height: 1;
+    cursor: pointer;
+    transition: color 0.12s, border-color 0.12s, background 0.12s;
+}
+.selection-filter-remove:hover:not(:disabled) {
+    color: #ff7070;
+    border-color: #aa3030;
+    background: #2a1010;
+}
+
+/* ---------- Atom list --------------------------------------------- */
+
+.selection-list-wrap {
+    position: relative;
+    margin: 0;
+    border: 1px solid #2a2a2a;
+    border-radius: 4px;
+    background: #131313;
+    max-height: 340px;
+    overflow: auto;
+}
+
+.selection-atom-table {
+    width: 100%;
+    border-collapse: collapse;
+    font: 12px/1.3 ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+}
+
+.selection-atom-table thead {
+    position: sticky;
+    top: 0;
+    background: #1a1a1a;
+    z-index: 1;
+    /* Subtle bottom border to separate header from rows on scroll. */
+    box-shadow: inset 0 -1px 0 #2a2a2a;
+}
+.selection-atom-table th {
+    text-align: left;
+    padding: 0.35rem 0.5rem;
+    font-weight: 600;
+    color: #aaa;
+    font-family: system-ui, sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+.selection-atom-table td {
+    padding: 0.25rem 0.5rem;
+    color: #ccc;
+    border-top: 1px solid #1f1f1f;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.selection-atom-table tr.is-selected td {
+    background: #15263a;
+    color: #cce6ff;
+}
+.selection-atom-table tr:hover td {
+    background: #1b1b1b;
+}
+.selection-atom-table tr.is-selected:hover td {
+    background: #1a3050;
+}
+
+.selection-atom-table .col-check { width: 1.6em; }
+.selection-atom-table .col-idx   { width: 3em;   text-align: right; }
+.selection-atom-table .col-el    { width: 2.5em; font-weight: 600; }
+.selection-atom-table .col-name  { width: 4em; }
+.selection-atom-table .col-res   { width: 4em; color: #888; }
+
+.selection-atom-table .col-labels {
+    color: #aaa;
+}
+
+.selection-atom-table input[type="checkbox"] {
+    cursor: pointer;
+}
+.selection-atom-table input[type="checkbox"]:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+.selection-list-empty {
+    margin: 0;
+    padding: 1rem;
+    color: #777;
+    font: italic 13px/1.3 system-ui, sans-serif;
+    text-align: center;
+}
+
+/* Label tags inside the atom list.  Tag = pill containing the label
+ * text + a small × button to remove it.  Clicking × posts a save
+ * with the remaining members of that region (i.e. removes just this
+ * atom from this label).
+ */
+.selection-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25em;
+    padding: 0.05em 0.25em 0.05em 0.5em;
+    margin: 0 0.25em 0.15em 0;
+    font: 600 10px/1.4 system-ui, sans-serif;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    border-radius: 3px;
+}
+.tag-region {
+    background: #1f3a1f;
+    color: #b9dab9;
+    border: 1px solid #2f5a2f;
+}
+.tag-frozen {
+    background: #3a1f1f;
+    color: #dab9b9;
+    border: 1px solid #5a2f2f;
+}
+
+.selection-tag-remove {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: inherit;
+    opacity: 0.85;
+    padding: 0 0.35em;
+    margin-left: 0.15em;
+    font-size: 14px;
+    line-height: 1;
+    cursor: pointer;
+    border-radius: 2px;
+    transition: opacity 0.12s, background 0.12s, color 0.12s,
+                border-color 0.12s;
+}
+.selection-tag-remove:hover {
+    opacity: 1;
+    background: rgba(255, 80, 80, 0.22);
+    border-color: rgba(255, 120, 120, 0.45);
+    color: #ffcaca;
+}
+
+/* ---------- Buttons + Assign block -------------------------------- */
+
+.selection-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.4rem;
+}
+
+.selection-actions-row {
+    justify-content: flex-end;
+}
+
+/* Shared base for every action button (Clear, Assign, Add, Remove,
+ * Add-filter).  The verb buttons in the 3-col Assign row sit on
+ * the same baseline, get the same font + padding; only the colour
+ * differs to encode replace/add/remove semantics. */
+.selection-add-btn,
+.selection-clear-btn,
+.selection-assign-btn,
+.selection-add-target-btn,
+.selection-remove-target-btn {
+    background: #2a2a2a;
+    color: #ddd;
+    border: 1px solid #3a3a3a;
+    border-radius: 3px;
+    padding: 0.35rem 0.6rem;
+    font: 600 12px/1.2 system-ui, sans-serif;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+    white-space: nowrap;
+}
+.selection-add-btn:hover,
+.selection-clear-btn:hover,
+.selection-assign-btn:hover,
+.selection-add-target-btn:hover,
+.selection-remove-target-btn:hover {
+    background: #353535;
+    border-color: #4a4a4a;
+    color: #fff;
+}
+
+/* Assign = REPLACE -- blue accent (the "primary" action). */
+.selection-assign-btn {
+    background: #1b3a52;
+    border-color: #2a5a78;
+    color: #cce6ff;
+}
+.selection-assign-btn:hover {
+    background: #234a66;
+    border-color: #3a7090;
+    color: #fff;
+}
+
+/* + Add = UNION -- green accent. */
+.selection-add-target-btn {
+    background: #1f3a1f;
+    border-color: #2f5a2f;
+    color: #b9dab9;
+}
+.selection-add-target-btn:hover {
+    background: #2a4a2a;
+    border-color: #3f7a3f;
+    color: #d9eed9;
+}
+
+/* − Remove = DIFFERENCE -- red accent. */
+.selection-remove-target-btn {
+    background: #3a1f1f;
+    border-color: #5a2f2f;
+    color: #dab9b9;
+}
+.selection-remove-target-btn:hover {
+    background: #4a2a2a;
+    border-color: #7a3f3f;
+    color: #eed9d9;
+}
+
+/* Visual divider between SELECT-side controls (mode + filters) and
+ * ACT-side controls (clear + bulk label ops). */
+.selection-divider {
+    margin: 0.6rem 0 0.5rem;
+    border: 0;
+    border-top: 1px solid #2a2a2a;
+}
+
+/* The Assign block stacks its Target row and its three verb buttons
+ * vertically so the buttons don't compete for horizontal width with
+ * the dropdown. */
+.selection-assign {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin-top: 0.5rem;
+}
+
+.selection-target-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.selection-verb-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 0.3rem;
+}
+
+.selection-field-label {
+    color: #aaa;
+    font: 13px system-ui, sans-serif;
+}
+
+.selection-assign-select,
+.selection-new-label {
+    flex: 1;
+    background: #0e0e0e;
+    color: #ddd;
+    border: 1px solid #333;
+    border-radius: 3px;
+    padding: 0.25rem 0.4rem;
+    font: 12px system-ui, sans-serif;
+    min-width: 0;
+}
+.selection-new-label {
+    font-family: ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+}
+
+.selection-error {
+    margin: 0.6rem 0 0 0;
+    color: #ff7070;
+    font: 13px system-ui, sans-serif;
+}
+
+/* Surfaced by selection-bootstrap.js when the panel partial can't
+ * be fetched -- the selection-panel CSS above never reaches the DOM
+ * in that case, so this banner has to stand on its own.  Same colour
+ * family as .selection-error for visual coherence. */
+.selection-bootstrap-error {
+    margin: 0.6rem;
+    padding: 0.6rem 0.8rem;
+    border: 1px solid rgba(255, 112, 112, 0.45);
+    background: rgba(255, 112, 112, 0.08);
+    color: #ff7070;
+    font: 13px system-ui, sans-serif;
+    border-radius: 4px;
+}
+
+/* Accessibility: visually-hidden but readable by screen readers */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+}

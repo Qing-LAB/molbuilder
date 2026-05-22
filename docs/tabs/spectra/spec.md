@@ -298,12 +298,12 @@ the schema-driven Build-form pipeline (see
 | `basis` | str | `"def2-SVP"` | Method | any PySCF-recognised basis |
 | `dispersion` | Optional[str] | `"d3bj"` | Method | `choices=("d3","d3bj","d4","none")`; `"none"` -> None |
 | `density_fit` | bool | `True` | Method | RI-J / RI-JK |
-| `fixed_elements` | List[str] | `[]` | Frozen atoms | union with the index list (see §7) |
-| `fixed_residue_names` | List[str] | `[]` | Frozen atoms | union |
-| `fixed_indices` | List[int] | `[]` | Frozen atoms | 0-based |
+| `frozen_elements` | List[str] | `[]` | Frozen atoms | union with the index list (see §7) |
+| `frozen_residue_names` | List[str] | `[]` | Frozen atoms | union |
+| `frozen_indices` | List[int] | `[]` | Frozen atoms | 0-based |
 | `compute_raman` | bool | `True` | Spectrum | `False` runs only the Hessian (faster; for diagnostic use) |
 | `compute_ir` | bool | `False` | Spectrum | reserved, disabled in v1 UI |
-| `displacement_amplitude_ang` | float | `0.10` | Spectrum | range (0.02, 0.30); see §11.4 |
+| `displacement_amplitude_ang` | float | `0.02` | Spectrum | range (0.02, 0.30); 0.02 Å keeps the ES probe in the linear-response regime (ΔE_orbital ∝ displacement); see §11.4 |
 | `es_mode_selection` | str | `"none"` | Electronic structure | Model 2 selector: `choices=("none","all","top_n","threshold","explicit")`; `top_n` + `threshold` soft-require L3 (§ 2.5.3) |
 | `es_top_n` | int | `10` | Electronic structure | active when selector=`top_n` |
 | `es_threshold` | float | `1.0` | Electronic structure | Å⁴/amu; active when selector=`threshold` |
@@ -368,8 +368,8 @@ class SpectraResults:
 
     structure_hash:   str                             # SHA-256 of canonical XYZ; provenance
     n_atoms_total:    int
-    free_atom_idxs:   List[int]                       # 0-based; complement of fixed set
-    fixed_atom_idxs:  List[int]                       # 0-based
+    free_atom_idxs:   List[int]                       # 0-based; complement of frozen set
+    frozen_atom_idxs: List[int]                       # 0-based
 
     equilibrium_scf_eh:         float
     equilibrium_mo_energies_eh: np.ndarray            # all MOs at equilibrium (Hartree)
@@ -438,7 +438,7 @@ The script writes exactly one JSON file per run:
   "structure_hash":     "sha256:...",
   "n_atoms_total":      50,
   "free_atom_idxs":     [3, 4, 5, 6, 7, ...],
-  "fixed_atom_idxs":    [0, 1, 2, 8, 9, ...],
+  "frozen_atom_idxs":   [0, 1, 2, 8, 9, ...],
   "config":             { /* SpectraConfig as JSON-safe dict */ },
 
   "equilibrium": {
@@ -561,20 +561,20 @@ header.
 The free-atom set is computed once at script start:
 
 ```
-fixed = ∪ {i : element[i] ∈ cfg.fixed_elements}
-      ∪ ∪ {i : residue_name[i] ∈ cfg.fixed_residue_names}
-      ∪ set(cfg.fixed_indices)
-free  = {0, 1, ..., N-1} ∖ fixed
+frozen = ∪ {i : element[i] ∈ cfg.frozen_elements}
+       ∪ ∪ {i : residue_name[i] ∈ cfg.frozen_residue_names}
+       ∪ set(cfg.frozen_indices)
+free   = {0, 1, ..., N-1} ∖ frozen
 ```
 
-Union semantics: an atom is fixed if it matches **any** of the
-three filters.  Empty filters do nothing.  A user fixing all Au
+Union semantics: an atom is frozen if it matches **any** of the
+three filters.  Empty filters do nothing.  A user freezing all Au
 atoms (e.g. for a metal–molecule–metal junction) sets
-`fixed_elements=["Au"]`; everything else stays free.
+`frozen_elements=["Au"]`; everything else stays free.
 
 * **Edge cases**:
-  * `fixed = ∅`: all atoms move (default).
-  * `fixed = all atoms`: error-severity issue surfaced in
+  * `frozen = ∅`: all atoms move (default).
+  * `frozen = all atoms`: error-severity issue surfaced in
     preflight ("no free atoms to vibrate").
   * `n_free = 1`: degrees of freedom too few for a Hessian; warn.
   * Residue-name filter requires the input structure to carry
@@ -582,11 +582,22 @@ atoms (e.g. for a metal–molecule–metal junction) sets
     has no residue column).  The form disables the residue-name
     multi-select when the loaded structure has no residue info.
 
+> **Sidecar-driven defaults.**  When the user picks an XYZ that
+> has a `.molstruct.json` sidecar, the form's `frozen_indices`
+> field is pre-filled with `sidecar.frozen_atoms` so the boundary
+> condition is **visible** before Generate.  The form is
+> authoritative (the user can edit, including clearing the
+> pre-fill).  Divergence between sidecar and form, and any
+> sidecar labels the engine doesn't consume (e.g. `regions`), are
+> surfaced as preflight WARN-severity Issues.  Full contract:
+> `docs/design.md` §"Sidecar-driven boundary conditions — the
+> three-stage contract".
+
 Effect on the Hessian: PySCF's `mol.set_geom_(...).build()` with
 the `atmlst=free_atom_idxs` kwarg on `Hessian.kernel()` computes
 a **partial Hessian** — only the (3·n_free × 3·n_free) block is
 filled.  Vibrational modes are then mass-weighted and diagonalised
-over the free subspace; fixed atoms contribute zero to the
+over the free subspace; frozen atoms contribute zero to the
 eigenvectors.
 
 ## 8. Mode-selection semantics (Model 2)
@@ -895,10 +906,16 @@ Every numerical parameter in the script header + body carries a
 trailing comment of the form:
 
 ```python
-displacement_amplitude_ang = 0.10   # ±A·Q_i along each mode
-                                    # eigenvector; 0.05–0.15 Å
-                                    # typical (anharmonic-cubic
-                                    # mixing < 1%) [Mills1972 §2.4]
+displacement_amplitude_ang = 0.02   # ±A·Q_i along each mode
+                                    # eigenvector; 0.02 Å sits in
+                                    # the linear-response regime
+                                    # so ΔE_orbital/ΔA is the
+                                    # physically meaningful slope.
+                                    # 0.05–0.15 Å is also defensible
+                                    # if you need a larger signal-
+                                    # to-noise margin; anharmonic-
+                                    # cubic mixing stays < 1% up to
+                                    # ~0.10 Å per [Mills1972 §2.4].
 ```
 
 Citation keys resolve against
@@ -984,9 +1001,9 @@ implementation (per [`../../README.md`](../../README.md)).
   by ~10–15%).  Each mode has non-zero Raman activity; HOMO−LUMO
   gap shifts by < 1 eV under default A.  Just verifies the
   end-to-end pipeline.
-* H₂O with `fixed_elements=["O"]`: partial Hessian on 2 atoms;
+* H₂O with `frozen_elements=["O"]`: partial Hessian on 2 atoms;
   one mode survives (the symmetric H–H pseudo-stretch).
-* Small Au cluster + dithiol with `fixed_elements=["Au"]`:
+* Small Au cluster + dithiol with `frozen_elements=["Au"]`:
   confirms slab-fixed transport-prep workflow runs end-to-end.
 
 ### 12.3 Web / E2E tests (Playwright)

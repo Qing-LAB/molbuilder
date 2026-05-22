@@ -1,19 +1,31 @@
 {#- molbuilder shared header + app-tabs nav.
 
-   Included by index.html / watch.html / modify.html.  Each caller
-   sets active_tab (one of "build", "watch", "modify") and
-   optionally page_tagline (HTML-safe) before the include.
+   Included by every main tab template.  Each caller sets active_tab
+   (one of "build", "modify", "spectra", "results").
 
-   Styling lives in static/lib/tabs.css (loaded by every page that
-   uses this partial).  This is the SINGLE source of truth for the
-   tab nav -- changing any of Build / Watch / Modify link text or
-   adding a fourth tab is a one-place change here.
+   The project-wide tagline lives HERE -- one canonical sentence
+   that describes what molbuilder is, shown on every page (so users
+   reading any tab immediately know what they're looking at).  It is
+   NOT page-specific; per-page descriptions belong in the page body,
+   not the banner.  Plain-text only: literal Unicode characters
+   (em-dash, middle-dot) instead of HTML entities (``&mdash;`` /
+   ``&middot;``), because Jinja autoescape (pinned ON in Round 5
+   for XSS hygiene) writes ``&`` as ``&amp;`` and the entities then
+   render as visible "&mdash;" gibberish.
+
+   Styling lives in static/lib/tabs.css.  This is the SINGLE source
+   of truth for the tab nav -- changing any link text or order is a
+   one-place change here.
+
+   Watch was retired 2026-05-19 -- the /watch route + template +
+   bootstrap are gone; trajectory inspection is /results-only via
+   the registry's trajectory adapter.  Picking a ``.molwatch.log``,
+   ``.out``, or other ``TrajectoryParser``-recognised file in the
+   sidebar on /results auto-mounts the inspector.
 -#}
 <header>
   <h1>molbuilder</h1>
-  {% if page_tagline %}
-  <p class="tagline">{{ page_tagline | safe }}</p>
-  {% endif %}
+  <p class="tagline">Build 3-D molecules from sequence / SMILES / name; modify geometry; inspect IR / Raman spectra and trajectories; emit SIESTA / PySCF input.</p>
 </header>
 
 <nav class="app-tabs" role="tablist" aria-label="molbuilder sections">
@@ -29,8 +41,26 @@
      class="app-tab{% if active_tab == 'spectra' %} is-active{% endif %}"
      role="tab"
      {% if active_tab == 'spectra' %}aria-current="page"{% endif %}>Spectra</a>
-  <a href="/watch"
-     class="app-tab{% if active_tab == 'watch' %} is-active{% endif %}"
+  <a href="/results"
+     class="app-tab{% if active_tab == 'results' %} is-active{% endif %}"
      role="tab"
-     {% if active_tab == 'watch' %}aria-current="page"{% endif %}>Watch</a>
+     {% if active_tab == 'results' %}aria-current="page"{% endif %}>Results</a>
+
+  {#- Account strip lives at the right end of the nav row, on the
+      same dark background as the tabs -- standard "user menu in
+      top-right" web UX, hard to overlook.  Rendered only when an
+      auth session is active (current_user injected by
+      molbuilder.web.auth._register_template_context); when auth is
+      disabled in molbuilder.json this is omitted entirely and the
+      nav looks unchanged.
+
+      Use literal Unicode separators (U+00B7 middle dot) NOT HTML
+      entities -- Jinja autoescape writes ``&middot;`` as visible
+      "&middot;" text. -#}
+  {% if current_user %}
+  <span class="app-account" aria-label="account menu">
+    <span class="app-account__email">{{ current_user.email }}</span>
+    <a href="{{ url_for('auth_logout') }}" class="app-account__logout">Sign out</a>
+  </span>
+  {% endif %}
 </nav>

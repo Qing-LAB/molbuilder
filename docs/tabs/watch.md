@@ -1,10 +1,29 @@
 # Spec — Watch front-end behaviour
 
-**Modules**: `molbuilder/web/templates/watch.html`,
-`molbuilder/web/static/watch/viewer.js`,
-`molbuilder/web/static/watch/style.css`
-&nbsp;·&nbsp; **Tests**: `tests/watch/test_api_load.py`
-(integration via `index_page_has_*` checks)
+**Status**: legacy.  The Watch tab is being superseded by the
+unified `/results` post-run inspector (see
+[`../protocols/results-tab.md`](../protocols/results-tab.md));
+this spec documents the current /watch shape, which remains routable
+during the deprecation window.
+
+**Modules**:
+  * `molbuilder/web/templates/watch.html` — page shell + loader bar
+  * `molbuilder/web/templates/_trajectory_inspector.html` — the
+    canonical inspector DOM (shared with `/results` via the
+    `GET /partials/trajectory-inspector` endpoint)
+  * `molbuilder/web/static/watch/viewer.js` — `/watch`-page
+    bootstrap (mounts the trajectory core against `document`)
+  * `molbuilder/web/static/watch/page.js` — sidebar integration
+    (Load-from-current-selection wiring)
+  * `molbuilder/web/static/lib/trajectory/core.js` — the shared
+    inspector core (3Dmol + Plotly + polling + atom-pick + plots),
+    called by both /watch and /results
+  * `molbuilder/web/static/lib/trajectory-inspector.css` — inspector
+    styles (renamed from `watch/style.css` during the lift)
+
+**Tests**: `tests/watch/test_api_load.py` (load endpoint),
+`tests/test_trajectory_inspector_partial.py` (partial integrity +
+core contract + scoping invariants).
 
 Served at the `/watch` route by the unified molbuilder Flask app
 (see [`../protocols/watch-api.md`](../protocols/watch-api.md) for the route map).  The HTML

@@ -28,7 +28,7 @@ _SIESTA_HEAD = (
 
 @pytest.fixture
 def client():
-    return create_app().test_client()
+    return create_app(config={}).test_client()
 
 
 @pytest.fixture(autouse=True)

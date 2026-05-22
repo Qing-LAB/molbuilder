@@ -50,6 +50,22 @@
         const e = document.createElement(tag);
         if (attrs) {
             for (const k in attrs) {
+                // Defense in depth: refuse keys that would set an
+                // event-handler attribute (onclick / onerror / ...)
+                // or open a code-injection sink (innerHTML /
+                // outerHTML / srcdoc).  All current callers pass
+                // hardcoded keys like "id", "type", "value" -- the
+                // refusal here is a tripwire for future misuse.
+                if (/^on/i.test(k)
+                        || k === "innerHTML"
+                        || k === "outerHTML"
+                        || k === "srcdoc") {
+                    console.error(
+                        "[form-schema.el] refusing dangerous attr key: "
+                        + k
+                    );
+                    continue;
+                }
                 if (k === "class") {
                     e.className = attrs[k];
                 } else if (k === "for") {
@@ -339,14 +355,37 @@
         return out;
     }
 
-    async function fetchSchema(engine) {
-        const r = await fetch("/api/build/schema/" + encodeURIComponent(engine));
+    async function fetchSchema(engine, opts) {
+        // ``opts.structurePath`` (optional) is forwarded as a
+        // ``?structure_path=…`` query so the server can pre-fill
+        // structure-dependent field defaults (e.g. the /spectra
+        // schema overrides ``frozen_indices.default`` from the
+        // .molstruct.json sidecar's ``frozen_atoms`` -- design.md
+        // "Sidecar-driven boundary conditions").  Callers that
+        // don't pass it (or pass an empty value) get the static
+        // schema, same as before.
+        const structurePath = (opts && opts.structurePath) || "";
+        let url = "/api/build/schema/" + encodeURIComponent(engine);
+        if (structurePath) {
+            url += "?structure_path=" + encodeURIComponent(structurePath);
+        }
+        const r = await fetch(url);
         const body = await r.json();
         if (!r.ok || !body.ok) {
             throw new Error(
                 "form-schema.fetchSchema: server returned "
                 + r.status + " — " + (body.error || "")
             );
+        }
+        // ``body.notice`` is an optional server-side hint (e.g.
+        // "sidecar atom count differs from structure -- re-export
+        // from /modify"); the caller can choose to surface it
+        // inline.  Exposed as a non-enumerable property so existing
+        // callers that just receive ``schema`` aren't broken.
+        if (body.notice) {
+            Object.defineProperty(body.schema, "_notice", {
+                value: body.notice, enumerable: false,
+            });
         }
         return body.schema;
     }

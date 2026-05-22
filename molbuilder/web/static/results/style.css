@@ -1,0 +1,377 @@
+/* /results tab styles -- shell + inspector chrome.
+ *
+ * Owns:
+ *   * .results-main          -- page layout container
+ *   * .results-status        -- header above the inspector (file path readout)
+ *   * .results-inspector-host -- the mount-point frame
+ *   * .results-fallback      -- empty state when no file is picked
+ *   * .inspector-card        -- the single top-level surface per inspector
+ *   * .inspector-section     -- logical chunk within an inspector
+ *   * .inspector-error / .inspector-inline-error -- error state
+ *   * .source-body / .structure-viewer -- the two simple inspectors'
+ *                              one-off surfaces
+ *
+ * Out of scope (handled by inspector-specific stylesheets):
+ *   * lib/trajectory-inspector.css -- trajectory's viewer-card / ctab /
+ *     plots-row / frame-strip etc.  Those are LARGER concrete elements
+ *     that wouldn't benefit from the generic .inspector-section frame.
+ *   * static/spectra/style.css -- spectra inspector partial's
+ *     .modes-table / .mode-viewer-wrap / .spectrum-chart etc.  Same
+ *     reason.
+ *
+ * Both of those sheets use the same tokens + spacing scale (defined in
+ * lib/tokens.css), so the visual rhythm matches even where they don't
+ * use the .inspector-section class directly.
+ */
+
+/* ===========================================================
+   Page-level layout
+   =========================================================== */
+
+.results-main {
+    /* 1200 not 960: trajectory's plots-row needs the width to keep
+     * the energy + force traces legible without wrapping.  Sidebar +
+     * page-shell padding still leave room on common 1440-wide
+     * displays; on narrow viewports the inspector cards fall back to
+     * their natural flow. */
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: var(--space-lg) var(--space-md);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+
+/* ===========================================================
+   Status bar: persistent header above the inspector that
+   tells the user WHAT they're looking at + WHICH inspector
+   is mounted.
+   =========================================================== */
+
+.results-status {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+    padding: var(--space-sm) var(--space-md);
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+}
+
+.results-file-readout {
+    flex: 1 1 auto;
+    color: var(--text-primary);
+    font-size: var(--text-base);
+    font-weight: var(--weight-medium);
+    /* Truncate long paths -- the full path lives in the title
+     * attribute (set by results/viewer.js) for hover-reveal. */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    /* When no file selected, viewer.js leaves the readout reading
+     * "No file selected." -- distinguish visually so the empty state
+     * doesn't look like a real path. */
+    color: var(--text-primary);
+}
+
+.results-file-kind {
+    flex: 0 0 auto;
+    color: var(--accent);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    /* The "(Trajectory + SCF history)" parenthetical earned its own
+     * accent color: when the user picks a different file type the
+     * change is more visible than the file path itself. */
+    background: var(--accent-bg);
+    border-radius: var(--radius-sm);
+    padding: 2px var(--space-sm);
+    /* Hide if empty (viewer.js sets textContent="" when no inspector
+     * is mounted; the empty span would otherwise show a stray pill). */
+}
+.results-file-kind:empty { display: none; }
+
+/* ===========================================================
+   Inspector host: single mount point.  The active inspector
+   owns its contents exclusively; we just provide the outer
+   frame.  Inspector cards mount INTO this host (not as
+   siblings) so dispose -> innerHTML = "" cleanly releases.
+   =========================================================== */
+
+.results-inspector-host {
+    min-height: 360px;
+    /* Mounted inspectors should fill the host's width without
+     * gymnastics; their own internal layout takes over. */
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-md);
+}
+
+/* ===========================================================
+   Fallback ("No file selected") -- intentionally informative
+   rather than empty.  Doubles as the "we recognise these
+   extensions" cheatsheet for the user.
+   =========================================================== */
+
+.results-fallback {
+    padding: var(--space-xl) var(--space-lg);
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+    color: var(--text-primary);
+}
+
+.results-fallback .inspector-card-title {
+    /* Make the empty-state title soft -- it's a non-error,
+     * non-urgent state.  Compare to inspector-card-title's primary
+     * weight when the inspector IS mounted. */
+    color: var(--text-secondary);
+    font-weight: var(--weight-medium);
+}
+
+.results-fallback .inspector-card-note {
+    color: var(--text-secondary);
+    margin-bottom: var(--space-md);
+}
+
+.results-supported-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    /* Two-column on wide; auto-collapse to one on narrow. */
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: var(--space-sm);
+}
+
+.results-supported-list li {
+    padding: var(--space-sm) var(--space-md);
+    background: var(--bg-fieldset);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    line-height: var(--line-snug);
+}
+
+.results-supported-list code {
+    background: var(--bg-code);
+    color: var(--text-mono);
+    padding: 1px 6px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 0.88em;
+    /* Keep the code monospaced AND give it a touch of accent so the
+     * "this is the extension you click" is visually anchored. */
+    border: 1px solid var(--border-soft);
+    margin-right: var(--space-xs);
+}
+
+/* ===========================================================
+   Inspector card hierarchy.
+
+   .inspector-card                  top-level container; ONE per
+                                    mounted inspector
+       .inspector-card-header       title + actions row
+           .inspector-card-title    h2
+           .inspector-card-actions  buttons / links
+       .inspector-card-note         caption / description under the
+                                    title
+       .inspector-section           a logical chunk within an
+                                    inspector (e.g., Load / Results
+                                    / Mode viewer)
+           .inspector-section-header   h3 + hint
+           .inspector-section-body
+
+   This hierarchy is OPT-IN for inspectors that want the
+   shared chrome.  source + structure use it directly.
+   trajectory + spectra keep their existing internal layout
+   (their partials are dense + had bespoke designs); the
+   tokens above keep them visually compatible.
+   =========================================================== */
+
+.inspector-card {
+    padding: var(--space-md) var(--space-lg) var(--space-lg);
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-card);
+    color: var(--text-primary);
+}
+
+.inspector-card + .inspector-card {
+    /* Inspector mount points have at most one card on /results
+     * today; this rule covers the trajectory inspector's plot-row /
+     * banner-row siblings when they're treated as side-cards. */
+    margin-top: var(--space-md);
+}
+
+.inspector-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
+    padding-bottom: var(--space-sm);
+    border-bottom: 1px solid var(--border-soft);
+}
+
+.inspector-card-title {
+    margin: 0;
+    font-size: var(--text-lg);
+    font-weight: var(--weight-semibold);
+    line-height: var(--line-tight);
+    letter-spacing: -0.005em;
+    color: var(--text-primary);
+}
+
+.inspector-card-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-sm);
+}
+
+.inspector-card-link {
+    color: var(--accent);
+    text-decoration: none;
+    font-size: var(--text-sm);
+    font-weight: var(--weight-medium);
+    padding: 4px var(--space-sm);
+    border-radius: var(--radius-sm);
+    transition: background 120ms;
+}
+
+.inspector-card-link:hover {
+    background: var(--accent-bg);
+    color: var(--accent-hover);
+    text-decoration: none;
+}
+
+.inspector-card-note {
+    margin: 0 0 var(--space-md);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    line-height: var(--line-normal);
+}
+
+.inspector-card-note code {
+    background: var(--bg-code);
+    color: var(--text-mono);
+    padding: 1px 6px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+}
+
+.inspector-card-note strong {
+    color: var(--text-primary);
+    font-weight: var(--weight-medium);
+}
+
+.inspector-section {
+    padding: var(--space-md) 0;
+    border-top: 1px dashed var(--border-soft);
+}
+.inspector-section:first-child { padding-top: 0; border-top: 0; }
+.inspector-section:last-child  { padding-bottom: 0; }
+
+.inspector-section-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
+}
+
+.inspector-section-header h3 {
+    margin: 0;
+    font-size: var(--text-md);
+    font-weight: var(--weight-medium);
+    color: var(--text-primary);
+    line-height: var(--line-tight);
+}
+
+.inspector-section-hint {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    line-height: var(--line-snug);
+}
+
+/* ===========================================================
+   Error states.
+
+   .inspector-error           BLOCK-level: the whole inspector
+                              failed to mount; the host shows
+                              this in place of any inspector
+                              content.  Built by registry.js's
+                              createDefaultContext.showError.
+
+   .inspector-inline-error    INLINE: a sub-area of an
+                              already-mounted inspector failed
+                              (source's pre, structure's status
+                              line).  Preserves the surrounding
+                              card chrome.
+   =========================================================== */
+
+.inspector-error {
+    padding: var(--space-md) var(--space-lg);
+    background: rgba(248, 113, 113, 0.08);
+    border: 1px solid var(--error);
+    border-radius: var(--radius);
+    color: var(--error);
+    font-size: var(--text-sm);
+    line-height: var(--line-normal);
+}
+
+.inspector-inline-error,
+.source-body-error,
+.structure-error {
+    color: var(--error);
+}
+
+/* ===========================================================
+   Source inspector: read-only file viewer.
+   =========================================================== */
+
+.source-card .source-body {
+    margin: 0;
+    max-height: 60vh;
+    overflow: auto;
+    padding: var(--space-md) var(--space-lg);
+    background: var(--bg-code);
+    color: var(--text-mono);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    line-height: var(--line-snug);
+    white-space: pre;
+    tab-size: 4;
+}
+
+/* ===========================================================
+   Structure inspector: 3Dmol mount + status line.
+   =========================================================== */
+
+.structure-card .structure-viewer {
+    margin-top: var(--space-md);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm);
+    /* 3Dmol uses a near-white background internally; matching it
+     * here avoids the dark page bleeding through during canvas
+     * resize ticks. */
+    background: #fff;
+    position: relative;
+    overflow: hidden;
+}
+
+.structure-card .structure-status {
+    margin-top: var(--space-sm);
+    color: var(--text-secondary);
+    font-size: var(--text-sm);
+    line-height: var(--line-snug);
+}

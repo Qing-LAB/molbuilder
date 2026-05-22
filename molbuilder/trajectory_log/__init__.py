@@ -11,11 +11,6 @@ Submodules:
 
 Both submodules emit the same v1 spec.  The reader for the format
 lives at :mod:`molbuilder.parsers.molwatch_log`.
-
-Back-compat: ``molbuilder.molwatch_log`` is a shim package that
-re-exports from here, so existing
-``from molbuilder.molwatch_log import write_initial_preview`` imports
-keep working.
 """
 
 from .emitter import MolwatchEmitter

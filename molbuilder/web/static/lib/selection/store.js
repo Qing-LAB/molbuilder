@@ -1,0 +1,663 @@
+/* Atom-selection store -- singleton state + HTTP + mutators.
+ *
+ * THE state holder for the atom-selection module.  Consumers (panel,
+ * viewer-adapter, page bootstrap) subscribe to the store and call its
+ * mutators on user actions.  No module talks directly to any other;
+ * every cross-module signal goes through this store.
+ *
+ * Full spec:  docs/protocols/atom-selection.md
+ *
+ * State shape:
+ *
+ *   {
+ *     sourceFile: null | string         // current structure path (.xyz / .pdb)
+ *     atoms:      Atom[]                // current structure's atoms
+ *     selection:  number[]              // THE selection set;
+ *                                       // shared across modes
+ *     mode:       "click" | "filter"    // which editor is visible
+ *     filters:    Filter[]              // filter drafts (not
+ *                                       // materialised until
+ *                                       // applyFilter() runs)
+ *     combinator: "or" | "and"
+ *     loading:    boolean
+ *     error:      null | string
+ *   }
+ *
+ * Click mode edits ``selection`` atom-by-atom via ``toggleAtom``
+ * (client-side; no server roundtrip).  Filter mode composes a query
+ * that the user explicitly applies via ``applyFilter()`` -- the
+ * server evaluates and replaces ``selection``.  Switching modes
+ * does NOT touch ``selection``: any selection persists across mode
+ * changes.  This is the "selection is the truth, modes are just
+ * editors" design.
+ *
+ * Event protocol: one event type ("state changed").  Each
+ * synchronous mutator fires subscribers once via microtask.  Async
+ * mutators (the ones that hit the server) fire twice: at start
+ * (loading=true) and end (loading=false).  Reentrance is safe.
+ */
+(function (root) {
+    "use strict";
+
+    const EVAL_URL    = "/api/selection/eval";
+    const ATOMS_URL   = "/api/selection/atoms";
+    const SAVE_URL    = "/api/selection/save";
+    const FILES_READ  = "/api/files/read";
+
+    function _initialState() {
+        return {
+            sourceFile: null,
+            atoms:      [],
+            selection:  [],
+            mode:       "click",
+            filters:    [],
+            combinator: "or",
+            loading:    false,
+            error:      null,
+        };
+    }
+
+    // --------------------------------------------------------------- //
+    //  Rule translation: JS filters[] + combinator -> server rule     //
+    // --------------------------------------------------------------- //
+
+    // Translate one panel-side filter draft into a server rule.
+    // Returns ``null`` for an "incomplete" filter (empty / placeholder
+    // value); callers skip null operands so a half-typed filter row
+    // doesn't silently wipe the result under AND combinator.  An
+    // incomplete row under AND ought to behave like "no constraint
+    // from this row yet" -- the user hasn't told us anything to
+    // intersect with -- rather than "match nothing".
+    function _filterToRule(f) {
+        switch (f.kind) {
+            case "by_element": {
+                const elements = (f.value || "").split(",")
+                    .map((s) => s.trim()).filter(Boolean);
+                if (elements.length === 0) return null;
+                return { op: "by_element", elements: elements };
+            }
+            case "by_index": {
+                const expression = (f.value || "").trim();
+                if (!expression) return null;
+                return { op: "by_index_range", expression: expression };
+            }
+            case "by_label": {
+                const name = (f.value || "").trim();
+                if (!name) return null;
+                return { op: "by_region", name: name };
+            }
+            default:
+                throw new Error("unknown filter kind: " + f.kind);
+        }
+    }
+
+    function _filtersToRule(filters, combinator) {
+        // Drop incomplete rows so a half-typed filter doesn't poison
+        // an AND with an empty-set operand.
+        const operands = filters.map(_filterToRule)
+            .filter((r) => r !== null);
+        if (operands.length === 0) return null;   // signal "no filter"
+        if (operands.length === 1) return operands[0];
+        return { op: combinator, operands: operands };
+    }
+
+    // --------------------------------------------------------------- //
+    //  Per-atom payload normalisation                                  //
+    // --------------------------------------------------------------- //
+
+    function _normaliseAtom(raw) {
+        const out = {
+            index:   raw.index,
+            element: raw.element,
+            labels:  Array.isArray(raw.regions) ? raw.regions.slice() : [],
+            isFrozen: !!raw.is_frozen,
+        };
+        if (raw.atom_name)    out.atomName    = raw.atom_name;
+        if (raw.residue_name) out.residueName = raw.residue_name;
+        if (raw.chain_id)     out.chainId     = raw.chain_id;
+        return out;
+    }
+
+    // --------------------------------------------------------------- //
+    //  HTTP helpers                                                    //
+    // --------------------------------------------------------------- //
+
+    function _parseJsonResponse(r) {
+        return r.json()
+            .then((j) => ({ ok: r.ok, body: j }))
+            .catch(() => ({
+                ok:   false,
+                body: { error: "non-JSON response (status " + r.status + ")" },
+            }));
+    }
+
+    function _postJson(url, body, signal) {
+        return fetch(url, {
+            method:  "POST",
+            headers: {"Content-Type": "application/json"},
+            body:    JSON.stringify(body),
+            signal:  signal,
+        }).then(_parseJsonResponse);
+    }
+
+    function _getJson(url, signal) {
+        return fetch(url, { signal: signal }).then(_parseJsonResponse);
+    }
+
+    // --------------------------------------------------------------- //
+    //  Store factory                                                   //
+    // --------------------------------------------------------------- //
+
+    function _create() {
+        const state = _initialState();
+        const subscribers = new Set();
+        let pending = false;
+        let inflight = null;
+        // Loader callback: ``async (text, filename) => void``.  The
+        // page bootstrap injects the viewer's loader here via
+        // ``setLoader`` so the store stays free of DOM / 3Dmol /
+        // page-specific globals (spec §5 rule 3: "no DOM, no 3Dmol,
+        // no Flask -- pure data + fetch").  Without a loader, the
+        // store still fetches the atom list but does not attempt to
+        // populate any viewer -- useful in headless contexts (tests,
+        // tabs that just want the atom list).
+        let structureLoader = null;
+
+        function _snapshot() {
+            return {
+                sourceFile: state.sourceFile,
+                atoms:      state.atoms.slice(),
+                selection:  state.selection.slice(),
+                mode:       state.mode,
+                filters:    state.filters.slice(),
+                combinator: state.combinator,
+                loading:    state.loading,
+                error:      state.error,
+            };
+        }
+
+        function _notify() {
+            if (pending) return;
+            pending = true;
+            Promise.resolve().then(() => {
+                pending = false;
+                const snap = _snapshot();
+                subscribers.forEach((fn) => {
+                    try { fn(snap); }
+                    catch (e) {
+                        if (root.console) root.console.error(
+                            "[selection.store] subscriber threw", e
+                        );
+                    }
+                });
+            });
+        }
+
+        function _abortInflight() {
+            if (inflight) {
+                try { inflight.abort(); } catch (e) { /* ignore */ }
+                inflight = null;
+            }
+        }
+
+        function _newSignal() {
+            _abortInflight();
+            inflight = new AbortController();
+            return inflight.signal;
+        }
+
+        function getState() { return _snapshot(); }
+
+        function subscribe(fn) {
+            if (typeof fn !== "function") {
+                throw new TypeError("subscribe(fn) expects a function");
+            }
+            subscribers.add(fn);
+            try { fn(_snapshot()); }
+            catch (e) {
+                if (root.console) root.console.error(e);
+            }
+            return function unsubscribe() { subscribers.delete(fn); };
+        }
+
+        async function _fetchAtoms(signal) {
+            if (!state.sourceFile) {
+                state.atoms = [];
+                return;
+            }
+            const { ok, body } = await _postJson(ATOMS_URL, {
+                structure_path: state.sourceFile,
+            }, signal);
+            if (!ok) {
+                state.error = (body && body.error) || "atom fetch failed";
+                state.atoms = [];
+                return;
+            }
+            state.atoms = (body.atoms || []).map(_normaliseAtom);
+            state.error = null;
+        }
+
+        async function _loadViewer(signal) {
+            if (!state.sourceFile) return true;
+            // No injected loader == headless mode: skip viewer load,
+            // fetch atoms only.
+            if (typeof structureLoader !== "function") return true;
+            const url = FILES_READ + "?path="
+                      + encodeURIComponent(state.sourceFile);
+            const { ok, body } = await _getJson(url, signal);
+            if (!ok) {
+                state.error = (body && body.error)
+                    ? body.error : "file read failed";
+                return false;
+            }
+            const filename = state.sourceFile.split("/").pop();
+            try {
+                await structureLoader(body.text, filename);
+            } catch (e) {
+                if (e && e.name === "AbortError") throw e;
+                state.error = "loader failed: "
+                            + (e && e.message ? e.message : String(e));
+                return false;
+            }
+            return true;
+        }
+
+        // Async mutator runner: loading=true notify, run body, then
+        // loading=false notify.  Cancels any in-flight previous async
+        // mutator via AbortController.  Clears ``state.error`` at
+        // the start so a recovered mutator (e.g. the user switches
+        // to a clean file after a failed filter eval) doesn't leave
+        // a stale red banner on screen; the body re-sets the error
+        // if it fails again.
+        async function _run(body) {
+            const signal = _newSignal();
+            state.loading = true;
+            state.error   = null;
+            _notify();
+            try {
+                await body(signal);
+            } catch (e) {
+                if (e && e.name === "AbortError") return;
+                state.error = e && e.message ? e.message : String(e);
+            } finally {
+                if (!signal.aborted) {
+                    state.loading = false;
+                    _notify();
+                }
+            }
+        }
+
+        // ----------------------------------------------------------- //
+        //  PUBLIC: source file                                        //
+        // ----------------------------------------------------------- //
+
+        function setSourceFile(path) {
+            const next = path || null;
+            if (next === state.sourceFile) return Promise.resolve();
+            return _run(async (signal) => {
+                state.sourceFile = next;
+                state.atoms      = [];
+                state.selection  = [];   // a fresh file starts empty
+                if (next === null) return;
+                // If the viewer failed to load, don't pull atoms --
+                // showing rows for a structure the user can't see in
+                // 3D is more confusing than the visible error banner.
+                const ok = await _loadViewer(signal);
+                if (!ok) return;
+                await _fetchAtoms(signal);
+            });
+        }
+
+        // Inject the structure loader.  Called by the page
+        // bootstrap with the viewer-specific loader (e.g.
+        // modify/viewer.js's ``loadStructureText``, which accepts
+        // both XYZ and PDB content -- the server's /api/build/load
+        // sniffs the format).  Pass
+        // ``null`` to detach (the store falls back to atom-list-
+        // only / "headless" mode).
+        function setLoader(fn) {
+            if (fn !== null && typeof fn !== "function") {
+                throw new TypeError("setLoader(fn): function or null required");
+            }
+            structureLoader = fn;
+        }
+
+        // Rehydrate from a session snapshot WITHOUT re-loading the
+        // viewer.  Used by /modify's sessionStorage restore path
+        // where the viewer model has already been populated
+        // synchronously via ``applyStructure(...)``.  Differs from
+        // setSourceFile in two ways:
+        //   1. it skips _loadViewer entirely (the viewer is already
+        //      populated -- re-loading would discard the camera /
+        //      indices and double-fetch over HTTP for no gain);
+        //   2. it accepts a pre-validated selection that survives
+        //      the structure swap, so the panel and adapter come
+        //      back in sync without losing the user's pick.
+        // Atoms are still fetched fresh from the server so any
+        // sidecar update done since the snapshot was written is
+        // reflected.
+        function adoptSession({ sourceFile, selection }) {
+            if (sourceFile && typeof sourceFile !== "string") {
+                return Promise.reject(
+                    new TypeError("sourceFile must be a string or null")
+                );
+            }
+            const sel = Array.isArray(selection)
+                ? selection.filter((i) => typeof i === "number")
+                : [];
+            return _run(async (signal) => {
+                state.sourceFile = sourceFile || null;
+                state.atoms      = [];
+                state.selection  = sel.slice().sort((a, b) => a - b);
+                if (!state.sourceFile) return;
+                await _fetchAtoms(signal);
+            });
+        }
+
+        function refreshAtoms() {
+            return _run(async (signal) => {
+                await _fetchAtoms(signal);
+            });
+        }
+
+        // ----------------------------------------------------------- //
+        //  PUBLIC: UI mode  (just controls which editor is visible)   //
+        //  Switching modes does NOT touch state.selection.            //
+        // ----------------------------------------------------------- //
+
+        function setMode(mode) {
+            if (mode !== "click" && mode !== "filter") {
+                return Promise.reject(new Error("bad mode: " + mode));
+            }
+            if (mode === state.mode) return Promise.resolve();
+            state.mode = mode;
+            _notify();
+            return Promise.resolve();
+        }
+
+        // ----------------------------------------------------------- //
+        //  PUBLIC: click-mode editing  (client-side, no HTTP)         //
+        // ----------------------------------------------------------- //
+
+        function toggleAtom(index) {
+            if (typeof index !== "number") {
+                return Promise.reject(new TypeError("index must be number"));
+            }
+            const i = state.selection.indexOf(index);
+            if (i === -1) {
+                // Insert in sorted order so consumers always see a
+                // sorted-ascending selection.  Splice-insert is O(n)
+                // but n is the selection size, not the structure
+                // size; fine for typical workflows.
+                const insertAt = state.selection.findIndex((j) => j > index);
+                const next = state.selection.slice();
+                if (insertAt === -1) next.push(index);
+                else                 next.splice(insertAt, 0, index);
+                state.selection = next;
+            } else {
+                const next = state.selection.slice();
+                next.splice(i, 1);
+                state.selection = next;
+            }
+            _notify();
+            return Promise.resolve();
+        }
+
+        function setSelection(indices) {
+            if (!Array.isArray(indices)) {
+                return Promise.reject(new TypeError("indices must be array"));
+            }
+            const sorted = Array.from(new Set(indices))
+                .filter((x) => typeof x === "number")
+                .sort((a, b) => a - b);
+            state.selection = sorted;
+            _notify();
+            return Promise.resolve();
+        }
+
+        // Union the given indices into the current selection.
+        // Sugar over ``setSelection`` for the common "Add N atoms"
+        // workflow (avoids consumer boilerplate of read-merge-set).
+        function addToSelection(indices) {
+            if (!Array.isArray(indices)) {
+                return Promise.reject(new TypeError("indices must be array"));
+            }
+            const merged = new Set(state.selection);
+            indices.forEach((i) => {
+                if (typeof i === "number") merged.add(i);
+            });
+            return setSelection(Array.from(merged));
+        }
+
+        // Subtract the given indices from the current selection.
+        function removeFromSelection(indices) {
+            if (!Array.isArray(indices)) {
+                return Promise.reject(new TypeError("indices must be array"));
+            }
+            const drop = new Set(indices.filter((i) => typeof i === "number"));
+            return setSelection(state.selection.filter((i) => !drop.has(i)));
+        }
+
+        // Select every atom in the loaded structure.
+        function selectAll() {
+            return setSelection(state.atoms.map((a) => a.index));
+        }
+
+        // Invert the current selection.
+        function invertSelection() {
+            const sel = new Set(state.selection);
+            const out = [];
+            state.atoms.forEach((a) => {
+                if (!sel.has(a.index)) out.push(a.index);
+            });
+            return setSelection(out);
+        }
+
+        // ----------------------------------------------------------- //
+        //  PUBLIC: filter drafts  (client-side, no eval until apply)  //
+        // ----------------------------------------------------------- //
+
+        function setFilters(filters) {
+            if (!Array.isArray(filters)) {
+                return Promise.reject(new TypeError("filters must be array"));
+            }
+            state.filters = filters.slice();
+            _notify();
+            return Promise.resolve();
+        }
+
+        // Filter-editing conveniences -- panel code was doing
+        // ``next = filters.slice(); next.push/splice; setFilters(next)``
+        // for each of add / remove / update; collapse to one call.
+
+        function addFilter(filter) {
+            if (!filter || typeof filter !== "object") {
+                return Promise.reject(new TypeError("filter object required"));
+            }
+            return setFilters(state.filters.concat([filter]));
+        }
+
+        function removeFilter(index) {
+            if (typeof index !== "number"
+                || index < 0
+                || index >= state.filters.length) {
+                return Promise.reject(new Error("filter index out of range"));
+            }
+            const next = state.filters.slice();
+            next.splice(index, 1);
+            return setFilters(next);
+        }
+
+        function updateFilter(index, filter) {
+            if (typeof index !== "number"
+                || index < 0
+                || index >= state.filters.length) {
+                return Promise.reject(new Error("filter index out of range"));
+            }
+            if (!filter || typeof filter !== "object") {
+                return Promise.reject(new TypeError("filter object required"));
+            }
+            const next = state.filters.slice();
+            next[index] = filter;
+            return setFilters(next);
+        }
+
+        function setCombinator(c) {
+            if (c !== "or" && c !== "and") {
+                return Promise.reject(new Error("bad combinator: " + c));
+            }
+            if (c === state.combinator) return Promise.resolve();
+            state.combinator = c;
+            _notify();
+            return Promise.resolve();
+        }
+
+        // ----------------------------------------------------------- //
+        //  PUBLIC: applyFilter -- materialise filter into selection   //
+        // ----------------------------------------------------------- //
+
+        function applyFilter() {
+            return _run(async (signal) => {
+                if (!state.sourceFile) {
+                    state.error = "no source file";
+                    return;
+                }
+                const rule = _filtersToRule(state.filters, state.combinator);
+                if (rule === null) {
+                    // No filters -- treat as "select nothing".
+                    state.selection = [];
+                    state.error     = null;
+                    return;
+                }
+                const { ok, body } = await _postJson(EVAL_URL, {
+                    structure_path: state.sourceFile,
+                    rule:           rule,
+                }, signal);
+                if (!ok) {
+                    state.error = (body && body.error)
+                                  || "filter eval failed";
+                    return;
+                }
+                // The eval endpoint returns ``selected_indices``; do
+                // NOT trust the shape blindly -- a misshapen response
+                // (string elements, null, non-array) would poison
+                // state.selection and break the next toggleAtom
+                // .indexOf comparison.  Filter to safe ints, sort
+                // for consumer convenience.
+                const raw = (body && Array.isArray(body.selected_indices))
+                    ? body.selected_indices : [];
+                state.selection = raw
+                    .filter((i) => Number.isInteger(i))
+                    .sort((a, b) => a - b);
+                state.error     = null;
+                // Race safety net.  applyFilter shares the _run
+                // abort signal with setSourceFile, so a sequence
+                //   1. user picks B in the sidebar
+                //   2. setSourceFile(B) starts; state.atoms is
+                //      synchronously cleared; the file-load + atom
+                //      fetch are pending
+                //   3. user clicks Apply filter before the load
+                //      finishes
+                // aborts setSourceFile mid-fetch -- state.atoms
+                // never gets repopulated -- while the server happily
+                // evaluates against the on-disk XYZ and we set
+                // state.selection above.  The user ends up with
+                // selection=[...] + atoms=[], the panel shows
+                // "N / 0 atoms" + empty list, the viewer paints
+                // halos.  Refetch atoms here so the panel re-syncs.
+                // (No-op when the load did complete: state.atoms
+                // is non-empty in the common case.)
+                if (state.atoms.length === 0) {
+                    await _fetchAtoms(signal);
+                }
+            });
+        }
+
+        // ----------------------------------------------------------- //
+        //  PUBLIC: label writes (sidecar) -- selection unchanged      //
+        // ----------------------------------------------------------- //
+
+        function writeLabel(target, indices) {
+            if (!target || typeof target !== "string") {
+                return Promise.reject(new TypeError("target required"));
+            }
+            if (!Array.isArray(indices)) {
+                return Promise.reject(new TypeError("indices must be array"));
+            }
+            return _run(async (signal) => {
+                if (!state.sourceFile) {
+                    state.error = "no source file";
+                    return;
+                }
+                const { ok, body } = await _postJson(SAVE_URL, {
+                    structure_path: state.sourceFile,
+                    target:         target,
+                    indices:        indices,
+                }, signal);
+                if (!ok) {
+                    state.error = (body && body.error) || "save failed";
+                    return;
+                }
+                // Refresh atoms so the new labels surface in the
+                // per-atom rows.  Selection is NOT touched -- the
+                // user may want to continue editing it.
+                await _fetchAtoms(signal);
+            });
+        }
+
+        // ----------------------------------------------------------- //
+        //  PUBLIC: clear selection                                    //
+        // ----------------------------------------------------------- //
+
+        function clearSelection() {
+            if (state.selection.length === 0) return Promise.resolve();
+            state.selection = [];
+            _notify();
+            return Promise.resolve();
+        }
+
+        return {
+            // reads
+            getState:           getState,
+            subscribe:          subscribe,
+            // source file
+            setSourceFile:      setSourceFile,
+            refreshAtoms:       refreshAtoms,
+            adoptSession:       adoptSession,
+            setLoader:          setLoader,
+            // mode
+            setMode:            setMode,
+            // selection editing
+            toggleAtom:         toggleAtom,
+            setSelection:       setSelection,
+            addToSelection:     addToSelection,
+            removeFromSelection: removeFromSelection,
+            selectAll:          selectAll,
+            invertSelection:    invertSelection,
+            clearSelection:     clearSelection,
+            // filter drafts
+            setFilters:         setFilters,
+            addFilter:          addFilter,
+            removeFilter:       removeFilter,
+            updateFilter:       updateFilter,
+            setCombinator:      setCombinator,
+            applyFilter:        applyFilter,
+            // sidecar writes
+            writeLabel:         writeLabel,
+        };
+    }
+
+    root.molbuilder = root.molbuilder || {};
+    root.molbuilder.selection = root.molbuilder.selection || {};
+    if (!root.molbuilder.selection.store) {
+        root.molbuilder.selection.store = _create();
+    }
+    root.molbuilder.selection._createStore = _create;
+    // Module-init contract: register with the runtime so consumers
+    // can ``whenReady("selection.store")`` (see design.md).
+    if (root.molbuilder.runtime
+        && typeof root.molbuilder.runtime.register === "function") {
+        root.molbuilder.runtime.register(
+            "selection.store", root.molbuilder.selection.store);
+    }
+})(typeof window !== "undefined" ? window : globalThis);

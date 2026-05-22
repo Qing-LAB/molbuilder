@@ -151,7 +151,7 @@ class TestSelectModesWithPriorResume:
             structure_hash             = "sha256:abc",
             n_atoms_total              = 2,
             free_atom_idxs             = [0, 1],
-            fixed_atom_idxs            = [],
+            frozen_atom_idxs           = [],
             equilibrium_scf_eh         = -1.0,
             equilibrium_mo_energies_eh = np.zeros(5),
             equilibrium_homo_idx       = 2,

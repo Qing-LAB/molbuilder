@@ -1,13 +1,18 @@
 /* molbuilder shared app-tabs nav styling.
  *
- * The Build (/), Watch (/watch), and Modify (/modify) pages share a
- * top-of-page navigation strip (Build / Watch / Modify); each page
- * marks its current tab with ``class="app-tab is-active"``.  The
- * markup itself lives in ``templates/_app_header.html`` (a Jinja
- * partial included by all three pages).
+ * Every page in the app shares a top-of-page navigation strip with
+ * four tabs in a fixed order: Build (/), Modify (/modify), Spectra
+ * (/spectra), Results (/results).  Each page marks its current tab
+ * with ``class="app-tab is-active"``.  The markup itself lives in
+ * ``templates/_app_header.html`` (a Jinja partial included by every
+ * page).  /watch was retired 2026-05-19; the trajectory inspector
+ * lives on /results via the registry adapter.
  *
  * If you change the visual treatment of a tab, change it here and
- * all three pages pick it up.
+ * every page picks it up.  If you add or remove a tab, update
+ * ``_app_header.html`` (the canonical link list) AND
+ * ``tests/test_web.py::test_all_pages_serve_with_shared_tab_nav``
+ * (the test that pins the four-tab contract).
  */
 
 .app-tabs {
@@ -38,3 +43,36 @@
     font-weight: 700;
 }
 
+/* Account strip in the nav bar, right-aligned.  Rendered by
+ * _app_header.html when auth is on (current_user is set).  Sits on
+ * the dark .app-tabs background; styled like the tabs themselves so
+ * it reads as part of the chrome -- but distinct enough that the
+ * "Sign out" link is obviously a link.  ``margin-left: auto`` on a
+ * flex container pushes it to the right edge of the row.
+ */
+.app-account {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    padding: 0 1.4rem;
+    color: #aaa;
+    font: 14px/1.4 system-ui, sans-serif;
+}
+.app-account__email {
+    color: #ddd;
+    font-weight: 500;
+}
+.app-account__logout {
+    color: #4a9eff;
+    text-decoration: none;
+    padding: 0.4rem 0.8rem;
+    border: 1px solid #4a9eff;
+    border-radius: 4px;
+    font-weight: 500;
+    transition: background 0.12s, color 0.12s;
+}
+.app-account__logout:hover {
+    background: #4a9eff;
+    color: #fff;
+}

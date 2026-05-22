@@ -29,6 +29,15 @@ import { initPreview } from "./projects/preview.js";
 
 window.molbuilder = window.molbuilder || {};
 window.molbuilder.projects = projects;
+// Module-init contract (design.md "Module init contract"): also
+// register with the runtime so consumers can ``whenReady("projects")``
+// instead of polling for ``window.molbuilder.projects`` (which is
+// undefined when classic-script consumers run before this
+// type=module script's deferred initialisation).
+if (window.molbuilder.runtime
+    && typeof window.molbuilder.runtime.register === "function") {
+    window.molbuilder.runtime.register("projects", projects);
+}
 
 async function init() {
   const sidebar = document.getElementById("projects-sidebar");

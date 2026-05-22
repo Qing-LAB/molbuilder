@@ -9,7 +9,8 @@ Subcommands:
     molbuilder fdf   in.xyz out.fdf --psml-lib /opt/psml --kgrid 4x4x1
     molbuilder pyscf in.xyz out.py --functional B3LYP --preopt
     molbuilder serve --port 8000
-    molbuilder watch serve --port 5000
+    molbuilder watch parse run.molwatch.log
+    molbuilder watch tail run.molwatch.log
 
 The CLI is built on click (since Phase 5).  ``main(argv)`` is the
 back-compat entry point used by ``project.scripts``; tests call it
@@ -1086,15 +1087,135 @@ def cmd_run(script: Path,
 # --------------------------------------------------------------------- #
 
 
+_LOOPBACK_HOSTS = frozenset({
+    "127.0.0.1", "localhost", "::1", "0.0.0.0:127.0.0.1",
+})
+
+
+def _is_loopback_host(host: str) -> bool:
+    """True iff ``host`` is a loopback bind that no remote client
+    can reach.  We treat ``0.0.0.0`` as NON-loopback even though
+    Python can bind it -- it accepts connections from every NIC,
+    including LAN + the public internet."""
+    return host in _LOOPBACK_HOSTS or host.startswith("127.")
+
+
+def _enforce_tls_for_remote_bind(host: str, ssl_ctx,
+                                  allow_insecure: bool) -> None:
+    """Refuse to bind a non-loopback host without TLS.  This is
+    molbuilder's "you can't just publish your projects/ tree on the
+    public internet by mistake" guard -- the file-ops endpoints
+    have no auth, so cleartext over a real network is two attacks
+    in one (passive sniffing + active tampering).
+
+    Operators who genuinely want plain HTTP on a non-loopback host
+    (e.g., behind a TLS-terminating reverse proxy on the same
+    machine) can pass ``--allow-insecure-binding`` to bypass; we
+    still print a loud warning so the choice is visible in logs.
+
+    See ``docs/deployment.md`` for the recommended deployment
+    shapes (reverse proxy + auth gateway).
+    """
+    if _is_loopback_host(host):
+        return
+    if ssl_ctx is not None:
+        return
+    if allow_insecure:
+        click.echo(
+            f"WARNING: --host={host} binds a non-loopback interface "
+            f"WITHOUT TLS.  --allow-insecure-binding bypasses the "
+            f"safety check.  Make sure your reverse proxy terminates "
+            f"TLS and gates auth.  See docs/deployment.md.",
+            err=True,
+        )
+        return
+    raise click.UsageError(
+        f"--host={host} is not a loopback address; binding it serves "
+        f"the entire projects/ tree (read + write + delete) to every "
+        f"client that can reach the interface.  molbuilder has no "
+        f"built-in auth -- the file API is fully open.\n\n"
+        f"For a real deployment you have three reasonable options:\n"
+        f"  1. Pass --cert / --key to enable TLS (defense in depth; "
+        f"still no auth!).\n"
+        f"  2. Put molbuilder behind a reverse proxy that adds TLS + "
+        f"auth (recommended -- see docs/deployment.md).\n"
+        f"  3. Pass --allow-insecure-binding to override this check "
+        f"(only sensible when something OUTSIDE molbuilder gates "
+        f"access -- a same-host proxy, a VPN tunnel, etc.).\n"
+    )
+
+
+def _print_oauth_redirect_hint_if_auth_on(scheme, host, port):
+    """When ``auth`` is configured in ``molbuilder.json``, print the
+    callback URL for each configured OAuth provider so the operator
+    can register them in the respective consoles without guessing.
+
+    Each OAuth provider (google / github / microsoft / orcid) has its
+    own console + its own Authorized-redirect-URIs list; molbuilder
+    derives a per-provider URL of the form
+    ``<scheme>://<host>:<port>/oauth-callback/<provider_id>``.  CAS
+    providers use a separate callback path and are skipped here (CAS
+    "service" URLs are auto-derived at request time and don't need
+    pre-registration in the same way).
+
+    We can't construct the full URL with certainty (``--host`` may be
+    ``0.0.0.0`` for "bind every NIC"; the public hostname might be
+    different from any local interface; a reverse proxy may rewrite
+    the host).  We print best-guess URLs using the bind address and
+    note that the operator must swap the host part for their public
+    hostname if relevant.
+    """
+    try:
+        from .runtime_config import read_config, get_providers
+        cfg = read_config()
+    except Exception:
+        return  # bad / missing config -- handled elsewhere
+    providers = get_providers(cfg)
+    oauth_providers = [
+        p for p in providers
+        if p["kind"] in ("google", "github", "microsoft", "orcid")
+    ]
+    if not oauth_providers:
+        return
+
+    click.echo(
+        "\nOAuth: each configured provider has its own console "
+        "where you must register the redirect URI below as an "
+        "'Authorized redirect URI' (Google), 'Authorization "
+        "callback URL' (GitHub), 'Redirect URI' (Microsoft), or "
+        "'Redirect URI' (ORCID):",
+        err=True,
+    )
+    for p in oauth_providers:
+        guess = f"{scheme}://{host}:{port}/oauth-callback/{p['id']}"
+        click.echo(f"  {p['id']:>14s}  ({p['kind']:>9s})  ->  {guess}",
+                    err=True)
+    click.echo(
+        "(If --host is 0.0.0.0 or you sit behind a reverse proxy, "
+        "swap the host part for your public hostname -- the "
+        "/oauth-callback/<id> path is the only fixed bit.)\n",
+        err=True,
+    )
+
+
 def _resolve_tls(cert_cli, key_cli):
     """CLI flags > ./molbuilder.json > (None, None).
 
     Reads cert/key from ``./molbuilder.json`` (via
     :mod:`molbuilder.config`).  Both nested (``"tls": {"cert": ...,
     "key": ...}``) and flat (top-level ``"cert"`` / ``"key"``) shapes
-    are accepted; see ``molbuilder.config`` for details.  Both must be
-    present + readable for TLS to engage; a partial pair is reported
-    and falls back to HTTP.
+    are accepted; see ``molbuilder.config`` for details.  A partial
+    pair (cert without key or vice versa) is reported on stderr and
+    falls back to HTTP.
+
+    Readability of the resolved paths is NOT checked here -- this
+    function only resolves the precedence chain, so it stays pure
+    and the tests don't need to touch the filesystem.  The call site
+    (``cmd_serve``, ``cmd_watch_serve``) invokes
+    ``_check_tls_readable`` immediately after resolution so the
+    failure surfaces as a clean ``click.UsageError`` instead of the
+    bare ``PermissionError`` Werkzeug raises from
+    ``load_cert_chain`` deep in the stack.
     """
     cert, key = cert_cli, key_cli
     if cert and key:
@@ -1116,6 +1237,68 @@ def _resolve_tls(cert_cli, key_cli):
     return cert, key
 
 
+def _check_tls_readable(cert, key) -> None:
+    """Verify the resolved TLS cert + key are readable by THIS process
+    before handing them to Werkzeug.
+
+    Raises ``click.UsageError`` with a concrete fix suggestion when
+    either file is missing or unreadable.  No-op when ``cert`` or
+    ``key`` is falsy (the caller has already decided no TLS is in
+    play).
+
+    The reason this is a *pre-flight* rather than letting Werkzeug
+    discover the problem: ``load_cert_chain`` raises a bare
+    ``PermissionError`` deep in the stack with no indication of
+    which file failed (cert vs key), and the operator is left to
+    diff two paths against ``ls -l`` output to figure out which one
+    they need to chmod.  The typical cause is a Let's Encrypt
+    install where ``/etc/letsencrypt/live/<domain>/privkey.pem`` is
+    root-owned + mode 0600 while molbuilder runs as an unprivileged
+    user; the error message points at the standard fix (reverse
+    proxy from docs/deployment.md) so the operator doesn't reach
+    for ``chmod 0644 privkey.pem`` instead.
+    """
+    if not cert or not key:
+        return
+    failures = []
+    for label, path in (("cert", cert), ("key", key)):
+        try:
+            # Just open + close: matches what Werkzeug's
+            # ``load_cert_chain`` does and surfaces the exact OS
+            # error (Permission denied / No such file / Is a
+            # directory) without us having to enumerate the cases.
+            # ``os.access`` would be wrong here -- it can lie under
+            # ACLs / sudo / Linux capabilities.
+            with open(path, "rb"):
+                pass
+        except OSError as exc:
+            failures.append(
+                f"  {label}: {path}\n"
+                f"    {type(exc).__name__}: {exc.strerror}"
+            )
+    if not failures:
+        return
+    raise click.UsageError(
+        "TLS cert/key unreadable by this process:\n"
+        + "\n".join(failures)
+        + "\n\nTypical fix when the paths point at a system-managed "
+          "cert store (e.g., Let's Encrypt's "
+          "/etc/letsencrypt/live/<domain>/):\n"
+          "  * Don't read those paths directly from molbuilder.  Put "
+          "molbuilder behind a reverse proxy (nginx / Caddy) that "
+          "owns TLS termination and forwards plain HTTP to molbuilder "
+          "on 127.0.0.1.  See docs/deployment.md for the recommended "
+          "shape.\n"
+          "  * Or: copy cert + key into a directory the molbuilder "
+          "user can read (mode 0600 on the key) and point "
+          "molbuilder.json at the copy.  Add a renewal hook so the "
+          "copy stays in sync.\n"
+          "  * Or (less clean): add the molbuilder user to the group "
+          "that owns the key + ``chmod g+r``.  Survives renewal "
+          "iff the system installer preserves group + mode."
+    )
+
+
 @cli.command("serve", short_help="run the browser UI (Flask + 3Dmol.js)")
 @click.option("--host",  default="127.0.0.1", show_default=True)
 @click.option("--port",  type=int, default=8000, show_default=True)
@@ -1124,14 +1307,21 @@ def _resolve_tls(cert_cli, key_cli):
               help="TLS cert (PEM).  Overrides molbuilder.json.")
 @click.option("--key",  type=click.Path(exists=True, dir_okay=False),
               help="TLS key (PEM).  Overrides molbuilder.json.")
-def cmd_serve(host, port, debug, cert, key):
+@click.option("--allow-insecure-binding", is_flag=True,
+              help="Bypass the loopback-or-TLS guard.  Only sensible "
+                   "when something outside molbuilder (proxy / VPN) "
+                   "gates access -- see docs/deployment.md.")
+def cmd_serve(host, port, debug, cert, key, allow_insecure_binding):
     """Start a Flask server with the molbuilder browser UI."""
     from .web.app import create_app
     cert, key = _resolve_tls(cert, key)
+    _check_tls_readable(cert, key)
     ssl_ctx = (cert, key) if cert and key else None
+    _enforce_tls_for_remote_bind(host, ssl_ctx, allow_insecure_binding)
     scheme  = "https" if ssl_ctx else "http"
     app = create_app()
     click.echo(f"molbuilder web UI starting at {scheme}://{host}:{port}", err=True)
+    _print_oauth_redirect_hint_if_auth_on(scheme, host, port)
     app.run(host=host, port=port, debug=debug, ssl_context=ssl_ctx)
 
 
@@ -1266,30 +1456,13 @@ def cmd_watch_tail(input_path, poll_ms, max_frames):
         return
 
 
-@cmd_watch.command("serve",
-                   short_help="start the browser UI (build + watch tabs)")
-@click.option("--host",  default="127.0.0.1", show_default=True)
-@click.option("--port",  type=int, default=5000, show_default=True)
-@click.option("--debug", is_flag=True)
-@click.option("--cert", type=click.Path(exists=True, dir_okay=False),
-              help="TLS cert (PEM).  Overrides molbuilder.json.")
-@click.option("--key",  type=click.Path(exists=True, dir_okay=False),
-              help="TLS key (PEM).  Overrides molbuilder.json.")
-def cmd_watch_serve(host, port, debug, cert, key):
-    """Start a Flask server hosting both the build page (/) and the
-    watch page (/watch).  Reads any file the server can access -- a
-    non-loopback --host binding emits a security warning."""
-    from .web.app import create_app
-    from .web.blueprints.watch import warn_if_remote
-    warn_if_remote(host)
-    cert, key = _resolve_tls(cert, key)
-    ssl_ctx = (cert, key) if cert and key else None
-    scheme  = "https" if ssl_ctx else "http"
-    app = create_app()
-    click.echo(f"molbuilder web UI starting at {scheme}://{host}:{port}", err=True)
-    click.echo(f"  build page:  {scheme}://{host}:{port}/",      err=True)
-    click.echo(f"  watch page:  {scheme}://{host}:{port}/watch", err=True)
-    app.run(host=host, port=port, debug=debug, threaded=True, ssl_context=ssl_ctx)
+# ``molbuilder watch serve`` removed 2026-05-19 along with the /watch
+# page route.  Use ``molbuilder serve`` instead -- it hosts the same
+# blueprints (so /api/watch/* remain available for the /results
+# trajectory inspector) and supports the same TLS / --allow-insecure-
+# binding flags.  The ``molbuilder watch parse`` and ``molbuilder
+# watch tail`` subcommands are pure CLI utilities (no web tab) and
+# remain unchanged.
 
 
 # --------------------------------------------------------------------- #
@@ -1361,11 +1534,20 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 def _run_watch_serve_entrypoint() -> int:
     """Console-script shim for the legacy ``molwatch`` entry point.
 
-    Equivalent to ``molbuilder watch serve`` with the same default args.
+    Maps to ``molbuilder serve`` with whatever extra args the user
+    passed.  Originally invoked ``molbuilder watch serve``, but that
+    subcommand was removed 2026-05-19 along with the /watch page --
+    ``molbuilder serve`` is the canonical entry point and serves the
+    same blueprints (/api/watch/* remain available for the /results
+    inspector).
+
     Kept for backwards compatibility with users / scripts that still
-    invoke ``molwatch`` directly after the molbuilder + molwatch merge.
+    invoke ``molwatch`` directly after the molbuilder + molwatch
+    merge.  Operators are encouraged to migrate to ``molbuilder
+    serve`` in their scripts; this shim makes the transition silent
+    rather than breaking.
     """
-    return main(["watch", "serve"] + sys.argv[1:])
+    return main(["serve"] + sys.argv[1:])
 
 
 if __name__ == "__main__":

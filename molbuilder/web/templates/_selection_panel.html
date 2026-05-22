@@ -1,0 +1,189 @@
+{#- molbuilder shared selection-panel partial.
+
+    Mounted by tabs that need atom selection (initially /modify; later
+    /spectra to replace the three frozen-atoms inputs).  Owned by
+    ``lib/selection-panel.js`` which subscribes to the singleton
+    ``lib/selection/store.js`` (the state + HTTP layer).
+
+    Layout (compact, single-column -- fits beside the 3D viewer):
+
+      1. Header        -- title + live count.
+      2. Mode toggle   -- Click vs Filter (segmented control).
+      3. Mode body     -- exactly ONE of these is visible:
+         * Click mode    -> atom list with checkboxes.
+         * Filter mode   -> combinator + filter rows + Apply filter.
+      4. Clear selection.
+      5. Assign block  -- Target dropdown + Assign/Add/Remove.
+      6. Inline error.
+
+    The selection state is SHARED across modes (lives in the store's
+    ``state.selection``).  Click mode edits it atom-by-atom; Filter
+    mode composes a query and the user explicitly applies it via
+    "Apply filter" -- so editing filters never overwrites the
+    selection until the user commits.
+
+    DOM contract (ids the panel JS queries):
+      * #selection-mode-click  /  #selection-mode-filter  (radio inputs)
+      * #selection-click-section  /  #selection-filter-section
+      * #selection-combinator
+      * #selection-filter-rows  /  #selection-add-filter
+      * #selection-apply-filter
+      * #selection-clear-btn
+      * #selection-atom-list  (the <tbody>)
+      * #selection-select-all
+      * #selection-count, #selection-loading, #selection-error
+      * #selection-assign-target / #selection-assign-new-label /
+        #selection-assign-btn / #selection-add-btn /
+        #selection-remove-btn
+
+    Adding an id here means the JS can $() it on every consumer.
+-#}
+<section class="card selection-card" id="selection-card">
+  <header class="card-header">
+    <h2 class="card-title">Selection</h2>
+    <div class="selection-status">
+      <span id="selection-count" class="selection-count">no structure</span>
+      <span id="selection-loading" class="selection-loading" hidden>
+        evaluating…
+      </span>
+    </div>
+  </header>
+
+  <!-- Mode toggle: compact segmented control.  Radio inputs give us
+       mutual-exclusion for free; the CSS styles them as side-by-side
+       pill buttons. -->
+  <fieldset class="selection-mode" aria-label="Selection mode">
+    <label class="selection-mode-option"
+           title="Click atoms in the viewer or list to select.">
+      <input type="radio" name="selection-mode" value="click"
+             id="selection-mode-click" checked>
+      <span>Click</span>
+    </label>
+    <label class="selection-mode-option"
+           title="Compose filters (by element / atom index / label).">
+      <input type="radio" name="selection-mode" value="filter"
+             id="selection-mode-filter">
+      <span>Filter</span>
+    </label>
+  </fieldset>
+
+  <!-- Click-mode body: scrollable atom list with per-row checkbox +
+       label tags.  Master select-all in the header.  Shown only when
+       mode === "click". -->
+  <div id="selection-click-section" class="selection-click-section">
+    <div class="selection-list-wrap">
+      <table class="selection-atom-table" aria-label="Atoms">
+        <thead>
+          <tr>
+            <th class="col-check">
+              <input type="checkbox" id="selection-select-all"
+                     aria-label="Select all atoms"
+                     title="Select / deselect all atoms.">
+            </th>
+            <th class="col-idx">#</th>
+            <th class="col-el">El</th>
+            <th class="col-name">Name</th>
+            <th class="col-res">Res</th>
+            <th class="col-labels">Labels</th>
+          </tr>
+        </thead>
+        <tbody id="selection-atom-list">
+          <!-- Populated by the panel JS after /api/selection/atoms
+               responds.  One <tr data-atom-index="N"> per atom. -->
+        </tbody>
+      </table>
+      <p class="selection-list-empty" id="selection-list-empty">
+        No structure loaded.
+      </p>
+    </div>
+  </div>
+
+  <!-- Filter-mode body: combinator + filter rows + Apply filter.
+       Filter edits are DRAFTS until the user clicks Apply filter --
+       the selection is not changed until then. -->
+  <div id="selection-filter-section"
+       class="selection-filter-section" hidden>
+    <div class="selection-combinator-row">
+      <label for="selection-combinator"
+             class="selection-mini-label">
+        Combine:
+      </label>
+      <select id="selection-combinator"
+              class="selection-combinator-select">
+        <option value="or">Any (OR — union)</option>
+        <option value="and">All (AND — intersection)</option>
+      </select>
+    </div>
+    <div id="selection-filter-rows" class="selection-filter-rows"
+         aria-label="Selection filters"></div>
+    <div class="selection-filter-actions">
+      <button type="button" id="selection-add-filter"
+              class="selection-add-btn selection-add-filter-btn">
+        + Add filter
+      </button>
+      <button type="button" id="selection-apply-filter"
+              class="selection-apply-filter-btn"
+              title="Run the current filter against the structure and
+                     replace the selection with the result.">
+        Apply filter
+      </button>
+    </div>
+  </div>
+
+  <hr class="selection-divider">
+
+  <div class="selection-actions selection-actions-row">
+    <button type="button" id="selection-clear-btn"
+            class="selection-clear-btn"
+            title="Clear the current selection.">
+      Clear selection
+    </button>
+  </div>
+
+  <!-- Bulk label operations on the current selection.  Three verbs
+       share one Target dropdown:
+
+         * Assign   -- SET target = selection (REPLACE).
+         * + Add    -- target = target ∪ selection (UNION).
+         * − Remove -- target = target \ selection (DIFFERENCE).
+
+       The per-tag × button in the atom list still handles granular
+       "drop just this one atom from this one label" removal. -->
+  <div class="selection-assign">
+    <div class="selection-target-row">
+      <label for="selection-assign-target"
+             class="selection-mini-label">
+        Target:
+      </label>
+      <select id="selection-assign-target"
+              class="selection-assign-select">
+        {#- Populated dynamically by lib/selection-panel.js
+            (renderAssignTarget). -#}
+      </select>
+    </div>
+    <input type="text" id="selection-assign-new-label"
+           class="selection-new-label" hidden
+           placeholder="region label"
+           pattern="^[A-Za-z][A-Za-z0-9_\-]*$">
+    <div class="selection-verb-row">
+      <button type="button" id="selection-assign-btn"
+              class="selection-assign-btn"
+              title="Set the target's atoms to the current selection.">
+        Assign
+      </button>
+      <button type="button" id="selection-add-btn"
+              class="selection-add-target-btn"
+              title="Add selected atoms to the target.">
+        + Add
+      </button>
+      <button type="button" id="selection-remove-btn"
+              class="selection-remove-target-btn"
+              title="Remove selected atoms from the target.">
+        − Remove
+      </button>
+    </div>
+  </div>
+
+  <p id="selection-error" class="selection-error"
+     role="alert" hidden></p>
+</section>

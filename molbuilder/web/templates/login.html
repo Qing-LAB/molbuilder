@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>molbuilder &mdash; sign in</title>
+<style>
+  /* Intentional light-theme inline stylesheet.  Login pages
+     conventionally render light-on-white regardless of the
+     authenticated app's theme -- it signals "you are NOT in the
+     app yet" and matches the visual conventions of every major
+     SSO provider's interstitial.  Hard-coded hex values (not the
+     dark-theme tokens in lib/tokens.css) make that intent explicit.
+
+     No <link tokens.css> here: tokens.css is dark-theme; importing
+     it would either pollute the page or get overridden by every
+     rule below (since none of its var names match the --surface-N /
+     --text-N pattern this file uses).  Cleaner to NOT import it.
+
+     Inline is safe because the login page renders before any
+     user-controlled data exists in the session (no XSS surface).
+     Per the no-inline-scripts CSP rule, INLINE STYLES are still
+     permitted (style-src is 'self' 'unsafe-inline'); only inline
+     <script> is forbidden. */
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: #f6f7fa;
+    color: #1d2128;
+  }
+  .login-card {
+    background: #fff;
+    border: 1px solid #d8dbe2;
+    border-radius: 10px;
+    padding: 2.5rem 2.5rem 2rem;
+    max-width: 380px;
+    width: calc(100% - 2rem);
+    text-align: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  }
+  .login-card h1 {
+    margin: 0 0 0.25rem;
+    font-size: 1.6rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .login-card p.tagline {
+    margin: 0 0 1.5rem;
+    color: #6b7280;
+    font-size: 0.95rem;
+    line-height: 1.4;
+  }
+
+  /* --- Provider button stack ------------------------------------- */
+  /* One button per configured provider.  They render in the order
+     molbuilder.json lists them, so put the most common option first.
+     Generic styling is white-on-bordered to match the Google brand
+     style; provider-specific kinds (google) override colors via
+     a kind-named class.  The Google class is preserved verbatim
+     because Google's branding guidelines require the official
+     glyph + the exact phrase "Sign in with Google". */
+  .auth-providers {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    align-items: stretch;
+  }
+  .auth-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.7em;
+    padding: 0.65em 1.4em;
+    background: #fff;
+    color: #3c4043;
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+    font-size: 0.95rem;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 0.15s, box-shadow 0.15s;
+  }
+  .auth-btn:hover {
+    background: #f8f9fa;
+    box-shadow: 0 1px 2px rgba(60, 64, 67, 0.15),
+                0 1px 3px 1px rgba(60, 64, 67, 0.08);
+  }
+  .auth-btn:focus {
+    outline: 2px solid #4285f4;
+    outline-offset: 2px;
+  }
+  .auth-btn svg { width: 18px; height: 18px; }
+
+  /* Subtle visual differentiation per kind; only paints when the
+     glyph class is present, so adding a new provider kind without
+     special styling falls back to the neutral default above. */
+  .auth-btn.kind-github   { background: #24292f; color: #fff; border-color: #24292f; }
+  .auth-btn.kind-github:hover    { background: #1c2024; }
+  .auth-btn.kind-microsoft        { background: #fff; color: #5e5e5e; }
+  .auth-btn.kind-orcid            { background: #fff; color: #a6ce39; border-color: #a6ce39; }
+  .auth-btn.kind-cas              { background: #fff; color: #6b7280; }
+
+  .login-footer {
+    margin-top: 1.5rem;
+    font-size: 0.8rem;
+    color: #6b7280;
+  }
+  .login-footer code {
+    background: #f6f7fa;
+    padding: 0 0.3em;
+    border-radius: 3px;
+    font-size: 0.9em;
+  }
+</style>
+</head>
+<body>
+
+<main class="login-card">
+  <h1>molbuilder</h1>
+  <p class="tagline">
+    Sign in to access the build / modify / spectra / results tabs.
+  </p>
+
+  <div class="auth-providers">
+    {%- for p in providers %}
+      <a href="{{ url_for('auth_login_provider', provider_id=p.id) }}"
+         class="auth-btn kind-{{ p.kind }}">
+        {%- if p.kind == 'google' %}
+          {#- Google "G" mark, inline SVG.  Per Google's official
+              branding the mark + the exact phrase "Sign in with
+              Google" together signal OAuth.  The provider's `label`
+              in molbuilder.json must therefore be "Sign in with
+              Google" verbatim when kind=google. -#}
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"
+               aria-hidden="true">
+            <path fill="#FFC107" d="M43.611,20.083H42V20H24v8h11.303c-1.649,4.657-6.08,8-11.303,8c-6.627,0-12-5.373-12-12c0-6.627,5.373-12,12-12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C12.955,4,4,12.955,4,24c0,11.045,8.955,20,20,20c11.045,0,20-8.955,20-20C44,22.659,43.862,21.35,43.611,20.083z"/>
+            <path fill="#FF3D00" d="M6.306,14.691l6.571,4.819C14.655,15.108,18.961,12,24,12c3.059,0,5.842,1.154,7.961,3.039l5.657-5.657C34.046,6.053,29.268,4,24,4C16.318,4,9.656,8.337,6.306,14.691z"/>
+            <path fill="#4CAF50" d="M24,44c5.166,0,9.86-1.977,13.409-5.192l-6.19-5.238C29.211,35.091,26.715,36,24,36c-5.202,0-9.619-3.317-11.283-7.946l-6.522,5.025C9.505,39.556,16.227,44,24,44z"/>
+            <path fill="#1976D2" d="M43.611,20.083H42V20H24v8h11.303c-0.792,2.237-2.231,4.166-4.087,5.571c0.001-0.001,0.002-0.001,0.003-0.002l6.19,5.238C36.971,39.205,44,34,44,24C44,22.659,43.862,21.35,43.611,20.083z"/>
+          </svg>
+        {%- elif p.kind == 'github' %}
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+               fill="currentColor" aria-hidden="true">
+            <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
+          </svg>
+        {%- elif p.kind == 'microsoft' %}
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 23 23"
+               aria-hidden="true">
+            <path fill="#F25022" d="M0 0h11v11H0z"/>
+            <path fill="#7FBA00" d="M12 0h11v11H12z"/>
+            <path fill="#00A4EF" d="M0 12h11v11H0z"/>
+            <path fill="#FFB900" d="M12 12h11v11H12z"/>
+          </svg>
+        {%- elif p.kind == 'orcid' %}
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256"
+               fill="#A6CE39" aria-hidden="true">
+            <path d="M128 0C57.3 0 0 57.3 0 128s57.3 128 128 128 128-57.3 128-128S198.7 0 128 0zM76 186h-13V81h13v105zm-6.5-119c-4.7 0-8.5-3.8-8.5-8.5s3.8-8.5 8.5-8.5 8.5 3.8 8.5 8.5-3.9 8.5-8.5 8.5zm130.6 119h-30c-32.6 0-46.4-22-46.4-52.5C123.7 102 142.7 81 174.4 81h26.2v105zm-12-15v-77h-13.5c-23.4 0-37.5 15.5-37.5 38.5 0 22.5 11.7 38.5 36 38.5h15z"/>
+          </svg>
+        {%- else %}
+          {#- Generic key glyph for CAS + any future kind without a
+              brand-specific SVG.  No license/branding concerns. -#}
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"
+               fill="currentColor" aria-hidden="true">
+            <path d="M21 10h-8.35A5.99 5.99 0 0 0 7 6c-3.31 0-6 2.69-6 6s2.69 6 6 6a5.99 5.99 0 0 0 5.65-4H13l2 2 2-2 2 2 4-4.04L21 10zM7 15a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"/>
+          </svg>
+        {%- endif %}
+        <span>{{ p.label }}</span>
+      </a>
+    {%- endfor %}
+  </div>
+
+  <p class="login-footer">
+    Access is restricted to users listed in <code>molbuilder.json</code>.
+    Contact the administrator if you should have access but don't.
+  </p>
+</main>
+
+</body>
+</html>

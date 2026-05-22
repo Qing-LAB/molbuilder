@@ -460,7 +460,7 @@ def coerce_to_field_type(field: dataclasses.Field, value: Any,
         if isinstance(value, str):
             return [s.strip() for s in value.split(",") if s.strip()]
         return value
-    # Sequence[int] (fixed_indices / es_explicit_indices) -- accept
+    # Sequence[int] (frozen_indices / es_explicit_indices) -- accept
     # comma-separated indices with optional range syntax
     # "0-35, 100, 150-200" -> [0,1,...,35, 100, 150,...,200].  Used by
     # the Spectra tab's frozen-atom + L4 explicit-mode lists.

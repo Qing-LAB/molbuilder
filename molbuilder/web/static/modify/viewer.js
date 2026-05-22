@@ -31,9 +31,10 @@
 
     // --------------------------------------------------------------- //
     //  Module state.  Single canonical structure (xyz string + parsed  //
-    //  atom metadata) plus a per-atom selected/highlighted bookkeeping //
-    //  set.  Multi-select is shift-click; the orient op (M4) reads     //
-    //  the selection as an anchor pair when its length is exactly 2.   //
+    //  atom metadata).  Selection state is NOT owned here -- it       //
+    //  lives in the singleton selection store at                      //
+    //  ``window.molbuilder.selection.store`` and is read on demand    //
+    //  through ``selectedIndices()`` below.                           //
     // --------------------------------------------------------------- //
     const state = {
         xyz: null,
@@ -45,7 +46,6 @@
         chain_ids: [],         // ["A", ...]       (or [] if absent)
         title: "",
         n_atoms: 0,
-        selected: new Set(),   // atom indices
         inFlight: false,       // true while an /api/modify/* fetch is open
         history: [],           // {response} snapshots; capped at HISTORY_MAX
     };
@@ -56,19 +56,32 @@
     // off the bottom of the stack as new ops are pushed.
     const HISTORY_MAX = 20;
 
-    // Selection marker: a wireframe halo SPHERE drawn around each
-    // picked atom.  Shape + colour + radius live in
-    // static/lib/mol-pick.js so the Modify and Watch tabs draw the
-    // same marker; see that file for the design rationale.
-    const _pick = (window.molbuilder && window.molbuilder.pick) || null;
+    // ----- Selection helpers ----------------------------------------- //
+    //
+    // The selection store is the canonical source of truth.  These
+    // helpers read live so ops always see the current selection
+    // without keeping a local mirror.  ``selectedIndices()`` returns
+    // a sorted-ascending number[].
+
+    function _selStore() {
+        return (window.molbuilder
+                && window.molbuilder.selection
+                && window.molbuilder.selection.store)
+               ? window.molbuilder.selection.store : null;
+    }
+    function selectedIndices() {
+        const s = _selStore();
+        return s ? s.getState().selection.slice() : [];
+    }
+    function clearStoreSelection() {
+        const s = _selStore();
+        if (s) s.clearSelection();
+    }
 
     // --------------------------------------------------------------- //
     //  3Dmol viewer.                                                   //
     // --------------------------------------------------------------- //
-    const viewer = $3Dmol.createViewer("viewer", {
-        backgroundColor: "white",
-        defaultcolors:   $3Dmol.elementColors.Jmol,
-    });
+    const viewer = window.molbuilder.viewer.create("viewer");
 
     function styleSpec() {
         const rep = $("rep").value;
@@ -79,32 +92,16 @@
 
     function applyStyle() {
         viewer.setStyle({}, styleSpec());
-        // Re-paint highlight overlays since setStyle clears them.
-        renderHighlights();
         renderIndexLabels();
         // Axes are independent shapes; setStyle doesn't disturb them
         // but we redraw whenever the structure changes.  Render once
         // at the end so partial updates aren't visible.
         drawAxes();
-    }
-
-    let _highlightShapes = [];
-
-    function clearHighlights() {
-        if (_pick) _pick.clearHalos(viewer, _highlightShapes);
-        else _highlightShapes.length = 0;
-    }
-
-    function renderHighlights() {
-        clearHighlights();
-        if (!_pick) return;
-        state.selected.forEach((idx) => {
-            const p = state.positions[idx];
-            if (!p) return;
-            _highlightShapes.push(
-                _pick.addHalo(viewer, {x: p[0], y: p[1], z: p[2]})
-            );
-        });
+        // Selection halos are drawn by the viewer-adapter
+        // (lib/selection/viewer-adapter.js) which subscribes to the
+        // selection store.  setStyle() above does NOT wipe the
+        // adapter's shape overlays (addSphere ≠ style) so no manual
+        // re-paint is needed here.
     }
 
     let _indexLabels = [];
@@ -117,11 +114,10 @@
         if (!$("show-indices").checked) return;
         // 3Dmol's selectedAtoms returns the atom records (with x/y/z and
         // serial).  Label every atom with its 1-based index (matches
-        // the atom-list table, the selection-info table, the Build
-        // viewer's overlay, and PDB/SIESTA conventions).  The Python
-        // API uses 0-based indices; we convert at the UI boundary
-        // (see ``onViewerAtomClick`` for the click->state.selected
-        // direction).
+        // the Build viewer's overlay and PDB/SIESTA conventions).  The
+        // Python API uses 0-based indices; we convert at the UI
+        // boundary (the viewer-adapter forwards 3Dmol's 0-based
+        // ``atom.serial`` straight to ``store.toggleAtom``).
         const atoms = viewer.selectedAtoms({});
         atoms.forEach((a, i) => {
             const lbl = viewer.addLabel(String(i + 1), {
@@ -264,102 +260,35 @@
     }
 
     // --------------------------------------------------------------- //
-    //  Atom list (left column).  Built once per structure load; row    //
-    //  highlight syncs with state.selected on every change.            //
+    //  Atom list + click-to-select are owned by the selection panel    //
+    //  (lib/selection-panel.js).  The legacy left-column atom-list +   //
+    //  ``onAtomListRowClick`` / ``onViewerAtomClick`` handlers were    //
+    //  retired 2026-05-20.  The viewer-adapter (auto-mounted by        //
+    //  modify/selection-bootstrap.js) routes viewer clicks straight    //
+    //  to ``store.toggleAtom`` and draws the halo overlay; the panel   //
+    //  renders the per-atom list with checkboxes.                      //
     // --------------------------------------------------------------- //
-    function rebuildAtomList() {
-        const tbody = $("atom-list-body");
-        tbody.innerHTML = "";
-        for (let i = 0; i < state.n_atoms; i++) {
-            const tr = document.createElement("tr");
-            // Internal: ``dataset.atomIndex`` stays 0-based (matches
-            // 3Dmol's atom.serial, the Python API's anchor_index,
-            // and ``state.selected``).  The DISPLAYED ``#`` column
-            // is 1-based to match PDB / SIESTA convention and the
-            // viewer overlay.  Click handler uses the 0-based int.
-            tr.dataset.atomIndex = String(i);
-            tr.innerHTML = `
-                <td class="col-idx">${i + 1}</td>
-                <td class="col-el">${state.elements[i] || ""}</td>
-                <td class="col-name">${state.atom_names[i] || ""}</td>
-                <td class="col-res">${formatResidue(i)}</td>
-            `;
-            tr.addEventListener("click", (ev) => {
-                onAtomListRowClick(i, ev.shiftKey);
-            });
-            tbody.appendChild(tr);
-        }
-        $("atom-count").textContent =
-            state.n_atoms === 1 ? "1 atom" : `${state.n_atoms} atoms`;
-    }
 
-    function formatResidue(i) {
-        const rn = state.residue_names[i] || "";
-        const ri = state.residue_ids[i];
-        if (ri === undefined || ri === null || ri === "") return rn || "—";
-        return rn ? `${rn} ${ri}` : String(ri);
-    }
-
+    // Edit-panel button enablement + per-op anchor readouts.
+    //
+    // Called from two places:
+    //   1. The selection store's subscriber (re-runs on every store
+    //      mutation) so buttons follow the live selection.
+    //   2. ``postOp()`` start/end to flip enablement during in-flight
+    //      requests (otherwise a double-click could submit twice).
+    //
+    // Selection is read live from the store; the DOM atom-list +
+    // selection-info table this used to populate now live in the
+    // selection panel.
     function refreshSelectionUI() {
-        // 1. List: toggle .is-selected on every row.
-        const rows = document.querySelectorAll("#atom-list-body tr");
-        rows.forEach((tr) => {
-            const idx = Number(tr.dataset.atomIndex);
-            tr.classList.toggle("is-selected", state.selected.has(idx));
-        });
-        // 2. Selection readout in the right panel.  Two layers:
-        //    - one-line summary (always visible)
-        //    - per-atom table showing index, element, name, residue,
-        //      x/y/z coordinates -- shown only when at least one atom
-        //      is selected.  Coordinates come from state.positions
-        //      which we parse from xyz at applyStructure() time.
-        const sel = Array.from(state.selected).sort((a, b) => a - b);
-        const out = $("selection-readout");
-        if (!sel.length) {
-            out.textContent = "No atoms selected.";
-        } else {
-            // User-facing labels are 1-based (matches the atom-list
-            // table, the viewer overlay, and PDB/SIESTA convention).
-            const parts = sel.map(
-                (i) => `#${i + 1} ${state.elements[i]}`
-            );
-            out.textContent = parts.join(", ");
-        }
-        const infoTable = $("selection-info");
-        const infoBody  = $("selection-info-body");
-        if (infoTable && infoBody) {
-            infoBody.innerHTML = "";
-            if (sel.length) {
-                infoTable.hidden = false;
-                for (const i of sel) {
-                    const p  = state.positions[i] || [0, 0, 0];
-                    const tr = document.createElement("tr");
-                    tr.innerHTML = `
-                        <td class="col-idx">${i + 1}</td>
-                        <td class="col-el">${state.elements[i] || ""}</td>
-                        <td class="col-name">${state.atom_names[i] || ""}</td>
-                        <td class="col-res">${formatResidue(i)}</td>
-                        <td class="col-coord">${p[0].toFixed(3)}</td>
-                        <td class="col-coord">${p[1].toFixed(3)}</td>
-                        <td class="col-coord">${p[2].toFixed(3)}</td>
-                    `;
-                    infoBody.appendChild(tr);
-                }
-            } else {
-                infoTable.hidden = true;
-            }
-        }
-        // 3. Edit-panel button enablement.
-        //    - Delete: any selection AND no op in flight.            (M3)
-        //    - Add atom: exactly one anchor AND no op in flight.     (M3)
-        //    - Orient: exactly two anchors AND no op in flight.      (M4)
-        //    - Rotate: a structure is loaded AND no op in flight.    (M4)
-        // The in-flight gate prevents a double-click on Apply from
-        // firing two parallel fetches; postOp() flips the inFlight
-        // bit + calls refreshSelectionUI when the op starts/ends.
+        const sel    = selectedIndices();
         const locked = state.inFlight;
+
+        // Delete: any selection + no op in flight.
         const deleteBtn = $("delete-apply");
         if (deleteBtn) deleteBtn.disabled = locked || sel.length === 0;
+
+        // Add atom: exactly one anchor + no op in flight.
         const addBtn = $("add-apply");
         const anchorReadout = $("add-anchor-readout");
         if (addBtn && anchorReadout) {
@@ -376,12 +305,13 @@
                         : "Anchor: pick exactly one atom";
             }
         }
-        // M4: Orient button + anchor-pair readout.
+
+        // Orient: exactly two anchors + no op in flight.
         const orientBtn = $("orient-apply");
         const orientReadout = $("orient-anchor-readout");
         if (orientBtn && orientReadout) {
             if (sel.length === 2) {
-                const [a, b] = sel.slice().sort((x, y) => x - y);
+                const [a, b] = sel;
                 orientBtn.disabled = locked;
                 orientReadout.textContent =
                     `Anchors: #${a + 1} ${state.elements[a]} → ` +
@@ -396,19 +326,17 @@
                             : "Anchors: pick exactly two atoms";
             }
         }
-        // M4: Rotate button -- enabled whenever a structure is
-        // loaded.  Rotation doesn't need a selection.
+
+        // Rotate / Center / Translate: no selection requirement;
+        // just need a loaded structure.
         const rotateBtn = $("rotate-apply");
         if (rotateBtn) rotateBtn.disabled = locked || state.n_atoms === 0;
-        // Geom subtab: Center + Translate operate on the whole
-        // structure with no selection requirement; only need atoms.
         const centerBtn = $("center-apply");
         if (centerBtn) centerBtn.disabled = locked || state.n_atoms === 0;
         const translateBtn = $("translate-apply");
         if (translateBtn) translateBtn.disabled = locked || state.n_atoms === 0;
-        // M5: Electrode + Send-to-Build buttons.  Electrode requires
-        // the right number of anchors for its mode (1 for single,
-        // 2 for symmetric); Send-to-Build needs a structure.
+
+        // Electrode: anchor count depends on mode.
         const elcBtn = $("elc-apply");
         const elcReadout = $("elc-anchor-readout");
         const mode = ($("elc-mode") || {}).value || "symmetric";
@@ -425,16 +353,16 @@
                         "Single mode: pick exactly one anchor.";
                 }
             } else {
-                // Pair mode: 0 atoms = canonical origin-centred placement,
-                // 2 atoms = legacy anchor-midpoint placement.  1 atom is
-                // ambiguous; the apply handler rejects it explicitly.
+                // Pair mode: 0 atoms = origin-centred (canonical),
+                // 2 atoms = legacy anchor-midpoint.  1 atom is
+                // ambiguous; rejected at apply time.
                 elcBtn.disabled = locked || state.n_atoms === 0;
                 if (sel.length === 0) {
                     elcReadout.textContent =
                         "Pair mode: slabs at z = ±gap/2 around the origin.  "
                         + "Centre + pose the molecule first (Geom + Pose).";
                 } else if (sel.length === 2) {
-                    const [a, b] = sel.slice().sort((x, y) => x - y);
+                    const [a, b] = sel;
                     elcReadout.textContent =
                         `Legacy mode: slabs flank #${a + 1} ${state.elements[a]} `
                         + `↔ #${b + 1} ${state.elements[b]} `
@@ -447,42 +375,9 @@
                 }
             }
         }
+
         const sendBtn = $("send-to-build");
         if (sendBtn) sendBtn.disabled = locked || state.n_atoms === 0;
-        // 4. Viewer: re-style so the highlight overlay reflects state.
-        applyStyle();
-    }
-
-    // --------------------------------------------------------------- //
-    //  Click handlers — keep list and viewer in sync.                  //
-    //                                                                  //
-    //  Plain click  -> single-select that atom.                        //
-    //  Shift-click  -> toggle that atom's membership in the selection. //
-    //                                                                  //
-    //  The orient op (M4) reads the selection as the anchor pair       //
-    //  (a0, a1) when its length is exactly 2; the add-atom op (M3)     //
-    //  reads it as the anchor when the length is exactly 1.            //
-    // --------------------------------------------------------------- //
-    function onAtomListRowClick(idx, shiftKey) {
-        if (shiftKey) {
-            if (state.selected.has(idx)) state.selected.delete(idx);
-            else state.selected.add(idx);
-        } else {
-            state.selected.clear();
-            state.selected.add(idx);
-        }
-        refreshSelectionUI();
-    }
-
-    function onViewerAtomClick(atom, _viewer, ev) {
-        // 3Dmol passes the click event as the 4th arg in modern builds.
-        // Older builds put the atom record's `clickEvt` field instead;
-        // fall back to that when ev is missing.
-        const shift = (ev && ev.shiftKey) ||
-                      (atom && atom.clickEvt && atom.clickEvt.shiftKey) ||
-                      false;
-        const idx = atom.serial;
-        onAtomListRowClick(idx, shift);
     }
 
     // --------------------------------------------------------------- //
@@ -494,35 +389,19 @@
         // ``className = "status ok"`` so the CSS rule ``.status.ok``
         // applies.  Earlier this tab emitted ``status-ok`` (hyphen
         // form) which would break against a future shared stylesheet;
-        // aligned now -- see web/static/style.css + watch/style.css.
+        // aligned now -- see web/static/style.css +
+        // web/static/lib/trajectory-inspector.css.
         const el = $("status");
         el.textContent = msg;
         el.className = "status" + (kind ? " " + kind : "");
     }
 
-    async function loadFile(file) {
-        setStatus(`Loading ${file.name}…`);
-        const fd = new FormData();
-        fd.append("file", file);
-        let r;
-        try {
-            r = await fetch("/api/build/load", { method: "POST", body: fd })
-                .then((x) => x.json());
-        } catch (e) {
-            setStatus("Network error: " + e.message, "error");
-            return;
-        }
-        if (!r.ok) {
-            setStatus(r.error || "Load failed.", "error");
-            return;
-        }
-        applyStructure(r);
-        const fmt = (r.source_format || "structure").toUpperCase();
-        setStatus(
-            `Loaded ${r.n_atoms}-atom ${fmt} from ${file.name}.`,
-            "ok",
-        );
-    }
+    // (loadFile() removed 2026-05-18: was the multipart upload path
+    // for the now-deleted #file-picker.  The sidebar-mediated
+    // loader at window.molbuilder.loadStructureText below is the
+    // only structure-loading path; it operates on already-fetched
+    // text, not a File object.  Accepts XYZ and PDB content alike --
+    // the server's /api/build/load sniffs the format.)
 
     function applyStructure(r) {
         state.xyz           = r.xyz || "";
@@ -533,10 +412,9 @@
         state.chain_ids     = Array.isArray(r.chain_ids)     ? r.chain_ids     : [];
         state.title         = r.title || "";
         state.n_atoms       = Number(r.n_atoms || state.elements.length || 0);
-        state.selected      = new Set();
-        // Parse positions from the xyz string so the selection-info
-        // table can display per-atom (x, y, z) without an extra
-        // server roundtrip.  Lines after the 2-line header are
+        // Parse positions from the xyz string so the per-op anchor
+        // readouts can show coordinates without an extra server
+        // roundtrip.  Lines after the 2-line header are
         // ``<element>  <x>  <y>  <z>``; whitespace is forgiving.
         state.positions = [];
         if (state.xyz) {
@@ -575,10 +453,6 @@
         clearViewer();
         if (state.xyz) {
             viewer.addModel(state.xyz, "xyz");
-            // Wire the per-atom click hook BEFORE the first render so
-            // the click region is registered.  3Dmol's setClickable
-            // takes (sel, clickable, callback).
-            viewer.setClickable({}, true, onViewerAtomClick);
             applyStyle();
             // Default fit shows the whole structure (atoms + slabs)
             // so the user always sees what's in the model after a
@@ -588,8 +462,11 @@
             viewer.zoomTo();
             viewer.render();
         }
+        // Atom-level clicks + halo overlays are wired by the
+        // viewer-adapter (lib/selection/viewer-adapter.js), which
+        // re-arms ``setClickable`` on every render so a model swap
+        // here doesn't drop the handler.
 
-        rebuildAtomList();
         refreshSelectionUI();
         refreshUndoButton();
     }
@@ -653,9 +530,12 @@
         if (!state.history.length) return;
         const prev = state.history.pop();
         applyStructure(prev);
-        // applyStructure clears state.selected but DOES NOT touch
-        // state.history.  refreshSelectionUI runs at the end and the
-        // undo button updates via refreshUndoButton() below.
+        // applyStructure does NOT touch state.history.  The selection
+        // store clears its own state when ``store.setSourceFile`` is
+        // called on a new path -- after an undo we stay on the same
+        // path so the store's selection persists; ops that need a
+        // selection re-check via refreshSelectionUI on the next
+        // store fire.
         refreshUndoButton();
         setEditStatus(
             `Undid op (${prev.n_atoms} atoms restored).  ${state.history.length} step(s) left.`,
@@ -721,7 +601,7 @@
     }
 
     async function applyDelete() {
-        const indices = Array.from(state.selected).sort((a, b) => a - b);
+        const indices = selectedIndices();
         if (!indices.length) return;
         await postOp("/api/modify/delete", { indices }, "Deleted");
     }
@@ -785,7 +665,7 @@
     }
 
     async function applyAddAtom() {
-        const sel = Array.from(state.selected);
+        const sel = selectedIndices();
         if (sel.length !== 1) {
             setEditStatus("Pick exactly one anchor atom first.", "error");
             return;
@@ -828,7 +708,7 @@
         // the renderer's "first anchor" semantic is reproducible from
         // the UI without exposing a "swap" affordance.  Tilted-pair
         // direction is determined by orient_along_axis (a0 -> a1).
-        const sel = Array.from(state.selected).sort((a, b) => a - b);
+        const sel = selectedIndices();
         if (sel.length !== 2) {
             setEditStatus("Pick exactly two anchor atoms first.", "error");
             return;
@@ -941,7 +821,7 @@
     }
 
     async function applyElectrode() {
-        const sel = Array.from(state.selected).sort((a, b) => a - b);
+        const sel = selectedIndices();
         const mode = $("elc-mode").value;
         const common = readElcCommonBody();
         const gap = Number($("elc-gap").value);
@@ -1057,33 +937,35 @@
     //  Wire DOM events.                                                //
     // --------------------------------------------------------------- //
     document.addEventListener("DOMContentLoaded", () => {
-        // The legacy load-btn + file-picker (browser-local file dialog)
-        // were removed from the template -- the Projects sidebar is now
-        // the only structure-loading path.  Keep null-guarded wiring so
-        // a future restoration is a template-only change.
-        const loadBtn    = $("load-btn");
-        const filePicker = $("file-picker");
-        if (loadBtn && filePicker) {
-            loadBtn.addEventListener("click", () => {
-                const files = filePicker.files;
-                if (!files.length) {
-                    setStatus("Pick a file first.", "error");
-                    return;
-                }
-                loadFile(files[0]);
-            });
-            filePicker.addEventListener("change", () => {
-                const files = filePicker.files;
-                if (files.length) loadFile(files[0]);
-            });
+        // Subscribe to the selection store so the per-op buttons
+        // re-evaluate enablement + anchor readouts on every
+        // selection change.  Initial fire happens immediately,
+        // giving us a clean disabled state before any structure
+        // loads.
+        const _store = _selStore();
+        if (_store) {
+            _store.subscribe(() => refreshSelectionUI());
         }
+
+        // (Legacy load-btn + file-picker dead-code block removed
+        // 2026-05-18.  The browser-local file dialog was dropped
+        // when the Projects sidebar took over.  The "Load from
+        // current selection" button was further removed 2026-05-20
+        // when the selection store began auto-loading on sidebar
+        // change.  The sidebar -> selection-bootstrap.js ->
+        // store.setSourceFile -> loadStructureText path is the ONLY
+        // supported loader.  Test contract:
+        // tests/test_web_files.py::TestNoLocalFileInputs pins that
+        // #load-btn and #file-picker are NOT in the rendered
+        // template.)
         $("rep").addEventListener("change", applyStyle);
         $("show-indices").addEventListener("change", applyStyle);
         const showAxes = $("show-axes");
         if (showAxes) showAxes.addEventListener("change", drawAxes);
         $("clear-selection").addEventListener("click", () => {
-            state.selected.clear();
-            refreshSelectionUI();
+            // Delegate to the selection store; its subscriber will
+            // re-run refreshSelectionUI automatically.
+            clearStoreSelection();
         });
         const undoBtn = $("undo-op");
         if (undoBtn) undoBtn.addEventListener("click", applyUndo);
@@ -1269,9 +1151,20 @@
             // 3Dmol's getView is synchronous and shouldn't throw, but
             // be defensive in case the viewer was torn down early.
         }
+        const _s = _selStore();
+        const sourceFile = _s ? (_s.getState().sourceFile || null) : null;
         const payload = {
             v: STATE_SCHEMA_VERSION,
             saved_at: new Date().toISOString(),
+            // Source-file path is what the selection store keys off;
+            // saving it lets restoreModifyState rehydrate the store
+            // (via adoptSession) so the panel + atom list re-sync to
+            // the same structure the viewer is showing.  Without this
+            // the post-restore store would have sourceFile=null and
+            // atoms=[] while the 3D viewer renders the restored
+            // structure -- a UI desync the user sees as "empty panel,
+            // populated viewer".
+            source_file:   sourceFile,
             xyz:           state.xyz,
             elements:      state.elements,
             atom_names:    state.atom_names,
@@ -1280,7 +1173,7 @@
             chain_ids:     state.chain_ids,
             title:         state.title,
             n_atoms:       state.n_atoms,
-            selected:      Array.from(state.selected).sort((a, b) => a - b),
+            selected:      selectedIndices(),
             camera:        camera,
             show_axes:     ($("show-axes")    || {}).checked || false,
             show_indices:  ($("show-indices") || {}).checked || false,
@@ -1326,14 +1219,28 @@
             title:         saved.title,
             n_atoms:       saved.n_atoms,
         });
-        // Restore the selection (applyStructure cleared it).
-        if (Array.isArray(saved.selected) && saved.selected.length) {
-            saved.selected.forEach((i) => {
-                if (Number.isInteger(i) && i >= 0 && i < state.n_atoms) {
-                    state.selected.add(i);
-                }
+        // Rehydrate the store atomically.  We can't call
+        // ``setSourceFile`` here because that path would re-issue
+        // ``GET /api/files/read`` + a viewer model swap -- we just
+        // applied the structure from sessionStorage, so re-loading
+        // would discard the camera we're about to restore AND waste
+        // a round-trip.  ``adoptSession`` takes the same {sourceFile,
+        // selection} pair, skips the viewer load, and re-fetches the
+        // atom list from the server so any sidecar updates done
+        // elsewhere since the snapshot are reflected.
+        const _s = _selStore();
+        if (_s && typeof _s.adoptSession === "function") {
+            const validSelection = Array.isArray(saved.selected)
+                ? saved.selected.filter(
+                    (i) => Number.isInteger(i)
+                        && i >= 0
+                        && i < state.n_atoms
+                )
+                : [];
+            _s.adoptSession({
+                sourceFile: saved.source_file || null,
+                selection:  validSelection,
             });
-            refreshSelectionUI();
         }
         // Restore the camera last so it doesn't fight zoomTo() inside
         // applyStructure.
@@ -1354,31 +1261,41 @@
     }
 
     // ----- Test hook ------------------------------------------------- //
-    // Exposes the click-callback path so the Playwright E2E tests can
-    // verify the viewer -> list direction WITHOUT clicking WebGL
-    // canvas pixels at known atom positions (which would require
-    // projecting atom coordinates through the camera matrix and is
-    // brittle across viewport sizes).  Production has zero behavior
-    // change -- this just attaches three references to ``window``
-    // that nothing else looks at.
+    // Exposes a small read-only surface for Playwright E2E tests.
+    // Production has zero behavior change -- this just attaches a
+    // few references to ``window`` that nothing else looks at.
+    // ``getSelected`` reads live from the selection store (the
+    // viewer no longer owns selection state).
     window.__molbuilder_modify_test = {
-        onAtomListRowClick: onAtomListRowClick,
-        onViewerAtomClick:  onViewerAtomClick,
-        getViewer:          () => viewer,
-        getSelected:        () => Array.from(state.selected),
-        getNAtoms:          () => state.n_atoms,
+        getViewer:   () => viewer,
+        getSelected: () => selectedIndices(),
+        getNAtoms:   () => state.n_atoms,
         // getState is read-only (we expose the raw state object,
         // tests must not mutate it).  Used by Geom-subtab tests to
         // probe positions after a translate / center op without
         // round-tripping through xyz parsing.
-        getState:           () => state,
+        getState:    () => state,
     };
 
     // Public loader for the Projects sidebar's onLoad callback (and
     // any future tab-coordination code).  Reuses /api/build/load's
     // JSON path so we don't need a browser File object.
     window.molbuilder = window.molbuilder || {};
-    window.molbuilder.loadXyzText = async function (text, filename) {
+    // Expose the 3Dmol viewer so the selection panel (bootstrapped in
+    // modify/selection-bootstrap.js) can register click handlers + add
+    // highlight overlays.  Kept under a per-tab namespace so it
+    // doesn't collide with /spectra or future tabs that also create
+    // their own viewer.
+    window.molbuilder.modify = window.molbuilder.modify || {};
+    window.molbuilder.modify.viewer = viewer;
+    // Load a structure text blob (XYZ or PDB) via /api/build/load,
+    // which sniffs the format from the filename + content.  The
+    // function is named ``loadStructureText`` (renamed 2026-05-22
+    // from the misleading legacy ``loadXyzText``) because it
+    // genuinely accepts both formats; the field name lied about
+    // its capability and caused real bugs (see design.md decision
+    // log for the rename rationale).
+    window.molbuilder.loadStructureText = async function (text, filename) {
         setStatus(`Loading ${filename}…`);
         let r;
         try {
@@ -1389,12 +1306,18 @@
             });
             r = await resp.json();
         } catch (e) {
+            // Throwing instead of silently returning lets callers
+            // (e.g. selection.store._loadViewer) treat the load as a
+            // failure rather than mistakenly continuing to populate
+            // panels for a structure the viewer never rendered.
             setStatus("Network error: " + e.message, "error");
-            return;
+            throw new Error("Network error loading " + filename
+                          + ": " + e.message);
         }
         if (!r.ok) {
-            setStatus(r.error || "Load failed.", "error");
-            return;
+            const msg = r.error || "Load failed.";
+            setStatus(msg, "error");
+            throw new Error(msg);
         }
         applyStructure(r);
         const fmt = (r.source_format || "structure").toUpperCase();
@@ -1403,4 +1326,15 @@
             "ok",
         );
     };
+    // Module-init contract: register the modify viewer + loader
+    // with the runtime so consumers can ``whenReady("modify.viewer")``
+    // or ``whenReady("modify.loadStructureText")``.  See design.md.
+    if (window.molbuilder.runtime
+        && typeof window.molbuilder.runtime.register === "function") {
+        window.molbuilder.runtime.register(
+            "modify.viewer", window.molbuilder.modify.viewer);
+        window.molbuilder.runtime.register(
+            "modify.loadStructureText",
+            window.molbuilder.loadStructureText);
+    }
 })();

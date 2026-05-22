@@ -177,7 +177,7 @@ def _strict_finite_float(s: str) -> float:
 # Per-version read-time handling lives in the typed-class
 # ``from_dict`` methods (see ``ModeData.from_dict`` for the v1 -> v2
 # eigenvector remap).
-_READABLE_SCHEMA_VERSIONS = {1, 2}
+_READABLE_SCHEMA_VERSIONS = {4}
 
 
 def _validate_schema_version(actual: Any) -> None:

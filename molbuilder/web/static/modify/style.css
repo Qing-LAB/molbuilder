@@ -10,13 +10,11 @@
 
 html, body { height: 100%; }
 
-body {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
-                 system-ui, "Inter", sans-serif;
-    color: var(--text-primary);
-    background: var(--bg-page);
-}
+/* ``body { ... }`` removed 2026-05-19; the canonical rules (margin,
+ * font-family, color, bg, line-height, font-smoothing) live in
+ * lib/page-shell.css.  Header rules below stay per-page (the modify
+ * header uses different padding + border treatment than the shared
+ * default). */
 
 /* ---- Header ---- */
 header {
@@ -50,35 +48,17 @@ header .tagline {
     color: var(--text-secondary);
     font-weight: 500;
 }
-.loader input[type="file"] {
-    background: var(--bg-input);
-    color: var(--text-primary);
-    border: 1px solid var(--border-soft);
-    border-radius: var(--radius-sm);
-    padding: 0.3rem 0.45rem;
-    font: inherit;
-}
-.loader button {
-    background: var(--accent);
-    color: #0d1117;
-    border: none;
-    border-radius: var(--radius-sm);
-    padding: 0.4rem 1rem;
-    font: 600 0.95rem/1 system-ui, sans-serif;
-    cursor: pointer;
-    transition: background 0.12s;
-}
-.loader button:hover { background: var(--accent-hover); }
 
 .status {
     color: var(--text-muted);
     font-size: 0.9rem;
     padding-left: 0.5rem;
 }
-/* Compound-class convention shared with Build (style.css) and
- * Watch (watch/style.css): the JS sets ``className = "status ok"``
- * etc.  Keep the rules selector-aligned across all three tabs so a
- * future "add a severity" change is a single CSS edit. */
+/* Compound-class convention shared with Build (style.css) and the
+ * trajectory inspector (lib/trajectory-inspector.css): the JS sets
+ * ``className = "status ok"`` etc.  Keep the rules selector-aligned
+ * across all three places so a future "add a severity" change is a
+ * single CSS edit. */
 .status.ok    { color: var(--success); }
 .status.error { color: var(--error); }
 .status.warn  { color: #d8a64b; }
@@ -86,60 +66,51 @@ header .tagline {
 /* ---- Three-column main grid ----
  *
  * Layout breakpoints:
- *   >= 1280px   3-column: atoms (300px) | viewer (1fr) | edit (340px)
- *   1024-1280   2-column: viewer (1fr) | edit (320px); atoms collapses
- *               to a horizontal strip above the viewer
- *   < 1024px    1-column stack: atoms, viewer, edit (top to bottom)
+ *   >= 1280px   3-column: selection (320px) | viewer (1fr) | edit (340px)
+ *   1024-1280   2-column: selection (300px) | viewer (1fr); edit
+ *               drops below (full-width) so the viewer keeps room
+ *   < 1024px    1-column stack: selection, viewer, edit
  *
- * The viewer always gets the most space because it's the primary
- * surface; atom list shrinks first because it has its own scroll;
- * edit panel keeps its width since the form controls don't reflow.
+ * Updated 2026-05-20: the selection panel was lifted from a full-
+ * width band above the grid into a column NEXT TO the viewer, so
+ * picks + the structure render are visible at the same time.
  */
 .modify-grid {
     display: grid;
-    grid-template-columns: 300px minmax(0, 1fr) 340px;
+    grid-template-columns: 320px minmax(0, 1fr) 340px;
+    grid-template-areas: "selection viewer edit";
     gap: var(--gap);
     padding: var(--gap);
     align-items: stretch;
     min-height: calc(100vh - 200px);
 }
+.modify-grid .selection-host { grid-area: selection; }
+.modify-grid .viewer-card    { grid-area: viewer; }
+.modify-grid .edit-card      { grid-area: edit; }
 @media (max-width: 1280px) {
-    /* 2-column: atom list collapses to a thin strip above viewer +
-       edit panel. */
+    /* 2-column: selection | viewer; edit drops below as a row. */
     .modify-grid {
-        grid-template-columns: minmax(0, 1fr) 320px;
+        grid-template-columns: 300px minmax(0, 1fr);
         grid-template-areas:
-            "atoms atoms"
-            "viewer edit";
+            "selection viewer"
+            "edit      edit";
     }
-    .modify-grid .atom-list-card { grid-area: atoms; max-height: 30vh; }
-    .modify-grid .viewer-card    { grid-area: viewer; }
-    .modify-grid .edit-card      { grid-area: edit; }
 }
 @media (max-width: 1024px) {
-    /* 1-column stack: atoms, viewer, edit panel. */
     .modify-grid {
         grid-template-columns: 1fr;
         grid-template-areas:
-            "atoms"
+            "selection"
             "viewer"
             "edit";
     }
-    .modify-grid .atom-list-card { max-height: 28vh; }
-    .modify-grid .viewer-card    { min-height: 360px; }
+    .modify-grid .viewer-card { min-height: 360px; }
 }
 @media (max-width: 640px) {
-    /* Phone-narrow: drop padding, drop gap to claw back pixels. */
+    /* Phone-narrow: drop padding + gap to claw back pixels. */
     .modify-grid { padding: 6px; gap: 6px; }
-    .loader-bar { padding: 0.55rem 0.8rem; }
-    header      { padding: 0.9rem 1rem 0.6rem; }
-    /* The file input has a browser-supplied minimum content width
-       (~250-280 px for "No file chosen" + button) that ignores the
-       parent's flex-wrap and overflows 360 px viewports.  Cap it to
-       the row width and force the status span onto its own line so
-       the loader-bar never produces a horizontal scrollbar. */
-    .loader input[type="file"] { max-width: 100%; min-width: 0; }
-    .loader .status { flex-basis: 100%; }
+    .loader-bar  { padding: 0.55rem 0.8rem; }
+    header       { padding: 0.9rem 1rem 0.6rem; }
 }
 
 /* ---- Cards ---- */
@@ -169,57 +140,11 @@ header .tagline {
     font-size: 0.85rem;
 }
 
-/* ---- Atom list (left) ---- */
-.atom-list-card .atom-list-wrap {
-    flex: 1 1 auto;
-    overflow: auto;
-    border-top: 1px solid var(--border-soft);
-    border-bottom: 1px solid var(--border-soft);
-}
-.atom-list {
-    width: 100%;
-    border-collapse: collapse;
-    font: 0.88rem/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-    color: var(--text-secondary);
-}
-.atom-list thead th {
-    position: sticky;
-    top: 0;
-    background: var(--bg-card-hover);
-    color: var(--text-secondary);
-    font-weight: 600;
-    text-align: left;
-    padding: 0.4rem 0.6rem;
-    border-bottom: 1px solid var(--border-soft);
-    z-index: 1;
-}
-.atom-list tbody td {
-    padding: 0.25rem 0.6rem;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-}
-.atom-list tbody tr {
-    cursor: pointer;
-    transition: background 0.08s;
-}
-.atom-list tbody tr:hover {
-    background: var(--bg-card-hover);
-}
-.atom-list tbody tr.is-selected {
-    background: var(--warning-bg);
-    color: var(--text-primary);
-}
-.atom-list .col-idx  { width: 3.5em; color: var(--text-muted); }
-.atom-list .col-el   { width: 4em;   color: var(--text-primary); font-weight: 600; }
-.atom-list .col-name { width: 5em; }
+/* (Atom-list styles retired 2026-05-20 along with the left-column
+ * atoms card -- the selection panel above the grid renders the
+ * per-atom list now.  See lib/selection-panel.css.) */
 
-.atom-list-card .hint {
-    padding: 0.6rem 1rem;
-    color: var(--text-muted);
-    font-size: 0.82rem;
-    margin: 0;
-}
-
-/* ---- Viewer (middle) ---- */
+/* ---- Viewer (left/main) ---- */
 .viewer-card { gap: 0; }
 /* Square viewer, consistent with Build + Watch (aspect-ratio 1:1,
  * 320 - 560 px clamped to 60vh).  Sits in the centre column of the
@@ -479,6 +404,24 @@ header .tagline {
     background: var(--border-soft);
     color: var(--text-muted);
     cursor: not-allowed;
+}
+
+/* ---- Send-to-Build handoff bar (under the 3D viewer) --------------- //
+ * Lives directly below ``.viewer-controls`` inside ``.viewer-card`` so
+ * the button is visible regardless of which edit-panel sub-tab is
+ * active.  Full-width primary action; tight padding so it doesn't
+ * eat viewer real estate.
+ */
+.viewer-card .viewer-handoff {
+    padding: 0.5rem 0.85rem 0.7rem;
+    border-top: 1px solid var(--border-soft);
+}
+.viewer-card .viewer-handoff .full-btn {
+    /* full-btn already sets width:100%; keep that, just tighten
+     * vertical padding so the bar reads as compact toolbar, not a
+     * primary form action. */
+    padding: 0.55rem 0;
+    font-size: 0.95rem;
 }
 
 /* ---- Junction subtab: legibility ----

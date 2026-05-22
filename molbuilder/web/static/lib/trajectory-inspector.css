@@ -1,15 +1,30 @@
-/* molwatch -- dark theme.
+/* Trajectory-inspector styles.
  *
- * Shared design tokens (colors / radii / shadows / gaps) live in
- * static/lib/tokens.css.  This file uses them via var(--...) and
- * adds Watch-specific tokens below for the elevated card surface,
- * the soft drop shadow on plot tiles, and the viewport-relative
- * viewer height.
+ * Scope: the trajectory inspector's own DOM -- the 3Dmol viewport,
+ * the controls aside (frame strip + tabbed controls + inspect panel),
+ * the plots row (energy / force / SCF), and the run-state badge.
+ * Loaded by /results, which mounts the inspector via the registry
+ * adapter lib/inspectors/trajectory.js.
+ *
+ * NOT in scope: body / header / main / .card / generic form controls
+ * / scrollbars -- those live in lib/page-shell.css.  Pages link
+ * page-shell.css BEFORE this file; the rules here only need to add
+ * the inspector-specific layering.
+ *
+ * Tokens come from lib/tokens.css; the page already links tokens.css
+ * directly via <link>, so we don't @import it here.  Adds two tokens
+ * below the page-shell baseline: --bg-card-elev (elevated tile bg)
+ * and --shadow-soft (plot-tile drop shadow) + --viewer-extent (the
+ * viewer's clamped 1:1 square edge length).
+ *
+ * History: this file used to carry /watch-only sections (loader-bar
+ * + workflow-card) when /watch was the primary trajectory surface.
+ * Those were removed 2026-05-19 along with the /watch page; see the
+ * stub comments inline below for the deletion markers.
  */
-@import url("../lib/tokens.css");
 
 :root {
-    /* ---- Watch-only token additions ---- */
+    /* ---- Inspector-only token additions ---- */
     --bg-card-elev:   #232a35;
     --shadow-soft:    0 1px 0 rgba(255, 255, 255, 0.02) inset,
                       0 2px 6px rgba(0, 0, 0, 0.25);
@@ -22,112 +37,18 @@
     --viewer-extent:  clamp(320px, 60vh, 560px);
 }
 
-* { box-sizing: border-box; }
+/* ``.loader-bar`` + ``.loader`` + ``.loader button`` + ``.loader
+ * input[type="text"]`` rules were removed 2026-05-19 along with the
+ * /watch page that hosted the loader bar.  /results drives loading
+ * via the registry's mount(host, file, ctx) -- no path-input
+ * affordance, no Load button, no styles for them needed. */
 
-body {
-    margin: 0;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
-                 system-ui, "Inter", sans-serif;
-    color: var(--text-primary);
-    background: var(--bg-page);
-    line-height: 1.5;
-    -webkit-font-smoothing: antialiased;
-    text-rendering: optimizeLegibility;
-}
-
-/* ---- Banner (header) and loader bar (below the menu) ---- */
-
-header,
-.loader-bar {
-    padding: 14px 22px 12px;
-    border-bottom: 1px solid var(--border-strong);
-    background: linear-gradient(180deg,
-                                rgba(107, 166, 255, 0.05) 0%,
-                                rgba(107, 166, 255, 0.00) 100%),
-                var(--bg-card);
-}
-
-header h1 {
-    margin: 0;
-    font-size: 1.5rem;
-    font-weight: 600;
-    letter-spacing: -0.01em;
-    color: var(--text-primary);
-}
-header .tagline {
-    margin: 6px 0 0;
-    color: var(--text-secondary);
-    font-size: 0.92rem;
-}
-
-.loader {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    align-items: center;
-}
-.loader label {
-    font-size: 0.92rem;
-    color: var(--text-secondary);
-}
-.loader input[type="text"] {
-    padding: 5px 10px;
-    font: inherit;
-    color: var(--text-primary);
-    background: var(--bg-input);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    min-width: 380px;
-    transition: border-color 120ms, background 120ms, box-shadow 120ms;
-}
-.loader input[type="text"]:hover { border-color: var(--accent-strong); }
-.loader input[type="text"]:focus {
-    outline: none;
-    border-color: var(--accent);
-    background: var(--bg-input-focus);
-    box-shadow: 0 0 0 3px var(--accent-glow);
-}
-.loader button {
-    padding: 5px 16px;
-    font: inherit;
-    cursor: pointer;
-    color: #fff;
-    background: var(--accent-strong);
-    border: 1px solid var(--accent-strong);
-    border-radius: var(--radius-sm);
-    transition: background 120ms, border-color 120ms;
-    font-weight: 500;
-}
-.loader button:hover { background: var(--accent); border-color: var(--accent); }
-
-.status {
-    color: var(--text-secondary);
-    font-size: 0.88rem;
-    margin-left: 4px;
-    /* Multi-line error messages render with their newlines preserved. */
-    white-space: pre-line;
-    line-height: 1.4;
-}
-.status.error { color: var(--error); }
-.status.ok    { color: var(--success); }
-
-/* ---- Main layout ---- */
-
-main {
-    padding: var(--gap) 22px 22px;
-    display: flex;
-    flex-direction: column;
-    gap: var(--gap);
-}
-
-/* Card — matches builder's .card exactly (same bg, border, radius, shadow). */
-.card {
-    background: var(--bg-card);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius);
-    padding: 14px 18px 18px;
-    box-shadow: var(--shadow-card);
-}
+/* .status, main, .card, generic form controls and ::scrollbar rules
+ * moved 2026-05-18 to lib/page-shell.css.  They apply to every page;
+ * keeping them here was an architectural smell flagged by audit
+ * D.1+D.2 ("file misnamed; styles half the watch page").  /results
+ * now links page-shell.css explicitly, so its body theme + .status
+ * helper + scrollbars don't come from this file by side effect. */
 
 /* The viewer card has no extra padding on its inner grid so the 3Dmol
    canvas can sit flush against the card's padded edges. */
@@ -323,61 +244,9 @@ main {
     background: transparent;
 }
 
-/* ---- Form controls (shared) ---- */
-
-input[type="text"],
-input[type="number"],
-select {
-    font: inherit;
-    color: var(--text-primary);
-    background: var(--bg-input);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    padding: 4px 8px;
-    transition: border-color 120ms, background 120ms, box-shadow 120ms;
-}
-input:hover:not([type="checkbox"]):not([type="range"]),
-select:hover {
-    border-color: var(--accent-strong);
-}
-input:focus, select:focus {
-    outline: none;
-    border-color: var(--accent);
-    background: var(--bg-input-focus);
-    box-shadow: 0 0 0 3px var(--accent-glow);
-}
-input[type="checkbox"] {
-    accent-color: var(--accent);
-    cursor: pointer;
-    margin: 0;
-}
-input[type="range"] {
-    accent-color: var(--accent);
-    width: 100%;
-    background: transparent;
-    cursor: pointer;
-}
-
-button {
-    font: inherit;
-    cursor: pointer;
-    color: var(--text-primary);
-    background: var(--bg-input);
-    border: 1px solid var(--border-strong);
-    border-radius: var(--radius-sm);
-    padding: 4px 12px;
-    transition: background 120ms, border-color 120ms, color 120ms;
-}
-button:hover {
-    background: var(--bg-card-hover);
-    border-color: var(--accent-strong);
-    color: var(--text-primary);
-}
-button:disabled {
-    color: var(--text-muted);
-    cursor: not-allowed;
-    opacity: 0.6;
-}
+/* Generic form controls (input / select / button / checkbox /
+ * range) moved 2026-05-18 to lib/page-shell.css.  See the comment
+ * above the deleted-.status block. */
 
 /* ---- Plots row ---- */
 
@@ -527,132 +396,11 @@ button:disabled {
     font-weight: 600;
 }
 
-/* ---- Staged-relaxation workflow guide ----
- *
- * Native-collapsible <details>/<summary> card.  Closed by default
- * (the user opens it when they want the recipe).  Styled to match
- * the SCF banner / plot cards above so it doesn't look bolted-on.
- */
-.workflow-row { display: flex; }
-.workflow-card {
-    flex: 1;
-    background: var(--bg-card);
-    border: 1px solid var(--border-strong);
-    border-left: 3px solid var(--accent);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow-soft);
-    padding: 0;            /* summary + body manage their own padding */
-}
-.workflow-card > summary {
-    padding: 10px 14px;
-    cursor: pointer;
-    list-style: none;       /* drop the default disclosure marker; we add a chevron via ::before */
-    user-select: none;
-    color: var(--text-primary);
-    display: flex;
-    align-items: baseline;
-    flex-wrap: wrap;
-    gap: 8px;
-}
-.workflow-card > summary::-webkit-details-marker { display: none; }
-.workflow-card > summary::before {
-    content: "▸";
-    color: var(--accent);
-    font-size: 0.85rem;
-    transition: transform 0.12s;
-    display: inline-block;
-}
-.workflow-card[open] > summary::before { transform: rotate(90deg); }
-.workflow-title  { font-weight: 600; color: var(--accent); font-size: 0.95rem; }
-.workflow-hint   { color: var(--text-secondary); font-size: 0.85rem; }
-.workflow-body {
-    padding: 6px 18px 18px 18px;
-    border-top: 1px solid var(--border-soft);
-    color: var(--text-secondary);
-    font-size: 0.92rem;
-    line-height: 1.5;
-}
-.workflow-body p     { margin: 0.6em 0; }
-.workflow-body code  { background: var(--bg-soft, rgba(255,255,255,0.04));
-                       padding: 1px 5px;
-                       border-radius: 3px;
-                       font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
-                       font-size: 0.85em; }
-.workflow-lead   { color: var(--text-primary); }
-.workflow-h {
-    margin: 1.2em 0 0.4em;
-    color: var(--text-primary);
-    font-size: 0.95rem;
-    font-weight: 600;
-    border-bottom: 1px solid var(--border-soft);
-    padding-bottom: 4px;
-}
-.workflow-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 0.4em 0 0.6em;
-    font-size: 0.88rem;
-}
-.workflow-table th, .workflow-table td {
-    padding: 6px 10px;
-    border-bottom: 1px solid var(--border-soft);
-    text-align: left;
-    vertical-align: top;
-}
-.workflow-table thead th {
-    color: var(--accent);
-    font-weight: 600;
-    background: var(--bg-soft, rgba(255,255,255,0.03));
-}
-.workflow-recipe td:first-child {
-    color: var(--text-primary);
-    font-weight: 500;
-    width: 12em;
-}
-.workflow-recipe td:not(:first-child) {
-    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
-    color: var(--accent);
-}
-.workflow-note {
-    background: var(--bg-soft, rgba(255,255,255,0.03));
-    border-left: 2px solid var(--border-strong);
-    padding: 8px 12px;
-    margin: 0.5em 0;
-    font-size: 0.88rem;
-}
-.workflow-callout {
-    background: rgba(196, 82, 60, 0.12);
-    border-left: 3px solid #c4523c;
-    padding: 10px 14px;
-    margin: 0.6em 0;
-    font-size: 0.9rem;
-    color: var(--text-primary);
-    border-radius: 4px;
-}
-.workflow-callout strong { color: #c4523c; }
-.workflow-cols {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 18px;
-    margin: 0.4em 0;
-}
-.workflow-cols ul { padding-left: 1.2em; margin: 0.3em 0 0; }
-.workflow-cols li { margin: 0.2em 0; }
-.workflow-good   { color: #3aa063; margin: 0; font-size: 0.9rem; }
-.workflow-bad    { color: #c4523c; margin: 0; font-size: 0.9rem; }
-.workflow-steps {
-    padding-left: 1.4em;
-    margin: 0.4em 0;
-}
-.workflow-steps li { margin: 0.4em 0; }
-.workflow-steps strong { color: var(--text-primary); }
-.workflow-steps em     { color: var(--accent); font-style: normal; }
-
-@media (max-width: 720px) {
-    .workflow-cols { grid-template-columns: 1fr; }
-    .workflow-table { font-size: 0.82rem; }
-    .workflow-table th, .workflow-table td { padding: 5px 7px; }
-}
+/* ``.workflow-*`` rules (staged-relaxation guide on /watch) were
+ * removed 2026-05-19 along with /watch.  The guide was a /watch.html-
+ * only <details>/<summary> card; /results doesn't host it and the
+ * accompanying documentation lives in docs/protocols/job-layout.md
+ * instead. */
 
 /* ---- Responsive breakpoints ---- */
 
@@ -662,8 +410,9 @@ button:disabled {
     .controls   { height: auto; max-height: 60vh; }
 }
 @media (max-width: 640px) {
-    .loader input[type="text"] { min-width: 0; flex: 1; }
-    main, header, .loader-bar { padding-left: 12px; padding-right: 12px; }
+    /* ``.loader input[type="text"]`` + ``.loader-bar`` rules dropped
+     * 2026-05-19 along with /watch's loader bar. */
+    main, header { padding-left: 12px; padding-right: 12px; }
     :root { --viewer-extent: clamp(240px, 70vw, 380px); }
 }
 
@@ -714,13 +463,9 @@ button:disabled {
 }
 .run-state.run-state-blank { display: none; }
 
-/* ---- Scrollbars ---- */
-
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb {
-    background: var(--border-strong);
-    border-radius: 5px;
-    border: 2px solid var(--bg-page);
-}
-::-webkit-scrollbar-thumb:hover { background: #4a5160; }
+/* (::-webkit-scrollbar rules deleted 2026-05-18 -- the file's own
+ * docstring said they'd moved to lib/page-shell.css but the block
+ * was left behind, which would have silently drifted from the
+ * page-shell copy on any future edit.  page-shell.css is loaded
+ * BEFORE this file on /watch and /results, so the scrollbar
+ * styling survives the deletion intact.) */
