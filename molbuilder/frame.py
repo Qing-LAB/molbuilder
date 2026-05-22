@@ -23,7 +23,7 @@ richer trajectory type now.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 import numpy as np
@@ -125,6 +125,13 @@ class Trajectory:
     lattice:       Optional[np.ndarray] = None
     run_state:     str                  = "ongoing"
     error_message: Optional[str]        = None
+    # CPU/GPU/host facts the generator captured at run start.  Parsers
+    # populate this from on-disk metadata (``# runtime.<key>:`` lines
+    # in molwatch logs; future SIESTA / other parsers may grow their
+    # own header readers).  Empty dict when the writer didn't emit
+    # the block -- older log files render with "—" rows.  Canonical
+    # keys: see :mod:`molbuilder.runtime_info`.
+    runtime_info:  dict                 = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.lattice is not None and not isinstance(self.lattice, np.ndarray):

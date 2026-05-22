@@ -60,7 +60,14 @@ from .base import TrajectoryParser
 _BEGIN_RE  = re.compile(r"====\s*molwatch\s+step\s+(\d+)\s+begin\s*====")
 _END_RE    = re.compile(r"====\s*molwatch\s+step\s+(\d+)\s+end\s*====")
 _HEADER_RE = re.compile(r"^#\s*molwatch\s+trajectory\s+log", re.IGNORECASE)
-_ENGINE_RE = re.compile(r"^#\s*engine:\s*(\S+)", re.IGNORECASE)
+_ENGINE_RE   = re.compile(r"^#\s*engine:\s*(\S+)", re.IGNORECASE)
+# Runtime-info header lines look like ``# runtime.<key>: <value>``
+# (one per canonical key from molbuilder.runtime_info).  Captures both
+# halves so the parser can drop them into Trajectory.runtime_info as
+# a plain dict[str, str].  Numeric values are stringified by the
+# emitter; the inspector parses ints/bools out of the strings as
+# needed.
+_RUNTIME_RE  = re.compile(r"^#\s*runtime\.([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$")
 # Run-state markers, written by the inlined PySCF emitter via
 # atexit/excepthook hooks.  Both lines may appear at the FOOTER of
 # a log (atexit fires after the last step block).  When neither is
@@ -104,6 +111,11 @@ class MolwatchLogParser(TrajectoryParser):
         # writer emitted explicit `# concluded:` / `# error:` lines.
         run_state: str = "ongoing"
         error_message: Optional[str] = None
+        # Runtime facts the emitter wrote in the file header
+        # (``# runtime.<key>: <value>`` lines).  Empty dict when the
+        # writer didn't emit them -- older log files just don't get
+        # the CPU/GPU/Host rows in the /results inspector.
+        runtime_info: Dict[str, Any] = {}
 
         # In-block accumulators; commit only on a matching `end` marker.
         in_block = False
@@ -154,6 +166,23 @@ class MolwatchLogParser(TrajectoryParser):
                     m_eng = _ENGINE_RE.match(line)
                     if m_eng:
                         engine = m_eng.group(1)
+                        continue
+                    m_rt = _RUNTIME_RE.match(line)
+                    if m_rt:
+                        key, val = m_rt.group(1), m_rt.group(2).strip()
+                        # Coerce trivially-typed values (int / bool /
+                        # None) so the inspector can compare without
+                        # special-casing the bag.  Non-matching values
+                        # stay strings.
+                        if val == "None":
+                            runtime_info[key] = None
+                        elif val in ("True", "False"):
+                            runtime_info[key] = (val == "True")
+                        else:
+                            try:
+                                runtime_info[key] = int(val)
+                            except ValueError:
+                                runtime_info[key] = val
                         continue
 
                 # ---- block start ----
@@ -305,4 +334,5 @@ class MolwatchLogParser(TrajectoryParser):
             lattice       = None,
             run_state     = run_state,
             error_message = error_message,
+            runtime_info  = runtime_info,
         )

@@ -255,20 +255,26 @@ def render_script(struct: Structure,
     out.append('"""')
     out.append("")
 
-    # ------------------------------------------------------------- imports
-    out.append("import os")
+    # ---------------- Threading + runtime-info setup ---------------------
+    # Shared with the spectra script -- defined in
+    # molbuilder.runtime_info.  Pins BLAS to 1 thread per worker so
+    # OMP * BLAS doesn't oversubscribe (a 20-physical / 40-logical host
+    # otherwise sees load=40 from MKL/OpenBLAS spawning their own
+    # thread pool on top of PySCF's OMP).  Auto-detects physical
+    # cores at run time (cfg.threads=None) or honors the user's
+    # explicit choice (cfg.threads=N).
+    from ..runtime_info import (
+        emit_threading_setup_lines,
+        emit_runtime_info_capture_lines,
+        emit_pyscf_post_import_lines,
+    )
+    out += emit_threading_setup_lines(cfg.threads)
+    out += emit_runtime_info_capture_lines(
+        use_gpu=bool(getattr(cfg, "use_gpu", False)),
+        max_memory_mb=int(getattr(cfg, "max_memory_mb", 0)) or None,
+    )
     out.append("import time")
     out.append("")
-    if cfg.threads is not None:
-        if v:
-            out.append("# Pin BLAS thread count BEFORE importing pyscf so")
-            out.append("# the BLAS/OpenMP runtime sees this preference at init.")
-            out.append("# Set in os.environ rather than via pyscf.lib.num_threads()")
-            out.append("# because some BLAS libraries (MKL, OpenBLAS) only honour")
-            out.append("# OMP_NUM_THREADS when read at process start.")
-        out.append(f'os.environ.setdefault("OMP_NUM_THREADS", "{cfg.threads}")')
-        out.append(f'os.environ.setdefault("MKL_NUM_THREADS", "{cfg.threads}")')
-        out.append("")
     # Import only what the script actually uses.  HF runs (method=RHF/UHF)
     # never touch the dft module; DFT runs (RKS/UKS, the default) need it
     # for both the production mf object and -- when preopt is enabled --
@@ -277,6 +283,24 @@ def render_script(struct: Structure,
         out.append("from pyscf import gto, scf, dft")
     else:
         out.append("from pyscf import gto, scf")
+    # Size pyscf's thread pool AFTER import: env vars don't re-thread
+    # an already-imported module (PySCF docs).
+    out += emit_pyscf_post_import_lines()
+    out.append("_RUNTIME_INFO['n_threads_pyscf'] = int(_pyscf_lib.num_threads())")
+    out.append("print(f'molbuilder: pyscf.lib.num_threads() "
+               "= {_RUNTIME_INFO[\"n_threads_pyscf\"]}')")
+    out.append("")
+
+    # GPU probe + _mb_to_gpu_if_enabled helper -- shared with the
+    # spectra script via molbuilder.runtime_info so the cross-cutting
+    # "detect, fall back, record" recipe lives in ONE place.  Caller
+    # (this generator + spectra) decides WHERE to invoke the helper
+    # on its mf object(s); the helper itself is identical.
+    from ..runtime_info import emit_gpu_probe_lines
+    out += emit_gpu_probe_lines(
+        use_gpu=bool(getattr(cfg, "use_gpu", False)),
+        min_compute_capability=7,
+    )
     if cfg.optimize:
         if cfg.optimizer == "geometric":
             opt_pkg = "geometric"
@@ -459,6 +483,14 @@ def render_script(struct: Structure,
         out.append(f"mf.damp = {cfg.damp}")
     if cfg.chkfile:
         out.append('mf.chkfile = JOB + ".chk"')
+
+    # GPU patch: promote the fully-assembled production mf to its
+    # gpu4pyscf equivalent when the runtime probe at script-start
+    # succeeded (_USING_GPU=True).  No-op on CPU nodes.  Called
+    # AFTER density_fit / disp / PCM / chkfile / conv_tol so
+    # .to_gpu() sees the complete CPU mf and the GPU mirror has
+    # the same settings.
+    out.append("mf = _mb_to_gpu_if_enabled(mf)")
 
     # Wire the production-mf SCF callback so per-cycle SCF history
     # is captured for production opt steps.  The emitter itself was
@@ -703,6 +735,11 @@ def _emit_preopt_block(cfg: PySCFConfig, charge: int, v: bool) -> List[str]:
         out.append(f"mf1.diis_space = {cfg.diis_space}")
     if cfg.damp:
         out.append(f"mf1.damp = {cfg.damp}")
+    # GPU patch: same shape as the production-mf line above -- promote
+    # the preopt mf to gpu4pyscf when the runtime probe succeeded.
+    # Done AFTER density_fit / disp / convergence settings so .to_gpu()
+    # sees the complete CPU object.
+    out.append("mf1 = _mb_to_gpu_if_enabled(mf1)")
     # Wire the preopt SCF callback so the molwatch log captures preopt
     # SCF history too -- otherwise the user only sees a single block per
     # preopt opt step with empty scf_history (and the "Watch tab can't
@@ -921,7 +958,8 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig") -> List[str]:
     # Strip the placeholder; what's left is the suffix the generator
     # appends to ``JOB`` at runtime.
     _suffix = _resolved_for_X[len(_placeholder):]
-    out.append(f'_molwatch = MolwatchEmitter(JOB + {_suffix!r}, JOB, mol)')
+    out.append(f'_molwatch = MolwatchEmitter('
+               f'JOB + {_suffix!r}, JOB, mol, runtime_info=_RUNTIME_INFO)')
     out.append("")
     # Run-state markers.  The watch UI reads these to render a binary
     # "Finished / Ongoing / Error" badge -- authoritative when present,

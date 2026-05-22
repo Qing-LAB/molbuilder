@@ -113,17 +113,59 @@ def render_spectra_script(struct: Structure, cfg: SpectraConfig) -> str:
     )
     bibliography_keys = extract_citation_keys(methods_md)
 
+    # Threading + runtime-info + GPU probe are CROSS-CUTTING -- they
+    # live in molbuilder.runtime_info and are shared verbatim with
+    # Build's PySCF script generator (pyscf/input.py).  Single source
+    # of truth for the OMP/BLAS recipe + GPU detection so the two
+    # generators can't drift.
+    from ..runtime_info import (
+        emit_threading_setup_lines,
+        emit_runtime_info_capture_lines,
+        emit_pyscf_post_import_lines,
+        emit_gpu_probe_lines,
+    )
     lines: List[str] = []
     lines += _emit_header_docstring(struct, cfg, methods_md=methods_md)
-    lines += _emit_threading_setup(cfg)
+    lines += emit_threading_setup_lines(cfg.threads)
+    lines += emit_runtime_info_capture_lines(
+        use_gpu=bool(cfg.use_gpu),
+        max_memory_mb=int(cfg.max_memory_mb) if cfg.max_memory_mb else None,
+    )
     lines += _emit_imports(cfg)
-    lines += _emit_pyscf_thread_pool(cfg)
+    lines += emit_pyscf_post_import_lines()
+    lines.append("_RUNTIME_INFO['n_threads_pyscf'] = int(_pyscf_lib.num_threads())")
     lines += _emit_constants(
         struct, cfg,
         methods_md=methods_md,
         bibliography_keys=bibliography_keys,
     )
-    lines += _emit_gpu_setup(cfg)
+    lines += emit_gpu_probe_lines(
+        use_gpu=bool(cfg.use_gpu),
+        min_compute_capability=int(
+            __import__("molbuilder.spectra.pyscf_engine",
+                       fromlist=["PySCFSpectraEngine"]
+                      ).PySCFSpectraEngine.GPU4PYSCF_MIN_COMPUTE_CAPABILITY
+        ),
+    )
+    # Legacy compat: the existing spectra script uses _scf / _dft
+    # pointer rebind for GPU dispatch.  Keep that pattern (it's how
+    # _emit_build_mol picks SCF class) by aliasing.
+    lines.append("if _USING_GPU:")
+    lines.append("    from gpu4pyscf import scf as _gpu_scf")
+    if cfg.method.upper() in ("RKS", "UKS"):
+        lines.append("    from gpu4pyscf import dft as _gpu_dft")
+        lines.append("    _scf = _gpu_scf")
+        lines.append("    _dft = _gpu_dft")
+    else:
+        lines.append("    _scf = _gpu_scf")
+        lines.append("    _dft = None")
+    lines.append("else:")
+    lines.append("    _scf = scf")
+    if cfg.method.upper() in ("RKS", "UKS"):
+        lines.append("    _dft = dft")
+    else:
+        lines.append("    _dft = None")
+    lines.append("")
     lines += _emit_atomic_writer()
     lines += _emit_build_mol(struct, cfg)
     lines += _emit_frozen_mask()
@@ -223,143 +265,9 @@ def _emit_header_docstring(struct: Structure,
 # --------------------------------------------------------------------- #
 
 
-def _emit_threading_setup(cfg: SpectraConfig) -> List[str]:
-    """Emit the threading-control block.  Runs BEFORE any heavy
-    import (numpy / pyscf / gpu4pyscf) so the BLAS thread pool +
-    OpenMP thread count are sized correctly when those libraries
-    initialise.
-
-    Why this matters: PySCF spawns one OpenMP thread per logical
-    core by default.  Each thread enters BLAS (OpenBLAS / MKL /
-    Accelerate), which spawns ITS OWN thread pool, also typically
-    sized to logical cores.  Result: load = N_omp x N_blas, often
-    2-4x physical cores -- on a 20-core/40-HT host, the user
-    reported load=40 (matches OMP=logical=40 even before BLAS
-    multiplies it).
-
-    The canonical fix (per PySCF threading docs + Intel MKL
-    guidance):
-      * Cap BLAS to 1 thread per worker:
-            OPENBLAS_NUM_THREADS=1, MKL_NUM_THREADS=1
-        (env-var-only knobs read at numpy/scipy import time).
-      * Let PySCF do the parallelism, sized to PHYSICAL cores
-        (not logical) by default.  Hyperthreading rarely helps
-        bandwidth-bound QC kernels and can hurt cache locality.
-        Set both ``OMP_NUM_THREADS`` (read at numpy import) and
-        call ``pyscf.lib.num_threads(N)`` AFTER the pyscf import
-        (the env-var alone doesn't re-thread an already-imported
-        module).  See _emit_pyscf_thread_pool below.
-
-    ``cfg.threads = None`` (the default) -> auto-detect physical
-    cores.  Set explicitly to override (e.g. cluster scheduler
-    gave 8 cores; bench at 8).  We use ``os.environ.setdefault``
-    so a user who pre-exports an env var still wins -- their
-    explicit choice trumps our auto.
-    """
-    out: List[str] = []
-    out.append("# ============================================================")
-    out.append("#  Threading setup -- runs BEFORE numpy/pyscf import.")
-    out.append("# ============================================================")
-    out.append("# Cap BLAS to 1 thread per worker so OMP threads * BLAS")
-    out.append("# threads doesn't multiply.  PySCF does its own parallel")
-    out.append("# loops; we size them to PHYSICAL cores (not logical).")
-    out.append("# Hyperthreading rarely helps QC kernels (memory bandwidth")
-    out.append("# bound) and can hurt cache locality.  See the engine")
-    out.append("# docstring for the full rationale.")
-    out.append("import os")
-    out.append("")
-    out.append("def _mb_count_physical_cores():")
-    out.append("    \"\"\"Return the host's physical (not logical) core count.")
-    out.append("    Tries psutil if installed, then /proc/cpuinfo on Linux,")
-    out.append("    falls back to os.cpu_count() // 2 (a hyperthreaded box's")
-    out.append("    best-guess).  Final fallback: 1.\"\"\"")
-    out.append("    try:")
-    out.append("        import psutil")
-    out.append("        n = psutil.cpu_count(logical=False)")
-    out.append("        if n: return int(n)")
-    out.append("    except Exception:")
-    out.append("        pass")
-    out.append("    try:")
-    out.append("        with open('/proc/cpuinfo') as fp:")
-    out.append("            seen = set()")
-    out.append("            phys, core = None, None")
-    out.append("            for line in fp:")
-    out.append("                if line.startswith('physical id'):")
-    out.append("                    phys = line.split(':')[1].strip()")
-    out.append("                elif line.startswith('core id'):")
-    out.append("                    core = line.split(':')[1].strip()")
-    out.append("                    if phys is not None:")
-    out.append("                        seen.add((phys, core))")
-    out.append("                        phys = core = None")
-    out.append("            if seen: return len(seen)")
-    out.append("    except Exception:")
-    out.append("        pass")
-    out.append("    logical = os.cpu_count() or 1")
-    out.append("    # Assume hyperthreading on x86_64 if logical is even and > 1.")
-    out.append("    return max(1, logical // 2) if logical >= 2 else logical")
-    out.append("")
-    if cfg.threads is None:
-        out.append("# cfg.threads = None -> auto: physical-core count.")
-        out.append("_MB_REQUESTED_THREADS = _mb_count_physical_cores()")
-    else:
-        out.append(f"# cfg.threads explicitly = {cfg.threads}; honor user choice.")
-        out.append(f"_MB_REQUESTED_THREADS = {int(cfg.threads)}")
-    out.append("_MB_PHYSICAL_CORES = _mb_count_physical_cores()")
-    out.append("_MB_LOGICAL_CORES  = os.cpu_count() or 1")
-    out.append("")
-    out.append("# setdefault so a user's pre-exported OMP_NUM_THREADS wins.")
-    out.append("os.environ.setdefault('OMP_NUM_THREADS',      str(_MB_REQUESTED_THREADS))")
-    out.append("os.environ.setdefault('OPENBLAS_NUM_THREADS', '1')")
-    out.append("os.environ.setdefault('MKL_NUM_THREADS',      '1')")
-    out.append("os.environ.setdefault('NUMEXPR_NUM_THREADS',  str(_MB_REQUESTED_THREADS))")
-    out.append("os.environ.setdefault('VECLIB_MAXIMUM_THREADS', '1')  # macOS Accelerate")
-    out.append("")
-    out.append("# Runtime-info bag -- the final JSON dump copies this into")
-    out.append("# results['runtime_info'] so the /results page can show what")
-    out.append("# CPU/GPU configuration the run actually used.")
-    out.append("_RUNTIME_INFO = {")
-    out.append("    'n_threads_pyscf':  _MB_REQUESTED_THREADS,  # may be overwritten below")
-    out.append("    'n_threads_omp':    int(os.environ['OMP_NUM_THREADS']),")
-    out.append("    'n_threads_blas':   int(os.environ['OPENBLAS_NUM_THREADS']),")
-    out.append("    'physical_cores':   _MB_PHYSICAL_CORES,")
-    out.append("    'logical_cores':    _MB_LOGICAL_CORES,")
-    out.append("    'gpu_requested':    " + repr(bool(cfg.use_gpu)) + ",")
-    out.append("    'gpu_used':         False,         # filled in by _emit_gpu_setup")
-    out.append("    'gpu_name':         None,")
-    out.append("    'cuda_version':     None,")
-    out.append("    'hostname':         __import__('socket').gethostname(),")
-    out.append("}")
-    out.append("print(")
-    out.append("    f'molbuilder: requested {_MB_REQUESTED_THREADS} PySCF threads '")
-    out.append("    f'(physical={_MB_PHYSICAL_CORES}, logical={_MB_LOGICAL_CORES}, '")
-    out.append("    f'BLAS=1).  Override via cfg.threads or OMP_NUM_THREADS env var.'")
-    out.append(")")
-    out.append("")
-    return out
-
-
-def _emit_pyscf_thread_pool(cfg: SpectraConfig) -> List[str]:
-    """Sized the in-process PySCF OpenMP pool AFTER import.
-
-    Per the PySCF docs: env vars are read at module import time;
-    once pyscf.lib is imported, ``OMP_NUM_THREADS`` no longer
-    affects the pool.  The canonical knob from then on is
-    ``pyscf.lib.num_threads(N)``.  Setting both belt + braces
-    handles users who modify the env mid-script.
-    """
-    out: List[str] = []
-    out.append("# PySCF post-import thread-pool size.  ``pyscf.lib`` reads")
-    out.append("# OMP_NUM_THREADS at import time, but the canonical setter")
-    out.append("# AFTER import is lib.num_threads(N).  We resize so the")
-    out.append("# pool actually matches what _emit_threading_setup decided.")
-    out.append("from pyscf import lib as _pyscf_lib")
-    out.append("_pyscf_lib.num_threads(_MB_REQUESTED_THREADS)")
-    out.append("_RUNTIME_INFO['n_threads_pyscf'] = int(_pyscf_lib.num_threads())")
-    out.append("print(f'molbuilder: pyscf.lib.num_threads()'")
-    out.append("      f' = {_RUNTIME_INFO[\"n_threads_pyscf\"]}')")
-    out.append("")
-    return out
-
+# --------------------------------------------------------------------- #
+# Imports                                                               #
+# --------------------------------------------------------------------- #
 
 def _emit_imports(cfg: SpectraConfig) -> List[str]:
     out: List[str] = []
@@ -383,121 +291,6 @@ def _emit_imports(cfg: SpectraConfig) -> List[str]:
     out.append("from pyscf.hessian import thermo as _mb_thermo")
     out.append("")
     return out
-
-
-def _emit_gpu_setup(cfg: SpectraConfig) -> List[str]:
-    """GPU acceleration via gpu4pyscf (optional).
-
-    The emitted block runs AFTER the constants block (which defines
-    USE_GPU).  It binds two module-level names -- ``_dft`` and ``_scf``
-    -- to either the gpu4pyscf modules (if USE_GPU=True AND the
-    package is importable on the run node) or the stock PySCF
-    modules.  Downstream SCF construction always uses ``_dft.RKS`` /
-    ``_scf.RHF`` etc.; that way the same SCF code runs on CPU or
-    GPU without per-call branching.
-
-    The Raman polarizability step deliberately keeps using CPU
-    PySCF because gpu4pyscf doesn't yet expose analytic CPHF
-    polarizability; the Raman block builds its own CPU mf objects.
-    """
-    is_dft = cfg.method.upper() in ("RKS", "UKS")
-    # Pull the gpu4pyscf minimum compute capability from the engine
-    # class so the engine's preflight advisory and the script's
-    # runtime check use the SAME threshold.  Otherwise the two can
-    # drift (a future gpu4pyscf release that supports older cards
-    # would need an update in two places).
-    from .pyscf_engine import PySCFSpectraEngine
-    min_cc = int(PySCFSpectraEngine.GPU4PYSCF_MIN_COMPUTE_CAPABILITY)
-    out: List[str] = []
-    out.append("# ============================================================")
-    out.append("#  GPU acceleration (optional, NVIDIA via gpu4pyscf)")
-    out.append("# ============================================================")
-    out.append("# Defaults: CPU PySCF.  Patched to gpu4pyscf below if")
-    out.append("# USE_GPU is True and the package is importable on this")
-    out.append("# node.  Same script runs on CPU- or GPU-only nodes.")
-    if is_dft:
-        out.append("_dft = dft")
-    else:
-        out.append("_dft = None   # not used for HF methods")
-    out.append("_scf = scf")
-    out.append("_USING_GPU = False")
-    # The runtime check has two layers:
-    # (1) ImportError if gpu4pyscf isn't installed.
-    # (2) RuntimeError if gpu4pyscf is installed but the local GPU
-    #     is missing / unusable / too old (cupy probe + compute-
-    #     capability >= 7).  This catches the "GPU is older than
-    #     gpu4pyscf supports" case that fails with cryptic CUDA
-    #     errors during the SCF, well after the import succeeded.
-    out.append("# Runtime GPU capability check.  gpu4pyscf requires")
-    out.append("# compute capability >= 7.0 (Volta / Turing / Ampere /")
-    out.append("# Hopper).  Older cards still import gpu4pyscf cleanly")
-    out.append("# but fail with cryptic CUDA errors during the SCF, so")
-    out.append("# we probe via cupy here and fall back to CPU PySCF if")
-    out.append("# the GPU isn't actually usable.")
-    out.append("if USE_GPU:")
-    out.append("    try:")
-    if is_dft:
-        out.append("        from gpu4pyscf import dft as _gpu_dft")
-    out.append("        from gpu4pyscf import scf as _gpu_scf")
-    out.append("        import cupy as _cp")
-    out.append("        _n_dev = _cp.cuda.runtime.getDeviceCount()")
-    out.append("        if _n_dev == 0:")
-    out.append("            raise RuntimeError('no NVIDIA GPU detected')")
-    out.append("        _props = _cp.cuda.runtime.getDeviceProperties(0)")
-    out.append("        _name = _props.get('name', b'(unknown)')")
-    out.append("        if isinstance(_name, bytes):")
-    out.append("            _name = _name.decode('utf-8', errors='replace')")
-    out.append("        _maj = int(_props.get('major', 0))")
-    out.append("        _min = int(_props.get('minor', 0))")
-    out.append(f"        if _maj < {min_cc}:")
-    out.append("            raise RuntimeError(")
-    out.append("                f'GPU {_name} has compute capability '")
-    out.append(f"                f'{{_maj}}.{{_min}}; gpu4pyscf requires >= {min_cc}.0'")
-    out.append("            )")
-    if is_dft:
-        out.append("        _dft = _gpu_dft")
-    out.append("        _scf = _gpu_scf")
-    out.append("        _USING_GPU = True")
-    out.append("        _RUNTIME_INFO['gpu_used'] = True")
-    out.append("        _RUNTIME_INFO['gpu_name'] = _name")
-    out.append("        _RUNTIME_INFO['gpu_compute_capability'] = "
-               "f'{_maj}.{_min}'")
-    out.append("        try:")
-    out.append("            _cv = _cp.cuda.runtime.runtimeGetVersion()")
-    out.append("            _RUNTIME_INFO['cuda_version'] = "
-               "f'{_cv // 1000}.{(_cv % 1000) // 10}'")
-    out.append("        except Exception:")
-    out.append("            pass")
-    out.append("        print(f'GPU acceleration ON (gpu4pyscf, {_name}, "
-               "compute capability {_maj}.{_min}).')")
-    out.append("    except ImportError as _gpu_exc:")
-    out.append("        _RUNTIME_INFO['gpu_used'] = False")
-    out.append("        _RUNTIME_INFO['gpu_name'] = "
-               "f'gpu4pyscf not installed: {_gpu_exc}'")
-    out.append("        print(f'USE_GPU=True but gpu4pyscf is not "
-               "installed on this node ({_gpu_exc}).')")
-    out.append("        # Install with the wheel matching your CUDA driver's")
-    out.append("        # major version (gpu4pyscf-cuda12x for CUDA 12,")
-    out.append("        # gpu4pyscf-cuda13x for CUDA 13, etc.).  See")
-    out.append("        # docs/README_install.md -> molbuilder-pySCF for the")
-    out.append("        # current recommended recipe; nvidia-smi reports the")
-    out.append("        # driver's CUDA version on the top-right of its output.")
-    out.append("        print('Install: see docs/README_install.md -> molbuilder-pySCF')")
-    out.append("        print('Falling back to CPU PySCF.')")
-    out.append("    except Exception as _gpu_exc:")
-    out.append("        _RUNTIME_INFO['gpu_used'] = False")
-    out.append("        _RUNTIME_INFO['gpu_name'] = "
-               "f'GPU unusable: {_gpu_exc}'")
-    out.append("        print(f'USE_GPU=True but the local GPU is not "
-               "usable: {_gpu_exc}.')")
-    out.append("        print('Falling back to CPU PySCF.')")
-    out.append("")
-    return out
-
-
-# --------------------------------------------------------------------- #
-# Constants + bibliography                                              #
-# --------------------------------------------------------------------- #
 
 
 def _emit_constants(struct: Structure,

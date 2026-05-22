@@ -56,7 +56,7 @@ class MolwatchEmitter:
     HARTREE_TO_EV          = 27.211386245988
     HARTREE_BOHR_TO_EV_ANG = 51.42208619
 
-    def __init__(self, path, job, mol):
+    def __init__(self, path, job, mol, runtime_info=None):
         self.path = path
         self.job  = job
         self._scf_buf   = []   # per-cycle dicts; reset each new SCF
@@ -68,6 +68,25 @@ class MolwatchEmitter:
             fh.write(f"# job: {self.job}\n")
             fh.write("# units: energy=eV, force=eV/Ang, coords=Ang\n")
             fh.write(f"# created: {_mw_time.strftime('%Y-%m-%dT%H:%M:%S')}\n")
+            # Runtime-info header: one ``# key: value`` line per
+            # canonical key.  The trajectory-log parser reads these
+            # back into Trajectory.runtime_info; the /results
+            # trajectory inspector renders them as the same
+            # CPU/GPU/Host rows the spectra inspector uses.  Skipped
+            # when runtime_info is None (callers without the shared
+            # threading-setup block).
+            if runtime_info:
+                for k in ("n_threads_pyscf", "n_threads_omp", "n_threads_blas",
+                          "physical_cores", "logical_cores",
+                          "gpu_requested", "gpu_used", "gpu_name",
+                          "gpu_compute_capability", "cuda_version",
+                          "hostname"):
+                    if k in runtime_info:
+                        v = runtime_info[k]
+                        # Strip newlines so a misbehaving value can't
+                        # break the line-oriented parse.
+                        v_str = str(v).replace("\n", " ").replace("\r", " ")
+                        fh.write(f"# runtime.{k}: {v_str}\n")
             fh.write("\n")
         # Step 0: initial-state preview, written BEFORE any SCF runs.
         # Carries coordinates only; energy / forces / scf_history are

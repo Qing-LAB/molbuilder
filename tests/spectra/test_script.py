@@ -598,31 +598,36 @@ class TestPySCFScriptGPU:
     succeeds."""
 
     def test_use_gpu_false_emits_constant_and_setup_block(self):
+        """GPU probe is emitted from the shared ``molbuilder.runtime_info``
+        module (refactored 2026-05-22 -- previously had its own inline
+        copy in this script).  The probe always runs; USE_GPU=False
+        short-circuits before the gpu4pyscf import."""
         from molbuilder.spectra.pyscf_script import render_spectra_script
         script = render_spectra_script(_struct_water(),
                                        SpectraConfig(use_gpu=False))
-        # Constant present.
-        assert "USE_GPU                    = False" in script
-        # GPU setup block always emitted (its body just runs the
-        # CPU fallback when USE_GPU=False).
-        assert "GPU acceleration (optional, NVIDIA via gpu4pyscf)" in script
+        assert "USE_GPU = False" in script
+        assert "GPU probe" in script
         assert "_USING_GPU = False" in script
         # Script must still compile.
         compile(script, "<no-gpu>", "exec")
 
     def test_use_gpu_true_emits_constant_and_setup_block(self):
+        """USE_GPU=True wires in the gpu4pyscf import + cupy probe +
+        ``_mb_to_gpu_if_enabled`` helper, all from the shared
+        ``molbuilder.runtime_info`` module.  Spectra-side also rebinds
+        ``_scf`` / ``_dft`` to the gpu4pyscf modules so the existing
+        ``_dft.RKS(mol)`` call sites pick up the GPU class."""
         from molbuilder.spectra.pyscf_script import render_spectra_script
         script = render_spectra_script(_struct_water(),
                                        SpectraConfig(use_gpu=True))
-        # Constant present + True.
-        assert "USE_GPU                    = True" in script
-        # gpu4pyscf import is in the setup block, guarded by try.
+        assert "USE_GPU = True" in script
+        # gpu4pyscf imports are in the rebind block AND the shared
+        # probe's try/except (which references gpu4pyscf to ensure the
+        # patch registers).
         assert "from gpu4pyscf import dft as _gpu_dft" in script
         assert "from gpu4pyscf import scf as _gpu_scf" in script
-        # And the fallback message is in there too -- so the user
-        # who runs the script on a non-GPU node knows what happened.
-        assert "Falling back to CPU PySCF" in script
-        # Compiles.
+        # CPU-fallback message tells the user when the run drops to CPU.
+        assert "CPU fallback" in script
         compile(script, "<gpu-on>", "exec")
 
     def test_scf_construction_uses_indirect_pointers(self):
@@ -652,10 +657,10 @@ class TestPySCFScriptGPU:
         )
 
     def test_emitted_script_does_runtime_capability_check(self):
-        """The script must verify at runtime that the GPU is
-        modern enough to run gpu4pyscf, not just that gpu4pyscf
-        imports.  Pinning: the GPU setup block probes via cupy
-        and falls back to CPU when compute capability < 7."""
+        """The script must verify at runtime that the GPU is modern
+        enough to run gpu4pyscf (compute capability >= 7).  Shared
+        probe in molbuilder.runtime_info checks via cupy + falls back
+        to CPU when the card is too old."""
         from molbuilder.spectra.pyscf_script import render_spectra_script
         script = render_spectra_script(_struct_water(),
                                        SpectraConfig(use_gpu=True))
@@ -665,10 +670,8 @@ class TestPySCFScriptGPU:
         assert "getDeviceProperties" in script
         # Hard threshold: major >= 7.
         assert "_maj < 7" in script
-        # Runtime exception path falls back to CPU with a clear
-        # message naming the actual GPU model + cap.
-        assert "Falling back to CPU PySCF" in script
-        # Two except branches: ImportError + RuntimeError.
+        assert "CPU fallback" in script
+        # Two except branches: ImportError + Exception.
         assert "except ImportError" in script
         assert "except Exception" in script
 

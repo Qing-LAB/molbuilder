@@ -295,10 +295,31 @@ class PySCFConfig:
         "help":  "MB hint for PySCF's max_memory",
     })
     threads: Optional[int] = field(default=None, metadata={
-        "section": "Runtime & output",
-        "label":   "Threads",
-        "null_label": "(inherit OMP_NUM_THREADS)",
-        "help": "OMP_NUM_THREADS pin; default = inherit env",
+        "section":    "Runtime & output",
+        "label":      "CPU threads",
+        "null_label": "(auto: physical cores)",
+        "help":       "how many CPU threads PySCF uses.  Default "
+                      "(blank) auto-detects PHYSICAL cores (not "
+                      "logical/HT) -- hyperthreading rarely helps "
+                      "QC kernels and can hurt cache locality.  The "
+                      "emitted script pins BLAS to 1 thread per "
+                      "worker (OPENBLAS_NUM_THREADS=1, "
+                      "MKL_NUM_THREADS=1) so PySCF threads * BLAS "
+                      "threads don't multiply -- the canonical "
+                      "anti-oversubscription recipe.  Set explicitly "
+                      "to bench, or to leave cores free for other jobs.",
+    })
+    use_gpu: bool = field(default=False, metadata={
+        "section":   "Runtime & output",
+        "label":     "Use GPU (NVIDIA, via gpu4pyscf)",
+        "id_suffix": "use-gpu",
+        "help":      "run the SCF (and geom-opt forces) on an NVIDIA "
+                     "GPU via the gpu4pyscf extension.  Install: "
+                     "``pip install gpu4pyscf-cuda12x`` (or "
+                     "-cuda13x to match your driver).  The script "
+                     "probes gpu4pyscf at runtime and falls back to "
+                     "CPU if the package isn't installed or the GPU "
+                     "is missing / too old (compute capability < 7.0).",
     })
     verbose: int = field(default=4, metadata={
         "section": "Runtime & output",
