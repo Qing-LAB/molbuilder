@@ -9,18 +9,11 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-schema.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/projects-sidebar.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='spectra/style.css') }}">
-<!-- Plotly: served by molbuilder itself from the installed plotly
-     Python package's bundled JS (package_data/plotly.min.js).  No
-     CDN, no internet round-trip, no firewall to worry about.  The
-     /vendor/plotly.min.js route reads the file out of the running
-     plotly install. -->
-<script src="{{ url_for('vendor_plotly_js') }}"></script>
-<!-- 3Dmol.js: used by the per-mode eigenvector animation in the
-     Results section.  Self-hosted under static/vendor/ -- the CDN
-     reference was dropped in the internet-deployment hardening round
-     (CSP no longer allows third-party script sources).  See
-     molbuilder/web/static/vendor/README.md for version + citation. -->
-<script src="{{ url_for('static', filename='vendor/3Dmol-min.js') }}"></script>
+{# Plotly + 3Dmol are NOT loaded on /spectra: this is the generator
+   tab.  Charts (Plotly) and the per-mode eigenvector animation
+   (3Dmol) belong to /results' spectra inspector and load there
+   via _spectra_inspector.html.  Loading them here added ~MB of
+   unused JS to every /spectra page view. #}
 {# molbuilder-runtime.js MUST load before any other molbuilder script.
    Defines window.molbuilder.runtime (register/whenReady).  See
    design.md "Module init contract". #}

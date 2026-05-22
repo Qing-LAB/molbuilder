@@ -302,19 +302,21 @@ class TestSpectraPage:
         assert body["ok"]
         assert body["results"]["engine"] == "pyscf"
 
-    def test_plotly_served_locally(self, web_client):
-        """The template pulls Plotly from molbuilder's own
-        /vendor/plotly.min.js route (which reads the installed
-        plotly Python package's bundled JS) -- no CDN, no internet
-        round-trip needed.  Plotly is loaded on /spectra (the Methods-
-        preview modal uses it for in-page renders) AND on /partials/
-        spectra-inspector consumers; here we just pin the /spectra
-        page itself."""
+    def test_plotly_not_loaded_on_spectra_generator(self, web_client):
+        """/spectra is the GENERATOR tab (configure + emit script).
+        Plotly is a results-viewing library used only by the spectra
+        inspector chart; loading it on /spectra was dead weight (>1 MB
+        of unused JS per page view).  Pin that the generator template
+        does NOT pull Plotly, and that the chart id lives ONLY in the
+        inspector partial (consumed by /results)."""
         body = web_client.get("/spectra").data.decode()
-        assert "/vendor/plotly.min.js" in body
-        # ``spectrum-chart`` is an inspect-side id (now lives in the
-        # partial); verify it's served by the partial endpoint rather
-        # than by /spectra.
+        assert "/vendor/plotly.min.js" not in body, (
+            "/spectra (generator tab) must NOT load Plotly; it's a "
+            "results-viewing library that belongs in the inspector "
+            "partial only."
+        )
+        # ``spectrum-chart`` is an inspect-side id; verify it's served
+        # by the partial endpoint rather than by /spectra.
         partial = web_client.get("/partials/spectra-inspector").data.decode()
         assert 'id="spectrum-chart"' in partial
 
@@ -367,9 +369,10 @@ class TestSpectraPage:
 
     def test_inspector_partial_has_mode_viewer(self, web_client):
         """3Dmol viewer + controls live below the modes table in the
-        inspector partial.  Pins the IDs the core JS depends on + the
-        3Dmol script tag on the /spectra page (used by generate-side
-        Methods preview rendering)."""
+        inspector partial.  Pins the IDs the core JS depends on.
+        The 3Dmol script tag is NOT on /spectra (generator-only,
+        no animation surface there); it loads on whatever page
+        consumes the inspector partial (i.e. /results)."""
         partial = web_client.get("/partials/spectra-inspector").data.decode()
         # Viewer wrap + canvas div.
         assert 'id="mode-viewer-wrap"'   in partial
@@ -378,12 +381,13 @@ class TestSpectraPage:
         assert 'id="anim-amplitude"'     in partial
         assert 'id="anim-speed"'         in partial
         assert 'id="anim-toggle"'        in partial
-        # 3Dmol script tag served by /spectra -- self-hosted under
-        # /static/vendor/ (the CDN reference was removed in the
-        # internet-deployment hardening round; CSP no longer allows
-        # third-party script sources).
+        # 3Dmol is NOT on /spectra (generator-only contract).
         body = web_client.get("/spectra").data.decode()
-        assert "vendor/3Dmol-min.js" in body
+        assert "vendor/3Dmol-min.js" not in body, (
+            "/spectra (generator) must NOT load 3Dmol; it's a "
+            "viewer library used only by the mode-eigenvector "
+            "animation in the inspector partial (consumed by /results)."
+        )
         # No CDN fallback should sneak back in.
         assert "cdnjs.cloudflare.com" not in body
 

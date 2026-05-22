@@ -484,13 +484,17 @@ class SpectraConfig:
 
     # ----------------- Runtime -----------------
 
+    # Runtime/performance knobs are NOT tier="advanced": they
+    # directly govern the resource load of the run (a wrong-by-
+    # default thread count can yield 2x oversubscription on a
+    # hyperthreaded host -- see design.md threading notes).  Keep
+    # them visually prominent on the form.
     max_memory_mb: int = field(default=4000, metadata={
         "section":  "Runtime",
         "label":    "Max memory (max_memory)",
         "unit":     "MB",
         "id_suffix": "max-memory",
         "range":    (100, 1_000_000),
-        "tier":     "advanced",
         "help":     "memory budget the SCF code is allowed to use "
                     "for intermediates (ERI tensors, density-fit "
                     "auxiliaries, etc.).  Larger values let bigger "
@@ -501,7 +505,6 @@ class SpectraConfig:
         "section":    "Runtime",
         "label":      "CPU threads",
         "null_label": "(auto: physical cores)",
-        "tier":       "advanced",
         "help":       "how many CPU threads PySCF uses.  Default "
                       "(blank) auto-detects PHYSICAL cores (not "
                       "logical/HT) -- hyperthreading rarely helps "
@@ -518,7 +521,6 @@ class SpectraConfig:
         "section": "Runtime",
         "label":   "Use GPU (NVIDIA, via gpu4pyscf)",
         "id_suffix": "use-gpu",
-        "tier":    "advanced",
         "help":    "run the SCF and Hessian on an NVIDIA GPU via the "
                    "gpu4pyscf extension (\"pip install "
                    "gpu4pyscf-cuda12x\" on the machine that runs the "
