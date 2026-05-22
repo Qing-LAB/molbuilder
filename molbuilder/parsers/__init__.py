@@ -214,6 +214,11 @@ def trajectory_to_legacy_dict(traj: Trajectory) -> Dict[str, Any]:
         # Trajectory.run_state docstring.
         "run_state":     traj.run_state,
         "error_message": traj.error_message,
+        # Runtime facts (CPU / memory / GPU / host) captured by the
+        # parser from the file's header.  Same keys for every engine
+        # so /results' inspector renders uniformly.  Empty dict for
+        # logs from before the header emission landed.
+        "runtime_info":  dict(getattr(traj, "runtime_info", {}) or {}),
     }
 
 

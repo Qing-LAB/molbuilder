@@ -1103,6 +1103,56 @@
         return date + " " + t;
     }
 
+    function _renderRuntimeInfo(rt) {
+        // rt is Trajectory.runtime_info (a {key: value} bag the
+        // parser populated from the file's header).  Canonical keys
+        // live in molbuilder.runtime_info.RUNTIME_INFO_KEYS;
+        // missing values render as "—".  Section is hidden when
+        // rt is empty (older log files from before the header
+        // emission landed).
+        const sec = document.getElementById("runtime-info-section");
+        const dl  = document.getElementById("trajectory-runtime-meta");
+        if (!sec || !dl) return;
+        if (!rt || Object.keys(rt).length === 0) {
+            sec.hidden = true;
+            dl.innerHTML = "";
+            return;
+        }
+        const cpu = (rt.n_threads_pyscf != null || rt.n_threads_omp != null)
+            ? ((rt.n_threads_pyscf != null
+                ? `${rt.n_threads_pyscf} PySCF threads`
+                : `${rt.n_threads_omp} OMP threads`)
+               + ` (BLAS=${rt.n_threads_blas ?? "?"}, `
+               + `physical=${rt.physical_cores ?? "?"}, `
+               + `logical=${rt.logical_cores ?? "?"})`)
+            : "—";
+        const mem = (rt.max_memory_mb != null)
+            ? `${rt.max_memory_mb} MB cap`
+            : "—";
+        const gpu = (rt.gpu_used === true)
+            ? `ON — ${rt.gpu_name || "?"}`
+              + (rt.gpu_compute_capability ? ` (CC ${rt.gpu_compute_capability})` : "")
+              + (rt.cuda_version ? ` · CUDA ${rt.cuda_version}` : "")
+            : (rt.gpu_requested === true
+                ? `OFF — ${rt.gpu_name || "GPU requested but fell back to CPU"}`
+                : (rt.gpu_used === false ? "OFF" : "—"));
+        const host = rt.hostname || "—";
+        const rows = [
+            ["CPU / threads", cpu],
+            ["Memory cap",    mem],
+            ["GPU",           gpu],
+            ["Host",          host],
+        ];
+        const esc = (s) => String(s)
+            .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+        dl.innerHTML = rows
+            .map(([k, v]) => "<dt>" + esc(k) + "</dt>"
+                           + "<dd>" + esc(v) + "</dd>")
+            .join("");
+        sec.hidden = false;
+    }
+
     function applyNewData(r) {
         const wasAtEnd = !state.data
             || state.currentFrame >= state.data.frames.length - 1;
@@ -1111,6 +1161,7 @@
         state.data   = r.data;
         state.format = r.format || (r.data && r.data.source_format) || "?";
         state.label  = r.label  || state.format;
+        _renderRuntimeInfo(state.data && state.data.runtime_info);
 
         const n = state.data.frames.length;
         if (n === 0) {

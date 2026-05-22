@@ -520,11 +520,18 @@ def _merge_molwatch_trajectories(paths: List[str]) -> Tuple[Dict[str, Any],
         merged["source_format"] = last_traj_legacy["source_format"]
         merged["run_state"]     = last_traj_legacy["run_state"]
         merged["error_message"] = last_traj_legacy["error_message"]
+        # Runtime info: use the LATEST stage's bag.  Across a multi-
+        # stage run the threading/GPU/host are constant in practice
+        # (same physical machine + script), so the last stage's
+        # values are representative.  If a future workflow does
+        # cross-host stage handoff, this is where to merge.
+        merged["runtime_info"]  = dict(last_traj_legacy.get("runtime_info") or {})
     else:
         merged["lattice"]       = None
         merged["source_format"] = "molwatch"
         merged["run_state"]     = "ongoing"
         merged["error_message"] = ""
+        merged["runtime_info"]  = {}
     # Re-number iterations globally so the energy / force plots have
     # a monotone x-axis across the merged trajectory.  Per-stage
     # step indices are kept under ``step_indices`` for tooltip / save

@@ -186,6 +186,20 @@
 </section><!-- /.viewer-row -->
 </section><!-- /.card.viewer-card -->
 
+<!-- Runtime info: CPU / memory / GPU / host facts the run captured.
+     Populated by core.js from Trajectory.runtime_info (the unified
+     bag every engine's parser writes into -- molwatch reads
+     "# runtime.<key>: <value>" header lines; SIESTA parser
+     extracts equivalent values from the .out file).  Hidden when
+     the parsed file has no runtime_info (older logs from before
+     the header emission landed). -->
+<section class="card runtime-info-card" id="runtime-info-section" hidden>
+  <header class="section-header">
+    <h2 class="section-h">Runtime <span class="muted" style="font-weight:400">(what this run consumed)</span></h2>
+  </header>
+  <dl id="trajectory-runtime-meta" class="runtime-info-list"></dl>
+</section>
+
 <!-- SCF-progress banner -- engine-agnostic title/status for the
      most-recent opt step's SCF cycles.  Banner sits above the plot
      row; the two SCF plots live INSIDE the same plots-row grid
