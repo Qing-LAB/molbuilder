@@ -90,49 +90,67 @@ def test_render_siesta_redirects_stdout_per_job_layout_v1():
 # --------------------------------------------------------------------- #
 
 
-def test_render_siesta_mpi_emits_thread_pinning_exports():
-    """SIESTA + mpi_np >= 2 must emit OMP/MKL/OPENBLAS=1 exports
-    BEFORE the exec line so each rank inherits them."""
+def test_render_siesta_mpi_pins_blas_to_one_and_sets_omp():
+    """SIESTA + mpi_np >= 2: BLAS pinned to 1 per rank, OMP set
+    (auto-divided across ranks by default) -- the cross-cutting
+    anti-oversubscription recipe shared with PySCF / spectra.
+    Rewritten 2026-05-22 from the original OMP=1 contract (which
+    crippled hybrid runs) to OMP=physical_cores // mpi_np."""
     _bind()
     text = render_run_wrapper(Path("/x/y.fdf"), mpi_np=4)
-    for needle in (
-        "export OMP_NUM_THREADS=1",
-        "export MKL_NUM_THREADS=1",
-        "export OPENBLAS_NUM_THREADS=1",
-    ):
-        assert needle in text, (
-            f"missing {needle!r} -- SIESTA-MPI ranks will oversubscribe "
-            f"the host with N×CPU_COUNT threads"
-        )
+    # BLAS is always 1 per rank.
+    assert "export MKL_NUM_THREADS=1" in text
+    assert "export OPENBLAS_NUM_THREADS=1" in text
+    # OMP is set to SOMETHING (auto-resolved or user-set), not absent.
+    assert "export OMP_NUM_THREADS=" in text
     # Exports must precede the exec line so the subshell `conda run`
-    # creates inherits them (Bash propagates ``export``ed vars to
-    # subprocesses by default).
+    # inherits them.
     exec_ix = text.find("exec conda run")
-    omp_ix = text.find("export OMP_NUM_THREADS=1")
+    omp_ix  = text.find("export OMP_NUM_THREADS=")
     assert 0 <= omp_ix < exec_ix, (
-        "OMP_NUM_THREADS export must come BEFORE the exec line; "
-        "post-exec exports are ignored (the shell never gets back)"
+        "OMP_NUM_THREADS export must come BEFORE the exec line"
     )
 
 
-def test_render_siesta_single_process_does_not_pin_threads():
-    """Without mpirun, the user wants BLAS / OpenMP threading -- it's
-    the ONLY parallelism available.  Pinning to 1 would cripple a
-    single-process SIESTA run."""
+def test_render_siesta_omp_threads_kwarg_wins():
+    """User-set omp_threads overrides the physical_cores // mpi_np
+    auto-detect.  The wrapper emits exactly the value the user asked
+    for so cluster schedulers (which allocate cores explicitly) win."""
+    _bind()
+    text = render_run_wrapper(Path("/x/y.fdf"), mpi_np=4, omp_threads=2)
+    assert "export OMP_NUM_THREADS=2" in text
+
+
+def test_render_siesta_single_process_still_pins_blas():
+    """Single-process SIESTA: BLAS still pinned to 1 per process so
+    BLAS doesn't spawn its own pool on top of OMP threads.  OMP gets
+    physical cores by default (the user wants threading -- BLAS=1 +
+    OMP=physical is the canonical recipe, not BLAS-only)."""
     _bind()
     text = render_run_wrapper(Path("/x/y.fdf"))     # no mpi_np
-    assert "export OMP_NUM_THREADS" not in text, (
-        "single-process SIESTA must keep BLAS / OpenMP threading; "
-        "pinning to 1 would serialise everything"
-    )
+    assert "export MKL_NUM_THREADS=1" in text
+    assert "export OPENBLAS_NUM_THREADS=1" in text
+    # OMP set to physical cores (numerical value, not absent).
+    assert "export OMP_NUM_THREADS=" in text
 
 
-def test_render_siesta_mpi_np_one_does_not_pin_threads():
-    """np=1 is single-process semantically (the gate is np>=2).  Same
-    rule as no-mpi: keep BLAS threading."""
+def test_render_siesta_mpi_np_one_pins_blas_too():
+    """np=1 is single-process semantically; same recipe as no-mpi."""
     _bind()
     text = render_run_wrapper(Path("/x/y.fdf"), mpi_np=1)
-    assert "export OMP_NUM_THREADS" not in text
+    assert "export OPENBLAS_NUM_THREADS=1" in text
+    assert "export OMP_NUM_THREADS=" in text
+
+
+def test_render_siesta_max_memory_emits_ulimit():
+    """max_memory_mb kwarg becomes a ``ulimit -v`` soft cap so a
+    runaway SIESTA process can't OOM the host."""
+    _bind()
+    text = render_run_wrapper(Path("/x/y.fdf"), mpi_np=4,
+                              max_memory_mb=8192)
+    assert "ulimit -v" in text
+    # 8192 MB = 8388608 KB.
+    assert "8388608" in text
 
 
 def test_render_pyscf_does_not_pin_threads():

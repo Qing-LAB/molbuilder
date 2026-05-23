@@ -37,7 +37,9 @@ class WrapperError(Exception):
 
 def render_run_wrapper(script_path: Path, *,
                         env: Optional[str] = None,
-                        mpi_np: Optional[int] = None) -> str:
+                        mpi_np: Optional[int] = None,
+                        omp_threads: Optional[int] = None,
+                        max_memory_mb: Optional[int] = None) -> str:
     """Return the bash text for a wrapper running ``script_path``.
 
     Routing by file extension:
@@ -76,46 +78,66 @@ def render_run_wrapper(script_path: Path, *,
     basename = script_path.stem
     script_name = script_path.name
 
-    # Pre-command env exports.  Empty by default; SIESTA-MPI adds
-    # BLAS/OpenMP thread pinning so each MPI rank doesn't spawn its
-    # own pool of threads on top of the rank count (M×N
-    # oversubscription on a host with M cores and N MPI ranks).
+    # Pre-command env exports.  SIESTA: shared anti-oversubscription
+    # recipe with PySCF / spectra (see molbuilder/runtime_info.py).
+    # OMP threads per rank = user-set ``omp_threads``, or auto-detect
+    # physical cores // mpi_np (so a 20-core host with 4 MPI ranks
+    # gets 5 OMP threads per rank by default -- a sane hybrid).
+    # BLAS always pinned to 1 so OMP * BLAS doesn't multiply.
     env_prefix = ""
     if category == "siesta":
+        # Resolve OMP thread count.  None -> auto: physical_cores //
+        # mpi_np (MPI case) or physical_cores (single-process).  An
+        # explicit value wins.
+        from .runtime_info import physical_core_count
+        phys = physical_core_count()
+        if omp_threads is None:
+            mpi_n = max(1, mpi_np or 1)
+            resolved_omp = max(1, phys // mpi_n)
+            omp_source   = f"auto: physical_cores ({phys}) // mpi_np ({mpi_n})"
+        else:
+            resolved_omp = int(omp_threads)
+            omp_source   = "user-set"
+
         if mpi_np is not None and mpi_np >= 2:
             inner = (f"mpirun -np {mpi_np} siesta {script_name} "
                       f"> {basename}.out")
             description = f"SIESTA-MPI run on {mpi_np} ranks"
-            # Pin BLAS / OpenMP thread count to 1 per process so the
-            # only parallelism is MPI.  SIESTA links MKL (via
-            # mkl-spblas) or OpenBLAS depending on the build; both
-            # honour their own NUM_THREADS env var, OMP_NUM_THREADS
-            # is the OpenMP fallback.  Without these exports each of
-            # the N MPI ranks would spawn N more threads (default =
-            # cpu count), so an 8-rank job on a 32-core host
-            # produces 8x32=256 threads competing for 32 cores --
-            # classic "SIESTA hits 100% CPU on every core but runs
-            # slower than 1-rank" pathology.  Users who DO want
-            # hybrid MPI+OpenMP (rare) can edit the wrapper after
-            # generation.
-            env_prefix = (
-                "# Thread pinning: one BLAS/OpenMP thread per MPI rank.\n"
-                "# Drop these exports if you want hybrid MPI + OpenMP.\n"
-                "export OMP_NUM_THREADS=1\n"
-                "export MKL_NUM_THREADS=1\n"
-                "export OPENBLAS_NUM_THREADS=1\n"
-                "\n"
-            )
         else:
             inner = f"siesta {script_name} > {basename}.out"
             description = "SIESTA (single-process)"
-            # Single-process: do NOT pin threads.  Without MPI the
-            # user wants BLAS / OpenMP threading -- it's the ONLY
-            # parallelism available.
+
+        # Anti-oversubscription guards: BLAS=1, OMP=resolved.  Same
+        # recipe as PySCF / spectra emit inline -- canonical recipe.
+        env_prefix = (
+            f"# Thread / BLAS pinning ({omp_source}).  BLAS pinned to 1\n"
+            f"# per rank so OMP * BLAS doesn't oversubscribe (canonical\n"
+            f"# recipe shared with /spectra + Build PySCF, see\n"
+            f"# molbuilder/runtime_info.py).  Edit freely.\n"
+            f"export OMP_NUM_THREADS={resolved_omp}\n"
+            f"export MKL_NUM_THREADS=1\n"
+            f"export OPENBLAS_NUM_THREADS=1\n"
+        )
+        if max_memory_mb is not None and int(max_memory_mb) > 0:
+            # Many BLAS / MPI libs honour an explicit memory cap via
+            # env vars (OMP_STACKSIZE etc.).  We record the cap in
+            # the wrapper as a comment + emit ulimit -v as a soft
+            # cap so a runaway process doesn't OOM the host.
+            kb = int(max_memory_mb) * 1024
+            env_prefix += (
+                f"# Memory cap (cfg.max_memory_mb): {max_memory_mb} MB\n"
+                f"ulimit -v {kb} || true  # soft cap; ignored if shell can't set it\n"
+            )
+        env_prefix += "\n"
     else:                                          # pyscf
         inner = f"python {script_name}"
         description = "PySCF run"
-        # PySCF uses BLAS threading deliberately; no pinning.
+        # PySCF: the inline ``runtime_info`` block in the emitted
+        # .py sets OMP_NUM_THREADS / OPENBLAS_NUM_THREADS = 1 via
+        # ``os.environ.setdefault`` BEFORE numpy import.  We don't
+        # set them in the wrapper too -- doing so would override
+        # the env-respect (the script honors a pre-export) AND
+        # mask the in-script auto-detect that picks physical cores.
 
     return (
         f"#!/usr/bin/env bash\n"
@@ -142,7 +164,9 @@ def render_run_wrapper(script_path: Path, *,
 
 def write_run_wrapper(script_path: Path, *,
                        env: Optional[str] = None,
-                       mpi_np: Optional[int] = None) -> Path:
+                       mpi_np: Optional[int] = None,
+                       omp_threads: Optional[int] = None,
+                       max_memory_mb: Optional[int] = None) -> Path:
     """Render + write ``<basename>.run.sh`` next to ``script_path``.
 
     Returns the wrapper's path.  Sets executable bit (0o755) so the
@@ -152,7 +176,12 @@ def write_run_wrapper(script_path: Path, *,
     script_path = Path(script_path).resolve()
     if not script_path.is_file():
         raise WrapperError(f"script not found: {script_path}")
-    text = render_run_wrapper(script_path, env=env, mpi_np=mpi_np)
+    text = render_run_wrapper(
+        script_path,
+        env=env, mpi_np=mpi_np,
+        omp_threads=omp_threads,
+        max_memory_mb=max_memory_mb,
+    )
     # Use stem + ".run.sh" rather than ``.with_suffix(".run.sh")``: the
     # latter REPLACES only the last suffix, so ``job.spectra.py`` would
     # become ``job.run.sh`` and lose the "spectra" tag.  We want

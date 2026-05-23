@@ -35,6 +35,21 @@ from .base import TrajectoryParser
 #   scf:    1   -289239.010   -290967.214   -290967.445   0.001  -1.0   0.5
 # Columns: iscf, Eharris(eV), E_KS(eV), FreeEng(eV), dDmax, Ef(eV), dHmax(eV).
 # We pull cycle, E_KS, dDmax, dHmax; the other columns are SIESTA bookkeeping.
+# Runtime info detection (cross-cutting -- same display path as
+# molwatch's runtime header):
+#   * "* Running on  N nodes in parallel."  -> n_mpi_processes
+#   * "Running on host: <name>"             -> hostname  (some SIESTA builds)
+#   * Echoed .fdf comments "# runtime.<k>: <v>" -> all the user-set caps
+_SIESTA_NODES_RE   = re.compile(
+    r"^\s*\*\s*Running on\s+(\d+)\s+nodes? in parallel", re.IGNORECASE)
+_SIESTA_HOST_RE    = re.compile(
+    r"^\s*Running on host:\s*(\S+)", re.IGNORECASE)
+# Matches the same shape as the molwatch runtime header (so /spectra
+# script writers + Build SIESTA writers can use IDENTICAL line
+# format; cf. molbuilder.runtime_info docstring).
+_SIESTA_RUNTIME_RE = re.compile(
+    r"^#\s*runtime\.([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$")
+
 _SCF_LINE_RE = re.compile(
     r"^\s*scf:\s*(\d+)\s+"      # iscf
     r"(-?[\d.eE+-]+)\s+"        # Eharris
@@ -118,6 +133,13 @@ class SiestaParser(TrajectoryParser):
         # native output -- common abort patterns vary across versions
         # -- so we only differentiate finished vs ongoing here.
         run_state: str = "ongoing"
+        # Runtime facts.  Empty dict when SIESTA didn't log any
+        # (older / barebones builds).  Populated from two sources:
+        # (a) SIESTA's own startup banner (`* Running on N nodes…`),
+        # (b) echoed `# runtime.<k>:` comments from the .fdf -- those
+        # come from molbuilder.runtime_info's canonical keys + the
+        # SIESTA-specific omp_threads_requested + max_memory_mb.
+        runtime_info: Dict[str, Any] = {}
 
         # SCF iteration history accumulator for the current step.  Each
         # entry is a per-cycle dict matching the schema in
@@ -186,6 +208,39 @@ class SiestaParser(TrajectoryParser):
                 if stripped.startswith(">> End of run"):
                     run_state = "finished"
                     continue
+
+                # Runtime info: cheap regex probes outside the coords
+                # blocks.  Three matchers, in order of frequency.
+                # (Free-form lines; safe to test on every scan-state
+                # line.)
+                if state == "scan":
+                    m = _SIESTA_NODES_RE.match(line)
+                    if m:
+                        try:
+                            runtime_info["n_mpi_processes"] = int(m.group(1))
+                        except ValueError:
+                            pass
+                        continue
+                    m = _SIESTA_HOST_RE.match(line)
+                    if m:
+                        runtime_info["hostname"] = m.group(1).strip()
+                        continue
+                    m = _SIESTA_RUNTIME_RE.match(line)
+                    if m:
+                        key, val = m.group(1), m.group(2).strip()
+                        # Coerce numeric / bool / None like the
+                        # molwatch parser does so the inspector can
+                        # rely on int / bool types where appropriate.
+                        if val == "None":
+                            runtime_info[key] = None
+                        elif val in ("True", "False"):
+                            runtime_info[key] = (val == "True")
+                        else:
+                            try:
+                                runtime_info[key] = int(val)
+                            except ValueError:
+                                runtime_info[key] = val
+                        continue
 
                 if state == "in_coords":
                     if not stripped:
@@ -329,4 +384,5 @@ class SiestaParser(TrajectoryParser):
             frames        = frames,
             lattice       = lattice,
             run_state     = run_state,
+            runtime_info  = runtime_info,
         )

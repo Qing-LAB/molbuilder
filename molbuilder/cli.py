@@ -1053,9 +1053,20 @@ def cmd_modify(input_path, output_path,
                     "ignored for .py scripts.  np=1 emits a "
                     "single-process wrapper (no mpirun); np>=2 emits "
                     "mpirun -np N")
+@click.option("--omp-threads", "omp_threads", type=click.IntRange(min=1),
+               default=None,
+               help="OMP threads per MPI rank for SIESTA wrappers.  "
+                    "Default (omitted): auto = physical_cores // mpi_np.")
+@click.option("--max-memory-mb", "max_memory_mb", type=click.IntRange(min=1),
+               default=None,
+               help="MB cap per SIESTA rank (emitted as ulimit -v in "
+                    "the wrapper).  PySCF scripts honor their own "
+                    "in-script max_memory cfg instead.")
 def cmd_run(script: Path,
             env_override: Optional[str],
-            mpi_np: Optional[int]) -> int:
+            mpi_np: Optional[int],
+            omp_threads: Optional[int],
+            max_memory_mb: Optional[int]) -> int:
     """Generate ``<basename>.run.sh`` next to SCRIPT.
 
     Auto-routes by file extension:
@@ -1074,7 +1085,12 @@ def cmd_run(script: Path,
     """
     from .runwrap import write_run_wrapper, WrapperError
     try:
-        wrapper = write_run_wrapper(script, env=env_override, mpi_np=mpi_np)
+        wrapper = write_run_wrapper(
+            script,
+            env=env_override, mpi_np=mpi_np,
+            omp_threads=omp_threads,
+            max_memory_mb=max_memory_mb,
+        )
     except WrapperError as exc:
         raise click.UsageError(str(exc)) from None
     click.echo(f"Wrote {wrapper}")

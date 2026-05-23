@@ -1105,52 +1105,51 @@
 
     function _renderRuntimeInfo(rt) {
         // rt is Trajectory.runtime_info (a {key: value} bag the
-        // parser populated from the file's header).  Canonical keys
-        // live in molbuilder.runtime_info.RUNTIME_INFO_KEYS;
-        // missing values render as "—".  Section is hidden when
-        // rt is empty (older log files from before the header
-        // emission landed).
-        const sec = document.getElementById("runtime-info-section");
-        const dl  = document.getElementById("trajectory-runtime-meta");
-        if (!sec || !dl) return;
+        // parser populated from the file's header).  Renders into
+        // the compact ``#runtime-summary`` span inside the run-state
+        // badge -- one organised line, small font, low-key.  Empty
+        // (no runtime_info on the file) -> blank, no visible row.
+        const el = document.getElementById("runtime-summary");
+        if (!el) return;
         if (!rt || Object.keys(rt).length === 0) {
-            sec.hidden = true;
-            dl.innerHTML = "";
+            el.textContent = "";
             return;
         }
-        const cpu = (rt.n_threads_pyscf != null || rt.n_threads_omp != null)
-            ? ((rt.n_threads_pyscf != null
-                ? `${rt.n_threads_pyscf} PySCF threads`
-                : `${rt.n_threads_omp} OMP threads`)
-               + ` (BLAS=${rt.n_threads_blas ?? "?"}, `
-               + `physical=${rt.physical_cores ?? "?"}, `
-               + `logical=${rt.logical_cores ?? "?"})`)
-            : "—";
-        const mem = (rt.max_memory_mb != null)
-            ? `${rt.max_memory_mb} MB cap`
-            : "—";
-        const gpu = (rt.gpu_used === true)
-            ? `ON — ${rt.gpu_name || "?"}`
-              + (rt.gpu_compute_capability ? ` (CC ${rt.gpu_compute_capability})` : "")
-              + (rt.cuda_version ? ` · CUDA ${rt.cuda_version}` : "")
-            : (rt.gpu_requested === true
-                ? `OFF — ${rt.gpu_name || "GPU requested but fell back to CPU"}`
-                : (rt.gpu_used === false ? "OFF" : "—"));
-        const host = rt.hostname || "—";
-        const rows = [
-            ["CPU / threads", cpu],
-            ["Memory cap",    mem],
-            ["GPU",           gpu],
-            ["Host",          host],
-        ];
-        const esc = (s) => String(s)
-            .replace(/&/g, "&amp;").replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-        dl.innerHTML = rows
-            .map(([k, v]) => "<dt>" + esc(k) + "</dt>"
-                           + "<dd>" + esc(v) + "</dd>")
-            .join("");
-        sec.hidden = false;
+        const parts = [];
+        // GPU first -- it's the question the user actually asks
+        // ("did this run use the GPU?").  Strip the "NVIDIA GeForce"
+        // prefix that bloats the line without adding info.
+        if (rt.gpu_used === true) {
+            const name = String(rt.gpu_name || "GPU")
+                .replace(/^NVIDIA GeForce /, "")
+                .replace(/^NVIDIA /, "");
+            let gpu = "GPU " + name;
+            if (rt.gpu_compute_capability) gpu += " CC" + rt.gpu_compute_capability;
+            if (rt.cuda_version)            gpu += "/CUDA" + rt.cuda_version;
+            parts.push(gpu);
+        } else if (rt.gpu_requested === true) {
+            parts.push("CPU (GPU requested, fell back)");
+        } else if (rt.gpu_used === false) {
+            parts.push("CPU");
+        }
+        // Threads.  Compact form: "20T BLAS=1" (T = threads).
+        const t = (rt.n_threads_pyscf != null)
+            ? rt.n_threads_pyscf
+            : rt.n_threads_omp;
+        if (t != null) {
+            let cpu = t + "T";
+            if (rt.n_threads_blas != null) cpu += " BLAS=" + rt.n_threads_blas;
+            parts.push(cpu);
+        }
+        // Memory cap, in GB if >= 1024 MB.
+        if (rt.max_memory_mb != null) {
+            const mb = Number(rt.max_memory_mb);
+            parts.push(mb >= 1024
+                ? (mb / 1024).toFixed(mb % 1024 === 0 ? 0 : 1) + " GB"
+                : mb + " MB");
+        }
+        if (rt.hostname) parts.push(rt.hostname);
+        el.textContent = parts.join(" · ");
     }
 
     function applyNewData(r) {

@@ -312,6 +312,19 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         out.append(f"# (the loader resolves it to {_mw_name}).")
         out.append("")
 
+    # Runtime-hint header.  Same shape as molwatch logs use
+    # (``# runtime.<key>: <value>``) so the SIESTA parser can read
+    # the user's configured caps back out of the .fdf at /results
+    # load time.  These are HINTS the wrapper turns into env vars +
+    # ulimits; SIESTA itself ignores comment lines.  Per the
+    # cross-cutting "every script declares what it wanted" rule.
+    if cfg.omp_threads is not None:
+        out.append(f"# runtime.omp_threads_requested: {int(cfg.omp_threads)}")
+    if cfg.max_memory_mb is not None:
+        out.append(f"# runtime.max_memory_mb: {int(cfg.max_memory_mb)}")
+    if (cfg.omp_threads is not None) or (cfg.max_memory_mb is not None):
+        out.append("")
+
     out.append(f"SystemName        {cfg.system_name}")
     out.append(f"SystemLabel       {cfg.system_label}")
     out.append("")

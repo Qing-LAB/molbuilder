@@ -429,6 +429,40 @@ class SiestaConfig:
         "help": "MPI parallelise over k-points; None=auto from kgrid",
         "skip_cli": True,
     })
+    # OpenMP threads per MPI rank.  Controls the run-wrapper's
+    # ``export OMP_NUM_THREADS=<N>`` line (see molbuilder/runwrap.py).
+    # Default None -> auto: physical cores // n_mpi_ranks if MPI is
+    # used (set by runwrap), else physical cores.  The wrapper also
+    # pins BLAS to 1 thread per rank so OMP * BLAS doesn't
+    # oversubscribe -- canonical anti-oversubscription recipe shared
+    # with the PySCF / spectra scripts.
+    omp_threads: Optional[int] = field(default=None, metadata={
+        "section":    "Parallel execution",
+        "label":      "OMP threads per rank",
+        "null_label": "(auto: physical cores)",
+        "help":       "OpenMP threads per MPI process.  Default (blank) "
+                      "auto-detects physical cores at run time (divided "
+                      "by N_MPI when applicable).  Set explicitly to "
+                      "bench or leave cores free for other jobs.  The "
+                      "emitted run-wrapper pins BLAS to 1 thread per "
+                      "rank so OMP*BLAS doesn't oversubscribe -- the "
+                      "canonical recipe shared with /spectra + Build PySCF.",
+        "skip_cli":   True,
+    })
+    # SIESTA SystemMemory directive: MB cap for the SCF/diag working
+    # set.  Not auto-set in the .fdf today; if set here, runtime_info
+    # records it so the /results trajectory inspector shows the cap.
+    max_memory_mb: Optional[int] = field(default=None, metadata={
+        "section":    "Parallel execution",
+        "label":      "Max memory (per rank)",
+        "unit":       "MB",
+        "null_label": "(no cap)",
+        "help":       "MB cap per MPI rank.  Emits a SystemMemory hint "
+                      "into the .fdf when set; left blank, SIESTA uses "
+                      "whatever the OS allows.  Recorded in the run's "
+                      "runtime_info so the /results display shows it.",
+        "skip_cli":   True,
+    })
 
     # Pseudopotentials -- psml_lib uses click.Path() in the CLI so it's
     # hand-rolled there; species_order needs comma-string parsing on

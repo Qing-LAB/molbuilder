@@ -443,6 +443,20 @@
     font-size: 0.92rem;
     opacity: 0.95;
 }
+/* Runtime one-liner inside the run-state badge: smaller, more
+   muted than the detail line.  Empty -> ::before suppressed by
+   :empty selector so the divider doesn't sit alone. */
+.runtime-summary {
+    font-weight: 400;
+    font-size:   0.82rem;
+    opacity:     0.78;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    margin-left: 0.5em;
+}
+.runtime-summary:not(:empty)::before {
+    content: " · ";
+    opacity: 0.45;
+}
 
 /* Three states.  Colours chosen for accessibility on the white-bg
    theme the viewer sits on. */
