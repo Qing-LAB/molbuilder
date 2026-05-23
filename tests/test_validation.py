@@ -49,11 +49,16 @@ def _vacuum_cell(size: float = 30.0) -> np.ndarray:
 # --------------------------------------------------------------------- #
 
 
-def test_issue_severity_must_be_error_or_warn():
-    Issue("error", "fine")            # OK
-    Issue("warn", "fine")             # OK
+def test_issue_severity_accepts_error_warn_info():
+    """Severity is restricted to error / warn / info.  Info was
+    added 2026-05-22 for advisory hints (e.g. 'Fe + spin=4 implies
+    high-spin Fe(II)') that don't add to the warn count; renamed
+    from the old "error or warn only" pin."""
+    Issue("error", "fine")
+    Issue("warn",  "fine")
+    Issue("info",  "fine")
     with pytest.raises(ValueError, match="severity"):
-        Issue("info", "not allowed")
+        Issue("debug", "not allowed")
 
 
 def test_validation_error_carries_issues():

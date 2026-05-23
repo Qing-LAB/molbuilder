@@ -134,7 +134,12 @@ class TestSpectraConfigSchema:
 
         expected = [
             ("System",               2),   # engine, job_name
-            ("Method",               5),   # method, functional, basis,
+            # Method: 5 -> 7 fields after the 2026-05-22 charge/spin
+            # landing (hemeC-dithiol incident -- spectra script was
+            # silently using PySCF defaults charge=0/spin=0 because
+            # the fields didn't exist on SpectraConfig).
+            ("Method",               7),   # method, charge, spin,
+                                           # functional, basis,
                                            # dispersion, density_fit
             ("Frozen atoms",         3),   # elements, residue_names, indices
             ("Spectrum",             3),   # compute_raman, compute_ir,

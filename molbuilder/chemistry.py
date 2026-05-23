@@ -64,6 +64,143 @@ _AMINO_ACID_RESIDUE_NAMES = frozenset({
 })
 
 
+# Open-shell transition metals + lanthanides.  Their ground-state
+# configurations have unpaired electrons in d (or f) shells in every
+# common oxidation state, so running them through a closed-shell
+# singlet SCF (spin=0, method=RKS) typically converges to a fictitious
+# state with garbage forces.  The user MUST either explicitly set
+# spin to a sensible value AND switch to UKS / ROKS, or accept that
+# the result is nonsensical.  We surface a preflight WARN for any
+# structure containing one of these.
+#
+# Source: ground-state electron configurations from NIST atomic
+# spectra database.  Closed-shell d¹⁰ metals (Zn, Cd, Hg) are
+# excluded -- they're stable as closed-shell Zn²⁺ etc.
+OPEN_SHELL_METALS = frozenset({
+    # First-row transition metals (3d incomplete)
+    "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu",
+    # Second-row
+    "Y", "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag",
+    # Third-row
+    "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au",
+    # Lanthanides (4f incomplete)
+    "La", "Ce", "Pr", "Nd", "Pm", "Sm", "Eu", "Gd", "Tb",
+    "Dy", "Ho", "Er", "Tm", "Yb", "Lu",
+    # Common actinides
+    "Ac", "Th", "Pa", "U", "Np", "Pu",
+})
+
+
+def total_electrons(struct: Structure, charge: int = 0) -> int:
+    """Sum of atomic numbers minus charge.  Used by parity checks
+    (closed-shell spin=0 requires an even count; an odd total means
+    spin must be at least 1).  Raises KeyError on an unknown element
+    symbol (catches typos before PySCF does the same).
+    """
+    from ase.data import atomic_numbers as _Z
+    total = 0
+    for el in struct.elements:
+        try:
+            total += int(_Z[el.capitalize()])
+        except KeyError:
+            raise KeyError(
+                f"unknown element symbol {el!r} -- check the structure "
+                f"file (typos, lowercase letters, missing-element-column "
+                f"fallback failures)"
+            )
+    return total - int(charge)
+
+
+def check_spin_charge_parity(struct: Structure, charge: int, spin: int
+                              ) -> Optional[str]:
+    """Return a human-readable error string when the (charge, spin)
+    pair is impossible for ``struct``, else None.
+
+    Rule: PySCF's ``spin`` is the number of UNPAIRED electrons
+    (= 2S = n_alpha - n_beta).  The parity of (n_electrons) must
+    match the parity of (spin) -- a closed-shell singlet (spin=0)
+    requires an even electron count; spin=1 (doublet) requires odd.
+    This is THE standard pre-SCF sanity check; PySCF itself raises
+    ``RuntimeError("Mol.nelectron N is odd, but spin = 0")`` on
+    mismatched input, but catching it at preflight gives the user
+    a clearer message + a chance to fix the config before the
+    script runs for minutes.
+    """
+    n_elec = total_electrons(struct, charge)
+    if (n_elec % 2) != (spin % 2):
+        return (
+            f"Electron-count parity mismatch: sum(Z) - charge "
+            f"= {n_elec}, which is {'even' if n_elec % 2 == 0 else 'odd'}; "
+            f"spin={spin} requires a{'n even' if spin % 2 == 0 else 'n odd'} "
+            f"electron count.  Either adjust charge by ±1 or change "
+            f"spin to {spin + 1} / {max(0, spin - 1)} to restore parity."
+        )
+    return None
+
+
+# Common spin-state -> (oxidation state, name) mapping for first-row
+# transition metals.  Keyed by (element, spin = 2S).  Used by the
+# preflight to explain to the user what their (charge, spin) input
+# IMPLIES about the metal centre.
+#
+# Source: standard ligand-field theory; ground-state d-electron counts
+# from CRC handbook.  Entries are intentionally restricted to the
+# COMMON oxidation states a user is likely to encounter in
+# biological / coordination chemistry; rare ones (e.g. Fe(0), Fe(VI))
+# are omitted to avoid noisy guesses.
+_METAL_SPIN_HINTS: dict = {
+    # Fe: d⁶ for Fe(II), d⁵ for Fe(III)
+    ("Fe", 0): "Fe(II), low-spin (S=0, 0 unpaired) -- e.g. CO- or CN⁻-bound heme",
+    ("Fe", 2): "Fe(II), intermediate-spin (S=1, 2 unpaired) -- rare",
+    ("Fe", 4): "Fe(II), high-spin (S=2, 4 unpaired) -- e.g. deoxy-heme, bis-thiolate",
+    ("Fe", 1): "Fe(III), low-spin (S=1/2, 1 unpaired) -- e.g. bis-imidazole heme",
+    ("Fe", 3): "Fe(III), intermediate-spin (S=3/2, 3 unpaired) -- e.g. cyt P450 oxoferryl",
+    ("Fe", 5): "Fe(III), high-spin (S=5/2, 5 unpaired) -- e.g. met-myoglobin",
+    # Mn: d⁵ for Mn(II), d⁴ for Mn(III)
+    ("Mn", 0): "Mn(II), low-spin (rare for Mn²⁺)",
+    ("Mn", 5): "Mn(II), high-spin (S=5/2, 5 unpaired) -- common for free Mn²⁺",
+    ("Mn", 4): "Mn(III), high-spin (S=2, 4 unpaired)",
+    # Co: d⁷ for Co(II), d⁶ for Co(III)
+    ("Co", 1): "Co(II), low-spin (S=1/2, 1 unpaired)",
+    ("Co", 3): "Co(II), high-spin (S=3/2, 3 unpaired)",
+    ("Co", 0): "Co(III), low-spin (S=0, 0 unpaired) -- e.g. cobalamin/B12",
+    # Cu: d⁹ for Cu(II), d¹⁰ for Cu(I)
+    ("Cu", 1): "Cu(II) (S=1/2, 1 unpaired)",
+    ("Cu", 0): "Cu(I), d¹⁰ closed-shell",
+    # Ni: d⁸ for Ni(II)
+    ("Ni", 0): "Ni(II), low-spin square-planar (S=0)",
+    ("Ni", 2): "Ni(II), high-spin tetrahedral / octahedral (S=1, 2 unpaired)",
+}
+
+
+def explain_metal_spin(element: str, spin: int) -> Optional[str]:
+    """Return a one-line description of what (element, spin) implies
+    for a transition-metal centre (oxidation state + spin-state name).
+    None if no hint is registered for this combination.
+    """
+    return _METAL_SPIN_HINTS.get((element.capitalize(), int(spin)))
+
+
+def detect_open_shell_metals(struct: Structure) -> List[str]:
+    """Return the unique open-shell-metal element symbols present in
+    ``struct``, in their first-appearance order.
+
+    Capitalisation-insensitive: a PDB-loaded "FE" matches "Fe".  Use
+    this in preflight to warn when a closed-shell singlet (spin=0,
+    RKS/RHF) is requested for a molecule containing transition
+    metals -- a common silent cause of unphysical forces / energies
+    (see hemeC-dithiol 2026-05-22 incident).
+    """
+    seen = []
+    seen_set: set = set()
+    for el in struct.elements:
+        key = el.capitalize()
+        if key in OPEN_SHELL_METALS and key not in seen_set:
+            seen.append(key)
+            seen_set.add(key)
+    return seen
+
+
 def expected_pH7_peptide_charge(struct: Structure) -> Optional[int]:
     """Estimate net peptide charge at physiological pH (7.4).
 

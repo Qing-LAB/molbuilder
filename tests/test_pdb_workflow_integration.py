@@ -288,7 +288,12 @@ class TestPdbWorkflowEndToEnd:
         r = web.post("/api/spectra/render", json={
             "structure_text": pdb_path.read_text(),
             "structure_path": self._path(pdb_path),
-            "params":         {},   # form's frozen_indices empty
+            # Both PDB fixtures (synthetic tripeptide + user's 1c75)
+            # have odd electron counts at charge=0, so spin=0 fails
+            # the parity check added 2026-05-22.  Pass charge=0,
+            # spin=1, method=UKS so the render reaches the
+            # Pattern A/B preflight branches we're actually testing.
+            "params":         {"charge": 0, "spin": 1, "method": "UKS"},
         })
         assert r.status_code == 200, r.data
         body = r.get_json()
@@ -337,7 +342,8 @@ class TestPdbWorkflowEndToEnd:
         r = web.post("/api/spectra/render", json={
             "structure_text": pdb_path.read_text(),
             "structure_path": self._path(pdb_path),
-            "params":         {"frozen_indices": "5, 6"},
+            "params":         {"frozen_indices": "5, 6",
+                                 "charge": 0, "spin": 1, "method": "UKS"},
         })
         assert r.status_code == 200, r.data
         body = r.get_json()
@@ -379,7 +385,8 @@ class TestPdbWorkflowEndToEnd:
         r = web.post("/api/spectra/render", json={
             "structure_text": pdb_path.read_text(),
             "structure_path": self._path(pdb_path),
-            "params":         {"frozen_indices": ""},   # user cleared
+            "params":         {"frozen_indices": "",
+                                 "charge": 0, "spin": 1, "method": "UKS"},
         })
         body = r.get_json()
         assert body["ok"] is True

@@ -117,10 +117,6 @@
     <div id="selection-filter-rows" class="selection-filter-rows"
          aria-label="Selection filters"></div>
     <div class="selection-filter-actions">
-      <button type="button" id="selection-add-filter"
-              class="selection-add-btn selection-add-filter-btn">
-        + Add filter
-      </button>
       <button type="button" id="selection-apply-filter"
               class="selection-apply-filter-btn"
               title="Run the current filter against the structure and
@@ -128,6 +124,22 @@
         Apply filter
       </button>
     </div>
+  </div>
+
+  <!-- ``+ Add filter`` lives OUTSIDE the filter-mode-only section so
+       it's reachable from click mode too -- clicking it not only
+       adds an empty filter row but also flips the panel into filter
+       mode (selection-panel.js addFilterBtn handler).  Without this
+       being always-visible, a user in click mode had no way to reach
+       filter mode except via the mode-pill, AND a test that exercised
+       "+ Add filter must flip mode" couldn't actually click the
+       button (it was hidden in the filter section). -->
+  <div class="selection-add-filter-row">
+    <button type="button" id="selection-add-filter"
+            class="selection-add-btn selection-add-filter-btn"
+            title="Add a filter row (flips into Filter mode).">
+      + Add filter
+    </button>
   </div>
 
   <hr class="selection-divider">

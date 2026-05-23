@@ -170,19 +170,73 @@ class SpectraConfig:
         "section": "Method",
         "label":   "SCF method",
         "choices": ("RKS", "UKS", "RHF", "UHF"),
-        "help":    "RKS / UKS / RHF / UHF",
+        "help":    "RKS (restricted Kohn-Sham): closed-shell DFT, "
+                   "all electrons paired, spin must be 0.  "
+                   "UKS (unrestricted Kohn-Sham): open-shell DFT, "
+                   "required for ANY non-zero spin (radicals, "
+                   "transition metals, etc.).  RHF / UHF: Hartree-Fock "
+                   "equivalents (rarely useful by themselves -- pick a "
+                   "functional with RKS/UKS for production work).  "
+                   "RULE: a structure containing Fe / Mn / Co / Ni / Cu "
+                   "(open-shell transition metals) ALMOST ALWAYS needs "
+                   "UKS with a non-zero spin -- see the spin field below.",
+    })
+    charge: int = field(default=0, metadata={
+        "section": "Method",
+        "label":   "Net charge",
+        "range":   (-10, 10),
+        "help":    "Net molecular charge in units of e.  Default 0 = "
+                   "neutral molecule.  Examples: deprotonated carboxylate "
+                   "= -1; protonated amine = +1; deprotonated phosphate "
+                   "= -1 or -2; bis-thiolate Fe(III) heme = -1 (porphyrin "
+                   "-2, Fe +3, 2 thiolates -2: net -1, NOT neutral).  "
+                   "Counts as a CHECK: total electrons = sum(Z) - charge; "
+                   "must have parity matching spin (even when spin=0).",
+    })
+    spin: int = field(default=0, metadata={
+        "section": "Method",
+        "label":   "Spin (2S = # unpaired electrons)",
+        "range":   (0, 10),
+        "help":    "PySCF spin convention: 2S = n_alpha - n_beta = "
+                   "number of unpaired electrons.  NOT the multiplicity "
+                   "(2S+1).  Examples: closed-shell singlet = 0; "
+                   "radical/doublet = 1; triplet = 2.  Fe(II) cases: "
+                   "low-spin (CO/CN heme) = 0; intermediate-spin "
+                   "(4-coord Fe-porphyrin) = 2; high-spin (deoxy-heme, "
+                   "bis-thiolate) = 4.  Fe(III) cases: low-spin (bis-"
+                   "imidazole) = 1; intermediate-spin = 3; high-spin "
+                   "(met-myoglobin) = 5.  ANY non-zero value REQUIRES "
+                   "method = UKS or ROKS.  Wrong value = unphysical SCF "
+                   "with huge forces.",
     })
     functional: str = field(default="B3LYP", metadata={
         "section": "Method",
         "label":   "Functional",
-        "help":    "XC functional name (libxc string); B3LYP is the "
-                   "modern default for organic / biomolecule chemistry",
+        "help":    "XC functional name (libxc string).  Recommendations: "
+                   "B3LYP -- modern hybrid default for organic / "
+                   "biomolecule chemistry.  PBE0 -- faster hybrid "
+                   "(20% HF exchange vs B3LYP's 20% too, similar quality "
+                   "for organics).  wB97X-D -- range-separated hybrid "
+                   "with built-in dispersion; best for non-covalent / "
+                   "long-range cases.  TPSSh -- meta-GGA hybrid, often "
+                   "the best balance for transition-metal complexes "
+                   "(reliable spin gaps).  PBE / BLYP -- pure GGAs, "
+                   "2-3x faster but worse for HOMO-LUMO gaps.  "
+                   "For Fe heme work, TPSSh or B3LYP+D3BJ are standard.",
     })
     basis: str = field(default="def2-SVP", metadata={
         "section": "Method",
         "label":   "Basis set",
-        "help":    "Gaussian basis set; def2-SVP is the production "
-                   "minimum, def2-TZVP for accurate work",
+        "help":    "Gaussian basis set name.  Recommendations by tier: "
+                   "MINIMAL: STO-3G (toy only).  SMALL: 6-31G(d) -- "
+                   "fast but inadequate for transition metals.  "
+                   "PRODUCTION MINIMUM: def2-SVP -- safe organic default; "
+                   "for transition metals consider def2-SVP for Fe-row "
+                   "(includes Stuttgart ECP automatically via PySCF).  "
+                   "ACCURATE: def2-TZVP, cc-pVTZ (1.5-3x cost).  "
+                   "DIFFUSE (for anions / weak interactions): aug-cc-pVDZ, "
+                   "def2-SVPD.  For Fe heme: def2-SVP is the production "
+                   "minimum; def2-TZVP for publication-quality.",
     })
     dispersion: Optional[str] = field(default="d3bj", metadata={
         "section":    "Method",

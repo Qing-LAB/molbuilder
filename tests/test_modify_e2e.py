@@ -111,11 +111,32 @@ def flask_server():
 
 
 @pytest.fixture
-def water_xyz_file(tmp_path):
+def water_xyz_file(tmp_path, monkeypatch):
     """A real on-disk water.xyz file Playwright can hand to a file
-    input.  Returns the absolute path string."""
+    input.  Returns the absolute path string.
+
+    Side-effect: tmp_path is added as a Capabilities picker root so
+    panel-driving tests (which call ``store.setSourceFile(path)``)
+    can pass the picker-root check in /api/selection/atoms.  The
+    autouse ``_reset_diagnostics_singleton`` (conftest.py) clears
+    the singleton between tests; we restore the snapshot too as
+    belt + braces.
+    """
     p = tmp_path / "water.xyz"
     p.write_text(_H2O_XYZ)
+
+    from molbuilder import diagnostics
+    _orig = diagnostics.get_capabilities()
+    caps = diagnostics.Capabilities(
+        runtime_config={}, conda_binary=None, conda_envs=frozenset(),
+    )
+    cls = type(caps)
+    monkeypatch.setattr(
+        cls, "file_picker_roots",
+        lambda self: ((tmp_path.resolve(), "projects"),),
+    )
+    diagnostics.set_capabilities(caps)
+    monkeypatch.setattr(diagnostics, "_snapshot", _orig)
     return str(p)
 
 
@@ -156,30 +177,41 @@ def _load_water(page, water_xyz_file):
 
 
 def _load_file(page, xyz_path, expected_atoms):
-    """Load an XYZ fixture by feeding its text to the in-page loader
-    API.
+    """Load an XYZ fixture via the CANONICAL sidebar-pick workflow:
+    drive ``store.setSourceFile(absolute_path)``.  That:
+      1. Calls the viewer loader (``loadStructureText``) to render
+         the structure in 3Dmol.
+      2. Fetches ``/api/selection/atoms`` to populate
+         ``state.atoms`` -- the selection panel reads this to render
+         per-atom rows.
 
-    The legacy left-column ``#atom-list-body`` was retired
-    2026-05-20 along with the click-to-select UI; the selection
-    panel above the modify-grid carries the atom list now.  For
-    tests we drive selection via the store (``_set_selection``)
-    so we don't depend on the panel's atom-list being populated
-    -- we just need the viewer to have the structure loaded so
-    the modify ops can act on it.  ``getNAtoms`` reads
-    ``state.n_atoms`` directly from viewer.js.
+    Pre-2026-05-22 this called ``loadStructureText`` directly, which
+    bypassed step 2 -- the viewer rendered but the panel stayed empty,
+    breaking every panel test (the 11 panel tests in this file).
+    Using ``setSourceFile`` mirrors what the Projects sidebar does on
+    a real file click.
+
+    ``xyz_path`` MUST be under ``Capabilities.file_picker_roots`` for
+    /api/selection/atoms to accept it; the ``water_xyz_file`` fixture
+    pins tmp_path as a picker root.
     """
     from pathlib import Path
-    p = Path(str(xyz_path))
-    text = p.read_text()
-    filename = p.name
+    p = Path(str(xyz_path)).resolve()
     page.evaluate(
-        "([text, filename]) => window.molbuilder.loadStructureText(text, filename)",
-        [text, filename],
+        "(path) => window.molbuilder.selection.store.setSourceFile(path)",
+        str(p),
     )
     page.wait_for_function(
         f"() => window.__molbuilder_modify_test "
         f"      && window.__molbuilder_modify_test.getNAtoms() "
         f"         === {int(expected_atoms)}"
+    )
+    # Also wait for the selection store to land its atoms so panel
+    # tests see populated rows; the store fetches /api/selection/atoms
+    # in parallel with the viewer load.
+    page.wait_for_function(
+        f"() => window.molbuilder.selection.store.getState()"
+        f"             .atoms.length === {int(expected_atoms)}"
     )
 
 

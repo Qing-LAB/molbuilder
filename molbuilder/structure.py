@@ -332,6 +332,11 @@ class Structure:
         seen_model = False
         pdb_title = ""
         segment_index = 0
+        # Track (chain, residue_id, atom_name) keys we've already
+        # emitted so altLoc dedup keeps the FIRST conformation and
+        # skips subsequent alternates (see the altLoc comment in
+        # the ATOM/HETATM branch below).
+        _seen_altloc_keys: set = set()
 
         for line in text.splitlines():
             rec = line[:6]
@@ -356,6 +361,20 @@ class Structure:
             if not (line.startswith("ATOM  ") or line.startswith("HETATM")):
                 continue
             atom_name = line[12:16].strip()
+            # altLoc (column 17, 1-indexed = line[16]): indicates one
+            # of several crystallographically-resolved conformations
+            # for the same atom.  PySCF / SIESTA expect a single
+            # well-defined geometry; loading EVERY conformation puts
+            # near-coincident atoms in the same Mol, which makes
+            # forces explode (1/r² Coulomb at sub-Å distances).
+            #
+            # Standard practice (ASE, MDAnalysis, PyMOL "PyMOL default
+            # group state"): keep the FIRST conformation per
+            # (chain, residue_id, atom_name).  We treat blank altLoc
+            # as the default ('A' is fine too); only filter when an
+            # alternate (B, C, ...) duplicates a key we've already
+            # seen.
+            altloc = line[16:17] if len(line) > 16 else " "
             res_name  = line[17:20].strip() or "MOL"
             # '_' is our internal placeholder for "chain-id column was
             # blank in the file"; it never appears in well-formed PDBs.
@@ -367,6 +386,18 @@ class Structure:
                 z = float(line[46:54])
             except ValueError:
                 continue
+            altloc_key = (chain_letter, res_id, atom_name)
+            if altloc.strip():
+                # Has an altLoc indicator -- only accept if we
+                # haven't seen this (chain, residue, atom_name) yet.
+                if altloc_key in _seen_altloc_keys:
+                    continue
+                _seen_altloc_keys.add(altloc_key)
+            else:
+                # Blank altLoc: a "single conformation" line.  Record
+                # the key so a LATER alternate doesn't sneak in
+                # (unusual file order but possible).
+                _seen_altloc_keys.add(altloc_key)
             element = line[76:78].strip()
             if not element:
                 # Element column 77-78 empty -- fall back to PDB-format

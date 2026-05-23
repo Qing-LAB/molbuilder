@@ -240,6 +240,86 @@ class PySCFSpectraEngine:
                 where="config.displacement_amplitude_ang",
             ))
 
+        # ---- Electron-count parity (THE standard pre-SCF check) ----
+        # PySCF's ``spin`` = 2S = n_unpaired = n_alpha - n_beta.  Its
+        # parity must match the total electron count
+        # (Σ Z - charge).  Catching this at preflight gives a clearer
+        # error than PySCF's runtime "Mol.nelectron is odd, but spin=0".
+        from ..chemistry import (check_spin_charge_parity,
+                                  detect_open_shell_metals,
+                                  explain_metal_spin,
+                                  total_electrons)
+        try:
+            parity_err = check_spin_charge_parity(
+                struct, cfg.charge, cfg.spin,
+            )
+        except KeyError as e:
+            # Unknown element symbol (typo / bad PDB column fallback).
+            issues.append(Issue(
+                severity="error",
+                message=str(e),
+                where="structure",
+            ))
+            parity_err = None
+        if parity_err:
+            issues.append(Issue(
+                severity="error",
+                message=parity_err,
+                where="config.charge",
+            ))
+
+        # ---- Open-shell metal sanity check ----
+        # Closed-shell singlet (spin=0 + RKS/RHF) on a structure
+        # containing Fe / Mn / Co / Ni / Cu / any other open-shell
+        # transition metal converges to a fictitious state with garbage
+        # forces / energies (hemeC-dithiol 2026-05-22 incident: charge=0,
+        # spin=0, RKS produced ~10 eV/Å forces on a near-equilibrium
+        # geometry; the molecule is high-spin Fe(II), spin=4, UKS).
+        # We warn -- not error -- because some weak-field cases (e.g.
+        # CO-bound heme) ARE closed-shell low-spin and the user might
+        # genuinely want spin=0.
+        metals = detect_open_shell_metals(struct)
+        method_upper = cfg.method.upper()
+        if metals and cfg.spin == 0 and method_upper in ("RKS", "RHF"):
+            issues.append(Issue(
+                severity="warn",
+                message=(
+                    f"Structure contains open-shell transition metal(s) "
+                    f"{', '.join(metals)} but the config requests "
+                    f"closed-shell singlet (spin=0, method={cfg.method}).  "
+                    f"This is almost always wrong: most ground-state "
+                    f"first-row transition-metal complexes are high-spin, "
+                    f"e.g. Fe(II) heme = high-spin S=2 (spin=4) unless "
+                    f"the axial ligand is strong-field (CO, CN⁻).  A "
+                    f"closed-shell singlet SCF on a true open-shell "
+                    f"complex converges to a fictitious electronic state "
+                    f"with unphysical forces.  Set spin to a sensible "
+                    f"value (e.g. 4 for high-spin Fe(II)) AND switch "
+                    f"method to UKS (or ROKS) -- RKS cannot represent "
+                    f"open-shell states."
+                ),
+                where="config.spin",
+            ))
+        elif metals:
+            # Metal present + the user DID pick a non-default spin.
+            # Echo back what their (element, spin) implies so they can
+            # sanity-check the oxidation state.  Severity=info so it
+            # doesn't add to the warn/error count; it just labels.
+            for m in metals:
+                hint = explain_metal_spin(m, cfg.spin)
+                if hint:
+                    issues.append(Issue(
+                        severity="info",
+                        message=(
+                            f"{m} + spin={cfg.spin}: {hint}.  "
+                            f"Confirm against your experimental data "
+                            f"(Mössbauer / UV-Vis / EPR) or the "
+                            f"chemistry of the rest of the molecule "
+                            f"(porphyrin protonation, axial ligands)."
+                        ),
+                        where="config.spin",
+                    ))
+
         # Method / spin / functional compatibility.
         method = cfg.method.upper()
         if method not in ("RKS", "UKS", "RHF", "UHF"):

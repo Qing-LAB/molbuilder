@@ -21,9 +21,11 @@ class Issue:
 
     Fields
     ------
-    severity : "error" | "warn"
+    severity : "error" | "warn" | "info"
         Errors block emission (render_fdf / render_script raise);
-        warnings print to stderr but the run proceeds.
+        warnings print to stderr but the run proceeds; info entries
+        are advisory (e.g. "Fe + spin=4 -> high-spin Fe(II)") and
+        don't add to the warn count.
     message : str
         Human-readable, single-line, no trailing punctuation.  Should
         include any actionable advice in-line (e.g. "increase
@@ -40,9 +42,10 @@ class Issue:
     where:    str = ""
 
     def __post_init__(self) -> None:
-        if self.severity not in ("error", "warn"):
+        if self.severity not in ("error", "warn", "info"):
             raise ValueError(
-                f"Issue.severity must be 'error' or 'warn'; got {self.severity!r}"
+                f"Issue.severity must be 'error', 'warn', or 'info'; "
+                f"got {self.severity!r}"
             )
 
 

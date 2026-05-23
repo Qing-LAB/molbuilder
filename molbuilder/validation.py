@@ -465,6 +465,38 @@ def _check_peptide_protonation(struct: Structure,
     )]
 
 
+def _check_open_shell_metal(struct: Structure, *,
+                              is_closed_shell: bool,
+                              engine_label: str) -> List[Issue]:
+    """Shared chemistry rule: structure containing an open-shell
+    transition metal (Fe, Mn, Co, Ni, Cu, ...) requires an open-shell
+    SCF (PySCF UKS/UHF + spin>0; SIESTA spin_polarized=True).  A
+    closed-shell SCF on an open-shell complex converges to a
+    fictitious electronic state with garbage forces (hemeC-dithiol
+    2026-05-22 incident).  Called from BOTH _validate_pyscf and
+    _validate_siesta so the rule is enforced uniformly: same physical
+    facts -> same warning, regardless of which engine the user picks.
+    """
+    from .chemistry import detect_open_shell_metals
+    metals = detect_open_shell_metals(struct)
+    if metals and is_closed_shell:
+        return [Issue(
+            "warn",
+            (f"Structure contains open-shell transition metal(s) "
+             f"{', '.join(metals)} but {engine_label} requests a "
+             f"closed-shell SCF.  Most ground-state first-row "
+             f"transition-metal complexes are open-shell, e.g. "
+             f"Fe(II)-porphyrin is intermediate-spin S=1 (2 unpaired) "
+             f"or high-spin S=2 (4 unpaired).  Closed-shell SCF on a "
+             f"true open-shell complex converges to a fictitious state "
+             f"with unphysical forces.  Switch to open-shell SCF and "
+             f"set a sensible spin (see config-field help for the "
+             f"spin / spin_polarized field)."),
+            "config.spin",
+        )]
+    return []
+
+
 def _validate_siesta(struct: Structure, cfg,
                      cell: Optional[np.ndarray]) -> List[Issue]:
     """SIESTA-specific checks.
@@ -479,6 +511,13 @@ def _validate_siesta(struct: Structure, cfg,
     # Peptide protonation hint -- same as PySCF side; see
     # _check_peptide_protonation for the full rationale.
     issues += _check_peptide_protonation(struct, getattr(cfg, "net_charge", None))
+
+    # Open-shell metal + closed-shell SCF: shared rule with PySCF.
+    issues += _check_open_shell_metal(
+        struct,
+        is_closed_shell=not bool(getattr(cfg, "spin_polarized", False)),
+        engine_label="SIESTA (spin_polarized = False)",
+    )
 
     # Spin.Total set without spin polarised: SIESTA silently ignores it.
     if cfg.spin_total is not None and not cfg.spin_polarized:
@@ -612,6 +651,15 @@ def _validate_pyscf(struct: Structure, cfg,
     phase or PCM-solvent here); accepted for signature uniformity
     with the engine-validator registry."""
     issues: List[Issue] = []
+
+    # Open-shell metal + closed-shell SCF: shared rule with SIESTA.
+    method_upper = (getattr(cfg, "method", "") or "").upper()
+    issues += _check_open_shell_metal(
+        struct,
+        is_closed_shell=(getattr(cfg, "spin", 0) == 0
+                         and method_upper in ("RKS", "RHF")),
+        engine_label=f"PySCF (spin=0, method={cfg.method})",
+    )
 
     # spin = 2S; must be a non-negative integer.  PySCFConfig exposes
     # spin as an int with default 0; a negative value is meaningless

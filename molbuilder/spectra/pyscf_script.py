@@ -528,6 +528,8 @@ def _emit_build_mol(struct: Structure, cfg: SpectraConfig) -> List[str]:
     out.append("    verbose    = VERBOSE,")
     out.append("    max_memory = MAX_MEMORY_MB,")
     out.append("    unit       = 'Angstrom',")
+    out.append(f"    charge     = {int(cfg.charge)},")
+    out.append(f"    spin       = {int(cfg.spin)},   # 2S = # unpaired electrons")
     out.append(")")
     out.append("ELEMENTS    = [a[0] for a in ATOMS]")
     out.append("N_ATOMS     = mol.natm")

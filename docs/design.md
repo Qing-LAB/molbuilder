@@ -1107,6 +1107,99 @@ broken state" commits.
 
 ## Scientific correctness
 
+### Spin + charge: the most important pair of inputs
+
+For ANY DFT/HF calculation, `(charge, spin)` together define the
+electronic state.  Wrong values give wrong electronic structure,
+which manifests as huge forces, non-convergence, or (worst) silent
+convergence to a fictitious state that LOOKS reasonable but is the
+wrong minimum.  The 2026-05-22 hemeC-dithiol incident
+(below) was exactly this.
+
+**Why these are easy to get wrong:**
+
+  * Defaults look innocent: charge=0, spin=0 (closed-shell singlet)
+    works for ~90% of organic molecules.  But ANY structure
+    containing Fe / Mn / Co / Ni / Cu / Mo / W (open-shell
+    transition metals) is in the other 10%.
+  * The spin convention varies across codes: PySCF uses `spin = 2S
+    = n_unpaired` (NOT multiplicity = 2S+1).  ORCA, Gaussian use
+    multiplicity.  SIESTA uses `SpinPolarized` plus `SpinTotal`
+    (in μ_B).  Easy to be off by one.
+  * Wrong (charge, spin) often DOES converge SCF -- just to a
+    different electronic state with different energy / forces /
+    HOMO-LUMO ordering.  No obvious error message.
+  * The "right" spin depends on coordination chemistry, not just
+    element identity.  4-coordinate Fe(II)-porphyrin = S=1
+    (intermediate); 5-coord with one weak axial ligand = S=2 (high);
+    6-coord with two strong-field axial = S=0 (low).  No general
+    formula -- depends on the experimental data.
+
+**Checks molbuilder provides** (`molbuilder/chemistry.py` +
+`molbuilder/validation.py`):
+
+| Helper | What it catches |
+|---|---|
+| `total_electrons(struct, charge)` | sum(Z) - charge for any structure (raises on unknown element symbol) |
+| `check_spin_charge_parity(struct, charge, spin)` | spin=0 requires even electron count; spin=1 requires odd; etc.  PySCF raises this AT RUN TIME; we catch it pre-emission for a clearer message. |
+| `detect_open_shell_metals(struct)` | Returns list of open-shell transition metals present.  Empty for pure organics. |
+| `explain_metal_spin(element, spin)` | One-line description of what (Fe, spin=4) implies (Fe(II) high-spin, S=2, 4 unpaired -- e.g. deoxy-heme). |
+| `_check_open_shell_metal()` (validation.py) | Shared by `_validate_pyscf` AND `_validate_siesta`: warns when a structure with an open-shell metal is paired with a closed-shell SCF (PySCF RKS/RHF + spin=0; SIESTA SpinPolarized=False).  SAME warning regardless of engine -- same chemistry. |
+
+**Why we didn't catch this earlier (post-mortem 2026-05-22):**
+
+The bug surfaced when the user ran hemeC-dithiol (an Fe-porphyrin
+with two thiol side chains) through PySCF spectra.  Symptom: forces
+~10 eV/Å on a structure already near experimental equilibrium.
+Root cause: `SpectraConfig.charge` and `SpectraConfig.spin` did not
+exist as fields -- the spectra script's `gto.M()` call silently
+used PySCF's defaults (charge=0, spin=0) regardless of what the
+user wanted.  Fe(II) in a 4-coordinate porphyrin (no axial ligands
+within bonding distance in the user's geometry) is
+intermediate-spin S=1 (spin=2), not closed-shell S=0.  The SCF
+converged to a fictitious low-spin state with unphysical orbital
+occupancies, hence the enormous gradient.
+
+What enabled the silent failure:
+
+  1. `SpectraConfig` had `method` but not `charge` / `spin`.
+     `_emit_build_mol` in `spectra/pyscf_script.py` emitted
+     `gto.M(...)` without `charge=` / `spin=`, falling through to
+     PySCF's (0, 0) default.
+  2. The validation pass exists (`validation.py::_validate_pyscf`)
+     but only ran from Build's `render_script`, not from the
+     spectra script's emit path -- the spectra engine's `preflight`
+     had its OWN list of checks that didn't include the open-shell-
+     metal rule.
+  3. The user has no way to specify spin from the form because
+     the field didn't exist.  Silently using a wrong default with
+     no input surface is the worst combination.
+
+**Fixes that landed:**
+
+  * Add `charge` + `spin` to `SpectraConfig` with detailed help text
+    explaining the convention + giving Fe(II) / Fe(III) examples.
+  * Emit them in the script's `gto.M(...)`.
+  * Add the open-shell-metal check to BOTH `_validate_pyscf` and
+    `_validate_siesta` (via shared `_check_open_shell_metal` helper)
+    AND to `PySCFSpectraEngine.preflight` -- triple coverage so any
+    surface that calls either entry point sees the warning.
+  * Add `total_electrons` + `check_spin_charge_parity` +
+    `explain_metal_spin` as standalone helpers for any future engine
+    that needs to do the same checks.
+  * The /spectra and /build forms now show the help text inline (the
+    field metadata's `help` is rendered as a tooltip / aside by
+    form-schema.js); the spin field's help enumerates the common
+    Fe(II) / Fe(III) spin combinations so the user has a starting
+    point without reading the literature.
+
+**Cross-engine consistency rule:** ANY scientific check that depends
+on chemistry (charge / spin / coordination / basis suitability)
+MUST live in a shared helper called from BOTH `_validate_siesta`
+AND `_validate_pyscf` -- same physical facts, same warning.  Don't
+duplicate the check inline in one validator and forget the other;
+add a helper.
+
 ### Validation pass (pre-emission)
 
 Runs before `render_fdf` / `render_script` writes any output. Implemented
