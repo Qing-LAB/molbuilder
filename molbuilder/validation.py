@@ -465,6 +465,47 @@ def _check_peptide_protonation(struct: Structure,
     )]
 
 
+def _check_metal_basis_adequacy(struct: Structure, *,
+                                  basis: str, engine_label: str
+                                  ) -> List[Issue]:
+    """Shared chemistry rule: basis sets like STO-3G / 6-31G / 6-31G(d)
+    have poor or no coverage of transition-metal d-orbitals.  Pair with
+    Fe / Mn / Co / Ni / Cu / Mo etc. and the SCF converges to a
+    distorted electronic structure with the wrong d-orbital ordering.
+
+    Recommendations encoded here mirror the spec § Scientific
+    correctness guidance: def2-SVP is the production minimum;
+    def2-TZVP is publication-quality.  Anything smaller for a
+    transition-metal-containing structure -> WARN.
+    """
+    from .chemistry import detect_open_shell_metals
+    metals = detect_open_shell_metals(struct)
+    if not metals:
+        return []
+    b = (basis or "").lower().strip()
+    # Bases known to be inadequate for transition metals (no d set
+    # for first-row TMs, or no functions at all for second/third row).
+    INADEQUATE = ("sto-3g", "sto-6g", "3-21g", "6-31g",
+                  "6-31g(d)", "6-31g*", "6-31g**", "6-31gd", "6-311g")
+    if any(b == bad or b.startswith(bad + "/") for bad in INADEQUATE):
+        return [Issue(
+            "warn",
+            (f"Basis '{basis}' has inadequate coverage of transition-"
+             f"metal d-orbitals.  {engine_label} requested for "
+             f"structure containing {', '.join(metals)}.  Bases like "
+             f"STO-3G / 6-31G(d) lack the polarisation/diffuse "
+             f"functions needed to describe metal-ligand bonds + spin "
+             f"states; the SCF often converges to a distorted "
+             f"electronic structure (wrong d-orbital occupations, "
+             f"wrong spin-gap energies).  Recommended minimum for "
+             f"transition metals: def2-SVP.  Publication quality: "
+             f"def2-TZVP or cc-pVTZ-DK.  PySCF auto-loads a Stuttgart "
+             f"ECP for second/third-row TMs when ``basis='def2-SVP'``."),
+            "config.basis",
+        )]
+    return []
+
+
 def _check_open_shell_metal(struct: Structure, *,
                               is_closed_shell: bool,
                               engine_label: str) -> List[Issue]:
@@ -659,6 +700,11 @@ def _validate_pyscf(struct: Structure, cfg,
         is_closed_shell=(getattr(cfg, "spin", 0) == 0
                          and method_upper in ("RKS", "RHF")),
         engine_label=f"PySCF (spin=0, method={cfg.method})",
+    )
+    # Basis adequacy for transition metals.
+    issues += _check_metal_basis_adequacy(
+        struct, basis=getattr(cfg, "basis", ""),
+        engine_label=f"PySCF method={cfg.method}",
     )
 
     # spin = 2S; must be a non-negative integer.  PySCFConfig exposes
