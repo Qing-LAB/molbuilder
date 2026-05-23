@@ -137,6 +137,53 @@ class TestPySCFScriptChargeAndSpin:
         assert "charge     = -1," in text
         assert "spin       = 1," in text
 
+    def test_ecp_omitted_for_def2_basis_on_heavy_atom(self):
+        """def2-* basis families bundle the Stuttgart ECP for heavy
+        atoms; emitting ecp=lanl2dz on top would double-count.  The
+        script must omit ecp= entirely for def2-* (mirrors Build's
+        existing behavior; shared rule in chemistry.resolve_pyscf_ecp)."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        import numpy as np
+        from molbuilder.structure import Structure
+        pt = Structure(elements=["Pt", "Cl", "Cl"],
+                       positions=np.array([[0, 0, 0], [2, 0, 0], [-2, 0, 0]]))
+        text = render_spectra_script(pt, SpectraConfig(basis="def2-SVP"))
+        # gto.M() block must NOT carry an ecp= line for def2 basis.
+        # (Other ``ecp`` strings in the script -- e.g. methods text,
+        # config dict echo -- are fine; only the gto.M call site is
+        # what matters for behaviour.)
+        m_block = text[text.index("mol = gto.M("):text.index("mol = gto.M(") + 500]
+        assert "ecp" not in m_block, (
+            f"def2-SVP must not emit an ecp= kwarg into gto.M(); "
+            f"def2 bundles its own ECP.  Block:\n{m_block}"
+        )
+
+    def test_ecp_auto_emitted_for_heavy_atom_non_def2_basis(self):
+        """Non-def2 basis + Z>36 atom -> auto-add lanl2dz so the
+        SCF doesn't fall through to all-electron Pt (silent wrong
+        answer).  Mirrors Build's auto-ECP behavior."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        import numpy as np
+        from molbuilder.structure import Structure
+        pt = Structure(elements=["Pt"], positions=np.array([[0, 0, 0]]))
+        text = render_spectra_script(pt, SpectraConfig(basis="cc-pVDZ"))
+        # In the gto.M block, ecp = 'lanl2dz' should be present.
+        m_block = text[text.index("mol = gto.M("):text.index("mol = gto.M(") + 500]
+        assert "ecp        = 'lanl2dz'" in m_block, (
+            f"Pt + cc-pVDZ must auto-add ecp='lanl2dz'; block:\n{m_block}"
+        )
+
+    def test_explicit_ecp_passes_through(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        import numpy as np
+        from molbuilder.structure import Structure
+        pt = Structure(elements=["Pt"], positions=np.array([[0, 0, 0]]))
+        # User picks stuttgart explicitly even with def2-SVP basis.
+        text = render_spectra_script(pt,
+            SpectraConfig(basis="def2-SVP", ecp="stuttgart"))
+        m_block = text[text.index("mol = gto.M("):text.index("mol = gto.M(") + 500]
+        assert "ecp        = 'stuttgart'" in m_block, m_block
+
     def test_spin_propagates_for_fe_high_spin(self):
         """Realistic case: Fe(II) high-spin needs spin=4 + UKS.  Pin
         the typed-int emission so the user's hemeC-style config

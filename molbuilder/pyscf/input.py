@@ -84,45 +84,17 @@ _ATOMIC_NUMBER = {
 }
 
 
-def _resolve_ecp(struct: Structure, cfg: PySCFConfig) -> Optional[str]:
-    """Decide whether and which ECP to emit in the gto.M() call.
+def _resolve_ecp(struct: Structure, cfg: PySCFConfig):
+    """Thin shim onto :func:`molbuilder.chemistry.resolve_pyscf_ecp`.
 
-    Logic:
-      * cfg.ecp is an explicit string (e.g. "lanl2dz")
-            -> use it (user override)
-      * cfg.ecp is the empty string ""
-            -> disabled (user opted out)
-      * cfg.ecp is None (default, "auto")
-            -> emit "lanl2dz" if heavy atoms present AND basis is
-               not a def2-* family member (def2 bundles its own ECP);
-               otherwise None.
-
-    Why "lanl2dz" as the auto default: it's the workhorse ECP for
-    transition metals on cc-pVDZ-class bases, has been the textbook
-    default since the 1980s, and is shipped with PySCF directly
-    (no extra basis-set library install).  Stuttgart RSC / SBKJC
-    are alternatives the user can pick via cfg.ecp = "stuttgart".
+    The decision logic is shared with the spectra generator (the
+    same rule -- def2 bundles its own ECP, lanl2dz auto-add for
+    heavy atoms outside def2 -- applies regardless of WHICH script
+    we're emitting; refactored to chemistry.py 2026-05-23 so the
+    two generators can't drift).
     """
-    # Normalize "explicitly disabled" -- treat the empty string and the
-    # case-insensitive "none" sentinel identically (P4).  cmd_pyscf
-    # already does this for CLI input, but Python-API users who pass
-    # ``PySCFConfig(ecp="none")`` would otherwise reach gto.M(ecp="none"),
-    # which raises ``Unable to parse the input ECP data`` at runtime.
-    if isinstance(cfg.ecp, str) and cfg.ecp.strip().lower() in ("", "none"):
-        return None
-    if cfg.ecp is not None:
-        return cfg.ecp     # explicit user choice (str or per-element dict)
-    # Auto-detect.  Skip when basis is in the def2 family (it bundles ECP).
-    # PySCF accepts three equivalent spellings:
-    #   "def2-SVP"   "def2_SVP"   "def2svp"
-    # All three resolve to the same internal table.  Match on the bare
-    # "def2" prefix so the underscore / no-separator forms aren't
-    # mis-classified as non-def2 and an extra ecp= gets emitted on
-    # top of the bundled one (silent double-count).
-    if cfg.basis.lower().startswith("def2"):
-        return None
-    has_heavy = any(_ATOMIC_NUMBER.get(el, 0) > 36 for el in struct.elements)
-    return "lanl2dz" if has_heavy else None
+    from ..chemistry import resolve_pyscf_ecp
+    return resolve_pyscf_ecp(struct, cfg.ecp, cfg.basis)
 
 
 def _resolve_charge(struct: Structure, cfg: PySCFConfig) -> int:

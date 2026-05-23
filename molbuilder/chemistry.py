@@ -195,6 +195,60 @@ def explain_metal_spin(element: str, spin: int) -> Optional[str]:
     return _METAL_SPIN_HINTS.get((element.capitalize(), int(spin)))
 
 
+def resolve_pyscf_ecp(struct: Structure,
+                      ecp,
+                      basis: str):
+    """Decide whether and which PySCF ECP (effective core potential) to
+    pass to ``gto.M()``.  Cross-engine helper -- called from BOTH Build
+    (``pyscf/input.py::_resolve_ecp``) and Spectra (``spectra/pyscf_
+    script.py::_emit_build_mol``) so the rule stays in one place and
+    can't drift between generators.
+
+    Inputs:
+      * ``struct`` -- the Structure whose elements decide whether an
+        ECP is needed (Z > 36 = "heavy" enough that lanl2dz helps).
+      * ``ecp`` -- user choice from the config field.  Three forms:
+          str   -- explicit name ("lanl2dz", "stuttgart", ...), or
+                   "" / "none" / None for "no ECP"
+          dict  -- per-element dict ``{"Pt": "lanl2dz"}``
+          None  -- the AUTO default; we pick "lanl2dz" iff heavy
+                   atoms present AND basis is NOT def2-* (def2
+                   bundles its own ECP).
+      * ``basis`` -- the basis name; we skip the auto-add for the
+        def2 family because PySCF auto-applies the Stuttgart ECP
+        bundled with def2 itself.  Matches all three def2 name
+        spellings (def2-SVP / def2_SVP / def2svp) via the bare
+        "def2" prefix.
+
+    Returns the ECP value to pass to ``gto.M(ecp=...)`` or None to
+    omit the kwarg entirely.
+
+    Why "lanl2dz" as the auto default: workhorse ECP for transition
+    metals on cc-pVDZ-class bases, textbook default since the 1980s,
+    shipped with PySCF (no extra basis-library install).  Stuttgart
+    RSC / SBKJC are alternatives the user picks via cfg.ecp.
+    """
+    # Normalise "explicitly disabled" -- treat "" / "none" /
+    # explicit-None identically.  Python-API users passing
+    # ``ecp="none"`` would otherwise reach gto.M(ecp="none") and PySCF
+    # raises "Unable to parse the input ECP data" at runtime.
+    if isinstance(ecp, str) and ecp.strip().lower() in ("", "none"):
+        return None
+    if ecp is not None:
+        return ecp                # explicit user choice (str or dict)
+    # AUTO branch.  def2-* bundles its own ECP -- emitting "lanl2dz"
+    # on top would double-count.
+    if (basis or "").lower().startswith("def2"):
+        return None
+    try:
+        from ase.data import atomic_numbers as _Z
+    except Exception:
+        return None               # ase missing -> can't check, no auto-add
+    has_heavy = any(_Z.get(el.capitalize(), 0) > 36
+                    for el in struct.elements)
+    return "lanl2dz" if has_heavy else None
+
+
 def detect_open_shell_metals(struct: Structure) -> List[str]:
     """Return the unique open-shell-metal element symbols present in
     ``struct``, in their first-appearance order.

@@ -238,6 +238,28 @@ class SpectraConfig:
                    "def2-SVPD.  For Fe heme: def2-SVP is the production "
                    "minimum; def2-TZVP for publication-quality.",
     })
+    ecp: Optional[str] = field(default=None, metadata={
+        "section":    "Method",
+        "label":      "Pseudopotential (ECP)",
+        "null_label": "(auto)",
+        "help":       "Effective core potential name -- PySCF replaces "
+                      "the core electrons of heavy atoms (typically Z > 36) "
+                      "with an analytic potential, so the SCF only treats "
+                      "the chemically-active valence shells.  PySCF ships "
+                      "the lookup data inside the package; no external "
+                      "files needed (unlike SIESTA's downloaded "
+                      "pseudopotentials).  Recommendations: blank (auto) "
+                      "lets molbuilder pick 'lanl2dz' when Z > 36 atoms "
+                      "are present AND the basis isn't def2-* (def2-* "
+                      "bundles its own Stuttgart ECP, so no separate "
+                      "ECP is needed -- works for Mo/W/Pt out of the "
+                      "box with def2-SVP).  Override with 'lanl2dz' / "
+                      "'stuttgart' / 'sbkjc' for explicit selection; "
+                      "set to 'none' or '' to disable.  Non-def2 basis "
+                      "+ heavy atoms WITHOUT this set silently does "
+                      "all-electron SCF on the heavy atoms -- usually "
+                      "wrong.",
+    })
     dispersion: Optional[str] = field(default="d3bj", metadata={
         "section":    "Method",
         "label":      "Dispersion",

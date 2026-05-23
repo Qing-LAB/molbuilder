@@ -134,12 +134,15 @@ class TestSpectraConfigSchema:
 
         expected = [
             ("System",               2),   # engine, job_name
-            # Method: 5 -> 7 fields after the 2026-05-22 charge/spin
-            # landing (hemeC-dithiol incident -- spectra script was
-            # silently using PySCF defaults charge=0/spin=0 because
-            # the fields didn't exist on SpectraConfig).
-            ("Method",               7),   # method, charge, spin,
-                                           # functional, basis,
+            # Method field count timeline:
+            #   5 (original): method, functional, basis, dispersion, density_fit
+            #   7 (2026-05-22 hemeC fix): + charge + spin (spectra script
+            #     was silently using PySCF defaults charge=0/spin=0).
+            #   8 (2026-05-23 ECP gap close): + ecp (spectra script
+            #     was silently dropping ECP -- bites non-def2 basis on
+            #     heavy atoms like Pt + cc-pVDZ).
+            ("Method",               8),   # method, charge, spin,
+                                           # functional, basis, ecp,
                                            # dispersion, density_fit
             ("Frozen atoms",         3),   # elements, residue_names, indices
             ("Spectrum",             3),   # compute_raman, compute_ir,
