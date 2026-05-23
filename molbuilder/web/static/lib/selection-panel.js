@@ -500,8 +500,19 @@
                 const bottomSpacer = document.createElement("tr");
                 topSpacer.dataset.role    = "vscroll-top";
                 bottomSpacer.dataset.role = "vscroll-bottom";
-                topSpacer.innerHTML    = '<td colspan="6" style="padding:0;border:0"></td>';
-                bottomSpacer.innerHTML = '<td colspan="6" style="padding:0;border:0"></td>';
+                // Build the spacer <td> via createElement instead of
+                // innerHTML so the XSS audit passes (no innerHTML in
+                // selection-panel.js).  Spacer height is set later
+                // via inline style on this td.
+                const _mkSpacerCell = () => {
+                    const td = document.createElement("td");
+                    td.colSpan = 6;
+                    td.style.padding = "0";
+                    td.style.border  = "0";
+                    return td;
+                };
+                topSpacer.appendChild(_mkSpacerCell());
+                bottomSpacer.appendChild(_mkSpacerCell());
                 els.atomList.appendChild(topSpacer);
                 els.atomList.appendChild(bottomSpacer);
 

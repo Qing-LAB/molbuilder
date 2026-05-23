@@ -80,9 +80,14 @@ def pdb_under_root(tmp_path, monkeypatch):
     dest.write_text(pdb_text)
 
     # Repoint Capabilities.file_picker_roots() at tmp_path so the
-    # selection blueprint's allow-list accepts ``dest``.  Same trick
-    # as test_selection_blueprint.py's selection_root fixture.
+    # selection blueprint's allow-list accepts ``dest``.  Snapshot
+    # + restore the module-level singleton too -- monkeypatch handles
+    # the class-attribute patch, but ``set_capabilities`` mutates a
+    # module-level slot that doesn't auto-undo, so a leftover from
+    # one test was failing test_capabilities_returns_only_projects_root
+    # in the rest of the suite (test-isolation regression).
     from molbuilder import diagnostics
+    _orig_caps = diagnostics.get_capabilities()
     caps = diagnostics.Capabilities(
         runtime_config={}, conda_binary=None, conda_envs=frozenset(),
     )
@@ -92,6 +97,10 @@ def pdb_under_root(tmp_path, monkeypatch):
         return ((tmp_path.resolve(), "projects"),)
     monkeypatch.setattr(cls, "file_picker_roots", _only_tmp_roots)
     diagnostics.set_capabilities(caps)
+    # Reset the singleton after the test even though monkeypatch
+    # already undoes the class attribute patch.  The module-level
+    # name is ``_snapshot`` (per molbuilder.diagnostics).
+    monkeypatch.setattr(diagnostics, "_snapshot", _orig_caps)
 
     # Parse via the actual Python API so the test knows the truth
     # without re-parsing the file via the HTTP layer.  This is the

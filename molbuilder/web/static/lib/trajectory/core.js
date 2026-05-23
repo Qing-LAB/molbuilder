@@ -1109,7 +1109,7 @@
         // the compact ``#runtime-summary`` span inside the run-state
         // badge -- one organised line, small font, low-key.  Empty
         // (no runtime_info on the file) -> blank, no visible row.
-        const el = document.getElementById("runtime-summary");
+        const el = $doc("runtime-summary");
         if (!el) return;
         if (!rt || Object.keys(rt).length === 0) {
             el.textContent = "";

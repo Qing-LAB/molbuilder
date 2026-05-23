@@ -1705,7 +1705,11 @@ def test_siesta_form_schema_matches_documented_layout():
         ("Basis & grid",             3),
         ("Exchange-correlation",     2),
         ("SCF",                      7),
-        ("Parallel execution",       2),
+        # Parallel execution: 2 -> 4 fields after the 2026-05-22
+        # runtime-info pass added omp_threads + max_memory_mb (so
+        # SIESTA shares the same threading/memory UI surface that
+        # /spectra + Build PySCF already had).
+        ("Parallel execution",       4),
         ("Spin",                     2),
         ("k-grid (Monkhorst-Pack)",  1),
         ("Relaxation",               4),
@@ -1807,7 +1811,10 @@ def test_pyscf_form_schema_matches_documented_layout():
         ("Optimization",                 6),
         ("Solvent (optional)",           2),
         ("Frequencies / thermochemistry", 3),
-        ("Runtime & output",             6),
+        # Runtime & output: 6 -> 7 fields after the 2026-05-22
+        # runtime-info pass added cfg.use_gpu (so Build's PySCF
+        # generator can emit the GPU probe shared with /spectra).
+        ("Runtime & output",             7),
     ]
     got = [(s["name"], len(s["fields"])) for s in sch["sections"]]
     assert got == expected, got

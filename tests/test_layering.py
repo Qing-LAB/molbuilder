@@ -52,6 +52,9 @@ _L1_MODULES = {
     "config",            # siesta / pyscf / spectra / transport config dataclasses
     "trajectory_log",    # format + emitter (data-shape, no domain logic)
     "selection",         # atom-selection rule dataclasses + evaluator (no domain deps)
+    "runtime_info",      # cross-cutting threading / GPU / runtime-info emitters
+                         # (string emitters + physical_core_count -- L1 because no
+                         # domain deps; siesta + pyscf + spectra + runwrap all use it)
 }
 
 _L2_MODULES = {

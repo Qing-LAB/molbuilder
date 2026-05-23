@@ -67,8 +67,9 @@ class TestPartialIntegrity:
             "viewer",
             "frame-idx", "frame-tot", "frame-slider",
             "prev", "play", "pause", "next",
-            # Run-state badge.
+            # Run-state badge + compact runtime-info one-liner.
             "run-state-badge", "run-state-label", "run-state-detail",
+            "runtime-summary",
             # Style panel.
             "rep", "radius", "colorscheme", "bg", "show-cell",
             # Overlays panel.
