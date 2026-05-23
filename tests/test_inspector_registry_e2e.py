@@ -208,11 +208,16 @@ class TestMountLifecycle:
     the new one."""
 
     def test_mount_returns_handle_with_dispose(self, page, flask_server):
+        """Registry's mount(host, file, ctx) returns a handle with
+        ``dispose()``.  The ctx arg is required (added 2026-05-18 to
+        carry shared state into each inspector adapter); tests use
+        ``createDefaultContext(host)`` for the standard context."""
         _open_results(page, flask_server)
         ok = page.evaluate("""() => {
             const reg = window.molbuilder.inspectors;
             const host = document.createElement("div");
-            const h = reg.mount(host, "/projects/foo/spectrum/run.fdf");
+            const ctx  = reg.createDefaultContext(host);
+            const h = reg.mount(host, "/projects/foo/spectrum/run.fdf", ctx);
             return h && typeof h.dispose === "function";
         }""")
         assert ok
@@ -222,7 +227,8 @@ class TestMountLifecycle:
         out = page.evaluate("""() => {
             const reg = window.molbuilder.inspectors;
             const host = document.createElement("div");
-            return reg.mount(host, "/projects/foo/x.unknown");
+            const ctx  = reg.createDefaultContext(host);
+            return reg.mount(host, "/projects/foo/x.unknown", ctx);
         }""")
         assert out is None
 
@@ -266,8 +272,10 @@ class TestResultsDispatchIntegration:
         # the dispatch directly via the public mount call.
         page.evaluate("""() => {
             const host = document.getElementById("inspector-host");
-            const handle = window.molbuilder.inspectors.mount(
-                host, "/projects/foo/spectrum/run.fdf");
+            const reg  = window.molbuilder.inspectors;
+            const ctx  = reg.createDefaultContext(host);
+            const handle = reg.mount(
+                host, "/projects/foo/spectrum/run.fdf", ctx);
             window._testHandle = handle;
         }""")
         # The source inspector injects a .source-card.
@@ -280,8 +288,9 @@ class TestResultsDispatchIntegration:
         cleared = page.evaluate("""() => {
             const host = document.createElement("div");
             document.body.appendChild(host);
-            const h = window.molbuilder.inspectors.mount(
-                host, "/projects/foo/x.fdf");
+            const reg = window.molbuilder.inspectors;
+            const ctx = reg.createDefaultContext(host);
+            const h   = reg.mount(host, "/projects/foo/x.fdf", ctx);
             const beforeHTML = host.innerHTML.length;
             h.dispose();
             const afterHTML = host.innerHTML.length;
@@ -350,9 +359,12 @@ class TestInspectorListenerTeardown:
                 host.id = "test-host";
                 document.body.appendChild(host);
                 // Mount via the registry so the full adapter chain
-                // runs (partial fetch + core mount).
-                const handle = window.molbuilder.inspectors.mount(
-                    host, "/projects/foo/job.spectra.json");
+                // runs (partial fetch + core mount).  ctx is required
+                // by the registry's mount(host, file, ctx) contract.
+                const reg    = window.molbuilder.inspectors;
+                const ctx    = reg.createDefaultContext(host);
+                const handle = reg.mount(
+                    host, "/projects/foo/job.spectra.json", ctx);
                 // Wait until the core's $() lookups would succeed --
                 // i.e., the partial has been injected and core mount
                 // ran.  Bounded poll (10x100ms) so a stuck mount
