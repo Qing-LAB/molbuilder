@@ -163,14 +163,32 @@ class SiestaConfig:
     # XC
     xc_functional: str = field(default="GGA", metadata={
         "section": "Exchange-correlation",
-        "label": "XC.Functional",
+        "label":   "XC.Functional",
         "choices": ("LDA", "GGA", "VDW"),
-        "help": "XC functional family: LDA / GGA / VDW",
+        "help":    "XC functional family.  GGA (default) is the safe "
+                   "production choice for organic / biomolecule work + "
+                   "metals; LDA over-binds (bond lengths ~2-3% too "
+                   "short, energies ~10 kcal/mol off); VDW adds a "
+                   "non-local dispersion kernel and matters for "
+                   "non-covalent / vdW-stacked systems (DNA bases, "
+                   "MOFs).  IMPORTANT: the pseudopotential MUST match "
+                   "the functional family -- a PBE pseudo on an LDA "
+                   "calculation (or vice versa) silently gives wrong "
+                   "bond lengths.  PseudoDojo ships separate families "
+                   "for PBE / PBEsol / LDA -- pick the matching set.",
     })
     xc_authors: str = field(default="PBE", metadata={
         "section": "Exchange-correlation",
-        "label": "XC.Authors",
-        "help": "XC parameterisation: PBE / revPBE / BLYP / DRSLL ...",
+        "label":   "XC.Authors",
+        "help":    "XC parameterisation within the family.  GGA: PBE "
+                   "(default, all-purpose), PBEsol (better lattice "
+                   "constants for solids), revPBE / RPBE (better "
+                   "thermochemistry, slightly different binding), "
+                   "BLYP (rare but accepted).  VDW: DRSLL (vdW-DF1) / "
+                   "LMKLL (vdW-DF2-C09).  LDA: CA (Ceperley-Alder, "
+                   "default).  This name MUST match what your "
+                   "pseudopotential was generated for -- mismatched "
+                   "XC + pseudo gives silently-wrong bond lengths.",
     })
 
     # SCF
@@ -468,8 +486,38 @@ class SiestaConfig:
     # hand-rolled there; species_order needs comma-string parsing on
     # the CLI side, also hand-rolled.
     psml_lib: Optional[str] = field(default=None, metadata={
-        "help": "path to a flat directory of .psml pseudopotentials",
-        "skip_cli": True,
+        "section":    "System",
+        "label":      "Pseudopotential directory (.psml)",
+        "null_label": "(none)",
+        "help":       "Path to a directory of .psml pseudopotential "
+                      "files (one per element).  SIESTA pseudos are "
+                      "NOT bundled with molbuilder -- you have to "
+                      "download them.  RECOMMENDED SOURCE: "
+                      "PseudoDojo (http://www.pseudo-dojo.org) -- "
+                      "well-tested, peer-reviewed, free.  WHICH SET "
+                      "TO PICK from PseudoDojo:\n"
+                      " * Format = PSML (NOT PSP8 -- that's for "
+                      "ABINIT only; PSML is SIESTA's native format).\n"
+                      " * Functional MUST match cfg.xc_authors -- "
+                      "pick the SAME family (PBE-SR for PBE / GGA, "
+                      "PBEsol-SR for PBEsol, PW for LDA, etc.).\n"
+                      " * Relativistic level: SR (scalar-relativistic) "
+                      "for almost everything.  FR (fully-relativistic, "
+                      "with spin-orbit) only when you actually need "
+                      "spin-orbit coupling (heavy-element spectroscopy, "
+                      "topological insulators).  SR is the safe default.\n"
+                      " * NC vs PAW: PseudoDojo only ships NC (norm-"
+                      "conserving) -- right for SIESTA (PAW is for "
+                      "ABINIT / VASP / Quantum ESPRESSO).\n"
+                      " * Standard vs Stringent: 'standard' is "
+                      "production-quality + smaller mesh cutoff (300-"
+                      "400 Ry); 'stringent' is for benchmarking / "
+                      "publication + needs MeshCutoff >= 500 Ry.\n"
+                      "Download recipe for hemeC-like systems: grab "
+                      "the 'PBE-SR / standard / PSML' set for {C, H, "
+                      "N, O, S, Fe}, unzip into one directory, point "
+                      "this field at it.",
+        "skip_cli":   True,
     })
     copy_psml: bool = field(default=True, metadata={
         "help": "copy psml files into the output directory (alongside the FDF)",

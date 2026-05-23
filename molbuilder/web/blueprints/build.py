@@ -96,6 +96,265 @@ _BUILDERS = {
 }
 
 
+@bp.route("/api/siesta/check-pseudos", methods=["POST"])
+def api_siesta_check_pseudos():
+    """Validate a SIESTA pseudopotential directory against the elements
+    a structure needs.
+
+    Body (JSON)::
+
+      {
+        "psml_lib":        "/path/to/dir/of/psml/files",
+        "structure_path":  "/abs/path/to/<.xyz|.pdb>",   # OR
+        "structure_text":  "<XYZ or PDB text>",
+        "xc_authors":      "PBE"                          # optional
+      }
+
+    Returns::
+
+      {
+        "ok":         True,
+        "entries":  [{"element": "Fe", "status": "ok"|"missing"|"xc_mismatch"
+                                                  |"relativistic_mismatch"
+                                                  |"parse_warning",
+                       "message": "...",
+                       "path":    "/abs/path/to/Fe.psml" | null}, ...],
+        "n_ok":     <int>,
+        "n_missing":<int>,
+        "n_mismatch": <int>
+      }
+
+    Surfaces per-element status so the UI can show a one-row badge
+    per element next to the SIESTA basis section.  All status codes
+    are advisory except ``missing`` which is a hard fail (SIESTA
+    won't start without a pseudo for every element).
+    """
+    body = request.get_json(silent=True) or {}
+    psml_lib = (body.get("psml_lib") or "").strip()
+    if not psml_lib:
+        return jsonify({"ok": False, "error": "psml_lib path is required"}), 400
+    from pathlib import Path as _Path
+    psml_dir = _Path(psml_lib)
+    if not psml_dir.is_dir():
+        return jsonify({"ok": False,
+                        "error": f"psml_lib path is not a directory: {psml_lib}"}), 400
+
+    # Resolve structure.
+    text_in = body.get("structure_text")
+    path_in = body.get("structure_path")
+    if path_in:
+        p = _Path(path_in)
+        if not p.is_file():
+            return jsonify({"ok": False,
+                            "error": f"structure_path not found: {p}"}), 400
+        text_in = p.read_text()
+        ext = p.suffix.lower()
+    else:
+        ext = ".pdb" if (text_in and "ATOM " in text_in[:120]) else ".xyz"
+    if not text_in:
+        return jsonify({"ok": False,
+                        "error": "structure_path or structure_text is required"}), 400
+
+    from molbuilder.structure import Structure
+    try:
+        if ext == ".pdb":
+            struct = Structure.from_pdb(text_in)
+        else:
+            struct = Structure.from_xyz(text_in)
+    except (ValueError, IndexError) as exc:
+        return jsonify({"ok": False,
+                        "error": f"could not parse structure: {exc}"}), 400
+
+    from molbuilder.pseudos import check_coverage
+    expected_xc_authors = (body.get("xc_authors") or "").strip() or None
+    # Derive XC family from authors when given (PBE / PBEsol / BLYP / revPBE -> GGA;
+    # CA / PZ / PW -> LDA; DRSLL / LMKLL -> VDW).
+    GGA = {"pbe", "pbesol", "blyp", "revpbe", "rpbe"}
+    LDA = {"ca", "pz", "pw"}
+    VDW = {"drsll", "lmkll"}
+    expected_xc_family = None
+    if expected_xc_authors:
+        a = expected_xc_authors.lower()
+        if a in GGA:
+            expected_xc_family = "GGA"
+        elif a in LDA:
+            expected_xc_family = "LDA"
+        elif a in VDW:
+            expected_xc_family = "VDW"
+    entries = check_coverage(
+        struct.elements, psml_dir,
+        expected_xc_family=expected_xc_family,
+        expected_xc_authors=expected_xc_authors,
+    )
+    by_status = {}
+    for e in entries:
+        by_status[e.status] = by_status.get(e.status, 0) + 1
+    return jsonify({
+        "ok":         True,
+        "entries":    [{"element": e.element, "status": e.status,
+                         "message": e.message,
+                         "path":   str(e.path) if e.path else None}
+                        for e in entries],
+        "n_ok":       by_status.get("ok", 0),
+        "n_missing":  by_status.get("missing", 0),
+        "n_mismatch": (by_status.get("xc_mismatch", 0)
+                       + by_status.get("relativistic_mismatch", 0)),
+    })
+
+
+@bp.route("/api/structure/analyze", methods=["POST"])
+def api_structure_analyze():
+    """Analyse a structure and return suggested defaults for charge /
+    spin / method, plus detected open-shell metals.
+
+    Body (JSON)::
+
+      {
+        "structure_path":  "/abs/path/to/<.xyz|.pdb>",   # OR
+        "structure_text":  "<XYZ or PDB text>"
+      }
+
+    Returns::
+
+      {
+        "ok":           True,
+        "n_atoms":      <int>,
+        "elements":     ["C", "Fe", ...]   # unique, sorted
+        "metals":       ["Fe"]              # open-shell only; empty for organics
+        "metal_hints":  [{"element": "Fe",
+                          "common_oxidation_states": [...],
+                          "common_spins": [{"spin": 0, "label": "Fe(II) low-spin (CO/CN)"},
+                                           {"spin": 2, "label": "Fe(II) intermediate"},
+                                           {"spin": 4, "label": "Fe(II) high-spin"}, ...]}],
+        "suggested": {
+          "pyscf":  {"charge": 0, "spin": 2, "method": "UKS",
+                     "rationale": "..."},
+          "siesta": {"net_charge": 0, "spin_polarized": True,
+                     "spin_total": 2.0,
+                     "rationale": "..."}
+        },
+        "warnings":  ["...", ...]   # always-applicable advisories
+      }
+
+    The UI uses this for an "Auto-detect" button that pre-fills the
+    form with sensible (not necessarily correct -- always echoes the
+    rationale so the user sanity-checks).
+    """
+    body = request.get_json(silent=True) or {}
+    text_in = body.get("structure_text")
+    path_in = body.get("structure_path")
+    from pathlib import Path as _Path
+    if path_in:
+        p = _Path(path_in)
+        if not p.is_file():
+            return jsonify({"ok": False,
+                            "error": f"structure_path not found: {p}"}), 400
+        text_in = p.read_text()
+        ext = p.suffix.lower()
+    else:
+        ext = ".pdb" if (text_in and "ATOM " in text_in[:120]) else ".xyz"
+    if not text_in:
+        return jsonify({"ok": False,
+                        "error": "structure_path or structure_text is required"}), 400
+
+    from molbuilder.structure import Structure
+    try:
+        if ext == ".pdb":
+            struct = Structure.from_pdb(text_in)
+        else:
+            struct = Structure.from_xyz(text_in)
+    except (ValueError, IndexError) as exc:
+        return jsonify({"ok": False,
+                        "error": f"could not parse structure: {exc}"}), 400
+
+    from molbuilder.chemistry import (detect_open_shell_metals,
+                                       explain_metal_spin,
+                                       total_electrons)
+    metals = detect_open_shell_metals(struct)
+
+    # Build per-metal hints: enumerate the common spin values from
+    # explain_metal_spin's mapping (we walk 0..6 and collect those
+    # that have a hint registered).
+    metal_hints = []
+    for m in metals:
+        candidates = []
+        for s in range(0, 7):
+            hint = explain_metal_spin(m, s)
+            if hint:
+                candidates.append({"spin": s, "label": hint})
+        metal_hints.append({"element": m, "common_spins": candidates})
+
+    # Suggested defaults.  Strategy:
+    #   * Organic / no open-shell metal -> charge=0, spin=0, RKS.
+    #   * Open-shell metal present -> pick the FIRST metal's most
+    #     common spin state (intermediate for Fe, doublet for Cu, etc.)
+    #     as the suggested default.  User can override.
+    n_e = total_electrons(struct, 0)
+    warnings: list = []
+    if metals:
+        # Pick a reasonable spin per metal: Fe -> 2 (intermediate, FeTPP-style);
+        # Mn -> 5 (Mn(II) HS); Co -> 1 (Co(II) LS as a safe pick);
+        # Cu -> 1 (Cu(II)); Ni -> 0 (Ni(II) square-planar LS); Cr -> 3
+        # (Cr(III)).  Conservative -- the user MUST verify against
+        # experimental data; the rationale text says so.
+        DEFAULT_SPIN = {"Fe": 2, "Mn": 5, "Co": 1, "Ni": 0, "Cu": 1, "Cr": 3,
+                        "V": 3, "Ti": 2, "Sc": 1}
+        sug_spin = DEFAULT_SPIN.get(metals[0], 2)
+        # Parity fix: if (n_e - charge) parity doesn't match sug_spin, bump.
+        if (n_e % 2) != (sug_spin % 2):
+            sug_spin = sug_spin + 1 if sug_spin == 0 else sug_spin - 1
+            warnings.append(
+                f"Adjusted suggested spin from default to {sug_spin} "
+                f"to match electron-count parity (sum(Z)={n_e}, charge=0)."
+            )
+        sug_method = "UKS"
+        rationale_py = (
+            f"Detected open-shell metal {', '.join(metals)}.  "
+            f"Suggesting spin={sug_spin} ({explain_metal_spin(metals[0], sug_spin) or '?'}) "
+            f"with method=UKS.  Verify against your experimental data "
+            f"(Mössbauer / UV-Vis / EPR) -- the right spin depends on "
+            f"axial coordination, not just element identity."
+        )
+        rationale_si = rationale_py
+        siesta_spin_total = float(sug_spin)
+        siesta_polarized = True
+    else:
+        sug_spin = 0 if (n_e % 2 == 0) else 1
+        sug_method = "RKS" if sug_spin == 0 else "UKS"
+        rationale_py = (
+            f"No open-shell metals detected; suggesting closed-shell "
+            f"{'singlet' if sug_spin == 0 else 'doublet'} "
+            f"(spin={sug_spin}, {sug_method})."
+        )
+        rationale_si = rationale_py
+        siesta_spin_total = float(sug_spin)
+        siesta_polarized = (sug_spin > 0)
+
+    return jsonify({
+        "ok":           True,
+        "n_atoms":      struct.n_atoms,
+        "elements":     sorted(set(e.capitalize() for e in struct.elements)),
+        "metals":       metals,
+        "metal_hints":  metal_hints,
+        "n_electrons_neutral": n_e,
+        "suggested":    {
+            "pyscf":  {
+                "charge":   0,
+                "spin":     sug_spin,
+                "method":   sug_method,
+                "rationale": rationale_py,
+            },
+            "siesta": {
+                "net_charge":     0,
+                "spin_polarized": siesta_polarized,
+                "spin_total":     siesta_spin_total,
+                "rationale":      rationale_si,
+            },
+        },
+        "warnings":     warnings,
+    })
+
+
 @bp.route("/api/build/molecule", methods=["POST"])
 def api_build_molecule():
     body = request.get_json(silent=True) or {}

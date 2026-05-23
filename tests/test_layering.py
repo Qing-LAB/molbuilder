@@ -55,6 +55,8 @@ _L1_MODULES = {
     "runtime_info",      # cross-cutting threading / GPU / runtime-info emitters
                          # (string emitters + physical_core_count -- L1 because no
                          # domain deps; siesta + pyscf + spectra + runwrap all use it)
+    "pseudos",           # PSML pseudopotential header parser + coverage check
+                         # (pure XML parsing + dataclass; no domain deps)
 }
 
 _L2_MODULES = {

@@ -1701,7 +1701,11 @@ def test_siesta_form_schema_matches_documented_layout():
     assert sch["id_prefix"] == "p"
 
     expected = [
-        ("System",                   1),
+        # System: 1 -> 2 fields after the 2026-05-23 PseudoDojo
+        # help-text pass added section="System" to ``psml_lib`` so
+        # the pseudopotential directory is a visible form field
+        # (was a hidden CLI-only knob).
+        ("System",                   2),
         ("Basis & grid",             3),
         ("Exchange-correlation",     2),
         ("SCF",                      7),
