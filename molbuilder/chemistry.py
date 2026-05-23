@@ -116,16 +116,30 @@ def check_spin_charge_parity(struct: Structure, charge: int, spin: int
     """Return a human-readable error string when the (charge, spin)
     pair is impossible for ``struct``, else None.
 
-    Rule: PySCF's ``spin`` is the number of UNPAIRED electrons
-    (= 2S = n_alpha - n_beta).  The parity of (n_electrons) must
-    match the parity of (spin) -- a closed-shell singlet (spin=0)
-    requires an even electron count; spin=1 (doublet) requires odd.
-    This is THE standard pre-SCF sanity check; PySCF itself raises
-    ``RuntimeError("Mol.nelectron N is odd, but spin = 0")`` on
-    mismatched input, but catching it at preflight gives the user
-    a clearer message + a chance to fix the config before the
-    script runs for minutes.
+    Rule: PySCF's / SIESTA's spin counts UNPAIRED electrons (= 2S =
+    n_alpha - n_beta), so its parity must match the total electron
+    count's parity (Σ Z - charge).  Closed-shell singlet (spin=0)
+    requires an even electron count; doublet (spin=1) requires odd.
+    PySCF raises ``RuntimeError("Mol.nelectron N is odd, but spin =
+    0")`` at runtime on a mismatch; catching it at preflight gives
+    a clearer message before the user spends minutes on a doomed
+    SCF.
+
+    Engine-independent: callers from BOTH _validate_pyscf and
+    _validate_siesta share this helper (electron count doesn't
+    care which code runs the SCF).
     """
+    # Reject non-integer / negative spin up front.  The existing
+    # _validate_pyscf has a separate "spin < 0" check; we add the
+    # type check here so the parity-vs-spin arithmetic never silently
+    # operates on a float (which would give a useless suggested fix
+    # like "change spin to 2.5 / 0.5").
+    if not isinstance(spin, int) or isinstance(spin, bool):
+        return (f"spin={spin!r} must be a non-negative int "
+                f"(2S = number of unpaired electrons)")
+    if spin < 0:
+        return (f"spin={spin} is negative; spin counts unpaired "
+                f"electrons (2S), must be 0 or positive")
     n_elec = total_electrons(struct, charge)
     if (n_elec % 2) != (spin % 2):
         return (

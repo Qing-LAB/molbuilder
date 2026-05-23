@@ -197,3 +197,72 @@ class TestStructureFrozenAtoms:
         )
         assert s.regions["L-electrode"] == [0, 1]
         assert s.frozen_atoms == [0, 1]
+
+
+# --------------------------------------------------------------------- #
+#  PDB altLoc deduplication (2026-05-22 hemeC-dithiol fix)             #
+# --------------------------------------------------------------------- #
+
+
+class TestPdbAltLocDedup:
+    """Without this dedup, a PDB with altLoc records (alternate atom
+    conformations from crystallographic refinement) loaded EVERY
+    alternate as a separate atom -- producing near-coincident atom
+    pairs (~0.5 Å apart for typical X-ray altLocs) that make any DFT
+    forces explode via 1/r² Coulomb at sub-Å separations.
+
+    The hemeC-dithiol 1c75.pdb fix: 1184 atoms -> 1146 (38 alternates
+    removed) + min NN distance 0.06 Å -> 0.82 Å (normal X-ray O-H
+    position).  Tests below pin the dedup contract on synthetic
+    minimal inputs.
+    """
+
+    def test_altloc_A_then_B_keeps_A(self):
+        """Standard order in well-formed PDB files: altLoc A first
+        (highest occupancy = preferred), then B, C, ...  We keep
+        the first conformation encountered."""
+        text = (
+            "ATOM      1  CA AGLU A   1       0.000   0.000   0.000  1.00  0.00           C\n"
+            "ATOM      2  CA BGLU A   1       0.500   0.500   0.500  1.00  0.00           C\n"
+            "END\n"
+        )
+        s = Structure.from_pdb(text)
+        assert s.n_atoms == 1
+        np.testing.assert_array_almost_equal(s.positions[0], [0.0, 0.0, 0.0])
+
+    def test_blank_altloc_keeps_blank_skips_alternate(self):
+        """A blank altLoc followed by alternates: the blank wins
+        (the canonical single-conformation record)."""
+        text = (
+            "ATOM      1  CA  GLU A   1       0.000   0.000   0.000  1.00  0.00           C\n"
+            "ATOM      2  CA BGLU A   1       0.500   0.500   0.500  1.00  0.00           C\n"
+            "END\n"
+        )
+        s = Structure.from_pdb(text)
+        assert s.n_atoms == 1
+        np.testing.assert_array_almost_equal(s.positions[0], [0.0, 0.0, 0.0])
+
+    def test_different_residues_with_altloc_dont_collide(self):
+        """Dedup key is (chain, residue_id, atom_name).  Two atoms
+        with altLoc A but different residue numbers must BOTH load
+        (they're not the same crystallographic atom)."""
+        text = (
+            "ATOM      1  CA AGLU A   1       0.000   0.000   0.000  1.00  0.00           C\n"
+            "ATOM      2  CA AGLU A   2       2.000   0.000   0.000  1.00  0.00           C\n"
+            "END\n"
+        )
+        s = Structure.from_pdb(text)
+        assert s.n_atoms == 2
+
+    def test_clean_pdb_unaffected(self):
+        """A PDB with no altLoc indicators (all blanks) loads
+        every atom -- the dedup must not falsely drop normal
+        records."""
+        text = (
+            "ATOM      1  N   ALA A   1       0.000   0.000   0.000  1.00  0.00           N\n"
+            "ATOM      2  CA  ALA A   1       1.450   0.000   0.000  1.00  0.00           C\n"
+            "ATOM      3  C   ALA A   1       2.100   1.300   0.000  1.00  0.00           C\n"
+            "END\n"
+        )
+        s = Structure.from_pdb(text)
+        assert s.n_atoms == 3

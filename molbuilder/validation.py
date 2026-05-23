@@ -560,6 +560,27 @@ def _validate_siesta(struct: Structure, cfg,
         engine_label="SIESTA (spin_polarized = False)",
     )
 
+    # Electron-count parity (cross-engine).  SIESTA's "spin" is
+    # expressed as spin_total (μ_B), which when spin_polarized=False
+    # is implicitly 0.  We need an integer 2S to call the shared
+    # parity helper, so derive: round(spin_total) -> 2S.  Skip when
+    # net_charge is unset (auto-detect path handles it inside
+    # render_fdf via resolve_net_charge).
+    from .chemistry import check_spin_charge_parity
+    if getattr(cfg, "net_charge", None) is not None:
+        spin_total = getattr(cfg, "spin_total", None) or 0.0
+        spin_2s = int(round(spin_total))
+        if not cfg.spin_polarized and spin_2s != 0:
+            # User asked for non-zero spin without spin_polarized;
+            # already handled by the warning above + the existing
+            # spin_total-without-polarized warning.  Skip parity
+            # (SIESTA will accept it but won't use it).
+            pass
+        else:
+            err = check_spin_charge_parity(struct, cfg.net_charge, spin_2s)
+            if err:
+                issues.append(Issue("error", err, "config.spin_total"))
+
     # Spin.Total set without spin polarised: SIESTA silently ignores it.
     if cfg.spin_total is not None and not cfg.spin_polarized:
         issues.append(Issue(

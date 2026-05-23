@@ -212,3 +212,140 @@ def test_drop_overlapping_hydrogens_no_overlap_returns_struct_unchanged():
     out = _drop_overlapping_hydrogens(s)
     # Same object (the function returns `struct` early when keep.all()).
     assert out is s
+
+
+# --------------------------------------------------------------------- #
+#  Spin/charge parity + open-shell metal detection                      #
+#  (2026-05-22 hemeC-dithiol incident -- both helpers added to surface  #
+#  the silent-default failures.  Tests pin the contracts shared by      #
+#  _validate_pyscf, _validate_siesta, and the spectra preflight.)       #
+# --------------------------------------------------------------------- #
+
+
+class TestTotalElectrons:
+    def test_water_neutral(self):
+        from molbuilder.chemistry import total_electrons
+        s = Structure(elements=["O", "H", "H"],
+                      positions=np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]]))
+        assert total_electrons(s, charge=0) == 10        # 8 + 1 + 1
+
+    def test_charge_subtracts(self):
+        from molbuilder.chemistry import total_electrons
+        s = Structure(elements=["O", "H", "H"],
+                      positions=np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]]))
+        assert total_electrons(s, charge=1)  == 9        # OH+ cation
+        assert total_electrons(s, charge=-2) == 12       # O²⁻ anion
+
+    def test_unknown_element_raises_keyerror(self):
+        from molbuilder.chemistry import total_electrons
+        s = Structure(elements=["O", "Xy"],     # Xy not a real element
+                      positions=np.array([[0, 0, 0], [1, 0, 0]]))
+        with pytest.raises(KeyError, match="unknown element symbol"):
+            total_electrons(s, charge=0)
+
+
+class TestCheckSpinChargeParity:
+    def _h2o(self):
+        return Structure(elements=["O", "H", "H"],
+                         positions=np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]]))
+
+    def test_water_neutral_singlet_is_consistent(self):
+        from molbuilder.chemistry import check_spin_charge_parity
+        # 10 electrons, spin=0 -> parity matches.
+        assert check_spin_charge_parity(self._h2o(), 0, 0) is None
+
+    def test_water_neutral_doublet_is_inconsistent(self):
+        """10 electrons + spin=1 (one unpaired) is parity-impossible."""
+        from molbuilder.chemistry import check_spin_charge_parity
+        msg = check_spin_charge_parity(self._h2o(), 0, 1)
+        assert msg is not None
+        assert "parity" in msg.lower()
+        assert "even" in msg.lower()
+
+    def test_water_cation_doublet_is_consistent(self):
+        """OH₂⁺ = 9 electrons, spin=1 (radical) -> parity matches."""
+        from molbuilder.chemistry import check_spin_charge_parity
+        assert check_spin_charge_parity(self._h2o(), 1, 1) is None
+
+    def test_negative_spin_rejected(self):
+        from molbuilder.chemistry import check_spin_charge_parity
+        msg = check_spin_charge_parity(self._h2o(), 0, -2)
+        assert msg is not None
+        assert "negative" in msg.lower()
+
+    def test_non_integer_spin_rejected(self):
+        """Reject float spin BEFORE the parity arithmetic so we don't
+        emit a useless 'change spin to 2.5 / 0.5' suggestion (regression
+        from code-review round 2026-05-23)."""
+        from molbuilder.chemistry import check_spin_charge_parity
+        msg = check_spin_charge_parity(self._h2o(), 0, 1.5)
+        assert msg is not None
+        assert "non-negative int" in msg
+
+    def test_bool_spin_rejected(self):
+        """bool is technically a subclass of int in Python but is
+        meaningless for 2S; reject it explicitly."""
+        from molbuilder.chemistry import check_spin_charge_parity
+        msg = check_spin_charge_parity(self._h2o(), 0, True)
+        assert msg is not None
+        assert "non-negative int" in msg
+
+
+class TestDetectOpenShellMetals:
+    def test_d10_metals_excluded(self):
+        """Zn / Cd / Hg are d¹⁰ closed-shell; the workflow's closed-
+        shell SCF works for them and we MUST NOT false-positive the
+        open-shell warning."""
+        from molbuilder.chemistry import detect_open_shell_metals
+        for el in ("Zn", "Cd", "Hg"):
+            s = Structure(elements=[el, "Cl", "Cl"],
+                          positions=np.array([[0, 0, 0], [2, 0, 0], [-2, 0, 0]]))
+            assert detect_open_shell_metals(s) == []
+
+    def test_main_group_metals_excluded(self):
+        from molbuilder.chemistry import detect_open_shell_metals
+        for el in ("Na", "Mg", "Ca", "Al"):
+            s = Structure(elements=[el], positions=np.array([[0, 0, 0]]))
+            assert detect_open_shell_metals(s) == []
+
+    def test_first_row_transition_metals_detected(self):
+        from molbuilder.chemistry import detect_open_shell_metals
+        for el in ("Fe", "Mn", "Co", "Ni", "Cu", "Cr", "V", "Ti", "Sc"):
+            s = Structure(elements=[el], positions=np.array([[0, 0, 0]]))
+            assert detect_open_shell_metals(s) == [el]
+
+    def test_pdb_uppercase_normalised(self):
+        """PDB writes element symbols uppercased (FE not Fe).
+        detect_open_shell_metals must capitalize-match so a PDB-
+        loaded Structure isn't silently missed."""
+        from molbuilder.chemistry import detect_open_shell_metals
+        s = Structure(elements=["FE", "N", "N"],
+                      positions=np.array([[0, 0, 0], [2, 0, 0], [-2, 0, 0]]))
+        assert detect_open_shell_metals(s) == ["Fe"]
+
+
+class TestExplainMetalSpin:
+    def test_fe_high_spin_quintet(self):
+        from molbuilder.chemistry import explain_metal_spin
+        msg = explain_metal_spin("Fe", 4)
+        assert msg is not None
+        assert "Fe(II)" in msg
+        assert "high-spin" in msg
+
+    def test_fe_high_spin_ferric(self):
+        from molbuilder.chemistry import explain_metal_spin
+        msg = explain_metal_spin("Fe", 5)
+        assert msg is not None
+        assert "Fe(III)" in msg
+        assert "5/2" in msg
+
+    def test_unknown_combo_returns_none(self):
+        """No entry for (Fe, 99) -- silent None rather than a
+        misleading made-up hint."""
+        from molbuilder.chemistry import explain_metal_spin
+        assert explain_metal_spin("Fe", 99) is None
+
+    def test_pdb_uppercase_normalised(self):
+        """Same normalisation contract as detect_open_shell_metals."""
+        from molbuilder.chemistry import explain_metal_spin
+        assert explain_metal_spin("FE", 4) is not None

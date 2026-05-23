@@ -117,6 +117,39 @@ class TestPySCFScriptHeader:
         assert "python my_job.spectra.py" in script
 
 
+class TestPySCFScriptChargeAndSpin:
+    """The 2026-05-22 hemeC-dithiol incident root cause: SpectraConfig
+    didn't have charge / spin fields, so the script's gto.M() call
+    silently used PySCF defaults (0, 0) regardless of what the user
+    wanted.  Pin that the new fields are honoured in the emission so
+    a future refactor can't reintroduce the silent default."""
+
+    def test_default_emits_neutral_singlet(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        text = render_spectra_script(_struct_water(), SpectraConfig())
+        assert "charge     = 0," in text
+        assert "spin       = 0," in text
+
+    def test_charge_propagates_to_gto_m(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        text = render_spectra_script(_struct_water(),
+                                     SpectraConfig(charge=-1, spin=1, method="UKS"))
+        assert "charge     = -1," in text
+        assert "spin       = 1," in text
+
+    def test_spin_propagates_for_fe_high_spin(self):
+        """Realistic case: Fe(II) high-spin needs spin=4 + UKS.  Pin
+        the typed-int emission so the user's hemeC-style config
+        propagates faithfully."""
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        text = render_spectra_script(_struct_water(),
+                                     SpectraConfig(spin=4, method="UKS"))
+        # Comment-tagged so a future field reordering can't make this
+        # match the wrong literal.
+        assert "spin       = 4," in text
+        assert "# 2S = # unpaired electrons" in text
+
+
 class TestPySCFScriptConstants:
     """The constants block is the bridge between the Python config
     surface and the inlined runtime values.  Pin invariants the
