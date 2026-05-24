@@ -845,38 +845,48 @@
         return (s || "molecule").replace(/[^A-Za-z0-9._-]+/g, "_");
     }
 
-    // Shared helper: after Generate succeeds, write the rendered text
-    // to <current_dir>/<filename> via the projects Inquire API's
-    // saveToWorkspace().  Strict no-overwrite by default; status
-    // updates land in the caller's existing status element.
-    async function maybeWriteToWorkspace(text, filename, statusId) {
-        const proj = (window.molbuilder || {}).projects;
-        if (!proj) return null;
-        // ``overwrite: true``: Generate-and-save is a "regenerate
-        // the workspace from the form" gesture -- the user
-        // expects the new .fdf to clobber the old one.  Without
-        // this flag, a second click on Generate would 409 against
-        // /api/files/write.
-        const r = await proj.saveToWorkspace(text, filename,
-                                              { overwrite: true });
-        if (!r) return null;     // no current_dir / at root -- silent fallback
-        if (r.ok) {
-            setStatus(statusId, "Wrote " + r.relPath, "ok");
-            // Return shape callers can use to know WHERE the file
-            // landed -- e.g. the .fdf save path's pseudo-install
-            // step needs the parent directory.
-            const dir = (r.path || "").replace(/\/[^/]*$/, "");
-            return { ok: true, path: r.path, dir, relPath: r.relPath };
-        } else {
-            setStatus(statusId,
-                "Generated, but " + r.error
-                + " Use Download below as fallback.",
-                "warn");
-            return { ok: false, error: r.error };
-        }
-    }
+    // Save-to-current-dir bookkeeping (Round 1 of the 2026-05-24
+    // Generate/Save split).  Generate is now PURELY render-for-preview;
+    // a separate "Save to current dir" button commits the rendered
+    // artifact + the .run.sh wrapper + pseudo copies.  We cache the
+    // most-recent-render's filename + the params used so the Save
+    // handler can post them without re-rendering.  Cleared on Generate
+    // failure (so a stale fdf doesn't pretend to be savable).
+    state.lastFdfSave  = null;     // { filename, params, systemLabel }
+    state.lastPyscfSave = null;    // { filename, params, jobName }
 
-    // ----- 3. Generate FDF -------------------------------------------
+    /**
+     * Enable / disable the Save buttons based on:
+     *   (a) state.fdf / state.pyscf has been Generate-d, AND
+     *   (b) the Projects sidebar has a non-root subdir selected.
+     * Subscribed to projects.onChange below so a sidebar pick toggles
+     * the buttons live.
+     */
+    function refreshSaveButtonAvailability() {
+        const proj = (window.molbuilder || {}).projects;
+        const dir = proj ? (proj.getCurrentDir() || "") : "";
+        // atProjectsRoot-equivalent: the sidebar's root or empty -> no
+        // valid "current dir" for save.  We use string-empty as the
+        // proxy because projects.atProjectsRoot isn't exposed; in
+        // practice the sidebar sets dir = "" when at the root.
+        const hasDir = !!dir;
+        const sfdf = $("save-fdf");
+        if (sfdf) sfdf.disabled = !(state.fdf  && hasDir);
+        const spy = $("save-pyscf");
+        if (spy)  spy.disabled  = !(state.pyscf && hasDir);
+    }
+    // Live re-evaluate the buttons when the sidebar selection changes.
+    (function () {
+        const proj = (window.molbuilder || {}).projects;
+        if (proj && typeof proj.onChange === "function") {
+            proj.onChange(refreshSaveButtonAvailability);
+        }
+    }());
+
+    // ----- 3. Generate FDF (render-only preview) ---------------------
+    // Pure render: validate + render + populate the preview pane +
+    // enable Download/Save.  Does NOT touch disk.  The user clicks
+    // "Save to current dir" once they're happy with the preview.
     $("generate-fdf").addEventListener("click", async () => {
         if (!state.xyz) {
             setStatus("fdf-status", "Build a structure first.", "error");
@@ -884,161 +894,200 @@
         }
         setStatus("fdf-status", "Rendering FDF…");
         const params = collectFdfParams();
+        // Send the sidebar dir as a dest hint so the server's
+        // validator can resolve dest-relative ``cfg.psml_lib`` paths
+        // (the form holds dest-relative strings after a prior Save).
+        // Optional: validator falls back to projects/-relative when
+        // omitted; the file-existence check downgrades to WARN in
+        // that case so render proceeds.
+        const _proj = (window.molbuilder || {}).projects;
+        const _destDir = (_proj && _proj.getCurrentDir()) || "";
         try {
             const r = await fetch("/api/build/fdf", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ xyz: state.xyz, params }),
+                body: JSON.stringify({
+                    xyz:      state.xyz,
+                    params,
+                    dest_dir: _destDir || null,
+                }),
             }).then(x => x.json());
             if (!r.ok) {
                 setStatus("fdf-status", r.error || "FDF render failed.", "error");
+                state.fdf = null;
+                state.lastFdfSave = null;
+                refreshSaveButtonAvailability();
                 return;
             }
             state.fdf = r.fdf;
             $("fdf-output").textContent = r.fdf;
             $("fdf-output").hidden = false;
             $("dl-fdf").disabled = false;
-            const fdfMsg = `OK — ${r.fdf.split("\n").length} lines, label "${r.system_label}".`;
-            // Status line stays terse ("OK -- ... lines").  The
-            // structured issues panel below the action row carries
-            // the per-issue detail; setStatus's `warn` colour fades
-            // in only when there's at least one warning to draw the
-            // eye downward to the panel.
-            const issues = r.issues || [];
-            renderIssues("fdf-issues", issues);
-            setStatus("fdf-status", fdfMsg,
-                      issues.some(i => i.severity === "warn") ? "warn" : "ok");
-            // Also write to the Projects sidebar's current_dir if set.
-            // Filename uses the SystemLabel as the basename, matching
-            // SIESTA's filename convention + what the Download button
-            // would write.
-            // Filename basename MUST match cfg.system_label + stage
-            // suffix (when staged).  SIESTA writes its output files
-            // (<label>.XV / .DM / .out / .molwatch.log) using the
-            // SystemLabel from inside the .fdf -- but the RUN COMMAND
-            // in the FDF header references "<label>-stage<N>.fdf".
-            // Saving the file WITHOUT the stage suffix:
-            //   * makes the FDF header's "mpirun -np 4 siesta <
-            //     <label>-stage<N>.fdf" point at a non-existent file,
-            //   * stage-2 generation OVERWRITES stage-1's file
-            //     (they'd both be saved as "<label>.fdf").
-            // The Download button DOES add the stage suffix; auto-
-            // save now matches.  Sanitise the same way SIESTA does
-            // (alnum + . _ -).
+            // Cache what Save needs: filename basename (label + stage
+            // suffix), the params dict (mpi/omp/psml_lib live here),
+            // and the system_label for downstream display.
             const fdfLabel = (r.system_label || "siesta").replace(
                 /[^A-Za-z0-9._-]+/g, "_");
             const _stage = stageNumberFromPreset();
             const _stageSuffix = _stage ? `-stage${_stage}` : "";
-            const fdfFilename  = fdfLabel + _stageSuffix + ".fdf";
-            const written = await maybeWriteToWorkspace(
-                r.fdf, fdfFilename, "fdf-status");
-            // SIESTA discovers .psml files in the SAME directory as
-            // the .fdf -- no search path in SIESTA's .fdf grammar.
-            // If the form supplied cfg.psml_lib AND the .fdf was
-            // written to the workspace, copy the matching .psml files
-            // next to it.  Without this hop SIESTA fails at startup:
-            //   pseudo_read: ERROR: Pseudopotential file not found
-            // Form params keys are the SiestaConfig field names
-            // (underscored), NOT the kebab-case ``id_suffix`` form.
-            // Reading the wrong key silently gave undefined ->
-            // wrapper emitted single-process even when the user
-            // wanted MPI.  Caught in the 2026-05-23 review pass.
-            const psmlLib = (params || {}).psml_lib;
-            const destDir = written && written.dir;
-            if (psmlLib && destDir) {
-                try {
-                    const ip = await fetch("/api/siesta/install-pseudos", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            psml_lib:        psmlLib,
-                            dest_dir:        destDir,
-                            structure_text:  state.xyz,
-                        }),
-                    }).then(x => x.json());
-                    if (ip.ok) {
-                        const nNew = (ip.copied || []).length;
-                        const nOver = (ip.overwritten || []).length;
-                        const nSkip = (ip.skipped || []).length;
-                        const missing = ip.missing || [];
-                        const parts = [];
-                        if (nNew)  parts.push(`copied ${nNew} new`);
-                        if (nOver) parts.push(`overwrote ${nOver}`);
-                        if (nSkip) parts.push(`${nSkip} already present`);
-                        let msg = ".psml: " + (parts.join(", ") || "no-op")
-                                + ` → ${destDir}`;
-                        if (missing.length) {
-                            msg += ` · MISSING: ${missing.join(", ")} `
-                                 + `— SIESTA will refuse to start`;
-                        }
-                        setStatus(
-                            "fdf-status", msg,
-                            missing.length ? "error"
-                            : nOver         ? "warn"
-                            :                  "ok"
-                        );
-                    } else {
-                        setStatus("fdf-status",
-                            "pseudo install failed: " + (ip.error || "?"),
-                            "warn");
-                    }
-                } catch (e) {
-                    setStatus("fdf-status",
-                        "pseudo install network error: " + e.message,
-                        "warn");
-                }
-            }
-            // Drop a <basename>.run.sh next to the .fdf so the user
-            // can ``bash <basename>.run.sh`` instead of remembering
-            // ``mpirun -np N siesta < ... > ...`` + the OMP/BLAS env
-            // exports.  Best-effort -- non-fatal on failure (user can
-            // still run the .fdf manually).  MPI rank count / OMP /
-            // memory come from the form's Parallel-execution section.
-            if (written && written.ok) {
-                // SiestaConfig field names are underscored; the JS
-                // collector preserves them as-is.  Reading hyphen
-                // keys (id_suffix form) here silently gave undefined
-                // -> wrapper emitted single-process by default.
-                //
-                // Number(...) handles ""/null/undefined correctly
-                // (yields 0) WHERE parseInt("") returns NaN -- the
-                // latter combined with || 0 happened to work, but
-                // a stray non-numeric value (e.g. " 4 ") would have
-                // turned into NaN -> 0.  Number() is safer + matches
-                // what the form collector usually delivers.
-                const _n = (k) => {
-                    const v = (params || {})[k];
-                    const n = Number(v);
-                    return Number.isFinite(n) && n > 0 ? n : null;
-                };
-                const mpiN = _n("mpi_np");
-                const omp  = _n("omp_threads");
-                const mem  = _n("max_memory_mb");
-                try {
-                    const wr = await fetch("/api/run/install-wrapper", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            script_path:   written.path,
-                            mpi_np:        mpiN,
-                            omp_threads:   omp,
-                            max_memory_mb: mem,
-                        }),
-                    }).then(x => x.json());
-                    if (wr.ok) {
-                        const cur = ($("fdf-status").textContent || "");
-                        const verb = wr.overwritten ? "overwrote"
-                                                     : "wrote";
-                        setStatus("fdf-status",
-                            cur + ` · ${verb} ${wr.wrapper_name} `
-                                + `(bash to run)`,
-                            wr.overwritten ? "warn" : "ok");
-                    }
-                } catch (_) { /* non-fatal; user can run the .fdf manually */ }
-            }
+            state.lastFdfSave = {
+                filename:    fdfLabel + _stageSuffix + ".fdf",
+                params:      params,
+                systemLabel: r.system_label,
+            };
+            refreshSaveButtonAvailability();
+            const fdfMsg = `OK — ${r.fdf.split("\n").length} lines, label "${r.system_label}".`;
+            const issues = r.issues || [];
+            renderIssues("fdf-issues", issues);
+            setStatus("fdf-status", fdfMsg,
+                      issues.some(i => i.severity === "warn") ? "warn" : "ok");
         } catch (e) {
             setStatus("fdf-status", "Network error: " + e.message, "error");
+            state.fdf = null;
+            state.lastFdfSave = null;
+            refreshSaveButtonAvailability();
         }
+    });
+
+    // ----- 3b. Save FDF + .run.sh + .psml files to current dir ------
+    // Commit step.  Requires (a) state.fdf populated by a prior
+    // Generate, (b) Projects sidebar pointing at a non-root subdir.
+    // Writes the .fdf, copies the matching .psml files (if psml_lib
+    // is set), drops the .run.sh wrapper, then rewrites the
+    // ``psml_lib`` form field to a path RELATIVE TO dest_dir.  The
+    // rewrite is the portability-+-privacy fix: avoids storing the
+    // absolute /home/<user>/... path in form state / future sidecars,
+    // and survives copying the whole project tree elsewhere.
+    $("save-fdf").addEventListener("click", async () => {
+        const meta = state.lastFdfSave;
+        const proj = (window.molbuilder || {}).projects;
+        if (!state.fdf || !meta) {
+            setStatus("fdf-status", "Click Generate first.", "error");
+            return;
+        }
+        if (!proj) {
+            setStatus("fdf-status", "Projects sidebar not loaded.", "error");
+            return;
+        }
+        const destDir = proj.getCurrentDir() || "";
+        if (!destDir) {
+            setStatus("fdf-status",
+                "Pick a project subdir in the sidebar first.",
+                "error");
+            return;
+        }
+        setStatus("fdf-status", "Saving to " + destDir + " …");
+        const { filename, params } = meta;
+        // Step 1: write the .fdf.
+        let written;
+        try {
+            const w = await proj.saveToWorkspace(
+                state.fdf, filename, { overwrite: true });
+            if (!w || !w.ok) {
+                setStatus("fdf-status",
+                    "Save failed: " + (w && w.error || "no current_dir"),
+                    "error");
+                return;
+            }
+            const dir = (w.path || "").replace(/\/[^/]*$/, "");
+            written = { path: w.path, dir, relPath: w.relPath };
+        } catch (e) {
+            setStatus("fdf-status",
+                "Save network error: " + e.message, "error");
+            return;
+        }
+        // Step 2: copy .psml files into dest dir.
+        const psmlLib = (params || {}).psml_lib;
+        let installedOk = true;
+        let psmlMsg = "";
+        if (psmlLib) {
+            try {
+                const ip = await fetch("/api/siesta/install-pseudos", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        psml_lib:        psmlLib,
+                        dest_dir:        written.dir,
+                        structure_text:  state.xyz,
+                    }),
+                }).then(x => x.json());
+                if (ip.ok) {
+                    const nNew  = (ip.copied || []).length;
+                    const nOver = (ip.overwritten || []).length;
+                    const nSkip = (ip.skipped || []).length;
+                    const missing = ip.missing || [];
+                    const parts = [];
+                    if (nNew)  parts.push(`copied ${nNew} new`);
+                    if (nOver) parts.push(`overwrote ${nOver}`);
+                    if (nSkip) parts.push(`${nSkip} already present`);
+                    psmlMsg = ".psml: " + (parts.join(", ") || "no-op");
+                    if (missing.length) {
+                        psmlMsg += " · MISSING: " + missing.join(", ")
+                                + " — SIESTA will refuse to start";
+                        installedOk = false;
+                    }
+                } else {
+                    psmlMsg = "pseudo install failed: " + (ip.error || "?");
+                    installedOk = false;
+                }
+            } catch (e) {
+                psmlMsg = "pseudo install network error: " + e.message;
+                installedOk = false;
+            }
+        }
+        // Step 3: drop the .run.sh next to the .fdf.
+        const _n = (k) => {
+            const v = (params || {})[k];
+            const n = Number(v);
+            return Number.isFinite(n) && n > 0 ? n : null;
+        };
+        let wrapperMsg = "";
+        try {
+            const wr = await fetch("/api/run/install-wrapper", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    script_path:   written.path,
+                    mpi_np:        _n("mpi_np"),
+                    omp_threads:   _n("omp_threads"),
+                    max_memory_mb: _n("max_memory_mb"),
+                }),
+            }).then(x => x.json());
+            if (wr.ok) {
+                const verb = wr.overwritten ? "overwrote" : "wrote";
+                wrapperMsg = `${verb} ${wr.wrapper_name}`;
+            }
+        } catch (_) { /* non-fatal; user can run the .fdf manually */ }
+
+        // Step 4: rewrite the psml_lib form field to relative-to-dest
+        // (the portability fix).  Only when the field currently holds
+        // an absolute path AND we actually copied pseudos -- otherwise
+        // we'd silently corrupt a form the user is still editing.
+        if (psmlLib && installedOk && psmlLib.charAt(0) === "/") {
+            const pathLib = ((window.molbuilder || {}).path) || {};
+            const rel = (typeof pathLib.relativeFromDir === "function")
+                ? pathLib.relativeFromDir(psmlLib, written.dir)
+                : psmlLib;
+            // Field's DOM id comes from id_prefix "p" + id from the
+            // schema ("p-psml-lib").  Find it + update.  We don't go
+            // through form-schema.collectForm/dispatch -- a direct
+            // DOM write is fine because the field is a plain text input.
+            const input = $("p-psml-lib");
+            if (input && rel !== psmlLib) {
+                input.value = rel;
+                // Fire input + change so any listeners (live preflight
+                // / dirty-flag tracking) see the new value.
+                input.dispatchEvent(new Event("input",  { bubbles: true }));
+                input.dispatchEvent(new Event("change", { bubbles: true }));
+            }
+        }
+
+        // Compose final status: write target + psml + wrapper line.
+        const segs = ["Wrote " + written.relPath];
+        if (psmlMsg)    segs.push(psmlMsg);
+        if (wrapperMsg) segs.push(wrapperMsg);
+        setStatus("fdf-status", segs.join(" · "),
+            !installedOk ? "error" : "ok");
     });
 
     $("dl-fdf").addEventListener("click", () => {
@@ -1089,7 +1138,7 @@
         return params;
     }
 
-    // ----- 4. Generate PySCF script -----------------------------------
+    // ----- 4. Generate PySCF script (render-only preview) -----------
     $("generate-pyscf").addEventListener("click", async () => {
         if (!state.xyz) {
             setStatus("pyscf-status", "Build a structure first.", "error");
@@ -1106,56 +1155,95 @@
             if (!r.ok) {
                 setStatus("pyscf-status",
                     r.error || "PySCF render failed.", "error");
+                state.pyscf = null;
+                state.lastPyscfSave = null;
+                refreshSaveButtonAvailability();
                 return;
             }
             state.pyscf = r.script;
             $("pyscf-output").textContent = r.script;
             $("pyscf-output").hidden = false;
             $("dl-pyscf").disabled = false;
+            const jobName = (r.job_name || "pyscf").replace(
+                /[^A-Za-z0-9._-]+/g, "_");
+            state.lastPyscfSave = {
+                filename: jobName + ".py",
+                params:   params,
+                jobName:  r.job_name,
+            };
+            refreshSaveButtonAvailability();
             const pyMsg = `OK — ${r.script.split("\n").length} lines, job "${r.job_name}".`;
             const issues = r.issues || [];
             renderIssues("pyscf-issues", issues);
             setStatus("pyscf-status", pyMsg,
                       issues.some(i => i.severity === "warn") ? "warn" : "ok");
-            // Also write to the Projects sidebar's current_dir if set.
-            // Filename derives from job_name + ".py" (matches the
-            // Download button's filename).
-            const jobName = (r.job_name || "pyscf").replace(
-                /[^A-Za-z0-9._-]+/g, "_");
-            const written = await maybeWriteToWorkspace(
-                r.script, jobName + ".py", "pyscf-status");
-            // Drop a <basename>.run.sh next to the .py too -- same
-            // courtesy as the SIESTA Build flow.  PySCF doesn't need
-            // pseudos (bundled) or mpi_np (single-process Python);
-            // wrapper just activates the env + sets BLAS=1 + runs
-            // ``python <basename>.py``.  No-op if maybeWriteToWorkspace
-            // returned null (no workspace).
-            if (written && written.ok) {
-                try {
-                    const wr = await fetch("/api/run/install-wrapper", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            script_path:   written.path,
-                            mpi_np:        null,    // PySCF: no mpirun
-                            omp_threads:   null,    // in-script auto-detect
-                            max_memory_mb: null,    // in-script max_memory cfg
-                        }),
-                    }).then(x => x.json());
-                    if (wr.ok) {
-                        const cur = ($("pyscf-status").textContent || "");
-                        const verb = wr.overwritten ? "overwrote"
-                                                     : "wrote";
-                        setStatus("pyscf-status",
-                            cur + ` · ${verb} ${wr.wrapper_name} `
-                                + `(bash to run)`,
-                            wr.overwritten ? "warn" : "ok");
-                    }
-                } catch (_) { /* non-fatal */ }
-            }
         } catch (e) {
             setStatus("pyscf-status", "Network error: " + e.message, "error");
+            state.pyscf = null;
+            state.lastPyscfSave = null;
+            refreshSaveButtonAvailability();
         }
+    });
+
+    // ----- 4b. Save PySCF .py + .run.sh to current dir --------------
+    $("save-pyscf").addEventListener("click", async () => {
+        const meta = state.lastPyscfSave;
+        const proj = (window.molbuilder || {}).projects;
+        if (!state.pyscf || !meta) {
+            setStatus("pyscf-status", "Click Generate first.", "error");
+            return;
+        }
+        if (!proj) {
+            setStatus("pyscf-status", "Projects sidebar not loaded.", "error");
+            return;
+        }
+        const destDir = proj.getCurrentDir() || "";
+        if (!destDir) {
+            setStatus("pyscf-status",
+                "Pick a project subdir in the sidebar first.",
+                "error");
+            return;
+        }
+        setStatus("pyscf-status", "Saving to " + destDir + " …");
+        let written;
+        try {
+            const w = await proj.saveToWorkspace(
+                state.pyscf, meta.filename, { overwrite: true });
+            if (!w || !w.ok) {
+                setStatus("pyscf-status",
+                    "Save failed: " + (w && w.error || "no current_dir"),
+                    "error");
+                return;
+            }
+            const dir = (w.path || "").replace(/\/[^/]*$/, "");
+            written = { path: w.path, dir, relPath: w.relPath };
+        } catch (e) {
+            setStatus("pyscf-status",
+                "Save network error: " + e.message, "error");
+            return;
+        }
+        // PySCF wrapper: no mpi_np / no omp / no memory cap (the
+        // in-script runtime block handles those).
+        let wrapperMsg = "";
+        try {
+            const wr = await fetch("/api/run/install-wrapper", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    script_path:   written.path,
+                    mpi_np:        null,
+                    omp_threads:   null,
+                    max_memory_mb: null,
+                }),
+            }).then(x => x.json());
+            if (wr.ok) {
+                const verb = wr.overwritten ? "overwrote" : "wrote";
+                wrapperMsg = `${verb} ${wr.wrapper_name}`;
+            }
+        } catch (_) { /* non-fatal */ }
+        const segs = ["Wrote " + written.relPath];
+        if (wrapperMsg) segs.push(wrapperMsg);
+        setStatus("pyscf-status", segs.join(" · "), "ok");
     });
 
     $("dl-pyscf").addEventListener("click", () => {

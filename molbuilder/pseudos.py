@@ -37,36 +37,56 @@ from typing import Dict, List, Optional, Iterable
 import xml.etree.ElementTree as ET
 
 
-def resolve_psml_lib(raw: str, *, base: Optional[Path] = None) -> Path:
+def resolve_psml_lib(raw: str, *,
+                      base: Optional[Path] = None,
+                      dest_dir: Optional[Path] = None) -> Path:
     """Resolve ``cfg.psml_lib`` to an absolute Path with a sensible anchor.
 
     Anchoring rule (the question "relative to what?"):
       * Absolute path or ``~/...`` -> use as-is (just ``.expanduser()``).
-      * Relative path -> anchored at ``projects/`` (molbuilder's single
-        root of truth + the picker's allow-list root).  So
-        ``"pseudopotential"`` resolves to ``projects/pseudopotential/``
-        and ``"shared/pseudo_pbe"`` to ``projects/shared/pseudo_pbe/``.
+      * Relative path -> two-stage resolution:
+          1. If ``dest_dir`` is given, try ``dest_dir / raw`` FIRST.
+             This is the form persisted by the "Save to current dir"
+             button (e.g. ``../../../pseudopotential`` walking back
+             from a project's run dir to projects/pseudopotential/).
+             Portability + privacy: survives copying the whole tree.
+          2. Otherwise (or if step 1 isn't a directory) fall back to
+             ``projects/`` anchoring, so a bare ``pseudopotential``
+             still resolves to ``projects/pseudopotential/``.
 
     Earlier behaviour was ``Path(raw)`` which lets pathlib resolve
     against ``Path.cwd()`` -- the Flask server's working directory
     (typically the repo root).  That mismatch surprised users who
     typed paths assuming a different anchor (e.g. ``../../../pseudo``
-    expecting it to walk back from the .fdf destination).  Anchoring
-    at ``projects/`` matches the picker's contract + the documented
-    convention ``projects/pseudopotential/``.
+    expecting it to walk back from the .fdf destination).  The
+    two-stage rule above handles both intentions: relative-to-dest
+    (what users type or what Save persists) AND relative-to-projects/
+    (the documented convention).
 
     Args:
       raw: the user-provided string (cfg.psml_lib).
       base: override for ``projects_root()`` -- mostly for tests.
+      dest_dir: the .fdf destination directory (or any directory the
+        relative path should be tried against first).  Provided at
+        ``/api/siesta/install-pseudos`` time; left None at validate
+        time (which then falls back to projects/-relative).
 
     Returns:
       An absolute, NOT-resolved Path (callers do ``.is_dir()`` checks
       and want the path to remain symlink-faithful for error
-      messages).
+      messages).  Returns the first candidate that exists as a
+      directory; if neither does, returns the projects/-anchored form
+      so the error message points at the canonical location.
     """
     p = Path(raw).expanduser()
     if p.is_absolute():
         return p
+    # Stage 1: try dest_dir-relative when given.
+    if dest_dir is not None:
+        candidate = (Path(dest_dir) / p)
+        if candidate.is_dir():
+            return candidate
+    # Stage 2: fall back to projects/-relative.
     if base is not None:
         return (base / p)
     # Lazy import: pseudos.py is a low-level lib module and projects.py

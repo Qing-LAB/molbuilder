@@ -298,15 +298,23 @@ def api_siesta_install_pseudos():
     if not psml_lib_raw or not dest_dir_raw:
         return jsonify({"ok": False,
                         "error": "both psml_lib and dest_dir are required"}), 400
-    # Anchor relative psml_lib at ``projects/`` (single root of truth)
-    # before the picker-root check.  Matches the validator (see
-    # molbuilder/pseudos.py::resolve_psml_lib) so the user gets the
-    # same anchoring everywhere they type a relative path.
+    # Resolve dest_dir first so we can use it as the relative-path
+    # anchor for psml_lib (the form persists dest-relative paths
+    # after a successful Save -- see viewer.js#save-fdf handler).
+    try:
+        dest_dir = _resolve_path_within_roots(dest_dir_raw, require="dir")
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+    # Two-stage resolution (see pseudos.resolve_psml_lib): first try
+    # dest-relative (the portable form the Save handler persists),
+    # then projects/-relative (the documented convention).  Lets a
+    # single form value work across both Generate-only previews AND
+    # a previously-saved project that holds the dest-relative form.
     from molbuilder.pseudos import resolve_psml_lib
-    psml_lib_resolved = str(resolve_psml_lib(psml_lib_raw))
+    psml_lib_resolved = str(resolve_psml_lib(psml_lib_raw,
+                                              dest_dir=dest_dir))
     try:
         psml_dir = _resolve_path_within_roots(psml_lib_resolved, require="dir")
-        dest_dir = _resolve_path_within_roots(dest_dir_raw, require="dir")
     except _PickerError as exc:
         return jsonify({"ok": False, "error": exc.message}), exc.status
 
@@ -845,11 +853,27 @@ def api_build_fdf():
         return jsonify({"ok": False,
                         "error": f"bad parameters: {exc}"}), 400
 
+    # Optional dest_dir hint: the JS sends the Projects sidebar's
+    # current dir so the validator can resolve dest-relative
+    # ``cfg.psml_lib`` paths correctly (the portable form the Save
+    # handler persists).  Validates against the picker-root allowlist
+    # before trusting it -- otherwise a hostile client could pass a
+    # path outside projects/ to influence resolution.
+    dest_dir = None
+    dest_dir_raw = (body.get("dest_dir") or "").strip()
+    if dest_dir_raw:
+        try:
+            dest_dir = _resolve_path_within_roots(dest_dir_raw, require="dir")
+        except Exception:
+            # Bad / outside-root hint: ignore silently.  The validator
+            # falls back to projects/-relative resolution.
+            dest_dir = None
+
     # Validate before render so the web layer gets a structured copy
     # of the issues.  render_fdf will validate again and write warnings
     # to stderr / raise on errors -- we keep that for CLI/library
     # callers; here we want the issues as JSON for the UI.
-    issues = validate(struct, cfg)
+    issues = validate(struct, cfg, dest_dir=dest_dir)
     try:
         fdf = render_fdf(struct, cfg)
     except ValidationError as exc:

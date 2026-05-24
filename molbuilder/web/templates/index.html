@@ -311,6 +311,9 @@
       <div class="fdf-actions">
         <button id="generate-fdf" disabled>Generate .fdf</button>
         <button class="dl-btn" id="dl-fdf" disabled>Download .fdf</button>
+        <button id="save-fdf" disabled
+                title="Save .fdf + .run.sh + copy .psml files into the Projects sidebar's selected directory.  Disabled until you Generate AND have a project subdir selected."
+                >Save to current dir</button>
         <span id="fdf-status" class="status"></span>
       </div>
       <!-- Validation issues panel (live preflight + post-Generate).
@@ -346,6 +349,9 @@
       <div class="fdf-actions">
         <button id="generate-pyscf" disabled>Generate .py</button>
         <button class="dl-btn" id="dl-pyscf" disabled>Download .py</button>
+        <button id="save-pyscf" disabled
+                title="Save .py + .run.sh into the Projects sidebar's selected directory.  Disabled until you Generate AND have a project subdir selected."
+                >Save to current dir</button>
         <span id="pyscf-status" class="status"></span>
       </div>
       <ul id="pyscf-issues" class="issues-panel" hidden
@@ -366,6 +372,7 @@
 <script src="{{ url_for('static', filename='lib/mol-format.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-viewer.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/path-utils.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='viewer.js') }}"></script>
 </body>

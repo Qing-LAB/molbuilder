@@ -68,7 +68,8 @@ def _register_engine_validator(cfg_cls: Type):
 
 
 def validate(struct: Structure, cfg, *,
-             cell: Optional[np.ndarray] = None) -> List[Issue]:
+             cell: Optional[np.ndarray] = None,
+             dest_dir: "Optional[object]" = None) -> List[Issue]:
     """Run every applicable validation check and return the findings.
 
     Parameters
@@ -83,6 +84,14 @@ def validate(struct: Structure, cfg, *,
         to use.  If None, cell-dependent checks are skipped.  The
         SIESTA generator computes the cell anyway, so it should pass
         the same matrix here.
+    dest_dir
+        Optional destination directory hint -- the path the user is
+        about to save the rendered .fdf into.  Used by the SIESTA
+        validator to resolve dest-relative ``cfg.psml_lib`` paths
+        (the portable form the web Save handler persists).  When
+        None, dest-relative paths fall back to projects/-anchored
+        resolution; the file-existence check may then misfire and is
+        downgraded to a WARN.
 
     The returned list is in deterministic order: generic geometry
     checks first, generic config-field checks next, then engine-
@@ -98,7 +107,14 @@ def validate(struct: Structure, cfg, *,
     # own.
     for cfg_cls, fn in _ENGINE_VALIDATORS.items():
         if isinstance(cfg, cfg_cls):
-            issues += fn(struct, cfg, cell)
+            # Engine validators may accept dest_dir via **kwargs; the
+            # PySCF validator ignores it.  Try the keyword call first
+            # so old validators that only take (struct, cfg, cell)
+            # still work.
+            try:
+                issues += fn(struct, cfg, cell, dest_dir=dest_dir)
+            except TypeError:
+                issues += fn(struct, cfg, cell)
             break
     return issues
 
@@ -506,7 +522,8 @@ def _check_metal_basis_adequacy(struct: Structure, *,
     return []
 
 
-def _check_siesta_pseudo_coverage(struct: Structure, cfg) -> List[Issue]:
+def _check_siesta_pseudo_coverage(struct: Structure, cfg,
+                                    *, dest_dir=None) -> List[Issue]:
     """Run molbuilder.pseudos.check_coverage on cfg.psml_lib so the
     SIESTA Build->Generate preflight catches:
       * missing .psml files (SIESTA's ``pseudo_read: ERROR: Pseudopotential
@@ -541,29 +558,40 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg) -> List[Issue]:
             "config.psml_lib",
         )]
     from .pseudos import resolve_psml_lib
-    from .projects import projects_root
-    psml_dir = resolve_psml_lib(psml_lib)
+    psml_dir = resolve_psml_lib(psml_lib, dest_dir=dest_dir)
     if not psml_dir.is_dir():
-        # Relative paths are anchored at ``projects/`` (see
+        # Relative paths try dest-relative first (if we have dest_dir),
+        # then fall back to projects/-relative (see
         # pseudos.resolve_psml_lib).  When the user gives a relative
-        # path that misses, tell them WHERE we looked so the fix is
-        # obvious.
+        # path that misses both anchors, tell them what we tried.
         from pathlib import Path as _P
         is_relative = not _P(psml_lib).expanduser().is_absolute()
         if is_relative:
             hint = (
-                f"  Note: relative paths are anchored at "
-                f"``projects/`` (resolved to {psml_dir}).  Either "
-                f"create that directory, use an absolute path, or "
-                f"pick the directory via the file-picker next to "
-                f"the field.  Convention: a single "
-                f"``projects/pseudopotential/`` shared across all "
-                f"projects."
+                f"  Note: relative paths are resolved against the "
+                f".fdf destination dir first (the portable form the "
+                f"Save handler persists), then against ``projects/`` "
+                f"(the documented convention).  Tried: {psml_dir}.  "
+                f"Either create that directory, use an absolute path, "
+                f"or pick the directory via the file-picker."
             )
         else:
             hint = ""
+        # Severity rule:
+        #   * ABSOLUTE path that doesn't exist -> always ERROR.  No
+        #     amount of context can rescue an absolute path.
+        #   * RELATIVE path + NO dest_dir context -> WARN.  The form
+        #     might hold a dest-relative path (post-Save form rewrite);
+        #     Save-time install-pseudos re-checks with dest_dir.
+        #   * RELATIVE path + dest_dir given (Save preflight) -> ERROR.
+        #     We tried both anchors; if neither hits the file is really
+        #     missing and Save will fail downstream.
+        if not is_relative:
+            severity = "error"
+        else:
+            severity = "error" if dest_dir is not None else "warn"
         return [Issue(
-            "error",
+            severity,
             f"cfg.psml_lib path does not exist or is not a directory: "
             f"{psml_lib}.  SIESTA will not find any pseudopotentials."
             + hint,
@@ -630,13 +658,18 @@ def _check_open_shell_metal(struct: Structure, *,
 
 
 def _validate_siesta(struct: Structure, cfg,
-                     cell: Optional[np.ndarray]) -> List[Issue]:
+                     cell: Optional[np.ndarray],
+                     *, dest_dir=None) -> List[Issue]:
     """SIESTA-specific checks.
 
     Registered with the engine-validator dispatch at module bottom
     (the decorator is applied after the SiestaConfig type is
     importable -- avoids the import cycle between validation.py and
     siesta/input.py at definition time).
+
+    ``dest_dir`` (keyword-only) is passed through to the pseudo-
+    coverage check so dest-relative ``cfg.psml_lib`` paths resolve
+    correctly post-Save (see pseudos.resolve_psml_lib).
     """
     issues: List[Issue] = []
 
@@ -651,7 +684,7 @@ def _validate_siesta(struct: Structure, cfg,
     # files become ERROR Issues (SIESTA hard-fails without them);
     # XC mismatches become WARN (silent wrong bond lengths
     # otherwise).
-    issues += _check_siesta_pseudo_coverage(struct, cfg)
+    issues += _check_siesta_pseudo_coverage(struct, cfg, dest_dir=dest_dir)
 
     # Open-shell metal + closed-shell SCF: shared rule with PySCF.
     issues += _check_open_shell_metal(
