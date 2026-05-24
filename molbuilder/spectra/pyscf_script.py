@@ -170,7 +170,7 @@ def render_spectra_script(struct: Structure, cfg: SpectraConfig) -> str:
     lines += _emit_build_mol(struct, cfg)
     lines += _emit_frozen_mask()
     lines += _emit_initial_state()
-    lines += _emit_equilibrium_scf(cfg)
+    lines += _emit_equilibrium_scf(cfg, struct)
     lines += _emit_gpu_coverage_probe(cfg)
     lines += _emit_hessian_block(cfg)
     # Shared helpers for L3 and L4: both phases run SCFs at displaced
@@ -685,7 +685,7 @@ def _emit_initial_state() -> List[str]:
 # --------------------------------------------------------------------- #
 
 
-def _emit_equilibrium_scf(cfg: SpectraConfig) -> List[str]:
+def _emit_equilibrium_scf(cfg: SpectraConfig, struct: Structure) -> List[str]:
     """Run the SCF at the input geometry; populate the
     equilibrium sub-dict of state and write the first JSON
     checkpoint."""
@@ -715,6 +715,19 @@ def _emit_equilibrium_scf(cfg: SpectraConfig) -> List[str]:
     out.append("    mf = mf.density_fit()")
     out.append("mf.conv_tol  = SCF_CONV_TOL")
     out.append("mf.max_cycle = SCF_MAX_CYCLE")
+    # Hard-SCF hint when an open-shell metal is present.  Commented
+    # template -- discoverable without being prescriptive; the user
+    # uncomments + tunes if the equilibrium SCF won't converge.
+    from ..chemistry import detect_open_shell_metals
+    _metals = detect_open_shell_metals(struct)
+    if _metals:
+        out.append("# Hard SCF (typical for open-shell metals like "
+                   f"{', '.join(_metals)}):")
+        out.append("# Uncomment to apply a virtual-orbital level shift "
+                   "(Eh).  Typical 0.1-0.3;")
+        out.append("# helps when the HOMO-LUMO gap is small / open-shell "
+                   "mixing causes oscillation.")
+        out.append("# mf.level_shift = 0.2")
     out.append("E_eq = mf.kernel()")
     out.append("if not mf.converged:")
     out.append("    raise SystemExit(")

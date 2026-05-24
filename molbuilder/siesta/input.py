@@ -556,6 +556,39 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             out.append("Spin.Fix          .true.")
             out.append(f"Spin.Total        {cfg.spin_total}")
 
+        # Spin-state-sweep template when an open-shell metal is in
+        # the structure.  The "right" spin state for a transition
+        # metal complex isn't computable from element identity alone
+        # (depends on coordination chemistry + axial ligand field);
+        # the practical resolution is to run with each plausible
+        # spin and pick the lowest-energy convergence.
+        from ..chemistry import detect_open_shell_metals
+        _metals = detect_open_shell_metals(struct)
+        if v and _metals:
+            out += [
+                "",
+                f"# --- Spin-state sweep template ({', '.join(_metals)}) ---",
+                "# The right spin state for an open-shell metal complex",
+                "# depends on the axial ligand field, not just element",
+                "# identity.  Standard practice: run with each plausible",
+                "# Spin.Total, pick the lowest-energy convergence.",
+                "#",
+                "# Fe(II) candidates (Z=26, d6):",
+                "#   Spin.Total 0.0   low-spin   (CO / CN heme, strong-field)",
+                "#   Spin.Total 2.0   intermediate (4-coord Fe-porphyrin, FeTPP)",
+                "#   Spin.Total 4.0   high-spin  (deoxy-heme, bis-thiolate)",
+                "# Fe(III) candidates (d5):",
+                "#   Spin.Total 1.0   low-spin   (bis-imidazole)",
+                "#   Spin.Total 3.0   intermediate (cyt P450)",
+                "#   Spin.Total 5.0   high-spin  (met-myoglobin)",
+                "#",
+                "# Workflow: rename SystemLabel per run (so .XV / .DM don't",
+                "# stomp), run each, compare the converged E_KS values.",
+                "# Verify the winning state against Mossbauer / EPR / UV-Vis",
+                "# data; calc-energy minimum and experimental ground state",
+                "# don't always agree for borderline cases (spin crossover).",
+            ]
+
     # ---- NetCharge -----------------------------------------------
     # Either user-specified (cfg.net_charge != None) or auto-detected
     # from phosphate protonation state.  SIESTA defaults to neutral and

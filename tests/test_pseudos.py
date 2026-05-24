@@ -374,3 +374,83 @@ class TestEndpointPathSecurity:
         assert r.status_code == 400
         msg = r.get_json()["error"].lower()
         assert "outside" in msg or "root" in msg or "allowed" in msg
+
+
+# --------------------------------------------------------------------- #
+#  Open-shell-metal-conditional script templates                       #
+#  (level_shift / spin-sweep added 2026-05-23 — discoverable hints in  #
+#   the emitted script ONLY when an Fe / Mn / Co / Cu / Ni / etc. is   #
+#   present.  Clean-organic scripts must NOT have them — noise.)       #
+# --------------------------------------------------------------------- #
+
+
+class TestMetalAwareScriptTemplates:
+    def _fe(self):
+        from molbuilder.structure import Structure
+        import numpy as np
+        return Structure(elements=["Fe", "N", "N", "N", "N"],
+                         positions=np.array([[0, 0, 0], [2, 0, 0], [-2, 0, 0],
+                                              [0, 2, 0], [0, -2, 0]]))
+
+    def _water(self):
+        from molbuilder.structure import Structure
+        import numpy as np
+        return Structure(elements=["O", "H", "H"],
+                         positions=np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]]))
+
+    def test_siesta_fe_emits_spin_sweep_template(self):
+        from molbuilder.siesta import render_fdf
+        from molbuilder.config.siesta import SiestaConfig
+        fdf = render_fdf(self._fe(), SiestaConfig(
+            net_charge=0, spin_polarized=True, spin_total=2.0,
+        ))
+        assert "Spin-state sweep template" in fdf
+        assert "Fe(II) candidates" in fdf
+        assert "Fe(III) candidates" in fdf
+        # Mossbauer / EPR / UV-Vis caveat -- user must verify.
+        assert "Mossbauer" in fdf or "ssbauer" in fdf
+
+    def test_siesta_organic_skips_spin_sweep_template(self):
+        from molbuilder.siesta import render_fdf
+        from molbuilder.config.siesta import SiestaConfig
+        fdf = render_fdf(self._water(), SiestaConfig(
+            net_charge=0, spin_polarized=True, spin_total=0.0,
+        ))
+        assert "Spin-state sweep template" not in fdf
+
+    def test_build_pyscf_fe_emits_level_shift_template(self):
+        from molbuilder.pyscf.input import render_script
+        from molbuilder.config.pyscf import PySCFConfig
+        text = render_script(self._fe(), PySCFConfig(
+            method="UKS", spin=2, optimize=False, preopt=False,
+        ))
+        assert "Hard SCF (typical for open-shell metals like Fe)" in text
+        assert "# mf.level_shift = 0.2" in text   # commented template
+        # Compile-check: commented template must not break syntax.
+        compile(text, "<fe-build>", "exec")
+
+    def test_build_pyscf_organic_skips_level_shift_template(self):
+        from molbuilder.pyscf.input import render_script
+        from molbuilder.config.pyscf import PySCFConfig
+        text = render_script(self._water(), PySCFConfig(
+            method="RKS", spin=0, optimize=False, preopt=False,
+        ))
+        assert "Hard SCF (typical for open-shell metals" not in text
+
+    def test_spectra_pyscf_fe_emits_level_shift_template(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        from molbuilder.config.spectra import SpectraConfig
+        text = render_spectra_script(self._fe(), SpectraConfig(
+            method="UKS", spin=2,
+        ))
+        assert "Hard SCF (typical for open-shell metals like Fe)" in text
+        assert "# mf.level_shift = 0.2" in text
+        compile(text, "<fe-spectra>", "exec")
+
+    def test_spectra_pyscf_organic_skips_level_shift_template(self):
+        from molbuilder.spectra.pyscf_script import render_spectra_script
+        from molbuilder.config.spectra import SpectraConfig
+        text = render_spectra_script(self._water(), SpectraConfig(
+            method="RKS", spin=0,
+        ))
+        assert "Hard SCF (typical for open-shell metals" not in text

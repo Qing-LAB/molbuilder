@@ -446,6 +446,22 @@ def render_script(struct: Structure,
     out.append(f'mf.init_guess = "{cfg.scf_init_guess}"')
     if cfg.level_shift:
         out.append(f"mf.level_shift = {cfg.level_shift}")
+    else:
+        # Show a commented level_shift template ONLY when an open-
+        # shell metal is in the structure -- the most common reason
+        # an SCF won't converge for Fe / Mn / Co / Ni / Cu systems.
+        # For clean-organics the line would be noise.  Discoverable
+        # without being prescriptive.
+        from ..chemistry import detect_open_shell_metals
+        _metals = detect_open_shell_metals(struct)
+        if _metals:
+            out.append("# Hard SCF (typical for open-shell metals like "
+                       f"{', '.join(_metals)}):")
+            out.append("# Uncomment to apply a virtual-orbital level "
+                       "shift (Eh).  Typical 0.1-0.3 for hard cases;")
+            out.append("# helps SCF converge when the HOMO-LUMO gap is "
+                       "small / unphysical mixing occurs.")
+            out.append("# mf.level_shift = 0.2")
     # Hard-SCF troubleshooting knobs (gap #10).  Only emit when
     # bumped from PySCF defaults so tutorial scripts stay clean
     # for the easy-converge path.
