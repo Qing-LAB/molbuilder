@@ -37,6 +37,45 @@ from typing import Dict, List, Optional, Iterable
 import xml.etree.ElementTree as ET
 
 
+def resolve_psml_lib(raw: str, *, base: Optional[Path] = None) -> Path:
+    """Resolve ``cfg.psml_lib`` to an absolute Path with a sensible anchor.
+
+    Anchoring rule (the question "relative to what?"):
+      * Absolute path or ``~/...`` -> use as-is (just ``.expanduser()``).
+      * Relative path -> anchored at ``projects/`` (molbuilder's single
+        root of truth + the picker's allow-list root).  So
+        ``"pseudopotential"`` resolves to ``projects/pseudopotential/``
+        and ``"shared/pseudo_pbe"`` to ``projects/shared/pseudo_pbe/``.
+
+    Earlier behaviour was ``Path(raw)`` which lets pathlib resolve
+    against ``Path.cwd()`` -- the Flask server's working directory
+    (typically the repo root).  That mismatch surprised users who
+    typed paths assuming a different anchor (e.g. ``../../../pseudo``
+    expecting it to walk back from the .fdf destination).  Anchoring
+    at ``projects/`` matches the picker's contract + the documented
+    convention ``projects/pseudopotential/``.
+
+    Args:
+      raw: the user-provided string (cfg.psml_lib).
+      base: override for ``projects_root()`` -- mostly for tests.
+
+    Returns:
+      An absolute, NOT-resolved Path (callers do ``.is_dir()`` checks
+      and want the path to remain symlink-faithful for error
+      messages).
+    """
+    p = Path(raw).expanduser()
+    if p.is_absolute():
+        return p
+    if base is not None:
+        return (base / p)
+    # Lazy import: pseudos.py is a low-level lib module and projects.py
+    # imports nothing here, so a top-level import would be fine, but
+    # this keeps the dependency graph trivially obvious.
+    from .projects import projects_root
+    return projects_root() / p
+
+
 @dataclass(frozen=True)
 class PsmlInfo:
     """Canonical metadata extracted from a .psml file's header."""

@@ -298,8 +298,14 @@ def api_siesta_install_pseudos():
     if not psml_lib_raw or not dest_dir_raw:
         return jsonify({"ok": False,
                         "error": "both psml_lib and dest_dir are required"}), 400
+    # Anchor relative psml_lib at ``projects/`` (single root of truth)
+    # before the picker-root check.  Matches the validator (see
+    # molbuilder/pseudos.py::resolve_psml_lib) so the user gets the
+    # same anchoring everywhere they type a relative path.
+    from molbuilder.pseudos import resolve_psml_lib
+    psml_lib_resolved = str(resolve_psml_lib(psml_lib_raw))
     try:
-        psml_dir = _resolve_path_within_roots(psml_lib_raw, require="dir")
+        psml_dir = _resolve_path_within_roots(psml_lib_resolved, require="dir")
         dest_dir = _resolve_path_within_roots(dest_dir_raw, require="dir")
     except _PickerError as exc:
         return jsonify({"ok": False, "error": exc.message}), exc.status

@@ -524,7 +524,14 @@ class SiestaConfig:
         "label":      "Pseudopotential directory (.psml)",
         "null_label": "(none)",
         "help":       "Path to a directory of .psml pseudopotential "
-                      "files (one per element).  SIESTA pseudos are "
+                      "files (one per element).  Accepts an absolute "
+                      "path, ``~/...``, OR a path relative to "
+                      "``projects/`` (so just ``pseudopotential`` "
+                      "resolves to ``projects/pseudopotential/`` --"
+                      " the conventional shared location).  Tip: use "
+                      "the file-picker button next to this field to "
+                      "browse and avoid typing the path by hand.  "
+                      "SIESTA pseudos are "
                       "NOT bundled with molbuilder -- you have to "
                       "download them.  RECOMMENDED SOURCE: "
                       "PseudoDojo (http://www.pseudo-dojo.org) -- "

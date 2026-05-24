@@ -540,24 +540,25 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg) -> List[Issue]:
              "elements automatically."),
             "config.psml_lib",
         )]
-    from pathlib import Path as _Path
-    psml_dir = _Path(psml_lib).expanduser()
+    from .pseudos import resolve_psml_lib
+    from .projects import projects_root
+    psml_dir = resolve_psml_lib(psml_lib)
     if not psml_dir.is_dir():
-        # Relative paths are resolved against the server's CWD (the
-        # repo root when running via ``python -m molbuilder web``),
-        # NOT against the .fdf destination directory.  That mismatch
-        # bit a user (2026-05-24: gave ``../../../pseudopotential``
-        # expecting it to resolve from the .fdf dest).  Make the error
-        # spell out where we looked + recommend an absolute path.
-        if not psml_dir.is_absolute():
-            from pathlib import Path as _P
-            tried_abs = (_P.cwd() / psml_dir).resolve(strict=False)
+        # Relative paths are anchored at ``projects/`` (see
+        # pseudos.resolve_psml_lib).  When the user gives a relative
+        # path that misses, tell them WHERE we looked so the fix is
+        # obvious.
+        from pathlib import Path as _P
+        is_relative = not _P(psml_lib).expanduser().is_absolute()
+        if is_relative:
             hint = (
-                f"  Note: relative paths are resolved against the "
-                f"server's CWD ({_P.cwd()}), not the .fdf destination. "
-                f"Resolved to {tried_abs}.  Use an ABSOLUTE path or "
-                f"pick the directory via the file-picker button next "
-                f"to the field."
+                f"  Note: relative paths are anchored at "
+                f"``projects/`` (resolved to {psml_dir}).  Either "
+                f"create that directory, use an absolute path, or "
+                f"pick the directory via the file-picker next to "
+                f"the field.  Convention: a single "
+                f"``projects/pseudopotential/`` shared across all "
+                f"projects."
             )
         else:
             hint = ""

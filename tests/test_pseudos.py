@@ -284,6 +284,52 @@ def picker_root_at_tmp(tmp_path, monkeypatch):
     return tmp_path
 
 
+class TestResolvePsmlLib:
+    """The user-facing anchoring rule for cfg.psml_lib (introduced
+    2026-05-24).  Relative paths -> ``projects/`` (single root of
+    truth), absolute paths pass through, ``~/...`` expands.  Was
+    motivated by a user typing ``../../../pseudopotential`` and
+    being confused that the validator resolved it against the Flask
+    server's CWD (repo root) rather than anything meaningful."""
+
+    def test_absolute_path_passes_through(self, tmp_path):
+        from molbuilder.pseudos import resolve_psml_lib
+        out = resolve_psml_lib(str(tmp_path / "foo"))
+        assert out == tmp_path / "foo"
+
+    def test_tilde_expands(self):
+        from molbuilder.pseudos import resolve_psml_lib
+        from pathlib import Path
+        out = resolve_psml_lib("~/my_pseudos")
+        # ``~`` should be expanded, NOT anchored at projects/.
+        assert out == Path.home() / "my_pseudos"
+
+    def test_relative_anchored_at_projects(self, tmp_path):
+        from molbuilder.pseudos import resolve_psml_lib
+        out = resolve_psml_lib("pseudopotential", base=tmp_path)
+        assert out == tmp_path / "pseudopotential"
+
+    def test_nested_relative_anchored_at_projects(self, tmp_path):
+        from molbuilder.pseudos import resolve_psml_lib
+        out = resolve_psml_lib("shared/pbe_sr", base=tmp_path)
+        assert out == tmp_path / "shared" / "pbe_sr"
+
+    def test_dotdot_resolves_against_projects(self, tmp_path):
+        """``../foo`` would walk OUT of projects/ -- the absolute path
+        is returned (and a later ``.is_dir()`` check in the validator
+        will fail predictably).  We don't try to be clever and reject
+        these; the user picked the path, the error message will tell
+        them where we looked."""
+        from molbuilder.pseudos import resolve_psml_lib
+        out = resolve_psml_lib("../foo", base=tmp_path)
+        # pathlib doesn't normalise ".." in non-resolve operations,
+        # so we get a literal ``<projects>/../foo`` back.  The
+        # validator's .is_dir() will fail if the resulting path
+        # doesn't exist; the error message tells the user where we
+        # looked, so they fix it.
+        assert "foo" in str(out)
+
+
 class TestPseudosEndpoint:
     def test_check_pseudos_happy(self, tmp_path, picker_root_at_tmp):
         """/api/siesta/check-pseudos returns per-element status."""
