@@ -323,6 +323,64 @@ class TestPseudosEndpoint:
         missing = next(e for e in body["entries"] if e["status"] == "missing")
         assert missing["element"] == "O"
 
+    def test_install_pseudos_copies_files_into_dest(self, tmp_path, picker_root_at_tmp):
+        """The web flow writes the .fdf via /api/files/write, then
+        the JS calls /api/siesta/install-pseudos to copy the .psml
+        files NEXT to the .fdf -- SIESTA looks for them in the .fdf's
+        directory, no search-path directive available."""
+        # Lib has the pseudos.
+        lib = tmp_path / "psml_lib"
+        lib.mkdir()
+        (lib / "O.psml").write_text(_make_psml("O"))
+        (lib / "H.psml").write_text(_make_psml("H"))
+        # Destination directory (where the .fdf would be written).
+        dest = tmp_path / "run"
+        dest.mkdir()
+        from molbuilder.web.app import create_app
+        c = create_app(config={}).test_client()
+        water = "3\nwater\nO 0 0 0\nH 1 0 0\nH -1 0 0\n"
+        r = c.post("/api/siesta/install-pseudos", json={
+            "psml_lib":       str(lib),
+            "dest_dir":       str(dest),
+            "structure_text": water,
+        })
+        assert r.status_code == 200, r.data
+        body = r.get_json()
+        assert body["ok"] is True
+        assert sorted(body["copied"]) == ["H.psml", "O.psml"]
+        assert body["missing"] == []
+        # The files actually exist in dest.
+        assert (dest / "H.psml").is_file()
+        assert (dest / "O.psml").is_file()
+
+    def test_install_pseudos_reports_missing(self, tmp_path, picker_root_at_tmp):
+        """Only H.psml is in the lib; water needs O too -> O missing."""
+        lib = tmp_path / "psml_lib"; lib.mkdir()
+        (lib / "H.psml").write_text(_make_psml("H"))
+        dest = tmp_path / "run"; dest.mkdir()
+        from molbuilder.web.app import create_app
+        c = create_app(config={}).test_client()
+        r = c.post("/api/siesta/install-pseudos", json={
+            "psml_lib":       str(lib),
+            "dest_dir":       str(dest),
+            "structure_text": "3\nwater\nO 0 0 0\nH 1 0 0\nH -1 0 0\n",
+        })
+        body = r.get_json()
+        assert body["missing"] == ["O"]
+        assert "H.psml" in body["copied"]
+
+    def test_install_pseudos_rejects_outside_picker_roots(self, tmp_path):
+        """Both psml_lib and dest_dir must be under picker roots --
+        same security gate as /api/siesta/check-pseudos."""
+        from molbuilder.web.app import create_app
+        c = create_app(config={}).test_client()
+        r = c.post("/api/siesta/install-pseudos", json={
+            "psml_lib": "/etc",
+            "dest_dir": str(tmp_path),
+            "structure_text": "3\nwater\nO 0 0 0\nH 1 0 0\nH -1 0 0\n",
+        })
+        assert r.status_code == 400, r.data
+
     def test_structure_analyze_unknown_element_returns_400_not_500(self):
         """Unknown element symbol (typo, bad PDB column fallback) must
         return a clear 400 with the parser's message, NOT a 500

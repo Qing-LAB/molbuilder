@@ -851,16 +851,22 @@
     // updates land in the caller's existing status element.
     async function maybeWriteToWorkspace(text, filename, statusId) {
         const proj = (window.molbuilder || {}).projects;
-        if (!proj) return;
+        if (!proj) return null;
         const r = await proj.saveToWorkspace(text, filename);
-        if (!r) return;     // no current_dir / at root -- silent fallback
+        if (!r) return null;     // no current_dir / at root -- silent fallback
         if (r.ok) {
             setStatus(statusId, "Wrote " + r.relPath, "ok");
+            // Return shape callers can use to know WHERE the file
+            // landed -- e.g. the .fdf save path's pseudo-install
+            // step needs the parent directory.
+            const dir = (r.path || "").replace(/\/[^/]*$/, "");
+            return { ok: true, path: r.path, dir, relPath: r.relPath };
         } else {
             setStatus(statusId,
                 "Generated, but " + r.error
                 + " Use Download below as fallback.",
                 "warn");
+            return { ok: false, error: r.error };
         }
     }
 
@@ -902,8 +908,54 @@
             // would write.
             const fdfLabel = (r.system_label || "siesta").replace(
                 /[^A-Za-z0-9._-]+/g, "_");
-            await maybeWriteToWorkspace(r.fdf, fdfLabel + ".fdf",
-                                        "fdf-status");
+            const written = await maybeWriteToWorkspace(
+                r.fdf, fdfLabel + ".fdf", "fdf-status");
+            // SIESTA discovers .psml files in the SAME directory as
+            // the .fdf -- no search path in SIESTA's .fdf grammar.
+            // If the form supplied cfg.psml_lib AND the .fdf was
+            // written to the workspace, copy the matching .psml files
+            // next to it.  Without this hop SIESTA fails at startup:
+            //   pseudo_read: ERROR: Pseudopotential file not found
+            const psmlLib = (params || {})["psml-lib"]
+                          || (params || {}).psml_lib;
+            const destDir = written && written.dir;
+            if (psmlLib && destDir) {
+                try {
+                    const ip = await fetch("/api/siesta/install-pseudos", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            psml_lib:        psmlLib,
+                            dest_dir:        destDir,
+                            structure_text:  state.xyz,
+                        }),
+                    }).then(x => x.json());
+                    if (ip.ok) {
+                        const n = (ip.copied || []).length;
+                        const skip = (ip.skipped || []).length;
+                        const missing = ip.missing || [];
+                        let msg = `Copied ${n} .psml file${n===1?"":"s"} `
+                                + `to ${destDir}`;
+                        if (skip) msg += ` (${skip} already present)`;
+                        if (missing.length) {
+                            msg += `; MISSING: ${missing.join(", ")} `
+                                 + `— SIESTA will refuse to start`;
+                        }
+                        setStatus(
+                            "fdf-status", msg,
+                            missing.length ? "error" : "ok"
+                        );
+                    } else {
+                        setStatus("fdf-status",
+                            "pseudo install failed: " + (ip.error || "?"),
+                            "warn");
+                    }
+                } catch (e) {
+                    setStatus("fdf-status",
+                        "pseudo install network error: " + e.message,
+                        "warn");
+                }
+            }
         } catch (e) {
             setStatus("fdf-status", "Network error: " + e.message, "error");
         }

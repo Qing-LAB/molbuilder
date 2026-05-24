@@ -119,6 +119,126 @@ def _resolve_path_within_roots(raw_path: str, *, must_exist: bool = True,
     return resolved
 
 
+@bp.route("/api/siesta/install-pseudos", methods=["POST"])
+def api_siesta_install_pseudos():
+    """Copy .psml files from cfg.psml_lib into the target directory
+    so SIESTA finds them at run time.
+
+    SIESTA discovers pseudopotentials by looking for ``<element>.psml``
+    (or ``.psf`` / ``.vps``) in the CURRENT WORKING DIRECTORY where
+    the .fdf is being read from -- there's no "pseudopotential search
+    path" directive in SIESTA's .fdf grammar.  So after writing the
+    .fdf via /api/files/write, the JS calls this endpoint to copy
+    the matching .psml files into the same directory.  Without this
+    extra hop SIESTA fails at startup with
+    ``pseudo_read: ERROR: Pseudopotential file not found``.
+
+    Body (JSON)::
+
+      {
+        "psml_lib":     "/abs/path/to/dir/of/psml/files",
+        "dest_dir":     "/abs/path/to/where/the/fdf/is",
+        "structure_path": "/abs/path/to/<.xyz|.pdb>",   # OR
+        "structure_text": "<XYZ or PDB text>"
+      }
+
+    Returns::
+
+      {
+        "ok":           True,
+        "copied":       ["C.psml", "Fe.psml", ...],
+        "skipped":      [{"file": "H.psml", "reason": "already present"}, ...],
+        "missing":      ["S"],   # elements with no .psml in lib
+        "dest_dir":     "<resolved abs path>"
+      }
+
+    ``missing`` is the list of elements for which no .psml was found
+    in ``psml_lib``.  Hard fail at SIESTA run time -- caller should
+    surface as an error notice in the UI.
+    """
+    from .files import _PickerError
+    body = request.get_json(silent=True) or {}
+    psml_lib_raw = (body.get("psml_lib") or "").strip()
+    dest_dir_raw = (body.get("dest_dir") or "").strip()
+    if not psml_lib_raw or not dest_dir_raw:
+        return jsonify({"ok": False,
+                        "error": "both psml_lib and dest_dir are required"}), 400
+    try:
+        psml_dir = _resolve_path_within_roots(psml_lib_raw, require="dir")
+        dest_dir = _resolve_path_within_roots(dest_dir_raw, require="dir")
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+
+    # Resolve structure (elements decide which pseudos to copy).
+    text_in = body.get("structure_text")
+    path_in = body.get("structure_path")
+    if path_in:
+        try:
+            p = _resolve_path_within_roots(path_in, require="file")
+        except _PickerError as exc:
+            return jsonify({"ok": False, "error": exc.message}), exc.status
+        text_in = p.read_text()
+        ext = p.suffix.lower()
+    else:
+        ext = ".pdb" if (text_in and "ATOM " in text_in[:120]) else ".xyz"
+    if not text_in:
+        return jsonify({"ok": False,
+                        "error": "structure_path or structure_text is required"}), 400
+
+    from molbuilder.structure import Structure
+    try:
+        if ext == ".pdb":
+            struct = Structure.from_pdb(text_in)
+        else:
+            struct = Structure.from_xyz(text_in)
+    except (ValueError, IndexError) as exc:
+        return jsonify({"ok": False,
+                        "error": f"could not parse structure: {exc}"}), 400
+
+    # Walk the unique element set + copy each .psml from psml_lib
+    # to dest_dir.  Use shutil.copyfile (no metadata bits, predictable
+    # destination perms inherited from dest_dir).  Skip files that
+    # are already in dest_dir (same inode = already copied).
+    import shutil
+    seen: set = set()
+    copied: list = []
+    skipped: list = []
+    missing: list = []
+    for raw_el in struct.elements:
+        el = raw_el.capitalize()
+        if el in seen:
+            continue
+        seen.add(el)
+        src = psml_dir / f"{el}.psml"
+        if not src.is_file():
+            # Try a case-insensitive search before giving up.
+            cand = list(psml_dir.glob(f"{el}.[pP][sS][mM][lL]"))
+            if cand:
+                src = cand[0]
+            else:
+                missing.append(el)
+                continue
+        dst = dest_dir / f"{el}.psml"
+        try:
+            if dst.exists() and src.resolve() == dst.resolve():
+                skipped.append({"file": dst.name,
+                                "reason": "already present (same file)"})
+                continue
+            shutil.copyfile(src, dst)
+            copied.append(dst.name)
+        except OSError as exc:
+            return jsonify({"ok": False,
+                            "error": f"copy failed for {el}.psml: {exc}"}), 500
+
+    return jsonify({
+        "ok":       True,
+        "copied":   copied,
+        "skipped":  skipped,
+        "missing":  missing,
+        "dest_dir": str(dest_dir),
+    })
+
+
 @bp.route("/api/siesta/check-pseudos", methods=["POST"])
 def api_siesta_check_pseudos():
     """Validate a SIESTA pseudopotential directory against the elements
