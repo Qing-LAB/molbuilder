@@ -912,18 +912,26 @@
             // Filename uses the SystemLabel as the basename, matching
             // SIESTA's filename convention + what the Download button
             // would write.
-            // Filename basename MUST match cfg.system_label.  SIESTA
-            // writes its output files (<label>.XV / .DM / .out /
-            // .molwatch.log) using the SystemLabel from inside the
-            // .fdf -- if the saved filename doesn't match, the user
-            // sees `.fdf` named one way + output files named another,
-            // which is confusing and breaks the Watch tab's
-            // file-discovery logic (looks for <basename>.molwatch.log).
-            // Sanitise the label the same way SIESTA does (alnum + . _ -).
+            // Filename basename MUST match cfg.system_label + stage
+            // suffix (when staged).  SIESTA writes its output files
+            // (<label>.XV / .DM / .out / .molwatch.log) using the
+            // SystemLabel from inside the .fdf -- but the RUN COMMAND
+            // in the FDF header references "<label>-stage<N>.fdf".
+            // Saving the file WITHOUT the stage suffix:
+            //   * makes the FDF header's "mpirun -np 4 siesta <
+            //     <label>-stage<N>.fdf" point at a non-existent file,
+            //   * stage-2 generation OVERWRITES stage-1's file
+            //     (they'd both be saved as "<label>.fdf").
+            // The Download button DOES add the stage suffix; auto-
+            // save now matches.  Sanitise the same way SIESTA does
+            // (alnum + . _ -).
             const fdfLabel = (r.system_label || "siesta").replace(
                 /[^A-Za-z0-9._-]+/g, "_");
+            const _stage = stageNumberFromPreset();
+            const _stageSuffix = _stage ? `-stage${_stage}` : "";
+            const fdfFilename  = fdfLabel + _stageSuffix + ".fdf";
             const written = await maybeWriteToWorkspace(
-                r.fdf, fdfLabel + ".fdf", "fdf-status");
+                r.fdf, fdfFilename, "fdf-status");
             // SIESTA discovers .psml files in the SAME directory as
             // the .fdf -- no search path in SIESTA's .fdf grammar.
             // If the form supplied cfg.psml_lib AND the .fdf was

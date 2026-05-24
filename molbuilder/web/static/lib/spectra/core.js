@@ -536,18 +536,46 @@
         // "Loading from schema...".
         const proj = (window.molbuilder || {}).projects;
         if (!proj) return;
+        // overwrite: true -- Generate-and-save is "regenerate the
+        // workspace from the form"; second clicks must clobber the
+        // previous .spectra.py.  Without this the second click
+        // would 409 against /api/files/write.
         const wrote = await proj.saveToWorkspace(
-            state.lastScript, state.lastJobName + ".spectra.py");
+            state.lastScript, state.lastJobName + ".spectra.py",
+            { overwrite: true });
         if (!wrote) return;     // no current_dir / at root -- skip silently
-        if (wrote.ok) {
-            setStatus(els.generateStatus,
-                      "Wrote " + wrote.relPath, "ok");
-        } else {
+        if (!wrote.ok) {
             setStatus(els.generateStatus,
                 "Generated, but " + wrote.error
                 + " Use Download / Copy below as fallback.",
                 "warn");
+            return;
         }
+        setStatus(els.generateStatus, "Wrote " + wrote.relPath, "ok");
+        // Drop a <basename>.run.sh next to the .spectra.py.  PySCF
+        // -- no mpi_np, no ulimit (in-script max_memory handles it),
+        // no OMP/BLAS exports (in-script runtime_info block sets
+        // those).  Wrapper just activates the conda env + runs
+        // ``python <basename>.spectra.py``.  Non-fatal on failure.
+        try {
+            const wr = await fetch("/api/run/install-wrapper", {
+                method:  "POST",
+                headers: { "Content-Type": "application/json" },
+                body:    JSON.stringify({
+                    script_path:   wrote.path,
+                    mpi_np:        null,
+                    omp_threads:   null,
+                    max_memory_mb: null,
+                }),
+            }).then(x => x.json());
+            if (wr.ok) {
+                const verb = wr.overwritten ? "overwrote" : "wrote";
+                setStatus(els.generateStatus,
+                    "Wrote " + wrote.relPath
+                    + ` · ${verb} ${wr.wrapper_name} (bash to run)`,
+                    wr.overwritten ? "warn" : "ok");
+            }
+        } catch (_) { /* non-fatal -- user can run the .py manually */ }
     }
 
     function clearOutputs() {
