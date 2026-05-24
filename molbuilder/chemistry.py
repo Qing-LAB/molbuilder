@@ -196,8 +196,8 @@ def explain_metal_spin(element: str, spin: int) -> Optional[str]:
 
 
 def resolve_pyscf_ecp(struct: Structure,
-                      ecp,
-                      basis: str):
+                      ecp: "Optional[Union[str, dict]]",
+                      basis: str) -> "Optional[Union[str, dict]]":
     """Decide whether and which PySCF ECP (effective core potential) to
     pass to ``gto.M()``.  Cross-engine helper -- called from BOTH Build
     (``pyscf/input.py::_resolve_ecp``) and Spectra (``spectra/pyscf_
