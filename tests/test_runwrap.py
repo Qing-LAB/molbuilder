@@ -49,14 +49,18 @@ def test_render_unknown_extension_raises():
 # --------------------------------------------------------------------- #
 
 
-def test_render_siesta_single_process():
+def test_render_siesta_always_uses_mpirun():
+    """SIESTA is fundamentally MPI-launched.  2026-05-24: changed
+    from "bare siesta when mpi_np < 2" to "always mpirun, default
+    np=physical_cores" -- user complained that the wrapper without
+    mpirun silently disables MPI even on a SIESTA-MPI build."""
     _bind()
     text = render_run_wrapper(Path("/somewhere/my-job.fdf"))
+    # Always emits mpirun, np resolves to physical_core_count when
+    # mpi_np is unset; we just confirm the ``mpirun -np N siesta``
+    # pattern (the exact N depends on the host running tests).
+    assert "mpirun -np " in text
     assert "siesta my-job.fdf > my-job.out" in text
-    assert "mpirun" not in text
-    # 2026-05-23: switched from ``conda run -n`` to source+activate
-    # hybrid (more robust for MPI launchers + better error messages
-    # when conda isn't on PATH).
     assert "conda activate molbuilder-siesta" in text
     assert text.startswith("#!/usr/bin/env bash\n")
 
@@ -68,11 +72,12 @@ def test_render_siesta_with_mpi_ranks():
     assert "molbuilder-siesta" in text
 
 
-def test_render_siesta_mpi_np_below_two_ignored():
-    """np=1 is single-process; don't pretend MPI."""
+def test_render_siesta_mpi_np_one_still_uses_mpirun():
+    """np=1 still goes through mpirun -- a SIESTA-MPI build needs
+    the MPI runtime even for a single rank."""
     _bind()
     text = render_run_wrapper(Path("/x/y.fdf"), mpi_np=1)
-    assert "mpirun" not in text
+    assert "mpirun -np 1 siesta y.fdf" in text
 
 
 def test_render_siesta_redirects_stdout_per_job_layout_v1():

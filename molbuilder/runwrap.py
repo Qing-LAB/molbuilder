@@ -86,49 +86,80 @@ def render_run_wrapper(script_path: Path, *,
     # BLAS always pinned to 1 so OMP * BLAS doesn't multiply.
     env_prefix = ""
     if category == "siesta":
-        # Resolve OMP thread count.  None -> auto: physical_cores //
-        # mpi_np (MPI case) or physical_cores (single-process).  An
-        # explicit value wins.
+        # Resolve MPI rank count.  SIESTA is fundamentally an MPI
+        # code; even single-host execution is launched via mpirun.
+        # When the user leaves mpi_np blank we default to ALL physical
+        # cores -- that matches user expectation ("the wrapper should
+        # use MPI") instead of silently emitting a bare ``siesta``
+        # invocation that ignores all but one core.
         from .runtime_info import physical_core_count
         phys = physical_core_count()
-        if omp_threads is None:
-            mpi_n = max(1, mpi_np or 1)
-            resolved_omp = max(1, phys // mpi_n)
-            omp_source   = f"auto: physical_cores ({phys}) // mpi_np ({mpi_n})"
+        if mpi_np is None or int(mpi_np) < 1:
+            resolved_mpi = max(1, phys)
+            mpi_source   = f"auto: physical_cores ({phys})"
         else:
-            resolved_omp = int(omp_threads)
+            resolved_mpi = int(mpi_np)
+            mpi_source   = "user-set"
+
+        # OMP threads.  SIESTA mainline is mostly NOT OMP-aware;
+        # pure MPI + OMP=1 is the standard SIESTA recipe.  User can
+        # explicitly request hybrid by setting omp_threads > 1 (only
+        # meaningful with an OMP-compiled SIESTA build).
+        if omp_threads is None:
+            resolved_omp = 1
+            omp_source   = "default; SIESTA isn't reliably OMP-aware"
+        else:
+            resolved_omp = max(1, int(omp_threads))
             omp_source   = "user-set"
 
-        if mpi_np is not None and mpi_np >= 2:
-            inner = (f"mpirun -np {mpi_np} siesta {script_name} "
-                      f"> {basename}.out")
-            description = f"SIESTA-MPI run on {mpi_np} ranks"
-        else:
-            inner = f"siesta {script_name} > {basename}.out"
-            description = "SIESTA (single-process)"
+        # mpirun threshold dropped from >=2 to >=1: SIESTA-MPI runs
+        # via mpirun even with -np 1 on most installations (it sets
+        # up the proper MPI runtime even for a single rank).  If the
+        # user explicitly wants to skip MPI entirely they can edit
+        # the wrapper.
+        inner = (f"mpirun -np {resolved_mpi} siesta {script_name} "
+                  f"> {basename}.out")
+        description = f"SIESTA-MPI run on {resolved_mpi} ranks"
 
-        # Anti-oversubscription guards: BLAS=1, OMP=resolved.  Same
-        # recipe as PySCF / spectra emit inline -- canonical recipe.
         env_prefix = (
-            f"# Thread / BLAS pinning ({omp_source}).  BLAS pinned to 1\n"
-            f"# per rank so OMP * BLAS doesn't oversubscribe (canonical\n"
-            f"# recipe shared with /spectra + Build PySCF, see\n"
-            f"# molbuilder/runtime_info.py).  Edit freely.\n"
+            f"# Thread / BLAS pinning.\n"
+            f"#   * OMP_NUM_THREADS ({omp_source}): SIESTA mainline is\n"
+            f"#     mostly not OMP-aware, so pure MPI with OMP=1 is the\n"
+            f"#     standard recipe.  Bump only with an OMP-compiled\n"
+            f"#     SIESTA build (hybrid MPI+OMP).\n"
+            f"#   * BLAS pinned to 1 per rank so OMP * BLAS doesn't\n"
+            f"#     oversubscribe.\n"
             f"export OMP_NUM_THREADS={resolved_omp}\n"
             f"export MKL_NUM_THREADS=1\n"
             f"export OPENBLAS_NUM_THREADS=1\n"
         )
         if max_memory_mb is not None and int(max_memory_mb) > 0:
-            # Many BLAS / MPI libs honour an explicit memory cap via
-            # env vars (OMP_STACKSIZE etc.).  We record the cap in
-            # the wrapper as a comment + emit ulimit -v as a soft
-            # cap so a runaway process doesn't OOM the host.
             kb = int(max_memory_mb) * 1024
             env_prefix += (
                 f"# Memory cap (cfg.max_memory_mb): {max_memory_mb} MB\n"
                 f"ulimit -v {kb} || true  # soft cap; ignored if shell can't set it\n"
             )
         env_prefix += "\n"
+
+        # Human-readable banner printed at run time so the user sees
+        # the rank count / threading / cwd / command before SIESTA
+        # spends 30 seconds reading the .fdf.  Earlier wrappers just
+        # ``exec``ed and went silent -- with a long-running SCF the
+        # user has no idea whether MPI even started.
+        env_prefix += (
+            f'echo "===== molbuilder SIESTA run-wrapper ====="\n'
+            f'echo "  Date    : $(date -Iseconds)"\n'
+            f'echo "  Host    : $(hostname)"\n'
+            f'echo "  Cwd     : $(pwd)"\n'
+            f'echo "  Conda   : ${{CONDA_DEFAULT_ENV:-?}}"\n'
+            f'echo "  MPI     : {resolved_mpi} ranks ({mpi_source})"\n'
+            f'echo "  OMP     : {resolved_omp} threads / rank ({omp_source})"\n'
+            f'echo "  BLAS    : 1 (pinned via MKL/OPENBLAS_NUM_THREADS)"\n'
+            f'echo "  Command : mpirun -np {resolved_mpi} siesta {script_name}"\n'
+            f'echo "  Stdout  : {basename}.out (live; tail -f to follow)"\n'
+            f'echo "========================================="\n'
+            f"\n"
+        )
     else:                                          # pyscf
         inner = f"python {script_name}"
         description = "PySCF run"
@@ -138,6 +169,21 @@ def render_run_wrapper(script_path: Path, *,
         # set them in the wrapper too -- doing so would override
         # the env-respect (the script honors a pre-export) AND
         # mask the in-script auto-detect that picks physical cores.
+
+        # Same human-readable banner pattern as SIESTA -- the script
+        # itself logs its own runtime info but the wrapper covers
+        # the "did it even start" window before Python imports.
+        env_prefix = (
+            f'echo "===== molbuilder PySCF run-wrapper ====="\n'
+            f'echo "  Date    : $(date -Iseconds)"\n'
+            f'echo "  Host    : $(hostname)"\n'
+            f'echo "  Cwd     : $(pwd)"\n'
+            f'echo "  Conda   : ${{CONDA_DEFAULT_ENV:-?}}"\n'
+            f'echo "  Command : python {script_name}"\n'
+            f'echo "  Logs    : see <basename>.molwatch.log (script writes its own)"\n'
+            f'echo "========================================"\n'
+            f"\n"
+        )
 
     # Conda env activation block.  Three paths so the wrapper Just
     # Works in the common cases:
