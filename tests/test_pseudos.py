@@ -265,6 +265,21 @@ class TestPseudosEndpoint:
         missing = next(e for e in body["entries"] if e["status"] == "missing")
         assert missing["element"] == "O"
 
+    def test_structure_analyze_unknown_element_returns_400_not_500(self):
+        """Unknown element symbol (typo, bad PDB column fallback) must
+        return a clear 400 with the parser's message, NOT a 500
+        Internal Server Error (which leaks the stack trace to the
+        client).  Code-review fix 2026-05-23."""
+        from molbuilder.web.app import create_app
+        c = create_app(config={}).test_client()
+        r = c.post("/api/structure/analyze", json={
+            "structure_text": "1\ntest\nXy 0 0 0\n"})
+        assert r.status_code == 400, r.data
+        body = r.get_json()
+        assert body["ok"] is False
+        assert "Xy" in body["error"]
+        assert "unknown element" in body["error"].lower()
+
     def test_structure_analyze_organic_no_metals(self):
         """No metals -> closed-shell singlet (or doublet for odd-e)."""
         from molbuilder.web.app import create_app

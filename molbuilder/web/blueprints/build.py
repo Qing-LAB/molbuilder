@@ -293,7 +293,16 @@ def api_structure_analyze():
     from molbuilder.chemistry import (detect_open_shell_metals,
                                        explain_metal_spin,
                                        total_electrons)
+    # total_electrons raises KeyError on an unknown element symbol
+    # (typos, bad PDB column fallback).  Catch -> 400 with the
+    # parser's clear message; the previous behaviour propagated to
+    # a 500 Internal Server Error with a stack trace, which leaked
+    # internals to the client.
     metals = detect_open_shell_metals(struct)
+    try:
+        n_e = total_electrons(struct, 0)
+    except KeyError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
 
     # Build per-metal hints: enumerate the common spin values from
     # explain_metal_spin's mapping (we walk 0..6 and collect those
@@ -312,7 +321,6 @@ def api_structure_analyze():
     #   * Open-shell metal present -> pick the FIRST metal's most
     #     common spin state (intermediate for Fe, doublet for Cu, etc.)
     #     as the suggested default.  User can override.
-    n_e = total_electrons(struct, 0)
     warnings: list = []
     if metals:
         # Pick a reasonable spin per metal: Fe -> 2 (intermediate, FeTPP-style);
