@@ -49,7 +49,65 @@ def _make_psml(element: str, *,
 </psml>"""
 
 
+def _make_pseudodojo_psml(element: str, *, z: int = None,
+                            z_pseudo: int = None) -> str:
+    """Produce a synthetic PSML that mirrors the REAL PseudoDojo
+    format (used by users who download from www.pseudo-dojo.org).
+    Differs from _make_psml in two important ways the parser bug
+    of 2026-05-23 missed:
+      * Element + Z + relativity live on <pseudo-atom-spec>, NOT
+        <header>.  My original tests used <header>; real files use
+        the longer name.
+      * The libxc id is on <functional> CHILDREN of <libxc-info>,
+        NOT directly on <libxc-info>.  Real files always nest.
+    These tests pin the contract against real-world files so a
+    future refactor can't regress.
+    """
+    if z is None:
+        from ase.data import atomic_numbers as _Z
+        z = _Z[element]
+    if z_pseudo is None:
+        z_pseudo = z      # for light elements z_pseudo == z; Fe has 16, etc.
+    return f"""<?xml version="1.0" encoding="UTF-8" ?>
+<psml version="1.1" energy_unit="hartree" length_unit="bohr"
+ uuid="00000000-0000-0000-0000-000000000000"
+ xmlns="http://esl.cecam.org/PSML/ns/1.1">
+<provenance creator="ONCVPSP-3.3.0+psml-3.3.0-73 (scalar-relativistic)"/>
+<pseudo-atom-spec atomic-label="{element}" atomic-number="{z}"
+ z-pseudo="{z_pseudo}"
+ flavor="Hamann oncvpsp" relativity="scalar" spin-dft="no">
+<exchange-correlation>
+<libxc-info number-of-functionals="2">
+<functional name="Perdew, Burke &amp; Ernzerhof (GGA)" type="exchange" id="101"/>
+<functional name="Perdew, Burke &amp; Ernzerhof (GGA)" type="correlation" id="130"/>
+</libxc-info>
+</exchange-correlation>
+</pseudo-atom-spec>
+</psml>"""
+
+
 class TestParsePsmlHeader:
+    def test_real_pseudodojo_format(self, tmp_path):
+        """Pin parsing of REAL PseudoDojo PSML format.  The 2026-05-23
+        regression was: my synthetic tests used <header> but real files
+        use <pseudo-atom-spec>; my <libxc-info id="..."> structure but
+        real files nest <functional id="..."> inside <libxc-info>.  Both
+        bugs missed every real PseudoDojo file (returned element="",
+        xc=unknown).  THIS test uses the real shape -- if it passes,
+        the user's actual downloads work."""
+        from molbuilder.pseudos import parse_psml_header
+        # Fe specifically catches the z-pseudo (16 valence) vs Z (26)
+        # bug: pre-fix returned atomic_number=16.
+        (tmp_path / "Fe.psml").write_text(_make_pseudodojo_psml("Fe",
+                                                                  z=26, z_pseudo=16))
+        info = parse_psml_header(tmp_path / "Fe.psml")
+        assert info.element       == "Fe"
+        assert info.atomic_number == 26      # the TRUE element Z, not z_pseudo
+        assert info.xc_family     == "GGA"
+        assert info.xc_authors    == "PBE"
+        assert info.relativistic  == "scalar"
+        assert info.parse_warnings == []
+
     def test_basic_round_trip(self, tmp_path):
         p = tmp_path / "C.psml"
         p.write_text(_make_psml("C"))

@@ -117,17 +117,30 @@ def parse_psml_header(path: Path) -> PsmlInfo:
         )
 
     # ----- element + Z ----------------------------------------------
+    # Real PseudoDojo PSML files (the standard format SIESTA users
+    # download) put element + Z + relativity on ``<pseudo-atom-spec>``;
+    # the older / simpler PSML used ``<header>``.  Try both before
+    # falling back to root (which won't have the attribute and yields
+    # element="" + a parse warning).
     # ``_first_local`` returns an empty Element for tags with no
-    # children -- in Python 3.13 + lxml that's "falsy" with a
+    # children -- in Python 3.13 that's "falsy" with a
     # DeprecationWarning, in older Python 3.x it's also "falsy"
-    # silently.  Use ``is not None`` so the empty <header> isn't
-    # mistakenly skipped (header attributes carry the element symbol).
-    _hdr = _first_local(root, "header")
+    # silently.  Use ``is not None`` so the empty element isn't
+    # mistakenly skipped.
+    _hdr = _first_local(root, "pseudo-atom-spec")
+    if _hdr is None:
+        _hdr = _first_local(root, "header")
     hdr = _hdr if _hdr is not None else root
     element = (hdr.attrib.get("atomic-label")
                or hdr.attrib.get("element")
                or "").strip().capitalize()
-    z_str = hdr.attrib.get("z-pseudo") or hdr.attrib.get("atomic-number") or ""
+    # Prefer atomic-number (the element's Z) over z-pseudo (the
+    # valence electron count -- e.g. Fe has Z=26 but z-pseudo=16
+    # because the pseudo treats 3s²3p⁶3d⁶4s² = 16 e⁻ as valence).
+    # Previous order silently mis-reported Z=16 for Fe.
+    z_str = (hdr.attrib.get("atomic-number")
+             or hdr.attrib.get("z-pseudo")
+             or "")
     try:
         atomic_number = int(float(z_str)) if z_str else 0
     except ValueError:
@@ -138,20 +151,33 @@ def parse_psml_header(path: Path) -> PsmlInfo:
 
     # ----- XC functional -------------------------------------------
     xc_family, xc_authors = "unknown", "unknown"
-    # Try the libxc-formatted entries first (PseudoDojo's preferred).
+    # Real PseudoDojo PSML uses:
+    #   <libxc-info number-of-functionals="2">
+    #     <functional name="..." type="exchange"    id="101"/>
+    #     <functional name="..." type="correlation" id="130"/>
+    #   </libxc-info>
+    # The id attribute is on <functional>, NOT on <libxc-info>.
+    # Earlier code looked for id on <libxc-info> and missed every
+    # real PSML.  Also support older / synthesized formats that put
+    # id directly on <libxc-info> or on bare <exchange> / <correlation>.
     libxc_ids: List[int] = []
-    for el in _findall_local(root, "libxc-info"):
-        for attr in ("id", "code", "name"):
-            v = el.attrib.get(attr)
-            if v and v.isdigit():
-                libxc_ids.append(int(v))
-                break
-    # Also try <exchange> / <correlation> child id attributes.
-    for el in (_findall_local(root, "exchange")
-               + _findall_local(root, "correlation")):
-        v = el.attrib.get("id") or el.attrib.get("libxc")
+    for el in _findall_local(root, "functional"):
+        v = el.attrib.get("id")
         if v and v.isdigit():
             libxc_ids.append(int(v))
+    if not libxc_ids:
+        for el in _findall_local(root, "libxc-info"):
+            for attr in ("id", "code", "name"):
+                v = el.attrib.get(attr)
+                if v and v.isdigit():
+                    libxc_ids.append(int(v))
+                    break
+    if not libxc_ids:
+        for el in (_findall_local(root, "exchange")
+                   + _findall_local(root, "correlation")):
+            v = el.attrib.get("id") or el.attrib.get("libxc")
+            if v and v.isdigit():
+                libxc_ids.append(int(v))
     for lid in libxc_ids:
         if lid in _LIBXC_MAP:
             fam, auth = _LIBXC_MAP[lid]
