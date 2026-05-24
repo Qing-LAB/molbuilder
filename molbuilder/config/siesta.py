@@ -180,15 +180,23 @@ class SiestaConfig:
     xc_authors: str = field(default="PBE", metadata={
         "section": "Exchange-correlation",
         "label":   "XC.Authors",
+        # Choices match what /api/siesta/check-pseudos accepts when
+        # mapping authors->family for the coverage check (see
+        # build.py).  Free-text was needed historically (unusual
+        # functionals); dropdown covers the 99% case and the user
+        # can still set unusual values via the Python API.
+        "choices": ("PBE", "PBEsol", "revPBE", "RPBE", "BLYP",
+                    "CA", "PZ", "PW", "DRSLL", "LMKLL"),
         "help":    "XC parameterisation within the family.  GGA: PBE "
                    "(default, all-purpose), PBEsol (better lattice "
                    "constants for solids), revPBE / RPBE (better "
                    "thermochemistry, slightly different binding), "
                    "BLYP (rare but accepted).  VDW: DRSLL (vdW-DF1) / "
                    "LMKLL (vdW-DF2-C09).  LDA: CA (Ceperley-Alder, "
-                   "default).  This name MUST match what your "
+                   "default), PZ, PW.  This name MUST match what your "
                    "pseudopotential was generated for -- mismatched "
-                   "XC + pseudo gives silently-wrong bond lengths.",
+                   "XC + pseudo gives silently-wrong bond lengths.  "
+                   "PseudoDojo organises downloads by this name.",
     })
 
     # SCF

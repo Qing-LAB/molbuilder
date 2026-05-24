@@ -204,18 +204,42 @@ class TestCheckCoverage:
         assert {e.element for e in entries} == {"C", "H"}
 
 
+@pytest.fixture
+def picker_root_at_tmp(tmp_path, monkeypatch):
+    """Repoint Capabilities.file_picker_roots() at tmp_path so the
+    /api/siesta/check-pseudos endpoint accepts paths under tmp_path
+    (the default picker root is molbuilder's projects/).  Pattern
+    mirrors tests/test_pdb_workflow_integration.py::pdb_under_root.
+    """
+    from molbuilder import diagnostics
+    orig = diagnostics.get_capabilities()
+    caps = diagnostics.Capabilities(
+        runtime_config={}, conda_binary=None, conda_envs=frozenset(),
+    )
+    cls = type(caps)
+    monkeypatch.setattr(
+        cls, "file_picker_roots",
+        lambda self: ((tmp_path.resolve(), "projects"),),
+    )
+    diagnostics.set_capabilities(caps)
+    monkeypatch.setattr(diagnostics, "_snapshot", orig)
+    return tmp_path
+
+
 class TestPseudosEndpoint:
-    def test_check_pseudos_happy(self, tmp_path):
+    def test_check_pseudos_happy(self, tmp_path, picker_root_at_tmp):
         """/api/siesta/check-pseudos returns per-element status."""
-        # Write H + O pseudos for water.
+        # Write H + O pseudos for water + the structure file under
+        # the picker root.
         (tmp_path / "H.psml").write_text(_make_psml("H"))
         (tmp_path / "O.psml").write_text(_make_psml("O"))
+        (tmp_path / "water.xyz").write_text(
+            "3\nwater\nO 0 0 0\nH 1 0 0\nH -1 0 0\n")
         from molbuilder.web.app import create_app
         c = create_app(config={}).test_client()
-        water = "3\nwater\nO 0 0 0\nH 1 0 0\nH -1 0 0\n"
         r = c.post("/api/siesta/check-pseudos", json={
             "psml_lib":       str(tmp_path),
-            "structure_text": water,
+            "structure_path": str(tmp_path / "water.xyz"),
             "xc_authors":     "PBE",
         })
         assert r.status_code == 200, r.data
@@ -225,15 +249,16 @@ class TestPseudosEndpoint:
         assert body["n_missing"]  == 0
         assert body["n_mismatch"] == 0
 
-    def test_check_pseudos_flags_missing_element(self, tmp_path):
+    def test_check_pseudos_flags_missing_element(self, tmp_path, picker_root_at_tmp):
         """Water needs H + O; if only H is in the lib, O is missing."""
         (tmp_path / "H.psml").write_text(_make_psml("H"))
+        (tmp_path / "water.xyz").write_text(
+            "3\nwater\nO 0 0 0\nH 1 0 0\nH -1 0 0\n")
         from molbuilder.web.app import create_app
         c = create_app(config={}).test_client()
-        water = "3\nwater\nO 0 0 0\nH 1 0 0\nH -1 0 0\n"
         r = c.post("/api/siesta/check-pseudos", json={
             "psml_lib":       str(tmp_path),
-            "structure_text": water,
+            "structure_path": str(tmp_path / "water.xyz"),
         })
         body = r.get_json()
         assert body["n_missing"] == 1
@@ -277,3 +302,60 @@ class TestPseudosEndpoint:
         ssug = body["suggested"]["siesta"]
         assert ssug["spin_polarized"]   is True
         assert ssug["spin_total"]       == 2.0
+
+
+# --------------------------------------------------------------------- #
+#  Security: path-traversal protection (2026-05-23 review fix)         #
+# --------------------------------------------------------------------- #
+
+
+class TestEndpointPathSecurity:
+    """Both new endpoints accept user-supplied paths.  Without picker-
+    root validation, a malicious POST could pass ``/etc/passwd`` or
+    ``/root/.ssh/id_rsa`` and the endpoint would happily read /
+    process it.  These tests pin the validation contract: paths
+    outside the picker roots must be 400-rejected."""
+
+    def test_check_pseudos_rejects_path_outside_picker_roots(self, tmp_path):
+        """``psml_lib = "/etc"`` (or anywhere outside the configured
+        picker roots) must 400, NOT read the directory.  The default
+        picker root is molbuilder's ``projects/`` -- ``/etc`` is
+        guaranteed to be outside."""
+        from molbuilder.web.app import create_app
+        c = create_app(config={}).test_client()
+        water = "3\nwater\nO 0 0 0\nH 1 0 0\nH -1 0 0\n"
+        r = c.post("/api/siesta/check-pseudos", json={
+            "psml_lib":       "/etc",
+            "structure_text": water,
+        })
+        assert r.status_code == 400, r.data
+        # The error message should mention the picker-root issue --
+        # not just "not a directory" which would leak whether the
+        # path exists.
+        msg = r.get_json()["error"].lower()
+        assert "outside" in msg or "root" in msg or "allowed" in msg
+
+    def test_check_pseudos_rejects_structure_path_outside_roots(
+            self, tmp_path):
+        """structure_path must also pass through the same gate."""
+        (tmp_path / "C.psml").write_text(_make_psml("C"))
+        from molbuilder.web.app import create_app
+        c = create_app(config={}).test_client()
+        r = c.post("/api/siesta/check-pseudos", json={
+            "psml_lib":       str(tmp_path),
+            "structure_path": "/etc/passwd",
+        })
+        # Either rejected at psml_lib (likely, since tmp_path isn't
+        # under projects/ either) or at structure_path -- both fine.
+        assert r.status_code == 400, r.data
+
+    def test_structure_analyze_rejects_path_outside_roots(self):
+        """Same security check for /api/structure/analyze."""
+        from molbuilder.web.app import create_app
+        c = create_app(config={}).test_client()
+        r = c.post("/api/structure/analyze", json={
+            "structure_path": "/etc/passwd",
+        })
+        assert r.status_code == 400
+        msg = r.get_json()["error"].lower()
+        assert "outside" in msg or "root" in msg or "allowed" in msg

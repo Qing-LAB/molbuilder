@@ -96,6 +96,29 @@ _BUILDERS = {
 }
 
 
+def _resolve_path_within_roots(raw_path: str, *, must_exist: bool = True,
+                                require: str = "file"):
+    """Wrapper around files._resolve_within_roots so the two new
+    endpoints below share the same picker-root validation as
+    /api/selection/* and /api/files/*.  Without this the new
+    endpoints would accept ANY path -- including ``/etc/passwd`` --
+    a path-traversal / arbitrary-read security bug (caught in the
+    2026-05-23 code-review pass).
+
+    ``require``: "file" or "dir".  Returns the resolved Path on
+    success.  Raises ``_PickerError`` on any rejection (caller wraps
+    into a 400 JSON error).
+    """
+    from .files import _resolve_within_roots, _PickerError
+    resolved = _resolve_within_roots(raw_path)
+    if must_exist:
+        if require == "file" and not resolved.is_file():
+            raise _PickerError(400, f"path is not a file: {resolved}")
+        if require == "dir" and not resolved.is_dir():
+            raise _PickerError(400, f"path is not a directory: {resolved}")
+    return resolved
+
+
 @bp.route("/api/siesta/check-pseudos", methods=["POST"])
 def api_siesta_check_pseudos():
     """Validate a SIESTA pseudopotential directory against the elements
@@ -129,24 +152,24 @@ def api_siesta_check_pseudos():
     are advisory except ``missing`` which is a hard fail (SIESTA
     won't start without a pseudo for every element).
     """
+    from .files import _PickerError
     body = request.get_json(silent=True) or {}
-    psml_lib = (body.get("psml_lib") or "").strip()
-    if not psml_lib:
+    psml_lib_raw = (body.get("psml_lib") or "").strip()
+    if not psml_lib_raw:
         return jsonify({"ok": False, "error": "psml_lib path is required"}), 400
-    from pathlib import Path as _Path
-    psml_dir = _Path(psml_lib)
-    if not psml_dir.is_dir():
-        return jsonify({"ok": False,
-                        "error": f"psml_lib path is not a directory: {psml_lib}"}), 400
+    try:
+        psml_dir = _resolve_path_within_roots(psml_lib_raw, require="dir")
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
 
-    # Resolve structure.
+    # Resolve structure: same picker-root gate as /api/selection/atoms.
     text_in = body.get("structure_text")
     path_in = body.get("structure_path")
     if path_in:
-        p = _Path(path_in)
-        if not p.is_file():
-            return jsonify({"ok": False,
-                            "error": f"structure_path not found: {p}"}), 400
+        try:
+            p = _resolve_path_within_roots(path_in, require="file")
+        except _PickerError as exc:
+            return jsonify({"ok": False, "error": exc.message}), exc.status
         text_in = p.read_text()
         ext = p.suffix.lower()
     else:
@@ -240,15 +263,15 @@ def api_structure_analyze():
     form with sensible (not necessarily correct -- always echoes the
     rationale so the user sanity-checks).
     """
+    from .files import _PickerError
     body = request.get_json(silent=True) or {}
     text_in = body.get("structure_text")
     path_in = body.get("structure_path")
-    from pathlib import Path as _Path
     if path_in:
-        p = _Path(path_in)
-        if not p.is_file():
-            return jsonify({"ok": False,
-                            "error": f"structure_path not found: {p}"}), 400
+        try:
+            p = _resolve_path_within_roots(path_in, require="file")
+        except _PickerError as exc:
+            return jsonify({"ok": False, "error": exc.message}), exc.status
         text_in = p.read_text()
         ext = p.suffix.lower()
     else:
