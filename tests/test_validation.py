@@ -905,3 +905,119 @@ def test_pyscf_validator_silent_when_user_overrode_charge_to_make_even():
     issues = validate(_ch3_radical_struct(), cfg)
     odd_warns = [i for i in issues if "odd electron" in i.message]
     assert odd_warns == []
+
+
+# --------------------------------------------------------------------- #
+#  SIESTA pseudo-coverage check is wired into the preflight             #
+#  (2026-05-23: previously pseudos.py was only callable via the         #
+#  /api/siesta/check-pseudos endpoint or in tests -- nothing in the     #
+#  Build->Generate flow ever ran it.  These tests pin that every        #
+#  validate(struct, SiestaConfig) call now exercises the coverage       #
+#  check, surfacing missing files / XC mismatches as preflight Issues.) #
+# --------------------------------------------------------------------- #
+
+
+def _make_pdojo_psml(element: str, *, z: int = None,
+                     libxc_id_x: int = 101,  # PBE exchange
+                     libxc_id_c: int = 130   # PBE correlation
+                     ) -> str:
+    """Real-PseudoDojo-shape PSML (pseudo-atom-spec + nested
+    <functional> for libxc)."""
+    if z is None:
+        from ase.data import atomic_numbers as _Z
+        z = _Z[element]
+    return f"""<?xml version="1.0" encoding="UTF-8" ?>
+<psml version="1.1" xmlns="http://esl.cecam.org/PSML/ns/1.1">
+<provenance creator="test"/>
+<pseudo-atom-spec atomic-label="{element}" atomic-number="{z}"
+ z-pseudo="{z}" relativity="scalar">
+<exchange-correlation>
+<libxc-info number-of-functionals="2">
+<functional name="x" type="exchange" id="{libxc_id_x}"/>
+<functional name="c" type="correlation" id="{libxc_id_c}"/>
+</libxc-info>
+</exchange-correlation>
+</pseudo-atom-spec>
+</psml>"""
+
+
+class TestSiestaPseudoCoverageInPreflight:
+    """Pin the actual wiring: validate(struct, SiestaConfig) MUST
+    surface pseudo-coverage findings as Issues."""
+
+    def _water(self):
+        from molbuilder.structure import Structure
+        import numpy as np
+        return Structure(elements=["O", "H", "H"],
+                         positions=np.array([[0, 0, 0], [1, 0, 0], [-1, 0, 0]]))
+
+    def test_psml_lib_unset_emits_actionable_warn(self):
+        """Default config (psml_lib=None) -> WARN telling user how to
+        get pseudos.  Without this warning the user discovers the
+        missing-pseudo failure only after a 5-minute mpirun start-up."""
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.validation import validate
+        issues = validate(self._water(), SiestaConfig())
+        psml_issues = [i for i in issues if i.where == "config.psml_lib"]
+        assert psml_issues
+        assert psml_issues[0].severity == "warn"
+        assert "psml_lib is not set" in psml_issues[0].message
+        # Actionable: mentions PseudoDojo + the projects/pseudopotential/
+        # convention.
+        assert "pseudo-dojo.org" in psml_issues[0].message
+        assert "projects/pseudopotential" in psml_issues[0].message
+
+    def test_psml_lib_bad_path_emits_error(self):
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.validation import validate
+        issues = validate(self._water(),
+                           SiestaConfig(psml_lib="/no/such/dir"))
+        errs = [i for i in issues if i.where == "config.psml_lib"
+                and i.severity == "error"]
+        assert errs
+        assert "/no/such/dir" in errs[0].message
+
+    def test_complete_coverage_passes(self, tmp_path):
+        """All elements present + matching XC -> NO psml-related issues
+        (other checks may fire; we filter to just the psml ones)."""
+        for el in ("O", "H"):
+            (tmp_path / f"{el}.psml").write_text(_make_pdojo_psml(el))
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.validation import validate
+        issues = validate(self._water(),
+                           SiestaConfig(psml_lib=str(tmp_path), xc_authors="PBE"))
+        psml_issues = [i for i in issues if "psml" in i.where.lower()]
+        assert psml_issues == []
+
+    def test_missing_element_emits_error(self, tmp_path):
+        """Only O.psml is present; H is missing -> ERROR Issue."""
+        (tmp_path / "O.psml").write_text(_make_pdojo_psml("O"))
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.validation import validate
+        issues = validate(self._water(),
+                           SiestaConfig(psml_lib=str(tmp_path)))
+        h_issues = [i for i in issues
+                    if i.where == "config.psml_lib.H"]
+        assert h_issues
+        assert h_issues[0].severity == "error"
+        assert "no .psml file for H" in h_issues[0].message
+
+    def test_xc_mismatch_emits_warn(self, tmp_path):
+        """Pseudos are LDA but the calc requests PBE -> WARN per
+        element (silently wrong bond lengths otherwise)."""
+        # libxc id 1 = XC_LDA_X
+        for el in ("O", "H"):
+            (tmp_path / f"{el}.psml").write_text(
+                _make_pdojo_psml(el, libxc_id_x=1, libxc_id_c=9))
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.validation import validate
+        issues = validate(self._water(),
+                           SiestaConfig(psml_lib=str(tmp_path),
+                                          xc_authors="PBE"))
+        mismatch_issues = [i for i in issues
+                           if "psml" in i.where.lower()
+                           and i.severity == "warn"
+                           and "LDA" in i.message]
+        assert len(mismatch_issues) == 2   # O + H both flagged
+        assert all("bond lengths will be silently wrong" in i.message
+                   for i in mismatch_issues)

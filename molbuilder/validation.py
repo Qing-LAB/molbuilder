@@ -506,6 +506,77 @@ def _check_metal_basis_adequacy(struct: Structure, *,
     return []
 
 
+def _check_siesta_pseudo_coverage(struct: Structure, cfg) -> List[Issue]:
+    """Run molbuilder.pseudos.check_coverage on cfg.psml_lib so the
+    SIESTA Build->Generate preflight catches:
+      * missing .psml files (SIESTA's ``pseudo_read: ERROR: Pseudopotential
+        file not found`` after 5 minutes of MPI init -- we surface
+        at click-time instead);
+      * XC family / authors mismatch (SIESTA SILENTLY uses the
+        pseudo's XC even when XC.authors in the .fdf disagrees;
+        bond lengths come out wrong with no error -- only molbuilder
+        catches this).
+
+    Without cfg.psml_lib set we emit a single WARN telling the
+    user SIESTA will hard-fail at run time looking for them.
+    Suggests projects/pseudopotential/ as the convention since
+    that's where the new-project skeleton creates one.
+    """
+    psml_lib = getattr(cfg, "psml_lib", None)
+    if not psml_lib:
+        # No path configured -- SIESTA will refuse to start.  Don't
+        # ERROR (user might know what they're doing + intend to fill
+        # it in by hand); WARN with the actionable hint.
+        return [Issue(
+            "warn",
+            ("cfg.psml_lib is not set -- SIESTA needs .psml files for "
+             "every element (H, C, N, O, S, Fe, ...) and will refuse "
+             "to start without them.  Download from "
+             "http://www.pseudo-dojo.org (PBE-SR, standard, PSML "
+             "format) and set cfg.psml_lib to that directory.  "
+             "Convention: projects/pseudopotential/ next to your "
+             "structure files.  Once set, this preflight will check "
+             "coverage + XC-family match against your structure's "
+             "elements automatically."),
+            "config.psml_lib",
+        )]
+    from pathlib import Path as _Path
+    psml_dir = _Path(psml_lib)
+    if not psml_dir.is_dir():
+        return [Issue(
+            "error",
+            f"cfg.psml_lib path does not exist or is not a directory: "
+            f"{psml_lib}.  SIESTA will not find any pseudopotentials.",
+            "config.psml_lib",
+        )]
+    # Derive expected XC family from cfg.xc_authors (PBE/PBEsol/...
+    # -> GGA; CA/PZ/PW -> LDA; DRSLL/LMKLL -> VDW).
+    GGA = {"pbe", "pbesol", "blyp", "revpbe", "rpbe"}
+    LDA = {"ca", "pz", "pw"}
+    VDW = {"drsll", "lmkll"}
+    xc_authors = (getattr(cfg, "xc_authors", "") or "").strip()
+    a = xc_authors.lower()
+    expected_family = ("GGA" if a in GGA
+                       else "LDA" if a in LDA
+                       else "VDW" if a in VDW
+                       else None)
+    from .pseudos import check_coverage
+    out: List[Issue] = []
+    for entry in check_coverage(
+        struct.elements, psml_dir,
+        expected_xc_family=expected_family,
+        expected_xc_authors=xc_authors or None,
+    ):
+        if entry.status == "ok":
+            continue
+        severity = ("error" if entry.status == "missing"
+                    else "warn")    # xc_mismatch / relativistic_mismatch /
+                                    # parse_warning -- all advisory
+        out.append(Issue(severity, entry.message,
+                          f"config.psml_lib.{entry.element}"))
+    return out
+
+
 def _check_open_shell_metal(struct: Structure, *,
                               is_closed_shell: bool,
                               engine_label: str) -> List[Issue]:
@@ -552,6 +623,15 @@ def _validate_siesta(struct: Structure, cfg,
     # Peptide protonation hint -- same as PySCF side; see
     # _check_peptide_protonation for the full rationale.
     issues += _check_peptide_protonation(struct, getattr(cfg, "net_charge", None))
+
+    # Pseudopotential coverage (the actionable use of pseudos.py).
+    # Without this wired in, the parser was dead code -- only the
+    # tests + the unwired /api/siesta/check-pseudos endpoint
+    # exercised it.  Now every Build->Generate runs it: missing
+    # files become ERROR Issues (SIESTA hard-fails without them);
+    # XC mismatches become WARN (silent wrong bond lengths
+    # otherwise).
+    issues += _check_siesta_pseudo_coverage(struct, cfg)
 
     # Open-shell metal + closed-shell SCF: shared rule with PySCF.
     issues += _check_open_shell_metal(
