@@ -852,7 +852,13 @@
     async function maybeWriteToWorkspace(text, filename, statusId) {
         const proj = (window.molbuilder || {}).projects;
         if (!proj) return null;
-        const r = await proj.saveToWorkspace(text, filename);
+        // ``overwrite: true``: Generate-and-save is a "regenerate
+        // the workspace from the form" gesture -- the user
+        // expects the new .fdf to clobber the old one.  Without
+        // this flag, a second click on Generate would 409 against
+        // /api/files/write.
+        const r = await proj.saveToWorkspace(text, filename,
+                                              { overwrite: true });
         if (!r) return null;     // no current_dir / at root -- silent fallback
         if (r.ok) {
             setStatus(statusId, "Wrote " + r.relPath, "ok");
@@ -906,6 +912,14 @@
             // Filename uses the SystemLabel as the basename, matching
             // SIESTA's filename convention + what the Download button
             // would write.
+            // Filename basename MUST match cfg.system_label.  SIESTA
+            // writes its output files (<label>.XV / .DM / .out /
+            // .molwatch.log) using the SystemLabel from inside the
+            // .fdf -- if the saved filename doesn't match, the user
+            // sees `.fdf` named one way + output files named another,
+            // which is confusing and breaks the Watch tab's
+            // file-discovery logic (looks for <basename>.molwatch.log).
+            // Sanitise the label the same way SIESTA does (alnum + . _ -).
             const fdfLabel = (r.system_label || "siesta").replace(
                 /[^A-Za-z0-9._-]+/g, "_");
             const written = await maybeWriteToWorkspace(
@@ -916,8 +930,12 @@
             // written to the workspace, copy the matching .psml files
             // next to it.  Without this hop SIESTA fails at startup:
             //   pseudo_read: ERROR: Pseudopotential file not found
-            const psmlLib = (params || {})["psml-lib"]
-                          || (params || {}).psml_lib;
+            // Form params keys are the SiestaConfig field names
+            // (underscored), NOT the kebab-case ``id_suffix`` form.
+            // Reading the wrong key silently gave undefined ->
+            // wrapper emitted single-process even when the user
+            // wanted MPI.  Caught in the 2026-05-23 review pass.
+            const psmlLib = (params || {}).psml_lib;
             const destDir = written && written.dir;
             if (psmlLib && destDir) {
                 try {
@@ -931,19 +949,25 @@
                         }),
                     }).then(x => x.json());
                     if (ip.ok) {
-                        const n = (ip.copied || []).length;
-                        const skip = (ip.skipped || []).length;
+                        const nNew = (ip.copied || []).length;
+                        const nOver = (ip.overwritten || []).length;
+                        const nSkip = (ip.skipped || []).length;
                         const missing = ip.missing || [];
-                        let msg = `Copied ${n} .psml file${n===1?"":"s"} `
-                                + `to ${destDir}`;
-                        if (skip) msg += ` (${skip} already present)`;
+                        const parts = [];
+                        if (nNew)  parts.push(`copied ${nNew} new`);
+                        if (nOver) parts.push(`overwrote ${nOver}`);
+                        if (nSkip) parts.push(`${nSkip} already present`);
+                        let msg = ".psml: " + (parts.join(", ") || "no-op")
+                                + ` → ${destDir}`;
                         if (missing.length) {
-                            msg += `; MISSING: ${missing.join(", ")} `
+                            msg += ` · MISSING: ${missing.join(", ")} `
                                  + `— SIESTA will refuse to start`;
                         }
                         setStatus(
                             "fdf-status", msg,
-                            missing.length ? "error" : "ok"
+                            missing.length ? "error"
+                            : nOver         ? "warn"
+                            :                  "ok"
                         );
                     } else {
                         setStatus("fdf-status",
@@ -963,29 +987,44 @@
             // still run the .fdf manually).  MPI rank count / OMP /
             // memory come from the form's Parallel-execution section.
             if (written && written.ok) {
-                const mpiN = parseInt(
-                    (params || {})["mpi-np"] ||
-                    (params || {})["np"] || 0, 10);
-                const omp = parseInt(
-                    (params || {})["omp-threads"] || 0, 10);
-                const mem = parseInt(
-                    (params || {})["max-memory-mb"] || 0, 10);
+                // SiestaConfig field names are underscored; the JS
+                // collector preserves them as-is.  Reading hyphen
+                // keys (id_suffix form) here silently gave undefined
+                // -> wrapper emitted single-process by default.
+                //
+                // Number(...) handles ""/null/undefined correctly
+                // (yields 0) WHERE parseInt("") returns NaN -- the
+                // latter combined with || 0 happened to work, but
+                // a stray non-numeric value (e.g. " 4 ") would have
+                // turned into NaN -> 0.  Number() is safer + matches
+                // what the form collector usually delivers.
+                const _n = (k) => {
+                    const v = (params || {})[k];
+                    const n = Number(v);
+                    return Number.isFinite(n) && n > 0 ? n : null;
+                };
+                const mpiN = _n("mpi_np");
+                const omp  = _n("omp_threads");
+                const mem  = _n("max_memory_mb");
                 try {
                     const wr = await fetch("/api/run/install-wrapper", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({
                             script_path:   written.path,
-                            mpi_np:        mpiN || null,
-                            omp_threads:   omp || null,
-                            max_memory_mb: mem || null,
+                            mpi_np:        mpiN,
+                            omp_threads:   omp,
+                            max_memory_mb: mem,
                         }),
                     }).then(x => x.json());
                     if (wr.ok) {
                         const cur = ($("fdf-status").textContent || "");
+                        const verb = wr.overwritten ? "overwrote"
+                                                     : "wrote";
                         setStatus("fdf-status",
-                            cur + ` · wrote ${wr.wrapper_name} (bash to run)`,
-                            "ok");
+                            cur + ` · ${verb} ${wr.wrapper_name} `
+                                + `(bash to run)`,
+                            wr.overwritten ? "warn" : "ok");
                     }
                 } catch (_) { /* non-fatal; user can run the .fdf manually */ }
             }
@@ -1075,8 +1114,37 @@
             // Download button's filename).
             const jobName = (r.job_name || "pyscf").replace(
                 /[^A-Za-z0-9._-]+/g, "_");
-            await maybeWriteToWorkspace(r.script, jobName + ".py",
-                                        "pyscf-status");
+            const written = await maybeWriteToWorkspace(
+                r.script, jobName + ".py", "pyscf-status");
+            // Drop a <basename>.run.sh next to the .py too -- same
+            // courtesy as the SIESTA Build flow.  PySCF doesn't need
+            // pseudos (bundled) or mpi_np (single-process Python);
+            // wrapper just activates the env + sets BLAS=1 + runs
+            // ``python <basename>.py``.  No-op if maybeWriteToWorkspace
+            // returned null (no workspace).
+            if (written && written.ok) {
+                try {
+                    const wr = await fetch("/api/run/install-wrapper", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            script_path:   written.path,
+                            mpi_np:        null,    // PySCF: no mpirun
+                            omp_threads:   null,    // in-script auto-detect
+                            max_memory_mb: null,    // in-script max_memory cfg
+                        }),
+                    }).then(x => x.json());
+                    if (wr.ok) {
+                        const cur = ($("pyscf-status").textContent || "");
+                        const verb = wr.overwritten ? "overwrote"
+                                                     : "wrote";
+                        setStatus("pyscf-status",
+                            cur + ` · ${verb} ${wr.wrapper_name} `
+                                + `(bash to run)`,
+                            wr.overwritten ? "warn" : "ok");
+                    }
+                } catch (_) { /* non-fatal */ }
+            }
         } catch (e) {
             setStatus("pyscf-status", "Network error: " + e.message, "error");
         }

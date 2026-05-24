@@ -441,6 +441,32 @@ class SiestaConfig:
     # override go through the Python API.  Block-size auto picks a
     # power-of-2 from n_atoms; over_k auto turns on when the k-grid
     # has multiple k-points.
+    # MPI rank count for ``mpirun -np N siesta`` -- exposed on the
+    # form so the user can pick the rank count alongside the other
+    # parallel-execution knobs.  The run.sh wrapper reads this from
+    # the form params.  None / 0 / 1 -> single-process (no mpirun).
+    # Don't confuse with parallel_block_size (BlockSize for ScaLAPACK
+    # within a rank); rank count is the OUTER parallelism.
+    mpi_np: Optional[int] = field(default=None, metadata={
+        "section":    "Parallel execution",
+        "label":      "MPI ranks (np)",
+        "null_label": "(single-process)",
+        "range":      (1, 1024),
+        "help":       "MPI rank count for the run-wrapper -- emits "
+                      "``mpirun -np <N> siesta ...`` when N >= 2.  "
+                      "Pick based on your host: typically N = physical "
+                      "cores or N = sockets x cores_per_socket / 2 for "
+                      "memory-bound jobs.  Cluster schedulers (Slurm / "
+                      "PBS) usually set this for you; on a workstation "
+                      "you'd pick it manually.  Leave blank (or = 1) "
+                      "for single-process runs.  The wrapper also "
+                      "auto-derives OMP_NUM_THREADS = "
+                      "physical_cores // mpi_np when omp_threads is "
+                      "blank, so a 20-core box + mpi_np=4 gives 5 OMP "
+                      "threads per rank by default.",
+        "skip_cli":   True,
+    })
+
     parallel_block_size: Optional[int] = field(default=None, metadata={
         "section": "Parallel execution",
         "label": "BlockSize",

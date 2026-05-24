@@ -177,6 +177,15 @@ def api_run_install_wrapper():
     omp_threads   = int(omp_threads) if omp_threads else None
     max_memory_mb = int(max_memory_mb) if max_memory_mb else None
 
+    # Track whether we OVERWROTE an existing wrapper so the UI can
+    # surface that (the user may have hand-edited the .run.sh with
+    # extra exports / a custom srun command etc.; silent clobber
+    # would lose the work).  write_run_wrapper itself does
+    # ``write_text`` which is silent overwrite -- check before
+    # calling so we can report the prior state.
+    wrapper_dest = script_path.parent / (script_path.stem + ".run.sh")
+    pre_existed  = wrapper_dest.exists()
+
     from molbuilder.runwrap import write_run_wrapper, WrapperError
     try:
         wrapper = write_run_wrapper(
@@ -196,6 +205,7 @@ def api_run_install_wrapper():
         "ok":           True,
         "wrapper_path": str(wrapper),
         "wrapper_name": wrapper.name,
+        "overwritten":  pre_existed,
     })
 
 
@@ -281,8 +291,9 @@ def api_siesta_install_pseudos():
     # are already in dest_dir (same inode = already copied).
     import shutil
     seen: set = set()
-    copied: list = []
-    skipped: list = []
+    copied: list = []        # new files (no prior version in dest_dir)
+    overwritten: list = []   # files that REPLACED an existing one
+    skipped: list = []       # already-present (same source) -- no-op
     missing: list = []
     for raw_el in struct.elements:
         el = raw_el.capitalize()
@@ -300,22 +311,32 @@ def api_siesta_install_pseudos():
                 continue
         dst = dest_dir / f"{el}.psml"
         try:
-            if dst.exists() and src.resolve() == dst.resolve():
+            existed_before = dst.exists()
+            if existed_before and src.resolve() == dst.resolve():
                 skipped.append({"file": dst.name,
                                 "reason": "already present (same file)"})
                 continue
             shutil.copyfile(src, dst)
-            copied.append(dst.name)
+            if existed_before:
+                # Surface CLOBBER explicitly -- the user may have
+                # hand-edited a .psml (or pulled a different
+                # functional family by accident); silent overwrite
+                # would lose that.  The UI can highlight the
+                # overwritten[] entries amber.
+                overwritten.append(dst.name)
+            else:
+                copied.append(dst.name)
         except OSError as exc:
             return jsonify({"ok": False,
                             "error": f"copy failed for {el}.psml: {exc}"}), 500
 
     return jsonify({
-        "ok":       True,
-        "copied":   copied,
-        "skipped":  skipped,
-        "missing":  missing,
-        "dest_dir": str(dest_dir),
+        "ok":          True,
+        "copied":      copied,
+        "overwritten": overwritten,
+        "skipped":     skipped,
+        "missing":     missing,
+        "dest_dir":    str(dest_dir),
     })
 
 
