@@ -541,12 +541,31 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg) -> List[Issue]:
             "config.psml_lib",
         )]
     from pathlib import Path as _Path
-    psml_dir = _Path(psml_lib)
+    psml_dir = _Path(psml_lib).expanduser()
     if not psml_dir.is_dir():
+        # Relative paths are resolved against the server's CWD (the
+        # repo root when running via ``python -m molbuilder web``),
+        # NOT against the .fdf destination directory.  That mismatch
+        # bit a user (2026-05-24: gave ``../../../pseudopotential``
+        # expecting it to resolve from the .fdf dest).  Make the error
+        # spell out where we looked + recommend an absolute path.
+        if not psml_dir.is_absolute():
+            from pathlib import Path as _P
+            tried_abs = (_P.cwd() / psml_dir).resolve(strict=False)
+            hint = (
+                f"  Note: relative paths are resolved against the "
+                f"server's CWD ({_P.cwd()}), not the .fdf destination. "
+                f"Resolved to {tried_abs}.  Use an ABSOLUTE path or "
+                f"pick the directory via the file-picker button next "
+                f"to the field."
+            )
+        else:
+            hint = ""
         return [Issue(
             "error",
             f"cfg.psml_lib path does not exist or is not a directory: "
-            f"{psml_lib}.  SIESTA will not find any pseudopotentials.",
+            f"{psml_lib}.  SIESTA will not find any pseudopotentials."
+            + hint,
             "config.psml_lib",
         )]
     # Derive expected XC family from cfg.xc_authors (PBE/PBEsol/...
