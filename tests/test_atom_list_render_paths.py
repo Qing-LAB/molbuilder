@@ -108,6 +108,20 @@ def large_pdb(tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
+def large_pdb_n_atoms(large_pdb):
+    """Actual atom count after Structure.from_pdb parsing.
+
+    The PDB file holds 1184 raw ATOM/HETATM records, but the parser
+    deduplicates altLoc occupants (keeps the first occurrence of each
+    ``(chain, resid, atom_name)`` tuple), so 1c75.pdb resolves to 1146
+    atoms (38 altLoc B records dropped).  The DOM count the test
+    asserts must match this -- the JS selection store gets what the
+    server's parser produced, not the raw line count."""
+    from molbuilder.structure import Structure
+    return len(Structure.from_pdb(large_pdb.read_text()).elements)
+
+
+@pytest.fixture(scope="module")
 def picker_root_setter(monkeypatch_module):
     """Repoint Capabilities.file_picker_roots() to a parent dir that
     contains both small_pdb and large_pdb so the selection endpoints
@@ -273,27 +287,27 @@ class TestLargeStructureRenderPaths:
     path is visibly different from the simple path."""
 
     def test_default_simple_path_renders_all_1184_rows(
-        self, page, flask_server, large_pdb,
+        self, page, flask_server, large_pdb, large_pdb_n_atoms,
     ):
         _setup_picker_root_for(large_pdb)
         _drive_modify_with(page, flask_server, large_pdb)
-        _wait_atoms_loaded(page, 1184)
-        # 1184 < 2000 -> simple path by default.
+        _wait_atoms_loaded(page, large_pdb_n_atoms)
+        # Atom count < 2000 -> simple path by default.
         assert not _vscroll_active(page), (
-            "Default render for a 1184-atom structure should be simple "
-            "(below the 2000 threshold)."
+            f"Default render for a {large_pdb_n_atoms}-atom structure "
+            f"should be simple (below the 2000 threshold)."
         )
         n = _count_atom_rows(page)
-        assert n == 1184, (
-            f"Simple path: expected 1184 rendered rows; got {n}"
+        assert n == large_pdb_n_atoms, (
+            f"Simple path: expected {large_pdb_n_atoms} rendered rows; got {n}"
         )
 
     def test_force_virtual_renders_only_visible_window(
-        self, page, flask_server, large_pdb,
+        self, page, flask_server, large_pdb, large_pdb_n_atoms,
     ):
         _setup_picker_root_for(large_pdb)
         _drive_modify_with(page, flask_server, large_pdb)
-        _wait_atoms_loaded(page, 1184)
+        _wait_atoms_loaded(page, large_pdb_n_atoms)
         _force_mode(page, "virtual")
         assert _vscroll_active(page), (
             "force-mode='virtual' did NOT activate the virtual scroller."
@@ -301,12 +315,12 @@ class TestLargeStructureRenderPaths:
         # Only a fraction of atoms should be in the DOM after virtual
         # scroll kicks in.  The exact number depends on the
         # scroller's clientHeight; we just assert it's MUCH less than
-        # 1184 (otherwise the virtual scroller isn't pruning).
+        # the total (otherwise the virtual scroller isn't pruning).
         n = _count_atom_rows(page)
         assert n < 200, (
             f"Virtual scroll should prune the rendered set; got {n} "
-            f"rows out of 1184.  Threshold for 'pruning' set generously "
-            f"at 200 to allow for buffer + a tall viewport."
+            f"rows out of {large_pdb_n_atoms}.  Threshold for 'pruning' "
+            f"set generously at 200 to allow for buffer + a tall viewport."
         )
         assert n > 0, (
             "Virtual scroll rendered 0 rows -- empty window means "
@@ -314,14 +328,14 @@ class TestLargeStructureRenderPaths:
         )
 
     def test_force_virtual_then_back_to_simple_swap_clean(
-        self, page, flask_server, large_pdb,
+        self, page, flask_server, large_pdb, large_pdb_n_atoms,
     ):
         """Toggling force-mode mid-session should swap cleanly:
-        virtual scroller torn down, simple path reinstated, all 1184
+        virtual scroller torn down, simple path reinstated, all
         rows back in the DOM."""
         _setup_picker_root_for(large_pdb)
         _drive_modify_with(page, flask_server, large_pdb)
-        _wait_atoms_loaded(page, 1184)
+        _wait_atoms_loaded(page, large_pdb_n_atoms)
         _force_mode(page, "virtual")
         assert _vscroll_active(page)
         assert _count_atom_rows(page) < 200
@@ -332,21 +346,21 @@ class TestLargeStructureRenderPaths:
             "force-mode='simple' did NOT tear down the virtual scroller."
         )
         n = _count_atom_rows(page)
-        assert n == 1184, (
-            f"After swap virtual->simple, expected 1184 rendered rows; "
-            f"got {n}.  Suggests the scroller's torn-down state is "
-            f"inconsistent."
+        assert n == large_pdb_n_atoms, (
+            f"After swap virtual->simple, expected {large_pdb_n_atoms} "
+            f"rendered rows; got {n}.  Suggests the scroller's torn-down "
+            f"state is inconsistent."
         )
 
     def test_virtual_scroll_repaints_on_scroll_with_current_selection(
-        self, page, flask_server, large_pdb,
+        self, page, flask_server, large_pdb, large_pdb_n_atoms,
     ):
         """Stale-closure regression: after a selection toggle, the
         virtual scroller's scroll-event repaints with the CURRENT
         selection, not the captured-at-create-time one."""
         _setup_picker_root_for(large_pdb)
         _drive_modify_with(page, flask_server, large_pdb)
-        _wait_atoms_loaded(page, 1184)
+        _wait_atoms_loaded(page, large_pdb_n_atoms)
         _force_mode(page, "virtual")
         # Select atom 800.  Force-mode toggle helper already drove a
         # re-render; explicitly set the selection now.
