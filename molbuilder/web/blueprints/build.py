@@ -130,7 +130,9 @@ def api_run_install_wrapper():
       * BLAS / OpenMP pinning (OPENBLAS_NUM_THREADS=1,
         MKL_NUM_THREADS=1, OMP_NUM_THREADS auto-resolved)
       * ulimit -v for the memory cap (when ``max_memory_mb`` set)
-      * ``conda run`` activation of the right env per backend
+      * Conda env activation via the three-path hybrid (idempotent
+        if already active / source+activate if conda on PATH / clear
+        error otherwise) for the right env per backend
         (env_for_category("siesta") | env_for_category("pyscf"))
 
     Body (JSON)::
@@ -148,7 +150,10 @@ def api_run_install_wrapper():
       {
         "ok":             True,
         "wrapper_path":   "/abs/path/to/<basename>.run.sh",
-        "wrapper_name":   "<basename>.run.sh"
+        "wrapper_name":   "<basename>.run.sh",
+        "overwritten":    False              # True when a prior .run.sh
+                                             # was clobbered (so UI can
+                                             # surface as amber notice)
       }
 
     Path validation: script_path must be under the configured picker
@@ -215,13 +220,18 @@ def api_siesta_install_pseudos():
     so SIESTA finds them at run time.
 
     SIESTA discovers pseudopotentials by looking for ``<element>.psml``
-    (or ``.psf`` / ``.vps``) in the CURRENT WORKING DIRECTORY where
-    the .fdf is being read from -- there's no "pseudopotential search
-    path" directive in SIESTA's .fdf grammar.  So after writing the
-    .fdf via /api/files/write, the JS calls this endpoint to copy
-    the matching .psml files into the same directory.  Without this
-    extra hop SIESTA fails at startup with
-    ``pseudo_read: ERROR: Pseudopotential file not found``.
+    in the CURRENT WORKING DIRECTORY where the .fdf is being read from
+    -- there's no "pseudopotential search path" directive in SIESTA's
+    .fdf grammar.  So after writing the .fdf via /api/files/write, the
+    JS calls this endpoint to copy the matching .psml files into the
+    same directory.  Without this extra hop SIESTA fails at startup
+    with ``pseudo_read: ERROR: Pseudopotential file not found``.
+
+    Only ``.psml`` is installed (case-insensitive).  SIESTA also reads
+    the legacy ``.psf`` / ``.vps`` formats, but our parser + validation
+    pipeline (``molbuilder.pseudos``) is PSML-only, so we don't install
+    pseudos we can't pre-validate.  Users on legacy formats stage
+    those files manually.
 
     Body (JSON)::
 
