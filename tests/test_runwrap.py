@@ -54,7 +54,10 @@ def test_render_siesta_single_process():
     text = render_run_wrapper(Path("/somewhere/my-job.fdf"))
     assert "siesta my-job.fdf > my-job.out" in text
     assert "mpirun" not in text
-    assert "conda run -n molbuilder-siesta" in text
+    # 2026-05-23: switched from ``conda run -n`` to source+activate
+    # hybrid (more robust for MPI launchers + better error messages
+    # when conda isn't on PATH).
+    assert "conda activate molbuilder-siesta" in text
     assert text.startswith("#!/usr/bin/env bash\n")
 
 
@@ -103,9 +106,11 @@ def test_render_siesta_mpi_pins_blas_to_one_and_sets_omp():
     assert "export OPENBLAS_NUM_THREADS=1" in text
     # OMP is set to SOMETHING (auto-resolved or user-set), not absent.
     assert "export OMP_NUM_THREADS=" in text
-    # Exports must precede the exec line so the subshell `conda run`
-    # inherits them.
-    exec_ix = text.find("exec conda run")
+    # Exports must precede the exec line so the activated env
+    # inherits them.  2026-05-23: exec line went from
+    # ``exec conda run -n ...`` to ``exec mpirun ...`` (the conda
+    # activation now happens via source + activate ABOVE the exec).
+    exec_ix = text.find("exec mpirun")
     omp_ix  = text.find("export OMP_NUM_THREADS=")
     assert 0 <= omp_ix < exec_ix, (
         "OMP_NUM_THREADS export must come BEFORE the exec line"
@@ -142,6 +147,38 @@ def test_render_siesta_mpi_np_one_pins_blas_too():
     assert "export OMP_NUM_THREADS=" in text
 
 
+def test_render_conda_activation_hybrid_three_paths():
+    """The wrapper handles three conda-env scenarios robustly:
+      1. CONDA_DEFAULT_ENV == target -> skip activation (idempotent).
+      2. conda on PATH -> source profile.d/conda.sh + activate.
+      3. conda not on PATH -> clear error message + exit 1.
+
+    All three paths must be present in the emitted script (the
+    bash if/elif/else picks the right one at run time).  This pins
+    the 2026-05-23 upgrade from ``conda run -n`` to the hybrid
+    pattern."""
+    _bind()
+    text = render_run_wrapper(Path("/x/job.fdf"), mpi_np=4)
+    # Path 1: idempotency check.
+    assert 'CONDA_DEFAULT_ENV:-' in text
+    assert 'already in the target env' in text
+    # Path 2: source + activate.
+    assert "conda info --base" in text
+    assert "conda activate molbuilder-siesta" in text
+    assert "etc/profile.d/conda.sh" in text
+    # Path 3: clear error message.
+    assert "conda not on PATH" in text
+    assert "exit 1" in text
+    # Activation block runs BEFORE the exec line (otherwise the env
+    # isn't ready when SIESTA launches).
+    activate_ix = text.find("conda activate molbuilder-siesta")
+    exec_ix     = text.find("exec mpirun")
+    assert 0 <= activate_ix < exec_ix, (
+        "conda activation must precede the exec line; otherwise the "
+        "subshell SIESTA runs in wouldn't have the env."
+    )
+
+
 def test_render_siesta_max_memory_emits_ulimit():
     """max_memory_mb kwarg becomes a ``ulimit -v`` soft cap so a
     runaway SIESTA process can't OOM the host."""
@@ -175,7 +212,7 @@ def test_render_pyscf():
     _bind()
     text = render_run_wrapper(Path("/somewhere/my-job.py"))
     assert "python my-job.py" in text
-    assert "conda run -n molbuilder-pySCF" in text
+    assert "conda activate molbuilder-pySCF" in text
     # PySCF scripts handle their own logging; no stdout redirect.
     assert "> my-job" not in text
 
@@ -205,14 +242,14 @@ def test_render_multidot_basename_preserved():
 def test_render_explicit_env_override():
     _bind()
     text = render_run_wrapper(Path("/x/y.fdf"), env="my-custom-siesta")
-    assert "conda run -n my-custom-siesta" in text
+    assert "conda activate my-custom-siesta" in text
 
 
 def test_render_picks_up_config_env_override():
     """Per-machine envs overrides flow through Capabilities -> wrapper."""
     _bind({"siesta": "siesta-ng-v54"})
     text = render_run_wrapper(Path("/x/y.fdf"))
-    assert "conda run -n siesta-ng-v54" in text
+    assert "conda activate siesta-ng-v54" in text
 
 
 # --------------------------------------------------------------------- #

@@ -139,6 +139,48 @@ def render_run_wrapper(script_path: Path, *,
         # the env-respect (the script honors a pre-export) AND
         # mask the in-script auto-detect that picks physical cores.
 
+    # Conda env activation block.  Three paths so the wrapper Just
+    # Works in the common cases:
+    #
+    # 1. Already in the right env (CONDA_DEFAULT_ENV == target_env):
+    #    skip activation, run directly.  Lets the user activate
+    #    interactively + invoke the wrapper without double-init.
+    # 2. conda on PATH: source the conda.sh hook + activate.  Full
+    #    env-setup (PATH, LD_LIBRARY_PATH, env-specific hooks like
+    #    CUDA bootstraps) -- more robust than `conda run` for MPI
+    #    launchers that can mishandle the `--no-capture-output`
+    #    pipe redirection.
+    # 3. conda not on PATH: print a clear error message naming the
+    #    target env + how to install conda; exit 1.
+    #
+    # This is the "hybrid" pattern: catches the common cases, gives
+    # a real error message instead of a cryptic "command not found".
+    env_activation = (
+        f"# --- Activate conda env ({target_env}) ----------------------\n"
+        f'if [ "${{CONDA_DEFAULT_ENV:-}}" = "{target_env}" ]; then\n'
+        f"    : # already in the target env -- nothing to do\n"
+        f"elif command -v conda >/dev/null 2>&1; then\n"
+        f'    _conda_base="$(conda info --base 2>/dev/null)"\n'
+        f'    if [ -z "$_conda_base" ] || [ ! -f "$_conda_base/etc/profile.d/conda.sh" ]; then\n'
+        f"        echo \"ERROR: conda is on PATH but conda.sh not found; \"\\\n"
+        f"             \"reinstall conda or set CONDA_PREFIX manually.\" >&2\n"
+        f"        exit 1\n"
+        f"    fi\n"
+        f'    # shellcheck disable=SC1091\n'
+        f'    source "$_conda_base/etc/profile.d/conda.sh"\n'
+        f"    conda activate {target_env}\n"
+        f"else\n"
+        f"    echo \"ERROR: conda not on PATH; this wrapper needs the \"\\\n"
+        f"         \"'{target_env}' env activated.  Either:\" >&2\n"
+        f"    echo \"  * install Miniconda + create the env: \"\\\n"
+        f"         \"see docs/README_install.md\" >&2\n"
+        f"    echo \"  * or pre-activate it: \"\\\n"
+        f"         \"conda activate {target_env} && bash $0\" >&2\n"
+        f"    exit 1\n"
+        f"fi\n"
+        f"\n"
+    )
+
     return (
         f"#!/usr/bin/env bash\n"
         f"#\n"
@@ -156,9 +198,9 @@ def render_run_wrapper(script_path: Path, *,
         f"set -euo pipefail\n"
         f"cd \"$(dirname \"$0\")\"\n"
         f"\n"
+        f"{env_activation}"
         f"{env_prefix}"
-        f"exec conda run -n {target_env} --no-capture-output \\\n"
-        f"    {inner}\n"
+        f"exec {inner}\n"
     )
 
 
