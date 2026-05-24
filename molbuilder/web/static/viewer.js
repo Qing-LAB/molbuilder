@@ -883,6 +883,79 @@
         }
     }());
 
+    /**
+     * Live caption for the SIESTA psml_lib field.  Drops a small
+     * one-liner directly below the input that shows the user the
+     * absolute path the server will resolve their entry to:
+     *
+     *   ""                    -> "(set a path)"
+     *   "pseudopotential"     -> "→ /home/.../projects/pseudopotential"
+     *   "../../../pseudo"     -> "→ /home/.../projects/../../../pseudo"
+     *   "/abs/path"           -> "→ /abs/path"  (absolute, no change)
+     *   "~/pseudos"           -> "→ ~/pseudos"  (expanded server-side)
+     *
+     * Addresses the UX gap that the implicit ``projects/`` anchor
+     * isn't visible in the field itself.  Mirrors the server's
+     * pseudos.resolve_psml_lib() rule (minus the dest_dir hop,
+     * which only kicks in at Save time and isn't relevant here).
+     */
+    function installPsmlLibLiveCaption() {
+        const input = $("p-psml-lib");
+        if (!input || input.dataset.captionInstalled === "1") return;
+        input.dataset.captionInstalled = "1";
+        // Caption element rendered immediately after the input.  The
+        // form-schema renderer wraps each field in a <label>; we
+        // append into that label so the caption rides along with
+        // wherever the field lives in the DOM.
+        const cap = document.createElement("small");
+        cap.className = "schema-field-hint";
+        cap.style.cssText = "display:block;margin-top:2px;color:var(--muted,#888);";
+        cap.id = "p-psml-lib-resolved";
+        const parent = input.parentElement || input;
+        parent.appendChild(cap);
+        const proj = (window.molbuilder || {}).projects;
+        function render() {
+            const v = (input.value || "").trim();
+            if (!v) {
+                cap.textContent = "(unset -- SIESTA will fail to start without pseudos)";
+                return;
+            }
+            // Absolute or ~/ -> echo (no anchor applied).
+            if (v.charAt(0) === "/" || v.startsWith("~")) {
+                cap.textContent = "→ " + v;
+                return;
+            }
+            // Relative -> show projects/-anchored form.  The Save
+            // step also tries dest-relative first, but at type-time
+            // we don't know dest yet; show the projects/ anchor.
+            const root = (proj && proj.getProjectsRoot && proj.getProjectsRoot()) || "";
+            if (root) {
+                cap.textContent = "→ " + root.replace(/\/$/, "") + "/" + v;
+            } else {
+                cap.textContent = "→ projects/" + v;
+            }
+        }
+        input.addEventListener("input", render);
+        // Initial paint AND re-paint when the projects root resolves
+        // (the sidebar bootstrap is async; root might not be ready
+        // when the form first mounts).
+        render();
+        if (proj && typeof proj.onChange === "function") {
+            proj.onChange(render);
+        }
+    }
+    // Form fields render asynchronously (form-schema fetches the
+    // schema from /api/build/schema/siesta then renders).  Retry the
+    // installation a few times so we hit the post-render DOM.
+    (function pollForField(tries) {
+        if (tries <= 0) return;
+        if ($("p-psml-lib")) {
+            installPsmlLibLiveCaption();
+        } else {
+            setTimeout(() => pollForField(tries - 1), 150);
+        }
+    }(40));   // ~6s budget
+
     // ----- 3. Generate FDF (render-only preview) ---------------------
     // Pure render: validate + render + populate the preview pane +
     // enable Download/Save.  Does NOT touch disk.  The user clicks
@@ -1088,6 +1161,15 @@
         if (wrapperMsg) segs.push(wrapperMsg);
         setStatus("fdf-status", segs.join(" · "),
             !installedOk ? "error" : "ok");
+
+        // Refresh the sidebar so the newly-dropped .fdf + .psml + .run.sh
+        // all appear in the directory listing.  saveToWorkspace's
+        // writeFile triggers ONE refresh (for the .fdf only) -- the
+        // /api/siesta/install-pseudos + /api/run/install-wrapper
+        // endpoints write files directly via shutil/write_run_wrapper
+        // without going through writeFile, so they don't auto-refresh.
+        // One explicit refresh at the end covers all three steps.
+        try { if (proj.refresh) await proj.refresh(); } catch (_) { /* non-fatal */ }
     });
 
     $("dl-fdf").addEventListener("click", () => {
@@ -1244,6 +1326,10 @@
         const segs = ["Wrote " + written.relPath];
         if (wrapperMsg) segs.push(wrapperMsg);
         setStatus("pyscf-status", segs.join(" · "), "ok");
+        // Refresh sidebar so the freshly-dropped .py + .run.sh show
+        // up in the listing.  install-wrapper writes outside the
+        // writeFile path, so a manual refresh is needed.
+        try { if (proj.refresh) await proj.refresh(); } catch (_) { /* non-fatal */ }
     });
 
     $("dl-pyscf").addEventListener("click", () => {

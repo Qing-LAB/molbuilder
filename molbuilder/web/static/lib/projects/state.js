@@ -160,6 +160,13 @@ async function saveToWorkspace(text, filename, opts) {
 export const projects = {
   getCurrentDir:       () => sessionStorage.getItem(SS_DIR)  || "",
   getCurrentFile:      () => sessionStorage.getItem(SS_FILE) || "",
+  // The resolved projects/ root path (Capabilities.file_picker_roots[0]).
+  // Used by the Build form's psml_lib live-resolution caption so the
+  // user sees that ``pseudopotential`` resolves to
+  // ``<root>/pseudopotential`` -- the projects/ anchor isn't visible
+  // in the input itself.  Returns "" until the sidebar's bootstrap
+  // has resolved /api/files/roots.
+  getProjectsRoot:     () => getProjectsRoot() || "",
   onChange: (cb) => {
     selectionSubscribers.add(cb);
     // Fire once immediately so subscribers can initialise from the
