@@ -119,6 +119,86 @@ def _resolve_path_within_roots(raw_path: str, *, must_exist: bool = True,
     return resolved
 
 
+@bp.route("/api/run/install-wrapper", methods=["POST"])
+def api_run_install_wrapper():
+    """Drop ``<basename>.run.sh`` next to an emitted script so the
+    user can ``bash <basename>.run.sh`` instead of remembering the
+    threading + env exports every time.
+
+    The wrapper handles three things that are otherwise a
+    per-run-in-shell ritual:
+      * BLAS / OpenMP pinning (OPENBLAS_NUM_THREADS=1,
+        MKL_NUM_THREADS=1, OMP_NUM_THREADS auto-resolved)
+      * ulimit -v for the memory cap (when ``max_memory_mb`` set)
+      * ``conda run`` activation of the right env per backend
+        (env_for_category("siesta") | env_for_category("pyscf"))
+
+    Body (JSON)::
+
+      {
+        "script_path":     "/abs/path/to/<basename>.{fdf,py}",
+        "mpi_np":          4,           # optional, SIESTA-only
+        "omp_threads":     null,        # null=auto: physical_cores // mpi_np
+        "max_memory_mb":   4000,        # optional, emits ulimit -v
+        "env":             null         # null=auto from extension
+      }
+
+    Returns::
+
+      {
+        "ok":             True,
+        "wrapper_path":   "/abs/path/to/<basename>.run.sh",
+        "wrapper_name":   "<basename>.run.sh"
+      }
+
+    Path validation: script_path must be under the configured picker
+    roots (same gate as /api/files/write).  Wrapper is written next
+    to the script with executable bits (0o755).
+    """
+    from .files import _PickerError
+    body = request.get_json(silent=True) or {}
+    script_path_raw = (body.get("script_path") or "").strip()
+    if not script_path_raw:
+        return jsonify({"ok": False,
+                        "error": "script_path is required"}), 400
+    try:
+        script_path = _resolve_path_within_roots(
+            script_path_raw, require="file",
+        )
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+
+    mpi_np        = body.get("mpi_np")
+    omp_threads   = body.get("omp_threads")
+    max_memory_mb = body.get("max_memory_mb")
+    env_override  = body.get("env")
+    # Coerce to None on falsy / zero so the helper's defaults kick in.
+    mpi_np        = int(mpi_np) if mpi_np else None
+    omp_threads   = int(omp_threads) if omp_threads else None
+    max_memory_mb = int(max_memory_mb) if max_memory_mb else None
+
+    from molbuilder.runwrap import write_run_wrapper, WrapperError
+    try:
+        wrapper = write_run_wrapper(
+            script_path,
+            env=env_override,
+            mpi_np=mpi_np,
+            omp_threads=omp_threads,
+            max_memory_mb=max_memory_mb,
+        )
+    except WrapperError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:    # noqa: BLE001 -- surface any failure
+        return jsonify({"ok": False,
+                        "error": f"wrapper write failed: {exc}"}), 500
+
+    return jsonify({
+        "ok":           True,
+        "wrapper_path": str(wrapper),
+        "wrapper_name": wrapper.name,
+    })
+
+
 @bp.route("/api/siesta/install-pseudos", methods=["POST"])
 def api_siesta_install_pseudos():
     """Copy .psml files from cfg.psml_lib into the target directory

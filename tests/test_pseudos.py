@@ -369,6 +369,44 @@ class TestPseudosEndpoint:
         assert body["missing"] == ["O"]
         assert "H.psml" in body["copied"]
 
+    def test_install_wrapper_writes_run_sh(self, tmp_path, picker_root_at_tmp):
+        """Generate a .fdf, then call install-wrapper; verify the
+        .run.sh appears next to the .fdf with proper threading exports
+        + mpirun line + executable bits."""
+        fdf = tmp_path / "test.fdf"
+        fdf.write_text("# minimal fdf\nSystemLabel test\n")
+        from molbuilder.web.app import create_app
+        c = create_app(config={}).test_client()
+        r = c.post("/api/run/install-wrapper", json={
+            "script_path":   str(fdf),
+            "mpi_np":        4,
+            "omp_threads":   5,
+            "max_memory_mb": 4000,
+        })
+        assert r.status_code == 200, r.data
+        body = r.get_json()
+        assert body["ok"] is True
+        wrapper = tmp_path / body["wrapper_name"]
+        assert wrapper.is_file()
+        # Executable bits set so the user can `./test.run.sh`.
+        import stat
+        assert wrapper.stat().st_mode & stat.S_IXUSR
+        text = wrapper.read_text()
+        assert "mpirun -np 4 siesta test.fdf > test.out" in text
+        assert "export OMP_NUM_THREADS=5" in text
+        assert "export OPENBLAS_NUM_THREADS=1" in text
+        assert "ulimit -v 4096000" in text
+
+    def test_install_wrapper_rejects_outside_picker_roots(self):
+        """script_path must be under picker roots -- same security
+        gate as the other new endpoints."""
+        from molbuilder.web.app import create_app
+        c = create_app(config={}).test_client()
+        r = c.post("/api/run/install-wrapper", json={
+            "script_path": "/etc/passwd",
+        })
+        assert r.status_code == 400
+
     def test_install_pseudos_rejects_outside_picker_roots(self, tmp_path):
         """Both psml_lib and dest_dir must be under picker roots --
         same security gate as /api/siesta/check-pseudos."""

@@ -956,6 +956,39 @@
                         "warn");
                 }
             }
+            // Drop a <basename>.run.sh next to the .fdf so the user
+            // can ``bash <basename>.run.sh`` instead of remembering
+            // ``mpirun -np N siesta < ... > ...`` + the OMP/BLAS env
+            // exports.  Best-effort -- non-fatal on failure (user can
+            // still run the .fdf manually).  MPI rank count / OMP /
+            // memory come from the form's Parallel-execution section.
+            if (written && written.ok) {
+                const mpiN = parseInt(
+                    (params || {})["mpi-np"] ||
+                    (params || {})["np"] || 0, 10);
+                const omp = parseInt(
+                    (params || {})["omp-threads"] || 0, 10);
+                const mem = parseInt(
+                    (params || {})["max-memory-mb"] || 0, 10);
+                try {
+                    const wr = await fetch("/api/run/install-wrapper", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            script_path:   written.path,
+                            mpi_np:        mpiN || null,
+                            omp_threads:   omp || null,
+                            max_memory_mb: mem || null,
+                        }),
+                    }).then(x => x.json());
+                    if (wr.ok) {
+                        const cur = ($("fdf-status").textContent || "");
+                        setStatus("fdf-status",
+                            cur + ` · wrote ${wr.wrapper_name} (bash to run)`,
+                            "ok");
+                    }
+                } catch (_) { /* non-fatal; user can run the .fdf manually */ }
+            }
         } catch (e) {
             setStatus("fdf-status", "Network error: " + e.message, "error");
         }
