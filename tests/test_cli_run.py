@@ -47,7 +47,10 @@ def test_run_emits_wrapper_for_fdf(tmp_path):
     assert wrapper.is_file()
     txt = wrapper.read_text()
     assert "siesta my-job.fdf" in txt
-    assert "conda run -n molbuilder-siesta" in txt
+    # 2026-05-23: wrapper switched from ``conda run -n`` to the
+    # source+activate hybrid; the env name still appears in the
+    # ``conda activate`` line (see molbuilder/runwrap.py).
+    assert "conda activate molbuilder-siesta" in txt
 
 
 def test_run_emits_wrapper_for_py(tmp_path):
@@ -57,7 +60,7 @@ def test_run_emits_wrapper_for_py(tmp_path):
     assert res.exit_code == 0
     txt = (tmp_path / "my-job.run.sh").read_text()
     assert "python my-job.py" in txt
-    assert "conda run -n molbuilder-pySCF" in txt
+    assert "conda activate molbuilder-pySCF" in txt
 
 
 def test_run_passes_mpi_np_for_siesta(tmp_path):
@@ -74,7 +77,7 @@ def test_run_env_override(tmp_path):
     res = CliRunner().invoke(cli.cli,
                               ["run", str(fdf), "--env", "siesta-stable"])
     assert res.exit_code == 0
-    assert "conda run -n siesta-stable" in (tmp_path / "x.run.sh").read_text()
+    assert "conda activate siesta-stable" in (tmp_path / "x.run.sh").read_text()
 
 
 def test_run_prints_run_command_hint(tmp_path):

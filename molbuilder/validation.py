@@ -641,13 +641,24 @@ def _validate_siesta(struct: Structure, cfg,
     )
 
     # Electron-count parity (cross-engine).  SIESTA's "spin" is
-    # expressed as spin_total (μ_B), which when spin_polarized=False
-    # is implicitly 0.  We need an integer 2S to call the shared
-    # parity helper, so derive: round(spin_total) -> 2S.  Skip when
+    # expressed as spin_total (μ_B); when spin_polarized=False it's
+    # implicitly 0.  We need an integer 2S to call the shared parity
+    # helper, so derive: round(spin_total) -> 2S.  Skip when
     # net_charge is unset (auto-detect path handles it inside
     # render_fdf via resolve_net_charge).
+    #
+    # Severity rule (refined 2026-05-23 from the original always-ERROR):
+    #   * ERROR only when the user EXPLICITLY set spin_total -- a real
+    #     user-asserted contradiction with the electron count.
+    #   * WARN when spin_total is None (dataclass default) -- the user
+    #     didn't actually claim spin=0; the default did.  For odd-
+    #     electron systems we nudge them toward spin_polarized=True
+    #     without blocking the render.  Avoids surprising failures
+    #     when callers pass net_charge=0 to a synthetic / fictitious
+    #     state (e.g. test fixtures, charge-override sweeps).
     from .chemistry import check_spin_charge_parity
     if getattr(cfg, "net_charge", None) is not None:
+        spin_explicit = getattr(cfg, "spin_total", None) is not None
         spin_total = getattr(cfg, "spin_total", None) or 0.0
         spin_2s = int(round(spin_total))
         if not cfg.spin_polarized and spin_2s != 0:
@@ -659,7 +670,8 @@ def _validate_siesta(struct: Structure, cfg,
         else:
             err = check_spin_charge_parity(struct, cfg.net_charge, spin_2s)
             if err:
-                issues.append(Issue("error", err, "config.spin_total"))
+                severity = "error" if spin_explicit else "warn"
+                issues.append(Issue(severity, err, "config.spin_total"))
 
     # Spin.Total set without spin polarised: SIESTA silently ignores it.
     if cfg.spin_total is not None and not cfg.spin_polarized:

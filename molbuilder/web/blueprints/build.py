@@ -119,6 +119,32 @@ def _resolve_path_within_roots(raw_path: str, *, must_exist: bool = True,
     return resolved
 
 
+def _sniff_structure_format(text: str) -> str:
+    """Return ``"xyz"`` or ``"pdb"`` for raw structure text.
+
+    The earlier sniff scanned only ``text[:120]`` for ``"ATOM "``,
+    which missed real PDB files: their HEADER / TITLE / REMARK lines
+    push the first ATOM record well past byte 120, so the file was
+    misclassified as XYZ and ``Structure.from_xyz`` raised on the
+    header lines.  Fix: rely on the format's own first-line rule
+    instead of a byte-window scan.
+
+    Rule: XYZ's first non-blank line is an atom count (positive int).
+    Anything else (PDB headers, plain text, empty) is treated as PDB.
+    Caller still wraps ``Structure.from_pdb`` in try/except, so a
+    misclassified blob fails with a clear "could not parse" 400.
+    """
+    for line in (text or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            return "xyz" if int(line) > 0 else "pdb"
+        except ValueError:
+            return "pdb"
+    return "pdb"
+
+
 @bp.route("/api/run/install-wrapper", methods=["POST"])
 def api_run_install_wrapper():
     """Drop ``<basename>.run.sh`` next to an emitted script so the
@@ -246,11 +272,20 @@ def api_siesta_install_pseudos():
 
       {
         "ok":           True,
-        "copied":       ["C.psml", "Fe.psml", ...],
-        "skipped":      [{"file": "H.psml", "reason": "already present"}, ...],
-        "missing":      ["S"],   # elements with no .psml in lib
+        "copied":       ["C.psml", "Fe.psml", ...],     # new file written
+        "overwritten":  ["S.psml", ...],                # replaced an
+                                                        # existing file
+        "skipped":      [{"file": "H.psml",
+                          "reason": "already present (same file)"}, ...],
+        "missing":      ["S"],                          # no .psml in lib
         "dest_dir":     "<resolved abs path>"
       }
+
+    ``skipped`` only fires when ``dest_dir/<el>.psml`` already resolves
+    to the same path as ``psml_lib/<el>.psml`` (i.e. the destination is
+    a symlink back into the lib).  After a real shutil.copyfile the
+    destination is a distinct file, so subsequent installs land in
+    ``overwritten`` (silent clobber, surfaced to the UI).
 
     ``missing`` is the list of elements for which no .psml was found
     in ``psml_lib``.  Hard fail at SIESTA run time -- caller should
@@ -280,7 +315,7 @@ def api_siesta_install_pseudos():
         text_in = p.read_text()
         ext = p.suffix.lower()
     else:
-        ext = ".pdb" if (text_in and "ATOM " in text_in[:120]) else ".xyz"
+        ext = "." + _sniff_structure_format(text_in or "")
     if not text_in:
         return jsonify({"ok": False,
                         "error": "structure_path or structure_text is required"}), 400
@@ -297,13 +332,15 @@ def api_siesta_install_pseudos():
 
     # Walk the unique element set + copy each .psml from psml_lib
     # to dest_dir.  Use shutil.copyfile (no metadata bits, predictable
-    # destination perms inherited from dest_dir).  Skip files that
-    # are already in dest_dir (same inode = already copied).
+    # destination perms inherited from dest_dir).  Skip files only
+    # when dst already resolves to the same path as src (the symlink
+    # case); real prior copies are distinct inodes and land in the
+    # overwritten[] bucket.
     import shutil
     seen: set = set()
     copied: list = []        # new files (no prior version in dest_dir)
     overwritten: list = []   # files that REPLACED an existing one
-    skipped: list = []       # already-present (same source) -- no-op
+    skipped: list = []       # dst is a symlink back to src -- no-op
     missing: list = []
     for raw_el in struct.elements:
         el = raw_el.capitalize()
@@ -312,8 +349,18 @@ def api_siesta_install_pseudos():
         seen.add(el)
         src = psml_dir / f"{el}.psml"
         if not src.is_file():
-            # Try a case-insensitive search before giving up.
-            cand = list(psml_dir.glob(f"{el}.[pP][sS][mM][lL]"))
+            # Fallback: case-insensitive match on the WHOLE basename so
+            # we still find `fe.psml` / `FE.PSML` etc.  Older SIESTA
+            # tutorials + community-built psml libs are inconsistent
+            # about element-name case; SIESTA itself reads whatever the
+            # %block ChemicalSpeciesLabel asks for, so we always write
+            # ``<Element>.psml`` capitalized -- only the search of the
+            # user's lib is loosened.
+            el_lc = el.lower()
+            cand = [p for p in psml_dir.iterdir()
+                    if p.is_file()
+                    and p.suffix.lower() == ".psml"
+                    and p.stem.lower() == el_lc]
             if cand:
                 src = cand[0]
             else:
@@ -404,7 +451,7 @@ def api_siesta_check_pseudos():
         text_in = p.read_text()
         ext = p.suffix.lower()
     else:
-        ext = ".pdb" if (text_in and "ATOM " in text_in[:120]) else ".xyz"
+        ext = "." + _sniff_structure_format(text_in or "")
     if not text_in:
         return jsonify({"ok": False,
                         "error": "structure_path or structure_text is required"}), 400
@@ -506,7 +553,7 @@ def api_structure_analyze():
         text_in = p.read_text()
         ext = p.suffix.lower()
     else:
-        ext = ".pdb" if (text_in and "ATOM " in text_in[:120]) else ".xyz"
+        ext = "." + _sniff_structure_format(text_in or "")
     if not text_in:
         return jsonify({"ok": False,
                         "error": "structure_path or structure_text is required"}), 400

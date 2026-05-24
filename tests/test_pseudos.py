@@ -369,6 +369,70 @@ class TestPseudosEndpoint:
         assert body["missing"] == ["O"]
         assert "H.psml" in body["copied"]
 
+    def test_install_pseudos_finds_lowercase_psml_in_lib(
+            self, tmp_path, picker_root_at_tmp):
+        """Lib has ``fe.psml`` (lowercase basename) -- common in older
+        community-built libraries.  The earlier glob ``Fe.[pP][sS][mM][lL]``
+        was only case-insensitive on the EXTENSION, so it would miss
+        this file and report Fe as missing.  After the 2026-05-23 fix
+        the fallback compares the whole basename case-insensitively.
+
+        Pseudos are still WRITTEN to dest with canonical capitalisation
+        (``Fe.psml``) so SIESTA's ChemicalSpeciesLabel block resolves."""
+        lib = tmp_path / "psml_lib"; lib.mkdir()
+        (lib / "fe.psml").write_text(_make_psml("Fe"))   # lowercase basename
+        dest = tmp_path / "run"; dest.mkdir()
+        from molbuilder.web.app import create_app
+        c = create_app(config={}).test_client()
+        r = c.post("/api/siesta/install-pseudos", json={
+            "psml_lib":       str(lib),
+            "dest_dir":       str(dest),
+            "structure_text": "1\niron\nFe 0 0 0\n",
+        })
+        assert r.status_code == 200, r.data
+        body = r.get_json()
+        assert body["missing"] == [], body
+        assert "Fe.psml" in body["copied"]
+        assert (dest / "Fe.psml").is_file()
+
+    def test_install_pseudos_parses_pdb_with_header_lines(
+            self, tmp_path, picker_root_at_tmp):
+        """PDB sniff regression.  The earlier sniff looked at
+        ``text[:120]`` for ``"ATOM "`` -- a real PDB pushes the first
+        ATOM record past byte 120 because of HEADER / TITLE / REMARK
+        lines, so the file was misclassified as XYZ and Structure
+        parsing died on the headers.  The new sniff uses the format's
+        first-non-blank-line rule (XYZ starts with an integer count;
+        anything else is PDB)."""
+        lib = tmp_path / "psml_lib"; lib.mkdir()
+        (lib / "O.psml").write_text(_make_psml("O"))
+        (lib / "H.psml").write_text(_make_psml("H"))
+        dest = tmp_path / "run"; dest.mkdir()
+        # Real-PDB-style with long headers so byte 120 is still header.
+        pdb_with_headers = (
+            "HEADER    OXIDOREDUCTASE                          14-OCT-99   1AQZ\n"
+            "TITLE     CYTOCHROME C-DERIVATIVE\n"
+            "COMPND    MOL_ID: 1; MOLECULE: WATER ANALOG;\n"
+            "REMARK   1\n"
+            "ATOM      1  O   HOH A   1       0.000   0.000   0.000  1.00  0.00           O\n"
+            "ATOM      2  H1  HOH A   1       1.000   0.000   0.000  1.00  0.00           H\n"
+            "ATOM      3  H2  HOH A   1      -1.000   0.000   0.000  1.00  0.00           H\n"
+            "END\n"
+        )
+        # Sanity: confirm the bug premise -- "ATOM " is NOT in first 120 chars.
+        assert "ATOM " not in pdb_with_headers[:120]
+        from molbuilder.web.app import create_app
+        c = create_app(config={}).test_client()
+        r = c.post("/api/siesta/install-pseudos", json={
+            "psml_lib":       str(lib),
+            "dest_dir":       str(dest),
+            "structure_text": pdb_with_headers,
+        })
+        assert r.status_code == 200, r.data
+        body = r.get_json()
+        assert body["missing"] == [], body
+        assert sorted(body["copied"]) == ["H.psml", "O.psml"]
+
     def test_install_wrapper_writes_run_sh(self, tmp_path, picker_root_at_tmp):
         """Generate a .fdf, then call install-wrapper; verify the
         .run.sh appears next to the .fdf with proper threading exports
