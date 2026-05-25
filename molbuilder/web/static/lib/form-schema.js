@@ -93,6 +93,32 @@
         return f.unit ? `${f.label} (${f.unit})` : f.label;
     }
 
+    /**
+     * Render the source-of-truth engine-keyword tag next to a label,
+     * if the field carries an ``engine_key`` from the schema.  The
+     * tag is the actual keyword (or block name) the field writes
+     * into the generated input file -- gives the user a direct map
+     * from UI to generated script to the engine's manual + error
+     * messages.  Skipped when ``engine_key`` matches ``label`` (the
+     * label IS already the keyword, e.g. "MeshCutoff") to avoid
+     * duplicate noise.  Returns null when no tag is warranted.
+     */
+    function engineKeyBadge(f) {
+        const key = (f.engine_key || "").trim();
+        if (!key) return null;
+        const lbl = (f.label || "").trim();
+        if (key.toLowerCase() === lbl.toLowerCase()) return null;
+        const code = document.createElement("code");
+        code.className = "schema-engine-key";
+        code.title = "Writes this keyword into the generated input file";
+        code.style.cssText = ("margin-left:6px;padding:1px 6px;"
+            + "font-size:0.85em;background:var(--bg-subtle,#eef);"
+            + "border:1px solid var(--border-subtle,#ccd);"
+            + "border-radius:3px;color:var(--muted,#555);");
+        code.textContent = key;
+        return code;
+    }
+
     function makeNumber(f, isInt) {
         // type=number with step=any handles both ints and floats.
         // step=1 for ints so browser spinners go in integer steps.
@@ -218,6 +244,8 @@
             labelEl.appendChild(document.createTextNode(labelText(f) + " "));
             labelEl.appendChild(input);
         }
+        const badge = engineKeyBadge(f);
+        if (badge) labelEl.appendChild(badge);
         return labelEl;
     }
 

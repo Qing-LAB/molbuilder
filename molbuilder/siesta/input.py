@@ -526,10 +526,18 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             "# any system with unpaired electrons.  SIESTA's default is",
             "# closed-shell -- omitting this for a radical / transition-",
             "# metal / triplet system gives the wrong electronic state.",
-            "# v5 form (single line); v4 SpinPolarized true is back-compat",
-            "# accepted but deprecated in v5+.",
+            "#",
+            "# We use the v4 ``SpinPolarized .true.`` form (not the v5",
+            "# ``Spin polarized`` single-line form) on purpose: as of",
+            "# SIESTA 5.4.2 (verified 2026-05-24) the v5 unified parser",
+            "# DOES NOT read the auxiliary ``Spin.Fix`` / ``Spin.Total``",
+            "# keys below -- so open-shell metals like Fe abort at",
+            "# initial-DM construction with ``propor: ERROR: IMAX = 0``",
+            "# because no spin target reaches the constructor.  v4",
+            "# syntax is marked deprecated in the manual but is still",
+            "# fully honored AND triggers the auxiliary spin reads.",
         ]
-        out.append("Spin polarized")
+        out.append("SpinPolarized .true.")
         if cfg.spin_total is not None:
             if v: out += [
                 "# Spin.Fix + Spin.Total: target total spin moment in mu_B",

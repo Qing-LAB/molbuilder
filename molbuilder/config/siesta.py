@@ -578,17 +578,32 @@ class SiestaConfig:
 
     # Spin polarisation.  Default off (closed-shell DFT).
     spin_polarized: bool = field(default=False, metadata={
-        "section": "Spin",
-        "label": "Spin polarized",
-        "help": ("open-shell DFT (collinear); required for radicals / "
-                 "transition metals / triplet systems"),
+        "section":     "Spin",
+        "label":       "Spin polarized",
+        # Emits ``SpinPolarized .true.`` (v4 form) NOT the v5 single-
+        # line ``Spin polarized``: SIESTA 5.4.2's v5 parser path does
+        # not subsequently read Spin.Fix / Spin.Total, so open-shell
+        # metals abort at propor.  See siesta/input.py emission site.
+        "engine_key":  "SpinPolarized",
+        "help":        ("open-shell DFT (collinear); required for "
+                          "radicals / transition metals / triplet "
+                          "systems.  Emits ``SpinPolarized .true.`` "
+                          "in the .fdf."),
     })
     spin_total: Optional[float] = field(default=None, metadata={
-        "section": "Spin",
-        "label": "SpinTotal",
-        "null_label": "(default)",
-        "help": ("target total spin moment (mu_B); only emitted with "
-                 "--spin-polarized"),
+        "section":     "Spin",
+        "label":       "Target spin moment",
+        "null_label":  "(default)",
+        # Emits TWO keys: Spin.Fix .true. + Spin.Total <v>.  Either
+        # alone is silently ignored by SIESTA (Spin.Fix without a
+        # value to fix; Spin.Total without Spin.Fix to gate the
+        # constraint).
+        "engine_key":  "Spin.Fix + Spin.Total",
+        "help":        ("target total spin moment in mu_B (= number "
+                          "of unpaired electrons).  Emits BOTH "
+                          "``Spin.Fix .true.`` and ``Spin.Total <v>`` "
+                          "in the .fdf.  Only emitted when --spin-"
+                          "polarized."),
     })
 
 

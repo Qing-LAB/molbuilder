@@ -152,27 +152,36 @@ def _h2_struct():
     )
 
 
-def test_spin_polarized_emits_v5_keyword():
-    """``cfg.spin_polarized=True`` MUST emit the v5 single-line
-    ``Spin polarized`` form.  Without this line, SIESTA defaults to
-    closed-shell DFT and any open-shell system (radical / transition
-    metal / triplet) silently produces the wrong electronic state."""
+def test_spin_polarized_emits_v4_keyword_for_aux_compat():
+    """``cfg.spin_polarized=True`` emits ``SpinPolarized .true.`` (v4
+    form), NOT the v5 single-line ``Spin polarized``.  Reason: SIESTA
+    5.4.2's v5 unified parser path does NOT subsequently read the
+    auxiliary ``Spin.Fix`` / ``Spin.Total`` keys we depend on for
+    open-shell metals (verified 2026-05-24 against the hemeC-dithiol
+    failure: with ``Spin polarized``, both auxiliary keys are silently
+    ignored and propor aborts; with ``SpinPolarized .true.`` both are
+    honored).  The v4 form is marked deprecated in the v5 manual but
+    is fully accepted in the parser."""
     fdf = render_fdf(_h2_struct(), SiestaConfig(spin_polarized=True))
-    assert "Spin polarized" in fdf
-    # When spin_total is unset, neither constraint line is emitted.
-    assert "Spin.Fix" not in fdf
-    assert "Spin.Total" not in fdf
+    assert "SpinPolarized .true." in fdf
+    # When spin_total is unset, neither constraint LINE is emitted
+    # (the keywords may still appear in verbose-comments / template
+    # banners; we only check the actual key-value emissions).
+    assert "Spin.Fix          .true." not in fdf
+    assert "Spin.Total       " not in fdf and "Spin.Total        " not in fdf
 
 
 def test_spin_total_emits_constraint_pair():
     """``cfg.spin_total`` requires BOTH ``Spin.Fix .true.`` AND
     ``Spin.Total <v>`` -- without ``Spin.Fix`` the constraint is
-    silently ignored by SIESTA, leaving multiplicity unconstrained."""
+    silently ignored by SIESTA, leaving multiplicity unconstrained.
+    The leading ``SpinPolarized .true.`` is what TRIGGERS the parser
+    to read the auxiliary keys at all (see preceding test)."""
     fdf = render_fdf(
         _h2_struct(),
         SiestaConfig(spin_polarized=True, spin_total=2.0),
     )
-    assert "Spin polarized" in fdf
+    assert "SpinPolarized .true." in fdf
     assert "Spin.Fix          .true." in fdf
     assert "Spin.Total        2.0" in fdf
 
@@ -184,7 +193,7 @@ def test_spin_total_ignored_without_polarization():
         _h2_struct(),
         SiestaConfig(spin_polarized=False, spin_total=2.0),
     )
-    assert "Spin polarized" not in fdf
+    assert "SpinPolarized" not in fdf
     assert "Spin.Fix" not in fdf
     assert "Spin.Total" not in fdf
 
@@ -221,10 +230,10 @@ def test_default_fdf_has_no_spin_block():
     """Default (closed-shell) FDF must not mention Spin at all -- the
     presence of any ``Spin`` keyword would force open-shell DFT."""
     fdf = render_fdf(_h2_struct(), SiestaConfig())
+    assert "SpinPolarized"       not in fdf
     assert "Spin polarized"      not in fdf
     assert "Spin.Fix"            not in fdf
     assert "Spin.Total"          not in fdf
-    assert "SpinPolarized"       not in fdf  # v4 form not emitted either
 
 
 # --------------------------------------------------------------------- #

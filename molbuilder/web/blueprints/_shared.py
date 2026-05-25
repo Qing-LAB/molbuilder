@@ -324,6 +324,14 @@ def _field_to_schema(f: dataclasses.Field,
     }
     if "unit" in md:
         out["unit"] = md["unit"]
+    # Source-of-truth tag: the actual engine keyword this UI field
+    # writes into the generated input.  Surfaced next to the form label
+    # so the user can map UI -> generated script -> engine manual /
+    # error messages without guessing.  Optional metadata key; fields
+    # without an obvious 1:1 keyword mapping (kgrid as a block, etc.)
+    # leave it unset and the UI shows no tag.
+    if "engine_key" in md:
+        out["engine_key"] = md["engine_key"]
 
     choices = md.get("choices")
     if choices is not None:
