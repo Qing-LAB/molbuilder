@@ -1,31 +1,47 @@
-"""Molecular-charge helpers.
+"""Cross-engine chemistry helpers.
 
-Two functions:
+L1 module shared by SIESTA + PySCF + Spectra emitters and the
+validation pass.  Grew from the original "two phosphate functions"
+into a small library of inferences that work on a bare ``Structure``
+(no explicit bond orders required) using heavy-atom adjacency.
 
-  formal_charge_from_phosphates(struct) -> int
-      Estimate the molecule's formal charge from the protonation state
-      of its phosphate groups.  Each non-bridging phosphate oxygen
-      that has no hydrogen and is not the implicit P=O is counted as
-      contributing -1 to the molecular charge.  Other charged groups
-      (carboxylates, protonated amines, etc.) are NOT counted in this
-      release; we focus on the case the user actually hit -- DNA / RNA
-      phosphate diester chains coming out of tleap.
+Public surface (grouped by purpose):
 
-  protonate_phosphate_oxygens(struct) -> (struct, n_added)
-      Add hydrogens to deprotonated non-bridging phosphate oxygens so
-      the molecule becomes formally neutral.  For each P with N
-      non-bridging oxygens, leaves one as the implicit P=O (no H added)
-      and ensures the other (N-1) carry an OH.  The H position is
-      placed at the canonical sp3 angle (109.47 deg from the P-O axis,
-      0.96 A bond length) on the side facing AWAY from the rest of the
-      molecule, so the OH points outward.
+  Charge inference (DNA / RNA / phosphates):
+    formal_charge_from_phosphates(struct) -> int
+        Sum of -1 per deprotonated non-bridging phosphate oxygen.
+    protonate_phosphate_oxygens(struct) -> (struct, n_added)
+        Add H to deprotonated O so the molecule becomes neutral.
+    expected_pH7_peptide_charge(struct) -> Optional[int]
+        Rough physiological-pH net charge for a peptide.
 
-The chemistry rule encoded here is the standard interpretation of a
-phosphate group: one P=O double bond, the other oxygens single-bonded
-to either H, R-O-, or charged O- depending on protonation.  We don't
-require the user's structure to have explicit bond orders; we infer
-"non-bridging" purely from heavy-atom adjacency (only P as a heavy
-neighbour).
+  Electron / spin parity (open-shell guards):
+    total_electrons(struct, charge) -> int
+    check_spin_charge_parity(struct, charge, spin) -> Optional[str]
+
+  Open-shell transition metals:
+    detect_open_shell_metals(struct) -> List[str]
+    explain_metal_spin(element, spin) -> Optional[str]
+    suggest_spin_total(metals) -> (preferred, alternatives)
+        Used by the SIESTA preflight to recommend a Spin.Total when
+        the user enables spin polarisation but leaves the target
+        spin unset (catches the propor: ERROR: IMAX = 0 abort).
+
+  ECP selection (PySCF):
+    resolve_pyscf_ecp(struct, ecp, basis) -> ECP-or-None
+        Cross-engine helper used by both Build PySCF and Spectra so
+        the heuristic stays in one place.
+
+  Hydrogen placement:
+    add_hydrogens(struct, ...) -> struct
+        Geometry-only H placement (no force-field).
+
+The chemistry rule encoded in the phosphate helpers is the standard
+interpretation: one P=O double bond, the other oxygens single-bonded
+to H, R-O-, or O- depending on protonation.  "Non-bridging" is
+inferred purely from heavy-atom adjacency (only P as a heavy
+neighbour).  Other charged groups (carboxylates, protonated amines)
+are NOT counted.
 """
 
 from __future__ import annotations

@@ -908,8 +908,11 @@
         // append into that label so the caption rides along with
         // wherever the field lives in the DOM.
         const cap = document.createElement("small");
+        // .schema-field-hint is styled in lib/form-schema.css using the
+        // real --text-muted token (replaces the prior inline --muted
+        // fallback which silently used #888 because --muted isn't a
+        // defined token).
         cap.className = "schema-field-hint";
-        cap.style.cssText = "display:block;margin-top:2px;color:var(--muted,#888);";
         cap.id = "p-psml-lib-resolved";
         const parent = input.parentElement || input;
         parent.appendChild(cap);

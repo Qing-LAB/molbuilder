@@ -99,11 +99,13 @@ class SiestaConfig:
     # so it stays off the schema-driven form.
     system_name: str = field(default="siesta_run", metadata={
         "label": "SystemName",
+        "engine_key":  'SystemName',
         "help": "FDF SystemName label written into the .fdf header",
     })
     system_label: str = field(default="siesta", metadata={
         "section":  "System",
         "label":    "SystemLabel",
+        "engine_key":  'SystemLabel',
         "id_suffix": "system-label",
         "help":     "FDF SystemLabel; output files get this prefix.  "
                     "Must match [A-Za-z0-9_-]+ (job-layout v1; no dots).",
@@ -116,6 +118,7 @@ class SiestaConfig:
     # leave unsectioned so it stays a Python-API knob.
     cell_padding: float = field(default=15.0, metadata={
         "label": "Cell padding", "unit": "Å",
+        "engine_key":  '(molbuilder: auto-cell build only)',
         "range": (5.0, 50.0),
         "tier":  "basic",
         "help":  "vacuum padding (Å) around the molecule on each face of the auto-cell",
@@ -125,12 +128,14 @@ class SiestaConfig:
     basis_size: str = field(default="DZP", metadata={
         "section": "Basis & grid",
         "label": "PAO.BasisSize",
+        "engine_key":  'PAO.BasisSize',
         "choices": ("SZ", "DZ", "SZP", "DZP", "TZP"),
         "help": "PAO basis size: SZ / DZ / SZP / DZP / TZP (rough -> tight)",
     })
     pao_energy_shift: float = field(default=0.01, metadata={
         "section": "Basis & grid",
         "label": "PAO.EnergyShift", "unit": "Ry",
+        "engine_key":  'PAO.EnergyShift',
         # Upper bound tightened to 0.05 (SP4): 0.1 Ry contracts PAO
         # cutoff radii to ~3 Bohr, putting bond energies hundreds of
         # meV off -- well outside any defensible production window.
@@ -155,6 +160,7 @@ class SiestaConfig:
     mesh_cutoff: float = field(default=300.0, metadata={
         "section": "Basis & grid",
         "label": "MeshCutoff", "unit": "Ry",
+        "engine_key":  'MeshCutoff',
         "range": (50.0, 1000.0),
         "tier":  "basic",
         "help":  "real-space integration grid; 200-300 typical, 400+ for tight basis",
@@ -164,6 +170,7 @@ class SiestaConfig:
     xc_functional: str = field(default="GGA", metadata={
         "section": "Exchange-correlation",
         "label":   "XC.Functional",
+        "engine_key":  'XC.functional',
         "choices": ("LDA", "GGA", "VDW"),
         "help":    "XC functional family.  GGA (default) is the safe "
                    "production choice for organic / biomolecule work + "
@@ -180,6 +187,7 @@ class SiestaConfig:
     xc_authors: str = field(default="PBE", metadata={
         "section": "Exchange-correlation",
         "label":   "XC.Authors",
+        "engine_key":  'XC.authors',
         # Choices match what /api/siesta/check-pseudos accepts when
         # mapping authors->family for the coverage check (see
         # build.py).  Free-text was needed historically (unusual
@@ -203,12 +211,14 @@ class SiestaConfig:
     solution_method: str = field(default="diagon", metadata={
         "section": "SCF",
         "label": "SolutionMethod",
+        "engine_key":  'SolutionMethod',
         "choices": ("diagon", "OMM", "transiesta"),
         "help": "diagon / OMM / transiesta (transiesta requires the TranSIESTA build)",
     })
     mixing_weight: float = field(default=0.02, metadata={
         "section": "SCF",
         "label": "DM.MixingWeight",
+        "engine_key":  'DM.MixingWeight',
         "range": (0.001, 0.5),
         "tier":  "advanced",
         "help":  "DM mixing weight; smaller = more conservative SCF, lower if oscillating",
@@ -216,6 +226,7 @@ class SiestaConfig:
     pulay_history: int = field(default=3, metadata={
         "section": "SCF",
         "label": "DM.NumberPulay",
+        "engine_key":  'DM.NumberPulay',
         "range": (0, 20),
         "tier":  "advanced",
         "help":  "Pulay history depth; 3 is SIESTA-tutorial default for relaxation",
@@ -223,6 +234,7 @@ class SiestaConfig:
     dm_tolerance: float = field(default=1e-5, metadata={
         "section": "SCF",
         "label": "DM.Tolerance",
+        "engine_key":  'DM.Tolerance',
         "range": (1e-8, 1e-3),
         "tier":  "advanced",
         "help":  "DM-element SCF convergence threshold",
@@ -230,6 +242,7 @@ class SiestaConfig:
     dm_energy_tolerance: float = field(default=1e-4, metadata={
         "section": "SCF",
         "label": "DM.Energy.Tolerance", "unit": "eV",
+        "engine_key":  'DM.Energy.Tolerance',
         "range": (1e-8, 1e-1),
         "tier":  "advanced",
         "help":  "redundant SCF energy guard (eV)",
@@ -237,6 +250,7 @@ class SiestaConfig:
     max_scf_iter: int = field(default=500, metadata={
         "section": "SCF",
         "label": "MaxSCFIterations (SCF cycles per geometry step)",
+        "engine_key":  'MaxSCFIterations',
         "range": (10, 5000),
         "tier":  "advanced",
         "help":  "INNER loop: max self-consistency cycles SIESTA "
@@ -249,6 +263,7 @@ class SiestaConfig:
     electronic_temperature: float = field(default=300.0, metadata={
         "section": "SCF",
         "label": "ElectronicTemperature", "unit": "K",
+        "engine_key":  'ElectronicTemperature',
         "id_suffix": "temperature",
         "range": (0.0, 5000.0),
         "tier":  "advanced",
@@ -262,6 +277,7 @@ class SiestaConfig:
     kgrid: Tuple[int, int, int] = field(default=(1, 1, 1), metadata={
         "section": "k-grid (Monkhorst-Pack)",
         "label": "kgrid_Monkhorst_Pack",
+        "engine_key":  '%block kgrid_Monkhorst_Pack',
         "id_suffix": "k",
         "triple_labels": ("x", "y", "z"),
         "tier":  "basic",
@@ -280,6 +296,7 @@ class SiestaConfig:
     relax_type: str = field(default="CG", metadata={
         "section": "Relaxation",
         "label": "MD.TypeOfRun",
+        "engine_key":  'MD.TypeOfRun',
         "id_suffix": "relax",
         "choices": ("CG", "Broyden", "FIRE", "Verlet", "Nose", "none"),
         "help": "MD/relax algorithm: CG / Broyden / FIRE / Verlet / Nose / none",
@@ -287,6 +304,7 @@ class SiestaConfig:
     relax_steps: int = field(default=200, metadata={
         "section": "Relaxation",
         "label": "MD.Num*Steps (max geometry-optimisation steps)",
+        "engine_key":  'MD.NumCGsteps / MD.NumBroydenSteps / MD.NumFIRESteps (per relax_type)',
         "range": (1, 10000),
         "tier":  "advanced",
         "help":  "OUTER loop: max geometry steps the optimiser is "
@@ -302,6 +320,7 @@ class SiestaConfig:
     relax_force_tol: float = field(default=0.02, metadata={
         "section": "Relaxation",
         "label": "MD.MaxForceTol", "unit": "eV/Å",
+        "engine_key":  'MD.MaxForceTol',
         "id_suffix": "force-tol",
         "range": (0.001, 0.5),
         "tier":  "advanced",
@@ -310,6 +329,7 @@ class SiestaConfig:
     relax_max_displ: float = field(default=0.05, metadata={
         "section": "Relaxation",
         "label": "MD max-displ", "unit": "Å",
+        "engine_key":  'MD.MaxCGDispl / MD.MaxDispl (per relax_type)',
         "id_suffix": "max-displ",
         "range": (0.001, 0.5),
         "tier":  "advanced",
@@ -324,18 +344,21 @@ class SiestaConfig:
     # sensible target without forcing the user to set both fields.
     md_initial_temperature: float = field(default=300.0, metadata={
         "label": "MD.InitialTemperature", "unit": "K",
+        "engine_key":  'MD.InitialTemperature',
         "range": (0.0, 5000.0),
         "tier":  "advanced",
         "help":  "initial-velocity-seed temperature for Verlet/Nose dynamics (K)",
     })
     md_target_temperature: Optional[float] = field(default=None, metadata={
         "label": "MD.TargetTemperature", "unit": "K",
+        "engine_key":  'MD.TargetTemperature',
         "tier":  "advanced",
         "help":  ("Nose-Hoover NVT target temperature (K).  None -> use "
                   "md_initial_temperature; ignored unless relax_type=Nose"),
     })
     md_length_timestep: float = field(default=1.0, metadata={
         "label": "MD.LengthTimeStep", "unit": "fs",
+        "engine_key":  'MD.LengthTimeStep',
         "range": (0.1, 5.0),
         "tier":  "advanced",
         "help":  ("integration timestep for Verlet/Nose dynamics (fs).  "
@@ -347,12 +370,15 @@ class SiestaConfig:
     # SCF / MD continuation flags (free insurance for restartable jobs)
     use_save_dm: bool = field(default=True, metadata={
         "help": "read .DM from a prior run if present (free warm-start)",
+            "engine_key":  'DM.UseSaveDM',
     })
     use_save_cg: bool = field(default=True, metadata={
         "help": "read .CG from a prior CG relaxation if present",
+            "engine_key":  'MD.UseSaveCG',
     })
     use_save_xv: bool = field(default=True, metadata={
         "help": "read .XV (final geometry/velocities) from a prior run if present",
+            "engine_key":  'MD.UseSaveXV',
     })
 
     # Atom positioning relative to the cell:
@@ -370,11 +396,13 @@ class SiestaConfig:
     wrap_into_cell: bool = field(default=True, metadata={
         "section": "Output & positioning",
         "label": "Wrap atoms into cell",
+        "engine_key":  '(molbuilder: pre-emission positioning)',
         "help": "fold atoms with fractional coords outside [0,1) back into the cell",
     })
     center_in_vacuum: bool = field(default=True, metadata={
         "section": "Output & positioning",
         "label": "Center in vacuum cell",
+        "engine_key":  '(molbuilder: pre-emission positioning)',
         "help": "centre the molecule in the auto-vacuum cell (auto-cell case)",
     })
 
@@ -384,6 +412,7 @@ class SiestaConfig:
     verbose_comments: bool = field(default=True, metadata={
         "section": "Output & positioning",
         "label": "Verbose inline comments",
+        "engine_key":  '(molbuilder: .fdf comment-block control)',
         "help": "emit inline tuning hints and a Troubleshooting block in the FDF",
     })
 
@@ -398,6 +427,7 @@ class SiestaConfig:
     # the preview-log filename gets the suffix.
     stage: Optional[int] = field(default=None, metadata={
         "label": "Relaxation stage",
+        "engine_key":  '(molbuilder: filename suffix + log naming)',
         "help":  "stage marker (1/2/3) for the preview .molwatch.log "
                  "filename; None keeps the unsuffixed name",
         "range": (1, 3),
@@ -406,27 +436,33 @@ class SiestaConfig:
     # Output flags
     write_forces: bool = field(default=True, metadata={
         "help": "write forces to the .FA file (required for relaxation)",
+            "engine_key":  'WriteForces',
     })
     write_coor_step: bool = field(default=True, metadata={
         "help": "write coordinates at every MD step in the main .out",
+            "engine_key":  'WriteCoorStep',
     })
     write_coor_xmol: bool = field(default=True, metadata={
         "section": "Output & positioning",
         "label": "Write XMOL .xyz per step",
+        "engine_key":  'WriteCoorXmol',
         "help": "write .xyz of every relaxation step (movie viewer)",
     })
     write_md_history: bool = field(default=True, metadata={
         "section": "Output & positioning",
         "label": "Write .ANI trajectory",
+        "engine_key":  'WriteMDhistory',
         "help": "write the .ANI trajectory file (xcrysden / vmd / OVITO)",
     })
     write_hs: bool = field(default=False, metadata={
         "section": "Output & positioning",
         "label": "Write H+S matrices",
+        "engine_key":  'SaveHS / WriteHS',
         "help": "write H + S matrices (TranSIESTA / DOS / transport)",
     })
     write_molwatch_log: bool = field(default=True, metadata={
         "help": "write <job>.molwatch.log preview (lets molwatch render before SIESTA does)",
+            "engine_key":  '(molbuilder: writes <basename>.molwatch.log preview)',
     })
 
     # ---------------- Parallel execution (MPI) ----------------
@@ -450,6 +486,7 @@ class SiestaConfig:
     mpi_np: Optional[int] = field(default=None, metadata={
         "section":    "Parallel execution",
         "label":      "MPI ranks (np)",
+        "engine_key":  '(molbuilder: .run.sh ``mpirun -np N`` only; not in .fdf)',
         "null_label": "(single-process)",
         "range":      (1, 1024),
         "help":       "MPI rank count for the run-wrapper -- emits "
@@ -470,6 +507,7 @@ class SiestaConfig:
     parallel_block_size: Optional[int] = field(default=None, metadata={
         "section": "Parallel execution",
         "label": "BlockSize",
+        "engine_key":  'BlockSize',
         "id_suffix": "block-size",
         "null_label": "(auto)",
         "help": "MPI block size; None=auto (power-of-2 from n_atoms)",
@@ -478,6 +516,7 @@ class SiestaConfig:
     parallel_over_k: Optional[bool] = field(default=None, metadata={
         "section": "Parallel execution",
         "label": "ParallelOverK",
+        "engine_key":  'Diag.ParallelOverK',
         "help": "MPI parallelise over k-points; None=auto from kgrid",
         "skip_cli": True,
     })
@@ -491,6 +530,7 @@ class SiestaConfig:
     omp_threads: Optional[int] = field(default=None, metadata={
         "section":    "Parallel execution",
         "label":      "OMP threads per rank",
+        "engine_key":  '(molbuilder: .run.sh ``export OMP_NUM_THREADS=N`` only)',
         "null_label": "(auto: physical cores)",
         "help":       "OpenMP threads per MPI process.  Default (blank) "
                       "auto-detects physical cores at run time (divided "
@@ -507,6 +547,7 @@ class SiestaConfig:
     max_memory_mb: Optional[int] = field(default=None, metadata={
         "section":    "Parallel execution",
         "label":      "Max memory (per rank)",
+        "engine_key":  '(molbuilder: .run.sh ``ulimit -v`` + .fdf comment hint)',
         "unit":       "MB",
         "null_label": "(no cap)",
         "help":       "MB cap per MPI rank.  Emits a SystemMemory hint "
@@ -522,6 +563,7 @@ class SiestaConfig:
     psml_lib: Optional[str] = field(default=None, metadata={
         "section":    "System",
         "label":      "Pseudopotential directory (.psml)",
+        "engine_key":  '(molbuilder: stages .psml files next to .fdf; SIESTA reads them by element basename)',
         "null_label": "(none)",
         "help":       "Path to a directory of .psml pseudopotential "
                       "files (one per element).  Accepts an absolute "
@@ -562,10 +604,12 @@ class SiestaConfig:
     })
     copy_psml: bool = field(default=True, metadata={
         "help": "copy psml files into the output directory (alongside the FDF)",
+            "engine_key":  '(molbuilder: triggers .psml staging step)',
     })
     species_order: Optional[Sequence[str]] = field(default=None, metadata={
         "help": "comma-separated species order (e.g. 'C,H,S,Au')",
         "skip_cli": True,
+            "engine_key":  '(molbuilder: ChemicalSpeciesLabel block ordering)',
     })
 
     # Net charge.  When None (default), render_fdf auto-detects from the
@@ -574,6 +618,7 @@ class SiestaConfig:
         "help": ("net charge override (default: auto-detect from phosphates; "
                  "set explicitly for charged side chains -- carboxylates, "
                  "amines, sulfonates -- the heuristic doesn't see)"),
+            "engine_key":  'NetCharge',
     })
 
     # Spin polarisation.  Default off (closed-shell DFT).

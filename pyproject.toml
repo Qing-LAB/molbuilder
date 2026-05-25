@@ -61,7 +61,11 @@ web = ["flask>=3.0"]
 auth = ["authlib>=1.3", "python-cas>=1.6"]
 
 # Test runner + static-analysis tools.  Install with:
-#     pip install -e ".[test]"
+#     pip install ".[test]"
+# (NOT ``pip install -e``: molbuilder is invoked as
+# ``python -m molbuilder ...`` from the repo root, the package isn't
+# imported from site-packages.  Editable-install was retired -- see
+# the CLAUDE.md memory entry "No pip install -e .".)
 test = [
     "pytest>=7",
     "pyflakes>=3",
@@ -70,7 +74,7 @@ test = [
 # Browser-driven end-to-end tests for the Modify (and future)
 # tabs.  Skipped automatically when these aren't installed; install
 # with:
-#     pip install -e ".[e2e]"
+#     pip install ".[e2e]"
 #     python -m playwright install chromium
 # WSL / minimal Linux installs may also need:
 #     sudo python -m playwright install-deps chromium
@@ -83,7 +87,7 @@ e2e = [
 # Tools needed to *execute* the SIESTA / PySCF input files molbuilder
 # generates -- as opposed to building structures with molbuilder itself.
 # Mirrors requirements-runtime.txt so either workflow works:
-#     pip install -e ".[runtime]"
+#     pip install ".[runtime]"
 #     pip install -r requirements-runtime.txt
 # Note: SIESTA (Fortran), AmberTools (tleap), and 3DNA are NOT
 # pip-installable -- see requirements-runtime.txt header for conda /

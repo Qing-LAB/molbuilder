@@ -107,14 +107,24 @@
         const key = (f.engine_key || "").trim();
         if (!key) return null;
         const lbl = (f.label || "").trim();
+        // Skip the badge when the label IS the keyword (e.g. "MeshCutoff")
+        // -- redundant noise.  The molbuilder-only markers always show
+        // because their label is human English and the marker text adds
+        // information ("this field has NO engine equivalent").
         if (key.toLowerCase() === lbl.toLowerCase()) return null;
         const code = document.createElement("code");
         code.className = "schema-engine-key";
-        code.title = "Writes this keyword into the generated input file";
-        code.style.cssText = ("margin-left:6px;padding:1px 6px;"
-            + "font-size:0.85em;background:var(--bg-subtle,#eef);"
-            + "border:1px solid var(--border-subtle,#ccd);"
-            + "border-radius:3px;color:var(--muted,#555);");
+        // ``(molbuilder ...)`` markers tell the user "no engine equivalent
+        // -- this knob only affects molbuilder's preprocessing / wrapper
+        // / filename".  Tag with a class so the stylesheet can render
+        // them differently (dashed border, muted text) and the user
+        // doesn't go looking for them in the SIESTA / PySCF manual.
+        if (key.startsWith("(molbuilder")) {
+            code.classList.add("is-molbuilder-only");
+            code.title = "molbuilder-only knob -- no engine keyword";
+        } else {
+            code.title = "Writes this keyword into the generated input file";
+        }
         code.textContent = key;
         return code;
     }

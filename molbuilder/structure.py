@@ -11,6 +11,27 @@ Loading external geometry into the package goes through the inverse
 ``molbuilder.load`` convenience function), which means an XYZ or PDB
 exported by a different tool can be fed straight into the SIESTA
 pipeline without re-building it from scratch.
+
+Transport-relevant attributes (see the three-stage contract in
+docs/design.md):
+
+  frozen_atoms : List[int]
+      0-based indices of atoms whose coordinates the geometry
+      optimiser must NOT move.  Loaded from a structure sidecar
+      JSON by /modify; consumed by Spectra (cfg.frozen_indices)
+      and by the Build SIESTA / PySCF emitters (warn-only today
+      pending the design.md "fully respected" rollout).
+
+  regions : List[List[int]]
+      Named groups of atom indices for transport-style partition
+      (e.g. left lead / channel / right lead).  Validated as
+      pairwise-disjoint at __post_init__.
+
+These two attributes are the load-bearing carriers for the
+boundary-conditions axis of the three-stage contract.  Any emitter
+that drops them silently (rather than warning) violates the
+contract.  ``Structure.copy()`` / ``.translated()`` MUST carry
+them through (see the methods + their tests).
 """
 
 from __future__ import annotations

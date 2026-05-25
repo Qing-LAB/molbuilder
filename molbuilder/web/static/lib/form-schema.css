@@ -163,3 +163,53 @@ fieldset select:disabled {
     font-weight: 700;
     opacity: 0.6;
 }
+
+/* ---- Engine-key badge ----
+ *
+ * Source-of-truth tag rendered next to each form-label that carries
+ * an ``engine_key`` schema metadata.  The badge displays the exact
+ * keyword (or "(molbuilder …)" marker) the field writes into the
+ * generated input file, so the user has a direct UI -> generated
+ * script -> engine-manual mapping.  Replaces the inline ``style.cssText``
+ * the JS used to set (which used undefined tokens like --bg-subtle
+ * and silently fell through to hardcoded hex, breaking the dark
+ * theme).  Use the real tokens.css names below.
+ */
+.schema-engine-key {
+    margin-left: 6px;
+    padding: 1px 6px;
+    font-size: 0.78rem;
+    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    background: var(--bg-code);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--radius-sm, 4px);
+    color: var(--text-mono);
+    white-space: nowrap;
+    vertical-align: baseline;
+}
+/* "(molbuilder ...)" markers read as MORE muted -- the field is
+ * NOT a real engine keyword; the user shouldn't search the SIESTA
+ * manual for it.  CSS attribute selector picks the parenthesised
+ * form without needing extra JS to add a class. */
+.schema-engine-key[title*="molbuilder"],
+.schema-engine-key {
+    /* default applies; the molbuilder-marker variant gets the
+     * lower-contrast tone via the JS-added .is-molbuilder-only
+     * class (set when engine_key starts with '(') -- see
+     * form-schema.js engineKeyBadge(). */
+}
+.schema-engine-key.is-molbuilder-only {
+    background: transparent;
+    border-style: dashed;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* ---- Live "resolved-path" caption (psml_lib + future) ---- */
+.schema-field-hint {
+    display: block;
+    margin-top: 2px;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    line-height: 1.35;
+}

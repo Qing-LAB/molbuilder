@@ -12,7 +12,14 @@ Spec: docs/design.md § "Pre-emission geometry validation" + §
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, List
+from typing import Iterable, List, Literal
+
+# The closed set of severities a validator may emit.  Pinned in one
+# place so the runtime check + the static type stay in lock-step
+# (previously the docstring promised a Literal but the annotation
+# was a bare str -- static analysers couldn't catch typos).
+Severity = Literal["error", "warn", "info"]
+_SEVERITIES: tuple = ("error", "warn", "info")
 
 
 @dataclass(frozen=True)
@@ -37,14 +44,14 @@ class Issue:
           "config.mesh_cutoff"      -- about a config field
         Used by the CLI / web UI to highlight the offending field.
     """
-    severity: str
+    severity: Severity
     message:  str
     where:    str = ""
 
     def __post_init__(self) -> None:
-        if self.severity not in ("error", "warn", "info"):
+        if self.severity not in _SEVERITIES:
             raise ValueError(
-                f"Issue.severity must be 'error', 'warn', or 'info'; "
+                f"Issue.severity must be one of {_SEVERITIES}; "
                 f"got {self.severity!r}"
             )
 

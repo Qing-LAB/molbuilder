@@ -51,6 +51,7 @@ class PySCFConfig:
     job_name: str = field(default="pyscf_relax", metadata={
         "section":  "System",
         "label":    "Job name",
+        "engine_key":  '(molbuilder: filename + log-name basename)',
         "id_suffix": "job-name",
         "pattern":  r"^[A-Za-z0-9_\-]+$",
         "help":     "job name; output files get this prefix.  Must match "
@@ -62,18 +63,21 @@ class PySCFConfig:
     charge: Optional[int] = field(default=None, metadata={
         "section": "System",
         "label":   "Net charge",
+        "engine_key":  'gto.M(charge=...)',
         "null_label": "(auto)",
         "help": "net charge (default: auto-detect from phosphates)",
     })
     spin: int = field(default=0, metadata={
         "section": "System",
         "label":   "Spin (2S)",
+        "engine_key":  'gto.M(spin=...)  # 2S, # of unpaired electrons',
         "range":   (0, 10),
         "help": "2S (NOT 2S+1); 0=closed shell, 1=doublet, 2=triplet, ...",
     })
     symmetry: bool = field(default=False, metadata={
         "section": "System",
         "label":   "Use point-group symmetry",
+        "engine_key":  'gto.M(symmetry=...)',
         "help": "enable point-group symmetry; faster but rarely matches "
                 "builder-output geometry exactly",
     })
@@ -82,32 +86,38 @@ class PySCFConfig:
     method: str = field(default="RKS", metadata={
         "section": "Method",
         "label":   "SCF method",
+        "engine_key":  'RKS / UKS / RHF / UHF  (PySCF class selection)',
         "choices": ("RKS", "UKS", "RHF", "UHF"),
         "help": "RKS / UKS / RHF / UHF",
     })
     functional: str = field(default="B3LYP", metadata={
         "section": "Method",
         "label":   "Functional",
+        "engine_key":  'mf.xc = ...',
         "help": "XC functional (e.g. B3LYP / PBE / PBE0 / M06-2X / wB97X-D)",
     })
     basis: str = field(default="def2-SVP", metadata={
         "section": "Method",
         "label":   "Basis set",
+        "engine_key":  'gto.M(basis=...)',
         "help": "Gaussian basis set (e.g. def2-SVP / def2-TZVP / cc-pVDZ)",
     })
     # auxbasis: Python-API knob; rarely set from the form (auto-pick
     # from density_fit() is the right default).  No section -> not on form.
     auxbasis: Optional[str] = field(default=None, metadata={
         "help": "auxiliary fitting basis; None lets density_fit() auto-pick",
+            "engine_key":  'df.auxbasis = ...',
     })
     density_fit: bool = field(default=True, metadata={
         "section": "Method",
         "label":   "Density fitting",
+        "engine_key":  'mf = mf.density_fit()',
         "help": "use density fitting (faster Coulomb/exchange evaluation)",
     })
     dispersion: Optional[str] = field(default="d3bj", metadata={
         "section": "Method",
         "label":   "Dispersion",
+        "engine_key":  'mf = mf.add_dispersion(...)',
         # ``none`` is in the choices list so that the case-insensitive
         # click.Choice still accepts the disable spelling; cmd_pyscf
         # then normalises ``none`` -> None before constructing the
@@ -132,12 +142,14 @@ class PySCFConfig:
         # would otherwise reject the str|dict|None union; cmd_pyscf
         # hand-rolls --ecp instead.
         "skip_cli": True,
+            "engine_key":  'gto.M(ecp=...)',
     })
 
     # ---------------- SCF ----------------
     scf_conv_tol: float = field(default=1e-9, metadata={
         "section": "SCF",
         "label": "scf.conv_tol", "unit": "Hartree",
+        "engine_key":  'mf.conv_tol',
         "range": (1e-12, 1e-4),
         "tier":  "advanced",
         "help":  "SCF convergence tolerance on the energy (Hartree)",
@@ -145,6 +157,7 @@ class PySCFConfig:
     scf_max_cycle: int = field(default=100, metadata={
         "section": "SCF",
         "label": "scf.max_cycle",
+        "engine_key":  'mf.max_cycle',
         "range": (10, 1000),
         "tier":  "advanced",
         "help":  "max SCF cycles per single-point",
@@ -152,6 +165,7 @@ class PySCFConfig:
     scf_init_guess: str = field(default="minao", metadata={
         "section": "SCF",
         "label":  "scf.init_guess",
+        "engine_key":  'mf.init_guess',
         "id_suffix": "init-guess",
         "choices": ("minao", "atom", "1e", "huckel"),
         "help": "SCF initial guess: minao / atom / 1e / huckel",
@@ -159,6 +173,7 @@ class PySCFConfig:
     grid_level: int = field(default=4, metadata={
         "section": "SCF",
         "label": "DFT grid level",
+        "engine_key":  'mf.grids.level',
         "range": (0, 9),
         "tier":  "advanced",
         # Default tightened from 3 -> 4: hybrid functionals (B3LYP /
@@ -172,6 +187,7 @@ class PySCFConfig:
     level_shift: float = field(default=0.0, metadata={
         "section": "SCF",
         "label": "Level shift", "unit": "Hartree",
+        "engine_key":  'mf.level_shift',
         "range": (0.0, 1.0),
         "tier":  "advanced",
         "help":  "0.1-0.3 helps hard SCFs; 0 if SCF converges cleanly",
@@ -181,12 +197,14 @@ class PySCFConfig:
     # behaviour for the easy-converge case.
     diis_space: int = field(default=8, metadata={
         "label": "mf.diis_space",
+        "engine_key":  'mf.diis_space',
         "range": (4, 20),
         "tier":  "advanced",
         "help":  "DIIS subspace size; bump to 12-20 for oscillating SCFs",
     })
     damp: float = field(default=0.0, metadata={
         "label": "mf.damp",
+        "engine_key":  'mf.damp',
         "range": (0.0, 0.9),
         "tier":  "advanced",
         "help":  "Roothaan damping factor; 0.3-0.5 helps when DIIS alone isn't enough",
@@ -196,32 +214,38 @@ class PySCFConfig:
     preopt: bool = field(default=False, metadata={
         "section": "Pre-optimization (optional)",
         "label":   "Enable pre-optimization",
+        "engine_key":  '(molbuilder: two-stage relax workflow)',
         "help": "run a cheap PBE/def2-SVP pre-opt before main run",
     })
     preopt_functional: str = field(default="PBE", metadata={
         "section": "Pre-optimization (optional)",
         "label":   "Pre-opt functional",
+        "engine_key":  'mf.xc  (in pre-opt stage)',
         "help": "XC functional for the pre-opt stage",
     })
     preopt_basis: str = field(default="def2-SVP", metadata={
         "section": "Pre-optimization (optional)",
         "label":   "Pre-opt basis",
+        "engine_key":  'gto.M(basis=...)  (in pre-opt stage)',
         "help": "Gaussian basis for the pre-opt stage",
     })
     # preopt_density_fit / preopt_dispersion: kept off the form to
     # avoid clutter; they default sensibly and power users tweak via API.
     preopt_density_fit: bool = field(default=True, metadata={
         "help": "density fitting on the pre-opt SCF",
+            "engine_key":  'mf.density_fit()  (in pre-opt stage)',
     })
     preopt_dispersion: Optional[str] = field(default=None, metadata={
         # Same choice list as ``dispersion``; cmd_pyscf normalises
         # ``none`` -> None.  (R4)
         "choices": ("d3", "d3bj", "d4", "none"),
         "help": "dispersion correction on pre-opt mf (d3 / d3bj / d4); default off",
+            "engine_key":  'mf.add_dispersion()  (in pre-opt stage)',
     })
     preopt_max_steps: int = field(default=50, metadata={
         "section": "Pre-optimization (optional)",
         "label":   "Pre-opt max steps",
+        "engine_key":  'geomeTRIC max_steps  (in pre-opt stage)',
         "range":   (1, 1000),
         "tier":    "advanced",
         "help": "max geomeTRIC steps in the pre-opt stage",
@@ -229,6 +253,7 @@ class PySCFConfig:
     preopt_grms: float = field(default=1.0e-3, metadata={
         "section": "Pre-optimization (optional)",
         "label":   "Pre-opt grms", "unit": "Ha/Bohr",
+        "engine_key":  'geomeTRIC convergence_grms  (in pre-opt stage)',
         "tier":    "advanced",
         "help": "pre-opt grms convergence (Ha/Bohr); 3x looser than main",
     })
@@ -237,17 +262,20 @@ class PySCFConfig:
     optimize: bool = field(default=True, metadata={
         "section": "Optimization",
         "label":   "Optimize geometry",
+        "engine_key":  '(molbuilder: gates geomeTRIC opt() vs single-point)',
         "help": "run geometry optimization; --no-optimize for single-point only",
     })
     optimizer: str = field(default="geometric", metadata={
         "section": "Optimization",
         "label":   "Optimizer",
+        "engine_key":  'geomeTRIC / berny  (driver selection)',
         "choices": ("geometric", "berny"),
         "help": "geomeTRIC or berny",
     })
     geom_max_steps: int = field(default=200, metadata={
         "section": "Optimization",
         "label": "geom max steps",
+        "engine_key":  'optimizer.max_steps',
         "range": (1, 10000),
         "tier":  "advanced",
         "help":  "max optimization steps",
@@ -255,18 +283,21 @@ class PySCFConfig:
     geom_conv_energy: float = field(default=1.0e-6, metadata={
         "section": "Optimization",
         "label":   "geom_conv_energy", "unit": "Hartree",
+        "engine_key":  'geomeTRIC convergence_energy',
         "tier":    "advanced",
         "help": "geomeTRIC energy convergence (Hartree)",
     })
     geom_conv_grms: float = field(default=3.0e-4, metadata={
         "section": "Optimization",
         "label":   "geom_conv_grms", "unit": "Ha/Bohr",
+        "engine_key":  'geomeTRIC convergence_grms',
         "tier":    "advanced",
         "help": "geomeTRIC RMS gradient convergence (Ha/Bohr)",
     })
     geom_conv_gmax: float = field(default=4.5e-4, metadata={
         "section": "Optimization",
         "label":   "geom_conv_gmax", "unit": "Ha/Bohr",
+        "engine_key":  'geomeTRIC convergence_gmax',
         "tier":    "advanced",
         "help": "geomeTRIC max-gradient convergence (Ha/Bohr)",
     })
@@ -275,12 +306,14 @@ class PySCFConfig:
     solvent: Optional[str] = field(default=None, metadata={
         "section": "Solvent (optional)",
         "label":   "Solvent",
+        "engine_key":  'mf = mf.PCM() / mf.SMD()',
         "null_label": "(gas phase)",
         "help": "solvent (water / methanol / dmso / chloroform / ...)",
     })
     solvent_method: str = field(default="IEF-PCM", metadata={
         "section": "Solvent (optional)",
         "label":   "PCM model",
+        "engine_key":  'pcm.method',
         "choices": ("IEF-PCM", "C-PCM", "COSMO"),
         "help": "PCM model: IEF-PCM / C-PCM / COSMO",
     })
@@ -289,6 +322,7 @@ class PySCFConfig:
     max_memory_mb: int = field(default=4000, metadata={
         "section": "Runtime & output",
         "label": "max_memory", "unit": "MB",
+        "engine_key":  'mol.max_memory',
         "id_suffix": "max-memory",
         "range": (100, 1_000_000),
         "tier":  "advanced",
@@ -297,6 +331,7 @@ class PySCFConfig:
     threads: Optional[int] = field(default=None, metadata={
         "section":    "Runtime & output",
         "label":      "CPU threads",
+        "engine_key":  "lib.num_threads(N) + os.environ['OMP_NUM_THREADS']",
         "null_label": "(auto: physical cores)",
         "help":       "how many CPU threads PySCF uses.  Default "
                       "(blank) auto-detects PHYSICAL cores (not "
@@ -312,6 +347,7 @@ class PySCFConfig:
     use_gpu: bool = field(default=False, metadata={
         "section":   "Runtime & output",
         "label":     "Use GPU (NVIDIA, via gpu4pyscf)",
+        "engine_key":  'gpu4pyscf: mf = mf.to_gpu()',
         "id_suffix": "use-gpu",
         "help":      "run the SCF (and geom-opt forces) on an NVIDIA "
                      "GPU via the gpu4pyscf extension.  Install: "
@@ -324,6 +360,7 @@ class PySCFConfig:
     verbose: int = field(default=4, metadata={
         "section": "Runtime & output",
         "label": "PySCF verbose",
+        "engine_key":  'mol.verbose',
         "range": (0, 9),
         "tier":  "advanced",
         "help":  "PySCF verbosity: 0 silent, 4 info, 5 debug",
@@ -331,23 +368,28 @@ class PySCFConfig:
     chkfile: bool = field(default=True, metadata={
         "section": "Runtime & output",
         "label":   "Write checkpoint (.chk)",
+        "engine_key":  "mf.chkfile = '<path>'",
         "help": "write <job>.chk (DM, mol, energies for restart)",
     })
     log_file: bool = field(default=True, metadata={
         "section": "Runtime & output",
         "label":   "Write PySCF log",
+        "engine_key":  "mol.stdout = open('<path>','w')",
         "help": "write the PySCF text log to <job>.log",
     })
     # Always-on output knobs; unsectioned (no good reason to expose).
     save_optimized_xyz: bool = field(default=True, metadata={
         "help": "snapshot the relaxed geometry to <job>_optimized.xyz",
+            "engine_key":  '(molbuilder: writes <job>_opt.xyz post-relax)',
     })
     save_initial_xyz: bool = field(default=True, metadata={
         "help": "snapshot the input geometry to <job>_initial.xyz",
+            "engine_key":  '(molbuilder: writes <job>_init.xyz pre-relax)',
     })
     write_trajectory: bool = field(default=True, metadata={
         "help": ("stream geomeTRIC's <job>_geom_optim.xyz so molwatch can "
                  "watch it live"),
+            "engine_key":  '(molbuilder: per-step .xyz from geomopt callback)',
     })
     # Match SiestaConfig's naming (``write_molwatch_log``) so the two
     # configs read the same way.  ``molwatch_log`` is kept as a
@@ -362,6 +404,7 @@ class PySCFConfig:
                  "per-step coords / energy / forces; the Watch tab's "
                  "preferred input).  Requires --optimize and "
                  "--optimizer geometric"),
+            "engine_key":  '(molbuilder: writes .molwatch.log for live viewer)',
     })
 
     # ---------------- Frequencies / thermochemistry (post-relax) ----------------
@@ -381,6 +424,7 @@ class PySCFConfig:
     compute_frequencies: bool = field(default=False, metadata={
         "section": "Frequencies / thermochemistry",
         "label": "Post-relax frequencies + thermochemistry",
+        "engine_key":  'pyscf.hessian + thermo.thermo()',
         "tier":  "advanced",
         "help":  "compute analytic Hessian + RRHO thermochemistry "
                  "(ZPE, H, G, S, Cv, Cp) at temperature_K / pressure_atm",
@@ -388,6 +432,7 @@ class PySCFConfig:
     temperature_K: float = field(default=298.15, metadata={
         "section": "Frequencies / thermochemistry",
         "label": "Thermochemistry temperature", "unit": "K",
+        "engine_key":  'thermo.thermo(temperature=...)',
         "id_suffix": "temperature",
         "range": (0.0, 5000.0),
         "tier":  "advanced",
@@ -396,6 +441,7 @@ class PySCFConfig:
     pressure_atm: float = field(default=1.0, metadata={
         "section": "Frequencies / thermochemistry",
         "label": "Thermochemistry pressure", "unit": "atm",
+        "engine_key":  'thermo.thermo(pressure=...)',
         "id_suffix": "pressure",
         "range": (1.0e-6, 1.0e3),
         "tier":  "advanced",
@@ -406,6 +452,7 @@ class PySCFConfig:
     verbose_comments: bool = field(default=True, metadata={
         "section": "Runtime & output",
         "label":   "Verbose comments in script",
+        "engine_key":  '(molbuilder: script comment-block control)',
         "help": "emit inline tuning hints + troubleshooting block in the script",
     })
 
@@ -419,6 +466,7 @@ class PySCFConfig:
     # protocol basename) stays identical across stages.
     stage: Optional[int] = field(default=None, metadata={
         "label": "Relaxation stage",
+        "engine_key":  '(molbuilder: filename suffix + log naming)',
         "help":  "stage marker (1/2/3) for the .molwatch.log filename; "
                  "None keeps the unsuffixed name",
         "range": (1, 3),
