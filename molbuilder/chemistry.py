@@ -195,6 +195,85 @@ def explain_metal_spin(element: str, spin: int) -> Optional[str]:
     return _METAL_SPIN_HINTS.get((element.capitalize(), int(spin)))
 
 
+# Per-element "starting value" recommendation for Spin.Total.  Used by
+# the SIESTA preflight when spin_polarized=True + spin_total=None +
+# the structure contains an open-shell metal.  Without a starting
+# value SIESTA's initial-DM constructor (propor) can't find a
+# zero-net-spin split for d/f shells and aborts with
+# ``propor: ERROR: IMAX = 0`` before the SCF loop ever runs.
+#
+# Each entry is (preferred_starting_value, ranked alternatives).  The
+# preferred value is the "most likely correct" guess for a typical
+# biological / coordination-chem context (heme-like for Fe, etc.);
+# the alternatives are ALL the registered (element, spin) hints sorted
+# from low-spin to high-spin so the user can sweep them if the first
+# guess doesn't converge.  Numbers are 2S (= Spin.Total in μB units),
+# matching SIESTA's convention.
+_SPIN_TOTAL_DEFAULTS: dict = {
+    # Fe: heme-like deoxy-bis-thiolate is the molbuilder hemeC use
+    # case -- high-spin Fe(II) S=2 is the most common starting point.
+    # User can sweep to lower spins (CO/CN heme, low-spin Fe(III), ...)
+    # if the high-spin SCF doesn't match the chemistry they expect.
+    "Fe": 4.0,
+    # Mn(II) is overwhelmingly high-spin S=5/2 in biological contexts.
+    "Mn": 5.0,
+    # Co(II) octahedral is often high-spin S=3/2; low-spin variants
+    # need explicit override.
+    "Co": 3.0,
+    # Cu(II) is d⁹ -- one unpaired electron, period.
+    "Cu": 1.0,
+    # Ni(II) square-planar is closed-shell; octahedral is S=1.  No
+    # safe default -- pick the higher-spin starting guess so SCF
+    # has somewhere non-trivial to land.
+    "Ni": 2.0,
+}
+
+
+def suggest_spin_total(metals: "Iterable[str]") -> "tuple[float, list[tuple[float, str]]]":
+    """Recommend a starting ``Spin.Total`` (2S, in μB) for a structure
+    containing the named open-shell metals + a ranked alternatives list.
+
+    Pick rule when multiple metals are present: take the LARGEST per-
+    element default (most-unpaired starting guess).  Reasoning: SIESTA's
+    propor() failure mode is "can't split a d/f shell into zero net
+    spin", so the safe starting bet is non-zero spin on the most-
+    spin-active atom -- the optimiser can ramp DOWN from there if a
+    lower-spin state is the true ground state.  Ramping UP from zero
+    spin is what triggered the abort in the first place.
+
+    Args:
+      metals: result of detect_open_shell_metals(struct).
+
+    Returns:
+      (preferred_value, alternatives) where
+        preferred_value: float, what to set Spin.Total to as a START.
+        alternatives:    list of (value, "description") tuples drawn
+                         from the per-element hints, in order from
+                         low-spin to high-spin (so the user can sweep).
+        If no metals are recognised, returns (1.0, []) -- a safe
+        non-zero placeholder; the user will need to think about it.
+    """
+    metals_seen = [m.capitalize() for m in metals]
+    if not metals_seen:
+        return 1.0, []
+    # Preferred starting value: max per-element default across the
+    # metals present.  ``1.0`` is the fallback when a metal isn't
+    # in our table (better than zero -- propor needs non-zero).
+    preferred = max(
+        (_SPIN_TOTAL_DEFAULTS.get(m, 1.0) for m in metals_seen),
+        default=1.0,
+    )
+    # Alternatives list: every (element, spin) hint we have registered
+    # for the metals present.  Sorted by spin value so the user reads
+    # low-spin -> high-spin (chemists think in that order).
+    alternatives: "list[tuple[float, str]]" = []
+    for (el, spin_2s), desc in _METAL_SPIN_HINTS.items():
+        if el in metals_seen:
+            alternatives.append((float(spin_2s), f"{el}: {desc}"))
+    alternatives.sort(key=lambda t: (t[0], t[1]))
+    return float(preferred), alternatives
+
+
 def resolve_pyscf_ecp(struct: Structure,
                       ecp: "Optional[Union[str, dict]]",
                       basis: str) -> "Optional[Union[str, dict]]":

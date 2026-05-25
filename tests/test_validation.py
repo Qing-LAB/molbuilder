@@ -1021,3 +1021,177 @@ class TestSiestaPseudoCoverageInPreflight:
         assert len(mismatch_issues) == 2   # O + H both flagged
         assert all("bond lengths will be silently wrong" in i.message
                    for i in mismatch_issues)
+
+
+# --------------------------------------------------------------------- #
+#  SIESTA propor: ERROR: IMAX = 0 preflight                             #
+#                                                                       #
+#  2026-05-24 hemeC-dithiol incident: ``Spin polarized`` + no           #
+#  ``Spin.Total`` + Fe -> SIESTA aborts in propor() before SCF starts.  #
+#  Pin the proactive validator that catches this in molbuilder rather   #
+#  than after the 30-second SIESTA initial-DM construction.             #
+# --------------------------------------------------------------------- #
+
+
+class TestSpinPolarizedNeedsSpinTotal:
+    """The validator should ERROR (not WARN) when the propor IMAX=0
+    failure mode is loaded: spin_polarized=True + spin_total=None +
+    structure contains an open-shell first-row TM.  And it should
+    propose a starting value the user can plug into the form."""
+
+    def _hemeC_like(self):
+        """Synthetic Fe + C/H/N/O fragment.  Don't bother with real
+        chemistry coords -- the validator only looks at the element
+        list to decide whether the propor failure mode applies."""
+        from molbuilder.structure import Structure
+        import numpy as np
+        return Structure(
+            elements=["Fe", "C", "C", "N", "N", "O", "H", "H", "H", "H"],
+            positions=np.array([[i * 1.5, 0, 0] for i in range(10)],
+                                dtype=float),
+        )
+
+    def _organic_only(self):
+        from molbuilder.structure import Structure
+        import numpy as np
+        return Structure(elements=["C", "C", "H", "H", "H", "H"],
+                         positions=np.array([[i, 0, 0] for i in range(6)],
+                                              dtype=float))
+
+    def test_metal_plus_spinpol_no_spin_total_emits_error(self):
+        """The actual hemeC-dithiol failure mode -- Fe present,
+        spin_polarized=True, no spin_total.  Validator must produce
+        an ERROR Issue."""
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.validation import validate
+        issues = validate(self._hemeC_like(),
+                           SiestaConfig(spin_polarized=True))
+        errs = [i for i in issues
+                if i.where == "config.spin_total" and i.severity == "error"]
+        assert errs, (
+            "Validator failed to flag the propor IMAX=0 failure mode "
+            "(spin_polarized=True + Fe + no spin_total)"
+        )
+
+    def test_error_message_names_the_failure(self):
+        """Error message must explain WHAT will go wrong, not just
+        'set spin_total'.  Otherwise users won't connect the molbuilder
+        ERROR to the SIESTA ``propor: ERROR: IMAX = 0`` they'd see at
+        run time."""
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.validation import validate
+        issues = validate(self._hemeC_like(),
+                           SiestaConfig(spin_polarized=True))
+        err = next(i for i in issues
+                   if i.where == "config.spin_total" and i.severity == "error")
+        # Names the SIESTA error string the user would otherwise see.
+        assert "propor" in err.message and "IMAX = 0" in err.message
+        # Names the metal that triggered the check.
+        assert "Fe" in err.message
+
+    def test_error_proposes_a_starting_value(self):
+        """User shouldn't have to look up ligand-field rules.  The
+        error must propose a concrete starting Spin.Total value."""
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.validation import validate
+        issues = validate(self._hemeC_like(),
+                           SiestaConfig(spin_polarized=True))
+        err = next(i for i in issues
+                   if i.where == "config.spin_total" and i.severity == "error")
+        # The "START HERE: ..." line is the load-bearing UX bit.
+        assert "START HERE" in err.message
+        # For Fe the recommended starting value is 4.0 (high-spin Fe(II);
+        # see chemistry._SPIN_TOTAL_DEFAULTS).
+        assert "= 4" in err.message
+
+    def test_error_lists_alternatives_to_sweep(self):
+        """Beyond the starting value, the error should show the
+        ranked alternatives so the user can experiment if SCF
+        converges to a spin state that disagrees with the chemistry."""
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.validation import validate
+        issues = validate(self._hemeC_like(),
+                           SiestaConfig(spin_polarized=True))
+        err = next(i for i in issues
+                   if i.where == "config.spin_total" and i.severity == "error")
+        # All six registered Fe entries (S=0/1/2/3/4/5) should appear.
+        for s in (0, 1, 2, 3, 4, 5):
+            assert f"spin_total = {s:>4g}" in err.message or \
+                    f"spin_total = {s}" in err.message, (
+                f"Alternative Spin.Total = {s} missing from error message"
+            )
+
+    def test_user_explicit_spin_total_silences_the_check(self):
+        """If user sets spin_total explicitly, the propor failure mode
+        is averted -- check must NOT fire."""
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.validation import validate
+        issues = validate(self._hemeC_like(),
+                           SiestaConfig(spin_polarized=True, spin_total=4.0))
+        errs = [i for i in issues
+                if i.where == "config.spin_total" and i.severity == "error"
+                and "propor" in i.message]
+        assert not errs, (
+            "Validator wrongly fired the propor-IMAX-0 check even though "
+            "the user set spin_total explicitly"
+        )
+
+    def test_no_spin_polarized_no_check(self):
+        """spin_polarized=False -> no propor invocation at SIESTA setup
+        time, so the check shouldn't fire (the open-shell-metal WARN
+        from _check_open_shell_metal is the right complaint there)."""
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.validation import validate
+        issues = validate(self._hemeC_like(), SiestaConfig())  # spin_polarized default = False
+        propor_errs = [i for i in issues
+                        if i.where == "config.spin_total"
+                        and "propor" in i.message]
+        assert not propor_errs
+
+    def test_no_metal_no_check(self):
+        """Pure organic structure -- propor wouldn't fail even without
+        Spin.Total, since closed-shell atoms split trivially.  Check
+        must NOT fire."""
+        from molbuilder.config.siesta import SiestaConfig
+        from molbuilder.validation import validate
+        issues = validate(self._organic_only(),
+                           SiestaConfig(spin_polarized=True))
+        propor_errs = [i for i in issues
+                        if i.where == "config.spin_total"
+                        and "propor" in i.message]
+        assert not propor_errs
+
+
+class TestSuggestSpinTotal:
+    """The chemistry helper that the validator uses.  Pinning it
+    directly because the validator's tests are integration-y."""
+
+    def test_iron_recommends_high_spin(self):
+        from molbuilder.chemistry import suggest_spin_total
+        preferred, alts = suggest_spin_total(["Fe"])
+        assert preferred == 4.0   # Fe(II) high-spin / deoxy-heme / bis-thiolate
+        # All six registered Fe entries should appear in alternatives.
+        values = sorted({v for v, _ in alts})
+        assert values == [0.0, 1.0, 2.0, 3.0, 4.0, 5.0]
+
+    def test_copper_recommends_one(self):
+        from molbuilder.chemistry import suggest_spin_total
+        preferred, _ = suggest_spin_total(["Cu"])
+        assert preferred == 1.0   # Cu(II) d⁹
+
+    def test_no_metals_returns_safe_nonzero(self):
+        """Even for "no metals", return non-zero -- a zero starting
+        guess re-triggers the propor failure for any future metal."""
+        from molbuilder.chemistry import suggest_spin_total
+        preferred, alts = suggest_spin_total([])
+        assert preferred > 0
+        assert alts == []
+
+    def test_multiple_metals_picks_max(self):
+        """Mixed Cu+Fe: pick the LARGER per-element starting value
+        (Fe's 4.0 wins over Cu's 1.0).  Rationale: SIESTA's propor
+        failure is "can't split zero spin"; ramping DOWN from a non-
+        zero guess is safe, ramping UP from zero is what abort-ed."""
+        from molbuilder.chemistry import suggest_spin_total
+        preferred, _ = suggest_spin_total(["Cu", "Fe"])
+        assert preferred == 4.0

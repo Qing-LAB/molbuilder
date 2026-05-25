@@ -625,6 +625,63 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
     return out
 
 
+def _check_siesta_spin_polarized_needs_spin_total(struct: Structure,
+                                                    cfg) -> List[Issue]:
+    """SIESTA-specific: spin_polarized=True + spin_total=None + open-
+    shell metal -> ERROR.
+
+    The propor: ERROR: IMAX = 0 failure mode (2026-05-24 hemeC-dithiol
+    incident): SIESTA's initial-DM constructor tries to find a zero-
+    net-spin proportional split for each atom's reference-config
+    electrons.  For a closed-shell atom (H/C/N/O/S) this is trivial.
+    For a transition metal with a semicore-rich pseudo (e.g. Fe with
+    3p⁶3d⁶4s² in the valence) the constraint "exactly zero net spin
+    on a d-shell, distributed over integer orbital indices" has no
+    valid solution -- propor's loop variable IMAX stays at 0, SIESTA
+    aborts before the SCF loop ever runs.
+
+    Fix: force a non-zero spin_total.  The chemistry-aware suggestion
+    + alternatives come from chemistry.suggest_spin_total() so the
+    user gets actionable numbers instead of having to look up
+    ligand-field rules for the metal in question.
+
+    Why ERROR (not WARN): SIESTA WILL refuse to start.  Failing fast
+    in molbuilder saves the user a 30-second SIESTA startup just to
+    be told ``propor: ERROR: IMAX = 0``.
+    """
+    if not bool(getattr(cfg, "spin_polarized", False)):
+        return []
+    if getattr(cfg, "spin_total", None) is not None:
+        return []
+    from .chemistry import detect_open_shell_metals, suggest_spin_total
+    metals = detect_open_shell_metals(struct)
+    if not metals:
+        return []
+    preferred, alternatives = suggest_spin_total(metals)
+    lines = [
+        f"Spin polarized is enabled but spin_total is not set, AND "
+        f"the structure contains open-shell metal(s): "
+        f"{', '.join(metals)}.  SIESTA's initial-DM constructor "
+        f"(propor) cannot find a zero-net-spin split for these atoms "
+        f"with semicore-rich pseudos and will abort with "
+        f"``propor: ERROR: IMAX = 0`` before the SCF loop starts.",
+        "",
+        f"START HERE: set cfg.spin_total = {preferred}  "
+        f"(2S, in μB; SIESTA emits this as ``Spin.Total``).  "
+        f"This is the most common starting value for the metals "
+        f"detected; adjust if SCF doesn't converge to the chemistry "
+        f"you expect.",
+    ]
+    if alternatives:
+        lines.append("")
+        lines.append("Alternatives to sweep through if the starting "
+                      "value doesn't match the chemistry (run with "
+                      "each, pick lowest-energy SCF):")
+        for value, desc in alternatives:
+            lines.append(f"  spin_total = {value:>4g}  -- {desc}")
+    return [Issue("error", "\n".join(lines), "config.spin_total")]
+
+
 def _check_open_shell_metal(struct: Structure, *,
                               is_closed_shell: bool,
                               engine_label: str) -> List[Issue]:
@@ -692,6 +749,17 @@ def _validate_siesta(struct: Structure, cfg,
         is_closed_shell=not bool(getattr(cfg, "spin_polarized", False)),
         engine_label="SIESTA (spin_polarized = False)",
     )
+
+    # SIESTA-specific: spin_polarized + no spin_total + open-shell metal
+    # -> propor: ERROR: IMAX = 0 (initial-DM constructor abort).  See
+    # the 2026-05-24 hemeC-dithiol incident for the failure mode
+    # walk-through: SIESTA tries to find a zero-net-spin split for
+    # the metal's d/f shell using its semicore-rich pseudo, can't
+    # land on a valid IMAX, and exits before SCF starts.  Trigger
+    # this proactively at preflight so the user fixes the .fdf in
+    # the form (or sees the recipe) instead of paying a 30-second
+    # SIESTA startup just to be told "IMAX = 0".
+    issues += _check_siesta_spin_polarized_needs_spin_total(struct, cfg)
 
     # Electron-count parity (cross-engine).  SIESTA's "spin" is
     # expressed as spin_total (μ_B); when spin_polarized=False it's

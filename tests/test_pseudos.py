@@ -502,7 +502,12 @@ class TestPseudosEndpoint:
         import stat
         assert wrapper.stat().st_mode & stat.S_IXUSR
         text = wrapper.read_text()
-        assert "mpirun -np 4 siesta test.fdf > test.out" in text
+        # 2026-05-24: launcher resolves at run time via the probe block;
+        # check the assignment + the exec line.
+        assert '_launch_cmd="mpirun -np 4 siesta"' in text
+        assert "exec $_launch_cmd test.fdf > test.out" in text
+        # 2026-05-24: OMP defaults to 1 (SIESTA mainline isn't OMP-aware);
+        # user-set omp_threads=5 still wins when explicit.
         assert "export OMP_NUM_THREADS=5" in text
         assert "export OPENBLAS_NUM_THREADS=1" in text
         assert "ulimit -v 4096000" in text
