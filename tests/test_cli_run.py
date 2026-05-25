@@ -46,7 +46,9 @@ def test_run_emits_wrapper_for_fdf(tmp_path):
     wrapper = tmp_path / "my-job.run.sh"
     assert wrapper.is_file()
     txt = wrapper.read_text()
-    assert "siesta my-job.fdf" in txt
+    # 2026-05-24: launcher is probe-resolved at runtime
+    # (``exec $_launch_cmd my-job.fdf > my-job.out``).
+    assert "my-job.fdf > my-job.out" in txt
     # 2026-05-23: wrapper switched from ``conda run -n`` to the
     # source+activate hybrid; the env name still appears in the
     # ``conda activate`` line (see molbuilder/runwrap.py).
@@ -68,7 +70,8 @@ def test_run_passes_mpi_np_for_siesta(tmp_path):
     fdf.write_text("# fake\n")
     res = CliRunner().invoke(cli.cli, ["run", str(fdf), "--np", "8"])
     assert res.exit_code == 0
-    assert "mpirun -np 8 siesta x.fdf" in (tmp_path / "x.run.sh").read_text()
+    # The probe block's MPI branch sets _launch_cmd to mpirun -np 8 siesta.
+    assert '_launch_cmd="mpirun -np 8 siesta"' in (tmp_path / "x.run.sh").read_text()
 
 
 def test_run_env_override(tmp_path):

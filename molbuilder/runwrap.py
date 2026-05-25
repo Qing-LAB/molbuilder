@@ -112,14 +112,15 @@ def render_run_wrapper(script_path: Path, *,
             resolved_omp = max(1, int(omp_threads))
             omp_source   = "user-set"
 
-        # mpirun threshold dropped from >=2 to >=1: SIESTA-MPI runs
-        # via mpirun even with -np 1 on most installations (it sets
-        # up the proper MPI runtime even for a single rank).  If the
-        # user explicitly wants to skip MPI entirely they can edit
-        # the wrapper.
-        inner = (f"mpirun -np {resolved_mpi} siesta {script_name} "
-                  f"> {basename}.out")
-        description = f"SIESTA-MPI run on {resolved_mpi} ranks"
+        # NOTE: the actual exec line is computed at RUN time by the
+        # probe block below, NOT here -- the wrapper picks ``mpirun
+        # -np N siesta`` vs bare ``siesta`` based on what ``siesta
+        # --version`` reports for the currently-installed binary.
+        # ``inner`` becomes the run-time-resolved shell expression
+        # below (post-probe); we still derive a static ``description``
+        # for the file-header comment.
+        inner = f"$_launch_cmd {script_name} > {basename}.out"
+        description = f"SIESTA run, {resolved_mpi} ranks intended"
 
         env_prefix = (
             f"# Thread / BLAS pinning.\n"
@@ -141,22 +142,86 @@ def render_run_wrapper(script_path: Path, *,
             )
         env_prefix += "\n"
 
+        # Runtime SIESTA build probe + launcher selection.
+        #
+        # ``siesta --version`` (5.x +) self-reports the parallelisation
+        # the binary was compiled with.  Example for a typical conda-
+        # forge build:
+        #
+        #   Version         : 5.4.2
+        #   Parallelisations: MPI
+        #
+        # We parse the ``Parallelisations:`` line and pick the launcher
+        # accordingly:
+        #
+        #   MPI present      ->  mpirun -np <N> siesta   (always)
+        #   OMP present      ->  bare siesta             (OMP env vars take effect)
+        #   both             ->  mpirun -np <N> siesta   (hybrid)
+        #   probe failed     ->  mpirun -np <N> siesta   (safe default for
+        #                                                 MPI-compiled binaries)
+        #   serial build     ->  bare siesta
+        #
+        # The probe runs ONCE per wrapper invocation and prints what
+        # it found before exec, so the user sees the actual build
+        # capability + the launcher choice in the log.  This adapts
+        # automatically if you rebuild SIESTA with different flags --
+        # no need to regenerate the wrapper.
+        env_prefix += (
+            f"# --- Probe SIESTA build at runtime ---\n"
+            f'_siesta_bin_path="$(command -v siesta || echo \"\")"\n'
+            f'if [ -z "$_siesta_bin_path" ]; then\n'
+            f"    echo \"ERROR: 'siesta' not on PATH after activating "
+            f"'{target_env}'.  Is SIESTA installed in this env?\" >&2\n"
+            f"    exit 1\n"
+            f"fi\n"
+            f'_siesta_version_out="$(siesta --version 2>/dev/null || true)"\n'
+            f'_siesta_ver="$(printf %s \"$_siesta_version_out\" '
+            f"| awk -F': *' '/^Version/ {{print $2; exit}}')\"\n"
+            f'_siesta_par="$(printf %s \"$_siesta_version_out\" '
+            f"| awk -F': *' '/^Parallelisations/ {{print $2; exit}}')\"\n"
+            f"# Decide launcher from probe.  Default to mpirun (safe\n"
+            f"# for any MPI-compiled binary) when the probe can't\n"
+            f"# tell us anything.\n"
+            f'_has_mpi=0; _has_omp=0\n'
+            f'case " $_siesta_par " in *MPI*) _has_mpi=1 ;; esac\n'
+            f'case " $_siesta_par " in *OMP*|*OpenMP*) _has_omp=1 ;; esac\n'
+            f'if [ "$_has_mpi" = 1 ]; then\n'
+            f'    _launch_cmd="mpirun -np {resolved_mpi} siesta"\n'
+            f'    if [ "$_has_omp" = 1 ]; then\n'
+            f'        _launch_note="hybrid MPI+OMP ({resolved_mpi} ranks x {resolved_omp} OMP threads)"\n'
+            f'    else\n'
+            f'        _launch_note="pure MPI ({resolved_mpi} ranks; OMP setting irrelevant to this binary)"\n'
+            f'    fi\n'
+            f'elif [ "$_has_omp" = 1 ]; then\n'
+            f'    _launch_cmd="siesta"\n'
+            f'    _launch_note="OMP-only build ({resolved_omp} threads)"\n'
+            f'elif [ -z "$_siesta_par" ]; then\n'
+            f'    _launch_cmd="mpirun -np {resolved_mpi} siesta"\n'
+            f'    _launch_note="MPI fallback (probe inconclusive; safe default for MPI-compiled SIESTA)"\n'
+            f'else\n'
+            f'    _launch_cmd="siesta"\n'
+            f'    _launch_note="serial build (no parallelisation compiled in)"\n'
+            f"fi\n"
+            f"\n"
+        )
+
         # Human-readable banner printed at run time so the user sees
-        # the rank count / threading / cwd / command before SIESTA
-        # spends 30 seconds reading the .fdf.  Earlier wrappers just
-        # ``exec``ed and went silent -- with a long-running SCF the
-        # user has no idea whether MPI even started.
+        # the rank count / threading / cwd / command + BUILD probe
+        # results before SIESTA spends 30 seconds reading the .fdf.
         env_prefix += (
             f'echo "===== molbuilder SIESTA run-wrapper ====="\n'
-            f'echo "  Date    : $(date -Iseconds)"\n'
-            f'echo "  Host    : $(hostname)"\n'
-            f'echo "  Cwd     : $(pwd)"\n'
-            f'echo "  Conda   : ${{CONDA_DEFAULT_ENV:-?}}"\n'
-            f'echo "  MPI     : {resolved_mpi} ranks ({mpi_source})"\n'
-            f'echo "  OMP     : {resolved_omp} threads / rank ({omp_source})"\n'
-            f'echo "  BLAS    : 1 (pinned via MKL/OPENBLAS_NUM_THREADS)"\n'
-            f'echo "  Command : mpirun -np {resolved_mpi} siesta {script_name}"\n'
-            f'echo "  Stdout  : {basename}.out (live; tail -f to follow)"\n'
+            f'echo "  Date          : $(date -Iseconds)"\n'
+            f'echo "  Host          : $(hostname)"\n'
+            f'echo "  Cwd           : $(pwd)"\n'
+            f'echo "  Conda env     : ${{CONDA_DEFAULT_ENV:-?}}"\n'
+            f'echo "  SIESTA binary : $_siesta_bin_path"\n'
+            f'echo "  SIESTA version: ${{_siesta_ver:-unknown}}"\n'
+            f'echo "  Build paral.  : ${{_siesta_par:-unknown}}"\n'
+            f'echo "  Launch mode   : $_launch_note"\n'
+            f'echo "  Threading     : OMP_NUM_THREADS={resolved_omp}, '
+            f'OPENBLAS=1, MKL=1"\n'
+            f'echo "  Command       : $_launch_cmd {script_name} > {basename}.out"\n'
+            f'echo "  Stdout        : {basename}.out (live; tail -f to follow)"\n'
             f'echo "========================================="\n'
             f"\n"
         )

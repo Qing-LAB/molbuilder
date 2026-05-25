@@ -53,14 +53,19 @@ def test_render_siesta_always_uses_mpirun():
     """SIESTA is fundamentally MPI-launched.  2026-05-24: changed
     from "bare siesta when mpi_np < 2" to "always mpirun, default
     np=physical_cores" -- user complained that the wrapper without
-    mpirun silently disables MPI even on a SIESTA-MPI build."""
+    mpirun silently disables MPI even on a SIESTA-MPI build.
+
+    The 2026-05-24 evening pass also introduced a RUN-TIME probe
+    block: the exec line is ``exec $_launch_cmd <fdf> > <out>``
+    where ``$_launch_cmd`` is set by parsing ``siesta --version``.
+    For an MPI-capable build that resolves to ``mpirun -np N siesta``."""
     _bind()
     text = render_run_wrapper(Path("/somewhere/my-job.fdf"))
-    # Always emits mpirun, np resolves to physical_core_count when
-    # mpi_np is unset; we just confirm the ``mpirun -np N siesta``
-    # pattern (the exact N depends on the host running tests).
-    assert "mpirun -np " in text
-    assert "siesta my-job.fdf > my-job.out" in text
+    # The MPI branch sets ``_launch_cmd="mpirun -np N siesta"`` for
+    # MPI-capable binaries (probe sets _has_mpi=1).
+    assert '_launch_cmd="mpirun -np ' in text
+    # The exec line uses the probe-resolved launcher + the fdf.
+    assert 'exec $_launch_cmd my-job.fdf > my-job.out' in text
     assert "conda activate molbuilder-siesta" in text
     assert text.startswith("#!/usr/bin/env bash\n")
 
@@ -68,7 +73,9 @@ def test_render_siesta_always_uses_mpirun():
 def test_render_siesta_with_mpi_ranks():
     _bind()
     text = render_run_wrapper(Path("/somewhere/my-job.fdf"), mpi_np=4)
-    assert "mpirun -np 4 siesta my-job.fdf > my-job.out" in text
+    # Probe block's MPI branch.
+    assert '_launch_cmd="mpirun -np 4 siesta"' in text
+    assert 'exec $_launch_cmd my-job.fdf > my-job.out' in text
     assert "molbuilder-siesta" in text
 
 
@@ -77,7 +84,31 @@ def test_render_siesta_mpi_np_one_still_uses_mpirun():
     the MPI runtime even for a single rank."""
     _bind()
     text = render_run_wrapper(Path("/x/y.fdf"), mpi_np=1)
-    assert "mpirun -np 1 siesta y.fdf" in text
+    assert '_launch_cmd="mpirun -np 1 siesta"' in text
+
+
+def test_render_siesta_emits_build_probe_block():
+    """2026-05-24 evening: the wrapper now probes ``siesta --version``
+    at run time and selects the launcher based on the binary's
+    self-reported ``Parallelisations:`` line (MPI / OMP / serial).
+    Pins the key shell idioms so a regression doesn't silently
+    de-probe the wrapper back to a static launcher."""
+    _bind()
+    text = render_run_wrapper(Path("/x/y.fdf"), mpi_np=4)
+    # Probe runs siesta --version once.
+    assert 'siesta --version 2>/dev/null' in text
+    # Parses Version + Parallelisations.
+    assert "/^Version/" in text
+    assert "/^Parallelisations/" in text
+    # All four branches present (MPI / OMP-only / unknown / serial).
+    assert '_has_mpi=1' in text
+    assert '_has_omp=1' in text
+    assert 'serial build' in text
+    assert 'MPI fallback' in text
+    # Banner shows the probed values.
+    assert 'SIESTA version' in text
+    assert 'Build paral.' in text
+    assert 'Launch mode' in text
 
 
 def test_render_siesta_redirects_stdout_per_job_layout_v1():
@@ -112,10 +143,9 @@ def test_render_siesta_mpi_pins_blas_to_one_and_sets_omp():
     # OMP is set to SOMETHING (auto-resolved or user-set), not absent.
     assert "export OMP_NUM_THREADS=" in text
     # Exports must precede the exec line so the activated env
-    # inherits them.  2026-05-23: exec line went from
-    # ``exec conda run -n ...`` to ``exec mpirun ...`` (the conda
-    # activation now happens via source + activate ABOVE the exec).
-    exec_ix = text.find("exec mpirun")
+    # inherits them.  2026-05-24: exec is now
+    # ``exec $_launch_cmd <fdf> > <out>`` (runtime probe).
+    exec_ix = text.find("exec $_launch_cmd")
     omp_ix  = text.find("export OMP_NUM_THREADS=")
     assert 0 <= omp_ix < exec_ix, (
         "OMP_NUM_THREADS export must come BEFORE the exec line"
@@ -177,7 +207,7 @@ def test_render_conda_activation_hybrid_three_paths():
     # Activation block runs BEFORE the exec line (otherwise the env
     # isn't ready when SIESTA launches).
     activate_ix = text.find("conda activate molbuilder-siesta")
-    exec_ix     = text.find("exec mpirun")
+    exec_ix     = text.find("exec $_launch_cmd")
     assert 0 <= activate_ix < exec_ix, (
         "conda activation must precede the exec line; otherwise the "
         "subshell SIESTA runs in wouldn't have the env."
@@ -269,7 +299,9 @@ def test_write_creates_sibling_dot_run_sh(tmp_path):
     wrapper = write_run_wrapper(script)
     assert wrapper == tmp_path / "my-job.run.sh"
     assert wrapper.is_file()
-    assert "siesta my-job.fdf" in wrapper.read_text()
+    # The probe-driven launcher resolves the actual ``siesta`` command
+    # at run time; we just check the .fdf appears in the exec line.
+    assert "my-job.fdf" in wrapper.read_text()
 
 
 def test_write_sets_executable_bit(tmp_path):
