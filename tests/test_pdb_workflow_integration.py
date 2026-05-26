@@ -404,3 +404,182 @@ class TestPdbWorkflowEndToEnd:
             "User cleared the form (deliberate override) but the "
             "divergence WARN didn't fire -- silent absorption."
         )
+
+
+# --------------------------------------------------------------------- #
+# Build (SIESTA + PySCF) sidecar-honouring integration test             #
+#                                                                       #
+# 2026-05-25 regression: the engine emitters knew how to handle         #
+# struct.frozen_atoms, but /api/build/fdf + /api/build/pyscf never      #
+# applied the sidecar -- the user's /modify freeze list silently        #
+# never reached render_fdf / render_script.  This class catches the     #
+# wiring end-to-end: write a sidecar, POST to /api/build/fdf with       #
+# structure_path, assert %block Geometry.Constraints appears in the     #
+# emitted FDF with the right 1-based indices.                           #
+# --------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def simple_pdb_under_root(tmp_path, monkeypatch):
+    """A 10-atom CHON-only PDB the SIESTA + PySCF emitters can both
+    render cleanly (no Fe / S / exotic-element edge cases tripping
+    up the species table).  We need a structure WHERE THE ENGINE
+    RENDERERS SUCCEED so the test isolates the sidecar-wiring
+    regression from emitter bugs.
+
+    Repoints picker root at tmp_path so /api/selection/save accepts
+    the path under the security gate."""
+    pdb_text = (
+        "REMARK 1 synthetic chon for sidecar wiring test\n"
+        "ATOM      1  C   MOL A   1       0.000   0.000   0.000  1.00  0.00           C\n"
+        "ATOM      2  C   MOL A   1       1.500   0.000   0.000  1.00  0.00           C\n"
+        "ATOM      3  N   MOL A   1       2.250   1.300   0.000  1.00  0.00           N\n"
+        "ATOM      4  C   MOL A   1       3.750   1.300   0.000  1.00  0.00           C\n"
+        "ATOM      5  O   MOL A   1       4.500   2.600   0.000  1.00  0.00           O\n"
+        "ATOM      6  H   MOL A   1      -0.520   0.900   0.000  1.00  0.00           H\n"
+        "ATOM      7  H   MOL A   1      -0.520  -0.900   0.000  1.00  0.00           H\n"
+        "ATOM      8  H   MOL A   1       2.020  -0.900   0.000  1.00  0.00           H\n"
+        "ATOM      9  H   MOL A   1       1.750   2.200   0.000  1.00  0.00           H\n"
+        "ATOM     10  H   MOL A   1       4.270   0.400   0.000  1.00  0.00           H\n"
+        "END\n"
+    )
+    p = tmp_path / "ten_atom_chon.pdb"
+    p.write_text(pdb_text)
+    from molbuilder import diagnostics
+    orig = diagnostics.get_capabilities()
+    caps = diagnostics.Capabilities(runtime_config={},
+                                      conda_binary=None,
+                                      conda_envs=frozenset())
+    cls = type(caps)
+    monkeypatch.setattr(cls, "file_picker_roots",
+                         lambda self: ((tmp_path.resolve(), "projects"),))
+    diagnostics.set_capabilities(caps)
+    monkeypatch.setattr(diagnostics, "_snapshot", orig)
+    return p
+
+
+class TestBuildSiestaHonorsSidecarFrozenAtoms:
+    """Mirrors TestPdbWorkflowEndToEnd's pattern: one structure, one
+    sidecar, three steps walked in order."""
+
+    def test_step_a_save_writes_sidecar(self, web, simple_pdb_under_root):
+        pdb_path = simple_pdb_under_root
+        r = web.post("/api/selection/save", json={
+            "structure_path": str(pdb_path.resolve()),
+            "target":         "frozen_atoms",
+            "indices":        [0, 4, 7],
+        })
+        assert r.status_code == 200, r.data
+        # Sidecar exists with the right indices.
+        sidecar = pdb_path.with_name(pdb_path.stem + ".molstruct.json")
+        assert sidecar.exists()
+        on_disk = json.loads(sidecar.read_text())
+        assert on_disk["frozen_atoms"] == [0, 4, 7]
+
+    def test_step_b_build_fdf_sees_sidecar_via_structure_path(
+            self, web, simple_pdb_under_root):
+        """The actual regression catch: POST /api/build/fdf with
+        structure_path pointing at the .pdb, and the emitted FDF
+        MUST contain %block Geometry.Constraints with 1-based
+        indices = [1, 5, 8]  (the sidecar's [0, 4, 7] shifted +1)."""
+        pdb_path = simple_pdb_under_root
+        # Re-save sidecar (this test runs independently of step_a in
+        # principle, though pytest's order makes it sequential here).
+        web.post("/api/selection/save", json={
+            "structure_path": str(pdb_path.resolve()),
+            "target":         "frozen_atoms",
+            "indices":        [0, 4, 7],
+        })
+        # Read PDB text the way viewer.js does.
+        pdb_text = pdb_path.read_text()
+        # Need a "xyz" body field for the parser; XYZ form derived
+        # from the PDB.  Simpler: skip via parsing-from-text path.
+        from molbuilder.structure import Structure
+        struct = Structure.from_pdb(pdb_text)
+        xyz = struct.to_xyz()
+        r = web.post("/api/build/fdf", json={
+            "xyz":            xyz,
+            "params":         {
+                "system_label": "test",
+                "relax_type":   "CG",     # non-none, so the constraint
+                                          # block is meaningful
+            },
+            "structure_path": str(pdb_path.resolve()),
+        })
+        assert r.status_code == 200, r.data
+        body = r.get_json()
+        # The actual regression check:
+        assert "%block Geometry.Constraints" in body["fdf"], (
+            "/api/build/fdf didn't emit Geometry.Constraints even "
+            "though the .molstruct.json sidecar next to the structure "
+            "has frozen_atoms = [0, 4, 7].  The sidecar -> Structure "
+            "-> render_fdf wiring is broken (2026-05-25 regression)."
+        )
+        assert "position 1 5 8" in body["fdf"], (
+            f"Expected 1-based indices ``position 1 5 8`` but got fdf:\n"
+            f"{body['fdf']}"
+        )
+        # Validator should ALSO surface an info line about it.
+        info = [i for i in body["issues"]
+                if i["where"] == "config.frozen_atoms"]
+        assert info, (
+            "Sidecar applied but validator didn't emit the "
+            "``N atom(s) held fixed`` info line -- the user gets no "
+            "preflight signal that frozen_atoms made it through."
+        )
+
+    def test_step_c_build_pyscf_also_sees_sidecar(self, web, simple_pdb_under_root):
+        """Same wiring check for PySCF Build."""
+        pdb_path = simple_pdb_under_root
+        web.post("/api/selection/save", json={
+            "structure_path": str(pdb_path.resolve()),
+            "target":         "frozen_atoms",
+            "indices":        [0, 4, 7],
+        })
+        from molbuilder.structure import Structure
+        struct = Structure.from_pdb(pdb_path.read_text())
+        xyz = struct.to_xyz()
+        r = web.post("/api/build/pyscf", json={
+            "xyz":            xyz,
+            "params":         {
+                "job_name":  "test",
+                "optimize":  True,
+                "optimizer": "geometric",
+                "spin":      1,
+                "method":    "UKS",
+            },
+            "structure_path": str(pdb_path.resolve()),
+        })
+        assert r.status_code == 200, r.data
+        body = r.get_json()
+        # The PySCF emission: $freeze block inside the inline-written
+        # constraints file, with 1-based indices.
+        assert "_FROZEN_CONSTRAINTS_PATH" in body["script"], (
+            "/api/build/pyscf didn't emit the constraints-file block "
+            "even though the sidecar has frozen_atoms."
+        )
+        assert "xyz 1,5,8" in body["script"], (
+            f"Expected ``xyz 1,5,8`` in script (geomeTRIC 1-based "
+            f"comma-list); got script:\n{body['script'][:2000]}"
+        )
+
+    def test_step_d_no_sidecar_no_constraints_block(self, web, simple_pdb_under_root):
+        """Negative case: structure with NO sidecar -> no constraint
+        block.  This is the baseline; if step_b passes but step_d also
+        emits a constraint block, we'd be emitting on every render."""
+        pdb_path = simple_pdb_under_root
+        # Make sure no sidecar.
+        sidecar = pdb_path.with_name(pdb_path.stem + ".molstruct.json")
+        if sidecar.exists():
+            sidecar.unlink()
+        from molbuilder.structure import Structure
+        struct = Structure.from_pdb(pdb_path.read_text())
+        xyz = struct.to_xyz()
+        r = web.post("/api/build/fdf", json={
+            "xyz":            xyz,
+            "params":         {"system_label": "test", "relax_type": "CG"},
+            "structure_path": str(pdb_path.resolve()),
+        })
+        assert r.status_code == 200, r.data
+        body = r.get_json()
+        assert "%block Geometry.Constraints" not in body["fdf"]

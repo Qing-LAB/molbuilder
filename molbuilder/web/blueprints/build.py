@@ -847,6 +847,17 @@ def api_build_fdf():
         return jsonify({"ok": False,
                         "error": f"could not parse xyz: {exc}"}), 400
 
+    # Three-stage contract carrier: apply the .molstruct.json sidecar
+    # if the JS passed structure_path.  Without this hop, the user's
+    # /modify freeze list never reaches render_fdf -- a silent boundary-
+    # conditions drop (caught by the 2026-05-25 review).  Mirrors what
+    # /api/spectra/render does; the helper is owned by spectra blueprint.
+    sidecar_notice = None
+    structure_path = (body.get("structure_path") or "").strip()
+    if structure_path:
+        from .spectra import _apply_sidecar_if_possible
+        sidecar_notice = _apply_sidecar_if_possible(struct, structure_path)
+
     try:
         cfg = _siesta_config_from_params(params)
     except Exception as exc:
@@ -874,6 +885,9 @@ def api_build_fdf():
     # to stderr / raise on errors -- we keep that for CLI/library
     # callers; here we want the issues as JSON for the UI.
     issues = validate(struct, cfg, dest_dir=dest_dir)
+    if sidecar_notice:
+        from molbuilder.issues import Issue
+        issues.append(Issue("warn", sidecar_notice, "config.frozen_atoms"))
     try:
         fdf = render_fdf(struct, cfg)
     except ValidationError as exc:
@@ -908,6 +922,17 @@ def api_build_pyscf():
         return jsonify({"ok": False,
                         "error": f"could not parse xyz: {exc}"}), 400
 
+    # Three-stage contract carrier: apply the .molstruct.json sidecar
+    # so /modify's frozen_atoms reach render_script.  Mirrors the
+    # /api/build/fdf hop added in the same commit; without it the
+    # PySCF emitter never sees struct.frozen_atoms even though the
+    # emission code is ready to honor it.
+    sidecar_notice = None
+    structure_path = (body.get("structure_path") or "").strip()
+    if structure_path:
+        from .spectra import _apply_sidecar_if_possible
+        sidecar_notice = _apply_sidecar_if_possible(struct, structure_path)
+
     try:
         cfg = _pyscf_config_from_params(params)
     except Exception as exc:
@@ -915,6 +940,9 @@ def api_build_pyscf():
                         "error": f"bad parameters: {exc}"}), 400
 
     issues = validate(struct, cfg)
+    if sidecar_notice:
+        from molbuilder.issues import Issue
+        issues.append(Issue("warn", sidecar_notice, "config.frozen_atoms"))
     try:
         script = render_script(struct, cfg)
     except ValidationError as exc:

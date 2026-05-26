@@ -978,14 +978,21 @@
         // that case so render proceeds.
         const _proj = (window.molbuilder || {}).projects;
         const _destDir = (_proj && _proj.getCurrentDir()) || "";
+        // structure_path lets the server apply the .molstruct.json sidecar
+        // next to the loaded XYZ/PDB.  Without this hop /modify's
+        // frozen_atoms list NEVER reaches render_fdf and SIESTA relaxes
+        // every atom even when the user explicitly froze some.  Mirrors
+        // /spectra; was the silent gap that prompted the 2026-05-25 fix.
+        const _structPath = (_proj && _proj.getCurrentFile()) || "";
         try {
             const r = await fetch("/api/build/fdf", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    xyz:      state.xyz,
+                    xyz:            state.xyz,
                     params,
-                    dest_dir: _destDir || null,
+                    dest_dir:       _destDir || null,
+                    structure_path: _structPath || null,
                 }),
             }).then(x => x.json());
             if (!r.ok) {
@@ -1231,11 +1238,20 @@
         }
         setStatus("pyscf-status", "Rendering PySCF script…");
         const params = collectPyscfParams();
+        // structure_path: see /api/build/fdf handler for rationale --
+        // lets the server apply /modify's .molstruct.json sidecar
+        // (frozen_atoms + regions) before render_script runs.
+        const _projPy = (window.molbuilder || {}).projects;
+        const _structPathPy = (_projPy && _projPy.getCurrentFile()) || "";
         try {
             const r = await fetch("/api/build/pyscf", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ xyz: state.xyz, params }),
+                body: JSON.stringify({
+                    xyz:            state.xyz,
+                    params,
+                    structure_path: _structPathPy || null,
+                }),
             }).then(x => x.json());
             if (!r.ok) {
                 setStatus("pyscf-status",

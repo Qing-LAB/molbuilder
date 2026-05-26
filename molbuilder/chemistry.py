@@ -226,22 +226,68 @@ def explain_metal_spin(element: str, spin: int) -> Optional[str]:
 # guess doesn't converge.  Numbers are 2S (= Spin.Total in μB units),
 # matching SIESTA's convention.
 _SPIN_TOTAL_DEFAULTS: dict = {
-    # Fe: heme-like deoxy-bis-thiolate is the molbuilder hemeC use
-    # case -- high-spin Fe(II) S=2 is the most common starting point.
-    # User can sweep to lower spins (CO/CN heme, low-spin Fe(III), ...)
-    # if the high-spin SCF doesn't match the chemistry they expect.
-    "Fe": 4.0,
+    # ----- First-row d-block (the bio + organometallic mainstays) -----
+    # Sc(III) is d⁰ closed-shell; Sc(II) is d¹ -- pick the open-shell
+    # case as default since the check fires only on OPEN-shell metals.
+    "Sc": 1.0,
+    # Ti(III) is d¹ S=1/2; Ti(II) is d² S=1.  Pick HS-leaning default.
+    "Ti": 2.0,
+    # V(III) is d² S=1 octahedral; V(II) d³ S=3/2; V(IV) d¹ S=1/2.
+    # Mid-row defaults to the most spin-active common state.
+    "V":  3.0,
+    # Cr(II) is d⁴ HS S=2; Cr(III) is d³ S=3/2.  Default to HS Cr(II)
+    # (most common bio context: Cr-acetate, organometallic precursors).
+    "Cr": 4.0,
     # Mn(II) is overwhelmingly high-spin S=5/2 in biological contexts.
     "Mn": 5.0,
+    # Fe: heme-like deoxy-bis-thiolate is the molbuilder hemeC use
+    # case -- high-spin Fe(II) S=2 is the most common starting point.
+    "Fe": 4.0,
     # Co(II) octahedral is often high-spin S=3/2; low-spin variants
     # need explicit override.
     "Co": 3.0,
-    # Cu(II) is d⁹ -- one unpaired electron, period.
-    "Cu": 1.0,
     # Ni(II) square-planar is closed-shell; octahedral is S=1.  No
     # safe default -- pick the higher-spin starting guess so SCF
     # has somewhere non-trivial to land.
     "Ni": 2.0,
+    # Cu(II) is d⁹ -- one unpaired electron, period.
+    "Cu": 1.0,
+    # ----- Second-row d-block (heavier, often via ECP) -----
+    # Mo(III) d³ S=3/2; Mo(IV) d² S=1.  Often HS in bio contexts
+    # (Mo-nitrogenase active site).
+    "Mo": 3.0,
+    # Ru(II) low-spin d⁶ S=0; Ru(III) low-spin d⁵ S=1/2.  Pick Ru(III)
+    # default since open-shell Ru is the case the check fires for.
+    "Ru": 1.0,
+    "Rh": 1.0,    # Rh(II) d⁷ S=1/2
+    # ----- Third-row d-block -----
+    "W":  2.0,    # W(IV) d² S=1
+    "Re": 3.0,    # Re(III) d⁴ S=2
+    "Os": 1.0,    # Os(III) d⁵ low-spin S=1/2
+    "Ir": 1.0,    # Ir(IV) d⁵ low-spin S=1/2
+    "Pt": 1.0,    # Pt(III) d⁷ S=1/2 (Pt(II) / Pt(IV) are closed-shell)
+    # ----- f-block (lanthanides + actinides) -----
+    # 4f shells are usually well-localised; Hund's-rule HS is the
+    # safe starting guess.  Numbers below are the free-ion ground-
+    # state 2S values (NOT 2J; SIESTA's Spin.Total is 2S).
+    "Ce": 1.0,    # 4f¹       2S=1
+    "Pr": 2.0,    # 4f²       2S=2
+    "Nd": 3.0,    # 4f³       2S=3
+    "Pm": 4.0,    # 4f⁴       2S=4
+    "Sm": 5.0,    # 4f⁵       2S=5
+    "Eu": 6.0,    # 4f⁶       2S=6  (Eu(II) is 4f⁷ -> 2S=7; pick the
+                  # less-extreme starter since Eu(III) more common)
+    "Gd": 7.0,    # 4f⁷ S=7/2 -- archetypal "max unpaired" lanthanide
+    "Tb": 6.0,    # 4f⁸       2S=6
+    "Dy": 5.0,    # 4f⁹       2S=5
+    "Ho": 4.0,    # 4f¹⁰      2S=4
+    "Er": 3.0,    # 4f¹¹      2S=3
+    "Tm": 2.0,    # 4f¹²      2S=2
+    "Yb": 1.0,    # 4f¹³      2S=1
+    # Actinides: defer to free-ion 2S for the +3 oxidation state.
+    "U":  3.0,    # U(III) 5f³  -- common organoactinide oxidation state
+    "Np": 4.0,    # Np(III) 5f⁴
+    "Pu": 5.0,    # Pu(III) 5f⁵
 }
 
 

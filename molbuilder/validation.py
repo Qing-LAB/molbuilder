@@ -651,7 +651,14 @@ def _check_siesta_spin_polarized_needs_spin_total(struct: Structure,
     """
     if not bool(getattr(cfg, "spin_polarized", False)):
         return []
-    if getattr(cfg, "spin_total", None) is not None:
+    # The check ALSO fires when the user explicitly set spin_total=0.0:
+    # that's the exact propor IMAX=0 trigger we're trying to catch
+    # (zero net spin on a d/f shell has no valid proportional split).
+    # Earlier ``is not None`` gate let this silently through (caught in
+    # the 2026-05-25 review).  Now: fire when spin_total is None OR
+    # numerically zero.
+    _spin = getattr(cfg, "spin_total", None)
+    if _spin is not None and float(_spin) != 0.0:
         return []
     from .chemistry import detect_open_shell_metals, suggest_spin_total
     metals = detect_open_shell_metals(struct)
