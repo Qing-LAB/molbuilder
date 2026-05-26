@@ -1,0 +1,54 @@
+repos:
+  # File / format hygiene: cheap, runs first so subsequent hooks see
+  # normalised input.
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-added-large-files
+        args: ['--maxkb=2048']
+      - id: check-merge-conflict
+
+  # Python syntax + simple correctness via pyflakes (already in
+  # ``[test]`` extras).  Doesn't lint style; only "would Python
+  # actually run this" issues.
+  - repo: https://github.com/PyCQA/pyflakes
+    rev: '3.2.0'
+    hooks:
+      - id: pyflakes
+        # Skip third-party-shaped vendored files / tests that
+        # deliberately use unused imports (e.g. import * lookups).
+        exclude: '^(molbuilder/web/static/vendor/|tests/data/)'
+
+  # Local-repo hooks: fast-subset pytest + JS syntax check.  Both
+  # are bounded to <30s so pre-commit doesn't feel slow.
+  - repo: local
+    hooks:
+      # Fast subset of the test suite -- excludes the slow / e2e /
+      # browser tests.  Catches the regressions we've actually been
+      # shipping (engine_key metadata, frozen_atoms wiring, element
+      # case canonicalisation, propor preflight, runwrap probe).
+      - id: pytest-fast
+        name: pytest (fast subset, ~20s)
+        entry: python -m pytest -q --no-header
+            --ignore=tests/test_modify_e2e.py
+            --ignore=tests/test_atom_list_render_paths.py
+            -m "not slow and not e2e"
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [commit]
+
+      # node -c on every modified static/*.js so a typo doesn't
+      # silently break the form renderer.  No bundler -> no other
+      # JS check.
+      - id: node-js-syntax
+        name: node -c (syntax-check modified .js)
+        entry: bash -c 'for f in "$@"; do node -c "$f" || exit 1; done' --
+        language: system
+        files: '\.js$'
+        exclude: '^(molbuilder/web/static/vendor/)'
