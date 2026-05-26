@@ -1847,3 +1847,151 @@ def test_pyscf_form_schema_matches_documented_layout():
         if f["name"] == "job_name"
     )
     assert jn["pattern"] == r"^[A-Za-z0-9_\-]+$"
+
+
+# --------------------------------------------------------------------- #
+#  engine_key metadata round-trip                                       #
+#                                                                       #
+#  2026-05-26: engine_key was added to all 47 SIESTA + 48 PySCF         #
+#  fields so the UI can render a "writes-this-keyword" badge next       #
+#  to each form label, BUT the metadata had zero tests.  A field        #
+#  whose engine_key got dropped or mistyped would be invisible to       #
+#  regression detection.  These tests pin: (a) every dataclass field    #
+#  carries engine_key in the schema endpoint output, (b) molbuilder-    #
+#  only fields are tagged with the ``(molbuilder`` marker so the        #
+#  UI knows to dim them, (c) representative SIESTA/PySCF keywords      #
+#  the rest of the codebase relies on (SpinPolarized, MeshCutoff,       #
+#  PAO.BasisSize on the SIESTA side; gto.M(charge=...) etc on PySCF).   #
+# --------------------------------------------------------------------- #
+
+
+def _flatten_schema_fields(sch):
+    return [f for s in sch["sections"] for f in s["fields"]]
+
+
+def test_engine_key_present_on_every_siesta_form_field():
+    """Every SIESTA field that lands in the form (has ``section``)
+    MUST carry an ``engine_key`` metadata.  Without it the UI's
+    source-of-truth badge is silently missing for that field."""
+    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
+    from molbuilder.config.siesta import SiestaConfig
+    sch = dataclass_to_form_schema(SiestaConfig, id_prefix="p")
+    missing = [f["name"] for f in _flatten_schema_fields(sch)
+               if "engine_key" not in f]
+    assert not missing, (
+        f"SiestaConfig fields without engine_key (would render no "
+        f"keyword badge in the form): {missing}"
+    )
+
+
+def test_engine_key_present_on_every_pyscf_form_field():
+    """Same contract for PySCF."""
+    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
+    from molbuilder.config.pyscf import PySCFConfig
+    sch = dataclass_to_form_schema(PySCFConfig, id_prefix="py")
+    missing = [f["name"] for f in _flatten_schema_fields(sch)
+               if "engine_key" not in f]
+    assert not missing, (
+        f"PySCFConfig fields without engine_key: {missing}"
+    )
+
+
+def test_engine_key_marks_molbuilder_only_fields_with_paren_prefix():
+    """molbuilder-only fields (preprocessing / wrapper / filename
+    knobs that don't reach the engine) MUST have engine_key
+    starting with ``(molbuilder`` so the JS engineKeyBadge() picks
+    the dashed-border italic visual variant.  Without this the
+    user might search the SIESTA / PySCF manual for a keyword
+    molbuilder invented (e.g. cell_padding, verbose_comments)."""
+    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
+    from molbuilder.config.siesta import SiestaConfig
+    sch = dataclass_to_form_schema(SiestaConfig, id_prefix="p")
+    # Fields that ARE molbuilder-only (curated list -- if you flip
+    # one of these to a real engine keyword, update the list).
+    molbuilder_only = {
+        "psml_lib",         # stages .psml files
+        "mpi_np",           # .run.sh launcher only
+        "omp_threads",      # .run.sh + .fdf runtime_info comment
+        "max_memory_mb",    # .run.sh ulimit + .fdf comment
+        "wrap_into_cell",   # pre-emission positioning
+        "center_in_vacuum", # pre-emission positioning
+        "verbose_comments", # .fdf comment-block control
+    }
+    fields_by_name = {f["name"]: f for f in _flatten_schema_fields(sch)}
+    for name in molbuilder_only:
+        f = fields_by_name.get(name)
+        assert f is not None, f"missing field {name} in schema"
+        assert f["engine_key"].startswith("(molbuilder"), (
+            f"{name}: engine_key={f['engine_key']!r} should start with "
+            f"``(molbuilder`` so the UI dims the badge"
+        )
+
+
+def test_engine_key_pins_load_bearing_siesta_keywords():
+    """Spot-check that the SIESTA fields whose 1:1 keyword mapping
+    other parts of the codebase rely on (or the user manually
+    cross-references against the SIESTA manual) carry the exact
+    expected engine_key text.  If any of these changes, downstream
+    text searches + the .fdf grep workflow break."""
+    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
+    from molbuilder.config.siesta import SiestaConfig
+    sch = dataclass_to_form_schema(SiestaConfig, id_prefix="p")
+    fields_by_name = {f["name"]: f for f in _flatten_schema_fields(sch)}
+    expected = {
+        # The 2026-05-24 SpinPolarized v4-vs-v5 incident hangs on
+        # this exact spelling.  Don't drift back to v5 "Spin polarized".
+        "spin_polarized": "SpinPolarized",
+        # The "two keys, either alone is silently ignored" warning
+        # depends on the badge text mentioning BOTH.
+        "spin_total":     "Spin.Fix + Spin.Total",
+        # Documented user-facing keywords -- ``MeshCutoff`` /
+        # ``PAO.BasisSize`` are SIESTA's own names, and the help text
+        # references them.
+        "mesh_cutoff":    "MeshCutoff",
+        "basis_size":     "PAO.BasisSize",
+        "net_charge":     "NetCharge",
+        "xc_authors":     "XC.authors",
+        "xc_functional":  "XC.functional",
+        "solution_method": "SolutionMethod",
+        "kgrid":          "%block kgrid_Monkhorst_Pack",
+    }
+    for name, want in expected.items():
+        f = fields_by_name.get(name)
+        assert f is not None, f"missing field {name}"
+        assert f["engine_key"] == want, (
+            f"{name}: engine_key={f['engine_key']!r}; expected {want!r}"
+        )
+
+
+def test_engine_key_pins_load_bearing_pyscf_keywords():
+    """Same for PySCF.  The 2026-05-24 review surfaced that PySCF's
+    method= is a CLASS switch (RKS / UKS / RHF / UHF) not a string
+    kwarg -- the engine_key text should explain this."""
+    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
+    from molbuilder.config.pyscf import PySCFConfig
+    sch = dataclass_to_form_schema(PySCFConfig, id_prefix="py")
+    fields_by_name = {f["name"]: f for f in _flatten_schema_fields(sch)}
+    expected = {
+        "charge":   "gto.M(charge=...)",
+        "spin":     "gto.M(spin=...)  # 2S, # of unpaired electrons",
+        "symmetry": "gto.M(symmetry=...)",
+        "basis":    "gto.M(basis=...)",
+        "functional": "mf.xc = ...",
+        "scf_conv_tol": "mf.conv_tol",
+        "scf_max_cycle": "mf.max_cycle",
+    }
+    for name, want in expected.items():
+        f = fields_by_name.get(name)
+        assert f is not None, f"missing field {name}"
+        assert f["engine_key"] == want, (
+            f"{name}: engine_key={f['engine_key']!r}; expected {want!r}"
+        )
+    # method= is the open-shell-vs-closed-shell selector.  Make
+    # sure the badge mentions the class names so the user knows
+    # they're picking RKS-vs-UKS, not a string.
+    method_key = fields_by_name["method"]["engine_key"]
+    for cls in ("RKS", "UKS", "RHF", "UHF"):
+        assert cls in method_key, (
+            f"method engine_key={method_key!r} should mention {cls} "
+            f"(it's a class-selection switch, not a kwarg)"
+        )
