@@ -268,10 +268,12 @@ def render_script(struct: Structure,
     # "detect, fall back, record" recipe lives in ONE place.  Caller
     # (this generator + spectra) decides WHERE to invoke the helper
     # on its mf object(s); the helper itself is identical.
-    from ..runtime_info import emit_gpu_probe_lines
+    from ..runtime_info import (
+        emit_gpu_probe_lines, GPU4PYSCF_MIN_COMPUTE_CAPABILITY,
+    )
     out += emit_gpu_probe_lines(
         use_gpu=bool(getattr(cfg, "use_gpu", False)),
-        min_compute_capability=7,
+        min_compute_capability=GPU4PYSCF_MIN_COMPUTE_CAPABILITY,
     )
     if cfg.optimize:
         if cfg.optimizer == "geometric":

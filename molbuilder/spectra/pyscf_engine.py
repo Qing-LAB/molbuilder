@@ -674,7 +674,15 @@ class PySCFSpectraEngine:
     # time -- exactly what users tend to hit.  Probe via cupy
     # (gpu4pyscf's required dep) for actionable feedback up front.
 
-    GPU4PYSCF_MIN_COMPUTE_CAPABILITY = 7   # major version; 7.0 = Volta
+    # Single source: molbuilder.runtime_info.  Class-attribute alias
+    # preserved so external code that imported ``PySCFSpectraEngine.
+    # GPU4PYSCF_MIN_COMPUTE_CAPABILITY`` keeps working without a
+    # change.  The numeric value lives in runtime_info now (one place
+    # for engine emitters + this class to agree on).
+    from molbuilder.runtime_info import (
+        GPU4PYSCF_MIN_COMPUTE_CAPABILITY as _MIN_CC,
+    )
+    GPU4PYSCF_MIN_COMPUTE_CAPABILITY = _MIN_CC
 
     @classmethod
     def _gpu_capability_advisories(cls) -> List[Issue]:

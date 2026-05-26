@@ -217,7 +217,18 @@ def emit_runtime_info_capture_lines(use_gpu: bool,
     return out
 
 
-def emit_gpu_probe_lines(use_gpu: bool, min_compute_capability: int = 7) -> List[str]:
+# Minimum NVIDIA GPU compute capability gpu4pyscf supports.  7.0 = Volta;
+# below that the runtime imports of gpu4pyscf raise.  Defined as a module
+# constant so engine emitters (pyscf/input.py + spectra/pyscf_engine.py)
+# import from one place instead of duplicating the literal.  The previous
+# arrangement had ``7`` hard-coded in pyscf/input.py + as a class constant
+# on PySCFSpectraEngine + as a default kwarg here -- three sources, easy
+# to drift.
+GPU4PYSCF_MIN_COMPUTE_CAPABILITY = 7
+
+
+def emit_gpu_probe_lines(use_gpu: bool,
+                          min_compute_capability: int = GPU4PYSCF_MIN_COMPUTE_CAPABILITY) -> List[str]:
     """Emit the GPU probe + to_gpu helper.
 
     Defines two module-level names on the running script:
