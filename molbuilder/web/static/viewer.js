@@ -1041,7 +1041,33 @@
     // rewrite is the portability-+-privacy fix: avoids storing the
     // absolute /home/<user>/... path in form state / future sidecars,
     // and survives copying the whole project tree elsewhere.
+    // Reentrancy guard for both Save buttons.  A 4-step async pipeline
+    // (write .fdf / .py, install pseudos, install wrapper, refresh
+    // sidebar) can be 100s of ms; a double-click triggers TWO
+    // pipelines into the same dest with the same content.  Set the
+    // flag at click-time, disable the button, restore in finally so
+    // an exception path doesn't lock the button permanently.
+    state.savingFdf   = false;
+    state.savingPyscf = false;
+
     $("save-fdf").addEventListener("click", async () => {
+        if (state.savingFdf) return;          // ignore double-click
+        state.savingFdf = true;
+        const _btn = $("save-fdf");
+        const _origText = _btn.textContent;
+        _btn.disabled = true;
+        _btn.textContent = "Saving…";
+        try {
+        return await _runSaveFdfPipeline();
+        } finally {
+        state.savingFdf = false;
+        _btn.disabled = false;
+        _btn.textContent = _origText;
+        refreshSaveButtonAvailability();
+        }
+    });
+
+    async function _runSaveFdfPipeline() {
         const meta = state.lastFdfSave;
         const proj = (window.molbuilder || {}).projects;
         if (!state.fdf || !meta) {
@@ -1180,7 +1206,8 @@
         // without going through writeFile, so they don't auto-refresh.
         // One explicit refresh at the end covers all three steps.
         try { if (proj.refresh) await proj.refresh(); } catch (_) { /* non-fatal */ }
-    });
+    }
+    // (close of _runSaveFdfPipeline)
 
     $("dl-fdf").addEventListener("click", () => {
         if (!state.fdf) return;
@@ -1288,6 +1315,23 @@
 
     // ----- 4b. Save PySCF .py + .run.sh to current dir --------------
     $("save-pyscf").addEventListener("click", async () => {
+        if (state.savingPyscf) return;
+        state.savingPyscf = true;
+        const _btnPy = $("save-pyscf");
+        const _origTextPy = _btnPy.textContent;
+        _btnPy.disabled = true;
+        _btnPy.textContent = "Saving…";
+        try {
+        return await _runSavePyscfPipeline();
+        } finally {
+        state.savingPyscf = false;
+        _btnPy.disabled = false;
+        _btnPy.textContent = _origTextPy;
+        refreshSaveButtonAvailability();
+        }
+    });
+
+    async function _runSavePyscfPipeline() {
         const meta = state.lastPyscfSave;
         const proj = (window.molbuilder || {}).projects;
         if (!state.pyscf || !meta) {
@@ -1349,7 +1393,8 @@
         // up in the listing.  install-wrapper writes outside the
         // writeFile path, so a manual refresh is needed.
         try { if (proj.refresh) await proj.refresh(); } catch (_) { /* non-fatal */ }
-    });
+    }
+    // (close of _runSavePyscfPipeline)
 
     $("dl-pyscf").addEventListener("click", () => {
         if (!state.pyscf) return;
