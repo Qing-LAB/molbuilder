@@ -362,6 +362,43 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
 
     v = cfg.verbose_comments
 
+    # --- Frozen atoms (geometry constraints) ---
+    # Three-stage contract carrier: Structure.frozen_atoms is populated
+    # from the /modify sidecar (0-based indices) and flows through to
+    # SIESTA's %block Geometry.Constraints (1-based indices, native
+    # keyword as of v5.4.2).  Without this block SIESTA's relaxer
+    # moves every atom -- the user's "frozen" backbone silently drifts.
+    #
+    # Syntax (verified against SIESTA 5.4.2 binary strings + the
+    # TransSIESTA "buffer atoms *MUST* be fixed" error path):
+    #   %block Geometry.Constraints
+    #   position N1 N2 ... NK     # individual 1-based indices
+    #   %endblock Geometry.Constraints
+    # Range form (``position from N1 to N2``) is also supported; we
+    # emit the explicit-list form so the user can grep / edit by
+    # index without having to mentally expand a range.
+    frozen = list(getattr(struct, "frozen_atoms", []) or [])
+    if frozen:
+        if v: out += [
+            "# %block Geometry.Constraints holds atom indices SIESTA's",
+            "# relaxer must NOT move.  1-based indices (SIESTA convention)",
+            "# converted from molbuilder's 0-based Structure.frozen_atoms.",
+            "# Source: /modify sidecar (or Python API: struct.frozen_atoms).",
+            "# Without this block SIESTA relaxes every atom.",
+        ]
+        out.append("%block Geometry.Constraints")
+        # Emit one ``position`` line per chunk of up to 20 indices
+        # (~80 chars) for readability.  SIESTA accepts arbitrarily
+        # many ``position`` lines inside the block; chunking makes
+        # the .fdf easy to grep + edit.
+        ids_1based = [i + 1 for i in frozen]
+        chunk = 20
+        for i in range(0, len(ids_1based), chunk):
+            segment = ids_1based[i:i + chunk]
+            out.append("position " + " ".join(str(x) for x in segment))
+        out.append("%endblock Geometry.Constraints")
+        out.append("")
+
     # Basis & grid
     out.append("# --- Basis & grid ---")
     if v: out += [

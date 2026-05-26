@@ -331,3 +331,122 @@ def test_convert_writes_stage_suffixed_preview_log(tmp_path):
                       SiestaConfig(system_label="my-job", stage=3))
     assert os.path.basename(summary["molwatch_log"]) \
         == "my-job-stage3.molwatch.log"
+
+
+# --------------------------------------------------------------------- #
+#  Frozen atoms -> Geometry.Constraints (three-stage contract)          #
+#                                                                       #
+#  Empirically validated 2026-05-25 against SIESTA 5.4.2: feeding the   #
+#  emitted ``position N N N`` block makes SIESTA report                 #
+#  ``siesta: Constraint (3): pos`` in its .out (one Constraint per      #
+#  fixed-atom 3-tuple).  Without this block SIESTA's relaxer moves      #
+#  every atom even when /modify froze them.                             #
+# --------------------------------------------------------------------- #
+
+
+def _struct_with_frozen(frozen):
+    import numpy as np
+    from molbuilder.structure import Structure
+    return Structure(
+        elements=["H", "O", "H", "C", "N"],
+        positions=np.array([[i*1.5, 0, 0] for i in range(5)], dtype=float),
+        frozen_atoms=list(frozen),
+    )
+
+
+def test_siesta_frozen_atoms_emit_geometry_constraints_block():
+    """struct.frozen_atoms = [1, 4]  ->  ``position 2 5`` (1-based) inside
+    a ``%block Geometry.Constraints`` block.  The block must appear AFTER
+    %endblock AtomicCoordinatesAndAtomicSpecies (SIESTA reads sequentially)."""
+    fdf = render_fdf(_struct_with_frozen([1, 4]),
+                     SiestaConfig(verbose_comments=False))
+    assert "%block Geometry.Constraints" in fdf
+    assert "%endblock Geometry.Constraints" in fdf
+    assert "position 2 5" in fdf
+    coord_close = fdf.find("%endblock AtomicCoordinatesAndAtomicSpecies")
+    constraint_open = fdf.find("%block Geometry.Constraints")
+    assert 0 <= coord_close < constraint_open, (
+        "Geometry.Constraints must come AFTER the coords block (SIESTA "
+        "reads sequentially)"
+    )
+
+
+def test_siesta_no_frozen_atoms_emits_no_constraints_block():
+    """Default Structure (no frozen atoms) -> no constraint block at all."""
+    fdf = render_fdf(_struct_with_frozen([]),
+                     SiestaConfig(verbose_comments=False))
+    assert "%block Geometry.Constraints" not in fdf
+    assert "position 2 5" not in fdf
+
+
+def test_siesta_frozen_atoms_large_count_chunks_lines():
+    """Many frozen indices -> emitted as multiple ``position`` lines for
+    readability (single line gets unwieldy past ~20 atoms)."""
+    frozen = list(range(50))   # 50 atoms.
+    # Bump structure to have at least 50 atoms.
+    import numpy as np
+    from molbuilder.structure import Structure
+    s = Structure(
+        elements=["C"] * 51,
+        positions=np.array([[i*1.5, 0, 0] for i in range(51)], dtype=float),
+        frozen_atoms=frozen,
+    )
+    fdf = render_fdf(s, SiestaConfig(verbose_comments=False))
+    # Count ``position`` lines inside the block.
+    inside = False
+    n = 0
+    for line in fdf.splitlines():
+        if "%block Geometry.Constraints" in line: inside = True; continue
+        if "%endblock Geometry.Constraints" in line: inside = False; continue
+        if inside and line.strip().startswith("position "):
+            n += 1
+    assert n >= 2, f"expected >= 2 ``position`` lines for 50 atoms; got {n}"
+
+
+def test_pyscf_frozen_atoms_emit_constraints_file_and_optimize_kwarg():
+    """struct.frozen_atoms -> writes <JOB>.constraints.txt at run time
+    AND passes ``constraints=<path>`` to geometric.optimize().  Geometric
+    parses the emitted ``xyz 2,5`` form (verified 2026-05-25 against
+    geomeTRIC's prepare.parse_constraints in molbuilder-pySCF env)."""
+    from molbuilder.pyscf import PySCFConfig, render_script
+    script = render_script(
+        _struct_with_frozen([1, 4]),
+        PySCFConfig(verbose_comments=False, optimize=True,
+                     optimizer="geometric", spin=1, method="UKS"),
+    )
+    # The runtime constraints-file emission.
+    assert "_FROZEN_CONSTRAINTS_PATH" in script
+    assert 'JOB + ".constraints.txt"' in script
+    assert '"$freeze\\n"' in script
+    # 1-based atom numbers in xyz line.
+    assert "xyz 2,5" in script
+    # The optimize() call gets the constraints= kwarg.
+    assert "constraints           = _FROZEN_CONSTRAINTS_PATH" in script
+
+
+def test_pyscf_no_frozen_atoms_no_constraints_emission():
+    """Default Structure (no frozen atoms) -> no constraints code path."""
+    from molbuilder.pyscf import PySCFConfig, render_script
+    script = render_script(
+        _struct_with_frozen([]),
+        PySCFConfig(verbose_comments=False, optimize=True,
+                     optimizer="geometric", spin=1, method="UKS"),
+    )
+    assert "_FROZEN_CONSTRAINTS_PATH" not in script
+    assert '"$freeze' not in script
+    assert "constraints           =" not in script
+
+
+def test_pyscf_frozen_atoms_with_non_geometric_optimizer_emits_warning_comment():
+    """If user picks berny (no constraint support in PySCF's berny API),
+    DO NOT emit the constraints file -- emit a warning comment instead
+    so the user sees their /modify freeze isn't honored."""
+    from molbuilder.pyscf import PySCFConfig, render_script
+    script = render_script(
+        _struct_with_frozen([1, 4]),
+        PySCFConfig(verbose_comments=False, optimize=True,
+                     optimizer="berny", spin=1, method="UKS"),
+    )
+    assert "_FROZEN_CONSTRAINTS_PATH" not in script
+    assert "WARNING" in script and "frozen_atoms" in script
+    assert "geometric" in script  # the suggested fix

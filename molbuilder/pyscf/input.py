@@ -505,12 +505,48 @@ def render_script(struct: Structure,
             out.append("#   gmax   4.5e-4   Ha/Bohr  (~ 0.023 eV/Ang)")
             out.append("# Loosen by 3-10x for screening; tighten 10x for phonons.")
         out.append('print("\\n=== Stage: production optimization ===")')
+        # Frozen-atom constraints (three-stage contract carrier).  When
+        # Structure.frozen_atoms is non-empty AND we're using the
+        # geomeTRIC optimizer (only one with constraint support), write
+        # a sibling <JOB>.constraints.txt at run time and pass it via
+        # the ``constraints=`` kwarg.  Indices are 1-based per geomeTRIC.
+        # See molbuilder/structure.py + spectra/pyscf_script.py for the
+        # cross-engine carrier; the spectra path uses cfg.frozen_indices
+        # while Build PySCF reads struct.frozen_atoms directly so /modify
+        # sidecar flows through without an explicit form field.
+        frozen = list(getattr(struct, "frozen_atoms", []) or [])
+        emit_constraints = bool(frozen) and cfg.optimizer == "geometric"
+        if emit_constraints:
+            if v:
+                out += [
+                    '# Frozen atoms from /modify sidecar (or '
+                    'Structure.frozen_atoms): hold these atom positions',
+                    '# fixed during the optimisation.  Indices are 1-based '
+                    'per geomeTRIC; molbuilder Structure',
+                    '# is 0-based so we shift below.  Without this block '
+                    'geomeTRIC moves every atom.',
+                ]
+            ids_1based = ",".join(str(i + 1) for i in frozen)
+            out.append(f'# Source: Structure.frozen_atoms = {frozen!r}  (0-based)')
+            out.append(f'_FROZEN_CONSTRAINTS_PATH = JOB + ".constraints.txt"')
+            out.append('with open(_FROZEN_CONSTRAINTS_PATH, "w") as _fh:')
+            out.append('    _fh.write("$freeze\\n")')
+            out.append(f'    _fh.write("xyz {ids_1based}\\n")')
+        elif frozen and cfg.optimizer != "geometric":
+            out += [
+                f'# WARNING: Structure.frozen_atoms = {frozen!r}  (0-based)',
+                f'#   but optimizer = {cfg.optimizer!r} -- only the geomeTRIC',
+                '#   optimizer supports frozen-atom constraints.  Switch to',
+                "#   ``cfg.optimizer = 'geometric'`` to honor the sidecar.",
+            ]
         out.append("mol_eq = optimize(")
         out.append("    mf,")
         out.append(f"    maxsteps              = {cfg.geom_max_steps},")
         out.append(f"    convergence_energy    = {cfg.geom_conv_energy:.1e},")
         out.append(f"    convergence_grms      = {cfg.geom_conv_grms:.1e},")
         out.append(f"    convergence_gmax      = {cfg.geom_conv_gmax:.1e},")
+        if emit_constraints:
+            out.append("    constraints           = _FROZEN_CONSTRAINTS_PATH,")
         if cfg.write_trajectory and cfg.optimizer == "geometric":
             if v:
                 out.append("    # geomeTRIC writes a multi-frame XYZ to")

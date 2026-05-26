@@ -714,6 +714,48 @@ def _check_open_shell_metal(struct: Structure, *,
     return []
 
 
+def _check_frozen_atoms_consumed(struct: Structure, *,
+                                   engine: str,
+                                   honored: bool,
+                                   reason_when_dropped: str = "",
+                                   ) -> List[Issue]:
+    """Three-stage contract: warn when ``Structure.frozen_atoms`` is
+    populated (the user / sidecar asked SOMETHING be held fixed) but
+    the engine emission path is going to silently drop the constraint.
+
+    Two callsites:
+      * SIESTA: ``honored`` is False when ``cfg.relax_type == 'none'``
+        (no MD block emitted, so Geometry.Constraints does nothing).
+      * PySCF: ``honored`` is False when ``cfg.optimize == False``
+        (single-point energy, no relaxation) OR
+        ``cfg.optimizer != 'geometric'`` (the only PySCF optimizer
+        with constraint support).
+
+    When honored is True we emit an INFO-severity Issue so the user
+    sees an explicit "N atoms held fixed during relaxation" line in
+    the preflight panel, not just a silent emission.
+    """
+    n = len(getattr(struct, "frozen_atoms", []) or [])
+    if n == 0:
+        return []
+    if not honored:
+        return [Issue(
+            "warn",
+            (f"Structure has {n} frozen atom(s) from /modify "
+             f"(struct.frozen_atoms), but {engine} won't honor them: "
+             f"{reason_when_dropped}.  Either change the config to a "
+             f"mode that supports constraints, or clear the frozen "
+             f"atoms in /modify if you want a free relaxation."),
+            "config.frozen_atoms",
+        )]
+    return [Issue(
+        "info",
+        (f"{n} atom(s) held fixed during {engine} relaxation "
+         f"(from struct.frozen_atoms / /modify sidecar)."),
+        "config.frozen_atoms",
+    )]
+
+
 def _validate_siesta(struct: Structure, cfg,
                      cell: Optional[np.ndarray],
                      *, dest_dir=None) -> List[Issue]:
@@ -748,6 +790,21 @@ def _validate_siesta(struct: Structure, cfg,
         struct,
         is_closed_shell=not bool(getattr(cfg, "spin_polarized", False)),
         engine_label="SIESTA (spin_polarized = False)",
+    )
+
+    # Frozen-atom carrier (three-stage contract).  SIESTA honors
+    # struct.frozen_atoms via %block Geometry.Constraints which is
+    # only meaningful inside an MD/relax block.  When relax_type is
+    # "none" the relaxer doesn't run, so the constraint is a no-op.
+    relax = (getattr(cfg, "relax_type", "") or "").lower()
+    issues += _check_frozen_atoms_consumed(
+        struct,
+        engine="SIESTA",
+        honored=(relax not in ("none", "")),
+        reason_when_dropped=(
+            f"cfg.relax_type = {cfg.relax_type!r} (no MD/relax block "
+            f"is emitted, so Geometry.Constraints would be a no-op)"
+        ),
     )
 
     # SIESTA-specific: spin_polarized + no spin_total + open-shell metal
@@ -934,6 +991,28 @@ def _validate_pyscf(struct: Structure, cfg,
         is_closed_shell=(getattr(cfg, "spin", 0) == 0
                          and method_upper in ("RKS", "RHF")),
         engine_label=f"PySCF (spin=0, method={cfg.method})",
+    )
+
+    # Frozen-atom carrier (three-stage contract).  PySCF emits the
+    # geomeTRIC constraints file only when ``cfg.optimize`` is True
+    # AND ``cfg.optimizer == 'geometric'`` -- berny's API doesn't
+    # accept a constraints file in pyscf.geomopt.berny_solver, and
+    # single-point runs have nothing to constrain.
+    _opt_geometric = (bool(getattr(cfg, "optimize", False))
+                      and getattr(cfg, "optimizer", "") == "geometric")
+    _drop_reason = ""
+    if not bool(getattr(cfg, "optimize", False)):
+        _drop_reason = "cfg.optimize = False (single-point energy; no relaxation)"
+    elif getattr(cfg, "optimizer", "") != "geometric":
+        _drop_reason = (
+            f"cfg.optimizer = {cfg.optimizer!r}; only the geomeTRIC "
+            f"optimizer accepts a constraints file in PySCF's geomopt API"
+        )
+    issues += _check_frozen_atoms_consumed(
+        struct,
+        engine="PySCF",
+        honored=_opt_geometric,
+        reason_when_dropped=_drop_reason,
     )
     # Basis adequacy for transition metals.
     issues += _check_metal_basis_adequacy(
