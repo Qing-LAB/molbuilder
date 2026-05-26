@@ -519,63 +519,97 @@
             : "Generated.";
         setStatus(els.generateStatus, summary, "ok");
 
-        // If a Projects sidebar dir is selected (and not the projects/
-        // root), also write the script to <current_dir>/<job>.spectra.py.
-        // Strict no-overwrite: if the file already exists, the 409
-        // message surfaces verbatim.  Download + Copy stay enabled as
-        // fallback for the "no dir selected" case.
-        //
-        // saveToWorkspace is the single source of truth for the
-        // generate-and-save flow (lib/projects-sidebar.js); each tab
-        // calls it instead of duplicating fetch + refresh logic.
-        //
-        // Variable name: `wrote` (not `r`) because the outer scope
-        // already has `let r` for the render-fetch result above --
-        // a `const r` here is a parse-time SyntaxError that breaks
-        // the WHOLE module, leaving the schema form stuck at
-        // "Loading from schema...".
+        // 2026-05-26: Generate is now render-only.  The Save-to-current-
+        // dir button (see saveSpectraToCurrentDir below) is the explicit
+        // disk-commit action.  Mirrors the Build SIESTA / PySCF split
+        // shipped 2026-05-24 (abc8a7c).
+        refreshSaveSpectraButtonAvailability();
+    }
+
+
+    /**
+     * Re-evaluate enable state on the Save-spectra button.  Enabled
+     * when (a) the user has clicked Generate (state.lastScript is
+     * populated) AND (b) the Projects sidebar has a non-root subdir
+     * selected.  Wired to projects.onChange so a sidebar pick toggles
+     * the button live without a page reload.
+     */
+    function refreshSaveSpectraButtonAvailability() {
+        const btn = els.saveBtn;
+        if (!btn) return;
         const proj = (window.molbuilder || {}).projects;
-        if (!proj) return;
-        // overwrite: true -- Generate-and-save is "regenerate the
-        // workspace from the form"; second clicks must clobber the
-        // previous .spectra.py.  Without this the second click
-        // would 409 against /api/files/write.
-        const wrote = await proj.saveToWorkspace(
-            state.lastScript, state.lastJobName + ".spectra.py",
-            { overwrite: true });
-        if (!wrote) return;     // no current_dir / at root -- skip silently
-        if (!wrote.ok) {
-            setStatus(els.generateStatus,
-                "Generated, but " + wrote.error
-                + " Use Download / Copy below as fallback.",
-                "warn");
+        const dir = proj ? (proj.getCurrentDir() || "") : "";
+        btn.disabled = !(state.lastScript && dir);
+    }
+
+
+    /**
+     * Commit step.  Saves <job>.spectra.py to the sidebar dir + drops
+     * a sibling <job>.spectra.run.sh.  Reentrancy guard prevents
+     * double-click pipelines.  Mirrors the SIESTA + PySCF Save
+     * handlers in viewer.js (commit 084df7e).
+     */
+    async function saveSpectraToCurrentDir() {
+        if (state.savingSpectra) return;
+        const proj = (window.molbuilder || {}).projects;
+        const btn = els.saveBtn;
+        if (!state.lastScript) {
+            setStatus(els.saveStatus, "Click Generate first.", "error");
             return;
         }
-        setStatus(els.generateStatus, "Wrote " + wrote.relPath, "ok");
-        // Drop a <basename>.run.sh next to the .spectra.py.  PySCF
-        // -- no mpi_np, no ulimit (in-script max_memory handles it),
-        // no OMP/BLAS exports (in-script runtime_info block sets
-        // those).  Wrapper just activates the conda env + runs
-        // ``python <basename>.spectra.py``.  Non-fatal on failure.
+        if (!proj) {
+            setStatus(els.saveStatus, "Projects sidebar not loaded.", "error");
+            return;
+        }
+        const destDir = proj.getCurrentDir() || "";
+        if (!destDir) {
+            setStatus(els.saveStatus,
+                "Pick a project subdir in the sidebar first.",
+                "error");
+            return;
+        }
+        state.savingSpectra = true;
+        const _origText = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = "Saving…";
         try {
-            const wr = await fetch("/api/run/install-wrapper", {
-                method:  "POST",
-                headers: { "Content-Type": "application/json" },
-                body:    JSON.stringify({
-                    script_path:   wrote.path,
-                    mpi_np:        null,
-                    omp_threads:   null,
-                    max_memory_mb: null,
-                }),
-            }).then(x => x.json());
-            if (wr.ok) {
-                const verb = wr.overwritten ? "overwrote" : "wrote";
-                setStatus(els.generateStatus,
-                    "Wrote " + wrote.relPath
-                    + ` · ${verb} ${wr.wrapper_name} (bash to run)`,
-                    wr.overwritten ? "warn" : "ok");
+            setStatus(els.saveStatus, "Saving to " + destDir + " …", "muted");
+            const wrote = await proj.saveToWorkspace(
+                state.lastScript, state.lastJobName + ".spectra.py",
+                { overwrite: true });
+            if (!wrote || !wrote.ok) {
+                setStatus(els.saveStatus,
+                    "Save failed: " + (wrote && wrote.error || "no current_dir"),
+                    "error");
+                return;
             }
-        } catch (_) { /* non-fatal -- user can run the .py manually */ }
+            let wrapperMsg = "";
+            try {
+                const wr = await fetch("/api/run/install-wrapper", {
+                    method:  "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body:    JSON.stringify({
+                        script_path:   wrote.path,
+                        mpi_np:        null,
+                        omp_threads:   null,
+                        max_memory_mb: null,
+                    }),
+                }).then(x => x.json());
+                if (wr.ok) {
+                    const verb = wr.overwritten ? "overwrote" : "wrote";
+                    wrapperMsg = " · " + verb + " " + wr.wrapper_name;
+                }
+            } catch (_) { /* non-fatal */ }
+            setStatus(els.saveStatus,
+                "Wrote " + wrote.relPath + wrapperMsg, "ok");
+            // Refresh sidebar so the .spectra.py + .run.sh both appear.
+            try { if (proj.refresh) await proj.refresh(); } catch (_) { /* non-fatal */ }
+        } finally {
+            state.savingSpectra = false;
+            btn.disabled = false;
+            btn.textContent = _origText;
+            refreshSaveSpectraButtonAvailability();
+        }
     }
 
     function clearOutputs() {
@@ -1985,6 +2019,9 @@
         els.issuesPanel    = $("issues-panel");
         els.downloadBtn    = $("download-script-btn");
         els.copyBtn        = $("copy-script-btn");
+        // Save-to-current-dir button (2026-05-26 Generate/Save split).
+        els.saveBtn        = $("save-spectra-btn");
+        els.saveStatus     = $("save-status");
         els.scriptPreview  = $("script-preview");
         els.scriptSummary  = $("script-summary");
         // results-file / load-results-btn / results-status lookups
@@ -2041,6 +2078,16 @@
             _on(els.copyBtn,      "click", copyScript);
             _on(els.methodsClose, "click", closeMethodsModal);
             _on(els.methodsCopy,  "click", copyMethods);
+            if (els.saveBtn) {
+                _on(els.saveBtn, "click", saveSpectraToCurrentDir);
+            }
+            // Live re-evaluate save-button enable state on sidebar pick.
+            const proj = (window.molbuilder || {}).projects;
+            if (proj && typeof proj.onChange === "function") {
+                const unsub = proj.onChange(refreshSaveSpectraButtonAvailability);
+                if (typeof unsub === "function") _cleanups.push(unsub);
+            }
+            refreshSaveSpectraButtonAvailability();
         }
 
         // --- Inspect-side wiring -----------------------------------
