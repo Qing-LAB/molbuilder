@@ -183,8 +183,16 @@ def render_run_wrapper(script_path: Path, *,
             f"# for any MPI-compiled binary) when the probe can't\n"
             f"# tell us anything.\n"
             f'_has_mpi=0; _has_omp=0\n'
-            f'case " $_siesta_par " in *MPI*) _has_mpi=1 ;; esac\n'
-            f'case " $_siesta_par " in *OMP*|*OpenMP*) _has_omp=1 ;; esac\n'
+            f'# Word-boundary match: `*MPI*` would falsely catch the\n'
+            f'# negative-disabled forms (``NoMPI``, ``pre-MPI``).  Insert\n'
+            f'# explicit ``,`` separators in the haystack and match each\n'
+            f'# token between them so MPI as a substring of NoMPI/pre-MPI/\n'
+            f'# nompi doesn\'t bleed through.  ``$_siesta_par`` may be\n'
+            f'# "MPI" alone, "MPI, OMP", "MPI OMP", or empty -- normalise\n'
+            f'# any combination of separators to one space, then anchor.\n'
+            f'_par_norm=" $(echo \"$_siesta_par\" | tr \",;\" \"  \" | tr -s \" \") \"\n'
+            f'case "$_par_norm" in *" MPI "*) _has_mpi=1 ;; esac\n'
+            f'case "$_par_norm" in *" OMP "*|*" OpenMP "*) _has_omp=1 ;; esac\n'
             f'if [ "$_has_mpi" = 1 ]; then\n'
             f'    _launch_cmd="mpirun -np {resolved_mpi} siesta"\n'
             f'    if [ "$_has_omp" = 1 ]; then\n'

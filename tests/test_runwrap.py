@@ -109,6 +109,19 @@ def test_render_siesta_emits_build_probe_block():
     assert 'SIESTA version' in text
     assert 'Build paral.' in text
     assert 'Launch mode' in text
+    # 2026-05-26: probe must use word-boundary matching so ``NoMPI`` /
+    # ``pre-MPI`` (hypothetical negative-disabled labels) don't falsely
+    # set _has_mpi=1.  Pin the normalisation step + the spaced-anchor
+    # case patterns so a regression to the loose ``*MPI*`` substring
+    # form fails this test.
+    assert "_par_norm=" in text, "probe must normalise separators"
+    assert '*" MPI "*' in text, (
+        "probe must use spaced-anchor ``*\" MPI \"*`` to reject NoMPI"
+    )
+    assert '*MPI*) _has_mpi=1' not in text, (
+        "regression: loose ``*MPI*`` substring match falsely catches "
+        "NoMPI / pre-MPI labels"
+    )
 
 
 def test_render_siesta_redirects_stdout_per_job_layout_v1():

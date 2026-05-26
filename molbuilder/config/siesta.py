@@ -530,7 +530,11 @@ class SiestaConfig:
     omp_threads: Optional[int] = field(default=None, metadata={
         "section":    "Parallel execution",
         "label":      "OMP threads per rank",
-        "engine_key":  '(molbuilder: .run.sh ``export OMP_NUM_THREADS=N`` only)',
+        # Not a SIESTA fdf keyword.  Emits ``export OMP_NUM_THREADS=N``
+        # into .run.sh AND ``# runtime.omp_threads_requested: N`` comment
+        # into the .fdf (so the .out parser can recover the requested
+        # value when reading the run back via runtime_info).
+        "engine_key":  '(molbuilder: .run.sh OMP_NUM_THREADS + .fdf runtime_info comment)',
         "null_label": "(auto: physical cores)",
         "help":       "OpenMP threads per MPI process.  Default (blank) "
                       "auto-detects physical cores at run time (divided "
@@ -547,7 +551,10 @@ class SiestaConfig:
     max_memory_mb: Optional[int] = field(default=None, metadata={
         "section":    "Parallel execution",
         "label":      "Max memory (per rank)",
-        "engine_key":  '(molbuilder: .run.sh ``ulimit -v`` + .fdf comment hint)',
+        # Not a SIESTA fdf keyword.  Emits ``ulimit -v`` into .run.sh
+        # AND ``# runtime.max_memory_mb: N`` into the .fdf so the .out
+        # parser can recover the cap via runtime_info.
+        "engine_key":  '(molbuilder: .run.sh ulimit -v + .fdf runtime_info comment)',
         "unit":       "MB",
         "null_label": "(no cap)",
         "help":       "MB cap per MPI rank.  Emits a SystemMemory hint "

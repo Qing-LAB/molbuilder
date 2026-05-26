@@ -189,15 +189,9 @@ fieldset select:disabled {
 }
 /* "(molbuilder ...)" markers read as MORE muted -- the field is
  * NOT a real engine keyword; the user shouldn't search the SIESTA
- * manual for it.  CSS attribute selector picks the parenthesised
- * form without needing extra JS to add a class. */
-.schema-engine-key[title*="molbuilder"],
-.schema-engine-key {
-    /* default applies; the molbuilder-marker variant gets the
-     * lower-contrast tone via the JS-added .is-molbuilder-only
-     * class (set when engine_key starts with '(') -- see
-     * form-schema.js engineKeyBadge(). */
-}
+ * manual for it.  The JS attaches ``.is-molbuilder-only`` when
+ * engine_key starts with ``(molbuilder`` (see form-schema.js
+ * engineKeyBadge); the variant rule below pulls the tone down. */
 .schema-engine-key.is-molbuilder-only {
     background: transparent;
     border-style: dashed;
