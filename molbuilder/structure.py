@@ -294,7 +294,11 @@ class Structure:
                 raise ValueError(
                     f"malformed XYZ atom line (need 'El x y z'): {raw!r}"
                 )
-            elements.append(parts[0])
+            # Same case-canonicalisation as from_pdb: an XYZ produced
+            # by an external tool might emit ``FE`` / ``ZN``; downstream
+            # consumers (siesta/input._detect_species, ase.data) key on
+            # the ``Fe``/``Zn`` form.
+            elements.append(parts[0].capitalize())
             positions.append([float(parts[1]), float(parts[2]), float(parts[3])])
         if len(elements) != n:
             raise ValueError(
@@ -419,7 +423,17 @@ class Structure:
                 # the key so a LATER alternate doesn't sneak in
                 # (unusual file order but possible).
                 _seen_altloc_keys.add(altloc_key)
-            element = line[76:78].strip()
+            # PDB cols 77-78 hold the element symbol right-justified but
+            # with NO case convention -- many PDBs (incl. PDB Bank's
+            # canonical) emit ``FE``/``CL``/``NA`` upper-cased.
+            # Canonicalise to upper-then-lower (``Fe``/``Cl``/``Na``)
+            # so downstream consumers (siesta/input._detect_species,
+            # ase.data.atomic_numbers, the chemistry hint table) all see
+            # the form their tables key on.  Without this the SIESTA
+            # emitter crashes with ``KeyError: 'FE'`` for any PDB with
+            # a transition metal (caught 2026-05-25 against the
+            # hemeC-dithiol structure).
+            element = line[76:78].strip().capitalize()
             if not element:
                 # Element column 77-78 empty -- fall back to PDB-format
                 # column rules + a known-symbols check:

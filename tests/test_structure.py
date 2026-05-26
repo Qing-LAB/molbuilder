@@ -266,3 +266,75 @@ class TestPdbAltLocDedup:
         )
         s = Structure.from_pdb(text)
         assert s.n_atoms == 3
+
+
+class TestElementCaseCanonicalization:
+    """PDB cols 77-78 (element symbol) carry NO case convention --
+    PDB Bank canonical files emit ``FE`` / ``CL`` / ``NA`` upper-cased.
+    XYZ files from external tools (Avogadro, OpenBabel) similarly
+    vary.  Downstream consumers (siesta._detect_species, ase.data,
+    chemistry helper tables) all key on the ``Fe`` / ``Cl`` / ``Na``
+    form, so the parser MUST canonicalise at the boundary.
+
+    Regression test for the 2026-05-25 hemeC-dithiol incident:
+    ``Structure.from_pdb`` returned ``elements=[..., 'FE', ...]``;
+    ``render_fdf`` crashed with ``KeyError: 'FE'`` because
+    ``ase.data.atomic_numbers`` has ``'Fe'`` not ``'FE'``."""
+
+    @staticmethod
+    def _pdb_atom_line(serial, atom_name, res_name, x, y, z, element):
+        """Build a PDB ATOM record with the element column at the
+        spec-mandated cols 77-78.  We DON'T hand-write fixed-column
+        strings in heredocs because off-by-one errors in spacing
+        send the test through the wrong parser branch (caught while
+        writing this test the first time)."""
+        return (f"ATOM  {serial:>5d} {atom_name:<4s} {res_name:>3s} "
+                f"A{1:>4d}    {x:>8.3f}{y:>8.3f}{z:>8.3f}"
+                f"  1.00  0.00          {element:>2s}")
+
+    def test_from_pdb_canonicalises_uppercase_two_letter_elements(self):
+        """PDB with ``FE`` / ``CL`` / ``NA`` in cols 77-78 should
+        produce ``Fe`` / ``Cl`` / ``Na`` in Structure.elements."""
+        text = "\n".join([
+            self._pdb_atom_line(1, "FE",  "HEM", 0.0, 0.0, 0.0, "FE"),
+            self._pdb_atom_line(2, "CL",  "CL-", 2.0, 0.0, 0.0, "CL"),
+            self._pdb_atom_line(3, "NA",  "NA+", 4.0, 0.0, 0.0, "NA"),
+            "END",
+            "",
+        ])
+        # Sanity-check the test fixture itself: element column must land
+        # at python [76:78] or this test would assert the WRONG thing.
+        assert text.splitlines()[0][76:78] == "FE", (
+            "test fixture's PDB record has element column misaligned: "
+            f"got {text.splitlines()[0][76:78]!r} at cols 77-78"
+        )
+        s = Structure.from_pdb(text)
+        assert s.elements == ["Fe", "Cl", "Na"], (
+            f"Expected canonical Fe/Cl/Na; got {s.elements}.  PDB cols "
+            f"77-78 must be capitalize()'d at the boundary, not passed "
+            f"through verbatim, or downstream KeyError follows."
+        )
+
+    def test_from_pdb_with_iron_renders_siesta_fdf_without_keyerror(self):
+        """End-to-end: PDB with Fe atom -> render_fdf must not raise.
+        This is the 2026-05-25 hemeC-dithiol reproducer at the unit
+        level (the integration test uses the user's actual PDB)."""
+        from molbuilder.siesta import SiestaConfig, render_fdf
+        text = "\n".join([
+            self._pdb_atom_line(1, "FE",   "HEM", 0.0, 0.0, 0.0, "FE"),
+            self._pdb_atom_line(2, "N",    "HIS", 2.0, 0.0, 0.0, "N"),
+            self._pdb_atom_line(3, "C",    "HIS", 3.5, 0.0, 0.0, "C"),
+            self._pdb_atom_line(4, "H",    "HIS", 2.5, 1.0, 0.0, "H"),
+            "END",
+            "",
+        ])
+        s = Structure.from_pdb(text)
+        fdf = render_fdf(s, SiestaConfig(system_label="t"))
+        assert " Fe\n" in fdf, "Fe missing from ChemicalSpeciesLabel block"
+
+    def test_from_xyz_canonicalises_uppercase_elements(self):
+        """An XYZ from an external tool that emits ``FE`` / ``ZN``
+        gets the same canonicalisation as the PDB parser."""
+        text = "2\nuppercase test\nFE 0.0 0.0 0.0\nZN 1.5 0.0 0.0\n"
+        s = Structure.from_xyz(text)
+        assert s.elements == ["Fe", "Zn"]
