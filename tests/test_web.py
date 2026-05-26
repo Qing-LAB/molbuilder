@@ -1701,11 +1701,11 @@ def test_siesta_form_schema_matches_documented_layout():
     assert sch["id_prefix"] == "p"
 
     expected = [
-        # System: 1 -> 2 fields after the 2026-05-23 PseudoDojo
-        # help-text pass added section="System" to ``psml_lib`` so
-        # the pseudopotential directory is a visible form field
-        # (was a hidden CLI-only knob).
-        ("System",                   2),
+        # System: 2 -> 3 fields after the 2026-05-26 review added
+        # section="System" to ``net_charge`` so users with charged
+        # side-chains (carboxylates, lysines, sulfonates -- not seen
+        # by the phosphate auto-detect heuristic) have a form input.
+        ("System",                   3),
         ("Basis & grid",             3),
         ("Exchange-correlation",     2),
         ("SCF",                      7),
@@ -1718,7 +1718,13 @@ def test_siesta_form_schema_matches_documented_layout():
         ("Parallel execution",       5),
         ("Spin",                     2),
         ("k-grid (Monkhorst-Pack)",  1),
-        ("Relaxation",               4),
+        # Relaxation: 4 -> 7 fields after 2026-05-26.  When the user
+        # picks Verlet / Nose from MD.TypeOfRun, SIESTA silently used
+        # the dataclass defaults (300 K / 1 fs / 0 K target) with NO
+        # form input -- the user got a fictitious thermostat setup.
+        # md_initial_temperature / md_target_temperature /
+        # md_length_timestep are now in the form (advanced tier).
+        ("Relaxation",               7),
         ("Output & positioning",     6),
     ]
     got = [(s["name"], len(s["fields"])) for s in sch["sections"]]

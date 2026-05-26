@@ -342,29 +342,47 @@ class SiestaConfig:
     # md_target_temperature defaults to None -> "use the same value as
     # md_initial_temperature" so the Nose-Hoover thermostat has a
     # sensible target without forcing the user to set both fields.
+    # The three MD knobs below are MEANINGFUL ONLY for Verlet / Nose
+    # dynamics (NOT for CG / Broyden / FIRE geometry relaxation), but
+    # SIESTA SILENTLY uses these defaults when the user picks Verlet
+    # or Nose from the form -- so the user gets a 300 K / 1 fs / 0 K
+    # target-temperature run with no UI hint that they could change
+    # them.  Adding ``section`` here promotes them into the form so
+    # the user at least SEES them on the page; their help text marks
+    # them as ignored-for-CG so the form doesn't mislead non-MD users.
     md_initial_temperature: float = field(default=300.0, metadata={
+        "section": "Relaxation",
         "label": "MD.InitialTemperature", "unit": "K",
         "engine_key":  'MD.InitialTemperature',
         "range": (0.0, 5000.0),
         "tier":  "advanced",
-        "help":  "initial-velocity-seed temperature for Verlet/Nose dynamics (K)",
+        "help":  ("initial-velocity-seed temperature for Verlet/Nose "
+                  "molecular dynamics (K).  IGNORED by CG / Broyden / "
+                  "FIRE geometry relaxation -- those don't have "
+                  "velocities to seed."),
     })
     md_target_temperature: Optional[float] = field(default=None, metadata={
+        "section": "Relaxation",
         "label": "MD.TargetTemperature", "unit": "K",
         "engine_key":  'MD.TargetTemperature',
+        "null_label": "(use MD.InitialTemperature)",
         "tier":  "advanced",
-        "help":  ("Nose-Hoover NVT target temperature (K).  None -> use "
-                  "md_initial_temperature; ignored unless relax_type=Nose"),
+        "help":  ("Nose-Hoover NVT target temperature (K).  Used ONLY "
+                  "by Nose dynamics; CG / Broyden / FIRE / Verlet "
+                  "ignore this.  Defaults to md_initial_temperature "
+                  "when unset."),
     })
     md_length_timestep: float = field(default=1.0, metadata={
+        "section": "Relaxation",
         "label": "MD.LengthTimeStep", "unit": "fs",
         "engine_key":  'MD.LengthTimeStep',
         "range": (0.1, 5.0),
         "tier":  "advanced",
         "help":  ("integration timestep for Verlet/Nose dynamics (fs).  "
-                  "1.0 fs is SIESTA's default and works for systems without "
-                  "H; bonded H typically needs 0.5 fs for stable energy "
-                  "conservation"),
+                  "1.0 fs is SIESTA's default and works for systems "
+                  "without H; bonded H typically needs 0.5 fs for "
+                  "stable energy conservation.  IGNORED by CG / "
+                  "Broyden / FIRE geometry relaxation."),
     })
 
     # SCF / MD continuation flags (free insurance for restartable jobs)
@@ -622,10 +640,19 @@ class SiestaConfig:
     # Net charge.  When None (default), render_fdf auto-detects from the
     # phosphate protonation state via formal_charge_from_phosphates.
     net_charge: Optional[int] = field(default=None, metadata={
-        "help": ("net charge override (default: auto-detect from phosphates; "
-                 "set explicitly for charged side chains -- carboxylates, "
-                 "amines, sulfonates -- the heuristic doesn't see)"),
-            "engine_key":  'NetCharge',
+        "section": "System",
+        "label": "Net charge",
+        "engine_key":  'NetCharge',
+        "null_label": "(auto-detect from phosphates)",
+        "range": (-10, 10),
+        "tier": "basic",
+        "help": ("Net charge of the system, in units of |e|.  Default "
+                  "(blank) auto-detects from phosphate protonation -- "
+                  "fine for DNA/RNA from tleap.  Set EXPLICITLY for "
+                  "charged side chains the heuristic doesn't see: "
+                  "carboxylates (Asp/Glu), protonated amines (Lys/Arg/"
+                  "His+), sulfonates.  Sign convention: -1 = one extra "
+                  "electron; +1 = one missing electron."),
     })
 
     # Spin polarisation.  Default off (closed-shell DFT).
