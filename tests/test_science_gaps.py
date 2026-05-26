@@ -98,15 +98,31 @@ def test_gap_1_siesta_emits_spin_total_with_dot(h2):
 # --------------------------------------------------------------------- #
 
 
-def test_gap_2_siesta_emits_v5_spin_block(h2):
-    """A modern (v5) SIESTA prefers a single-line `Spin polarized`
-    declaration over the v4-era `SpinPolarized true`.  The test
-    asserts the v5 form is present; the fix should also document
-    the targeted SIESTA version range."""
+def test_gap_2_siesta_emits_v4_spinpolarized_for_aux_compat(h2):
+    """Originally pinned the v5 single-line ``Spin polarized``; the
+    rationale ("modern SIESTA prefers v5") turned out to be wrong
+    in practice for SIESTA 5.4.2.
+
+    2026-05-24 hemeC-dithiol incident: with the v5 form the user's
+    ``Spin.Fix .true.`` + ``Spin.Total 4.0`` were silently ignored
+    (the v5 parser path doesn't read those auxiliary keys), the
+    initial-DM constructor couldn't find a zero-spin split on Fe's
+    d-shell, SIESTA aborted with ``propor: ERROR: IMAX = 0``.
+    Empirically verified by diffing fdf.<timestamp>.log under each
+    form: v4 -> Spin.Fix=T, Spin.Total=4.0 honored; v5 -> both at
+    default.  Test inverted to pin the v4 form so a regression to
+    v5 fails here loudly."""
     cfg = SiestaConfig(system_label="h2", spin_polarized=True)
     fdf = render_fdf(h2, cfg)
-    assert re.search(r"^\s*Spin\s+polarized\s*$", fdf, re.MULTILINE), (
-        "FDF must emit the v5-compatible single-line `Spin polarized`."
+    assert "SpinPolarized .true." in fdf, (
+        "FDF must emit v4 ``SpinPolarized .true.`` (NOT v5 single-line "
+        "``Spin polarized``) so SIESTA 5.4.2's parser also reads "
+        "Spin.Fix + Spin.Total -- see siesta/input.py emission site."
+    )
+    # And the broken v5 form must not be on a line of its own.
+    assert not re.search(r"^Spin\s+polarized\s*$", fdf, re.MULTILINE), (
+        "regression: emitting v5 ``Spin polarized`` causes SIESTA 5.4.2 "
+        "to silently drop Spin.Fix / Spin.Total"
     )
 
 

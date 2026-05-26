@@ -84,15 +84,26 @@ def test_c2_default_no_spin_block(small_struct):
     assert "SpinTotal " not in fdf
 
 
-def test_c2_spin_polarized_emits_v5_form(small_struct):
-    """Open-shell: emit `Spin polarized` (v5 single-line form), NOT
-    the v4-era `SpinPolarized true` (gap #2)."""
-    import re
+def test_c2_spin_polarized_emits_v4_form_for_aux_compat(small_struct):
+    """Open-shell: emit ``SpinPolarized .true.`` (v4 form), NOT the
+    v5 single-line ``Spin polarized``.
+
+    Reversed 2026-05-24 against SIESTA 5.4.2: the v5 unified parser
+    path does NOT subsequently read auxiliary ``Spin.Fix`` /
+    ``Spin.Total`` keys -- a user's hemeC-dithiol run with
+    ``Spin.Total 4.0`` aborted at ``propor: ERROR: IMAX = 0`` because
+    Spin.Total never reached the initial-DM constructor.  Empirically
+    diffed fdf.<timestamp>.log: v4 form -> aux keys honored;
+    v5 form -> aux keys default.  See decisions log + the comment
+    block above the emission in siesta/input.py."""
     fdf = render_fdf(small_struct,
                      SiestaConfig(spin_polarized=True, verbose_comments=False))
-    assert re.search(r"^\s*Spin\s+polarized\s*$", fdf, re.MULTILINE)
-    # The legacy v4 form should be absent.
-    assert "SpinPolarized" not in fdf
+    assert "SpinPolarized .true." in fdf
+    # The broken-in-5.4.2 v5 form must NOT be emitted.  Search at
+    # line-start to avoid hitting verbose-comment mentions inside
+    # the .fdf body.
+    import re
+    assert not re.search(r"^Spin\s+polarized\s*$", fdf, re.MULTILINE)
 
 
 def test_c2_spin_total_emits_dotted_form_with_fix(small_struct):
