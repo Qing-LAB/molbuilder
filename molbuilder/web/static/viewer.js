@@ -988,6 +988,15 @@
         // every atom even when the user explicitly froze some.  Mirrors
         // /spectra; was the silent gap that prompted the 2026-05-25 fix.
         const _structPath = (_proj && _proj.getCurrentFile()) || "";
+        // Abort any in-flight Generate so two rapid clicks don't
+        // race -- the LATER click should win, but without
+        // AbortController the response that arrives LAST writes
+        // state.fdf / state.lastFdfSave (which might be the OLDER
+        // click's response if its render took longer).  Pattern
+        // mirrors lib/spectra/core.js's renderAbort / loadAbort.
+        if (state.fdfAbort) state.fdfAbort.abort();
+        state.fdfAbort = new AbortController();
+        const _signal = state.fdfAbort.signal;
         try {
             const r = await fetch("/api/build/fdf", {
                 method: "POST",
@@ -998,6 +1007,7 @@
                     dest_dir:       _destDir || null,
                     structure_path: _structPath || null,
                 }),
+                signal: _signal,
             }).then(x => x.json());
             if (!r.ok) {
                 setStatus("fdf-status", r.error || "FDF render failed.", "error");
@@ -1034,6 +1044,9 @@
             setStatus("fdf-status", fdfMsg,
                       issues.some(i => i.severity === "warn") ? "warn" : "ok");
         } catch (e) {
+            // AbortError = a newer Generate click superseded this one;
+            // the newer click's handler owns state -- don't clobber.
+            if (e && e.name === "AbortError") return;
             setStatus("fdf-status", "Network error: " + e.message, "error");
             state.fdf = null;
             state.lastFdfSave = null;
@@ -1294,6 +1307,11 @@
         // (frozen_atoms + regions) before render_script runs.
         const _projPy = (window.molbuilder || {}).projects;
         const _structPathPy = (_projPy && _projPy.getCurrentFile()) || "";
+        // Abort any in-flight Generate -- see /api/build/fdf above
+        // for the rationale.  Two rapid clicks otherwise race.
+        if (state.pyscfAbort) state.pyscfAbort.abort();
+        state.pyscfAbort = new AbortController();
+        const _signalPy = state.pyscfAbort.signal;
         try {
             const r = await fetch("/api/build/pyscf", {
                 method: "POST",
@@ -1303,6 +1321,7 @@
                     params,
                     structure_path: _structPathPy || null,
                 }),
+                signal: _signalPy,
             }).then(x => x.json());
             if (!r.ok) {
                 setStatus("pyscf-status",
@@ -1331,6 +1350,7 @@
             setStatus("pyscf-status", pyMsg,
                       issues.some(i => i.severity === "warn") ? "warn" : "ok");
         } catch (e) {
+            if (e && e.name === "AbortError") return;  // superseded
             setStatus("pyscf-status", "Network error: " + e.message, "error");
             state.pyscf = null;
             state.lastPyscfSave = null;

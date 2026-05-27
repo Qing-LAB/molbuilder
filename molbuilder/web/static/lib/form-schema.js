@@ -107,11 +107,19 @@
         const key = (f.engine_key || "").trim();
         if (!key) return null;
         const lbl = (f.label || "").trim();
-        // Skip the badge when the label IS the keyword (e.g. "MeshCutoff")
-        // -- redundant noise.  The molbuilder-only markers always show
-        // because their label is human English and the marker text adds
-        // information ("this field has NO engine equivalent").
+        // Skip the badge when the label IS the keyword.  Two forms
+        // count as "is the keyword" -- (a) exact match
+        // ("MeshCutoff") and (b) match with a unit suffix
+        // ("MeshCutoff (Ry)").  Without (b) the label-text rendered
+        // by labelText() includes the unit, and the comparison
+        // ``key.toLowerCase() === lbl.toLowerCase()`` would never
+        // hit for any unit-bearing field -- so MeshCutoff /
+        // PAO.EnergyShift / DM.Tolerance etc. all showed a duplicate
+        // badge of the same text right of the label.  Caught by the
+        // 2026-05-26 review.
+        const lblBare = lbl.replace(/\s*\([^)]*\)\s*$/, "").trim();
         if (key.toLowerCase() === lbl.toLowerCase()) return null;
+        if (key.toLowerCase() === lblBare.toLowerCase()) return null;
         const code = document.createElement("code");
         code.className = "schema-engine-key";
         // ``(molbuilder ...)`` markers tell the user "no engine equivalent
