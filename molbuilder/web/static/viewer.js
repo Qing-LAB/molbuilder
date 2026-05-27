@@ -999,6 +999,11 @@
                 setStatus("fdf-status", r.error || "FDF render failed.", "error");
                 state.fdf = null;
                 state.lastFdfSave = null;
+                // Clear the Save-in-flight flag too: if the user clicked
+                // Generate WHILE a Save was running, the Save's finally
+                // would otherwise re-enable the button against a now-
+                // null state.fdf.  Caught by the 2026-05-26 review.
+                state.savingFdf = false;
                 refreshSaveButtonAvailability();
                 return;
             }
@@ -1028,6 +1033,7 @@
             setStatus("fdf-status", "Network error: " + e.message, "error");
             state.fdf = null;
             state.lastFdfSave = null;
+            state.savingFdf = false;
             refreshSaveButtonAvailability();
         }
     });
@@ -1144,29 +1150,43 @@
                 installedOk = false;
             }
         }
-        // Step 3: drop the .run.sh next to the .fdf.
+        // Step 3: drop the .run.sh next to the .fdf -- BUT ONLY IF the
+        // pseudo install succeeded.  If install-pseudos missed elements
+        // (installedOk = false), a wrapper that references the (still-
+        // missing) pseudos would launch SIESTA which aborts at startup
+        // with an opaque "pseudo_read: ERROR: Pseudopotential file not
+        // found" -- the user sees a green "wrote .run.sh" and only
+        // discovers the breakage after running the wrapper.  Skip the
+        // wrapper write when pseudos are incomplete; surface the gap
+        // in the status text instead.  Caught by the 2026-05-26 review.
         const _n = (k) => {
             const v = (params || {})[k];
             const n = Number(v);
             return Number.isFinite(n) && n > 0 ? n : null;
         };
         let wrapperMsg = "";
-        try {
-            const wr = await fetch("/api/run/install-wrapper", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    script_path:   written.path,
-                    mpi_np:        _n("mpi_np"),
-                    omp_threads:   _n("omp_threads"),
-                    max_memory_mb: _n("max_memory_mb"),
-                }),
-            }).then(x => x.json());
-            if (wr.ok) {
-                const verb = wr.overwritten ? "overwrote" : "wrote";
-                wrapperMsg = `${verb} ${wr.wrapper_name}`;
-            }
-        } catch (_) { /* non-fatal; user can run the .fdf manually */ }
+        if (!installedOk) {
+            wrapperMsg = "skipped .run.sh (pseudos incomplete; "
+                       + "fix the install-pseudos errors above and "
+                       + "click Save again)";
+        } else {
+            try {
+                const wr = await fetch("/api/run/install-wrapper", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        script_path:   written.path,
+                        mpi_np:        _n("mpi_np"),
+                        omp_threads:   _n("omp_threads"),
+                        max_memory_mb: _n("max_memory_mb"),
+                    }),
+                }).then(x => x.json());
+                if (wr.ok) {
+                    const verb = wr.overwritten ? "overwrote" : "wrote";
+                    wrapperMsg = `${verb} ${wr.wrapper_name}`;
+                }
+            } catch (_) { /* non-fatal; user can run the .fdf manually */ }
+        }
 
         // Step 4: rewrite the psml_lib form field to relative-to-dest
         // (the portability fix).  Only when the field currently holds
@@ -1285,6 +1305,7 @@
                     r.error || "PySCF render failed.", "error");
                 state.pyscf = null;
                 state.lastPyscfSave = null;
+                state.savingPyscf = false;
                 refreshSaveButtonAvailability();
                 return;
             }
@@ -1309,6 +1330,7 @@
             setStatus("pyscf-status", "Network error: " + e.message, "error");
             state.pyscf = null;
             state.lastPyscfSave = null;
+            state.savingPyscf = false;
             refreshSaveButtonAvailability();
         }
     });

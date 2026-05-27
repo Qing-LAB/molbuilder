@@ -248,6 +248,29 @@ fieldset select:disabled {
     overflow-y: auto;
 }
 
+/* ---- Tooltip wrapper for disabled buttons ----
+ *
+ * Browsers do NOT dispatch hover events on ``<button disabled>``,
+ * so a ``title`` attribute on the button never surfaces a tooltip
+ * -- exactly when the user most needs to read "why is this
+ * disabled".  Workaround: wrap the button in
+ * ``<span class="disabled-tip" title="...">``; the span receives
+ * mouseenter normally.  Inline-flex so the wrapper sits in the
+ * action-row layout the same way a bare button does.
+ *
+ * Lives here (form-schema.css) rather than style.css because
+ * /spectra doesn't load style.css -- the wrapper would fall back
+ * to ``display: inline`` and break baseline alignment.  Loaded by
+ * any page that has a form schema (Build / Spectra).
+ *
+ * Use ``title`` text that makes sense in BOTH states (e.g. "Saves
+ * .fdf + .run.sh"; not "DISABLED UNTIL ...") so the tooltip stays
+ * informative when the button is enabled too.
+ */
+.disabled-tip {
+    display: inline-flex;
+}
+
 /* ---- Live "resolved-path" caption (psml_lib + future) ---- */
 .schema-field-hint {
     display: block;

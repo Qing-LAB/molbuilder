@@ -691,19 +691,12 @@ fieldset label:has(> input[type="checkbox"]) {
     flex-wrap: wrap;
 }
 
-/* Tooltip wrapper for disabled buttons.  Browsers do NOT dispatch
- * hover events on ``<button disabled>``, so a ``title`` attribute
- * on the button never surfaces a tooltip -- exactly when the user
- * most needs to read "why is this disabled".  Workaround: wrap the
- * button in ``<span class="disabled-tip" title="...">``; the span
- * receives mouseenter normally.  The wrapper sits inline-flex so
- * it fits the action-row layout the same way a bare button does.
- * Use ``title`` text that makes sense in BOTH states (e.g. "Saves
- * .fdf + .run.sh"; not "DISABLED UNTIL ...") so the tooltip is
- * informative when the button is enabled too. */
-.disabled-tip {
-    display: inline-flex;
-}
+/* ``.disabled-tip`` lives in form-schema.css now (loaded on every
+ * page that has the Save buttons -- Build /, Spectra /spectra).
+ * Was here originally but spectra.html never linked style.css, so
+ * the wrapper fell back to ``display: inline`` and broke the
+ * baseline alignment in /spectra's action row.  Moved 2026-05-26.
+ */
 
 .fdf-output {
     margin-top: 12px;

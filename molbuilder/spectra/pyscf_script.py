@@ -104,6 +104,19 @@ def render_spectra_script(struct: Structure, cfg: SpectraConfig) -> str:
             "standalone IR-only FD path is a future feature)."
         )
 
+    # Cross-cutting validation (open-shell metal, parity, frozen-atom-
+    # consumed, peptide protonation, config-metadata range checks).
+    # SIESTA + PySCF generators have always called this from inside
+    # render_fdf / render_script; the spectra generator was missing
+    # the call so CLI / library callers bypassed every check (the
+    # web /api/spectra/render endpoint runs ``engine.preflight`` so
+    # the web path was covered).  Mirror the SIESTA pattern: validate
+    # the struct + cfg, surface warnings to stderr via ``report``,
+    # raise ValidationError on hard-error issues so the caller can
+    # catch + display.  Caught by the 2026-05-26 fresh-eyes review.
+    from ..validation import validate, report
+    report(validate(struct, cfg))
+
     # Compute the Methods prose + bibliography ONCE -- the header
     # docstring and the constants block both inline the same prose,
     # so calling render_methods_md three times (as the earlier code

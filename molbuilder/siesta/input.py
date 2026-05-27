@@ -260,6 +260,15 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     # emission cleanly.  Warnings print to stderr but the run proceeds.
     # See molbuilder.validation and docs/design.md for the check list.
     from ..validation import validate, report
+    # The validation_struct mirrors the input struct but uses the FINAL
+    # post-positioning ``positions`` array (so geometry-based checks
+    # see what SIESTA will actually read).  CRITICAL: must carry the
+    # transport metadata (``frozen_atoms`` + ``regions``) through, or
+    # the validator's ``_check_frozen_atoms_consumed`` sees an empty
+    # frozen list and never fires its "N atoms held fixed" / "won't
+    # honor" issues -- the contract carrier silently dropped between
+    # the Build endpoint that loaded the sidecar and the validator that
+    # was supposed to consume it.  Caught by the 2026-05-26 review.
     validation_struct = Structure(
         elements      = list(struct.elements),
         positions     = positions,
@@ -268,6 +277,8 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         residue_names = list(struct.residue_names),
         chain_ids     = list(struct.chain_ids),
         title         = struct.title,
+        frozen_atoms  = list(getattr(struct, "frozen_atoms", []) or []),
+        regions       = [list(g) for g in (getattr(struct, "regions", []) or [])],
     )
     report(validate(validation_struct, cfg, cell=cell))
 
