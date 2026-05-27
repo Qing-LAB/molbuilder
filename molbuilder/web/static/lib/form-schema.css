@@ -184,8 +184,16 @@ fieldset select:disabled {
     border: 1px solid var(--border-soft);
     border-radius: var(--radius-sm, 4px);
     color: var(--text-mono);
-    white-space: nowrap;
+    /* Long engine_key strings (e.g. PySCF's ``gto.M(spin=...) # 2S,
+     * # of unpaired electrons``) would push the .param-grid column
+     * out under nowrap.  Allow breaks anywhere instead so a 60-char
+     * badge wraps cleanly inside the 220px-min grid cell. */
+    overflow-wrap: anywhere;
+    word-break: break-word;
     vertical-align: baseline;
+    /* inline-block so the badge wraps as a unit rather than the
+     * children separating awkwardly on narrow viewports. */
+    display: inline-block;
 }
 /* "(molbuilder ...)" markers read as MORE muted -- the field is
  * NOT a real engine keyword; the user shouldn't search the SIESTA

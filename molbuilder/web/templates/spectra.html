@@ -143,10 +143,15 @@
         <button id="copy-script-btn" type="button" disabled>
           Copy to clipboard
         </button>
-        <button id="save-spectra-btn" type="button" disabled
-                title="Save spectra.py + .run.sh into the Projects sidebar's selected directory.  Disabled until Generate has run AND a project subdir is selected.">
-          Save to current dir
-        </button>
+        <!-- Span wrapper so title= surfaces on hover even when the
+             button is disabled (browsers don't dispatch hover on
+             disabled buttons).  See templates/index.html. -->
+        <span class="disabled-tip"
+              title="Saves spectra.py + .run.sh into the Projects sidebar's selected directory.  Requires both Generate to have run AND a project subdir to be selected (the button enables once both conditions hold).">
+          <button id="save-spectra-btn" type="button" disabled>
+            Save to current dir
+          </button>
+        </span>
         <span id="save-status" class="status"></span>
       </div>
       <pre id="script-preview" class="script-preview"

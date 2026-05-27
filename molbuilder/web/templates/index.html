@@ -311,9 +311,19 @@
       <div class="fdf-actions">
         <button id="generate-fdf" disabled>Generate .fdf</button>
         <button class="dl-btn" id="dl-fdf" disabled>Download .fdf</button>
-        <button id="save-fdf" disabled
-                title="Save .fdf + .run.sh + copy .psml files into the Projects sidebar's selected directory.  Disabled until you Generate AND have a project subdir selected."
-                >Save to current dir</button>
+        <!-- Wrap disabled buttons in a span so browsers actually
+             show ``title`` on hover.  Bug: disabled <button> does
+             not fire mouseenter/mouseleave events in any browser, so
+             a ``title`` attribute on the button itself never produces
+             a tooltip when the user most needs to read it (i.e. when
+             the button is disabled and they want to know why).  The
+             wrapper span receives events normally and surfaces the
+             same title text.  Pattern reused for all three Save
+             buttons (SIESTA / PySCF / Spectra). -->
+        <span class="disabled-tip"
+              title="Saves .fdf + .run.sh + .psml files into the Projects sidebar's selected directory.  Requires both Generate to have run AND a project subdir to be selected (the button enables once both conditions hold).">
+          <button id="save-fdf" disabled>Save to current dir</button>
+        </span>
         <span id="fdf-status" class="status"></span>
       </div>
       <!-- Validation issues panel (live preflight + post-Generate).
@@ -349,9 +359,13 @@
       <div class="fdf-actions">
         <button id="generate-pyscf" disabled>Generate .py</button>
         <button class="dl-btn" id="dl-pyscf" disabled>Download .py</button>
-        <button id="save-pyscf" disabled
-                title="Save .py + .run.sh into the Projects sidebar's selected directory.  Disabled until you Generate AND have a project subdir selected."
-                >Save to current dir</button>
+        <!-- Span wrapper so the title= surfaces on hover even when
+             the button is disabled (see save-fdf above for the
+             cross-browser rationale). -->
+        <span class="disabled-tip"
+              title="Saves .py + .run.sh into the Projects sidebar's selected directory.  Requires both Generate to have run AND a project subdir to be selected (the button enables once both conditions hold).">
+          <button id="save-pyscf" disabled>Save to current dir</button>
+        </span>
         <span id="pyscf-status" class="status"></span>
       </div>
       <ul id="pyscf-issues" class="issues-panel" hidden
