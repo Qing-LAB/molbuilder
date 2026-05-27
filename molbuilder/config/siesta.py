@@ -366,6 +366,7 @@ class SiestaConfig:
         "label": "MD.TargetTemperature", "unit": "K",
         "engine_key":  'MD.TargetTemperature',
         "null_label": "(use MD.InitialTemperature)",
+        "range":      (0.0, 5000.0),       # mirror md_initial_temperature
         "tier":  "advanced",
         "help":  ("Nose-Hoover NVT target temperature (K).  Used ONLY "
                   "by Nose dynamics; CG / Broyden / FIRE / Verlet "

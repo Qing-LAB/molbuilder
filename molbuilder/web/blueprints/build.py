@@ -891,10 +891,25 @@ def api_build_fdf():
     try:
         fdf = render_fdf(struct, cfg)
     except ValidationError as exc:
+        # Preserve the sidecar notice (and any other pre-validate
+        # issues we appended above) in the error response.  Previously
+        # we returned only ``exc.issues`` -- the user lost the
+        # "sidecar at <file> could not be applied" warn on render
+        # failure, which is exactly when they need it (the missing
+        # sidecar may be the reason validation rejected the run).
+        # Caught by the 2026-05-26 review.
+        merged_issues = _issues_to_json(exc.issues)
+        # Add any pre-render issues NOT already in exc.issues (de-dup
+        # by (severity, where, message) tuple).
+        exc_keys = {(d["severity"], d.get("where", ""), d["message"])
+                    for d in merged_issues}
+        for i in _issues_to_json(issues):
+            if (i["severity"], i.get("where", ""), i["message"]) not in exc_keys:
+                merged_issues.append(i)
         return jsonify({
-            "ok": False,
-            "error": str(exc),
-            "issues": _issues_to_json(exc.issues),
+            "ok":     False,
+            "error":  str(exc),
+            "issues": merged_issues,
         }), 400
     except Exception as exc:
         return jsonify({"ok": False,
@@ -946,10 +961,20 @@ def api_build_pyscf():
     try:
         script = render_script(struct, cfg)
     except ValidationError as exc:
+        # Same merge as /api/build/fdf above: keep the sidecar notice
+        # + any pre-render issues in the error response so the user
+        # sees the full picture instead of just render_script's
+        # internal validation issues.
+        merged_issues = _issues_to_json(exc.issues)
+        exc_keys = {(d["severity"], d.get("where", ""), d["message"])
+                    for d in merged_issues}
+        for i in _issues_to_json(issues):
+            if (i["severity"], i.get("where", ""), i["message"]) not in exc_keys:
+                merged_issues.append(i)
         return jsonify({
-            "ok": False,
-            "error": str(exc),
-            "issues": _issues_to_json(exc.issues),
+            "ok":     False,
+            "error":  str(exc),
+            "issues": merged_issues,
         }), 400
     except Exception as exc:
         return jsonify({"ok": False,

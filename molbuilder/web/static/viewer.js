@@ -864,12 +864,16 @@
      */
     function refreshSaveButtonAvailability() {
         const proj = (window.molbuilder || {}).projects;
-        const dir = proj ? (proj.getCurrentDir() || "") : "";
-        // atProjectsRoot-equivalent: the sidebar's root or empty -> no
-        // valid "current dir" for save.  We use string-empty as the
-        // proxy because projects.atProjectsRoot isn't exposed; in
-        // practice the sidebar sets dir = "" when at the root.
-        const hasDir = !!dir;
+        // hasDir = "the sidebar points at a non-root subdir where
+        // saveToWorkspace can actually land a file".  Uses
+        // projects.atRoot() (added 2026-05-26) instead of the raw
+        // ``!!dir`` truthy check that incorrectly enabled Save at
+        // the projects root -- the click would then fall through
+        // saveToWorkspace's atProjectsRoot()->null path and show a
+        // confusing "no current_dir" error.
+        const hasDir = proj && typeof proj.atRoot === "function"
+            ? !proj.atRoot()
+            : !!(proj && proj.getCurrentDir());
         const sfdf = $("save-fdf");
         if (sfdf) sfdf.disabled = !(state.fdf  && hasDir);
         const spy = $("save-pyscf");

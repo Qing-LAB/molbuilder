@@ -167,6 +167,14 @@ export const projects = {
   // in the input itself.  Returns "" until the sidebar's bootstrap
   // has resolved /api/files/roots.
   getProjectsRoot:     () => getProjectsRoot() || "",
+  // True when ``current_dir`` is unset or equals the projects/ root.
+  // Consumers (Build + Spectra Save buttons) use this to gate "are
+  // we in a state where saveToWorkspace will succeed?" -- raw ``!!dir``
+  // truthy-checks would enable Save at the projects root, then
+  // saveToWorkspace would silently return null and the click would
+  // produce a confusing "no current_dir" error.
+  atRoot:              () => atProjectsRoot(
+                          sessionStorage.getItem(SS_DIR) || ""),
   onChange: (cb) => {
     selectionSubscribers.add(cb);
     // Fire once immediately so subscribers can initialise from the

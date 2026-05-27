@@ -538,8 +538,14 @@
         const btn = els.saveBtn;
         if (!btn) return;
         const proj = (window.molbuilder || {}).projects;
-        const dir = proj ? (proj.getCurrentDir() || "") : "";
-        btn.disabled = !(state.lastScript && dir);
+        // hasDir uses projects.atRoot() (added 2026-05-26) so the
+        // button doesn't enable at the projects root (where
+        // saveToWorkspace silently returns null + click would
+        // produce a confusing "no current_dir" error).
+        const hasDir = proj && typeof proj.atRoot === "function"
+            ? !proj.atRoot()
+            : !!(proj && proj.getCurrentDir());
+        btn.disabled = !(state.lastScript && hasDir);
     }
 
 

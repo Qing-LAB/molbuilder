@@ -64,23 +64,43 @@ def _atoms_block(struct: Structure, indent: str = "    ") -> str:
     return "\n".join(lines)
 
 
-# Atomic-number lookup for the ECP heuristic.  Only need to identify
-# heavy-atom presence (Z > 36 == above Kr); a partial table is enough.
-# ase.data has a comprehensive table but we want molbuilder's pyscf
-# generator to stay light on imports for the no-ase install path.
+# Atomic-number lookup -- used by the ECP heuristic AND by the
+# molbuilder.validation electron-count parity check.  Full Z=1-118
+# table so the parity sum never reads a silent ``0`` for an actinide
+# / transactinide (Pa/Th/U/Np/Pu/Am/Cm/Bk/Cf/Es/Fm/Md/No/Lr + the
+# transactinides Rf-Og), and so the ECP heuristic correctly flags
+# every heavy element instead of stopping at Po.  Pre-2026-05-26 the
+# table stopped at Z=84 (Po), missing all actinides; caught by the
+# 2026-05-26 third-pass review (silent ``KeyError->0`` would produce
+# wrong electron counts for any structure containing those elements).
+#
+# Kept hand-rolled (not ``from ase.data import atomic_numbers``) so
+# the generator stays light on imports for the no-ase install path
+# the original docstring promised.
 _ATOMIC_NUMBER = {
+    # Row 1-4 (Z=1-36)
     "H":  1, "He":  2, "Li":  3, "Be":  4, "B":   5, "C":   6, "N":   7,
     "O":  8, "F":   9, "Ne": 10, "Na": 11, "Mg": 12, "Al": 13, "Si": 14,
     "P": 15, "S":  16, "Cl": 17, "Ar": 18, "K":  19, "Ca": 20, "Sc": 21,
     "Ti": 22, "V": 23, "Cr": 24, "Mn": 25, "Fe": 26, "Co": 27, "Ni": 28,
     "Cu": 29, "Zn": 30, "Ga": 31, "Ge": 32, "As": 33, "Se": 34, "Br": 35,
     "Kr": 36,
-    # Z > 36 (need ECP for non-def2 bases):
-    "Rb": 37, "Sr": 38, "Y": 39, "Zr": 40, "Nb": 41, "Mo": 42, "Tc": 43,
+    # Row 5 (Z=37-54).  Z > 36: ECP needed for non-def2 bases.
+    "Rb": 37, "Sr": 38, "Y":  39, "Zr": 40, "Nb": 41, "Mo": 42, "Tc": 43,
     "Ru": 44, "Rh": 45, "Pd": 46, "Ag": 47, "Cd": 48, "In": 49, "Sn": 50,
-    "Sb": 51, "Te": 52, "I":  53, "Xe": 54, "Cs": 55, "Ba": 56, "La": 57,
-    "Hf": 72, "Ta": 73, "W":  74, "Re": 75, "Os": 76, "Ir": 77, "Pt": 78,
-    "Au": 79, "Hg": 80, "Tl": 81, "Pb": 82, "Bi": 83, "Po": 84,
+    "Sb": 51, "Te": 52, "I":  53, "Xe": 54,
+    # Row 6 (Z=55-86): Cs through Rn, including lanthanides Ce-Lu.
+    "Cs": 55, "Ba": 56, "La": 57, "Ce": 58, "Pr": 59, "Nd": 60, "Pm": 61,
+    "Sm": 62, "Eu": 63, "Gd": 64, "Tb": 65, "Dy": 66, "Ho": 67, "Er": 68,
+    "Tm": 69, "Yb": 70, "Lu": 71, "Hf": 72, "Ta": 73, "W":  74, "Re": 75,
+    "Os": 76, "Ir": 77, "Pt": 78, "Au": 79, "Hg": 80, "Tl": 81, "Pb": 82,
+    "Bi": 83, "Po": 84, "At": 85, "Rn": 86,
+    # Row 7 (Z=87-118): Fr through Og, including actinides Th-Lr.
+    "Fr": 87, "Ra": 88, "Ac": 89, "Th": 90, "Pa": 91, "U":  92, "Np": 93,
+    "Pu": 94, "Am": 95, "Cm": 96, "Bk": 97, "Cf": 98, "Es": 99, "Fm": 100,
+    "Md": 101, "No": 102, "Lr": 103, "Rf": 104, "Db": 105, "Sg": 106,
+    "Bh": 107, "Hs": 108, "Mt": 109, "Ds": 110, "Rg": 111, "Cn": 112,
+    "Nh": 113, "Fl": 114, "Mc": 115, "Lv": 116, "Ts": 117, "Og": 118,
 }
 
 

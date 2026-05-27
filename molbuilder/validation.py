@@ -1064,7 +1064,16 @@ def _validate_pyscf(struct: Structure, cfg,
         # cycle should pyscf/input.py ever start to import this file at
         # module load.
         from .pyscf.input import _ATOMIC_NUMBER, _resolve_charge
-        n_e = (sum(_ATOMIC_NUMBER.get(el, 0) for el in struct.elements)
+        # ``.capitalize()`` on each element: defense in depth.  Structure.
+        # from_pdb / from_xyz canonicalise to ``Fe`` / ``Cl`` / ``Na`` at
+        # the parser boundary (108c7ff, 2026-05-26), so this rule should
+        # only ever see canonical case in practice -- but a caller
+        # constructing a Structure directly via ``Structure(elements=
+        # ['FE', ...])`` would silently bypass the parser fix and
+        # ``_ATOMIC_NUMBER.get('FE', 0)`` returns 0, mis-counting
+        # electrons and producing wrong parity verdicts.
+        n_e = (sum(_ATOMIC_NUMBER.get(el.capitalize(), 0)
+                   for el in struct.elements)
                - _resolve_charge(struct, cfg))
         if n_e % 2 == 1:
             issues.append(Issue(
