@@ -216,13 +216,54 @@
         return wrap;
     }
 
+    /**
+     * Long help-text strings (psml_lib at ~39 lines, basis_size's
+     * convergence advice, etc.) used to live in ``title=`` -- browsers
+     * truncate native tooltips to ~one OS-dependent line and the
+     * paragraph-length contents were unreadable.  For multi-line help
+     * we now render a click-to-expand ``<details>`` element with the
+     * full text in a styled ``.schema-help-body``.  Short help still
+     * goes into ``title=`` (single-line tooltip is fine for one-liners).
+     * Threshold: 80 chars or first newline.
+     */
+    function helpIsLong(help) {
+        if (!help) return false;
+        if (help.indexOf("\n") !== -1) return true;
+        return help.length > 80;
+    }
+
+    function makeHelpDetails(help) {
+        const det = document.createElement("details");
+        det.className = "schema-help";
+        const sum = document.createElement("summary");
+        sum.textContent = "ⓘ help";
+        sum.className = "schema-help-summary";
+        det.appendChild(sum);
+        // Preserve the source's line breaks (browser default for
+        // <pre> would also work; div with white-space:pre-wrap reads
+        // a bit nicer + lets us style border/background).
+        const body = document.createElement("div");
+        body.className = "schema-help-body";
+        body.textContent = help;
+        det.appendChild(body);
+        // Click-anywhere-on-summary toggles the details; stop the
+        // event from bubbling to the parent <label> (which would
+        // forward clicks to the input -- e.g. a checkbox label
+        // would flip the checkbox just because the user wanted to
+        // read help).
+        sum.addEventListener("click", (e) => e.stopPropagation());
+        return det;
+    }
+
     function renderField(f) {
         // Build a single <label> wrapping the input.  Checkbox lays
         // out as "[x] Label" -- the checkbox comes BEFORE the label
         // text; everything else lays out as "Label: <input>".
         const labelEl = el("label", {
             class: "schema-field schema-field-" + f.kind,
-            title: f.help || "",
+            // Short help in title= (single-line native tooltip); long
+            // help moves below the input via <details>.
+            title: helpIsLong(f.help) ? "" : (f.help || ""),
         });
         if (f.tier === "advanced") {
             labelEl.classList.add("is-advanced");
@@ -256,6 +297,11 @@
         }
         const badge = engineKeyBadge(f);
         if (badge) labelEl.appendChild(badge);
+        // Long help: append the click-to-expand <details> AFTER the
+        // input + badge so it doesn't push them out of the layout grid.
+        if (helpIsLong(f.help)) {
+            labelEl.appendChild(makeHelpDetails(f.help));
+        }
         return labelEl;
     }
 

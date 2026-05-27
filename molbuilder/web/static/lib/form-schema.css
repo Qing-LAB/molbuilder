@@ -199,6 +199,47 @@ fieldset select:disabled {
     font-style: italic;
 }
 
+/* ---- Long-help click-to-expand <details> ---- */
+/* Native title= tooltips clip multi-line help (psml_lib at ~39 lines,
+ * mesh_cutoff convergence advice, etc.) -- the browser shows one OS-
+ * truncated line and the paragraph contents become unreadable.  Long
+ * help now renders as a click-to-expand <details> below the input
+ * with monospace preserve-whitespace body. */
+.schema-help {
+    margin-top: 4px;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+.schema-help-summary {
+    cursor: pointer;
+    user-select: none;
+    color: var(--accent);
+    opacity: 0.85;
+    padding: 1px 0;
+    width: max-content;
+}
+.schema-help-summary:hover {
+    opacity: 1;
+    text-decoration: underline;
+}
+.schema-help-body {
+    margin-top: 4px;
+    padding: 6px 8px;
+    background: var(--bg-code);
+    border-left: 2px solid var(--accent);
+    border-radius: 0 var(--radius-sm, 4px) var(--radius-sm, 4px) 0;
+    white-space: pre-wrap;
+    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: var(--text-primary);
+    /* Prevent runaway long-line overflow on narrow viewports. */
+    overflow-wrap: anywhere;
+    /* Long enough lists need to scroll instead of pushing the form. */
+    max-height: 320px;
+    overflow-y: auto;
+}
+
 /* ---- Live "resolved-path" caption (psml_lib + future) ---- */
 .schema-field-hint {
     display: block;
