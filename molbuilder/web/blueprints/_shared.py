@@ -573,6 +573,68 @@ def config_from_params(cls, params: Dict[str, Any],
     return cls(**kwargs)
 
 
+def apply_sidecar_if_possible(struct, structure_path):
+    """Best-effort .molstruct.json sidecar application.
+
+    Sets ``struct.frozen_atoms`` + ``struct.regions`` from the
+    sidecar next to ``structure_path`` so engine preflight + emitters
+    see the real boundary-condition data.  Cross-blueprint helper:
+    used by /api/build/fdf, /api/build/pyscf, and
+    /api/spectra/render to honor the contract that /modify's
+    boundary-conditions edits flow through to the generators
+    (design.md "Sidecar-driven boundary conditions").
+
+    Returns
+    -------
+    None
+      Success (sidecar applied) OR clean no-op (no sidecar, or
+      structure_path empty).
+    str
+      User-facing notice when the sidecar EXISTS but couldn't be
+      applied (path rejected, malformed JSON, atom-count mismatch).
+      Caller surfaces as a preflight warn-severity Issue so the
+      user knows their sidecar didn't take effect.
+
+    Failure to apply is non-fatal because the caller might be
+    running against a re-cropped or hand-pasted structure -- the
+    form's own freeze/region fields stay authoritative.
+
+    Moved 2026-05-26 from web/blueprints/spectra.py to _shared.py
+    because Build's /api/build/fdf + /api/build/pyscf endpoints also
+    need to apply the sidecar; importing from spectra blueprint
+    created an asymmetric cross-blueprint dependency.
+    """
+    from .files import _resolve_within_roots, _PickerError
+    from molbuilder.parsers import molstruct_json as _molstruct_json
+    if not structure_path:
+        return None
+    try:
+        resolved = _resolve_within_roots(structure_path)
+    except _PickerError as exc:
+        return (f"sidecar lookup skipped: structure_path rejected "
+                f"({exc.message}); the form's freeze rules are the "
+                f"sole boundary condition for this run.")
+    if not resolved.exists():
+        return (f"sidecar lookup skipped: {resolved.name!s} not on "
+                f"disk; the form's freeze rules are the sole "
+                f"boundary condition for this run.")
+    if resolved.suffix.lower() not in (".xyz", ".pdb"):
+        return None
+    sidecar_path = _molstruct_json.sidecar_path_for(resolved)
+    if not sidecar_path.exists():
+        return None
+    try:
+        sidecar_data = _molstruct_json.load(sidecar_path)
+        _molstruct_json.apply_to_structure(struct, sidecar_data)
+    except _molstruct_json.MolstructJsonError as exc:
+        return (f"sidecar at {sidecar_path.name} could not be "
+                f"applied ({exc}); the form's freeze rules are "
+                f"the sole boundary condition for this run.  "
+                f"Re-export the sidecar from /modify to re-enable "
+                f"sidecar-driven divergence checks.")
+    return None
+
+
 __all__ = [
     "issues_to_json",
     "struct_from_body",
@@ -582,4 +644,5 @@ __all__ = [
     "finite_float",
     "coerce_to_field_type",
     "config_from_params",
+    "apply_sidecar_if_possible",
 ]

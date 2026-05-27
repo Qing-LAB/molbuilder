@@ -243,61 +243,13 @@ def _seed_frozen_indices_from_sidecar(
             "schema; pre-fill skipped (this is a programmer bug)")
 
 
-def _apply_sidecar_if_possible(
-    struct: Structure, structure_path: str,
-) -> Optional[str]:
-    """Best-effort sidecar application for the render endpoint.
-
-    Sets ``struct.frozen_atoms`` + ``struct.regions`` from the
-    .molstruct.json sidecar next to ``structure_path`` so the
-    preflight stage-3 guards (design.md "Sidecar-driven boundary
-    conditions") see the real boundary-condition data.
-
-    Returns ``None`` on either (a) success: sidecar applied OR
-    (b) clean no-op: no sidecar file next to the structure, or
-    structure_path was empty.  Returns a short, user-facing notice
-    string when the sidecar exists but couldn't be applied
-    (path rejected, malformed JSON, atom-count mismatch) -- the
-    caller surfaces this as a preflight warn-severity Issue so
-    the user knows the sidecar's boundary conditions were
-    silently NOT honored.
-
-    Note: failure to apply is non-fatal because the user could be
-    running /spectra against a re-cropped or hand-pasted XYZ; the
-    form's frozen_indices is still authoritative.  The notice
-    tells the user the sidecar wasn't a factor, so they can't be
-    surprised later by "I thought I had those atoms frozen!"
-    """
-    try:
-        resolved = _resolve_within_roots(structure_path)
-    except _PickerError as exc:
-        return (f"sidecar lookup skipped: structure_path rejected "
-                f"({exc.message}); the form's freeze rules are the "
-                f"sole boundary condition for this run.")
-    if not resolved.exists():
-        return (f"sidecar lookup skipped: {resolved.name!s} not on "
-                f"disk; the form's freeze rules are the sole "
-                f"boundary condition for this run.")
-    if resolved.suffix.lower() not in (".xyz", ".pdb"):
-        return None        # caller's structure_path wasn't a structure file -- not our problem
-    sidecar_path = _molstruct_json.sidecar_path_for(resolved)
-    if not sidecar_path.exists():
-        # No sidecar to apply -- nothing was lost; quiet success.
-        return None
-    try:
-        sidecar_data = _molstruct_json.load(sidecar_path)
-        _molstruct_json.apply_to_structure(struct, sidecar_data)
-    except _molstruct_json.MolstructJsonError as exc:
-        # Surface this as a notice so the user knows the sidecar's
-        # frozen / region data did NOT flow into preflight.  Per
-        # "no silent absorption" (design.md three-stage contract),
-        # the user must know when their sidecar isn't a factor.
-        return (f"sidecar at {sidecar_path.name} could not be "
-                f"applied ({exc}); the form's freeze rules are "
-                f"the sole boundary condition for this run.  "
-                f"Re-export the sidecar from /modify to re-enable "
-                f"sidecar-driven divergence checks.")
-    return None
+# Sidecar application moved to web/blueprints/_shared.py
+# (apply_sidecar_if_possible) so Build's /api/build/fdf +
+# /api/build/pyscf can import from the shared module instead of
+# reaching into the Spectra blueprint.  Backwards-compatible alias
+# preserved here so any in-flight branch importing from this module
+# keeps working.
+from ._shared import apply_sidecar_if_possible as _apply_sidecar_if_possible
 
 
 # ===================================================================== #

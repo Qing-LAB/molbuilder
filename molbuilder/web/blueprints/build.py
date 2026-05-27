@@ -855,8 +855,8 @@ def api_build_fdf():
     sidecar_notice = None
     structure_path = (body.get("structure_path") or "").strip()
     if structure_path:
-        from .spectra import _apply_sidecar_if_possible
-        sidecar_notice = _apply_sidecar_if_possible(struct, structure_path)
+        from ._shared import apply_sidecar_if_possible
+        sidecar_notice = apply_sidecar_if_possible(struct, structure_path)
 
     try:
         cfg = _siesta_config_from_params(params)
@@ -945,8 +945,8 @@ def api_build_pyscf():
     sidecar_notice = None
     structure_path = (body.get("structure_path") or "").strip()
     if structure_path:
-        from .spectra import _apply_sidecar_if_possible
-        sidecar_notice = _apply_sidecar_if_possible(struct, structure_path)
+        from ._shared import apply_sidecar_if_possible
+        sidecar_notice = apply_sidecar_if_possible(struct, structure_path)
 
     try:
         cfg = _pyscf_config_from_params(params)
