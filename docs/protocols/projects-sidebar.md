@@ -16,6 +16,21 @@ against the doc, not against other code.
 
 ---
 
+## 0. How to read this doc
+
+| If you are … | Start here |
+|---|---|
+| Writing a new tab and need to consume the sidebar | § 5 (capabilities), then § 5.4 (signatures), then § 6 (subscribe model) |
+| Adding a public-API method | § 5 + § 5.4 + § 5.5 (concurrency), then § 6.2 (error contract) |
+| Adding internal sidebar functionality | § 3.1 (internal modules), then § 7 (lifecycle), then § 15 (anti-patterns) |
+| Designing a multi-step pipeline | § 4.4 (sync model), then § 8 (lock model), then § 7.3 (teardown) |
+| Implementing a backend endpoint that the sidebar will call | § 12 (backend contract) + [`web-api.md`](web-api.md) for shapes |
+| Looking for "why does it do X this way" | § 2 (principles) — every other section's choices trace here |
+| Reviewing a PR against the sidebar | § 15 (anti-patterns) + § 16 (change protocol) |
+| Just learning the codebase | § 1 → § 2 → § 3 → § 4 → § 5 in order |
+
+---
+
 ## 1. Mission
 
 A single, content-agnostic file browser pinned to the left of every
@@ -116,6 +131,89 @@ the runtime module registry so tab JS can `whenReady("projects")`
 instead of polling.  The backend is the source of truth for what's
 on disk; the sidebar holds a current cursor + a cache of one
 directory listing at a time.
+
+### 3.1 Internal module architecture
+
+The sidebar itself is decomposed into seven units.  Each owns a
+single concern; cross-unit communication uses the unit's exported
+interface (never closure-state reads).  An implementer assigns a
+new feature to one unit; if it doesn't fit, the unit list is wrong,
+not the feature.
+
+| Unit | Concern | Exports for OTHER units |
+|---|---|---|
+| **Template** (`_projects_sidebar.html`) | DOM structure (server-rendered partial) | The DOM contract: every element ID + class consumers may query.  See § 10. |
+| **Stylesheet** (`projects-sidebar.css`) | Visual + visibility model.  Owns the `[hidden]` guard rules and the `.is-locked` overlay. | CSS classes + scope variables documented in § 10.  No JS. |
+| **Entry** (`projects-sidebar.js`) | Bootstrap order — module load, public-API mount, two-phase init. | None.  Side-effect: `window.molbuilder.projects = …` + runtime registry registration. |
+| **State** (`state.js`) | All three state pieces (§ 4) + the public API surface.  Owns subscriber sets + the publish loop.  Owns sessionStorage IO. | The `projects` object (public API surface, § 5); module-internal mutators for the bootstrap unit (`setProjectsRoot`, `setRefreshHandler`) and for the List unit (`setShared`). |
+| **HTTP** (`api.js`) | One-to-one wrappers over `/api/files/*` and `/api/projects/*`.  Owns request shape + envelope-wrapping discipline (Principle 6). | A function per backend endpoint.  Sole module that calls `fetch`. |
+| **List** (`list.js`) | DOM rendering of breadcrumb + entry list; per-entry click handlers; navigation; lock-UI subscription + Cancel delegation. | `initList`, `initLockUI`, `openDir`, `restoreSelection` for the bootstrap unit.  `showPreview` is delegated to the Preview unit. |
+| **Forms** (`forms.js`) | Create-project + mkdir + upload forms.  Subscribes to `onChange` to drive depth-aware visibility. | `initForms` for the bootstrap unit. |
+| **Preview** (`preview.js`) | File-preview modal; ESC / backdrop close. | `initPreview`, `showPreview` for sidebar + List unit. |
+
+**Module-boundary rule**: the only way one unit reads state owned by
+another is through that unit's exported interface.  No `import {
+lockState } from "./state.js"` — there is no such export.  A new
+feature that requires a unit to expose internal state means the unit
+boundary is wrong; revisit the table.
+
+### 3.2 Bootstrap + runtime-registry contract
+
+The sidebar declares itself ready to the `molbuilder.runtime` module
+registry so other modules can wait on it instead of polling
+`window.molbuilder.projects`.  Contract:
+
+| Symbol | Type | Semantics |
+|---|---|---|
+| `window.molbuilder.runtime.register(name, value)` | `(string, any) => void` | Stores `value` under `name`.  Idempotent — re-register with the same name overwrites silently. |
+| `window.molbuilder.runtime.whenReady(name)` | `(string) => Promise<value>` | Resolves with the registered value as soon as `register(name, …)` is called.  If already registered: resolves on next microtask.  Never rejects.  Caller's `await` never throws. |
+
+The sidebar calls `register("projects", projects)` immediately after
+mounting `window.molbuilder.projects` (module-load time, before
+DOMContentLoaded).  Tab JS that needs the resolved projects-root path
+during its own bootstrap does:
+
+```js
+const projects = await window.molbuilder.runtime.whenReady("projects");
+// projects.getProjectsRoot() is "" if init's apiRoots() hasn't
+// resolved yet; for tabs that need the root path specifically,
+// subscribe via onProjectsRootResolved (see § 5.4).
+```
+
+If `molbuilder.runtime` is missing (e.g. the runtime module failed
+to load), the sidebar continues to work — its registry call is a
+guarded no-op.  Tabs that depend on `whenReady` then hang; this is
+acceptable degradation (no silent wrong behaviour).
+
+### 3.3 Transport abstraction
+
+HTTP is the current transport.  The public API is **transport-
+agnostic**: it never exposes `fetch` headers, response objects,
+status codes, or URL paths.  All transport details are absorbed by
+the HTTP unit (`api.js`), which is the sole place `fetch` is called
+in the sidebar.
+
+If a future transport change happens (WebSocket for live updates,
+SSE for streaming, an offline IndexedDB cache layer), the public API
+surface in § 5 does not change.  Only `api.js` changes.
+
+### 3.4 Interaction with other molbuilder modules
+
+The sidebar is content-agnostic but it lives inside a larger app
+that has other modules.  The contracts:
+
+| Module | Interaction | Direction |
+|---|---|---|
+| `molbuilder.runtime` | Sidebar registers; tabs `whenReady`. | Sidebar → registry (write); tabs → registry (read). |
+| Tab UIs (Build, Modify, Spectra, Results) | Tabs subscribe to selection + lock; tabs call public API for read/write/save. | Tabs → sidebar (pull only).  Sidebar publishes; sidebar NEVER reaches into a tab. |
+| `molbuilder.atomSelection.*` (Modify-tab atom store) | None.  Sidebar holds file cursor; atom selection is per-tab + per-file. | No coupling. |
+| `molbuilder.inspectors.*` (Results-tab inspector registry) | Sidebar selection drives inspector dispatch via `onChange`. | Sidebar publishes; Results tab decides which inspector to mount. |
+| `molbuilder.formSchema.*` (Build form rendering) | None.  Forms inside the sidebar (create-project, mkdir, upload) use their own template-driven rendering. | No coupling. |
+| `molwatch.*` (Watch tab) | Sidebar may be used by Watch users to pick a project, but no direct module link. | Same as other tabs: pull-only via onChange. |
+
+**Rule**: any new molbuilder module that interacts with the sidebar
+adds a row to this table.  If the contract isn't documentable in
+one sentence, the coupling is too tight — break it.
 
 ---
 
@@ -262,9 +360,187 @@ If a future workflow needs one of these, propose a design change to
 this doc first.  Do not back-door it through `localStorage` or
 custom DOM events.
 
----
+### 5.4 Method signatures + data shapes
 
-## 6. Subscribe model
+The complete public-API contract.  Implementers code against this
+table; no need to read the source.
+
+#### C1 — Read cursor / sidebar state (synchronous)
+
+| Method | Returns |
+|---|---|
+| `getCurrentDir()` | `string` — absolute path; `""` before init or if no projects root |
+| `getCurrentFile()` | `string` — absolute path; `""` when only browsing |
+| `getProjectsRoot()` | `string` — absolute path; `""` until init's `apiRoots()` resolves |
+| `atRoot()` | `boolean` — true iff `current_dir` is empty OR `projectsRoot` is empty OR they're equal (with/without trailing slash) |
+| `relativeToProjects(path: string)` | `string` — display-shortened path; unchanged if outside `projectsRoot` |
+| `isLocked()` | `boolean` |
+| `getLockReason()` | `string` — `""` when unlocked |
+
+#### C2 — Subscribe
+
+```ts
+type UnsubscribeFn = () => void;
+type SelectionPayload = { dir: string; file: string };
+type LockPayload     = { locked: boolean; reason: string };
+type RootPayload     = { root: string };   // empty string before resolution
+
+onChange(cb: (p: SelectionPayload) => void): UnsubscribeFn
+onLockChange(cb: (p: LockPayload) => void): UnsubscribeFn
+onProjectsRootResolved(cb: (p: RootPayload) => void): UnsubscribeFn
+```
+
+All three follow the §6 subscribe contract: fire-once-immediately on
+register, per-subscriber error isolation, unsubscribe closure.
+
+#### C3 — Read
+
+```ts
+type AsyncOpts = { signal?: AbortSignal };
+
+type ReadOk  = { ok: true;  path: string; text: string };
+type ReadErr = { ok: false; error: string };
+type ReadResult = ReadOk | ReadErr | null;
+// null only for readCurrentFile when no file is selected.
+
+readCurrentFile(opts?: AsyncOpts): Promise<ReadResult>
+readFile(path: string, opts?: AsyncOpts):
+    Promise<ReadOk | ReadErr>
+
+// Browser-driven save dialog; resolves when download is INITIATED
+// (not when complete — browser owns the rest).
+downloadFile(path: string, opts?: AsyncOpts):
+    Promise<{ ok: true; filename: string } | ReadErr>
+```
+
+#### C4 — Write
+
+```ts
+type WriteOpts = AsyncOpts & {
+    overwrite?:      boolean;   // default false
+    expected_mtime?: number;    // for concurrent-edit detection
+};
+
+type WriteOk  = {
+    ok:      true;
+    path:    string;
+    relPath: string;     // path shortened to projects/…
+    size:    number;     // bytes written
+    mtime:   number;     // server's clock, unix seconds
+};
+type WriteErr = {
+    ok:    false;
+    error: string;
+    actual_mtime?: number;   // present on 409 edit-conflict
+};
+
+writeFile(path: string, text: string, opts?: WriteOpts):
+    Promise<WriteOk | WriteErr>
+
+// Returns null silently when atRoot() is true (no write attempted).
+saveToWorkspace(text: string, filename: string, opts?: WriteOpts):
+    Promise<WriteOk | WriteErr | null>
+```
+
+#### C5 — Filesystem layout
+
+```ts
+type LayoutOk  = { ok: true;  path: string };
+type LayoutErr = { ok: false; error: string };
+
+createProject(name: string, opts?: AsyncOpts):
+    Promise<LayoutOk | LayoutErr>
+mkdir(parent: string, name: string, opts?: AsyncOpts):
+    Promise<LayoutOk | LayoutErr>
+deleteEntry(path: string, recursive?: boolean, opts?: AsyncOpts):
+    Promise<LayoutOk | LayoutErr>
+rename(path: string, newName: string, opts?: AsyncOpts):
+    Promise<LayoutOk | LayoutErr>
+```
+
+#### C6 — Local ↔ remote transfer
+
+```ts
+type UploadOk  = WriteOk;       // same shape as write
+type UploadErr = WriteErr;
+
+upload(targetDir: string, file: File, opts?: AsyncOpts):
+    Promise<UploadOk | UploadErr>
+
+// (downloadFile is in C3 — it's a read, not a transfer-out
+//  of new content)
+
+refresh(opts?: AsyncOpts):
+    Promise<{ ok: true } | { ok: false; error: string }>
+```
+
+#### C7 — Navigate
+
+```ts
+navigateTo(absPath: string, opts?: AsyncOpts):
+    Promise<{ ok: true; path: string; entries: Array<ListEntry> }
+          | { ok: false; error: string }>
+
+type ListEntry = {
+    name:  string;
+    kind:  "file" | "directory" | "symlink" | "other";
+    size:  number | null;     // null for non-files / inaccessible
+    mtime: number | null;     // unix seconds
+};
+```
+
+#### C8 — Lock
+
+```ts
+type LockToken = { reason: string; cancelers: Array<() => void> };
+
+// Throws on re-entry. The return value is the lock token — most
+// callers ignore it.
+lock(reason: string, cancelers?: Array<() => void>): LockToken
+
+unlock(): void                      // idempotent
+cancelLockedOperation(): void       // no-op when unlocked
+```
+
+### 5.5 Concurrency, re-entrancy, idempotency
+
+For each public-API method, the design specifies:
+
+| Method | Concurrent calls allowed? | Idempotent? | Notes |
+|---|---|---|---|
+| C1 read methods | Yes (sync; no state mutation) | Yes | Pure reads from in-memory state. |
+| C2 subscribe | Yes | No (registering twice with the same callback fires it twice on each event) | Callers de-dup their own callbacks; the design does not enforce uniqueness. |
+| `readFile` / `readCurrentFile` / `downloadFile` | Yes (multiple in flight permitted) | N/A (read) | Each call has its own AbortSignal; cancelling one does not affect others. |
+| `writeFile` / `saveToWorkspace` | Yes BUT discouraged on the same path | N/A (`overwrite` makes it idempotent for repeated identical writes; `expected_mtime` makes it strict-idempotent) | Concurrent writes to the same path race at the backend; `expected_mtime` resolves the order. |
+| `mkdir` | Yes (different parents) | Yes (re-creating an existing dir is a no-op when `parent/name` already matches) | Backend returns 409 on existing path; design's response is the envelope. |
+| `deleteEntry` | Yes (different paths) | Yes (deleting a non-existent path returns 404 → `{ok:false}`; same final state) | |
+| `rename` | Yes (different paths) | No (renaming the same path twice with the same `newName` is 404 on the second call) | |
+| `upload` | Yes (different files) | No (re-uploading hits 409) | |
+| `createProject` | Yes (different names) | No (409 on duplicate) | |
+| `navigateTo` / `refresh` | Last-call-wins via per-call AbortController | Yes for `refresh` (same dir; cached state replaced) | The sidebar aborts a pending navigation when a new one starts. |
+| `lock` | NO — throws on second call | N/A | Single-instance lock; serialise pipelines. |
+| `unlock` | Yes (multiple calls; second is a no-op) | Yes | |
+| `cancelLockedOperation` | Yes (multiple calls; cancelers may have side effects) | No (cancelers run each call) | Cancelers themselves SHOULD be idempotent. |
+
+**Publish-loop re-entrancy.**  If a subscriber callback synchronously
+causes another state mutation (e.g. `onChange` callback calls
+`unlock()` which fires `onLockChange`), the inner publish loop runs
+to completion before the outer loop continues with the next
+subscriber.  Subscribers MAY mutate state from inside their
+callback; the design does not prohibit it.  Behaviour:
+
+* The current subscriber's index in the outer loop is preserved.
+* New subscribers registered DURING a publish loop do NOT fire for
+  the in-progress event.  They start receiving events on the next
+  publish.
+* A subscriber may call its own unsubscribe from inside its callback.
+  The unsubscribe takes effect immediately; the rest of the current
+  loop iteration completes; subsequent loop iterations skip the
+  removed subscriber.
+
+**Race window between read and write.**  Tabs that do read-then-write
+must use `expected_mtime` from the read result.  The design exposes
+mtime on every read envelope precisely so tabs can pin it.
 
 The contract for every subscriber API on the sidebar:
 
@@ -287,18 +563,71 @@ sequenceDiagram
     Note right of Subs: one bad subscriber NEVER<br/>breaks the loop — others still fire
 ```
 
-Three load-bearing properties:
+Three load-bearing properties — stated precisely so implementers
+need no further interpretation:
 
-* **Fire-once-immediately on register.**  Every subscribe API calls
-  the new callback synchronously with the current state.  Removes
-  the "subscribed too late, missed the first event" trap; lets
-  subscribers initialise without a separate `getCurrent*()` call.
+* **Fire-once-immediately on register.**  The publish call inside
+  `onX(cb)` runs SYNCHRONOUSLY in the same microtask, with the
+  current state, before `onX` returns.  Synchronous matters: a
+  subscriber that immediately mutates state (e.g. registers,
+  then conditionally calls `unlock()`) sees the initial callback
+  complete first.
 * **Per-subscriber error isolation.**  The publish loop wraps each
-  callback in try/catch.  A throwing subscriber doesn't break the
-  rest and never affects lock or cursor state.
-* **Unsubscribe returns a closure.**  Subscribers that outlive the
-  page can stop receiving events.  Subscribers tied to the page's
-  lifetime may discard the closure (and usually do).
+  callback in `try { cb(payload) } catch { /* swallow */ }`.
+  Swallow — not log + re-throw — because re-throwing would let one
+  subscriber's bug poison the publish loop.  Developers debug bad
+  subscribers via DevTools breakpoints, not via uncaught-exception
+  propagation.  Lock + cursor state are never affected by
+  subscriber failures.
+* **Unsubscribe returns an idempotent closure.**  The returned
+  function removes the subscriber from the set; calling it a
+  second time is a safe no-op.  Calling it from inside the
+  subscriber's own callback is supported: it takes effect
+  immediately and the rest of the current loop iteration
+  completes before the next subscriber fires.
+
+### 6.1 Memory + lifecycle of subscribers
+
+Subscribers held by reference in a `Set` per subscribe API.
+Three patterns:
+
+| Pattern | When to use | Memory note |
+|---|---|---|
+| Subscribe at module load, never unsubscribe | The subscriber's lifetime IS the page's lifetime (tab UI that lives until the page reloads) | Safe; the Set dies with the page. |
+| Subscribe in a setup function, unsubscribe in a teardown | The subscriber's lifetime is bounded by a feature toggle (e.g. preview modal open / closed; a single panel mount cycle) | Required.  Forgetting the unsubscribe leaks. |
+| Subscribe per render | Avoided.  Re-subscribing each render leaks if the previous unsubscribe wasn't called. | Anti-pattern; don't. |
+
+Tabs that don't manage explicit lifecycles (most of them today)
+follow the first pattern.  Modules with reentrant mount/unmount
+(future inspectors, future panels) follow the second.
+
+### 6.2 Error semantics (the `{ok: false, error}` envelope)
+
+Errors are returned, never thrown.  The `error` field IS:
+
+* **Human-readable.**  English; punctuated; actionable when possible
+  ("path does not exist: '/foo/bar'", "directory not empty: pass
+  recursive=true").  Designed for direct display in a UI status
+  line.
+* **Stable enough to display verbatim.**  Tab code may render the
+  string into its own status area without translation.
+* **NOT a stable API.**  Tab code MUST NOT parse `error` to make
+  decisions.  Programmatic discrimination uses other signals:
+  * HTTP-level: not exposed (transport opacity).
+  * Envelope-level: the `ok` field for any/no error.
+  * Per-method: additional fields on the error envelope (e.g.
+    `actual_mtime` on a 409 edit-conflict).  These additional
+    fields ARE stable; if a tab needs to behave differently on
+    edit-conflict vs other failures, the design adds an explicit
+    field (not an error-string regex).
+* **Not localised.**  English-only in v1.  Localisation is a future
+  capability; the design will add a `code` field alongside `error`
+  when needed, and the `error` string becomes the default-locale
+  rendering of `code`.
+* **Singular.**  One error per envelope.  Compound failures (3
+  subdirs failed to delete) are decomposed by the backend into one
+  call returning one error, or batched by the API surface into one
+  composite error string.
 
 ---
 
@@ -354,6 +683,47 @@ unconditionally is one extra DOM lookup per page load.  The cost of
 gating on data that doesn't arrive is a silent UI failure with no
 errors — the bug class we keep hitting.
 
+### 7.3 Teardown and unload
+
+The sidebar has no explicit `dispose()` API today.  The browser
+unloads the page; the closure dies; everything is gone.  Design
+implications:
+
+* **In-flight fetches are abandoned silently.**  A POST that was
+  mid-flight at unload may complete server-side or not; the
+  browser drops the response.  This is acceptable: writes are
+  atomic (temp + rename), so a backend-completed write becomes
+  visible to the next page load via the normal listing.
+* **Subscriber sets are GC'd with the page.**  Subscribers that
+  outlive the page (none today) would leak across reloads — but
+  the sessionStorage scope makes this structurally impossible.
+* **Locks are NOT durable.**  A page reloaded mid-lock starts in
+  the unlocked state.  Any in-progress save pipeline becomes
+  orphaned — the user has no in-app signal whether step N of N
+  completed.  See M12 for the future-durable-lock design.
+
+**`beforeunload` policy**: the sidebar does NOT prompt on unload
+when a lock is held.  Reason: `beforeunload` prompts are widely
+abused; users dismiss them reflexively.  The lock banner's visual
+presence is the user's signal that work is in progress; the user
+makes the call to reload or not.
+
+### 7.4 Re-init (single-page navigation)
+
+The current design assumes one `init()` per page load — no SPA
+routing in molbuilder.  If a future tab system introduces in-page
+route transitions:
+
+* The sidebar's state survives in sessionStorage + closure (good).
+* Phase 2 DOM wiring would need a teardown step (current code has
+  none).
+* Subscribers that registered against the previous DOM would need
+  to re-register against the new DOM.
+
+This is out of scope for v1.  Documented here so a future SPA
+migration doesn't accidentally retrofit teardown into the existing
+phases.
+
 ---
 
 ## 8. Lock model
@@ -408,6 +778,21 @@ stays fully interactive so Cancel is always reachable.  Header keeps
 full opacity as a visual anchor; any future header controls are
 locked automatically because they inherit the disabled pointer
 events.
+
+### 8.5 Defense in depth — functional block beyond CSS
+
+The CSS `pointer-events: none` is the user-visible block but it is
+NOT the only defence.  If CSS fails to load or the class is
+misapplied, navigation must still refuse.
+
+**Design requirement**: every public API that mutates state
+(`setShared` is the canonical example; `navigateTo` is the public-
+API form) MUST check `isLocked()` at the top and early-return
+`{ok: false, error: "sidebar is locked: <reason>"}`.  This makes
+the lock enforce its invariant in code, not just in CSS.
+
+Reads (`getCurrentDir`, `readFile`, etc.) are NOT blocked by a
+lock — they have no race risk with the in-progress pipeline.
 
 ---
 
@@ -519,6 +904,18 @@ network / backend / concurrency / user-action / browser-platform.
 | User uploads a file larger than the backend's `MAX_CONTENT_LENGTH` | Backend returns 413; wrapper returns `{ok:false, error: "file too large"}`.  No partial upload. |
 | Browser kills a slow `fetch` (Chrome's default ~5 min for hung requests) | The `AbortError` propagates the same as a user-cancel; pipeline `finally` cleans up. |
 
+### 11.5 Protocol + initialization races
+
+| Failure | Design response |
+|---|---|
+| Public API called before init runs (`window.molbuilder.projects.getCurrentDir()` called from tab JS that runs before `DOMContentLoaded`) | Public API is reachable at module load (§ 4.1).  Synchronous reads return defaults (`""` for paths, `false` for `isLocked`, etc.).  Async writes/reads work — they hit the backend without needing init.  No exceptions ever. |
+| Backend / sidebar version mismatch (frontend cached; backend redeployed with a changed envelope) | Each `apiX` wrapper validates the response shape it expects.  Unknown fields are tolerated (forward-compatibility).  Missing required fields → `{ok:false, error: "unexpected response from server (version mismatch?)"}`.  Logged to console at warning level for diagnostics. |
+| Server returned `{ok:true}` with partial / wrong content (file being concurrently written by SIESTA returns half-bytes) | Read succeeds with whatever the OS returned.  Sidebar passes the text through verbatim.  Tab code that detects corruption surfaces it — not a sidebar concern.  (Future: read endpoint could expose `stable: boolean` from the backend's stat; defer until needed.) |
+| Subscriber registers from inside another subscriber's callback for the same event | The new subscriber does NOT fire for the current event (publish loop snapshots the subscriber set at loop start).  Starts firing on the next event.  Predictable + matches React/RxJS conventions. |
+| Subscriber mutates state from inside its callback (e.g. `onChange` callback calls `unlock()` synchronously) | The inner mutation's publish loop runs to completion before the outer loop continues with the next subscriber.  Nested publish loops are supported (§ 5.5).  The outer loop's subscriber list is the pre-mutation snapshot. |
+| Two tabs of the same page subscribe to the same global — multiplicity | Same-callback registered twice fires twice on each event.  Callers de-dup if they care.  Design choice: simpler than auto-dedup; aligns with `addEventListener` conventions. |
+| Subscriber leak (forgot to call unsubscribe; set grows unbounded) | No design protection.  Documented in § 6.1 as a contributor responsibility.  Future telemetry (M16) could expose `subscriberCounts` for monitoring. |
+
 ---
 
 ## 12. Backend contract (capability level)
@@ -549,7 +946,39 @@ lists per endpoint live in [`web-api.md`](web-api.md).
 ## 13. Migration plan (current code → design)
 
 The current code implements most of the design but with rough edges.
-The migration items, ordered by impact.
+The migration items, ordered by impact AND topologically (dependencies
+flow downward within each impact tier).
+
+### Dependency graph
+
+```mermaid
+flowchart TD
+    M3["M3<br/>uniform error wrapping<br/>across all apiX"]
+    M1["M1<br/>AbortSignal threading<br/>through writes"]
+    M2["M2<br/>renderSidebar(state)<br/>subscriber"]
+    M4["M4<br/>promote createProject /<br/>mkdir / upload / delete /<br/>rename / navigate"]
+    M5["M5<br/>backend rename<br/>endpoint"]
+    M6["M6<br/>cross-tab storage<br/>listener"]
+    M7["M7<br/>.is-hidden migration"]
+    M8["M8<br/>onProjectsRootResolved<br/>or whenReady"]
+
+    M3 --> M1
+    M3 --> M4
+    M4 --> M5
+    M2 --> M6
+
+    style M3 fill:#ffd9d9
+    style M1 fill:#ffd9d9
+    style M2 fill:#ffd9d9
+    style M4 fill:#ffe8c8
+    style M5 fill:#ffe8c8
+    style M6 fill:#ffe8c8
+    style M7 fill:#ffe8c8
+    style M8 fill:#e0f0e0
+```
+
+Pink = high impact.  Orange = medium.  Green = low.  Arrows point
+in the order things should land.
 
 ### High impact (blocks the design's coverage of failure modes)
 
