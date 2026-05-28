@@ -1,5 +1,14 @@
 # Spec — Selection model (Projects sidebar + tab contract)
 
+> **Scope of this doc**: the *selection cursor* contract — what
+> `current_dir` / `current_file` mean, how tabs inquire/subscribe, and
+> the full `/api/files/*` endpoint list.
+>
+> For the sidebar as a whole — architecture, public API surface, data
+> shapes, CSS class catalogue, lock model, visual states, gaps — see
+> the canonical reference at
+> [`docs/protocols/projects-sidebar.md`](projects-sidebar.md).
+
 **Module(s)**: sidebar JS is split across small ES modules:
 
   * `static/lib/projects-sidebar.js`     -- entry point (imports + bootstrap)
