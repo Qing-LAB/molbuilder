@@ -1080,17 +1080,36 @@
         const _origText = _btn.textContent;
         _btn.disabled = true;
         _btn.textContent = "Saving…";
+        // Sidebar lock: prevents the user from changing current_dir
+        // mid-pipeline (which would retarget step 2's pseudo install
+        // to a different directory than where step 1 wrote the .fdf).
+        // The AbortController collects every fetch's signal so the
+        // lock banner's Cancel can abort an in-flight request and
+        // unwind through the finally below.
+        const proj = (window.molbuilder || {}).projects;
+        state.saveFdfAbort = new AbortController();
+        const _signal = state.saveFdfAbort.signal;
+        const _hasLock = !!proj && typeof proj.lock === "function";
+        if (_hasLock) {
+            try {
+                proj.lock("Saving FDF + pseudos + wrapper…",
+                          [() => state.saveFdfAbort.abort()]);
+            } catch (_) { /* if already locked (shouldn't happen
+                            without overlapping handlers), proceed
+                            without acquiring */ }
+        }
         try {
-        return await _runSaveFdfPipeline();
+            return await _runSaveFdfPipeline(_signal);
         } finally {
-        state.savingFdf = false;
-        _btn.disabled = false;
-        _btn.textContent = _origText;
-        refreshSaveButtonAvailability();
+            state.savingFdf = false;
+            _btn.disabled = false;
+            _btn.textContent = _origText;
+            refreshSaveButtonAvailability();
+            if (_hasLock) proj.unlock();
         }
     });
 
-    async function _runSaveFdfPipeline() {
+    async function _runSaveFdfPipeline(abortSignal) {
         const meta = state.lastFdfSave;
         const proj = (window.molbuilder || {}).projects;
         if (!state.fdf || !meta) {
@@ -1142,6 +1161,7 @@
                         dest_dir:        written.dir,
                         structure_text:  state.xyz,
                     }),
+                    signal: abortSignal,
                 }).then(x => x.json());
                 if (ip.ok) {
                     const nNew  = (ip.copied || []).length;
@@ -1197,6 +1217,7 @@
                         omp_threads:   _n("omp_threads"),
                         max_memory_mb: _n("max_memory_mb"),
                     }),
+                    signal: abortSignal,
                 }).then(x => x.json());
                 if (wr.ok) {
                     const verb = wr.overwritten ? "overwrote" : "wrote";
@@ -1362,17 +1383,31 @@
         const _origTextPy = _btnPy.textContent;
         _btnPy.disabled = true;
         _btnPy.textContent = "Saving…";
+        // Sidebar lock: same rationale as the SIESTA Save handler -- a
+        // mid-pipeline current_dir change would retarget the wrapper
+        // install to the wrong directory.
+        const _projPyL = (window.molbuilder || {}).projects;
+        state.savePyscfAbort = new AbortController();
+        const _signalPy = state.savePyscfAbort.signal;
+        const _hasLockPy = !!_projPyL && typeof _projPyL.lock === "function";
+        if (_hasLockPy) {
+            try {
+                _projPyL.lock("Saving PySCF + wrapper…",
+                              [() => state.savePyscfAbort.abort()]);
+            } catch (_) { /* already locked: continue without */ }
+        }
         try {
-        return await _runSavePyscfPipeline();
+            return await _runSavePyscfPipeline(_signalPy);
         } finally {
-        state.savingPyscf = false;
-        _btnPy.disabled = false;
-        _btnPy.textContent = _origTextPy;
-        refreshSaveButtonAvailability();
+            state.savingPyscf = false;
+            _btnPy.disabled = false;
+            _btnPy.textContent = _origTextPy;
+            refreshSaveButtonAvailability();
+            if (_hasLockPy) _projPyL.unlock();
         }
     });
 
-    async function _runSavePyscfPipeline() {
+    async function _runSavePyscfPipeline(abortSignal) {
         const meta = state.lastPyscfSave;
         const proj = (window.molbuilder || {}).projects;
         if (!state.pyscf || !meta) {
@@ -1421,6 +1456,7 @@
                     omp_threads:   null,
                     max_memory_mb: null,
                 }),
+                signal: abortSignal,
             }).then(x => x.json());
             if (wr.ok) {
                 const verb = wr.overwritten ? "overwrote" : "wrote";

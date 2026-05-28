@@ -578,6 +578,19 @@
         const _origText = btn.textContent;
         btn.disabled = true;
         btn.textContent = "Saving…";
+        // Sidebar lock: same rationale as the SIESTA/PySCF Save
+        // handlers in viewer.js -- a mid-pipeline directory change
+        // would retarget the wrapper install away from where we
+        // just wrote the .spectra.py.
+        state.saveSpectraAbort = new AbortController();
+        const _saveSignal = state.saveSpectraAbort.signal;
+        const _hasLock = typeof proj.lock === "function";
+        if (_hasLock) {
+            try {
+                proj.lock("Saving Spectra + wrapper…",
+                          [() => state.saveSpectraAbort.abort()]);
+            } catch (_) { /* already locked: continue without */ }
+        }
         try {
             setStatus(els.saveStatus, "Saving to " + destDir + " …", "muted");
             const wrote = await proj.saveToWorkspace(
@@ -600,6 +613,7 @@
                         omp_threads:   null,
                         max_memory_mb: null,
                     }),
+                    signal: _saveSignal,
                 }).then(x => x.json());
                 if (wr.ok) {
                     const verb = wr.overwritten ? "overwrote" : "wrote";
@@ -615,6 +629,7 @@
             btn.disabled = false;
             btn.textContent = _origText;
             refreshSaveSpectraButtonAvailability();
+            if (_hasLock) proj.unlock();
         }
     }
 

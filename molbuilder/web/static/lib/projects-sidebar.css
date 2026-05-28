@@ -497,3 +497,87 @@ body.has-projects-sidebar {
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+/* ---------------------------------------------------------------- *
+ * Lock banner + ``.is-locked`` modifier.  (2026-05-27)              *
+ *                                                                  *
+ * When a long-running save pipeline runs (Save .fdf, Save .py,     *
+ * install pseudos + wrapper) the sidebar is locked via             *
+ * ``window.molbuilder.projects.lock()`` -- see state.js docstring  *
+ * for the 3-layer recovery design.  Everything in the sidebar      *
+ * EXCEPT the lock banner itself fades + becomes uninteractive so   *
+ * the user can't navigate away mid-pipeline (which would silently  *
+ * retarget the next step into the wrong directory).                *
+ * ---------------------------------------------------------------- */
+.ps-lock-banner {
+  margin: 0.4rem 0.5rem 0.2rem;
+  padding: 0.45rem 0.55rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: #3a2a14;        /* warm amber so it pops against the dark UI */
+  color: #ffdca7;
+  border: 1px solid #5d4520;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+/* Force display:none when the ``hidden`` HTML attribute is set.
+ * Without this, the user-agent stylesheet's ``[hidden]{display:none}``
+ * rule (specificity 0,1,0) is OUTRANKED by the same-specificity
+ * ``.ps-lock-banner{display:flex}`` rule above in the author cascade
+ * -- and the banner stays visible from page load with the
+ * placeholder "Working…" text + Cancel button.  Specificity here is
+ * (0,2,0) so it beats both. */
+.ps-lock-banner[hidden] { display: none; }
+.ps-lock-icon {
+  flex: 0 0 auto;
+  font-size: 1rem;
+  /* 1-step bob so the user notices the indicator is alive even if
+   * the operation takes minutes -- not a spinner (avoid the
+   * "looks stuck because the animation froze" trap on a janky
+   * tab). */
+  animation: ps-lock-bob 1.6s ease-in-out infinite;
+}
+@keyframes ps-lock-bob {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-2px); }
+}
+.ps-lock-message {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ps-lock-cancel {
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  padding: 0.2rem 0.55rem;
+  background: #5d4520;
+  color: #ffdca7;
+  border: 1px solid #7a5e30;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.ps-lock-cancel:hover {
+  background: #7a5e30;
+  color: #fff;
+}
+
+/* When locked, everything in the sidebar EXCEPT the lock banner
+ * fades + ignores pointer events.  The banner itself stays fully
+ * interactive so the Cancel button is always reachable.  Using a
+ * direct-child selector + :not() keeps this surgical -- a nested
+ * ``.ps-lock-banner`` inside the list would not be re-enabled. */
+.projects-sidebar.is-locked > :not(.ps-lock-banner):not(.ps-header) {
+  opacity: 0.4;
+  pointer-events: none;
+  user-select: none;
+}
+.projects-sidebar.is-locked > .ps-header {
+  /* Title stays at full opacity (visual anchor) but stays uninter-
+   * active.  Title is text-only today, no clicks to disable, but
+   * future additions (e.g. a search box in the header) should
+   * also be gated during a lock. */
+  pointer-events: none;
+}

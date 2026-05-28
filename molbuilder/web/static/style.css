@@ -236,6 +236,12 @@ button.primary:disabled,
     font-size: 0.88rem;
     color: var(--text-secondary);
 }
+/* 2026-05-28 [hidden]-attribute audit: #nucleic-options carries the
+ * ``hidden`` attribute (revealed only when DNA/RNA is the picked
+ * source), but ``display: flex`` above ties with the UA ``[hidden]``
+ * rule and wins.  Without this guard the row was visible at page
+ * load for every source mode. */
+.nucleic-row[hidden] { display: none; }
 .nucleic-row label { display: inline-flex; gap: 6px; align-items: center; }
 
 /* ---- Build/Load source-mode toggle ----
@@ -308,6 +314,12 @@ button.primary:disabled,
  * the left-bar accent colour and the leading glyph.  Populated by
  * renderIssues() in viewer.js, both from the live preflight endpoint
  * and from the post-Generate response. */
+/* 2026-05-28 [hidden]-attribute audit: ``display: flex`` below ties
+ * on specificity with the UA ``[hidden]`` rule and wins, so
+ * #fdf-issues + #pyscf-issues showed an empty flex container at page
+ * load instead of being hidden until Generate produced issues.  This
+ * guard restores the intended attribute-driven visibility. */
+.issues-panel[hidden] { display: none; }
 .issues-panel {
     list-style: none;
     margin: 8px 0 0 0;

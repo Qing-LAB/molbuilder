@@ -23,7 +23,9 @@ import { apiRoots } from "./projects/api.js";
 import {
   projects, setProjectsRoot, SS_DIR,
 } from "./projects/state.js";
-import { initList, openDir, restoreSelection } from "./projects/list.js";
+import {
+  initList, initLockUI, openDir, restoreSelection,
+} from "./projects/list.js";
 import { initForms } from "./projects/forms.js";
 import { initPreview } from "./projects/preview.js";
 
@@ -42,6 +44,14 @@ if (window.molbuilder.runtime
 async function init() {
   const sidebar = document.getElementById("projects-sidebar");
   if (!sidebar) return;                  // page didn't include the partial
+
+  // Wire the lock UI FIRST -- before any await that could throw or
+  // bail.  The lock UI needs to work regardless of project-root
+  // resolution; see initLockUI() docstring in list.js for the
+  // 2026-05-28 background.  If we put this after the apiRoots()
+  // await, a slow / failed roots call leaves the lock UI unwired
+  // and lock() becomes a silent no-op visually.
+  initLockUI();
 
   // NOTE: `class="has-projects-sidebar"` is set on <body> in each
   // template that includes the sidebar partial -- NOT here.  Adding

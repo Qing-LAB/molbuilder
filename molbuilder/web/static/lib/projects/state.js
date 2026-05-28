@@ -29,6 +29,35 @@ const selectionSubscribers = new Set();
 // because there's exactly one list view per page.
 let refreshHandler = null;
 
+// Sidebar lock state.  Set by long-running operations (Save .fdf,
+// Save spectra .py, multi-step pseudo install + wrapper write) that
+// must not race against the user re-navigating the sidebar mid-flight
+// -- e.g. clicking another directory between "write .fdf" and
+// "install pseudos", which would silently retarget the pseudo copy
+// to the new directory.
+//
+// Recovery design (per the 2026-05-27 review):
+//   Layer A -- try/finally:  every callsite wraps lock() in try {}
+//              finally { unlock() } so a thrown promise still releases.
+//   Layer B -- per-fetch timeout:  every network call in the locked
+//              window has an AbortController + setTimeout(abort, T)
+//              so a hung server can't hold the lock indefinitely.
+//   Layer C -- Cancel button:  if A and B both fail (genuine JS bug
+//              or backend deadlock), the lock banner renders a
+//              user-visible Cancel that runs the registered abort
+//              callbacks + forces unlock.  No silent stuck state.
+const lockSubscribers = new Set();
+let lockState = null;        // { reason: string, cancelers: Function[] }
+                              // or null when unlocked.
+
+function _publishLockChange() {
+  const payload = { locked: lockState !== null,
+                    reason: lockState ? lockState.reason : "" };
+  lockSubscribers.forEach((cb) => {
+    try { cb(payload); } catch (_) { /* one bad subscriber can't break the loop */ }
+  });
+}
+
 // ----- internal: set + notify ------------------------------------ //
 
 function publishSelectionChange() {
@@ -157,6 +186,60 @@ async function saveToWorkspace(text, filename, opts) {
   return await writeFile(path, text, opts);
 }
 
+/**
+ * Acquire the sidebar lock for a multi-step operation.
+ *
+ * While locked the sidebar's list / breadcrumb / create-form clicks
+ * are visually + functionally disabled.  Subscribers (see ``onLockChange``)
+ * receive the lock transition synchronously so they can render UI
+ * state immediately.
+ *
+ * ``cancelers`` is an array of zero-arg callables to invoke if the
+ * user clicks the lock banner's Cancel button.  Typically these abort
+ * an in-flight AbortController -- pass ``[() => controller.abort()]``
+ * so a hung backend can be aborted from the UI.
+ *
+ * Returns the *original lock token* — callers don't need to pass it
+ * back; ``unlock()`` is global.  Re-entry is rejected (throws) on
+ * purpose: nested locks would tangle the cancel-button semantics.
+ * If you need to layer two operations, compose them in one lock or
+ * unlock between them.
+ */
+function lock(reason, cancelers) {
+  if (lockState !== null) {
+    throw new Error(
+      "molbuilder.projects.lock(): already locked -- "
+      + "previous reason: " + lockState.reason + ", new: " + reason
+    );
+  }
+  lockState = {
+    reason:    String(reason || "Working…"),
+    cancelers: Array.isArray(cancelers) ? cancelers.slice() : [],
+  };
+  _publishLockChange();
+  return lockState;
+}
+
+/** Release the sidebar lock.  Idempotent (no-op when already unlocked).
+ *  Always call from a ``finally`` so an exception in the locked
+ *  operation can't leave the sidebar stuck. */
+function unlock() {
+  if (lockState === null) return;
+  lockState = null;
+  _publishLockChange();
+}
+
+/** Run the registered cancelers (does NOT itself unlock -- the operation
+ *  promise's own finally is responsible for that, AFTER its abort path
+ *  has unwound).  Called by the lock banner's Cancel button. */
+function cancelLockedOperation() {
+  if (lockState === null) return;
+  const fns = lockState.cancelers.slice();
+  for (const fn of fns) {
+    try { fn(); } catch (_) { /* one bad canceler can't break the rest */ }
+  }
+}
+
 export const projects = {
   getCurrentDir:       () => sessionStorage.getItem(SS_DIR)  || "",
   getCurrentFile:      () => sessionStorage.getItem(SS_FILE) || "",
@@ -192,4 +275,26 @@ export const projects = {
   refresh,
   writeFile,
   saveToWorkspace,
+  // ---- Sidebar lock API (2026-05-27) ---------------------------- //
+  // Long-running pipelines (Save .fdf, Save .py, install pseudos +
+  // wrapper) call lock() before step 1 and unlock() in finally so
+  // the user can't re-navigate the sidebar to a different directory
+  // mid-pipeline and have step 2 land in the wrong place.
+  //
+  // See state.js's lock-state docstring for the 3-layer recovery
+  // design (try/finally + per-fetch timeout + Cancel button).
+  lock,
+  unlock,
+  isLocked: () => lockState !== null,
+  getLockReason: () => lockState ? lockState.reason : "",
+  onLockChange: (cb) => {
+    lockSubscribers.add(cb);
+    // Fire once so the subscriber can render its current state.
+    try {
+      cb({ locked: lockState !== null,
+           reason: lockState ? lockState.reason : "" });
+    } catch (_) { /* swallow */ }
+    return () => lockSubscribers.delete(cb);
+  },
+  cancelLockedOperation,
 };

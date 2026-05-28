@@ -232,6 +232,12 @@ button > code {
     display: grid;
     gap: 0.45rem;
 }
+/* 2026-05-28 [hidden]-attribute audit (same pattern as the matching
+ * rule in style.css for the Build issues panel): ``display: grid``
+ * ties with the UA ``[hidden]`` rule and wins, so the panel was
+ * always-visible at page load.  Explicit guard restores the
+ * attribute-driven visibility. */
+.issues-panel[hidden] { display: none; }
 .issue {
     padding: 0.45rem 0.7rem;
     border-radius: 6px;
@@ -547,6 +553,12 @@ button > code {
     background: var(--bg-input);
     font-size: 0.85rem;
 }
+/* 2026-05-28 [hidden]-attribute audit: ``display: flex`` above ties
+ * on specificity with the UA stylesheet's ``[hidden] { display: none
+ * }`` rule and wins (author cascade), so #phase-indicator was
+ * VISIBLE at page load despite ``hidden=`` being set in the
+ * template.  Same pattern as .ps-lock-banner.  Explicit guard wins. */
+.phase-indicator[hidden] { display: none; }
 .phase {
     display: inline-flex;
     align-items: center;
