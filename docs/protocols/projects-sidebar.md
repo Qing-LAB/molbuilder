@@ -88,34 +88,81 @@ navigates between tabs, or knows which tab consumes which file type.
 state.  All cross-module communication goes through the exported APIs
 in § 6.
 
+#### Module dependency graph
+
+Arrows go from *importer* to *imported*.  `api.js` has no inbound
+arrows from sidebar code — it's a pure leaf module.  `state.js` is
+the central hub; if you need to know "where does X live?" the answer
+is usually here.
+
+```mermaid
+flowchart TD
+    template["_projects_sidebar.html<br/>(Jinja partial)"]
+    entry["projects-sidebar.js<br/>(entry / bootstrap)"]
+    state["projects/state.js<br/>(state + public API)"]
+    api["projects/api.js<br/>(HTTP wrappers)"]
+    list["projects/list.js<br/>(list + lock UI)"]
+    forms["projects/forms.js<br/>(create / mkdir / upload)"]
+    preview["projects/preview.js<br/>(preview modal)"]
+    backend["Flask blueprints<br/>/api/files/* + /api/projects/*"]
+
+    template -.includes.-> entry
+    entry --> state
+    entry --> list
+    entry --> forms
+    entry --> preview
+    list --> state
+    list --> api
+    list --> preview
+    forms --> state
+    forms --> api
+    forms --> list
+    preview --> state
+    state --> api
+    api -.HTTP.-> backend
+```
+
 ### 3.2 Where data lives
 
-```
-                  ┌──────────────────────────────────────────────────┐
-sessionStorage    │ molbuilder.current_dir   molbuilder.current_file │
-(persistent       └──────────────────────────────────────────────────┘
- per tab)                       ▲                  ▲
-                                │ setShared        │ setShared
-                                │                  │
-                  ┌──────────────────────────────────────────────────┐
-state.js          │   selectionSubscribers (Set<cb>)                 │
-(module           │   lockSubscribers      (Set<cb>)                 │
- closure)         │   lockState            (null | {reason, ...})   │
-                  │   projectsRoot         (string)                  │
-                  │   refreshHandler       (1 slot)                  │
-                  └──────────────────────────────────────────────────┘
-                                ▲ publish*Change      ▲ lock/unlock
-                                │                     │
-                  ┌──────────────────────────────────────────────────┐
-DOM (derived)     │  .ps-entry.is-selected   .projects-sidebar       │
-                  │  .ps-lock-banner[hidden] .is-locked              │
-                  └──────────────────────────────────────────────────┘
+Three layers of state, listed from most authoritative to most
+derived.  Reading any layer is fine; writing must go through the
+designated function (§ 12).
+
+```mermaid
+flowchart TB
+    subgraph storage["sessionStorage (persistent per browser tab)"]
+        direction LR
+        cd["molbuilder.current_dir"]
+        cf["molbuilder.current_file"]
+    end
+
+    subgraph mem["state.js — in-memory variables (per page load)"]
+        direction LR
+        root["projectsRoot<br/>(string)"]
+        rh["refreshHandler<br/>(1 slot)"]
+        ssubs["selectionSubscribers<br/>(Set of callbacks)"]
+        lsubs["lockSubscribers<br/>(Set of callbacks)"]
+        ls["lockState<br/>(null | {reason, cancelers})"]
+    end
+
+    subgraph dom["DOM — derived (rebuilt from state)"]
+        direction LR
+        sel[".ps-entry.is-selected<br/>highlight"]
+        lck[".projects-sidebar.is-locked<br/>fade + disable"]
+        ban[".ps-lock-banner[hidden]<br/>banner visibility"]
+    end
+
+    storage -->|read by setShared| ssubs
+    ls -->|read by lock/unlock| lsubs
+    ssubs -.->|publish fires<br/>each callback| sel
+    lsubs -.->|publish fires<br/>each callback| lck
+    lsubs -.->|publish fires<br/>each callback| ban
 ```
 
 **The DOM is derived state.**  Authoritative state lives in
-sessionStorage (cursor) and the closure (lock + subscribers + root).
-Any new DOM update must trace back to a state mutation that published
-a change — never the reverse.
+sessionStorage (cursor) and the in-memory variables (lock +
+subscribers + root).  Every DOM update must trace back to a state
+mutation that published a change — never the reverse.
 
 ---
 
@@ -154,6 +201,60 @@ async function init() {
   await openDir(start);       // (e) first directory listing
   restoreSelection();
 }
+```
+
+#### Visual lifecycle
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Browser
+    participant Sidebar as projects-sidebar.js
+    participant State as state.js
+    participant List as list.js
+    participant Backend as /api/files/*
+
+    Note over Browser,State: Module load (synchronous, before DOMContentLoaded)
+    Browser->>State: import {projects, ...}
+    Browser->>Sidebar: import init / projects
+    Sidebar->>Sidebar: window.molbuilder.projects = projects
+    Note right of Sidebar: PUBLIC API REACHABLE FROM HERE — tabs can already call lock() / onChange() etc.
+
+    Note over Browser: DOMContentLoaded fires
+    Browser->>Sidebar: init()
+    Sidebar->>Sidebar: getElementById("projects-sidebar")
+    alt partial not on this page
+        Sidebar-->>Browser: return (silent)
+    end
+
+    rect rgb(232, 248, 232)
+    Note over Sidebar,List: STEP (b) — UNCONDITIONAL UI WIRING
+    Sidebar->>List: initLockUI()
+    List->>State: onLockChange(_applyLockVisual)
+    List->>Browser: document.addEventListener("click", ...) — delegated Cancel
+    end
+
+    Sidebar->>Backend: GET /api/files/roots
+    Backend-->>Sidebar: {roots: [...]} or {roots: []}
+
+    alt roots empty
+        Sidebar->>List: show "no roots" error in list
+        Sidebar-->>Browser: return
+        Note right of Sidebar: lock UI is STILL wired — Save pipelines still lock correctly
+    end
+
+    rect rgb(232, 240, 252)
+    Note over Sidebar,Backend: STEP (d) — DATA-DEPENDENT UI WIRING
+    Sidebar->>State: setProjectsRoot(roots[0].path)
+    Sidebar->>List: initList()
+    Sidebar->>Sidebar: initForms()
+    Sidebar->>Sidebar: initPreview()
+    Sidebar->>List: openDir(start)
+    List->>Backend: GET /api/files/list?path=...
+    Backend-->>List: {ok, entries}
+    List->>State: setShared(resp.path, keptFile)
+    State-->>List: publishSelectionChange() — fires subscribers
+    end
 ```
 
 ### 4.3 The load-bearing rule
@@ -291,6 +392,69 @@ All methods live under `window.molbuilder.projects.*`.  Stable
 surface — adding / changing a method requires updating this section
 AND, if cursor semantics change, updating [selection.md § 3](selection.md).
 
+#### API surface at a glance
+
+What each public method ultimately reads or writes.  Read methods
+return synchronously from in-memory state; write methods hit the
+backend over HTTP.
+
+```mermaid
+flowchart LR
+    subgraph public["Public API — window.molbuilder.projects.*"]
+        gd["getCurrentDir()"]
+        gf["getCurrentFile()"]
+        gp["getProjectsRoot()"]
+        ar["atRoot()"]
+        il["isLocked()"]
+        glr["getLockReason()"]
+        rtp["relativeToProjects(p)"]
+        oc["onChange(cb)"]
+        olc["onLockChange(cb)"]
+        rcf["readCurrentFile()"]
+        wf["writeFile(p,t)"]
+        stw["saveToWorkspace(t,n)"]
+        rfsh["refresh()"]
+        lk["lock(reason,cancelers)"]
+        ulk["unlock()"]
+        cln["cancelLockedOperation()"]
+    end
+
+    subgraph storage["sessionStorage"]
+        cd["current_dir"]
+        cf["current_file"]
+    end
+
+    subgraph mem["state.js in-memory variables"]
+        rt["projectsRoot"]
+        ls["lockState"]
+        ss["selectionSubscribers"]
+        lsb["lockSubscribers"]
+    end
+
+    subgraph http["HTTP backend"]
+        eRead["GET /api/files/read"]
+        eWrite["POST /api/files/write"]
+        eList["GET /api/files/list"]
+    end
+
+    gd --> cd
+    gf --> cf
+    gp --> rt
+    ar --> cd
+    rtp --> rt
+    il --> ls
+    glr --> ls
+    oc --> ss
+    olc --> lsb
+    lk --> ls
+    ulk --> ls
+    cln --> ls
+    rcf --> eRead
+    wf --> eWrite
+    stw --> wf
+    rfsh --> eList
+```
+
 ### 6.1 Selection (read)
 
 | Method | Signature | Returns | Notes |
@@ -417,6 +581,48 @@ async function savePipeline() {
 
 **Mandatory pattern** when chaining ≥ 2 backend calls that target the
 same workspace.  See § 12 for the lock model's full 3-layer recovery.
+
+#### Save-pipeline timeline
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant User
+    participant Tab as Save handler<br/>(viewer.js / spectra.core.js)
+    participant State as state.js
+    participant Banner as lock banner subscriber
+    participant Backend as /api/*
+
+    User->>Tab: click Save
+    Tab->>Tab: abort = new AbortController()
+    Tab->>State: lock("Saving FDF + pseudos + wrapper…", [abort.abort])
+    State->>Banner: publishLockChange({locked: true, ...})
+    Banner->>Banner: add .is-locked + show banner
+
+    rect rgb(252, 240, 240)
+    Note over Tab,Backend: try { ... } finally { unlock() }
+    Tab->>Backend: POST /api/files/write (signal: abort.signal)
+    Backend-->>Tab: ok
+    Tab->>Backend: POST /api/siesta/install-pseudos (signal: ...)
+
+    alt user clicks Cancel mid-pipeline
+        User->>Banner: click Cancel
+        Banner->>State: cancelLockedOperation()
+        State->>Tab: run cancelers → abort.abort()
+        Tab->>Backend: aborts in-flight fetch
+        Backend-->>Tab: AbortError throws
+    end
+
+    Backend-->>Tab: pseudos ok
+    Tab->>Backend: POST /api/run/install-wrapper (signal: ...)
+    Backend-->>Tab: wrapper ok
+    end
+
+    Tab->>State: unlock() (in finally)
+    State->>Banner: publishLockChange({locked: false, ...})
+    Banner->>Banner: remove .is-locked + hide banner
+    Tab->>State: refresh() → re-list current dir
+```
 
 ### 7.4 Reference implementations (live code; do not reinvent)
 
@@ -605,6 +811,27 @@ Cancel triggers abort → fetch rejects → `finally` runs → unlock.  JS
 exception in the canceler → caught per-canceler, doesn't block other
 cancelers; lock state is unaffected.
 
+#### Lock state machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> Unlocked
+
+    Unlocked --> Locked : lock(reason, cancelers)
+    Locked --> Unlocked : unlock()<br/>(also: pipeline finally{} runs unlock)
+
+    Locked --> Locked : cancelLockedOperation()<br/>runs cancelers — lock STAYS HELD<br/>(pipeline's own abort + finally release it)
+    Locked --> Locked : lock(...) — THROWS<br/>(re-entry forbidden)
+
+    Unlocked --> Unlocked : unlock() — no-op
+    Unlocked --> Unlocked : cancelLockedOperation() — no-op
+
+    state Locked {
+        [*] --> HasReason
+        HasReason : reason: string<br/>cancelers: Array<()=>void>
+    }
+```
+
 ### 11.3 CSS contract
 
 ```css
@@ -666,16 +893,28 @@ publish events fire:
 
 ### 12.3 The publish-then-react flow
 
-```
-1. User action / API call mutates state via the designated function.
-2. The function calls publish*Change() before returning.
-3. publish*Change() iterates subscribers, calling each in try/catch.
-4. Each subscriber updates its own DOM region (or other side effect).
-5. Subscribers that throw are caught; loop continues; lock state unchanged.
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Caller as user click<br/>OR tab code
+    participant Mut as designated mutator<br/>(setShared / lock / unlock)
+    participant Store as authoritative store<br/>(sessionStorage OR closure var)
+    participant Subs as subscribers<br/>(Set of callbacks)
+    participant DOM
+
+    Caller->>Mut: invoke mutator
+    Mut->>Store: write new value
+    Mut->>Subs: publishXChange(newPayload)
+    loop for each subscriber
+        Subs->>Subs: try { cb(payload) } catch (swallow)
+        Subs->>DOM: subscriber updates its DOM region
+    end
+    Note right of Subs: one bad subscriber NEVER<br/>breaks the loop — others still fire
 ```
 
-This is the contract.  Any new sidebar state belongs in a closure
-variable + a `publishXChange` + an `onXChange` subscription API.
+This is the contract.  Any new sidebar state belongs in: a module-
+private variable + a designated mutator + a `publishXChange` + an
+`onXChange` subscription API.  No exceptions.
 
 ---
 
@@ -759,13 +998,23 @@ Severity: **B** = should fix soon (real correctness/UX risk),
 
 ## 17. Change protocol
 
-1. Open this doc.  Find the section that covers what you're about to
-   change.
-2. Edit the doc to describe the new behaviour (in the same diff).
-3. Make the code change.
-4. Verify tests pass; add tests where the spec changed (§ 14).
-5. Commit doc + code + tests together.  Reviewer rejects any one of
-   the three missing.
+```mermaid
+flowchart TD
+    start([sidebar change requested]) --> findsec["1. Open this doc.<br/>Find the section that covers it."]
+    findsec --> editdoc["2. Edit the doc<br/>to describe the new behaviour."]
+    editdoc --> editcode["3. Make the code change."]
+    editcode --> runtests{"4. Tests pass?<br/>(§ 14)"}
+    runtests -->|no| editcode
+    runtests -->|yes| addtests["5. Add tests<br/>where the spec changed."]
+    addtests --> commit["6. Commit doc + code + tests<br/>in ONE commit."]
+    commit --> review{"Reviewer: all three present?"}
+    review -->|missing any one| reject([reject])
+    review -->|all present| land([merge])
+
+    style commit fill:#dde9ff
+    style reject fill:#fdd
+    style land fill:#dfd
+```
 
 If you find a code-vs-doc discrepancy: file an issue, do NOT silently
 "fix" the doc to match buggy code (or vice versa).  The doc is design
