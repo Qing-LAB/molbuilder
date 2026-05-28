@@ -142,8 +142,12 @@ def test_preopt_reuses_mol_pre(small_struct):
 
 _OPTIMIZE_BLOCK_RE = re.compile(
     r"^\s*\w+\s*=\s*optimize\s*\(\s*\n"   # x = optimize(
-    r"(?P<body>(?:[^()]*\n)+?)"           # ... body lines
-    r"^\s*\)",                            # closing paren on its own line
+    # Body lines: anything that ISN'T a bare ``)`` line.  Negative
+    # lookahead lets body lines contain balanced parens (e.g. the
+    # 2026-05-27 ``prefix = _mb_outfile(JOB + ".."),`` wrapping)
+    # while still stopping at the function's closing paren below.
+    r"(?P<body>(?:(?!^\s*\)\s*$).*\n)+?)"
+    r"^\s*\)\s*$",                        # closing paren on its own line
     re.MULTILINE,
 )
 
@@ -156,10 +160,15 @@ def _optimize_calls(text: str):
 
 
 @pytest.mark.parametrize("cfg, expected_prefixes", [
+    # 2026-05-27: every prefix= goes through _mb_outfile() so the
+    # trajectory XYZ lands next to the script regardless of cwd.
+    # The expected-prefix substring still contains the JOB + ".."
+    # token, so the test stays meaningful as a prefix-presence check.
     # Default: just the production-stage optimize().
-    (PySCFConfig(),                   ['JOB + "_geom"']),
+    (PySCFConfig(),                   ['_mb_outfile(JOB + "_geom")']),
     # Pre-opt enabled: BOTH optimize() calls must have prefix=.
-    (PySCFConfig(preopt=True),        ['JOB + "_preopt"', 'JOB + "_geom"']),
+    (PySCFConfig(preopt=True),        ['_mb_outfile(JOB + "_preopt")',
+                                       '_mb_outfile(JOB + "_geom")']),
 ])
 def test_every_optimize_call_has_prefix_when_traj_on(small_struct,
                                                       cfg, expected_prefixes):

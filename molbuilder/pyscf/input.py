@@ -325,6 +325,25 @@ def render_script(struct: Structure,
     out.append("t0 = time.time()")
     out.append(f'JOB = "{label}"')
     out.append("")
+    # ---- _mb_outfile helper: ALL output paths resolve relative to
+    # the script directory, NOT the process cwd ---------------------
+    # Why: PySCF / geomeTRIC may chdir() during optimisation
+    # (geomeTRIC's optimize() builds scratch in a temp dir; PySCF's
+    # mol.build() writes the .log relative to cwd at gto.M() time).
+    # If a user invokes ``python myjob.py`` from a different
+    # directory than where the script lives -- OR if a downstream
+    # tool chdir's the process during the run -- output artefacts
+    # would scatter across the filesystem.  The .run.sh wrapper
+    # chdir's to the script directory before launching, but the
+    # script must be robust when invoked directly too.  Resolving
+    # everything via ``_mb_outfile(name)`` makes the script land
+    # ALL its outputs next to itself, regardless of cwd.
+    out.append("from pathlib import Path as _MB_Path")
+    out.append("_MB_SCRIPT_DIR = _MB_Path(__file__).resolve().parent")
+    out.append("def _mb_outfile(name):")
+    out.append("    p = _MB_Path(name)")
+    out.append("    return str(p if p.is_absolute() else _MB_SCRIPT_DIR / p)")
+    out.append("")
 
     # ---- _save_xyz helper, defined EARLY so _initial.xyz can be
     # captured *before* any optimization mutates `mol` ------------
@@ -379,7 +398,7 @@ def render_script(struct: Structure,
     out.append(f"    symmetry   = {cfg.symmetry},")
     out.append(f"    verbose    = {cfg.verbose},")
     if cfg.log_file:
-        out.append('    output     = JOB + ".log",')
+        out.append('    output     = _mb_outfile(JOB + ".log"),')
     out.append(f"    max_memory = {cfg.max_memory_mb},   # MB")
     out.append("    unit       = 'Ang',")
     out.append(")")
@@ -391,7 +410,8 @@ def render_script(struct: Structure,
     if cfg.save_initial_xyz:
         if v:
             out.append("# Snapshot the input geometry before any optimization runs.")
-        out.append('_save_xyz(mol, JOB + "_initial.xyz", "Initial geometry (input)")')
+        out.append('_save_xyz(mol, _mb_outfile(JOB + "_initial.xyz"), '
+                   '"Initial geometry (input)")')
     out.append("")
 
     # ---------------- Unified molwatch log emitter (early, additive) ------
@@ -492,7 +512,7 @@ def render_script(struct: Structure,
     if cfg.damp:
         out.append(f"mf.damp = {cfg.damp}")
     if cfg.chkfile:
-        out.append('mf.chkfile = JOB + ".chk"')
+        out.append('mf.chkfile = _mb_outfile(JOB + ".chk")')
 
     # GPU patch: promote the fully-assembled production mf to its
     # gpu4pyscf equivalent when the runtime probe at script-start
@@ -550,7 +570,7 @@ def render_script(struct: Structure,
                 ]
             ids_1based = ",".join(str(i + 1) for i in frozen)
             out.append(f'# Source: Structure.frozen_atoms = {frozen!r}  (0-based)')
-            out.append(f'_FROZEN_CONSTRAINTS_PATH = JOB + ".constraints.txt"')
+            out.append(f'_FROZEN_CONSTRAINTS_PATH = _mb_outfile(JOB + ".constraints.txt")')
             out.append('with open(_FROZEN_CONSTRAINTS_PATH, "w") as _fh:')
             out.append('    _fh.write("$freeze\\n")')
             out.append(f'    _fh.write("xyz {ids_1based}\\n")')
@@ -575,7 +595,7 @@ def render_script(struct: Structure,
                 out.append("    #     <JOB>_geom_optim.xyz")
                 out.append("    # with one frame per accepted step.  molwatch")
                 out.append("    # tails this file live, frame-by-frame.")
-            out.append('    prefix                = JOB + "_geom",')
+            out.append('    prefix                = _mb_outfile(JOB + "_geom"),')
         if cfg.write_molwatch_log and cfg.optimizer == "geometric":
             if v:
                 out.append("    # callback fires once per accepted opt step;")
@@ -687,7 +707,7 @@ def render_script(struct: Structure,
     # we only write the FINAL geometry.
     if cfg.save_optimized_xyz and cfg.optimize:
         out.append("")
-        out.append('_save_xyz(mol_eq, JOB + "_optimized.xyz", '
+        out.append('_save_xyz(mol_eq, _mb_outfile(JOB + "_optimized.xyz"), '
                    '"Optimized geometry (PySCF)")')
     out.append("")
     out.append('print(f"\\nJob complete in {time.time() - t0:.1f} s")')
@@ -808,7 +828,7 @@ def _emit_preopt_block(cfg: PySCFConfig, charge: int, v: bool) -> List[str]:
             out.append("    # Pre-opt has its own trajectory file:")
             out.append("    #   <JOB>_preopt_optim.xyz")
             out.append("    # so molwatch can watch either stage live.")
-        out.append('    prefix            = JOB + "_preopt",')
+        out.append('    prefix            = _mb_outfile(JOB + "_preopt"),')
     if cfg.write_molwatch_log and cfg.optimizer == "geometric":
         if v:
             out.append("    # Stream preopt opt steps to <JOB>.molwatch.log so")
@@ -885,7 +905,7 @@ def _emit_frequencies_block(cfg: PySCFConfig, v: bool) -> List[str]:
                f"{cfg.temperature_K!r}, {P_pa!r})")
     out.append("    _mb_imag = int(sum(1 for _w in _mb_wn if "
                "getattr(_w, 'imag', 0.0) != 0))")
-    out.append("    with open(JOB + \".thermo.txt\", \"w\") as _mb_fh:")
+    out.append("    with open(_mb_outfile(JOB + \".thermo.txt\"), \"w\") as _mb_fh:")
     out.append("        _mb_fh.write(\"# molbuilder PySCF harmonic analysis "
                "+ RRHO thermochemistry\\n\")")
     out.append(f"        _mb_fh.write(\"# T = {cfg.temperature_K} K, "
@@ -1005,7 +1025,8 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig") -> List[str]:
     # appends to ``JOB`` at runtime.
     _suffix = _resolved_for_X[len(_placeholder):]
     out.append(f'_molwatch = MolwatchEmitter('
-               f'JOB + {_suffix!r}, JOB, mol, runtime_info=_RUNTIME_INFO)')
+               f'_mb_outfile(JOB + {_suffix!r}), JOB, mol, '
+               f'runtime_info=_RUNTIME_INFO)')
     out.append("")
     # Run-state markers.  The watch UI reads these to render a binary
     # "Finished / Ongoing / Error" badge -- authoritative when present,

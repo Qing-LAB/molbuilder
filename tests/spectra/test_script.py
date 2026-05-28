@@ -222,7 +222,9 @@ class TestPySCFScriptConstants:
         script = render_spectra_script(_struct_water(),
                                        SpectraConfig(job_name="weird_name"))
         assert "JOB            = 'weird_name'" in script
-        assert "JSON_PATH      = JOB + '.spectra.json'" in script
+        # 2026-05-27: JSON_PATH wraps in _mb_outfile() so writes land
+        # next to the script regardless of cwd.
+        assert "JSON_PATH      = _mb_outfile(JOB + '.spectra.json')" in script
 
     def test_method_specific_imports(self):
         from molbuilder.spectra.pyscf_script import render_spectra_script

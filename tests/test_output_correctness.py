@@ -38,7 +38,9 @@ def test_c1_initial_xyz_captured_before_preopt(small_struct):
     text = render_script(small_struct, PySCFConfig(preopt=True))
 
     # Find the position in the script where _initial.xyz is saved.
-    save_pos = text.find('_save_xyz(mol, JOB + "_initial.xyz"')
+    # 2026-05-27: _initial.xyz path routes through _mb_outfile()
+    # so it lands next to the script regardless of cwd at run time.
+    save_pos = text.find('_save_xyz(mol, _mb_outfile(JOB + "_initial.xyz")')
     assert save_pos != -1, "no _initial.xyz save call found"
 
     # Find the position of the pre-opt block (its banner print).

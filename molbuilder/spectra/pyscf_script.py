@@ -323,7 +323,19 @@ def _emit_constants(struct: Structure,
     out.append("# ============================================================")
     out.append(f"SCHEMA_VERSION = {int(SCHEMA_VERSION)}")
     out.append(f"JOB            = {cfg.job_name!r}")
-    out.append("JSON_PATH      = JOB + '.spectra.json'")
+    # _mb_outfile: ALL output paths resolve relative to the SCRIPT
+    # directory, NOT the process cwd.  See the matching helper in
+    # ``molbuilder/pyscf/input.py``.  PySCF / geomeTRIC may chdir
+    # mid-run (esp. during optimisation), and the .run.sh wrapper's
+    # chdir doesn't protect users who invoke the script directly
+    # from a different cwd.  Resolving against ``__file__`` makes
+    # the script land its outputs next to itself, regardless.
+    out.append("from pathlib import Path as _MB_Path")
+    out.append("_MB_SCRIPT_DIR = _MB_Path(__file__).resolve().parent")
+    out.append("def _mb_outfile(name):")
+    out.append("    p = _MB_Path(name)")
+    out.append("    return str(p if p.is_absolute() else _MB_SCRIPT_DIR / p)")
+    out.append("JSON_PATH      = _mb_outfile(JOB + '.spectra.json')")
     out.append("")
     out.append("# Phase status vocabulary -- matches molbuilder.spectra.results")
     out.append("# so the on-disk JSON round-trips into the typed SpectraResults.")

@@ -204,9 +204,13 @@ def test_preopt_writes_its_own_trajectory_when_enabled(h2o):
     opt stage's streaming trajectory file."""
     text = render_script(h2o,
                          PySCFConfig(preopt=True, write_trajectory=True))
-    assert 'prefix            = JOB + "_preopt"' in text
+    # 2026-05-27: prefix paths route through _mb_outfile() so they
+    # resolve against the script directory even if cwd shifts during
+    # the run.  Substring match preserves intent (JOB + "_preopt"
+    # still present); only the wrapping changes.
+    assert 'prefix            = _mb_outfile(JOB + "_preopt")' in text
     # Production stage still uses _geom prefix.
-    assert 'prefix                = JOB + "_geom"' in text
+    assert 'prefix                = _mb_outfile(JOB + "_geom")' in text
 
 
 def test_molwatch_log_instantiated_before_preopt(h2o):
@@ -220,7 +224,11 @@ def test_molwatch_log_instantiated_before_preopt(h2o):
     (mf1.callback for SCF, optimize(callback=...) for opt steps) must
     also wire into the preopt stage so steps stream from the start."""
     text = render_script(h2o, PySCFConfig(preopt=True))
-    inst_at      = text.find('_molwatch = MolwatchEmitter(JOB')
+    # 2026-05-27: MolwatchEmitter path arg now wraps in _mb_outfile()
+    # so the .molwatch.log file lands next to the script regardless
+    # of process cwd.  The instantiation token stays unique enough
+    # for the source-ordering pin.
+    inst_at      = text.find('_molwatch = MolwatchEmitter(_mb_outfile(JOB')
     preopt_at    = text.find("mol_pre = optimize(")
     prod_at      = text.find("mol_eq = optimize(")
     mf1_callback = text.find("mf1.callback = _molwatch.scf_cycle_hook")
@@ -628,16 +636,19 @@ def test_pyscf_molwatch_emitter_uses_stage_suffix(h2o):
     text = render_script(h2o, PySCFConfig(stage=2, job_name="my-job"))
     # Quote style is repr()'s choice (single or double); the contract
     # is the JOB + "<suffix>" expression with the right suffix.
-    assert ("MolwatchEmitter(JOB + '-stage2.molwatch.log'" in text
-            or 'MolwatchEmitter(JOB + "-stage2.molwatch.log"' in text)
+    # 2026-05-27: path arg now wraps in _mb_outfile() so the log
+    # resolves against the script directory regardless of cwd.
+    assert ("MolwatchEmitter(_mb_outfile(JOB + '-stage2.molwatch.log')" in text
+            or 'MolwatchEmitter(_mb_outfile(JOB + "-stage2.molwatch.log")' in text)
 
 
 def test_pyscf_molwatch_emitter_unsuffixed_when_stage_is_none(h2o):
     text = render_script(h2o, PySCFConfig(stage=None, job_name="my-job"))
-    assert ("MolwatchEmitter(JOB + '.molwatch.log'" in text
-            or 'MolwatchEmitter(JOB + ".molwatch.log"' in text)
+    # 2026-05-27: path arg now wraps in _mb_outfile().
+    assert ("MolwatchEmitter(_mb_outfile(JOB + '.molwatch.log')" in text
+            or 'MolwatchEmitter(_mb_outfile(JOB + ".molwatch.log")' in text)
     emitter_line = [ln for ln in text.splitlines()
-                    if "MolwatchEmitter(JOB" in ln][0]
+                    if "MolwatchEmitter(_mb_outfile(JOB" in ln][0]
     assert "stage" not in emitter_line
 
 
