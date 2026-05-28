@@ -109,11 +109,16 @@ def test_render_siesta_emits_build_probe_block():
     assert 'SIESTA version' in text
     assert 'Build paral.' in text
     assert 'Launch mode' in text
-    # 2026-05-26: probe must use word-boundary matching so ``NoMPI`` /
-    # ``pre-MPI`` (hypothetical negative-disabled labels) don't falsely
-    # set _has_mpi=1.  Pin the normalisation step + the spaced-anchor
-    # case patterns so a regression to the loose ``*MPI*`` substring
-    # form fails this test.
+    # 2026-05-26/-27: probe uses word-boundary matching so ``NoMPI``
+    # / ``pre-MPI`` (hypothetical negative-disabled labels) don't
+    # falsely set _has_mpi=1.  The normalisation step ALSO collapses
+    # any POSIX whitespace (tab, vertical-tab, mixed spaces) to
+    # single spaces so the probe focuses on CONTENT not formatting
+    # -- a future SIESTA build that emits ``Parallelisations:\tMPI``
+    # or ``MPI,\tOpenMP`` still parses correctly.  Pin the
+    # normalisation pipeline + the spaced-anchor case patterns so a
+    # regression to the loose ``*MPI*`` substring (or to ``tr ",;"``
+    # alone, which would miss tabs) fails this test.
     assert "_par_norm=" in text, "probe must normalise separators"
     assert '*" MPI "*' in text, (
         "probe must use spaced-anchor ``*\" MPI \"*`` to reject NoMPI"
@@ -121,6 +126,11 @@ def test_render_siesta_emits_build_probe_block():
     assert '*MPI*) _has_mpi=1' not in text, (
         "regression: loose ``*MPI*`` substring match falsely catches "
         "NoMPI / pre-MPI labels"
+    )
+    assert 'tr "[:space:]"' in text, (
+        "probe must normalise ANY whitespace (tabs etc) via "
+        "``tr \"[:space:]\"`` -- enumerating only ``,;`` would miss "
+        "tab-separated future SIESTA output."
     )
 
 
