@@ -72,6 +72,17 @@ one of these.
    an optional `AbortSignal` so a lock's Cancel button can abort
    anything in flight.
 
+7. **The sidebar is a view onto a remote filesystem.**  The user is
+   typically running molbuilder on a workstation or cluster while
+   driving the UI from a laptop browser.  Every operation — list,
+   read, write, mkdir, upload, download, delete, rename — crosses
+   a network.  The design treats backend calls as latency-bounded
+   (not instant), interruptible (cancellable mid-flight), and
+   independently failable (per-call envelope).  Local browser
+   state is an **eventually-consistent view** of remote truth: the
+   disk is authoritative; the browser caches a snapshot.  Refresh
+   is a first-class capability, not a workaround for stale state.
+
 ---
 
 ## 3. Where the sidebar sits
@@ -166,41 +177,90 @@ flowchart TB
 **DOM is derived from state.**  Every visual update traces back to a
 state mutation that published a change.
 
+### 4.4 Sync model — local browser ↔ remote filesystem
+
+The sidebar's three pieces of state are all **local browser memory**.
+They are NOT the source of truth — the remote filesystem is.  The
+relationship:
+
+| Browser holds | Remote disk holds | How they stay aligned |
+|---|---|---|
+| Cursor (where the user is looking) | nothing — purely UI | Cursor changes are local-only until they trigger a read. |
+| Resolved root | The actual `projects/` path | Resolved once at init via `/api/files/roots`.  Doesn't change. |
+| Lock state | nothing — purely client-side | Lock is per-browser-tab.  Concurrent tabs each hold their own lock; the backend doesn't enforce mutual exclusion. |
+| Listing snapshot (in the DOM) | The directory's current contents | Snapshot taken at `openDir` time.  Goes stale silently if the remote changes.  Refreshed by user action or by `writeFile`'s auto-refresh after a successful write to the current dir. |
+
+**Consequence**: any read-then-write operation must assume the read
+may be stale.  The design uses `expected_mtime` to detect concurrent
+edits at write time (409 on mismatch).  The user resolves by
+re-reading.  No optimistic conflict resolution.
+
+**Consequence**: every multi-step pipeline that depends on the cursor
+must read the cursor ONCE at the start and pass that snapshot to all
+subsequent steps.  Re-reading mid-pipeline lets the user's
+navigation between steps silently retarget downstream work.  This is
+why the lock model exists (§ 8).
+
 ---
 
 ## 5. Capabilities (what tabs can do)
 
-A tab interacting with the sidebar can do exactly six things.
-Implementation-level method signatures are in the source modules;
-what matters architecturally is the six capability buckets.
+The sidebar is the user's window into a remote workspace.  Every
+capability below is mediated by HTTP; latency, partial failure, and
+cancellation are first-class concerns.  Each capability bucket lists
+the operations it covers — exact method signatures live in the code
+and stabilise as the design finalises.
 
-| # | Capability | What it covers |
+### 5.1 Capability buckets
+
+| # | Capability | Operations | Local/remote crossing |
+|---|---|---|---|
+| **C1** | **Read the cursor + sidebar state** | Where am I (`getCurrentDir`).  What's selected (`getCurrentFile`).  What's the resolved root (`getProjectsRoot`).  Am I at the root (`atRoot`).  Path display helper (`relativeToProjects`).  Is a lock held (`isLocked`, `getLockReason`). | Synchronous; no network.  All cached in browser memory. |
+| **C2** | **Subscribe to state changes** | Cursor changes (`onChange`).  Lock changes (`onLockChange`).  Connection / root resolution (`onProjectsRootResolved` or via `runtime.whenReady`). | No network on subscribe; events fire when local state updates. |
+| **C3** | **Read file content** | Text of the currently-selected file (`readCurrentFile`).  Text of any file by path (`readFile`).  Future: streamed binary download (`downloadFile`). | Network per call.  Text is size-capped; binary downloads stream. |
+| **C4** | **Write file content** | Write to an exact path (`writeFile`).  Write into current dir (`saveToWorkspace`).  Both support `expected_mtime` for concurrent-edit detection (409 on conflict). | Network per call.  Atomic on backend (temp + rename); browser sees success or no-op. |
+| **C5** | **Filesystem layout operations** | Create a project skeleton (`createProject`).  Create a subdirectory (`mkdir`).  Delete an entry (`deleteEntry`, with `recursive` flag for non-empty dirs).  Rename an entry (`rename`). | Network per call.  All envelope-returning. |
+| **C6** | **Local ↔ remote transfer** | Upload from laptop to remote workspace (`upload`, multipart).  Download from remote to laptop (`downloadFile`, browser-driven save).  Refresh the sidebar's view (`refresh`). | Network per call.  Upload + download may be slow; both must be cancellable.  Browser File API on the user side. |
+| **C7** | **Navigate** | Drill the sidebar into an arbitrary directory path (`navigateTo`).  Used by tabs that want to focus the sidebar on the workspace they just created. | Triggers a list call; network. |
+| **C8** | **Acquire / release / cancel the lock** | Begin a multi-step pipeline (`lock(reason, cancelers)`).  Release (`unlock`).  Cancel button hook (`cancelLockedOperation` — usually wired automatically). | No network; pure local coordination. |
+
+**All capabilities are reachable from `window.molbuilder.projects.*`.**
+Every async operation accepts an optional `{signal: AbortSignal}`.
+Every async operation returns the uniform `{ok, ...}` envelope or
+the documented `null` for no-op cases.
+
+### 5.2 Distinction between similar-looking operations
+
+When two operations look like they overlap, the design makes a
+deliberate choice between them:
+
+| Use this | NOT this | Distinction |
 |---|---|---|
-| C1 | **Read the cursor** | Where am I?  What's selected?  Is the sidebar at the root?  What's the resolved projects root?  Is a lock held?  What's the lock reason? |
-| C2 | **Subscribe to changes** | Be notified when the cursor changes.  Be notified when the lock state changes. |
-| C3 | **Read or write files** | Read the currently-selected file's text.  Write a generated file to the current dir.  Refresh the visible listing. |
-| C4 | **Filesystem operations** | Create a project (with full subdir skeleton).  Create a subdir.  Upload a file.  Delete an entry.  Rename an entry.  Navigate the sidebar into an arbitrary path. |
-| C5 | **Acquire/release the lock** | Begin a multi-step pipeline; declare cancelers; release in `finally`.  Query lock state. |
-| C6 | **Drive the Cancel button** | Run registered cancelers (no-op if unlocked).  Used by the in-banner Cancel button automatically; tab code rarely calls it directly. |
+| `saveToWorkspace(text, name)` | `writeFile(path, text)` | `saveToWorkspace` writes into the user's current cursor dir + is a no-op at root.  `writeFile` writes to an exact path the caller already computed.  Generator tabs use `saveToWorkspace`; programmatic flows use `writeFile`. |
+| `readCurrentFile()` | `readFile(path)` | `readCurrentFile` is the common case (preview, "load what's selected").  `readFile` is for explicit-path reads from tab code. |
+| `downloadFile(path)` | `readFile(path)` + `Blob` ceremony | `downloadFile` produces a browser-driven save dialog with the right filename; `readFile` returns text for in-app use. |
+| `upload(targetDir, file)` | `writeFile(path, text)` | Upload accepts arbitrary binary via multipart; write is text-only.  Upload's target is a directory; write's target is a full path. |
+| `lock()` + multi-step pipeline | One lock-free composite call | Multi-step crossings can fail per step; locking + per-step `AbortSignal` make recovery clean.  One mega-endpoint that does three things hides failure modes. |
 
-**All six are reachable from `window.molbuilder.projects.*`.**  Each
-async method returns a uniform `{ok, ...}` envelope (Principle 6).
-Each accepts an optional `{signal: AbortSignal}` so Cancel covers
-every in-flight call (Principle 6).
+### 5.3 Capability boundaries
 
-### 5.1 Capability boundaries
+Things tabs explicitly **cannot** do via the sidebar.  Each is a
+deliberate design choice traced to a principle.
 
-Things tabs explicitly **cannot** do via the sidebar:
-
-* Browse outside `projects/` — there is no API.
-* Multi-file selection — `current_file` is one slot.
-* Per-tab state — sessionStorage holds the cursor only.
-* Tab-aware behaviour — the sidebar has no notion of which tab is
-  active.
+| Cannot | Why |
+|---|---|
+| Browse outside `projects/` | Mission scope (§ 1).  Files outside come in via `upload`. |
+| Multi-file selection | Principle 1: one cursor pair.  Adding multi-slot is a design change. |
+| Per-tab state | Cursor is one slot, shared by all tabs on the page. |
+| Tab-aware behaviour | Principle 2: pull, don't push.  Sidebar has no notion of which tab is active. |
+| Persist a lock across page reload | Lock is per-page-load.  Reloading abandons the in-progress pipeline (the lock disappears with the closure).  Future workflow that needs durable locks would need server-side coordination — see M12. |
+| Concurrent locks (nested or parallel) | One lock at a time.  Principle: serialise pipelines, don't interleave. |
+| Force-write past a concurrent edit (no `expected_mtime`) | Possible (`overwrite: true`) but the contract requires explicit opt-in.  Default rejects on conflict. |
+| Compare across projects, search the tree, batch operations | Future capabilities.  Add them to this list with a design when needed. |
 
 If a future workflow needs one of these, propose a design change to
 this doc first.  Do not back-door it through `localStorage` or
-custom events.
+custom DOM events.
 
 ---
 
@@ -407,21 +467,57 @@ be reachable from a known state mutation; no state may appear
 ## 11. Failure modes
 
 Every failure the design anticipates and how it should be handled.
-"Should" — not necessarily "does today".
+"Should" — not necessarily "does today".  Failures group by source:
+network / backend / concurrency / user-action / browser-platform.
+
+### 11.1 Network + backend
 
 | Failure | Design response |
 |---|---|
-| Backend down at init (`/api/files/roots` 5xx or unreachable) | Sidebar shows "no roots configured" + offline indicator.  Lock UI works.  All public-API calls return `{ok:false, error}`.  No exceptions reach tab code. |
-| Backend down mid-session | Next `apiX` call returns `{ok:false, error}`.  Sidebar stays usable (last-known listing visible); next refresh shows the error.  No exceptions reach tab code. |
-| User clicks Cancel during step 1 of a save | The `AbortSignal` passed to `saveToWorkspace` aborts the fetch; the promise rejects with `AbortError`; the pipeline's `finally` unlocks; sidebar returns to idle. |
-| User navigates during a lock | Visually impossible: clicks pass through `pointer-events: none`.  No state mutation occurs. |
+| Backend down at init (`/api/files/roots` 5xx or unreachable) | Sidebar shows "no roots configured" + offline indicator.  Lock UI works (Principle 5).  All public-API calls return `{ok:false, error}`.  No exceptions reach tab code. |
+| Backend down mid-session | Next `apiX` call returns `{ok:false, error}`.  Sidebar stays usable (last-known listing visible); next refresh surfaces the error.  No exceptions reach tab code. |
+| Slow network (high latency, request taking seconds) | Per-call timeout policy: write/upload/delete are user-driven and may take as long as the lock; navigation calls (list/stat/read) have a generous default cap.  All calls cancellable via `AbortSignal`. |
+| Connection drops mid-transfer (upload / download) | Per-call envelope returns `{ok:false, error:"network interrupted"}`.  The user sees the failure inline; the partial state on the server depends on the endpoint (writes are atomic via temp+rename; uploads MAY leave a partial — backend cleans up).  No retry by the sidebar; explicit re-action by the user. |
+| HTTP returned non-JSON (proxy intercept, captive portal, browser interstitial) | Wrapper synthesises `{ok:false, error: "<status / message>"}`.  Never throws. |
+| Backend returned `401 / 403` (auth failure / session expired) | Treated as `{ok:false, error}`.  The error message carries the auth status; tabs may surface a "re-login" UI but the sidebar itself does not navigate or modal-prompt. |
+| Backend returned `429` (rate-limited) | Same envelope; the error includes the `Retry-After` if present.  Sidebar does not auto-retry. |
+| CORS / origin mismatch | Same envelope.  Caught at the network layer; the user sees the inline error and reads the docs. |
+
+### 11.2 Concurrency + sync (the remote-truth consequences)
+
+| Failure | Design response |
+|---|---|
+| Two browser tabs in the same project drift apart on cursor | Each tab holds its own sessionStorage cursor.  The design includes a `storage` event listener so navigation in tab A reflects in tab B (M6); cross-tab sync is bidirectional. |
+| Two tabs both start a save pipeline | Each holds its own lock independently — the backend doesn't enforce mutual exclusion.  Both pipelines proceed; the second's `expected_mtime` check (if used) catches the conflict on the write step. |
+| File deleted on remote between list and read | Read returns 404 → `{ok:false, error}`.  Sidebar's next refresh removes the entry.  No silent disappearance. |
+| File modified on remote since the cursor was set | Read returns the new content (no version pin on reads).  Write with `expected_mtime` returns 409.  Write without `expected_mtime` succeeds — caller opted in to "last writer wins". |
+| Concurrent edits in two tabs of the same file | Detected at write time via `expected_mtime`.  The second writer gets 409 + the actual server mtime in the response; the user re-reads and retries. |
+| Long-running remote operation (e.g. SIESTA writing the .out) holds an exclusive lock or POSIX lock | Reads of the file may return partial or zero bytes depending on the OS.  Backend returns success with whatever it could read.  This is OS behaviour, not a sidebar concern. |
+| Lock held by tab A; user opens tab B and starts a pipeline | Tab B gets its own lock (locks are per-page-load).  Both pipelines run; conflicts surface as 409 on `expected_mtime` mismatches at write time. |
+| Cursor points at a directory that was deleted on remote | Next list call fails with `{ok:false, error}`.  Sidebar surfaces the error inline; user navigates up via breadcrumb. |
+
+### 11.3 User-driven cancel + race
+
+| Failure | Design response |
+|---|---|
+| User clicks Cancel during step N of a save pipeline | The lock's cancelers fire `abort()`; every in-flight `apiX` with the shared `AbortSignal` rejects with `AbortError`; the pipeline's `finally` runs `unlock`; sidebar returns to idle.  Per-step coverage matters — Layer B (§ 8.2) is uniform across all steps including the first write. |
+| User clicks Cancel when no lock is held | No-op.  Documented behaviour.  The Cancel button is normally hidden when unlocked; the API tolerates a stale click. |
+| User navigates during a lock | Visually impossible: `.is-locked` CSS sets `pointer-events: none` on every direct child except the banner.  No state mutation occurs. |
+| Rapid double-click on a directory entry | Per-navigation `AbortController`: clicking a second directory aborts the first listing.  Last click wins; partial UI never renders.  No double-list. |
+| Reentry: `lock()` while already locked | Throws.  Intentional fail-fast — nested locks tangle Cancel semantics.  Pipelines compose into one outer lock or sequence with unlock between. |
 | Subscriber callback throws | Caught per-subscriber.  Other subscribers still fire.  Lock + cursor state unchanged. |
-| Two tabs in the same project | Each holds its own cursor in sessionStorage.  The design includes a `storage` event listener so navigation in tab A reflects in tab B; current code doesn't (gap M2). |
-| Network race on rapid clicks | The sidebar uses per-fetch AbortControllers for navigation too: clicking a second directory aborts the first listing.  Last click wins; partial UI never appears. |
-| Cancel clicked when no lock held | No-op.  Documented behaviour.  Cancel button is normally hidden when unlocked, but the API tolerates a stale click. |
-| Reentry: `lock()` while already locked | Throws.  Intentional fail-fast — nested locks tangle Cancel semantics.  Pipelines must compose into one outer lock or sequence with unlock between. |
-| Subscriber registered after first state change | Initial-fire-on-register means the subscriber gets the current state immediately; the "missed event" trap is structurally impossible. |
-| HTTP wrapper got non-JSON response (501 stub era, browser interstitial, etc.) | Wrapper synthesises `{ok:false, error: "<status / message>"}`.  Never throws. |
+
+### 11.4 Browser-platform edge cases
+
+| Failure | Design response |
+|---|---|
+| Subscriber registered after a state change | Initial-fire-on-register means the subscriber gets the current state immediately; the "missed event" trap is structurally impossible. |
+| Page reloaded mid-lock | Lock is per-page-load.  Reloading abandons the in-progress pipeline (the closure dies with the page).  The backend operation may complete or partial-complete; the sidebar shows no special "you were in a lock" state.  Durable cross-reload locks would need backend coordination (M12, future). |
+| Browser tab suspended (mobile, background tab) during a lock | `fetch` may pause; on resume, the call either completes or fails depending on connection.  Cancel button remains responsive (it's local-only).  No timeout from the sidebar side. |
+| User selects "Block scripts" mid-session | Public-API calls fail at the `fetch` layer → `{ok:false, error}`.  The sidebar UI keeps showing the last good state; explicit refresh surfaces the failure. |
+| `sessionStorage` write fails (quota, private-mode) | `setShared` falls back to in-memory state; cursor doesn't survive reload but the page continues to work.  Currently undetected; future hardening (M13). |
+| User uploads a file larger than the backend's `MAX_CONTENT_LENGTH` | Backend returns 413; wrapper returns `{ok:false, error: "file too large"}`.  No partial upload. |
+| Browser kills a slow `fetch` (Chrome's default ~5 min for hung requests) | The `AbortError` propagates the same as a user-cancel; pipeline `finally` cleans up. |
 
 ---
 
@@ -480,6 +576,15 @@ The migration items, ordered by impact.
 | M9 | `refreshHandler` is a 1-slot register; multiple consumers would need their own wrapping. | Convert to a `Set` if/when a second consumer arrives. |
 | M10 | Preview modal Save button is permanently disabled. | Either implement edit-and-save via the shipped `/api/files/write` endpoint or remove the button. |
 | M11 | Internal naming inconsistency: `publishSelectionChange` (no prefix) vs `_publishLockChange` (underscore prefix). | Pick one convention (recommend underscore-prefix for all internal-publish functions) and apply across the module. |
+
+### Open design questions (decide before coding)
+
+| ID | Question | Notes |
+|---|---|---|
+| M12 | **Durable locks across page reload?** | Today: lock dies with the page.  Pro: a reload during a save pipeline currently leaves the user confused about whether the operation finished.  Con: durable locks need backend coordination + a "release expired lock" policy.  Probably defer until a real workflow needs it. |
+| M13 | **`sessionStorage` write failure detection?** | Today: silent fallback to in-memory.  In private-browsing or quota-exhausted scenarios cursor doesn't survive reload.  Cheap fix: catch the `setItem` exception and degrade gracefully; surface a one-time warning. |
+| M14 | **Download UX**: in-tab progress vs browser-native? | C6 lists `downloadFile`.  Architecturally: streaming download with progress (vs `<a download>` with browser-native chrome).  Pros/cons not yet weighed; defer until first concrete use case. |
+| M15 | **Per-operation timeouts**: configurable vs fixed? | Today: no explicit timeouts beyond the browser's default `fetch` timeout (~5 min).  Question: should writes/uploads/deletes have user-visible "still running" indicators after N seconds?  Tied to the lock banner's bob animation but not exposed in the public API yet. |
 
 ---
 
