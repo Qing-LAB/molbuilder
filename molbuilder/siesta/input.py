@@ -46,25 +46,76 @@ from ..config.siesta import SiestaConfig
 # --------------------------------------------------------------------- #
 
 
-def _auto_block_size(n_atoms: int) -> int:
-    """Pick a SIESTA ``BlockSize`` that's safe across typical 1-8 MPI
-    rank counts for a structure of this many atoms.
+def _auto_block_size(n_atoms: int,
+                     mpi_np: Optional[int] = None) -> int:
+    """Pick a SIESTA ``BlockSize`` that's safe for an arbitrary MPI
+    rank count on a structure of ``n_atoms``.
 
-    The constraint that triggers ``propor: ERROR: IMAX = 0`` is
-    ``BlockSize > n_atoms`` -- when the BlockSize exceeds the atom
-    count, SIESTA's per-atom distribution pass ends up with one
-    partial block and 3+ ranks idle, and ``propor`` reports IMAX = 0.
+    Failure mode this guards against
+    ---------------------------------
+    SIESTA's per-atom distribution pass (``propor.f``) deals atoms to
+    ranks in cyclic blocks of ``BlockSize``: rank r holds atoms
+    ``r * BlockSize .. (r+1) * BlockSize - 1`` (mod the cyclic wrap).
+    Rank r gets at least ONE block iff ``r * BlockSize < n_atoms``;
+    rank ``Nrank - 1`` is the last to be served, so the global
+    constraint is
 
-    Returning a power of 2 that's at most ``n_atoms / 2`` guarantees
-    at least 2 atom blocks exist, so even on 1 rank the count is
-    well-defined.  Capped at 8 because larger values give negligible
-    performance benefit on the structures molbuilder typically
-    generates (peptides / DNA up to a few hundred atoms).
+        BlockSize  <=  floor(n_atoms / Nrank)         # every rank busy
+
+    Violating it leaves the last few ranks with zero atoms, and
+    ``propor`` aborts with ``ERROR: IMAX = 0``.  The classic
+    sighting (2026-05-28 hemeC-dithiol gasrun1): 81 atoms x 15 MPI
+    ranks with BlockSize = 8 left ranks 11-14 empty -> IMAX = 0.
+
+    Why not just always use BlockSize = 1
+    -------------------------------------
+    ScaLAPACK does fewer (but larger) memory transfers with larger
+    BlockSize, so taking the LARGEST safe value -- not the smallest
+    -- gives the best per-rank cache behaviour.  Power-of-2 is the
+    canonical heuristic (matches typical SIMD + cache-line widths).
+
+    Strategy
+    --------
+      * If mpi_np is None or 1 (caller doesn't know how many ranks
+        the run will use): fall back to a size-only ladder (1, 2, 4,
+        8 by n_atoms).  Capped at 8 here is a deliberately
+        conservative guess that's safe on ANY future rank count up
+        to ~n_atoms/8 -- with no knowledge of the rank count we
+        can't do better.  Pre-2026-05-28 this was the only code
+        path.
+
+      * If mpi_np >= 2 (caller passed the actual rank count, e.g.
+        from cfg.mpi_np in the FDF render path): pick the LARGEST
+        power of 2 satisfying the rank constraint
+        ``BlockSize <= floor(n_atoms / mpi_np)``.  No artificial
+        ceiling -- a 2000-atom run on 64 ranks correctly picks
+        BlockSize 32 here (floor(2000/64) = 31 -> pow2 16... wait
+        floor(2000/64) = 31, largest pow2 <= 31 is 16; the user
+        wanting 32 should bump mpi_np = 60 -> floor 33 -> pow2 32).
+
+    Returns
+    -------
+    A positive power of 2 safe for an MPI run of ``mpi_np`` ranks
+    (or any rank count when mpi_np is None or 1).
     """
-    if n_atoms >= 16:  return 8
-    if n_atoms >= 8:   return 4
-    if n_atoms >= 4:   return 2
-    return 1
+    if not mpi_np or int(mpi_np) <= 1:
+        # No rank info -- conservative size-only baseline.  Cap at 8
+        # is the historical safety choice; with mpi_np known we
+        # remove this ceiling below.
+        if   n_atoms >= 16:  return 8
+        elif n_atoms >=  8:  return 4
+        elif n_atoms >=  4:  return 2
+        else:                return 1
+    # Rank constraint: every rank must get >= 1 atom block, i.e.
+    # ``BlockSize <= floor(n_atoms / mpi_np)``.  Take the LARGEST
+    # power of 2 that satisfies it.  No artificial cap: scaling up
+    # naturally rewards bigger systems + more ranks with bigger
+    # BlockSize, which is what ScaLAPACK wants.
+    cap = max(1, n_atoms // int(mpi_np))
+    pow2 = 1
+    while pow2 * 2 <= cap:
+        pow2 *= 2
+    return pow2
 
 
 def _detect_species(elements: Iterable[str]) -> List[str]:
@@ -713,15 +764,26 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         "# orbital matrix but can be too large for the small per-atom",
         "# passes on small molecules, giving:",
         "#     propor: ERROR: IMAX = 0",
-        "# molbuilder picks a power-of-2 BlockSize from n_atoms:",
+        "# The real constraint (see siesta/input.py::_auto_block_size",
+        "# for the math) is:",
+        "#     BlockSize  <=  floor(n_atoms / Nrank)",
+        "# i.e. every MPI rank must get >= 1 atom block.  molbuilder",
+        "# picks the LARGEST power of 2 satisfying that constraint",
+        "# (bigger blocks help ScaLAPACK's cache behaviour, smaller",
+        "# blocks just leave perf on the table -- no upper cap when",
+        "# mpi_np is known).",
+        "# With mpi_np blank (single-process / unknown rank count) a",
+        "# conservative size-only ladder applies instead:",
         "#   n_atoms >= 16  ->  BlockSize 8   (typical molecules)",
         "#   n_atoms >=  8  ->  BlockSize 4",
         "#   n_atoms >=  4  ->  BlockSize 2",
         "#   smaller        ->  BlockSize 1",
-        "# This is conservative and rank-count-agnostic.  For >1000-",
-        "# atom systems on >=16 MPI ranks, raising to 16 or 32 helps",
-        "# ScaLAPACK efficiency by a few percent (override via",
-        "# cfg.parallel_block_size = 16).",
+        "# Example with mpi_np set: 81 atoms on 15 ranks -> floor(81/15)",
+        "# = 5 -> BlockSize 4 (not 8, which would leave ranks 11-14",
+        "# empty and abort at propor).  Big system + reasonable ranks",
+        "# scales naturally: 2000 atoms on 64 ranks -> floor(2000/64)",
+        "# = 31 -> BlockSize 16.  Override via cfg.parallel_block_size",
+        "# only for hand-tuned ScaLAPACK perf experiments.",
         "#",
         "# Diag.ParallelOverK: parallelise the diagonaliser over",
         "# k-points (.true.) or over orbitals (.false.).  Auto-",
@@ -729,7 +791,7 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         "# (molecule / vacuum), .true. for multi-k periodic runs.",
     ]
     if cfg.parallel_block_size is None:
-        block_size = _auto_block_size(struct.n_atoms)
+        block_size = _auto_block_size(struct.n_atoms, cfg.mpi_np)
     else:
         block_size = int(cfg.parallel_block_size)
     out.append(f"BlockSize          {block_size}")

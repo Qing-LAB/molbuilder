@@ -66,9 +66,10 @@ def test_render_fdf_dna_4mer():
 
 
 def test_block_size_auto_pick_rule():
-    """The auto-picked BlockSize must satisfy ``BlockSize <= n_atoms``
-    (otherwise SIESTA's per-atom distribution pass hits propor IMAX=0
-    on multi-rank MPI runs)."""
+    """Size-only baseline (mpi_np unknown or 1).  The auto-picked
+    BlockSize must satisfy ``BlockSize <= n_atoms`` (otherwise
+    SIESTA's per-atom distribution pass hits propor IMAX=0 on
+    multi-rank MPI runs)."""
     from molbuilder.siesta import _auto_block_size
     # Known thresholds: each step at a power-of-2 boundary.
     assert _auto_block_size(2)  == 1
@@ -80,10 +81,100 @@ def test_block_size_auto_pick_rule():
     assert _auto_block_size(16) == 8
     assert _auto_block_size(50) == 8
     assert _auto_block_size(500) == 8
+    # Explicit mpi_np=1 must behave the same as None.  Single-process
+    # has no rank-constraint to apply.
+    assert _auto_block_size(81, None) == 8
+    assert _auto_block_size(81, 1)    == 8
     # Invariant: BlockSize must never exceed n_atoms (the trigger
     # condition for `propor: ERROR: IMAX = 0`).
     for n in range(1, 64):
         assert _auto_block_size(n) <= n, n
+
+
+def test_block_size_honours_mpi_rank_constraint():
+    """With mpi_np set, BlockSize must satisfy ``BlockSize * mpi_np
+    <= n_atoms`` so every rank gets >= 1 block.  Violating this is
+    the 2026-05-28 hemeC-dithiol failure (81 atoms x 15 ranks ->
+    BlockSize 8 left ranks 11-14 empty -> propor IMAX=0 abort)."""
+    from molbuilder.siesta import _auto_block_size
+
+    # The hemeC sighting itself.  Without rank-awareness the function
+    # returned 8 (size-only baseline) which crashed the run.
+    assert _auto_block_size(81, mpi_np=15) == 4
+
+    # A few more cases sweeping the rank constraint.  With mpi_np
+    # known there is NO artificial cap -- BlockSize scales up
+    # naturally as the system + rank count grow (ScaLAPACK wants
+    # bigger blocks for cache efficiency on big matrices).
+    # 200 atoms / 16 ranks -> floor = 12, largest pow2 <= 12 is 8.
+    assert _auto_block_size(200, mpi_np=16) == 8
+    # 2000 atoms / 64 ranks -> floor = 31, largest pow2 <= 31 is 16.
+    # (Before the cap-removal this was clamped to 8.)
+    assert _auto_block_size(2000, mpi_np=64) == 16
+    # 10000 atoms / 32 ranks -> floor = 312, largest pow2 <= 312 is
+    # 256.  Big system + few ranks -> big BlockSize, as ScaLAPACK
+    # wants.
+    assert _auto_block_size(10000, mpi_np=32) == 256
+    # 100 atoms / 16 ranks -> floor = 6, largest pow2 <= 6 is 4.
+    assert _auto_block_size(100, mpi_np=16) == 4
+    # 80 atoms / 32 ranks -> floor = 2, pow2 = 2.
+    assert _auto_block_size(80, mpi_np=32) == 2
+    # 20 atoms / 32 ranks (oversubscribed: rank > atoms) -> floor=0
+    # -> cap=1 -> pow2 1.  No choice of BlockSize >= 1 can give
+    # every rank a block here; the right user fix is lower mpi_np.
+    assert _auto_block_size(20, mpi_np=32) == 1
+    # 17 atoms / 4 ranks -> floor = 4, pow2 = 4.
+    assert _auto_block_size(17, mpi_np=4) == 4
+    # Universal invariant: with mpi_np set AND mpi_np <= n_atoms,
+    # BlockSize * mpi_np must NEVER exceed n_atoms + (BlockSize - 1).
+    # When mpi_np > n_atoms the run is OVERSUBSCRIBED -- no choice of
+    # BlockSize >= 1 can give every rank a block (mathematically
+    # impossible).  We floor at BlockSize=1 and let SIESTA report
+    # propor IMAX=0 for the trailing ranks; the right user fix is to
+    # lower mpi_np, not change BlockSize.
+    for n in (5, 7, 11, 17, 19, 31, 47, 81, 199, 250):
+        for r in (1, 2, 4, 7, 15, 16, 32, 64):
+            bs = _auto_block_size(n, mpi_np=r)
+            assert bs >= 1, f"BlockSize must be >=1, got {bs}"
+            if 2 <= r <= n:
+                assert bs * r <= n + (bs - 1), (
+                    f"BlockSize={bs} x mpi_np={r} > n_atoms={n} "
+                    f"-- last rank would be empty (propor IMAX=0)"
+                )
+
+
+def test_fdf_picks_safe_blocksize_for_hemec_case():
+    """End-to-end: render an FDF for 81 atoms with mpi_np=15 (the
+    exact 2026-05-28 hemeC-dithiol failure) and assert the emitted
+    BlockSize is 4 (or smaller), not 8."""
+    import re
+    import numpy as np
+    from molbuilder.structure import Structure
+    # 81 atoms on a coarse 1.5-Å lattice so geometry preflight doesn't
+    # complain about atom overlaps (BlockSize math is independent of
+    # the positions; we only need n_atoms to be 81).
+    side = int(np.ceil(81 ** (1 / 3)))      # 5 -> 5^3 = 125 cells, 81 used
+    coords = np.array([
+        [i * 1.5, j * 1.5, k * 1.5]
+        for i in range(side) for j in range(side) for k in range(side)
+    ])[:81]
+    s = Structure(
+        elements=["C"] * 81,
+        positions=coords,
+        title="hemeC-shaped",
+    )
+    cfg = SiestaConfig(mpi_np=15, relax_type="none")
+    fdf = render_fdf(s, cfg)
+    m = re.search(r"^BlockSize\s+(\d+)", fdf, re.MULTILINE)
+    assert m, "FDF must carry an explicit BlockSize line"
+    bs = int(m.group(1))
+    # Strict: must be 4 (the rank-aware pick); a regression that
+    # returns the old 8 would fail here.
+    assert bs == 4, f"expected BlockSize=4 for 81 atoms x 15 ranks, got {bs}"
+    # And the universal invariant: BlockSize x mpi_np <= n_atoms + slack.
+    assert bs * 15 <= 81 + (bs - 1), (
+        f"emitted BlockSize={bs} would leave trailing ranks empty"
+    )
 
 
 def test_fdf_emits_explicit_blocksize_and_paralleloverk(tmp_path):

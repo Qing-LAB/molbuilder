@@ -541,7 +541,17 @@ class SiestaConfig:
         "engine_key":  'BlockSize',
         "id_suffix": "block-size",
         "null_label": "(auto)",
-        "help": "MPI block size; None=auto (power-of-2 from n_atoms)",
+        "help": "ScaLAPACK BlockSize for orbital + per-atom "
+                "distribution.  None = auto: largest power of 2 that "
+                "satisfies BOTH the size-only cap (8 for cache "
+                "efficiency on typical molecules) AND the rank "
+                "constraint (every MPI rank must get >= 1 atom "
+                "block, i.e. BlockSize <= floor(n_atoms / mpi_np)).  "
+                "Violating the rank constraint aborts SIESTA with "
+                "``propor: ERROR: IMAX = 0`` -- the propor pass "
+                "leaves trailing ranks empty.  Set explicitly only "
+                "for the rare ScaLAPACK perf-tuning case (>1000 "
+                "atoms on >= 16 ranks, where 16 or 32 helps).",
         "skip_cli": True,
     })
     parallel_over_k: Optional[bool] = field(default=None, metadata={
