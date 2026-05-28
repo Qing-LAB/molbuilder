@@ -1,817 +1,330 @@
-# Projects sidebar — sole source of truth
+# Projects sidebar — architectural design
 
-**Status**: canonical reference for the Projects sidebar.  Everything
-another module needs to consume the sidebar — API, data shapes, CSS
-classes, integration patterns, lifecycle, visual states — lives here.
+**Status**: design reference.  Defines the target architecture — the
+mission, principles, capabilities, lifecycle, failure-mode coverage —
+that the sidebar should embody.  Current code is transitional; the
+migration plan from current shape to designed shape lives in § 13.
 
-**Contract**: when this doc and the code disagree, ONE of them is
-wrong.  Fix the disagreement in the same commit; never let one outrun
-the other.  Reviewers reject PRs that change sidebar behaviour
-without a matching doc update.
+When this doc and existing code disagree, **the doc wins** until a
+deliberate design change updates the doc.  Code changes are reviewed
+against the doc, not against other code.
 
-**Related (referenced, not duplicated)**:
-* [`selection.md`](selection.md) — the cursor model + tab integration
-  contract.  This doc embeds its main concepts inline (so you can
-  read this alone) but defers to selection.md for boundary cases
-  (multi-tab semantics, anti-pattern history).
-* [`web-api.md`](web-api.md) — the `/api/files/*` backend protocol.
-
-**Code map** (file → ownership; see § 3 for details):
-
-```
-molbuilder/web/templates/_projects_sidebar.html      template
-molbuilder/web/static/lib/projects-sidebar.css       styles
-molbuilder/web/static/lib/projects-sidebar.js        entry / bootstrap
-molbuilder/web/static/lib/projects/api.js            HTTP wrappers
-molbuilder/web/static/lib/projects/state.js          state + public API
-molbuilder/web/static/lib/projects/list.js           list + breadcrumb + lock UI
-molbuilder/web/static/lib/projects/forms.js          create / mkdir / upload forms
-molbuilder/web/static/lib/projects/preview.js        preview modal
-molbuilder/web/blueprints/files.py                   /api/files/* backend
-molbuilder/web/blueprints/projects.py                /api/projects/create backend
-tests/test_web_files.py                              backend tests
-tests/test_projects.py                               project-create tests
-tests/test_sidebar_lock_api.py                       Playwright: lock + visibility
-```
+**Related design surfaces**:
+* [`selection.md`](selection.md) — the selection-cursor contract; this
+  doc references it for cursor semantics and tab integration history.
+* [`web-api.md`](web-api.md) — backend endpoint envelope shapes.
 
 ---
 
-## 1. Goal
+## 1. Mission
 
-A single, **content-agnostic** file browser pinned to the left of every
-main tab.  It owns:
+A single, content-agnostic file browser pinned to the left of every
+main tab.  It owns the user's notion of "where am I working" and
+mediates every filesystem mutation that touches `projects/`.
 
-* **One cursor pair** — `(current_dir, current_file)` — that any tab
-  can read or subscribe to.
-* **Primitives** — list / read / write / mkdir / upload / delete /
-  create-project — backed by the `/api/files/*` and
-  `/api/projects/*` HTTP endpoints.
-* **A sidebar-wide lock** — long-running multi-step pipelines (Save
-  FDF + install pseudos + install wrapper) acquire it so the user
-  can't re-navigate mid-pipeline and silently retarget a downstream
-  step.
+**The sidebar is passive.**  It publishes; tabs subscribe.  It never
+triggers a tab's loader, navigates between tabs, or knows which tab
+consumes which file type.  Tabs read the cursor when they need to and
+react to changes when they want to.
 
-The sidebar is **passive**: it publishes state changes; tabs subscribe
-and decide what to do.  The sidebar never triggers tab loaders,
-navigates between tabs, or knows which tab consumes which file type.
+**The sidebar is scoped to `projects/`.**  Files outside that root
+enter via upload; files leave only by being moved out of the tree
+manually.  The picker has no concept of arbitrary filesystem
+browsing.
 
 ---
 
-## 2. Scope (what it does / does not do)
+## 2. Architectural principles
 
-| Does | Does NOT |
-|---|---|
-| Browse `projects/` (the only allowed root) | Browse anywhere outside `projects/` |
-| Hold the current cursor in sessionStorage | Hold any per-tab state |
-| Provide `read/write/mkdir/upload/delete/createProject` API | Implement format-specific logic (XYZ, FDF, PDB parsing) |
-| Lock itself during multi-step save pipelines | Track per-tab busy state |
-| Show a preview modal for `getCurrentFile()` | Mount tab-specific UIs (3Dmol, Plotly, etc.) |
-| Render its own list / breadcrumb / forms / modal | Auto-load any file into any tab |
-| Fire publish events when state changes | Poll for changes (subscribers must opt in) |
+The six load-bearing rules.  Every design decision below traces to
+one of these.
 
----
+1. **One cursor pair.**  `(current_dir, current_file)` covers every
+   v1 workflow.  Multi-slot cursors (`input_structure`,
+   `compare_file`, …) are a future extension only when a real
+   multi-input workflow earns it.  See [selection.md § 7](selection.md).
 
-## 3. Architecture
+2. **Pull, don't push.**  The sidebar exposes inquire-and-subscribe
+   APIs; tabs read what they need when they need it.  The sidebar
+   never reaches into a tab.  Adding a new tab is zero sidebar code.
 
-### 3.1 Module split
+3. **State is authoritative; DOM is derived.**  Cursor lives in
+   sessionStorage.  Lock + projects-root + subscribers live in
+   in-memory variables.  DOM is a function of state — rebuilt from
+   subscribers when state changes.  Never the other way around.
 
-| Module | Owns | Imports | Imported by |
-|---|---|---|---|
-| `projects-sidebar.js` | bootstrap order; mounts `window.molbuilder.projects` | api, state, list, forms, preview | template `<script type="module">` |
-| `projects/api.js` | HTTP wrappers; no state, no DOM | nothing | state, list, forms |
-| `projects/state.js` | sessionStorage cursor; module-private subscriber sets; lock state; public Inquire API | api | list, forms, preview, sidebar |
-| `projects/list.js` | breadcrumb + entry list DOM; per-entry buttons; `openDir`; **lock-UI subscription (`initLockUI`)** | state, api, preview | sidebar |
-| `projects/forms.js` | New project / New subdir / Upload forms; depth-aware visibility | state, api, list | sidebar |
-| `projects/preview.js` | file preview modal | state | sidebar, list |
+4. **Mutators publish.**  Every state mutation goes through a
+   designated function that writes the store AND fires subscribers.
+   No mutation skips the publish; no DOM update happens without a
+   state event behind it.
 
-**Hard rule**: no module reads another module's "private" closure
-state.  All cross-module communication goes through the exported APIs
-in § 6.
+5. **UI wiring decouples from data wiring.**  Anything that must
+   work regardless of project-root state — lock UI, future
+   diagnostics, future cross-tab listener — wires unconditionally
+   at module load.  Anything that has no meaning without a project
+   root wires only after `apiRoots()` resolves.  The two phases
+   must not share an `init()` step.
 
-#### Module dependency graph
-
-Arrows go from *importer* to *imported*.  `api.js` has no inbound
-arrows from sidebar code — it's a pure leaf module.  `state.js` is
-the central hub; if you need to know "where does X live?" the answer
-is usually here.
-
-```mermaid
-flowchart TD
-    template["_projects_sidebar.html<br/>(Jinja partial)"]
-    entry["projects-sidebar.js<br/>(entry / bootstrap)"]
-    state["projects/state.js<br/>(state + public API)"]
-    api["projects/api.js<br/>(HTTP wrappers)"]
-    list["projects/list.js<br/>(list + lock UI)"]
-    forms["projects/forms.js<br/>(create / mkdir / upload)"]
-    preview["projects/preview.js<br/>(preview modal)"]
-    backend["Flask blueprints<br/>/api/files/* + /api/projects/*"]
-
-    template -.includes.-> entry
-    entry --> state
-    entry --> list
-    entry --> forms
-    entry --> preview
-    list --> state
-    list --> api
-    list --> preview
-    forms --> state
-    forms --> api
-    forms --> list
-    preview --> state
-    state --> api
-    api -.HTTP.-> backend
-```
-
-### 3.2 Where data lives
-
-Three layers of state, listed from most authoritative to most
-derived.  Reading any layer is fine; writing must go through the
-designated function (§ 12).
-
-```mermaid
-flowchart TB
-    subgraph storage["sessionStorage (persistent per browser tab)"]
-        direction LR
-        cd["molbuilder.current_dir"]
-        cf["molbuilder.current_file"]
-    end
-
-    subgraph mem["state.js — in-memory variables (per page load)"]
-        direction LR
-        root["projectsRoot<br/>(string)"]
-        rh["refreshHandler<br/>(1 slot)"]
-        ssubs["selectionSubscribers<br/>(Set of callbacks)"]
-        lsubs["lockSubscribers<br/>(Set of callbacks)"]
-        ls["lockState<br/>(null | {reason, cancelers})"]
-    end
-
-    subgraph dom["DOM — derived (rebuilt from state)"]
-        direction LR
-        sel[".ps-entry.is-selected<br/>highlight"]
-        lck[".projects-sidebar.is-locked<br/>fade + disable"]
-        ban[".ps-lock-banner[hidden]<br/>banner visibility"]
-    end
-
-    storage -->|read by setShared| ssubs
-    ls -->|read by lock/unlock| lsubs
-    ssubs -.->|publish fires<br/>each callback| sel
-    lsubs -.->|publish fires<br/>each callback| lck
-    lsubs -.->|publish fires<br/>each callback| ban
-```
-
-**The DOM is derived state.**  Authoritative state lives in
-sessionStorage (cursor) and the in-memory variables (lock +
-subscribers + root).  Every DOM update must trace back to a state
-mutation that published a change — never the reverse.
+6. **Uniform envelopes; no thrown errors at the public surface.**
+   Every async public method returns `{ok: true, ...}` or
+   `{ok: false, error}` (or `null` for documented no-ops).  Tabs
+   NEVER need `try/catch`.  Every async public method also accepts
+   an optional `AbortSignal` so a lock's Cancel button can abort
+   anything in flight.
 
 ---
 
-## 4. Initialization lifecycle
-
-### 4.1 Module load (synchronous, before `DOMContentLoaded`)
-
-1. `state.js` evaluated → `projects` object created; subscriber sets
-   created (empty).
-2. `projects-sidebar.js`: `window.molbuilder.projects = projects` —
-   **public API is reachable from this instant**, before `init()`
-   runs.  `lock()` / `getCurrentDir()` / `onChange()` all work; only
-   DOM-rendered effects of state changes are gated on init.
-3. Optional: registered in `window.molbuilder.runtime` (for
-   `whenReady("projects")`).
-
-### 4.2 `init()` (async, on `DOMContentLoaded`)
-
-```js
-async function init() {
-  const sidebar = document.getElementById("projects-sidebar");
-  if (!sidebar) return;       // (a) partial not included on this page
-
-  initLockUI();               // (b) UNCONDITIONAL DOM wiring
-
-  const roots = await apiRoots();
-  if (roots.length === 0) {
-    return;                   // (c) "no projects root" UX path
-  }
-  setProjectsRoot(roots[0].path);
-
-  initList();                 // (d) data-dependent DOM wiring
-  initForms();
-  initPreview();
-
-  await openDir(start);       // (e) first directory listing
-  restoreSelection();
-}
-```
-
-#### Visual lifecycle
-
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Browser
-    participant Sidebar as projects-sidebar.js
-    participant State as state.js
-    participant List as list.js
-    participant Backend as /api/files/*
-
-    Note over Browser,State: Module load (synchronous, before DOMContentLoaded)
-    Browser->>State: import {projects, ...}
-    Browser->>Sidebar: import init / projects
-    Sidebar->>Sidebar: window.molbuilder.projects = projects
-    Note right of Sidebar: PUBLIC API REACHABLE FROM HERE — tabs can already call lock() / onChange() etc.
-
-    Note over Browser: DOMContentLoaded fires
-    Browser->>Sidebar: init()
-    Sidebar->>Sidebar: getElementById("projects-sidebar")
-    alt partial not on this page
-        Sidebar-->>Browser: return (silent)
-    end
-
-    rect rgb(232, 248, 232)
-    Note over Sidebar,List: STEP (b) — UNCONDITIONAL UI WIRING
-    Sidebar->>List: initLockUI()
-    List->>State: onLockChange(_applyLockVisual)
-    List->>Browser: document.addEventListener("click", ...) — delegated Cancel
-    end
-
-    Sidebar->>Backend: GET /api/files/roots
-    Backend-->>Sidebar: {roots: [...]} or {roots: []}
-
-    alt roots empty
-        Sidebar->>List: show "no roots" error in list
-        Sidebar-->>Browser: return
-        Note right of Sidebar: lock UI is STILL wired — Save pipelines still lock correctly
-    end
-
-    rect rgb(232, 240, 252)
-    Note over Sidebar,Backend: STEP (d) — DATA-DEPENDENT UI WIRING
-    Sidebar->>State: setProjectsRoot(roots[0].path)
-    Sidebar->>List: initList()
-    Sidebar->>Sidebar: initForms()
-    Sidebar->>Sidebar: initPreview()
-    Sidebar->>List: openDir(start)
-    List->>Backend: GET /api/files/list?path=...
-    Backend-->>List: {ok, entries}
-    List->>State: setShared(resp.path, keptFile)
-    State-->>List: publishSelectionChange() — fires subscribers
-    end
-```
-
-### 4.3 The load-bearing rule
-
-> **DOM wiring that must work regardless of project-root state belongs
-> in step (b) or earlier.  DOM wiring that genuinely depends on
-> project-listing data belongs in step (d).**
-
-Lock UI is in (b) so a Save pipeline can lock the sidebar even if no
-`projects/` root exists.  Selection rendering + create-forms are in
-(d) because they have no meaning without a project root.
-
-**When in doubt, default to (b).**  Wiring something unconditionally
-that turns out unnecessary costs nothing; gating something on data
-that doesn't arrive produces a silent "click does nothing" — the bug
-class we keep hitting (2026-05-28 sighting).
-
-### 4.4 Pages that include the sidebar
-
-`index.html` (Build), `modify.html`, `spectra.html`, `results.html`.
-Each does:
-
-```jinja
-{% include "_projects_sidebar.html" %}
-...
-<script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
-```
-
-`<body class="has-projects-sidebar">` is set **server-side** in each
-template (NOT toggled by JS) so CSS reserves left-padding from first
-paint.
-
----
-
-## 5. Data model — all shapes
-
-### 5.1 sessionStorage keys
-
-```
-molbuilder.current_dir    string  absolute path, always inside projects/
-molbuilder.current_file   string  absolute path, "" when only browsing
-```
-
-Always coherent: `current_file === ""` OR `current_file` is a file
-whose parent is `current_dir`.  Mutating one without the other through
-a path other than `setShared(dir, file)` is forbidden.
-
-### 5.2 Subscription payloads
-
-```ts
-// onChange(cb)  — fires on cursor mutations + once on register
-SelectionPayload = {
-  dir:  string,   // current_dir
-  file: string,   // current_file ("" when only browsing)
-}
-
-// onLockChange(cb)  — fires on lock transitions + once on register
-LockPayload = {
-  locked: boolean,
-  reason: string,   // "" when unlocked, else the message passed to lock()
-}
-```
-
-### 5.3 Lock state (internal)
-
-```ts
-LockState =
-  | null                              // unlocked
-  | {
-      reason: string,
-      cancelers: Array<() => void>,
-    }
-```
-
-`null` means unlocked.  `lock()` creates the `{reason, cancelers}`
-object; `unlock()` resets to `null`.  Re-entry (`lock()` while
-`lockState !== null`) **throws** — nested locks would tangle Cancel
-semantics.
-
-### 5.4 Return shapes from the public API
-
-```ts
-// writeFile / saveToWorkspace success
-WriteOk = {
-  ok:      true,
-  path:    string,    // absolute path written
-  relPath: string,    // path shortened to projects/...
-  size:    number,    // bytes written
-  mtime:   number,    // unix epoch (server's clock)
-}
-
-// writeFile / saveToWorkspace failure
-WriteErr = { ok: false, error: string }
-
-// saveToWorkspace also returns null when atRoot() is true (silent skip)
-SaveToWorkspaceReturn = WriteOk | WriteErr | null
-
-// readCurrentFile
-ReadResult = { path: string, text: string } | null
-```
-
-### 5.5 Backend `/api/files/*` envelopes (relevant subset)
-
-```ts
-// GET /api/files/roots
-RootsResp = { roots: Array<{ path: string, /* …other meta… */ }> }
-
-// GET /api/files/list?path=…
-ListResp = {
-  ok:      boolean,
-  path:    string,            // canonical resolution of input path
-  entries: Array<{
-    name: string,
-    kind: "file" | "directory" | "symlink",
-    size: number | null,      // null for non-files
-  }>,
-  error?:  string,
-}
-
-// GET /api/files/read?path=…
-ReadResp = { ok: true, path: string, text: string } | { ok: false, error: string }
-
-// POST /api/files/mkdir
-MkdirResp = { ok: true, path: string } | { ok: false, error: string }
-```
-
-Full backend contract: see [selection.md § 6](selection.md) and
-[web-api.md](web-api.md).
-
----
-
-## 6. Public API reference
-
-All methods live under `window.molbuilder.projects.*`.  Stable
-surface — adding / changing a method requires updating this section
-AND, if cursor semantics change, updating [selection.md § 3](selection.md).
-
-#### API surface at a glance
-
-What each public method ultimately reads or writes.  Read methods
-return synchronously from in-memory state; write methods hit the
-backend over HTTP.
+## 3. Where the sidebar sits
 
 ```mermaid
 flowchart LR
-    subgraph public["Public API — window.molbuilder.projects.*"]
-        gd["getCurrentDir()"]
-        gf["getCurrentFile()"]
-        gp["getProjectsRoot()"]
-        ar["atRoot()"]
-        il["isLocked()"]
-        glr["getLockReason()"]
-        rtp["relativeToProjects(p)"]
-        oc["onChange(cb)"]
-        olc["onLockChange(cb)"]
-        rcf["readCurrentFile()"]
-        wf["writeFile(p,t)"]
-        stw["saveToWorkspace(t,n)"]
-        rfsh["refresh()"]
-        lk["lock(reason,cancelers)"]
-        ulk["unlock()"]
-        cln["cancelLockedOperation()"]
+    user(("user"))
+
+    subgraph page["Page (one per tab)"]
+        tabs["Tab UI<br/>(Build / Modify /<br/>Spectra / Results)"]
+        sidebar["Projects sidebar"]
     end
 
-    subgraph storage["sessionStorage"]
-        cd["current_dir"]
-        cf["current_file"]
-    end
+    runtime["molbuilder.runtime<br/>(module registry)"]
+    backend["Flask backend<br/>/api/files/* + /api/projects/*"]
+    fs[(projects/<br/>filesystem)]
 
-    subgraph mem["state.js in-memory variables"]
-        rt["projectsRoot"]
-        ls["lockState"]
-        ss["selectionSubscribers"]
-        lsb["lockSubscribers"]
-    end
-
-    subgraph http["HTTP backend"]
-        eRead["GET /api/files/read"]
-        eWrite["POST /api/files/write"]
-        eList["GET /api/files/list"]
-    end
-
-    gd --> cd
-    gf --> cf
-    gp --> rt
-    ar --> cd
-    rtp --> rt
-    il --> ls
-    glr --> ls
-    oc --> ss
-    olc --> lsb
-    lk --> ls
-    ulk --> ls
-    cln --> ls
-    rcf --> eRead
-    wf --> eWrite
-    stw --> wf
-    rfsh --> eList
+    user -->|click| sidebar
+    user -->|click| tabs
+    sidebar -.publishes.-> tabs
+    tabs -.reads cursor.-> sidebar
+    sidebar -.HTTP.-> backend
+    backend --> fs
+    sidebar -->|register| runtime
+    tabs -->|whenReady| runtime
 ```
 
-### 6.1 Selection (read)
-
-| Method | Signature | Returns | Notes |
-|---|---|---|---|
-| `getCurrentDir()` | `() => string` | `current_dir` | Always set after init. `""` only before init OR if no projects root. |
-| `getCurrentFile()` | `() => string` | `current_file` | `""` when only browsing. |
-| `getProjectsRoot()` | `() => string` | `projectsRoot` | `""` until `apiRoots()` resolved. |
-| `atRoot()` | `() => boolean` | true iff `current_dir` is unset or equals `projectsRoot` | Use this — not raw `!!dir` — for "can saveToWorkspace land here". |
-| `relativeToProjects(path)` | `(string) => string` | display-shortened path | Shortens an absolute path to its `projects/…`-relative tail. |
-| `isLocked()` | `() => boolean` | true iff a lock is currently held | |
-| `getLockReason()` | `() => string` | the message passed to `lock()` | `""` when unlocked. |
-
-### 6.2 Selection (write)
-
-| Method | Signature | Returns | Effect |
-|---|---|---|---|
-| `writeFile(path, text, opts?)` | `(string, string, {overwrite?, expected_mtime?}) => Promise<WriteOk \| WriteErr>` | success or error | Writes to exact path via `/api/files/write`. Auto-refreshes sidebar if the write landed in current dir. |
-| `saveToWorkspace(text, filename, opts?)` | `(string, string, {overwrite?, expected_mtime?}) => Promise<SaveToWorkspaceReturn>` | success / error / `null` | Convenience: writes to `<current_dir>/<filename>`. Returns `null` (no error) when `atRoot()` is true — callers fall back to a local Download. |
-| `readCurrentFile()` | `() => Promise<ReadResult>` | `{path, text}` or `null` | Convenience wrapper over `/api/files/read`. |
-| `refresh()` | `() => Promise<void>` | `void` | Re-list the current directory. No-op + console warning if `setRefreshHandler` wasn't called (init order broken). |
-
-### 6.3 Subscriptions
-
-Both subscriptions follow the **fire-once-immediately** rule: `cb()`
-is invoked synchronously at registration with the current state, so
-subscribers can initialise without a separate `getCurrent*()` call AND
-can't miss the "first" event by subscribing too late.
-
-| Method | Signature | Fires with |
-|---|---|---|
-| `onChange(cb)` | `(cb: (SelectionPayload) => void) => UnsubscribeFn` | Cursor mutations (via `setShared`) + initial state |
-| `onLockChange(cb)` | `(cb: (LockPayload) => void) => UnsubscribeFn` | Lock transitions (`lock` / `unlock`) + initial state |
-
-`UnsubscribeFn = () => void` — call it to remove the subscriber.
-
-### 6.4 Lock
-
-| Method | Signature | Behaviour |
-|---|---|---|
-| `lock(reason, cancelers)` | `(string, Array<()=>void>) => LockState` | Acquires the lock. **Throws** if already locked. `cancelers` is a list of zero-arg functions the Cancel button will invoke. |
-| `unlock()` | `() => void` | Releases the lock. **Idempotent** — safe to call when already unlocked. |
-| `cancelLockedOperation()` | `() => void` | Runs cancelers in order, swallowing per-canceler exceptions. **Does NOT itself unlock** — the operation's own `try { } finally { unlock() }` is responsible after abort unwinds. Safe no-op when unlocked. |
-
-### 6.5 Calling conventions
-
-* All async methods return Promises that **never throw** — failures
-  come back in the result envelope (`{ok: false, error}`).  Callers
-  display `error` verbatim; backend messages are already actionable.
-* Synchronous methods on the API surface never throw EXCEPT `lock()`
-  (reentry; intentional fail-fast).
-* `onChange` / `onLockChange` callbacks may throw — the publish loop
-  catches per-subscriber and continues so one bad subscriber can't
-  break the rest.
+Tabs and the sidebar live in the same page; the sidebar exposes a
+global API (`window.molbuilder.projects.*`) and registers itself in
+the runtime module registry so tab JS can `whenReady("projects")`
+instead of polling.  The backend is the source of truth for what's
+on disk; the sidebar holds a current cursor + a cache of one
+directory listing at a time.
 
 ---
 
-## 7. Interaction with other modules
+## 4. State model
 
-Every page that loads the sidebar can consume it the same way.  Three
-canonical integration patterns:
+The sidebar holds exactly three things.
 
-### 7.1 Read-on-demand (any tab)
+### 4.1 Cursor
 
-```js
-const proj = window.molbuilder.projects;
-const path = proj.getCurrentFile();
-if (path) {
-    const r = await proj.readCurrentFile();
-    if (r) doSomethingWith(r.text);
-}
+Where the user is looking.  Two slots, always coherent:
+
+* **`current_dir`** — the directory being shown.  Always inside the
+  resolved root.
+* **`current_file`** — the highlighted file, or empty when only
+  browsing.
+
+Lives in `sessionStorage` so it survives reloads within a tab.  Set
+exclusively by the cursor mutator; mutation fires `onChange`.
+
+### 4.2 Resolved root
+
+The absolute path of the project tree the backend is serving (e.g.
+`/home/.../projects`).  Resolved once at init by asking the
+backend; immutable thereafter for the page's lifetime.
+
+Empty before init; non-empty after.  Tabs that need it early use
+the runtime registry's `whenReady("projects")` instead of polling.
+
+### 4.3 Lock state
+
+`null` (unlocked) OR `{reason, cancelers}` (a multi-step pipeline is
+in progress).  Mutated only via `lock()` / `unlock()`; mutation
+fires `onLockChange`.  Re-entry forbidden: a second `lock()` while
+held throws.
+
+```mermaid
+flowchart TB
+    subgraph store["sessionStorage<br/>(persistent per browser tab)"]
+        cursor["current_dir<br/>current_file"]
+    end
+
+    subgraph mem["state.js — in-memory variables<br/>(per page load)"]
+        root["projectsRoot"]
+        lock["lockState<br/>(null | {reason, cancelers})"]
+        subs["subscribers<br/>(selection + lock)"]
+    end
+
+    subgraph dom["DOM — derived<br/>(rebuilt from state)"]
+        listEntries["entry list +<br/>.is-selected highlight"]
+        banner["lock banner +<br/>.is-locked overlay"]
+    end
+
+    cursor -.publishes.-> subs
+    lock -.publishes.-> subs
+    subs -->|update| listEntries
+    subs -->|update| banner
 ```
 
-Use for one-shot "give me what's selected right now" — Build form's
-psml_lib live-resolution, viewer3D's "load this file" on click, etc.
+**DOM is derived from state.**  Every visual update traces back to a
+state mutation that published a change.
 
-### 7.2 Subscribe (Build, Modify, Spectra, Watch)
+---
 
-```js
-const proj = window.molbuilder.projects;
+## 5. Capabilities (what tabs can do)
 
-const unsubscribe = proj.onChange(({dir, file}) => {
-    // Re-render any tab UI that depends on what's selected.
-    refreshSaveButtonAvailability(dir);
-    updateWorkspaceLabel(dir);
-});
+A tab interacting with the sidebar can do exactly six things.
+Implementation-level method signatures are in the source modules;
+what matters architecturally is the six capability buckets.
 
-// On page teardown (rarely needed for full-page reloads):
-// unsubscribe();
-```
+| # | Capability | What it covers |
+|---|---|---|
+| C1 | **Read the cursor** | Where am I?  What's selected?  Is the sidebar at the root?  What's the resolved projects root?  Is a lock held?  What's the lock reason? |
+| C2 | **Subscribe to changes** | Be notified when the cursor changes.  Be notified when the lock state changes. |
+| C3 | **Read or write files** | Read the currently-selected file's text.  Write a generated file to the current dir.  Refresh the visible listing. |
+| C4 | **Filesystem operations** | Create a project (with full subdir skeleton).  Create a subdir.  Upload a file.  Delete an entry.  Rename an entry.  Navigate the sidebar into an arbitrary path. |
+| C5 | **Acquire/release the lock** | Begin a multi-step pipeline; declare cancelers; release in `finally`.  Query lock state. |
+| C6 | **Drive the Cancel button** | Run registered cancelers (no-op if unlocked).  Used by the in-banner Cancel button automatically; tab code rarely calls it directly. |
 
-Use for any tab that displays "where will my Save go?" or gates a
-button on whether the current dir / file is suitable.  Subscribers
-fire on EVERY cursor mutation AND once immediately on register; the
-callback should be safe to run on the initial empty cursor state.
+**All six are reachable from `window.molbuilder.projects.*`.**  Each
+async method returns a uniform `{ok, ...}` envelope (Principle 6).
+Each accepts an optional `{signal: AbortSignal}` so Cancel covers
+every in-flight call (Principle 6).
 
-### 7.3 Multi-step save pipeline (Build, Spectra)
+### 5.1 Capability boundaries
 
-```js
-const proj = window.molbuilder.projects;
+Things tabs explicitly **cannot** do via the sidebar:
 
-async function savePipeline() {
-    const abort = new AbortController();
-    proj.lock("Saving FDF + pseudos + wrapper…",
-              [() => abort.abort()]);
-    try {
-        // Step 1: write the .fdf
-        const w = await proj.saveToWorkspace(text, filename, {overwrite: true});
-        if (!w?.ok) return;
-        // Step 2: pseudos
-        await fetch("/api/siesta/install-pseudos", {
-            method: "POST", body: JSON.stringify({...}),
-            signal: abort.signal,    // Layer B
-        });
-        // Step 3: wrapper
-        await fetch("/api/run/install-wrapper", {
-            method: "POST", body: JSON.stringify({...}),
-            signal: abort.signal,
-        });
-    } finally {
-        proj.unlock();               // Layer A
-    }
-}
-```
+* Browse outside `projects/` — there is no API.
+* Multi-file selection — `current_file` is one slot.
+* Per-tab state — sessionStorage holds the cursor only.
+* Tab-aware behaviour — the sidebar has no notion of which tab is
+  active.
 
-**Mandatory pattern** when chaining ≥ 2 backend calls that target the
-same workspace.  See § 12 for the lock model's full 3-layer recovery.
+If a future workflow needs one of these, propose a design change to
+this doc first.  Do not back-door it through `localStorage` or
+custom events.
 
-#### Save-pipeline timeline
+---
+
+## 6. Subscribe model
+
+The contract for every subscriber API on the sidebar:
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant User
-    participant Tab as Save handler<br/>(viewer.js / spectra.core.js)
-    participant State as state.js
-    participant Banner as lock banner subscriber
-    participant Backend as /api/*
+    participant Caller as user click<br/>OR tab code
+    participant Mut as designated mutator
+    participant Store as authoritative store
+    participant Subs as subscribers
+    participant DOM
 
-    User->>Tab: click Save
-    Tab->>Tab: abort = new AbortController()
-    Tab->>State: lock("Saving FDF + pseudos + wrapper…", [abort.abort])
-    State->>Banner: publishLockChange({locked: true, ...})
-    Banner->>Banner: add .is-locked + show banner
+    Caller->>Mut: invoke mutator
+    Mut->>Store: write new value
+    Mut->>Subs: publish(newPayload)
+    loop for each subscriber
+        Subs->>Subs: try { cb(payload) } catch (swallow)
+        Subs->>DOM: subscriber updates its region
+    end
+    Note right of Subs: one bad subscriber NEVER<br/>breaks the loop — others still fire
+```
 
-    rect rgb(252, 240, 240)
-    Note over Tab,Backend: try { ... } finally { unlock() }
-    Tab->>Backend: POST /api/files/write (signal: abort.signal)
-    Backend-->>Tab: ok
-    Tab->>Backend: POST /api/siesta/install-pseudos (signal: ...)
+Three load-bearing properties:
 
-    alt user clicks Cancel mid-pipeline
-        User->>Banner: click Cancel
-        Banner->>State: cancelLockedOperation()
-        State->>Tab: run cancelers → abort.abort()
-        Tab->>Backend: aborts in-flight fetch
-        Backend-->>Tab: AbortError throws
+* **Fire-once-immediately on register.**  Every subscribe API calls
+  the new callback synchronously with the current state.  Removes
+  the "subscribed too late, missed the first event" trap; lets
+  subscribers initialise without a separate `getCurrent*()` call.
+* **Per-subscriber error isolation.**  The publish loop wraps each
+  callback in try/catch.  A throwing subscriber doesn't break the
+  rest and never affects lock or cursor state.
+* **Unsubscribe returns a closure.**  Subscribers that outlive the
+  page can stop receiving events.  Subscribers tied to the page's
+  lifetime may discard the closure (and usually do).
+
+---
+
+## 7. Lifecycle
+
+### 7.1 Two-phase init
+
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant Sidebar
+    participant State
+    participant Backend
+
+    Note over Browser,State: Module load (synchronous)
+    Browser->>State: import projects
+    Browser->>Sidebar: import init
+    Sidebar->>Sidebar: window.molbuilder.projects = projects
+    Note right of Sidebar: PUBLIC API REACHABLE FROM HERE
+
+    Browser->>Sidebar: init() (on DOMContentLoaded)
+
+    rect rgb(232, 248, 232)
+    Note over Sidebar: PHASE 1 — UNCONDITIONAL UI WIRING
+    Sidebar->>Sidebar: wire lock UI + Cancel delegation
     end
 
-    Backend-->>Tab: pseudos ok
-    Tab->>Backend: POST /api/run/install-wrapper (signal: ...)
-    Backend-->>Tab: wrapper ok
+    Sidebar->>Backend: GET /api/files/roots
+    Backend-->>Sidebar: roots
+    alt no projects root
+        Sidebar-->>Browser: bail (lock UI still wired!)
     end
 
-    Tab->>State: unlock() (in finally)
-    State->>Banner: publishLockChange({locked: false, ...})
-    Banner->>Banner: remove .is-locked + hide banner
-    Tab->>State: refresh() → re-list current dir
+    rect rgb(232, 240, 252)
+    Note over Sidebar: PHASE 2 — DATA-DEPENDENT UI WIRING
+    Sidebar->>Sidebar: wire breadcrumb / list / forms / preview
+    Sidebar->>Backend: initial directory listing
+    end
 ```
 
-### 7.4 Reference implementations (live code; do not reinvent)
+### 7.2 The load-bearing rule
 
-* `molbuilder/web/static/viewer.js` — Build tab: `save-fdf` +
-  `save-pyscf` click handlers.
-* `molbuilder/web/static/lib/spectra/core.js` — Spectra:
-  `saveSpectraToCurrentDir`.
-* `molbuilder/web/static/lib/projects/forms.js` — internal subscriber
-  use (depth-aware section hide).
+> **UI wiring that must work regardless of project-root state belongs
+> in Phase 1.  UI wiring that genuinely needs the project-listing
+> data belongs in Phase 2.**
+
+Phase 1 wiring: lock UI, future cross-tab listener, future
+diagnostics.  Phase 2 wiring: entry list, breadcrumb, create-forms,
+preview modal.
+
+**When in doubt, default to Phase 1.**  The cost of wiring
+unconditionally is one extra DOM lookup per page load.  The cost of
+gating on data that doesn't arrive is a silent UI failure with no
+errors — the bug class we keep hitting.
 
 ---
 
-## 8. CSS classes — full catalogue
+## 8. Lock model
 
-All sidebar-internal classes use the `ps-` prefix.  Page-level
-stylesheets MUST NOT redefine these classes.
+### 8.1 Why
 
-### 8.1 Structural (set once in template)
+Multi-step save pipelines (Build's "Save FDF" emits the .fdf, copies
+pseudos, drops the wrapper) read `current_dir` at each step.  Without
+a lock, the user can re-navigate the sidebar between steps and
+silently retarget downstream steps to a different directory.  The
+lock blocks navigation visually + functionally for the pipeline's
+duration.
 
-| Class | Element | Role |
+### 8.2 Three-layer recovery (independent; do not collapse)
+
+| Layer | Mechanism | Triggers when |
 |---|---|---|
-| `.projects-sidebar` | `<aside id="projects-sidebar">` | root container |
-| `.ps-header` | header bar | "Projects" title |
-| `.ps-title` | `<h2>` inside header | title text |
-| `.ps-create-section` | `<details>` blocks | foldable form sections |
-| `.ps-create-summary` | `<summary>` | section toggle |
-| `.ps-create-form` | `<form>` | the form itself |
-| `.ps-field-label` | `<label>` | field label |
-| `.ps-field-hint` | `<small>` | "(in <dir>)" hint |
-| `.ps-create-actions` | row | submit + reset buttons |
-| `.ps-mkdir-error`, `.ps-create-note` | error / note text | inline messages |
-| `.ps-breadcrumb` | `<nav>` | path crumbs |
-| `.ps-crumb` | `<span>` | one crumb segment |
-| `.ps-crumb-sep` | `<span>` | "/" separator |
-| `.ps-list` | `<ul>` | entry list |
-| `.ps-entry` | `<li>` | one directory entry |
-| `.ps-entry-icon` | `<span>` | leading glyph (▸ / → / ·) |
-| `.ps-entry-name` | `<span>` | entry display name |
-| `.ps-entry-meta` | `<span>` | file size (right-aligned) |
-| `.ps-entry-action` | `<button>` | per-entry hover button |
-| `.ps-entry-preview` | preview button | "view" |
-| `.ps-entry-delete` | delete button | "×" |
-| `.ps-actions` | `<section>` | bottom status bar |
-| `.ps-selection` | `<p>` | "Selected: <name>" |
-| `.ps-preview-modal` | `<div role="dialog">` | preview modal root |
-| `.ps-preview-backdrop` | backdrop layer | click to close |
-| `.ps-preview-window`, `.ps-preview-header`, `.ps-preview-title`, `.ps-preview-close`, `.ps-preview-meta`, `.ps-preview-body`, `.ps-preview-error`, `.ps-preview-footer`, `.ps-preview-close-footer` | modal innards | |
-| `.ps-lock-banner` | `<div role="status">` | lock banner root |
-| `.ps-lock-icon` | `<span>` | ⏳ glyph (bob animation) |
-| `.ps-lock-message` | `<span>` | reason text |
-| `.ps-lock-cancel` | `<button>` | Cancel button |
-
-### 8.2 State modifiers (toggled by JS)
-
-| Class | Applied to | Means |
-|---|---|---|
-| `.is-selected` | `.ps-entry` | this entry equals `current_file` |
-| `.is-empty` | `.ps-list` | directory has zero children |
-| `.is-current` | `.ps-crumb` | last crumb (current dir) |
-| `.is-locked` | `.projects-sidebar` | a lock is currently held — fades + disables every direct child except the banner + header |
-
-### 8.3 Body marker (server-rendered)
-
-| Class | Applied to | Means |
-|---|---|---|
-| `.has-projects-sidebar` | `<body>` | reserve left-padding for the sidebar (set in template, NOT by JS — avoids initial-paint races) |
-
-### 8.4 Z-index reservations
-
-| Layer | z-index |
-|---|---|
-| `.projects-sidebar` | 5 |
-| `.ps-preview-modal` | 100 |
-
-No sidebar-adjacent UI may use z-index ≥ 5 without ensuring its
-stacking context doesn't overlap the sidebar.
-
----
-
-## 9. Visual states catalogue
-
-Every observable UI state of the sidebar, when it appears, and what it
-looks like.
-
-| State | When | Visual |
-|---|---|---|
-| **Idle, empty cursor** | After fresh page load before any click | Breadcrumb shows `projects`; entry list shows projects' children; "No file selected." in actions area. |
-| **Browsing a directory** | After clicking a dir crumb / entry | Breadcrumb shows full path; entry list shows that dir's children; no `.is-selected`. |
-| **File selected** | After clicking a file entry | That entry gets `.is-selected` (highlight); actions area shows "Selected: <basename>". |
-| **Empty directory** | A directory has zero children | `.ps-list.is-empty` displayed; "(empty)" placeholder or nothing. |
-| **Listing error** | `apiList` returned `{ok:false}` | Error row inside `.ps-list`; breadcrumb still shows attempted path; `current_dir` cleared to attempt path; `current_file = ""`. |
-| **Sidebar locked** | Active lock held | `.projects-sidebar.is-locked` — every child except banner + header at 40% opacity, `pointer-events: none`. Lock banner visible with ⏳ + reason + Cancel. |
-| **Preview modal open** | User clicked the "view" button on a file entry | Modal floats at z-index 100; backdrop covers the page. Body shows file text; Save button is disabled (not implemented). |
-| **No projects root** | `apiRoots()` returned `[]` | `.ps-list.is-empty` with a red error line. List + forms NOT wired. Lock UI IS wired (so save-pipeline locks still work). |
-| **New-project / New-subdir form expanded** | User clicked `<summary>` of a `<details>` section | Form fields revealed; context label shows current dir; submit → backend → openDir(new path) on success. |
-| **Form error** | Backend returned `{ok:false}` on a mutation | `.ps-mkdir-error` shows `j.error` verbatim. Form NOT reset (user can edit + retry). |
-
----
-
-## 10. Visibility model — `[hidden]` versus author CSS
-
-### 10.1 The trap
-
-The UA stylesheet's `[hidden] { display: none }` has specificity
-`(0,1,0)`.  Any author CSS rule `.foo { display: <non-none> }` ALSO
-has `(0,1,0)`.  On a specificity tie, **author CSS wins** by cascade
-order — so any element with `class="foo"` AND `hidden=""` is rendered
-VISIBLE despite the attribute.
-
-### 10.2 The rule (load-bearing)
-
-> Every author CSS rule that sets `display: <non-none>` on a class
-> whose DOM element may carry the `hidden` attribute **MUST be paired
-> with**:
->
-> ```css
-> .foo[hidden] { display: none; }
-> ```
-
-Specificity `(0,2,0)` beats both `[hidden]` and `.foo`.  No
-`!important`, no ordering trick required.
-
-### 10.3 Adding a new `display:` rule — checklist
-
-1. Does the targeted element's `hidden` attribute ever get set
-   (template OR `el.hidden = true/false` in JS)?
-2. If yes: write the paired `.foo[hidden] { display: none; }` rule
-   **in the same diff hunk**.  Reviewers reject changes that add
-   `display:` without the paired guard.
-3. If unsure: add the guard anyway.  Cost is one line; missing it
-   produces a silent always-visible bug.
-
-### 10.4 Currently-guarded rules (do not remove)
-
-```
-.ps-lock-banner[hidden]      projects-sidebar.css
-.ps-preview-modal[hidden]    projects-sidebar.css
-.scf-banner-row[hidden]      lib/trajectory-inspector.css
-.plot[hidden]                lib/trajectory-inspector.css
-.source-panel[hidden]        style.css
-.edit-panel .op-row[hidden]  modify/style.css
-.modes-table th[hidden]      spectra/style.css
-.modes-table td[hidden]      spectra/style.css
-.lock-reason[hidden]         style.css
-.tab-panel[hidden]           style.css
-.phase-indicator[hidden]     spectra/style.css   (2026-05-28)
-.nucleic-row[hidden]         style.css           (2026-05-28)
-.issues-panel[hidden]        style.css           (2026-05-28)
-.issues-panel[hidden]        spectra/style.css   (2026-05-28)
-```
-
-### 10.5 Future: `.is-hidden` convention
-
-The cleanest end state is a single `.is-hidden { display: none
-!important }` class + a CI grep banning `\bhidden=` in templates
-(allow `aria-hidden`).  Removes the bug class entirely.  Tracked as
-gap G3 (§ 16).
-
----
-
-## 11. Lock model
-
-### 11.1 Why
-
-Multi-step Save pipelines (Build's "Save FDF" emits the .fdf, copies
-pseudos, drops the wrapper) read `getCurrentDir()` at each step.
-Without a lock, the user can re-navigate the sidebar between steps and
-silently retarget downstream steps to a different directory.
-
-### 11.2 Three layers (independent; do not collapse)
-
-```
-Layer A   try { ... pipeline ... } finally { unlock() }
-          Releases on success AND on throw.
-
-Layer B   AbortController + signal: on every fetch in the locked window
-          Bounds the network call's duration; layer C can trigger this.
-
-Layer C   Cancel button in the lock banner runs registered cancelers
-          Last-resort user escape hatch when A and B both failed.
-```
+| **A** — `try/finally` | Release on success AND on throw | Pipeline completes (normally or by exception) |
+| **B** — AbortSignal threaded through every async call | Bounds network duration; cancellable | A hung backend; user-triggered cancel via layer C |
+| **C** — Cancel button in banner | Runs registered cancelers | A + B both failed (bug or backend deadlock); user wants out |
 
 The independence matters: a bug in any one layer doesn't strand the
 sidebar.  Forgotten `finally` → Cancel still works.  Backend hang →
-Cancel triggers abort → fetch rejects → `finally` runs → unlock.  JS
-exception in the canceler → caught per-canceler, doesn't block other
-cancelers; lock state is unaffected.
+Cancel triggers abort → fetch rejects → `finally` runs → unlock.
+Canceler throws → caught per-canceler; lock state unaffected; user
+can still click Cancel again or wait for natural unlock.
 
-#### Lock state machine
+**Layer B applies to every async call inside the lock window —
+including the workspace-write step.**  No "first step is special".
+
+### 8.3 State machine
 
 ```mermaid
 stateDiagram-v2
@@ -820,194 +333,211 @@ stateDiagram-v2
     Unlocked --> Locked : lock(reason, cancelers)
     Locked --> Unlocked : unlock()<br/>(also: pipeline finally{} runs unlock)
 
-    Locked --> Locked : cancelLockedOperation()<br/>runs cancelers — lock STAYS HELD<br/>(pipeline's own abort + finally release it)
+    Locked --> Locked : Cancel button<br/>runs cancelers — lock STAYS HELD<br/>(pipeline's own abort + finally release it)
     Locked --> Locked : lock(...) — THROWS<br/>(re-entry forbidden)
 
     Unlocked --> Unlocked : unlock() — no-op
-    Unlocked --> Unlocked : cancelLockedOperation() — no-op
-
-    state Locked {
-        [*] --> HasReason
-        HasReason : reason: string<br/>cancelers: Array<()=>void>
-    }
+    Unlocked --> Unlocked : Cancel — no-op
 ```
 
-### 11.3 CSS contract
+### 8.4 Visual contract
 
-```css
-.projects-sidebar.is-locked > :not(.ps-lock-banner):not(.ps-header) {
-    opacity: 0.4;
-    pointer-events: none;
-    user-select: none;
-}
-.projects-sidebar.is-locked > .ps-header {
-    pointer-events: none;
-}
-```
-
-Banner + header stay visible; everything else fades and stops
-receiving clicks.  Header keeps full opacity (visual anchor); future
-header controls (search box, etc.) will be locked automatically.
-
-### 11.4 Lock UI wiring lifecycle
-
-`initLockUI()` (in `list.js`) wires:
-
-* The `onLockChange` subscriber that toggles `.is-locked` + shows the
-  banner.
-* The Cancel button click handler, via **delegated dispatch on
-  `document`** (not `addEventListener` on the button).  Delegation
-  survives any future re-rendering of the partial.
-
-`initLockUI()` is called UNCONDITIONALLY in `projects-sidebar.js`'s
-`init()`, BEFORE `await apiRoots()`.  **Do NOT move this call.**
-Moving it back into `initList()` re-couples the lock UI to project-
-listing success and resurrects the 2026-05-28 Cancel-does-nothing bug.
+While locked, the sidebar fades every direct child except the
+banner + header, sets `pointer-events: none` on them, and the banner
+stays fully interactive so Cancel is always reachable.  Header keeps
+full opacity as a visual anchor; any future header controls are
+locked automatically because they inherit the disabled pointer
+events.
 
 ---
 
-## 12. State synchronization rules
+## 9. Visibility model
 
-### 12.1 Mutation paths
+### 9.1 The trap (and the rule we follow because of it)
 
-Every state mutation must go through a designated function so the
-publish events fire:
+The browser's `[hidden] { display: none }` rule and any author
+`.foo { display: <non-none> }` rule have the **same specificity**.
+On a tie, author CSS wins by cascade order.  An element with
+`class="foo"` AND `hidden=""` is rendered VISIBLE despite the
+attribute.
 
-| State | Mutate via | Publishes |
-|---|---|---|
-| `current_dir`, `current_file` | `setShared(dir, file)` in `state.js` | `publishSelectionChange()` → all `onChange` subscribers |
-| `lockState` | `lock(reason, cancelers)` / `unlock()` | `_publishLockChange()` → all `onLockChange` subscribers |
-| `projectsRoot` | `setProjectsRoot(root)` | No subscribers today (gap G4) |
-| `refreshHandler` | `setRefreshHandler(handler)` | No subscribers (1 slot only) |
+**Today's rule**: every author `display:` rule on a class whose
+element may carry `hidden` MUST be paired with a `.foo[hidden]
+{ display: none }` guard.  Higher specificity wins the tie.
 
-### 12.2 Forbidden patterns
+### 9.2 Design direction
 
-* Writing `sessionStorage.setItem("molbuilder.current_dir", …)` directly
-  from any module.  Use `setShared`.
-* Mutating `lockState` directly from any module other than `state.js`.
-  Use `lock()` / `unlock()`.
-* Reading another module's closure state directly.  Use the exported
-  getters.
-* Driving DOM from inside an event handler when a publish event could
-  drive a subscriber instead.  See gap G1.
+The current pattern is fragile — it requires every CSS contributor
+to remember the guard rule and every reviewer to check for it.  The
+design's end state is:
 
-### 12.3 The publish-then-react flow
+* One global helper class — `.is-hidden { display: none !important }`.
+* HTML `hidden=` is banned in sidebar templates; replaced by
+  `class="is-hidden"` toggled via a tiny `setVisible(el, bool)`
+  helper.
+* A CI grep flags any new use of `hidden=` so the bug class can't
+  re-enter.
 
-```mermaid
-sequenceDiagram
-    autonumber
-    participant Caller as user click<br/>OR tab code
-    participant Mut as designated mutator<br/>(setShared / lock / unlock)
-    participant Store as authoritative store<br/>(sessionStorage OR closure var)
-    participant Subs as subscribers<br/>(Set of callbacks)
-    participant DOM
-
-    Caller->>Mut: invoke mutator
-    Mut->>Store: write new value
-    Mut->>Subs: publishXChange(newPayload)
-    loop for each subscriber
-        Subs->>Subs: try { cb(payload) } catch (swallow)
-        Subs->>DOM: subscriber updates its DOM region
-    end
-    Note right of Subs: one bad subscriber NEVER<br/>breaks the loop — others still fire
-```
-
-This is the contract.  Any new sidebar state belongs in: a module-
-private variable + a designated mutator + a `publishXChange` + an
-`onXChange` subscription API.  No exceptions.
+Until that migration completes, the guard rule (§ 9.1) is the
+contract.
 
 ---
 
-## 13. Backend contract (summary)
+## 10. Visual states
 
-Full version in [selection.md § 6](selection.md) and
-[web-api.md](web-api.md).
+The conceptual UI states the design recognises.  Every state must
+be reachable from a known state mutation; no state may appear
+"because of CSS alone".
 
-| Endpoint | Method | Status |
+| State | When | What the user sees |
 |---|---|---|
-| `/api/files/roots` | GET | shipped |
-| `/api/files/list` | GET | shipped |
-| `/api/files/read` | GET | shipped |
-| `/api/files/stat` | GET | shipped |
-| `/api/files/mkdir` | POST | shipped |
-| `/api/files/write` | POST | shipped |
-| `/api/files/upload` | POST | **501 stub** (UI wired) |
-| `/api/files/delete` | DELETE | **501 stub** (UI wired with hover ×) |
-| `/api/files/rename` | POST | not built |
-| `/api/projects/create` | POST | shipped |
+| **Idle** | Page load, cursor unset | Breadcrumb at root; project list; "no file selected" |
+| **Browsing** | After navigating | Breadcrumb shows path; entries for that dir |
+| **File selected** | After clicking a file | Highlight on entry; "Selected: <name>" status |
+| **Empty directory** | Dir has no children | Empty list area with a `.is-empty` modifier |
+| **Listing error** | Backend returned `{ok:false}` | Inline error row in the list; cursor reset to the attempted path |
+| **Locked** | A pipeline holds the lock | Sidebar contents faded + non-interactive; banner with reason + Cancel |
+| **No project root** | Init's `apiRoots` returned empty | List replaced with a "no roots configured" message; lock UI still functional |
+| **Preview open** | User clicked preview on a file | Modal over the page; closes on ESC / backdrop / button |
+| **Form open** | User expanded a creation section | Form visible with context label; submits navigate the sidebar |
+| **Form error** | Backend rejected the form submit | Inline error verbatim; form keeps its current value for retry |
 
-All `apiX()` wrappers in `api.js` return either the JSON body or a
-synthesised `{ok: false, error: …}` on network failure.  Callers
-never need a try/catch around `apiX()` calls.
+---
+
+## 11. Failure modes
+
+Every failure the design anticipates and how it should be handled.
+"Should" — not necessarily "does today".
+
+| Failure | Design response |
+|---|---|
+| Backend down at init (`/api/files/roots` 5xx or unreachable) | Sidebar shows "no roots configured" + offline indicator.  Lock UI works.  All public-API calls return `{ok:false, error}`.  No exceptions reach tab code. |
+| Backend down mid-session | Next `apiX` call returns `{ok:false, error}`.  Sidebar stays usable (last-known listing visible); next refresh shows the error.  No exceptions reach tab code. |
+| User clicks Cancel during step 1 of a save | The `AbortSignal` passed to `saveToWorkspace` aborts the fetch; the promise rejects with `AbortError`; the pipeline's `finally` unlocks; sidebar returns to idle. |
+| User navigates during a lock | Visually impossible: clicks pass through `pointer-events: none`.  No state mutation occurs. |
+| Subscriber callback throws | Caught per-subscriber.  Other subscribers still fire.  Lock + cursor state unchanged. |
+| Two tabs in the same project | Each holds its own cursor in sessionStorage.  The design includes a `storage` event listener so navigation in tab A reflects in tab B; current code doesn't (gap M2). |
+| Network race on rapid clicks | The sidebar uses per-fetch AbortControllers for navigation too: clicking a second directory aborts the first listing.  Last click wins; partial UI never appears. |
+| Cancel clicked when no lock held | No-op.  Documented behaviour.  Cancel button is normally hidden when unlocked, but the API tolerates a stale click. |
+| Reentry: `lock()` while already locked | Throws.  Intentional fail-fast — nested locks tangle Cancel semantics.  Pipelines must compose into one outer lock or sequence with unlock between. |
+| Subscriber registered after first state change | Initial-fire-on-register means the subscriber gets the current state immediately; the "missed event" trap is structurally impossible. |
+| HTTP wrapper got non-JSON response (501 stub era, browser interstitial, etc.) | Wrapper synthesises `{ok:false, error: "<status / message>"}`.  Never throws. |
+
+---
+
+## 12. Backend contract (capability level)
+
+The backend offers seven file-system primitives plus one
+project-bootstrap operation.  All operate exclusively inside the
+configured `projects/` root.
+
+| Capability | HTTP shape | Notes |
+|---|---|---|
+| List a directory | `GET /api/files/list` | Optional extension filter |
+| Read a file | `GET /api/files/read` | Size-capped; UTF-8 only; binary rejected |
+| Stat a path | `GET /api/files/stat` | Single-path metadata |
+| Write a file | `POST /api/files/write` | `expected_mtime` for edit-conflict detection |
+| Create a directory | `POST /api/files/mkdir` | Depth-aware name validation |
+| Upload a file | `POST /api/files/upload` | Multipart; 409 on conflict (no implicit overwrite) |
+| Delete a path | `DELETE /api/files/delete` | Canonical-topic dirs protected; recursive flag required for non-empty |
+| Bootstrap a project | `POST /api/projects/create` | Atomic; rolls back on partial failure |
+| Rename a path | `POST /api/files/rename` | Designed; not yet built (gap M5) |
+
+Every endpoint returns a uniform `{ok: true, …}` or `{ok: false,
+error: string, …}` envelope.  HTTP status codes classify
+(200 / 4xx / 5xx) but the body shape doesn't change.  Exact field
+lists per endpoint live in [`web-api.md`](web-api.md).
+
+---
+
+## 13. Migration plan (current code → design)
+
+The current code implements most of the design but with rough edges.
+The migration items, ordered by impact.
+
+### High impact (blocks the design's coverage of failure modes)
+
+| ID | Drift | Migration |
+|---|---|---|
+| M1 | `apiWrite` / `saveToWorkspace` don't accept `AbortSignal`.  Layer B of the lock recovery doesn't cover the first step of save pipelines (the actual write). | Add `signal` to the `apiX` write surface; thread through `writeFile` / `saveToWorkspace`.  Update Build + Spectra save handlers to pass the lock's signal. |
+| M2 | DOM updates in `list.js` (`_markSelected`, `_renderSelectionStatus`) are called inline from event handlers, not from `onChange` subscribers.  Violates Principle 3. | Introduce a single `renderSidebar(state)` subscribed to `onChange`; remove inline calls. |
+| M3 | `apiRoots` / `apiList` / `apiStat` / `apiRead` / `apiMkdir` / `apiCreateProject` don't wrap network failures uniformly — they throw on network errors.  Violates Principle 6. | Wrap each in the same try/catch pattern `apiWrite` already uses; synthesise `{ok:false, error}`. |
+
+### Medium impact (architectural completeness)
+
+| ID | Drift | Migration |
+|---|---|---|
+| M4 | The public API doesn't expose `createProject`, `mkdir`, `upload`, `deleteEntry`, `rename`, `navigateTo`.  These exist as `forms.js` + `list.js` internals only.  Violates Capability C4. | Promote each to `window.molbuilder.projects.*`; keep internal helpers as the implementation. |
+| M5 | Backend `rename` endpoint not built.  Capability C4 is incomplete. | Implement `POST /api/files/rename` against the existing path-safety + naming-rule helpers. |
+| M6 | No cross-tab `storage` event listener.  Failure mode "two tabs in the same project" is unaddressed. | Add `window.addEventListener("storage", …)` in `state.js` that fires `publishSelectionChange` when cursor keys change. |
+| M7 | Visibility relies on the case-by-case `[hidden]` guard pattern.  Brittle (one missed guard = silent bug). | Migrate to the `.is-hidden` class; ban `hidden=` in templates via CI; update the guard rule. |
+
+### Low impact (cosmetic / future-proofing)
+
+| ID | Drift | Migration |
+|---|---|---|
+| M8 | `setProjectsRoot` has no subscribers.  `onProjectsRootResolved` not on the public API; tabs that need root early use `runtime.whenReady("projects")` instead. | Either add an explicit subscribe API or document that tabs use the runtime registry; pick one and stick to it. |
+| M9 | `refreshHandler` is a 1-slot register; multiple consumers would need their own wrapping. | Convert to a `Set` if/when a second consumer arrives. |
+| M10 | Preview modal Save button is permanently disabled. | Either implement edit-and-save via the shipped `/api/files/write` endpoint or remove the button. |
+| M11 | Internal naming inconsistency: `publishSelectionChange` (no prefix) vs `_publishLockChange` (underscore prefix). | Pick one convention (recommend underscore-prefix for all internal-publish functions) and apply across the module. |
 
 ---
 
 ## 14. Testing strategy
 
-| File | Layer | What it pins |
-|---|---|---|
-| `tests/test_web_files.py` | backend (Flask test client) | endpoint contracts: status codes, JSON shapes, path safety, depth-aware name rules |
-| `tests/test_projects.py` | backend | `/api/projects/create` atomicity, conflicts, naming |
-| `tests/test_sidebar_lock_api.py` | Playwright | lock contract (acquire / release / re-entry throw); subscribers fire-on-register; Cancel runs cancelers in order + safe when unlocked; **DOM rendered visibility via `getComputedStyle().display`** — catches the § 10 specificity-trap regression directly. |
-| `tests/test_inspector_registry_e2e.py` | Playwright | sidebar selection → results-tab inspector dispatch |
+The design's testing principles:
 
-### 14.1 Adding tests for new sidebar features
+* **Backend endpoints** — pin envelope shape, status code, path-safety,
+  naming-rule outcomes.  Flask test client; no browser.
+* **Public-API behaviour** — pin the contract every tab depends on:
+  uniform envelopes, fire-once-immediately subscribers, lock state
+  machine transitions, AbortSignal propagation through every async
+  method.  Playwright + `page.evaluate`.
+* **Rendered visibility** — pin `getComputedStyle(el).display`, not
+  just `el.classList.contains(...)`.  Catches the § 9.1 specificity
+  trap directly.
+* **Failure-mode coverage** — for each row in § 11, at least one
+  test that triggers the failure and asserts the design response.
 
-| Change kind | Required test |
+When adding a new sidebar feature: the test file already exists for
+the layer the feature lives in.  Add tests there in the same commit.
+Reviewers reject feature commits without the matching test diff.
+
+---
+
+## 15. Anti-patterns (architectural)
+
+The patterns that consistently produce bugs and have no acceptable
+use case in the sidebar.
+
+| Anti-pattern | Why it's banned |
 |---|---|
-| New DOM state class | Playwright test using `getComputedStyle()` (NOT just `el.classList.contains` — does not catch CSS bugs) |
-| New `window.molbuilder.projects.*` method | Playwright test driving it via `page.evaluate`, asserting subscribers fire, returns shape matches § 5 |
-| New backend endpoint | `tests/test_web_files.py` test pinning status codes + JSON envelope shape |
-| New CSS `display:` rule | Confirm paired `[hidden]` guard per § 10 |
+| **UI wiring inside data-dependent init** | Silent "click does nothing" bugs when the data path fails.  Violates Principle 5. |
+| **Author `display:` rule without `[hidden]` guard** | Same-specificity tie loses to UA stylesheet.  Element renders visible despite `hidden`.  Multi-site bug class.  Violates Principle 9. |
+| **Reading another module's closure state directly** | Breaks module ownership.  Hides the dependency from imports.  Use the exported API. |
+| **Tab-specific knowledge in the sidebar** | Sidebar is content-agnostic.  Hardcoded extension-to-tab maps reintroduce the coupling we deliberately removed (see [selection.md § 8](selection.md)). |
+| **Per-tab auto-load on `DOMContentLoaded`** | Races user clicks.  Implicit action without consent.  Explicit pull (button) instead. |
+| **Reentrant `lock()`** | Tangles Cancel semantics — whose cancelers do we run?  Compose into one outer lock; sequence with unlock between if you must. |
+| **DOM updates from event handlers when a publish event could drive a subscriber** | Hand-coordinated DOM updates drift from state.  Violates Principle 3. |
+| **Pointing the sidebar at a path outside `projects/`** | Out of scope — files outside come via upload.  Mission boundary. |
+| **Triggering a tab's loader from sidebar code** | Sidebar is passive — push violates Principle 2. |
+| **Throwing from a public async method** | Tab code never knows to `try/catch`.  Violates Principle 6. |
 
 ---
 
-## 15. Anti-patterns (do not reintroduce)
-
-| Anti-pattern | Why retired |
-|---|---|
-| Wiring UI behaviour in an init function gated on a network call's success | 2026-05-28 Cancel-does-nothing bug. UI wiring belongs in `init()` step (b); data-dependent wiring in step (d). |
-| Setting `display:` on a class without a paired `[hidden]` guard | 2026-05-28 multi-site bug. See § 10. |
-| Reading another module's closure state directly | Module ownership boundary. Use the exported APIs in § 6. |
-| `OPEN_TARGETS` hard-coded extension → tab map in the sidebar | Tabs handle their own extension matching via `onChange`. |
-| `window.molbuilderTabAutoLoad` per-tab auto-load on `DOMContentLoaded` | Implicit action — races user clicks. Explicit pull (button) instead. |
-| Calling `lock()` re-entrantly | Tangles Cancel semantics. Compose pipelines in a single outer lock. |
-| Updating DOM from an event handler when a publish event could drive a subscriber | Hand-coordinated DOM → state drift. See gap G1. |
-| Pointing the sidebar at a path outside `projects/` | `projects/` is the source of truth scope; outside files come in via upload. |
-| Triggering a tab's loader from sidebar code | Sidebar is content-agnostic; tabs subscribe to selection and decide. |
-
----
-
-## 16. Identified gaps (roadmap)
-
-Severity: **B** = should fix soon (real correctness/UX risk),
-**F** = future (no current cost).
-
-| ID | Sev | Gap | Proposed fix |
-|---|---|---|---|
-| G1 | B | `_markSelected` + `_renderSelectionStatus` are called inline from event handlers, NOT from an `onChange` subscriber. Any mutation through a different path leaves DOM out of sync. | Introduce `renderSidebar(state)` subscribed to `onChange`; remove inline calls. Task #166. |
-| G2 | F | No cross-tab sync. sessionStorage is per-tab; opening two tabs leaves them drifting on cursor. | `window.addEventListener("storage", …)` in `state.js` calling `publishSelectionChange()`. |
-| G3 | F | The `[hidden]` + author-`display:` trap is mitigated case-by-case (§ 10). | Convert to a single `.is-hidden` class + CI grep banning `\bhidden=` in templates. |
-| G4 | F | `setProjectsRoot` has no subscribers (today no consumer needs to react). | Add `onProjectsRootResolved` if a real consumer arrives, OR fold root into `onChange`'s payload. |
-| G5 | F | `refreshHandler` is a single slot — multiple consumers would each need their own wrap. | Convert to a Set if/when a second consumer arrives. |
-| G6 | B | Upload + delete + rename backends are 501 stubs. UI surface is wired. | Implement in `web/blueprints/files.py` against the existing endpoint shapes (selection.md § 6). Mechanical work; naming-rule + path-safety helpers already exist. |
-| G7 | F | Preview modal's Save button is permanently disabled (`title="coming soon"`). | Either ship the edit-and-save flow against `/api/files/write` or remove the button. |
-| G8 | F | No telemetry / diagnostic logging for lock acquire/release. A misbehaving subscriber that throws is silently swallowed. | Optional: emit a custom event on `document` for each lock transition that DevTools can capture. |
-
----
-
-## 17. Change protocol
+## 16. Change protocol
 
 ```mermaid
 flowchart TD
-    start([sidebar change requested]) --> findsec["1. Open this doc.<br/>Find the section that covers it."]
-    findsec --> editdoc["2. Edit the doc<br/>to describe the new behaviour."]
-    editdoc --> editcode["3. Make the code change."]
-    editcode --> runtests{"4. Tests pass?<br/>(§ 14)"}
+    start([sidebar change requested]) --> revisit["1. Does the design itself need to change?"]
+    revisit -->|yes| editdoc["2a. Update this doc first."]
+    revisit -->|no| editcode["2b. Implement against the existing design."]
+    editdoc --> editcode
+    editcode --> runtests{"3. Tests pass?"}
     runtests -->|no| editcode
-    runtests -->|yes| addtests["5. Add tests<br/>where the spec changed."]
-    addtests --> commit["6. Commit doc + code + tests<br/>in ONE commit."]
-    commit --> review{"Reviewer: all three present?"}
+    runtests -->|yes| addtests["4. Add tests for the new design or feature."]
+    addtests --> commit["5. Commit doc + code + tests + new tests<br/>in ONE commit."]
+    commit --> review{"Reviewer: all four present?"}
     review -->|missing any one| reject([reject])
     review -->|all present| land([merge])
 
@@ -1016,7 +546,7 @@ flowchart TD
     style land fill:#dfd
 ```
 
-If you find a code-vs-doc discrepancy: file an issue, do NOT silently
-"fix" the doc to match buggy code (or vice versa).  The doc is design
-intent; the code is implementation.  Decide which is wrong, then fix
-in one commit that aligns them.
+If you discover a code-vs-design drift not already in § 13: add it to
+§ 13 in the same commit.  Don't silently align the doc to buggy code,
+and don't silently align the code to a stale doc.  Decide which is
+right, then update both.
