@@ -103,14 +103,17 @@ class SiestaConfig:
     )
 
     # System
-    # ``system_name`` is auto-folded to match ``system_label`` by the
-    # web JS collector (one user-visible "Job name" field drives both),
-    # so it stays off the schema-driven form.
-    system_name: str = field(default="siesta_run", metadata={
-        "label": "SystemName",
-        "engine_key":  'SystemName',
-        "help": "FDF SystemName label written into the .fdf header",
-    })
+    # 2026-05-27 cleanup: SystemName / SystemLabel are functionally one
+    # field for our generated .fdf -- the web UI exposed a single "Job
+    # name" input and JS forced ``system_name = system_label`` before
+    # POST.  The Python API kept the duplicate dataclass field as a
+    # courtesy alias, but it was an attractive nuisance: a Python user
+    # who set system_name without system_label got an .fdf where the
+    # two diverged, and our own SIESTA wrappers (output names,
+    # SystemLabel-prefixed scratch files) would not match the
+    # SystemName header.  We drop ``system_name`` outright and emit
+    # ``SystemName {cfg.system_label}`` in the FDF.  No alias kept --
+    # per project "no backwards compatibility" mandate.
     system_label: str = field(default="siesta", metadata={
         "section":  "System",
         "label":    "SystemLabel",

@@ -578,10 +578,13 @@ def test_watch_upload_temp_filenames_unique_within_one_second(web_client, tmp_pa
 
 
 def test_fdf_custom_params(web_client, peptide_xyz):
+    # 2026-05-27: dropped system_name from the params -- it's no
+    # longer a config field; SystemName + SystemLabel both come from
+    # system_label.
     r = web_client.post("/api/build/fdf", json={
         "xyz": peptide_xyz,
         "params": {
-            "system_name":   "my_pep", "system_label": "pep",
+            "system_label":  "my_pep",
             "basis_size":    "TZP",
             "mesh_cutoff":   450.0,
             "xc_functional": "GGA", "xc_authors": "BLYP",

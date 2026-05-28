@@ -561,7 +561,10 @@ def _stub_pyscf_summary(out_path):
     # cleanly through the bridge.  Fields are picked across the dataclass
     # layout so a regression in any tier (basic / advanced / output /
     # relaxation) shows up here.  Bools live in their own test below.
-    ("--system-name",            "demo_run", "system_name",            "demo_run"),
+    # 2026-05-27: ``--system-name`` removed when ``system_name`` was
+    # collapsed into ``system_label`` (one job-name field; the FDF
+    # generator emits both SystemName and SystemLabel from
+    # cfg.system_label).
     ("--system-label",           "demo",     "system_label",           "demo"),
     ("--cell-padding",           "20.0",     "cell_padding",           20.0),
     ("--basis-size",             "TZP",      "basis_size",             "TZP"),

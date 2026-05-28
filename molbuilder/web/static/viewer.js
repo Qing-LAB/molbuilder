@@ -1274,23 +1274,18 @@
 
     function collectFdfParams() {
         // The schema-driven collector returns one entry per dataclass
-        // field with a "section": metadata key.  Two post-processing
-        // tweaks on top:
-        //   1. The web form has ONE user-visible "Job name" input
-        //      (system_label).  The Python API has BOTH system_name
-        //      and system_label.  We fold them here so the generated
-        //      FDF carries a matched pair without exposing two
-        //      near-identical fields to the user.
-        //   2. The "Relaxation stage" preset is a UI shortcut, not a
-        //      dataclass field rendered by the schema; we layer the
-        //      stage-number on top of the collected params.
+        // field with a "section": metadata key.  The "Relaxation
+        // stage" preset is a UI shortcut, not a dataclass field
+        // rendered by the schema; we layer the stage-number on top of
+        // the collected params.  (2026-05-27: dropped the legacy
+        // system_name = system_label fold -- the dataclass no longer
+        // has system_name.)
         if (!formSchemas.siesta) return {};
         const fs = (window.molbuilder || {}).formSchema;
         const params = fs.collectForm(
             $("siesta-form-container"), formSchemas.siesta
         );
-        params.system_name = params.system_label;
-        params.stage       = stageNumberFromPreset();
+        params.stage = stageNumberFromPreset();
         return params;
     }
 

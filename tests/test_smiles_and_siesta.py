@@ -50,7 +50,9 @@ def test_smiles_bdt_has_two_sulphurs():
 
 def test_render_fdf_dna_4mer():
     dna = molbuilder.build_dna("ATGC")
-    cfg = SiestaConfig(system_name="test_dna", system_label="dna",
+    # 2026-05-27: system_name dropped from dataclass.  SystemName is
+    # now driven by system_label (one job-name field).
+    cfg = SiestaConfig(system_label="test_dna",
                        kgrid=(4, 4, 1), mesh_cutoff=350.0,
                        relax_type="none")
     fdf = render_fdf(dna, cfg)

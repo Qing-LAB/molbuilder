@@ -336,7 +336,12 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     if (cfg.omp_threads is not None) or (cfg.max_memory_mb is not None):
         out.append("")
 
-    out.append(f"SystemName        {cfg.system_name}")
+    # 2026-05-27: SystemName + SystemLabel both driven by
+    # ``system_label`` -- the dataclass dropped ``system_name`` after
+    # the web UI's one-field design proved the dup field only ever
+    # caused divergence bugs (output filenames keyed on SystemLabel,
+    # so the SystemName header always had to mirror it anyway).
+    out.append(f"SystemName        {cfg.system_label}")
     out.append(f"SystemLabel       {cfg.system_label}")
     out.append("")
     out.append(f"NumberOfAtoms     {struct.n_atoms}")
