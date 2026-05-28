@@ -141,6 +141,100 @@ def test_render_siesta_redirects_stdout_per_job_layout_v1():
     assert "> system-label.out" in text
 
 
+def test_render_siesta_auto_mpi_clamps_to_n_atoms(monkeypatch):
+    """Auto-mpi path: when n_atoms is known + physical_cores >
+    n_atoms, resolved_mpi must clamp to n_atoms.  Otherwise SIESTA
+    aborts at propor IMAX=0 (small molecule + many-core host).
+    Caught by the 2026-05-28 holistic-math audit."""
+    _bind()
+    # Pretend the host has 64 physical cores.
+    monkeypatch.setattr("molbuilder.runtime_info.physical_core_count",
+                        lambda: 64)
+    # 30-atom molecule, no user-set mpi_np -> auto.
+    text = render_run_wrapper(Path("/x/small-mol.fdf"), n_atoms=30)
+    # The launcher line must use 30, NOT 64.
+    assert 'mpirun -np 30 siesta' in text, (
+        "auto-mpi must clamp to n_atoms=30 (host has 64 cores, but "
+        "30 atoms = max usable rank count)"
+    )
+    assert 'mpirun -np 64 siesta' not in text
+    # The clamp note must be visible in the wrapper.
+    assert "auto-mpi clamped from 64" in text
+    assert "to 30 (n_atoms)" in text
+
+
+def test_render_siesta_auto_mpi_no_clamp_when_atoms_geq_cores(monkeypatch):
+    """Auto-mpi path: when n_atoms >= physical_cores, no clamp --
+    use all cores (the original auto behaviour)."""
+    _bind()
+    monkeypatch.setattr("molbuilder.runtime_info.physical_core_count",
+                        lambda: 8)
+    text = render_run_wrapper(Path("/x/big-mol.fdf"), n_atoms=200)
+    assert 'mpirun -np 8 siesta' in text
+    assert "clamped" not in text
+
+
+def test_render_siesta_user_mpi_over_atoms_emits_warning(monkeypatch):
+    """User-set mpi_np > n_atoms is HONOURED verbatim (sovereign
+    override) but tagged with a runtime WARNING in the wrapper output
+    so the user sees what's about to crash + how to fix it."""
+    _bind()
+    text = render_run_wrapper(
+        Path("/x/tiny.fdf"), mpi_np=20, n_atoms=10
+    )
+    # Honoured verbatim (we do NOT silently override user input).
+    assert 'mpirun -np 20 siesta' in text
+    # But the warning is unmistakable.
+    assert "WARNING: user-set mpi_np=20 > n_atoms=10" in text
+    assert "propor IMAX=0" in text
+    assert "Lower mpi_np to <= 10" in text
+
+
+def test_write_run_wrapper_parses_n_atoms_from_fdf(tmp_path,
+                                                    monkeypatch):
+    """End-to-end: write_run_wrapper parses NumberOfAtoms from the
+    .fdf so the auto-mpi clamp works WITHOUT the caller passing
+    n_atoms explicitly.  This is the live path -- the web flow
+    + CLI both invoke write_run_wrapper, never render_run_wrapper
+    directly with n_atoms."""
+    _bind()
+    monkeypatch.setattr("molbuilder.runtime_info.physical_core_count",
+                        lambda: 32)
+    fdf_text = (
+        "SystemName        tiny\n"
+        "SystemLabel       tiny\n"
+        "NumberOfAtoms     12\n"     # <-- the line being parsed
+        "NumberOfSpecies   1\n"
+    )
+    fdf_path = tmp_path / "tiny.fdf"
+    fdf_path.write_text(fdf_text)
+    wrapper_path = write_run_wrapper(fdf_path)
+    text = wrapper_path.read_text()
+    assert 'mpirun -np 12 siesta' in text, (
+        "expected wrapper to auto-clamp to n_atoms=12 parsed from "
+        ".fdf (not 32 = physical cores)"
+    )
+    assert "auto-mpi clamped from 32" in text
+
+
+def test_write_run_wrapper_unparseable_fdf_falls_back(tmp_path,
+                                                       monkeypatch):
+    """If the .fdf doesn't have a parseable NumberOfAtoms line
+    (truncated / corrupted / pre-emission stub) the wrapper falls
+    back to the un-clamped auto-mpi (physical_cores) -- better to
+    render SOMETHING than to refuse."""
+    _bind()
+    monkeypatch.setattr("molbuilder.runtime_info.physical_core_count",
+                        lambda: 4)
+    fdf_path = tmp_path / "broken.fdf"
+    fdf_path.write_text("# .fdf with no NumberOfAtoms line\n")
+    wrapper_path = write_run_wrapper(fdf_path)
+    text = wrapper_path.read_text()
+    # Falls back to physical_cores (4) without clamping.
+    assert 'mpirun -np 4 siesta' in text
+    assert "clamped" not in text
+
+
 # --------------------------------------------------------------------- #
 #  SIESTA-MPI thread pinning                                            #
 #                                                                       #

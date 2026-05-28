@@ -35,11 +35,35 @@ class WrapperError(Exception):
     routing, missing script file, ..."""
 
 
+def _parse_fdf_n_atoms(fdf_path: Path) -> Optional[int]:
+    """Read the ``NumberOfAtoms`` line from a SIESTA .fdf, or None.
+
+    The SIESTA wrapper auto-mpi path needs to know n_atoms so it can
+    clamp ``mpi_np <= n_atoms`` -- a rank count exceeding the atom
+    count makes the propor IMAX=0 abort unfixable regardless of
+    BlockSize.  Parsing the .fdf at install time keeps the wrapper
+    self-contained (the .fdf IS the source of truth for what SIESTA
+    will see) and avoids plumbing n_atoms through every caller.
+    Returns None if the file can't be read or the line isn't found;
+    callers fall back to the un-clamped behaviour in that case.
+    """
+    import re
+    try:
+        text = fdf_path.read_text()
+    except OSError:
+        return None
+    # SIESTA FDF parsing is whitespace-insensitive + case-insensitive
+    # on labels.  Match defensively.
+    m = re.search(r"(?im)^\s*NumberOfAtoms\b\s+(\d+)", text)
+    return int(m.group(1)) if m else None
+
+
 def render_run_wrapper(script_path: Path, *,
                         env: Optional[str] = None,
                         mpi_np: Optional[int] = None,
                         omp_threads: Optional[int] = None,
-                        max_memory_mb: Optional[int] = None) -> str:
+                        max_memory_mb: Optional[int] = None,
+                        n_atoms: Optional[int] = None) -> str:
     """Return the bash text for a wrapper running ``script_path``.
 
     Routing by file extension:
@@ -55,6 +79,12 @@ def render_run_wrapper(script_path: Path, *,
       env: override the routed env name for this invocation.  Default
         is whatever ``Capabilities.env_for_category(<category>)`` returns.
       mpi_np: SIESTA MPI rank count.  Ignored for ``.py`` scripts.
+      n_atoms: SIESTA atom count.  Used to clamp the auto-mpi default
+        (``resolved_mpi = min(physical_cores, n_atoms)``) -- otherwise
+        a small molecule on a many-core box gets mpi_np > n_atoms and
+        SIESTA aborts at propor IMAX=0 with no possible BlockSize fix.
+        Auto-parsed from the .fdf by ``write_run_wrapper`` when
+        omitted; pass None to keep the un-clamped legacy behaviour.
     """
     script_path = Path(script_path)
     suffix = script_path.suffix.lower()
@@ -78,12 +108,21 @@ def render_run_wrapper(script_path: Path, *,
     basename = script_path.stem
     script_name = script_path.name
 
-    # Pre-command env exports.  SIESTA: shared anti-oversubscription
-    # recipe with PySCF / spectra (see molbuilder/runtime_info.py).
-    # OMP threads per rank = user-set ``omp_threads``, or auto-detect
-    # physical cores // mpi_np (so a 20-core host with 4 MPI ranks
-    # gets 5 OMP threads per rank by default -- a sane hybrid).
-    # BLAS always pinned to 1 so OMP * BLAS doesn't multiply.
+    # Pre-command env exports.  Shared anti-oversubscription recipe
+    # with PySCF / spectra (see molbuilder/runtime_info.py): BLAS is
+    # ALWAYS pinned to 1 thread per rank so OMP * BLAS doesn't
+    # multiply.  OMP defaults differ by engine:
+    #
+    #   * SIESTA: ``OMP_NUM_THREADS = 1`` (mainline SIESTA is not
+    #     reliably OMP-aware; pure MPI is the standard recipe).  User
+    #     overrides via cfg.omp_threads only when running an
+    #     OMP-compiled SIESTA build (hybrid MPI+OMP).
+    #
+    #   * PySCF: handled in-script by molbuilder.runtime_info, which
+    #     sets OMP_NUM_THREADS = physical_cores (NOT physical_cores
+    #     // mpi_np -- PySCF doesn't use MPI, only OMP).  The
+    #     wrapper deliberately leaves OMP_NUM_THREADS unset so the
+    #     in-script setdefault wins.
     env_prefix = ""
     if category == "siesta":
         # Resolve MPI rank count.  SIESTA is fundamentally an MPI
@@ -92,14 +131,51 @@ def render_run_wrapper(script_path: Path, *,
         # cores -- that matches user expectation ("the wrapper should
         # use MPI") instead of silently emitting a bare ``siesta``
         # invocation that ignores all but one core.
+        #
+        # Clamp: mpi_np > n_atoms is mathematically impossible to
+        # serve without trailing-rank crashes (propor IMAX=0) --
+        # SIESTA's per-atom distribution leaves the last (mpi_np -
+        # ceil(n_atoms / BlockSize)) ranks empty regardless of
+        # BlockSize choice.  When n_atoms is known (auto-parsed from
+        # the .fdf by write_run_wrapper) we clamp the AUTO path; the
+        # USER-SET path is honoured verbatim (sovereign override) but
+        # tagged with a runtime warning so the user sees what's about
+        # to crash.
         from .runtime_info import physical_core_count
         phys = physical_core_count()
+        clamp_note = ""
         if mpi_np is None or int(mpi_np) < 1:
-            resolved_mpi = max(1, phys)
-            mpi_source   = f"auto: physical_cores ({phys})"
+            raw = max(1, phys)
+            if n_atoms is not None and raw > int(n_atoms):
+                resolved_mpi = max(1, int(n_atoms))
+                mpi_source = (
+                    f"auto: physical_cores ({phys}) clamped to "
+                    f"n_atoms ({n_atoms}) -- mpi_np > n_atoms would "
+                    f"abort SIESTA at propor IMAX=0"
+                )
+                clamp_note = (
+                    f"# auto-mpi clamped from {raw} (physical cores) "
+                    f"to {resolved_mpi} (n_atoms) so trailing ranks "
+                    f"aren't empty\n"
+                )
+            else:
+                resolved_mpi = raw
+                mpi_source = f"auto: physical_cores ({phys})"
         else:
             resolved_mpi = int(mpi_np)
-            mpi_source   = "user-set"
+            if n_atoms is not None and resolved_mpi > int(n_atoms):
+                mpi_source = (
+                    f"user-set; WARNING mpi_np ({resolved_mpi}) > "
+                    f"n_atoms ({n_atoms}) -- propor IMAX=0 expected"
+                )
+                clamp_note = (
+                    f"# WARNING: user-set mpi_np={resolved_mpi} > "
+                    f"n_atoms={n_atoms}; SIESTA will abort at propor "
+                    f"IMAX=0 regardless of BlockSize.  Lower mpi_np "
+                    f"to <= {n_atoms} to fix.\n"
+                )
+            else:
+                mpi_source = "user-set"
 
         # OMP threads.  SIESTA mainline is mostly NOT OMP-aware;
         # pure MPI + OMP=1 is the standard SIESTA recipe.  User can
@@ -123,6 +199,8 @@ def render_run_wrapper(script_path: Path, *,
         description = f"SIESTA run, {resolved_mpi} ranks intended"
 
         env_prefix = (
+            f"# MPI rank count ({mpi_source}): {resolved_mpi}\n"
+            f"{clamp_note}"
             f"# Thread / BLAS pinning.\n"
             f"#   * OMP_NUM_THREADS ({omp_source}): SIESTA mainline is\n"
             f"#     mostly not OMP-aware, so pure MPI with OMP=1 is the\n"
@@ -349,15 +427,25 @@ def write_run_wrapper(script_path: Path, *,
     Returns the wrapper's path.  Sets executable bit (0o755) so the
     user can ``./my-job.run.sh`` directly.  Overwrites any existing
     wrapper.
+
+    For ``.fdf`` scripts the file is parsed for ``NumberOfAtoms`` and
+    that value is threaded into ``render_run_wrapper`` so the auto-mpi
+    path can clamp ``mpi_np <= n_atoms`` (the propor IMAX=0 lower
+    bound).  Parse-failure is treated as "unknown" and falls back to
+    the unclamped behaviour rather than refusing to render.
     """
     script_path = Path(script_path).resolve()
     if not script_path.is_file():
         raise WrapperError(f"script not found: {script_path}")
+    n_atoms = None
+    if script_path.suffix.lower() == ".fdf":
+        n_atoms = _parse_fdf_n_atoms(script_path)
     text = render_run_wrapper(
         script_path,
         env=env, mpi_np=mpi_np,
         omp_threads=omp_threads,
         max_memory_mb=max_memory_mb,
+        n_atoms=n_atoms,
     )
     # Use stem + ".run.sh" rather than ``.with_suffix(".run.sh")``: the
     # latter REPLACES only the last suffix, so ``job.spectra.py`` would

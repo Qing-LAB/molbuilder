@@ -137,24 +137,55 @@ def _wrap_into_cell(positions: np.ndarray, cell: np.ndarray
     ``P = (u, v, w) @ cell`` for some fractional triple (u, v, w).
 
     Returns ``(wrapped_positions, n_wrapped_atoms)`` so callers can
-    print a useful note in the FDF.  Atoms whose fractional coordinates
-    lie within a small tolerance of [0, 1] are NOT counted as wrapped
-    (avoids spurious notices for atoms that happen to sit on the
-    boundary).
+    print a useful note in the FDF.  Atoms whose original fractional
+    coordinates lie within 1e-9 of an integer (i.e. essentially on the
+    cell face -- either just inside the cell at frac ~ 0.9999... or
+    just outside at frac ~ 1.0 + 1e-12) are wrapped if needed but NOT
+    counted as moved.  Their motion is numerical-precision noise, not
+    a meaningful position change.
+
+    Algorithm
+    ---------
+    The 2026-05-28 audit caught the pre-existing
+    ``floor(fractional + 1e-9)`` form doing the OPPOSITE of its
+    docstring: it wrapped frac = 0.9999999999 (in the cell) to
+    -1e-10 (outside the cell, counted as moved) while leaving
+    frac = -1e-10 (outside the cell) at -1e-10 (still outside, NOT
+    counted).  Both wrong.  The clean fix is to (a) do a standard
+    ``floor`` wrap so EVERY atom lands cleanly in [0, 1), and (b)
+    decide separately whether to *count* the wrap as a move.
     """
     inv = np.linalg.inv(cell)
     fractional = positions @ inv
-    # Wrap into [0, 1) with %; numerical noise can produce fractional
-    # very close to 1 (e.g. 0.9999999999), which we want to leave alone
-    # rather than wrap to 0.
-    wrapped = fractional - np.floor(fractional + 1e-9)
-    # Count atoms that were genuinely outside the cell.
-    moved_mask = np.any(np.abs(wrapped - fractional) > 1e-6, axis=1)
+    # Standard wrap into [0, 1).  No tolerance hack here -- every
+    # atom lands cleanly inside the cell.
+    wrapped = fractional - np.floor(fractional)
+    # Signed fractional displacement caused by the wrap.
+    delta = wrapped - fractional
+    # A "real" wrap moved the atom by > 1e-6 in fractional space.
+    # Anything smaller is round-off (no atom geometry actually
+    # depended on the wrap).
+    big_move = np.any(np.abs(delta) > 1e-6, axis=1)
+    # Atoms whose ORIGINAL fractional was within 1e-9 of an integer
+    # (~0, ~1, ~2, ...) were sitting essentially on a cell face.
+    # The wrap may have shifted them visibly (e.g. frac = -1e-10
+    # -> wrapped = 1 - 1e-10, a delta of ~1) but the motion is
+    # purely numerical noise, not a meaningful translation.  Exclude
+    # them from the count so the user-facing notice doesn't lie.
+    on_boundary = np.any(
+        np.abs(fractional - np.round(fractional)) < 1e-9, axis=1
+    )
+    moved_mask = big_move & ~on_boundary
     n_moved = int(moved_mask.sum())
     new_positions = wrapped @ cell
-    # For atoms that didn't move, keep the original Cartesian to
-    # 1e-12 (avoid any matrix-product round-trip drift).
-    new_positions[~moved_mask] = positions[~moved_mask]
+    # Round-trip preservation: when the wrap was a no-op in
+    # fractional space (atom was already inside), restore the
+    # ORIGINAL Cartesian so 1e-12 matrix-product drift doesn't
+    # appear in the FDF.  GATED ON big_move, not moved_mask --
+    # boundary atoms that genuinely DID wrap (frac ~ 1.0 + 1e-12)
+    # need to keep their post-wrap Cartesian, otherwise we'd
+    # silently re-place them outside the cell.
+    new_positions[~big_move] = positions[~big_move]
     return new_positions, n_moved
 
 
@@ -794,6 +825,32 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         block_size = _auto_block_size(struct.n_atoms, cfg.mpi_np)
     else:
         block_size = int(cfg.parallel_block_size)
+        # Safety net: even though the user explicitly set BlockSize,
+        # ``BlockSize * mpi_np > n_atoms + (BlockSize - 1)`` still
+        # crashes SIESTA at propor IMAX=0.  Auto-picker handles its
+        # own input; the manual-override path didn't, so a user
+        # tuning BlockSize for ScaLAPACK perf could re-trigger the
+        # exact bug the picker now prevents.  Downgrade (don't
+        # raise) -- a render-time refusal is too aggressive for the
+        # web form's "click and see" workflow.  Emit a comment in
+        # the FDF so the user sees what we did + why; the issues
+        # list (consumed by the form's status banner) gets a warn
+        # via the validation pass later in this function.
+        if (cfg.mpi_np is not None and int(cfg.mpi_np) > 1
+                and block_size * int(cfg.mpi_np)
+                    > struct.n_atoms + (block_size - 1)):
+            safe = _auto_block_size(struct.n_atoms, cfg.mpi_np)
+            out.append(
+                f"# WARNING: user-set BlockSize {block_size} would "
+                f"leave trailing MPI ranks empty with "
+                f"mpi_np={int(cfg.mpi_np)} on {struct.n_atoms} atoms "
+                f"(BlockSize * Nrank = {block_size * int(cfg.mpi_np)} "
+                f"> n_atoms = {struct.n_atoms}).  Downgraded to "
+                f"BlockSize {safe} to avoid ``propor: ERROR: IMAX = "
+                f"0`` abort.  See _auto_block_size in "
+                f"molbuilder/siesta/input.py for the math."
+            )
+            block_size = safe
     out.append(f"BlockSize          {block_size}")
     if cfg.parallel_over_k is None:
         over_k = (kx, ky, kz) != (1, 1, 1)

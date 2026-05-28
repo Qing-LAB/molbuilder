@@ -143,6 +143,127 @@ def test_block_size_honours_mpi_rank_constraint():
                 )
 
 
+def test_explicit_blocksize_override_safety_downgrade():
+    """User manually sets parallel_block_size = 32 on a 50-atom
+    molecule with mpi_np = 4.  32 * 4 = 128 > 50 -- propor IMAX = 0
+    would crash the run.  The render must DOWNGRADE the BlockSize
+    to a safe value (silent crash is the worse failure mode) and
+    emit a WARNING comment in the FDF naming the user's input + the
+    downgrade.
+    """
+    import re
+    import numpy as np
+    from molbuilder.structure import Structure
+    # 50 atoms on a coarse lattice (geometry preflight passes).
+    side = int(np.ceil(50 ** (1 / 3)))
+    coords = np.array([
+        [i * 1.5, j * 1.5, k * 1.5]
+        for i in range(side) for j in range(side) for k in range(side)
+    ])[:50]
+    s = Structure(elements=["C"] * 50, positions=coords, title="x")
+    cfg = SiestaConfig(parallel_block_size=32, mpi_np=4, relax_type="none")
+    fdf = render_fdf(s, cfg)
+    # The emitted BlockSize must NOT be 32 (would crash).
+    m = re.search(r"^BlockSize\s+(\d+)", fdf, re.MULTILINE)
+    assert m, "FDF must carry an explicit BlockSize line"
+    bs = int(m.group(1))
+    assert bs * 4 <= 50 + (bs - 1), (
+        f"downgraded BlockSize={bs} still violates the rank constraint"
+    )
+    assert bs != 32, "user-set unsafe BlockSize must be downgraded, not honored"
+    # The warning comment must be in the FDF so the user sees what we
+    # changed + why.
+    assert "WARNING" in fdf and "user-set BlockSize 32" in fdf, (
+        "expected a WARNING comment naming the user input + downgrade; "
+        f"got FDF excerpt around BlockSize: {[l for l in fdf.splitlines() if 'BlockSize' in l or 'WARNING' in l]}"
+    )
+
+
+def test_explicit_blocksize_override_safe_value_passes_through():
+    """Counter-case: user sets a SAFE explicit BlockSize -- must be
+    honored verbatim, no downgrade, no warning."""
+    import re
+    import numpy as np
+    from molbuilder.structure import Structure
+    side = int(np.ceil(50 ** (1 / 3)))
+    coords = np.array([
+        [i * 1.5, j * 1.5, k * 1.5]
+        for i in range(side) for j in range(side) for k in range(side)
+    ])[:50]
+    s = Structure(elements=["C"] * 50, positions=coords, title="x")
+    cfg = SiestaConfig(parallel_block_size=4, mpi_np=4, relax_type="none")
+    fdf = render_fdf(s, cfg)
+    m = re.search(r"^BlockSize\s+(\d+)", fdf, re.MULTILINE)
+    assert int(m.group(1)) == 4, "safe user override must be honored"
+    assert "WARNING: user-set BlockSize" not in fdf
+
+
+def test_wrap_into_cell_boundary_handling():
+    """The 2026-05-28 audit found ``_wrap_into_cell`` did the opposite
+    of its docstring: it wrapped frac=0.9999999999 to -1e-10 (outside
+    cell, counted as moved) while leaving frac=-1e-10 at -1e-10
+    (still outside, not counted).
+
+    Contract pinned here:
+      * Every atom lands in [0, 1) fractional after the wrap.
+      * Atoms within 1e-9 of the cell boundary are NOT counted as
+        moved (numerical noise, not a real translation).
+      * Atoms genuinely outside the cell ARE counted as moved.
+    """
+    import numpy as np
+    from molbuilder.siesta.input import _wrap_into_cell
+
+    cell = np.eye(3) * 10.0     # 10 A cubic cell -- fractional = cart/10.
+
+    # Case 1: atom at frac=0.9999999999 (in cell, noise near boundary).
+    # Old code: wrapped to -1e-9 (OUT of cell), counted as moved.
+    # New code: stays at 9.999999999 A, NOT counted.
+    p = np.array([[9.999999999, 5.0, 5.0]])
+    new, n = _wrap_into_cell(p, cell)
+    assert n == 0, "frac~0.9999... is on-boundary noise, not a move"
+    assert np.allclose(new, p), \
+        f"on-boundary atom should keep original Cartesian, got {new}"
+
+    # Case 2: atom at frac=-1e-11 (just outside in -x).
+    # Old code: wrapped = -1e-11 (still outside), not counted.
+    # New code: cleanly wraps to ~10 A (inside cell), boundary so
+    # not counted as a real motion.
+    p = np.array([[-1e-10, 5.0, 5.0]])
+    new, n = _wrap_into_cell(p, cell)
+    assert n == 0, "frac~-eps is on-boundary noise, not a move"
+    # Cleanly inside [0, 10): the x coord should be in [0, 10).
+    frac_x = new[0, 0] / 10.0
+    assert 0.0 <= frac_x < 1.0, (
+        f"after wrap atom must be in cell; got frac_x={frac_x}"
+    )
+
+    # Case 3: atom at frac=1.0 + 1e-11 (just outside in +x).
+    # Old code: wrapped to ~+1e-11 (inside cell), but counted as
+    # moved by ~1.0 (wrong -- it was boundary noise).
+    # New code: cleanly wraps to ~0 + 1e-10 A, NOT counted.
+    p = np.array([[10.0 + 1e-10, 5.0, 5.0]])
+    new, n = _wrap_into_cell(p, cell)
+    assert n == 0, "frac~1+eps is on-boundary noise, not a move"
+    frac_x = new[0, 0] / 10.0
+    assert 0.0 <= frac_x < 1.0, (
+        f"after wrap atom must be in cell; got frac_x={frac_x}"
+    )
+
+    # Case 4: a GENUINE wrap (frac = 1.5).  Must wrap to 0.5 and be
+    # counted.
+    p = np.array([[15.0, 5.0, 5.0]])
+    new, n = _wrap_into_cell(p, cell)
+    assert n == 1, "genuine out-of-cell atom must be counted as moved"
+    assert np.isclose(new[0, 0], 5.0), \
+        f"frac=1.5 must wrap to frac=0.5 (cart=5.0); got {new[0,0]}"
+
+    # Case 5: atom genuinely inside (frac=0.5) -- no motion, no count.
+    p = np.array([[5.0, 5.0, 5.0]])
+    new, n = _wrap_into_cell(p, cell)
+    assert n == 0
+    assert np.allclose(new, p)
+
+
 def test_fdf_picks_safe_blocksize_for_hemec_case():
     """End-to-end: render an FDF for 81 atoms with mpi_np=15 (the
     exact 2026-05-28 hemeC-dithiol failure) and assert the emitted
