@@ -1700,6 +1700,13 @@ def test_siesta_form_schema_matches_documented_layout():
     assert sch["config"] == "SiestaConfig"
     assert sch["id_prefix"] == "p"
 
+    # 2026-05-27 reorder: "Parallel execution" moved from 5th to
+    # LAST.  Reasoning: it's the code/execution axis (MPI ranks, OMP
+    # threads, ScaLAPACK BlockSize, memory cap) -- orthogonal to the
+    # physics axis the other sections cover.  Sitting between SCF
+    # and Spin broke the user's mental flow ("design physics, then
+    # size the machine").  Now physics-first, plumbing-last, with
+    # the section sitting right above the Generate / Save action row.
     expected = [
         # System: 2 -> 3 fields after the 2026-05-26 review added
         # section="System" to ``net_charge`` so users with charged
@@ -1709,13 +1716,6 @@ def test_siesta_form_schema_matches_documented_layout():
         ("Basis & grid",             3),
         ("Exchange-correlation",     2),
         ("SCF",                      7),
-        # Parallel execution field-count timeline:
-        #   2 (original): parallel_block_size + parallel_over_k
-        #   4 (2026-05-22 runtime pass): + omp_threads + max_memory_mb
-        #   5 (2026-05-23 review): + mpi_np (form had no MPI rank
-        #     input -> wrapper always emitted single-process,
-        #     even when user wanted mpirun).
-        ("Parallel execution",       5),
         ("Spin",                     2),
         ("k-grid (Monkhorst-Pack)",  1),
         # Relaxation: 4 -> 7 fields after 2026-05-26.  When the user
@@ -1726,6 +1726,13 @@ def test_siesta_form_schema_matches_documented_layout():
         # md_length_timestep are now in the form (advanced tier).
         ("Relaxation",               7),
         ("Output & positioning",     6),
+        # Parallel execution field-count timeline:
+        #   2 (original): parallel_block_size + parallel_over_k
+        #   4 (2026-05-22 runtime pass): + omp_threads + max_memory_mb
+        #   5 (2026-05-23 review): + mpi_np (form had no MPI rank
+        #     input -> wrapper always emitted single-process,
+        #     even when user wanted mpirun).
+        ("Parallel execution",       5),
     ]
     got = [(s["name"], len(s["fields"])) for s in sch["sections"]]
     assert got == expected, got

@@ -81,16 +81,25 @@ class SiestaConfig:
     # than near the SCF block).  This list keeps the form's visual
     # order close to SIESTA's own .fdf reading order: setup first,
     # then SCF + sampling, then the optimisation algorithm, then I/O.
+    # 2026-05-27 reorder: "Parallel execution" moved from 5th to LAST
+    # (just above the Generate / Save action row in the form).  Reason:
+    # the section holds CODE/EXECUTION knobs (MPI ranks, OMP threads,
+    # ScaLAPACK BlockSize, memory cap) -- the "how to run it" axis,
+    # orthogonal to the "what to compute" axis the physics sections
+    # (System / Basis / XC / SCF / Spin / k-grid / Relaxation /
+    # Output) cover.  Interleaving Parallel between SCF and Spin
+    # broke the mental flow.  Now physics-first, plumbing-last so
+    # the user designs the calculation then sizes the machine.
     _form_section_order = (
         "System",
         "Basis & grid",
         "Exchange-correlation",
         "SCF",
-        "Parallel execution",
         "Spin",
         "k-grid (Monkhorst-Pack)",
         "Relaxation",
         "Output & positioning",
+        "Parallel execution",   # ← code/execution, sits right above Generate
     )
 
     # System
