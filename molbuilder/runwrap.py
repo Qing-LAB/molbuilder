@@ -188,13 +188,16 @@ def render_run_wrapper(script_path: Path, *,
             resolved_omp = max(1, int(omp_threads))
             omp_source   = "user-set"
 
-        # NOTE: the actual exec line is computed at RUN time by the
-        # probe block below, NOT here -- the wrapper picks ``mpirun
-        # -np N siesta`` vs bare ``siesta`` based on what ``siesta
-        # --version`` reports for the currently-installed binary.
-        # ``inner`` becomes the run-time-resolved shell expression
-        # below (post-probe); we still derive a static ``description``
-        # for the file-header comment.
+        # NOTE: the actual launch command is computed at RUN time by
+        # the probe block below, NOT here -- the wrapper picks
+        # ``mpirun -np $_mpi_np siesta`` vs bare ``siesta`` based on
+        # what ``siesta --version`` reports for the currently-installed
+        # binary AND the runtime $_mpi_np value (from -np / MB_NP /
+        # generation-time default).  ``inner`` is the post-probe
+        # shell expression; the launch_block at the bottom of this
+        # function wraps it in ``set +e`` + propor-detection.  The
+        # ``description`` string here is for the wrapper file header
+        # only -- the user's actual -np at run time may differ.
         inner = f"$_launch_cmd {script_name} > {basename}.out"
         description = f"SIESTA run, default -np {resolved_mpi}"
 
