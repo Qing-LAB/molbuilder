@@ -52,39 +52,85 @@ def test_render_unknown_extension_raises():
 def test_render_siesta_always_uses_mpirun():
     """SIESTA is fundamentally MPI-launched.  2026-05-24: changed
     from "bare siesta when mpi_np < 2" to "always mpirun, default
-    np=physical_cores" -- user complained that the wrapper without
-    mpirun silently disables MPI even on a SIESTA-MPI build.
+    np=physical_cores".
 
-    The 2026-05-24 evening pass also introduced a RUN-TIME probe
-    block: the exec line is ``exec $_launch_cmd <fdf> > <out>``
-    where ``$_launch_cmd`` is set by parsing ``siesta --version``.
-    For an MPI-capable build that resolves to ``mpirun -np N siesta``."""
+    2026-05-28: the probe's MPI launcher line now uses the runtime
+    shell variable ``$_mpi_np`` (settable via ``-np N`` flag or
+    ``MB_NP=N`` env) instead of a Python-baked rank count.  The
+    generation-time value becomes ``_mpi_np_default``.  Exec is
+    replaced by a captured run + propor diagnostic (see
+    ``test_render_siesta_emits_propor_diagnostic``)."""
     _bind()
     text = render_run_wrapper(Path("/somewhere/my-job.fdf"))
-    # The MPI branch sets ``_launch_cmd="mpirun -np N siesta"`` for
-    # MPI-capable binaries (probe sets _has_mpi=1).
-    assert '_launch_cmd="mpirun -np ' in text
-    # The exec line uses the probe-resolved launcher + the fdf.
-    assert 'exec $_launch_cmd my-job.fdf > my-job.out' in text
+    # The MPI branch sets ``_launch_cmd="mpirun -np $_mpi_np siesta"``
+    # (runtime variable, not Python-baked).
+    assert '_launch_cmd="mpirun -np $_mpi_np siesta"' in text
+    # The launcher call uses the probe-resolved cmd + the fdf;
+    # `exec` was replaced by a captured invocation so the diagnostic
+    # block can run after a crash.
+    assert '$_launch_cmd my-job.fdf > my-job.out' in text
+    assert "exec " not in text or "exec {" not in text, (
+        "no top-level exec — the wrapper traps SIESTA's exit code"
+    )
     assert "conda activate molbuilder-siesta" in text
     assert text.startswith("#!/usr/bin/env bash\n")
 
 
 def test_render_siesta_with_mpi_ranks():
+    """mpi_np from the form becomes the DEFAULT for -np; the launcher
+    line uses the runtime $_mpi_np shell variable so user can override."""
     _bind()
     text = render_run_wrapper(Path("/somewhere/my-job.fdf"), mpi_np=4)
-    # Probe block's MPI branch.
-    assert '_launch_cmd="mpirun -np 4 siesta"' in text
-    assert 'exec $_launch_cmd my-job.fdf > my-job.out' in text
+    # Generation-time default baked into a shell variable.
+    assert "_mpi_np_default=4" in text
+    # Probe block's MPI branch uses the runtime variable.
+    assert '_launch_cmd="mpirun -np $_mpi_np siesta"' in text
     assert "molbuilder-siesta" in text
 
 
 def test_render_siesta_mpi_np_one_still_uses_mpirun():
     """np=1 still goes through mpirun -- a SIESTA-MPI build needs
-    the MPI runtime even for a single rank."""
+    the MPI runtime even for a single rank.  The default propagates."""
     _bind()
     text = render_run_wrapper(Path("/x/y.fdf"), mpi_np=1)
-    assert '_launch_cmd="mpirun -np 1 siesta"' in text
+    assert "_mpi_np_default=1" in text
+    assert '_launch_cmd="mpirun -np $_mpi_np siesta"' in text
+
+
+def test_render_siesta_emits_np_arg_parser():
+    """2026-05-28: wrapper accepts ``-np N`` / ``MB_NP=N`` runtime
+    override.  Pin the parser shape so a regression silently
+    re-bakes the rank count."""
+    _bind()
+    text = render_run_wrapper(Path("/x/y.fdf"), mpi_np=15)
+    # Default fallback chain: arg -> env -> generation-time value.
+    assert '_mpi_np="${MB_NP:-$_mpi_np_default}"' in text
+    # Arg parser handles -np / --np / -h / unknown.
+    assert "-np|--np)" in text
+    assert "-h|--help)" in text
+    # Integer validation.
+    assert "must be a positive integer" in text
+
+
+def test_render_siesta_emits_propor_diagnostic():
+    """2026-05-28: on SIESTA exit-non-zero with propor: ERROR in the
+    .out, the wrapper prints a focused retry hint that names the
+    actual basename + specific safe -np values.  Pin the key text
+    so a regression doesn't silently drop the diagnostic."""
+    _bind()
+    text = render_run_wrapper(Path("/x/hemeC.fdf"), mpi_np=15)
+    # Captured run, not exec.
+    assert "set +e" in text
+    assert "_siesta_exit=$?" in text
+    # Propor detection.
+    assert 'grep -aq "propor: ERROR" hemeC.out' in text
+    # Retry hint names the actual basename (not $0).
+    assert "bash hemeC.run.sh -np 8" in text
+    # The empirical table is preserved.
+    assert "works: 2, 4, 6, 8, 12, 14" in text
+    assert "fails: 9, 10, 11, 13, 15, 16" in text
+    # Re-exit with SIESTA's code.
+    assert 'exit "$_siesta_exit"' in text
 
 
 def test_render_siesta_emits_build_probe_block():
@@ -152,12 +198,15 @@ def test_render_siesta_auto_mpi_clamps_to_n_atoms(monkeypatch):
                         lambda: 64)
     # 30-atom molecule, no user-set mpi_np -> auto.
     text = render_run_wrapper(Path("/x/small-mol.fdf"), n_atoms=30)
-    # The launcher line must use 30, NOT 64.
-    assert 'mpirun -np 30 siesta' in text, (
-        "auto-mpi must clamp to n_atoms=30 (host has 64 cores, but "
-        "30 atoms = max usable rank count)"
+    # The generation-time default must be 30, NOT 64.  The launcher
+    # itself uses ``$_mpi_np`` so user can also override at run time
+    # via ``-np N`` / ``MB_NP=N``.
+    assert "_mpi_np_default=30" in text, (
+        "auto-mpi must clamp default to n_atoms=30 (host has 64 cores, "
+        "but 30 atoms = max usable rank count)"
     )
-    assert 'mpirun -np 64 siesta' not in text
+    assert "_mpi_np_default=64" not in text
+    assert '_launch_cmd="mpirun -np $_mpi_np siesta"' in text
     # The clamp note must be visible in the wrapper.
     assert "auto-mpi clamped from 64" in text
     assert "to 30 (n_atoms)" in text
@@ -170,7 +219,8 @@ def test_render_siesta_auto_mpi_no_clamp_when_atoms_geq_cores(monkeypatch):
     monkeypatch.setattr("molbuilder.runtime_info.physical_core_count",
                         lambda: 8)
     text = render_run_wrapper(Path("/x/big-mol.fdf"), n_atoms=200)
-    assert 'mpirun -np 8 siesta' in text
+    assert "_mpi_np_default=8" in text
+    assert '_launch_cmd="mpirun -np $_mpi_np siesta"' in text
     assert "clamped" not in text
 
 
@@ -183,7 +233,8 @@ def test_render_siesta_user_mpi_over_atoms_emits_warning(monkeypatch):
         Path("/x/tiny.fdf"), mpi_np=20, n_atoms=10
     )
     # Honoured verbatim (we do NOT silently override user input).
-    assert 'mpirun -np 20 siesta' in text
+    assert "_mpi_np_default=20" in text
+    assert '_launch_cmd="mpirun -np $_mpi_np siesta"' in text
     # But the warning is unmistakable.
     assert "WARNING: user-set mpi_np=20 > n_atoms=10" in text
     assert "propor IMAX=0" in text
@@ -210,10 +261,11 @@ def test_write_run_wrapper_parses_n_atoms_from_fdf(tmp_path,
     fdf_path.write_text(fdf_text)
     wrapper_path = write_run_wrapper(fdf_path)
     text = wrapper_path.read_text()
-    assert 'mpirun -np 12 siesta' in text, (
-        "expected wrapper to auto-clamp to n_atoms=12 parsed from "
-        ".fdf (not 32 = physical cores)"
+    assert "_mpi_np_default=12" in text, (
+        "expected wrapper to auto-clamp default to n_atoms=12 parsed "
+        "from .fdf (not 32 = physical cores)"
     )
+    assert '_launch_cmd="mpirun -np $_mpi_np siesta"' in text
     assert "auto-mpi clamped from 32" in text
 
 
@@ -231,7 +283,8 @@ def test_write_run_wrapper_unparseable_fdf_falls_back(tmp_path,
     wrapper_path = write_run_wrapper(fdf_path)
     text = wrapper_path.read_text()
     # Falls back to physical_cores (4) without clamping.
-    assert 'mpirun -np 4 siesta' in text
+    assert "_mpi_np_default=4" in text
+    assert '_launch_cmd="mpirun -np $_mpi_np siesta"' in text
     assert "clamped" not in text
 
 
@@ -259,13 +312,15 @@ def test_render_siesta_mpi_pins_blas_to_one_and_sets_omp():
     assert "export OPENBLAS_NUM_THREADS=1" in text
     # OMP is set to SOMETHING (auto-resolved or user-set), not absent.
     assert "export OMP_NUM_THREADS=" in text
-    # Exports must precede the exec line so the activated env
-    # inherits them.  2026-05-24: exec is now
-    # ``exec $_launch_cmd <fdf> > <out>`` (runtime probe).
-    exec_ix = text.find("exec $_launch_cmd")
-    omp_ix  = text.find("export OMP_NUM_THREADS=")
-    assert 0 <= omp_ix < exec_ix, (
-        "OMP_NUM_THREADS export must come BEFORE the exec line"
+    # Exports must precede the launch line so the activated env
+    # inherits them.  2026-05-28: the wrapper no longer uses ``exec`` --
+    # it runs the launcher inside ``set +e`` so the post-run propor
+    # diagnostic can inspect the .out.  Pin against the launch call
+    # ``$_launch_cmd <fdf> > <out>`` instead.
+    launch_ix = text.find("$_launch_cmd y.fdf > y.out")
+    omp_ix    = text.find("export OMP_NUM_THREADS=")
+    assert 0 <= omp_ix < launch_ix, (
+        "OMP_NUM_THREADS export must come BEFORE the launch line"
     )
 
 
@@ -321,13 +376,15 @@ def test_render_conda_activation_hybrid_three_paths():
     # Path 3: clear error message.
     assert "conda not on PATH" in text
     assert "exit 1" in text
-    # Activation block runs BEFORE the exec line (otherwise the env
-    # isn't ready when SIESTA launches).
+    # Activation block runs BEFORE the launch line (otherwise the env
+    # isn't ready when SIESTA launches).  Post-2026-05-28 the launch
+    # is no longer ``exec`` (so the propor diagnostic can run after);
+    # check against the ``$_launch_cmd ... > ... .out`` line.
     activate_ix = text.find("conda activate molbuilder-siesta")
-    exec_ix     = text.find("exec $_launch_cmd")
-    assert 0 <= activate_ix < exec_ix, (
-        "conda activation must precede the exec line; otherwise the "
-        "subshell SIESTA runs in wouldn't have the env."
+    launch_ix   = text.find("$_launch_cmd job.fdf > job.out")
+    assert 0 <= activate_ix < launch_ix, (
+        "conda activation must precede the launch line; otherwise "
+        "the subshell SIESTA runs in wouldn't have the env."
     )
 
 

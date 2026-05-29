@@ -143,18 +143,27 @@ def test_block_size_honours_mpi_rank_constraint():
                 )
 
 
-def test_explicit_blocksize_override_safety_downgrade():
-    """User manually sets parallel_block_size = 32 on a 50-atom
-    molecule with mpi_np = 4.  32 * 4 = 128 > 50 -- propor IMAX = 0
-    would crash the run.  The render must DOWNGRADE the BlockSize
-    to a safe value (silent crash is the worse failure mode) and
-    emit a WARNING comment in the FDF naming the user's input + the
-    downgrade.
+def test_explicit_blocksize_override_passes_through_verbatim():
+    """User-set BlockSize is honored verbatim regardless of the
+    BlockSize × mpi_np vs n_atoms ratio.
+
+    2026-05-28 correction: previously this test asserted that the
+    render path AUTO-DOWNGRADED an "unsafe" BlockSize to avoid
+    propor IMAX = 0.  Direct empirical sweep (see /tmp/siesta-mpi-
+    probe) disproved that theory -- BlockSize = 1, 2, 4 all crash
+    at the same mpi_np, so BlockSize is NOT the relevant lever for
+    the propor crash.  The auto-downgrade was based on the wrong
+    theory and has been removed.  This test now pins the new
+    invariant: user-set BlockSize comes through unchanged, no
+    WARNING comment generated.
+
+    Tunability for propor: use the wrapper's ``-np`` flag at run
+    time.  The wrapper prints a focused diagnostic naming the safe
+    retry values when propor fires.
     """
     import re
     import numpy as np
     from molbuilder.structure import Structure
-    # 50 atoms on a coarse lattice (geometry preflight passes).
     side = int(np.ceil(50 ** (1 / 3)))
     coords = np.array([
         [i * 1.5, j * 1.5, k * 1.5]
@@ -163,20 +172,15 @@ def test_explicit_blocksize_override_safety_downgrade():
     s = Structure(elements=["C"] * 50, positions=coords, title="x")
     cfg = SiestaConfig(parallel_block_size=32, mpi_np=4, relax_type="none")
     fdf = render_fdf(s, cfg)
-    # The emitted BlockSize must NOT be 32 (would crash).
     m = re.search(r"^BlockSize\s+(\d+)", fdf, re.MULTILINE)
     assert m, "FDF must carry an explicit BlockSize line"
     bs = int(m.group(1))
-    assert bs * 4 <= 50 + (bs - 1), (
-        f"downgraded BlockSize={bs} still violates the rank constraint"
+    assert bs == 32, (
+        f"user-set BlockSize=32 must come through verbatim; got {bs}"
     )
-    assert bs != 32, "user-set unsafe BlockSize must be downgraded, not honored"
-    # The warning comment must be in the FDF so the user sees what we
-    # changed + why.
-    assert "WARNING" in fdf and "user-set BlockSize 32" in fdf, (
-        "expected a WARNING comment naming the user input + downgrade; "
-        f"got FDF excerpt around BlockSize: {[l for l in fdf.splitlines() if 'BlockSize' in l or 'WARNING' in l]}"
-    )
+    # The old auto-downgrade WARNING must NOT appear.
+    assert "WARNING: user-set BlockSize" not in fdf
+    assert "Downgraded to BlockSize" not in fdf
 
 
 def test_explicit_blocksize_override_safe_value_passes_through():

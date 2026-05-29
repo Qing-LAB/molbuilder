@@ -196,10 +196,70 @@ def render_run_wrapper(script_path: Path, *,
         # below (post-probe); we still derive a static ``description``
         # for the file-header comment.
         inner = f"$_launch_cmd {script_name} > {basename}.out"
-        description = f"SIESTA run, {resolved_mpi} ranks intended"
+        description = f"SIESTA run, default -np {resolved_mpi}"
+
+        # ---- Argument-parsing prelude (SIESTA only) ----
+        # The wrapper accepts ``-np N`` (or env var ``MB_NP=N``) so
+        # users can experiment with MPI rank counts WITHOUT
+        # regenerating.  Background: SIESTA can crash with
+        # ``propor: ERROR: IMAX = 0`` at startup for certain
+        # mpi_np / molecule combinations.  The crash is data-
+        # dependent on the ProcessorY x ProcessorX grid SIESTA auto-
+        # picks for that rank count; predicting it from rank count
+        # alone is not robust.  Allowing a runtime override means
+        # the user can try ``./run.sh -np 8`` after a crash with
+        # ``-np 15`` without regenerating the .fdf or the wrapper.
+        # The post-run diagnostic at the bottom of this wrapper
+        # catches the crash and prints retry suggestions.
+        siesta_args_block = (
+            f"# --- Argument parsing -----------------------------------\n"
+            f"# Override the generation-time -np with: ``-np N`` or\n"
+            f"# ``MB_NP=N``.  Useful for retrying after a propor crash\n"
+            f"# (see diagnostic at the bottom of this wrapper).\n"
+            f"_mpi_np_default={resolved_mpi}\n"
+            f'_mpi_np="${{MB_NP:-$_mpi_np_default}}"\n'
+            f'while [ $# -gt 0 ]; do\n'
+            f'    case "$1" in\n'
+            f"        -np|--np)\n"
+            f'            if [ $# -lt 2 ]; then\n'
+            f'                echo "ERROR: -np requires a value" >&2\n'
+            f"                exit 1\n"
+            f"            fi\n"
+            f'            _mpi_np="$2"; shift 2 ;;\n'
+            f"        -h|--help)\n"
+            f'            cat <<USAGE\n'
+            f'Usage: bash $(basename "$0") [-np N] [-h]\n'
+            f"\n"
+            f"  -np N    override MPI rank count.  Default at generation\n"
+            f"           time was $_mpi_np_default (from the form).\n"
+            f"  -h       this help.\n"
+            f"\n"
+            f"Environment variables:\n"
+            f"  MB_NP=N  same as -np N (useful for SLURM/PBS scripts:\n"
+            f"           ``export MB_NP=\\$SLURM_NTASKS`` then bash this).\n"
+            f"\n"
+            f"On 'propor: ERROR: IMAX = 0' crashes at startup, retry\n"
+            f"with a smaller -np.  See the diagnostic the wrapper prints\n"
+            f"on failure for specific suggestions.\n"
+            f"USAGE\n"
+            f"            exit 0 ;;\n"
+            f"        *)\n"
+            f'            echo "ERROR: unknown argument: $1 (use -h)" >&2\n'
+            f"            exit 1 ;;\n"
+            f"    esac\n"
+            f"done\n"
+            f'if ! printf %s "$_mpi_np" | grep -qE \'^[1-9][0-9]*$\'; then\n'
+            f'    echo "ERROR: -np must be a positive integer; got: '
+            f'\'$_mpi_np\'" >&2\n'
+            f"    exit 1\n"
+            f"fi\n"
+            f"\n"
+        )
 
         env_prefix = (
-            f"# MPI rank count ({mpi_source}): {resolved_mpi}\n"
+            siesta_args_block
+            + f"# MPI rank count: $_mpi_np (default: $_mpi_np_default, "
+            f"source: {mpi_source})\n"
             f"{clamp_note}"
             f"# Thread / BLAS pinning.\n"
             f"#   * OMP_NUM_THREADS ({omp_source}): SIESTA mainline is\n"
@@ -277,17 +337,17 @@ def render_run_wrapper(script_path: Path, *,
             f'case "$_par_norm" in *" MPI "*) _has_mpi=1 ;; esac\n'
             f'case "$_par_norm" in *" OMP "*|*" OpenMP "*) _has_omp=1 ;; esac\n'
             f'if [ "$_has_mpi" = 1 ]; then\n'
-            f'    _launch_cmd="mpirun -np {resolved_mpi} siesta"\n'
+            f'    _launch_cmd="mpirun -np $_mpi_np siesta"\n'
             f'    if [ "$_has_omp" = 1 ]; then\n'
-            f'        _launch_note="hybrid MPI+OMP ({resolved_mpi} ranks x {resolved_omp} OMP threads)"\n'
+            f'        _launch_note="hybrid MPI+OMP ($_mpi_np ranks x {resolved_omp} OMP threads)"\n'
             f'    else\n'
-            f'        _launch_note="pure MPI ({resolved_mpi} ranks; OMP setting irrelevant to this binary)"\n'
+            f'        _launch_note="pure MPI ($_mpi_np ranks; OMP setting irrelevant to this binary)"\n'
             f'    fi\n'
             f'elif [ "$_has_omp" = 1 ]; then\n'
             f'    _launch_cmd="siesta"\n'
             f'    _launch_note="OMP-only build ({resolved_omp} threads)"\n'
             f'elif [ -z "$_siesta_par" ]; then\n'
-            f'    _launch_cmd="mpirun -np {resolved_mpi} siesta"\n'
+            f'    _launch_cmd="mpirun -np $_mpi_np siesta"\n'
             f'    _launch_note="MPI fallback (probe inconclusive; safe default for MPI-compiled SIESTA)"\n'
             f'else\n'
             f'    _launch_cmd="siesta"\n'
@@ -383,6 +443,66 @@ def render_run_wrapper(script_path: Path, *,
         f"\n"
     )
 
+    # Launch + diagnostics.  For SIESTA we run the command (not
+    # exec) so we can inspect the .out for ``propor: ERROR: IMAX = 0``
+    # on failure and print a targeted retry hint.  Layer-on-top
+    # cost: one extra bash process for the wrapper's lifetime; cheap.
+    # For PySCF the original exec is preserved -- no diagnostic
+    # surface there yet.
+    if category == "siesta":
+        launch_block = (
+            f"# --- Launch SIESTA + capture exit -----------------------\n"
+            f"# `set +e` lets us inspect the exit code; the diagnostic\n"
+            f"# below reads the .out for ``propor: ERROR`` and prints a\n"
+            f"# retry suggestion.  Then we re-exit with SIESTA's code.\n"
+            f"set +e\n"
+            f"$_launch_cmd {script_name} > {basename}.out\n"
+            f"_siesta_exit=$?\n"
+            f"set -e\n"
+            f"\n"
+            f'if [ "$_siesta_exit" -ne 0 ]; then\n'
+            f"    echo \"\"\n"
+            f'    echo "===== SIESTA exited with code $_siesta_exit =====" >&2\n'
+            f'    if grep -aq "propor: ERROR" {basename}.out 2>/dev/null; then\n'
+            f"        cat <<HINT >&2\n"
+            f"\n"
+            f"SIESTA crashed with 'propor: ERROR: IMAX = 0' during startup.\n"
+            f"\n"
+            f"This is a SIESTA-side issue with how it distributes work\n"
+            f"across MPI ranks for this specific molecule + rank-count\n"
+            f"combination.  Some mpi_np values leave some ranks empty\n"
+            f"in matel_table's radial-function pipeline and the internal\n"
+            f"proportionality check then fails.  It is NOT a configuration\n"
+            f"bug in your .fdf -- the same .fdf works at a different -np.\n"
+            f"\n"
+            f"Your -np was $_mpi_np.  Retry WITHOUT regenerating:\n"
+            f"\n"
+            f"  bash {basename}.run.sh -np 8     # powers of 2 are usually safest\n"
+            f"  bash {basename}.run.sh -np 4     # if 8 also fails\n"
+            f"  bash {basename}.run.sh -np 2     # last resort\n"
+            f"\n"
+            f"Empirically (probed on hemeC, 81 atoms, Fe + S + organic):\n"
+            f"  works: 2, 4, 6, 8, 12, 14\n"
+            f"  fails: 9, 10, 11, 13, 15, 16\n"
+            f"For pure-organic systems the safe range is usually wider;\n"
+            f"larger heteroatom mixes are more conservative.\n"
+            f"\n"
+            f"Full SIESTA output: {basename}.out\n"
+            f"HINT\n"
+            f'    elif grep -aq "ERROR\\|aborted\\|Stopping" '
+            f"{basename}.out 2>/dev/null; then\n"
+            f'        echo "Other SIESTA error detected; check '
+            f'{basename}.out for details." >&2\n'
+            f"    fi\n"
+            f'    exit "$_siesta_exit"\n'
+            f"fi\n"
+            f"\n"
+            f'echo "SIESTA completed: $_launch_cmd {script_name} -> '
+            f'{basename}.out"\n'
+        )
+    else:
+        launch_block = f"exec {inner}\n"
+
     return (
         f"#!/usr/bin/env bash\n"
         f"#\n"
@@ -394,8 +514,10 @@ def render_run_wrapper(script_path: Path, *,
         f"# not regenerate this file unless `molbuilder run` is invoked\n"
         f"# again on the same script.  Run directly:\n"
         f"#\n"
-        f"#     bash {basename}.run.sh        # foreground\n"
-        f"#     nohup ./{basename}.run.sh &   # background, detached\n"
+        f"#     bash {basename}.run.sh              # foreground, default -np\n"
+        f"#     bash {basename}.run.sh -np 8        # override mpi_np (SIESTA only)\n"
+        f"#     MB_NP=8 bash {basename}.run.sh      # same via env var (SLURM/PBS)\n"
+        f"#     nohup ./{basename}.run.sh &         # background, detached\n"
         f"#\n"
         f"# IMPORTANT: this wrapper chdirs to the script directory\n"
         f"# before launching, so ALL output artefacts (.log, .chk,\n"
@@ -413,7 +535,7 @@ def render_run_wrapper(script_path: Path, *,
         f"\n"
         f"{env_activation}"
         f"{env_prefix}"
-        f"exec {inner}\n"
+        f"{launch_block}"
     )
 
 

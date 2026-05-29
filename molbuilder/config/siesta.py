@@ -520,18 +520,27 @@ class SiestaConfig:
         "engine_key":  '(molbuilder: .run.sh ``mpirun -np N`` only; not in .fdf)',
         "null_label": "(single-process)",
         "range":      (1, 1024),
-        "help":       "MPI rank count for the run-wrapper -- emits "
-                      "``mpirun -np <N> siesta ...`` when N >= 2.  "
-                      "Pick based on your host: typically N = physical "
-                      "cores or N = sockets x cores_per_socket / 2 for "
-                      "memory-bound jobs.  Cluster schedulers (Slurm / "
-                      "PBS) usually set this for you; on a workstation "
-                      "you'd pick it manually.  Leave blank (or = 1) "
-                      "for single-process runs.  The wrapper also "
-                      "auto-derives OMP_NUM_THREADS = "
-                      "physical_cores // mpi_np when omp_threads is "
-                      "blank, so a 20-core box + mpi_np=4 gives 5 OMP "
-                      "threads per rank by default.",
+        "help":       "MPI rank count baked into ``mpirun -np N siesta`` "
+                      "in the generated run-wrapper.  Pick based on your "
+                      "host: typically N = physical cores; for "
+                      "memory-bound jobs N = sockets x cores_per_socket "
+                      "/ 2 is a common rule of thumb.  Cluster schedulers "
+                      "(Slurm / PBS) usually set this for you; on a "
+                      "workstation you pick it manually.  Leave blank for "
+                      "the auto default (physical_cores).\n\n"
+                      "RUNTIME OVERRIDE: this value bakes a DEFAULT into "
+                      "the wrapper but is not final.  The wrapper accepts "
+                      "``bash run.sh -np N`` and ``MB_NP=N bash run.sh``, "
+                      "so you can experiment with different rank counts "
+                      "WITHOUT regenerating.  This matters because SIESTA "
+                      "can crash with ``propor: ERROR: IMAX = 0`` for "
+                      "certain mpi_np / molecule combinations -- the "
+                      "crash depends on the ProcessorY x ProcessorX grid "
+                      "SIESTA auto-picks for that rank count, which is "
+                      "hard to predict.  If you hit propor, retry with "
+                      "smaller -np (powers of 2 are usually safe).  The "
+                      "wrapper prints a focused diagnostic on the propor "
+                      "crash with specific suggestions.",
         "skip_cli":   True,
     })
 
@@ -541,17 +550,19 @@ class SiestaConfig:
         "engine_key":  'BlockSize',
         "id_suffix": "block-size",
         "null_label": "(auto)",
-        "help": "ScaLAPACK BlockSize for orbital + per-atom "
-                "distribution.  None = auto: largest power of 2 that "
-                "satisfies BOTH the size-only cap (8 for cache "
-                "efficiency on typical molecules) AND the rank "
-                "constraint (every MPI rank must get >= 1 atom "
-                "block, i.e. BlockSize <= floor(n_atoms / mpi_np)).  "
-                "Violating the rank constraint aborts SIESTA with "
-                "``propor: ERROR: IMAX = 0`` -- the propor pass "
-                "leaves trailing ranks empty.  Set explicitly only "
-                "for the rare ScaLAPACK perf-tuning case (>1000 "
-                "atoms on >= 16 ranks, where 16 or 32 helps).",
+        "help": "ScaLAPACK BlockSize for the diagonaliser's orbital "
+                "distribution; affects cache efficiency at moderate "
+                "rank counts.  None = auto: largest power of 2 that "
+                "leaves >= 2 blocks per rank.  NOTE: BlockSize does "
+                "NOT fix the ``propor: ERROR: IMAX = 0`` crash -- that "
+                "was the previous (incorrect) claim and is contradicted "
+                "by direct empirical sweep (BS = 1, 2, 4 all crash at "
+                "the same mpi_np).  Propor is a vector-proportionality "
+                "check in matel_table's MPI-deduplication step; lower "
+                "mpi_np (use the wrapper's ``-np`` override) to clear "
+                "that crash.  Set BlockSize explicitly only for the "
+                "rare ScaLAPACK perf-tuning case (>1000 atoms on "
+                ">= 16 ranks, where 16 or 32 helps).",
         "skip_cli": True,
     })
     parallel_over_k: Optional[bool] = field(default=None, metadata={

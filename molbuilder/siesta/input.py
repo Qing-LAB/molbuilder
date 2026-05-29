@@ -48,55 +48,48 @@ from ..config.siesta import SiestaConfig
 
 def _auto_block_size(n_atoms: int,
                      mpi_np: Optional[int] = None) -> int:
-    """Pick a SIESTA ``BlockSize`` that's safe for an arbitrary MPI
-    rank count on a structure of ``n_atoms``.
+    """Pick a SIESTA ``BlockSize`` for the ScaLAPACK orbital
+    distribution.  Affects cache efficiency at moderate rank counts.
 
-    Failure mode this guards against
-    ---------------------------------
-    SIESTA's per-atom distribution pass (``propor.f``) deals atoms to
-    ranks in cyclic blocks of ``BlockSize``: rank r holds atoms
-    ``r * BlockSize .. (r+1) * BlockSize - 1`` (mod the cyclic wrap).
-    Rank r gets at least ONE block iff ``r * BlockSize < n_atoms``;
-    rank ``Nrank - 1`` is the last to be served, so the global
-    constraint is
+    HISTORICAL NOTE (2026-05-28 correction)
+    ----------------------------------------
+    This function previously claimed to guard against ``propor:
+    ERROR: IMAX = 0`` via the formula
+    ``BlockSize <= floor(n_atoms / Nrank)``.  Empirical sweep
+    (probe in /tmp/siesta-mpi-probe, results captured in design
+    notes) confirms that claim was wrong: SIESTA crashes IDENTICALLY
+    with BlockSize = 1, 2, 4 at mpi_np = 15 on hemeC-dithiol.
 
-        BlockSize  <=  floor(n_atoms / Nrank)         # every rank busy
+    The propor crash is in ``matel_table.F90``'s MPI-deduplication
+    of radial-function tables, not in any BLACS distribution.  It
+    is a function of ``mpi_np`` vs the molecule's species count and
+    radial-table size; predicting it from BlockSize is impossible
+    because BlockSize doesn't enter the matel_table loop.  See
+    ``runwrap.py``'s post-run diagnostic for the user-facing fix
+    (the wrapper's ``-np`` runtime override).
 
-    Violating it leaves the last few ranks with zero atoms, and
-    ``propor`` aborts with ``ERROR: IMAX = 0``.  The classic
-    sighting (2026-05-28 hemeC-dithiol gasrun1): 81 atoms x 15 MPI
-    ranks with BlockSize = 8 left ranks 11-14 empty -> IMAX = 0.
-
-    Why not just always use BlockSize = 1
-    -------------------------------------
-    ScaLAPACK does fewer (but larger) memory transfers with larger
-    BlockSize, so taking the LARGEST safe value -- not the smallest
-    -- gives the best per-rank cache behaviour.  Power-of-2 is the
-    canonical heuristic (matches typical SIMD + cache-line widths).
+    What this function STILL does
+    -----------------------------
+    Pick a power-of-2 BlockSize that gives ScaLAPACK good cache
+    behaviour at the requested rank count.  Larger BlockSize
+    reduces communication overhead per orbital block; too-large
+    leaves some ranks idle on the diag step.  The ``floor(n_atoms
+    / mpi_np)`` formula is a reasonable upper bound for the diag
+    block; it just isn't the propor-fixing constraint it was
+    advertised as.
 
     Strategy
     --------
-      * If mpi_np is None or 1 (caller doesn't know how many ranks
-        the run will use): fall back to a size-only ladder (1, 2, 4,
-        8 by n_atoms).  Capped at 8 here is a deliberately
-        conservative guess that's safe on ANY future rank count up
-        to ~n_atoms/8 -- with no knowledge of the rank count we
-        can't do better.  Pre-2026-05-28 this was the only code
-        path.
-
-      * If mpi_np >= 2 (caller passed the actual rank count, e.g.
-        from cfg.mpi_np in the FDF render path): pick the LARGEST
-        power of 2 satisfying the rank constraint
-        ``BlockSize <= floor(n_atoms / mpi_np)``.  No artificial
-        ceiling -- a 2000-atom run on 64 ranks correctly picks
-        BlockSize 32 here (floor(2000/64) = 31 -> pow2 16... wait
-        floor(2000/64) = 31, largest pow2 <= 31 is 16; the user
-        wanting 32 should bump mpi_np = 60 -> floor 33 -> pow2 32).
+      * If mpi_np is None or 1: size-only ladder (1, 2, 4, 8 by
+        n_atoms), capped at 8.
+      * If mpi_np >= 2: largest power of 2 satisfying
+        ``BlockSize <= floor(n_atoms / mpi_np)``, no artificial cap.
 
     Returns
     -------
-    A positive power of 2 safe for an MPI run of ``mpi_np`` ranks
-    (or any rank count when mpi_np is None or 1).
+    A positive power of 2.  Safe to use regardless of mpi_np; if
+    SIESTA still crashes at startup with propor IMAX=0, the issue
+    is mpi_np / molecule mismatch, not BlockSize.
     """
     if not mpi_np or int(mpi_np) <= 1:
         # No rank info -- conservative size-only baseline.  Cap at 8
@@ -788,33 +781,17 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         "# These settings matter only with `mpirun -np N siesta`",
         "# (single-rank runs ignore them).",
         "#",
-        "# BlockSize: global block size used for ScaLAPACK orbital",
-        "# distribution AND for several per-atom / per-projector",
-        "# distribution passes earlier in the pipeline.  Without it",
-        "# SIESTA auto-picks ceil(Norb / Nrank), which works for the",
-        "# orbital matrix but can be too large for the small per-atom",
-        "# passes on small molecules, giving:",
-        "#     propor: ERROR: IMAX = 0",
-        "# The real constraint (see siesta/input.py::_auto_block_size",
-        "# for the math) is:",
-        "#     BlockSize  <=  floor(n_atoms / Nrank)",
-        "# i.e. every MPI rank must get >= 1 atom block.  molbuilder",
-        "# picks the LARGEST power of 2 satisfying that constraint",
-        "# (bigger blocks help ScaLAPACK's cache behaviour, smaller",
-        "# blocks just leave perf on the table -- no upper cap when",
-        "# mpi_np is known).",
-        "# With mpi_np blank (single-process / unknown rank count) a",
-        "# conservative size-only ladder applies instead:",
-        "#   n_atoms >= 16  ->  BlockSize 8   (typical molecules)",
-        "#   n_atoms >=  8  ->  BlockSize 4",
-        "#   n_atoms >=  4  ->  BlockSize 2",
-        "#   smaller        ->  BlockSize 1",
-        "# Example with mpi_np set: 81 atoms on 15 ranks -> floor(81/15)",
-        "# = 5 -> BlockSize 4 (not 8, which would leave ranks 11-14",
-        "# empty and abort at propor).  Big system + reasonable ranks",
-        "# scales naturally: 2000 atoms on 64 ranks -> floor(2000/64)",
-        "# = 31 -> BlockSize 16.  Override via cfg.parallel_block_size",
-        "# only for hand-tuned ScaLAPACK perf experiments.",
+        "# BlockSize: ScaLAPACK orbital-distribution block.  Affects",
+        "# cache efficiency for the diagonaliser; does NOT fix the",
+        "# propor IMAX=0 crash (an earlier claim was wrong -- an",
+        "# empirical sweep confirmed BlockSize = 1, 2, 4 all crash",
+        "# at the same mpi_np; propor is a matel_table proportionality",
+        "# check, not a BLACS distribution check).  If your run dies",
+        "# at startup with ``propor: ERROR: IMAX = 0``: lower mpi_np",
+        "# via the wrapper's ``-np`` flag, not BlockSize.  Larger",
+        "# BlockSize gives marginally better diag throughput on big",
+        "# systems (>1000 atoms / >=16 ranks); for smaller jobs the",
+        "# default is fine.  Override only for hand-tuned perf work.",
         "#",
         "# Diag.ParallelOverK: parallelise the diagonaliser over",
         "# k-points (.true.) or over orbitals (.false.).  Auto-",
@@ -824,33 +801,13 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     if cfg.parallel_block_size is None:
         block_size = _auto_block_size(struct.n_atoms, cfg.mpi_np)
     else:
+        # User-set BlockSize is honored verbatim.  Earlier code
+        # auto-downgraded when ``BlockSize * mpi_np > n_atoms`` on
+        # the theory that it caused propor IMAX=0; empirical sweep
+        # (2026-05-28) disproved that theory -- propor is a
+        # matel_table issue, not a BlockSize issue.  The auto-
+        # downgrade is gone; user's value passes through.
         block_size = int(cfg.parallel_block_size)
-        # Safety net: even though the user explicitly set BlockSize,
-        # ``BlockSize * mpi_np > n_atoms + (BlockSize - 1)`` still
-        # crashes SIESTA at propor IMAX=0.  Auto-picker handles its
-        # own input; the manual-override path didn't, so a user
-        # tuning BlockSize for ScaLAPACK perf could re-trigger the
-        # exact bug the picker now prevents.  Downgrade (don't
-        # raise) -- a render-time refusal is too aggressive for the
-        # web form's "click and see" workflow.  Emit a comment in
-        # the FDF so the user sees what we did + why; the issues
-        # list (consumed by the form's status banner) gets a warn
-        # via the validation pass later in this function.
-        if (cfg.mpi_np is not None and int(cfg.mpi_np) > 1
-                and block_size * int(cfg.mpi_np)
-                    > struct.n_atoms + (block_size - 1)):
-            safe = _auto_block_size(struct.n_atoms, cfg.mpi_np)
-            out.append(
-                f"# WARNING: user-set BlockSize {block_size} would "
-                f"leave trailing MPI ranks empty with "
-                f"mpi_np={int(cfg.mpi_np)} on {struct.n_atoms} atoms "
-                f"(BlockSize * Nrank = {block_size * int(cfg.mpi_np)} "
-                f"> n_atoms = {struct.n_atoms}).  Downgraded to "
-                f"BlockSize {safe} to avoid ``propor: ERROR: IMAX = "
-                f"0`` abort.  See _auto_block_size in "
-                f"molbuilder/siesta/input.py for the math."
-            )
-            block_size = safe
     out.append(f"BlockSize          {block_size}")
     if cfg.parallel_over_k is None:
         over_k = (kx, ky, kz) != (1, 1, 1)
