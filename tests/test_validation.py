@@ -622,6 +622,80 @@ def test_siesta_mesh_cutoff_in_range_no_warn(water_struct):
     assert [i for i in issues if i.where == "config.mesh_cutoff"] == []
 
 
+def test_siesta_mesh_cutoff_below_production_floor_warns(water_struct):
+    """2026-05-28: a value within the dataclass range but below the
+    150 Ry production floor emits a SOFT WARN with a clear nudge.
+
+    The slider lower bound is 100 Ry (the dataclass metadata-range
+    check owns "below the slider floor").  100-149 Ry is the
+    above-the-slider-floor-but-still-screening-grade window where
+    the user benefits from a soft nudge.
+    """
+    cfg = SiestaConfig(mesh_cutoff=120.0)
+    issues = validate(water_struct, cfg)
+    mc_issues = [i for i in issues if i.where == "config.mesh_cutoff"]
+    assert len(mc_issues) == 1, (
+        f"expected exactly one mesh_cutoff issue; got "
+        f"{[i.message for i in mc_issues]}"
+    )
+    assert mc_issues[0].severity == "warn"
+    # Message must name the actual value AND the production floor
+    # so the user knows what to set instead.
+    assert "120" in mc_issues[0].message
+    assert "150" in mc_issues[0].message
+    assert ("200-300" in mc_issues[0].message
+            or "production" in mc_issues[0].message), (
+        f"message must mention production levels; got: "
+        f"{mc_issues[0].message!r}"
+    )
+
+
+def test_siesta_mesh_cutoff_exactly_at_production_floor_no_warn(water_struct):
+    """Boundary: 150 Ry is the threshold; >= 150 is silent."""
+    cfg = SiestaConfig(mesh_cutoff=150.0)
+    issues = validate(water_struct, cfg)
+    assert [i for i in issues if i.where == "config.mesh_cutoff"] == []
+
+
+def test_siesta_mesh_cutoff_at_slider_floor_warns_only_via_production_rule(
+        water_struct):
+    """Boundary: mc = 100 Ry is exactly the slider floor (lo of the
+    dataclass metadata range, inclusive).  Below the production-
+    defensible 150 Ry threshold → the production-floor rule warns.
+    The metadata-range check is INCLUSIVE at lo, so it doesn't fire.
+    Net: exactly one warn from the production rule.
+    """
+    cfg = SiestaConfig(mesh_cutoff=100.0)
+    issues = validate(water_struct, cfg)
+    mc_issues = [i for i in issues if i.where == "config.mesh_cutoff"]
+    assert len(mc_issues) == 1
+    # Must be the production-floor message (not the range-out message).
+    assert "production" in mc_issues[0].message.lower(), (
+        f"100 Ry is INSIDE the slider range; the warn here must be "
+        f"the production-floor message, not the metadata-range one; "
+        f"got: {mc_issues[0].message!r}"
+    )
+
+
+def test_siesta_mesh_cutoff_below_slider_floor_emits_only_one_warning(
+        water_struct):
+    """Regression: a value below the SLIDER floor (100 Ry) must
+    produce exactly ONE warning -- the dataclass metadata-range one,
+    not double-counted with the production-floor rule.
+
+    Before the gate at >= 100 Ry in _check_siesta_mesh_cutoff, the
+    same field would generate two warns and existing tests counting
+    by ``where`` would fail.
+    """
+    cfg = SiestaConfig(mesh_cutoff=50.0)
+    issues = validate(water_struct, cfg)
+    mc_issues = [i for i in issues if i.where == "config.mesh_cutoff"]
+    assert len(mc_issues) == 1, (
+        f"expected exactly one mesh_cutoff issue; got "
+        f"{len(mc_issues)} ({[i.message for i in mc_issues]})"
+    )
+
+
 def test_pyscf_grid_level_above_range_warns(water_struct):
     """grid_level has metadata range (0, 9).  Beyond that value isn't
     meaningful in PySCF; warn the user before they generate a script

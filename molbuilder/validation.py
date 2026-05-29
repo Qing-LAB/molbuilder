@@ -625,6 +625,59 @@ def _check_siesta_pseudo_coverage(struct: Structure, cfg,
     return out
 
 
+def _check_siesta_mesh_cutoff(cfg) -> List[Issue]:
+    """SIESTA-specific: mesh_cutoff below the production-defensible
+    floor (150 Ry).
+
+    Why 150 Ry as the warn threshold (vs. the slider's hard floor of
+    100 Ry):
+
+    SIESTA's real-space mesh cutoff controls the integration grid
+    fineness.  Below ~150 Ry, organic / biomolecule systems show
+    energy errors of tens of meV and force errors that visibly
+    affect a relaxation -- the geometry converges to a slightly
+    wrong minimum.  Production literature numbers cluster around
+    200-300 Ry; tight basis (TZP) and vibrational work want 400+.
+
+    100 Ry is allowed by the slider as a "I'm doing a 5-minute
+    sanity check" floor; below 150 we add a soft nudge so the user
+    sees the trade-off before they hit Save.  WARN severity (not
+    ERROR) -- the user may genuinely want a screening calc.
+
+    This rule was deferred from the 2026-05-27 holistic-math audit
+    and landed 2026-05-28 alongside the cell-volume tightening.
+    """
+    mc = getattr(cfg, "mesh_cutoff", None)
+    if mc is None:
+        return []
+    try:
+        mc_val = float(mc)
+    except (TypeError, ValueError):
+        return []
+    # Gated on >= 100 Ry: the dataclass metadata-range check (lower
+    # bound 100) already warns for values below the slider floor with
+    # the SAME ``where`` field (``config.mesh_cutoff``).  Without the
+    # 100 floor here, a value of 5 Ry would produce TWO warnings on
+    # the same field, and the existing tests counting issues by
+    # ``where`` would over-count.  Honest semantics: metadata-range
+    # owns the "below the slider floor" case; this rule owns the
+    # "above the floor but below production-defensible" case.
+    if 100.0 <= mc_val < 150.0:
+        return [Issue(
+            "warn",
+            (f"mesh_cutoff = {mc_val:g} Ry is below the production "
+             f"floor of ~150 Ry.  Forces / energies on organic and "
+             f"biomolecule systems are noticeably wrong at this "
+             f"cutoff (tens of meV; a relaxation converges to a "
+             f"slightly different minimum).  Production-typical: "
+             f"200-300 Ry; tight basis (TZP) or vibrational work: "
+             f"400+ Ry.  Keep this value only for a quick screening "
+             f"calc."),
+            "config.mesh_cutoff",
+        )]
+    return []
+
+
 def _check_siesta_spin_polarized_needs_spin_total(struct: Structure,
                                                     cfg) -> List[Issue]:
     """SIESTA-specific: spin_polarized=True + spin_total=None + open-
@@ -791,6 +844,11 @@ def _validate_siesta(struct: Structure, cfg,
     # XC mismatches become WARN (silent wrong bond lengths
     # otherwise).
     issues += _check_siesta_pseudo_coverage(struct, cfg, dest_dir=dest_dir)
+
+    # MeshCutoff floor: warn below 150 Ry (production-defensible
+    # threshold).  The dataclass slider lower bound is 100 Ry; this
+    # rule catches the 100-149 Ry window with a soft nudge.
+    issues += _check_siesta_mesh_cutoff(cfg)
 
     # Open-shell metal + closed-shell SCF: shared rule with PySCF.
     issues += _check_open_shell_metal(

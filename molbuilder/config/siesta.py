@@ -173,9 +173,22 @@ class SiestaConfig:
         "section": "Basis & grid",
         "label": "MeshCutoff", "unit": "Ry",
         "engine_key":  'MeshCutoff',
-        "range": (50.0, 1000.0),
+        # 2026-05-28 tightening: slider lower bound raised from 50
+        # to 100 Ry.  50 Ry is a screening-grade value that produces
+        # noticeably wrong forces / energies for any production work;
+        # letting it sit at the slider floor invited silent garbage.
+        # 100 Ry is still a reasonable "I'm doing a quick estimate"
+        # floor; the validation pass warns at < 150 Ry separately
+        # (see _check_siesta_mesh_cutoff in validation.py) so users
+        # picking a low-but-not-tiny value see a soft nudge.
+        "range": (100.0, 1000.0),
         "tier":  "basic",
-        "help":  "real-space integration grid; 200-300 typical, 400+ for tight basis",
+        "help":  "real-space integration grid (Ry).  200-300 is "
+                 "production-typical; 400+ for tight basis (TZP) or "
+                 "vibrational work.  Below 150 Ry the forces / "
+                 "energies are noticeably wrong on organic / "
+                 "biomolecule systems; the validation pass warns "
+                 "below that floor.",
     })
 
     # XC
