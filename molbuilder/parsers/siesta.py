@@ -13,28 +13,28 @@ Also captures the most recent unit-cell vectors from
 ``outcell: Unit cell vectors (Ang):`` blocks so the viewer can draw the
 lattice.
 
-Tolerant to in-progress files:
+Tolerant to in-progress + malformed files (Level 3 contract,
+2026-05-28):
   * if the outcoor block is mid-write at EOF the partial frame is dropped
   * if a step has no energy / force yet, ``None`` is stored so per-step
     arrays stay index-aligned with frames
+  * a malformed numeric line (SIESTA-side format glitch, partial flush,
+    unexpected column count) becomes a :class:`ParseWarning` on
+    ``Trajectory.parse_warnings`` instead of aborting the whole parse
 """
 
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
-from ..frame import Frame, Trajectory
+from ..frame import Frame, ParseWarning, Trajectory
 from ..structure import Structure
 from .base import TrajectoryParser
 
 
-# Matches a SIESTA SCF iteration line, e.g.:
-#   scf:    1   -289239.010   -290967.214   -290967.445   0.001  -1.0   0.5
-# Columns: iscf, Eharris(eV), E_KS(eV), FreeEng(eV), dDmax, Ef(eV), dHmax(eV).
-# We pull cycle, E_KS, dDmax, dHmax; the other columns are SIESTA bookkeeping.
 # Runtime info detection (cross-cutting -- same display path as
 # molwatch's runtime header):
 #   * "* Running on  N nodes in parallel."  -> n_mpi_processes
@@ -50,15 +50,177 @@ _SIESTA_HOST_RE    = re.compile(
 _SIESTA_RUNTIME_RE = re.compile(
     r"^#\s*runtime\.([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$")
 
-_SCF_LINE_RE = re.compile(
-    r"^\s*scf:\s*(\d+)\s+"      # iscf
-    r"(-?[\d.eE+-]+)\s+"        # Eharris
-    r"(-?[\d.eE+-]+)\s+"        # E_KS  -- the energy we plot
-    r"(-?[\d.eE+-]+)\s+"        # FreeEng
-    r"([\d.eE+-]+)\s+"          # dDmax
-    r"(-?[\d.eE+-]+)\s+"        # Ef
-    r"([\d.eE+-]+)"             # dHmax
-)
+# Lightweight prefix match for any SIESTA SCF iteration line.  We
+# capture iscf + the rest of the line as a single string; the actual
+# float columns are parsed separately by ``_parse_scf_floats`` below.
+# This split lets us handle BOTH the closed-shell form (7 columns
+# total) AND the spin-polarized form (8 columns -- Ef split into
+# Ef_up + Ef_dn) without writing a brittle multi-regex dispatch.
+_SCF_PREFIX_RE = re.compile(r"^\s*scf:\s*(\d+)\s+(.+)$")
+
+# Defensive separator-inserter for SIESTA's fixed-width SCF columns.
+# When two adjacent columns pack so tight that no whitespace separates
+# them (the dHmax-and-Ef_dn case in spin-polarized output where both
+# values fill their fields), the naive ``split()`` captures them as
+# one token like ``-1.929956131.029438``.  We detect SIESTA's f10.6-
+# style 6-decimal field signature (``.NNNNNN`` immediately followed by
+# a digit, which can only be the start of the next column) and insert
+# a separator.  This is a FORMATTING quirk, NOT value overflow; the
+# values themselves are fine, the issue is the field width.  Re-using
+# the helper from the early 2026-05-28 patch with a more honest name.
+_SCF_TIGHT_PACK_RE = re.compile(r"(\.\d{6})(?=\d)")
+
+
+def _parse_scf_floats(rest: str) -> Optional[List[float]]:
+    """Tokenize the post-``scf: <iscf>`` part of an SCF line into
+    floats.  Returns the list, or None if any token can't be parsed.
+
+    Handles SIESTA's tight-packed fixed-width fields (no whitespace
+    between adjacent columns when both values fill their widths)
+    by inserting a separator at the f10.6 6-decimal signature.
+    """
+    fixed = _SCF_TIGHT_PACK_RE.sub(r"\1 ", rest)
+    try:
+        return [float(t) for t in fixed.split()]
+    except ValueError:
+        return None
+
+
+# SCF column-header detection.  Real-world example lines:
+#
+#   v5 spin-polarized:
+#       iscf     Eharris(eV)        E_KS(eV)     FreeEng(eV)     dDmax     Ef_up Ef_dn(eV) dHmax(eV)
+#
+#   v5 closed-shell:
+#       iscf     Eharris(eV)        E_KS(eV)     FreeEng(eV)     dDmax     Ef(eV) dHmax(eV)
+#
+# We detect the line by its leading ``iscf`` token (case-insensitive;
+# no other SIESTA output begins with that bare word) and parse the
+# column names into canonical keys.  Subsequent ``scf:`` data rows
+# are mapped by name, not by position -- a future SIESTA version
+# that adds / reorders columns adapts automatically.
+#
+# Robustness policy (2026-05-28): all string matching here is
+# case-insensitive AND tolerates the ``(unit)`` suffix being absent.
+# So ``DHMAX``, ``dhmax``, ``dHmax(eV)``, and ``dhmax`` all map to
+# the same canonical key.  This is the "names should be immune to
+# capitalisation, small spelling differences" rule applied to the
+# SCF column header.
+_SCF_HEADER_RE = re.compile(r"^\s*iscf\s+\S", re.IGNORECASE)
+
+
+def _normalise_column_token(tok: str) -> str:
+    """Strip an optional ``(unit)`` suffix and lower-case for the
+    column-key lookup.  Examples:
+
+      ``dHmax(eV)`` -> ``dhmax``
+      ``Ef_dn(eV)`` -> ``ef_dn``
+      ``DDMAX``     -> ``ddmax``
+    """
+    return re.sub(r"\([^)]*\)$", "", tok).lower()
+
+
+# Canonical-key map for SCF columns.  Lookup is via
+# ``_normalise_column_token`` so a header token like ``DHmax(EV)``
+# resolves to the same key as ``dHmax(eV)``.  ``None`` value =
+# "valid bookkeeping column we don't extract".  Unknown tokens
+# (a future SIESTA layout we haven't seen) stay as the raw
+# normalised token so they STILL land in the per-cycle dict --
+# downstream consumers can introspect.
+#
+# Canonical keys we PROMISE downstream consumers:
+#   "cycle"   -- iscf
+#   "energy"  -- E_KS, the energy we plot
+#   "dDmax"   -- DM-mixing residual
+#   "dHmax"   -- Hamiltonian-mixing residual
+# Anything else is parser-driven from the header.
+_SCF_COLUMN_KEYS = {
+    "iscf":     "cycle",
+    "eharris":  None,
+    "e_ks":     "energy",
+    "freeeng":  None,
+    "ddmax":    "dDmax",
+    "ef":       None,    # closed-shell Fermi level
+    "ef_up":    None,    # collinear spin-polarized (up)
+    "ef_dn":    None,    # collinear spin-polarized (down)
+    "ef_x":     None,    # non-collinear (hypothetical future)
+    "ef_y":     None,
+    "ef_z":     None,
+    "dhmax":    "dHmax",
+}
+
+
+def _parse_scf_header(line: str) -> Optional[List[Optional[str]]]:
+    """Tokenise a SIESTA SCF column header into a list of canonical
+    keys.  ``None`` entries mark columns we ignore; ``str`` entries
+    mark columns whose value will be stored in the per-cycle dict.
+
+    Case-insensitive + ``(unit)``-suffix-tolerant per the policy
+    above.  Returns ``None`` if the line doesn't look like an SCF
+    header.
+    """
+    tokens = line.split()
+    if not tokens or tokens[0].lower() != "iscf":
+        return None
+    return [_SCF_COLUMN_KEYS.get(_normalise_column_token(t),
+                                  _normalise_column_token(t))
+            for t in tokens]
+
+
+def _build_cycle_dict_from_header(
+    iscf: int,
+    vals: List[float],
+    header: List[Optional[str]],
+) -> Optional[Dict[str, Any]]:
+    """Map a parsed SCF data row to a per-cycle dict using the
+    column header.  Header[0] is the iscf column; the remaining
+    header entries pair with ``vals`` by position.  Bookkeeping
+    columns (header entry == None) are skipped.
+
+    Returns ``None`` if the value count doesn't match the header.
+    Otherwise returns a dict whose canonical keys (``cycle``,
+    ``energy``, ``dDmax``, ``dHmax``) the downstream UI relies on,
+    plus any extra columns SIESTA chose to emit.
+    """
+    expected = len(header) - 1   # minus the iscf column
+    if len(vals) != expected:
+        return None
+    out: Dict[str, Any] = {"cycle": iscf}
+    for key, val in zip(header[1:], vals):
+        if key is not None:
+            out[key] = val
+    return out
+
+
+def _build_cycle_dict_positional(
+    iscf: int,
+    vals: List[float],
+) -> Optional[Dict[str, Any]]:
+    """Fallback when no SCF column header was seen yet.  Dispatches
+    on the value count -- 6 = closed-shell, 7 = collinear spin --
+    using the historically-known SIESTA layouts:
+
+      6 floats:  Eharris, E_KS, FreeEng, dDmax, Ef, dHmax
+      7 floats:  Eharris, E_KS, FreeEng, dDmax, Ef_up, Ef_dn, dHmax
+
+    This is a last resort -- prefer the header-driven path.  Returns
+    ``None`` on unexpected count.
+    """
+    if len(vals) == 6:
+        return {
+            "cycle":  iscf,
+            "energy": vals[1],
+            "dDmax":  vals[3],
+            "dHmax":  vals[5],
+        }
+    if len(vals) == 7:
+        return {
+            "cycle":  iscf,
+            "energy": vals[1],
+            "dDmax":  vals[3],
+            "dHmax":  vals[6],
+        }
+    return None
 
 
 class SiestaParser(TrajectoryParser):
@@ -140,6 +302,19 @@ class SiestaParser(TrajectoryParser):
         # come from molbuilder.runtime_info's canonical keys + the
         # SIESTA-specific omp_threads_requested + max_memory_mb.
         runtime_info: Dict[str, Any] = {}
+        # Level-3 fail-soft accumulator: every non-fatal line-parsing
+        # issue lands here as a ParseWarning and the parser continues.
+        # The Results tab surfaces the list in a collapsible panel.
+        parse_warnings: List[ParseWarning] = []
+
+        def _warn(line_no: int, line: str, error: str,
+                  category: str = "scf") -> None:
+            parse_warnings.append(ParseWarning(
+                line_no=line_no,
+                snippet=line.rstrip()[:120],
+                error=error,
+                category=category,
+            ))
 
         # SCF iteration history accumulator for the current step.  Each
         # entry is a per-cycle dict matching the schema in
@@ -149,6 +324,14 @@ class SiestaParser(TrajectoryParser):
         # Flushed onto Frame.scf_history at commit() time, then reset.
         current_scf: List[Dict[str, float]] = []
         prev_E_KS: Optional[float] = None
+        # The most-recently-seen SCF column header, parsed into
+        # canonical keys.  None until we encounter the first ``iscf
+        # Eharris ...`` line; from then on, each ``scf:`` data row is
+        # mapped by name through this list.  SIESTA emits the header
+        # once per geometry step (sometimes once per file), so we keep
+        # the latest -- subsequent data rows are interpreted against
+        # the most recent header.
+        scf_header: Optional[List[Optional[str]]] = None
 
         # Per-step buffers; flushed via _commit() when the next outcoor:
         # arrives or at EOF (only if the coords block is known to be
@@ -197,7 +380,7 @@ class SiestaParser(TrajectoryParser):
             prev_E_KS = None
 
         with open(path, "r", errors="replace") as fh:
-            for raw in fh:
+            for line_no, raw in enumerate(fh, start=1):
                 line = raw.rstrip("\n")
                 stripped = line.strip()
 
@@ -290,17 +473,70 @@ class SiestaParser(TrajectoryParser):
                         state = "scan"
 
                 # ---- scan mode ----
+                # SCF column header: SIESTA emits a line like
+                #   ``iscf  Eharris(eV)  E_KS(eV)  ...  dHmax(eV)``
+                # before the SCF block.  Parse it into canonical keys
+                # so subsequent data rows map by NAME, not by position
+                # (the layout differs between closed-shell and spin-
+                # polarized runs, and may change again in future
+                # SIESTA versions).  See _parse_scf_header docstring.
+                if _SCF_HEADER_RE.match(line):
+                    parsed_header = _parse_scf_header(line)
+                    if parsed_header is not None:
+                        scf_header = parsed_header
+                        continue
+
                 # SCF iteration line: collected into scf_history.  An
                 # iscf = 1 starts a new SCF run (= new CG/MD step's
                 # electronic problem).  Energy column is E_KS (already
                 # eV), so no unit conversion needed -- contrast with
                 # PySCF where Hartree -> eV happens at parse time.
-                m_scf = _SCF_LINE_RE.match(line)
-                if m_scf:
-                    iscf  = int(m_scf.group(1))
-                    e_ks  = float(m_scf.group(3))
-                    dDmax = float(m_scf.group(5))
-                    dHmax = float(m_scf.group(7))
+                #
+                # 2026-05-28: rewritten to be header-driven.  When we
+                # have a parsed column header (always for v5; older
+                # SIESTA may omit it), each value is mapped to a
+                # canonical key by NAME -- no position assumptions.
+                # When no header has been seen, we fall back to the
+                # historically-known closed-shell (6 floats) /
+                # spin-polarized (7 floats) layouts.  Either way
+                # ``dHmax`` ends up in the per-cycle dict correctly.
+                m_scf_prefix = _SCF_PREFIX_RE.match(line)
+                if m_scf_prefix:
+                    iscf = int(m_scf_prefix.group(1))
+                    rest = m_scf_prefix.group(2)
+                    vals = _parse_scf_floats(rest)
+                    if vals is None:
+                        _warn(line_no, line,
+                              "SCF line: could not tokenize as floats")
+                        continue
+
+                    cycle_dict: Optional[Dict[str, Any]]
+                    if scf_header is not None:
+                        cycle_dict = _build_cycle_dict_from_header(
+                            iscf, vals, scf_header)
+                        if cycle_dict is None:
+                            _warn(line_no, line,
+                                  f"SCF row has {len(vals)} values "
+                                  f"but header has {len(scf_header)-1} "
+                                  f"columns ({scf_header})")
+                            continue
+                    else:
+                        cycle_dict = _build_cycle_dict_positional(iscf, vals)
+                        if cycle_dict is None:
+                            _warn(line_no, line,
+                                  f"SCF line has {len(vals)} floats "
+                                  f"after iscf; expected 6 (closed-"
+                                  f"shell) or 7 (spin-polarized), and "
+                                  f"no column header was seen")
+                            continue
+
+                    e_ks = cycle_dict.get("energy")
+                    if e_ks is None:
+                        _warn(line_no, line,
+                              "SCF row missing 'energy' (E_KS) -- "
+                              "downstream plot can't render this cycle")
+                        continue
+
                     # iscf==1 starts a new SCF run.  Normally the
                     # previous step's SCF was already attached to its
                     # Frame at commit() time (which happens between
@@ -320,14 +556,10 @@ class SiestaParser(TrajectoryParser):
                         if current_scf:
                             current_scf = []
                         prev_E_KS = None
-                    delta_E = (e_ks - prev_E_KS) if prev_E_KS is not None else 0.0
-                    current_scf.append({
-                        "cycle":   iscf,
-                        "energy":  e_ks,        # eV
-                        "delta_E": delta_E,     # eV
-                        "dHmax":   dHmax,       # eV  (Hamiltonian residual)
-                        "dDmax":   dDmax,       # dimensionless
-                    })
+                    delta_E = ((e_ks - prev_E_KS)
+                               if prev_E_KS is not None else 0.0)
+                    cycle_dict["delta_E"] = delta_E
+                    current_scf.append(cycle_dict)
                     prev_E_KS = e_ks
                     continue
 
@@ -345,8 +577,10 @@ class SiestaParser(TrajectoryParser):
                 if "siesta: E_KS(eV)" in line:
                     try:
                         step_energy = float(line.split("=", 1)[1].split()[0])
-                    except (ValueError, IndexError):
-                        pass
+                    except (ValueError, IndexError) as exc:
+                        _warn(line_no, line,
+                              f"E_KS line: malformed value: {exc}",
+                              category="energy")
                     continue
 
                 if "siesta: Atomic forces" in line:
@@ -367,8 +601,10 @@ class SiestaParser(TrajectoryParser):
                         and step_forces):
                     try:
                         step_max_force = float(parts[1])
-                    except ValueError:
-                        pass
+                    except ValueError as exc:
+                        _warn(line_no, line,
+                              f"Max-force line: malformed value: {exc}",
+                              category="forces")
                     continue
 
         # End-of-file: drop torn frames, then flush.  The SIESTA stream
@@ -380,9 +616,10 @@ class SiestaParser(TrajectoryParser):
         commit()
 
         return Trajectory(
-            source_format = cls.name,
-            frames        = frames,
-            lattice       = lattice,
-            run_state     = run_state,
-            runtime_info  = runtime_info,
+            source_format  = cls.name,
+            frames         = frames,
+            lattice        = lattice,
+            run_state      = run_state,
+            runtime_info   = runtime_info,
+            parse_warnings = parse_warnings,
         )

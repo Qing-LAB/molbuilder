@@ -24,11 +24,40 @@ richer trajectory type now.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
 from .structure import Structure
+
+
+@dataclass
+class ParseWarning:
+    """One non-fatal parser issue.
+
+    Parsers accumulate these in ``Trajectory.parse_warnings`` instead
+    of raising mid-parse, so a single malformed line doesn't blank the
+    whole results view.  The Results tab surfaces them in a
+    collapsible "parsing notes" panel; the user can spot a known-
+    benign warning (a tight-packed spin-polarized SCF line) or report
+    a genuinely new one.
+
+    Fields:
+
+      line_no   1-based line number in the source file.
+      snippet   The offending line, truncated to ~120 chars.
+      error     Short, actionable description -- "could not parse
+                floats: invalid literal …" or "SCF line has 9
+                columns, expected 7 or 8".  Render verbatim.
+      category  Free-text classifier ("scf", "outcoor", "forces",
+                "runtime", ...).  The UI can group / colour-code by
+                category; default "scf" is the historically most
+                common site.
+    """
+    line_no:  int
+    snippet:  str
+    error:    str
+    category: str = "scf"
 
 
 @dataclass
@@ -132,6 +161,11 @@ class Trajectory:
     # the block -- older log files render with "—" rows.  Canonical
     # keys: see :mod:`molbuilder.runtime_info`.
     runtime_info:  dict                 = field(default_factory=dict)
+    # Non-fatal parse issues encountered while reading the file.  The
+    # parser appends to this list whenever a line fails to match its
+    # expected shape; the whole parse continues.  Empty list = no
+    # issues.  See :class:`ParseWarning` for shape.
+    parse_warnings: List[ParseWarning]  = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.lattice is not None and not isinstance(self.lattice, np.ndarray):

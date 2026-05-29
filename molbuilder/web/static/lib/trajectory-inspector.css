@@ -483,3 +483,75 @@
  * page-shell copy on any future edit.  page-shell.css is loaded
  * BEFORE this file on /watch and /results, so the scrollbar
  * styling survives the deletion intact.) */
+
+/* ------------------------------------------------------------------ *
+ *  Parse-warnings panel (Level-3, 2026-05-28)                         *
+ *                                                                    *
+ *  Surfaces non-fatal parser issues so a malformed line doesn't      *
+ *  silently blank the plots.  Collapsed by default; expand to see    *
+ *  the per-line snippet + error message.  Amber theme so it stands   *
+ *  out without screaming.  Pairs the always-display rule with the   *
+ *  ``[hidden]`` guard so the panel actually hides when JS sets       *
+ *  ``el.hidden = true`` -- the trap documented in the projects-      *
+ *  sidebar design doc (specificity tie between author and UA CSS).  *
+ * ------------------------------------------------------------------ */
+.parse-warnings {
+    margin: 0.5rem 0.5rem 0.6rem;
+    padding: 0;
+    border:  1px solid #d8a64b;
+    border-radius: 4px;
+    background: #fff7e0;
+    color:      #6b4a00;
+    font-size:  0.85rem;
+}
+.parse-warnings[hidden] { display: none; }
+.parse-warnings-summary {
+    padding: 0.4rem 0.65rem;
+    cursor:  pointer;
+    list-style: none;     /* hide the default disclosure triangle */
+    display:  flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-weight: 600;
+}
+.parse-warnings-summary::-webkit-details-marker { display: none; }
+.parse-warnings-icon { font-size: 1rem; }
+.parse-warnings-list {
+    margin:  0;
+    padding: 0.2rem 0.65rem 0.55rem 0.65rem;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    border-top: 1px dashed #d8a64b;
+    background: #fffaef;
+}
+.parse-warning {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    grid-template-areas:
+        "meta error"
+        ".    snippet";
+    column-gap: 0.6rem;
+    row-gap:    0.15rem;
+    padding-top: 0.25rem;
+}
+.parse-warning-meta {
+    grid-area: meta;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size:   0.75rem;
+    color:       #8c6d20;
+    white-space: nowrap;
+}
+.parse-warning-error  { grid-area: error; }
+.parse-warning-snippet {
+    grid-area: snippet;
+    margin: 0;
+    padding: 0.25rem 0.4rem;
+    background: #f5e8c2;
+    border-radius: 3px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size:   0.75rem;
+    overflow-x:  auto;
+    white-space: pre;
+}

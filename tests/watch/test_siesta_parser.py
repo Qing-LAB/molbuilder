@@ -300,6 +300,210 @@ def test_stray_max_line_outside_force_block_ignored(tmp_path):
     assert result["max_forces"][0] is None
 
 
+# --------------------------------------------------------------------- #
+# Level-3 parser contract (2026-05-28)                                  #
+#                                                                       #
+# 1. Header-driven SCF column mapping (closed-shell vs spin-polarized   #
+#    vs future SIESTA layouts).                                         #
+# 2. Tight-packed fixed-width columns (Ef_dn + dHmax glued with no      #
+#    separator) parse correctly -- the LAST column is dHmax.            #
+# 3. Fail-soft on malformed lines: ParseWarning recorded, parse        #
+#    continues, partial trajectory returned.                            #
+# 4. Warnings round-trip through trajectory_to_legacy_dict.             #
+# --------------------------------------------------------------------- #
+
+
+def test_scf_header_drives_column_mapping_spin_polarized(tmp_path):
+    """v5 spin-polarized SIESTA emits an 8-column SCF block.  The
+    parser's header line tells us where dHmax lives; the data row's
+    LAST column is dHmax (not 7th column).  Pin this so we never
+    again confuse Ef_dn with dHmax (2026-05-28 sighting)."""
+    sample = (
+        "Welcome to SIESTA -- v5\n"
+        "redata: prelude\n"
+        "outcoor: Atomic coordinates (Ang):\n"
+        "   1.0  2.0  3.0   1   1  C\n"
+        "\n"
+        # Real v5 spin-polarized header.
+        "        iscf     Eharris(eV)        E_KS(eV)     "
+        "FreeEng(eV)     dDmax     Ef_up Ef_dn(eV) dHmax(eV)\n"
+        # iscf 1: 8 columns after the scf: prefix.
+        "   scf:    1  -100.0  -100.5  -100.5  0.10  -1.0  -1.5  4.2\n"
+        # iscf 2: same shape; dHmax is the LAST column.
+        "   scf:    2  -100.4  -100.7  -100.7  0.05  -1.0  -1.5  0.1\n"
+        "outcoor: Atomic coordinates (Ang):\n"
+        "   1.1  2.1  3.1   1   1  C\n"
+    )
+    p = tmp_path / "spin.out"
+    p.write_text(sample)
+    legacy = trajectory_to_legacy_dict(SiestaParser.parse(str(p)))
+    runs = legacy["scf_history"]
+    assert len(runs) == 1
+    assert len(runs[0]) == 2
+    # dHmax must be the LAST column (4.2, 0.1) -- NOT Ef_dn (-1.5).
+    assert math.isclose(runs[0][0]["dHmax"], 4.2)
+    assert math.isclose(runs[0][1]["dHmax"], 0.1)
+    # E_KS comes through as 'energy'.
+    assert math.isclose(runs[0][0]["energy"], -100.5)
+    # dDmax comes through.
+    assert math.isclose(runs[0][0]["dDmax"], 0.10)
+
+
+def test_scf_header_drives_column_mapping_closed_shell(tmp_path):
+    """Closed-shell run: 7-column header (Ef instead of Ef_up/Ef_dn);
+    dHmax still the last column."""
+    sample = (
+        "Welcome to SIESTA\n"
+        "redata: prelude\n"
+        "outcoor: Atomic coordinates (Ang):\n"
+        "   1.0  2.0  3.0   1   1  C\n"
+        "\n"
+        "        iscf     Eharris(eV)        E_KS(eV)     "
+        "FreeEng(eV)     dDmax     Ef(eV) dHmax(eV)\n"
+        "   scf:    1  -100.0  -100.5  -100.5  0.10  -1.0  3.5\n"
+        "outcoor: Atomic coordinates (Ang):\n"
+        "   1.1  2.1  3.1   1   1  C\n"
+    )
+    p = tmp_path / "closed.out"
+    p.write_text(sample)
+    legacy = trajectory_to_legacy_dict(SiestaParser.parse(str(p)))
+    cycle = legacy["scf_history"][0][0]
+    assert math.isclose(cycle["dHmax"], 3.5)
+    assert math.isclose(cycle["energy"], -100.5)
+
+
+def test_scf_tight_packed_columns_handled(tmp_path):
+    """SIESTA's fixed-width f10.6 format can leave NO whitespace
+    between adjacent columns when both values fill their fields --
+    the dHmax/Ef_dn pair in spin-polarized output.  Parser must
+    insert the separator + still extract dHmax correctly (the LAST
+    column, which gets glued onto its neighbour's tail)."""
+    sample = (
+        "Welcome to SIESTA -- v5\n"
+        "redata: prelude\n"
+        "outcoor: Atomic coordinates (Ang):\n"
+        "   1.0  2.0  3.0   1   1  C\n"
+        "\n"
+        "        iscf     Eharris(eV)        E_KS(eV)     "
+        "FreeEng(eV)     dDmax     Ef_up Ef_dn(eV) dHmax(eV)\n"
+        # The crucial line: Ef_dn=-1.929956 and dHmax=131.029438 with
+        # NO space between them (the exact format SIESTA produces).
+        "   scf:    1   -12063.872757   -12728.905077   "
+        "-12728.908102  0.982890 -3.184575 -1.929956131.029438\n"
+        "outcoor: Atomic coordinates (Ang):\n"
+        "   1.1  2.1  3.1   1   1  C\n"
+    )
+    p = tmp_path / "tightpack.out"
+    p.write_text(sample)
+    result = SiestaParser.parse(str(p))
+    legacy = trajectory_to_legacy_dict(result)
+    cycle = legacy["scf_history"][0][0]
+    # dHmax (the legitimate 131.029438) — NOT Ef_dn (-1.929956).
+    assert math.isclose(cycle["dHmax"], 131.029438)
+    # And no spurious warnings -- the tight-pack normalization is
+    # silent (the fix is invisible to the user).
+    assert legacy["parse_warnings"] == []
+
+
+def test_parse_warnings_on_malformed_scf_line(tmp_path):
+    """A single bad SCF line must not abort the parse: it becomes a
+    ParseWarning + parse continues.  Good lines before AND after the
+    bad one show up in the trajectory."""
+    sample = (
+        "Welcome to SIESTA\n"
+        "redata: prelude\n"
+        "outcoor: Atomic coordinates (Ang):\n"
+        "   1.0  2.0  3.0   1   1  C\n"
+        "\n"
+        "        iscf     Eharris(eV)        E_KS(eV)     "
+        "FreeEng(eV)     dDmax     Ef(eV) dHmax(eV)\n"
+        "   scf:    1  -100.0  -100.5  -100.5  0.10  -1.0  3.5\n"
+        # Bad line: non-numeric value.
+        "   scf:    2  BANANA  -100.7\n"
+        "   scf:    3  -100.45 -100.71 -100.71 0.01 -1.0 0.01\n"
+        "outcoor: Atomic coordinates (Ang):\n"
+        "   1.1  2.1  3.1   1   1  C\n"
+    )
+    p = tmp_path / "malformed.out"
+    p.write_text(sample)
+    result = SiestaParser.parse(str(p))
+    legacy = trajectory_to_legacy_dict(result)
+    # Bad cycle 2 dropped; cycles 1 and 3 preserved.
+    cycles = [c["cycle"] for c in legacy["scf_history"][0]]
+    assert cycles == [1, 3]
+    # Exactly one ParseWarning, in the "scf" category, with the bad
+    # line's snippet quoted.
+    assert len(legacy["parse_warnings"]) == 1
+    w = legacy["parse_warnings"][0]
+    assert w["category"] == "scf"
+    assert "BANANA" in w["snippet"]
+    assert w["line_no"] > 0
+
+
+def test_scf_header_is_case_insensitive_and_unit_tolerant(tmp_path):
+    """Parser robustness: SCF column header tokens match regardless
+    of capitalisation and regardless of whether the ``(unit)``
+    suffix is present.  ``DHMAX``, ``dhmax``, ``dHmax(eV)`` all
+    resolve to the canonical key.
+
+    This is the "names should be immune to capitalisation, small
+    spelling differences" rule (2026-05-28 user signal).
+    """
+    sample = (
+        "Welcome to SIESTA\n"
+        "redata: prelude\n"
+        "outcoor: Atomic coordinates (Ang):\n"
+        "   1.0  2.0  3.0   1   1  C\n"
+        "\n"
+        # Header in unusual capitalisation + missing units:
+        "  ISCF  EHARRIS  E_KS  FREEENG  DDMAX  EF  DHMAX\n"
+        "   scf:    1  -100.0  -100.5  -100.5  0.10  -1.0  3.5\n"
+        "outcoor: Atomic coordinates (Ang):\n"
+        "   1.1  2.1  3.1   1   1  C\n"
+    )
+    p = tmp_path / "case.out"
+    p.write_text(sample)
+    legacy = trajectory_to_legacy_dict(SiestaParser.parse(str(p)))
+    cycle = legacy["scf_history"][0][0]
+    # The canonical keys still produce dHmax = last column (3.5)
+    # and energy = E_KS (column 2 value of the row, = -100.5).
+    assert math.isclose(cycle["dHmax"], 3.5)
+    assert math.isclose(cycle["energy"], -100.5)
+    assert math.isclose(cycle["dDmax"], 0.10)
+    # No warnings — the case-insensitive lookup is transparent.
+    assert legacy["parse_warnings"] == []
+
+
+def test_parse_warnings_round_trip_through_legacy_dict(tmp_path):
+    """Every ParseWarning must serialise into the legacy dict so the
+    Results-tab UI can render them.  Schema: line_no/snippet/error/
+    category, all simple types."""
+    sample = (
+        "Welcome to SIESTA\n"
+        "redata: prelude\n"
+        "outcoor: Atomic coordinates (Ang):\n"
+        "   1.0  2.0  3.0   1   1  C\n"
+        "\n"
+        "        iscf     Eharris(eV)        E_KS(eV)     "
+        "FreeEng(eV)     dDmax     Ef(eV) dHmax(eV)\n"
+        # Bad: not enough columns.
+        "   scf:    1  -100.0\n"
+        "outcoor: Atomic coordinates (Ang):\n"
+        "   1.1  2.1  3.1   1   1  C\n"
+    )
+    p = tmp_path / "warn.out"
+    p.write_text(sample)
+    legacy = trajectory_to_legacy_dict(SiestaParser.parse(str(p)))
+    warnings = legacy["parse_warnings"]
+    assert len(warnings) == 1
+    for k in ("line_no", "snippet", "error", "category"):
+        assert k in warnings[0], f"missing key {k!r} in warning"
+    assert isinstance(warnings[0]["line_no"], int)
+    # The entire dict round-trips through JSON cleanly.
+    s = json.dumps(legacy)
+    assert "parse_warnings" in s
+
+
 def test_json_safe_no_nan(siesta_path):
     """Result must serialise with strict JSON (no NaN)."""
     result = trajectory_to_legacy_dict(SiestaParser.parse(siesta_path))

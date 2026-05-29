@@ -1152,6 +1152,49 @@
         el.textContent = parts.join(" · ");
     }
 
+    function _renderParseWarnings(warnings) {
+        // Level-3 parser contract (2026-05-28).  Render the
+        // non-fatal parse issues into a collapsible panel.  Hidden
+        // when there are no issues -- a well-parsed file shows no
+        // clutter at all.
+        const panel = $doc("parse-warnings");
+        const list  = $doc("parse-warnings-list");
+        const label = $doc("parse-warnings-count");
+        if (!panel || !list) return;
+        const ws = Array.isArray(warnings) ? warnings : [];
+        if (ws.length === 0) {
+            panel.hidden = true;
+            list.innerHTML = "";
+            return;
+        }
+        panel.hidden = false;
+        if (label) {
+            label.textContent = "Parsing notes — "
+                + ws.length + (ws.length === 1 ? " issue" : " issues");
+        }
+        // Build the list.  Each entry: line number, snippet (mono),
+        // error (italics).
+        list.innerHTML = "";
+        for (const w of ws) {
+            const li = document.createElement("li");
+            li.className = "parse-warning";
+            const meta = document.createElement("span");
+            meta.className = "parse-warning-meta";
+            meta.textContent = "line " + (w.line_no || "?")
+                + " · [" + (w.category || "—") + "]";
+            const err = document.createElement("span");
+            err.className = "parse-warning-error";
+            err.textContent = w.error || "(no message)";
+            const snip = document.createElement("pre");
+            snip.className = "parse-warning-snippet";
+            snip.textContent = w.snippet || "";
+            li.appendChild(meta);
+            li.appendChild(err);
+            li.appendChild(snip);
+            list.appendChild(li);
+        }
+    }
+
     function applyNewData(r) {
         const wasAtEnd = !state.data
             || state.currentFrame >= state.data.frames.length - 1;
@@ -1161,6 +1204,7 @@
         state.format = r.format || (r.data && r.data.source_format) || "?";
         state.label  = r.label  || state.format;
         _renderRuntimeInfo(state.data && state.data.runtime_info);
+        _renderParseWarnings(state.data && state.data.parse_warnings);
 
         const n = state.data.frames.length;
         if (n === 0) {

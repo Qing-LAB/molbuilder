@@ -42,6 +42,22 @@
   <span id="runtime-summary" class="runtime-summary"></span>
 </div>
 
+<!-- Parse-warnings panel (Level-3, 2026-05-28): non-fatal issues
+     the parser hit on this file (e.g. SIESTA dumped a malformed
+     SCF line, or a future column layout we haven't seen yet).
+     Hidden when empty.  Collapsed by default (<details>) so a
+     well-parsed file shows no clutter; a problematic one shows
+     "Parsing notes (N issues)" — click to expand.  Populated from
+     Trajectory.parse_warnings by core.js. -->
+<details id="parse-warnings" class="parse-warnings" hidden>
+  <summary class="parse-warnings-summary">
+    <span class="parse-warnings-icon" aria-hidden="true">⚠</span>
+    <span id="parse-warnings-count">Parsing notes</span>
+  </summary>
+  <ul id="parse-warnings-list" class="parse-warnings-list"
+      aria-label="Parser issues"></ul>
+</details>
+
 <section class="card viewer-card">
 <section class="viewer-row">
   <div id="viewer"></div>

@@ -219,6 +219,21 @@ def trajectory_to_legacy_dict(traj: Trajectory) -> Dict[str, Any]:
         # so /results' inspector renders uniformly.  Empty dict for
         # logs from before the header emission landed.
         "runtime_info":  dict(getattr(traj, "runtime_info", {}) or {}),
+        # Level-3 fail-soft warnings (2026-05-28).  Per-line parser
+        # issues that did NOT abort the parse but the user should see.
+        # The Results tab renders this list in a collapsible panel
+        # so a stale dHmax value or a tight-packed SIESTA SCF line is
+        # surfaced (not silently swallowed).  Each entry has
+        # ``line_no``, ``snippet``, ``error``, ``category``.
+        "parse_warnings": [
+            {
+                "line_no":  w.line_no,
+                "snippet":  w.snippet,
+                "error":    w.error,
+                "category": w.category,
+            }
+            for w in getattr(traj, "parse_warnings", []) or []
+        ],
     }
 
 
