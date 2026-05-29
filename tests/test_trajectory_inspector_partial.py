@@ -70,6 +70,14 @@ class TestPartialIntegrity:
             # Run-state badge + compact runtime-info one-liner.
             "run-state-badge", "run-state-label", "run-state-detail",
             "runtime-summary",
+            # Parse-warnings panel (Level-3 parser, 2026-05-28).
+            # Hidden by default; shows when the parser hit non-fatal
+            # issues so the user can see "what was lost" without the
+            # plot going blank.  Owned by trajectory/core.js's
+            # ``_renderParseWarnings``.
+            "parse-warnings",
+            "parse-warnings-count",
+            "parse-warnings-list",
             # Style panel.
             "rep", "radius", "colorscheme", "bg", "show-cell",
             # Overlays panel.

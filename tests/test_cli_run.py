@@ -70,8 +70,12 @@ def test_run_passes_mpi_np_for_siesta(tmp_path):
     fdf.write_text("# fake\n")
     res = CliRunner().invoke(cli.cli, ["run", str(fdf), "--np", "8"])
     assert res.exit_code == 0
-    # The probe block's MPI branch sets _launch_cmd to mpirun -np 8 siesta.
-    assert '_launch_cmd="mpirun -np 8 siesta"' in (tmp_path / "x.run.sh").read_text()
+    text = (tmp_path / "x.run.sh").read_text()
+    # 2026-05-28: launcher uses runtime ``$_mpi_np`` shell variable
+    # so ``bash run.sh -np N`` / ``MB_NP=N`` can override at run time.
+    # The generation-time --np value bakes ``_mpi_np_default=N``.
+    assert "_mpi_np_default=8" in text
+    assert '_launch_cmd="mpirun -np $_mpi_np siesta"' in text
 
 
 def test_run_env_override(tmp_path):
