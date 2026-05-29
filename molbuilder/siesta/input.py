@@ -312,12 +312,31 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         )
     else:
         cell = np.asarray(cell, dtype=float).reshape(3, 3)
-        # Sanity: positive cell volume
+        # Sanity: cell must be physically large enough to contain the
+        # atoms.  The check is ``vol < n_atoms * 1.0 A^3`` -- 1 A^3
+        # per atom is well below any real atom's van der Waals volume
+        # (H ~ 7 A^3, C ~ 20 A^3), so it only fires on degenerate
+        # cells: coplanar lattice vectors (vol = 0), a typo zeroing
+        # one vector, or a unit confusion that produces sub-Angstrom
+        # vectors (e.g., user wrote ``0.5`` meaning 0.5 nm = 5 A, but
+        # the call passed it as A: vol = 0.5^3 = 0.125 A^3, fails for
+        # any non-empty molecule).  Pre-2026-05-28 the threshold was
+        # a flat ``vol < 1.0 A^3`` which only caught the most extreme
+        # cases; the per-atom floor scales with the molecule.  The
+        # check does NOT false-positive on legitimate dense cells:
+        # compressed Fe at 100 GPa is ~10 A^3 per atom, 10x above the
+        # threshold; even hard-sphere close-packed C is ~6 A^3 per
+        # atom.
         vol = abs(float(np.linalg.det(cell)))
-        if vol < 1.0:
+        n = max(1, len(positions))
+        if vol < n * 1.0:
             raise ValueError(
-                f"Provided cell has near-zero volume ({vol:.3f} A^3); "
-                f"check the lattice vectors."
+                f"Provided cell has volume {vol:.3f} A^3, which is "
+                f"below the minimum physical volume for {n} atom(s) "
+                f"({float(n):.1f} A^3, = 1 A^3 per atom).  Likely "
+                f"causes: lattice vectors in the wrong unit (nm vs "
+                f"A), coplanar vectors, or a typo.  Inspect the "
+                f"lattice vectors."
             )
         if cfg.wrap_into_cell:
             positions, n_wrapped = _wrap_into_cell(positions, cell)

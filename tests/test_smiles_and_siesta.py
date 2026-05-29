@@ -202,6 +202,100 @@ def test_explicit_blocksize_override_safe_value_passes_through():
     assert "WARNING: user-set BlockSize" not in fdf
 
 
+def test_cell_volume_below_one_per_atom_raises():
+    """The 2026-05-28 cell-volume sanity tightening: ``vol <
+    n_atoms * 1.0 A^3`` raises with an actionable message naming
+    the most common cause (unit confusion producing sub-Angstrom
+    lattice vectors).
+
+    Pre-2026-05-28 the threshold was a flat ``vol < 1.0 A^3`` --
+    only fired on truly catastrophic input.  The per-atom floor
+    scales with molecule size and catches realistic mistakes like
+    a coplanar lattice vector or a typo in a single component.
+    """
+    import re
+    import numpy as np
+    from molbuilder.structure import Structure
+    # 10 carbon atoms; needs cell volume >= 10 A^3 to pass.
+    s = Structure(elements=["C"] * 10,
+                  positions=np.zeros((10, 3)) + np.arange(10).reshape(10, 1) * 0.5,
+                  title="dense")
+    # Tiny cell: 1.5 A^3 cubic = 0.5 A side.  Below 10 A^3 threshold.
+    tiny_cell = np.eye(3) * 1.5 ** (1.0 / 3.0)
+    cfg = SiestaConfig(relax_type="none", center_in_vacuum=False)
+    with pytest.raises(ValueError) as exc_info:
+        render_fdf(s, cfg, cell=tiny_cell)
+    msg = str(exc_info.value)
+    # Message must name the actual volume + the per-atom requirement.
+    assert re.search(r"volume \d+\.\d+ A\^3", msg), (
+        f"error message must quote the actual volume: {msg!r}"
+    )
+    assert "10 atom" in msg, (
+        f"error message must name the atom count (10): {msg!r}"
+    )
+    assert "10.0 A^3" in msg or "= 1 A^3 per atom" in msg, (
+        f"error message must name the per-atom requirement: {msg!r}"
+    )
+    # Diagnostic must mention the canonical "nm vs A" + "coplanar"
+    # causes so the user knows where to look.
+    assert ("nm" in msg or "coplanar" in msg), (
+        f"error message must name likely causes: {msg!r}"
+    )
+
+
+def test_cell_volume_just_above_threshold_passes():
+    """Boundary: vol slightly above n_atoms A^3 must pass (no
+    false-positive on legit dense cells)."""
+    import numpy as np
+    from molbuilder.structure import Structure
+    # 10 atoms in a packed arrangement; 12 A^3 cell (1.2x threshold).
+    s = Structure(elements=["C"] * 10,
+                  positions=np.linspace([0, 0, 0],
+                                         [10, 10, 10], 10),
+                  title="dense")
+    # Cell with vol = 12 A^3 = (12)^(1/3) ~= 2.29 A side.
+    edge = 12.0 ** (1.0 / 3.0)
+    cell = np.eye(3) * edge
+    cfg = SiestaConfig(relax_type="none", center_in_vacuum=False,
+                       wrap_into_cell=False)
+    # render_fdf will issue downstream warnings (atom overlap, etc.),
+    # but the volume gate itself must pass.
+    try:
+        fdf = render_fdf(s, cfg, cell=cell)
+        assert "BlockSize" in fdf, "render must produce a real FDF"
+    except ValueError as e:
+        if "below the minimum physical volume" in str(e):
+            raise AssertionError(
+                f"vol = 12 A^3 (1.2x of 10-atom threshold) should "
+                f"NOT trigger the volume gate; got: {e}"
+            )
+        # Other errors (overlap etc.) are not this test's concern.
+
+
+def test_cell_volume_per_atom_threshold_scales_with_n_atoms():
+    """The new threshold is per-atom: a cell that's fine for 1 atom
+    must fail for many atoms in the same cell.  This is the
+    physical-fit invariant: the cell must contain the atoms."""
+    import numpy as np
+    from molbuilder.structure import Structure
+    # 100 atoms in a 50 A^3 cell -- way below 100 A^3 threshold.
+    s = Structure(elements=["H"] * 100,
+                  positions=np.linspace([0, 0, 0],
+                                         [3, 3, 3], 100),
+                  title="crowded")
+    cell = np.eye(3) * 50.0 ** (1.0 / 3.0)   # vol = 50 A^3
+    cfg = SiestaConfig(relax_type="none", center_in_vacuum=False)
+    with pytest.raises(ValueError, match="below the minimum"):
+        render_fdf(s, cfg, cell=cell)
+    # Same cell with 1 atom: still passes (1.0 A^3 floor for n=1).
+    s_single = Structure(elements=["H"],
+                         positions=np.array([[1.0, 1.0, 1.0]]),
+                         title="single")
+    cell_single = np.eye(3) * 2.0   # vol = 8 A^3 >> 1 A^3 (n=1)
+    fdf = render_fdf(s_single, cfg, cell=cell_single)
+    assert "BlockSize" in fdf
+
+
 def test_wrap_into_cell_boundary_handling():
     """The 2026-05-28 audit found ``_wrap_into_cell`` did the opposite
     of its docstring: it wrapped frac=0.9999999999 to -1e-10 (outside
