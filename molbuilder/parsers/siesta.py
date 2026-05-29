@@ -26,12 +26,16 @@ Tolerant to in-progress + malformed files (Level 3 contract,
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
 from ..frame import Frame, ParseWarning, Trajectory
 from ..structure import Structure
+from ._rules import (
+    CONTINUE, END_BUBBLE, END_SECTION,
+    SectionRule, contains_ci, starts_with_ci,
+)
 from .base import TrajectoryParser
 
 
@@ -341,8 +345,6 @@ class SiestaParser(TrajectoryParser):
         step_max_force: Optional[float] = None
         step_forces: List[List[float]] = []
 
-        state = "scan"  # "scan", "in_coords", "in_cell", "in_forces"
-
         def commit() -> None:
             nonlocal step_frame, step_energy, step_max_force, step_forces
             nonlocal current_scf, prev_E_KS
@@ -379,239 +381,346 @@ class SiestaParser(TrajectoryParser):
             current_scf = []
             prev_E_KS = None
 
+        # ---- Section rules ---------------------------------------
+        # Each rule is a (matcher + optional on_start + optional
+        # consume) triple closed over the parser-local state above.
+        # The driver below tries each rule's matcher on every
+        # scan-state line in registration order, and dispatches
+        # multi-line sections through ``consume``.  Case-insensitive
+        # matching + per-rule alias lists deliver the
+        # "small-spelling/capitalisation tolerance" the user asked
+        # for (2026-05-28), without committing to fuzzy / Levenshtein
+        # matching (which would invite false positives).
+        #
+        # ORDER MATTERS.  Place more specific matchers before more
+        # general ones.  Concretely: ``outcell: Unit cell vectors``
+        # must come BEFORE any future rule keyed on bare ``outcell:``;
+        # the ``siesta: E_KS(eV)`` substring matcher must come BEFORE
+        # the ``siesta: Atomic forces`` matcher (both substring, both
+        # could in principle hit on a single line, though SIESTA
+        # never emits them on the same line).
+        #
+        # Run-state marker.  Always fires in scan; single-line.
+        def _on_end_of_run(line: str, line_no: int) -> None:
+            nonlocal run_state
+            run_state = "finished"
+
+        # Coords section: multi-line.  on_start flushes prev step
+        # (commit()) + resets step_frame; consume parses one atom row
+        # per line until a blank / malformed line ends the section.
+        def _on_coords_start(line: str, line_no: int) -> None:
+            nonlocal step_frame
+            commit()
+            step_frame = []
+
+        def _consume_coords(line: str, line_no: int) -> str:
+            stripped = line.strip()
+            if not stripped:
+                # Blank-line terminator is canonical; drop it.
+                return END_SECTION
+            parts = stripped.split()
+            if len(parts) < 6:
+                # Too few tokens: not an atom row.  The line might
+                # itself be the start of the next section (e.g.
+                # ``outcell: Unit cell vectors (Ang):`` -> 4 tokens),
+                # so re-feed through scan rules.
+                return END_BUBBLE
+            try:
+                x = float(parts[0]); y = float(parts[1]); z = float(parts[2])
+            except ValueError:
+                # Same: the line that ends a torn outcoor block may
+                # be ``>> End of run`` -- re-feed so that rule fires.
+                return END_BUBBLE
+            step_frame.append([parts[-1], x, y, z])
+            return CONTINUE
+
+        # Cell section: multi-line, exactly 3 vector rows.
+        def _on_cell_start(line: str, line_no: int) -> None:
+            nonlocal pending_lattice
+            pending_lattice = []
+
+        def _consume_cell(line: str, line_no: int) -> str:
+            nonlocal lattice, pending_lattice
+            parts = line.strip().split()
+            if len(parts) < 3:
+                # The line that ends the cell block (too few tokens)
+                # may itself be the start of the next section --
+                # re-feed through scan rules.  Matches pre-refactor
+                # fall-through semantics; needed if a future SIESTA
+                # format drops the blank line between outcell and
+                # the next section header.
+                return END_BUBBLE
+            try:
+                row = [float(parts[0]), float(parts[1]), float(parts[2])]
+            except ValueError:
+                # Same: a non-vector line ending the cell block may
+                # be the next section header.
+                return END_BUBBLE
+            pending_lattice.append(row)
+            if len(pending_lattice) >= 3:
+                lattice = pending_lattice
+                pending_lattice = None
+                return END_SECTION
+            return CONTINUE
+
+        # Forces section: multi-line, one ``<idx> fx fy fz`` row per
+        # atom, ends on a non-conforming row (typically the "Max" line).
+        def _on_forces_start(line: str, line_no: int) -> None:
+            nonlocal step_forces
+            step_forces = []
+
+        def _consume_forces(line: str, line_no: int) -> str:
+            parts = line.strip().split()
+            if len(parts) < 4:
+                # END_BUBBLE: the line that ends the forces section is
+                # often the "Max <value>" line OR the next-section
+                # header; we want the driver to re-feed it through
+                # scan-state rules so max-force / outcoor matchers see it.
+                return END_BUBBLE
+            try:
+                int(parts[0])  # atom index
+                fx = float(parts[1]); fy = float(parts[2]); fz = float(parts[3])
+            except ValueError:
+                return END_BUBBLE
+            step_forces.append([fx, fy, fz])
+            return CONTINUE
+
+        # E_KS energy line: single-line.  Format:
+        #   ``siesta: E_KS(eV) =       -1234.567``
+        def _on_e_ks(line: str, line_no: int) -> None:
+            nonlocal step_energy
+            try:
+                step_energy = float(line.split("=", 1)[1].split()[0])
+            except (ValueError, IndexError) as exc:
+                _warn(line_no, line,
+                      f"E_KS line: malformed value: {exc}",
+                      category="energy")
+
+        # SCF column header: single-line.  Records the canonical
+        # column layout for the upcoming ``scf:`` data rows.
+        def _on_scf_header(line: str, line_no: int) -> None:
+            nonlocal scf_header
+            parsed = _parse_scf_header(line)
+            if parsed is not None:
+                scf_header = parsed
+
+        # SCF data row: single-line, fires once per iteration of the
+        # SCF cycle.  Pre-2026-05-28 had this in a 70-line inline
+        # block; it's now collapsed into one ``on_start`` hook.
+        def _on_scf_data(line: str, line_no: int) -> None:
+            nonlocal current_scf, prev_E_KS
+            m_scf_prefix = _SCF_PREFIX_RE.match(line)
+            if not m_scf_prefix:
+                return
+            iscf = int(m_scf_prefix.group(1))
+            rest = m_scf_prefix.group(2)
+            vals = _parse_scf_floats(rest)
+            if vals is None:
+                _warn(line_no, line,
+                      "SCF line: could not tokenize as floats")
+                return
+
+            if scf_header is not None:
+                cycle_dict = _build_cycle_dict_from_header(
+                    iscf, vals, scf_header)
+                if cycle_dict is None:
+                    _warn(line_no, line,
+                          f"SCF row has {len(vals)} values "
+                          f"but header has {len(scf_header)-1} "
+                          f"columns ({scf_header})")
+                    return
+            else:
+                cycle_dict = _build_cycle_dict_positional(iscf, vals)
+                if cycle_dict is None:
+                    _warn(line_no, line,
+                          f"SCF line has {len(vals)} floats "
+                          f"after iscf; expected 6 (closed-"
+                          f"shell) or 7 (spin-polarized), and "
+                          f"no column header was seen")
+                    return
+
+            e_ks = cycle_dict.get("energy")
+            if e_ks is None:
+                _warn(line_no, line,
+                      "SCF row missing 'energy' (E_KS) -- "
+                      "downstream plot can't render this cycle")
+                return
+
+            # iscf==1 starts a new SCF run.  See parse() docstring for
+            # the failed-SCF-restart edge case.
+            if iscf == 1:
+                if current_scf:
+                    current_scf = []
+                prev_E_KS = None
+            delta_E = ((e_ks - prev_E_KS)
+                       if prev_E_KS is not None else 0.0)
+            cycle_dict["delta_E"] = delta_E
+            current_scf.append(cycle_dict)
+            prev_E_KS = e_ks
+
+        # Max-force line: single-line.  Gated by a closure-captured
+        # check on ``step_forces`` -- only valid after a Forces
+        # section closed.  Without the gate a stray "Max <num>" line
+        # in the preamble would mis-attribute to the first frame.
+        def _max_force_match(line: str) -> bool:
+            if not step_forces:
+                return False
+            parts = line.strip().split()
+            return (len(parts) == 2 and parts[0] == "Max")
+
+        def _on_max_force(line: str, line_no: int) -> None:
+            nonlocal step_max_force
+            try:
+                step_max_force = float(line.strip().split()[1])
+            except (ValueError, IndexError) as exc:
+                _warn(line_no, line,
+                      f"Max-force line: malformed value: {exc}",
+                      category="forces")
+
+        rules: List[SectionRule] = [
+            # Specific (multi-token) matchers first.
+            SectionRule(
+                name="cell",
+                aliases=["outcell: Unit cell vectors"],
+                start=starts_with_ci("outcell: Unit cell vectors"),
+                on_start=_on_cell_start,
+                consume=_consume_cell,
+            ),
+            SectionRule(
+                name="end_of_run",
+                aliases=[">> End of run"],
+                start=starts_with_ci(">> End of run"),
+                on_start=_on_end_of_run,
+            ),
+            SectionRule(
+                name="coords",
+                aliases=["outcoor:"],
+                start=starts_with_ci("outcoor:"),
+                on_start=_on_coords_start,
+                consume=_consume_coords,
+            ),
+            SectionRule(
+                name="e_ks",
+                aliases=["siesta: E_KS(eV)"],
+                # Substring (not prefix): the marker sits mid-line.
+                start=contains_ci("siesta: e_ks(ev)"),
+                on_start=_on_e_ks,
+            ),
+            SectionRule(
+                name="forces",
+                aliases=["siesta: Atomic forces"],
+                start=contains_ci("siesta: atomic forces"),
+                on_start=_on_forces_start,
+                consume=_consume_forces,
+            ),
+            SectionRule(
+                name="scf_header",
+                aliases=["iscf <columns>"],
+                # The header always starts with the bare token ``iscf``
+                # (case-insensitive).  _SCF_HEADER_RE already encodes
+                # this; we replicate the matcher in rule shape.
+                start=lambda line: bool(_SCF_HEADER_RE.match(line)),
+                on_start=_on_scf_header,
+            ),
+            SectionRule(
+                name="scf_data",
+                aliases=["scf: <iscf> ..."],
+                start=lambda line: bool(_SCF_PREFIX_RE.match(line)),
+                on_start=_on_scf_data,
+            ),
+            SectionRule(
+                name="max_force",
+                aliases=["Max <value>"],
+                start=_max_force_match,
+                on_start=_on_max_force,
+            ),
+        ]
+
+        # ---- State-machine driver --------------------------------
+        # state: either "scan" (try all rules) or the name of an
+        # active multi-line rule (only that rule's ``consume`` runs).
+        active: Optional[SectionRule] = None
+
+        def _scan_runtime_info(line: str) -> bool:
+            """Orthogonal runtime-info regex probes.  Not section
+            boundaries -- just free-form key/value lines that may
+            appear anywhere in scan state.  Returns True if the line
+            was consumed (caller should skip rule dispatch)."""
+            m = _SIESTA_NODES_RE.match(line)
+            if m:
+                try:
+                    runtime_info["n_mpi_processes"] = int(m.group(1))
+                except ValueError:
+                    pass
+                return True
+            m = _SIESTA_HOST_RE.match(line)
+            if m:
+                runtime_info["hostname"] = m.group(1).strip()
+                return True
+            m = _SIESTA_RUNTIME_RE.match(line)
+            if m:
+                key, val = m.group(1), m.group(2).strip()
+                if val == "None":
+                    runtime_info[key] = None
+                elif val in ("True", "False"):
+                    runtime_info[key] = (val == "True")
+                else:
+                    try:
+                        runtime_info[key] = int(val)
+                    except ValueError:
+                        runtime_info[key] = val
+                return True
+            return False
+
         with open(path, "r", errors="replace") as fh:
             for line_no, raw in enumerate(fh, start=1):
                 line = raw.rstrip("\n")
-                stripped = line.strip()
 
-                # SIESTA's clean-exit marker: ">> End of run: <date>".
-                # Always written at the very end of a successful run;
-                # absent when SIESTA aborts.  Detect anywhere outside
-                # a coords block (it's a free-form line, not nested).
-                if stripped.startswith(">> End of run"):
-                    run_state = "finished"
-                    continue
-
-                # Runtime info: cheap regex probes outside the coords
-                # blocks.  Three matchers, in order of frequency.
-                # (Free-form lines; safe to test on every scan-state
-                # line.)
-                if state == "scan":
-                    m = _SIESTA_NODES_RE.match(line)
-                    if m:
-                        try:
-                            runtime_info["n_mpi_processes"] = int(m.group(1))
-                        except ValueError:
-                            pass
+                # Active multi-line section?  Run its ``consume``
+                # first.  CONTINUE / END_SECTION skip to next line;
+                # END_BUBBLE leaves the section AND re-feeds this
+                # line through scan-state rules below.
+                if active is not None:
+                    sentinel = active.consume(line, line_no)
+                    if sentinel == CONTINUE:
                         continue
-                    m = _SIESTA_HOST_RE.match(line)
-                    if m:
-                        runtime_info["hostname"] = m.group(1).strip()
+                    if sentinel == END_SECTION:
+                        active = None
                         continue
-                    m = _SIESTA_RUNTIME_RE.match(line)
-                    if m:
-                        key, val = m.group(1), m.group(2).strip()
-                        # Coerce numeric / bool / None like the
-                        # molwatch parser does so the inspector can
-                        # rely on int / bool types where appropriate.
-                        if val == "None":
-                            runtime_info[key] = None
-                        elif val in ("True", "False"):
-                            runtime_info[key] = (val == "True")
-                        else:
-                            try:
-                                runtime_info[key] = int(val)
-                            except ValueError:
-                                runtime_info[key] = val
-                        continue
-
-                if state == "in_coords":
-                    if not stripped:
-                        state = "scan"
-                        continue
-                    parts = stripped.split()
-                    if len(parts) < 6:
-                        state = "scan"
-                        continue
-                    try:
-                        x = float(parts[0]); y = float(parts[1]); z = float(parts[2])
-                    except ValueError:
-                        state = "scan"
-                        continue
-                    step_frame.append([parts[-1], x, y, z])
-                    continue
-
-                if state == "in_forces":
-                    parts = stripped.split()
-                    if len(parts) >= 4:
-                        try:
-                            int(parts[0])  # atom index
-                            fx = float(parts[1]); fy = float(parts[2]); fz = float(parts[3])
-                        except ValueError:
-                            state = "scan"
-                        else:
-                            step_forces.append([fx, fy, fz])
-                            continue
+                    if sentinel == END_BUBBLE:
+                        active = None
+                        # fall through to scan-state dispatch below
                     else:
-                        state = "scan"
-
-                if state == "in_cell":
-                    parts = stripped.split()
-                    if len(parts) >= 3:
-                        try:
-                            row = [float(parts[0]), float(parts[1]), float(parts[2])]
-                        except ValueError:
-                            state = "scan"
-                        else:
-                            pending_lattice.append(row)
-                            if len(pending_lattice) >= 3:
-                                lattice = pending_lattice
-                                pending_lattice = None
-                                state = "scan"
-                            continue
-                    else:
-                        state = "scan"
-
-                # ---- scan mode ----
-                # SCF column header: SIESTA emits a line like
-                #   ``iscf  Eharris(eV)  E_KS(eV)  ...  dHmax(eV)``
-                # before the SCF block.  Parse it into canonical keys
-                # so subsequent data rows map by NAME, not by position
-                # (the layout differs between closed-shell and spin-
-                # polarized runs, and may change again in future
-                # SIESTA versions).  See _parse_scf_header docstring.
-                if _SCF_HEADER_RE.match(line):
-                    parsed_header = _parse_scf_header(line)
-                    if parsed_header is not None:
-                        scf_header = parsed_header
+                        _warn(line_no, line,
+                              f"section {active.name!r} returned "
+                              f"unknown sentinel {sentinel!r}; "
+                              f"ending section")
+                        active = None
                         continue
 
-                # SCF iteration line: collected into scf_history.  An
-                # iscf = 1 starts a new SCF run (= new CG/MD step's
-                # electronic problem).  Energy column is E_KS (already
-                # eV), so no unit conversion needed -- contrast with
-                # PySCF where Hartree -> eV happens at parse time.
-                #
-                # 2026-05-28: rewritten to be header-driven.  When we
-                # have a parsed column header (always for v5; older
-                # SIESTA may omit it), each value is mapped to a
-                # canonical key by NAME -- no position assumptions.
-                # When no header has been seen, we fall back to the
-                # historically-known closed-shell (6 floats) /
-                # spin-polarized (7 floats) layouts.  Either way
-                # ``dHmax`` ends up in the per-cycle dict correctly.
-                m_scf_prefix = _SCF_PREFIX_RE.match(line)
-                if m_scf_prefix:
-                    iscf = int(m_scf_prefix.group(1))
-                    rest = m_scf_prefix.group(2)
-                    vals = _parse_scf_floats(rest)
-                    if vals is None:
-                        _warn(line_no, line,
-                              "SCF line: could not tokenize as floats")
-                        continue
-
-                    cycle_dict: Optional[Dict[str, Any]]
-                    if scf_header is not None:
-                        cycle_dict = _build_cycle_dict_from_header(
-                            iscf, vals, scf_header)
-                        if cycle_dict is None:
-                            _warn(line_no, line,
-                                  f"SCF row has {len(vals)} values "
-                                  f"but header has {len(scf_header)-1} "
-                                  f"columns ({scf_header})")
-                            continue
-                    else:
-                        cycle_dict = _build_cycle_dict_positional(iscf, vals)
-                        if cycle_dict is None:
-                            _warn(line_no, line,
-                                  f"SCF line has {len(vals)} floats "
-                                  f"after iscf; expected 6 (closed-"
-                                  f"shell) or 7 (spin-polarized), and "
-                                  f"no column header was seen")
-                            continue
-
-                    e_ks = cycle_dict.get("energy")
-                    if e_ks is None:
-                        _warn(line_no, line,
-                              "SCF row missing 'energy' (E_KS) -- "
-                              "downstream plot can't render this cycle")
-                        continue
-
-                    # iscf==1 starts a new SCF run.  Normally the
-                    # previous step's SCF was already attached to its
-                    # Frame at commit() time (which happens between
-                    # SCF runs, when the outcoor: block arrives), so
-                    # current_scf is empty by the time we see iscf==1.
-                    #
-                    # SP-D: a failed-SCF restart can produce two SCF
-                    # runs WITHOUT an intervening outcoor: line (e.g.
-                    # SIESTA aborts the first SCF and the user's
-                    # restart script kicks off another).  In that case
-                    # current_scf still holds the previous (failed) run
-                    # and would silently merge into this step's frame.
-                    # Drop it: the failed run is informational at best,
-                    # and we shouldn't attribute its cycles to the
-                    # next geometry step.
-                    if iscf == 1:
-                        if current_scf:
-                            current_scf = []
-                        prev_E_KS = None
-                    delta_E = ((e_ks - prev_E_KS)
-                               if prev_E_KS is not None else 0.0)
-                    cycle_dict["delta_E"] = delta_E
-                    current_scf.append(cycle_dict)
-                    prev_E_KS = e_ks
+                # Scan state.  Runtime-info probes are orthogonal to
+                # the section state machine (free-form key/value
+                # lines that can appear anywhere); try them first
+                # because they're frequent in a SIESTA preamble.
+                if _scan_runtime_info(line):
                     continue
 
-                if stripped.startswith("outcoor:"):
-                    commit()
-                    step_frame = []
-                    state = "in_coords"
-                    continue
-
-                if stripped.startswith("outcell: Unit cell vectors"):
-                    pending_lattice = []
-                    state = "in_cell"
-                    continue
-
-                if "siesta: E_KS(eV)" in line:
-                    try:
-                        step_energy = float(line.split("=", 1)[1].split()[0])
-                    except (ValueError, IndexError) as exc:
-                        _warn(line_no, line,
-                              f"E_KS line: malformed value: {exc}",
-                              category="energy")
-                    continue
-
-                if "siesta: Atomic forces" in line:
-                    step_forces = []
-                    state = "in_forces"
-                    continue
-
-                # Max force: the unconstrained value sits on a line of
-                # the form "   Max    4.669483", emitted right after
-                # the per-atom force block.  The duplicated line
-                # ending with "constrained" has 3 tokens, so we filter
-                # on token count.  Additionally we gate on a non-empty
-                # `step_forces`, so a stray "Max <num>" line earlier
-                # in the file (e.g. in a header / comment) can't be
-                # mis-attributed to whatever step we're currently on.
-                parts = stripped.split()
-                if (parts and parts[0] == "Max" and len(parts) == 2
-                        and step_forces):
-                    try:
-                        step_max_force = float(parts[1])
-                    except ValueError as exc:
-                        _warn(line_no, line,
-                              f"Max-force line: malformed value: {exc}",
-                              category="forces")
-                    continue
+                # Section dispatch: first rule whose matcher fires
+                # wins.  Order in the ``rules`` list is significant
+                # (see comment block above the list).
+                for rule in rules:
+                    if rule.start(line):
+                        if rule.on_start is not None:
+                            rule.on_start(line, line_no)
+                        if rule.consume is not None:
+                            active = rule
+                        break
 
         # End-of-file: drop torn frames, then flush.  The SIESTA stream
         # is "SCF -> outcoor -> SCF -> outcoor -> ...", so a torn
         # outcoor at EOF means the current_scf belongs to a step we
         # can't materialize -- drop it with the frame.
-        if state == "in_coords":
+        if active is not None and active.name == "coords":
             step_frame = None
         commit()
 
