@@ -202,6 +202,50 @@ def test_explicit_blocksize_override_safe_value_passes_through():
     assert "WARNING: user-set BlockSize" not in fdf
 
 
+def test_fdf_charged_system_emits_makov_payne_notice():
+    """2026-05-28: the FDF carries an inline Makov-Payne notice
+    block near the ``NetCharge`` line whenever the resolved charge
+    is non-zero.  Surfaces the image-charge artefact in the artifact
+    the user is most likely to read.  No correction is applied (open
+    capability; see design.md decisions log + validation pass)."""
+    import numpy as np
+    from molbuilder.structure import Structure
+    s = Structure(elements=["O", "H"],
+                  positions=np.array([[0, 0, 0], [0.96, 0, 0]]),
+                  title="OH-")
+    cfg = SiestaConfig(net_charge=-1, relax_type="none")
+    fdf = render_fdf(s, cfg)
+    # NetCharge line emitted as before.
+    assert "NetCharge       -1" in fdf
+    # New informational block: name the formula + the magnitude.
+    assert "Makov-Payne" in fdf
+    assert "q^2" in fdf
+    assert "0.5-1.5 eV" in fdf or "0.5" in fdf
+    # Explicitly states molbuilder does NOT auto-apply.
+    assert "NOT" in fdf and "auto-apply" in fdf
+    # Cites the paper.
+    assert "PRB 51" in fdf or "Makov & Payne" in fdf
+    # Points the user at the right action.
+    assert ("redox" in fdf or "deprotonation" in fdf
+            or "extrapolate" in fdf)
+
+
+def test_fdf_neutral_system_no_makov_payne_block():
+    """No NetCharge -> no Makov-Payne block.  The notice is gated on
+    actual charged state, not always-on noise."""
+    import numpy as np
+    from molbuilder.structure import Structure
+    s = Structure(elements=["O", "H", "H"],
+                  positions=np.array([[0, 0, 0],
+                                       [0.96, 0, 0],
+                                       [-0.24, 0.93, 0]]),
+                  title="H2O")
+    cfg = SiestaConfig(relax_type="none")
+    fdf = render_fdf(s, cfg)
+    assert "NetCharge" not in fdf
+    assert "Makov-Payne" not in fdf
+
+
 def test_cell_volume_below_one_per_atom_raises():
     """The 2026-05-28 cell-volume sanity tightening: ``vol <
     n_atoms * 1.0 A^3`` raises with an actionable message naming

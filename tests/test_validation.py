@@ -677,6 +677,52 @@ def test_siesta_mesh_cutoff_at_slider_floor_warns_only_via_production_rule(
     )
 
 
+def test_siesta_charged_system_emits_makov_payne_notice(water_struct):
+    """2026-05-28: a SIESTA calc with NetCharge != 0 emits a soft
+    warn about the Makov-Payne image-charge bias.  The warn names
+    the formula, the typical magnitude, AND that molbuilder does
+    NOT auto-apply the correction.  Surfacing > implementing here.
+    """
+    cfg = SiestaConfig(net_charge=+1)
+    issues = validate(water_struct, cfg)
+    mp = [i for i in issues if i.where == "config.net_charge.makov_payne"]
+    assert len(mp) == 1
+    assert mp[0].severity == "warn"
+    msg = mp[0].message
+    # Quote the user's charge so the warn is self-explanatory.
+    assert "+1" in msg
+    # Cite the formula + magnitude order.
+    assert "q^2" in msg
+    assert ("0.5-1.5 eV" in msg or "0.5" in msg)
+    # Cite the paper.
+    assert "Makov" in msg
+    # Mention molbuilder doesn't auto-apply.
+    assert "auto-apply" in msg or "NOT" in msg
+    # Mention the most common use cases.
+    assert ("redox" in msg or "pKa" in msg
+            or "deprotonation" in msg)
+
+
+def test_siesta_neutral_system_no_makov_payne_notice(water_struct):
+    """net_charge == 0 (default, or user-set explicitly) -- the
+    image-charge artefact doesn't apply, no notice."""
+    cfg = SiestaConfig()   # default net_charge None -> auto-detect 0
+    issues = validate(water_struct, cfg)
+    assert [i for i in issues
+            if i.where == "config.net_charge.makov_payne"] == []
+
+
+def test_siesta_negative_charge_also_emits_notice(water_struct):
+    """The Makov-Payne bias scales as q^2 -- both signs of charge
+    trigger it equally."""
+    cfg = SiestaConfig(net_charge=-2)
+    issues = validate(water_struct, cfg)
+    mp = [i for i in issues if i.where == "config.net_charge.makov_payne"]
+    assert len(mp) == 1
+    # The warn quotes the actual charge value for context.
+    assert "-2" in mp[0].message
+
+
 def test_siesta_mesh_cutoff_below_slider_floor_emits_only_one_warning(
         water_struct):
     """Regression: a value below the SLIDER floor (100 Ry) must

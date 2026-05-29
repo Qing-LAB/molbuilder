@@ -678,6 +678,64 @@ def _check_siesta_mesh_cutoff(cfg) -> List[Issue]:
     return []
 
 
+def _check_siesta_charged_makov_payne_notice(struct: Structure,
+                                              cfg) -> List[Issue]:
+    """SIESTA-specific: charged system in a periodic supercell carries
+    an image-charge artefact that padding alone does NOT remove.
+
+    See Makov & Payne, Phys. Rev. B 51, 4014 (1995).  Leading term:
+
+        E_bias ~ q^2 * alpha / (2 * L * eps_r)
+
+    For q = +/-1 at typical molbuilder vacuum-cell sizes (15-25 A) the
+    bias is 0.5-1.5 eV -- well above chemical accuracy (~0.04 eV).
+
+    molbuilder does NOT auto-apply the Makov-Payne correction; this
+    warn surfaces the issue so users computing redox / pKa /
+    deprotonation energies know to apply it post-hoc.  Deferred for a
+    future "Makov-Payne emission" capability (see design.md decisions
+    log; task #165 retains the open item).
+
+    Severity: WARN (not ERROR) -- the calculation still runs and a
+    user doing a single-point screening calc may not care.  We're
+    nudging, not blocking.
+
+    Skip conditions:
+      * net_charge unset or zero
+      * The caller passed a non-vacuum cell explicitly AND that cell
+        looks like a real crystal (no auto-padding bump signature) --
+        we don't have enough info to know if the user wants to model
+        a periodic crystal (in which case the artefact IS the
+        physics) or a vacuum supercell.  Conservative: still warn,
+        the user can dismiss.
+    """
+    # Resolve charge: explicit user override or auto-detected.
+    from .chemistry import resolve_net_charge
+    try:
+        q = resolve_net_charge(struct, getattr(cfg, "net_charge", None))
+    except Exception:
+        return []
+    if q == 0:
+        return []
+    return [Issue(
+        "warn",
+        (f"Charged system (NetCharge = {q:+d}) in a finite supercell.  "
+         f"SIESTA's periodic-cell setup adds a uniform compensating "
+         f"background charge so the calculation runs, but the total "
+         f"energy carries an image-charge bias E_bias ~ q^2 * "
+         f"alpha / (2 * L * eps_r) -- typically 0.5-1.5 eV for "
+         f"q=+/-1 at vacuum cell sides of 15-25 A, well above "
+         f"chemical accuracy.  molbuilder does NOT auto-apply the "
+         f"Makov-Payne correction (PRB 51, 4014, 1995).  If you are "
+         f"computing redox / pKa / deprotonation / charged-binding "
+         f"energies, apply Makov-Payne post-hoc or extrapolate to "
+         f"L -> infinity from multiple cell sizes.  This warn is a "
+         f"notice; future molbuilder versions may auto-emit the "
+         f"correction value alongside the SIESTA output."),
+        "config.net_charge.makov_payne",
+    )]
+
+
 def _check_siesta_spin_polarized_needs_spin_total(struct: Structure,
                                                     cfg) -> List[Issue]:
     """SIESTA-specific: spin_polarized=True + spin_total=None + open-
@@ -849,6 +907,12 @@ def _validate_siesta(struct: Structure, cfg,
     # threshold).  The dataclass slider lower bound is 100 Ry; this
     # rule catches the 100-149 Ry window with a soft nudge.
     issues += _check_siesta_mesh_cutoff(cfg)
+
+    # Makov-Payne notice: charged-supercell image-charge bias.
+    # We DON'T auto-apply the correction (see function docstring +
+    # design.md decisions log); we surface it so the user knows
+    # what's missing.
+    issues += _check_siesta_charged_makov_payne_notice(struct, cfg)
 
     # Open-shell metal + closed-shell SCF: shared rule with PySCF.
     issues += _check_open_shell_metal(
