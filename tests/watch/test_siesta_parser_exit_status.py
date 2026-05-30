@@ -243,6 +243,80 @@ def _write_temp(text: str) -> str:
         return fh.name
 
 
+def test_real_world_hemec_stage3_pattern():
+    """Pin the EXACT real-world wording observed 2026-05-30 on
+    projects/hemeC-dithiol/optimization/gasrun1 stage 3:
+
+      SCF_NOT_CONV: SCF did not converge in maximum number of steps (required).
+      Geom step, scf iteration, dDmax, dHmax: ...
+      ABNORMAL_TERMINATION
+      Stopping Program from Node: 0
+      ABNORMAL_TERMINATION
+      Stopping Program from Node: 6
+      ...
+
+    The badge must say Error, AND error_message must carry the
+    informative ROOT CAUSE line (SCF_NOT_CONV: SCF did not
+    converge ...) NOT the cascade ("Stopping Program from Node:
+    0").  First-fatal-wins; the rule order is what guarantees this.
+    """
+    text = PROLOGUE + (
+        "SCF_NOT_CONV: SCF did not converge in maximum number of "
+        "steps (required).\n"
+        "Geom step, scf iteration, dDmax, dHmax:    0   500      "
+        "0.000008     0.000223\n"
+        "ABNORMAL_TERMINATION\n"
+        "Stopping Program from Node:    0\n"
+        "ABNORMAL_TERMINATION\n"
+        "Stopping Program from Node:    6\n"
+        "ABNORMAL_TERMINATION\n"
+        "Stopping Program from Node:    1\n"
+    )
+    traj = _parse(text)
+    assert traj.run_state == "error"
+    # Root cause, not cascade.
+    assert traj.error_message is not None
+    assert "SCF_NOT_CONV" in traj.error_message
+    assert "did not converge" in traj.error_message
+    assert "(required)" in traj.error_message
+    # And explicitly NOT the cascade message.
+    assert "Stopping Program" not in traj.error_message
+    assert "ABNORMAL_TERMINATION" not in traj.error_message
+
+
+def test_abnormal_termination_alone_is_fatal():
+    """If a SIESTA build emits ABNORMAL_TERMINATION without a
+    preceding SCF_NOT_CONV (some crash modes do this), it still
+    marks the run as error."""
+    text = PROLOGUE + (
+        "ABNORMAL_TERMINATION\n"
+        "Stopping Program from Node:    0\n"
+    )
+    traj = _parse(text)
+    assert traj.run_state == "error"
+    # First-fatal-wins: ABNORMAL_TERMINATION is the first error
+    # marker so it captures error_message.
+    assert "ABNORMAL_TERMINATION" in traj.error_message
+
+
+def test_scf_not_conv_capture_overrides_softer_form():
+    """Defensive: a line containing BOTH "SCF_NOT_CONV:" AND
+    "SCF did not converge" -- which is exactly what real SIESTA
+    emits -- must dispatch to the FATAL handler, not the soft
+    flag.  Pin the rule-order guarantee."""
+    text = PROLOGUE + (
+        "SCF_NOT_CONV: SCF did not converge "
+        "in maximum number of steps (required).\n"
+    )
+    traj = _parse(text)
+    assert traj.run_state == "error"
+    # error_message captured immediately (fatal handler), not via
+    # the strict-EOF synthetic fallback.
+    assert "SCF_NOT_CONV" in traj.error_message
+    # Specifically NOT the synthetic fallback message.
+    assert "run truncated" not in traj.error_message
+
+
 def test_scf_did_not_converge_case_insensitive():
     """Capitalisation variants of the SIESTA phrase still detected."""
     for variant in (

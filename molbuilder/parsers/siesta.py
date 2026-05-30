@@ -449,18 +449,44 @@ class SiestaParser(TrajectoryParser):
             if error_message is None:
                 error_message = line.strip()[:200]
 
-        # SCF-block convergence flags.  SIESTA emits a header line
-        # like ``SCF Convergence by DM+H criterion`` on success, and
-        # either ``SCF did NOT converge`` (some versions) or
-        # ``SCF_NOT_CONV`` (constant from internal sources) on
-        # failure.  We track the LAST-seen status; at EOF, if the
-        # run didn't reach End-of-run AND the last SCF block didn't
-        # converge, we flip run_state to error.
+        # SCF-block convergence flags.  Two distinct SIESTA emit forms:
+        #
+        #   1. ``SCF_NOT_CONV: SCF did not converge ... (required).``
+        #      -- the CONSTANT-prefixed form.  Only emitted when
+        #      ``SCF.MustConverge=true`` (default) and SIESTA is about
+        #      to abort.  Always followed in the same run by
+        #      ABNORMAL_TERMINATION + Stopping Program from Node lines.
+        #      Promoted to FATAL (2026-05-30) so the badge's
+        #      error_message carries the informative root-cause line
+        #      instead of the cascade "Stopping Program from Node: 0".
+        #
+        #   2. ``SCF did NOT converge`` (no SCF_NOT_CONV: prefix)
+        #      -- informational form.  Can appear during a relax run
+        #      that recovers in a later step.  Treated as a soft
+        #      flag; only flips to error via the strict EOF check
+        #      below (last-block-was-bad + no End-of-run).
+        #
+        # The success marker ``SCF Convergence by <criterion>`` is
+        # unambiguous; just sets the flag.
         def _on_scf_converged(line: str, line_no: int) -> None:
             nonlocal last_scf_converged
             last_scf_converged = True
 
+        def _on_scf_fatal_not_converged(line: str, line_no: int) -> None:
+            """Handler for the FATAL SCF_NOT_CONV: form.  Sets error +
+            captures the informative root-cause line as
+            error_message (first-wins; cascade markers like
+            ABNORMAL_TERMINATION and Stopping Program that follow
+            do NOT overwrite it)."""
+            nonlocal run_state, error_message, last_scf_converged
+            run_state = "error"
+            if error_message is None:
+                error_message = line.strip()[:200]
+            last_scf_converged = False
+
         def _on_scf_not_converged(line: str, line_no: int) -> None:
+            """Soft handler for the informational form.  Flags only;
+            strict EOF check decides whether the run errored."""
             nonlocal last_scf_converged
             last_scf_converged = False
 
@@ -669,30 +695,47 @@ class SiestaParser(TrajectoryParser):
                 start=contains_ci("siesta died"),
                 on_start=_on_fatal_error,
             ),
-            # SCF convergence flags -- track only, don't terminate.
-            # SUCCESS marker: SIESTA always writes "SCF Convergence
-            # by <criterion>" -- the "by" keyword guards against
-            # accidentally matching a diagnostic line that mentions
-            # both "SCF Convergence" and "did NOT converge".  Loose
-            # enough to handle every criterion variant SIESTA emits
-            # (DM+H, DM alone, H alone, ...).
+            # ABNORMAL_TERMINATION: SIESTA emits this on every
+            # cause-of-abort (SCF_NOT_CONV with MustConverge, propor
+            # crash, lapack failure, ...).  Always followed by per-
+            # rank Stopping Program lines.  Confirmed in real-world
+            # output 2026-05-30 (projects/hemeC-dithiol stage3 run).
+            SectionRule(
+                name="fatal_abnormal_termination",
+                aliases=["ABNORMAL_TERMINATION"],
+                start=contains_ci("abnormal_termination"),
+                on_start=_on_fatal_error,
+            ),
+            # SCF_NOT_CONV: FATAL form.  Must be BEFORE the soft
+            # "scf did not converge" rule -- a line containing both
+            # ("SCF_NOT_CONV: SCF did not converge ...") must dispatch
+            # to the fatal handler, not the soft flag.  The fatal
+            # handler captures the informative root-cause line as
+            # error_message; subsequent ABNORMAL_TERMINATION + Stop
+            # cascades do NOT overwrite it.
+            SectionRule(
+                name="fatal_scf_not_conv",
+                aliases=["SCF_NOT_CONV: ..."],
+                start=contains_ci("scf_not_conv"),
+                on_start=_on_scf_fatal_not_converged,
+            ),
+            # SCF convergence success.  "by <criterion>" suffix
+            # guards against matching a diagnostic line that mentions
+            # both "SCF Convergence" and "did NOT converge".
             SectionRule(
                 name="scf_converged",
                 aliases=["SCF Convergence by ..."],
                 start=contains_ci("scf convergence by"),
                 on_start=_on_scf_converged,
             ),
-            # NON-convergence: two known SIESTA phrasings.
+            # SCF non-convergence: SOFT informational form (no
+            # SCF_NOT_CONV: prefix).  Can appear during a relax that
+            # recovers in a later step; strict EOF check decides
+            # error vs ongoing.
             SectionRule(
                 name="scf_not_converged",
-                aliases=["SCF did NOT converge", "SCF_NOT_CONV"],
+                aliases=["SCF did NOT converge"],
                 start=contains_ci("scf did not converge"),
-                on_start=_on_scf_not_converged,
-            ),
-            SectionRule(
-                name="scf_not_converged_const",
-                aliases=["SCF_NOT_CONV"],
-                start=contains_ci("scf_not_conv"),
                 on_start=_on_scf_not_converged,
             ),
             # Specific (multi-token) section matchers next.
