@@ -35,6 +35,112 @@ class WrapperError(Exception):
     routing, missing script file, ..."""
 
 
+def _run_index_resolver(basename: str) -> str:
+    """Bash block that resolves ``_out_file`` to ``{basename}-runN.out``.
+
+    Honours two shell variables that the caller (the engine-specific
+    args block) is expected to set:
+
+      ``_continue`` (0/1)  -- ``--continue`` was passed; advance to
+        next free N.  Without ``--continue`` we refuse to overwrite
+        an existing -runN.out unless ``--force`` was also passed.
+      ``_force``    (0/1)  -- ``--force`` was passed; allow restart
+        from -run0 even if prior runs exist (they are preserved on
+        disk; we just don't continue from them).
+
+    The resolver is shared by SIESTA + PySCF wrappers so the run-index
+    semantics are identical across engines.  ``basename`` is the
+    script stem (e.g. ``siesta-hemeC-gas-stage3``) baked in at
+    generation time -- the bash itself doesn't try to derive it.
+    """
+    return (
+        f"# --- Run index resolution ------------------------------\n"
+        f"# Outputs are ``{basename}-runN.out``.  First run produces\n"
+        f"# -run0; ``--continue`` scans existing -runN files and uses\n"
+        f"# max(N)+1.  Without --continue, refuse to overwrite an\n"
+        f"# existing -run0 unless --force was passed (otherwise the\n"
+        f"# user would silently lose the previous result).\n"
+        f"_existing_max=-1\n"
+        f'shopt -s nullglob 2>/dev/null || true\n'
+        f'for _f in "{basename}-run"*.out; do\n'
+        f'    _n=${{_f#{basename}-run}}\n'
+        f'    _n=${{_n%.out}}\n'
+        f'    case "$_n" in\n'
+        f"        ''|*[!0-9]*) continue ;;\n"
+        f"    esac\n"
+        f'    if [ "$_n" -gt "$_existing_max" ]; then\n'
+        f'        _existing_max=$_n\n'
+        f"    fi\n"
+        f"done\n"
+        f"\n"
+        f'if [ "$_continue" = "1" ]; then\n'
+        f'    if [ "$_existing_max" -ge 0 ]; then\n'
+        f"        _run_n=$((_existing_max + 1))\n"
+        f"    else\n"
+        f'        echo "[molbuilder] --continue requested but no prior '
+        f'-runN.out found; starting fresh as -run0" >&2\n'
+        f"        _run_n=0\n"
+        f"    fi\n"
+        f"else\n"
+        f'    if [ "$_existing_max" -ge 0 ] && [ "$_force" != "1" ]; then\n'
+        f'        echo "ERROR: previous output exists '
+        f'(``{basename}-run${{_existing_max}}.out``)." >&2\n'
+        f'        echo "  Use --continue to add '
+        f'``{basename}-run$((_existing_max + 1)).out`` '
+        f'(resume from last state)." >&2\n'
+        f'        echo "  Use --force to start over from -run0 '
+        f'(overwrites the existing run0)." >&2\n'
+        f"        exit 1\n"
+        f"    fi\n"
+        f"    _run_n=0\n"
+        f"fi\n"
+        f'_out_file="{basename}-run${{_run_n}}.out"\n'
+        f'echo "[molbuilder] run index: $_run_n  ->  $_out_file"\n'
+        f"\n"
+    )
+
+
+def _continue_force_args_parser(name_for_usage: str) -> str:
+    """Bash snippet declaring + parsing ``--continue`` / ``-c`` /
+    ``--force`` / ``-f``.  Returns code that:
+
+      * declares ``_continue=0`` and ``_force=0``
+      * iterates ``$@`` and shifts as it consumes ``--continue`` /
+        ``--force`` flags (other args remain for engine-specific
+        loops to handle).
+
+    The caller is responsible for the eventual ``--help`` text.  We
+    DON'T parse it here because SIESTA also has ``-np N`` which has
+    its own help text path; merging them would couple the two engine
+    paths.
+    """
+    return (
+        f"# --- Continuation flags (shared SIESTA / PySCF) --------\n"
+        f"# ``--continue`` / ``-c`` : advance run-index, restart from\n"
+        f"#                          last engine state (.DM / .CG / .XV\n"
+        f"#                          for SIESTA, .chk for PySCF).\n"
+        f"# ``--force``    / ``-f`` : start over from -run0 even if a\n"
+        f"#                          prior run exists.  The previous\n"
+        f"#                          -runN file is preserved; only the\n"
+        f"#                          run-index sequence resets.\n"
+        f"_continue=0\n"
+        f"_force=0\n"
+        f"# We strip --continue / --force from $@ here, leaving the\n"
+        f"# rest for the engine-specific arg loop below (-np for SIESTA;\n"
+        f"# nothing for PySCF).\n"
+        f"_argv_remaining=()\n"
+        f'while [ $# -gt 0 ]; do\n'
+        f'    case "$1" in\n'
+        f"        --continue|-c) _continue=1; shift ;;\n"
+        f"        --force|-f)    _force=1;    shift ;;\n"
+        f'        *)             _argv_remaining+=("$1"); shift ;;\n'
+        f"    esac\n"
+        f"done\n"
+        f'set -- "${{_argv_remaining[@]+\"${{_argv_remaining[@]}}\"}}"\n'
+        f"\n"
+    )
+
+
 def _parse_fdf_n_atoms(fdf_path: Path) -> Optional[int]:
     """Read the ``NumberOfAtoms`` line from a SIESTA .fdf, or None.
 
@@ -69,10 +175,16 @@ def render_run_wrapper(script_path: Path, *,
     Routing by file extension:
 
     * ``.fdf``  → SIESTA.  Uses ``mpirun -np <N>`` when ``mpi_np`` is
-                  given and ≥ 2; redirects stdout to ``<basename>.out``
-                  (the convention from job-layout v1).
-    * ``.py``   → PySCF.  Runs ``python <script>``; the inlined
-                  ``_MolwatchEmitter`` handles its own log files.
+                  given and ≥ 2; redirects stdout to the dynamic
+                  ``<basename>-runN.out`` (the run index N is resolved
+                  by the wrapper at run time; first run is -run0,
+                  ``--continue`` advances to next free N).
+    * ``.py``   → PySCF.  Runs ``python <script>`` with the same
+                  ``-runN`` redirect; the inlined ``_MolwatchEmitter``
+                  handles its own log files independently.
+
+    Both wrappers accept ``--continue`` / ``-c`` and ``--force`` /
+    ``-f``.  See the wrapper's ``-h`` for the full flag inventory.
 
     Args:
       script_path: the ``.fdf`` or ``.py`` to wrap.
@@ -198,7 +310,7 @@ def render_run_wrapper(script_path: Path, *,
         # function wraps it in ``set +e`` + propor-detection.  The
         # ``description`` string here is for the wrapper file header
         # only -- the user's actual -np at run time may differ.
-        inner = f"$_launch_cmd {script_name} > {basename}.out"
+        inner = f"$_launch_cmd {script_name} > $_out_file"
         description = f"SIESTA run, default -np {resolved_mpi}"
 
         # ---- Argument-parsing prelude (SIESTA only) ----
@@ -214,8 +326,18 @@ def render_run_wrapper(script_path: Path, *,
         # ``-np 15`` without regenerating the .fdf or the wrapper.
         # The post-run diagnostic at the bottom of this wrapper
         # catches the crash and prints retry suggestions.
+        # Two-stage argument parsing:
+        #
+        #   1. Shared --continue / --force consumption (engine-
+        #      agnostic; strips those flags and leaves the rest in $@).
+        #   2. SIESTA-specific -np / -h.
+        #
+        # ORDER matters: --continue/--force are recognised first so
+        # callers can combine them with -np in any order
+        # (``--continue -np 8`` and ``-np 8 --continue`` both work).
         siesta_args_block = (
-            f"# --- Argument parsing -----------------------------------\n"
+            _continue_force_args_parser("SIESTA wrapper")
+            + f"# --- SIESTA-specific argument parsing -----------\n"
             f"# Override the generation-time -np with: ``-np N`` or\n"
             f"# ``MB_NP=N``.  Useful for retrying after a propor crash\n"
             f"# (see diagnostic at the bottom of this wrapper).\n"
@@ -231,11 +353,20 @@ def render_run_wrapper(script_path: Path, *,
             f'            _mpi_np="$2"; shift 2 ;;\n'
             f"        -h|--help)\n"
             f'            cat <<USAGE\n'
-            f'Usage: bash $(basename "$0") [-np N] [-h]\n'
+            f'Usage: bash $(basename "$0") [--continue|-c] [--force|-f] [-np N] [-h]\n'
             f"\n"
-            f"  -np N    override MPI rank count.  Default at generation\n"
-            f"           time was $_mpi_np_default (from the form).\n"
-            f"  -h       this help.\n"
+            f"  --continue, -c   resume from prior run.  Scans existing\n"
+            f"                   -runN.out files and writes -run(N+1).\n"
+            f"                   SIESTA reads .DM/.CG/.XV automatically\n"
+            f"                   when present (generator emits the\n"
+            f"                   ``DM.UseSaveDM`` / ``MD.UseSaveCG`` /\n"
+            f"                   ``MD.UseSaveXV`` flags by default).\n"
+            f"  --force, -f      start over from -run0 even if prior\n"
+            f"                   runs exist.  Old files are NOT deleted;\n"
+            f"                   the existing -run0.out is overwritten.\n"
+            f"  -np N            override MPI rank count.  Default at\n"
+            f"                   generation time was $_mpi_np_default.\n"
+            f"  -h               this help.\n"
             f"\n"
             f"Environment variables:\n"
             f"  MB_NP=N  same as -np N (useful for SLURM/PBS scripts:\n"
@@ -257,6 +388,7 @@ def render_run_wrapper(script_path: Path, *,
             f"    exit 1\n"
             f"fi\n"
             f"\n"
+            + _run_index_resolver(basename)
         )
 
         env_prefix = (
@@ -374,13 +506,13 @@ def render_run_wrapper(script_path: Path, *,
             f'echo "  Launch mode   : $_launch_note"\n'
             f'echo "  Threading     : OMP_NUM_THREADS={resolved_omp}, '
             f'OPENBLAS=1, MKL=1"\n'
-            f'echo "  Command       : $_launch_cmd {script_name} > {basename}.out"\n'
-            f'echo "  Stdout        : {basename}.out (live; tail -f to follow)"\n'
+            f'echo "  Command       : $_launch_cmd {script_name} > $_out_file"\n'
+            f'echo "  Stdout        : $_out_file (live; tail -f to follow)"\n'
             f'echo "========================================="\n'
             f"\n"
         )
     else:                                          # pyscf
-        inner = f"python {script_name}"
+        inner = f"python {script_name} > $_out_file 2>&1"
         description = "PySCF run"
         # PySCF: the inline ``runtime_info`` block in the emitted
         # .py sets OMP_NUM_THREADS / OPENBLAS_NUM_THREADS = 1 via
@@ -389,16 +521,52 @@ def render_run_wrapper(script_path: Path, *,
         # the env-respect (the script honors a pre-export) AND
         # mask the in-script auto-detect that picks physical cores.
 
+        # Argument parsing: PySCF gets --continue / --force +
+        # a -h.  No engine-specific flags (PySCF doesn't have an
+        # MPI rank knob; threading is auto-detected in the script).
+        pyscf_args_block = (
+            _continue_force_args_parser("PySCF wrapper")
+            + f"# --- PySCF wrapper argument parsing -------------\n"
+            f'while [ $# -gt 0 ]; do\n'
+            f'    case "$1" in\n'
+            f"        -h|--help)\n"
+            f'            cat <<USAGE\n'
+            f'Usage: bash $(basename "$0") [--continue|-c] [--force|-f] [-h]\n'
+            f"\n"
+            f"  --continue, -c   resume from prior run.  Scans existing\n"
+            f"                   -runN.out files and writes -run(N+1).\n"
+            f"                   PySCF loads the SCF density matrix from\n"
+            f"                   ``<JOB>.chk`` automatically when present\n"
+            f"                   (the generator emits ``mf.chkfile`` by\n"
+            f"                   default and the chkfile-init-guess\n"
+            f"                   shim auto-loads it on continuation).\n"
+            f"  --force, -f      start over from -run0 even if prior\n"
+            f"                   runs exist.  Old files are NOT deleted;\n"
+            f"                   the existing -run0.out is overwritten.\n"
+            f"  -h               this help.\n"
+            f"USAGE\n"
+            f"            exit 0 ;;\n"
+            f"        *)\n"
+            f'            echo "ERROR: unknown argument: $1 (use -h)" >&2\n'
+            f"            exit 1 ;;\n"
+            f"    esac\n"
+            f"done\n"
+            f"\n"
+            + _run_index_resolver(basename)
+        )
+
         # Same human-readable banner pattern as SIESTA -- the script
         # itself logs its own runtime info but the wrapper covers
         # the "did it even start" window before Python imports.
         env_prefix = (
-            f'echo "===== molbuilder PySCF run-wrapper ====="\n'
+            pyscf_args_block
+            + f'echo "===== molbuilder PySCF run-wrapper ====="\n'
             f'echo "  Date    : $(date -Iseconds)"\n'
             f'echo "  Host    : $(hostname)"\n'
             f'echo "  Cwd     : $(pwd)"\n'
             f'echo "  Conda   : ${{CONDA_DEFAULT_ENV:-?}}"\n'
-            f'echo "  Command : python {script_name}"\n'
+            f'echo "  Command : python {script_name} > $_out_file"\n'
+            f'echo "  Stdout  : $_out_file"\n'
             f'echo "  Logs    : see <basename>.molwatch.log (script writes its own)"\n'
             f'echo "========================================"\n'
             f"\n"
@@ -459,14 +627,14 @@ def render_run_wrapper(script_path: Path, *,
             f"# below reads the .out for ``propor: ERROR`` and prints a\n"
             f"# retry suggestion.  Then we re-exit with SIESTA's code.\n"
             f"set +e\n"
-            f"$_launch_cmd {script_name} > {basename}.out\n"
+            f"$_launch_cmd {script_name} > $_out_file\n"
             f"_siesta_exit=$?\n"
             f"set -e\n"
             f"\n"
             f'if [ "$_siesta_exit" -ne 0 ]; then\n'
             f"    echo \"\"\n"
             f'    echo "===== SIESTA exited with code $_siesta_exit =====" >&2\n'
-            f'    if grep -aq "propor: ERROR" {basename}.out 2>/dev/null; then\n'
+            f'    if grep -aq "propor: ERROR" "$_out_file" 2>/dev/null; then\n'
             f"        cat <<HINT >&2\n"
             f"\n"
             f"SIESTA crashed with 'propor: ERROR: IMAX = 0' during startup.\n"
@@ -490,18 +658,18 @@ def render_run_wrapper(script_path: Path, *,
             f"For pure-organic systems the safe range is usually wider;\n"
             f"larger heteroatom mixes are more conservative.\n"
             f"\n"
-            f"Full SIESTA output: {basename}.out\n"
+            f"Full SIESTA output: $_out_file\n"
             f"HINT\n"
             f'    elif grep -aq "ERROR\\|aborted\\|Stopping" '
-            f"{basename}.out 2>/dev/null; then\n"
+            f'"$_out_file" 2>/dev/null; then\n'
             f'        echo "Other SIESTA error detected; check '
-            f'{basename}.out for details." >&2\n'
+            f'$_out_file for details." >&2\n'
             f"    fi\n"
             f'    exit "$_siesta_exit"\n'
             f"fi\n"
             f"\n"
             f'echo "SIESTA completed: $_launch_cmd {script_name} -> '
-            f'{basename}.out"\n'
+            f'$_out_file"\n'
         )
     else:
         launch_block = f"exec {inner}\n"
@@ -517,10 +685,20 @@ def render_run_wrapper(script_path: Path, *,
         f"# not regenerate this file unless `molbuilder run` is invoked\n"
         f"# again on the same script.  Run directly:\n"
         f"#\n"
-        f"#     bash {basename}.run.sh              # foreground, default -np\n"
+        f"#     bash {basename}.run.sh              # first run -> -run0.out\n"
+        f"#     bash {basename}.run.sh --continue   # resume -> -run1, -run2, ...\n"
+        f"#     bash {basename}.run.sh --force      # restart from -run0 (overwrite)\n"
         f"#     bash {basename}.run.sh -np 8        # override mpi_np (SIESTA only)\n"
         f"#     MB_NP=8 bash {basename}.run.sh      # same via env var (SLURM/PBS)\n"
         f"#     nohup ./{basename}.run.sh &         # background, detached\n"
+        f"#\n"
+        f"# Continuation contract:\n"
+        f"#  * SIESTA: ``DM.UseSaveDM`` / ``MD.UseSaveCG`` / ``MD.UseSaveXV``\n"
+        f"#    are emitted by the generator by default; SIESTA auto-loads\n"
+        f"#    .DM/.CG/.XV from the previous run.\n"
+        f"#  * PySCF: ``mf.chkfile`` is set by default; the script's startup\n"
+        f"#    shim auto-loads the prior SCF density via ``mf.init_guess =\n"
+        f"#    \"chkfile\"`` when the .chk file exists.\n"
         f"#\n"
         f"# IMPORTANT: this wrapper chdirs to the script directory\n"
         f"# before launching, so ALL output artefacts (.log, .chk,\n"

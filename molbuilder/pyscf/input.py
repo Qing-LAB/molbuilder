@@ -513,6 +513,19 @@ def render_script(struct: Structure,
         out.append(f"mf.damp = {cfg.damp}")
     if cfg.chkfile:
         out.append('mf.chkfile = _mb_outfile(JOB + ".chk")')
+        # Continuation: when the wrapper is re-launched with --continue
+        # (or any prior run left a non-empty .chk), use the saved DM as
+        # the SCF init guess instead of MINAO / atom.  Cuts the
+        # re-converge cost on a resumed run from "full SCF from scratch"
+        # to "small refine on top of converged DM".  Gated on a
+        # non-empty file so a stale 0-byte chkfile doesn't trigger.
+        out.append("import os as _os")
+        out.append("_chk_path = _mb_outfile(JOB + \".chk\")")
+        out.append("if _os.path.exists(_chk_path) and "
+                   "_os.path.getsize(_chk_path) > 0:")
+        out.append('    mf.init_guess = "chkfile"')
+        out.append('    print(f"[molbuilder] continuation: loading '
+                   'SCF init guess from {_chk_path}")')
 
     # GPU patch: promote the fully-assembled production mf to its
     # gpu4pyscf equivalent when the runtime probe at script-start

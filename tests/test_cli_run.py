@@ -46,9 +46,11 @@ def test_run_emits_wrapper_for_fdf(tmp_path):
     wrapper = tmp_path / "my-job.run.sh"
     assert wrapper.is_file()
     txt = wrapper.read_text()
-    # 2026-05-24: launcher is probe-resolved at runtime
-    # (``exec $_launch_cmd my-job.fdf > my-job.out``).
-    assert "my-job.fdf > my-job.out" in txt
+    # 2026-05-24: launcher is probe-resolved at runtime.
+    # 2026-05-30: stdout file is dynamic ($_out_file resolved by
+    # the run-index block, defaulting to my-job-run0.out).
+    assert "my-job.fdf > $_out_file" in txt
+    assert '_out_file="my-job-run${_run_n}.out"' in txt
     # 2026-05-23: wrapper switched from ``conda run -n`` to the
     # source+activate hybrid; the env name still appears in the
     # ``conda activate`` line (see molbuilder/runwrap.py).

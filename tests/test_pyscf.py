@@ -466,6 +466,36 @@ def test_pcm_uses_mf_method_form(h2o):
 # --------------------------------------------------------------------- #
 
 
+def test_chkfile_continuation_shim_emitted(h2o):
+    """2026-05-30: when cfg.chkfile=True (default), the generated
+    script auto-detects an existing .chk file at startup and flips
+    ``mf.init_guess`` to ``"chkfile"`` so a re-run via ``bash
+    job.run.sh --continue`` warm-starts from the saved DM instead
+    of MINAO / atom / huckel."""
+    text = render_script(h2o, PySCFConfig())
+    # The chkfile assignment is still there.
+    assert 'mf.chkfile = _mb_outfile(JOB + ".chk")' in text
+    # The auto-detect shim is appended right after.
+    assert "import os as _os" in text
+    assert '_chk_path = _mb_outfile(JOB + ".chk")' in text
+    assert ("_os.path.exists(_chk_path) and "
+            "_os.path.getsize(_chk_path) > 0") in text
+    assert 'mf.init_guess = "chkfile"' in text
+    # Order: chkfile assignment must come BEFORE the shim (so
+    # mf.chkfile has the resolved path at the time we test for it).
+    chk_assign_ix = text.find('mf.chkfile = _mb_outfile(JOB + ".chk")')
+    shim_ix      = text.find("_chk_path = _mb_outfile(JOB")
+    assert chk_assign_ix < shim_ix
+
+
+def test_chkfile_disabled_skips_continuation_shim(h2o):
+    """When cfg.chkfile=False the shim is NOT emitted (nothing to
+    load from)."""
+    text = render_script(h2o, PySCFConfig(chkfile=False))
+    assert 'mf.chkfile = _mb_outfile(JOB + ".chk")' not in text
+    assert "_chk_path = _mb_outfile(JOB" not in text
+
+
 def test_preopt_inherits_init_guess(h2o):
     """When cfg.preopt=True, mf1 must get the production
     init_guess so a stiff SCF that needed e.g. huckel to converge
