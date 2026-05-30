@@ -60,7 +60,7 @@ _SIESTA_RUNTIME_RE = re.compile(
 # This split lets us handle BOTH the closed-shell form (7 columns
 # total) AND the spin-polarized form (8 columns -- Ef split into
 # Ef_up + Ef_dn) without writing a brittle multi-regex dispatch.
-_SCF_PREFIX_RE = re.compile(r"^\s*scf:\s*(\d+)\s+(.+)$")
+_SCF_PREFIX_RE = re.compile(r"^\s*scf:\s*(\d+)\s+(.+)$", re.IGNORECASE)
 
 # Defensive separator-inserter for SIESTA's fixed-width SCF columns.
 # When two adjacent columns pack so tight that no whitespace separates
@@ -566,7 +566,11 @@ class SiestaParser(TrajectoryParser):
             if not step_forces:
                 return False
             parts = line.strip().split()
-            return (len(parts) == 2 and parts[0] == "Max")
+            # parts[0] case-insensitive: a hypothetical SIESTA build
+            # that emits "MAX" / "max" still hits the rule.  The
+            # gating on len(parts) == 2 keeps the constrained
+            # duplicate (3 tokens) from misfiring.
+            return (len(parts) == 2 and parts[0].lower() == "max")
 
         def _on_max_force(line: str, line_no: int) -> None:
             nonlocal step_max_force

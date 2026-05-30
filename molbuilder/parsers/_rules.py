@@ -48,7 +48,7 @@ callbacks (which close over the parser's locals).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Callable, List, Optional
+from typing import Callable, List, Optional
 
 
 # ---------------------------------------------------------------------------
@@ -166,14 +166,18 @@ class SectionRule:
         Optional ``(line, line_no) -> None`` hook fired on the line
         that triggered the match.  Use it to flush previously
         accumulated state or to capture a value from the header
-        line itself.  May raise ``ValueError``; the driver catches
-        and surfaces it as a :class:`ParseWarning`.
+        line itself.  Should handle its own value-extraction errors
+        (the driver does NOT wrap on_start in try/except; an
+        unhandled exception aborts the whole parse).  The SIESTA
+        callbacks shipping with this module follow the pattern:
+        ``try: ... except (ValueError, IndexError) as exc: _warn(...)``.
     consume:
         Optional ``(line, line_no) -> sentinel`` callable invoked
         for each subsequent line while the section is active.
         Returns :data:`CONTINUE`, :data:`END_SECTION`, or
         :data:`END_BUBBLE`.  Omit (None) to make this a single-line
         rule -- ``on_start`` fires and the driver stays in scan mode.
+        Same error contract as ``on_start``: consume must not raise.
     aliases:
         Human-readable copies of the section headers this rule
         accepts.  Stored for debugging / docs / introspection only;

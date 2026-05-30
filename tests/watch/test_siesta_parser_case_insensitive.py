@@ -222,6 +222,54 @@ def test_end_of_run_uppercase():
     assert traj.run_state == "finished"
 
 
+def test_scf_data_prefix_uppercase():
+    """``SCF:`` (uppercase) parses identically to ``scf:``.  Caught
+    in the 2026-05-29 holistic review -- _SCF_PREFIX_RE was missing
+    re.IGNORECASE, which would have silently dropped every SCF line
+    on a hypothetical SIESTA build that capitalised the prefix."""
+    text = (
+        "Welcome to SIESTA\n"
+        "outcoor: Atomic coordinates (Ang):\n"
+        "   1.00    2.00    3.00   1       1  C\n"
+        "\n"
+        "   iscf  Eharris(eV)  E_KS(eV)  FreeEng(eV)  dDmax  Ef(eV) dHmax(eV)\n"
+        "   SCF:    1   -100.0   -100.0   -100.0   0.001  -1.0   0.5\n"
+        "   Scf:    2   -100.0   -100.0   -100.0   0.001  -1.0   0.3\n"
+        "siesta: E_KS(eV) =        -100.1234\n"
+        ">> End of run: now\n"
+    )
+    traj = _parse(text)
+    assert len(traj.frames) == 1
+    scf = traj.frames[0].scf_history
+    assert scf is not None
+    assert len(scf) == 2
+    assert math.isclose(scf[0]["dHmax"], 0.5, abs_tol=1e-6)
+    assert math.isclose(scf[1]["dHmax"], 0.3, abs_tol=1e-6)
+
+
+def test_max_force_label_case_insensitive():
+    """``MAX 1.234`` and ``max 1.234`` parse identically to ``Max
+    1.234``.  Caught in the 2026-05-29 holistic review -- the
+    closure-based matcher checked ``parts[0] == 'Max'`` exact-case,
+    inconsistent with the rule-table case-insensitivity policy."""
+    for variant in ("Max", "MAX", "max"):
+        text = (
+            "Welcome to SIESTA\n"
+            "outcoor: Atomic coordinates (Ang):\n"
+            "   1.00    2.00    3.00   1       1  C\n"
+            "\n"
+            "siesta: Atomic forces (eV/Ang):\n"
+            "     1    0.10    0.20    0.30\n"
+            f"   {variant}    1.234567\n"
+            ">> End of run: now\n"
+        )
+        traj = _parse(text)
+        assert len(traj.frames) == 1, f"variant={variant}"
+        assert traj.frames[0].max_force is not None, f"variant={variant}"
+        assert math.isclose(traj.frames[0].max_force,
+                            1.234567, abs_tol=1e-6), f"variant={variant}"
+
+
 def test_end_of_run_mid_coords_still_captured():
     """The END_BUBBLE escape hatch: if SIESTA aborts mid-coords-write
     and the next line is the run-end marker (no blank-line
