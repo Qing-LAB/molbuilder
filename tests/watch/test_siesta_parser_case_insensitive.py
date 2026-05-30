@@ -222,6 +222,55 @@ def test_end_of_run_uppercase():
     assert traj.run_state == "finished"
 
 
+def test_can_parse_lowercase_banner():
+    """can_parse accepts a SIESTA file whose banner is fully
+    lower-cased.  Pre-2026-05-29 second review the matcher
+    enumerated only "Welcome to SIESTA" + "WELCOME TO SIESTA" --
+    a hypothetical "welcome to siesta" build would have been
+    silently rejected even though every other section parses
+    correctly."""
+    with tempfile.NamedTemporaryFile("w", suffix=".out", delete=False) as fh:
+        fh.write(
+            "welcome to siesta\n"  # lower-case banner
+            "outcoor: Atomic coordinates (Ang):\n"
+            "   1.0  2.0  3.0  1  1  C\n"
+            ">> End of run: x\n"
+        )
+        path = fh.name
+    assert SiestaParser.can_parse(path)
+
+
+def test_can_parse_uppercase_siesta_prefix_lines():
+    """can_parse falls back to counting ``siesta:`` / ``redata:``
+    prefix lines when no strong marker hit.  Those prefixes are now
+    case-insensitive too -- a hypothetical SIESTA build emitting
+    "SIESTA:" instead of "siesta:" still gets recognised."""
+    with tempfile.NamedTemporaryFile("w", suffix=".out", delete=False) as fh:
+        # No strong marker, just three uppercase-prefix lines.
+        fh.write(
+            "SIESTA: line one\n"
+            "REDATA: line two\n"
+            "SIESTA: line three\n"
+        )
+        path = fh.name
+    assert SiestaParser.can_parse(path)
+
+
+def test_can_parse_rejects_unrelated_log():
+    """Negative: a non-SIESTA log file with no markers + no
+    siesta:/redata: prefix lines is rejected.  Pin the negative-case
+    contract -- the case-insensitive widening must NOT cause
+    over-matching on arbitrary logs."""
+    with tempfile.NamedTemporaryFile("w", suffix=".log", delete=False) as fh:
+        fh.write(
+            "INFO: some other program\n"
+            "DEBUG: lifecycle event\n"
+            "WARN: low memory\n"
+        )
+        path = fh.name
+    assert not SiestaParser.can_parse(path)
+
+
 def test_scf_data_prefix_uppercase():
     """``SCF:`` (uppercase) parses identically to ``scf:``.  Caught
     in the 2026-05-29 holistic review -- _SCF_PREFIX_RE was missing

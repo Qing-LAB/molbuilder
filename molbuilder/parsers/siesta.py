@@ -253,18 +253,22 @@ class SiestaParser(TrajectoryParser):
     # 300 lines is a generous scan window: a real SIESTA output has
     # plenty of structural markers within the first 100 lines on small
     # runs, and within ~700-800 on big v5 runs whose preamble grew.
+    # Strong content markers (case-insensitive substring match; see
+    # can_parse).  v4.x banner ("Welcome to SIESTA") and v5.x banner
+    # ("WELCOME TO SIESTA") were enumerated separately pre-2026-05-29;
+    # the case-insensitive lookup collapses them.  Listed lower-case
+    # here because the matcher lower-cases its input.
     _STRONG_MARKERS = (
-        "Executable      : siesta",      # v5.x line 1
-        "WELCOME TO SIESTA",             # v5.x banner (uppercase)
-        "Welcome to SIESTA",             # v4.x banner (mixed case)
-        "siesta: System type",
-        "siesta: Atomic forces",
-        "outcoor: Atomic coordinates",
-        "outcell: Unit cell vectors",
-        "Begin CG opt",
-        "Begin MD opt",
-        "Begin Broyden opt",
-        "Begin FIRE opt",
+        "executable      : siesta",     # v5.x line 1
+        "welcome to siesta",            # v4.x / v5.x banner (either case)
+        "siesta: system type",
+        "siesta: atomic forces",
+        "outcoor: atomic coordinates",
+        "outcell: unit cell vectors",
+        "begin cg opt",
+        "begin md opt",
+        "begin broyden opt",
+        "begin fire opt",
     )
     _PREFIX_MARKERS = ("siesta:", "redata:")
     _SCAN_LINES = 300
@@ -277,13 +281,18 @@ class SiestaParser(TrajectoryParser):
                 head_lines = [next(fh, "") for _ in range(cls._SCAN_LINES)]
         except OSError:
             return False
-        head = "".join(head_lines)
+        # Lower-case the head ONCE; cheap (~30 KB of text) and lets
+        # the marker / prefix checks below run as plain substring
+        # ops with no per-line .lower() amortisation.  Consistent
+        # with the rule-table case-insensitivity policy (#171).
+        head_lower = "".join(head_lines).lower()
+        head_lines_lower = [ln.lower() for ln in head_lines]
         # 1. Any strong content marker wins immediately.
-        if any(m in head for m in cls._STRONG_MARKERS):
+        if any(m in head_lower for m in cls._STRONG_MARKERS):
             return True
         # 2. Otherwise, count `siesta:` / `redata:` lines.
         prefix_hits = sum(
-            1 for ln in head_lines
+            1 for ln in head_lines_lower
             if any(ln.lstrip().startswith(p) for p in cls._PREFIX_MARKERS)
         )
         return prefix_hits >= cls._PREFIX_THRESHOLD
