@@ -302,12 +302,26 @@ class SiestaParser(TrajectoryParser):
         frames: List[Frame] = []
         lattice: Optional[List[List[float]]] = None
         pending_lattice: Optional[List[List[float]]] = None
-        # Run-state detection: SIESTA writes ">> End of run:  <date>"
-        # at end of a successful run; any other shutdown leaves no
-        # such marker.  No equivalent for "error" state on SIESTA's
-        # native output -- common abort patterns vary across versions
-        # -- so we only differentiate finished vs ongoing here.
+        # Run-state detection.  Three outcomes, in priority order:
+        #   "error"    -- a fatal marker matched, OR the run ended
+        #                 without ">> End of run" AND the last SCF
+        #                 block did not converge.
+        #   "finished" -- ">> End of run" emitted AND no fatal error.
+        #   "ongoing"  -- no clean-exit marker, no detected fault.
+        # SIESTA's clean-exit marker is "always written" only on
+        # success; abort emits at least one of the fatal markers we
+        # recognise below (per the 2026-05-29 user directive: detect
+        # convergence / exit failures from the .out itself so the
+        # /results badge can show "Error" without depending on the
+        # wrapper's grep).
         run_state: str = "ongoing"
+        error_message: Optional[str] = None
+        # Per-SCF-block convergence flag.  None = never saw an SCF
+        # block; True = last block converged; False = last block hit
+        # "SCF did NOT converge" / "SCF_NOT_CONV".  Used at EOF to
+        # decide whether a torn run (no End-of-run marker) was a
+        # silent abort vs an explicit non-convergence error.
+        last_scf_converged: Optional[bool] = None
         # Runtime facts.  Empty dict when SIESTA didn't log any
         # (older / barebones builds).  Populated from two sources:
         # (a) SIESTA's own startup banner (`* Running on N nodes…`),
@@ -410,9 +424,45 @@ class SiestaParser(TrajectoryParser):
         # never emits them on the same line).
         #
         # Run-state marker.  Always fires in scan; single-line.
+        # "Finished" takes precedence over "ongoing" but NOT over
+        # "error" -- if a fatal marker already set run_state="error",
+        # a later End-of-run does not paper over it.  In practice
+        # SIESTA either crashes (no End-of-run) or finishes cleanly
+        # (no fatal marker), but the priority rule is the defensible
+        # default if both somehow appear.
         def _on_end_of_run(line: str, line_no: int) -> None:
             nonlocal run_state
-            run_state = "finished"
+            if run_state != "error":
+                run_state = "finished"
+
+        # Fatal error markers.  Each ``contains_ci`` substring is
+        # the canonical SIESTA-emitted phrase that always indicates
+        # a non-recoverable failure.  The list mirrors the wrapper's
+        # grep heuristic (runwrap.py) so .out -> badge tracking is
+        # consistent across the live wrapper + the post-mortem
+        # parser path.  Set 2026-05-29 per user directive.
+        def _on_fatal_error(line: str, line_no: int) -> None:
+            nonlocal run_state, error_message
+            run_state = "error"
+            # Preserve the FIRST fatal marker -- subsequent crashes
+            # usually cascade from the original cause.
+            if error_message is None:
+                error_message = line.strip()[:200]
+
+        # SCF-block convergence flags.  SIESTA emits a header line
+        # like ``SCF Convergence by DM+H criterion`` on success, and
+        # either ``SCF did NOT converge`` (some versions) or
+        # ``SCF_NOT_CONV`` (constant from internal sources) on
+        # failure.  We track the LAST-seen status; at EOF, if the
+        # run didn't reach End-of-run AND the last SCF block didn't
+        # converge, we flip run_state to error.
+        def _on_scf_converged(line: str, line_no: int) -> None:
+            nonlocal last_scf_converged
+            last_scf_converged = True
+
+        def _on_scf_not_converged(line: str, line_no: int) -> None:
+            nonlocal last_scf_converged
+            last_scf_converged = False
 
         # Coords section: multi-line.  on_start flushes prev step
         # (commit()) + resets step_frame; consume parses one atom row
@@ -591,7 +641,61 @@ class SiestaParser(TrajectoryParser):
                       category="forces")
 
         rules: List[SectionRule] = [
-            # Specific (multi-token) matchers first.
+            # Fatal-error markers fire FIRST so they win over any
+            # section that might otherwise eat the line.  Substring
+            # match (the markers can appear mid-line, e.g. preceded
+            # by "node 0: " in MPI mode).
+            SectionRule(
+                name="fatal_siesta_error",
+                aliases=["siesta: ERROR"],
+                start=contains_ci("siesta: error"),
+                on_start=_on_fatal_error,
+            ),
+            SectionRule(
+                name="fatal_propor_error",
+                aliases=["propor: ERROR"],
+                start=contains_ci("propor: error"),
+                on_start=_on_fatal_error,
+            ),
+            SectionRule(
+                name="fatal_stopping_program",
+                aliases=["Stopping Program from Node"],
+                start=contains_ci("stopping program from node"),
+                on_start=_on_fatal_error,
+            ),
+            SectionRule(
+                name="fatal_siesta_died",
+                aliases=["siesta died"],
+                start=contains_ci("siesta died"),
+                on_start=_on_fatal_error,
+            ),
+            # SCF convergence flags -- track only, don't terminate.
+            # SUCCESS marker: SIESTA always writes "SCF Convergence
+            # by <criterion>" -- the "by" keyword guards against
+            # accidentally matching a diagnostic line that mentions
+            # both "SCF Convergence" and "did NOT converge".  Loose
+            # enough to handle every criterion variant SIESTA emits
+            # (DM+H, DM alone, H alone, ...).
+            SectionRule(
+                name="scf_converged",
+                aliases=["SCF Convergence by ..."],
+                start=contains_ci("scf convergence by"),
+                on_start=_on_scf_converged,
+            ),
+            # NON-convergence: two known SIESTA phrasings.
+            SectionRule(
+                name="scf_not_converged",
+                aliases=["SCF did NOT converge", "SCF_NOT_CONV"],
+                start=contains_ci("scf did not converge"),
+                on_start=_on_scf_not_converged,
+            ),
+            SectionRule(
+                name="scf_not_converged_const",
+                aliases=["SCF_NOT_CONV"],
+                start=contains_ci("scf_not_conv"),
+                on_start=_on_scf_not_converged,
+            ),
+            # Specific (multi-token) section matchers next.
             SectionRule(
                 name="cell",
                 aliases=["outcell: Unit cell vectors"],
@@ -737,11 +841,27 @@ class SiestaParser(TrajectoryParser):
             step_frame = None
         commit()
 
+        # Post-process: if we never saw "End of run" AND the last SCF
+        # block failed to converge, this is a non-convergence error
+        # even without an explicit "siesta: ERROR" line (some SIESTA
+        # builds simply truncate on SCF_NOT_CONV without an error
+        # marker).  Per 2026-05-29 user directive: strict policy --
+        # final SCF must converge OR run must reach End-of-run, else
+        # it's an error.  A fatal-marker run keeps its existing
+        # error_message; the SCF case fills in a sensible default.
+        if run_state == "ongoing" and last_scf_converged is False:
+            run_state = "error"
+            error_message = (
+                "SCF did not converge in the final step "
+                "(run truncated without '>> End of run' marker)"
+            )
+
         return Trajectory(
             source_format  = cls.name,
             frames         = frames,
             lattice        = lattice,
             run_state      = run_state,
+            error_message  = error_message,
             runtime_info   = runtime_info,
             parse_warnings = parse_warnings,
         )
