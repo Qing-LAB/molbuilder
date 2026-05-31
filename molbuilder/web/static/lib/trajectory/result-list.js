@@ -163,6 +163,7 @@
                     "[result-list] projects.setShared unavailable; "
                     + "cannot navigate"
                 );
+                _revertSelectTo(file);
                 return;
             }
             // Derive dir from the new path (it lives in the same
@@ -170,7 +171,52 @@
             // but using newPath is robust if the user ever moves a
             // file into a sibling dir mid-session).
             const parts = parseDir(newPath);
-            proj.setShared(parts.dir, newPath);
+            // setShared returns {ok:true} on success, {ok:false,
+            // error:"sidebar is locked: ..."} when the lock guard
+            // (#177) rejects.  Before this commit we ignored the
+            // return -- a locked rejection left the dropdown showing
+            // the new (unapplied) option and the inspector stale.
+            const r = proj.setShared(parts.dir, newPath);
+            if (r && r.ok === false) {
+                console.warn(
+                    "[result-list] setShared refused:", r.error
+                );
+                _revertSelectTo(file);
+            }
+        }
+
+        /** Revert the <select>'s selected option back to ``path``.
+         *  Used when setShared rejects (locked / unavailable) so the
+         *  UI doesn't pretend the change took effect.  Silent no-op
+         *  if no option matches (the option list was rebuilt mid-
+         *  click; the inspector re-mount will sync DOM to state). */
+        function _revertSelectTo(path) {
+            const opts = selEl.options;
+            for (let i = 0; i < opts.length; i += 1) {
+                if (opts[i].value === path) {
+                    selEl.selectedIndex = i;
+                    return;
+                }
+            }
+        }
+
+        // Lock-state subscriber: visually disable the dropdown while
+        // a Save pipeline is in flight (the sidebar's CSS lock only
+        // covers the sidebar itself; in-inspector navigators stay
+        // clickable by default).  Defense-in-depth: even if the
+        // user does manage to click, _onChange's revert+warn path
+        // handles the rejection.
+        let lockUnsubscribe = null;
+        if ((root.molbuilder || {}).projects
+            && typeof root.molbuilder.projects.onLockChange === "function") {
+            lockUnsubscribe = root.molbuilder.projects.onLockChange(
+                (st) => {
+                    selEl.disabled = !!(st && st.locked);
+                    selEl.title = st && st.locked
+                        ? "Sidebar is locked while a save is in progress."
+                        : "";
+                }
+            );
         }
 
         selEl.addEventListener("change", _onChange);
@@ -214,6 +260,13 @@
                 try { abortCtl.abort(); } catch (_) { /* ignore */ }
                 try { selEl.removeEventListener("change", _onChange); }
                 catch (_) { /* ignore */ }
+                // Lock-change subscription is module-level state on
+                // the projects module; failing to detach leaks one
+                // entry per inspector mount cycle.
+                if (lockUnsubscribe) {
+                    try { lockUnsubscribe(); } catch (_) { /* ignore */ }
+                    lockUnsubscribe = null;
+                }
             },
         };
     }
