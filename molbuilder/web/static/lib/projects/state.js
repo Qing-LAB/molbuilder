@@ -15,7 +15,14 @@
  * Spec: docs/protocols/selection.md.
  */
 
-import { apiRead, apiWrite } from "./api.js";
+import {
+  apiCreateProject,
+  apiDelete,
+  apiMkdir,
+  apiRead,
+  apiUpload,
+  apiWrite,
+} from "./api.js";
 
 export const SS_DIR  = "molbuilder.current_dir";
 export const SS_FILE = "molbuilder.current_file";
@@ -202,6 +209,101 @@ async function saveToWorkspace(text, filename, opts) {
   return await writeFile(path, text, opts);
 }
 
+// ---- Public mutator wrappers (sidebar gap M4, #175, 2026-05-31) //
+//
+// Thin pass-throughs over api.js that ALSO trigger a sidebar
+// listing refresh on success.  These promote previously-internal
+// operations onto the public ``window.molbuilder.projects.*``
+// surface so in-inspector code (the /results result-list dropdown,
+// future programmatic file managers) can call them without
+// reaching into ``projects/api.js`` directly.
+//
+// NONE of these take the lock guard (#177).  The Save pipeline
+// holds the lock while calling these as its own steps; guarding
+// them would deadlock the very flow the lock was added to protect.
+// User-initiated calls (CSS pointer-events:none in the sidebar)
+// can't reach them while the user-visible lock UI is up.
+//
+// Each wrapper:
+//   1. Calls the underlying api function.
+//   2. On success, fires ``refreshHandler(<parent>)`` so the
+//      sidebar listing picks up the mutation.  Refresh failure is
+//      swallowed (not a user error; the mutation already landed).
+//   3. Returns the api response verbatim so the caller sees the
+//      same {ok, ...} envelope shape.
+
+/** Read a file's contents (returns ``{ok, text, mtime, ...}`` or
+ *  ``{ok:false, error}``).  Companion to ``readCurrentFile()``
+ *  which is the no-argument form keyed on the sidebar's current
+ *  selection. */
+async function readFile(path) {
+  return await apiRead(path);
+}
+
+/** Create a new project directory at the projects root.  On
+ *  success refreshes the projects listing so the new directory
+ *  appears in the sidebar without a manual reload. */
+async function createProject(name) {
+  const r = await apiCreateProject(name);
+  if (r && r.ok && refreshHandler) {
+    const root = projectsRoot;
+    if (root) {
+      try { await refreshHandler(root); }
+      catch (_) { /* refresh failure must not fail the create */ }
+    }
+  }
+  return r;
+}
+
+/** Make a subdirectory under ``parent``.  Refreshes ``parent``
+ *  on success. */
+async function mkdir(parent, name) {
+  const r = await apiMkdir(parent, name);
+  if (r && r.ok && refreshHandler) {
+    try { await refreshHandler(parent); }
+    catch (_) { /* refresh failure must not fail the mkdir */ }
+  }
+  return r;
+}
+
+/** Delete a file or directory.  ``recursive`` (default false)
+ *  must be explicit for directory deletes.  Refreshes the
+ *  containing directory on success.  ``opts.signal`` honoured. */
+async function deleteEntry(path, recursive, opts) {
+  const r = await apiDelete(path, recursive, opts);
+  if (r && r.ok && refreshHandler) {
+    // Derive the parent dir from the deleted path.  If path has no
+    // separator (a top-level entry), refresh the projects root.
+    const parent = path.indexOf("/") >= 0
+      ? path.replace(/\/[^/]+$/, "")
+      : projectsRoot;
+    if (parent) {
+      try { await refreshHandler(parent); }
+      catch (_) { /* refresh failure must not fail the delete */ }
+    }
+  }
+  return r;
+}
+
+/** Upload a file into ``targetDir``.  ``opts.signal`` honoured.
+ *  Refreshes ``targetDir`` on success. */
+async function upload(targetDir, file, opts) {
+  const r = await apiUpload(targetDir, file, opts);
+  if (r && r.ok && refreshHandler) {
+    try { await refreshHandler(targetDir); }
+    catch (_) { /* refresh failure must not fail the upload */ }
+  }
+  return r;
+}
+
+/** Programmatic navigation.  Convenience over ``setShared``: takes
+ *  a dir + optional file (file defaults to "" -- "clear file
+ *  selection but stay in the directory").  Inherits the lock guard
+ *  from setShared. */
+function navigateTo(dir, file) {
+  return setShared(dir, file || "");
+}
+
 /**
  * Acquire the sidebar lock for a multi-step operation.
  *
@@ -291,14 +393,19 @@ export const projects = {
   refresh,
   writeFile,
   saveToWorkspace,
-  // ---- Programmatic navigation (2026-05-30) --------------------- //
-  // Promoted to the public surface so in-inspector navigators (the
-  // /results result-list dropdown) can set the active file without
-  // going through a sidebar click handler.  Updates BOTH dir and
-  // file in sessionStorage + fires onChange subscribers; the
-  // /results viewer.js subscriber then dispatches to the matching
-  // inspector for the new file.  Part of sidebar gap M4 (#175).
+  // ---- Public mutator + navigation surface (#175, 2026-05-31) -- //
+  // Promoted from internal api.js consumers so external callers
+  // (in-inspector navigators, future programmatic file managers)
+  // can use them WITHOUT reaching into ./api.js directly.  Each
+  // method auto-fires a sidebar listing refresh on success so the
+  // tree stays in sync.
+  readFile,
+  createProject,
+  mkdir,
+  deleteEntry,
+  upload,
   setShared,
+  navigateTo,
   // ---- Sidebar lock API (2026-05-27) ---------------------------- //
   // Long-running pipelines (Save .fdf, Save .py, install pseudos +
   // wrapper) call lock() before step 1 and unlock() in finally so
