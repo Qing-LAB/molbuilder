@@ -1129,11 +1129,14 @@
         }
         setStatus("fdf-status", "Saving to " + destDir + " …");
         const { filename, params } = meta;
-        // Step 1: write the .fdf.
+        // Step 1: write the .fdf.  2026-05-30: thread the lock's
+        // AbortSignal so the Cancel button can interrupt this fetch
+        // (#174 sidebar gap M1 -- writeFile now honours opts.signal).
         let written;
         try {
             const w = await proj.saveToWorkspace(
-                state.fdf, filename, { overwrite: true });
+                state.fdf, filename,
+                { overwrite: true, signal: abortSignal });
             if (!w || !w.ok) {
                 setStatus("fdf-status",
                     "Save failed: " + (w && w.error || "no current_dir"),
@@ -1426,10 +1429,13 @@
             return;
         }
         setStatus("pyscf-status", "Saving to " + destDir + " …");
+        // 2026-05-30: thread the lock's AbortSignal so the Cancel
+        // button can interrupt this fetch (#174 sidebar gap M1).
         let written;
         try {
             const w = await proj.saveToWorkspace(
-                state.pyscf, meta.filename, { overwrite: true });
+                state.pyscf, meta.filename,
+                { overwrite: true, signal: abortSignal });
             if (!w || !w.ok) {
                 setStatus("pyscf-status",
                     "Save failed: " + (w && w.error || "no current_dir"),

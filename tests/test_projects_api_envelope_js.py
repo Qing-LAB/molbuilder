@@ -243,6 +243,127 @@ class TestNonJsonResponse:
 # ----- apiRoots envelope normalisation ----------------------------- #
 
 
+# ----- AbortSignal threading (#174 sidebar gap M1) ---------------- #
+
+
+class TestAbortSignal:
+
+    def test_apiWrite_aborted_returns_clean_envelope(self):
+        """When the caller's AbortSignal fires, fetch rejects with
+        AbortError.  api.js produces a CLEAN envelope (no "network
+        error" prose) so callers can distinguish user-cancellation
+        from connectivity failure."""
+        out = _run_node('''
+            global.fetch = async (url, init) => {
+                // Simulate the runtime aborting mid-flight.
+                const err = new Error("operation aborted");
+                err.name = "AbortError";
+                throw err;
+            };
+            const r = await api.apiWrite("/x", "text");
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["ok"] is False
+        assert out["error"] == "aborted"
+        assert out["aborted"] is True
+
+    def test_apiDelete_aborted_returns_clean_envelope(self):
+        out = _run_node('''
+            global.fetch = async () => {
+                const err = new Error("aborted");
+                err.name = "AbortError";
+                throw err;
+            };
+            const r = await api.apiDelete("/x", false);
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["aborted"] is True
+        assert out["ok"] is False
+
+    def test_apiUpload_aborted_returns_clean_envelope(self):
+        out = _run_node('''
+            global.FormData = function () { this.append = () => {}; };
+            global.fetch = async () => {
+                const err = new Error("aborted");
+                err.name = "AbortError";
+                throw err;
+            };
+            const r = await api.apiUpload("/x", { name: "f" });
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["aborted"] is True
+        assert out["ok"] is False
+
+    def test_apiWrite_forwards_signal_into_fetch(self):
+        """The ``signal`` from opts must reach the fetch init -- pin
+        the wire-format contract so a refactor can't accidentally
+        drop the thread-through.  The lock's three-layer recovery
+        depends on this."""
+        out = _run_node('''
+            let captured = null;
+            global.fetch = async (url, init) => {
+                captured = init;
+                return {
+                    ok: true,
+                    status: 200,
+                    json: async () => ({ ok: true }),
+                };
+            };
+            const ctl = new AbortController();
+            await api.apiWrite("/x", "text", { signal: ctl.signal });
+            // Identity check: the SAME AbortSignal instance reaches
+            // fetch -- not a copy / wrapper / clone.
+            console.log(JSON.stringify({
+                wasSignalForwarded: captured.signal === ctl.signal,
+            }));
+        ''')
+        assert out == {"wasSignalForwarded": True}
+
+    def test_apiDelete_forwards_signal_into_fetch(self):
+        out = _run_node('''
+            let captured = null;
+            global.fetch = async (url, init) => {
+                captured = init;
+                return { ok: true, status: 200, json: async () => ({ok: true}) };
+            };
+            const ctl = new AbortController();
+            await api.apiDelete("/x", false, { signal: ctl.signal });
+            console.log(JSON.stringify({
+                wasSignalForwarded: captured.signal === ctl.signal,
+            }));
+        ''')
+        assert out == {"wasSignalForwarded": True}
+
+    def test_apiUpload_forwards_signal_into_fetch(self):
+        out = _run_node('''
+            global.FormData = function () { this.append = () => {}; };
+            let captured = null;
+            global.fetch = async (url, init) => {
+                captured = init;
+                return { ok: true, status: 200, json: async () => ({ok: true}) };
+            };
+            const ctl = new AbortController();
+            await api.apiUpload("/x", { name: "f" }, { signal: ctl.signal });
+            console.log(JSON.stringify({
+                wasSignalForwarded: captured.signal === ctl.signal,
+            }));
+        ''')
+        assert out == {"wasSignalForwarded": True}
+
+    def test_no_signal_is_safe(self):
+        """Backwards-compat: callers that don't pass opts.signal
+        still work.  fetch receives ``signal: undefined`` which is
+        equivalent to no signal."""
+        out = _run_node('''
+            global.fetch = async (url, init) => {
+                return { ok: true, status: 200, json: async () => ({ok: true}) };
+            };
+            const r = await api.apiWrite("/x", "text");  // no opts
+            console.log(JSON.stringify(r));
+        ''')
+        assert out == {"ok": True}
+
+
 class TestApiRoots:
 
     def test_normalises_to_envelope_on_success(self):

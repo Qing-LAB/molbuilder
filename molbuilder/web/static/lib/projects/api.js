@@ -32,10 +32,19 @@ async function _fetchEnvelope(url, fetchInit) {
   try {
     resp = await fetch(url, fetchInit);
   } catch (e) {
+    // Distinguish user-initiated cancellation (AbortError) from
+    // genuine network failure.  Both look like exceptions to the
+    // caller, but the UI usually wants to silently dismiss an
+    // abort (it was the user's choice) while showing a banner for
+    // a network drop.  The ``aborted: true`` flag lets callers
+    // branch without parsing the error string.
+    if (e && e.name === "AbortError") {
+      return { ok: false, error: "aborted", aborted: true };
+    }
     // Network-level failure: TypeError "Failed to fetch", DNS
-    // failure, CORS rejection at preflight, AbortError, etc.
-    // Surface the error name + message; callers usually just
-    // need to know "could not reach server".
+    // failure, CORS rejection at preflight, etc.  Surface the
+    // error name + message; callers usually just need to know
+    // "could not reach server".
     return {
       ok:    false,
       error: "network error: " + (e && e.message
@@ -106,21 +115,32 @@ export async function apiCreateProject(name) {
   });
 }
 
-export async function apiUpload(targetDir, file) {
+/* The three writer endpoints (upload / delete / write) accept an
+ * ``opts.signal`` AbortSignal.  The lock's three-layer recovery
+ * (timeout + Cancel button + try/finally) relies on this -- without
+ * a signal threaded all the way to fetch, clicking Cancel during a
+ * slow write would unlock the UI but leave the request running.
+ * (See docs/protocols/projects-sidebar.md Layer B + #174.) */
+
+export async function apiUpload(targetDir, file, opts) {
+  opts = opts || {};
   const fd = new FormData();
   fd.append("target_dir", targetDir);
   fd.append("file", file);
   return await _fetchEnvelope("/api/files/upload", {
     method: "POST",
     body:   fd,
+    signal: opts.signal,
   });
 }
 
-export async function apiDelete(path, recursive) {
+export async function apiDelete(path, recursive, opts) {
+  opts = opts || {};
   return await _fetchEnvelope("/api/files/delete", {
     method:  "DELETE",
     headers: {"Content-Type": "application/json"},
     body:    JSON.stringify({path: path, recursive: !!recursive}),
+    signal:  opts.signal,
   });
 }
 
@@ -133,5 +153,6 @@ export async function apiWrite(path, text, opts) {
     method:  "POST",
     headers: {"Content-Type": "application/json"},
     body:    JSON.stringify(body),
+    signal:  opts.signal,
   });
 }
