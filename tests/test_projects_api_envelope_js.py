@@ -1,0 +1,280 @@
+"""Unit tests for the uniform-envelope contract in ``lib/projects/
+api.js`` (sidebar gap M3, #173).
+
+The contract (per docs/protocols/projects-sidebar.md Principle 6):
+
+  Every async function in api.js returns ``{ok: bool, ...}`` and
+  NEVER throws.  Network failures, DNS errors, non-JSON responses,
+  and AbortErrors ALL surface as ``{ok: false, error: "..."}``.
+
+Tests stub ``fetch`` under Node to simulate each failure mode +
+the happy path, and verify the returned envelope shape.  No
+backend required.
+"""
+from __future__ import annotations
+
+import json
+import shutil
+import subprocess
+from pathlib import Path
+
+import pytest
+
+
+ROOT = Path(__file__).resolve().parents[1]
+MODULE = ROOT / "molbuilder/web/static/lib/projects/api.js"
+
+
+def _run_node(snippet: str) -> object:
+    """Run a JS snippet under Node with api.js pre-loaded via
+    dynamic import.  ``snippet`` must end with a line that calls
+    ``console.log(JSON.stringify(result))`` so the Python side can
+    parse the return value back.
+
+    Each test sets ``global.fetch`` to a stub that returns whatever
+    the test needs, then invokes one of the api functions and
+    checks the envelope shape.
+    """
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("node not available")
+    # The module uses ES-module syntax (export async function ...).
+    # We import it via dynamic ``import()`` which works under Node
+    # without any tsconfig / package.json so long as we tell Node
+    # to treat the import source as a module.  We do that by
+    # serving the module via a file:// URL.
+    module_url = MODULE.resolve().as_uri()
+    bootstrap = f"""
+        // Node 16+ exposes fetch globally; we OVERRIDE it per-test
+        // so the snippet runs in a controlled environment.  Tests
+        // that don't reassign get the Node-default fetch which
+        // hits the real network -- not what we want.  Default to
+        // "no fetch should be called" so an accidental real-fetch
+        // path produces a visible error.
+        global.fetch = () => {{
+            throw new Error(
+                "test must override global.fetch; api.js called the "
+                + "default no-op stub"
+            );
+        }};
+        const apiPromise = import("{module_url}");
+        // Defer all snippet execution until the dynamic import
+        // resolves; that way the snippet can reference the api
+        // module under its alias ``api``.
+        apiPromise.then(async (api) => {{
+            {snippet}
+        }}).catch(err => {{
+            console.log(JSON.stringify({{
+                __test_unexpected_throw: true,
+                message: err && err.message ? err.message : String(err),
+            }}));
+        }});
+    """
+    proc = subprocess.run(
+        [node, "--input-type=commonjs", "-e", bootstrap],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    if proc.returncode != 0:
+        pytest.fail(
+            f"node exited {proc.returncode}\n"
+            f"stderr:\n{proc.stderr}\n"
+            f"stdout:\n{proc.stdout}"
+        )
+    # Last JSON line is the test result; earlier lines may include
+    # diagnostic prints from the module.
+    last_line = proc.stdout.strip().splitlines()[-1]
+    out = json.loads(last_line)
+    assert "__test_unexpected_throw" not in out, (
+        "api.js threw instead of returning envelope: " + str(out)
+    )
+    return out
+
+
+# ----- Happy path: server returns valid JSON envelope -------------- #
+
+
+class TestHappyPath:
+
+    def test_apiList_returns_server_body_verbatim(self):
+        out = _run_node('''
+            global.fetch = async () => ({
+                ok: true,
+                status: 200,
+                json: async () => ({ ok: true, entries: ["a","b"] }),
+            });
+            const r = await api.apiList("/some/path");
+            console.log(JSON.stringify(r));
+        ''')
+        assert out == {"ok": True, "entries": ["a", "b"]}
+
+    def test_apiRead_returns_server_body_verbatim(self):
+        out = _run_node('''
+            global.fetch = async () => ({
+                ok: true,
+                status: 200,
+                json: async () => ({ ok: true, text: "hello", mtime: 12345 }),
+            });
+            const r = await api.apiRead("/x");
+            console.log(JSON.stringify(r));
+        ''')
+        assert out == {"ok": True, "text": "hello", "mtime": 12345}
+
+    def test_apiWrite_post_with_overwrite_flag(self):
+        out = _run_node('''
+            let captured = null;
+            global.fetch = async (url, init) => {
+                captured = { url, init };
+                return {
+                    ok: true,
+                    status: 200,
+                    json: async () => ({ ok: true, mtime: 999 }),
+                };
+            };
+            const r = await api.apiWrite("/p", "text", {overwrite: true});
+            console.log(JSON.stringify({
+                envelope: r,
+                url:      captured.url,
+                method:   captured.init.method,
+                body:     JSON.parse(captured.init.body),
+            }));
+        ''')
+        assert out["envelope"] == {"ok": True, "mtime": 999}
+        assert out["url"] == "/api/files/write"
+        assert out["method"] == "POST"
+        assert out["body"] == {"path": "/p", "text": "text",
+                                "overwrite": True}
+
+
+# ----- Network failure: fetch itself rejects ----------------------- #
+
+
+class TestNetworkFailure:
+
+    def test_apiList_network_drop_returns_envelope(self):
+        """``fetch`` throws TypeError on network drop / offline /
+        DNS fail.  Pre-this-commit, apiList re-threw; now it returns
+        the synthetic envelope."""
+        out = _run_node('''
+            global.fetch = async () => {
+                throw new TypeError("Failed to fetch");
+            };
+            const r = await api.apiList("/x");
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["ok"] is False
+        assert "network error" in out["error"]
+        assert "Failed to fetch" in out["error"]
+
+    def test_apiMkdir_network_drop_returns_envelope(self):
+        out = _run_node('''
+            global.fetch = async () => {
+                throw new Error("offline");
+            };
+            const r = await api.apiMkdir("/parent", "newdir");
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["ok"] is False
+        assert "network error" in out["error"]
+
+    def test_apiUpload_network_drop_returns_envelope(self):
+        out = _run_node('''
+            // Provide a FormData stub since Node may not have one.
+            global.FormData = function () {
+                this.append = () => {};
+            };
+            global.fetch = async () => {
+                throw new TypeError("Failed to fetch");
+            };
+            const r = await api.apiUpload("/x", { name: "f.xyz" });
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["ok"] is False
+        assert "network error" in out["error"]
+
+    def test_apiWrite_network_drop_returns_envelope(self):
+        """apiWrite had the envelope behaviour pre-this-commit;
+        regression-pin so a refactor doesn't accidentally drop it."""
+        out = _run_node('''
+            global.fetch = async () => {
+                throw new TypeError("Failed to fetch");
+            };
+            const r = await api.apiWrite("/x", "text");
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["ok"] is False
+        assert "network error" in out["error"]
+
+
+# ----- Non-JSON response: server returns 501 / HTML 5xx ----------- #
+
+
+class TestNonJsonResponse:
+
+    def test_apiDelete_non_json_returns_envelope(self):
+        out = _run_node('''
+            global.fetch = async () => ({
+                ok: false,
+                status: 501,
+                json: async () => { throw new SyntaxError("Unexpected token"); },
+            });
+            const r = await api.apiDelete("/x", false);
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["ok"] is False
+        assert "non-JSON" in out["error"]
+        assert "501" in out["error"]
+
+    def test_apiList_non_json_returns_envelope(self):
+        out = _run_node('''
+            global.fetch = async () => ({
+                ok: true,
+                status: 200,
+                json: async () => { throw new SyntaxError("Unexpected token <"); },
+            });
+            const r = await api.apiList("/x");
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["ok"] is False
+        assert "non-JSON" in out["error"]
+
+
+# ----- apiRoots envelope normalisation ----------------------------- #
+
+
+class TestApiRoots:
+
+    def test_normalises_to_envelope_on_success(self):
+        """The /api/files/roots backend responds with ``{roots: [...]}``
+        without a top-level ``ok``.  api.js normalises to the uniform
+        envelope shape."""
+        out = _run_node('''
+            global.fetch = async () => ({
+                ok: true,
+                status: 200,
+                json: async () => ({
+                    roots: [{ path: "/projects", label: "projects" }],
+                }),
+            });
+            const r = await api.apiRoots();
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["ok"] is True
+        assert out["roots"] == [
+            {"path": "/projects", "label": "projects"},
+        ]
+
+    def test_includes_empty_roots_on_failure(self):
+        """Failure case carries an empty ``roots`` array so callers
+        that destructure ``{roots}`` don't NPE."""
+        out = _run_node('''
+            global.fetch = async () => {
+                throw new TypeError("Failed to fetch");
+            };
+            const r = await api.apiRoots();
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["ok"] is False
+        assert "network error" in out["error"]
+        assert out["roots"] == []

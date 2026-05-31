@@ -61,13 +61,21 @@ async function init() {
   // dependent layouts) would have measured the WIDER pre-sidebar
   // geometry and look broken until the next browser resize.
   // Resolve projects/ root from the backend's single-root contract.
-  const roots = await apiRoots();
-  if (roots.length === 0) {
+  // 2026-05-30: apiRoots now returns the uniform envelope
+  // ``{ok, roots, error?}`` -- failure cases (network drop, server
+  // misconfig) surface here instead of throwing.
+  const rootsResp = await apiRoots();
+  const roots = rootsResp.roots || [];
+  if (!rootsResp.ok || roots.length === 0) {
     const list = document.getElementById("ps-list");
     if (list) {
       list.classList.add("is-empty");
+      const reason = rootsResp.ok
+        ? "No file-picker roots configured."
+        : ("File-picker roots unavailable: "
+           + (rootsResp.error || "unknown error"));
       list.innerHTML = "<li style='padding:0.7rem;color:#e07a7a;'>"
-                     + "No file-picker roots configured.</li>";
+                     + reason + "</li>";
     }
     return;
   }
