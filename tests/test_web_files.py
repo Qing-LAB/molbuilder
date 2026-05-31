@@ -14,6 +14,7 @@ Backend contract:  docs/protocols/web-api.md  §  /api/files/*
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -1319,3 +1320,159 @@ class TestRootsContract:
         # removal so a future revert is caught.
         import molbuilder.runtime_config as rc
         assert not hasattr(rc, "get_file_picker_roots")
+
+
+# --------------------------------------------------------------------- #
+#  /api/files/result-list  (2026-05-30)                                 #
+#                                                                       #
+#  Per user spec: a list of all SIESTA / PySCF output files in a       #
+#  directory, sorted by mtime descending.  Drives the /results          #
+#  trajectory inspector's result-picker dropdown so the user can       #
+#  jump between stages + --continue runs without sidebar drill-down.   #
+# --------------------------------------------------------------------- #
+
+
+class TestResultList:
+
+    def _make_outs(self, picker_root: Path, names, mtimes_offset_s=None):
+        """Drop the given filenames into ``picker_root``.  Optional
+        ``mtimes_offset_s`` is a list parallel to ``names``: integer
+        seconds-before-now to set each file's mtime to."""
+        paths = []
+        for i, n in enumerate(names):
+            p = picker_root / n
+            p.write_text(f"contents of {n}\n")
+            if mtimes_offset_s is not None:
+                target = p.stat().st_mtime - mtimes_offset_s[i]
+                os.utime(p, (target, target))
+            paths.append(p)
+        return paths
+
+    def test_lists_all_out_files_in_directory(self, web, picker_root):
+        """A dir with stage1 + stage2 + stage3-run0 + stage3-run1 ->
+        all four appear, newest first."""
+        self._make_outs(
+            picker_root,
+            ["stage1.out", "stage2.out",
+             "stage3-run0.out", "stage3-run1.out"],
+            # Order in disk-write time: stage1 oldest, stage3-run1 newest.
+            mtimes_offset_s=[400, 300, 200, 0],
+        )
+        resp = web.get(
+            "/api/files/result-list",
+            query_string={"path": str(picker_root / "stage3-run0.out")},
+        )
+        body = resp.get_json()
+        assert resp.status_code == 200
+        assert body["ok"] is True
+        names = [e["name"] for e in body["results"]]
+        # Newest first per the sort key.
+        assert names == [
+            "stage3-run1.out", "stage3-run0.out",
+            "stage2.out", "stage1.out",
+        ]
+
+    def test_marks_current_file(self, web, picker_root):
+        """``is_current`` flags the file the caller's ``path`` query
+        identifies; non-current entries flag false."""
+        self._make_outs(picker_root, ["a.out", "b.out"],
+                         mtimes_offset_s=[100, 0])
+        resp = web.get(
+            "/api/files/result-list",
+            query_string={"path": str(picker_root / "a.out")},
+        )
+        body = resp.get_json()
+        # The current is a.out; b.out is newer but not current.
+        for e in body["results"]:
+            if e["name"] == "a.out":
+                assert e["is_current"] is True
+            else:
+                assert e["is_current"] is False
+
+    def test_run_index_extracted_for_runN_files(self, web, picker_root):
+        """``-runN.out`` files carry the integer N in ``run_index``;
+        non-runN files (plain ``.out`` from a non-continuation run or
+        a single-stage SIESTA job) carry ``run_index: null``."""
+        self._make_outs(
+            picker_root,
+            ["job-run0.out", "job-run17.out", "single.out"],
+            mtimes_offset_s=[200, 100, 0],
+        )
+        resp = web.get(
+            "/api/files/result-list",
+            query_string={"path": str(picker_root / "single.out")},
+        )
+        body = resp.get_json()
+        by_name = {e["name"]: e for e in body["results"]}
+        assert by_name["job-run0.out"]["run_index"] == 0
+        assert by_name["job-run17.out"]["run_index"] == 17
+        assert by_name["single.out"]["run_index"] is None
+
+    def test_molwatch_logs_included(self, web, picker_root):
+        """PySCF emits ``<JOB>.molwatch.log``; the inspector parses
+        them too, so they belong in the dropdown."""
+        self._make_outs(
+            picker_root,
+            ["pyscf-job-run0.out", "pyscf-job.molwatch.log"],
+        )
+        resp = web.get(
+            "/api/files/result-list",
+            query_string={"path": str(picker_root / "pyscf-job-run0.out")},
+        )
+        body = resp.get_json()
+        names = [e["name"] for e in body["results"]]
+        assert set(names) == {"pyscf-job-run0.out", "pyscf-job.molwatch.log"}
+
+    def test_non_engine_files_excluded(self, web, picker_root):
+        """Files that aren't engine output (``.fdf``, ``.run.sh``,
+        ``.xyz``, ``.chk``) MUST NOT clutter the dropdown."""
+        self._make_outs(
+            picker_root,
+            ["job.fdf", "job.run.sh", "job.xyz", "job.chk", "job.out"],
+        )
+        resp = web.get(
+            "/api/files/result-list",
+            query_string={"path": str(picker_root / "job.out")},
+        )
+        body = resp.get_json()
+        names = [e["name"] for e in body["results"]]
+        assert names == ["job.out"]
+
+    def test_directory_path_lists_dir_contents(self, web, picker_root):
+        """When ``path`` is a directory, scan IT (not a parent).
+        is_current is False for every entry (no specific file in focus)."""
+        sub = picker_root / "stage_dir"
+        sub.mkdir()
+        self._make_outs(sub, ["a.out", "b.out"], mtimes_offset_s=[100, 0])
+        resp = web.get(
+            "/api/files/result-list",
+            query_string={"path": str(sub)},
+        )
+        body = resp.get_json()
+        names = [e["name"] for e in body["results"]]
+        assert names == ["b.out", "a.out"]
+        for e in body["results"]:
+            assert e["is_current"] is False
+
+    def test_path_outside_root_returns_error(self, web, picker_root):
+        """Root-isolation: ``/etc/passwd`` rejected just like every
+        other files endpoint."""
+        resp = web.get(
+            "/api/files/result-list",
+            query_string={"path": "/etc/passwd"},
+        )
+        body = resp.get_json()
+        assert resp.status_code in (400, 403, 404)
+        assert body["ok"] is False
+
+    def test_nonexistent_path_returns_empty(self, web, picker_root):
+        """The inspector sometimes queries before the selection has
+        stabilised; an unknown path returns empty (not 404) so the
+        UI just hides the dropdown without throwing."""
+        resp = web.get(
+            "/api/files/result-list",
+            query_string={"path": str(picker_root / "no-such.out")},
+        )
+        body = resp.get_json()
+        assert body["ok"] is True
+        assert body["results"] == []

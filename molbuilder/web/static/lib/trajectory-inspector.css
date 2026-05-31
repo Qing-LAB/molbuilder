@@ -416,66 +416,89 @@
     :root { --viewer-extent: clamp(240px, 70vw, 380px); }
 }
 
-/* ---- Run-state badge: fixed prominent indicator above the viewer.
-   High-contrast colours per state so the user has ONE obvious place
-   to read "is the run finished or still going?".  Three states map
-   to red / amber / green; "blank" is the pre-load placeholder. ---- */
+/* ---- Run-state info panel (redesigned 2026-05-30).
+   Renamed in spirit from "badge" to "info panel": the prior design
+   used uppercase bold-700 labels on a bright bg, so an "Error" state
+   looked like a page-level ERROR ALERT rather than file-status
+   metadata.  New design:
+     * file-status framing (no caps, no bold-700)
+     * left-border accent encodes state colour (subtle, not shouting)
+     * status icon (✓ / ◷ / ⚠) before the label for at-a-glance read
+     * dark-theme tokens; no hardcoded light colours
+     * smaller font (info, not alarm)
+     * grid: [icon+label] [detail] [runtime] in one row, wraps on narrow
+   ---- */
 
 .run-state {
-    display: flex;
-    align-items: baseline;
-    justify-content: center;
-    gap: 12px;
-    margin: 0 0 0;        /* sits inside main's gap; no extra side margin */
-    padding: 10px 16px;
-    border-radius: 6px;
-    font-size: 1.0rem;
-    font-weight: 600;
-    letter-spacing: 0.02em;
+    display:        flex;
+    flex-wrap:      wrap;
+    align-items:    baseline;
+    gap:            var(--space-sm) var(--space-md);
+    margin:         0;
+    padding:        var(--space-sm) var(--space-md);
+    border:         1px solid var(--border-soft);
+    border-left:    3px solid var(--text-muted);
+    border-radius:  var(--radius);
+    background:     var(--bg-card);
+    color:          var(--text-primary);
+    font-size:      var(--text-sm);
+    line-height:    1.35;
 }
 .run-state-label {
-    text-transform: uppercase;
-    font-weight: 700;
-    letter-spacing: 0.08em;
+    font-weight:    600;
+    font-size:      var(--text-sm);
+    color:          var(--text-primary);
+    letter-spacing: 0;
+    /* Status icon as ::before so the JS doesn't need to know. */
+}
+.run-state-label::before {
+    display:        inline-block;
+    margin-right:   0.45em;
+    font-weight:    700;
+    /* Match icon vertical baseline. */
+    transform:      translateY(0);
 }
 .run-state-detail {
-    font-weight: 400;
-    font-size: 0.92rem;
-    opacity: 0.95;
+    font-weight:    400;
+    font-size:      var(--text-sm);
+    color:          var(--text-secondary);
 }
-/* Runtime one-liner inside the run-state badge: smaller, more
-   muted than the detail line.  Empty -> ::before suppressed by
-   :empty selector so the divider doesn't sit alone. */
+/* Runtime one-liner: smaller + muted, monospace so MPI / OMP /
+   hardware numbers line up.  Empty -> ::before suppressed so a
+   leading divider doesn't sit alone. */
 .runtime-summary {
-    font-weight: 400;
-    font-size:   0.82rem;
-    opacity:     0.78;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    margin-left: 0.5em;
+    font-weight:    400;
+    font-size:      var(--text-xs);
+    color:          var(--text-muted);
+    font-family:    var(--font-mono);
 }
 .runtime-summary:not(:empty)::before {
-    content: " · ";
-    opacity: 0.45;
+    content: "·";
+    color:   var(--text-muted);
+    opacity: 0.55;
+    margin-right: 0.5em;
 }
 
-/* Three states.  Colours chosen for accessibility on the white-bg
-   theme the viewer sits on. */
-.run-state.run-state-finished {
-    background: #d8f5d0;             /* light green */
-    color:      #1f5e1f;
-    border:     1px solid #6db66d;
+/* Three states: state colour goes on the LEFT-border accent + the
+   icon.  Background stays neutral so the badge reads as informational,
+   not as a page-level alert.  Uses tokens.css colours so dark / light
+   themes pick the right contrast. */
+.run-state.run-state-finished { border-left-color: var(--success); }
+.run-state.run-state-finished .run-state-label::before {
+    content: "\2713";   /* ✓ */
+    color:   var(--success);
 }
-.run-state.run-state-ongoing {
-    background: #fff3c4;             /* amber */
-    color:      #6b4a00;
-    border:     1px solid #d8a64b;
+.run-state.run-state-ongoing  { border-left-color: var(--warning); }
+.run-state.run-state-ongoing  .run-state-label::before {
+    content: "\25D4";   /* ◔ - quarter-filled clock */
+    color:   var(--warning);
 }
-.run-state.run-state-error {
-    background: #ffd6d6;             /* red */
-    color:      #6b1f1f;
-    border:     1px solid #d65151;
+.run-state.run-state-error    { border-left-color: var(--error); }
+.run-state.run-state-error    .run-state-label::before {
+    content: "\26A0";   /* ⚠ */
+    color:   var(--error);
 }
-.run-state.run-state-blank { display: none; }
+.run-state.run-state-blank    { display: none; }
 
 /* (::-webkit-scrollbar rules deleted 2026-05-18 -- the file's own
  * docstring said they'd moved to lib/page-shell.css but the block
@@ -554,4 +577,84 @@
     font-size:   0.75rem;
     overflow-x:  auto;
     white-space: pre;
+}
+
+/* ============================================================
+ * Result-list bar (2026-05-30).  In-inspector navigator for
+ * SIESTA / PySCF output files in the same directory; shown when
+ * the dir has 2+ trajectory-parseable files (different stages
+ * and/or --continue -runN series).  Uses the shared design
+ * tokens (lib/tokens.css) so the dark-mode-first theme reads
+ * cleanly without per-component overrides.
+ * ============================================================ */
+
+.result-list-bar {
+    display:         flex;
+    flex-wrap:       wrap;
+    align-items:     center;
+    gap:             var(--space-sm);
+    margin:          var(--space-sm) 0 var(--space-md);
+    padding:         var(--space-sm) var(--space-md);
+    background:      var(--bg-card);
+    border:          1px solid var(--border-soft);
+    border-radius:   var(--radius);
+    font-size:       var(--text-sm);
+}
+
+.result-list-bar[hidden] {
+    /* The bar is gated on >=2 results; an explicit display:none
+     * here makes sure no flex-layout reservation lingers. */
+    display: none !important;
+}
+
+.result-list-label {
+    color:        var(--text-secondary);
+    font-weight:  600;
+    margin:       0;
+    flex-shrink:  0;
+}
+
+.result-list-select {
+    flex:           1 1 auto;
+    min-width:      0;             /* allow shrink in flex container */
+    max-width:      100%;
+    padding:        var(--space-xs) var(--space-sm);
+    border:         1px solid var(--border-strong);
+    border-radius:  var(--radius-sm);
+    background:     var(--bg-input);
+    font-family:    var(--font-mono);
+    font-size:      var(--text-sm);
+    color:          var(--text-primary);
+    /* Long filenames: native <select> handles overflow via ellipsis
+     * on most platforms; setting text-overflow here is a no-op for
+     * the rendered option but documents intent. */
+    text-overflow:  ellipsis;
+}
+
+.result-list-select:hover {
+    background:    var(--bg-input-focus);
+    border-color:  var(--accent-strong);
+}
+
+.result-list-select:focus {
+    outline:        none;
+    border-color:   var(--accent);
+    background:     var(--bg-input-focus);
+    box-shadow:     var(--shadow-input);
+}
+
+/* Explicit option styling: some browsers (Firefox / Safari) inherit
+ * the select's background for the dropdown popup; others (Chrome
+ * pre-2024) fall back to the OS native menu which can be light
+ * even when the page is dark.  Force a readable contrast on both. */
+.result-list-select option {
+    background:    var(--bg-card);
+    color:         var(--text-primary);
+}
+
+.result-list-meta {
+    color:         var(--text-muted);
+    font-size:     var(--text-xs);
+    white-space:   nowrap;
+    flex-shrink:   0;
 }

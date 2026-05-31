@@ -78,6 +78,14 @@ class TestPartialIntegrity:
             "parse-warnings",
             "parse-warnings-count",
             "parse-warnings-list",
+            # Result-list dropdown (2026-05-30).  In-inspector
+            # navigator for SIESTA / PySCF output files in the same
+            # directory (different stages + --continue -runN series).
+            # Hidden when the dir has <= 1 result file.  Owned by
+            # lib/trajectory/result-list.js.
+            "result-list-bar",
+            "result-list-select",
+            "result-list-meta",
             # Style panel.
             "rep", "radius", "colorscheme", "bg", "show-cell",
             # Overlays panel.

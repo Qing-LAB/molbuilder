@@ -275,6 +275,14 @@ export const projects = {
   refresh,
   writeFile,
   saveToWorkspace,
+  // ---- Programmatic navigation (2026-05-30) --------------------- //
+  // Promoted to the public surface so in-inspector navigators (the
+  // /results result-list dropdown) can set the active file without
+  // going through a sidebar click handler.  Updates BOTH dir and
+  // file in sessionStorage + fires onChange subscribers; the
+  // /results viewer.js subscriber then dispatches to the matching
+  // inspector for the new file.  Part of sidebar gap M4 (#175).
+  setShared,
   // ---- Sidebar lock API (2026-05-27) ---------------------------- //
   // Long-running pipelines (Save .fdf, Save .py, install pseudos +
   // wrapper) call lock() before step 1 and unlock() in finally so

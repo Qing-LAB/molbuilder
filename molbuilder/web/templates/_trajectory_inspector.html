@@ -25,6 +25,25 @@
         content, not part of the inspector itself.
 -#}
 
+<!-- Result-list dropdown (2026-05-30).  Shown when the current
+     directory has 2+ SIESTA/PySCF output files (different stages
+     and/or ``--continue`` -runN series).  Lets the user jump
+     between outputs without sidebar drill-down -- handy when
+     filenames are long ("siesta-hemeC-gas-stage3-run1.out").
+     Populated by lib/trajectory/result-list.js after fetching
+     ``/api/files/result-list?path=<file>``.  Hidden when the
+     directory has zero or one result file (no navigation needed). -->
+<div id="result-list-bar" class="result-list-bar" hidden>
+  <label class="result-list-label" for="result-list-select">
+    Result file:
+  </label>
+  <select id="result-list-select"
+          class="result-list-select"
+          aria-label="Pick a result file in this project directory"></select>
+  <span id="result-list-meta" class="result-list-meta"
+        aria-live="polite"></span>
+</div>
+
 <!-- Fixed-position run-state badge.  One obvious location for the
      "is the simulation finished or still running?" signal -- not
      buried in the bottom status banner.  Three states + initial-
