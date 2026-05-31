@@ -79,15 +79,19 @@ async function init() {
     }
     return;
   }
-  setProjectsRoot(roots[0].path);
   // 2026-05-31 design § C7: wire navigateTo's public impl from
   // list.js's openDir so projects.navigateTo(absPath, opts) returns
   // the documented {ok, path, entries} envelope (or {ok:false,
-  // error} on failure).  Done BEFORE initList() because the latter
-  // synchronously fires onChange subscribers; a tab that subscribes
-  // and immediately calls projects.navigateTo would otherwise hit
-  // the "unavailable: sidebar not initialised" fallback.
+  // error} on failure).
+  // ORDER: setNavigateToImpl BEFORE setProjectsRoot because the
+  // latter synchronously fires onProjectsRootResolved subscribers.
+  // A pre-init subscriber that immediately calls projects.navigateTo
+  // from inside its onRootResolved callback would otherwise hit the
+  // "unavailable: sidebar not initialised" fallback.  Same reasoning
+  // applies to initList() below (its onChange subscribers run synchronously
+  // on register).
   setNavigateToImpl(openDir);
+  setProjectsRoot(roots[0].path);
 
   // Wire each module's DOM handlers.  Order matters only in so
   // much as list.js must register its refresh handler BEFORE any

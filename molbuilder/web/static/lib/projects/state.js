@@ -339,12 +339,14 @@ async function upload(targetDir, file, opts) {
  *  doesn't load the sidebar), navigateTo returns the documented
  *  error envelope rather than throwing.
  *
- *  Lock guard: this delegates to the wired impl (openDir).  openDir
- *  itself is NOT lock-guarded -- it doubles as the refreshHandler
- *  that fires mid-Save-pipeline.  The defense-in-depth contract in
- *  §8.5 is enforced by setShared (which openDir calls); a locked
- *  setShared returns {ok:false} and the navigateTo envelope ends
- *  up reflecting that.
+ *  Lock guard (§ 8.5 defense-in-depth): navigateTo early-returns
+ *  ``{ok: false, error: "sidebar is locked: <reason>"}`` when a
+ *  lock is held -- the impl (openDir) is NEVER called in that case.
+ *  openDir itself is intentionally NOT lock-guarded because it
+ *  doubles as the refresh handler called mid-Save-pipeline by
+ *  writeFile; the lock guard lives at the public-surface layer
+ *  here so external callers respect the contract without
+ *  deadlocking the internal refresh path.
  */
 let _navigateToImpl = null;
 async function navigateTo(absPath, opts) {
