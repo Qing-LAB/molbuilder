@@ -101,6 +101,50 @@ function _renderBreadcrumb(currentPath) {
   });
 }
 
+/**
+ * Render-sidebar subscriber: ONE function that derives the
+ * selection-dependent DOM state from the current ``{dir, file}``
+ * payload.  Wired as a ``projects.onChange`` subscriber so every
+ * ``setShared`` / ``navigateTo`` call automatically syncs the
+ * sidebar -- no inline DOM-mutation calls from click handlers.
+ *
+ * Scope (M2 / #166, 2026-05-31):
+ *   * Mark the matching entry as ``.is-selected`` (or clear when
+ *     ``file`` is blank).
+ *   * Render the "Selected: <basename>" status line.
+ *
+ * NOT in scope:
+ *   * Breadcrumb -- driven by directory state, not selection.
+ *     openDir handles it when the dir changes; if a programmatic
+ *     ``setShared(newDir, newFile)`` from another module crosses
+ *     directories, the breadcrumb will be stale until openDir is
+ *     called.  In practice the only cross-dir navigator is openDir
+ *     itself.
+ *   * Entry list -- driven by directory listing, owned by openDir.
+ *
+ * Subscriber fires once on subscribe with the initial state, so
+ * the sidebar paints correctly on first load without a manual call.
+ */
+function renderSidebar(payload) {
+  if (!elList) return;   // initList hasn't run yet
+  const file = payload && payload.file ? payload.file : "";
+  // Mark the entry in the list, if it exists.  The list may not
+  // contain the file (if the file is in a different dir than the
+  // currently-listed one); _markSelectedByPath silently clears
+  // any prior selection in that case.
+  if (file) {
+    const li = elList.querySelector(
+      `.ps-entry[data-path="${_cssEscape(file)}"]`
+    );
+    _markSelected(li);   // null li -> just clear prior selection
+  } else {
+    _markSelected(null);
+  }
+  // Status line: derived from the file basename.
+  const name = file ? file.slice(file.lastIndexOf("/") + 1) : "";
+  _renderSelectionStatus(name, file);
+}
+
 function _renderSelectionStatus(filename, fullPath) {
   // The "Selected: <name>" status line lives in the actions section.
   const sel = document.querySelector("#ps-actions .ps-selection");
@@ -176,9 +220,11 @@ function _renderList(entries, currentPath) {
       view.title = "Preview " + e.name;
       view.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        _markSelected(li);
+        // 2026-05-31 #166: setShared fires the renderSidebar
+        // onChange subscriber synchronously, which marks the
+        // entry + renders the selection-status line.  No inline
+        // DOM mutation here.
         setShared(currentPath, fullPath);
-        _renderSelectionStatus(e.name, fullPath);
         showPreview();
       });
       li.appendChild(view);
@@ -201,9 +247,11 @@ function _renderList(entries, currentPath) {
       if (e.kind === "directory") {
         openDir(fullPath);
       } else {
-        _markSelected(li);
+        // 2026-05-31 #166: setShared fires the renderSidebar
+        // onChange subscriber synchronously, which marks the
+        // entry + renders the selection-status line.  No inline
+        // DOM mutation here.
         setShared(currentPath, fullPath);
-        _renderSelectionStatus(e.name, fullPath);
       }
     });
     elList.appendChild(li);
@@ -248,8 +296,10 @@ export async function openDir(absPath) {
     // Listing failed -- we don't know the new state of resp.path's
     // children, so we can't decide whether to keep prevFile.  Blank
     // it (same as the pre-fix behaviour for the error path).
+    // 2026-05-31 #166: renderSidebar subscriber wired in initList()
+    // picks up setShared synchronously and clears the selection
+    // status; no inline call needed here.
     setShared(absPath, "");
-    _renderSelectionStatus("", "");
     return;
   }
   _renderBreadcrumb(resp.path);
@@ -272,19 +322,12 @@ export async function openDir(absPath) {
     // else: prevFile is inside a different directory -- the user
     // navigated away.  Drop it.
   }
+  // 2026-05-31 #166: the renderSidebar onChange subscriber
+  // (registered in initList) handles entry marking + status line
+  // in response to this setShared.  The subscriber's DOM lookup
+  // for the kept-file's <li> runs AFTER _renderList has populated
+  // elList, so the element is reachable.
   setShared(resp.path, keptFile);
-  if (keptFile) {
-    const name = keptFile.slice(keptFile.lastIndexOf("/") + 1);
-    _renderSelectionStatus(name, keptFile);
-    // Re-mark the entry visually (the freshly-rendered list won't have
-    // the selection class until we set it).
-    const li = elList.querySelector(
-      `.ps-entry[data-path="${_cssEscape(keptFile)}"]`
-    );
-    if (li) li.classList.add("is-selected");
-  } else {
-    _renderSelectionStatus("", "");
-  }
 }
 
 /**
@@ -295,12 +338,13 @@ export async function openDir(absPath) {
 export function restoreSelection() {
   const projectsRoot = getProjectsRoot();
   const file = sessionStorage.getItem("molbuilder.current_file") || "";
+  const dir  = sessionStorage.getItem("molbuilder.current_dir")  || "";
   if (!file || !projectsRoot || !file.startsWith(projectsRoot)) return;
-  const li = elList.querySelector(
-    `.ps-entry[data-path="${_cssEscape(file)}"]`
-  );
-  if (li) _markSelected(li);
-  _renderSelectionStatus(file.split("/").pop(), file);
+  // 2026-05-31 #166: render via the shared subscriber so the
+  // entry-marker + status-line code lives in exactly one place.
+  // The initial onChange fire ran before the list was populated;
+  // this re-fires renderSidebar now that the list has rows.
+  renderSidebar({ dir: dir, file: file });
 }
 
 function _cssEscape(s) {
@@ -367,4 +411,13 @@ export function initList() {
   // calls back into initList would re-couple lock to file-listing
   // (the 2026-05-28 bug).
   setRefreshHandler(openDir);
+  // 2026-05-31 #166: renderSidebar subscriber.  Single point of
+  // selection-state-to-DOM sync.  Fires once on subscribe with the
+  // current state (per the onChange contract in state.js), so the
+  // initial paint happens here without a manual call.  Every
+  // ``setShared`` / ``navigateTo`` thereafter -- whether from a
+  // sidebar click, the result-list dropdown, or any future
+  // programmatic navigator -- auto-syncs the entry-marker + status
+  // line.
+  _projectsApi.onChange(renderSidebar);
 }
