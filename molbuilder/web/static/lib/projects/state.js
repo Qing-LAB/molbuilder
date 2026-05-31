@@ -101,7 +101,34 @@ export function setShared(dir, file) {
   return { ok: true };
 }
 
-export function setProjectsRoot(root) { projectsRoot = root; }
+// Projects-root subscribers (sidebar gap M8 / design § C2, 2026-05-31).
+// Tabs that depend on the projects-root being resolved (e.g. Build's
+// psml_lib live-resolution caption) need a one-shot notification so
+// they don't have to poll ``getProjectsRoot()``.  Single-fire-ish:
+// the publish happens AT MOST ONCE per page lifetime (the sidebar
+// only resolves the root once at init).  Subscribers registered
+// AFTER resolution receive the fire-once-immediately call from
+// onProjectsRootResolved itself with the already-resolved root.
+const rootSubscribers = new Set();
+let rootResolved = false;
+
+function _publishRootResolved() {
+  const payload = { root: projectsRoot || "" };
+  rootSubscribers.forEach((cb) => {
+    try { cb(payload); } catch (_) { /* per-subscriber isolation */ }
+  });
+}
+
+export function setProjectsRoot(root) {
+  projectsRoot = root;
+  // Only publish on the FIRST resolution.  Subsequent setProjectsRoot
+  // calls (theoretical; sidebar only calls once) shouldn't fan out as
+  // re-resolutions -- tabs would over-react.
+  if (!rootResolved && projectsRoot) {
+    rootResolved = true;
+    _publishRootResolved();
+  }
+}
 export function getProjectsRoot()     { return projectsRoot; }
 
 export function setRefreshHandler(handler) { refreshHandler = handler; }
@@ -127,10 +154,10 @@ export function atProjectsRoot(dir) {
       || dir === projectsRoot.replace(/\/$/, "");
 }
 
-async function readCurrentFile() {
+async function readCurrentFile(opts) {
   const path = sessionStorage.getItem(SS_FILE) || "";
   if (!path) return null;
-  const j = await apiRead(path);
+  const j = await apiRead(path, opts);
   if (!j.ok) return null;
   return {path: j.path, text: j.text};
 }
@@ -235,16 +262,18 @@ async function saveToWorkspace(text, filename, opts) {
 /** Read a file's contents (returns ``{ok, text, mtime, ...}`` or
  *  ``{ok:false, error}``).  Companion to ``readCurrentFile()``
  *  which is the no-argument form keyed on the sidebar's current
- *  selection. */
-async function readFile(path) {
-  return await apiRead(path);
+ *  selection.  ``opts.signal`` honoured (per docs/protocols/
+ *  projects-sidebar.md § C3). */
+async function readFile(path, opts) {
+  return await apiRead(path, opts);
 }
 
 /** Create a new project directory at the projects root.  On
  *  success refreshes the projects listing so the new directory
- *  appears in the sidebar without a manual reload. */
-async function createProject(name) {
-  const r = await apiCreateProject(name);
+ *  appears in the sidebar without a manual reload.
+ *  ``opts.signal`` honoured. */
+async function createProject(name, opts) {
+  const r = await apiCreateProject(name, opts);
   if (r && r.ok && refreshHandler) {
     const root = projectsRoot;
     if (root) {
@@ -256,9 +285,9 @@ async function createProject(name) {
 }
 
 /** Make a subdirectory under ``parent``.  Refreshes ``parent``
- *  on success. */
-async function mkdir(parent, name) {
-  const r = await apiMkdir(parent, name);
+ *  on success.  ``opts.signal`` honoured. */
+async function mkdir(parent, name, opts) {
+  const r = await apiMkdir(parent, name, opts);
   if (r && r.ok && refreshHandler) {
     try { await refreshHandler(parent); }
     catch (_) { /* refresh failure must not fail the mkdir */ }
@@ -296,13 +325,53 @@ async function upload(targetDir, file, opts) {
   return r;
 }
 
-/** Programmatic navigation.  Convenience over ``setShared``: takes
- *  a dir + optional file (file defaults to "" -- "clear file
- *  selection but stay in the directory").  Inherits the lock guard
- *  from setShared. */
-function navigateTo(dir, file) {
-  return setShared(dir, file || "");
+/** Programmatic navigation -- the public-API form of openDir.
+ *
+ *  Per docs/protocols/projects-sidebar.md § C7: takes an absolute
+ *  path + optional opts, lists the directory, updates the cursor
+ *  + sidebar DOM, and returns:
+ *     ``{ok: true, path, entries}``   on success
+ *     ``{ok: false, error}``          on failure
+ *
+ *  The actual implementation lives in list.js as ``openDir``;
+ *  navigateTo is wired by ``setNavigateToImpl`` at sidebar init
+ *  time.  Until that wiring fires (pre-init or in a tab that
+ *  doesn't load the sidebar), navigateTo returns the documented
+ *  error envelope rather than throwing.
+ *
+ *  Lock guard: this delegates to the wired impl (openDir).  openDir
+ *  itself is NOT lock-guarded -- it doubles as the refreshHandler
+ *  that fires mid-Save-pipeline.  The defense-in-depth contract in
+ *  §8.5 is enforced by setShared (which openDir calls); a locked
+ *  setShared returns {ok:false} and the navigateTo envelope ends
+ *  up reflecting that.
+ */
+let _navigateToImpl = null;
+async function navigateTo(absPath, opts) {
+  // Defense-in-depth lock guard per § 8.5.  openDir (the underlying
+  // impl) is intentionally NOT lock-guarded because it doubles as
+  // the refresh handler called mid-Save-pipeline by writeFile.  The
+  // public-surface wrapper enforces the design contract here:
+  // external callers go through navigateTo and get the locked
+  // rejection; internal callers go through openDir directly and
+  // bypass the guard intentionally.
+  if (lockState !== null) {
+    return {
+      ok:    false,
+      error: "sidebar is locked: " + (lockState.reason || "operation in progress"),
+    };
+  }
+  if (typeof _navigateToImpl !== "function") {
+    return {
+      ok:    false,
+      error: "navigateTo unavailable: sidebar not initialised",
+    };
+  }
+  return _navigateToImpl(absPath, opts);
 }
+/** Wire navigateTo's impl from list.js (the openDir export).
+ *  Called once at sidebar init.  Idempotent. */
+export function setNavigateToImpl(fn) { _navigateToImpl = fn; }
 
 /**
  * Acquire the sidebar lock for a multi-step operation.
@@ -426,6 +495,20 @@ export const projects = {
            reason: lockState ? lockState.reason : "" });
     } catch (_) { /* swallow */ }
     return () => lockSubscribers.delete(cb);
+  },
+  // Projects-root resolution subscriber (design § C2, 2026-05-31).
+  // Fires AT MOST ONCE per page lifetime when the sidebar's init
+  // resolves the root from apiRoots().  Subscribers that register
+  // BEFORE resolution receive the call when resolution lands; those
+  // that register AFTER resolution receive an immediate call with
+  // the resolved root (the fire-once-immediately contract).
+  onProjectsRootResolved: (cb) => {
+    rootSubscribers.add(cb);
+    if (rootResolved) {
+      try { cb({ root: projectsRoot || "" }); }
+      catch (_) { /* per-subscriber isolation */ }
+    }
+    return () => rootSubscribers.delete(cb);
   },
   cancelLockedOperation,
 };

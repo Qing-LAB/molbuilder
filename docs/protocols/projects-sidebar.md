@@ -409,6 +409,11 @@ readFile(path: string, opts?: AsyncOpts):
 
 // Browser-driven save dialog; resolves when download is INITIATED
 // (not when complete — browser owns the rest).
+//
+// Status: DEFERRED (2026-05-31).  Not implemented; needs a streaming
+// or signed-URL backend endpoint not yet designed.  Tabs that need
+// to surface a file to the user currently use readFile + a synthetic
+// <a download> element.  Tracked for a future iteration.
 downloadFile(path: string, opts?: AsyncOpts):
     Promise<{ ok: true; filename: string } | ReadErr>
 ```
@@ -454,6 +459,9 @@ mkdir(parent: string, name: string, opts?: AsyncOpts):
     Promise<LayoutOk | LayoutErr>
 deleteEntry(path: string, recursive?: boolean, opts?: AsyncOpts):
     Promise<LayoutOk | LayoutErr>
+// Status: DEFERRED (2026-05-31).  Frontend ready; needs
+// ``POST /api/files/rename`` backend (#176 on the task tracker)
+// before it can be promoted to the public surface.
 rename(path: string, newName: string, opts?: AsyncOpts):
     Promise<LayoutOk | LayoutErr>
 ```
@@ -477,6 +485,10 @@ refresh(opts?: AsyncOpts):
 #### C7 — Navigate
 
 ```ts
+// Async dir-listing form: fetches the listing, redraws the sidebar
+// (breadcrumb + entries), updates the cursor as a side effect.
+// Implementation lives in list.js's openDir; the public surface is
+// wired via state.js's setNavigateToImpl at sidebar init.
 navigateTo(absPath: string, opts?: AsyncOpts):
     Promise<{ ok: true; path: string; entries: Array<ListEntry> }
           | { ok: false; error: string }>
@@ -487,6 +499,20 @@ type ListEntry = {
     size:  number | null;     // null for non-files / inaccessible
     mtime: number | null;     // unix seconds
 };
+
+// Cursor-only mutator: writes (dir, file) to sessionStorage and
+// fires onChange subscribers WITHOUT re-listing the directory.
+// Use cases:
+//   * In-inspector navigators picking a file in the current dir
+//     (e.g. /results result-list dropdown).
+//   * Restoring a session-storage-persisted cursor on page load.
+// Synchronous so subscribers run in the same microtask -- a
+// subscriber that immediately reads getCurrentFile() sees the
+// new value.  Returns {ok} envelope; rejects with
+// {ok:false, error:"sidebar is locked: <reason>"} when a lock is
+// held (§ 8.5 defense-in-depth).
+setShared(dir: string, file: string): { ok: true }
+                                    | { ok: false; error: string }
 ```
 
 #### C8 — Lock

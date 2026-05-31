@@ -363,6 +363,57 @@ class TestAbortSignal:
         ''')
         assert out == {"ok": True}
 
+    def test_apiRead_forwards_signal(self):
+        """2026-05-31 (post-design audit): read endpoints also accept
+        opts.signal so a tab can cancel a slow read.  Identity-checked
+        to pin the wire-format contract."""
+        out = _run_node('''
+            let captured = null;
+            global.fetch = async (url, init) => {
+                captured = init;
+                return { ok: true, status: 200,
+                         json: async () => ({ ok: true, text: "x" }) };
+            };
+            const ctl = new AbortController();
+            await api.apiRead("/p", { signal: ctl.signal });
+            console.log(JSON.stringify({
+                wasSignalForwarded: captured.signal === ctl.signal,
+            }));
+        ''')
+        assert out == {"wasSignalForwarded": True}
+
+    def test_apiList_forwards_signal(self):
+        out = _run_node('''
+            let captured = null;
+            global.fetch = async (url, init) => {
+                captured = init;
+                return { ok: true, status: 200,
+                         json: async () => ({ ok: true, entries: [] }) };
+            };
+            const ctl = new AbortController();
+            await api.apiList("/p", { signal: ctl.signal });
+            console.log(JSON.stringify({
+                wasSignalForwarded: captured.signal === ctl.signal,
+            }));
+        ''')
+        assert out == {"wasSignalForwarded": True}
+
+    def test_apiMkdir_forwards_signal(self):
+        out = _run_node('''
+            let captured = null;
+            global.fetch = async (url, init) => {
+                captured = init;
+                return { ok: true, status: 200,
+                         json: async () => ({ ok: true }) };
+            };
+            const ctl = new AbortController();
+            await api.apiMkdir("/p", "new", { signal: ctl.signal });
+            console.log(JSON.stringify({
+                wasSignalForwarded: captured.signal === ctl.signal,
+            }));
+        ''')
+        assert out == {"wasSignalForwarded": True}
+
 
 class TestApiRoots:
 

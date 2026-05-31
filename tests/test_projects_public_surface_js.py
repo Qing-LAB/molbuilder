@@ -99,18 +99,19 @@ class TestSurfacePresence:
         out = _run_node('''
             const p = state.projects;
             console.log(JSON.stringify({
-                readFile:       typeof p.readFile,
-                createProject:  typeof p.createProject,
-                mkdir:          typeof p.mkdir,
-                deleteEntry:    typeof p.deleteEntry,
-                upload:         typeof p.upload,
-                setShared:      typeof p.setShared,
-                navigateTo:     typeof p.navigateTo,
+                readFile:                   typeof p.readFile,
+                createProject:              typeof p.createProject,
+                mkdir:                      typeof p.mkdir,
+                deleteEntry:                typeof p.deleteEntry,
+                upload:                     typeof p.upload,
+                setShared:                  typeof p.setShared,
+                navigateTo:                 typeof p.navigateTo,
+                onProjectsRootResolved:     typeof p.onProjectsRootResolved,
             }));
         ''')
         for fn in ("readFile", "createProject", "mkdir",
                    "deleteEntry", "upload", "setShared",
-                   "navigateTo"):
+                   "navigateTo", "onProjectsRootResolved"):
             assert out[fn] == "function", f"missing public method: {fn}"
 
 
@@ -298,53 +299,161 @@ class TestRefreshFailureSwallowed:
         assert out["path"] == "/p/new"
 
 
-# ----- navigateTo is an alias for setShared ----------------------- #
+# ----- navigateTo per design § C7 (openDir-aliased) -------------- #
 
 
 class TestNavigateTo:
+    """navigateTo per design § C7 is the openDir-aliased async lister:
+    takes ``(absPath, opts?)``, fetches the directory listing, updates
+    the cursor, and returns ``{ok, path, entries}`` (or ``{ok:false,
+    error}`` on failure).  Wired by ``setNavigateToImpl`` at sidebar
+    init; falls back to a clean "unavailable" envelope when init
+    hasn't run yet (so tabs that subscribe + immediately call it
+    don't throw)."""
 
-    def test_navigateTo_with_file_writes_both(self):
+    def test_unavailable_before_setNavigateToImpl_wires_it(self):
+        """Without setNavigateToImpl being called, navigateTo returns
+        the documented "unavailable" envelope -- NOT throws.  Pins
+        the fail-safe contract for tabs that race against sidebar
+        init."""
         out = _run_node('''
-            const r = state.projects.navigateTo("/d", "/d/f.out");
+            // sidebar's init NOT run; setNavigateToImpl never called.
+            const r = await state.projects.navigateTo("/d");
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["ok"] is False
+        assert "unavailable" in out["error"]
+        assert "sidebar not initialised" in out["error"]
+
+    def test_after_wiring_delegates_to_impl(self):
+        """When setNavigateToImpl(fn) has been called, navigateTo
+        calls fn(absPath, opts) and returns its envelope verbatim."""
+        out = _run_node('''
+            let capturedArgs = null;
+            state.setNavigateToImpl(async (absPath, opts) => {
+                capturedArgs = { absPath: absPath, opts: opts };
+                return {
+                    ok:      true,
+                    path:    absPath,
+                    entries: [{ name: "a.out", kind: "file" }],
+                };
+            });
+            const r = await state.projects.navigateTo("/p/sub", {
+                signal: "fake-signal-token",
+            });
             console.log(JSON.stringify({
-                envelope: r,
-                dir:      sessionStorage.getItem("molbuilder.current_dir"),
-                file:     sessionStorage.getItem("molbuilder.current_file"),
+                envelope:     r,
+                argsAbsPath:  capturedArgs.absPath,
+                argsOptsSig:  capturedArgs.opts.signal,
             }));
         ''')
-        assert out["envelope"] == {"ok": True}
-        assert out["dir"] == "/d"
-        assert out["file"] == "/d/f.out"
+        assert out["envelope"] == {
+            "ok": True,
+            "path": "/p/sub",
+            "entries": [{"name": "a.out", "kind": "file"}],
+        }
+        assert out["argsAbsPath"] == "/p/sub"
+        assert out["argsOptsSig"] == "fake-signal-token"
 
-    def test_navigateTo_without_file_clears_file(self):
-        """Single-arg form clears file selection but keeps the dir.
-        This is the use case for tabs that want to position the
-        sidebar without selecting any particular file (e.g. a
-        ``cd`` operation)."""
+    def test_impl_failure_envelope_returned_verbatim(self):
+        """openDir-side failure ({ok:false, error}) flows through
+        navigateTo unchanged."""
         out = _run_node('''
-            // Prime a file selection.
-            state.setShared("/old", "/old/sel.out");
-            // Now navigateTo without a file.
-            state.projects.navigateTo("/new");
-            console.log(JSON.stringify({
-                dir:  sessionStorage.getItem("molbuilder.current_dir"),
-                file: sessionStorage.getItem("molbuilder.current_file"),
+            state.setNavigateToImpl(async () => ({
+                ok:    false,
+                error: "Failed to list directory.",
             }));
+            const r = await state.projects.navigateTo("/missing");
+            console.log(JSON.stringify(r));
         ''')
-        assert out["dir"] == "/new"
-        assert out["file"] == ""
+        assert out == {"ok": False, "error": "Failed to list directory."}
 
-    def test_navigateTo_respects_lock(self):
-        """navigateTo is a thin shim over setShared; the lock guard
-        from #177 carries through automatically."""
+    def test_locked_navigateTo_rejects_without_calling_impl(self):
+        """Per § 8.5, navigateTo MUST check isLocked() and refuse
+        when the lock is held -- without calling the underlying
+        impl.  The impl (openDir) is intentionally NOT lock-guarded
+        because it doubles as the refreshHandler that runs mid-Save-
+        pipeline; the public-surface wrapper enforces § 8.5 instead."""
         out = _run_node('''
-            state.projects.lock("Save in flight", []);
-            const r = state.projects.navigateTo("/d", "/d/f.out");
+            let implCalled = false;
+            state.setNavigateToImpl(async () => {
+                implCalled = true;
+                return { ok: true, path: "/", entries: [] };
+            });
+            state.projects.lock("Saving FDF...", []);
+            const r = await state.projects.navigateTo("/somewhere");
             console.log(JSON.stringify({
                 envelope:    r,
-                dir_post:    sessionStorage.getItem("molbuilder.current_dir"),
+                implCalled:  implCalled,
             }));
         ''')
         assert out["envelope"]["ok"] is False
         assert "sidebar is locked" in out["envelope"]["error"]
-        assert out["dir_post"] is None
+        assert "Saving FDF" in out["envelope"]["error"]
+        assert out["implCalled"] is False
+
+
+# ----- onProjectsRootResolved (design § C2) ---------------------- #
+
+
+class TestOnProjectsRootResolved:
+    """Design § C2 requires a one-shot-ish subscriber that fires
+    when init resolves the projects root.  Subscribers registered
+    BEFORE resolution receive the call when resolution lands;
+    subscribers registered AFTER get an immediate fire-once-with-
+    resolved-state per the standard contract."""
+
+    def test_subscriber_fires_when_setProjectsRoot_lands(self):
+        out = _run_node('''
+            const calls = [];
+            state.projects.onProjectsRootResolved(p => calls.push(p));
+            // Initially no fire (root not resolved).
+            const before = calls.slice();
+            state.setProjectsRoot("/home/u/projects");
+            console.log(JSON.stringify({
+                before: before,
+                after:  calls,
+            }));
+        ''')
+        assert out["before"] == []
+        assert out["after"] == [{"root": "/home/u/projects"}]
+
+    def test_subscriber_registered_after_resolution_fires_immediately(self):
+        """Late subscribers (e.g. a tab that loads after the
+        sidebar's init completes) MUST still receive the resolved
+        root.  Fire-once-immediately per the standard subscribe
+        contract in § 6."""
+        out = _run_node('''
+            state.setProjectsRoot("/p");
+            const calls = [];
+            state.projects.onProjectsRootResolved(p => calls.push(p));
+            console.log(JSON.stringify(calls));
+        ''')
+        assert out == [{"root": "/p"}]
+
+    def test_unsubscribe_works(self):
+        out = _run_node('''
+            const calls = [];
+            const unsub = state.projects.onProjectsRootResolved(
+                p => calls.push(p)
+            );
+            unsub();
+            state.setProjectsRoot("/p");
+            console.log(JSON.stringify(calls));
+        ''')
+        assert out == []
+
+    def test_only_fires_once_per_resolution(self):
+        """A second setProjectsRoot call (theoretical; sidebar only
+        calls once) does NOT re-fire subscribers.  Otherwise tabs
+        would over-react to a no-op setProjectsRoot."""
+        out = _run_node('''
+            const calls = [];
+            state.projects.onProjectsRootResolved(p => calls.push(p));
+            state.setProjectsRoot("/p");
+            state.setProjectsRoot("/p");
+            state.setProjectsRoot("/p-different");
+            console.log(JSON.stringify(calls));
+        ''')
+        # Single fire from the first non-empty resolution.
+        assert out == [{"root": "/p"}]

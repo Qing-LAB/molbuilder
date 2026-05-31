@@ -263,6 +263,17 @@ function _renderList(entries, currentPath) {
  * the listing, redraws breadcrumb + entry list, and updates state.
  * Tolerant of API failures (shows an inline error in the list area).
  *
+ * Returns the envelope shape from docs/protocols/projects-sidebar.md
+ * § C7:
+ *   ``{ok: true, path, entries}`` on success
+ *   ``{ok: false, error}`` on failure
+ * The function still runs its DOM side effects (breadcrumb +
+ * entry list + cursor update) regardless of caller's interest in
+ * the return value.  Existing internal callers (sidebar click
+ * handlers + refreshHandler) ignore the return; the
+ * ``projects.navigateTo`` public API (in state.js) returns it
+ * verbatim per the design contract.
+ *
  * Public so forms.js can call it after a successful mkdir / create-
  * project / etc., and so state.js can call it via the refreshHandler
  * registration below.
@@ -300,7 +311,7 @@ export async function openDir(absPath) {
     // picks up setShared synchronously and clears the selection
     // status; no inline call needed here.
     setShared(absPath, "");
-    return;
+    return { ok: false, error: resp.error || "Failed to list directory." };
   }
   _renderBreadcrumb(resp.path);
   _renderList(resp.entries, resp.path);
@@ -328,6 +339,7 @@ export async function openDir(absPath) {
   // for the kept-file's <li> runs AFTER _renderList has populated
   // elList, so the element is reachable.
   setShared(resp.path, keptFile);
+  return { ok: true, path: resp.path, entries: resp.entries };
 }
 
 /**

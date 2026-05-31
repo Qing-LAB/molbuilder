@@ -328,13 +328,14 @@ class TestRenderSidebarSubscriber:
         assert out["a_selected"] is True
         assert out["b_selected"] is False
 
-    def test_programmatic_navigation_updates_dom(self):
+    def test_programmatic_setShared_updates_dom(self):
         """The /results result-list dropdown's use case: a
-        non-sidebar module calls projects.navigateTo to move the
-        selection.  The subscriber syncs the sidebar's DOM
-        even though the click came from outside."""
+        non-sidebar module calls projects.setShared(dir, file) to
+        move the cursor without re-listing the directory.  The
+        subscriber syncs the sidebar's DOM even though the click
+        came from outside."""
         out = _run_node('''
-            state.projects.navigateTo("/p", "/p/file-b.out");
+            state.projects.setShared("/p", "/p/file-b.out");
             console.log(JSON.stringify({
                 a_selected: entryA._classes.has("is-selected"),
                 b_selected: entryB._classes.has("is-selected"),

@@ -81,45 +81,57 @@ export async function apiRoots() {
   return { ok: true, roots: body.roots || [] };
 }
 
-export async function apiList(path) {
+export async function apiList(path, opts) {
+  opts = opts || {};
   return await _fetchEnvelope(
-    "/api/files/list?path=" + encodeURIComponent(path)
+    "/api/files/list?path=" + encodeURIComponent(path),
+    { signal: opts.signal }
   );
 }
 
-export async function apiStat(path) {
+export async function apiStat(path, opts) {
+  opts = opts || {};
   return await _fetchEnvelope(
-    "/api/files/stat?path=" + encodeURIComponent(path)
+    "/api/files/stat?path=" + encodeURIComponent(path),
+    { signal: opts.signal }
   );
 }
 
-export async function apiRead(path) {
+export async function apiRead(path, opts) {
+  opts = opts || {};
   return await _fetchEnvelope(
-    "/api/files/read?path=" + encodeURIComponent(path)
+    "/api/files/read?path=" + encodeURIComponent(path),
+    { signal: opts.signal }
   );
 }
 
-export async function apiMkdir(parent, name) {
+export async function apiMkdir(parent, name, opts) {
+  opts = opts || {};
   return await _fetchEnvelope("/api/files/mkdir", {
     method:  "POST",
     headers: {"Content-Type": "application/json"},
     body:    JSON.stringify({parent: parent, name: name}),
+    signal:  opts.signal,
   });
 }
 
-export async function apiCreateProject(name) {
+export async function apiCreateProject(name, opts) {
+  opts = opts || {};
   return await _fetchEnvelope("/api/projects/create", {
     method:  "POST",
     headers: {"Content-Type": "application/json"},
     body:    JSON.stringify({name: name}),
+    signal:  opts.signal,
   });
 }
 
-/* The three writer endpoints (upload / delete / write) accept an
- * ``opts.signal`` AbortSignal.  The lock's three-layer recovery
- * (timeout + Cancel button + try/finally) relies on this -- without
- * a signal threaded all the way to fetch, clicking Cancel during a
- * slow write would unlock the UI but leave the request running.
+/* Every endpoint accepts an ``opts.signal`` AbortSignal.  The
+ * lock's three-layer recovery (timeout + Cancel button +
+ * try/finally) relies on this -- without a signal threaded all
+ * the way to fetch, clicking Cancel during a slow read OR write
+ * would unlock the UI but leave the request running.  Read
+ * endpoints (list / stat / read) added signal support 2026-05-31
+ * to close the design § C3 + § C5 contract (#175 follow-up).
  * (See docs/protocols/projects-sidebar.md Layer B + #174.) */
 
 export async function apiUpload(targetDir, file, opts) {
