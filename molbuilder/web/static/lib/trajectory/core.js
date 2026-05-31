@@ -150,6 +150,52 @@
     /*  Status banner                                                      */
     /* ------------------------------------------------------------------ */
 
+    /**
+     * Translate a raw parser ``error_message`` string into a short
+     * human-readable reason tag.  Used by the run-state info-panel
+     * to show ``Reason: SCF non-convergence`` etc. instead of the
+     * cryptic raw marker.
+     *
+     * Returns ``null`` when the message is empty (caller should
+     * skip the "Reason: ..." line entirely).  Returns the raw
+     * message when no classifier matches (fallback: at least the
+     * user sees SOMETHING informative).
+     *
+     * Categories mirror the parser's fatal-marker rule set in
+     * ``parsers/siesta.py`` (2026-05-29) so the UI tag tracks the
+     * detection logic 1:1.  Adding a new fatal marker on the parser
+     * side should add a branch here too.
+     */
+    function _classifyStopReason(errMsg) {
+        if (!errMsg) return null;
+        const lower = String(errMsg).toLowerCase();
+        if (lower.indexOf("scf_not_conv") >= 0
+            || lower.indexOf("scf did not converge") >= 0) {
+            return "SCF non-convergence";
+        }
+        if (lower.indexOf("propor: error") >= 0
+            || lower.indexOf("imax = 0") >= 0) {
+            return "MPI rank distribution error (propor)";
+        }
+        if (lower.indexOf("abnormal_termination") >= 0) {
+            return "abnormal termination";
+        }
+        if (lower.indexOf("siesta died") >= 0) {
+            return "engine died";
+        }
+        if (lower.indexOf("siesta: error") >= 0) {
+            return "engine error";
+        }
+        if (lower.indexOf("stopping program from node") >= 0) {
+            return "node stop signal";
+        }
+        // No classifier matched -- fall back to raw text so the
+        // user still sees what the parser flagged.  Trim to a
+        // reasonable length so the badge doesn't blow up.
+        const s = String(errMsg).trim();
+        return s.length > 120 ? s.slice(0, 117) + "..." : s;
+    }
+
     function setStatus(msg, kind) {
         // Status banner lives in /watch's loader bar (page-level,
         // not in the inspector partial).  Silent no-op when the
@@ -1281,21 +1327,35 @@
                     lastResultTs ? "ended " + lastResultTs : "",
                     elapsedTxt ? "total " + elapsedTxt : "",
                 );
+                badgeDet.removeAttribute("title");
             } else if (runState === "error") {
+                // 2026-05-30: "Error" relabelled to "Stopped" per user
+                // feedback.  Non-convergence is a STATE, not an error
+                // of the viewer / the .out file.  The actual reason
+                // (SCF non-convergence, MPI fault, ...) is shown below
+                // as a classified tag; the raw parser message is the
+                // tooltip so power users can read it without losing
+                // the visual hierarchy.
                 badge.classList.add("run-state-error");
-                badgeLab.textContent = "Error";
+                badgeLab.textContent = "Stopped";
+                const reasonTag = _classifyStopReason(errMsg);
                 badgeDet.textContent = joinParts(
-                    errMsg,
+                    reasonTag ? "Reason: " + reasonTag : "",
                     lastResultTs ? "stopped " + lastResultTs : "",
                     elapsedTxt ? "total " + elapsedTxt : "",
                 );
+                // Full raw message available on hover (and for screen
+                // readers via aria, since title is announced by most).
+                if (errMsg) badgeDet.setAttribute("title", errMsg);
+                else        badgeDet.removeAttribute("title");
             } else {
                 badge.classList.add("run-state-ongoing");
-                badgeLab.textContent = "Ongoing";
+                badgeLab.textContent = "Running";
                 badgeDet.textContent = joinParts(
                     lastResultTs ? "last result " + lastResultTs : "",
                     elapsedTxt ? "sim time " + elapsedTxt : "",
                 );
+                badgeDet.removeAttribute("title");
             }
         }
 
