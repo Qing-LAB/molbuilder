@@ -45,6 +45,9 @@ htmlcov/
 
 # But keep example fixtures if any are ever committed under tests/data/
 !tests/data/**
+# And keep frozen SIESTA .out fixtures for the parser dispatch tests.
+# These are checked-in COPIES of historical runs, not active output.
+!tests/watch/fixtures/**
 
 # 3DNA archive / extracted tree if a user drops it next to the package
 # during local install.  3DNA is distributed under a non-commercial-use

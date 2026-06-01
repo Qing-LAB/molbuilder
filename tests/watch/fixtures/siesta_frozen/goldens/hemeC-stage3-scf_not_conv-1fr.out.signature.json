@@ -1,0 +1,23 @@
+{
+  "error_message": "SCF_NOT_CONV: SCF did not converge in maximum number of steps (required).",
+  "frame_count": 1,
+  "frames": [
+    {
+      "coords_n": 0,
+      "coords_sum": null,
+      "energy": null,
+      "forces_n": 0,
+      "forces_sum": null,
+      "max_force": null,
+      "scf_history_len": 500,
+      "step_index": 0
+    }
+  ],
+  "lattice_sum": 121.331286,
+  "parse_warning_count": 0,
+  "run_state": "error",
+  "runtime_info": {
+    "n_mpi_processes": 8
+  },
+  "source_format": "siesta"
+}

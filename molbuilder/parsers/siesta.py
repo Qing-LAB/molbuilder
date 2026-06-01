@@ -34,7 +34,8 @@ from ..frame import Frame, ParseWarning, Trajectory
 from ..structure import Structure
 from ._rules import (
     CONTINUE, END_BUBBLE, END_SECTION,
-    SectionRule, contains_ci, starts_with_ci,
+    SectionRule, compile_rules, contains_ci, matches_regex_ci,
+    starts_with_ci,
 )
 from . import _rules
 from .base import TrajectoryParser
@@ -778,15 +779,21 @@ class SiestaParser(TrajectoryParser):
                 name="scf_header",
                 aliases=["iscf <columns>"],
                 # The header always starts with the bare token ``iscf``
-                # (case-insensitive).  _SCF_HEADER_RE already encodes
-                # this; we replicate the matcher in rule shape.
-                start=lambda line: bool(_SCF_HEADER_RE.match(line)),
+                # (case-insensitive).  Same shape as _SCF_HEADER_RE; we
+                # use ``matches_regex_ci`` here so the rule participates
+                # in the combined-regex pre-filter compiled by
+                # :class:`CompiledRules`.
+                start=matches_regex_ci(r"^\s*iscf\s+\S"),
                 on_start=_on_scf_header,
             ),
             SectionRule(
                 name="scf_data",
                 aliases=["scf: <iscf> ..."],
-                start=lambda line: bool(_SCF_PREFIX_RE.match(line)),
+                # Same shape as _SCF_PREFIX_RE without the trailing
+                # capture (the on_start callback does its own
+                # ``_SCF_PREFIX_RE.match(line)`` to extract groups).
+                # Combined-regex eligible.
+                start=matches_regex_ci(r"^\s*scf:\s*\d+\s+"),
                 on_start=_on_scf_data,
             ),
             SectionRule(
@@ -801,6 +808,16 @@ class SiestaParser(TrajectoryParser):
         # state: either "scan" (try all rules) or the name of an
         # active multi-line rule (only that rule's ``consume`` runs).
         active: Optional[SectionRule] = None
+
+        # Compile rules ONCE into a dispatch table:
+        #   * combined-regex pre-filter over every ``_PatternMatcher``
+        #     rule -- one DFA scan per scan-state line tests them all;
+        #   * per-rule pre-compiled regex (preserves registration-
+        #     order tie-break; the combined regex's leftmost-position
+        #     match would otherwise silently change semantics);
+        #   * predicate-only rules (e.g. ``_max_force_match`` closing
+        #     over parser state) are iterated individually.
+        compiled = compile_rules(rules)
 
         def _scan_runtime_info(line: str) -> bool:
             """Orthogonal runtime-info regex probes.  Not section
@@ -868,14 +885,17 @@ class SiestaParser(TrajectoryParser):
 
                 # Section dispatch: first rule whose matcher fires
                 # wins.  Order in the ``rules`` list is significant
-                # (see comment block above the list).
-                for rule in rules:
-                    if rule.start(line):
-                        if rule.on_start is not None:
-                            rule.on_start(line, line_no)
-                        if rule.consume is not None:
-                            active = rule
-                        break
+                # (see comment block above the list).  ``find_match``
+                # uses the combined-regex pre-filter then per-rule
+                # iteration in registration order; predicate-only
+                # rules are invoked individually with § 6 error
+                # isolation.
+                rule = compiled.find_match(line)
+                if rule is not None:
+                    if rule.on_start is not None:
+                        rule.on_start(line, line_no)
+                    if rule.consume is not None:
+                        active = rule
 
         # End-of-file: drop torn frames, then flush.  The SIESTA stream
         # is "SCF -> outcoor -> SCF -> outcoor -> ...", so a torn

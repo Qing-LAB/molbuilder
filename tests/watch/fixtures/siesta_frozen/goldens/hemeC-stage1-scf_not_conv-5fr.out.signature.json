@@ -1,0 +1,63 @@
+{
+  "error_message": "SCF_NOT_CONV: SCF did not converge in maximum number of steps (required).",
+  "frame_count": 5,
+  "frames": [
+    {
+      "coords_n": 0,
+      "coords_sum": null,
+      "energy": -13098.9542,
+      "forces_n": 81,
+      "forces_sum": 0.006717,
+      "max_force": 13.511285,
+      "scf_history_len": 93,
+      "step_index": 0
+    },
+    {
+      "coords_n": 0,
+      "coords_sum": null,
+      "energy": -13103.4377,
+      "forces_n": 81,
+      "forces_sum": 0.020654,
+      "max_force": 9.389238,
+      "scf_history_len": 61,
+      "step_index": 1
+    },
+    {
+      "coords_n": 0,
+      "coords_sum": null,
+      "energy": -13103.8357,
+      "forces_n": 81,
+      "forces_sum": 0.058416,
+      "max_force": 8.17766,
+      "scf_history_len": 43,
+      "step_index": 2
+    },
+    {
+      "coords_n": 0,
+      "coords_sum": null,
+      "energy": -13104.7174,
+      "forces_n": 81,
+      "forces_sum": 0.024376,
+      "max_force": 5.36191,
+      "scf_history_len": 68,
+      "step_index": 3
+    },
+    {
+      "coords_n": 0,
+      "coords_sum": null,
+      "energy": null,
+      "forces_n": 0,
+      "forces_sum": null,
+      "max_force": null,
+      "scf_history_len": 500,
+      "step_index": 4
+    }
+  ],
+  "lattice_sum": 121.331286,
+  "parse_warning_count": 0,
+  "run_state": "error",
+  "runtime_info": {
+    "n_mpi_processes": 8
+  },
+  "source_format": "siesta"
+}
