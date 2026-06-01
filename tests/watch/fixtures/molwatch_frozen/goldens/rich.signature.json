@@ -1,0 +1,33 @@
+{
+  "error_message": null,
+  "frame_count": 2,
+  "frames": [
+    {
+      "coords_n": 3,
+      "energy": -76.123456,
+      "forces_n": 3,
+      "max_force": 0.0024,
+      "scf_history_len": 3,
+      "step_index": 0,
+      "wall_time": 1761396000.0
+    },
+    {
+      "coords_n": 3,
+      "energy": -76.2,
+      "forces_n": 3,
+      "max_force": 0.000224,
+      "scf_history_len": 2,
+      "step_index": 1,
+      "wall_time": 1761396030.0
+    }
+  ],
+  "lattice_is_none": true,
+  "run_state": "finished",
+  "runtime_info": {
+    "gpu_count": null,
+    "hostname": "testbox",
+    "n_mpi_processes": 4,
+    "omp_threads": 2
+  },
+  "source_format": "pyscf"
+}
