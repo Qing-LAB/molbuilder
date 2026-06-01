@@ -34,9 +34,19 @@ Scope (locked 2026-05-29):
 Module layout:
 
   * Matcher builders (:func:`starts_with_ci`, :func:`contains_ci`,
-    :func:`any_of`) -- pure functions, no parser state.
+    :func:`matches_regex_ci`, :func:`any_of`) -- pure functions, no
+    parser state.  Pattern-capable variants return a
+    :class:`_PatternMatcher` carrying both a regex fragment and a
+    callable fallback so they can participate in combined-regex
+    dispatch while still working as plain ``(line: str) -> bool``
+    callables when invoked outside the driver.
   * :class:`SectionRule` dataclass -- name + matcher + optional
     on_start hook + optional per-line consumer + alias list (docs).
+  * :class:`CompiledRules` + :func:`compile_rules` -- pre-compiled
+    dispatch table the driver uses.  Combined regex over every
+    pattern-capable rule as a fast pre-filter; per-rule individual
+    regex for tie-breaking; predicate-only rules iterated with
+    per-rule error isolation.  Registration order wins on conflict.
   * Sentinels: :data:`CONTINUE`, :data:`END_SECTION`,
     :data:`END_BUBBLE`.  Returned by ``consume`` to drive transitions.
 
@@ -49,7 +59,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional, Pattern, Union
+from typing import Callable, List, Optional, Pattern
 
 
 # ---------------------------------------------------------------------------

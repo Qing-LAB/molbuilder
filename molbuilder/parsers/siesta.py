@@ -37,7 +37,6 @@ from ._rules import (
     SectionRule, compile_rules, contains_ci, matches_regex_ci,
     starts_with_ci,
 )
-from . import _rules
 from .base import TrajectoryParser
 
 
