@@ -47,8 +47,9 @@ callbacks (which close over the parser's locals).
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Pattern, Union
 
 
 # ---------------------------------------------------------------------------
@@ -76,7 +77,65 @@ that itself should match another rule.  Prevents losing one line."""
 # ---------------------------------------------------------------------------
 
 
-def starts_with_ci(prefix: str) -> Callable[[str], bool]:
+# --------------------------------------------------------------------
+# Pattern-matcher abstraction (introduced 2026-05-31).
+#
+# A ``_PatternMatcher`` is what ``starts_with_ci`` / ``contains_ci`` /
+# ``matches_regex_ci`` / ``any_of`` return.  It carries BOTH:
+#
+#   * a regex pattern fragment (string) suitable for inclusion in a
+#     combined-alternation regex compiled by :class:`CompiledRules`;
+#   * a callable fallback so the matcher still works as
+#     ``(line: str) -> bool`` when invoked outside the driver
+#     (tests, ad-hoc usage).
+#
+# The driver's :class:`CompiledRules` partitions rules into
+# regex-capable (``start`` is a ``_PatternMatcher``) and predicate-
+# only (``start`` is a plain callable).  Only regex-capable rules
+# contribute to the combined regex; predicate-only rules are invoked
+# individually on each scan-state line.
+#
+# Registration-order semantics are preserved: the driver iterates
+# rules in registration order; for each regex-capable rule it checks
+# the rule's INDIVIDUAL pre-compiled regex (not just the combined-
+# group result, which would tie-break by position instead of by
+# registration).  The combined regex acts as a fast pre-filter:
+# when it returns no match, no regex-capable rule can fire on this
+# line and the driver skips straight to predicate-only rules.
+# --------------------------------------------------------------------
+
+
+class _PatternMatcher:
+    """A matcher that exposes both a regex pattern + a callable.
+
+    Returned by :func:`starts_with_ci`, :func:`contains_ci`,
+    :func:`matches_regex_ci`, and :func:`any_of` (when all sub-
+    matchers are themselves ``_PatternMatcher`` instances).
+
+    The pattern is a raw string fragment WITHOUT a ``(?i)`` inline
+    flag — :class:`CompiledRules` compiles the alternation with
+    ``re.IGNORECASE`` once.  Including the flag inline would
+    double-apply when the matcher is combined.
+
+    The callable signature is ``(line: str) -> bool``.  Calling a
+    ``_PatternMatcher`` directly delegates to that callable (so old
+    code that did ``rule.start(line)`` keeps working).
+    """
+
+    __slots__ = ("pattern", "_callable")
+
+    def __init__(self, pattern: str, fn: Callable[[str], bool]) -> None:
+        self.pattern = pattern
+        self._callable = fn
+
+    def __call__(self, line: str) -> bool:
+        return self._callable(line)
+
+    def __repr__(self) -> str:
+        return f"_PatternMatcher(pattern={self.pattern!r})"
+
+
+def starts_with_ci(prefix: str) -> "_PatternMatcher":
     """Build a case-insensitive leading-prefix matcher.
 
     The matcher strips leading whitespace then compares against
@@ -85,45 +144,31 @@ def starts_with_ci(prefix: str) -> Callable[[str], bool]:
 
     Returned matcher signature: ``(line: str) -> bool``.
 
-    Performance note (2026-05-31): the driver loop in siesta.py
-    pre-computes ``line.lower()`` and ``line.lstrip().lower()`` once
-    per iteration and rebinds them on closure-captured module
-    globals before invoking matchers, so the matcher itself avoids
-    per-call ``.lower()`` / ``.lstrip()`` overhead.  See
-    :func:`_set_iteration_cache` for the driver hook.
-
     >>> m = starts_with_ci("outcoor:")
-    >>> _set_iteration_cache("OUTCOOR: Atomic coordinates")
     >>> m("OUTCOOR: Atomic coordinates")
     True
-    >>> _set_iteration_cache("  outcoor: foo")
     >>> m("  outcoor: foo")
     True
-    >>> _set_iteration_cache("# outcoor: comment")
     >>> m("# outcoor: comment")
     False
     """
     p = prefix.lower()
+    # Regex form: anchor at start, allow leading whitespace, then the
+    # literal prefix (escaped).  ``re.IGNORECASE`` is applied by
+    # ``CompiledRules`` when assembling the combined regex; we don't
+    # inline ``(?i)`` so the flag doesn't multiply when combined.
+    pattern = r"^[ \t]*" + re.escape(prefix)
 
-    def _match(line: str) -> bool:
-        # _ITER_LSTRIP_LOWER is set by _set_iteration_cache.  Fallback
-        # to a one-shot compute when called outside the driver (tests,
-        # ad-hoc usage) so matchers stay drop-in safe.
-        cached = _ITER_LSTRIP_LOWER
-        if cached is None:
-            cached = line.lstrip().lower()
-        return cached.startswith(p)
+    def _fallback(line: str) -> bool:
+        return line.lstrip().lower().startswith(p)
 
-    return _match
+    return _PatternMatcher(pattern, _fallback)
 
 
-def contains_ci(substr: str) -> Callable[[str], bool]:
+def contains_ci(substr: str) -> "_PatternMatcher":
     """Build a case-insensitive substring matcher.
 
-    Returned matcher signature: ``(line: str) -> bool``.  Performance
-    note: same as :func:`starts_with_ci` — driver pre-computes
-    ``line.lower()`` and matchers read it from a module-global rebound
-    once per iteration.
+    Returned matcher signature: ``(line: str) -> bool``.
 
     Use this for markers embedded in a longer line, e.g.
     ``siesta: E_KS(eV)`` which sits inside ``siesta: E_KS(eV) =
@@ -131,87 +176,70 @@ def contains_ci(substr: str) -> Callable[[str], bool]:
     for the prefix variant when you can.
     """
     s = substr.lower()
+    # Regex form: literal substring (escaped), no anchor.
+    pattern = re.escape(substr)
 
-    def _match(line: str) -> bool:
-        cached = _ITER_LOWER
-        if cached is None:
-            cached = line.lower()
-        return s in cached
+    def _fallback(line: str) -> bool:
+        return s in line.lower()
 
-    return _match
-
-
-# --------------------------------------------------------------------
-# Per-iteration matcher cache (perf optimisation, 2026-05-31).
-#
-# Pre-this-commit: every ``starts_with_ci`` / ``contains_ci`` matcher
-# did its own ``line.lower()`` (and ``starts_with_ci`` also did
-# ``line.lstrip()``).  With 14 rules per scan-state line and SIESTA
-# .out files routinely > 26k lines, the same line was lower-cased
-# ~10x per iteration.
-#
-# The fix: driver pre-computes both ``line.lower()`` and
-# ``line.lstrip().lower()`` ONCE per iteration and stores them on
-# module-level globals before invoking matchers.  Matchers read
-# from the globals directly -- no per-call computation, no dict
-# lookup, no ``id()`` check overhead.
-#
-# The matcher API ``(line: str) -> bool`` is preserved.  Matchers
-# called WITHOUT a prior :func:`_set_iteration_cache` call (tests,
-# ad-hoc usage) fall back to computing the lowered form themselves
-# so behaviour is identical -- just slower per call.
-#
-# Module-private + single-threaded (the parser processes one file
-# at a time on one thread).
-# --------------------------------------------------------------------
-
-_ITER_LOWER:        Optional[str] = None
-_ITER_LSTRIP_LOWER: Optional[str] = None
+    return _PatternMatcher(pattern, _fallback)
 
 
-def _set_iteration_cache(line: str) -> None:
-    """Driver hook: call once per loop iteration BEFORE invoking any
-    matcher.  Pre-computes ``line.lower()`` and ``line.lstrip().lower()``
-    so matchers can read them via the module-global directly."""
-    global _ITER_LOWER, _ITER_LSTRIP_LOWER
-    _ITER_LOWER = line.lower()
-    # Skip a redundant lstrip().lower() when the line has no leading
-    # whitespace -- common for SIESTA output lines that DO have
-    # leading whitespace are SCF data + force rows, both of which
-    # use regex matchers, not starts_with_ci.
-    if line and line[0] not in (" ", "\t"):
-        _ITER_LSTRIP_LOWER = _ITER_LOWER
-    else:
-        _ITER_LSTRIP_LOWER = line.lstrip().lower()
+def matches_regex_ci(pattern: str) -> "_PatternMatcher":
+    """Build a matcher backed by a raw regex pattern.
+
+    Use this when :func:`starts_with_ci` / :func:`contains_ci` aren't
+    expressive enough -- e.g. the SCF data line ``"   scf:    1 ..."``
+    needs a regex like ``r"^\\s*scf:\\s*\\d+\\s+"`` to discriminate
+    against arbitrary lines containing ``"scf:"``.
+
+    The pattern is matched case-insensitively (via ``re.IGNORECASE``
+    on the compiled regex; do NOT include ``(?i)`` in your pattern).
+    The matcher's fallback compiles the pattern once at call site +
+    uses ``re.search`` so the matcher behaves identically inside and
+    outside the driver loop.
+    """
+    compiled = re.compile(pattern, re.IGNORECASE)
+
+    def _fallback(line: str) -> bool:
+        return compiled.search(line) is not None
+
+    return _PatternMatcher(pattern, _fallback)
 
 
-def _clear_iteration_cache() -> None:
-    """Driver hook: call when leaving the matcher-dispatch loop so
-    out-of-loop ``starts_with_ci`` / ``contains_ci`` calls fall back
-    to the one-shot compute path."""
-    global _ITER_LOWER, _ITER_LSTRIP_LOWER
-    _ITER_LOWER = None
-    _ITER_LSTRIP_LOWER = None
-
-
-def any_of(*matchers: Callable[[str], bool]) -> Callable[[str], bool]:
+def any_of(*matchers):
     """Combine matchers with OR semantics.
 
     Used to wire a per-rule alias list: build one matcher per accepted
     section header, then OR them together.  Returning early on the
     first hit keeps the per-line cost ~O(aliases) in the worst case
     but usually O(1) (the first alias matches, the rest are skipped).
+
+    Type promotion: if EVERY sub-matcher is a :class:`_PatternMatcher`,
+    the return is also a ``_PatternMatcher`` whose pattern is the
+    alternation of the sub-patterns and whose fallback is the OR
+    short-circuit.  This keeps ``any_of(...)`` chains regex-capable
+    so the combined-regex driver path covers them.
+
+    If any sub-matcher is a plain callable (e.g. a closure with
+    state), the return is a plain callable -- the combined-regex
+    optimisation can't include this rule, but correctness is
+    preserved via the predicate-only path.
     """
     if not matchers:
         raise ValueError("any_of requires at least one matcher")
 
-    def _match(line: str) -> bool:
+    def _fallback(line: str) -> bool:
         for m in matchers:
             if m(line):
                 return True
         return False
 
-    return _match
+    if all(isinstance(m, _PatternMatcher) for m in matchers):
+        combined_pattern = "|".join(f"(?:{m.pattern})" for m in matchers)
+        return _PatternMatcher(combined_pattern, _fallback)
+
+    return _fallback
 
 
 # ---------------------------------------------------------------------------
@@ -268,3 +296,143 @@ class SectionRule:
     on_start: Optional[Callable[[str, int], None]] = None
     consume: Optional[Callable[[str, int], str]] = None
     aliases: List[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        # name must be non-empty and a valid identifier-ish slug.
+        # Used to disambiguate matches in the combined-regex's named
+        # groups (see :class:`CompiledRules`).
+        if not isinstance(self.name, str) or not self.name:
+            raise ValueError("SectionRule.name must be a non-empty string")
+        # start must be callable (either a _PatternMatcher or a plain
+        # callable / closure).  We can't check pattern shape here
+        # because plain callables are legal.
+        if not callable(self.start):
+            raise ValueError(
+                f"SectionRule(name={self.name!r}).start must be a "
+                f"_PatternMatcher or a plain callable, got "
+                f"{type(self.start).__name__}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# CompiledRules -- compile a rule list into a combined-regex pre-filter
+# + per-rule fallback so the driver can dispatch with one regex search
+# in the common case.
+# ---------------------------------------------------------------------------
+
+
+class CompiledRules:
+    """Pre-compiled rule dispatch table for the driver loop.
+
+    Built once at parse-init via :func:`compile_rules`.  Carries:
+
+      * the original rule list (in registration order);
+      * a per-rule pre-compiled regex for ``_PatternMatcher`` rules
+        (None for plain-callable rules);
+      * a combined regex over ALL ``_PatternMatcher`` rules, used as
+        a fast pre-filter so the driver can skip per-rule iteration
+        when no regex-capable rule can possibly match the line.
+
+    :meth:`find_match` is the dispatch entry-point.  Per scan-state
+    line:
+
+      1. Run the combined regex once.  If it returns no match, no
+         regex-capable rule can fire on this line.  Skip to step 3
+         (predicate-only rules might still match).
+      2. If the combined regex matched, the line contains SOMETHING
+         a regex rule wants.  Iterate the rule list in registration
+         order; for each regex-capable rule, check its individual
+         pre-compiled regex (the combined regex's leftmost-position
+         tie-break can disagree with registration order if multiple
+         rules match at different positions).  First rule that fires
+         wins.
+      3. Iterate the rule list in registration order; for each
+         predicate-only rule, call its callable.  First rule that
+         fires wins.
+
+    Steps 2 and 3 are interleaved -- the actual implementation
+    iterates the rule list ONCE and dispatches each rule by type.
+    Per-rule errors are caught + ignored to preserve § 6 isolation.
+    """
+
+    __slots__ = ("rules", "individual_patterns", "combined_regex")
+
+    def __init__(self, rules: List["SectionRule"]) -> None:
+        self.rules: List["SectionRule"] = list(rules)
+        self.individual_patterns: List[Optional[Pattern[str]]] = []
+        regex_parts: List[str] = []
+        for r in self.rules:
+            if isinstance(r.start, _PatternMatcher):
+                # Pre-compile each rule's pattern individually so
+                # ``find_match`` can verify per-rule matches without
+                # re-running the combined regex.
+                self.individual_patterns.append(
+                    re.compile(r.start.pattern, re.IGNORECASE)
+                )
+                regex_parts.append(r.start.pattern)
+            else:
+                self.individual_patterns.append(None)
+        # Combined regex: one DFA scan tests every literal-pattern rule
+        # at once.  When this returns no match on a scan-state line,
+        # the driver knows NO regex-capable rule can fire -- skip
+        # straight to predicate-only iteration.
+        if regex_parts:
+            combined_pattern = "|".join(f"(?:{p})" for p in regex_parts)
+            self.combined_regex: Optional[Pattern[str]] = re.compile(
+                combined_pattern, re.IGNORECASE
+            )
+        else:
+            self.combined_regex = None
+
+    def find_match(self, line: str) -> Optional["SectionRule"]:
+        """Return the first rule (in registration order) whose
+        matcher fires on ``line``, or None if none fire.
+
+        Exceptions raised by predicate-only matchers are caught and
+        ignored per § 6 error isolation -- the same line goes on to
+        be tested against subsequent rules.
+        """
+        # Step 1: fast pre-filter.  If no regex-capable rule could
+        # fire, we still need to iterate predicate-only rules.
+        any_regex_could_fire = (
+            self.combined_regex is not None
+            and self.combined_regex.search(line) is not None
+        )
+        # Step 2 + 3 (interleaved): iterate rules in order.
+        for i, rule in enumerate(self.rules):
+            ip = self.individual_patterns[i]
+            if ip is not None:
+                # Regex-capable rule.  Combined-regex fast path:
+                # if no regex rule could fire on this line, skip
+                # the per-rule regex search.
+                if not any_regex_could_fire:
+                    continue
+                if ip.search(line) is not None:
+                    return rule
+            else:
+                # Predicate-only rule.
+                try:
+                    if rule.start(line):
+                        return rule
+                except Exception:
+                    # § 6 error isolation: one bad matcher must not
+                    # poison dispatch for the rest of the line.
+                    continue
+        return None
+
+
+def compile_rules(rules: List["SectionRule"]) -> CompiledRules:
+    """Compile a list of :class:`SectionRule` into a
+    :class:`CompiledRules` dispatch table.  Call once at parse-init;
+    the returned object is reusable across lines."""
+    # Validate uniqueness of rule.name (used for diagnostics + future
+    # named-group dispatch).
+    seen = set()
+    for r in rules:
+        if r.name in seen:
+            raise ValueError(
+                f"duplicate SectionRule name: {r.name!r}.  Rule names "
+                f"must be unique in a rule list."
+            )
+        seen.add(r.name)
+    return CompiledRules(rules)
