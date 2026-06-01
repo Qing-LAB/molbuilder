@@ -58,24 +58,68 @@ const lockSubscribers = new Set();
 let lockState = null;        // { reason: string, cancelers: Function[] }
                               // or null when unlocked.
 
+// ----- shared subscriber helpers --------------------------------- //
+//
+// Two contracts driven by docs/protocols/projects-sidebar.md (per
+// the 2026-05-31 design decisions A1/A1b/A2):
+//
+//   * Registration is idempotent intent.  Re-registering the same
+//     callback (by reference) is a programming error and THROWS.
+//     Catches forgotten-unsubscribe / double-init bugs at the call
+//     site instead of letting them silently no-op.
+//   * Publish snapshots subscribers BEFORE iterating.  Subscribers
+//     added during a publish loop fire only on subsequent events --
+//     they already received the current state via fire-once-
+//     immediately on their own subscribe call.  This guarantees
+//     every subscriber fires exactly once per state change.
+//
+// Errors thrown by individual subscriber callbacks are caught and
+// swallowed (per-subscriber error isolation) so one bad subscriber
+// can't poison the publish loop for the rest.
+
+function _registerSubscriber(set, cb, label) {
+  if (set.has(cb)) {
+    throw new Error(
+      label + ": this callback is already registered.  Call the "
+      + "returned unsub() before re-subscribing."
+    );
+  }
+  set.add(cb);
+}
+
+function _publishToSet(set, payload) {
+  // Snapshot first so new subscribers added inside a callback are
+  // NOT visited (they got the current state via fire-once-immediately
+  // on their own subscribe call).
+  const snapshot = Array.from(set);
+  for (const cb of snapshot) {
+    // Skip subscribers that were removed during the loop (e.g. a
+    // subscriber that calls its own unsub() inside its callback).
+    if (!set.has(cb)) continue;
+    try { cb(payload); } catch (_) { /* per-subscriber isolation */ }
+  }
+}
+
+// ----- internal: publish loops ----------------------------------- //
+
 function _publishLockChange() {
-  const payload = { locked: lockState !== null,
-                    reason: lockState ? lockState.reason : "" };
-  lockSubscribers.forEach((cb) => {
-    try { cb(payload); } catch (_) { /* one bad subscriber can't break the loop */ }
+  _publishToSet(lockSubscribers, {
+    locked: lockState !== null,
+    reason: lockState ? lockState.reason : "",
   });
 }
 
-// ----- internal: set + notify ------------------------------------ //
-
-function publishSelectionChange() {
-  const payload = {
-    dir:  sessionStorage.getItem(SS_DIR)  || "",
-    file: sessionStorage.getItem(SS_FILE) || "",
-  };
-  selectionSubscribers.forEach((cb) => {
-    try { cb(payload); } catch (_) { /* one bad subscriber shouldn't break the loop */ }
-  });
+function publishSelectionChange(payload) {
+  // Caller may supply the payload explicitly when sessionStorage
+  // can't be relied on (e.g. setShared in private-mode where setItem
+  // threw).  When omitted, read live from sessionStorage.
+  if (!payload) {
+    payload = {
+      dir:  sessionStorage.getItem(SS_DIR)  || "",
+      file: sessionStorage.getItem(SS_FILE) || "",
+    };
+  }
+  _publishToSet(selectionSubscribers, payload);
 }
 
 // ----- exposed to other modules ---------------------------------- //
@@ -96,9 +140,24 @@ export function setShared(dir, file) {
       error: "sidebar is locked: " + (lockState.reason || "operation in progress"),
     };
   }
-  sessionStorage.setItem(SS_DIR,  dir  || "");
-  sessionStorage.setItem(SS_FILE, file || "");
-  publishSelectionChange();
+  // sessionStorage may throw on quota / private-mode SecurityError /
+  // explicit storage-denied.  Per design § 11.4 + Principle 6 we MUST
+  // NOT propagate the throw -- publish the new state regardless so
+  // subscribers still update; the cursor just won't survive a reload.
+  const payload = { dir: dir || "", file: file || "" };
+  try {
+    sessionStorage.setItem(SS_DIR,  payload.dir);
+    sessionStorage.setItem(SS_FILE, payload.file);
+  } catch (e) {
+    // Logged loud-but-non-fatal so a developer notices in DevTools.
+    // No user-facing error -- the page keeps working.
+    console.warn(
+      "molbuilder.projects.setShared: sessionStorage write failed; "
+      + "cursor won't survive reload",
+      e && e.message ? e.message : e
+    );
+  }
+  publishSelectionChange(payload);
   return { ok: true };
 }
 
@@ -114,10 +173,7 @@ const rootSubscribers = new Set();
 let rootResolved = false;
 
 function _publishRootResolved() {
-  const payload = { root: projectsRoot || "" };
-  rootSubscribers.forEach((cb) => {
-    try { cb(payload); } catch (_) { /* per-subscriber isolation */ }
-  });
+  _publishToSet(rootSubscribers, { root: projectsRoot || "" });
 }
 
 export function setProjectsRoot(root) {
@@ -156,16 +212,27 @@ export function atProjectsRoot(dir) {
 }
 
 async function readCurrentFile(opts) {
+  // Per design § C3 ReadResult:
+  //   * null  — no file is currently selected (cursor's file slot empty)
+  //   * {ok:true, path, text}   — read succeeded
+  //   * {ok:false, error}       — read failed
+  // The null case is INTENTIONALLY distinct from a failure so callers
+  // can render "no file selected" vs "read failed" differently.
   const path = sessionStorage.getItem(SS_FILE) || "";
   if (!path) return null;
   const j = await apiRead(path, opts);
-  if (!j.ok) return null;
-  return {path: j.path, text: j.text};
+  if (!j.ok) return { ok: false, error: j.error || "read failed" };
+  return { ok: true, path: j.path, text: j.text };
 }
 
-async function refresh() {
+async function refresh(opts) {
+  // Per design § C6: returns {ok:true} | {ok:false, error}.  The
+  // earlier void-return contract violated Principle 6 (every async
+  // public method returns an envelope or null).
   const dir = sessionStorage.getItem(SS_DIR) || projectsRoot;
-  if (!dir) return;
+  if (!dir) {
+    return { ok: false, error: "no current directory to refresh" };
+  }
   if (!refreshHandler) {
     // initList() registers itself as the refresh handler.  If we
     // got here without one, the sidebar's init order is broken --
@@ -174,9 +241,17 @@ async function refresh() {
       "molbuilder.projects.refresh(): no refresh handler registered.  "
       + "list.js should call setRefreshHandler(openDir) at init time."
     );
-    return;
+    return { ok: false, error: "no refresh handler registered" };
   }
-  await refreshHandler(dir);
+  try {
+    await refreshHandler(dir);
+    return { ok: true };
+  } catch (e) {
+    return {
+      ok:    false,
+      error: "refresh failed: " + (e && e.message ? e.message : String(e)),
+    };
+  }
 }
 
 /**
@@ -201,7 +276,15 @@ async function refresh() {
  */
 async function writeFile(path, text, opts) {
   const w = await apiWrite(path, text, opts);
-  if (!w.ok) return {ok: false, error: w.error};
+  if (!w.ok) {
+    // Preserve `actual_mtime` on a 409 edit-conflict so tabs can
+    // distinguish edit-conflict from other failures per design § 6.2.
+    // Also preserve `aborted` if a Cancel cancelled the write.
+    const err = { ok: false, error: w.error };
+    if (w.actual_mtime != null) err.actual_mtime = w.actual_mtime;
+    if (w.aborted) err.aborted = true;
+    return err;
+  }
   // Refresh the sidebar listing if we wrote into its current dir.
   // Harmless if not (no-op).  We don't await refresh's own failures.
   try {
@@ -337,12 +420,20 @@ async function rename(path, newName, opts) {
 }
 
 /** Upload a file into ``targetDir``.  ``opts.signal`` honoured.
- *  Refreshes ``targetDir`` on success. */
+ *  Refreshes ``targetDir`` on success.  Adds ``relPath`` to the
+ *  success envelope per design § C6 (UploadOk = WriteOk shape;
+ *  backend's /api/files/upload only returns {ok, path, size, mtime}
+ *  so we compute relPath from the projects root here). */
 async function upload(targetDir, file, opts) {
   const r = await apiUpload(targetDir, file, opts);
-  if (r && r.ok && refreshHandler) {
-    try { await refreshHandler(targetDir); }
-    catch (_) { /* refresh failure must not fail the upload */ }
+  if (r && r.ok) {
+    if (r.path && !r.relPath) {
+      r.relPath = relativeToProjects(r.path);
+    }
+    if (refreshHandler) {
+      try { await refreshHandler(targetDir); }
+      catch (_) { /* refresh failure must not fail the upload */ }
+    }
   }
   return r;
 }
@@ -470,7 +561,7 @@ export const projects = {
   atRoot:              () => atProjectsRoot(
                           sessionStorage.getItem(SS_DIR) || ""),
   onChange: (cb) => {
-    selectionSubscribers.add(cb);
+    _registerSubscriber(selectionSubscribers, cb, "onChange");
     // Fire once immediately so subscribers can initialise from the
     // current state without a separate getCurrent* call.
     try {
@@ -513,7 +604,7 @@ export const projects = {
   isLocked: () => lockState !== null,
   getLockReason: () => lockState ? lockState.reason : "",
   onLockChange: (cb) => {
-    lockSubscribers.add(cb);
+    _registerSubscriber(lockSubscribers, cb, "onLockChange");
     // Fire once so the subscriber can render its current state.
     try {
       cb({ locked: lockState !== null,
@@ -528,7 +619,7 @@ export const projects = {
   // that register AFTER resolution receive an immediate call with
   // the resolved root (the fire-once-immediately contract).
   onProjectsRootResolved: (cb) => {
-    rootSubscribers.add(cb);
+    _registerSubscriber(rootSubscribers, cb, "onProjectsRootResolved");
     if (rootResolved) {
       try { cb({ root: projectsRoot || "" }); }
       catch (_) { /* per-subscriber isolation */ }

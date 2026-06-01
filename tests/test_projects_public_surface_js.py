@@ -84,9 +84,13 @@ def _run_node(snippet: str) -> object:
         )
     last_line = proc.stdout.strip().splitlines()[-1]
     out = json.loads(last_line)
-    assert "__test_unexpected_throw" not in out, (
-        "module threw: " + str(out)
-    )
+    # The throw-marker check only applies when the snippet emits a
+    # JSON object (the typical case).  Tests that legitimately emit
+    # a scalar / array bypass the check.
+    if isinstance(out, dict):
+        assert "__test_unexpected_throw" not in out, (
+            "module threw: " + str(out)
+        )
     return out
 
 
@@ -428,6 +432,373 @@ class TestNavigateTo:
         assert "sidebar is locked" in out["envelope"]["error"]
         assert "Saving FDF" in out["envelope"]["error"]
         assert out["implCalled"] is False
+
+
+# ----- readCurrentFile envelope (design § C3) -------------------- #
+
+
+class TestReadCurrentFileEnvelope:
+    """Per design § C3: ReadResult = ReadOk | ReadErr | null.
+    null only for the no-file-selected case.  ReadOk is
+    {ok:true, path, text}; ReadErr is {ok:false, error}."""
+
+    def test_no_file_selected_returns_null(self):
+        out = _run_node('''
+            const r = await state.projects.readCurrentFile();
+            console.log(JSON.stringify(r));
+        ''')
+        assert out is None
+
+    def test_success_returns_envelope_with_ok(self):
+        out = _run_node('''
+            sessionStorage.setItem("molbuilder.current_file", "/p/f.xyz");
+            global.fetch = async () => ({
+                ok: true, status: 200,
+                json: async () => ({
+                    ok: true, path: "/p/f.xyz", text: "hello",
+                }),
+            });
+            const r = await state.projects.readCurrentFile();
+            console.log(JSON.stringify(r));
+        ''')
+        assert out == {"ok": True, "path": "/p/f.xyz", "text": "hello"}
+
+    def test_failure_returns_envelope_not_null(self):
+        out = _run_node('''
+            sessionStorage.setItem("molbuilder.current_file", "/p/f.xyz");
+            global.fetch = async () => ({
+                ok: false, status: 404,
+                json: async () => ({ ok: false, error: "not found" }),
+            });
+            const r = await state.projects.readCurrentFile();
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["ok"] is False
+        assert "not found" in out["error"]
+
+
+# ----- refresh envelope (design § C6) ---------------------------- #
+
+
+class TestRefreshEnvelope:
+    """Per design § C6: refresh returns {ok:true} | {ok:false, error}.
+    Previously returned undefined on every path, violating Principle 6."""
+
+    def test_no_current_dir_returns_envelope_not_undefined(self):
+        out = _run_node('''
+            const r = await state.projects.refresh();
+            console.log(JSON.stringify({
+                r: r,
+                isUndefined: r === undefined,
+            }));
+        ''')
+        assert out["isUndefined"] is False
+        assert out["r"]["ok"] is False
+        assert "no current directory" in out["r"]["error"]
+
+    def test_no_refresh_handler_returns_envelope(self):
+        out = _run_node('''
+            sessionStorage.setItem("molbuilder.current_dir", "/p");
+            const r = await state.projects.refresh();
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["ok"] is False
+        assert "no refresh handler" in out["error"]
+
+    def test_success_returns_ok_envelope(self):
+        out = _run_node('''
+            sessionStorage.setItem("molbuilder.current_dir", "/p");
+            state.setRefreshHandler(async (dir) => { /* success */ });
+            const r = await state.projects.refresh();
+            console.log(JSON.stringify(r));
+        ''')
+        assert out == {"ok": True}
+
+    def test_handler_throws_returns_error_envelope(self):
+        out = _run_node('''
+            sessionStorage.setItem("molbuilder.current_dir", "/p");
+            state.setRefreshHandler(async () => {
+                throw new Error("listing failed");
+            });
+            const r = await state.projects.refresh();
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["ok"] is False
+        assert "refresh failed" in out["error"]
+        assert "listing failed" in out["error"]
+
+
+# ----- writeFile preserves actual_mtime on 409 (design § C4) ----- #
+
+
+class TestWriteFileEdgeFields:
+    """Per design § C4 WriteErr includes actual_mtime? on a 409
+    edit-conflict.  Previously writeFile destructured only `error`
+    and dropped actual_mtime, so tabs couldn't distinguish edit-
+    conflict programmatically per § 6.2."""
+
+    def test_writeFile_preserves_actual_mtime_on_409(self):
+        out = _run_node('''
+            global.fetch = async () => ({
+                ok: false, status: 409,
+                json: async () => ({
+                    ok: false, error: "edit conflict",
+                    actual_mtime: 1717174420.5,
+                }),
+            });
+            const r = await state.projects.writeFile("/p/f", "text");
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["ok"] is False
+        assert out["error"] == "edit conflict"
+        assert out["actual_mtime"] == 1717174420.5
+
+    def test_writeFile_preserves_aborted_flag(self):
+        """AbortError envelope carries aborted:true; writeFile must
+        not drop the flag."""
+        out = _run_node('''
+            global.fetch = async () => {
+                const err = new Error("aborted");
+                err.name = "AbortError";
+                throw err;
+            };
+            const r = await state.projects.writeFile("/p/f", "text");
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["ok"] is False
+        assert out["aborted"] is True
+
+
+# ----- upload adds relPath (design § C6) ------------------------- #
+
+
+class TestUploadEnvelopeShape:
+    """Per design § C6 UploadOk = WriteOk = {ok, path, relPath,
+    size, mtime}.  Backend's /api/files/upload returns only
+    {ok, path, size, mtime} (no relPath); state.upload computes
+    relPath from the projects root."""
+
+    def test_upload_computes_relPath_from_projects_root(self):
+        out = _run_node('''
+            state.setProjectsRoot("/home/u/projects");
+            global.fetch = async () => ({
+                ok: true, status: 200,
+                json: async () => ({
+                    ok: true,
+                    path: "/home/u/projects/myjob/data.xyz",
+                    size: 1234, mtime: 999,
+                }),
+            });
+            const r = await state.projects.upload(
+                "/home/u/projects/myjob", { name: "data.xyz" }
+            );
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["ok"] is True
+        assert out["path"] == "/home/u/projects/myjob/data.xyz"
+        assert out["relPath"] == "myjob/data.xyz"
+        assert out["size"] == 1234
+        assert out["mtime"] == 999
+
+
+# ----- setShared sessionStorage failure (design § 11.4) ---------- #
+
+
+class TestSetSharedStorageFailure:
+    """Per design § 11.4: sessionStorage write may throw (quota,
+    private-mode SecurityError, storage denied).  setShared MUST NOT
+    propagate the throw (violates Principle 6); it MUST publish the
+    new state regardless so subscribers update; the cursor just
+    won't survive a reload."""
+
+    def test_setShared_swallows_sessionStorage_error_and_publishes(self):
+        out = _run_node('''
+            // Make sessionStorage.setItem throw.  Use a wrapper
+            // so we can flip it on/off.
+            let storageBroken = false;
+            const origSet = sessionStorage.setItem.bind(sessionStorage);
+            global.sessionStorage.setItem = (k, v) => {
+                if (storageBroken) {
+                    const e = new Error("QuotaExceededError");
+                    e.name = "QuotaExceededError";
+                    throw e;
+                }
+                return origSet(k, v);
+            };
+            const calls = [];
+            state.projects.onChange(p => calls.push({...p}));
+            // First setShared works.
+            const r1 = state.setShared("/before", "/before/x");
+            // Now break storage.
+            storageBroken = true;
+            const r2 = state.setShared("/after", "/after/y");
+            console.log(JSON.stringify({
+                r1: r1,
+                r2: r2,
+                calls: calls,
+            }));
+        ''')
+        assert out["r1"] == {"ok": True}
+        assert out["r2"] == {"ok": True}    # MUST NOT throw
+        # 3 calls: initial-fire on subscribe + 2 from setShared.
+        assert len(out["calls"]) == 3
+        # The post-failure publish carries the INTENDED payload
+        # (sessionStorage didn't update, so without the explicit
+        # payload the publish would carry "/before" + "/before/x").
+        assert out["calls"][2] == {"dir": "/after", "file": "/after/y"}
+
+
+# ----- Subscriber contract: throw on duplicate (A1b) ------------- #
+
+
+class TestSubscribeDedupThrows:
+    """Per design § 5.5 + § 11.5 (2026-05-31): registering the SAME
+    callback (by reference) twice on any subscribe API is a
+    programming error and must throw an Error.  Catches forgotten-
+    unsubscribe + double-init bugs at the call site."""
+
+    def test_onChange_throws_on_duplicate(self):
+        out = _run_node('''
+            const cb = (p) => {};
+            state.projects.onChange(cb);
+            let threw = false;
+            let msg = "";
+            try { state.projects.onChange(cb); }
+            catch (e) { threw = true; msg = e.message; }
+            console.log(JSON.stringify({ threw: threw, msg: msg }));
+        ''')
+        assert out["threw"] is True
+        assert "onChange" in out["msg"]
+        assert "already registered" in out["msg"]
+
+    def test_onLockChange_throws_on_duplicate(self):
+        out = _run_node('''
+            const cb = (p) => {};
+            state.projects.onLockChange(cb);
+            let threw = false;
+            try { state.projects.onLockChange(cb); }
+            catch (e) { threw = true; }
+            console.log(JSON.stringify(threw));
+        ''')
+        assert out is True
+
+    def test_onProjectsRootResolved_throws_on_duplicate(self):
+        out = _run_node('''
+            const cb = (p) => {};
+            state.projects.onProjectsRootResolved(cb);
+            let threw = false;
+            try { state.projects.onProjectsRootResolved(cb); }
+            catch (e) { threw = true; }
+            console.log(JSON.stringify(threw));
+        ''')
+        assert out is True
+
+    def test_different_callbacks_register_independently(self):
+        """Two DIFFERENT callbacks (different fn objects) both register
+        and both fire.  Only by-reference duplicates throw."""
+        out = _run_node('''
+            const calls = [];
+            const cb1 = (p) => calls.push("cb1");
+            const cb2 = (p) => calls.push("cb2");
+            state.projects.onChange(cb1);
+            state.projects.onChange(cb2);
+            state.setShared("/d", "/d/f");
+            console.log(JSON.stringify(calls));
+        ''')
+        # Initial fires (each subscribe fires once immediately) plus
+        # the setShared fire.  Order: cb1 immediate, cb2 immediate,
+        # then both fire from publishSelectionChange.
+        assert out == ["cb1", "cb2", "cb1", "cb2"]
+
+    def test_unsubscribe_then_resubscribe_succeeds(self):
+        """The throw only fires for duplicate REGISTRATIONS.  After
+        an unsub() the same callback can be re-registered."""
+        out = _run_node('''
+            const cb = (p) => {};
+            const unsub = state.projects.onChange(cb);
+            unsub();
+            let threw = false;
+            try { state.projects.onChange(cb); }
+            catch (e) { threw = true; }
+            console.log(JSON.stringify(threw));
+        ''')
+        assert out is False
+
+
+# ----- Publish snapshot semantics (A2) --------------------------- #
+
+
+class TestPublishSnapshotSemantics:
+    """Per design § 5.5: publish snapshots subscribers BEFORE
+    iterating.  Subscribers registered DURING a publish loop fire
+    only on subsequent events -- they got the current state via
+    fire-once-immediately on their own subscribe call."""
+
+    def test_new_subscriber_registered_during_publish_loop_does_not_fire_in_progress(self):
+        out = _run_node('''
+            const calls = [];
+            const lateCb = (p) => calls.push({fn:"late", file:p.file});
+            let lateRegistered = false;
+            const earlyCb = (p) => {
+                calls.push({fn:"early", file:p.file});
+                // Register late ONLY while the publish loop is
+                // running (when p.file is the post-setShared value).
+                // Registering during early's initial-fire (p.file
+                // === "") would put late in the subscriber set
+                // BEFORE setShared's publish snapshots, which is a
+                // different case.
+                if (!lateRegistered && p.file === "/d/file.out") {
+                    lateRegistered = true;
+                    state.projects.onChange(lateCb);
+                }
+            };
+            state.projects.onChange(earlyCb);
+            state.setShared("/d", "/d/file.out");
+            console.log(JSON.stringify(calls));
+        ''')
+        # Sequence:
+        #   1. earlyCb subscribes -> fires immediately with "".
+        #   2. setShared updates sessionStorage + calls publish.
+        #      Snapshot taken = [earlyCb] (lateCb not yet registered).
+        #   3. earlyCb fires from snapshot with /d/file.out.
+        #      Inside its callback, registers lateCb.
+        #      lateCb's fire-once-immediately fires with current
+        #      state (/d/file.out).
+        #   4. Publish loop continues; snapshot has only earlyCb,
+        #      so lateCb is NOT visited by the in-progress loop.
+        # Total entries: 3.  NOT 4 (no double-fire of lateCb).
+        assert out == [
+            {"fn": "early", "file": ""},
+            {"fn": "early", "file": "/d/file.out"},
+            {"fn": "late",  "file": "/d/file.out"},
+        ]
+
+    def test_unsubscribed_during_callback_is_skipped(self):
+        """A subscriber that unsubscribes itself during the publish
+        loop IS skipped on subsequent iterations of the same loop --
+        Set.delete on the live set takes effect immediately, and the
+        snapshot iteration checks membership before invoking each
+        entry."""
+        out = _run_node('''
+            const calls = [];
+            const cb1 = (p) => calls.push("cb1");
+            let unsub2;
+            const cb2 = (p) => {
+                calls.push("cb2");
+                unsub2();   // unsubscribe self
+            };
+            const cb3 = (p) => calls.push("cb3");
+            state.projects.onChange(cb1);
+            unsub2 = state.projects.onChange(cb2);
+            state.projects.onChange(cb3);
+            // Pre-publish: each subscribe fired once.
+            calls.length = 0;
+            state.setShared("/d", "/d/x");
+            console.log(JSON.stringify(calls));
+        ''')
+        # Publish snapshot is [cb1, cb2, cb3].  cb1 fires, cb2 fires +
+        # unsubs, cb3 fires (cb2 already gone but cb3 still in set).
+        assert out == ["cb1", "cb2", "cb3"]
 
 
 # ----- onProjectsRootResolved (design § C2) ---------------------- #
