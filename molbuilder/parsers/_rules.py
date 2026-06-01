@@ -83,24 +83,47 @@ def starts_with_ci(prefix: str) -> Callable[[str], bool]:
     ``prefix.lower()``.  Use this for section headers that always
     sit at column 0 (modulo indentation), e.g. ``outcoor:``.
 
+    Returned matcher signature: ``(line: str) -> bool``.
+
+    Performance note (2026-05-31): the driver loop in siesta.py
+    pre-computes ``line.lower()`` and ``line.lstrip().lower()`` once
+    per iteration and rebinds them on closure-captured module
+    globals before invoking matchers, so the matcher itself avoids
+    per-call ``.lower()`` / ``.lstrip()`` overhead.  See
+    :func:`_set_iteration_cache` for the driver hook.
+
     >>> m = starts_with_ci("outcoor:")
+    >>> _set_iteration_cache("OUTCOOR: Atomic coordinates")
     >>> m("OUTCOOR: Atomic coordinates")
     True
+    >>> _set_iteration_cache("  outcoor: foo")
     >>> m("  outcoor: foo")
     True
-    >>> m("# outcoor: comment")  # leading '#' breaks the prefix
+    >>> _set_iteration_cache("# outcoor: comment")
+    >>> m("# outcoor: comment")
     False
     """
     p = prefix.lower()
 
     def _match(line: str) -> bool:
-        return line.lstrip().lower().startswith(p)
+        # _ITER_LSTRIP_LOWER is set by _set_iteration_cache.  Fallback
+        # to a one-shot compute when called outside the driver (tests,
+        # ad-hoc usage) so matchers stay drop-in safe.
+        cached = _ITER_LSTRIP_LOWER
+        if cached is None:
+            cached = line.lstrip().lower()
+        return cached.startswith(p)
 
     return _match
 
 
 def contains_ci(substr: str) -> Callable[[str], bool]:
     """Build a case-insensitive substring matcher.
+
+    Returned matcher signature: ``(line: str) -> bool``.  Performance
+    note: same as :func:`starts_with_ci` — driver pre-computes
+    ``line.lower()`` and matchers read it from a module-global rebound
+    once per iteration.
 
     Use this for markers embedded in a longer line, e.g.
     ``siesta: E_KS(eV)`` which sits inside ``siesta: E_KS(eV) =
@@ -110,9 +133,65 @@ def contains_ci(substr: str) -> Callable[[str], bool]:
     s = substr.lower()
 
     def _match(line: str) -> bool:
-        return s in line.lower()
+        cached = _ITER_LOWER
+        if cached is None:
+            cached = line.lower()
+        return s in cached
 
     return _match
+
+
+# --------------------------------------------------------------------
+# Per-iteration matcher cache (perf optimisation, 2026-05-31).
+#
+# Pre-this-commit: every ``starts_with_ci`` / ``contains_ci`` matcher
+# did its own ``line.lower()`` (and ``starts_with_ci`` also did
+# ``line.lstrip()``).  With 14 rules per scan-state line and SIESTA
+# .out files routinely > 26k lines, the same line was lower-cased
+# ~10x per iteration.
+#
+# The fix: driver pre-computes both ``line.lower()`` and
+# ``line.lstrip().lower()`` ONCE per iteration and stores them on
+# module-level globals before invoking matchers.  Matchers read
+# from the globals directly -- no per-call computation, no dict
+# lookup, no ``id()`` check overhead.
+#
+# The matcher API ``(line: str) -> bool`` is preserved.  Matchers
+# called WITHOUT a prior :func:`_set_iteration_cache` call (tests,
+# ad-hoc usage) fall back to computing the lowered form themselves
+# so behaviour is identical -- just slower per call.
+#
+# Module-private + single-threaded (the parser processes one file
+# at a time on one thread).
+# --------------------------------------------------------------------
+
+_ITER_LOWER:        Optional[str] = None
+_ITER_LSTRIP_LOWER: Optional[str] = None
+
+
+def _set_iteration_cache(line: str) -> None:
+    """Driver hook: call once per loop iteration BEFORE invoking any
+    matcher.  Pre-computes ``line.lower()`` and ``line.lstrip().lower()``
+    so matchers can read them via the module-global directly."""
+    global _ITER_LOWER, _ITER_LSTRIP_LOWER
+    _ITER_LOWER = line.lower()
+    # Skip a redundant lstrip().lower() when the line has no leading
+    # whitespace -- common for SIESTA output lines that DO have
+    # leading whitespace are SCF data + force rows, both of which
+    # use regex matchers, not starts_with_ci.
+    if line and line[0] not in (" ", "\t"):
+        _ITER_LSTRIP_LOWER = _ITER_LOWER
+    else:
+        _ITER_LSTRIP_LOWER = line.lstrip().lower()
+
+
+def _clear_iteration_cache() -> None:
+    """Driver hook: call when leaving the matcher-dispatch loop so
+    out-of-loop ``starts_with_ci`` / ``contains_ci`` calls fall back
+    to the one-shot compute path."""
+    global _ITER_LOWER, _ITER_LSTRIP_LOWER
+    _ITER_LOWER = None
+    _ITER_LSTRIP_LOWER = None
 
 
 def any_of(*matchers: Callable[[str], bool]) -> Callable[[str], bool]:

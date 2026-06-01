@@ -36,6 +36,7 @@ from ._rules import (
     CONTINUE, END_BUBBLE, END_SECTION,
     SectionRule, contains_ci, starts_with_ci,
 )
+from . import _rules
 from .base import TrajectoryParser
 
 
@@ -835,6 +836,11 @@ class SiestaParser(TrajectoryParser):
         with open(path, "r", errors="replace") as fh:
             for line_no, raw in enumerate(fh, start=1):
                 line = raw.rstrip("\n")
+                # Pre-compute lowered forms ONCE for this iteration
+                # so the rule matchers don't each redundantly do
+                # ``line.lower()`` / ``line.lstrip().lower()``.
+                # See _rules._set_iteration_cache for the rationale.
+                _rules._set_iteration_cache(line)
 
                 # Active multi-line section?  Run its ``consume``
                 # first.  CONTINUE / END_SECTION skip to next line;
@@ -875,6 +881,10 @@ class SiestaParser(TrajectoryParser):
                         if rule.consume is not None:
                             active = rule
                         break
+
+        # Clear the per-iteration cache so any post-loop matcher
+        # calls (tests, post-parse helpers) get the fallback path.
+        _rules._clear_iteration_cache()
 
         # End-of-file: drop torn frames, then flush.  The SIESTA stream
         # is "SCF -> outcoor -> SCF -> outcoor -> ...", so a torn
