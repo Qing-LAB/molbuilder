@@ -145,7 +145,7 @@ not the feature.
 | **Template** (`_projects_sidebar.html`) | DOM structure (server-rendered partial) | The DOM contract: every element ID + class consumers may query.  See § 10. |
 | **Stylesheet** (`projects-sidebar.css`) | Visual + visibility model.  Owns the `[hidden]` guard rules and the `.is-locked` overlay. | CSS classes + scope variables documented in § 10.  No JS. |
 | **Entry** (`projects-sidebar.js`) | Bootstrap order — module load, public-API mount, two-phase init. | None.  Side-effect: `window.molbuilder.projects = …` + runtime registry registration. |
-| **State** (`state.js`) | All three state pieces (§ 4) + the public API surface.  Owns subscriber sets + the publish loop.  Owns sessionStorage IO. | The `projects` object (public API surface, § 5); module-internal mutators for the bootstrap unit (`setProjectsRoot`, `setRefreshHandler`) and for the List unit (`setShared`). |
+| **State** (`state.js`) | All three state pieces (§ 4) + the public API surface.  Owns subscriber sets + the publish loop.  Owns sessionStorage IO. | The `projects` object (public API surface, § 5); module-internal mutators for the bootstrap unit (`setProjectsRoot`, `setRefreshHandler`, `setNavigateToImpl`) and for the List unit (`setShared`).  `setNavigateToImpl(fn)` is how the bootstrap unit hands `list.js::openDir` to `state.js` so the public `projects.navigateTo` can delegate. |
 | **HTTP** (`api.js`) | One-to-one wrappers over `/api/files/*` and `/api/projects/*`.  Owns request shape + envelope-wrapping discipline (Principle 6). | A function per backend endpoint.  Sole module that calls `fetch`. |
 | **List** (`list.js`) | DOM rendering of breadcrumb + entry list; per-entry click handlers; navigation; lock-UI subscription + Cancel delegation. | `initList`, `initLockUI`, `openDir`, `restoreSelection` for the bootstrap unit.  `showPreview` is delegated to the Preview unit. |
 | **Forms** (`forms.js`) | Create-project + mkdir + upload forms.  Subscribes to `onChange` to drive depth-aware visibility. | `initForms` for the bootstrap unit. |
@@ -459,9 +459,8 @@ mkdir(parent: string, name: string, opts?: AsyncOpts):
     Promise<LayoutOk | LayoutErr>
 deleteEntry(path: string, recursive?: boolean, opts?: AsyncOpts):
     Promise<LayoutOk | LayoutErr>
-// Status: DEFERRED (2026-05-31).  Frontend ready; needs
-// ``POST /api/files/rename`` backend (#176 on the task tracker)
-// before it can be promoted to the public surface.
+// In-place basename change.  Backend: POST /api/files/rename with
+// atomic-no-overwrite + canonical-topic protection mirroring delete.
 rename(path: string, newName: string, opts?: AsyncOpts):
     Promise<LayoutOk | LayoutErr>
 ```
@@ -535,7 +534,7 @@ For each public-API method, the design specifies:
 | Method | Concurrent calls allowed? | Idempotent? | Notes |
 |---|---|---|---|
 | C1 read methods | Yes (sync; no state mutation) | Yes | Pure reads from in-memory state. |
-| C2 subscribe | Yes | No (registering twice with the same callback fires it twice on each event) | Callers de-dup their own callbacks; the design does not enforce uniqueness. |
+| C2 subscribe | Yes | Idempotent intent: subscribers held in a Set, dedup-by-reference | Registering the SAME callback (by reference) twice is a programming error — `onChange` / `onLockChange` / `onProjectsRootResolved` THROW with a clear message.  Caller must `unsub()` before re-subscribing.  Two different functions registered (typical case: different callsites) are independent subscribers and both fire. |
 | `readFile` / `readCurrentFile` / `downloadFile` | Yes (multiple in flight permitted) | N/A (read) | Each call has its own AbortSignal; cancelling one does not affect others. |
 | `writeFile` / `saveToWorkspace` | Yes BUT discouraged on the same path | N/A (`overwrite` makes it idempotent for repeated identical writes; `expected_mtime` makes it strict-idempotent) | Concurrent writes to the same path race at the backend; `expected_mtime` resolves the order. |
 | `mkdir` | Yes (different parents) | Yes (re-creating an existing dir is a no-op when `parent/name` already matches) | Backend returns 409 on existing path; design's response is the envelope. |
@@ -555,10 +554,18 @@ to completion before the outer loop continues with the next
 subscriber.  Subscribers MAY mutate state from inside their
 callback; the design does not prohibit it.  Behaviour:
 
-* The current subscriber's index in the outer loop is preserved.
+* Each `publish*` function snapshots its subscriber set BEFORE
+  iteration (`Array.from(subscribers)`).  The publish loop iterates
+  the snapshot.  New subscribers added during the loop are NOT
+  visited.  Removed subscribers ARE skipped — `Set.delete` on the
+  live set takes effect immediately, and the snapshot iteration
+  checks membership before invoking each entry.
 * New subscribers registered DURING a publish loop do NOT fire for
-  the in-progress event.  They start receiving events on the next
-  publish.
+  the in-progress event.  They got the current state via
+  fire-once-immediately when they subscribed; they start receiving
+  subsequent events on the next publish.  Combined with the
+  idempotent-Set rule above, every subscriber fires exactly once
+  per state change.
 * A subscriber may call its own unsubscribe from inside its callback.
   The unsubscribe takes effect immediately; the rest of the current
   loop iteration completes; subsequent loop iterations skip the
@@ -611,6 +618,12 @@ need no further interpretation:
   subscriber's own callback is supported: it takes effect
   immediately and the rest of the current loop iteration
   completes before the next subscriber fires.
+* **Registration is idempotent intent; duplicate registration
+  is an error.**  Subscribers are held in a Set; registering the
+  same callback (by reference) twice throws an Error.  This catches
+  forgotten-unsubscribe bugs at the call site instead of letting
+  them silently no-op.  Callers that legitimately need to re-
+  register must explicitly `unsub()` first.
 
 ### 6.1 Memory + lifecycle of subscribers
 
@@ -650,10 +663,19 @@ Errors are returned, never thrown.  The `error` field IS:
   capability; the design will add a `code` field alongside `error`
   when needed, and the `error` string becomes the default-locale
   rendering of `code`.
-* **Singular.**  One error per envelope.  Compound failures (3
-  subdirs failed to delete) are decomposed by the backend into one
-  call returning one error, or batched by the API surface into one
-  composite error string.
+* **Singular.**  One error per envelope.  Each public-API call
+  reports AT MOST ONE failure.  Backends MUST return on the first
+  violation they detect and MUST NOT batch multiple failures into a
+  composite string.  The user fixes the first issue, retries, hits
+  the second (if any), and so on.  Callers can rely on the
+  envelope's `error` carrying exactly one human-readable failure
+  string without needing to parse separators.
+* **The `aborted: true` flag.**  When a fetch is cancelled via an
+  `AbortSignal` (caller-initiated), the envelope is
+  `{ok: false, error: "aborted", aborted: true}`.  The flag lets
+  callers distinguish user-cancellation from genuine network
+  failure without parsing the error string — typically used to
+  silently dismiss the failure UI when the user pressed Cancel.
 
 ---
 
@@ -711,9 +733,17 @@ errors — the bug class we keep hitting.
 
 ### 7.3 Teardown and unload
 
-The sidebar has no explicit `dispose()` API today.  The browser
-unloads the page; the closure dies; everything is gone.  Design
-implications:
+The sidebar has no explicit `dispose()` API today, AND won't add one.
+molbuilder uses the full-page-reload model for tab navigation: every
+move between `/build`, `/modify`, `/spectra`, `/results`, `/watch`
+is a full HTTP load + JS context discard.  **The page-reload boundary
+IS the cleanup mechanism.**  Subscriber sets, AbortControllers,
+3Dmol viewer instances, Plotly charts, lock state — all get thrown
+away with the JS context.  No per-module `dispose()` is needed
+because nothing survives the boundary.
+
+The browser unloads the page; the closure dies; everything is gone.
+Design implications:
 
 * **In-flight fetches are abandoned silently.**  A POST that was
   mid-flight at unload may complete server-side or not; the
@@ -811,11 +841,27 @@ The CSS `pointer-events: none` is the user-visible block but it is
 NOT the only defence.  If CSS fails to load or the class is
 misapplied, navigation must still refuse.
 
-**Design requirement**: every public API that mutates state
-(`setShared` is the canonical example; `navigateTo` is the public-
-API form) MUST check `isLocked()` at the top and early-return
-`{ok: false, error: "sidebar is locked: <reason>"}`.  This makes
-the lock enforce its invariant in code, not just in CSS.
+The mutator surface splits into two categories with different
+lock-guard rules:
+
+**Navigation mutators** — `setShared`, `navigateTo`.  These MUST
+check `isLocked()` at the top and early-return
+`{ok: false, error: "sidebar is locked: <reason>"}`.  They are the
+public API form of "the user (or in-inspector navigator) wants to
+move the cursor".  Holding the lock means a pipeline is in flight;
+moving the cursor mid-pipeline would race against the pipeline's
+view of "current directory".  This is the defense-in-depth that
+makes the lock real in code, not just in CSS.
+
+**File mutators** — `writeFile`, `saveToWorkspace`, `mkdir`,
+`createProject`, `deleteEntry`, `rename`, `upload`.  These do NOT
+self-guard.  Save pipelines hold the lock WHILE calling these as
+their steps; a self-guard would deadlock the pipeline that just
+acquired the lock to do this work.  User-driven access to these
+mutators is gated upstream — CSS `pointer-events: none` blocks the
+sidebar's create / mkdir / upload form clicks, and the navigation-
+mutator guard blocks programmatic cursor changes that would route
+to a file mutator at a different path.
 
 Reads (`getCurrentDir`, `readFile`, etc.) are NOT blocked by a
 lock — they have no race risk with the in-progress pipeline.
@@ -939,8 +985,8 @@ network / backend / concurrency / user-action / browser-platform.
 | Server returned `{ok:true}` with partial / wrong content (file being concurrently written by SIESTA returns half-bytes) | Read succeeds with whatever the OS returned.  Sidebar passes the text through verbatim.  Tab code that detects corruption surfaces it — not a sidebar concern.  (Future: read endpoint could expose `stable: boolean` from the backend's stat; defer until needed.) |
 | Subscriber registers from inside another subscriber's callback for the same event | The new subscriber does NOT fire for the current event (publish loop snapshots the subscriber set at loop start).  Starts firing on the next event.  Predictable + matches React/RxJS conventions. |
 | Subscriber mutates state from inside its callback (e.g. `onChange` callback calls `unlock()` synchronously) | The inner mutation's publish loop runs to completion before the outer loop continues with the next subscriber.  Nested publish loops are supported (§ 5.5).  The outer loop's subscriber list is the pre-mutation snapshot. |
-| Two tabs of the same page subscribe to the same global — multiplicity | Same-callback registered twice fires twice on each event.  Callers de-dup if they care.  Design choice: simpler than auto-dedup; aligns with `addEventListener` conventions. |
-| Subscriber leak (forgot to call unsubscribe; set grows unbounded) | No design protection.  Documented in § 6.1 as a contributor responsibility.  Future telemetry (M16) could expose `subscriberCounts` for monitoring. |
+| Two tabs of the same page subscribe to the same global — multiplicity | Subscribers held in a Set.  The same callback (by reference) registered twice THROWS.  Two DIFFERENT functions both subscribing (typical case: different callsites) is fine — each is an independent subscriber and both fire.  Design choice: catches double-init / forgotten-unsubscribe bugs at the call site instead of letting them silently no-op. |
+| Subscriber leak (forgot to call unsubscribe; set grows unbounded) | Not a concern under molbuilder's full-page-reload model — every tab navigation discards the JS context, so the subscribers Set is reset.  See § 7.3.  If the app ever moves to SPA-style navigation, this becomes a real concern and needs explicit tracking; out of scope for v1. |
 
 ---
 
@@ -960,7 +1006,7 @@ configured `projects/` root.
 | Upload a file | `POST /api/files/upload` | Multipart; 409 on conflict (no implicit overwrite) |
 | Delete a path | `DELETE /api/files/delete` | Canonical-topic dirs protected; recursive flag required for non-empty |
 | Bootstrap a project | `POST /api/projects/create` | Atomic; rolls back on partial failure |
-| Rename a path | `POST /api/files/rename` | Designed; not yet built (gap M5) |
+| Rename a path | `POST /api/files/rename` | Implemented (2026-05-31); atomic-no-overwrite + canonical-topic protection mirroring delete |
 
 Every endpoint returns a uniform `{ok: true, …}` or `{ok: false,
 error: string, …}` envelope.  HTTP status codes classify
@@ -1008,29 +1054,29 @@ in the order things should land.
 
 ### High impact (blocks the design's coverage of failure modes)
 
-| ID | Drift | Migration |
-|---|---|---|
-| M1 | `apiWrite` / `saveToWorkspace` don't accept `AbortSignal`.  Layer B of the lock recovery doesn't cover the first step of save pipelines (the actual write). | Add `signal` to the `apiX` write surface; thread through `writeFile` / `saveToWorkspace`.  Update Build + Spectra save handlers to pass the lock's signal. |
-| M2 | DOM updates in `list.js` (`_markSelected`, `_renderSelectionStatus`) are called inline from event handlers, not from `onChange` subscribers.  Violates Principle 3. | Introduce a single `renderSidebar(state)` subscribed to `onChange`; remove inline calls. |
-| M3 | `apiRoots` / `apiList` / `apiStat` / `apiRead` / `apiMkdir` / `apiCreateProject` don't wrap network failures uniformly — they throw on network errors.  Violates Principle 6. | Wrap each in the same try/catch pattern `apiWrite` already uses; synthesise `{ok:false, error}`. |
+| ID | Status | Drift | Migration |
+|---|---|---|---|
+| M1 | DONE 2026-05-30 (047bae1) | `apiWrite` / `saveToWorkspace` don't accept `AbortSignal`. | Done: `signal` threaded through write/upload/delete + reads (2026-05-31).  Build + Spectra save handlers pass the lock's signal. |
+| M2 | DONE 2026-05-31 (4b716c7) | DOM updates in `list.js` (`_markSelected`, `_renderSelectionStatus`) were called inline from event handlers. | Done: `renderSidebar(state)` is a single `onChange` subscriber in list.js; inline calls removed. |
+| M3 | DONE 2026-05-30 (eacaa8f) | `apiRoots` / `apiList` / `apiStat` / `apiRead` / `apiMkdir` / `apiCreateProject` threw on network errors. | Done: `_fetchEnvelope` helper wraps every endpoint with a uniform `{ok:false, error}` synthesis. |
 
 ### Medium impact (architectural completeness)
 
-| ID | Drift | Migration |
-|---|---|---|
-| M4 | The public API doesn't expose `createProject`, `mkdir`, `upload`, `deleteEntry`, `rename`, `navigateTo`.  These exist as `forms.js` + `list.js` internals only.  Violates Capability C4. | Promote each to `window.molbuilder.projects.*`; keep internal helpers as the implementation. |
-| M5 | Backend `rename` endpoint not built.  Capability C4 is incomplete. | Implement `POST /api/files/rename` against the existing path-safety + naming-rule helpers. |
-| M6 | No cross-tab `storage` event listener.  Failure mode "two tabs in the same project" is unaddressed. | Add `window.addEventListener("storage", …)` in `state.js` that fires `publishSelectionChange` when cursor keys change. |
-| M7 | Visibility relies on the case-by-case `[hidden]` guard pattern.  Brittle (one missed guard = silent bug). | Migrate to the `.is-hidden` class; ban `hidden=` in templates via CI; update the guard rule. |
+| ID | Status | Drift | Migration |
+|---|---|---|---|
+| M4 | DONE 2026-05-31 (e4c57a3, 96f18dd) | The public API didn't expose `readFile`, `createProject`, `mkdir`, `upload`, `deleteEntry`, `rename`, `navigateTo`. | Done: all six promoted to `window.molbuilder.projects.*`; auto-refresh on success; failure-path skips refresh. |
+| M5 | DONE 2026-05-31 | Backend `rename` endpoint not built. | Done: `POST /api/files/rename` implemented with atomic-no-overwrite + canonical-topic protection mirroring delete. |
+| M6 | PENDING | No cross-tab `storage` event listener.  Failure mode "two tabs in the same project" is unaddressed. | Add `window.addEventListener("storage", …)` in `state.js` that fires `publishSelectionChange` when cursor keys change. |
+| M7 | PENDING | Visibility relies on the case-by-case `[hidden]` guard pattern.  Brittle (one missed guard = silent bug). | Migrate to the `.is-hidden` class; ban `hidden=` in templates via CI; update the guard rule. |
 
 ### Low impact (cosmetic / future-proofing)
 
-| ID | Drift | Migration |
-|---|---|---|
-| M8 | `setProjectsRoot` has no subscribers.  `onProjectsRootResolved` not on the public API; tabs that need root early use `runtime.whenReady("projects")` instead. | Either add an explicit subscribe API or document that tabs use the runtime registry; pick one and stick to it. |
-| M9 | `refreshHandler` is a 1-slot register; multiple consumers would need their own wrapping. | Convert to a `Set` if/when a second consumer arrives. |
-| M10 | Preview modal Save button is permanently disabled. | Either implement edit-and-save via the shipped `/api/files/write` endpoint or remove the button. |
-| M11 | Internal naming inconsistency: `publishSelectionChange` (no prefix) vs `_publishLockChange` (underscore prefix). | Pick one convention (recommend underscore-prefix for all internal-publish functions) and apply across the module. |
+| ID | Status | Drift | Migration |
+|---|---|---|---|
+| M8 | DONE 2026-05-31 (96f18dd) | `setProjectsRoot` had no subscribers.  `onProjectsRootResolved` not on the public API. | Done: `onProjectsRootResolved(cb)` exposed; fire-once-on-resolution; late subscribers get fire-once-immediately with the resolved root. |
+| M9 | PENDING | `refreshHandler` is a 1-slot register; multiple consumers would need their own wrapping. | Convert to a `Set` if/when a second consumer arrives. |
+| M10 | PENDING | Preview modal Save button is permanently disabled. | Either implement edit-and-save via the shipped `/api/files/write` endpoint or remove the button. |
+| M11 | PENDING | Internal naming inconsistency: `publishSelectionChange` (no prefix) vs `_publishLockChange` (underscore prefix). | Pick one convention (recommend underscore-prefix for all internal-publish functions) and apply across the module. |
 
 ### Open design questions (decide before coding)
 

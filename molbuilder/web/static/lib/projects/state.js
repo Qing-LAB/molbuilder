@@ -20,6 +20,7 @@ import {
   apiDelete,
   apiMkdir,
   apiRead,
+  apiRename,
   apiUpload,
   apiWrite,
 } from "./api.js";
@@ -314,6 +315,27 @@ async function deleteEntry(path, recursive, opts) {
   return r;
 }
 
+/** Rename a file or directory in place.  ``new_name`` is the new
+ *  basename (no path separators; no ``..``).  Refreshes the parent
+ *  directory on success so the sidebar shows the new name without
+ *  a manual reload.  ``opts.signal`` honoured.
+ *
+ *  Per design § C5.  Atomic-no-overwrite: backend returns 409 if
+ *  ``new_name`` already exists in the parent. */
+async function rename(path, newName, opts) {
+  const r = await apiRename(path, newName, opts);
+  if (r && r.ok && refreshHandler) {
+    const parent = path.indexOf("/") >= 0
+      ? path.replace(/\/[^/]+$/, "")
+      : projectsRoot;
+    if (parent) {
+      try { await refreshHandler(parent); }
+      catch (_) { /* refresh failure must not fail the rename */ }
+    }
+  }
+  return r;
+}
+
 /** Upload a file into ``targetDir``.  ``opts.signal`` honoured.
  *  Refreshes ``targetDir`` on success. */
 async function upload(targetDir, file, opts) {
@@ -474,6 +496,7 @@ export const projects = {
   createProject,
   mkdir,
   deleteEntry,
+  rename,
   upload,
   setShared,
   navigateTo,

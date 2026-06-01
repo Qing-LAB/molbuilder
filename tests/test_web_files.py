@@ -1332,6 +1332,130 @@ class TestRootsContract:
 # --------------------------------------------------------------------- #
 
 
+# --------------------------------------------------------------------- #
+#  POST /api/files/rename  (sidebar gap #176, 2026-05-31)              #
+# --------------------------------------------------------------------- #
+
+
+class TestRename:
+
+    def test_renames_file_in_place(self, web, picker_root):
+        src = picker_root / "old.xyz"
+        src.write_text("contents\n")
+        resp = web.post(
+            "/api/files/rename",
+            json={"path": str(src), "new_name": "new.xyz"},
+        )
+        body = resp.get_json()
+        assert resp.status_code == 200
+        assert body["ok"] is True
+        assert body["path"] == str(picker_root / "new.xyz")
+        # File moved.
+        assert not src.exists()
+        assert (picker_root / "new.xyz").read_text() == "contents\n"
+
+    def test_renames_directory(self, web, picker_root):
+        d = picker_root / "old-dir"
+        d.mkdir()
+        (d / "x.txt").write_text("inside\n")
+        resp = web.post(
+            "/api/files/rename",
+            json={"path": str(d), "new_name": "new-dir"},
+        )
+        body = resp.get_json()
+        assert body["ok"] is True
+        assert body["path"] == str(picker_root / "new-dir")
+        # Children preserved.
+        assert (picker_root / "new-dir" / "x.txt").read_text() == "inside\n"
+
+    def test_same_name_is_noop_success(self, web, picker_root):
+        """Renaming to the same name is NOT an error.  UX: user opens
+        rename dialog, doesn't change anything, hits Save -- should
+        succeed silently rather than 409."""
+        p = picker_root / "x.xyz"
+        p.write_text("data\n")
+        resp = web.post(
+            "/api/files/rename",
+            json={"path": str(p), "new_name": "x.xyz"},
+        )
+        body = resp.get_json()
+        assert resp.status_code == 200
+        assert body["ok"] is True
+        assert p.read_text() == "data\n"
+
+    def test_missing_path_returns_400(self, web, picker_root):
+        resp = web.post("/api/files/rename", json={"new_name": "x"})
+        body = resp.get_json()
+        assert resp.status_code == 400
+        assert body["ok"] is False
+        assert "missing 'path'" in body["error"]
+
+    def test_missing_new_name_returns_400(self, web, picker_root):
+        p = picker_root / "f.xyz"
+        p.write_text("\n")
+        resp = web.post(
+            "/api/files/rename",
+            json={"path": str(p)},
+        )
+        body = resp.get_json()
+        assert resp.status_code == 400
+        assert "missing 'new_name'" in body["error"]
+
+    def test_path_separator_in_new_name_rejected(self, web, picker_root):
+        """``new_name`` is a BASENAME only.  Slashes / backslashes /
+        ``..`` would move the file into another directory; the
+        endpoint refuses."""
+        p = picker_root / "f.xyz"
+        p.write_text("\n")
+        for bad in ("../escape", "sub/f.xyz", "f\\..", ".", ".."):
+            resp = web.post(
+                "/api/files/rename",
+                json={"path": str(p), "new_name": bad},
+            )
+            body = resp.get_json()
+            assert resp.status_code == 400, f"bad={bad!r}"
+            assert "invalid 'new_name'" in body["error"]
+            # File untouched.
+            assert p.exists()
+
+    def test_nonexistent_path_returns_404(self, web, picker_root):
+        resp = web.post(
+            "/api/files/rename",
+            json={"path": str(picker_root / "ghost.out"),
+                  "new_name": "x.out"},
+        )
+        body = resp.get_json()
+        assert resp.status_code == 404
+        assert "does not exist" in body["error"]
+
+    def test_destination_exists_returns_409(self, web, picker_root):
+        """Atomic-no-overwrite: renaming to an existing name fails
+        with 409.  Without this, the rename would silently destroy
+        the destination's contents."""
+        (picker_root / "src.xyz").write_text("source\n")
+        (picker_root / "dst.xyz").write_text("destination\n")
+        resp = web.post(
+            "/api/files/rename",
+            json={"path": str(picker_root / "src.xyz"),
+                  "new_name": "dst.xyz"},
+        )
+        body = resp.get_json()
+        assert resp.status_code == 409
+        assert "already exists" in body["error"]
+        # Neither file disturbed.
+        assert (picker_root / "src.xyz").read_text() == "source\n"
+        assert (picker_root / "dst.xyz").read_text() == "destination\n"
+
+    def test_outside_root_rejected(self, web, picker_root):
+        resp = web.post(
+            "/api/files/rename",
+            json={"path": "/etc/passwd", "new_name": "passwd.bak"},
+        )
+        body = resp.get_json()
+        assert resp.status_code in (400, 403, 404)
+        assert body["ok"] is False
+
+
 class TestResultList:
 
     def _make_outs(self, picker_root: Path, names, mtimes_offset_s=None):

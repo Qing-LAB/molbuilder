@@ -103,6 +103,7 @@ class TestSurfacePresence:
                 createProject:              typeof p.createProject,
                 mkdir:                      typeof p.mkdir,
                 deleteEntry:                typeof p.deleteEntry,
+                rename:                     typeof p.rename,
                 upload:                     typeof p.upload,
                 setShared:                  typeof p.setShared,
                 navigateTo:                 typeof p.navigateTo,
@@ -110,7 +111,7 @@ class TestSurfacePresence:
             }));
         ''')
         for fn in ("readFile", "createProject", "mkdir",
-                   "deleteEntry", "upload", "setShared",
+                   "deleteEntry", "rename", "upload", "setShared",
                    "navigateTo", "onProjectsRootResolved"):
             assert out[fn] == "function", f"missing public method: {fn}"
 
@@ -214,6 +215,42 @@ class TestRefreshOnSuccess:
             console.log(JSON.stringify(refreshArgs));
         ''')
         assert out == ["/p/dest"]
+
+    def test_rename_refreshes_parent_dir(self):
+        out = _run_node('''
+            const refreshArgs = [];
+            state.setRefreshHandler(async (dir) => refreshArgs.push(dir));
+            global.fetch = async () => ({
+                ok: true, status: 200,
+                json: async () => ({ ok: true, path: "/p/parent/new.xyz" }),
+            });
+            await state.projects.rename("/p/parent/old.xyz", "new.xyz");
+            console.log(JSON.stringify(refreshArgs));
+        ''')
+        assert out == ["/p/parent"]
+
+    def test_rename_409_does_not_refresh(self):
+        """A 409 destination-conflict must NOT trigger refresh — the
+        source path didn't change and the destination was already
+        listed in the sidebar."""
+        out = _run_node('''
+            const refreshArgs = [];
+            state.setRefreshHandler(async (dir) => refreshArgs.push(dir));
+            global.fetch = async () => ({
+                ok: false, status: 409,
+                json: async () => ({
+                    ok: false, error: "destination already exists",
+                }),
+            });
+            const r = await state.projects.rename("/p/old.xyz", "exists.xyz");
+            console.log(JSON.stringify({
+                envelope:    r,
+                refreshArgs: refreshArgs,
+            }));
+        ''')
+        assert out["envelope"]["ok"] is False
+        assert "destination already exists" in out["envelope"]["error"]
+        assert out["refreshArgs"] == []
 
     def test_deleteEntry_refreshes_parent_dir(self):
         out = _run_node('''

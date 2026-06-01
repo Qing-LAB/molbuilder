@@ -156,6 +156,16 @@ export async function apiDelete(path, recursive, opts) {
   });
 }
 
+export async function apiRename(path, newName, opts) {
+  opts = opts || {};
+  return await _fetchEnvelope("/api/files/rename", {
+    method:  "POST",
+    headers: {"Content-Type": "application/json"},
+    body:    JSON.stringify({path: path, new_name: newName}),
+    signal:  opts.signal,
+  });
+}
+
 export async function apiWrite(path, text, opts) {
   opts = opts || {};
   const body = {path: path, text: text};

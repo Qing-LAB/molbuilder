@@ -4,6 +4,8 @@ Routes:
 
     GET  /api/files/roots               list of allowed root paths
     GET  /api/files/list?path=...&ext=  directory listing
+    GET  /api/files/result-list?path=…  trajectory-parseable output files in
+                                        a project dir (drives /results dropdown)
     GET  /api/files/stat?path=...       file metadata
     GET  /api/files/read?path=...       text contents (size-capped)
     POST /api/files/mkdir               create a new subdirectory (validated name)
@@ -11,9 +13,12 @@ Routes:
                                         canonical subdir (atomic, strict conflict)
     POST /api/files/upload              multipart upload into current dir
     POST /api/files/write               save edited text (overwrite + mtime-conflict gated)
+    POST /api/files/rename              in-place rename (atomic-no-overwrite +
+                                        canonical-topic protection)
     DELETE /api/files/delete            remove file or directory (recursive optional)
 
-Full contract:  docs/protocols/web-api.md  §  ``/api/files/*``
+Full contract:  docs/protocols/web-api.md  §  ``/api/files/*``  +
+                docs/protocols/projects-sidebar.md  §  12
 
 Path validation
 ---------------
@@ -32,10 +37,13 @@ Every endpoint that takes a ``path`` query parameter runs it through
 
 Anything that fails validation gets HTTP 400 with a JSON error.
 
-Design note: this blueprint is intentionally read-only.  No create,
-rename, move, delete.  Mutations go through other paths -- generators
-(Build / Spectra), the run wrapper, the future derive-job endpoint.
-The picker is a *navigation + selection* widget, not a file manager.
+Design note: this blueprint is the projects sidebar's full file-system
+surface.  The pre-2026-05-30 version was navigation-only ("intentionally
+read-only"); the 2026-05-30+ commits added mkdir / upload / write /
+delete / rename + the project-bootstrap endpoint to complete capability
+C4 in projects-sidebar.md.  Path-safety remains the invariant: every
+mutation runs through ``_resolve_within_roots`` + depth + canonical-
+topic checks before touching disk.
 """
 from __future__ import annotations
 
@@ -1009,6 +1017,162 @@ def api_files_write():
         "path":  str(resolved),
         "size":  st.st_size,
         "mtime": st.st_mtime,
+    })
+
+
+@bp.route("/api/files/rename", methods=["POST"])
+def api_files_rename():
+    """Rename a file or directory in place.
+
+    JSON body: ``{path, new_name}``
+
+    Validation contract (mirrors the ``/api/files/delete`` rules so
+    the user can't get into a state where rename succeeds where
+    delete would refuse):
+
+      * ``path`` must resolve inside an allowed picker root.
+      * ``path`` must exist.
+      * ``path`` must NOT be the picker root itself (depth 0).
+      * ``path`` must NOT be a canonical-topic subdir directly under
+        a project (depth 2, name in CANONICAL_TOPICS).  Renaming
+        ``projects/<proj>/spectrum/`` to anything else would orphan
+        the project layout.
+      * ``new_name`` must be a non-empty string with NO path separator,
+        NO ``..`` segments, and NOT equal to ``.`` or ``..``.
+      * ``new_name`` must not already exist in the same parent
+        directory (atomic-no-overwrite policy; explicit overwrite
+        would need a separate ``overwrite=true`` flag, not currently
+        supported).
+
+    Atomicity: uses :func:`os.rename` so the operation is atomic on
+    the same filesystem.  Cross-device renames (e.g. if the path is
+    a bind mount from another disk) are rejected with a clear error
+    rather than silently falling back to copy+delete (which loses
+    inode identity).
+
+    Returns ``{ok, path}`` on success where ``path`` is the NEW
+    absolute path.
+    """
+    body = request.get_json(silent=True) or {}
+    raw_path  = body.get("path", "")
+    new_name  = body.get("new_name", "")
+
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        return jsonify({
+            "ok": False,
+            "error": "missing 'path' in request body",
+        }), 400
+
+    if not isinstance(new_name, str) or not new_name.strip():
+        return jsonify({
+            "ok": False,
+            "error": "missing 'new_name' in request body",
+        }), 400
+
+    # Reject path-traversal / separator attempts on new_name.  A
+    # legitimate rename only changes the basename; anything that
+    # tries to move the entry into another dir is rejected.
+    if (
+        "/" in new_name
+        or "\\" in new_name
+        or new_name in (".", "..")
+        or ".." in new_name.split("/")    # belt+suspenders for parser
+    ):
+        return jsonify({
+            "ok": False,
+            "error": (
+                "invalid 'new_name': must be a basename only "
+                "(no '/', no '..', no '.')"
+            ),
+        }), 400
+
+    try:
+        resolved = _resolve_within_roots(raw_path)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+
+    if not resolved.exists():
+        return jsonify({
+            "ok":   False,
+            "error": f"path does not exist: {str(resolved)!r}",
+        }), 404
+
+    # Depth check + canonical-topic protection.  Same shape as
+    # delete's check; centralising would help but the two endpoints
+    # are infrequent enough that the duplication is acceptable.
+    rel_parts: Optional[Tuple[str, ...]] = None
+    for root_path, _label in _allowed_roots():
+        try:
+            rel = resolved.relative_to(root_path)
+        except ValueError:
+            continue
+        rel_parts = rel.parts
+        break
+
+    if rel_parts is None:
+        return jsonify({
+            "ok":   False,
+            "error": f"path {str(resolved)!r} not inside any picker root",
+        }), 400
+
+    depth = len(rel_parts)
+
+    if depth == 0:
+        return jsonify({
+            "ok":   False,
+            "error": ("refusing to rename the picker root itself"),
+        }), 400
+
+    if depth == 2 and resolved.is_dir() and rel_parts[1] in CANONICAL_TOPICS:
+        return jsonify({
+            "ok":   False,
+            "error": (f"refusing to rename canonical-topic directory "
+                      f"{rel_parts[1]!r} via the UI (would orphan the "
+                      f"project layout).  Use your shell if you really "
+                      f"need to."),
+        }), 400
+
+    # Compute the destination.  resolved.parent is guaranteed to be
+    # inside the picker root because resolved is.
+    dst = resolved.parent / new_name
+
+    # No-op rename: same name -> short-circuit to success BEFORE the
+    # dst-exists check (otherwise the same-name path would hit the
+    # 409 branch because dst == resolved and resolved.exists() is True).
+    # Matches the typical UX where a user opens the rename dialog,
+    # doesn't change anything, and hits Save -- we shouldn't surface
+    # that as an error.
+    if resolved.name == new_name:
+        return jsonify({
+            "ok":   True,
+            "path": str(resolved),
+        })
+
+    # Reject overwrite.  The atomic-no-overwrite policy: a rename to
+    # an existing entry would silently replace it (and on POSIX
+    # destroy the destination's inode).  The user almost certainly
+    # didn't mean that.  An explicit overwrite=true flag could be
+    # added later if a real use case shows up.
+    if dst.exists():
+        return jsonify({
+            "ok":    False,
+            "error": (f"destination already exists: {new_name!r}.  Pick a "
+                      f"different name or delete the existing entry first."),
+        }), 409
+
+    try:
+        os.replace(str(resolved), str(dst))
+    except OSError as exc:
+        # Cross-device rename, permission denied, FS quota, ... .
+        # The errno + message tells the user what to do.
+        return jsonify({
+            "ok":    False,
+            "error": f"rename failed: {exc.strerror or str(exc)}",
+        }), 500
+
+    return jsonify({
+        "ok":   True,
+        "path": str(dst),
     })
 
 

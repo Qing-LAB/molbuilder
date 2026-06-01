@@ -398,6 +398,44 @@ class TestAbortSignal:
         ''')
         assert out == {"wasSignalForwarded": True}
 
+    def test_apiRename_forwards_signal(self):
+        """apiRename (added 2026-05-31 alongside the backend rename
+        endpoint) honours opts.signal like every other writer."""
+        out = _run_node('''
+            let captured = null;
+            global.fetch = async (url, init) => {
+                captured = init;
+                return { ok: true, status: 200,
+                         json: async () => ({ ok: true, path: "/x/new" }) };
+            };
+            const ctl = new AbortController();
+            await api.apiRename("/x/old", "new", { signal: ctl.signal });
+            console.log(JSON.stringify({
+                wasSignalForwarded: captured.signal === ctl.signal,
+            }));
+        ''')
+        assert out == {"wasSignalForwarded": True}
+
+    def test_apiRename_posts_with_correct_body(self):
+        """apiRename POSTs {path, new_name} to /api/files/rename."""
+        out = _run_node('''
+            let captured = null;
+            global.fetch = async (url, init) => {
+                captured = { url, init };
+                return { ok: true, status: 200,
+                         json: async () => ({ ok: true, path: "/x/new" }) };
+            };
+            await api.apiRename("/x/old", "new");
+            console.log(JSON.stringify({
+                url:    captured.url,
+                method: captured.init.method,
+                body:   JSON.parse(captured.init.body),
+            }));
+        ''')
+        assert out["url"] == "/api/files/rename"
+        assert out["method"] == "POST"
+        assert out["body"] == {"path": "/x/old", "new_name": "new"}
+
     def test_apiMkdir_forwards_signal(self):
         out = _run_node('''
             let captured = null;
