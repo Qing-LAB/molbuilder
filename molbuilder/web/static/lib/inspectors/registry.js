@@ -22,6 +22,19 @@
  *     displayName: "Trajectory viewer",   // user-visible label
  *     match:       (filepath) => boolean, // dispatch predicate
  *     mount:       (host, file, ctx) => handle,
+ *     isResult:    true,                  // optional, default false.
+ *                                         //   When true, this inspector's
+ *                                         //   matched files appear in the
+ *                                         //   /results tab-level file
+ *                                         //   picker dropdown (see
+ *                                         //   ``lib/results/file-picker.js``).
+ *                                         //   Set to false for catch-all
+ *                                         //   viewers (e.g. ``source``)
+ *                                         //   that match generic file
+ *                                         //   types -- they'd flood the
+ *                                         //   dropdown with non-result
+ *                                         //   files (configs, READMEs,
+ *                                         //   ...).
  *   };
  *
  * Handle contract (returned by mount; required cleanup point):
@@ -96,6 +109,25 @@
             }
         }
         return null;
+    }
+
+    /**
+     * Like ``pick()``, but returns ONLY when the matched inspector has
+     * ``isResult: true``.  Used by the /results tab-level file picker
+     * to enumerate the directory's known result files without
+     * including catch-all viewers (the ``source`` inspector matches
+     * ``.log`` / ``.json`` / ``.txt`` / ``.md`` / ``.fdf`` / ``.py``,
+     * which would flood the picker with configs + READMEs + scripts).
+     *
+     * Same ordering semantics as ``pick()`` (first-match-wins in
+     * registration order); ``isResult`` is checked AFTER ``match`` so
+     * a more specific result-inspector still claims the file before a
+     * less-specific non-result inspector.
+     */
+    function pickResult(file) {
+        const inspector = pick(file);
+        if (!inspector) return null;
+        return inspector.isResult ? inspector : null;
     }
 
     /**
@@ -178,8 +210,9 @@
     /** Snapshot of registered inspectors (for tests + debugging). */
     function list() {
         return _inspectors.map(i => ({
-            name: i.name,
+            name:        i.name,
             displayName: i.displayName,
+            isResult:    !!i.isResult,
         }));
     }
 
@@ -218,6 +251,7 @@
     root.molbuilder.inspectors = root.molbuilder.inspectors || {};
     root.molbuilder.inspectors.register             = register;
     root.molbuilder.inspectors.pick                 = pick;
+    root.molbuilder.inspectors.pickResult           = pickResult;
     root.molbuilder.inspectors.mount                = mount;
     root.molbuilder.inspectors.list                 = list;
     root.molbuilder.inspectors.createDefaultContext = createDefaultContext;

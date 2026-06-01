@@ -307,92 +307,13 @@ def api_files_list():
     })
 
 
-# Pattern that matches the ``-runN.out`` suffix the wrapper writes
-# (used for run_index extraction in the result-list response).
-# Group 1: the prefix.  Group 2: the run index N.
-_RUN_SERIES_RE = re.compile(r"^(.+)-run(\d+)\.out$")
-
-
-# Engine output filename suffixes the trajectory inspector knows how
-# to render.  Aligned with
-# ``static/lib/inspectors/trajectory.js::match`` so the dropdown
-# offers EXACTLY the files the inspector can mount.
-_TRAJECTORY_SUFFIXES = (".out", ".molwatch.log")
-
-
-@bp.route("/api/files/result-list", methods=["GET"])
-def api_files_result_list():
-    """List SIESTA / PySCF output files in the same directory as
-    the given file, sorted by mtime descending (newest first).
-
-    Drives the /results trajectory inspector's result-picker
-    dropdown: when a project directory has multiple .out files
-    (different stages, ``--continue`` -runN series, or both)
-    the dropdown lets the user jump between them WITHOUT
-    drilling back to the sidebar -- handy when filenames are
-    long ("siesta-hemeC-gas-stage3-run1.out").
-
-    Query params:
-        path -- absolute or relative path inside a project root.
-                Can be either a file OR a directory.  When it's a
-                file, the endpoint scans its PARENT.  When it's a
-                directory, the endpoint scans IT.  Either case
-                returns the same list shape; ``is_current`` marks
-                the queried file (only set when ``path`` is a file).
-
-    Returns:
-        ``{ ok: True, results: [...] }`` where each entry is
-        ``{name, path, mtime, size, is_current, run_index}``.
-        ``run_index`` is the integer N from ``-runN.out``, or
-        None when the filename doesn't match the run-series
-        pattern.  Sorted by mtime descending (most recent on top).
-    """
-    raw_path = request.args.get("path", "")
-    try:
-        resolved = _resolve_within_roots(raw_path)
-    except _PickerError as exc:
-        return jsonify({"ok": False, "error": exc.message}), exc.status
-
-    if not resolved.exists():
-        # Honest empty: the inspector sometimes asks before the
-        # selection has stabilised.
-        return jsonify({"ok": True, "results": []})
-
-    target_dir = resolved if resolved.is_dir() else resolved.parent
-    current_name = None if resolved.is_dir() else resolved.name
-
-    results: List[dict] = []
-    try:
-        for child in target_dir.iterdir():
-            if not child.is_file():
-                continue
-            lower = child.name.lower()
-            if not any(lower.endswith(s) for s in _TRAJECTORY_SUFFIXES):
-                continue
-            try:
-                st = child.stat()
-            except OSError:
-                continue
-            run_match = _RUN_SERIES_RE.match(child.name)
-            results.append({
-                "name":       child.name,
-                "path":       str(child),
-                "mtime":      st.st_mtime,
-                "size":       st.st_size,
-                "is_current": child.name == current_name,
-                "run_index":  int(run_match.group(2)) if run_match else None,
-            })
-    except (PermissionError, OSError) as exc:
-        return jsonify({
-            "ok":    False,
-            "error": f"cannot scan directory: {exc}",
-        }), 403
-
-    # Newest first.  Stable secondary sort by name so ties break
-    # deterministically across filesystem mtime-precision quirks.
-    results.sort(key=lambda x: (-x["mtime"], x["name"]))
-
-    return jsonify({"ok": True, "results": results})
+# 2026-06-01: ``/api/files/result-list`` endpoint retired.  Its single
+# consumer (the in-trajectory dropdown at ``lib/trajectory/result-list.js``)
+# was lifted to the tab level at ``lib/results/file-picker.js``, which
+# uses the existing ``/api/files/list`` + client-side filtering through
+# the inspector registry's ``pickResult`` -- no second endpoint needed,
+# and the single source of truth for "what counts as a result" now
+# lives entirely in the JS inspectors.
 
 
 @bp.route("/api/files/stat", methods=["GET"])

@@ -155,6 +155,18 @@
         // (per projects/state.js contract), so initial render
         // happens here without an extra call.
         proj.onChange(_onSelectionChange);
+
+        // Tab-level result-file picker (2026-06-01).  Owns its own
+        // selection-change subscription so it scans the new dir
+        // and auto-picks a result when the user enters a project
+        // dir.  The picker calls projects.setShared(dir, newFile)
+        // which fires the same onChange this viewer is subscribed
+        // to, so file-switches via the dropdown trigger the same
+        // dispatch path as sidebar clicks.
+        const picker = (window.molbuilder || {}).resultsFilePicker;
+        if (picker && typeof picker.mount === "function") {
+            picker.mount(document);
+        }
     }
 
     if (document.readyState === "loading") {

@@ -13,6 +13,11 @@
     const inspector = {
         name:        "structure",
         displayName: "Structure preview",
+        // PySCF / geomeTRIC writes multi-frame ``*_optim.xyz`` files
+        // and SIESTA-side helpers may dump intermediate/final ``.xyz``
+        // / ``.pdb`` -- both are user-meaningful results in a project
+        // dir, so the file picker on /results should surface them.
+        isResult:    true,
         match:       (file) => {
             const lower = file.toLowerCase();
             return lower.endsWith(".xyz") || lower.endsWith(".pdb");

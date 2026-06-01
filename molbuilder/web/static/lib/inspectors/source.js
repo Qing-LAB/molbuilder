@@ -9,6 +9,13 @@
     const inspector = {
         name:        "source",
         displayName: "Source file",
+        // Source matches generic text types (configs, scripts, READMEs)
+        // and is the /results catch-all viewer.  It is NOT a "result"
+        // inspector: the tab-level file-picker dropdown explicitly
+        // skips files whose match resolves here, otherwise the picker
+        // would flood with .fdf / .py / .json / .txt / .md files that
+        // are inputs/configs, not results the user wants to inspect.
+        isResult:    false,
         // Source inspector intentionally does NOT claim ``.out`` --
         // the trajectory inspector takes those (SIESTA's redirected
         // stdout parses to a frame trajectory; a raw text view of a

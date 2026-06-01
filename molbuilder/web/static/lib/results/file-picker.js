@@ -1,0 +1,408 @@
+/* /results tab-level file picker.
+ *
+ * Promoted from the in-trajectory ``lib/trajectory/result-list.js``
+ * (2026-06-01).  Pre-refactor: the dropdown lived inside the
+ * trajectory inspector and only listed SIESTA .out / .molwatch.log
+ * files in the current directory.  Post-refactor: the dropdown sits
+ * at the results-tab header (#results-file-picker-bar) and lists
+ * every file in the current directory that any ``isResult: true``
+ * inspector would mount -- trajectory + spectra + structure today,
+ * any future result inspector tomorrow.
+ *
+ * Mount target: ``#results-file-picker-bar`` in
+ * ``templates/results.html``.  Render is conditional: when the
+ * directory has zero or one result file the bar stays hidden
+ * (nothing to navigate to; the inspector either renders fallback
+ * or already shows the only file).
+ *
+ * Picking a different entry from the <select> fires
+ * ``projects.setShared(dir, newFile)`` -- the sidebar's onChange
+ * subscriber then triggers viewer.js to dispose + remount the
+ * matching inspector for the new file.  Single source of truth for
+ * current-file state stays on the projects sidebar (design § 7).
+ *
+ * Auto-pick: when the directory contains result files AND no file is
+ * currently selected, the picker auto-selects the most recent one.
+ * This is the user's primary ask -- "the result tab does not
+ * automatically detect that there are available files for display"
+ * (2026-06-01).  Auto-pick is bypassed when the current selection
+ * is already a result file in the same dir.
+ *
+ * Visible API on ``window.molbuilder.resultsFilePicker``:
+ *
+ *   ``mount(root)``    -- one-shot init: attaches the <select>
+ *                         handler, subscribes to projects.onChange,
+ *                         and triggers the first scan.  Returns a
+ *                         disposer that aborts any in-flight fetch
+ *                         and detaches subscriptions.
+ *   ``parseDir(file)``         -- pure helper (exported for testing).
+ *   ``formatRelativeTime(epoch_seconds)`` -- pure helper (testing).
+ *   ``filterToResultFiles(entries, pick)`` -- pure helper (testing).
+ *
+ * Idempotency note: the picker reacts to onChange events; calling
+ * mount() twice on the same root would double-subscribe.  Tests
+ * MUST dispose the first handle before remounting.
+ */
+(function (root) {
+    "use strict";
+
+    const LIST_ENDPOINT = "/api/files/list";
+
+    // -------- pure helpers (exported for testing) --------------- //
+
+    /**
+     * Split a file path into ``{dir, name}`` parts WITHOUT importing
+     * the global path utility -- the picker needs to be loadable in
+     * test contexts without a full ``molbuilder.path`` mount.
+     */
+    function parseDir(file) {
+        if (!file) return { dir: "", name: "" };
+        const ix = Math.max(
+            file.lastIndexOf("/"),
+            file.lastIndexOf("\\")
+        );
+        if (ix < 0) return { dir: "", name: file };
+        return {
+            dir:  file.slice(0, ix),
+            name: file.slice(ix + 1),
+        };
+    }
+
+    /**
+     * Format an epoch_seconds value as a relative-time string for
+     * the dropdown's ``(2m ago)`` / ``(3h ago)`` suffix.  Returns ""
+     * when the epoch is missing.
+     */
+    function formatRelativeTime(epoch_s) {
+        if (epoch_s == null || !Number.isFinite(epoch_s)) return "";
+        const now = Date.now() / 1000;
+        const delta = Math.max(0, now - epoch_s);
+        if (delta < 60)    return Math.floor(delta) + "s ago";
+        if (delta < 3600)  return Math.floor(delta / 60) + "m ago";
+        if (delta < 86400) return Math.floor(delta / 3600) + "h ago";
+        const days = Math.floor(delta / 86400);
+        if (days < 30)     return days + "d ago";
+        return new Date(epoch_s * 1000).toLocaleDateString();
+    }
+
+    /**
+     * Given the ``/api/files/list`` response entries (each
+     * ``{name, kind, size, mtime}``) and the inspector registry's
+     * ``pickResult`` function, return the subset of file entries that
+     * any result inspector would mount.  Sorted by mtime descending
+     * (newest first); secondary sort by name for deterministic
+     * tie-break on filesystems with low mtime precision.
+     *
+     * Pure (no DOM, no fetch).  Exported for unit tests.
+     */
+    function filterToResultFiles(entries, dirPath, pickResult) {
+        if (!Array.isArray(entries) || typeof pickResult !== "function") {
+            return [];
+        }
+        // Use a forward-slash separator regardless of OS.  The backend
+        // returns native path separators in ``/api/files/list``'s
+        // ``path`` field but file matching is purely on the basename
+        // suffix so this doesn't affect correctness.
+        const sep = dirPath && dirPath.indexOf("\\") >= 0 ? "\\" : "/";
+        const out = [];
+        for (const entry of entries) {
+            if (!entry || entry.kind !== "file") continue;
+            const fullPath = dirPath ? (dirPath + sep + entry.name) : entry.name;
+            if (!pickResult(fullPath)) continue;
+            out.push({
+                name:  entry.name,
+                path:  fullPath,
+                mtime: entry.mtime,
+                size:  entry.size,
+            });
+        }
+        // Newest first; tie-break by name so the order is deterministic
+        // across runs even when the filesystem reports mtime with
+        // 1-second resolution.
+        out.sort((a, b) => {
+            const da = (a.mtime != null) ? a.mtime : -Infinity;
+            const db = (b.mtime != null) ? b.mtime : -Infinity;
+            if (db !== da) return db - da;
+            return a.name.localeCompare(b.name);
+        });
+        return out;
+    }
+
+    /**
+     * Build the <option> label text.  The filename is the primary
+     * read; the relative timestamp lives as a parenthesised tail.
+     * Keep the prefix short so long base names don't push the
+     * timestamp off-screen.
+     */
+    function labelForResult(entry) {
+        const rel = formatRelativeTime(entry.mtime);
+        return rel ? (entry.name + " (" + rel + ")") : entry.name;
+    }
+
+    /**
+     * Populate the <select> with one <option> per result; mark the
+     * current one as selected.  Defensive clear via firstChild loop
+     * instead of innerHTML to avoid XSS reflection if a filename
+     * ever contains tag chars.
+     */
+    function _populate(selectEl, results, currentPath) {
+        while (selectEl.firstChild) {
+            selectEl.removeChild(selectEl.firstChild);
+        }
+        for (const r of results) {
+            const opt = document.createElement("option");
+            opt.value = r.path;
+            opt.textContent = labelForResult(r);
+            opt.title = r.name;
+            if (r.path === currentPath) {
+                opt.selected = true;
+            }
+            selectEl.appendChild(opt);
+        }
+    }
+
+    /**
+     * Render the "N of M, last updated X ago" meta line under the
+     * dropdown.  Pure derivation from the results list + current
+     * file path.
+     */
+    function _renderMeta(metaEl, results, currentPath) {
+        if (!metaEl) return;
+        const ix = results.findIndex(r => r.path === currentPath);
+        if (ix < 0) {
+            metaEl.textContent = results.length + " file" +
+                (results.length === 1 ? "" : "s");
+            return;
+        }
+        // The list is sorted newest-first; the user-facing "X of N"
+        // counts from oldest to newest so a freshly-created result
+        // shows as the highest index.
+        const chronIx = results.length - ix;
+        const cur = results[ix];
+        const rel = formatRelativeTime(cur.mtime);
+        const parts = [chronIx + " of " + results.length];
+        if (rel) parts.push(rel);
+        metaEl.textContent = parts.join(" · ");
+    }
+
+    // -------- main mount ---------------------------------------- //
+
+    /**
+     * One-shot init.  Wires the picker to the projects sidebar so it
+     * reacts to directory changes + file selection changes.  Call
+     * once at /results page load.
+     *
+     * ``rootEl`` is the document or any ancestor of
+     * #results-file-picker-bar; defaults to ``document`` so the
+     * standard /results page just calls ``mount()`` with no args.
+     */
+    function mount(rootEl) {
+        rootEl = rootEl || document;
+        const barEl  = rootEl.querySelector("#results-file-picker-bar");
+        const selEl  = rootEl.querySelector("#results-file-picker-select");
+        const metaEl = rootEl.querySelector("#results-file-picker-meta");
+        if (!barEl || !selEl) {
+            // Template invariant broken; bail silently.  An empty
+            // dispose is safer than throwing -- /results still works
+            // without the picker.
+            return { dispose() { /* nothing */ } };
+        }
+
+        const proj      = (root.molbuilder || {}).projects;
+        const inspReg   = (root.molbuilder || {}).inspectors;
+        if (!proj || typeof proj.onChange !== "function"
+            || !inspReg || typeof inspReg.pickResult !== "function") {
+            // The picker depends on both the sidebar AND the inspector
+            // registry.  Either missing means /results has a deeper
+            // load-order problem; the fallback is to hide the picker
+            // entirely and let the rest of the page work.
+            console.warn(
+                "[results-file-picker] projects sidebar or inspector "
+                + "registry unavailable; picker disabled"
+            );
+            barEl.hidden = true;
+            return { dispose() { /* nothing */ } };
+        }
+
+        // -- per-scan state.  ``aborter`` is replaced on each scan
+        //    so an in-flight stale request is aborted when a new
+        //    directory selection lands. -------------------------- //
+        let aborter         = null;
+        let lastScannedDir  = null;
+        let cachedResults   = [];  // last successful scan, used by _onSelectChange
+        let disposed        = false;
+
+        function _abortInFlight() {
+            if (aborter) {
+                try { aborter.abort(); } catch (_) { /* ignore */ }
+                aborter = null;
+            }
+        }
+
+        /**
+         * Scan ``dir`` via /api/files/list, filter via
+         * registry.pickResult, populate the dropdown.  Async; safe
+         * to call concurrently (older calls are aborted).
+         */
+        function _scan(dir, currentFile) {
+            _abortInFlight();
+            if (!dir) {
+                barEl.hidden = true;
+                cachedResults = [];
+                return;
+            }
+            aborter = new AbortController();
+            const signal = aborter.signal;
+            const url = LIST_ENDPOINT + "?path=" + encodeURIComponent(dir);
+            fetch(url, { credentials: "same-origin", signal })
+                .then(resp => resp.ok ? resp.json() : null)
+                .then(body => {
+                    if (disposed || signal.aborted) return;
+                    if (!body || body.ok !== true) {
+                        barEl.hidden = true;
+                        cachedResults = [];
+                        return;
+                    }
+                    const results = filterToResultFiles(
+                        body.entries || [],
+                        body.path     || dir,
+                        inspReg.pickResult
+                    );
+                    cachedResults = results;
+                    if (results.length === 0) {
+                        // Empty result set: no point showing the bar.
+                        barEl.hidden = true;
+                        return;
+                    }
+                    _populate(selEl, results, currentFile);
+                    _renderMeta(metaEl, results, currentFile);
+                    barEl.hidden = false;
+                    // Auto-pick: if no file is currently selected (or
+                    // the selection is outside this directory's result
+                    // set), promote the newest result to the active
+                    // selection so the inspector mounts without an
+                    // extra user click.  Closes the user's primary
+                    // ask (2026-06-01).
+                    const selectionIsAResult =
+                        currentFile && results.some(r => r.path === currentFile);
+                    if (!selectionIsAResult) {
+                        _autoSelect(results[0]);
+                    }
+                })
+                .catch(err => {
+                    if (err && err.name === "AbortError") return;
+                    console.warn(
+                        "[results-file-picker] scan failed; hiding bar",
+                        err
+                    );
+                    barEl.hidden = true;
+                    cachedResults = [];
+                });
+        }
+
+        /**
+         * Auto-select ``entry`` as the current file.  Calls
+         * projects.setShared which fires onChange so viewer.js mounts
+         * the matching inspector.  No-op if the sidebar is locked
+         * (setShared returns ok:false; we log + don't retry).
+         */
+        function _autoSelect(entry) {
+            if (!entry || !entry.path) return;
+            const parts = parseDir(entry.path);
+            const r = proj.setShared(parts.dir, entry.path);
+            if (r && r.ok === false) {
+                console.warn(
+                    "[results-file-picker] auto-select refused:",
+                    r.error
+                );
+            }
+        }
+
+        // -- selection-change subscriber ------------------------- //
+        // onChange fires immediately with the current selection (per
+        // projects/state.js contract), so the initial scan happens
+        // here without an extra call. -------------------------- //
+        function _onSelectionChange(sel) {
+            const dir  = sel && sel.dir  ? sel.dir  : "";
+            const file = sel && sel.file ? sel.file : "";
+            if (dir !== lastScannedDir) {
+                // Directory changed: rescan from scratch.
+                lastScannedDir = dir;
+                _scan(dir, file);
+            } else {
+                // Same dir, different file: re-sync the dropdown's
+                // selected option to the new file.  No re-fetch
+                // needed; the cached scan results are still fresh.
+                if (cachedResults.length > 0) {
+                    _populate(selEl, cachedResults, file);
+                    _renderMeta(metaEl, cachedResults, file);
+                }
+            }
+        }
+
+        const unsubscribeSelection = proj.onChange(_onSelectionChange);
+
+        // -- dropdown change handler ----------------------------- //
+        function _onSelectChange() {
+            const newPath = selEl.value;
+            if (!newPath) return;
+            const parts = parseDir(newPath);
+            const r = proj.setShared(parts.dir, newPath);
+            if (r && r.ok === false) {
+                console.warn(
+                    "[results-file-picker] setShared refused:",
+                    r.error
+                );
+                _revertSelectTo(/*last-known good*/ null);
+            }
+        }
+
+        function _revertSelectTo(path) {
+            const opts = selEl.options;
+            for (let i = 0; i < opts.length; i += 1) {
+                if (opts[i].value === path) {
+                    selEl.selectedIndex = i;
+                    return;
+                }
+            }
+        }
+
+        selEl.addEventListener("change", _onSelectChange);
+
+        // -- lock-state subscriber (disable while Save in flight) //
+        let unsubscribeLock = null;
+        if (typeof proj.onLockChange === "function") {
+            unsubscribeLock = proj.onLockChange((st) => {
+                selEl.disabled = !!(st && st.locked);
+                selEl.title = st && st.locked
+                    ? "Sidebar is locked while a save is in progress."
+                    : "";
+            });
+        }
+
+        // -- disposer ------------------------------------------- //
+        return {
+            dispose() {
+                disposed = true;
+                _abortInFlight();
+                try { selEl.removeEventListener("change", _onSelectChange); }
+                catch (_) { /* ignore */ }
+                try { if (unsubscribeSelection) unsubscribeSelection(); }
+                catch (_) { /* ignore */ }
+                try { if (unsubscribeLock) unsubscribeLock(); }
+                catch (_) { /* ignore */ }
+            },
+        };
+    }
+
+    // -------- export -------------------------------------------- //
+
+    root.molbuilder = root.molbuilder || {};
+    root.molbuilder.resultsFilePicker = {
+        mount:               mount,
+        parseDir:            parseDir,
+        formatRelativeTime:  formatRelativeTime,
+        filterToResultFiles: filterToResultFiles,
+        _labelForResult:     labelForResult,
+    };
+})(typeof window !== "undefined" ? window : this);

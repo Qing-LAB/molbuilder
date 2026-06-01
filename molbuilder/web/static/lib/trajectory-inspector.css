@@ -663,16 +663,15 @@
  * file" readout above the inspector becomes redundant (the dropdown
  * shows the same filename in its selected option).  Hide the entire
  * ``.results-status`` <header> wrapper to avoid duplication.  In
- * single-file dirs (dropdown hidden), the top readout stays visible
- * -- the user wouldn't see the filename anywhere else.  Uses :has()
- * for the cleanest possible decoupling between the two components
- * (no JS body-class shuffling).
+ * empty / single-file dirs (dropdown hidden), the top readout stays
+ * visible -- the user wouldn't see the filename anywhere else.  Uses
+ * :has() for the cleanest possible decoupling between the two
+ * components (no JS body-class shuffling).
  *
- * 2026-05-30 fix: previously hid only the inner spans
- * (.results-file-readout / .results-file-kind), leaving an empty
- * banner with its own bg / border / padding visibly stranded above
- * the dropdown.  Hiding the <header> itself removes the layout
- * reservation too. */
-body:has(#result-list-bar:not([hidden])) .results-status {
+ * Updated 2026-06-01 for the tab-level picker
+ * (#results-file-picker-bar in templates/results.html).  The legacy
+ * #result-list-bar id (in-inspector dropdown) was retired the same
+ * commit. */
+body:has(#results-file-picker-bar:not([hidden])) .results-status {
     display: none;
 }

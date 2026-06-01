@@ -62,6 +62,7 @@
     const inspector = {
         name:        "trajectory",
         displayName: "Trajectory + SCF history",
+        isResult:    true,
         // The match function claims every file extension a backend
         // ``TrajectoryParser`` knows how to parse (see
         // ``molbuilder/parsers/__init__.py::PARSERS``):
@@ -146,20 +147,10 @@
                         try { innerHandle.dispose(); }
                         catch (_) { /* already torn down */ }
                     });
-                    // Result-list dropdown (2026-05-30): list other
-                    // SIESTA / PySCF output files in the same dir
-                    // so the user can navigate stage1 / stage2 /
-                    // -run0 / -run1 etc. without sidebar drill-down.
-                    // The bar stays hidden when the dir has <= 1
-                    // result file (per the endpoint's contract).
-                    const rl = (root.molbuilder || {}).trajectoryResultList;
-                    if (rl && typeof rl.mount === "function") {
-                        const rlHandle = rl.mount(host, file);
-                        cleanups.push(() => {
-                            try { rlHandle.dispose(); }
-                            catch (_) { /* already torn down */ }
-                        });
-                    }
+                    // Result-file picker dropdown lifted to the
+                    // /results tab header (2026-06-01); inspectors
+                    // no longer mount their own.  See
+                    // ``lib/results/file-picker.js``.
                 })
                 .catch((err) => {
                     if (err.name === "AbortError") return;

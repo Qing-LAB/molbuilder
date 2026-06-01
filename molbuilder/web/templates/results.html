@@ -57,6 +57,25 @@
     <span id="results-current-kind" class="results-file-kind"></span>
   </header>
 
+  {# Tab-level result-file picker.  Populated by
+     lib/results/file-picker.js with every file in the current
+     project directory that any ``isResult:true`` inspector would
+     mount (sorted newest-first).  Hidden when zero or one result
+     file exists -- no point in a single-entry dropdown.  Replaced
+     the in-trajectory dropdown (2026-06-01); now ANY result-bearing
+     directory gets the dropdown regardless of which inspector
+     ultimately mounts. #}
+  <div id="results-file-picker-bar" class="result-list-bar" hidden>
+    <label class="result-list-label" for="results-file-picker-select">
+      Result file:
+    </label>
+    <select id="results-file-picker-select"
+            class="result-list-select"
+            aria-label="Pick a result file in this project directory"></select>
+    <span id="results-file-picker-meta" class="result-list-meta"
+          aria-live="polite"></span>
+  </div>
+
   {# The inspector host is the single mount point.  The active
      inspector (picked by registry.pick() against the sidebar's
      current_file) injects its own DOM here.  Switching files
@@ -127,9 +146,9 @@
 <script src="{{ url_for('static', filename='lib/xyz-io.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/path-utils.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/trajectory/core.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/trajectory/result-list.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/spectra/core.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/inspectors/registry.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/results/file-picker.js') }}"></script>
 {# Specific (compound-extension) inspectors register first... #}
 <script src="{{ url_for('static', filename='lib/inspectors/trajectory.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/inspectors/spectra.js') }}"></script>

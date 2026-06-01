@@ -77,6 +77,7 @@
     const inspector = {
         name:        "spectra",
         displayName: "Spectra results",
+        isResult:    true,
         match:       (file) => file.toLowerCase().endsWith(".spectra.json"),
 
         mount(host, file, _ctx) {
