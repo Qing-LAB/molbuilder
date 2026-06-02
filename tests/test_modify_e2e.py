@@ -2766,3 +2766,91 @@ def test_build_form_tri_select_optional_bool(page, flask_server):
     page.locator("#p-parallel-over-k").select_option("true")
     collected = page.evaluate(collect_js)
     assert collected["parallel_over_k"] is True
+
+
+# --------------------------------------------------------------------- #
+#  Second-visit + external-change pattern (#195, audit follow-up to    #
+#  the 2026-06-02 /results stale-dropdown bug).  Per                   #
+#  docs/protocols/playwright-tests.md § 9.6, every tab whose UI       #
+#  is driven by a subscriber-on-state-change needs at least one       #
+#  test exercising the "user navigated away, external state          #
+#  changed, returned" workflow.                                       #
+# --------------------------------------------------------------------- #
+
+
+class TestModifySecondVisitExternalChange:
+    """Audit follow-up: pin the second-visit refresh contract for
+    /modify so a future regression that breaks the sidebar-pick →
+    selection-panel wiring on bfcache restore / tab re-entry fails
+    loudly."""
+
+    def test_revisit_modify_with_persisted_selection_reloads_atom_list(
+            self, page, flask_server, water_xyz_file):
+        """User opens /modify, picks water.xyz (3 atoms land in the
+        selection store), navigates to /build, comes back.  The
+        atom list must still be populated -- not blank because the
+        store's onChange subscriber bailed on the same source
+        path."""
+        _open_modify(page, flask_server)
+        _load_water(page, water_xyz_file)
+        # Atom list reflects 3 atoms.
+        assert page.evaluate(
+            "() => window.molbuilder.selection.store.getState()"
+            ".atoms.length"
+        ) == 3
+
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#build-btn", timeout=5000)
+
+        page.goto(f"{flask_server}/modify")
+        # The selection store MUST repopulate.  Without the refresh
+        # contract, sessionStorage has the file path but the store's
+        # internal "lastSourceFile" still matches -> no re-fetch.
+        page.wait_for_function(
+            "() => window.molbuilder.selection.store.getState()"
+            ".atoms.length === 3",
+            timeout=5000,
+        )
+
+    def test_external_xyz_replacement_reloads_atom_list_on_revisit(
+            self, page, flask_server, tmp_path, monkeypatch):
+        """Stronger version: replace the source file with a
+        different-atom-count structure between visits.  The
+        selection panel MUST reflect the new atom count."""
+        _register_tmp_as_picker_root(tmp_path, monkeypatch)
+        xyz_path = tmp_path / "structure.xyz"
+        xyz_path.write_text(
+            "3\nwater\n"
+            "O 0.000  0.000 0.000\n"
+            "H 0.957  0.000 0.000\n"
+            "H -0.239 0.927 0.000\n"
+        )
+        _open_modify(page, flask_server)
+        _load_file(page, str(xyz_path), expected_atoms=3)
+
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#build-btn", timeout=5000)
+
+        # Replace the file with a different structure (5 atoms,
+        # methane).
+        import time
+        xyz_path.write_text(
+            "5\nmethane\n"
+            "C 0.000  0.000 0.000\n"
+            "H 0.629  0.629 0.629\n"
+            "H -0.629 -0.629 0.629\n"
+            "H -0.629  0.629 -0.629\n"
+            "H 0.629 -0.629 -0.629\n"
+        )
+        time.sleep(0.5)
+
+        page.goto(f"{flask_server}/modify")
+        # The atom list MUST reflect the new structure on re-entry.
+        # If the JS subscriber bails on "same source file path",
+        # the user sees stale 3 atoms.  This is the same bug shape
+        # as #192.
+        page.wait_for_function(
+            "() => window.molbuilder.selection.store.getState()"
+            ".atoms.length === 5",
+            timeout=5000,
+        )

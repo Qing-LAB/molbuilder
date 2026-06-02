@@ -638,10 +638,85 @@ prior inspector and mounts the trajectory inspector for
 
 Watch fixtures that create their `.molwatch.log` in `tmp_path`
 ALSO need `_register_tmp_as_picker_root(tmp_path, monkeypatch)`
-(see § 9.6) so the picker scans `tmp_path`, not the projects/
+(see § 9.7) so the picker scans `tmp_path`, not the projects/
 root.
 
-### 9.6 Registering a tmp_path as a Capabilities picker root
+### 9.6 Second-visit + external-change pattern (the #192 bug class)
+
+The 2026-06-02 /results stale-dropdown bug (#192) revealed a
+systematic test-coverage gap: every Playwright test up to that
+point did ONE `page.goto()` per scenario. The bug only manifested
+on a SECOND visit to the same page when external state had
+changed between visits — the picker's "lastScannedDir" sentinel
+bailed because the dir was the same, while the browser HTTP cache
+returned the stale `/api/files/list` response. Neither the
+node-driven unit tests, the Flask middleware tests, nor any
+single-`page.goto()` Playwright test could have caught it.
+
+This pattern is the canonical regression-test recipe for the bug
+class. Use it whenever the tab's UI is driven by a subscriber
+that fires on STATE CHANGE rather than STATE RECONFIRM.
+
+**Pattern:**
+
+```python
+def test_external_change_refreshes_view_on_revisit(
+        self, page, flask_server, fixture_with_one_file):
+    proj_dir, dir_str = fixture_with_one_file
+    # 1. Set the dir on a non-target tab.
+    _setup_dir_via(page, flask_server, "/modify", dir_str)
+    # 2. Visit the target tab; assert initial state.
+    page.goto(f"{flask_server}/target_tab")
+    _wait_for_target_data_loaded(page)
+    initial = _read_target_state(page)
+    # 3. Navigate away.
+    page.goto(f"{flask_server}/modify")
+    # 4. Mutate external state (file on disk, sidecar JSON, mtime).
+    (proj_dir / "newfile.out").write_text("...")
+    time.sleep(0.5)  # mtime resolution + flush
+    # 5. Return to the target tab.
+    page.goto(f"{flask_server}/target_tab")
+    _wait_for_target_data_loaded(page)
+    # 6. Assert the refresh landed.
+    refreshed = _read_target_state(page)
+    assert refreshed != initial, (
+        "target tab did not refresh on revisit -- "
+        "the subscriber-bails-on-same-key bug pattern is present"
+    )
+```
+
+**Companion: synthetic `pageshow` dispatch.**
+
+For pinning the underlying handler at the JS-event level (without
+needing two `page.goto()` calls), dispatch the event manually:
+
+```python
+page.evaluate("""() => {
+    window.dispatchEvent(new PageTransitionEvent("pageshow", {
+        persisted: true,
+    }));
+}""")
+```
+
+This is faster than the full revisit and is the right size for
+unit-style pinning of "the handler is wired". See
+`test_results_file_picker_e2e.py` and
+`test_inspector_pageshow_refresh_e2e.py` for working examples.
+
+**Tabs already covered (2026-06-02):**
+
+- `/results` file-picker — `test_results_file_picker_e2e.py`
+- `/results` trajectory inspector — `test_inspector_pageshow_refresh_e2e.py`
+
+**Tabs still at risk (apply this pattern when adding/refactoring):**
+
+- `/build` form schema, viewer's sidebar-pick load.
+- `/modify` selection panel, atom-list refresh after external structure edit.
+- `/spectra` form (when /spectra grows an inspect side).
+
+A future "/build re-renders form on schema change" or "/modify re-fetches atoms when the structure file changes on disk" bug would have the same shape as #192 and need the same test pattern.
+
+### 9.7 Registering a tmp_path as a Capabilities picker root
 
 Tests that load a file from `tmp_path` and then drive
 `store.setSourceFile(...)` or anything that hits

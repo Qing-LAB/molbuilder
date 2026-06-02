@@ -373,3 +373,116 @@ class TestSidebarPickLoad:
             ".trim() === '3'",
             timeout=_BOOT_TIMEOUT_MS,
         )
+
+
+# --------------------------------------------------------------------- #
+#  Second-visit + external-change pattern (#195, audit follow-up to    #
+#  the 2026-06-02 /results stale-dropdown bug).  Per                   #
+#  docs/protocols/playwright-tests.md § 9.6, every tab whose UI       #
+#  is driven by a subscriber-on-state-change needs at least one       #
+#  test exercising the "user navigated away, external state          #
+#  changed, returned" workflow.                                       #
+# --------------------------------------------------------------------- #
+
+
+class TestBuildSecondVisitExternalChange:
+    """Audit follow-up: pin the second-visit refresh contract for
+    /build so a future regression that breaks the sidebar-pick →
+    viewer-update wiring on bfcache restore / tab re-entry fails
+    loudly.  The /results file-picker shipped a bug of this exact
+    shape (#192) that no single-page-load test could catch."""
+
+    def test_revisiting_build_with_existing_selection_reloads_viewer(
+            self, page, flask_server, water_xyz_file):
+        """User opens /build, picks water.xyz, navigates to /modify
+        (the canonical "go look at the structure" flow), comes back
+        to /build.  The viewer MUST still show the structure +
+        atom-count line, even though the page just bootstrapped
+        fresh.  Pre-fix the bug class: sessionStorage holds the
+        file, the sidebar onChange subscriber fires with the same
+        value as last time, picker-style "bails on same key"
+        suppresses the load -> viewer is empty."""
+        _open_build(page, flask_server)
+        # Drive the sidebar to a real file (same path as
+        # TestSidebarPickLoad).
+        from pathlib import Path
+        p = str(Path(water_xyz_file).resolve())
+        parent = str(Path(p).parent)
+        page.evaluate(
+            "(c) => window.molbuilder.projects.setShared(c.dir, c.file)",
+            {"dir": parent, "file": p},
+        )
+        page.wait_for_function(
+            "() => document.querySelector('#info-atoms').textContent"
+            ".trim() === '3'",
+            timeout=_BOOT_TIMEOUT_MS,
+        )
+
+        # Navigate to /modify -- sessionStorage carries dir + file
+        # over (cross-tab handoff).
+        page.goto(f"{flask_server}/modify")
+        page.wait_for_selector("#projects-sidebar", timeout=_BOOT_TIMEOUT_MS)
+
+        # Come back to /build.  The viewer MUST reload from the
+        # persisted selection without a sidebar click.
+        page.goto(f"{flask_server}/")
+        page.wait_for_function(
+            "() => document.querySelector('#info-atoms').textContent"
+            ".trim() === '3'",
+            timeout=_BOOT_TIMEOUT_MS,
+        )
+
+    def test_external_xyz_replacement_reloads_on_revisit(
+            self, page, flask_server, tmp_path, monkeypatch):
+        """Stronger version: user picks water.xyz on /build, leaves
+        the tab, the file content is REPLACED on disk (different
+        atom count), user comes back to /build.  Viewer MUST show
+        the new atom count -- not the stale 3-atom water.
+
+        Catches: a hypothetical sidebar-pick loader that caches the
+        last-loaded XYZ text and skips the re-fetch on identical
+        path."""
+        # Pin tmp_path as picker root + write the initial 3-atom XYZ.
+        _register_tmp_as_picker_root(tmp_path, monkeypatch)
+        xyz_path = tmp_path / "structure.xyz"
+        xyz_path.write_text(
+            "3\nwater\n"
+            "O 0.000  0.000 0.000\n"
+            "H 0.957  0.000 0.000\n"
+            "H -0.239 0.927 0.000\n"
+        )
+        _open_build(page, flask_server)
+        page.evaluate(
+            "(c) => window.molbuilder.projects.setShared(c.dir, c.file)",
+            {"dir": str(tmp_path), "file": str(xyz_path)},
+        )
+        page.wait_for_function(
+            "() => document.querySelector('#info-atoms').textContent"
+            ".trim() === '3'",
+            timeout=_BOOT_TIMEOUT_MS,
+        )
+
+        page.goto(f"{flask_server}/modify")
+        page.wait_for_selector("#projects-sidebar", timeout=_BOOT_TIMEOUT_MS)
+
+        # Replace the file on disk with a different structure
+        # (5 atoms, methane-ish).
+        import time
+        xyz_path.write_text(
+            "5\nmethane\n"
+            "C 0.000  0.000 0.000\n"
+            "H 0.629  0.629 0.629\n"
+            "H -0.629 -0.629 0.629\n"
+            "H -0.629  0.629 -0.629\n"
+            "H 0.629 -0.629 -0.629\n"
+        )
+        time.sleep(0.5)
+
+        page.goto(f"{flask_server}/")
+        # The new structure must appear; the OLD cached "3" must
+        # NOT be what the viewer shows.
+        page.wait_for_function(
+            "() => document.querySelector('#info-atoms').textContent"
+            ".trim() === '5'",
+            timeout=_BOOT_TIMEOUT_MS,
+        )
