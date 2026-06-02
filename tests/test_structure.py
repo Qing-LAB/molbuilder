@@ -200,6 +200,101 @@ class TestStructureFrozenAtoms:
 
 
 # --------------------------------------------------------------------- #
+#  Transport metadata MUST survive the standard copy / translate /     #
+#  concat transformations.                                              #
+#                                                                       #
+#  Until 2026-06-02 (audit task #186) ``Structure.copy()``,            #
+#  ``Structure.translated()``, ``Structure.centered()``, and           #
+#  ``Structure.concat()`` all called the constructor WITHOUT the       #
+#  ``frozen_atoms`` and ``regions`` arguments -- which defaulted them  #
+#  to empty.  That silently broke the three-stage contract: a user    #
+#  who picked frozen atoms in /modify, did a translate / centre /     #
+#  concat, then submitted to /build saw zero frozen atoms in the      #
+#  emitted FDF.  These tests pin the carry-through so the regression  #
+#  cannot reoccur.                                                     #
+# --------------------------------------------------------------------- #
+
+
+class TestStructureTransportMetadataCarryThrough:
+
+    @staticmethod
+    def _struct_with_meta():
+        return Structure(
+            elements=["C"] * 5,
+            positions=np.arange(15, dtype=float).reshape(5, 3),
+            regions={"L-electrode": [0, 1], "bridge": [2]},
+            frozen_atoms=[0, 1, 4],
+        )
+
+    def test_copy_preserves_frozen_atoms_and_regions(self):
+        s  = self._struct_with_meta()
+        s2 = s.copy()
+        assert s2.frozen_atoms == s.frozen_atoms
+        assert s2.regions      == s.regions
+        # Defensive copy: mutating the new structure must not mutate the old.
+        s2.frozen_atoms.append(2)
+        s2.regions["L-electrode"].append(2)
+        assert s.frozen_atoms == [0, 1, 4]
+        assert s.regions["L-electrode"] == [0, 1]
+
+    def test_translated_preserves_frozen_atoms_and_regions(self):
+        s  = self._struct_with_meta()
+        s2 = s.translated([10.0, 0.0, 0.0])
+        assert s2.frozen_atoms == [0, 1, 4]
+        assert s2.regions == {"L-electrode": [0, 1], "bridge": [2]}
+
+    def test_centered_preserves_frozen_atoms_and_regions(self):
+        # ``centered()`` is implemented in terms of ``translated()`` --
+        # this test pins the higher-level helper too because callers
+        # use it directly during slab assembly.
+        s  = self._struct_with_meta()
+        s2 = s.centered()
+        assert s2.frozen_atoms == [0, 1, 4]
+        assert s2.regions == {"L-electrode": [0, 1], "bridge": [2]}
+
+    def test_concat_offsets_frozen_atoms_per_input(self):
+        # Two structures, each with its own frozen list.  Indices in the
+        # merged structure must be offset by the prior structures'
+        # n_atoms so frozen atom i in the second input lands at index
+        # n_first + i in the result.
+        s1 = Structure(
+            elements=["C"] * 3, positions=np.zeros((3, 3)),
+            frozen_atoms=[0, 2],
+        )
+        s2 = Structure(
+            elements=["O"] * 2, positions=np.ones((2, 3)),
+            frozen_atoms=[1],
+        )
+        merged = Structure.concat([s1, s2])
+        assert merged.n_atoms == 5
+        assert merged.frozen_atoms == [0, 2, 3 + 1]   # 0, 2, 4
+
+    def test_concat_merges_regions_with_offset_and_label_union(self):
+        # Same label across inputs: indices merge into one combined list.
+        # Different label per input: both labels appear in the result.
+        s1 = Structure(
+            elements=["C"] * 3, positions=np.zeros((3, 3)),
+            regions={"electrode": [0, 1]},
+        )
+        s2 = Structure(
+            elements=["O"] * 2, positions=np.ones((2, 3)),
+            regions={"electrode": [0], "tip": [1]},
+        )
+        merged = Structure.concat([s1, s2])
+        assert merged.regions["electrode"] == [0, 1, 3]    # 0, 1, n1+0
+        assert merged.regions["tip"]       == [3 + 1]      # n1+1
+
+    def test_concat_empty_metadata_is_no_op(self):
+        # Inputs with no transport metadata must produce a result with
+        # empty metadata (and not crash trying to index empty lists).
+        s1 = Structure(elements=["C"], positions=np.zeros((1, 3)))
+        s2 = Structure(elements=["O"], positions=np.ones((1, 3)))
+        merged = Structure.concat([s1, s2])
+        assert merged.frozen_atoms == []
+        assert merged.regions == {}
+
+
+# --------------------------------------------------------------------- #
 #  PDB altLoc deduplication (2026-05-22 hemeC-dithiol fix)             #
 # --------------------------------------------------------------------- #
 

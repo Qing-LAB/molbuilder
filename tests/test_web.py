@@ -1906,6 +1906,60 @@ def test_engine_key_present_on_every_pyscf_form_field():
     )
 
 
+def test_engine_key_present_on_every_spectra_form_field():
+    """SpectraConfig was missing engine_key on ALL fields pre-audit
+    2026-06-02 (task #188).  Backfilled to mirror PySCFConfig style
+    on shared keys + ``(molbuilder: ...)`` markers for the per-mode
+    selectors / frozen-atom filters / finite-difference knobs that
+    have no PySCF equivalent."""
+    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
+    from molbuilder.config.spectra import SpectraConfig
+    sch = dataclass_to_form_schema(SpectraConfig, id_prefix="sp")
+    missing = [f["name"] for f in _flatten_schema_fields(sch)
+               if "engine_key" not in f]
+    assert not missing, (
+        f"SpectraConfig fields without engine_key: {missing}"
+    )
+
+
+def test_spectra_molbuilder_only_fields_use_paren_prefix():
+    """Same dimming-rule check as the SIESTA variant: SpectraConfig
+    fields that don't map to a PySCF keyword (frozen-atom filters,
+    per-mode selector, finite-difference knobs, emission control)
+    MUST carry the ``(molbuilder`` prefix so the UI knows to dim
+    the badge."""
+    from molbuilder.web.blueprints._shared import dataclass_to_form_schema
+    from molbuilder.config.spectra import SpectraConfig
+    sch = dataclass_to_form_schema(SpectraConfig, id_prefix="sp")
+    molbuilder_only = {
+        "engine",
+        "job_name",
+        "frozen_elements",
+        "frozen_residue_names",
+        "frozen_indices",
+        "compute_raman",
+        "compute_ir",
+        "displacement_amplitude_ang",
+        "es_mode_selection",
+        "es_top_n",
+        "es_threshold",
+        "es_explicit_indices",
+        "freq_min_cm1",
+        "freq_max_cm1",
+        "es_n_homo_below",
+        "es_n_lumo_above",
+        "verbose_comments",
+    }
+    fields_by_name = {f["name"]: f for f in _flatten_schema_fields(sch)}
+    for name in molbuilder_only:
+        f = fields_by_name.get(name)
+        assert f is not None, f"missing field {name} in schema"
+        assert f["engine_key"].startswith("(molbuilder"), (
+            f"{name}: engine_key={f['engine_key']!r} should start with "
+            f"``(molbuilder`` so the UI dims the badge"
+        )
+
+
 def test_engine_key_marks_molbuilder_only_fields_with_paren_prefix():
     """molbuilder-only fields (preprocessing / wrapper / filename
     knobs that don't reach the engine) MUST have engine_key

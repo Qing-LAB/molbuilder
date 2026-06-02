@@ -52,16 +52,41 @@ from .structure import Structure
 # --------------------------------------------------------------------- #
 
 
+def _reindex_transport_metadata(
+    struct: Structure, keep: Sequence[int],
+) -> Tuple[List[int], "dict[str, List[int]]"]:
+    """Remap ``struct.frozen_atoms`` and ``struct.regions`` after a
+    slice/delete operation, dropping any index that fell off and
+    renumbering survivors to their new 0-based position.
+
+    Used by ``delete_atoms`` (the only modify-op that changes the
+    index space).  Pure-passthrough ops (translate / rotate / orient)
+    can carry frozen_atoms + regions through verbatim without this.
+    """
+    old_to_new = {old: new for new, old in enumerate(keep)}
+    new_frozen = [old_to_new[i] for i in struct.frozen_atoms if i in old_to_new]
+    new_regions = {}
+    for label, idxs in struct.regions.items():
+        remapped = [old_to_new[i] for i in idxs if i in old_to_new]
+        if remapped:
+            new_regions[label] = remapped
+    return new_frozen, new_regions
+
+
 def delete_atoms(struct: Structure, indices: Sequence[int]) -> Structure:
     """Return a new ``Structure`` with the given atom indices removed.
 
     Indices may be in any order; duplicates are tolerated.  All per-atom
-    metadata arrays are sliced consistently.
+    metadata arrays are sliced consistently.  ``frozen_atoms`` and
+    ``regions`` are reindexed to the post-delete atom-numbering: a
+    frozen atom that survives keeps its frozen flag but at a possibly
+    smaller index; a frozen atom that was deleted is dropped.
     """
     keep = sorted(set(range(struct.n_atoms)) - set(int(i) for i in indices))
     if len(keep) == struct.n_atoms:
         # No-op (or all indices were out of range / already absent).
         return struct.copy()
+    new_frozen, new_regions = _reindex_transport_metadata(struct, keep)
     return Structure(
         elements=     [struct.elements[i]      for i in keep],
         positions=    struct.positions[keep].copy(),
@@ -70,6 +95,8 @@ def delete_atoms(struct: Structure, indices: Sequence[int]) -> Structure:
         residue_names=[struct.residue_names[i] for i in keep],
         chain_ids=    [struct.chain_ids[i]     for i in keep],
         title=struct.title,
+        regions=new_regions,
+        frozen_atoms=new_frozen,
     )
 
 
@@ -133,6 +160,10 @@ def add_atom(
         new_residue_id = (max(struct.residue_ids) if struct.residue_ids else 0) + 1
     else:
         new_residue_id = int(residue_id)
+    # New atom inherits a fresh index (= old n_atoms) and is NOT frozen
+    # by default + NOT a member of any region.  Existing frozen_atoms +
+    # region indices carry through unchanged: their atom-index space
+    # only grows at the high end, so no remap needed.
     return Structure(
         elements=struct.elements + [element],
         positions=np.vstack([struct.positions, new_pos[None, :]]),
@@ -141,6 +172,8 @@ def add_atom(
         residue_names=struct.residue_names + [residue_name],
         chain_ids=struct.chain_ids + [struct.chain_ids[anchor_index]],
         title=struct.title,
+        regions={k: list(v) for k, v in struct.regions.items()},
+        frozen_atoms=list(struct.frozen_atoms),
     )
 
 
@@ -277,6 +310,8 @@ def orient_along_axis(
         new_pos = new_pos - midpoint
     # "none": no translation
 
+    # Pure rotation: atom indices are unchanged so frozen_atoms +
+    # regions carry through verbatim.
     return Structure(
         elements=list(struct.elements),
         positions=new_pos,
@@ -285,6 +320,8 @@ def orient_along_axis(
         residue_names=list(struct.residue_names),
         chain_ids=list(struct.chain_ids),
         title=struct.title,
+        regions={k: list(v) for k, v in struct.regions.items()},
+        frozen_atoms=list(struct.frozen_atoms),
     )
 
 
@@ -352,6 +389,8 @@ def rotate_around_axis(
         new_pos = (struct.positions - centroid) @ R.T + centroid
     else:
         new_pos = struct.positions @ R.T
+    # Pure rotation: atom indices are unchanged so frozen_atoms +
+    # regions carry through verbatim.
     return Structure(
         elements=list(struct.elements),
         positions=new_pos,
@@ -360,6 +399,8 @@ def rotate_around_axis(
         residue_names=list(struct.residue_names),
         chain_ids=list(struct.chain_ids),
         title=struct.title,
+        regions={k: list(v) for k, v in struct.regions.items()},
+        frozen_atoms=list(struct.frozen_atoms),
     )
 
 
@@ -810,6 +851,10 @@ def add_electrode_slab(
     # Assemble metadata for the new metal atoms.
     n_new = metal_pos.shape[0]
     new_residue_id = (max(struct.residue_ids) if struct.residue_ids else 0) + 1
+    # New electrode atoms are appended at indices [old_n, old_n + n_new).
+    # Existing frozen_atoms + region indices carry through unchanged; the
+    # new electrode atoms are NOT auto-frozen and NOT auto-tagged with a
+    # region label (callers who want either can post-process the result).
     return Structure(
         elements=list(struct.elements) + [element] * n_new,
         positions=np.vstack([struct.positions, metal_pos]),
@@ -818,6 +863,8 @@ def add_electrode_slab(
         residue_names=list(struct.residue_names) + ["ELC"] * n_new,
         chain_ids=list(struct.chain_ids) + ["A"] * n_new,
         title=struct.title,
+        regions={k: list(v) for k, v in struct.regions.items()},
+        frozen_atoms=list(struct.frozen_atoms),
     )
 
 

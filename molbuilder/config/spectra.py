@@ -148,6 +148,7 @@ class SpectraConfig:
         # one entry and the form/CLI/validator pipelines pick up
         # the new choice automatically.
         "choices": ("pyscf",),
+        "engine_key": '(molbuilder: backend selector)',
         "help":    "computational engine that runs the Hessian, "
                    "polarizability derivatives, and the per-mode "
                    "displaced-geometry SCFs",
@@ -157,6 +158,7 @@ class SpectraConfig:
         "label":    "Job name",
         "id_suffix": "job-name",
         "pattern":  r"^[A-Za-z0-9_\-]+$",
+        "engine_key": '(molbuilder: filename + log-name basename)',
         "help":     "filesystem-safe basename for emitted files "
                     "(spectra.py + spectra.json + thermo.txt).  "
                     "Same rule as SIESTA SystemLabel / PySCF job_name "
@@ -170,6 +172,7 @@ class SpectraConfig:
         "section": "Method",
         "label":   "SCF method",
         "choices": ("RKS", "UKS", "RHF", "UHF"),
+        "engine_key": 'RKS / UKS / RHF / UHF  (PySCF class selection)',
         "help":    "RKS (restricted Kohn-Sham): closed-shell DFT, "
                    "all electrons paired, spin must be 0.  "
                    "UKS (unrestricted Kohn-Sham): open-shell DFT, "
@@ -185,6 +188,7 @@ class SpectraConfig:
         "section": "Method",
         "label":   "Net charge",
         "range":   (-10, 10),
+        "engine_key": 'gto.M(charge=...)',
         "help":    "Net molecular charge in units of e.  Default 0 = "
                    "neutral molecule.  Examples: deprotonated carboxylate "
                    "= -1; protonated amine = +1; deprotonated phosphate "
@@ -197,6 +201,7 @@ class SpectraConfig:
         "section": "Method",
         "label":   "Spin (2S = # unpaired electrons)",
         "range":   (0, 10),
+        "engine_key": 'gto.M(spin=...)  # 2S, # of unpaired electrons',
         "help":    "PySCF spin convention: 2S = n_alpha - n_beta = "
                    "number of unpaired electrons.  NOT the multiplicity "
                    "(2S+1).  Examples: closed-shell singlet = 0; "
@@ -212,6 +217,7 @@ class SpectraConfig:
     functional: str = field(default="B3LYP", metadata={
         "section": "Method",
         "label":   "Functional",
+        "engine_key": 'mf.xc = ...',
         "help":    "XC functional name (libxc string).  Recommendations: "
                    "B3LYP -- modern hybrid default for organic / "
                    "biomolecule chemistry.  PBE0 -- faster hybrid "
@@ -227,6 +233,7 @@ class SpectraConfig:
     basis: str = field(default="def2-SVP", metadata={
         "section": "Method",
         "label":   "Basis set",
+        "engine_key": 'gto.M(basis=...)',
         "help":    "Gaussian basis set name.  Recommendations by tier: "
                    "MINIMAL: STO-3G (toy only).  SMALL: 6-31G(d) -- "
                    "fast but inadequate for transition metals.  "
@@ -242,6 +249,7 @@ class SpectraConfig:
         "section":    "Method",
         "label":      "Pseudopotential (ECP)",
         "null_label": "(auto)",
+        "engine_key": 'gto.M(ecp=...)',
         "help":       "Effective core potential name -- PySCF replaces "
                       "the core electrons of heavy atoms (typically Z > 36) "
                       "with an analytic potential, so the SCF only treats "
@@ -265,12 +273,14 @@ class SpectraConfig:
         "label":      "Dispersion",
         "choices":    ("d3", "d3bj", "d4", "none"),
         "null_label": "(none)",
+        "engine_key": 'mf = mf.add_dispersion(...)',
         "help":       "dispersion correction; D3 with Becke-Johnson "
                       "damping is the modern default [Grimme2011]",
     })
     density_fit: bool = field(default=True, metadata={
         "section": "Method",
         "label":   "Density fitting",
+        "engine_key": 'mf = mf.density_fit()',
         "help":    "speeds up each SCF cycle 5-10x by approximating "
                    "the two-electron Coulomb / exchange integrals "
                    "with an auxiliary basis.  Accuracy loss is "
@@ -302,6 +312,7 @@ class SpectraConfig:
     frozen_elements: List[str] = field(default_factory=list, metadata={
         "section": "Frozen atoms",
         "label":   "Freeze by element",
+        "engine_key": '(molbuilder: frozen-atom filter by element)',
         "help":    "comma-separated element symbols whose atoms are "
                    "held in place during the vibrational analysis "
                    "(e.g. \"Au\" to freeze a gold electrode in a "
@@ -314,6 +325,7 @@ class SpectraConfig:
     frozen_residue_names: List[str] = field(default_factory=list, metadata={
         "section": "Frozen atoms",
         "label":   "Freeze by residue name",
+        "engine_key": '(molbuilder: frozen-atom filter by PDB residue)',
         "help":    "comma-separated PDB residue names whose atoms "
                    "are held in place (e.g. \"ALA,GLY\" to freeze "
                    "specific peptide residues).  Requires the input "
@@ -323,6 +335,7 @@ class SpectraConfig:
     frozen_indices: List[int] = field(default_factory=list, metadata={
         "section": "Frozen atoms",
         "label":   "Freeze by atom index",
+        "engine_key": '(molbuilder: frozen-atom filter by explicit index, sidecar-bridged)',
         "help":    "comma-separated 0-based atom indices, optionally "
                    "with ranges (e.g. \"0-35, 100, 150-200\").  Use "
                    "when you need finer control than element- or "
@@ -334,6 +347,7 @@ class SpectraConfig:
     compute_raman: bool = field(default=True, metadata={
         "section": "Spectrum",
         "label":   "Compute Raman activities",
+        "engine_key": '(molbuilder: finite-diff polarizability path)',
         "help":    "compute Raman scattering intensity for every "
                    "mode.  Cost: roughly 6 × (number of free atoms) "
                    "extra SCF calculations (one per ±finite-difference "
@@ -345,6 +359,7 @@ class SpectraConfig:
         "section": "Spectrum",
         "label":   "Compute IR intensities (scaffold; not yet validated)",
         "tier":    "advanced",
+        "engine_key": '(molbuilder: finite-diff dipole-moment derivative path)',
         "help":    "Compute IR absorption intensities (km/mol) from "
                    "finite-difference dipole-moment derivatives.  "
                    "v1 constraint: this rides on the Raman FD loop, "
@@ -363,6 +378,7 @@ class SpectraConfig:
         "unit":    "Å",
         "range":   (0.02, 0.30),
         "tier":    "advanced",
+        "engine_key": '(molbuilder: finite-difference step amplitude)',
         "help":    "how far atoms are pushed along each mode "
                    "eigenvector when probing how the orbitals shift "
                    "(only used by the per-mode electronic-structure "
@@ -394,6 +410,7 @@ class SpectraConfig:
         "label":   "Mode selection",
         "id_suffix": "es-selection",
         "choices": ("skip", "all", "top_n", "threshold", "explicit"),
+        "engine_key": '(molbuilder: per-mode electronic-structure selector)',
         "help":    "which vibrational modes get the displaced-"
                    "geometry orbital-energy probe.  Each chosen mode "
                    "costs two extra SCF calculations (one at +A, one "
@@ -421,6 +438,7 @@ class SpectraConfig:
         "label":   "Top-N modes",
         "range":   (1, 1000),
         "tier":    "advanced",
+        "engine_key": '(molbuilder: per-mode selector parameter)',
         "help":    "(only used when selector = top_n) how many of "
                    "the brightest Raman-active modes to compute "
                    "orbital-energy data for.  Cost grows linearly: "
@@ -432,6 +450,7 @@ class SpectraConfig:
         "unit":    "Å⁴/amu",
         "range":   (0.0, 1000.0),
         "tier":    "advanced",
+        "engine_key": '(molbuilder: per-mode selector parameter)',
         "help":    "(only used when selector = threshold) Raman "
                    "activity cutoff in Å⁴/amu; every mode brighter "
                    "than this gets orbital-energy data.  Final mode "
@@ -442,6 +461,7 @@ class SpectraConfig:
         "section": "Electronic structure",
         "label":   "Explicit modes",
         "tier":    "advanced",
+        "engine_key": '(molbuilder: per-mode selector parameter)',
         "help":    "(only used when selector = explicit) comma-"
                    "separated list of 1-based mode numbers to "
                    "compute orbital-energy data for, e.g. "
@@ -465,6 +485,7 @@ class SpectraConfig:
         "unit":       "cm⁻¹",
         "null_label": "(no lower bound)",
         "tier":       "advanced",
+        "engine_key": '(molbuilder: per-mode frequency filter)',
         "help":       "restrict orbital-energy data to modes at or "
                       "above this frequency.  Useful for skipping "
                       "low-frequency rocking / librational modes that "
@@ -480,6 +501,7 @@ class SpectraConfig:
         "unit":       "cm⁻¹",
         "null_label": "(no upper bound)",
         "tier":       "advanced",
+        "engine_key": '(molbuilder: per-mode frequency filter)',
         "help":       "restrict orbital-energy data to modes at or "
                       "below this frequency.  Combine with Min "
                       "frequency to target a specific spectral "
@@ -492,6 +514,7 @@ class SpectraConfig:
         "id_suffix": "es-n-homo-below",
         "range":   (0, 50),
         "tier":    "advanced",
+        "engine_key": '(molbuilder: orbital-window record size)',
         "help":    "how many frontier orbitals BELOW the HOMO to "
                    "record at each displaced geometry.  Five is "
                    "enough to study HOMO/LUMO behaviour for "
@@ -505,6 +528,7 @@ class SpectraConfig:
         "id_suffix": "es-n-lumo-above",
         "range":   (0, 50),
         "tier":    "advanced",
+        "engine_key": '(molbuilder: orbital-window record size)',
         "help":    "how many frontier orbitals ABOVE the LUMO to "
                    "record at each displaced geometry.  Five matches "
                    "the HOMO setting for a symmetric window around "
@@ -519,6 +543,7 @@ class SpectraConfig:
         "unit":    "Hartree",
         "range":   (1e-12, 1e-4),
         "tier":    "advanced",
+        "engine_key": 'mf.conv_tol',
         "help":    "tight stopping criterion for each self-consistent "
                    "field calculation.  1e-9 Ha is the standard "
                    "production setting for vibrational analysis (the "
@@ -533,6 +558,7 @@ class SpectraConfig:
         "label":   "Max SCF iterations (scf.max_cycle)",
         "range":   (10, 1000),
         "tier":    "advanced",
+        "engine_key": 'mf.max_cycle',
         "help":    "cap on iterations PER self-consistent calculation.  "
                    "If the SCF still hasn't converged at this point "
                    "the run aborts with a clear error.  100 is "
@@ -546,6 +572,7 @@ class SpectraConfig:
         "label":   "DFT integration grid level",
         "range":   (0, 9),
         "tier":    "advanced",
+        "engine_key": 'mf.grids.level',
         "help":    "DFT exchange-correlation integrals are evaluated "
                    "on a numerical grid; this is the radial/angular "
                    "density.  0 = coarsest (smoke tests only), 3 = "
@@ -571,6 +598,7 @@ class SpectraConfig:
         "unit":     "MB",
         "id_suffix": "max-memory",
         "range":    (100, 1_000_000),
+        "engine_key": 'mol.max_memory',
         "help":     "memory budget the SCF code is allowed to use "
                     "for intermediates (ERI tensors, density-fit "
                     "auxiliaries, etc.).  Larger values let bigger "
@@ -581,6 +609,7 @@ class SpectraConfig:
         "section":    "Runtime",
         "label":      "CPU threads",
         "null_label": "(auto: physical cores)",
+        "engine_key": "lib.num_threads(N) + os.environ['OMP_NUM_THREADS']",
         "help":       "how many CPU threads PySCF uses.  Default "
                       "(blank) auto-detects PHYSICAL cores (not "
                       "logical/HT) -- hyperthreading rarely helps "
@@ -597,6 +626,7 @@ class SpectraConfig:
         "section": "Runtime",
         "label":   "Use GPU (NVIDIA, via gpu4pyscf)",
         "id_suffix": "use-gpu",
+        "engine_key": 'gpu4pyscf: mf = mf.to_gpu()',
         "help":    "run the SCF and Hessian on an NVIDIA GPU via the "
                    "gpu4pyscf extension (\"pip install "
                    "gpu4pyscf-cuda12x\" on the machine that runs the "
@@ -616,6 +646,7 @@ class SpectraConfig:
         "label":   "Log verbosity (verbose)",
         "range":   (0, 9),
         "tier":    "advanced",
+        "engine_key": 'mol.verbose',
         "help":    "how much detail the SCF prints to stdout.  "
                    "0 = silent, 3 = warnings only, 4 = standard "
                    "(SCF cycle table + final energy), 5 = debug.  "
@@ -625,6 +656,7 @@ class SpectraConfig:
     verbose_comments: bool = field(default=True, metadata={
         "section": "Runtime",
         "label":   "Verbose comments in generated script",
+        "engine_key": '(molbuilder: emit explanatory comments into spectra.py)',
         "help":    "embed inline scientific explanations + the "
                    "Methods-section prose + literature citations "
                    "into the generated spectra.py.  Leaving this on "

@@ -1032,3 +1032,124 @@ def test_structure_copy_is_independent():
     assert s.positions[0, 0] == 0.0
     assert s.atom_names[0] == "O1"
     assert s.residue_ids[0] == 1
+
+
+# --------------------------------------------------------------------- #
+#  All modify ops MUST carry frozen_atoms + regions through.            #
+#                                                                       #
+#  Audit task #186 (2026-06-02) found every modify op silently         #
+#  dropped these fields when it returned a new Structure.  Concretely:  #
+#    * Pure-rotation ops (orient_along_axis, rotate_around_axis) and   #
+#      add_atom / add_electrode_slab must carry the lists through      #
+#      verbatim (existing atom indices unchanged).                      #
+#    * delete_atoms must remap surviving indices to the post-delete    #
+#      0-based numbering and drop deleted atoms from the lists.        #
+#                                                                       #
+#  These tests close the contract loop end-to-end.                     #
+# --------------------------------------------------------------------- #
+
+
+def _struct_with_meta():
+    return Structure(
+        elements=["C"] * 5,
+        positions=np.array([[0., 0., 0.], [1., 0., 0.], [2., 0., 0.],
+                            [3., 0., 0.], [4., 0., 0.]]),
+        regions={"electrode": [0, 4], "bridge": [1, 2, 3]},
+        frozen_atoms=[0, 4],
+    )
+
+
+def test_delete_atoms_remaps_frozen_atoms_and_regions():
+    """Delete atom 2 (which is in 'bridge', not frozen).  Surviving
+    frozen atoms [0, 4] should remap to [0, 3] in the new 4-atom
+    structure; 'bridge' [1, 2, 3] should remap to [1, 2] (atom 2 in
+    the new numbering corresponds to old atom 3)."""
+    s  = _struct_with_meta()
+    s2 = delete_atoms(s, [2])
+    assert s2.n_atoms == 4
+    assert s2.frozen_atoms == [0, 3]
+    assert s2.regions == {"electrode": [0, 3], "bridge": [1, 2]}
+
+
+def test_delete_atoms_drops_deleted_indices_from_frozen():
+    """Delete a frozen atom and verify it's removed from the list
+    (not just shifted to a nonsense index)."""
+    s  = _struct_with_meta()
+    s2 = delete_atoms(s, [0])         # remove a frozen atom
+    assert s2.frozen_atoms == [3]     # old 4 -> new 3; old 0 dropped
+    assert "electrode" in s2.regions
+    assert s2.regions["electrode"] == [3]   # only the surviving one
+
+
+def test_delete_atoms_drops_empty_region_after_delete():
+    """A region that loses all its members should disappear, not
+    persist as an empty list in the result."""
+    s = Structure(
+        elements=["C"] * 3, positions=np.zeros((3, 3)),
+        regions={"keep": [0, 1], "lose": [2]},
+    )
+    s2 = delete_atoms(s, [2])
+    assert "lose" not in s2.regions
+    assert s2.regions["keep"] == [0, 1]
+
+
+def test_delete_atoms_no_op_branch_preserves_metadata():
+    """When ``indices`` is empty (or all out-of-range) delete_atoms
+    short-circuits to ``struct.copy()`` -- copy() must also preserve
+    frozen_atoms + regions for this branch to hold."""
+    s  = _struct_with_meta()
+    s2 = delete_atoms(s, [])
+    assert s2.frozen_atoms == s.frozen_atoms
+    assert s2.regions == s.regions
+
+
+def test_add_atom_preserves_existing_frozen_and_regions():
+    """The new atom is appended at index n; existing frozen + region
+    indices carry through unchanged.  The new atom is NOT frozen and
+    NOT in any region by default."""
+    s  = _struct_with_meta()
+    s2 = add_atom(s, "H", anchor_index=0, offset=(0.5, 0.0, 0.0))
+    assert s2.n_atoms == 6
+    assert s2.frozen_atoms == [0, 4]
+    assert s2.regions == {"electrode": [0, 4], "bridge": [1, 2, 3]}
+
+
+def test_orient_along_axis_preserves_metadata():
+    """Pure rotation: atom indices are unchanged."""
+    s  = _struct_with_meta()
+    s2 = orient_along_axis(s, anchor_indices=[0, 4], axis="z",
+                            center="first")
+    assert s2.frozen_atoms == [0, 4]
+    assert s2.regions == {"electrode": [0, 4], "bridge": [1, 2, 3]}
+
+
+def test_rotate_around_axis_preserves_metadata():
+    s  = _struct_with_meta()
+    s2 = rotate_around_axis(s, axis="z", angle=90.0,
+                             center="centroid")
+    assert s2.frozen_atoms == [0, 4]
+    assert s2.regions == {"electrode": [0, 4], "bridge": [1, 2, 3]}
+
+
+def test_add_electrode_slab_preserves_existing_metadata():
+    """Adding electrode atoms must not perturb the existing structure's
+    frozen + region bookkeeping.  New electrode atoms are appended at
+    indices [old_n, new_n) and are NOT auto-frozen / auto-regioned."""
+    s = Structure(
+        elements=["S"],
+        positions=np.array([[0., 0., 0.]]),
+        frozen_atoms=[0],
+        regions={"anchor": [0]},
+    )
+    s2 = add_electrode_slab(
+        s, element="Au", plane="100",
+        size=(2, 2, 1), anchor_index=0, side="+z",
+        contact_distance=2.0, orthogonal=True,
+    )
+    assert s2.n_atoms > 1
+    # The original S at index 0 must still be frozen + in 'anchor'.
+    assert 0 in s2.frozen_atoms
+    assert s2.regions == {"anchor": [0]}
+    # No electrode atom was added to the existing lists.
+    assert all(i == 0 for i in s2.frozen_atoms)
+    assert all(i == 0 for v in s2.regions.values() for i in v)

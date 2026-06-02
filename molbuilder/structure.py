@@ -632,6 +632,8 @@ class Structure:
             residue_names = list(self.residue_names),
             chain_ids     = list(self.chain_ids),
             title         = self.title,
+            regions       = {k: list(v) for k, v in self.regions.items()},
+            frozen_atoms  = list(self.frozen_atoms),
         )
 
     def translated(self, vec: Sequence[float]) -> "Structure":
@@ -644,6 +646,8 @@ class Structure:
             residue_names = list(self.residue_names),
             chain_ids     = list(self.chain_ids),
             title         = self.title,
+            regions       = {k: list(v) for k, v in self.regions.items()},
+            frozen_atoms  = list(self.frozen_atoms),
         )
 
     def centered(self) -> "Structure":
@@ -680,6 +684,14 @@ class Structure:
         residue_names: List[str] = []
         chain_ids: List[str] = []
         positions = []
+        # Transport metadata (frozen_atoms + regions) must be re-indexed
+        # per-input because each structure's atom indices are 0-based and
+        # the concatenation shifts the i-th structure's atoms by the sum
+        # of n_atoms across all earlier structures.  Regions with the
+        # same label across inputs merge into one combined index list.
+        frozen_atoms: List[int] = []
+        regions: Dict[str, List[int]] = {}
+        atom_offset = 0
         offset = 0
         for s in structures:
             elements.extend(s.elements)
@@ -694,6 +706,12 @@ class Structure:
                 offset = max(residue_ids)
             else:
                 residue_ids.extend(ids)
+            frozen_atoms.extend(i + atom_offset for i in s.frozen_atoms)
+            for label, idxs in s.regions.items():
+                regions.setdefault(label, []).extend(
+                    i + atom_offset for i in idxs
+                )
+            atom_offset += s.n_atoms
         return cls(
             elements      = elements,
             positions     = np.vstack(positions),
@@ -702,4 +720,6 @@ class Structure:
             residue_names = residue_names,
             chain_ids     = chain_ids,
             title         = title,
+            regions       = regions,
+            frozen_atoms  = frozen_atoms,
         )

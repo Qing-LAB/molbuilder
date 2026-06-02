@@ -1051,3 +1051,65 @@ class TestCrossCutting:
         """JSON body must be an OBJECT, not an array / string / null."""
         r = web.post(endpoint, json=[1, 2, 3])
         assert r.status_code == 400
+
+
+class TestUniformEnvelope:
+    """Audit task #187 (2026-06-02) -- pin the uniform ``{ok, ...}`` /
+    ``{ok: false, error}`` envelope contract on every /api/selection/*
+    endpoint.  Pre-audit the four endpoints returned bare bodies
+    (``{n_atoms, atoms}`` / ``{selected_indices, count, ...}``) and the
+    ``_bad_request`` helper returned ``{error}`` without ``ok: false``;
+    JS branched on HTTP status and the drift was invisible.  These
+    tests close the contract so a future bare-body return regresses
+    loudly.
+    """
+
+    def test_atoms_success_has_ok_true(self, web, selection_root):
+        r = web.post("/api/selection/atoms", json={
+            "structure_path": _path(selection_root),
+        })
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body.get("ok") is True
+        # Existing payload still present.
+        assert body["n_atoms"] == 11
+        assert len(body["atoms"]) == 11
+
+    def test_eval_success_has_ok_true(self, web, selection_root):
+        r = web.post("/api/selection/eval", json={
+            "structure_path": _path(selection_root),
+            "rule": {"op": "by_element", "elements": ["C"]},
+        })
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body.get("ok") is True
+        assert body["selected_indices"] == [4, 5, 6]
+        assert body["count"] == 3
+        assert body["n_atoms_total"] == 11
+
+    def test_toggle_success_has_ok_true(self, web, selection_root):
+        r = web.post("/api/selection/toggle", json={
+            "structure_path": _path(selection_root),
+            "rule": {"op": "by_click", "indices": []},
+            "index": 1,
+        })
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body.get("ok") is True
+        assert 1 in body["selected_indices"]
+        assert body["n_atoms_total"] == 11
+
+    @pytest.mark.parametrize("endpoint", [
+        "/api/selection/atoms",
+        "/api/selection/eval",
+        "/api/selection/toggle",
+    ])
+    def test_error_envelope_has_ok_false(self, web, endpoint):
+        """Every error path through ``_bad_request`` must include
+        ``ok: false`` alongside ``error``."""
+        # All three endpoints reject a non-JSON body with a 400.
+        r = web.post(endpoint, data="not json", content_type="text/plain")
+        assert r.status_code == 400
+        body = r.get_json(silent=True) or {}
+        assert body.get("ok") is False
+        assert isinstance(body.get("error"), str) and body["error"]

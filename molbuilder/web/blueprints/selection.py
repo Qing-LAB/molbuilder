@@ -301,7 +301,12 @@ def _byclick_with_toggled(clause: ByClick, index: int) -> ByClick:
 
 
 def _bad_request(msg: str, status: int = 400):
-    return jsonify({"error": msg}), status
+    # Uniform error envelope (projects-sidebar.md § 12 + design.md
+    # 2026-05-25 "uniform {ok,error} envelope" decision).  Both ``ok``
+    # and ``error`` are load-bearing so a future client wrapper that
+    # checks ``body.ok`` (as opposed to HTTP status) reads consistently
+    # across blueprints.
+    return jsonify({"ok": False, "error": msg}), status
 
 
 def _parse_request_payload(req) -> Dict[str, Any]:
@@ -403,7 +408,7 @@ def selection_atoms():
                 row["chain_id"]     = chain_ids[i]
             atoms.append(row)
 
-        return jsonify({"n_atoms": n, "atoms": atoms})
+        return jsonify({"ok": True, "n_atoms": n, "atoms": atoms})
     except _PickerError as exc:
         return _bad_request(exc.message, exc.status)
 
@@ -590,6 +595,7 @@ def selection_eval():
         except SelectionError as exc:
             return _bad_request(f"evaluation failed: {exc}")
         return jsonify({
+            "ok":               True,
             "selected_indices": sorted(indices),
             "count":            len(indices),
             "n_atoms_total":    len(struct.elements),
@@ -639,6 +645,7 @@ def selection_toggle():
             return _bad_request(f"evaluation failed: {exc}")
 
         return jsonify({
+            "ok":               True,
             "rule":             rule_to_json(new_rule),
             "selected_indices": sorted(new_indices),
             "count":            len(new_indices),
