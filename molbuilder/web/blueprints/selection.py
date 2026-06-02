@@ -472,85 +472,95 @@ def selection_save():
         sidecar_path = molstruct_json.sidecar_path_for(resolved)
         new_hash = molstruct_json.sha256_of_file(resolved)
 
-        # Load existing sidecar if present.  A hash mismatch means
-        # the user edited the XYZ since last save; we let the new
-        # hash win (the sidecar's regions might be stale but we
-        # don't have enough context to recover them, so the
-        # honest answer is "the user's most recent action takes
-        # precedence").
-        existing_regions: Dict[str, list] = {}
-        existing_frozen: list = []
-        existing_rules: Dict[str, Any] = {}
-        if sidecar_path.exists():
-            try:
-                existing = molstruct_json.load(sidecar_path)
-                existing_regions = dict(existing.get("regions") or {})
-                existing_frozen  = list(existing.get("frozen_atoms") or [])
-                existing_rules   = dict(existing.get("selection_rules") or {})
-            except molstruct_json.MolstructJsonError as e:
-                # A corrupt sidecar carries user work the server
-                # cannot read but ALSO cannot replace safely: writing
-                # a fresh sidecar here would overwrite the user's
-                # prior regions / frozen_atoms / rules with only the
-                # current save's target, silently destroying
-                # everything else.  Refuse the save and ask the user
-                # to rename / inspect the file -- their action ("save
-                # my work") fails loudly instead of erasing data.
-                return jsonify({
-                    "ok":    False,
-                    "error": (
-                        f"sidecar at {sidecar_path.name} is unreadable "
-                        f"({e}); rename or delete it before saving, "
-                        f"or restore it from version control"
-                    ),
-                }), 409
+        # Serialise the read-modify-write cycle.  Two concurrent saves
+        # on the same sidecar otherwise lose one update: both read the
+        # same starting state, both compute disjoint mutations, the
+        # second write clobbers the first.  See
+        # ``molstruct_json.with_lock`` for the full rationale.  The
+        # lock spans EVERY operation that reads or writes
+        # ``sidecar_path`` -- ``load``, the in-memory mutation, and
+        # ``save`` -- so a concurrent saver waits for our write to
+        # commit and then reads the merged state.
+        with molstruct_json.with_lock(sidecar_path):
+            # Load existing sidecar if present.  A hash mismatch means
+            # the user edited the XYZ since last save; we let the new
+            # hash win (the sidecar's regions might be stale but we
+            # don't have enough context to recover them, so the
+            # honest answer is "the user's most recent action takes
+            # precedence").
+            existing_regions: Dict[str, list] = {}
+            existing_frozen: list = []
+            existing_rules: Dict[str, Any] = {}
+            if sidecar_path.exists():
+                try:
+                    existing = molstruct_json.load(sidecar_path)
+                    existing_regions = dict(existing.get("regions") or {})
+                    existing_frozen  = list(existing.get("frozen_atoms") or [])
+                    existing_rules   = dict(existing.get("selection_rules") or {})
+                except molstruct_json.MolstructJsonError as e:
+                    # A corrupt sidecar carries user work the server
+                    # cannot read but ALSO cannot replace safely: writing
+                    # a fresh sidecar here would overwrite the user's
+                    # prior regions / frozen_atoms / rules with only the
+                    # current save's target, silently destroying
+                    # everything else.  Refuse the save and ask the user
+                    # to rename / inspect the file -- their action ("save
+                    # my work") fails loudly instead of erasing data.
+                    return jsonify({
+                        "ok":    False,
+                        "error": (
+                            f"sidecar at {sidecar_path.name} is unreadable "
+                            f"({e}); rename or delete it before saving, "
+                            f"or restore it from version control"
+                        ),
+                    }), 409
 
-        # Apply the assignment.  Multi-label model: regions are
-        # freeform tags; assigning to one does NOT remove atoms
-        # from other regions.  An atom can carry both
-        # ``"L-electrode"`` and ``"interface"``.  Engines that
-        # need disjoint regions (e.g. transport) enforce that as a
-        # separate preflight at engine-load time.
-        if target == "frozen_atoms":
-            existing_frozen = indices
-            if rule_payload is not None:
-                existing_rules["frozen_atoms"] = rule_payload
-            elif not indices:
-                # Clearing frozen_atoms drops the stale rule too --
-                # otherwise next-load re-evaluating the rule would
-                # silently undo the clear.
-                existing_rules.pop("frozen_atoms", None)
-        else:
-            if indices:
-                # Assign = SET the region's membership to the given
-                # indices (REPLACE semantics).  No prune from other
-                # regions: overlap is allowed.  To remove a single
-                # atom from a region, use the per-tag × button in
-                # the atom list which POSTs the new list directly.
-                existing_regions[target] = indices
+            # Apply the assignment.  Multi-label model: regions are
+            # freeform tags; assigning to one does NOT remove atoms
+            # from other regions.  An atom can carry both
+            # ``"L-electrode"`` and ``"interface"``.  Engines that
+            # need disjoint regions (e.g. transport) enforce that as a
+            # separate preflight at engine-load time.
+            if target == "frozen_atoms":
+                existing_frozen = indices
                 if rule_payload is not None:
-                    existing_rules[target] = rule_payload
+                    existing_rules["frozen_atoms"] = rule_payload
+                elif not indices:
+                    # Clearing frozen_atoms drops the stale rule too --
+                    # otherwise next-load re-evaluating the rule would
+                    # silently undo the clear.
+                    existing_rules.pop("frozen_atoms", None)
             else:
-                # Assigning empty = remove this region entirely.
-                existing_regions.pop(target, None)
-                existing_rules.pop(target, None)
+                if indices:
+                    # Assign = SET the region's membership to the given
+                    # indices (REPLACE semantics).  No prune from other
+                    # regions: overlap is allowed.  To remove a single
+                    # atom from a region, use the per-tag × button in
+                    # the atom list which POSTs the new list directly.
+                    existing_regions[target] = indices
+                    if rule_payload is not None:
+                        existing_rules[target] = rule_payload
+                else:
+                    # Assigning empty = remove this region entirely.
+                    existing_regions.pop(target, None)
+                    existing_rules.pop(target, None)
 
-        try:
-            new_payload = molstruct_json.to_dict(
-                n_atoms_total   = n_atoms,
-                structure_hash  = new_hash,
-                regions         = existing_regions,
-                frozen_atoms    = existing_frozen,
-                selection_rules = existing_rules,
-                created_by      = "molbuilder selection panel",
-            )
-        except molstruct_json.MolstructJsonError as exc:
-            return _bad_request(f"sidecar build failed: {exc}")
+            try:
+                new_payload = molstruct_json.to_dict(
+                    n_atoms_total   = n_atoms,
+                    structure_hash  = new_hash,
+                    regions         = existing_regions,
+                    frozen_atoms    = existing_frozen,
+                    selection_rules = existing_rules,
+                    created_by      = "molbuilder selection panel",
+                )
+            except molstruct_json.MolstructJsonError as exc:
+                return _bad_request(f"sidecar build failed: {exc}")
 
-        try:
-            molstruct_json.save(sidecar_path, new_payload)
-        except OSError as exc:
-            return _bad_request(f"sidecar write failed: {exc}", 500)
+            try:
+                molstruct_json.save(sidecar_path, new_payload)
+            except OSError as exc:
+                return _bad_request(f"sidecar write failed: {exc}", 500)
 
         return jsonify({
             "ok":              True,

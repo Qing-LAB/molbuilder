@@ -656,6 +656,111 @@ class TestSaveEndpoint:
         assert atoms[4]["regions"] == []   # bridge atoms still bare
 
 
+# --------------------------------------------------------------------- #
+#  /api/selection/save  -- concurrency (task #148)                      #
+# --------------------------------------------------------------------- #
+
+
+class TestSaveConcurrency:
+    """Integration test for the sidecar lock added 2026-06-02.
+
+    Two concurrent saves on different region keys MUST both land
+    in the sidecar -- the lock around the read-modify-write window
+    in ``api_selection_save`` serialises them so the second writer
+    sees the first writer's update.  Without the lock, the
+    second-arriving response clobbers the first.
+    """
+
+    def test_two_parallel_saves_both_persist(
+            self, selection_root, tmp_path):
+        """Spin up a real WSGI server (the Flask test_client is not
+        designed for true concurrent use across threads; using a
+        werkzeug server matches the production wire-up).  Fire two
+        POSTs to /api/selection/save in parallel from worker threads,
+        each tagging a different region.  After both complete, the
+        sidecar must hold both."""
+        pytest.importorskip("flask")
+        import threading
+        import urllib.request
+        import urllib.parse
+        import json as _json
+        from werkzeug.serving import make_server
+        from molbuilder.web.app import create_app
+
+        app = create_app(config={})
+        server = make_server("127.0.0.1", 0, app, threaded=True)
+        port = server.server_port
+        srv_thread = threading.Thread(
+            target=server.serve_forever, daemon=True)
+        srv_thread.start()
+
+        try:
+            base = f"http://127.0.0.1:{port}"
+
+            def _save(region_name, indices, out):
+                """Worker: POST one save with a small artificial
+                slow-down to widen the race window between the
+                client-side read and write so an unsynchronised
+                server-side RMW would reliably lose one of them."""
+                body = _json.dumps({
+                    "structure_path": _path(selection_root),
+                    "target":         region_name,
+                    "indices":        indices,
+                }).encode("utf-8")
+                req = urllib.request.Request(
+                    base + "/api/selection/save",
+                    data=body,
+                    headers={"Content-Type": "application/json"},
+                )
+                with urllib.request.urlopen(req, timeout=10) as r:
+                    out.append(_json.loads(r.read()))
+
+            results_a, results_b = [], []
+            t1 = threading.Thread(target=_save,
+                                  args=("L-electrode", [0, 1], results_a))
+            t2 = threading.Thread(target=_save,
+                                  args=("R-electrode", [7, 8], results_b))
+            t1.start()
+            t2.start()
+            t1.join(timeout=15)
+            t2.join(timeout=15)
+
+            assert not t1.is_alive(), "save #1 still running"
+            assert not t2.is_alive(), "save #2 still running"
+            assert results_a and results_a[0].get("ok") is True, (
+                f"save #1 response: {results_a!r}")
+            assert results_b and results_b[0].get("ok") is True, (
+                f"save #2 response: {results_b!r}")
+
+            # The DEFINITIVE check: read the sidecar back via the
+            # atoms endpoint and verify BOTH regions landed.  If the
+            # lock wasn't in place, only the later writer's region
+            # would survive on disk and atoms[0]['regions'] would NOT
+            # include "L-electrode".
+            req = urllib.request.Request(
+                base + "/api/selection/atoms",
+                data=_json.dumps({
+                    "structure_path": _path(selection_root),
+                }).encode("utf-8"),
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(req, timeout=10) as r:
+                body = _json.loads(r.read())
+            atoms = body["atoms"]
+
+            assert "L-electrode" in atoms[0]["regions"], (
+                f"L-electrode lost from sidecar after concurrent save; "
+                f"atoms[0]={atoms[0]!r}"
+            )
+            assert "R-electrode" in atoms[7]["regions"], (
+                f"R-electrode lost from sidecar after concurrent save; "
+                f"atoms[7]={atoms[7]!r}"
+            )
+        finally:
+            server.shutdown()
+            srv_thread.join(timeout=5)
+
+
 class TestStateless:
     def test_same_request_yields_same_response(self, web, selection_root):
         """No server-side state between identical requests."""

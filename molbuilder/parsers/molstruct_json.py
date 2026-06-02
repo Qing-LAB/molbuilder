@@ -58,12 +58,27 @@ a duck-typed protocol).
 
 from __future__ import annotations
 
+import contextlib
 import datetime as _dt
 import hashlib as _hashlib
 import json as _json
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Iterator, List, Optional, Union
+
+# POSIX-only flock.  When fcntl is unavailable (Windows), the
+# ``with_lock`` context manager below degrades to a no-op so the rest
+# of the module still works -- correctness of concurrent saves is
+# only guaranteed where ``fcntl`` is present.  Web-server deployments
+# are POSIX in practice (Linux / macOS via Werkzeug or gunicorn); the
+# fallback path exists so unit tests / dev tools running on Windows
+# don't fail to import.
+try:
+    import fcntl as _fcntl
+    _HAVE_FLOCK = True
+except ImportError:                  # pragma: no cover - Windows-only branch
+    _fcntl = None
+    _HAVE_FLOCK = False
 
 SCHEMA_VERSION = 3
 
@@ -236,6 +251,75 @@ def to_dict(
     }
 
 
+@contextlib.contextmanager
+def with_lock(sidecar_path: Union[str, Path]) -> "Iterator[None]":
+    """Serialise concurrent read-modify-write cycles on a sidecar.
+
+    The caller's pattern is:
+
+        with molstruct_json.with_lock(sidecar_path):
+            existing = (molstruct_json.load(sidecar_path)
+                        if sidecar_path.exists() else {})
+            new = {**existing, ...}                   # mutate
+            molstruct_json.save(sidecar_path, new)
+
+    Two concurrent ``/api/selection/save`` calls otherwise hit a
+    classic lost-update race:
+
+      * call A reads the sidecar (state X),
+      * call B reads the sidecar (also state X),
+      * A mutates to X+a in memory + writes,
+      * B mutates to X+b in memory + writes.
+
+    Call B's write clobbers call A's: only ``X+b`` lands on disk;
+    A's update is silently lost.  Holding an exclusive flock across
+    the whole read-modify-write window forces B to wait until A's
+    write commits + the lock releases, so B reads ``X+a`` and writes
+    ``X+a+b`` instead.
+
+    Implementation notes
+    --------------------
+
+    * The lock target is a sibling file ``<sidecar>.lock`` (NOT the
+      sidecar itself).  ``save()`` atomic-replaces the sidecar via
+      ``os.replace``, which swaps inodes -- a lock held on the OLD
+      sidecar's fd does NOT carry to the new file, so subsequent
+      readers would re-race.  Locking a separate file that nobody
+      replaces keeps the serialisation honest across saves.
+    * ``flock`` is process-wide and advisory; both processes must
+      voluntarily acquire it.  Every writer in the codebase (just
+      this endpoint today) is responsible for entering this CM.
+      Other readers / writers that don't participate can race.
+    * The lock file is created on demand + left behind after the
+      block exits.  No cleanup: another save is likely to follow
+      and need the same file.  An empty 0-byte ``.lock`` file in
+      the sidecar dir is the visible cost.
+    * On platforms without ``fcntl`` (Windows), the CM is a no-op
+      and concurrent saves remain racy.  The intended deployment
+      target is POSIX (Linux containers, macOS dev); the no-op
+      fallback exists so the module still imports.
+    """
+    sidecar_path = Path(sidecar_path).resolve()
+    if not _HAVE_FLOCK:
+        yield
+        return
+    sidecar_path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = sidecar_path.with_suffix(sidecar_path.suffix + ".lock")
+    # ``O_RDWR | O_CREAT`` so the file exists when we lock it; nothing
+    # is written.  ``O_CLOEXEC`` so a forked child doesn't inherit the
+    # lock (which would let a runaway subprocess hold up the parent's
+    # next save indefinitely).
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o644)
+    try:
+        _fcntl.flock(fd, _fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            _fcntl.flock(fd, _fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+
+
 def save(
     sidecar_path: Union[str, Path],
     payload: Dict[str, Any],
@@ -244,6 +328,11 @@ def save(
 
     Atomic-write via tempfile + os.replace so a crash mid-write
     doesn't leave a partial JSON the next reader chokes on.
+
+    NB: this function does NOT take the sidecar lock -- if you're
+    doing a read-modify-write cycle, wrap the entire cycle in
+    :func:`with_lock`.  Calling ``save`` in isolation (one writer,
+    no concurrent updates) is safe without the lock.
     """
     sidecar_path = Path(sidecar_path).resolve()
     sidecar_path.parent.mkdir(parents=True, exist_ok=True)

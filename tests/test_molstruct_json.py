@@ -167,6 +167,104 @@ class TestSaveLoadRoundTrip:
 
 
 # --------------------------------------------------------------------- #
+#  with_lock(): serialises concurrent read-modify-write cycles          #
+# --------------------------------------------------------------------- #
+
+
+class TestWithLockSerialisation:
+    """``with_lock`` MUST hold an exclusive flock for the duration of
+    the context block so two concurrent read-modify-write cycles can't
+    lose one update.  Verified via threading: each thread does a
+    canonical RMW (load existing -> tag in a key -> save), and after
+    both threads complete the file holds the merged state."""
+
+    def _rmw_in_thread(self, tmp_path, key, hold_time_s):
+        """Worker: lock, read existing, add ``key``, sleep (to widen
+        the race window), save, release.  ``hold_time_s`` is the
+        between-load-and-save delay -- with the lock it doesn't matter
+        how long; without it, longer delay makes the race more
+        reliably reproducible."""
+        import time
+        side = tmp_path / "race.molstruct.json"
+        with msj.with_lock(side):
+            existing = msj.load(side) if side.exists() else None
+            if existing is None:
+                regions = {}
+            else:
+                regions = dict(existing.get("regions") or {})
+            time.sleep(hold_time_s)
+            # Each thread tags its OWN key in regions; if both reads
+            # see the original (empty) state and both writes happen,
+            # the second writer clobbers the first and only its tag
+            # lands on disk.
+            regions[key] = [0, 1, 2]
+            payload = msj.to_dict(
+                n_atoms_total=4,
+                structure_hash="0" * 64,
+                regions=regions,
+            )
+            msj.save(side, payload)
+
+    def test_two_concurrent_rmw_cycles_both_land(self, tmp_path):
+        """Run two RMW workers in parallel.  Each tags a different
+        region key.  If ``with_lock`` serialises correctly, the
+        final sidecar contains BOTH keys.  Without serialisation,
+        the second writer clobbers the first and only one survives."""
+        import threading
+        t1 = threading.Thread(
+            target=self._rmw_in_thread,
+            args=(tmp_path, "alpha", 0.05),
+        )
+        t2 = threading.Thread(
+            target=self._rmw_in_thread,
+            args=(tmp_path, "beta", 0.05),
+        )
+        t1.start()
+        t2.start()
+        t1.join(timeout=10)
+        t2.join(timeout=10)
+        assert not t1.is_alive(), "rmw thread #1 still running"
+        assert not t2.is_alive(), "rmw thread #2 still running"
+
+        side = tmp_path / "race.molstruct.json"
+        final = msj.load(side)
+        regions = final.get("regions") or {}
+        assert "alpha" in regions, (
+            f"lock failed to serialise: alpha lost from final state; "
+            f"got regions={regions!r}"
+        )
+        assert "beta" in regions, (
+            f"lock failed to serialise: beta lost from final state; "
+            f"got regions={regions!r}"
+        )
+
+    def test_lock_file_created_in_sidecar_dir(self, tmp_path):
+        """``with_lock`` creates a ``.lock`` sibling file in the
+        sidecar's directory; left in place after the block exits so
+        a subsequent save can reuse it (no cleanup overhead in the
+        hot path)."""
+        side = tmp_path / "lock-creation.molstruct.json"
+        lock = side.with_suffix(side.suffix + ".lock")
+        assert not lock.exists()
+        with msj.with_lock(side):
+            assert lock.exists(), "lock file should be created on entry"
+        # Left behind on exit; next caller reuses it.
+        assert lock.exists()
+
+    def test_lock_does_not_create_the_sidecar_itself(self, tmp_path):
+        """The lock is a SIBLING file -- entering the block on a path
+        whose sidecar doesn't exist yet must NOT create the sidecar."""
+        side = tmp_path / "missing-sidecar.molstruct.json"
+        assert not side.exists()
+        with msj.with_lock(side):
+            pass
+        assert not side.exists(), (
+            "with_lock created the sidecar; should only create the "
+            "sibling .lock file"
+        )
+
+
+# --------------------------------------------------------------------- #
 #  load() error paths                                                   #
 # --------------------------------------------------------------------- #
 
