@@ -507,9 +507,12 @@ class TestPseudosEndpoint:
         # settable via ``-np N`` / ``MB_NP=N``) instead of a Python-
         # baked rank count.  ``exec`` was replaced by a captured run
         # so the propor diagnostic can inspect the .out on failure.
+        # 2026-05-30: redirect target is now ``$_out_file`` (resolved
+        # by the ``_run_index_resolver`` block to ``{basename}-runN.out``
+        # so ``--continue`` doesn't clobber prior runs).
         assert "_mpi_np_default=4" in text
         assert '_launch_cmd="mpirun -np $_mpi_np siesta"' in text
-        assert "$_launch_cmd test.fdf > test.out" in text
+        assert "$_launch_cmd test.fdf > $_out_file" in text
         # 2026-05-24: OMP defaults to 1 (SIESTA mainline isn't OMP-aware);
         # user-set omp_threads=5 still wins when explicit.
         assert "export OMP_NUM_THREADS=5" in text
