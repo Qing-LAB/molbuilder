@@ -2105,18 +2105,6 @@ def test_modify_layout_stacks_on_narrow_viewport(
     )
 
 
-@pytest.mark.xfail(
-    reason=(
-        "Real CSS responsive-design regression: at viewport width 360 "
-        "px the projects sidebar adds ~292 px to body scrollWidth "
-        "instead of overlaying / collapsing.  This is a layout bug "
-        "(``BODY.has-projects-sidebar`` doesn't reflow at phone "
-        "widths), not a test framework issue.  Tracked separately; "
-        "remove the xfail marker once the sidebar's narrow-viewport "
-        "stacking lands."
-    ),
-    strict=False,
-)
 def test_modify_layout_phone_width_no_horizontal_overflow(
         page, flask_server, water_xyz_file):
     """Phone-width viewport (360 px): the page must not produce a

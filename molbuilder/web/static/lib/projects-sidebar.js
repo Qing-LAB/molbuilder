@@ -41,9 +41,73 @@ if (window.molbuilder.runtime
     window.molbuilder.runtime.register("projects", projects);
 }
 
+/**
+ * Narrow-viewport drawer toggle (task #182, 2026-06-02).
+ *
+ * Wires the hamburger button + backdrop in
+ * ``templates/_projects_sidebar.html`` to a ``has-mobile-sidebar-open``
+ * class on ``<body>``.  The CSS in ``lib/projects-sidebar.css``
+ * keys off that class to slide the sidebar in.  At wider
+ * viewports the toggle button + backdrop are display:none, so
+ * this wiring is inert above 640 px.
+ *
+ * Behaviour:
+ *   * Button click toggles the class + flips aria-expanded on the
+ *     button + aria-hidden on the backdrop.
+ *   * Backdrop click closes the drawer (modal-overlay convention).
+ *   * Escape key closes the drawer (matches standard modal
+ *     dismissal pattern).
+ *   * Viewport resize past the 640 px breakpoint auto-closes the
+ *     drawer so users don't end up with a stale "open" state when
+ *     they rotate from portrait to landscape.
+ *
+ * No-ops when the optional toggle/backdrop elements are missing,
+ * so older partial revisions (and any future template that doesn't
+ * include the drawer scaffolding) just retain desktop behaviour.
+ */
+function initMobileDrawer() {
+  const toggle   = document.getElementById("ps-mobile-toggle");
+  const backdrop = document.getElementById("ps-mobile-backdrop");
+  if (!toggle || !backdrop) return;
+
+  const CLASS = "has-mobile-sidebar-open";
+  const MOBILE_BREAKPOINT = 640;
+
+  function setOpen(open) {
+    document.body.classList.toggle(CLASS, open);
+    toggle.setAttribute("aria-expanded", String(open));
+    backdrop.setAttribute("aria-hidden", String(!open));
+  }
+  function toggleOpen() {
+    setOpen(!document.body.classList.contains(CLASS));
+  }
+  toggle.addEventListener("click", toggleOpen);
+  backdrop.addEventListener("click", () => setOpen(false));
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && document.body.classList.contains(CLASS)) {
+      setOpen(false);
+    }
+  });
+  // Resize past the breakpoint -> drawer becomes desktop sidebar; the
+  // ``has-mobile-sidebar-open`` class is harmless at wide widths
+  // (display:none on the affected elements), but clearing it keeps
+  // ARIA + class state honest for screen readers.
+  window.addEventListener("resize", () => {
+    if (window.innerWidth > MOBILE_BREAKPOINT) setOpen(false);
+  });
+}
+
+
 async function init() {
   const sidebar = document.getElementById("projects-sidebar");
   if (!sidebar) return;                  // page didn't include the partial
+
+  // Wire the narrow-viewport drawer toggle.  Independent of
+  // project-root resolution; runs first so the toggle is responsive
+  // even if /api/files/roots is slow / fails (the user would see an
+  // error in the sidebar list, but can still close the drawer to
+  // reach the rest of the page).
+  initMobileDrawer();
 
   // Wire the lock UI FIRST -- before any await that could throw or
   // bail.  The lock UI needs to work regardless of project-root

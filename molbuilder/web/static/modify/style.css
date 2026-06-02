@@ -98,7 +98,17 @@ header .tagline {
 }
 @media (max-width: 1024px) {
     .modify-grid {
-        grid-template-columns: 1fr;
+        /* ``minmax(0, 1fr)`` rather than plain ``1fr`` so the column
+         * can shrink BELOW the children's min-content size.  With
+         * plain ``1fr`` a child whose unbreakable element (button
+         * row, long word, fixed-width canvas hint) is wider than
+         * the available space pushes the grid column wider than its
+         * container, producing a horizontal scroll bar -- exactly
+         * what the phone-width overflow regression caught at the
+         * 360 px viewport (task #182).  ``minmax(0, ...)`` opts out
+         * of the implicit ``min-width: auto`` and lets ``overflow``
+         * on the child handle anything that genuinely doesn't fit. */
+        grid-template-columns: minmax(0, 1fr);
         grid-template-areas:
             "selection"
             "viewer"

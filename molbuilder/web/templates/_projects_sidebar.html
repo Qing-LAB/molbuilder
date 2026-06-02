@@ -14,6 +14,19 @@
        projects naming rules (regex for project/structure names,
        CANONICAL_TOPICS for the topic level).
 -#}
+{#- Narrow-viewport drawer scaffolding (task #182, 2026-06-02).
+    These two elements are CSS-hidden above the 640 px breakpoint;
+    below it, the toggle button is fixed at top-left and the
+    backdrop appears when the sidebar is open.  Behaviour wired in
+    ``lib/projects-sidebar.js``.  See the docstring on the drawer
+    CSS block in ``lib/projects-sidebar.css`` for the full design. -#}
+<button type="button" id="ps-mobile-toggle" class="ps-mobile-toggle"
+        aria-label="Toggle projects sidebar"
+        aria-controls="projects-sidebar"
+        aria-expanded="false">☰</button>
+<div id="ps-mobile-backdrop" class="ps-mobile-backdrop"
+     aria-hidden="true"></div>
+
 <aside class="projects-sidebar" id="projects-sidebar" aria-label="Projects file explorer">
   <header class="ps-header">
     <h2 class="ps-title">Projects</h2>

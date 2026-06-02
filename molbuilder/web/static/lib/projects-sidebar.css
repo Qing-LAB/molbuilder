@@ -581,3 +581,112 @@ body.has-projects-sidebar {
    * also be gated during a lock. */
   pointer-events: none;
 }
+
+
+/* ============================================================
+ *  Narrow-viewport drawer pattern  (2026-06-02, task #182)
+ *
+ *  At desktop widths the sidebar is fixed-position 18 rem wide and
+ *  the body has padding-left:18rem so the page content sits to its
+ *  right.  At < 640 px the body would have to be 360 px viewport +
+ *  288 px sidebar room = at least 648 px wide, which produces a
+ *  horizontal scrollbar (test_modify_layout_phone_width_no_horizontal_overflow
+ *  caught this).
+ *
+ *  Drawer pattern: at <= 640 px the sidebar slides off-canvas via
+ *  ``transform: translateX(-100%)`` and the body's padding-left is
+ *  removed.  A small fixed hamburger button at the top-left
+ *  toggles a body class (``has-mobile-sidebar-open``) that brings
+ *  the sidebar back as an OVERLAY on top of the page content
+ *  (z-index higher than normal layout).  A semi-transparent
+ *  backdrop on the rest of the page tells the user the sidebar is
+ *  in modal-overlay mode + provides a click target to dismiss.
+ *
+ *  Above 640 px the drawer plumbing is inert (display:none on the
+ *  toggle + the backdrop, padding-left restored on the body).
+ *  Desktop behaviour is exactly as before this rule block lands.
+ *
+ *  Markup in ``_projects_sidebar.html``:
+ *    * ``<button id="ps-mobile-toggle" class="ps-mobile-toggle">``
+ *      -- the hamburger; lives BEFORE the <aside> so it stays
+ *      reachable when the sidebar is off-canvas.
+ *    * ``<div id="ps-mobile-backdrop" class="ps-mobile-backdrop">``
+ *      -- the overlay backdrop; click closes the drawer.
+ *
+ *  Behaviour wiring in ``lib/projects-sidebar.js``:
+ *    * Toggle button click toggles ``has-mobile-sidebar-open``
+ *      on ``<body>``.
+ *    * Backdrop click removes it.
+ *    * Escape key removes it (matches modal pattern).
+ *  ============================================================ */
+
+/* Default state: button + backdrop hidden at all widths.
+ * The media query below flips them visible at the narrow breakpoint. */
+.ps-mobile-toggle,
+.ps-mobile-backdrop {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  /* Reclaim the 18 rem padding the body normally reserves for the
+   * fixed sidebar -- below the breakpoint the sidebar is an overlay,
+   * not a part of normal flow. */
+  body.has-projects-sidebar {
+    padding-left: 0;
+  }
+
+  /* Slide the sidebar off-canvas by default.  Animated so the user
+   * sees it slide in/out rather than abruptly appear. */
+  .projects-sidebar {
+    transform:  translateX(-100%);
+    transition: transform 180ms ease-out;
+    /* Above the page content + above any modal that doesn't bump
+     * its z-index (the file-preview modal sits at 100; we sit
+     * above that so a stale preview behind us doesn't bleed
+     * through). */
+    z-index: 110;
+    box-shadow: 4px 0 12px rgba(0, 0, 0, 0.4);
+  }
+
+  body.has-mobile-sidebar-open .projects-sidebar {
+    transform: translateX(0);
+  }
+
+  /* Fixed hamburger button at top-left.  Sits ABOVE the sidebar
+   * z-index so the user can still tap it to close.  Sized for
+   * comfortable touch on phone (the WCAG 2.1 AAA 44x44 target). */
+  .ps-mobile-toggle {
+    display:         block;
+    position:        fixed;
+    top:             0.5rem;
+    left:            0.5rem;
+    z-index:         120;
+    width:           2.75rem;
+    height:          2.75rem;
+    padding:         0;
+    border:          1px solid var(--ps-border);
+    border-radius:   6px;
+    background:      var(--ps-bg);
+    color:           var(--ps-fg);
+    font-size:       1.5rem;
+    line-height:     1;
+    cursor:          pointer;
+    box-shadow:      0 2px 6px rgba(0, 0, 0, 0.3);
+  }
+  .ps-mobile-toggle:hover,
+  .ps-mobile-toggle:focus-visible {
+    background:      var(--ps-hover);
+    outline:         none;
+    border-color:    var(--ps-fg);
+  }
+
+  /* Backdrop: visible only when the drawer is open.  Click anywhere
+   * outside the sidebar to dismiss. */
+  body.has-mobile-sidebar-open .ps-mobile-backdrop {
+    display:    block;
+    position:   fixed;
+    inset:      0;
+    z-index:    105;
+    background: rgba(0, 0, 0, 0.5);
+  }
+}
