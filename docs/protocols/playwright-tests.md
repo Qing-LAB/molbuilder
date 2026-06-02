@@ -107,17 +107,34 @@ final viewport-position requirement.
 
 ### Right patterns
 
-**Pattern A — set the underlying state via the appropriate API**:
+**Pattern A — set the state via JS + dispatch `change` (RECOMMENDED for hidden inputs)**:
 
 ```python
-# Radio with `change` listener — `check()` sets the .checked state
-# and fires the change event without needing UI click semantics.
-page.locator("#selection-mode-filter").check(force=True)
+# Don't go through Playwright's click pipeline at all.  Set the
+# checked/value state via page.evaluate + dispatch the change event
+# the JS listener actually cares about.
+page.evaluate("""(sel) => {
+    const el = document.querySelector(sel);
+    el.checked = true;
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+}""", "#selection-mode-filter")
 ```
 
-`force=True` here bypasses the visibility check (the input IS hidden);
-`check()` itself dispatches the `change` event so any listener on the
-input fires correctly.
+Notes:
+* **`.check(force=True)` is NOT sufficient** for a width=0 / height=0
+  input.  Playwright's `check()` and `click()` BOTH require the
+  element to have an on-screen rect for the final click action, even
+  with `force=True`.  `force=True` skips actionability checks
+  (visible / enabled / stable / receives events) but the click
+  action itself still resolves to a click coordinate that has to
+  land somewhere on screen.  A zero-area element fails with
+  `Element is outside of the viewport`.
+* Setting `.checked` then dispatching `change` does what a click
+  WOULD have done internally — fires the same event the JS handler
+  listens for, without needing a hit-testable position.
+* This repo's canonical helpers `_set_selection_mode(page, mode)`
+  (radio) and `_set_checkbox(page, sel, value)` (checkbox) in
+  `tests/test_modify_e2e.py` implement Pattern A.
 
 **Pattern B — click the visible interactive parent**:
 
@@ -128,15 +145,17 @@ page.locator('label.selection-mode-option:has(#selection-mode-filter)').click()
 ```
 
 This mirrors what a real user does and exercises the full event chain
-(label-click → forwarded radio change → JS handler).
+(label-click → forwarded radio change → JS handler).  Choose this
+when you want to verify the click chain itself works (not just the
+state mutation).
 
 ### When to use which
 
 | Scenario | Use |
 |----------|-----|
-| You only need the state mutation; the visible-click path is tested elsewhere | Pattern A (`check()`) |
+| You only need the state mutation; the visible-click path is tested elsewhere | Pattern A (set state + dispatch `change`) |
 | You want to exercise the actual click event chain | Pattern B (click the label) |
-| The element is genuinely visible | Direct `click()` |
+| The element is genuinely visible and ≥ 1 px in both dimensions | Direct `click()` / `check()` |
 
 ### Other hidden-element gotchas to watch for
 
@@ -351,9 +370,27 @@ page.locator("#selection-mode-filter").click(force=True)
 ```
 
 ```python
-# GOOD — set the state directly
+# ALSO BAD -- check(force=True) has the same viewport requirement as
+# click(force=True).  force=True bypasses actionability checks (visible,
+# stable, enabled) but the click action's final coordinate still has
+# to land on the element's bounding rect.  A width=0 / height=0
+# element fails with "Element is outside of the viewport".
 page.locator("#selection-mode-filter").check(force=True)
 ```
+
+```python
+# GOOD — set state via JS + dispatch the event the listener cares about
+page.evaluate("""(sel) => {
+    const el = document.querySelector(sel);
+    el.checked = true;
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+}""", "#selection-mode-filter")
+```
+
+See § 2 "Locator strategy" for the full discussion, and
+`tests/test_modify_e2e.py::_set_selection_mode` /
+`tests/test_modify_e2e.py::_set_checkbox` for the canonical helpers
+this repo uses.
 
 ### A2. Reading text without retry
 
@@ -520,6 +557,76 @@ page.evaluate("""() => {
     });
 }""")
 ```
+
+### 9.5 Tab-level picker contention — drive via `setShared`, not `reg.mount`
+
+The `/results` tab-level file picker
+(`lib/results/file-picker.js`, since commit 6633c4e) subscribes to
+the projects-sidebar `onChange` and AUTO-MOUNTS the most recent
+result file in the current sidebar directory.
+
+A test that calls `reg.mount(host, file, ctx)` DIRECTLY (the
+pattern several watch tests used pre-2026-06-01) races the picker:
+if the sidebar auto-resolves to its default root (`projects/`),
+which contains real `.out` / `.molwatch.log` files, the picker
+will see those, auto-pick the most recent, and replace the
+inspector the test just mounted.
+
+The canonical fix is `_load_watch_log` in
+`tests/test_modify_e2e.py`:
+
+```python
+def _load_watch_log(page, base_url, log_path):
+    page.goto(f"{base_url}/results", wait_until="domcontentloaded")
+    page.wait_for_function(
+        "() => window.molbuilder && window.molbuilder.inspectors "
+        "&& window.molbuilder.inspectors.list().length >= 4",
+        timeout=5000,
+    )
+    import os
+    page.evaluate(
+        "(args) => window.molbuilder.projects.setShared("
+        "  args.dir, args.file)",
+        {"dir": os.path.dirname(log_path), "file": log_path},
+    )
+```
+
+Driving via `projects.setShared(dir, file)` IS the canonical
+sidebar publish.  `viewer.js`'s `onChange` then disposes any
+prior inspector and mounts the trajectory inspector for
+`log_path` — and the picker, subscribing to the SAME
+`onChange`, sees the same selection and doesn't fight it.
+
+Watch fixtures that create their `.molwatch.log` in `tmp_path`
+ALSO need `_register_tmp_as_picker_root(tmp_path, monkeypatch)`
+(see § 9.6) so the picker scans `tmp_path`, not the projects/
+root.
+
+### 9.6 Registering a tmp_path as a Capabilities picker root
+
+Tests that load a file from `tmp_path` and then drive
+`store.setSourceFile(...)` or anything that hits
+`/api/selection/atoms?path=...` need `tmp_path` registered as a
+file-picker root — otherwise the endpoint returns 403 and the
+panel's atoms list never populates, and any
+`wait_for getNAtoms()` will time out.
+
+The reusable helper at
+`tests/test_modify_e2e.py::_register_tmp_as_picker_root` does this
+via `monkeypatch.setattr` so the registration auto-reverses on
+test teardown:
+
+```python
+def my_test(page, flask_server, tmp_path, monkeypatch):
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    p = tmp_path / "diag.xyz"
+    p.write_text("...")
+    _load_file(page, str(p), expected_atoms=N)
+```
+
+Existing fixtures in this repo that bundle this registration:
+`water_xyz_file`, `ss_pair_xyz_file`, `watch_log_file`,
+`watch_log_file_finished`, `watch_log_file_with_forces`.
 
 ---
 

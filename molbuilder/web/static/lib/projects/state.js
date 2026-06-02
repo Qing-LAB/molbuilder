@@ -326,9 +326,10 @@ async function saveToWorkspace(text, filename, opts) {
 // Thin pass-throughs over api.js that ALSO trigger a sidebar
 // listing refresh on success.  These promote previously-internal
 // operations onto the public ``window.molbuilder.projects.*``
-// surface so in-inspector code (the /results result-list dropdown,
-// future programmatic file managers) can call them without
-// reaching into ``projects/api.js`` directly.
+// surface so tab-level code (the /results file-picker dropdown at
+// ``lib/results/file-picker.js``, future programmatic file
+// managers) can call them without reaching into ``projects/api.js``
+// directly.
 //
 // NONE of these take the lock guard (#177).  The Save pipeline
 // holds the lock while calling these as its own steps; guarding
