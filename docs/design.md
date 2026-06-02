@@ -106,6 +106,33 @@ docs. Anything date-prefixed (`YYYY-MM-DD-<name>.md`) is
 history; read the canonical doc listed in the archive index
 instead.
 
+### Why this hierarchy
+
+The folder split is by **kind of contract**, not by feature.
+This is the load-bearing reason every spec lands in exactly one
+place and there is no "where do I put this?" ambiguity:
+
+- **`protocols/`** — how parts of the system **talk to each
+  other**. HTTP wire shapes, JS module surfaces, on-disk file
+  conventions, test patterns. Specs here pin contracts between
+  components.
+- **`types/`** — the **shape of values** flowing between
+  components. Structure dataclass, parser output dicts,
+  chemistry helpers. Specs here describe data, not behaviour.
+- **`engines/`** — per-engine emitter specs. One per downstream
+  code we generate input for, plus the build-backend contract.
+  Specs here describe **what we write**, not what we do.
+- **`tabs/`** — per-UI-tab specs. Single-file specs stay as
+  `<tab>.md`; tabs needing multiple assets (bibliography,
+  sub-specs) become subfolders, e.g. `tabs/spectra/spec.md` +
+  `tabs/spectra/references.bib`. Bibliographies always live
+  alongside the spec that cites them — one place to look for
+  both.
+
+The split is what makes the **sole-source-of-truth** rule
+enforceable: each contract has one canonical home; cross-cutting
+principles live here in `design.md` with backlinks.
+
 ---
 
 ## Architecture
@@ -1128,23 +1155,38 @@ tests/
     test_app_concurrency.py
 
 docs/
-  design.md                  # this file (cross-cutting design + decisions log + § 0 index)
-  README.md                  # quick pointer to design.md § 0
-  protocols/                 # cross-cutting interfaces (web/JS/test contracts)
-    web-api.md  projects-sidebar.md  atom-selection.md  selection.md
-    results-tab.md  runtime-registry.md  inspector-registry.md
-    playwright-tests.md  job-layout.md  cli.md
-  types/                     # L1 data-type contracts
-    structure.md  parsers.md  chemistry.md
-  engines/                   # per-engine emitter specs
-    siesta.md  pyscf.md  builders.md
-  tabs/                      # per-UI-tab specs
-    build.md  modify.md  spectra/spec.md  results.md
-  archive/                   # superseded docs (NOT a source of truth)
+  design.md                       # this file (master: principles, decisions, § 0 index)
+  README.md                       # quick pointer to design.md § 0
+  protocols/                      # cross-cutting interfaces (HTTP/JS/test/on-disk contracts)
+    web-api.md                    #   HTTP /api/* endpoint reference
+    projects-sidebar.md           #   sidebar architecture + projects.* API + lock model
+    atom-selection.md             #   selection store + .molstruct.json sidecar shape
+    selection.md                  #   Python selection rule grammar
+    results-tab.md                #   /results dispatch architecture
+    runtime-registry.md           #   molbuilder-runtime.js (register / whenReady)
+    inspector-registry.md         #   inspector mount/dispose + pageshow refresh
+    playwright-tests.md           #   test patterns + anti-patterns
+    job-layout.md                 #   on-disk basename + -runN.out convention
+    cli.md                        #   click-based CLI surface
+  types/                          # L1 data-type contracts (shape of values)
+    structure.md                  #   Structure dataclass + frozen_atoms/regions + I/O
+    parsers.md                    #   parser-plugin output shape (per engine)
+    chemistry.md                  #   element table + charge/spin auto-detect helpers
+  engines/                        # per-engine emitter specs (what we WRITE)
+    siesta.md                     #   SIESTA .fdf generator
+    pyscf.md                      #   PySCF .py generator
+    builders.md                   #   build-backend contract (peptide / DNA / RNA / SMILES / name)
+  tabs/                           # per-UI-tab specs (subfolders when multi-asset)
+    build.md                      #   /build tab — structure-from-input + Generate
+    modify.md                     #   /modify tab — atom selection + nanojunction assembly
+    results.md                    #   /results tab — registry dispatch + file picker (planned)
+    spectra/                      #   /spectra tab (multi-asset)
+      spec.md                     #     full spec
+      references.bib              #     bibliography
+  archive/                        # superseded docs (NOT a source of truth)
+    README.md                     #   catalogue of what was archived + why
     YYYY-MM-DD-<original-name>.md
-  tabs/                      # per-tab UI specs (subfolders when multi-asset)
-    modify.md  watch.md
-  img/                       # README screenshots
+  img/                            # README screenshots
 
 tools/
   capture_screenshots.py    # idempotent README screenshot capture
