@@ -417,6 +417,160 @@ def api_files_read():
     })
 
 
+# Default per-call window for the range-read endpoint -- 256 KB is
+# large enough to feel snappy + render multiple "pages" of text
+# without round-tripping for each scroll, small enough that the
+# 16 MB hard ceiling is plenty of room for explicit jumps to a
+# specific byte range.
+_DEFAULT_RANGE_BYTES = 256 * 1024
+
+
+@bp.route("/api/files/read_range", methods=["GET"])
+def api_files_read_range():
+    """Range-read endpoint for the source inspector's paginated view
+    of arbitrarily-large text files (task #119, 2026-06-02).
+
+    Reads a byte-range of ``path`` and returns it as UTF-8 text plus
+    enough metadata for the client to know where it landed + how
+    much more there is.  Replaces the source inspector's "read the
+    whole file or 413" model with an "I'll fetch what you ask for"
+    model.
+
+    Query params:
+        path        -- absolute or relative path inside a project root.
+        offset      -- byte offset from the start of the file.  Default 0.
+                       Negative values are interpreted as "offset bytes
+                       before the END of the file", so ``offset=-4096``
+                       returns the last 4 KB.  Useful for "show me the
+                       tail" without knowing the file size up front.
+        max_bytes   -- maximum bytes to return.  Default 256 KB, hard
+                       ceiling at ``_MAX_READ_BYTES`` (16 MB).
+
+    UTF-8 boundary handling: a byte range can land in the middle of
+    a multi-byte codepoint.  We trim INCOMPLETE codepoints at the
+    END of the chunk (so the response is always valid UTF-8) and
+    report the actual bytes returned via ``length``.  Trimming at
+    the start is NOT done -- if the caller passed an offset mid-
+    codepoint they got the byte range they asked for; the trim is a
+    polite cleanup for the typical "scrolling forward, next page"
+    case where the END boundary is naturally arbitrary.
+
+    Returns ``{ok: True, path, offset, length, file_size, mtime,
+    text, eof}`` where:
+        offset       -- the absolute byte offset where ``text`` starts
+                        (negative-offset requests get RESOLVED here).
+        length       -- bytes in ``text`` (after UTF-8 trim).  May be
+                        less than ``max_bytes``.
+        file_size    -- total size of the file.  Lets the client show
+                        a "loaded X of Y" indicator.
+        eof          -- True iff ``offset + length == file_size``;
+                        client uses this to disable "Load more".
+    """
+    raw_path = request.args.get("path", "")
+    try:
+        resolved = _resolve_within_roots(raw_path)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+
+    if not resolved.exists():
+        return jsonify({
+            "ok": False,
+            "error": f"path does not exist: {str(resolved)!r}",
+        }), 404
+    if not resolved.is_file():
+        return jsonify({
+            "ok": False,
+            "error": f"path is not a regular file: {str(resolved)!r}",
+        }), 400
+
+    try:
+        max_bytes = int(request.args.get(
+            "max_bytes", _DEFAULT_RANGE_BYTES))
+    except ValueError:
+        return jsonify({"ok": False,
+                        "error": "max_bytes must be an integer"}), 400
+    if max_bytes <= 0 or max_bytes > _MAX_READ_BYTES:
+        return jsonify({
+            "ok": False,
+            "error": f"max_bytes must be in (0, {_MAX_READ_BYTES}]; "
+                     f"got {max_bytes}",
+        }), 400
+
+    try:
+        offset = int(request.args.get("offset", 0))
+    except ValueError:
+        return jsonify({"ok": False,
+                        "error": "offset must be an integer"}), 400
+
+    try:
+        st = resolved.stat()
+    except OSError as exc:
+        return jsonify({"ok": False, "error": f"stat failed: {exc}"}), 500
+
+    file_size = st.st_size
+
+    # Resolve negative offset = "from end".  ``offset = -N`` -> read
+    # the last N bytes.  Clamp at 0 so an over-large negative offset
+    # just means "read from the start".
+    if offset < 0:
+        offset = max(0, file_size + offset)
+
+    if offset > file_size:
+        return jsonify({
+            "ok": False,
+            "error": f"offset {offset} exceeds file size {file_size}",
+        }), 400
+
+    try:
+        with open(resolved, "rb") as fh:
+            fh.seek(offset)
+            raw = fh.read(max_bytes)
+    except PermissionError as exc:
+        return jsonify({"ok": False,
+                        "error": f"permission denied: {exc}"}), 403
+    except OSError as exc:
+        return jsonify({"ok": False,
+                        "error": f"read failed: {exc}"}), 500
+
+    # Trim incomplete UTF-8 codepoints at the END so the response is
+    # always valid UTF-8.  Walk back at most 3 bytes (max codepoint
+    # length is 4; a complete trailing codepoint ends ≤ 3 bytes
+    # before the actual end).
+    trimmed = raw
+    for _ in range(4):
+        try:
+            text = trimmed.decode("utf-8")
+            break
+        except UnicodeDecodeError:
+            # Last byte is the start of an incomplete codepoint; drop
+            # it and retry.  If we'd already dropped 3 bytes and it's
+            # STILL not decodable, the input wasn't valid UTF-8 to
+            # begin with -- fall through to the explicit error below.
+            if not trimmed:
+                break
+            trimmed = trimmed[:-1]
+    else:
+        return jsonify({
+            "ok":   False,
+            "error": f"file region is not valid UTF-8 at offset "
+                     f"{offset}.  read_range only previews text files.",
+        }), 400
+
+    length = len(trimmed)
+    eof    = (offset + length) >= file_size
+
+    return jsonify({
+        "ok":        True,
+        "path":      str(resolved),
+        "offset":    offset,
+        "length":    length,
+        "file_size": file_size,
+        "mtime":     st.st_mtime,
+        "text":      text,
+        "eof":       eof,
+    })
+
+
 # --------------------------------------------------------------------- #
 #  /api/files/mkdir                                                     #
 # --------------------------------------------------------------------- #

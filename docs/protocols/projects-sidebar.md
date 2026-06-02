@@ -1040,7 +1040,7 @@ network / backend / concurrency / user-action / browser-platform.
 
 ## 12. Backend contract (capability level)
 
-The backend offers seven file-system primitives plus one
+The backend offers eight file-system primitives plus one
 project-bootstrap operation.  All operate exclusively inside the
 configured `projects/` root.
 
@@ -1048,6 +1048,7 @@ configured `projects/` root.
 |---|---|---|
 | List a directory | `GET /api/files/list` | Optional extension filter |
 | Read a file | `GET /api/files/read` | Size-capped; UTF-8 only; binary rejected |
+| Read a byte range | `GET /api/files/read_range` | `offset` + `max_bytes`; negative offset = from EOF; powers /results paginated source inspector (#119, 2026-06-02) |
 | Stat a path | `GET /api/files/stat` | Single-path metadata |
 | Write a file | `POST /api/files/write` | `expected_mtime` for edit-conflict detection |
 | Create a directory | `POST /api/files/mkdir` | Depth-aware name validation |

@@ -334,18 +334,74 @@
 }
 
 /* ===========================================================
-   Source inspector: read-only file viewer.
-   =========================================================== */
+   Source inspector: read-only file viewer with paginated /
+   range-read scroll (task #119, 2026-06-02).
+   ===========================================================
+
+   DOM layout:
+       .source-card
+           .inspector-card-header
+               .inspector-card-title
+               .source-controls
+                   .source-status      -- "Showing N of M KB"
+                   .source-jump-end    -- button
+           .source-scroller            -- the scroll viewport (owns
+                                          ``overflow: auto``)
+               pre.source-body         -- the text node (grows as
+                                          the user pages forward)
+*/
+
+.source-controls {
+    display:        flex;
+    align-items:    center;
+    gap:            var(--space-md);
+    margin-top:     var(--space-xs);
+    font-size:      var(--text-xs);
+    color:          var(--text-muted);
+}
+
+.source-status {
+    flex:           1 1 auto;
+    /* Allows long file-size strings to wrap rather than push the
+     * Jump-to-end button off-screen on narrow widths. */
+    min-width:      0;
+}
+
+.source-jump-end {
+    flex:           0 0 auto;
+    padding:        var(--space-xs) var(--space-sm);
+    font-size:      var(--text-xs);
+    background:     var(--bg-input);
+    border:         1px solid var(--border-strong);
+    color:          var(--text-primary);
+    border-radius:  var(--radius-sm);
+    cursor:         pointer;
+}
+.source-jump-end:hover:not(:disabled) {
+    background:     var(--bg-input-focus);
+    border-color:   var(--accent);
+}
+.source-jump-end:disabled {
+    opacity:        0.5;
+    cursor:         default;
+}
+
+.source-scroller {
+    /* Scroll viewport.  The inspector's auto-pagination hook reads
+     * ``scrollTop`` / ``scrollHeight`` / ``clientHeight`` off this
+     * element, so the overflow + max-height MUST live here, not
+     * on the inner <pre>. */
+    max-height:     60vh;
+    overflow:       auto;
+    background:     var(--bg-code);
+    border:         1px solid var(--border-soft);
+    border-radius:  var(--radius-sm);
+}
 
 .source-card .source-body {
     margin: 0;
-    max-height: 60vh;
-    overflow: auto;
     padding: var(--space-md) var(--space-lg);
-    background: var(--bg-code);
     color: var(--text-mono);
-    border: 1px solid var(--border-soft);
-    border-radius: var(--radius-sm);
     font-family: var(--font-mono);
     font-size: var(--text-sm);
     line-height: var(--line-snug);

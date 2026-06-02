@@ -272,6 +272,200 @@ class TestFilesRead:
 
 
 # --------------------------------------------------------------------- #
+#  /api/files/read_range  (task #119, 2026-06-02)                       #
+#                                                                       #
+#  Paginated read for the source inspector's virtual-scroll viewer.     #
+# --------------------------------------------------------------------- #
+
+
+class TestFilesReadRange:
+    """The range-read endpoint underpins the source inspector's
+    arbitrarily-large-text-file viewer.  These tests pin the byte-
+    range semantics, the negative-offset "from end" form, UTF-8
+    boundary trimming, ``eof`` marker, and the error paths."""
+
+    def test_read_range_default_returns_start_of_file(
+            self, web, picker_root):
+        """No offset / max_bytes -> 256 KB from offset 0.  For the
+        water.xyz fixture (35 bytes) that's the whole file + eof
+        true."""
+        r = web.get(
+            f"/api/files/read_range?path={picker_root}/water.xyz")
+        assert r.status_code == 200
+        j = r.get_json()
+        assert j["ok"] is True
+        assert j["offset"] == 0
+        assert j["length"] == j["file_size"]
+        assert j["eof"] is True
+        assert j["text"].startswith("3\nwater")
+
+    def test_read_range_explicit_offset_and_max_bytes(
+            self, web, picker_root):
+        """Caller-specified offset returns exactly those bytes."""
+        big = picker_root / "big.log"
+        big.write_text("".join(f"line {i:04d}\n" for i in range(200)))
+        # Each line is 10 bytes; offset=100 starts mid-line-10.
+        r = web.get(
+            f"/api/files/read_range?path={big}&offset=100&max_bytes=80")
+        j = r.get_json()
+        assert r.status_code == 200
+        assert j["offset"] == 100
+        assert j["length"] == 80
+        # The returned text starts at byte 100 which is the start of
+        # line 10 ("line 0010\n" starts at offset 100).
+        assert j["text"].startswith("line 0010")
+        assert j["eof"] is False
+
+    def test_read_range_eof_true_when_chunk_reaches_end(
+            self, web, picker_root):
+        small = picker_root / "small.log"
+        small.write_text("hello world\n")
+        # Request more than file size -> get the whole file, eof.
+        r = web.get(
+            f"/api/files/read_range?path={small}&max_bytes=1000")
+        j = r.get_json()
+        assert r.status_code == 200
+        assert j["eof"] is True
+        assert j["text"] == "hello world\n"
+
+    def test_read_range_negative_offset_reads_tail(
+            self, web, picker_root):
+        """``offset=-N`` returns the last N bytes (tail).  Critical
+        UX for "show me the END of this 10 MB log without paging
+        through it first"."""
+        big = picker_root / "tail.log"
+        big.write_text("A" * 1000 + "B" * 500)
+        r = web.get(
+            f"/api/files/read_range?path={big}&offset=-500")
+        j = r.get_json()
+        assert r.status_code == 200
+        assert j["offset"] == 1000
+        assert j["text"] == "B" * 500
+        assert j["eof"] is True
+
+    def test_read_range_negative_offset_clamped_to_zero(
+            self, web, picker_root):
+        """``offset=-99999`` on a 12-byte file becomes offset 0,
+        not an error (the caller asked for "more tail than exists"
+        which should give them the whole file)."""
+        small = picker_root / "tiny.log"
+        small.write_text("hello world\n")
+        r = web.get(
+            f"/api/files/read_range?path={small}&offset=-99999")
+        j = r.get_json()
+        assert r.status_code == 200
+        assert j["offset"] == 0
+        assert j["text"] == "hello world\n"
+
+    def test_read_range_offset_past_end_returns_400(
+            self, web, picker_root):
+        small = picker_root / "short.log"
+        small.write_text("12345")
+        r = web.get(
+            f"/api/files/read_range?path={small}&offset=999")
+        assert r.status_code == 400
+        body = r.get_json()
+        assert "exceeds file size" in body["error"]
+
+    def test_read_range_offset_at_eof_returns_empty_chunk(
+            self, web, picker_root):
+        """``offset == file_size`` is the canonical "I'm at the end"
+        request -- returns empty text + eof:true rather than 400,
+        so a client paginating doesn't have to special-case the
+        terminal request."""
+        small = picker_root / "edge.log"
+        small.write_text("abc")
+        r = web.get(
+            f"/api/files/read_range?path={small}&offset=3")
+        j = r.get_json()
+        assert r.status_code == 200
+        assert j["offset"] == 3
+        assert j["text"] == ""
+        assert j["length"] == 0
+        assert j["eof"] is True
+
+    def test_read_range_invalid_offset_returns_400(
+            self, web, picker_root):
+        r = web.get(
+            f"/api/files/read_range?path={picker_root}/water.xyz"
+            f"&offset=not_an_int")
+        assert r.status_code == 400
+
+    def test_read_range_invalid_max_bytes_returns_400(
+            self, web, picker_root):
+        r = web.get(
+            f"/api/files/read_range?path={picker_root}/water.xyz"
+            f"&max_bytes=zero")
+        assert r.status_code == 400
+
+    def test_read_range_max_bytes_above_ceiling_returns_400(
+            self, web, picker_root):
+        r = web.get(
+            f"/api/files/read_range?path={picker_root}/water.xyz"
+            f"&max_bytes=99999999999")
+        assert r.status_code == 400
+
+    def test_read_range_missing_file_404(self, web, picker_root):
+        r = web.get(
+            f"/api/files/read_range?path={picker_root}/no-such.log")
+        assert r.status_code == 404
+
+    def test_read_range_directory_returns_400(self, web, picker_root):
+        d = picker_root / "subdir"
+        d.mkdir(exist_ok=True)
+        r = web.get(f"/api/files/read_range?path={d}")
+        assert r.status_code == 400
+
+    def test_read_range_utf8_boundary_trim(self, web, picker_root):
+        """A byte range that lands mid-codepoint MUST not return
+        invalid UTF-8.  Construct a file where byte N is the second
+        byte of a 2-byte ``é`` (0xC3 0xA9): a request for the first
+        N bytes must trim the incomplete leading byte instead of
+        returning a 400 or garbled text."""
+        # "abcé" -> "abc" (3 bytes) + "é" (2 bytes) = 5 bytes total.
+        path = picker_root / "utf8.log"
+        path.write_bytes(b"abc\xc3\xa9")
+        # max_bytes=4 lands in the MIDDLE of the é codepoint (byte 4
+        # is 0xC3, the first byte of é; the second byte would be at
+        # position 5).
+        r = web.get(
+            f"/api/files/read_range?path={path}&max_bytes=4")
+        j = r.get_json()
+        assert r.status_code == 200
+        # The incomplete trailing 0xC3 should have been trimmed.
+        assert j["text"] == "abc"
+        assert j["length"] == 3
+        # eof is False because we trimmed 1 byte off the file's true
+        # end (file is 5 bytes; we returned 3).
+        assert j["eof"] is False
+
+    def test_read_range_actual_binary_data_returns_400(
+            self, web, picker_root):
+        """A file region that genuinely isn't UTF-8 (not just a
+        truncated codepoint at the edge) MUST return 400 with a
+        clear message -- ``read_range`` is text-only like ``read``."""
+        bad = picker_root / "binary.bin"
+        bad.write_bytes(b"\xff\xfe\xfd\xfc")
+        r = web.get(f"/api/files/read_range?path={bad}&max_bytes=4")
+        assert r.status_code == 400
+        assert "UTF-8" in r.get_json()["error"]
+
+    def test_read_range_file_size_unchanged_across_calls(
+            self, web, picker_root):
+        """Multiple range reads on the same file must report the
+        SAME ``file_size`` -- the client uses it to drive the
+        scrollbar / progress indicator."""
+        big = picker_root / "stable.log"
+        big.write_text("line\n" * 100)
+        r1 = web.get(
+            f"/api/files/read_range?path={big}&offset=0&max_bytes=50")
+        r2 = web.get(
+            f"/api/files/read_range?path={big}&offset=50&max_bytes=50")
+        assert r1.get_json()["file_size"] == r2.get_json()["file_size"]
+        assert r1.get_json()["file_size"] == 500
+
+
+# --------------------------------------------------------------------- #
 #  Path-traversal defense                                               #
 # --------------------------------------------------------------------- #
 
