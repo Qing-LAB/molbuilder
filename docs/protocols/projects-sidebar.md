@@ -900,6 +900,51 @@ design's end state is:
 Until that migration completes, the guard rule (§ 9.1) is the
 contract.
 
+### 9.3 Narrow-viewport drawer (≤ 640 px)
+
+**Added 2026-06-02 for task #182.** The sidebar's default desktop
+layout (`position: fixed`, left, 18 rem wide, body shifted right by
+`padding-left: 18rem`) doesn't fit a phone-width viewport: at 360
+px viewport the body would have to be ≥ 648 px wide and produces a
+horizontal scrollbar.
+
+At viewport ≤ 640 px, the sidebar becomes a left-edge drawer:
+
+* **Body**: `padding-left` collapses to `0` (the sidebar is no
+  longer part of normal flow).
+* **Sidebar**: `transform: translateX(-100%)` slides it off-canvas
+  with a 180 ms ease-out transition.  Body class
+  `has-mobile-sidebar-open` resets the transform to bring it back
+  as a fixed-position overlay.
+* **Hamburger button** (`#ps-mobile-toggle`): fixed at top-left,
+  visible only at narrow widths via `display: none` outside the
+  media query.  Toggles the body class.  Aria: `aria-controls=
+  "projects-sidebar"`, `aria-expanded=` mirrors the class state.
+* **Backdrop** (`#ps-mobile-backdrop`): semi-transparent overlay
+  visible only when the drawer is open.  Click dismisses.
+* **Escape key**: dismisses (standard modal-overlay convention).
+* **Resize past breakpoint**: auto-dismisses so rotating from
+  portrait to landscape doesn't leave a stale "open" state.
+
+Z-index layering (bottom up):
+
+| Layer | z-index | Why |
+|---|---|---|
+| Page content | (none, normal flow) | — |
+| Backdrop | 85 | Dims the page but not the drawer |
+| Drawer sidebar | 90 | Overlays page + backdrop |
+| Toggle button | 95 | Stays tappable when drawer is open |
+| File-preview modal | 100 | Above the drawer so a modal opened FROM the drawer is not hidden behind it |
+
+A closed modal (`hidden` attr → `display: none`) doesn't
+participate in stacking, so the desktop case (sidebar `z-index: 5`,
+modal `100`) is unaffected.
+
+JS wiring lives in `lib/projects-sidebar.js::initMobileDrawer`; the
+function is a no-op if the optional toggle / backdrop elements are
+absent (forward-compat with future templates that drop the
+scaffolding).
+
 ---
 
 ## 10. Visual states
