@@ -41,6 +41,13 @@ a Playwright contract test that opens `/results` and calls
 - ✅ `tests/test_results_file_picker_js.py` — node-driven JS unit tests
   on pure helpers (`parseDir`, `filterToResultFiles`, `groupResultFiles`).
   Costs ~300 ms total for 27 tests. No browser needed.
+- ✅ `tests/test_selection_store_js.py` — node-driven JS unit tests
+  on the selection store: API surface, initial state, synchronous
+  mutators, subscribe contract.  Uses
+  `window.molbuilder.selection._createStore()` (test-only entry
+  point) to spin up a FRESH store per test, isolating from the
+  module's auto-mounted singleton.  ~3 s for 34 tests.  See § 1.1
+  "Module singletons and test isolation".
 - ✅ `tests/test_inspector_registry_e2e.py::TestPickerContract` —
   Playwright but contract-only via `page.evaluate(...)`. No UI clicks.
   Verifies `isResult` / `pickResult` / `resultCategory` against the
@@ -51,6 +58,38 @@ a Playwright contract test that opens `/results` and calls
 - ❌ A Playwright test that just calls `page.evaluate("() => 1+1")` —
   that's a JS unit test in disguise; pay the 3 s of browser startup
   for nothing. Move it to `tests/test_*_js.py` driven by `node`.
+
+### 1.1 Module singletons and test isolation
+
+JS modules that mount a SINGLETON on `window.molbuilder.*` at load
+time (e.g. `selection/store.js`, `inspectors/registry.js`) are a
+testing trap: every test that mutates the singleton leaks state to
+the next.  The canonical fix in this repo is to EXPORT a factory
+under a `_create*` prefix that builds a fresh instance:
+
+```js
+// At the bottom of the module:
+root.molbuilder.selection = root.molbuilder.selection || {};
+if (!root.molbuilder.selection.store) {
+    root.molbuilder.selection.store = _create();  // production singleton
+}
+root.molbuilder.selection._createStore = _create;  // test factory
+```
+
+Tests then call `_createStore()` per test for isolated state:
+
+```python
+out = _run_node(
+    "const store = window.molbuilder.selection._createStore();\n"
+    "store.setSelection([1, 2, 3]).then(() => "
+    "  console.log(JSON.stringify(store.getState().selection))"
+    ");"
+)
+```
+
+Underscore-prefix the factory so it's not part of the production
+public surface (the registry's `_clear()` follows the same
+convention).
 
 ### Routing heuristic
 
