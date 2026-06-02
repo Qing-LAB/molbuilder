@@ -35,22 +35,65 @@ into `molbuilder` because they share a single file-format contract
 (`.molwatch.log v1`), a single core dataclass (`Structure`), and the same
 Flask + 3Dmol.js stack. See "Merge plan" below.
 
-**Per-feature specs** (sole sources of truth for their respective surfaces;
-this document points to them):
+---
 
-| Feature | Spec |
+## 0. Document index
+
+This file is the **master**: it holds principles, cross-cutting
+decisions, architecture, and an index to every subsystem doc.
+Each subsystem doc is the **sole source of truth** for its own
+surface — when you're working on the sidebar, read the sidebar
+doc, not this one. New cross-cutting decisions land here;
+subsystem-specific decisions land in the subsystem doc.
+
+### Cross-cutting (this file)
+
+| § | Topic |
 |---|---|
-| Build tab (web UI) + `/api/build/*` | `docs/protocols/web-api.md` |
-| Watch tab (web UI) + `/api/watch/*` | `docs/tabs/watch.md`, `docs/protocols/watch-api.md` (Watch is going legacy — see `/results` spec) |
-| **`/results` tab** (post-merge unified inspector) | **`docs/protocols/results-tab.md`** |
-| **Modify tab** (web UI) + `/api/modify/*` + `molbuilder modify` CLI | **`docs/tabs/modify.md`** |
-| **Job layout** (basename + filename protocol; Build writes, Watch reads) | **`docs/protocols/job-layout.md`** |
-| SIESTA FDF generator | `docs/engines/siesta.md` |
-| PySCF script generator | `docs/engines/pyscf.md` |
-| `Structure` dataclass | `docs/types/structure.md` |
-| Builder backends (peptide / dna / rna / smiles / name) | `docs/engines/builders.md` |
-| Parser plugins (siesta / pyscf / molwatch_log) | `docs/types/parsers.md` |
-| Top-level CLI shape | `docs/protocols/cli.md` |
+| 1 | Mission |
+| 2 | Architecture (three layers + four core types) |
+| 3 | Design principles (numbered, named) |
+| 4 | Decisions log (cross-cutting only) |
+| 5 | Anti-patterns we refuse |
+| 6 | Watch — live trajectory viewer (legacy spec) |
+| 7+ | Migration history, science gaps, file format |
+
+### Protocols — wire / JS / test contracts (`docs/protocols/`)
+
+| Doc | Owns |
+|---|---|
+| [`web-api.md`](protocols/web-api.md) | HTTP `/api/*` endpoint reference (request/response shapes) |
+| [`projects-sidebar.md`](protocols/projects-sidebar.md) | Sidebar architecture, public `projects.*` API, lock model, capability table |
+| [`atom-selection.md`](protocols/atom-selection.md) | Selection store, `.molstruct.json` sidecar shape, viewer adapter |
+| [`selection.md`](protocols/selection.md) | Python selection rule grammar (`by_element`, `by_index_range`, …) |
+| [`results-tab.md`](protocols/results-tab.md) | `/results` dispatch architecture |
+| [`runtime-registry.md`](protocols/runtime-registry.md) | `molbuilder-runtime.js` register/whenReady contract |
+| [`inspector-registry.md`](protocols/inspector-registry.md) | Inspector `mount(host, file, ctx) → {dispose}` contract |
+| [`playwright-tests.md`](protocols/playwright-tests.md) | Test design patterns + anti-patterns |
+| [`job-layout.md`](protocols/job-layout.md) | On-disk basename + `*-runN.out` convention |
+| [`cli.md`](protocols/cli.md) | click-based CLI conventions |
+| [`watch-api.md`](protocols/watch-api.md) | `/api/watch/*` (trajectory inspector backing) |
+
+### UI tabs (`docs/tabs/`)
+
+| Doc | Owns |
+|---|---|
+| [`build.md`](tabs/build.md) | `/build` tab — structure-from-input + SIESTA/PySCF form |
+| [`modify.md`](tabs/modify.md) | `/modify` tab — atom selection + nanojunction assembly |
+| [`spectra/spec.md`](tabs/spectra/spec.md) | `/spectra` tab — IR/Raman generator |
+| [`watch.md`](tabs/watch.md) | Legacy `/watch` (retired 2026-05-19; trajectory inspector lives in `/results` now) |
+
+### Engines (`docs/engines/`)
+
+[`siesta.md`](engines/siesta.md) · [`pyscf.md`](engines/pyscf.md) · [`builders.md`](engines/builders.md)
+
+### Types — L1 data contracts (`docs/types/`)
+
+[`structure.md`](types/structure.md) · [`parsers.md`](types/parsers.md) · [`chemistry.md`](types/chemistry.md)
+
+### Ops & deployment
+
+[`README.md`](README.md) · [`README_install.md`](README_install.md) (four-env install model) · [`deployment.md`](deployment.md)
 
 ---
 
