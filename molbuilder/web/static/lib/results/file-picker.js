@@ -140,24 +140,101 @@
     }
 
     /**
-     * Populate the <select> with one <option> per result; mark the
-     * current one as selected.  Defensive clear via firstChild loop
-     * instead of innerHTML to avoid XSS reflection if a filename
-     * ever contains tag chars.
+     * Bucket the filtered result entries by inspector
+     * ``resultCategory(path)`` and return a sorted ``[{label,
+     * entries}]`` array suitable for rendering as a sequence of
+     * ``<optgroup>`` blocks.
+     *
+     *   * Inside each group, entries stay in the input order
+     *     (callers feed pre-sorted-by-mtime input from
+     *     ``filterToResultFiles``, so newest is first within
+     *     each group).
+     *   * Groups are sorted by their NEWEST entry's mtime
+     *     descending, so the group containing the most recent
+     *     result floats to the top of the dropdown -- usually
+     *     what the user just ran.
+     *   * If an inspector doesn't expose ``resultCategory``, we
+     *     fall back to its ``displayName`` (a sensible default
+     *     for single-purpose inspectors).
+     *
+     * Pure (no DOM).  Exported for unit tests.
      */
-    function _populate(selectEl, results, currentPath) {
+    function groupResultFiles(entries, pickResult) {
+        if (!Array.isArray(entries) || typeof pickResult !== "function") {
+            return [];
+        }
+        // Map insertion order matches first-occurrence order in
+        // ``entries``; sort step below drops back to mtime order so
+        // input order doesn't leak through.
+        const buckets = new Map();
+        for (const entry of entries) {
+            const inspector = pickResult(entry.path);
+            if (!inspector) continue;  // already filtered, but defensive.
+            let label;
+            try {
+                label = (typeof inspector.resultCategory === "function")
+                    ? inspector.resultCategory(entry.path)
+                    : inspector.displayName;
+            } catch (e) {
+                console.warn(
+                    "[results-file-picker] resultCategory() threw for "
+                    + inspector.name + ":", e);
+                label = inspector.displayName;
+            }
+            if (typeof label !== "string" || !label) {
+                label = inspector.displayName || "Other";
+            }
+            if (!buckets.has(label)) buckets.set(label, []);
+            buckets.get(label).push(entry);
+        }
+        // Group sort key = newest entry's mtime in that group.
+        // Negative-infinity fallback for groups whose entries all
+        // had null mtime so they land at the bottom deterministically.
+        const groups = [];
+        for (const [label, list] of buckets) {
+            let newest = -Infinity;
+            for (const e of list) {
+                if (e.mtime != null && e.mtime > newest) newest = e.mtime;
+            }
+            groups.push({ label, entries: list, _newest: newest });
+        }
+        groups.sort((a, b) => {
+            if (b._newest !== a._newest) return b._newest - a._newest;
+            return a.label.localeCompare(b.label);
+        });
+        // Strip the private sort key before returning.
+        return groups.map(g => ({ label: g.label, entries: g.entries }));
+    }
+
+    /**
+     * Populate the <select> with one ``<optgroup>`` per inspector
+     * category, each wrapping one ``<option>`` per result.  Mark
+     * the current selection.  Defensive clear via firstChild loop
+     * (not ``innerHTML = ""``) to avoid XSS reflection if a
+     * filename ever contains tag chars.
+     *
+     * ``groups`` is the output of ``groupResultFiles``; if it's
+     * empty (no results) the dropdown is cleared but stays in the
+     * DOM.  Callers gate visibility by toggling ``barEl.hidden``.
+     */
+    function _populate(selectEl, groups, currentPath) {
         while (selectEl.firstChild) {
             selectEl.removeChild(selectEl.firstChild);
         }
-        for (const r of results) {
-            const opt = document.createElement("option");
-            opt.value = r.path;
-            opt.textContent = labelForResult(r);
-            opt.title = r.name;
-            if (r.path === currentPath) {
-                opt.selected = true;
+        for (const group of groups) {
+            const og = document.createElement("optgroup");
+            og.label = group.label;
+            for (const r of group.entries) {
+                const opt = document.createElement("option");
+                opt.value = r.path;
+                opt.textContent = labelForResult(r);
+                opt.title = r.name;
+                if (r.path === currentPath) {
+                    opt.selected = true;
+                }
+                og.appendChild(opt);
             }
-            selectEl.appendChild(opt);
+            selectEl.appendChild(og);
         }
     }
 
@@ -229,7 +306,10 @@
         //    directory selection lands. -------------------------- //
         let aborter         = null;
         let lastScannedDir  = null;
-        let cachedResults   = [];  // last successful scan, used by _onSelectChange
+        let cachedResults   = [];  // last successful scan -- flat, newest first
+        let cachedGroups    = [];  // same data bucketed via groupResultFiles;
+                                   // ``_populate`` consumes this so we don't
+                                   // re-group on every same-dir selection swap.
         let disposed        = false;
         // Transient parse-status timeout.  Set when a file selection
         // kicks off an inspector mount; cleared by the next selection
@@ -335,6 +415,7 @@
             if (!dir) {
                 barEl.hidden = true;
                 cachedResults = [];
+                cachedGroups  = [];
                 return;
             }
             // Pre-show the picker bar with an empty dropdown + a
@@ -356,6 +437,7 @@
                     if (!body || body.ok !== true) {
                         barEl.hidden = true;
                         cachedResults = [];
+                        cachedGroups  = [];
                         return;
                     }
                     const results = filterToResultFiles(
@@ -366,10 +448,13 @@
                     cachedResults = results;
                     if (results.length === 0) {
                         // Empty result set: no point showing the bar.
+                        cachedGroups = [];
                         barEl.hidden = true;
                         return;
                     }
-                    _populate(selEl, results, currentFile);
+                    cachedGroups = groupResultFiles(
+                        results, inspReg.pickResult);
+                    _populate(selEl, cachedGroups, currentFile);
                     barEl.hidden = false;
                     // Auto-pick: if no file is currently selected (or
                     // the selection is outside this directory's result
@@ -402,6 +487,7 @@
                     );
                     barEl.hidden = true;
                     cachedResults = [];
+                    cachedGroups  = [];
                 });
         }
 
@@ -440,8 +526,8 @@
                 return;
             }
             // Same dir.
-            if (cachedResults.length > 0) {
-                _populate(selEl, cachedResults, file);
+            if (cachedGroups.length > 0) {
+                _populate(selEl, cachedGroups, file);
             }
             if (file && file !== lastSelectedFile) {
                 // File swap within the same dir -- show "Parsing…"
@@ -537,6 +623,7 @@
         parseDir:            parseDir,
         formatRelativeTime:  formatRelativeTime,
         filterToResultFiles: filterToResultFiles,
+        groupResultFiles:    groupResultFiles,
         _labelForResult:     labelForResult,
     };
 })(typeof window !== "undefined" ? window : this);

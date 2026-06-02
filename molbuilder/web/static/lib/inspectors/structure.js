@@ -22,6 +22,7 @@
             const lower = file.toLowerCase();
             return lower.endsWith(".xyz") || lower.endsWith(".pdb");
         },
+        resultCategory: (_file) => "Structure",
 
         mount(host, file, ctx) {
             host.innerHTML = "";
@@ -88,6 +89,15 @@
                     viewerInstance.render();
                     status.textContent = "Loaded " + _atomCount(r.text, fmt)
                                        + " atoms.";
+                    // Signal "first render visible" so the /results
+                    // tab-level picker drops its "Parsing…" status.
+                    // Mirrors the trajectory inspector's dispatch.
+                    try {
+                        document.dispatchEvent(new CustomEvent(
+                            "molbuilder:inspector:ready",
+                            { detail: { inspector: "structure" } }
+                        ));
+                    } catch (_) { /* see core.js for context */ }
                 } catch (e) {
                     status.textContent = "3Dmol failed: "
                                        + (e && e.message ? e.message : String(e));

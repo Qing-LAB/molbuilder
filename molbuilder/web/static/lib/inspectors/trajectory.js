@@ -90,6 +90,19 @@
             return lower.endsWith(".molwatch.log")
                 || lower.endsWith(".out");
         },
+        // Two different engine outputs land here; the picker groups
+        // them under distinct headers so the user can scan visually.
+        // ``.out`` -> SIESTA (siesta wrapper redirects stdout into
+        // ``<base>-runN.out``); ``.molwatch.log`` -> the unified
+        // molwatch format emitted by the PySCF geometry-opt
+        // wrapper.  Both surface in the trajectory inspector but
+        // they're semantically distinct workflows.
+        resultCategory: (file) => {
+            const lower = file.toLowerCase();
+            if (lower.endsWith(".molwatch.log")) return "PySCF optimization";
+            if (lower.endsWith(".out"))           return "SIESTA optimization";
+            return "Trajectory";  // fallback (shouldn't fire given match())
+        },
 
         mount(host, file, _ctx) {
             // Cleanup chain.  Walked in reverse by ``dispose``;

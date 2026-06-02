@@ -652,6 +652,19 @@
     color:         var(--text-primary);
 }
 
+/* <optgroup> headers carry the engine-flavoured category labels
+ * ("SIESTA optimization" / "PySCF spectrum" / "Structure") fed
+ * by the picker's groupResultFiles helper.  Native rendering
+ * varies: Chrome / Edge bold + dim; Firefox bold; Safari italic.
+ * Style explicitly so the dark theme reads consistently and the
+ * group header is visually distinct from its options. */
+.result-list-select optgroup {
+    background:    var(--bg-card);
+    color:         var(--text-secondary);
+    font-weight:   600;
+    font-style:    normal;
+}
+
 .result-list-meta {
     color:         var(--text-muted);
     font-size:     var(--text-xs);

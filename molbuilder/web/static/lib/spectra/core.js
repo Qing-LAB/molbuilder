@@ -796,6 +796,15 @@
         renderResults(body.results);
         updatePhaseIndicator(body.results);
         setStatus(els.watchStatus, "Loaded.", "ok");
+        // Signal "first render visible" so the /results tab-level
+        // picker drops its "Parsing…" status.  Mirrors the
+        // trajectory + structure inspector dispatches.
+        try {
+            document.dispatchEvent(new CustomEvent(
+                "molbuilder:inspector:ready",
+                { detail: { inspector: "spectra" } }
+            ));
+        } catch (_) { /* see lib/trajectory/core.js for context */ }
     }
 
     // ----- Live-watch poller (spec § 6.1) -----------------------

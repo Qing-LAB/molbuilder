@@ -79,6 +79,7 @@
         displayName: "Spectra results",
         isResult:    true,
         match:       (file) => file.toLowerCase().endsWith(".spectra.json"),
+        resultCategory: (_file) => "PySCF spectrum",
 
         mount(host, file, _ctx) {
             // Cleanup chain.  Walked in reverse by ``dispose``; each

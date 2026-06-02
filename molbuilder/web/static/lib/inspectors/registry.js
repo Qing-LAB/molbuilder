@@ -35,6 +35,19 @@
  *                                         //   dropdown with non-result
  *                                         //   files (configs, READMEs,
  *                                         //   ...).
+ *     resultCategory: (file) => string,   // optional, used iff isResult.
+ *                                         //   User-facing engine-flavoured
+ *                                         //   label the picker groups
+ *                                         //   files under (rendered as a
+ *                                         //   ``<optgroup>`` header).  An
+ *                                         //   inspector that matches more
+ *                                         //   than one workflow's outputs
+ *                                         //   (e.g. ``trajectory`` claims
+ *                                         //   both ``.out`` for SIESTA AND
+ *                                         //   ``.molwatch.log`` for PySCF)
+ *                                         //   discriminates per-file here.
+ *                                         //   Defaults to ``displayName``
+ *                                         //   when omitted.
  *   };
  *
  * Handle contract (returned by mount; required cleanup point):
