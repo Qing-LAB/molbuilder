@@ -502,8 +502,9 @@ type ListEntry = {
 // Cursor-only mutator: writes (dir, file) to sessionStorage and
 // fires onChange subscribers WITHOUT re-listing the directory.
 // Use cases:
-//   * In-inspector navigators picking a file in the current dir
-//     (e.g. /results result-list dropdown).
+//   * Tab-level navigators picking a file in the current dir
+//     (e.g. the /results file-picker dropdown at
+//     ``lib/results/file-picker.js``).
 //   * Restoring a session-storage-persisted cursor on page load.
 // Synchronous so subscribers run in the same microtask -- a
 // subscriber that immediately reads getCurrentFile() sees the
@@ -847,8 +848,9 @@ lock-guard rules:
 **Navigation mutators** — `setShared`, `navigateTo`.  These MUST
 check `isLocked()` at the top and early-return
 `{ok: false, error: "sidebar is locked: <reason>"}`.  They are the
-public API form of "the user (or in-inspector navigator) wants to
-move the cursor".  Holding the lock means a pipeline is in flight;
+public API form of "the user (or a tab-level navigator like the
+/results file-picker) wants to move the cursor".  Holding the
+lock means a pipeline is in flight;
 moving the cursor mid-pipeline would race against the pipeline's
 view of "current directory".  This is the defense-in-depth that
 makes the lock real in code, not just in CSS.

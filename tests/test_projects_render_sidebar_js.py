@@ -329,11 +329,11 @@ class TestRenderSidebarSubscriber:
         assert out["b_selected"] is False
 
     def test_programmatic_setShared_updates_dom(self):
-        """The /results result-list dropdown's use case: a
-        non-sidebar module calls projects.setShared(dir, file) to
-        move the cursor without re-listing the directory.  The
-        subscriber syncs the sidebar's DOM even though the click
-        came from outside."""
+        """The /results tab-level file-picker's use case
+        (``lib/results/file-picker.js``): a non-sidebar module calls
+        projects.setShared(dir, file) to move the cursor without
+        re-listing the directory.  The subscriber syncs the
+        sidebar's DOM even though the click came from outside."""
         out = _run_node('''
             state.projects.setShared("/p", "/p/file-b.out");
             console.log(JSON.stringify({

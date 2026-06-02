@@ -581,10 +581,11 @@ export const projects = {
   saveToWorkspace,
   // ---- Public mutator + navigation surface (#175, 2026-05-31) -- //
   // Promoted from internal api.js consumers so external callers
-  // (in-inspector navigators, future programmatic file managers)
-  // can use them WITHOUT reaching into ./api.js directly.  Each
-  // method auto-fires a sidebar listing refresh on success so the
-  // tree stays in sync.
+  // (the /results tab-level file-picker dropdown at
+  // ``lib/results/file-picker.js``, future programmatic file
+  // managers) can use them WITHOUT reaching into ./api.js
+  // directly.  Each method auto-fires a sidebar listing refresh on
+  // success so the tree stays in sync.
   readFile,
   createProject,
   mkdir,

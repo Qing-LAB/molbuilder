@@ -3,8 +3,9 @@ gap M4, #175).
 
 Promotes ``readFile / createProject / mkdir / deleteEntry / upload /
 navigateTo`` onto ``window.molbuilder.projects.*`` so external
-callers (the /results result-list dropdown + future programmatic
-file managers) don't need to import ``./api.js`` directly.
+callers (the /results tab-level file-picker dropdown at
+``lib/results/file-picker.js``, future programmatic file
+managers) don't need to import ``./api.js`` directly.
 
 Each wrapper auto-fires a sidebar refresh on success so the tree
 stays in sync.  These tests pin:
