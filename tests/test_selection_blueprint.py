@@ -771,3 +771,283 @@ class TestStateless:
         first  = web.post("/api/selection/eval", json=body).get_json()
         second = web.post("/api/selection/eval", json=body).get_json()
         assert first == second
+
+
+# --------------------------------------------------------------------- #
+#  Error-path coverage gaps (task #147)                                 #
+#                                                                       #
+#  Each endpoint has 3-5 error branches.  Pre-existing test classes    #
+#  (TestEval, TestToggleSemantics, TestAtomsEndpoint, TestSaveEndpoint) #
+#  cover the happy path + a few of the most common bad inputs.  This   #
+#  class fills the gaps so every error branch in the blueprint has    #
+#  at least one test pinning its status code + message shape.          #
+# --------------------------------------------------------------------- #
+
+
+class TestAtomsErrorPaths:
+    """Error branches in ``api_selection_atoms``."""
+
+    def test_path_traversal_rejected(self, web, selection_root):
+        """``_resolve_within_roots`` rejects paths that escape the
+        picker-root set with a 400 / 403, depending on the kind of
+        failure.  /atoms must surface this -- the path-validation
+        layer is shared with /eval, but each route is responsible
+        for handling _PickerError."""
+        r = web.post("/api/selection/atoms", json={
+            "structure_path": "/etc/passwd",
+        })
+        assert r.status_code in (400, 403), (
+            f"expected 4xx for path-traversal; got {r.status_code} "
+            f"with body {r.get_json()!r}"
+        )
+
+    def test_non_structure_extension_rejected(
+            self, web, selection_root):
+        """A real file that exists but isn't a supported structure
+        type must be refused, not parsed (parsing a .out file as XYZ
+        would yield arbitrary garbage)."""
+        bad = selection_root / "junk.out"
+        bad.write_text("not a structure\n")
+        r = web.post("/api/selection/atoms", json={
+            "structure_path": str(bad),
+        })
+        assert r.status_code in (400, 415), (
+            f"expected 4xx for unsupported extension; got "
+            f"{r.status_code}"
+        )
+
+    def test_file_not_found_returns_404(self, web, selection_root):
+        """A picker-root path to a file that doesn't exist must
+        surface as 404 (the user / client gave a stale path)."""
+        r = web.post("/api/selection/atoms", json={
+            "structure_path": str(selection_root / "no-such.xyz"),
+        })
+        assert r.status_code == 404
+
+    def test_structure_path_must_be_string(self, web):
+        """A null or non-string ``structure_path`` is a 400, not a
+        500 -- the type check runs before path resolution."""
+        for bad in (None, 42, [1, 2, 3], {"x": 1}):
+            r = web.post("/api/selection/atoms", json={
+                "structure_path": bad,
+            })
+            assert r.status_code == 400, (
+                f"got {r.status_code} for structure_path={bad!r}"
+            )
+
+    def test_pdb_metadata_propagates(self, selection_root, web):
+        """PDB-derived atom_name / residue_name / chain_id fields
+        appear in the response when the loaded structure carries
+        them (covered indirectly elsewhere; this pins the explicit
+        contract)."""
+        pdb = selection_root / "tiny.pdb"
+        pdb.write_text(
+            "ATOM      1 CA   ALA A   1       0.000   0.000   0.000\n"
+            "ATOM      2 CB   ALA A   1       1.000   0.000   0.000\n"
+            "END\n"
+        )
+        r = web.post("/api/selection/atoms",
+                     json={"structure_path": str(pdb)})
+        body = r.get_json()
+        assert body["n_atoms"] == 2
+        a0 = body["atoms"][0]
+        assert a0.get("residue_name") == "ALA"
+        assert a0.get("chain_id")     == "A"
+
+
+class TestSaveErrorPaths:
+    """Error branches in ``api_selection_save`` beyond the happy
+    path + the existing missing_target / out_of_range tests."""
+
+    def test_path_traversal_rejected(self, web):
+        r = web.post("/api/selection/save", json={
+            "structure_path": "/etc/passwd",
+            "target":         "L-electrode",
+            "indices":        [0],
+        })
+        assert r.status_code in (400, 403)
+
+    def test_non_structure_extension_rejected(
+            self, web, selection_root):
+        bad = selection_root / "junk.out"
+        bad.write_text("not a structure\n")
+        r = web.post("/api/selection/save", json={
+            "structure_path": str(bad),
+            "target":         "L-electrode",
+            "indices":        [0],
+        })
+        # Save validates extension via its own check (different
+        # message); 400 either way.
+        assert r.status_code == 400
+
+    def test_file_not_found_returns_404(self, web, selection_root):
+        r = web.post("/api/selection/save", json={
+            "structure_path": str(selection_root / "no-such.xyz"),
+            "target":         "L-electrode",
+            "indices":        [0],
+        })
+        assert r.status_code == 404
+
+    def test_missing_indices_returns_400(self, web, selection_root):
+        """Omitting ``indices`` entirely is a 400 (the shape contract
+        requires it; a missing key means the client is broken, not
+        that the user wants to clear the region -- that's
+        ``indices: []``)."""
+        r = web.post("/api/selection/save", json={
+            "structure_path": _path(selection_root),
+            "target":         "L-electrode",
+            # no "indices" key
+        })
+        assert r.status_code == 400
+        body = r.get_json()
+        assert "indices" in body.get("error", "").lower()
+
+    def test_indices_not_a_list_returns_400(self, web, selection_root):
+        for bad in ("not a list", 42, {"0": 1}, None):
+            r = web.post("/api/selection/save", json={
+                "structure_path": _path(selection_root),
+                "target":         "L-electrode",
+                "indices":        bad,
+            })
+            assert r.status_code == 400, (
+                f"expected 400 for indices={bad!r}; got {r.status_code}"
+            )
+
+    def test_target_must_be_string(self, web, selection_root):
+        """Non-string / empty target = 400.  The existing
+        ``test_missing_target_returns_400`` covers the absent-key
+        case; this covers the wrong-type + whitespace-only cases."""
+        for bad in (42, None, [1], "", "   "):
+            r = web.post("/api/selection/save", json={
+                "structure_path": _path(selection_root),
+                "target":         bad,
+                "indices":        [0],
+            })
+            assert r.status_code == 400, (
+                f"expected 400 for target={bad!r}; got {r.status_code}"
+            )
+
+    def test_hash_recorded_in_new_sidecar(self, web, selection_root):
+        """When the sidecar is freshly created, ``structure_hash`` in
+        the JSON must match the XYZ's sha256.  Lets a later loader
+        detect "the user edited the structure since this sidecar
+        was saved" without re-hashing the XYZ on every read."""
+        r = web.post("/api/selection/save", json={
+            "structure_path": _path(selection_root),
+            "target":         "L-electrode",
+            "indices":        [0, 1],
+        })
+        assert r.status_code == 200
+        # Read back the sidecar JSON directly to verify the hash.
+        from molbuilder.parsers import molstruct_json as msj
+        side = msj.sidecar_path_for(Path(_path(selection_root)))
+        saved = msj.load(side)
+        expected_hash = msj.sha256_of_file(
+            Path(_path(selection_root)))
+        assert saved["structure_hash"] == expected_hash
+
+
+class TestEvalErrorPaths:
+    """Eval branches not covered by ``TestEval``."""
+
+    def test_file_not_found_returns_404(self, web, selection_root):
+        r = web.post("/api/selection/eval", json={
+            "structure_path": str(selection_root / "no-such.xyz"),
+            "rule":           {"op": "by_element", "elements": ["Au"]},
+        })
+        assert r.status_code == 404
+
+    def test_structure_path_must_be_string(self, web):
+        for bad in (None, 42, [1, 2, 3]):
+            r = web.post("/api/selection/eval", json={
+                "structure_path": bad,
+                "rule":           {"op": "by_element",
+                                   "elements": ["Au"]},
+            })
+            assert r.status_code == 400
+
+
+class TestToggleErrorPaths:
+    """Toggle branches: ``test_index_out_of_range_returns_400``,
+    ``test_non_integer_index_returns_400`` + ``test_bool_index_rejected``
+    cover the index validation; this fills in the path / rule /
+    extension errors."""
+
+    def test_missing_path_returns_400(self, web):
+        r = web.post("/api/selection/toggle", json={
+            "rule":  {"op": "by_element", "elements": ["Au"]},
+            "index": 0,
+        })
+        assert r.status_code == 400
+
+    def test_missing_rule_returns_400(self, web, selection_root):
+        r = web.post("/api/selection/toggle", json={
+            "structure_path": _path(selection_root),
+            "index":          0,
+        })
+        assert r.status_code == 400
+
+    def test_invalid_rule_returns_400(self, web, selection_root):
+        r = web.post("/api/selection/toggle", json={
+            "structure_path": _path(selection_root),
+            "rule":           {"op": "no-such-op", "args": []},
+            "index":          0,
+        })
+        assert r.status_code == 400
+
+    def test_missing_index_returns_400(self, web, selection_root):
+        r = web.post("/api/selection/toggle", json={
+            "structure_path": _path(selection_root),
+            "rule":           {"op": "by_element", "elements": ["Au"]},
+        })
+        # Code's ``isinstance(idx, int)`` check on ``payload.get("index")``
+        # treats None as not-int and returns 400.
+        assert r.status_code == 400
+
+    def test_path_traversal_rejected(self, web):
+        r = web.post("/api/selection/toggle", json={
+            "structure_path": "/etc/passwd",
+            "rule":           {"op": "by_element", "elements": ["Au"]},
+            "index":          0,
+        })
+        assert r.status_code in (400, 403)
+
+    def test_file_not_found_returns_404(self, web, selection_root):
+        r = web.post("/api/selection/toggle", json={
+            "structure_path": str(selection_root / "no-such.xyz"),
+            "rule":           {"op": "by_element", "elements": ["Au"]},
+            "index":          0,
+        })
+        assert r.status_code == 404
+
+
+class TestCrossCutting:
+    """Body-validation paths shared by every endpoint."""
+
+    @pytest.mark.parametrize("endpoint", [
+        "/api/selection/atoms",
+        "/api/selection/save",
+        "/api/selection/eval",
+        "/api/selection/toggle",
+    ])
+    def test_non_json_body_returns_400(self, web, endpoint):
+        """Hitting any endpoint without ``Content-Type:
+        application/json`` returns a 400 with a clear message --
+        not a 500 from a downstream parse failure."""
+        r = web.post(endpoint, data="not json", content_type="text/plain")
+        assert r.status_code == 400
+        # The message must mention JSON so a client trying to debug
+        # a malformed request has a starting point.
+        body = r.get_json(silent=True) or {}
+        assert "json" in (body.get("error", "")).lower()
+
+    @pytest.mark.parametrize("endpoint", [
+        "/api/selection/atoms",
+        "/api/selection/save",
+        "/api/selection/eval",
+        "/api/selection/toggle",
+    ])
+    def test_top_level_not_object_returns_400(self, web, endpoint):
+        """JSON body must be an OBJECT, not an array / string / null."""
+        r = web.post(endpoint, json=[1, 2, 3])
+        assert r.status_code == 400

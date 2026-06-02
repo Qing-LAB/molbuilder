@@ -597,10 +597,21 @@ body.has-projects-sidebar {
  *  ``transform: translateX(-100%)`` and the body's padding-left is
  *  removed.  A small fixed hamburger button at the top-left
  *  toggles a body class (``has-mobile-sidebar-open``) that brings
- *  the sidebar back as an OVERLAY on top of the page content
- *  (z-index higher than normal layout).  A semi-transparent
- *  backdrop on the rest of the page tells the user the sidebar is
- *  in modal-overlay mode + provides a click target to dismiss.
+ *  the sidebar back as an OVERLAY on top of the page content.  A
+ *  semi-transparent backdrop on the rest of the page tells the
+ *  user the sidebar is in modal-overlay mode + provides a click
+ *  target to dismiss.
+ *
+ *  Z-index layering (in stacking order, bottom up):
+ *    *  page content    -- normal flow (no explicit z-index)
+ *    *  backdrop        -- 85  (dims the page but not the drawer)
+ *    *  drawer sidebar  -- 90  (overlays the page + backdrop)
+ *    *  toggle button   -- 95  (above drawer so the close action
+ *                              stays tappable when the drawer is
+ *                              open)
+ *    *  file-preview modal -- 100 (above all of the above, so a
+ *                              modal opened FROM the drawer is not
+ *                              hidden behind the drawer)
  *
  *  Above 640 px the drawer plumbing is inert (display:none on the
  *  toggle + the backdrop, padding-left restored on the body).
@@ -636,15 +647,20 @@ body.has-projects-sidebar {
   }
 
   /* Slide the sidebar off-canvas by default.  Animated so the user
-   * sees it slide in/out rather than abruptly appear. */
+   * sees it slide in/out rather than abruptly appear.
+   *
+   * Z-index choice: ``90`` -- above page content (which has no
+   * explicit z-index), BELOW the file-preview modal at ``100``.
+   * If the user clicks the modal's trigger from inside the drawer,
+   * the modal MUST render on top of the drawer; otherwise it
+   * appears hidden and the click looks broken.  A modal hidden via
+   * ``[hidden] { display: none }`` doesn't participate in z-index
+   * stacking, so a "closed modal underneath the drawer" can't
+   * bleed through. */
   .projects-sidebar {
     transform:  translateX(-100%);
     transition: transform 180ms ease-out;
-    /* Above the page content + above any modal that doesn't bump
-     * its z-index (the file-preview modal sits at 100; we sit
-     * above that so a stale preview behind us doesn't bleed
-     * through). */
-    z-index: 110;
+    z-index:    90;
     box-shadow: 4px 0 12px rgba(0, 0, 0, 0.4);
   }
 
@@ -652,15 +668,17 @@ body.has-projects-sidebar {
     transform: translateX(0);
   }
 
-  /* Fixed hamburger button at top-left.  Sits ABOVE the sidebar
-   * z-index so the user can still tap it to close.  Sized for
-   * comfortable touch on phone (the WCAG 2.1 AAA 44x44 target). */
+  /* Fixed hamburger button at top-left.  Z-index 95 -- ABOVE the
+   * drawer (so the close action stays tappable when the drawer
+   * is open), BELOW the modal (so a triggered modal covers the
+   * toggle just like it covers the rest of the page).  Sized for
+   * comfortable touch on phone (~WCAG 2.1 AAA 44x44 target). */
   .ps-mobile-toggle {
     display:         block;
     position:        fixed;
     top:             0.5rem;
     left:            0.5rem;
-    z-index:         120;
+    z-index:         95;
     width:           2.75rem;
     height:          2.75rem;
     padding:         0;
@@ -681,12 +699,15 @@ body.has-projects-sidebar {
   }
 
   /* Backdrop: visible only when the drawer is open.  Click anywhere
-   * outside the sidebar to dismiss. */
+   * outside the sidebar to dismiss.  Z-index 85 -- below the
+   * drawer (90) and toggle (95) so the dimming covers the
+   * underlying page but not the drawer itself; below the modal
+   * (100) so a modal renders above the dimmed backdrop too. */
   body.has-mobile-sidebar-open .ps-mobile-backdrop {
     display:    block;
     position:   fixed;
     inset:      0;
-    z-index:    105;
+    z-index:    85;
     background: rgba(0, 0, 0, 0.5);
   }
 }
