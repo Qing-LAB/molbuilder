@@ -72,7 +72,11 @@ subsystem-specific decisions land in the subsystem doc.
 | [`playwright-tests.md`](protocols/playwright-tests.md) | Test design patterns + anti-patterns |
 | [`job-layout.md`](protocols/job-layout.md) | On-disk basename + `*-runN.out` convention |
 | [`cli.md`](protocols/cli.md) | click-based CLI conventions |
-| [`watch-api.md`](protocols/watch-api.md) | `/api/watch/*` (trajectory inspector backing) |
+
+`/api/watch/*` endpoints are documented in
+[`web-api.md`](protocols/web-api.md) § 8 (they back the
+trajectory inspector on `/results`; the legacy `/watch` page is
+archived).
 
 ### UI tabs (`docs/tabs/`)
 
@@ -81,7 +85,7 @@ subsystem-specific decisions land in the subsystem doc.
 | [`build.md`](tabs/build.md) | `/build` tab — structure-from-input + SIESTA/PySCF form |
 | [`modify.md`](tabs/modify.md) | `/modify` tab — atom selection + nanojunction assembly |
 | [`spectra/spec.md`](tabs/spectra/spec.md) | `/spectra` tab — IR/Raman generator |
-| [`watch.md`](tabs/watch.md) | Legacy `/watch` (retired 2026-05-19; trajectory inspector lives in `/results` now) |
+| [`results.md`](tabs/results.md) | `/results` tab — registry dispatch, file picker (planned) |
 
 ### Engines (`docs/engines/`)
 
@@ -94,6 +98,13 @@ subsystem-specific decisions land in the subsystem doc.
 ### Ops & deployment
 
 [`README.md`](README.md) · [`README_install.md`](README_install.md) (four-env install model) · [`deployment.md`](deployment.md)
+
+### Historical (archived — NOT a source of truth)
+
+[`archive/README.md`](archive/README.md) catalogues superseded
+docs. Anything date-prefixed (`YYYY-MM-DD-<name>.md`) is
+history; read the canonical doc listed in the archive index
+instead.
 
 ---
 
@@ -1117,14 +1128,20 @@ tests/
     test_app_concurrency.py
 
 docs/
-  design.md                  # this file (cross-cutting design + decisions log)
-  README.md                  # docs index + the spec-doc rule
-  protocols/                 # cross-cutting interfaces
-    web-api.md  watch-api.md  cli.md  job-layout.md
+  design.md                  # this file (cross-cutting design + decisions log + § 0 index)
+  README.md                  # quick pointer to design.md § 0
+  protocols/                 # cross-cutting interfaces (web/JS/test contracts)
+    web-api.md  projects-sidebar.md  atom-selection.md  selection.md
+    results-tab.md  runtime-registry.md  inspector-registry.md
+    playwright-tests.md  job-layout.md  cli.md
   types/                     # L1 data-type contracts
     structure.md  parsers.md  chemistry.md
   engines/                   # per-engine emitter specs
     siesta.md  pyscf.md  builders.md
+  tabs/                      # per-UI-tab specs
+    build.md  modify.md  spectra/spec.md  results.md
+  archive/                   # superseded docs (NOT a source of truth)
+    YYYY-MM-DD-<original-name>.md
   tabs/                      # per-tab UI specs (subfolders when multi-asset)
     modify.md  watch.md
   img/                       # README screenshots

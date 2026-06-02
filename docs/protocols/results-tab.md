@@ -114,7 +114,8 @@ in /results context loads it.
 Leave the `/watch` route + templates + JS alone for one release
 cycle.  Remove from the primary tab nav at merge time.  In the
 next release, redirect `/watch` to `/results` and delete the
-files.  Timeline documented in `docs/tabs/watch.md`.
+files.  Legacy timeline preserved in
+[`docs/archive/2026-06-02-tabs-watch.md`](../archive/2026-06-02-tabs-watch.md).
 
 ### 2.6 Sidebar integration
 
@@ -301,4 +302,4 @@ inspectors still work via legacy `/watch` and `/spectra`.
 * Job-layout: [`./job-layout.md`](./job-layout.md)
 * Spectra spec (will shrink to generate-only after the merge):
   [`../tabs/spectra/spec.md`](../tabs/spectra/spec.md)
-* Watch spec (will move to legacy status): [`../tabs/watch.md`](../tabs/watch.md)
+* Watch legacy spec (archived 2026-06-02): [`../archive/2026-06-02-tabs-watch.md`](../archive/2026-06-02-tabs-watch.md)

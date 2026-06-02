@@ -1,67 +1,317 @@
-# Spec — Web UI + Build API
+# Web API — HTTP endpoint reference (`/api/*`)
 
-**Module**: `molbuilder/web/app.py` (registers the three blueprints)
-&nbsp;·&nbsp; **Templates**:
-`molbuilder/web/templates/{index,modify,watch}.html`
-&nbsp;·&nbsp; **Static**:
-`molbuilder/web/static/{viewer,modify/viewer,watch/viewer}.js` +
-`static/lib/{tabs,tokens}.css`, `static/lib/mol-{style,format,pick}.js`
-&nbsp;·&nbsp; **Tests**:
-`tests/test_web.py`, `tests/watch/`, `tests/test_modify_e2e.py`,
-`tests/test_review_fixes.py` (S6)
+This is the sole source of truth for molbuilder's HTTP surface.
+Every Flask route, request shape, and response envelope is
+documented here. Per-tab UI behaviour lives in `docs/tabs/*.md`;
+the JS contracts the responses feed are in
+[`projects-sidebar.md`](projects-sidebar.md) and
+[`atom-selection.md`](atom-selection.md).
 
-The web UI is a single Flask app serving **three tabs** that share
-the 3Dmol.js viewer + style helpers and tab-bar partial:
+**Implementation**: `molbuilder/web/blueprints/{build,files,modify,results,selection,spectra,watch}.py`
+plus the dispatcher in `molbuilder/web/app.py`.
 
-| Path | Tab | Spec | Blueprint |
+**Test layer**: `tests/test_web*.py`, `tests/test_selection_blueprint.py`,
+`tests/spectra/test_blueprint.py`, `tests/watch/test_api_load.py`,
+`tests/test_results_blueprint.py`.
+
+---
+
+## 1. Conventions
+
+### 1.1 Uniform `{ok}` envelope
+
+Every endpoint returns JSON with a top-level `ok: bool` field.
+Decisions log #187 (2026-06-02) made this a hard rule — there
+are no exceptions.
+
+| Outcome | Shape |
+|---|---|
+| Success | `{ok: true, <payload fields>}` |
+| Expected failure (validation, missing dep, etc.) | `{ok: false, error: "<human-readable>"}` |
+| Optional structured failure | `{ok: false, error: "...", kind: "<machine-readable>", ...}` |
+
+HTTP status codes classify (200 / 4xx / 5xx) but the body shape
+**does not** depend on status — the JS apiX wrappers
+(`lib/projects/api.js`) branch on `body.ok`, not on
+`Response.ok`.
+
+### 1.2 Path validation
+
+Every endpoint that takes a `path` query parameter or JSON body
+field runs it through `_resolve_within_roots` in `files.py`:
+
+1. Expand `~` and `$VARS`.
+2. Resolve to absolute (follows symlinks).
+3. Reject raw `..` components in the user-supplied string
+   (defense-in-depth — the resolution step already prevents
+   escape, but rejecting `..` early gives a cleaner error).
+4. The resolved path must equal-or-be-inside one of the roots
+   returned by `Capabilities.file_picker_roots()` (today: a
+   single `(<cwd>/projects, "projects")` entry).
+
+Failures → HTTP 400 with `{ok: false, error: "..."}`.
+
+### 1.3 Cache control — `cache: "no-store"` is the default
+
+The JS-side central wrapper `_fetchEnvelope` in `lib/projects/api.js`
+sets `cache: "no-store"` on every request unless the caller
+overrides. This is the second half of the fix for the 2026-06-02
+stale-dropdown bug (#192): without it the browser HTTP cache
+served the previous response for identical GET URLs.
+
+Server-side: `/api/files/*` GETs do NOT set Cache-Control headers
+(the JS default suffices), but endpoints that serve immutable
+content (`/partials/*`) may set long-cache headers in the future.
+
+### 1.4 AbortSignal
+
+Every JS apiX wrapper threads `opts.signal` into `fetch`. This
+lets the sidebar's lock-cancel button (#159, 2026-05-27) abort
+in-flight requests when the user clicks Cancel; without it a slow
+write/upload/delete would leave the lock UI hung.
+
+### 1.5 HTTP method semantics
+
+| Method | Purpose | Cacheable? |
+|---|---|---|
+| GET | Read-only queries (list, stat, read, roots, schema, meta) | Yes (but see § 1.3) |
+| POST | Mutations + complex queries (mkdir, write, upload, render, build, eval) | No |
+| DELETE | Resource removal (`/api/files/delete`) | No |
+
+`/api/files/rename` uses POST (not PUT) for parity with the rest
+of the mutation surface; `/api/files/delete` uses DELETE because
+the verb is unambiguous.
+
+---
+
+## 2. Endpoint index — all 45 routes
+
+```mermaid
+flowchart LR
+    subgraph "Page routes (server-rendered HTML)"
+        page_build["GET /"]
+        page_modify["GET /modify"]
+        page_spectra["GET /spectra"]
+        page_results["GET /results"]
+    end
+    subgraph "Partials (template fragments injected via fetch)"
+        part_traj["GET /partials/trajectory-inspector"]
+        part_spec["GET /partials/spectra-inspector"]
+        part_sel["GET /partials/selection-panel"]
+    end
+    subgraph "Files — sidebar backing"
+        f_roots["GET /api/files/roots"]
+        f_list["GET /api/files/list"]
+        f_stat["GET /api/files/stat"]
+        f_read["GET /api/files/read"]
+        f_range["GET /api/files/read_range"]
+        f_mkdir["POST /api/files/mkdir"]
+        f_upload["POST /api/files/upload"]
+        f_write["POST /api/files/write"]
+        f_rename["POST /api/files/rename"]
+        f_delete["DELETE /api/files/delete"]
+        p_create["POST /api/projects/create"]
+    end
+    subgraph "Build"
+        b_mol["POST /api/build/molecule"]
+        b_load["POST /api/build/load"]
+        b_fdf["POST /api/build/fdf"]
+        b_py["POST /api/build/pyscf"]
+        b_pre["POST /api/build/preflight"]
+        b_schema["GET /api/build/schema/&lt;engine&gt;"]
+    end
+    subgraph "Modify"
+        m_meta["GET /api/modify/meta"]
+        m_load["POST /api/modify/load"]
+        m_del["POST /api/modify/delete"]
+        m_add["POST /api/modify/add_atom"]
+        m_orient["POST /api/modify/orient"]
+        m_rot["POST /api/modify/rotate"]
+        m_tr["POST /api/modify/translate"]
+        m_elc["POST /api/modify/electrode"]
+        m_sym["POST /api/modify/symmetric_electrodes"]
+    end
+    subgraph "Selection"
+        s_atoms["POST /api/selection/atoms"]
+        s_save["POST /api/selection/save"]
+        s_eval["POST /api/selection/eval"]
+        s_tog["POST /api/selection/toggle"]
+    end
+    subgraph "Spectra"
+        sp_schema["GET /api/build/schema/spectra"]
+        sp_render["POST /api/spectra/render"]
+        sp_load["POST /api/spectra/load"]
+    end
+    subgraph "Watch (trajectory inspector backing)"
+        w_fmt["GET /api/watch/formats"]
+        w_load["POST /api/watch/load"]
+        w_data["GET /api/watch/data"]
+    end
+    subgraph "Misc"
+        misc_anal["POST /api/structure/analyze"]
+        misc_wrap["POST /api/run/install-wrapper"]
+        misc_ips["POST /api/siesta/install-pseudos"]
+        misc_chk["POST /api/siesta/check-pseudos"]
+        misc_back["GET /api/backends"]
+        misc_health["GET /api/health"]
+    end
+```
+
+Sections § 3–§ 10 below cover each blueprint in detail.
+
+---
+
+## 3. `/api/files/*` — file explorer + sidebar backing
+
+Implementation: `molbuilder/web/blueprints/files.py`.
+
+This is the projects sidebar's full file-system surface. Eleven
+endpoints (eight `/api/files/*`, one `/api/projects/create`, plus
+`read_range` added 2026-06-02). The sidebar architecture +
+public `projects.*` JS API on top of these endpoints lives in
+[`projects-sidebar.md`](projects-sidebar.md).
+
+### 3.1 Endpoint table
+
+| Route | Method | Query / body | Success | Error codes |
+|---|---|---|---|---|
+| `/api/files/roots` | GET | — | `{ok, roots: [{path, label}]}` | — |
+| `/api/files/list` | GET | `?path=&ext=` | `{ok, path, entries}` | 400 outside-root · 404 missing |
+| `/api/files/stat` | GET | `?path=` | `{ok, path, kind, size, mtime}` | 400 · 404 |
+| `/api/files/read` | GET | `?path=&max_bytes=` | `{ok, path, kind, size, mtime, text}` | 400 · 404 · 413 |
+| `/api/files/read_range` | GET | `?path=&offset=&max_bytes=` | `{ok, path, offset, length, file_size, mtime, text, eof}` | 400 · 404 |
+| `/api/files/mkdir` | POST | `{parent, name}` | `{ok, path}` | 400 · 403 · 409 |
+| `/api/projects/create` | POST | `{name}` | `{ok, path, project}` | 400 · 409 |
+| `/api/files/upload` | POST | multipart `file=`, form `path=` | `{ok, path}` | 400 · 409 · 413 |
+| `/api/files/write` | POST | `{path, text, overwrite?, expected_mtime?}` | `{ok, path, relPath, size, mtime}` | 400 · 409 (mtime conflict) |
+| `/api/files/rename` | POST | `{path, new_name}` | `{ok, path, old_path}` | 400 · 404 · 409 |
+| `/api/files/delete` | DELETE | `{path, recursive?}` | `{ok}` | 400 · 404 · 409 |
+
+### 3.2 Picker roots — single, fixed (v1)
+
+`Capabilities.file_picker_roots()` returns exactly one entry:
+`(<cwd>/projects, "projects")`. The directory is returned even
+if it doesn't exist yet so the UI can show a "no projects yet"
+empty state. The plural return shape (tuple of `(path, label)`)
+is preserved as a future-proofing escape hatch — adding multi-
+root is a one-line change in `Capabilities` — but the contract
+today is **single-root, no CWD, no user-configurable additions**.
+
+The deliberate scope: `projects/` is molbuilder's source of
+truth for run state. Files outside (laptop downloads, scratch
+dirs) must be moved or copied into
+`projects/<project>/<topic>/<structure>/` first.
+
+### 3.3 Entry shape (`/api/files/list`)
+
+```json
+{
+  "name":  "BDT_water",
+  "kind":  "directory",
+  "size":  null,
+  "mtime": 1715773200.0
+}
+```
+
+`kind ∈ {"directory", "file", "symlink", "other"}`. Hidden
+entries (leading dot) are filtered upstream — the picker is for
+project files, not dotfiles. `size` is `null` for directories
+and broken symlinks.
+
+### 3.4 Range read — paginated source viewer
+
+`GET /api/files/read_range` reads a byte window. Default
+`max_bytes = 256 KB`, hard ceiling 16 MB. `offset` accepts:
+
+- `0` or omitted: from start.
+- Positive: from byte 0.
+- Negative: from EOF (`offset = -N` returns the last N bytes,
+  clamped to file size).
+
+UTF-8 boundary trimming: if the chunk edge cuts a multi-byte
+codepoint, the server walks back up to 3 bytes before returning,
+so callers always receive valid UTF-8 even on arbitrary byte
+windows. `eof: true` when the chunk reaches end-of-file (used
+by the source inspector to disable the "Jump to end" button +
+stop auto-paging).
+
+Powers the v2 paginated source inspector (#119). Promoted to the
+public projects.* surface in #189 as `projects.readRange(path,
+offset, maxBytes)`.
+
+### 3.5 Mutation flow + lock model
+
+```mermaid
+sequenceDiagram
+    participant UI as Tab UI
+    participant Sidebar as projects.*
+    participant API as /api/files/*
+    participant Disk as Filesystem
+
+    Note over UI,Disk: Long-running pipeline (e.g. Save .fdf)
+    UI->>Sidebar: projects.lock("Saving .fdf...")
+    Sidebar-->>UI: lockState = {locked:true}
+    UI->>API: POST /api/files/write
+    API->>Disk: atomic write (tempfile + os.replace)
+    API-->>UI: {ok, mtime}
+    UI->>API: POST /api/files/upload (pseudos)
+    API-->>UI: {ok}
+    UI->>Sidebar: projects.unlock()
+    Sidebar-->>UI: lockState = null
+```
+
+Lock semantics: see [`projects-sidebar.md`](projects-sidebar.md)
+§ 8. The server side has no global lock — `os.replace` provides
+single-writer atomicity per file, and the design assumes a
+single user per session.
+
+### 3.6 Write conflict detection
+
+`POST /api/files/write` accepts an optional `expected_mtime`
+field. If provided AND the on-disk mtime doesn't match, the
+endpoint returns 409 with `{ok: false, error: "..."
+actual_mtime: <current>}` — the JS layer surfaces this as an
+edit-conflict dialog. Without `expected_mtime`, the write is
+unconditional (last writer wins) but still atomic.
+
+### 3.7 Canonical-topic protection (`delete` + `rename`)
+
+The canonical subtree topics (`structure/`, `optimization/`,
+`spectrum/`, `transport/` — see [`job-layout.md`](job-layout.md))
+cannot be renamed or deleted. The check fires on the target's
+basename at any depth. Returns 400 with a message naming the
+protected name.
+
+---
+
+## 4. `/api/build/*` — structure synth + Generate
+
+Implementation: `molbuilder/web/blueprints/build.py`.
+
+### 4.1 Endpoint table
+
+| Route | Method | Body | Success |
 |---|---|---|---|
-| `/`         | Build  | this file                         | `web/blueprints/build.py` |
-| `/modify`   | Modify | [`tabs/modify.md`](../tabs/modify.md) | `web/blueprints/modify.py` |
-| `/watch`    | Watch  | [`tabs/watch.md`](../tabs/watch.md), [`watch-api.md`](watch-api.md) | `web/blueprints/watch.py` |
+| `/api/build/molecule` | POST | `{kind, input, ...}` | structure JSON |
+| `/api/build/load` | POST | JSON `{text, format?, filename?}` OR multipart `file=` | structure JSON + `source_format` |
+| `/api/build/fdf` | POST | `{xyz, params, structure_path?}` | `{ok, fdf, system_label, issues}` |
+| `/api/build/pyscf` | POST | `{xyz, params, structure_path?}` | `{ok, script, job_name, issues}` |
+| `/api/build/preflight` | POST | `{xyz, engine, params}` | `{ok, issues}` |
+| `/api/build/schema/<engine>` | GET | `engine ∈ {siesta, pyscf}` | `{ok, schema}` |
 
-The Modify and Watch endpoint contracts live in their own specs.
-This document covers (a) shared infrastructure and (b) the
-`/api/build/*` surface.
+### 4.2 Common structure JSON shape
 
----
-
-## Shared endpoints
-
-| route | method | body | response | status |
-|---|---|---|---|---|
-| `/api/health`   | GET | — | `{ok: true, version: "x.y.z"}` | — |
-| `/api/backends` | GET | — | `{ok, available: {rdkit, amber, threedna}: bool}` | — |
-
-`/api/backends` is consumed by Build's backend picker and by Modify
-for cross-check.  The `threedna` entry is `true` only when the
-detection chain (in-tree → `$X3DNA` → `fiber` on PATH; see
-`docs/design.md` § "3DNA") finds a complete install.
-
----
-
-## `/api/build/*` — Build blueprint (mounted in `web/blueprints/build.py`)
-
-| route | method | body | response | status |
-|---|---|---|---|---|
-| `/api/build/molecule`         | POST | `{kind, input, ...}` | structure JSON | 400 bad input, 500 missing dep |
-| `/api/build/load`             | POST | JSON `{text, format, filename}` OR multipart `file=` | structure JSON | 400 empty, 413 too big |
-| `/api/build/fdf`              | POST | `{xyz, params}` | `{ok, fdf, system_label, issues}` | 400 bad params, 500 render |
-| `/api/build/pyscf`            | POST | `{xyz, params}` | `{ok, script, job_name, issues}` | 400 bad params, 500 render |
-| `/api/build/preflight`        | POST | `{xyz, engine, params}` | `{ok, issues}` (`ok:true`) on success or config-parse fail | 400 missing `xyz` / unknown `engine` / unparseable `xyz`; otherwise 200 (issues carry config-parse errors) |
-| `/api/build/schema/<engine>`  | GET  | — (engine ∈ {`siesta`, `pyscf`}) | `{ok, schema}` | 404 unknown engine |
-
-The structure JSON shape on success (returned by `/molecule` and
-`/load`):
+`/molecule` and `/load` both return:
 
 ```json
 {
   "ok":            true,
-  "xyz":           "<xyz text>",
-  "pdb":           "<pdb text>",
+  "xyz":           "...",
+  "pdb":           "...",
   "n_atoms":       int,
   "n_residues":    int,
   "summary":       "<Structure 'title': N atoms, R residues, formula CxHyOz>",
-  "title":         str,
+  "title":         "...",
   "elements":      ["C", "H", ...],
   "atom_names":    [...],
   "residue_ids":   [...],
@@ -71,574 +321,364 @@ The structure JSON shape on success (returned by `/molecule` and
 }
 ```
 
-The error JSON shape is identical across all endpoints:
+Produced by `_shared.structure_to_dict()` so the shape is
+uniform across blueprints (the modify endpoints return the same
+shape — see § 5.5). Every per-atom array has length `n_atoms`.
 
-```json
-{ "ok": false, "error": "human-readable message" }
-```
-
-### `/api/build/molecule` payload
+### 4.3 `/api/build/molecule` payload
 
 ```json
 {
   "kind":     "peptide" | "dna" | "rna" | "smiles" | "name",
-  "input":    str,
-  // DNA / RNA only:
-  "backend":   "auto" | "rdkit" | "amber" | "threedna",
-  "form":      "B" | "A" | "Z",
-  "terminal":  "OH" | "5P" | "3P" | "PP",
-  "add_hydrogens":         bool,
-  "protonate_phosphates":  bool
+  "input":    "...",
+  "backend":   "auto" | "rdkit" | "amber" | "threedna",   // DNA/RNA only
+  "form":      "B" | "A" | "Z",                            // DNA/RNA only
+  "terminal":  "OH" | "5P" | "3P" | "PP",                  // DNA/RNA only
+  "add_hydrogens":         bool,                            // DNA/RNA only
+  "protonate_phosphates":  bool                             // DNA/RNA only
 }
 ```
 
-Unknown `kind` → 400 with a list of valid values.  Empty `input` →
-400.  Missing optional dep (PeptideBuilder for `peptide`, PubChemPy
-for `name`, OpenBabel + tleap for `amber`, 3DNA for `threedna`) →
-500 with `{"ok": false, "error": "missing dependency: <ImportError>"}`.
-The error string carries the raw `ImportError` message (which
-typically names the missing module); the CLI side carries
-curated install hints — the web layer relies on the operator
-already knowing how to install Python deps for the server.
+Backend resolution + dependency handling: see
+[`docs/engines/builders.md`](../engines/builders.md).
 
-### `/api/build/load` payload variants
+### 4.4 `/api/build/load` payload variants
 
-JSON body:
+**JSON**:
 ```json
-{
-  "text":     "<xyz or pdb text>",
-  "format":   "xyz" | "pdb" | "auto",
-  "filename": str       // helps format auto-detect, optional
-}
+{ "text": "...", "format": "xyz|pdb|auto", "filename": "..." }
 ```
 
-Multipart form-data: `file=<uploaded file>`.
+**Multipart**: `file=<uploaded file>`.
 
-Format detection precedence: explicit `format` → filename extension
-→ content sniff (digits-only first line → xyz, else pdb).
+Format detection precedence: explicit `format` → filename
+extension → content sniff (digits-only first line ⇒ xyz, else pdb).
 
-### `/api/build/fdf` and `/api/build/pyscf` payload
+### 4.5 `/api/build/fdf` and `/api/build/pyscf` payload
 
 ```json
 {
-  "xyz":    "<xyz text from a previous build>",
-  "params": { /* SiestaConfig or PySCFConfig fields */ }
+  "xyz":             "...",         // required
+  "params":          { ... },        // SiestaConfig / PySCFConfig fields
+  "structure_path":  "..."           // optional; sidecar-bridge for frozen_atoms
 }
 ```
 
-Server-side:
-* Parses `xyz` via `Structure.from_xyz` (canonical parser).
-* Filters `params` against `fields(SiestaConfig|PySCFConfig)` so
-  unknown keys are silently dropped.
-* Type-coerces each value via `_shared.coerce_to_field_type` (handles
-  `Optional[X]`, kgrid tuple, sequence-of-strings, etc.).
-* Per-field validators (`metadata["range"]`, `metadata["validate"]`)
-  run via `validation.validate(struct, cfg)` BEFORE emission; an
-  error-severity `Issue` raises `ValidationError` and the route
-  returns 400 with the issues array.
-* Special-case `kgrid`: incoming `[a, b, c]` list converted to
-  `(int, int, int)` tuple.
-* Special-case `net_charge`: empty string or null → `None`
-  (auto-detect from phosphate protonation).
-* Generators emit a "Run with:" verbose-comment block referencing
-  the protocol basename (`SystemLabel` / `job_name`) per the
-  job-layout v1 protocol; see [`job-layout.md`](job-layout.md).
+The `structure_path` field (added 2026-05-25 in the three-stage
+contract bridge) lets the endpoint apply `.molstruct.json`
+sidecar state (frozen_atoms, regions) on top of the form
+parameters before rendering. Without it, the user's /modify
+selection panel state would never reach the emitted FDF/Python
+even though the sidecar exists on disk.
 
-### `/api/build/preflight` payload
+`params` is a flat dict matching the dataclass field names; the
+field metadata (label, unit, range, engine_key, …) is delivered
+to the form via `/api/build/schema/<engine>` and is not
+re-submitted on Generate.
 
-Validation-only sibling of `/fdf` and `/pyscf`.  Same body shape
-plus an `engine: "siesta" | "pyscf"` discriminator; returns just
-`{ok, issues}` so the UI's issues panel can update live without
-generating the file body.
+Response on success: SIESTA returns `fdf` (text) + `system_label`
+(basename); PySCF returns `script` (text) + `job_name`. Both
+return `issues` (a list of validation warnings; empty on a
+clean run).
 
-Error-response policy:
+### 4.6 `/api/build/preflight`
 
-* Missing `xyz`, unknown `engine`, or unparseable `xyz` → HTTP
-  400 with `{"ok": false, "error": "<reason>"}`.  These are
-  programmer / wiring errors — the caller should fix the
-  request rather than display the failure to the user.
-* Config-parse failure (the form sent values that don't coerce
-  into the dataclass — e.g., a non-numeric mesh_cutoff) → HTTP
-  200 with `{"ok": true, "issues": [{"severity": "error",
-  "message": "bad parameters: <exc>", "where": "config"}]}`.
-  The same issues panel renders this alongside warn-severity
-  field-range messages, so the UI doesn't need a separate
-  error-handling branch for "user-typed-something-invalid".
+Fast validate-only path: runs `validate(struct, cfg)` but does
+NOT call the emitter. Returns `{ok: true, issues}` whether
+issues exist or not (the issues themselves carry severity:
+error / warn / info). Used by the form's live preflight that
+fires on field edit.
 
-### `/api/build/schema/<engine>` (form-rendering schema)
+### 4.7 `/api/build/schema/<engine>`
 
-Read-only.  Returns the JSON-friendly schema produced by
-`_shared.py::dataclass_to_form_schema(cls, id_prefix)` for the
-SIESTA / PySCF Build panels — the Build tab's JS renderer
-(`web/static/lib/form-schema.js`) consumes this directly so the
-dataclass is the only place form-field declarations live.
-
-Response shape:
-
-```json
-{
-  "ok": true,
-  "schema": {
-    "config":    "SiestaConfig" | "PySCFConfig",
-    "id_prefix": "p" | "py",
-    "sections": [
-      {
-        "name":   "<section legend>",
-        "fields": [<field_schema>, ...]
-      },
-      ...
-    ]
-  }
-}
-```
-
-Per-field schema (only the keys relevant to the inferred `kind`
-are populated):
-
-```json
-{
-  "name":     "<dataclass field name>",
-  "id":       "<id_prefix>-<id_suffix>",     // HTML id; renderer/compat-engine contract
-  "label":    "<human label>",
-  "help":     "<tooltip text>",
-  "default":  <JSON-serialisable default>,
-  "optional": bool,
-  "tier":     "basic" | "advanced",
-  "kind":     "checkbox" | "int" | "number" | "text"
-              | "select" | "tri-select" | "int-triple",
-  // number / int:
-  "min":   ..., "max": ..., "step": ...,
-  // select / tri-select:
-  "choices":     [...],
-  "null_option": true,
-  "null_label":  "(default)" | "(auto)" | ...,
-  // int-triple (kgrid):
-  "labels":  ["x", "y", "z"],
-  // display:
-  "unit":    "Å" | "Ry" | "Hartree" | ...,
-  "pattern": "<HTML5 pattern attr>"
-}
-```
-
-Contract:
-
-* **Opt-in**: only dataclass fields whose metadata declares a
-  `"section"` key are exposed.  Unsectioned fields (path-typed
-  knobs, always-on flags, MD-only state) stay on the dataclass
-  for the Python API + CLI but stay off the form.
-* **ID stability**: by default `id = f"{id_prefix}-{field_name.replace('_', '-')}"`.
-  Fields with legacy short IDs (e.g. `p-temperature` for
-  `electronic_temperature`, `p-block-size` for
-  `parallel_block_size`) declare `metadata["id_suffix"]` so the
-  compatibility engine + sessionStorage list stay
-  backwards-compatible.
-* **Section ordering**: the dataclass can declare a class-level
-  `_form_section_order` tuple to pin section order; otherwise
-  sections appear in the order the first field declaring each
-  section is declared.
-* **Unknown engine** → 404 with `{ok: false, error: "..."}`.
-* **No POST equivalent**: the schema is the contract, not a
-  validator hook.  The existing `/api/build/{fdf,pyscf,preflight}`
-  routes consume the JSON dict the JS collector produces from
-  the rendered DOM.
-
-Pin-tests in `tests/test_web.py::test_siesta_form_schema_matches_documented_layout`
-and the PySCF counterpart lock the section names + per-section
-field counts so a stray field-reorder doesn't silently rearrange
-the UI.
+Returns the dataclass-introspection output the schema-driven
+form consumes. Sections are pinned in order via
+`SiestaConfig._form_section_order` /
+`PySCFConfig._form_section_order`; per-field metadata includes
+`label`, `unit`, `range`, `choices`, `tier`, `id_suffix`,
+`null_label`, `pattern`, `help`, and **`engine_key`** (the
+keyword each field writes, or `(molbuilder: ...)` for non-engine
+knobs — pinned by `test_web.py::test_engine_key_present_on_every_*`).
 
 ---
 
-## `/api/watch/*` — Watch blueprint (mounted in `web/blueprints/watch.py`)
+## 5. `/api/modify/*` — per-atom edit ops
 
-| route | method | body | response | status |
-|---|---|---|---|---|
-| `/watch`             | GET  | — | `watch.html` (browser UI) | 200 |
-| `/api/watch/formats` | GET  | — | `{ok, formats: [{name, label, description}, ...]}` | 200 |
-| `/api/watch/load`    | POST | JSON `{path: "<abs-path>"}` OR multipart `file=` | `{ok, format, label, mtime, uploaded, ...}` | 400 bad input · 403 outside `MOLBUILDER_WATCH_ROOT` · 404 missing file · 500 parse fail |
-| `/api/watch/data`    | GET  | `?mtime=<client-cached-float>` (optional) | `{ok, changed, mtime, path, format, label, data, uploaded}` or `{ok, changed: false, mtime}` | 200 (errors carry `{ok:false, error}`) |
+Implementation: `molbuilder/web/blueprints/modify.py`. Each
+endpoint is a thin HTTP wrapper around a single `molbuilder.modify`
+function.
 
-The Watch app is **single-user, single-tab** by design (see
-`design.md` "Watch — live trajectory viewer"): one global "current
-file" dict guarded by a `threading.Lock`.  Two clients pointing at
-the same server share state.  This is intentional — the watch app
-isn't a multi-tenant service.
+### 5.1 Endpoint table
 
-**State machine** for `/api/watch/load`:
-
-1. Multipart upload → save to a `tempfile.NamedTemporaryFile`,
-   parse, register the temp path as the active file.  A second
-   upload deletes the previous temp (atexit cleanup catches the
-   final tab-close).
-2. JSON `{path: ...}` → resolve to an absolute path, optionally
-   constrained by the `MOLBUILDER_WATCH_ROOT` env var (see below),
-   detect the parser, parse, store as the active file.
-
-`/api/watch/data` is the polling endpoint; the JS calls it every
-~15 s.  When `client_mtime` matches the server's cached mtime,
-the response is the minimal `{ok, changed: false, mtime}` so the
-common no-change path doesn't reserialise the whole trajectory.
-
-### `MOLBUILDER_WATCH_ROOT` env var
-
-When the operator sets `MOLBUILDER_WATCH_ROOT=/abs/path` before
-starting the server, `/api/watch/load` refuses to read any path
-outside that subtree (HTTP 403, structured error).  This is the
-intended deployment posture on shared / multi-user hosts: scope
-the read-arbitrary-file primitive to the operator's intended run
-area.  Unset by default; the server trusts the caller's path when
-the env var is absent.
-
-### `/api/watch/data` response shape (`changed: true` branch)
-
-```json
-{
-  "ok":       true,
-  "changed":  true,
-  "path":     "<absolute path of the active file>",
-  "mtime":    <unix epoch seconds, float>,
-  "format":   "siesta" | "pyscf" | "molwatch" | ...,
-  "label":    "<human label from the parser>",
-  "data":     { /* legacy molwatch-v1 trajectory dict */ },
-  "uploaded": <bool — true for multipart-upload temp files>
-}
-```
-
-The `data` sub-dict is the legacy v1 trajectory shape produced by
-`parsers/__init__.py::trajectory_to_legacy_dict`:
-
-```json
-{
-  "frames":        [ [[el, x, y, z], ...], ... ],
-  "energies":      [<float|null>, ...],
-  "max_forces":    [<float|null>, ...],
-  "forces":        [ [[fx, fy, fz], ...] | [], ...],
-  "iterations":    [<int>, ...],
-  "step_indices":  [<int>, ...],
-  "wall_times":    [<float|null>, ...],
-  "scf_history":   [ [{"cycle", "energy", "delta_E", ...}, ...], ... ] | [],
-  "lattice":       [[ax,ay,az], [bx,by,bz], [cx,cy,cz]] | null,
-  "source_format": "<engine name>",
-  "run_state":     "ongoing" | "finished" | "errored",
-  "error_message": "<string when run_state=errored>",
-  "stages":        [<merged stage info — multi-stage runs>] | []
-}
-```
-
-Multi-stage runs (job-layout v1, multiple `<basename>-stage<N>.molwatch.log`
-files in the same directory) get one stage entry per file in
-`stages`; the frontend uses those to draw stage-boundary markers
-on plots.
-
----
-
-## `/api/files/*` — Server-side file explorer
-
-Backend for the **persistent Projects sidebar** -- a single-column
-+ breadcrumb file explorer pinned to the left edge of every tab
-(JupyterLab-style).  Selection is shared state (sessionStorage)
-that subscriber tabs (Spectra, Watch, Modify) observe via the
-``storage`` event + a same-tab ``molbuilder.selection`` CustomEvent.
-
-Solves the recurring UX problem that `<input type="file">` opens
-the *browser's* local file dialog, which is useless when the data
-already lives on the server -- and any generated script that runs
-on the server can't read a laptop file anyway.  The sidebar is the
-canonical place to "walk into my project tree and find the right
-file to keep working on"; other tabs react to its current selection.
-
-The browser-local `<input type="file">` was **dropped** from
-Spectra / Watch / Modify in the sidebar pivot -- a server-side
-compute script can't read laptop files, so the picker created an
-ambiguous contract.  Raw-text paste (where each tab already
-exposed it) is preserved; the sidebar is the second loading path;
-upload-to-disk is a future feature (see § Phase 2 below) only if
-a real need shows up.
-
-This is **not** a file manager: no upload, rename, delete, or move
-in v1.  The sidebar is a navigation + selection widget.  Files get
-created by molbuilder's own generators (Build, run wrapper, the
-future derive-job flow); they get deleted by the user at their
-shell.
-
-### Endpoints
-
-| route | method | query / body | response | status |
-|---|---|---|---|---|
-| `/api/files/roots` | GET | — | `{ok, roots: [{path, label, exists}, ...]}` | 200 |
-| `/api/files/list`  | GET | `path` (required), `ext` (optional, comma-sep filter) | `{ok, path, entries: [...]}` | 400 outside-root · 404 missing dir · 200 |
-| `/api/files/stat`  | GET | `path` (required) | `{ok, path, kind, size, mtime}` | 400 outside-root · 404 missing · 200 |
-| `/api/files/read`  | GET | `path` (required), `max_bytes` (optional, default 1 MB) | `{ok, path, kind, size, mtime, text}` | 400 outside-root · 404 missing · 413 too large · 200 |
-| `/api/files/mkdir` | POST | JSON `{parent, name}` | `{ok, path}` | 400 outside-root · 400 invalid name · 403 perm denied · 409 already exists · 200 |
-
-### Sidebar selection contract
-
-The frontend half of this API -- the `window.molbuilder.projects.*`
-Inquire API the persistent left sidebar exposes, and the rules tabs
-follow when reacting to selections -- is spec'd in its own document:
-**[`docs/protocols/selection.md`](selection.md)**.  Read that for the
-sidebar interaction rules, the per-tab "Load from current selection"
-contract, and the anti-patterns retired during the design iterations.
-
-### Root — single, fixed (v1)
-
-`Capabilities.file_picker_roots()` returns exactly one entry:
-``(<cwd>/projects, "projects")``.  That's the canonical project
-hierarchy (`molbuilder.projects.projects_root()`); it's returned
-even if the directory doesn't exist yet so the UI can show a
-"no projects yet" empty state.
-
-The plural return shape (a tuple of `(path, label)` pairs) is
-preserved so a future need for multi-root is a one-line change in
-``Capabilities`` -- but the contract today is **single-root, no
-CWD, no user-configurable additions** in `molbuilder.json`.
-
-The deliberate scope: ``projects/`` is molbuilder's source of truth
-for run-state.  Files outside (laptop downloads, scratch dirs)
-must be moved/copied into ``projects/<project>/<topic>/<structure>/``
-first -- the generators + the future derive-job flow keep that
-hierarchy honest.
-
-Returned `roots` carry a `label` so the sidebar can show a friendly
-breadcrumb root ("projects") without the full path crowding the UI.
-
-### Path validation
-
-A single helper validates every `path` query arg:
-
-1. Expand `~` and environment variables.
-2. Resolve to absolute (`Path.resolve()` -- follows symlinks).
-3. Must equal-or-be-inside one of the allowed roots.
-4. Reject `..` components in the raw input (defense in depth -- step 3 already covers traversal, but rejecting `..` early gives a cleaner error).
-
-A path that survives validation is canonical absolute; that's what
-the response carries back.
-
-### Response shapes
-
-`/api/files/roots`:
-
-```json
-{
-  "ok": true,
-  "roots": [
-    {"path": "/home/qqing/molbuilder/projects", "label": "projects", "exists": true},
-    {"path": "/home/qqing/molbuilder",          "label": "CWD",      "exists": true},
-    {"path": "/data/shared/molbuilder",         "label": "shared",   "exists": false}
-  ]
-}
-```
-
-`/api/files/list` entries:
-
-```json
-{
-  "ok": true,
-  "path": "/home/qqing/molbuilder/projects/tunneling/spectrum",
-  "entries": [
-    {"name": "BDT_water", "kind": "directory", "size": null, "mtime": 1715773200.0},
-    {"name": "BDT_NH2",   "kind": "directory", "size": null, "mtime": 1715773100.0}
-  ]
-}
-```
-
-`kind` is one of `"directory"`, `"file"`, `"symlink"`, `"other"`.
-Hidden entries (starting with `.`) are filtered out by default --
-the picker is for project files, not dotfiles.
-
-### Job derivation — picker as entry point for new runs (Phase 2)
-
-A second, related workflow the picker enables: **start a new run job
-from an existing file** (e.g., take the optimized geometry out of an
-`optimization/<structure>/` run and start a `spectrum/<structure>/`
-calculation from it).
-
-Realised by:
-
-| route | method | body | response | status |
-|---|---|---|---|---|
-| `/api/files/derive_job` | POST | `{source_path, target_topic, target_structure?, target_project?, target_tab?}` | `{ok, target_path, structure_xyz, suggested_config}` | 400 invalid source · 400 invalid topic · 409 target exists · 200 |
-
-`derive_job` does NOT write any files itself.  It computes:
-
-* `target_path` -- the canonical `<project>/<target_topic>/<target_structure>/`
-  per `molbuilder.projects` (rejected if topic is not in
-  `CANONICAL_TOPICS`); defaults: `target_project` = source's project,
-  `target_structure` = source's structure name.
-* `structure_xyz` -- the geometry extracted from the source.  Source
-  types and what we extract:
-  * `<job>_optimized.xyz`            -> the XYZ directly.
-  * `<job>.molwatch.log`             -> last frame's coordinates.
-  * `<job>.spectra.json`             -> `equilibrium.positions_ang` + elements.
-  * `<job>.thermo.txt`               -> the relaxed geometry referenced in the header (resolved against the file's own dir).
-  * plain `.xyz` / `.pdb`            -> read as-is.
-* `suggested_config` -- a tiny dict the receiving tab pre-populates
-  its form with (e.g., from a spectra JSON: `{method, functional,
-  basis}` lifted from the source's `config` so the new job inherits
-  the same theory level unless the user changes it).
-
-The frontend then:
-1. Navigates to the target tab (`target_tab` defaults from `target_topic`:
-   `spectrum` → Spectra, `optimization` → Build, etc.).
-2. Pre-loads the structure + suggested config.
-3. The user reviews + clicks Generate.  The Generate flow uses
-   `target_path` as the output directory, and the user's tab
-   navigates Watch / Spectra at `target_path` for live monitoring
-   once the run starts.
-
-This keeps each calc dir self-contained (no symlinks; coordinates
-inlined into the new script) per the design.md 2026-05-14 decision.
-
-### Naming constraint (project / structure / topic)
-
-All names that participate in a `projects/<project>/<topic>/<structure>/`
-path MUST satisfy ``molbuilder.projects.validate_name`` -- i.e., the
-regex ``^[A-Za-z0-9_-]+$``.  Spaces, dots, slashes, unicode are
-rejected.  The constraint exists because SIESTA's filename discovery
-is basename-based; a structure named ``"my mol.run #1"`` would
-silently break that pipeline downstream.
-
-This is enforced at three layers and surfaces at each:
-
-* **Path construction** (``molbuilder.projects.*``): raises
-  ``InvalidName`` on bad input.  All directory-creating code paths
-  go through these constructors.
-* **`/api/files/derive_job`** (Phase 2): validates ``target_project``
-  and ``target_structure`` via the same helpers, returns HTTP 400
-  with the ``InvalidName`` message verbatim so the UI can echo it
-  next to the form field.
-* **Future "create new project" UI**: the form will validate
-  client-side against the same regex, then re-validate server-side
-  on submit.
-
-`topic` is even more constrained: must be one of the six
-``CANONICAL_TOPICS`` (``optimization``, ``frequency``, ``spectrum``,
-``transport``, ``single-point``, ``scan``).  Validated by
-``molbuilder.projects.validate_topic``.
-
-The picker itself does NOT filter on-disk directory names -- it shows
-what's there.  A user who hand-creates a directory named
-``my project/`` will see it in the picker tree (so they can find and
-rename it) but won't be able to use it as the target of a derive-job
-without renaming.
-
-### Projects-hierarchy convention
-
-The picker is intentionally *generic* -- it doesn't enforce the
-`<project>/<topic>/<structure>/` shape that `molbuilder.projects`
-documents, because users may want to load files from outside
-`projects/` too (browsing `~/Downloads/`, a one-off scratch dir).
-
-But when the user IS inside `projects/`, the path naturally
-reflects the hierarchy:
-
-```
-projects/<project>/<topic>/<structure>/<file>
-         └─ tree expandable ─┘ └─ FLAT directory; files only by ──┘
-                                   convention (no subdirs)
-```
-
-The frontend can detect "we're inside projects" by prefix-matching
-against the `projects` root and render topic-aware labels.  Beyond
-the topic level, the structure directory is flat by job-layout-v1
-convention; the picker will still show whatever exists there
-(including any subdirs the user created off-spec), so the contract
-stays honest about the actual filesystem state.
-
----
-
-## Request-size cap
-
-`MAX_CONTENT_LENGTH = 50 MB` on the Flask app.  Watch uploads (large
-trajectory logs) need the headroom; Build's typical PDB / XYZ
-uploads are < 1 MB.  Oversized bodies → 413 with the standard
-`{ok: false, error: "..."}` JSON shape (a Flask error handler
-converts Werkzeug's default HTML 413 page into JSON so the JS
-uploaders' `r.json()` doesn't crash).
-
----
-
-## Front-end contract
-
-All three tabs:
-* Load 3Dmol.js from `cdnjs/3Dmol/2.1.0/3Dmol-min.js` (pinned).
-* Share `static/lib/tabs.css` (the top-of-page Build / Modify / Watch
-  nav) and `static/lib/tokens.css` (CSS custom properties for
-  colours / radii / spacing).
-* Share `static/lib/mol-style.js` (3Dmol style-spec builder), `mol-
-  format.js` (chemical-formula renderer), `mol-pick.js` (selection
-  halo helper used by Modify and Watch).
-* Theme: dark.  CSS variables in `:root` for every colour.  No
-  hardcoded `#fff` / `#000` in selectors.
-* Every dynamic insertion uses `textContent` (not `innerHTML`).
-
-The Build page (`index.html`) specifically:
-* Layout: header, 12-col grid main, footer.
-* Left column (controls): card "1. Build / Load", card "2. Generate
-  input" (with two tabs SIESTA `.fdf` | PySCF script).
-* Right column (viewer): card "Inspect" with a resizable 3Dmol
-  viewer (CSS `resize: both` on `.viewer-wrap`).
-* A `ResizeObserver` on `.viewer-wrap` calls `viewer.resize() +
-  render()` on dimension change.
-* Every successful build / load resets `state.fdf` / `state.pyscf`
-  to null and disables the download buttons so the user can't
-  accidentally download text from the previous structure.
-* `sessionStorage["builder-structure"]` carries the Modify→Build
-  handoff (M5); `sessionStorage["builder-form"]` survives form
-  values across navigation.
-
-### Form-side compatibility rules
-
-`viewer.js::applyCompatibility()` locks parameter combinations that
-would produce an invalid or wrong-physics config.  Runs on page load
-and on `change` of any trigger input.  Each locked field gets
-`disabled` + a `.lock-reason` hint span.
-
-PySCF tab:
-| trigger | dependent | lock |
+| Route | Method | Body |
 |---|---|---|
-| `method ∈ {RKS, RHF}`            | `spin`              | force `spin = 0` |
-| `optimize = false`               | optimizer, geom_*, preopt | lock entire Optimization + Pre-opt sections |
-| `optimize = true` AND `preopt = false` | preopt_*    | lock with "Pre-opt is disabled" |
-| `solvent = ""`                   | solvent_method      | lock with "No solvent selected (gas phase)" |
+| `/api/modify/meta` | GET | — |
+| `/api/modify/load` | POST | `{xyz, format?}` |
+| `/api/modify/delete` | POST | `{xyz, indices, atom_names?, residue_ids?, ...}` |
+| `/api/modify/add_atom` | POST | `{xyz, element, anchor_index, offset, ...}` |
+| `/api/modify/orient` | POST | `{xyz, anchor_indices, axis, center, ...}` |
+| `/api/modify/rotate` | POST | `{xyz, axis, angle, center, ...}` |
+| `/api/modify/translate` | POST | `{xyz, dx, dy, dz, ...}` |
+| `/api/modify/electrode` | POST | `{xyz, element, plane, size, anchor_index, ...}` |
+| `/api/modify/symmetric_electrodes` | POST | `{xyz, element, plane, size, anchor_indices, gap, ...}` |
 
-SIESTA tab:
-| trigger | dependent | lock |
+### 5.2 `/api/modify/meta`
+
+Returns the FCC element + plane dropdowns the Modify form's
+electrode controls render from. Source of truth:
+`molbuilder.modify.SUPPORTED_FCC_ELEMENTS` and `SUPPORTED_FCC_PLANES`.
+Decisions log (2026-05-09): HTML must NOT duplicate these lists —
+adding a metal in Python reaches the UI automatically.
+
+### 5.3 Common request body
+
+All `/api/modify/op` endpoints accept the same per-atom metadata
+fields alongside the op-specific parameters:
+
+```json
+{
+  "xyz":           "...",        // required
+  "atom_names":    [...],         // optional; defaults rebuild from elements
+  "residue_ids":   [...],
+  "residue_names": [...],
+  "chain_ids":     [...]
+}
+```
+
+### 5.4 Response shape
+
+Identical to `/api/build/molecule` (§ 4.2). Same
+`_shared.structure_to_dict()` helper. The endpoint does NOT
+write to disk; the user must explicitly upload / write the
+result via `/api/files/write` to persist it.
+
+### 5.5 Transport metadata carry-through
+
+The endpoints route through the corresponding `molbuilder.modify.*`
+functions which (post #186, 2026-06-02) carry `frozen_atoms` and
+`regions` through every transformation:
+
+- `delete`: reindexes survivors + drops deleted indices.
+- `add_atom`, `electrode`, `symmetric_electrodes`: appends new
+  atoms at the high end; existing indices unchanged; new atoms
+  not auto-frozen / auto-regioned.
+- `orient`, `rotate`, `translate`: pure passthrough.
+
+See [`docs/types/structure.md`](../types/structure.md) for the
+underlying Structure copy/concat contract.
+
+---
+
+## 6. `/api/selection/*` — selection store backing
+
+Implementation: `molbuilder/web/blueprints/selection.py`.
+The Python selection rule grammar lives in
+[`selection.md`](selection.md); the JS selection store on top
+lives in [`atom-selection.md`](atom-selection.md).
+
+### 6.1 Endpoint table
+
+| Route | Method | Body | Success |
+|---|---|---|---|
+| `/api/selection/atoms` | POST | `{structure_path}` | `{ok, n_atoms, atoms: [{index, element, atom_name?, residue_name?, chain_id?, is_frozen, regions}]}` |
+| `/api/selection/eval` | POST | `{structure_path, rule}` | `{ok, selected_indices, count, n_atoms_total}` |
+| `/api/selection/save` | POST | `{structure_path, rule, target}` | `{ok, sidecar_path, schema_version}` |
+| `/api/selection/toggle` | POST | `{structure_path, rule, index}` | `{ok, rule, selected_indices, count, n_atoms_total}` |
+
+### 6.2 Atom row shape (`/api/selection/atoms`)
+
+```json
+{
+  "index":        0,
+  "element":      "C",
+  "atom_name":    "CA",          // optional (PDB-only)
+  "residue_name": "ALA",         // optional (PDB-only)
+  "chain_id":     "A",           // optional (PDB-only)
+  "regions":      ["L-electrode"], // labels this atom belongs to
+  "is_frozen":    false           // sidecar-derived
+}
+```
+
+Optional fields are omitted (not `null`) when the structure has
+no useful value — keeps the JSON compact for plain-XYZ structures.
+
+### 6.3 Rule shape
+
+The rule JSON matches the Python selection-rule dataclasses
+verbatim. See [`selection.md`](selection.md) for the grammar.
+Quick reference:
+
+```json
+{"op": "by_element",   "elements": ["Au", "S"]}
+{"op": "by_index_range", "expression": "0-3, 7, 10-12"}
+{"op": "by_residue_name", "names": ["ALA", "GLY"]}
+{"op": "by_region", "name": "L-electrode"}
+{"op": "first_n", "n": 4, "rule": <inner-rule>}
+{"op": "by_click", "indices": [5, 8]}
+{"op": "all"}
+{"op": "and", "rules": [<a>, <b>]}
+{"op": "or",  "rules": [<a>, <b>]}
+{"op": "not", "rule": <a>}
+{"op": "minus", "base": <a>, "subtract": <b>}
+```
+
+### 6.4 `save` semantics
+
+`save` persists a materialised selection (the evaluated atom
+indices) into `<structure-path>.molstruct.json`. The `target`
+field names which sidecar key the indices land in (`"selected"`,
+`"frozen_atoms"`, etc.). Writes go through `molstruct_json.with_lock`
+(an exclusive `fcntl.flock` on a sibling `.lock` file) to
+serialise concurrent writes — fix landed in #148 after the
+modify-tag-click race.
+
+### 6.5 Uniform envelope on every path
+
+All four endpoints return `{ok: bool, ...}` per the global
+contract. `_bad_request(msg, status)` emits `{ok: false, error: msg}`
+for every error path. Pinned by
+`test_selection_blueprint.py::TestUniformEnvelope` (6 tests, #187).
+
+---
+
+## 7. `/api/spectra/*` + `/api/build/schema/spectra`
+
+Implementation: `molbuilder/web/blueprints/spectra.py`.
+
+| Route | Method | Body | Success |
+|---|---|---|---|
+| `/api/build/schema/spectra` | GET | — | `{ok, schema}` |
+| `/api/spectra/render` | POST | `{xyz, params, structure_path?}` | `{ok, script, job_name, issues, methods_md?}` |
+| `/api/spectra/load` | POST | file upload / `{path}` / `{json}` inline | parsed `SpectraResults` dict |
+
+`/api/spectra/render` mirrors `/api/build/pyscf` for the spectra
+emitter; `params` matches `SpectraConfig` fields (every field
+carries `engine_key` post-#188).
+
+`/api/spectra/load` parses a `<job>.spectra.json` (the artifact
+the generated script writes at run completion) into the typed
+`SpectraResults` shape, returned as a JSON-safe dict. Accepts
+three input modes: file upload, server-side path, inline JSON.
+Used by the spectra inspector on `/results`.
+
+---
+
+## 8. `/api/watch/*` — trajectory inspector backing
+
+Implementation: `molbuilder/web/blueprints/watch.py`. The `/watch`
+page itself is retired (2026-05-19); these endpoints back the
+trajectory inspector on `/results` instead.
+
+| Route | Method | Body | Success |
+|---|---|---|---|
+| `/api/watch/formats` | GET | — | `{ok, formats: [{name, exts, description}]}` |
+| `/api/watch/load` | POST | `{path}` OR multipart `file=` | `{ok, mtime, data, format, label, resolved_from?}` |
+| `/api/watch/data` | GET | `?mtime=` | `{ok, changed: bool, data?, mtime?}` |
+
+`/api/watch/data` is the polling endpoint: pass the last known
+`mtime`; the server returns `{ok, changed: false}` if the file
+hasn't moved, or the full updated trajectory dict if it has.
+The trajectory inspector polls this every 15 s + on every
+`pageshow` / `visibilitychange` (#194).
+
+`resolved_from` appears when the user pointed at a directory
+(not a file): the server picks the canonical run output via
+[`job-layout.md`](job-layout.md) discovery chain and reports
+which file it resolved to.
+
+The `data` payload is the parsed trajectory dict (frames,
+energies, forces, lattice, runtime_info, run_state, error_message).
+Shape spec lives in [`docs/types/parsers.md`](../types/parsers.md).
+
+---
+
+## 9. Run helpers — `/api/run/*` + `/api/siesta/*`
+
+Implementation: `molbuilder/web/blueprints/build.py`.
+
+| Route | Method | Body | Purpose |
+|---|---|---|---|
+| `/api/run/install-wrapper` | POST | `{script_path, mpi_np?, omp_threads?, max_memory_mb?}` | Write the bash launcher wrapper next to a `.fdf` / `.py` |
+| `/api/siesta/install-pseudos` | POST | `{psml_lib, dest_dir, elements}` | Copy `.psml` files for the structure's elements into `dest_dir` |
+| `/api/siesta/check-pseudos` | POST | `{psml_lib, elements}` | Validate the user-supplied pseudopotential directory before write |
+
+Wrappers emit `--continue` + `-runN.out` series support so a
+re-run doesn't clobber the previous run's output. See
+[`docs/protocols/job-layout.md`](job-layout.md) for the
+basename convention + `runwrap.py` for the bash logic.
+
+---
+
+## 10. Structure analysis — `/api/structure/analyze`
+
+| Route | Method | Body | Success |
+|---|---|---|---|
+| `/api/structure/analyze` | POST | `{xyz}` | `{ok, total_electrons, charge_suggestion, spin_suggestion, method_suggestion, open_shell_metals, notes}` |
+
+Returns suggested defaults for charge / spin / method based on
+the structure's elements. Powers the "auto-fill SCF method"
+button in the SIESTA + PySCF forms.
+
+---
+
+## 11. Shared + page routes
+
+| Route | Method | Body | Success |
+|---|---|---|---|
+| `/api/health` | GET | — | `{ok, version}` |
+| `/api/backends` | GET | — | `{ok, available: {rdkit, amber, threedna}: bool}` |
+| `/` | GET | — | Build page HTML |
+| `/modify` | GET | — | Modify page HTML |
+| `/spectra` | GET | — | Spectra page HTML |
+| `/results` | GET | — | Results page HTML |
+| `/partials/trajectory-inspector` | GET | — | Inspector HTML fragment |
+| `/partials/spectra-inspector` | GET | — | Inspector HTML fragment |
+| `/partials/selection-panel` | GET | — | Panel HTML fragment |
+
+`/api/backends.available.threedna` is `true` only when the
+detection chain (in-tree → `$X3DNA` → `fiber` on PATH; see
+[`design.md`](../design.md) § "3DNA") finds a complete install.
+
+---
+
+## 12. Test coverage map
+
+| Endpoint group | Primary test file | Test count |
 |---|---|---|
-| `spin_polarized = false` | spin_total                        | SpinTotal meaningless without polarisation |
-| `relax_type = "none"`    | relax_steps, force_tol, max_displ | no MD block emitted |
-
-### Defence in depth
-
-The server does NOT trust the UI.  Even if a malicious or buggy
-client submits an invalid combination, the same validators
-(`validation.py:validate(struct, cfg)`) run server-side via field
-metadata.  The UI rules give the user fast feedback; the server
-rules protect the data.
+| `/api/files/*` | `test_web_files.py` | 116 |
+| `/api/build/*` | `test_web.py` | ~105 |
+| `/api/modify/*` | `test_web.py` (`/api/modify/op` etc.) + `test_modify_e2e.py` (Playwright) | ~50 |
+| `/api/selection/*` | `test_selection_blueprint.py` | 73 |
+| `/api/spectra/*` | `tests/spectra/test_blueprint.py` | 60+ |
+| `/api/watch/*` | `tests/watch/test_api_load.py` + trajectory inspector e2e | ~20 |
+| Page routes + partials | `test_results_blueprint.py` | 46 |
+| Cross-cutting envelope | `test_projects_api_envelope_js.py` (node) + `TestUniformEnvelope` in selection blueprint | 31 + 6 |
 
 ---
 
-## Forbidden patterns
+## 13. Code-vs-doc gaps detected during this rewrite
 
-The Flask app must NOT:
+Per the audit method (full code cross-check, 2026-06-02), the
+following discrepancies between the OLD `web-api.md` and the
+implementing code were found and corrected here:
 
-1. Run with `debug=True` by default — Flask's debugger allows
-   arbitrary code execution.  Enable only via explicit `--debug`
-   CLI flag.
-2. Bind to `0.0.0.0` by default — that exposes `/api/watch/load`
-   (reads any local file the server can access) to the network.
-   Default `127.0.0.1`; print a loud warning when the user opts in
-   to a non-loopback host (`warn_if_remote` in
-   `web/blueprints/watch.py`).
-3. Echo unsanitised user input as HTML.
-4. Trust the UI's compatibility-locking to validate inputs — the
-   server-side validation pass is the source of truth.
+| Gap | Resolution |
+|---|---|
+| OLD doc said "3 tabs: Build / Modify / Watch" — actually 4 (Build / Modify / Spectra / Results); Watch retired | Fixed in §2 + § 11 |
+| OLD `/api/files/*` table listed 5 endpoints (roots, list, stat, read, mkdir) — code has 11 | Full enumeration in § 3.1 |
+| OLD doc claimed "no upload/rename/delete/move in v1" — all four exist | Removed claim; documented in § 3.1 |
+| `/api/files/read_range` (2026-06-02) entirely missing | Added § 3.4 |
+| `/api/files/rename` (2026-05-31) entirely missing | Added in § 3.1 |
+| `/api/selection/*` (4 endpoints) entirely missing | Added § 6 |
+| `/api/modify/*` (9 endpoints) entirely missing | Added § 5 |
+| `/api/spectra/*` (2 endpoints) entirely missing | Added § 7 |
+| `/api/structure/analyze` entirely missing | Added § 10 |
+| `/api/run/install-wrapper`, `/api/siesta/{install,check}-pseudos` entirely missing | Added § 9 |
+| `/results` route + `/partials/*` entirely missing | Added § 11 |
+| Uniform `{ok}` envelope rule (#187) not codified | § 1.1 |
+| `cache: "no-store"` default (#193) not codified | § 1.3 |
+| AbortSignal threading contract (#174) not codified | § 1.4 |
+| Files.py module docstring lists a deleted `/api/files/result-list` route | **Code-cleanup needed** — see task #197 candidate |
 
----
-
-## Test reference
-
-* `tests/test_web.py` — every Build + Modify endpoint × every documented payload variant.
-* `tests/watch/test_api_load.py` — every Watch endpoint variant including directory-mode discovery and multi-stage merge.
-* `tests/test_modify_e2e.py` — Playwright + live Flask end-to-end.
-* `tests/test_review_fixes.py::test_s6_web_app_caps_upload_size` — confirms the upload cap fires (HTTP 413, JSON body shape).
+The stale `files.py` docstring is the only code-side fix that
+fell out of this audit; everything else was a doc deficit.

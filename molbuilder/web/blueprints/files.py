@@ -4,10 +4,10 @@ Routes:
 
     GET  /api/files/roots               list of allowed root paths
     GET  /api/files/list?path=...&ext=  directory listing
-    GET  /api/files/result-list?path=…  trajectory-parseable output files in
-                                        a project dir (drives /results dropdown)
     GET  /api/files/stat?path=...       file metadata
     GET  /api/files/read?path=...       text contents (size-capped)
+    GET  /api/files/read_range?path=&offset=&max_bytes=
+                                        byte-window read (paginated source viewer)
     POST /api/files/mkdir               create a new subdirectory (validated name)
     POST /api/projects/create           bootstrap a new project with every
                                         canonical subdir (atomic, strict conflict)

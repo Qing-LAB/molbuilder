@@ -1,79 +1,41 @@
 # molbuilder — documentation index
 
-This directory holds the **test contracts** for what molbuilder must
-do, organised by purpose.  Every feature has a focused spec; every
-claim a spec makes must be testable; tests must reference the spec
-rather than the implementation they test.
+The canonical index lives in **[`design.md`](design.md) § 0**.
+Read that first.
 
-Project-level design (mission, architectural principles, decisions
-made, active roadmap items) lives in [`design.md`](design.md) one
-level up.  `design.md` sits *above* these per-feature specs.
+## The doc rule
 
-## The rule
+> Tests must be derivable from the spec without reading the
+> implementation. Code reviews must verify code matches spec, not
+> code matches reviewer's expectations.
 
-> **Tests must be derivable from the spec without reading the
-> implementation.  Code reviews must verify code matches spec, not
-> code matches reviewer's expectations.**
+A bug shipped early in the project because a code review checked
+the implementation against itself — tests asserted "the string
+`mol = gto.M(...)` appears in the generated script" rather than
+"the generated script must not truncate `<job>.log` between stages".
+When the implementation was wrong, the test was wrong in lock-step.
+The specs in this directory decouple the two.
 
-A bug shipped early in the project because a code review checked the
-implementation against itself — tests asserted "the string `mol =
-gto.M(...)` appears in the generated script" rather than "the
-generated script must not truncate `<job>.log` between stages".  When
-the implementation was wrong, the test was wrong in lock-step.  The
-specs in this directory decouple the two.
+## Categories at a glance
 
-## Directory layout — by purpose
-
-```
-docs/
-├── design.md                   # cross-cutting design + decisions log
-├── README.md                   # this file
-├── img/                        # README screenshots
-├── protocols/                  # cross-cutting interfaces
-│   ├── web-api.md              #   build-side Flask endpoints
-│   ├── watch-api.md            #   watch-side Flask endpoints
-│   ├── cli.md                  #   click-based CLI surface
-│   ├── selection.md            #   Projects sidebar + tab Inquire-API contract
-│   └── job-layout.md           #   on-disk run-directory convention (job-layout v1)
-├── types/                      # L1 data-type contracts
-│   ├── structure.md            #   Structure dataclass + XYZ/PDB I/O
-│   ├── parsers.md              #   TrajectoryParser plug-in interface + per-engine specifics
-│   └── chemistry.md            #   charge auto-detect, phosphate protonation, dipole estimate
-├── engines/                    # per-engine emitter specs
-│   ├── siesta.md               #   SIESTA .fdf emitter
-│   ├── pyscf.md                #   PySCF runnable-script emitter
-│   └── builders.md             #   build-backend contract (peptide/DNA/RNA/SMILES/name)
-└── tabs/                       # per-tab UI + (when needed) supporting assets
-    ├── modify.md               #   Modify tab: atoms, junctions, electrode placement
-    ├── watch.md                #   Watch tab: 3Dmol viewer + Plotly plots + control panels
-    └── spectra/                #   Spectra tab: harmonic + Raman (+ scaffolded IR)
-        ├── spec.md             #     full spec; §12.1 = end-to-end Raman validation
-        └── references.bib      #     bibliography keys cited by emitted scripts + UI
-```
-
-**Categories.** What each folder is for:
-
-- **`protocols/`** — how parts of the system talk to each other (HTTP
-  API, CLI surface, on-disk file layout).  Specs here describe
-  contracts between components.
-- **`types/`** — L1 data-type and parser contracts.  Specs here
-  describe the shape of values flowing between components.
-- **`engines/`** — per-engine emitter specs (one per downstream code
-  we generate input for, plus the build-backend contract).  Specs
-  here describe what we *write*, not what we *do*.
-- **`tabs/`** — per-tab UI specs.  Single-file specs stay as
-  `<tab>.md`; tabs needing multiple assets (bibliography, sub-specs)
-  become subfolders, e.g. `tabs/spectra/spec.md` +
-  `tabs/spectra/references.bib`.
-
-Bibliographies live alongside the spec they cite, in the same
-subfolder.  Adding a future tab with citations means a new folder
-with both files together — exactly one place to look when reading
-either.
+| Folder | What lives here |
+|---|---|
+| `protocols/` | How parts of the system talk to each other (HTTP API, CLI surface, JS module contracts, on-disk file layout, test patterns) |
+| `tabs/` | Per-UI-tab specs (`build`, `modify`, `spectra`, `results`) |
+| `engines/` | Per-engine emitter specs (SIESTA / PySCF) + build-backend contract |
+| `types/` | L1 data-type contracts (Structure, parsers, chemistry helpers) |
+| `archive/` | Superseded docs — NOT a source of truth |
 
 ## Versioning
 
-This is a 1.x project.  Spec changes that remove or rename promised
-output files require a minor version bump (1.x → 1.x+1) AND a
-deprecation note in the design.md decisions log.  Adding new
+This is a 1.x project. Spec changes that remove or rename
+promised output files require a minor version bump (1.x → 1.x+1)
+AND a deprecation note in design.md's decisions log. Adding new
 optional fields or files is a patch-level change.
+
+## Bibliographies
+
+Bibliographies live alongside the spec they cite, in the same
+subfolder. Adding a future tab with citations means a new folder
+with both files together — exactly one place to look when reading
+either.
