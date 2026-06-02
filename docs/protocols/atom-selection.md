@@ -148,6 +148,44 @@ Called internally after `writeLabel` so newly-assigned labels show
 up immediately.  Public so callers (e.g. another tab that edited
 the sidecar) can also force a refresh.
 
+```
+store.setLoader(fn | null) -> void
+```
+
+Inject the page-supplied viewer loader the store calls during
+`setSourceFile`'s step 2.  `fn` receives a `{path, text, format}`
+payload and returns a Promise that resolves once the viewer has
+populated its model.  Pass `null` to detach (the store falls back
+to atom-list-only / "headless" mode -- atoms still fetch but no
+viewer is driven, useful for tests + the future structure
+inspector adapter).  Throws `TypeError` for any other type.
+
+Wired by `/modify`'s bootstrap shortly after page load; tests can
+swap in a stub via the store's test-only `_createStore` factory
+(see playwright-tests.md § 1.1 "Module singletons and test
+isolation").
+
+```
+store.adoptSession({sourceFile, selection}) -> Promise
+```
+
+Rehydrate from a session snapshot WITHOUT re-loading the viewer.
+Used by `/modify`'s sessionStorage restore path where the viewer
+model has already been populated synchronously via
+`applyStructure(...)`.  Differs from `setSourceFile` in two ways:
+
+  1. Skips the viewer-load step entirely (the viewer is already
+     populated -- re-loading would discard the camera/indices and
+     double-fetch over HTTP for no gain).
+  2. Accepts a pre-validated `selection` array that survives the
+     structure swap, so the panel and adapter come back in sync
+     without losing the user's pick.
+
+Atoms ARE still fetched fresh from the server so any sidecar
+update done since the snapshot was written is reflected.  Rejects
+with `TypeError` if `sourceFile` is non-string-non-null;
+non-number entries in `selection` are silently filtered.
+
 ### Mode
 
 ```
@@ -468,6 +506,8 @@ Source-file lifecycle:
 | `subscribe(fn) -> unsubscribe` | sync | fn fires once with current snapshot, then on every change |
 | `setSourceFile(path) -> Promise` | async | clears selection; loads viewer + atoms; skips atom fetch on viewer load failure |
 | `refreshAtoms() -> Promise` | async | re-fetches `/api/selection/atoms` only |
+| `setLoader(fn \| null)` | sync (void) | injects the page-supplied viewer loader; `null` detaches |
+| `adoptSession({sourceFile, selection}) -> Promise` | async | session-restore path: skips viewer load, accepts pre-validated selection |
 
 Selection editing (client-side, no HTTP except `applyFilter` / `writeLabel`):
 

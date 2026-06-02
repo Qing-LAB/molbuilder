@@ -134,11 +134,12 @@ directory listing at a time.
 
 ### 3.1 Internal module architecture
 
-The sidebar itself is decomposed into seven units.  Each owns a
-single concern; cross-unit communication uses the unit's exported
-interface (never closure-state reads).  An implementer assigns a
-new feature to one unit; if it doesn't fit, the unit list is wrong,
-not the feature.
+The sidebar itself is decomposed into eight units (one HTML
+partial + one stylesheet + one entry script + five behaviour
+modules under `projects/`).  Each owns a single concern; cross-
+unit communication uses the unit's exported interface (never
+closure-state reads).  An implementer assigns a new feature to one
+unit; if it doesn't fit, the unit list is wrong, not the feature.
 
 | Unit | Concern | Exports for OTHER units |
 |---|---|---|
