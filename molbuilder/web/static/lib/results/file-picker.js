@@ -233,15 +233,22 @@
         let disposed        = false;
         // Transient parse-status timeout.  Set when a file selection
         // kicks off an inspector mount; cleared by the next selection
-        // change, a fresh scan, or a fallback timer that reverts the
-        // meta line to the steady-state "N of M · X ago" readout.
+        // change, a fresh scan, the inspector's "ready" event (see
+        // ``molbuilder:inspector:ready`` below), or a fallback timer
+        // that reverts the meta line to the steady-state "N of M · X
+        // ago" readout.
         let parseTimer      = null;
-        // Approximate "parse should be visible long enough for fast
-        // files to render without being so long that long-running
-        // parses see a stale 'Parsing…' label".  The inspector itself
-        // owns its own load-progress UI; this is just the picker's
-        // acknowledgement that the click landed.
-        const PARSE_TIMEOUT_MS = 1500;
+        // The file the parse status is currently FOR -- the inspector
+        // ready handler clears the status only if it still matches
+        // (a stale ready event from a previous file's mount can't
+        // pull the status off a new file's parse).
+        let parsingFor      = null;
+        // Fallback "if no inspector ever signals ready, drop the
+        // label after this long".  Longer than the real render
+        // typically takes so the "Parsing…" label hands off
+        // naturally; tuned for SIESTA .out files in the 5-10 MB
+        // range which are the user's primary case.
+        const PARSE_TIMEOUT_MS = 8000;
 
         function _abortInFlight() {
             if (aborter) {
@@ -280,18 +287,41 @@
                 clearTimeout(parseTimer);
                 parseTimer = null;
             }
+            parsingFor = null;
         }
 
         function _startParseStatus(file) {
             _clearParseTimer();
             if (!file) return;
             const basename = parseDir(file).name || file;
+            parsingFor = file;
             _showTransientStatus("Parsing " + basename + "…");
             parseTimer = setTimeout(() => {
                 parseTimer = null;
                 if (disposed) return;
                 _showIdleMeta(file);
+                parsingFor = null;
             }, PARSE_TIMEOUT_MS);
+        }
+
+        // The trajectory + spectra inspectors dispatch
+        // ``molbuilder:inspector:ready`` on ``document`` once their
+        // first render is on screen (frame counter populated, plots
+        // drawn, viewer non-blank).  When that lands, drop the
+        // "Parsing…" label early -- the user no longer needs the
+        // acknowledgement.
+        //
+        // Guarded by ``parsingFor`` so a stale ready event from a
+        // prior load can't clear a fresh parse status (rapid file-
+        // switching case: A starts loading, user switches to B,
+        // A's deferred ready fires; we want it to be a no-op).
+        function _onInspectorReady(_evt) {
+            if (disposed) return;
+            if (parsingFor === null) return;
+            const file = parsingFor;
+            _clearParseTimer();
+            parsingFor = null;
+            _showIdleMeta(file);
         }
 
         /**
@@ -438,6 +468,8 @@
         }
 
         const unsubscribeSelection = proj.onChange(_onSelectionChange);
+        document.addEventListener("molbuilder:inspector:ready",
+                                  _onInspectorReady);
 
         // -- dropdown change handler ----------------------------- //
         function _onSelectChange() {
@@ -483,6 +515,10 @@
                 disposed = true;
                 _abortInFlight();
                 _clearParseTimer();
+                try {
+                    document.removeEventListener(
+                        "molbuilder:inspector:ready", _onInspectorReady);
+                } catch (_) { /* ignore */ }
                 try { selEl.removeEventListener("change", _onSelectChange); }
                 catch (_) { /* ignore */ }
                 try { if (unsubscribeSelection) unsubscribeSelection(); }

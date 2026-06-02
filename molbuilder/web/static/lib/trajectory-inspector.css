@@ -655,19 +655,32 @@
 .result-list-meta {
     color:         var(--text-muted);
     font-size:     var(--text-xs);
-    white-space:   nowrap;
-    flex-shrink:   0;
+    /* Always wrap to the line below the dropdown.  ``flex-basis:
+     * 100%`` forces the wrap regardless of dropdown width, so the
+     * "Scanning…" / "Parsing…" message gets its own row + has
+     * room for long filenames without truncation.  Previously the
+     * meta sat inline at the right of the dropdown which made
+     * status messages easy to miss next to the long filename. */
+    flex-basis:    100%;
+    margin-top:    var(--space-xs);
 }
 
 /* Transient "Scanning…" / "Parsing…" status mode.  The picker
  * meta line doubles as a status surface so the user sees an
  * acknowledgement that something is happening between the
  * directory click and the inspector render.  Distinguish from
- * the steady-state "N of M · 5m ago" readout via italics +
- * a slightly stronger colour so the eye picks up the change. */
+ * the steady-state "N of M · 5m ago" readout via:
+ *   * stronger colour so the eye picks up the transition;
+ *   * normal weight + non-italic so the message reads as a
+ *     declaration ("we are doing X") rather than a footnote.
+ * The bumped size + bolder treatment is intentional -- the
+ * user explicitly asked for this status to be MORE visible than
+ * the steady-state readout (2026-06-01). */
 .result-list-meta.is-busy {
-    color:       var(--text-secondary);
-    font-style:  italic;
+    color:        var(--text-primary);
+    font-size:    var(--text-sm);
+    font-weight:  500;
+    font-style:   normal;
 }
 
 /* When the result-list dropdown is shown, the page-level "current

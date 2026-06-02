@@ -1269,6 +1269,26 @@
         showFrame(targetIdx);
         makePlots();
 
+        // Signal to the /results tab-level picker (and any other
+        // listener that wants to drop a "Loading…" / "Parsing…"
+        // status overlay) that the first render of this file is now
+        // visible on screen -- frame count is non-zero, plots are
+        // drawn, frame 0 has been shown.  See
+        // ``lib/results/file-picker.js`` for the receiver.  Document-
+        // level so the picker doesn't have to know which host owns
+        // the inspector.  Subsequent polls also dispatch but that's
+        // a no-op for the picker (it idempotently clears the parse
+        // status).
+        try {
+            document.dispatchEvent(new CustomEvent(
+                "molbuilder:inspector:ready",
+                { detail: { inspector: "trajectory", frames: n } }
+            ));
+        } catch (_) {
+            // CustomEvent unavailable in some ancient runtimes; the
+            // picker's timeout fallback covers it.
+        }
+
         const ts = new Date(r.mtime * 1000).toLocaleTimeString();
         // Elapsed simulation time -- wall_times[] is per-frame Unix
         // epoch.  Total sim time = last_wall - first_wall.  Falls
