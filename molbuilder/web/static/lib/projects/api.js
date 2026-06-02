@@ -28,9 +28,28 @@
  * URL).
  */
 async function _fetchEnvelope(url, fetchInit) {
+  // Default to ``cache: "no-store"`` so two GETs to the same URL during
+  // one browser session BOTH reach the server.  Without this, the
+  // browser HTTP cache happily serves the previous response for the
+  // same URL -- the exact second-half of the 2026-06-02 /results
+  // stale-dropdown bug (#192).  ``/api/files/list`` and ``/api/files/
+  // read_range`` return live data that changes between requests for
+  // the SAME URL (new files, mtime drift, file appended on disk), so
+  // browser caching is correctness-breaking, not perf-helping, here.
+  //
+  // Callers that legitimately want browser caching (e.g. a future
+  // immutable basis-set blob) can override by passing an explicit
+  // ``cache`` field in fetchInit; our default only fills in the gap.
+  //
+  // Note ``cache: "no-store"`` is a no-op for POST/DELETE/PUT (which
+  // browsers never cache by default), so applying it uniformly via
+  // the central wrapper is safe + sweeps every GET caller in one
+  // place.
+  const init = fetchInit || {};
+  if (init.cache === undefined) init.cache = "no-store";
   let resp;
   try {
-    resp = await fetch(url, fetchInit);
+    resp = await fetch(url, init);
   } catch (e) {
     // Distinguish user-initiated cancellation (AbortError) from
     // genuine network failure.  Both look like exceptions to the

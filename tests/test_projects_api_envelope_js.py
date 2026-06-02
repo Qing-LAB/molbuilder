@@ -510,3 +510,149 @@ class TestApiRoots:
         assert out["ok"] is False
         assert "network error" in out["error"]
         assert out["roots"] == []
+
+
+# ----- cache: "no-store" default (#193, 2026-06-02) ---------------- #
+
+
+class TestNoStoreCache:
+    """The central ``_fetchEnvelope`` defaults ``cache: "no-store"`` so
+    every projects.* live-data GET (apiList / apiRead / apiReadRange /
+    apiStat / apiRoots) reaches the server on a same-URL revisit.
+    Without this default the browser HTTP cache served the previous
+    response on every same-URL hit -- the second-half cause of the
+    /results stale-dropdown bug (#192).
+
+    These tests pin the default + the override path so a future
+    refactor can't quietly drop either.
+    """
+
+    def test_apiList_passes_cache_no_store(self):
+        out = _run_node('''
+            let capturedInit = null;
+            global.fetch = async (_url, init) => {
+                capturedInit = init || {};
+                return {
+                    ok: true, status: 200,
+                    json: async () => ({ ok: true, entries: [] }),
+                };
+            };
+            await api.apiList("/p");
+            console.log(JSON.stringify({
+                cache: capturedInit ? capturedInit.cache : null,
+            }));
+        ''')
+        assert out["cache"] == "no-store"
+
+    def test_apiRead_passes_cache_no_store(self):
+        out = _run_node('''
+            let cache = null;
+            global.fetch = async (_u, init) => {
+                cache = init && init.cache;
+                return {
+                    ok: true, status: 200,
+                    json: async () => ({ ok: true, text: "" }),
+                };
+            };
+            await api.apiRead("/p");
+            console.log(JSON.stringify({ cache: cache }));
+        ''')
+        assert out["cache"] == "no-store"
+
+    def test_apiReadRange_passes_cache_no_store(self):
+        out = _run_node('''
+            let cache = null;
+            global.fetch = async (_u, init) => {
+                cache = init && init.cache;
+                return {
+                    ok: true, status: 200,
+                    json: async () => ({
+                        ok: true, path: "/p", offset: 0, length: 0,
+                        file_size: 0, mtime: 0, text: "", eof: true,
+                    }),
+                };
+            };
+            await api.apiReadRange("/p", 0, 1024);
+            console.log(JSON.stringify({ cache: cache }));
+        ''')
+        assert out["cache"] == "no-store"
+
+    def test_apiStat_passes_cache_no_store(self):
+        out = _run_node('''
+            let cache = null;
+            global.fetch = async (_u, init) => {
+                cache = init && init.cache;
+                return {
+                    ok: true, status: 200,
+                    json: async () => ({ ok: true }),
+                };
+            };
+            await api.apiStat("/p");
+            console.log(JSON.stringify({ cache: cache }));
+        ''')
+        assert out["cache"] == "no-store"
+
+    def test_apiRoots_passes_cache_no_store(self):
+        """Roots is quasi-static but goes through the same wrapper.
+        Forcing no-store here is harmless + keeps the default uniform
+        so a future refactor can't drop the safety net for one caller."""
+        out = _run_node('''
+            let cache = null;
+            global.fetch = async (_u, init) => {
+                cache = init && init.cache;
+                return {
+                    ok: true, status: 200,
+                    json: async () => ({ roots: [] }),
+                };
+            };
+            await api.apiRoots();
+            console.log(JSON.stringify({ cache: cache }));
+        ''')
+        assert out["cache"] == "no-store"
+
+    def test_post_endpoints_also_get_no_store(self):
+        """``cache: "no-store"`` is a no-op for POST (browsers never
+        cache non-GET responses), so applying it uniformly is safe.
+        Pin that it's still passed -- so a future caller that switches
+        a GET endpoint to POST or adds a new POST through the same
+        wrapper inherits the default without surprises."""
+        out = _run_node('''
+            let cache = null;
+            global.fetch = async (_u, init) => {
+                cache = init && init.cache;
+                return {
+                    ok: true, status: 200,
+                    json: async () => ({ ok: true }),
+                };
+            };
+            await api.apiMkdir("/parent", "new");
+            console.log(JSON.stringify({ cache: cache }));
+        ''')
+        assert out["cache"] == "no-store"
+
+    def test_signal_is_preserved_alongside_cache_default(self):
+        """The default-cache injection must NOT clobber the AbortSignal
+        the caller passes -- both have to land in the fetch init.  A
+        regression that drops the signal would silently break the
+        sidebar's Cancel button (#159) without breaking the cache
+        contract above."""
+        out = _run_node('''
+            let ac;
+            let initShape = null;
+            global.fetch = async (_u, init) => {
+                initShape = {
+                    cache:        init && init.cache,
+                    signalIsSet:  init && init.signal !== undefined
+                                       && init.signal !== null,
+                };
+                return {
+                    ok: true, status: 200,
+                    json: async () => ({ ok: true, entries: [] }),
+                };
+            };
+            ac = new AbortController();
+            await api.apiList("/p", { signal: ac.signal });
+            console.log(JSON.stringify(initShape));
+        ''')
+        assert out["cache"] == "no-store"
+        assert out["signalIsSet"] is True
