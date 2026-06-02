@@ -5,8 +5,9 @@ Per docs/protocols/projects-sidebar.md § 8.5, programmatic state
 mutators (setShared, future navigateTo) MUST early-return
 ``{ok:false, error:"sidebar is locked"}`` while the lock is held.
 The CSS ``pointer-events:none`` rule blocks user clicks but
-in-inspector navigators (the /results result-list dropdown) could
-otherwise sneak a directory change past an active Save pipeline.
+tab-level navigators (the /results file-picker dropdown at
+``lib/results/file-picker.js``) could otherwise sneak a directory
+change past an active Save pipeline.
 
 These tests stub sessionStorage + the module's lock entry points
 under Node, exercise setShared in both locked and unlocked states,

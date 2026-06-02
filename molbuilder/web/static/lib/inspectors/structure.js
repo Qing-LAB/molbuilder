@@ -91,12 +91,24 @@
                                        + " atoms.";
                     // Signal "first render visible" so the /results
                     // tab-level picker drops its "Parsing…" status.
-                    // Mirrors the trajectory inspector's dispatch.
+                    // Deferred via double-rAF so the browser paints
+                    // the 3Dmol canvas before the picker meta
+                    // clears -- matches the trajectory inspector's
+                    // pattern; see ``lib/trajectory/core.js`` for
+                    // the reasoning behind the double-tick wait.
                     try {
-                        document.dispatchEvent(new CustomEvent(
-                            "molbuilder:inspector:ready",
-                            { detail: { inspector: "structure" } }
-                        ));
+                        const dispatch = () => document.dispatchEvent(
+                            new CustomEvent(
+                                "molbuilder:inspector:ready",
+                                { detail: { inspector: "structure" } }
+                            )
+                        );
+                        if (typeof requestAnimationFrame === "function") {
+                            requestAnimationFrame(
+                                () => requestAnimationFrame(dispatch));
+                        } else {
+                            dispatch();
+                        }
                     } catch (_) { /* see core.js for context */ }
                 } catch (e) {
                     status.textContent = "3Dmol failed: "

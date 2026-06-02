@@ -797,13 +797,21 @@
         updatePhaseIndicator(body.results);
         setStatus(els.watchStatus, "Loaded.", "ok");
         // Signal "first render visible" so the /results tab-level
-        // picker drops its "Parsing…" status.  Mirrors the
-        // trajectory + structure inspector dispatches.
+        // picker drops its "Parsing…" status.  Deferred via
+        // double-rAF so the browser paints the spectra chart +
+        // mode-table content before the picker meta clears -- see
+        // ``lib/trajectory/core.js`` for the reasoning behind the
+        // double-tick wait.
         try {
-            document.dispatchEvent(new CustomEvent(
+            const dispatch = () => document.dispatchEvent(new CustomEvent(
                 "molbuilder:inspector:ready",
                 { detail: { inspector: "spectra" } }
             ));
+            if (typeof requestAnimationFrame === "function") {
+                requestAnimationFrame(() => requestAnimationFrame(dispatch));
+            } else {
+                dispatch();
+            }
         } catch (_) { /* see lib/trajectory/core.js for context */ }
     }
 

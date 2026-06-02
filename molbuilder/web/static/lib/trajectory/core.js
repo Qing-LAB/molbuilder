@@ -1272,21 +1272,33 @@
         // Signal to the /results tab-level picker (and any other
         // listener that wants to drop a "Loading…" / "Parsing…"
         // status overlay) that the first render of this file is now
-        // visible on screen -- frame count is non-zero, plots are
-        // drawn, frame 0 has been shown.  See
-        // ``lib/results/file-picker.js`` for the receiver.  Document-
-        // level so the picker doesn't have to know which host owns
-        // the inspector.  Subsequent polls also dispatch but that's
-        // a no-op for the picker (it idempotently clears the parse
-        // status).
+        // visible on screen.  Deferred to two consecutive
+        // ``requestAnimationFrame`` ticks so the dispatch fires
+        // AFTER the browser has had a chance to paint the new
+        // ``frame-tot`` / slider state, run 3Dmol's GPU render, and
+        // commit Plotly's plot drawing -- the user's 2026-06-01
+        // report was that the picker meta cleared while ``frame-tot``
+        // visibly still read "0 / 0" and the viewer was blank, which
+        // happens because a synchronous dispatch arrives in the same
+        // event-loop tick as the textContent assignment but the
+        // browser hasn't painted yet.  Double rAF (rAF inside rAF)
+        // is the cheapest pattern that ensures we're past one full
+        // paint cycle.  Subsequent polls also dispatch but that's a
+        // no-op for the picker (it idempotently clears the parse
+        // status; ``parsingFor`` is null on poll-triggered fires).
         try {
-            document.dispatchEvent(new CustomEvent(
+            const dispatch = () => document.dispatchEvent(new CustomEvent(
                 "molbuilder:inspector:ready",
                 { detail: { inspector: "trajectory", frames: n } }
             ));
+            if (typeof requestAnimationFrame === "function") {
+                requestAnimationFrame(() => requestAnimationFrame(dispatch));
+            } else {
+                dispatch();
+            }
         } catch (_) {
-            // CustomEvent unavailable in some ancient runtimes; the
-            // picker's timeout fallback covers it.
+            // CustomEvent / rAF unavailable in some ancient runtimes;
+            // the picker's timeout fallback covers it.
         }
 
         const ts = new Date(r.mtime * 1000).toLocaleTimeString();

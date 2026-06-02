@@ -10,10 +10,11 @@
  * any future result inspector tomorrow.
  *
  * Mount target: ``#results-file-picker-bar`` in
- * ``templates/results.html``.  Render is conditional: when the
- * directory has zero or one result file the bar stays hidden
- * (nothing to navigate to; the inspector either renders fallback
- * or already shows the only file).
+ * ``templates/results.html``.  The bar is pre-shown during the scan
+ * itself (with the dropdown empty and the meta line showing
+ * "Scanning for output files…") so the user sees an immediate
+ * acknowledgement; it stays hidden only when the directory has
+ * zero result files (the inspector then renders its fallback).
  *
  * Picking a different entry from the <select> fires
  * ``projects.setShared(dir, newFile)`` -- the sidebar's onChange
@@ -23,21 +24,32 @@
  *
  * Auto-pick: when the directory contains result files AND no file is
  * currently selected, the picker auto-selects the most recent one.
- * This is the user's primary ask -- "the result tab does not
- * automatically detect that there are available files for display"
- * (2026-06-01).  Auto-pick is bypassed when the current selection
- * is already a result file in the same dir.
+ * Auto-pick is bypassed when the current selection is already a
+ * result file in the same dir.
+ *
+ * Status line: the meta row doubles as a status surface.  Shows
+ * "Scanning for output files…" during the directory listing fetch,
+ * then "Parsing <basename>…" once a file selection lands, then the
+ * steady-state "X of N · 5m ago" once the inspector dispatches
+ * ``molbuilder:inspector:ready`` on ``document`` (or after the
+ * ``PARSE_TIMEOUT_MS`` fallback fires).
  *
  * Visible API on ``window.molbuilder.resultsFilePicker``:
  *
  *   ``mount(root)``    -- one-shot init: attaches the <select>
- *                         handler, subscribes to projects.onChange,
- *                         and triggers the first scan.  Returns a
+ *                         handler, subscribes to projects.onChange
+ *                         + ``molbuilder:inspector:ready``, and
+ *                         triggers the first scan.  Returns a
  *                         disposer that aborts any in-flight fetch
  *                         and detaches subscriptions.
- *   ``parseDir(file)``         -- pure helper (exported for testing).
- *   ``formatRelativeTime(epoch_seconds)`` -- pure helper (testing).
- *   ``filterToResultFiles(entries, pick)`` -- pure helper (testing).
+ *   ``parseDir(file)``            -- pure helper (exported for testing).
+ *   ``formatRelativeTime(epoch)`` -- pure helper (testing).
+ *   ``filterToResultFiles(entries, dir, pickResult)`` -- pure helper.
+ *   ``groupResultFiles(entries, pickResult)`` -- pure helper that
+ *                         buckets pre-filtered entries by
+ *                         inspector ``resultCategory(file)`` into
+ *                         ``[{label, entries}]`` for ``<optgroup>``
+ *                         rendering (testing).
  *
  * Idempotency note: the picker reacts to onChange events; calling
  * mount() twice on the same root would double-subscribe.  Tests

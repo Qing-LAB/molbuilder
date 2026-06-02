@@ -428,7 +428,7 @@ export function initList() {
   // current state (per the onChange contract in state.js), so the
   // initial paint happens here without a manual call.  Every
   // ``setShared`` / ``navigateTo`` thereafter -- whether from a
-  // sidebar click, the result-list dropdown, or any future
+  // sidebar click, the /results file-picker dropdown, or any future
   // programmatic navigator -- auto-syncs the entry-marker + status
   // line.
   _projectsApi.onChange(renderSidebar);

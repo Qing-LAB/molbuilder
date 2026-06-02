@@ -128,8 +128,9 @@ export function setShared(dir, file) {
   // Defense-in-depth lock guard (2026-05-30, #177).  The UI side
   // already blocks sidebar clicks via CSS pointer-events:none while
   // the lock is held; this rejects programmatic mutations too so
-  // an in-inspector navigator (e.g. /results result-list dropdown)
-  // can't slip a directory change past an active Save pipeline.
+  // a tab-level navigator (e.g. the /results file-picker dropdown
+  // in ``lib/results/file-picker.js``) can't slip a directory
+  // change past an active Save pipeline.
   // Returns {ok, error?} so callers can branch -- the previous
   // void-return contract is preserved for the success path
   // (most callers don't check the return value).  See
