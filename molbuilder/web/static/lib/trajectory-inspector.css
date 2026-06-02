@@ -659,6 +659,17 @@
     flex-shrink:   0;
 }
 
+/* Transient "Scanning…" / "Parsing…" status mode.  The picker
+ * meta line doubles as a status surface so the user sees an
+ * acknowledgement that something is happening between the
+ * directory click and the inspector render.  Distinguish from
+ * the steady-state "N of M · 5m ago" readout via italics +
+ * a slightly stronger colour so the eye picks up the change. */
+.result-list-meta.is-busy {
+    color:       var(--text-secondary);
+    font-style:  italic;
+}
+
 /* When the result-list dropdown is shown, the page-level "current
  * file" readout above the inspector becomes redundant (the dropdown
  * shows the same filename in its selected option).  Hide the entire

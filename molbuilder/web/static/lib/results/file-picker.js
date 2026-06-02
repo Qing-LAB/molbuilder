@@ -231,12 +231,67 @@
         let lastScannedDir  = null;
         let cachedResults   = [];  // last successful scan, used by _onSelectChange
         let disposed        = false;
+        // Transient parse-status timeout.  Set when a file selection
+        // kicks off an inspector mount; cleared by the next selection
+        // change, a fresh scan, or a fallback timer that reverts the
+        // meta line to the steady-state "N of M · X ago" readout.
+        let parseTimer      = null;
+        // Approximate "parse should be visible long enough for fast
+        // files to render without being so long that long-running
+        // parses see a stale 'Parsing…' label".  The inspector itself
+        // owns its own load-progress UI; this is just the picker's
+        // acknowledgement that the click landed.
+        const PARSE_TIMEOUT_MS = 1500;
 
         function _abortInFlight() {
             if (aborter) {
                 try { aborter.abort(); } catch (_) { /* ignore */ }
                 aborter = null;
             }
+        }
+
+        // ---- transient-status helpers ------------------------- //
+        // The picker's meta line doubles as a status surface: it
+        // shows "Scanning for output files…" while a directory
+        // listing is in flight, "Parsing <basename>…" while the
+        // newly-mounted inspector loads its first frame, and the
+        // steady-state "N of M · X ago" readout otherwise.
+        //
+        // Mutates ``metaEl`` directly so the picker's existing
+        // _renderMeta path stays a pure derivation -- this keeps
+        // unit tests of the pure helpers unchanged.
+
+        function _showTransientStatus(message) {
+            if (!metaEl) return;
+            metaEl.textContent = message;
+            // Class lets CSS distinguish transient status from the
+            // steady-state meta (e.g. italicise + softer colour).
+            metaEl.classList.add("is-busy");
+        }
+
+        function _showIdleMeta(file) {
+            if (!metaEl) return;
+            metaEl.classList.remove("is-busy");
+            _renderMeta(metaEl, cachedResults, file);
+        }
+
+        function _clearParseTimer() {
+            if (parseTimer !== null) {
+                clearTimeout(parseTimer);
+                parseTimer = null;
+            }
+        }
+
+        function _startParseStatus(file) {
+            _clearParseTimer();
+            if (!file) return;
+            const basename = parseDir(file).name || file;
+            _showTransientStatus("Parsing " + basename + "…");
+            parseTimer = setTimeout(() => {
+                parseTimer = null;
+                if (disposed) return;
+                _showIdleMeta(file);
+            }, PARSE_TIMEOUT_MS);
         }
 
         /**
@@ -246,11 +301,21 @@
          */
         function _scan(dir, currentFile) {
             _abortInFlight();
+            _clearParseTimer();
             if (!dir) {
                 barEl.hidden = true;
                 cachedResults = [];
                 return;
             }
+            // Pre-show the picker bar with an empty dropdown + a
+            // "Scanning…" status so the user sees that something is
+            // happening DURING the fetch -- not just after it
+            // resolves.  If the dir has no result files, the fetch's
+            // resolver hides the bar again.
+            while (selEl.firstChild) selEl.removeChild(selEl.firstChild);
+            barEl.hidden = false;
+            _showTransientStatus("Scanning for output files…");
+
             aborter = new AbortController();
             const signal = aborter.signal;
             const url = LIST_ENDPOINT + "?path=" + encodeURIComponent(dir);
@@ -275,7 +340,6 @@
                         return;
                     }
                     _populate(selEl, results, currentFile);
-                    _renderMeta(metaEl, results, currentFile);
                     barEl.hidden = false;
                     // Auto-pick: if no file is currently selected (or
                     // the selection is outside this directory's result
@@ -286,7 +350,18 @@
                     const selectionIsAResult =
                         currentFile && results.some(r => r.path === currentFile);
                     if (!selectionIsAResult) {
+                        // Auto-pick will fire setShared -> onChange
+                        // -> _onSelectionChange, which will start the
+                        // parse-status timer for the auto-picked file.
                         _autoSelect(results[0]);
+                    } else if (currentFile) {
+                        // The current selection IS in the new dir's
+                        // result set; show "Parsing…" briefly so the
+                        // user gets the same acknowledgement when
+                        // they re-enter a known dir.
+                        _startParseStatus(currentFile);
+                    } else {
+                        _showIdleMeta(currentFile);
                     }
                 })
                 .catch(err => {
@@ -322,21 +397,43 @@
         // onChange fires immediately with the current selection (per
         // projects/state.js contract), so the initial scan happens
         // here without an extra call. -------------------------- //
+        let lastSelectedFile = null;
         function _onSelectionChange(sel) {
             const dir  = sel && sel.dir  ? sel.dir  : "";
             const file = sel && sel.file ? sel.file : "";
             if (dir !== lastScannedDir) {
-                // Directory changed: rescan from scratch.
+                // Directory changed: rescan from scratch.  _scan
+                // clears any in-flight parse timer.
                 lastScannedDir = dir;
+                lastSelectedFile = file;
                 _scan(dir, file);
-            } else {
-                // Same dir, different file: re-sync the dropdown's
-                // selected option to the new file.  No re-fetch
-                // needed; the cached scan results are still fresh.
-                if (cachedResults.length > 0) {
-                    _populate(selEl, cachedResults, file);
-                    _renderMeta(metaEl, cachedResults, file);
+                return;
+            }
+            // Same dir.
+            if (cachedResults.length > 0) {
+                _populate(selEl, cachedResults, file);
+            }
+            if (file && file !== lastSelectedFile) {
+                // File swap within the same dir -- show "Parsing…"
+                // status as acknowledgement that the inspector is
+                // mounting.  Cleared by the timer (or by a follow-on
+                // selection change).
+                lastSelectedFile = file;
+                if (cachedResults.length > 0
+                    && cachedResults.some(r => r.path === file)) {
+                    _startParseStatus(file);
+                } else if (cachedResults.length > 0) {
+                    // File is in the dir but not a result type (e.g.
+                    // the user clicked a config file in the sidebar);
+                    // fall back to the steady-state readout.
+                    _showIdleMeta(file);
                 }
+            } else if (cachedResults.length > 0
+                && parseTimer === null) {
+                // No file change AND no parse in flight -- ensure
+                // the meta is in steady state (in case a previous
+                // transient was left on screen by some edge path).
+                _showIdleMeta(file);
             }
         }
 
@@ -385,6 +482,7 @@
             dispose() {
                 disposed = true;
                 _abortInFlight();
+                _clearParseTimer();
                 try { selEl.removeEventListener("change", _onSelectChange); }
                 catch (_) { /* ignore */ }
                 try { if (unsubscribeSelection) unsubscribeSelection(); }
