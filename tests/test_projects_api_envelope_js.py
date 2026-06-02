@@ -121,6 +121,28 @@ class TestHappyPath:
         ''')
         assert out == {"ok": True, "text": "hello", "mtime": 12345}
 
+    def test_apiReadRange_returns_server_body_verbatim(self):
+        """The raw wrapper (#189, 2026-06-02) mirrors apiRead's shape
+        but takes offset + maxBytes and surfaces the server's range-
+        read envelope (file_size + eof in addition to text + mtime)."""
+        out = _run_node('''
+            global.fetch = async () => ({
+                ok: true,
+                status: 200,
+                json: async () => ({
+                    ok: true, path: "/p/big.log", offset: 0,
+                    length: 262144, file_size: 1000000,
+                    mtime: 42, text: "first chunk", eof: false,
+                }),
+            });
+            const r = await api.apiReadRange("/p/big.log", 0, 262144);
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["ok"] is True
+        assert out["length"] == 262144
+        assert out["eof"] is False
+        assert out["text"] == "first chunk"
+
     def test_apiWrite_post_with_overwrite_flag(self):
         out = _run_node('''
             let captured = null;

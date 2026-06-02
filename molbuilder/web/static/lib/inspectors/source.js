@@ -121,15 +121,29 @@
 
             // ---- Range-fetch helper --------------------------- //
             //
-            // ``ctx.readFile`` is a thin wrapper over /api/files/read
-            // that only supports the all-or-nothing read.  For
-            // range reads we go direct to the new endpoint.  The
-            // ctx surface still owns the error envelope so a
-            // future "swap fetch for cached fetch" still works
-            // here -- we just don't have a registry-level helper
-            // for range reads yet.
+            // Routes through ``window.molbuilder.projects.readRange``
+            // (the public projects.* surface) so abort signals,
+            // uniform ``{ok, ...}`` envelopes, and any future
+            // transport-layer middleware (caching, retry, telemetry)
+            // are inherited automatically.  Pre-#189 (2026-06-02)
+            // this called ``fetch`` directly and inlined its own
+            // error wrapper -- duplicate logic that drifted from the
+            // sidebar's projects.api wrapper.
+            //
+            // Fallback path: if the runtime registry hasn't published
+            // projects yet (a result-tab inspector mounted before
+            // molbuilder-runtime.js finished), we keep a thin raw
+            // ``fetch`` fallback so the inspector still renders.  This
+            // is a belt-and-braces defence for the mount ordering;
+            // /results in production always has the registry up
+            // before any inspector mounts.
 
             function _fetchRange(offset, maxBytes) {
+                const proj = window.molbuilder
+                          && window.molbuilder.projects;
+                if (proj && typeof proj.readRange === "function") {
+                    return proj.readRange(file, offset, maxBytes);
+                }
                 const url = "/api/files/read_range?path="
                           + encodeURIComponent(file)
                           + "&offset="    + encodeURIComponent(offset)

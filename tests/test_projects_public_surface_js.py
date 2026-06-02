@@ -105,6 +105,7 @@ class TestSurfacePresence:
             const p = state.projects;
             console.log(JSON.stringify({
                 readFile:                   typeof p.readFile,
+                readRange:                  typeof p.readRange,
                 createProject:              typeof p.createProject,
                 mkdir:                      typeof p.mkdir,
                 deleteEntry:                typeof p.deleteEntry,
@@ -115,7 +116,10 @@ class TestSurfacePresence:
                 onProjectsRootResolved:     typeof p.onProjectsRootResolved,
             }));
         ''')
-        for fn in ("readFile", "createProject", "mkdir",
+        # readRange was added in #189 (2026-06-02) so the source
+        # inspector (and any future range-aware viewer) goes through
+        # the uniform envelope instead of raw fetch.
+        for fn in ("readFile", "readRange", "createProject", "mkdir",
                    "deleteEntry", "rename", "upload", "setShared",
                    "navigateTo", "onProjectsRootResolved"):
             assert out[fn] == "function", f"missing public method: {fn}"
@@ -161,6 +165,137 @@ class TestReadFile:
             console.log(JSON.stringify(r));
         ''')
         assert out == {"ok": False, "error": "no such file"}
+
+
+# ----- readRange (#189, 2026-06-02) ------------------------------- #
+
+
+class TestReadRange:
+    """The v2 paginated source inspector goes through
+    ``projects.readRange`` instead of raw ``fetch`` on
+    ``/api/files/read_range``.  These tests pin the wrapper's
+    URL composition, envelope passthrough, and abort plumbing so
+    a future refactor can't quietly drop one of them."""
+
+    def test_default_offset_and_max_bytes_omitted_from_url(self):
+        """When ``offset`` and ``maxBytes`` are undefined, the wrapper
+        emits the bare ``?path=...`` URL and lets the server apply
+        its default 256 KB window starting at byte 0."""
+        out = _run_node('''
+            let capturedUrl = null;
+            global.fetch = async (url) => {
+                capturedUrl = url;
+                return {
+                    ok: true, status: 200,
+                    json: async () => ({
+                        ok: true, path: "/p/big.log", offset: 0,
+                        length: 262144, file_size: 1000000,
+                        mtime: 42, text: "first chunk", eof: false,
+                    }),
+                };
+            };
+            const r = await state.projects.readRange("/p/big.log");
+            console.log(JSON.stringify({envelope: r, url: capturedUrl}));
+        ''')
+        assert out["envelope"]["ok"] is True
+        assert out["envelope"]["length"] == 262144
+        assert "/api/files/read_range" in out["url"]
+        assert "%2Fp%2Fbig.log" in out["url"]
+        # No offset / max_bytes params when they weren't passed.
+        assert "offset=" not in out["url"]
+        assert "max_bytes=" not in out["url"]
+
+    def test_explicit_offset_and_max_bytes_in_url(self):
+        out = _run_node('''
+            let capturedUrl = null;
+            global.fetch = async (url) => {
+                capturedUrl = url;
+                return {
+                    ok: true, status: 200,
+                    json: async () => ({
+                        ok: true, path: "/p/big.log", offset: 524288,
+                        length: 262144, file_size: 1000000,
+                        mtime: 42, text: "second chunk", eof: false,
+                    }),
+                };
+            };
+            const r = await state.projects.readRange(
+                "/p/big.log", 524288, 262144);
+            console.log(JSON.stringify({envelope: r, url: capturedUrl}));
+        ''')
+        assert out["envelope"]["offset"] == 524288
+        assert "offset=524288" in out["url"]
+        assert "max_bytes=262144" in out["url"]
+
+    def test_negative_offset_for_tail_read(self):
+        """``offset = -N`` reads the last N bytes; URL-encoding must
+        preserve the minus sign (encodeURIComponent leaves ``-``
+        alone but the wrapper still has to pass the raw value)."""
+        out = _run_node('''
+            let capturedUrl = null;
+            global.fetch = async (url) => {
+                capturedUrl = url;
+                return {
+                    ok: true, status: 200,
+                    json: async () => ({
+                        ok: true, path: "/p/big.log", offset: 737856,
+                        length: 262144, file_size: 1000000,
+                        mtime: 42, text: "tail chunk", eof: true,
+                    }),
+                };
+            };
+            await state.projects.readRange("/p/big.log", -262144, 262144);
+            console.log(JSON.stringify({url: capturedUrl}));
+        ''')
+        assert "offset=-262144" in out["url"]
+
+    def test_server_error_envelope_passes_through(self):
+        out = _run_node('''
+            global.fetch = async () => ({
+                ok: false, status: 400,
+                json: async () => ({
+                    ok: false,
+                    error: "offset past end of file",
+                }),
+            });
+            const r = await state.projects.readRange(
+                "/p/small.txt", 999999);
+            console.log(JSON.stringify(r));
+        ''')
+        assert out == {"ok": False, "error": "offset past end of file"}
+
+    def test_network_drop_returns_uniform_envelope(self):
+        """Same shape as every other projects.* wrapper -- network
+        drop must NOT throw."""
+        out = _run_node('''
+            global.fetch = async () => {
+                throw new TypeError("Failed to fetch");
+            };
+            const r = await state.projects.readRange("/p/x.log");
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["ok"] is False
+        assert "network error" in out["error"]
+
+    def test_abort_signal_threads_into_fetch(self):
+        out = _run_node('''
+            let capturedSignal = null;
+            global.fetch = async (url, init) => {
+                capturedSignal = init && init.signal;
+                return {
+                    ok: true, status: 200,
+                    json: async () => ({ok: true, text: "x"}),
+                };
+            };
+            const ac = new AbortController();
+            await state.projects.readRange(
+                "/p/x.log", 0, 1024, {signal: ac.signal});
+            console.log(JSON.stringify({
+                signal_present: capturedSignal !== null
+                              && capturedSignal !== undefined,
+            }));
+        ''')
+        assert out["signal_present"] is True
 
 
 # ----- createProject / mkdir / upload: refresh on success --------- #

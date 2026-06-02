@@ -105,6 +105,29 @@ export async function apiRead(path, opts) {
   );
 }
 
+/** Read a byte window from ``path`` at ``offset`` (default 0) with a
+ *  cap of ``maxBytes`` (server default 256 KB; hard ceiling 16 MB).
+ *  Negative ``offset`` reads from EOF (``offset = -N`` returns the
+ *  last N bytes, clamped to file size).  Server contract:
+ *  ``{ok, path, offset, length, file_size, mtime, text, eof}`` on
+ *  success; ``{ok:false, error}`` on bounds / picker-root / non-UTF8
+ *  failure.  Powers the v2 paginated source inspector (task #119,
+ *  2026-06-02); promoted here in #189 so the inspector goes through
+ *  the uniform envelope instead of raw ``fetch``.  ``opts.signal``
+ *  honoured for abort.
+ */
+export async function apiReadRange(path, offset, maxBytes, opts) {
+  opts = opts || {};
+  let url = "/api/files/read_range?path=" + encodeURIComponent(path);
+  if (offset !== undefined && offset !== null) {
+    url += "&offset=" + encodeURIComponent(offset);
+  }
+  if (maxBytes !== undefined && maxBytes !== null) {
+    url += "&max_bytes=" + encodeURIComponent(maxBytes);
+  }
+  return await _fetchEnvelope(url, { signal: opts.signal });
+}
+
 export async function apiMkdir(parent, name, opts) {
   opts = opts || {};
   return await _fetchEnvelope("/api/files/mkdir", {

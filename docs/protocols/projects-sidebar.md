@@ -316,7 +316,7 @@ and stabilise as the design finalises.
 |---|---|---|---|
 | **C1** | **Read the cursor + sidebar state** | Where am I (`getCurrentDir`).  What's selected (`getCurrentFile`).  What's the resolved root (`getProjectsRoot`).  Am I at the root (`atRoot`).  Path display helper (`relativeToProjects`).  Is a lock held (`isLocked`, `getLockReason`). | Synchronous; no network.  All cached in browser memory. |
 | **C2** | **Subscribe to state changes** | Cursor changes (`onChange`).  Lock changes (`onLockChange`).  Connection / root resolution (`onProjectsRootResolved` or via `runtime.whenReady`). | No network on subscribe; events fire when local state updates. |
-| **C3** | **Read file content** | Text of the currently-selected file (`readCurrentFile`).  Text of any file by path (`readFile`).  Future: streamed binary download (`downloadFile`). | Network per call.  Text is size-capped; binary downloads stream. |
+| **C3** | **Read file content** | Text of the currently-selected file (`readCurrentFile`).  Text of any file by path (`readFile`).  A byte window of a file at an absolute or from-EOF offset (`readRange`).  Future: streamed binary download (`downloadFile`). | Network per call.  Text is size-capped; range reads default 256 KB (16 MB cap); binary downloads stream. |
 | **C4** | **Write file content** | Write to an exact path (`writeFile`).  Write into current dir (`saveToWorkspace`).  Both support `expected_mtime` for concurrent-edit detection (409 on conflict). | Network per call.  Atomic on backend (temp + rename); browser sees success or no-op. |
 | **C5** | **Filesystem layout operations** | Create a project skeleton (`createProject`).  Create a subdirectory (`mkdir`).  Delete an entry (`deleteEntry`, with `recursive` flag for non-empty dirs).  Rename an entry (`rename`). | Network per call.  All envelope-returning. |
 | **C6** | **Local ↔ remote transfer** | Upload from laptop to remote workspace (`upload`, multipart).  Download from remote to laptop (`downloadFile`, browser-driven save).  Refresh the sidebar's view (`refresh`). | Network per call.  Upload + download may be slow; both must be cancellable.  Browser File API on the user side. |
@@ -407,6 +407,21 @@ type ReadResult = ReadOk | ReadErr | null;
 readCurrentFile(opts?: AsyncOpts): Promise<ReadResult>
 readFile(path: string, opts?: AsyncOpts):
     Promise<ReadOk | ReadErr>
+
+// Read a byte window of a file.  ``offset`` defaults to 0; negative
+// values read from EOF (``offset = -N`` returns the last N bytes,
+// clamped to file size).  ``maxBytes`` defaults to the server's
+// 256 KB; explicit values are accepted up to the 16 MB ceiling.
+// Powers the v2 paginated source inspector for multi-MB logs;
+// promoted to public surface in #189 (2026-06-02) so any future
+// range-aware viewer reuses the uniform envelope.
+readRange(path: string,
+          offset?: number,
+          maxBytes?: number,
+          opts?: AsyncOpts):
+    Promise<{ ok: true; path: string; offset: number; length: number;
+              file_size: number; mtime: number; text: string;
+              eof: boolean } | ReadErr>
 
 // Browser-driven save dialog; resolves when download is INITIATED
 // (not when complete — browser owns the rest).

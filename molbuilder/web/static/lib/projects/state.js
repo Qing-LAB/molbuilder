@@ -20,6 +20,7 @@ import {
   apiDelete,
   apiMkdir,
   apiRead,
+  apiReadRange,
   apiRename,
   apiUpload,
   apiWrite,
@@ -354,6 +355,24 @@ async function readFile(path, opts) {
   return await apiRead(path, opts);
 }
 
+/** Read a byte window from ``path``.  ``offset`` defaults to 0;
+ *  negative values read from EOF (``offset = -N`` -> last N bytes,
+ *  clamped to file size).  ``maxBytes`` defaults to the server's
+ *  256 KB; pass an explicit value up to 16 MB if you need a larger
+ *  chunk.  Returns ``{ok, path, offset, length, file_size, mtime,
+ *  text, eof}`` on success or ``{ok:false, error}`` on failure --
+ *  same envelope shape as every other projects.* read.
+ *
+ *  Used by the v2 paginated source inspector so large logs page in
+ *  chunks instead of crashing the 16 MB single-shot read.  Promoted
+ *  to the public surface in #189 (2026-06-02) so other inspectors
+ *  (a future log-tail viewer, etc.) can use the same range mechanic
+ *  WITHOUT reaching into ./api.js directly.  ``opts.signal``
+ *  honoured. */
+async function readRange(path, offset, maxBytes, opts) {
+  return await apiReadRange(path, offset, maxBytes, opts);
+}
+
 /** Create a new project directory at the projects root.  On
  *  success refreshes the projects listing so the new directory
  *  appears in the sidebar without a manual reload.
@@ -587,6 +606,7 @@ export const projects = {
   // directly.  Each method auto-fires a sidebar listing refresh on
   // success so the tree stays in sync.
   readFile,
+  readRange,
   createProject,
   mkdir,
   deleteEntry,
