@@ -442,7 +442,19 @@
             aborter = new AbortController();
             const signal = aborter.signal;
             const url = LIST_ENDPOINT + "?path=" + encodeURIComponent(dir);
-            fetch(url, { credentials: "same-origin", signal })
+            // ``cache: "no-store"`` is the load-bearing bit that fixes
+            // the "user clicks Results, sees stale dropdown" bug.
+            // Without it the browser HTTP cache returns the previous
+            // /api/files/list response (since the URL is identical to
+            // the prior scan's), so newly-generated result files don't
+            // appear until the user navigates the sidebar out + back
+            // in (which forces a different URL).  The directory
+            // listing is cheap + always live; no caching needed.
+            fetch(url, {
+                credentials: "same-origin",
+                signal:      signal,
+                cache:       "no-store",
+            })
                 .then(resp => resp.ok ? resp.json() : null)
                 .then(body => {
                     if (disposed || signal.aborted) return;
@@ -596,6 +608,86 @@
 
         selEl.addEventListener("change", _onSelectChange);
 
+        // -- pageshow / visibilitychange: force-rescan on tab re-entry -- //
+        //
+        // The picker normally rescans only when the directory CHANGES
+        // (gated on ``lastScannedDir`` in _onSelectionChange).  That
+        // misses two real-world re-entry scenarios:
+        //
+        //   1. bfcache restore.  Browsers (Chromium + Firefox by
+        //      default) cache the whole page when the user navigates
+        //      away.  Hitting the Results tab via back/forward, or
+        //      via the in-app tab link on some routes, restores the
+        //      cached DOM + JS state -- no DCL, no module re-init,
+        //      no fresh onChange fire.  ``cachedResults`` from the
+        //      previous visit stay stale, so a new .out file
+        //      generated while the user was on /modify never appears.
+        //
+        //   2. Same-dir refresh after an external change.  The user
+        //      generates a new result file in another tab (or another
+        //      process on the same projects dir).  Returning to
+        //      /results, sessionStorage's dir is unchanged, so the
+        //      "if (dir !== lastScannedDir)" guard suppresses the
+        //      rescan.  Result: the user sees a stale dropdown.
+        //
+        // Hooking ``pageshow`` covers both (the event fires on every
+        // page show -- initial load AND bfcache restore -- with
+        // ``event.persisted`` distinguishing them).  We also re-trigger
+        // on ``visibilitychange``->visible so a backgrounded tab
+        // refreshes when the user re-focuses it; same defense.
+        //
+        // Force-rescan policy: reset ``lastScannedDir`` to null + read
+        // the current sessionStorage state + call _scan directly.
+        // We deliberately bypass _onSelectionChange's "same-dir"
+        // branch (which would no-op) -- the whole point is that an
+        // unchanged dir should still get a fresh listing.
+
+        function _forceRescan() {
+            if (disposed) return;
+            if (!proj || typeof proj.onChange !== "function") return;
+            const cur = (typeof proj.getCurrentDir === "function")
+                ? proj.getCurrentDir()
+                : (root.sessionStorage
+                    ? root.sessionStorage.getItem("molbuilder.current_dir")
+                    : "");
+            const curFile = (typeof proj.getCurrentFile === "function")
+                ? proj.getCurrentFile()
+                : (root.sessionStorage
+                    ? root.sessionStorage.getItem("molbuilder.current_file")
+                    : "");
+            if (!cur) return;
+            // Force the dir-change branch to re-fire even when the
+            // sessionStorage dir matches lastScannedDir.
+            lastScannedDir = null;
+            lastSelectedFile = null;
+            _onSelectionChange({ dir: cur, file: curFile || "" });
+        }
+
+        function _onPageShow(_evt) {
+            // ``event.persisted`` is true for bfcache restore, false
+            // for a fresh navigation.  We force-rescan in BOTH cases
+            // -- the fresh-navigation case is already handled by the
+            // initial onChange fire, so the second invocation is a
+            // cheap no-op for empty cachedResults; the bfcache case
+            // is the load-bearing one.
+            _forceRescan();
+        }
+
+        function _onVisibilityChange(_evt) {
+            if (root.document
+                && root.document.visibilityState === "visible") {
+                _forceRescan();
+            }
+        }
+
+        if (root.addEventListener) {
+            root.addEventListener("pageshow", _onPageShow);
+        }
+        if (root.document && root.document.addEventListener) {
+            root.document.addEventListener(
+                "visibilitychange", _onVisibilityChange);
+        }
+
         // -- lock-state subscriber (disable while Save in flight) //
         let unsubscribeLock = null;
         if (typeof proj.onLockChange === "function") {
@@ -623,6 +715,18 @@
                 catch (_) { /* ignore */ }
                 try { if (unsubscribeLock) unsubscribeLock(); }
                 catch (_) { /* ignore */ }
+                try {
+                    if (root.removeEventListener) {
+                        root.removeEventListener("pageshow", _onPageShow);
+                    }
+                } catch (_) { /* ignore */ }
+                try {
+                    if (root.document
+                        && root.document.removeEventListener) {
+                        root.document.removeEventListener(
+                            "visibilitychange", _onVisibilityChange);
+                    }
+                } catch (_) { /* ignore */ }
             },
         };
     }
