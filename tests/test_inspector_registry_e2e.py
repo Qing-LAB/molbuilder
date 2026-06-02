@@ -198,6 +198,212 @@ class TestRegistryContract:
 
 
 # --------------------------------------------------------------------- #
+#  /results file-picker contract (2026-06-01)                           #
+#                                                                       #
+#  The tab-level result picker at ``lib/results/file-picker.js`` reads #
+#  three new fields off the inspector contract:                         #
+#                                                                       #
+#    * ``isResult: bool``           -- whether the inspector's matched #
+#                                       files should appear in the     #
+#                                       picker dropdown.                #
+#    * ``pickResult(file)``         -- registry helper that returns    #
+#                                       the matched inspector iff its  #
+#                                       ``isResult`` is true (else     #
+#                                       null).                          #
+#    * ``resultCategory(file)``     -- per-file engine-flavoured       #
+#                                       group label rendered as a      #
+#                                       ``<optgroup>`` header.          #
+#                                                                       #
+#  These tests pin the contract against the LIVE registered inspectors #
+#  so a regression that drops ``isResult`` (silently removing a file   #
+#  type from the picker) or mistypes a category label fails loudly.    #
+# --------------------------------------------------------------------- #
+
+
+class TestPickerContract:
+    """The /results file-picker reads isResult + resultCategory off
+    the live inspectors.  These tests pin the contract directly
+    against the real registered inspectors (not mocks)."""
+
+    # ---- isResult flag ------------------------------------------- #
+
+    def test_result_inspectors_opt_in(self, page, flask_server):
+        """trajectory + spectra + structure declare isResult:true."""
+        _open_results(page, flask_server)
+        flags = page.evaluate("""() => {
+            const list = window.molbuilder.inspectors.list();
+            const out = {};
+            for (const i of list) out[i.name] = i.isResult;
+            return out;
+        }""")
+        assert flags["trajectory"] is True, (
+            "trajectory must be isResult:true (renders .out / .molwatch.log "
+            "which are canonical results)"
+        )
+        assert flags["spectra"] is True, (
+            "spectra must be isResult:true (renders .spectra.json results)"
+        )
+        assert flags["structure"] is True, (
+            "structure must be isResult:true (renders .xyz/.pdb results)"
+        )
+
+    def test_source_inspector_opts_out(self, page, flask_server):
+        """source is a catch-all viewer (matches .fdf/.py/.log/.json/
+        .txt/.md) and MUST stay out of the picker -- otherwise the
+        dropdown floods with input files + READMEs."""
+        _open_results(page, flask_server)
+        is_result = page.evaluate(
+            "() => window.molbuilder.inspectors.list()"
+            "  .find(i => i.name === 'source').isResult"
+        )
+        assert is_result is False, (
+            "source must be isResult:false -- it matches generic text "
+            "types and would flood the picker with non-result files"
+        )
+
+    # ---- pickResult ---------------------------------------------- #
+
+    def test_pickResult_returns_trajectory_for_out(self, page, flask_server):
+        _open_results(page, flask_server)
+        name = page.evaluate(
+            "() => window.molbuilder.inspectors"
+            ".pickResult('/projects/foo/bar.out').name"
+        )
+        assert name == "trajectory"
+
+    def test_pickResult_returns_trajectory_for_molwatch_log(
+            self, page, flask_server):
+        _open_results(page, flask_server)
+        name = page.evaluate(
+            "() => window.molbuilder.inspectors"
+            ".pickResult('/projects/foo/run.molwatch.log').name"
+        )
+        assert name == "trajectory"
+
+    def test_pickResult_returns_spectra_for_spectra_json(
+            self, page, flask_server):
+        _open_results(page, flask_server)
+        name = page.evaluate(
+            "() => window.molbuilder.inspectors"
+            ".pickResult('/projects/foo/raman.spectra.json').name"
+        )
+        assert name == "spectra"
+
+    def test_pickResult_returns_structure_for_xyz(self, page, flask_server):
+        _open_results(page, flask_server)
+        name = page.evaluate(
+            "() => window.molbuilder.inspectors"
+            ".pickResult('/projects/foo/optimized.xyz').name"
+        )
+        assert name == "structure"
+
+    def test_pickResult_returns_structure_for_pdb(self, page, flask_server):
+        _open_results(page, flask_server)
+        name = page.evaluate(
+            "() => window.molbuilder.inspectors"
+            ".pickResult('/projects/foo/protein.pdb').name"
+        )
+        assert name == "structure"
+
+    def test_pickResult_returns_null_for_source_only_extension(
+            self, page, flask_server):
+        """source matches .fdf but is isResult:false, so pickResult
+        MUST return null -- the picker dropdown does not show .fdf
+        files even though `pick()` would route them to source."""
+        _open_results(page, flask_server)
+        out = page.evaluate(
+            "() => window.molbuilder.inspectors"
+            ".pickResult('/projects/foo/inputs/job.fdf')"
+        )
+        assert out is None, (
+            "pickResult must return null for a source-only match -- "
+            "the .fdf is an input file, not a result, and the picker "
+            "filter relies on this"
+        )
+
+    def test_pickResult_returns_null_for_plain_log(self, page, flask_server):
+        """source matches .log (the plain extension), and that's not
+        a result -- the picker must skip it."""
+        _open_results(page, flask_server)
+        out = page.evaluate(
+            "() => window.molbuilder.inspectors"
+            ".pickResult('/projects/foo/build.log')"
+        )
+        assert out is None
+
+    def test_pickResult_returns_null_for_unknown_extension(
+            self, page, flask_server):
+        _open_results(page, flask_server)
+        out = page.evaluate(
+            "() => window.molbuilder.inspectors"
+            ".pickResult('/projects/foo/data.xyzzy')"
+        )
+        assert out is None
+
+    def test_pickResult_returns_null_for_empty_path(self, page, flask_server):
+        _open_results(page, flask_server)
+        out = page.evaluate(
+            "() => window.molbuilder.inspectors.pickResult('')"
+        )
+        assert out is None
+
+    # ---- resultCategory labels ----------------------------------- #
+    #
+    # Engine-flavoured labels surface as <optgroup> headers in the
+    # picker dropdown.  Pin the exact spellings: a typo silently
+    # changes the user-facing UI in a way no extension-routing test
+    # would catch.
+
+    def test_resultCategory_out_is_siesta_optimization(
+            self, page, flask_server):
+        _open_results(page, flask_server)
+        label = page.evaluate(
+            "() => window.molbuilder.inspectors"
+            ".pickResult('/projects/foo/bar.out')"
+            ".resultCategory('/projects/foo/bar.out')"
+        )
+        assert label == "SIESTA optimization"
+
+    def test_resultCategory_molwatch_log_is_pyscf_optimization(
+            self, page, flask_server):
+        _open_results(page, flask_server)
+        label = page.evaluate(
+            "() => window.molbuilder.inspectors"
+            ".pickResult('/projects/foo/run.molwatch.log')"
+            ".resultCategory('/projects/foo/run.molwatch.log')"
+        )
+        assert label == "PySCF optimization"
+
+    def test_resultCategory_spectra_json_is_pyscf_spectrum(
+            self, page, flask_server):
+        _open_results(page, flask_server)
+        label = page.evaluate(
+            "() => window.molbuilder.inspectors"
+            ".pickResult('/projects/foo/r.spectra.json')"
+            ".resultCategory('/projects/foo/r.spectra.json')"
+        )
+        assert label == "PySCF spectrum"
+
+    def test_resultCategory_xyz_is_structure(self, page, flask_server):
+        _open_results(page, flask_server)
+        label = page.evaluate(
+            "() => window.molbuilder.inspectors"
+            ".pickResult('/projects/foo/q.xyz')"
+            ".resultCategory('/projects/foo/q.xyz')"
+        )
+        assert label == "Structure"
+
+    def test_resultCategory_pdb_is_structure(self, page, flask_server):
+        _open_results(page, flask_server)
+        label = page.evaluate(
+            "() => window.molbuilder.inspectors"
+            ".pickResult('/projects/foo/p.pdb')"
+            ".resultCategory('/projects/foo/p.pdb')"
+        )
+        assert label == "Structure"
+
+
+# --------------------------------------------------------------------- #
 #  Mount / dispose lifecycle                                            #
 # --------------------------------------------------------------------- #
 
