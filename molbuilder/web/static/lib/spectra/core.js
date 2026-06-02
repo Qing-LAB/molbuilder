@@ -2197,6 +2197,38 @@
         loadByPath();
     }
 
+    // ---- pageshow / visibilitychange: force-refresh on tab re-entry //
+    //
+    // Same shape as the /results file-picker (#192) + trajectory
+    // inspector (#194): a bfcache restore or tab re-focus must
+    // re-fetch the currently-loaded spectra file so a fresh result
+    // generated in another tab actually appears.  Without these
+    // handlers the user sees the cached snapshot from the previous
+    // visit until they manually re-pick the file in the dropdown
+    // -- the exact UX confusion #192 was filed for.
+    //
+    // Guard on ``state.results !== null`` so a never-loaded inspector
+    // doesn't fire spurious /api/spectra/load on every visibility
+    // event.  ``loadByPath()`` is path-driven (reads from
+    // ``els.watchPath.value``), so we don't need to track the path
+    // separately -- it's already pinned in the DOM and survives
+    // bfcache.
+    function _onPageShow(_evt) {
+        if (state.results !== null && els.watchPath
+            && els.watchPath.value) {
+            loadByPath();
+        }
+    }
+    function _onVisibilityChange(_evt) {
+        if (document.visibilityState === "visible"
+            && state.results !== null
+            && els.watchPath && els.watchPath.value) {
+            loadByPath();
+        }
+    }
+    _on(window,   "pageshow",          _onPageShow);
+    _on(document, "visibilitychange",  _onVisibilityChange);
+
     // The handle the caller uses to dispose the mounted inspector.
     // /results' registry calls dispose() before mounting the next
     // inspector; /spectra's bootstrap holds it for completeness

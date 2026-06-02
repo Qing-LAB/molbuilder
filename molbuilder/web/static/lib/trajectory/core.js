@@ -1668,6 +1668,39 @@
     };
     _on(window, "resize", _onResize, { passive: true });
 
+    // ---- pageshow / visibilitychange: force-refresh on tab re-entry  //
+    //
+    // The inspector polls every POLL_MS (~15 s) for mtime drift, but
+    // setInterval timers are PAUSED while the page sits in the
+    // browser's bfcache (Chromium + Firefox default).  After a back/
+    // forward restore the next interval fires up to POLL_MS LATER --
+    // so a user who generated more frames in another tab can be
+    // staring at the old trajectory for up to 15 s before the poll
+    // catches up.  Same shape as the 2026-06-02 /results file-picker
+    // bug (#192): the polling mechanism keeps state fresh AT STEADY
+    // STATE but doesn't react to the "user returned to this tab"
+    // event.
+    //
+    // Fix mirrors the file-picker pattern: hook pageshow (covers
+    // bfcache restore + initial load) and visibilitychange ->
+    // visible (covers backgrounded-tab re-focus) and call
+    // ``pollOnce()`` immediately so an mtime drift surfaces within
+    // one network round-trip of the user being back on the tab.
+    // ``pollOnce`` is a no-op when no trajectory is loaded
+    // (``state.mtime === null``), so wiring these handlers at mount
+    // time is safe even before opts.file resolves.
+    function _onPageShow(_evt) {
+        if (state.mtime !== null) pollOnce();
+    }
+    function _onVisibilityChange(_evt) {
+        if (document.visibilityState === "visible"
+            && state.mtime !== null) {
+            pollOnce();
+        }
+    }
+    _on(window,   "pageshow",          _onPageShow);
+    _on(document, "visibilitychange",  _onVisibilityChange);
+
     // ``WATCH_PATH_KEY`` sessionStorage persistence (Build ↔ Watch
     // handoff for the legacy /watch loader bar) was removed
     // 2026-05-19 along with /watch.  On /results, file selection is
