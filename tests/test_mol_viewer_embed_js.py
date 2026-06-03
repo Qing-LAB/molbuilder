@@ -69,7 +69,7 @@ class TestNormaliseOpts:
         assert out == sorted([
             "xyz", "pdb", "style", "axes", "cell",
             "labels", "arrows", "pick", "lattice",
-            "overlays",
+            "overlays", "knobs",
         ])
 
     def test_xyz_string_passes_through(self):

@@ -129,6 +129,7 @@
             pick:       _normalisePick(opts.pick),
             lattice:    _normaliseLattice(opts.lattice),
             overlays:   _normaliseOverlays(opts.overlays),
+            knobs:      _normaliseKnobs(opts.knobs),
         };
     }
 
@@ -294,6 +295,50 @@
         };
     }
 
+    /**
+     * Normalise a KnobBarOpts object per § 3.10.  Returns the
+     * canonical internal form used by the knob-bar builder.
+     * Edge cases pinned per § 3.10:
+     *   - true / undefined → all default knobs visible.
+     *   - false            → bar hidden entirely (null return).
+     *   - object           → per-knob true / false / "auto"; missing
+     *                        keys default to true.
+     *   - labelsFormats: [] → format selector empty (and bar warns
+     *                        via dispatch caller).
+     */
+    function _normaliseKnobs(k) {
+        if (k === false) return null;
+        const opts = (k && typeof k === "object" && k !== true) ? k : {};
+        const lf  = Array.isArray(opts.labelsFormats)
+                    ? opts.labelsFormats
+                          .filter((s) => s === "index" || s === "name"
+                                       || s === "element")
+                    : ["index", "name", "element"];
+        // De-duplicate, preserve order.
+        const seenLf = new Set();
+        const lfClean = lf.filter((s) => {
+            if (seenLf.has(s)) return false;
+            seenLf.add(s);
+            return true;
+        });
+        return {
+            style:      opts.style      !== false,
+            labels:     opts.labels     !== false,
+            axes:       opts.axes       !== false,
+            reset:      opts.reset      !== false,
+            screenshot: opts.screenshot !== false,
+            background: opts.background !== false,
+            export:     opts.export     !== false,
+            position:   opts.position === "bottom" ? "bottom" : "top",
+            compact:    opts.compact === true,
+            labelsFormats: lfClean,
+            backgroundPresets: Array.isArray(opts.backgroundPresets)
+                ? opts.backgroundPresets.slice()
+                : ["#ffffff", "#1c1c1c", "transparent"],
+            backgroundAllowCustom: opts.backgroundAllowCustom !== false,
+        };
+    }
+
     function _normaliseLattice(L) {
         if (!Array.isArray(L) || L.length !== 3) return null;
         for (let i = 0; i < 3; i++) {
@@ -369,12 +414,387 @@
             section.appendChild(header);
         }
 
+        // Standard knob bar per § 6.2 — built only when knobs is
+        // not explicitly disabled AND the card isn't in bare mode
+        // (bare hosts own their own chrome).  The knob bar element
+        // is created here so it sits between header and canvas in
+        // the DOM; click handlers wire to the handle methods in a
+        // second pass after _buildHandle finishes (§ 6.2 lifecycle).
+        let knobsEl = null;
+        const knobs = _normaliseKnobs(opts.knobs);
+        if (knobs && !bare) {
+            knobsEl = _buildKnobBarDOM(knobs);
+            section.appendChild(knobsEl);
+        }
+
         const canvas = document.createElement("div");
         canvas.className = CANVAS_CLASS;
         canvas.style.height = card.height || DEFAULT_HEIGHT;
         section.appendChild(canvas);
 
-        return { section, canvas, infoLineEl };
+        return { section, canvas, infoLineEl, knobsEl, knobs };
+    }
+
+    /* ------------------------------------------------------------ */
+    /*  Knob bar DOM (§ 6.2) — built before handle exists; wired    */
+    /*  in a second pass after _buildHandle completes               */
+    /* ------------------------------------------------------------ */
+
+    function _buildKnobBarDOM(knobs) {
+        const bar = document.createElement("div");
+        bar.className = "mol-viewer-knobs"
+                      + (knobs.compact ? " mol-viewer-knobs-compact" : "");
+        bar.setAttribute("role", "toolbar");
+        bar.setAttribute("aria-label", "Viewer controls");
+
+        // Style picker (HTML <select>; default rep options come
+        // from mol-style.js).
+        if (knobs.style) {
+            const sel = document.createElement("select");
+            sel.className = "mol-viewer-knob mol-viewer-knob-style";
+            sel.setAttribute("aria-label", "Representation style");
+            const reps = [
+                ["stick",          "Stick"],
+                ["ball-and-stick", "Ball & stick"],
+                ["sphere",         "Sphere"],
+                ["line",           "Line"],
+                ["cross",          "Cross"],
+                ["cartoon",        "Cartoon"],
+            ];
+            for (const [v, label] of reps) {
+                const opt = document.createElement("option");
+                opt.value = v;
+                opt.textContent = label;
+                sel.appendChild(opt);
+            }
+            bar.appendChild(sel);
+        }
+
+        // Labels popover (4 buttons: Index / Name / Element / Off).
+        if (knobs.labels) {
+            const det = document.createElement("details");
+            det.className = "mol-viewer-knob mol-viewer-knob-labels";
+            const sum = document.createElement("summary");
+            sum.textContent = "Labels";
+            det.appendChild(sum);
+            for (const fmt of knobs.labelsFormats) {
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.setAttribute("data-format", fmt);
+                btn.textContent = fmt === "index"
+                    ? "Index"
+                    : fmt === "name"
+                        ? "Name"
+                        : "Element";
+                det.appendChild(btn);
+            }
+            const off = document.createElement("button");
+            off.type = "button";
+            off.setAttribute("data-format", "off");
+            off.textContent = "Off";
+            det.appendChild(off);
+            bar.appendChild(det);
+        }
+
+        // Axes toggle button.
+        if (knobs.axes) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "mol-viewer-knob mol-viewer-knob-toggle";
+            btn.setAttribute("data-knob", "axes");
+            btn.setAttribute("aria-pressed", "false");
+            btn.textContent = "Axes";
+            bar.appendChild(btn);
+        }
+
+        // Reset view button.
+        if (knobs.reset) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "mol-viewer-knob";
+            btn.setAttribute("data-knob", "reset");
+            btn.textContent = "Reset";
+            bar.appendChild(btn);
+        }
+
+        // Screenshot button (Phase 5 wires the action).
+        if (knobs.screenshot) {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "mol-viewer-knob";
+            btn.setAttribute("data-knob", "screenshot");
+            btn.textContent = "PNG";
+            btn.title = "Save current view as PNG";
+            bar.appendChild(btn);
+        }
+
+        // Background popover (Phase 5 wires the action; DOM exists
+        // now so test selectors are stable).
+        if (knobs.background) {
+            const det = document.createElement("details");
+            det.className = "mol-viewer-knob mol-viewer-knob-background";
+            const sum = document.createElement("summary");
+            sum.textContent = "Background";
+            det.appendChild(sum);
+            for (const c of knobs.backgroundPresets) {
+                const btn = document.createElement("button");
+                btn.type = "button";
+                btn.setAttribute("data-color", c);
+                if (c !== "transparent") {
+                    btn.style.background = c;
+                    btn.setAttribute("aria-label", "Background " + c);
+                } else {
+                    btn.textContent = "·";
+                    btn.title = "Transparent";
+                }
+                det.appendChild(btn);
+            }
+            if (knobs.backgroundAllowCustom) {
+                const input = document.createElement("input");
+                input.type = "color";
+                input.setAttribute("data-knob", "background-custom");
+                input.setAttribute("aria-label", "Custom background color");
+                det.appendChild(input);
+            }
+            bar.appendChild(det);
+        }
+
+        // Export popover (DOM only; Phase 5 wires handlers).
+        if (knobs.export) {
+            const det = document.createElement("details");
+            det.className = "mol-viewer-knob mol-viewer-knob-export";
+            const sum = document.createElement("summary");
+            sum.textContent = "Export";
+            det.appendChild(sum);
+            // Submenu fieldsets per § 6 DOM.  Hidden until structure
+            // is loaded or animation is set — Phase 5 will toggle
+            // their display on getStructureText / animation presence.
+            for (const fieldset of _buildExportFieldsets()) {
+                det.appendChild(fieldset);
+            }
+            bar.appendChild(det);
+        }
+        return bar;
+    }
+
+    function _buildExportFieldsets() {
+        const sets = [];
+
+        const struct = document.createElement("fieldset");
+        struct.setAttribute("data-kind", "structure");
+        const sLeg = document.createElement("legend");
+        sLeg.textContent = "Structure";
+        struct.appendChild(sLeg);
+        for (const t of ["project", "download", "clipboard"]) {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.setAttribute("data-kind",   "structure");
+            b.setAttribute("data-target", t);
+            b.textContent = t === "project"
+                ? "Save to project"
+                : t === "download" ? "Download" : "Copy";
+            struct.appendChild(b);
+        }
+        sets.push(struct);
+
+        const img = document.createElement("fieldset");
+        img.setAttribute("data-kind", "image");
+        const iLeg = document.createElement("legend");
+        iLeg.textContent = "Image";
+        img.appendChild(iLeg);
+        for (const t of ["project", "download"]) {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.setAttribute("data-kind",   "image");
+            b.setAttribute("data-target", t);
+            b.textContent = t === "project" ? "Save PNG to project" : "Download PNG";
+            img.appendChild(b);
+        }
+        sets.push(img);
+
+        const anim = document.createElement("fieldset");
+        anim.setAttribute("data-kind", "animation");
+        const aLeg = document.createElement("legend");
+        aLeg.textContent = "Animation";
+        anim.appendChild(aLeg);
+        for (const f of ["webm", "gif"]) {
+            for (const t of ["project", "download"]) {
+                const b = document.createElement("button");
+                b.type = "button";
+                b.setAttribute("data-kind",   "animation");
+                b.setAttribute("data-format", f);
+                b.setAttribute("data-target", t);
+                b.textContent = (t === "project" ? "Save " : "Download ")
+                              + f.toUpperCase()
+                              + (t === "project" ? " to project" : "");
+                anim.appendChild(b);
+            }
+        }
+        sets.push(anim);
+        return sets;
+    }
+
+    /* ------------------------------------------------------------ */
+    /*  Knob bar wiring — called after handle is built              */
+    /* ------------------------------------------------------------ */
+
+    function _wireKnobBar(state, bar, knobs) {
+        const handle = state.handle;
+
+        // Style picker.
+        const styleSel = bar.querySelector(".mol-viewer-knob-style");
+        if (styleSel) {
+            styleSel.value = state.current.style.rep || "stick";
+            styleSel.addEventListener("change", () => {
+                handle.setStyle({ rep: styleSel.value });
+            });
+        }
+
+        // Labels popover — each format button sets labels with that
+        // format; "off" disables.  Per § 6.2 popover pattern: click
+        // an action button → fires AND closes the popover.
+        const labelsDet = bar.querySelector(".mol-viewer-knob-labels");
+        if (labelsDet) {
+            for (const btn of labelsDet.querySelectorAll("button[data-format]")) {
+                btn.addEventListener("click", () => {
+                    const fmt = btn.getAttribute("data-format");
+                    if (fmt === "off") {
+                        handle.setLabels(false);
+                    } else {
+                        handle.setLabels({ atoms: "all", format: fmt });
+                    }
+                    labelsDet.open = false;
+                });
+            }
+        }
+
+        // Axes toggle.
+        const axesBtn = bar.querySelector('[data-knob="axes"]');
+        if (axesBtn) {
+            const initOn = !!state.current.axes;
+            axesBtn.setAttribute("aria-pressed", initOn ? "true" : "false");
+            axesBtn.addEventListener("click", () => {
+                const nowOn = state.current.axes
+                            ? false : true;
+                handle.setAxes(nowOn);
+                axesBtn.setAttribute("aria-pressed", nowOn ? "true" : "false");
+            });
+        }
+
+        // Reset view.
+        const resetBtn = bar.querySelector('[data-knob="reset"]');
+        if (resetBtn) {
+            resetBtn.addEventListener("click", () => handle.refit());
+        }
+
+        // Background popover — preset swatches change canvas color;
+        // custom picker via <input type="color">.  Phase 2 wires
+        // the action via handle.setStyle({background}); Phase 5
+        // will integrate with save-to-project if requested.
+        const bgDet = bar.querySelector(".mol-viewer-knob-background");
+        if (bgDet) {
+            for (const btn of bgDet.querySelectorAll("button[data-color]")) {
+                btn.addEventListener("click", () => {
+                    const c = btn.getAttribute("data-color");
+                    handle.setStyle({
+                        rep:         state.current.style.rep,
+                        radiusScale: state.current.style.radiusScale,
+                        background:  c,
+                    });
+                    bgDet.open = false;
+                });
+            }
+            const customInput = bgDet.querySelector(
+                '[data-knob="background-custom"]');
+            if (customInput) {
+                customInput.addEventListener("input", () => {
+                    handle.setStyle({
+                        rep:         state.current.style.rep,
+                        radiusScale: state.current.style.radiusScale,
+                        background:  customInput.value,
+                    });
+                });
+            }
+        }
+
+        // Screenshot + Export — DOM exists; Phase 5 will wire the
+        // actions.  For Phase 2 we attach a stub so clicks don't
+        // produce console errors.
+        const ssBtn = bar.querySelector('[data-knob="screenshot"]');
+        if (ssBtn) {
+            ssBtn.addEventListener("click", () => {
+                // Phase 5 will implement screenshot.  For now, no-op
+                // (silently); avoid surfacing a misleading error.
+            });
+        }
+
+        // Popover mutual-exclusion: opening one closes the others
+        // (click/tap rule per § 3.10).
+        const allDetails = bar.querySelectorAll("details.mol-viewer-knob");
+        for (const d of allDetails) {
+            d.addEventListener("toggle", () => {
+                if (d.open) {
+                    for (const other of allDetails) {
+                        if (other !== d) other.open = false;
+                    }
+                }
+            });
+        }
+
+        // Keyboard shortcuts per § 3.10.  Listen on the card root so
+        // typing in <input>/<textarea>/[contenteditable] inside the
+        // card doesn't trigger.  When a popover is open, only its
+        // own key / Esc / arrow nav fire.
+        if (!state.cardEl) return;
+        state.cardEl.addEventListener("keydown", (e) => {
+            if (state.disposed) return;
+            const t = e.target;
+            const tag = t && t.tagName;
+            if (tag === "INPUT" || tag === "TEXTAREA"
+                || (t && t.isContentEditable)) return;
+
+            const openPopover = bar.querySelector("details.mol-viewer-knob[open]");
+            const key = (e.key || "").toLowerCase();
+
+            // Esc closes any popover.
+            if (e.key === "Escape" && openPopover) {
+                openPopover.open = false;
+                e.preventDefault();
+                return;
+            }
+
+            // While a popover is open, only the popover's own
+            // opening key (re-press to close) fires; cross-knob
+            // shortcuts are suppressed per § 3.10.
+            if (openPopover) {
+                const ownKey =
+                    (openPopover.classList.contains("mol-viewer-knob-labels")    && key === "l")
+                 || (openPopover.classList.contains("mol-viewer-knob-background") && key === "b")
+                 || (openPopover.classList.contains("mol-viewer-knob-export")    && key === "e");
+                if (ownKey) {
+                    openPopover.open = false;
+                    e.preventDefault();
+                }
+                return;
+            }
+
+            if (key === "r" && resetBtn) {
+                resetBtn.click(); e.preventDefault();
+            } else if (key === "l" && labelsDet) {
+                labelsDet.open = true; e.preventDefault();
+            } else if (key === "a" && axesBtn) {
+                axesBtn.click(); e.preventDefault();
+            } else if (key === "b" && bgDet) {
+                bgDet.open = true; e.preventDefault();
+            } else if (key === "e") {
+                const expDet = bar.querySelector(".mol-viewer-knob-export");
+                if (expDet) { expDet.open = true; e.preventDefault(); }
+            }
+        });
+        // Card must accept focus for keyboard handling to work.
+        if (!state.cardEl.hasAttribute("tabindex")) {
+            state.cardEl.setAttribute("tabindex", "-1");
+        }
     }
 
     /* ------------------------------------------------------------ */
@@ -1292,6 +1712,7 @@
             cardEl:        scaffold.section,
             canvasEl:      scaffold.canvas,
             infoLineEl:    scaffold.infoLineEl,
+            scaffold:      scaffold,   // retains knobsEl + knobs for late wiring
             cardOpts:      opts.card || {},
 
             // Retain caller's full opts so error dispatch + onReady
@@ -1400,6 +1821,14 @@
         // as its second argument per § 3.9) can find it without
         // capturing closures across the buildHandle boundary.
         state.handle = handle;
+        // Wire the standard knob bar's click handlers + keyboard
+        // shortcuts now that the handle exists.  Phase 5 will
+        // extend the export / background actions; Phase 2 covers
+        // the static-rendering knobs (style / labels / axes / reset).
+        if (state.scaffold && state.scaffold.knobsEl) {
+            _wireKnobBar(state, state.scaffold.knobsEl,
+                                state.scaffold.knobs);
+        }
         if (typeof opts.onReady === "function") {
             Promise.resolve().then(() => {
                 if (state.disposed) return;
@@ -1481,6 +1910,17 @@
             state.current.axes = next;
             _redrawAxes(state);
             state.viewer.render();
+            // Sync the knob bar's aria-pressed state per § 4.1
+            // invariant ("calling setLabels(true) programmatically
+            // also updates the labels knob's pressed state").
+            if (state.scaffold && state.scaffold.knobsEl) {
+                const btn = state.scaffold.knobsEl.querySelector(
+                    '[data-knob="axes"]');
+                if (btn) {
+                    btn.setAttribute("aria-pressed",
+                                     next ? "true" : "false");
+                }
+            }
         }
 
         function setCell(c) {
