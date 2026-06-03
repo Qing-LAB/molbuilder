@@ -1299,6 +1299,14 @@
             // plumbing.  Read-only after mount; do NOT mutate.
             userOpts:      opts,
 
+            // Test injection per § 9.3.  When supplied, replaces
+            // the global lookup (window.molbuilder.projects,
+            // navigator.clipboard, MediaRecorder, GIF) for this
+            // embed instance only.  Production passes nothing.
+            testInjection: (opts.testInjection
+                              && typeof opts.testInjection === "object")
+                              ? opts.testInjection : {},
+
             // Rate-limit table for _dispatchError per § 5.4.
             // Allocated lazily on first error.
             _errorLastFires: null,
@@ -1740,6 +1748,124 @@
             render:             render,
             dispose:            dispose,
             _viewer3dmol:       _viewer3dmol,
+            _test:              _buildTestHandle(state),
+        };
+    }
+
+    /* ------------------------------------------------------------ */
+    /*  Test affordance surface (§ 9.2)                              */
+    /* ------------------------------------------------------------ */
+
+    /**
+     * Per-instance test handle.  Stable contract for Playwright +
+     * unit tests; renames require updating § 9.2 + § 9.4 in the
+     * doc.  Read-only / no-mutate methods that wrap internal
+     * state inspection so tests don't need ``_viewer3dmol()``.
+     */
+    function _buildTestHandle(state) {
+        return {
+            getCanvasElement() {
+                return state.canvasEl
+                    ? state.canvasEl.querySelector("canvas") : null;
+            },
+            getOverlayShapeCount() {
+                // Sum of every removable shape array (overlay halos,
+                // pick halos, cell wireframe, arrow shafts).  Used
+                // by tests asserting "setOverlays added N atoms-worth
+                // of halos".
+                return state.overlayHaloShapes.length
+                     + state.pickShapes.length
+                     + state.cellShapes.length
+                     + state.arrowShapes.length;
+            },
+            getOverlayLabelCount() {
+                return state.overlayMarkerLabels.length
+                     + state.labelHandles.length
+                     + state.arrowLabels.length;
+            },
+            getKnobBarElement() {
+                return state.cardEl
+                    ? state.cardEl.querySelector(".mol-viewer-knobs")
+                    : null;
+            },
+            getFrameStripElement() {
+                return state.frameStripEl || null;
+            },
+            hasAnimationLoop() {
+                return !!(state._anim && (state._anim.rafId !== null
+                                       || state._anim.intervalId !== null));
+            },
+            getCurrentBackground() {
+                return state.current && state.current.style
+                    ? state.current.style.background : null;
+            },
+            getDependencyStatus() {
+                // Snapshot of soft / integration dep availability
+                // per § 2.5.  Used by tests asserting "axes were
+                // skipped because mol-axes.js is absent" without
+                // injection (§ 9.3 spec).
+                const mb = (root.molbuilder || {});
+                return {
+                    axes:          !!mb.axes,
+                    style:         !!mb.style,
+                    pick:          !!mb.pick,
+                    format:        !!mb.fmt,
+                    projects:      !!mb.projects,
+                    clipboard:     !!(root.navigator
+                                      && root.navigator.clipboard),
+                    mediaRecorder: typeof root.MediaRecorder !== "undefined",
+                    gif:           !!root.GIF
+                                      ? "loaded" : "absent",
+                };
+            },
+            triggerKnob(name, arg) {
+                // Phase 2 (knob bar) wires the actual click flows.
+                // Phase 7 stub: locate the knob element + delegate
+                // to a click() on the right sub-element.  Without
+                // the knob bar built, this is a no-op so tests can
+                // be written before Phase 2 lands.
+                const bar = this.getKnobBarElement();
+                if (!bar) return;
+                arg = arg || {};
+                let target = null;
+                if (name === "labels"     && arg.format) {
+                    target = bar.querySelector(
+                        ".mol-viewer-knob-labels [data-format=\""
+                          + arg.format + "\"]");
+                } else if (name === "background" && arg.color) {
+                    target = bar.querySelector(
+                        ".mol-viewer-knob-background [data-color=\""
+                          + arg.color + "\"]");
+                } else if (name === "export"  && arg.kind && arg.target) {
+                    let sel = ".mol-viewer-knob-export [data-kind=\""
+                            + arg.kind + "\"][data-target=\""
+                            + arg.target + "\"]";
+                    if (arg.formatExport) {
+                        sel += "[data-format=\"" + arg.formatExport + "\"]";
+                    }
+                    target = bar.querySelector(sel);
+                } else if (name === "style"      && arg.rep) {
+                    const sel = bar.querySelector(".mol-viewer-knob-style");
+                    if (sel) {
+                        sel.value = arg.rep;
+                        sel.dispatchEvent(new root.Event("change",
+                                                         { bubbles: true }));
+                    }
+                    return;
+                } else {
+                    // Plain button: axes / reset / screenshot, or
+                    // popover toggle (labels / background / export
+                    // without arg → click the summary).
+                    target = bar.querySelector(
+                        ".mol-viewer-knob[data-knob=\"" + name + "\"]"
+                    ) || bar.querySelector(
+                        ".mol-viewer-knob-" + name + " summary"
+                    );
+                }
+                if (target && typeof target.click === "function") {
+                    target.click();
+                }
+            },
         };
     }
 

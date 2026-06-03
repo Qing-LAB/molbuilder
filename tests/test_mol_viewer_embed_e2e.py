@@ -341,3 +341,155 @@ class TestCameraControl:
         """)
         assert out["rendererEq"], "wrong _viewer should be a no-op"
         assert out["versionEq"],  "wrong _version should be a no-op"
+
+
+# --------------------------------------------------------------------- #
+#  Tests — Test affordance surface (§ 9.2)                             #
+# --------------------------------------------------------------------- #
+
+
+class TestTestHandle:
+    """``handle._test`` is the stable surface for visual-invariant
+    test assertions — tests should NOT reach for ``_viewer3dmol``."""
+
+    def test_test_handle_has_expected_methods(
+            self, page, flask_server):
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        keys = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.width = "400px";
+                host.style.height = "300px";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    card: { bare: true, showInfoLine: false },
+                });
+                const keys = Object.keys(h._test || {}).sort();
+                h.dispose();
+                host.remove();
+                return keys;
+            }
+        """)
+        assert keys == [
+            "getCanvasElement",
+            "getCurrentBackground",
+            "getDependencyStatus",
+            "getFrameStripElement",
+            "getKnobBarElement",
+            "getOverlayLabelCount",
+            "getOverlayShapeCount",
+            "hasAnimationLoop",
+            "triggerKnob",
+        ]
+
+    def test_dependency_status_reports_loaded_modules(
+            self, page, flask_server):
+        """In production, the page boot loads mol-axes / mol-style /
+        mol-pick / mol-format before mol-viewer-embed.  ``axes``,
+        ``style``, ``pick``, ``format`` should all be true; the
+        integration deps (projects / clipboard / mediaRecorder /
+        gif) vary by environment."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        status = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.width = "400px";
+                host.style.height = "300px";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    card: { bare: true, showInfoLine: false },
+                });
+                const s = h._test.getDependencyStatus();
+                h.dispose();
+                host.remove();
+                return s;
+            }
+        """)
+        # mol-axes / mol-style / mol-format are loaded on the
+        # Build page boot.  (mol-pick is loaded only on /modify
+        # where it's actually used — its absence here demonstrates
+        # the soft-dep degradation pattern.)
+        assert status["axes"]   is True, "mol-axes.js should be loaded"
+        assert status["style"]  is True, "mol-style.js should be loaded"
+        assert status["format"] is True, "mol-format.js should be loaded"
+        # gif.js is lazy-loaded; should be "absent" until first
+        # animation export.
+        assert status["gif"] == "absent"
+        # Status shape includes every documented key (§ 9.2)
+        # even when the dep is absent.
+        for key in ("axes", "style", "pick", "format",
+                    "projects", "clipboard", "mediaRecorder", "gif"):
+            assert key in status, f"missing status key: {key}"
+
+    def test_overlay_shape_count_tracks_setOverlays(
+            self, page, flask_server):
+        """setOverlays with N halos should bump getOverlayShapeCount
+        by N (visual-invariant assertion without _viewer3dmol)."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.width = "400px";
+                host.style.height = "300px";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    card: { bare: true, showInfoLine: false },
+                });
+                const before = h._test.getOverlayShapeCount();
+                h.setOverlays({
+                    atoms: [{
+                        indices: [0, 1, 2],
+                        halo: { color: "red", radius: 0.6 },
+                    }],
+                });
+                const after = h._test.getOverlayShapeCount();
+                h.dispose();
+                host.remove();
+                return { before, after };
+            }
+        """)
+        # 3 atoms x 1 halo each = +3 over baseline (which has 0
+        # overlay halos but may have arrow shapes from other
+        # overlays; water has none, so before == 0).
+        assert out["after"] - out["before"] == 3, (
+            f"setOverlays should add 3 halo shapes; got "
+            f"{out['after'] - out['before']} (before={out['before']}, "
+            f"after={out['after']})"
+        )
+
+    def test_canvas_element_is_3dmol_canvas(
+            self, page, flask_server):
+        """getCanvasElement returns the 3Dmol-mounted <canvas>,
+        not the wrapper div."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(300)
+        kind = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.width = "400px";
+                host.style.height = "300px";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    card: { bare: true, showInfoLine: false },
+                });
+                const el = h._test.getCanvasElement();
+                const isCanvas = el && el.tagName === "CANVAS";
+                h.dispose();
+                host.remove();
+                return { isCanvas };
+            }
+        """)
+        assert kind["isCanvas"] is True
