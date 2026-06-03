@@ -661,3 +661,132 @@ class TestScreenshot:
         assert out["isDataUrl"] is True
         assert out["blobSize"]  > 0
         assert out["blobType"]  == "image/png"
+
+
+# --------------------------------------------------------------------- #
+#  Tests — Handle surface enumeration                                   #
+# --------------------------------------------------------------------- #
+#
+# These are the structural safety net per the 2026-06-03 code review:
+# every method documented in ``docs/protocols/embedded-viewer.md`` § 3.2
+# ViewerHandle MUST exist on the returned handle as a function (or for
+# ``_test`` an object).  Any drift between doc and code surfaces here
+# rather than waiting for a consumer site to discover it during
+# migration.  Adding a new documented method without exporting it from
+# the handle fails this test.
+
+
+class TestHandleSurface:
+    """Enumerates the documented handle surface per § 3.2."""
+
+    # The complete list, sorted, with the exact case from the doc.
+    # Update this list AND the doc in the same commit when the
+    # contract changes.
+    EXPECTED_METHODS = sorted([
+        # Data setters
+        "setStructure", "appendFrames",
+        # Style + overlays
+        "setStyle", "setAxes", "setCell", "setLabels",
+        "setArrows", "setPick", "setBackground",
+        "setOverlays", "setAtomStyle",
+        # Camera
+        "getCamera", "setCamera",
+        # Knob bar
+        "setKnobs",
+        # Animation control
+        "setAnimation", "playAnimation", "pauseAnimation",
+        "isAnimationPlaying", "setAnimationFrame", "getAnimationFrame",
+        # Read accessors
+        "getAtomCount", "getElements", "getPickedIndices",
+        "getStructureText",
+        # Output / export
+        "screenshot", "exportData",
+        "captureFrames", "exportAnimation",
+        # Lifecycle
+        "refit", "render", "dispose",
+        # Escape hatch + test surface
+        "_viewer3dmol",
+    ])
+    # _test is an object, not a function — checked separately.
+
+    def test_handle_has_exact_documented_method_set(
+            self, page, flask_server):
+        """The handle MUST export every documented method as a
+        function.  Catches D1-class drift: a documented method
+        being silently absent from the handle export."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.width = "300px";
+                host.style.height = "200px";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    card: { bare: true, showInfoLine: false },
+                });
+                const fns = [];
+                const nonFns = [];
+                const missing = [];
+                for (const key of Object.keys(h)) {
+                    if (typeof h[key] === "function") fns.push(key);
+                    else nonFns.push(key);
+                }
+                h.dispose();
+                host.remove();
+                return {
+                    fns: fns.sort(),
+                    nonFns: nonFns.sort(),
+                };
+            }
+        """)
+        # Every documented method must be present + callable.
+        missing = [m for m in self.EXPECTED_METHODS
+                   if m not in out["fns"]]
+        assert not missing, (
+            f"Handle is missing documented methods: {missing}\n"
+            f"Present functions: {out['fns']}\n"
+            f"This is doc-vs-code drift; either implement the "
+            f"missing methods or update § 3.2 of the contract."
+        )
+        # No extra functions outside the documented set
+        # (catches accidental exports of internal helpers).
+        extras = [m for m in out["fns"]
+                  if m not in self.EXPECTED_METHODS]
+        assert not extras, (
+            f"Handle exports undocumented functions: {extras}.\n"
+            f"Either remove them or document them in § 3.2."
+        )
+
+    def test_handle_has_test_affordance_object(
+            self, page, flask_server):
+        """The ``_test`` affordance object is documented in § 9.2
+        and required by the test suite; it's not a function."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.width = "300px";
+                host.style.height = "200px";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    card: { bare: true, showInfoLine: false },
+                });
+                const r = {
+                    hasTest:    !!h._test,
+                    isObject:   typeof h._test === "object",
+                    isFunction: typeof h._test === "function",
+                };
+                h.dispose();
+                host.remove();
+                return r;
+            }
+        """)
+        assert out["hasTest"]    is True
+        assert out["isObject"]   is True
+        assert out["isFunction"] is False

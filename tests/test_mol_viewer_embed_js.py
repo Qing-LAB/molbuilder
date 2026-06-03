@@ -132,12 +132,14 @@ class TestNormaliseStyle:
             const r = window.molbuilder.viewer._normaliseStyle();
             console.log(JSON.stringify(r));
         ''')
+        # Per § 3.3 (review fix D3): ``showLabels`` was removed
+        # because two paths to the same state caused precedence
+        # ambiguity.  setLabels / opts.labels is the sole path.
         assert out == {
             "rep": "stick",
             "radiusScale": 1.0,
             "colorScheme": None,
             "background": "#ffffff",
-            "showLabels": False,
         }
 
     def test_overrides_apply(self):
@@ -292,12 +294,190 @@ class TestCellAndLabels:
         ''')
         assert out == {"cell": None}
 
-    def test_labels_true_yields_indices_mode(self):
+    def test_labels_true_yields_all_atoms_index_format(self):
+        """Per § 3.6 (review fix D2): ``labels: true`` defaults to
+        labelling all atoms with index format.  The legacy
+        ``atoms: "indices"`` sentinel is normalised to the split
+        shape so downstream code only handles one form."""
         out = _run_node('''
             const r = window.molbuilder.viewer._normaliseLabels(true);
-            console.log(JSON.stringify(r));
+            console.log(JSON.stringify({
+                atoms:  r.atoms,
+                format: r.format,
+            }));
         ''')
-        assert out == {"atoms": "indices", "fontSize": 12}
+        assert out == {"atoms": "all", "format": "index"}
+
+    def test_labels_legacy_indices_normalises_to_split_shape(self):
+        """Legacy callers may pass {atoms: "indices"}; normaliser
+        converts to the modern split shape per § 3.6."""
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normaliseLabels({
+                atoms: "indices",
+            });
+            console.log(JSON.stringify({
+                atoms:  r.atoms,
+                format: r.format,
+            }));
+        ''')
+        assert out == {"atoms": "all", "format": "index"}
+
+    def test_labels_legacy_names_normalises_to_name_format(self):
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normaliseLabels({
+                atoms: "names",
+            });
+            console.log(JSON.stringify({
+                atoms:  r.atoms,
+                format: r.format,
+            }));
+        ''')
+        assert out == {"atoms": "all", "format": "name"}
+
+    def test_labels_format_element_kept(self):
+        """The new ``element`` format option from the Labels knob
+        popover; must round-trip."""
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normaliseLabels({
+                atoms:  "all",
+                format: "element",
+            });
+            console.log(JSON.stringify({
+                atoms:  r.atoms,
+                format: r.format,
+            }));
+        ''')
+        assert out == {"atoms": "all", "format": "element"}
+
+    def test_labels_per_atom_list_with_format(self):
+        """Per § 3.6: atoms (which) and format (what) vary
+        independently."""
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normaliseLabels({
+                atoms:  [1, 5, 9],
+                format: "element",
+            });
+            console.log(JSON.stringify({
+                atoms:  r.atoms,
+                format: r.format,
+            }));
+        ''')
+        assert out == {"atoms": [1, 5, 9], "format": "element"}
+
+    def test_pick_default_yields_halo_plus_index_label(self):
+        """Per § 3.8 (review fix D5): the default selection
+        rendering is halo + index label (matches /modify's pre-
+        embed behaviour).  No bespoke onPick wiring required."""
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normalisePick({
+                mode: "multi",
+            });
+            console.log(JSON.stringify({
+                halo:  r.halo,
+                label: r.label,
+                style: r.style,
+            }));
+        ''')
+        assert out["halo"]  == {"color": "#ffd54a",
+                                "radius": 0.6, "opacity": 0.5}
+        assert out["label"] == "index"
+        assert out["style"] is None
+
+    def test_pick_halo_false_explicitly_disables(self):
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normalisePick({
+                mode: "multi", halo: false,
+            });
+            console.log(JSON.stringify({halo: r.halo}));
+        ''')
+        assert out == {"halo": None}
+
+    def test_pick_halo_object_overrides_defaults(self):
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normalisePick({
+                mode: "single",
+                halo: { color: "#ff0000", radius: 0.9 },
+            });
+            console.log(JSON.stringify(r.halo));
+        ''')
+        assert out == {"color": "#ff0000", "radius": 0.9,
+                       "opacity": 0.5}
+
+    def test_pick_label_false_disables_auto_label(self):
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normalisePick({
+                mode: "single", label: false,
+            });
+            console.log(JSON.stringify({label: r.label}));
+        ''')
+        assert out == {"label": False}
+
+    def test_pick_label_format_options_kept(self):
+        out = _run_node('''
+            const r1 = window.molbuilder.viewer._normalisePick({
+                mode: "single", label: "element",
+            });
+            const r2 = window.molbuilder.viewer._normalisePick({
+                mode: "single", label: "name",
+            });
+            console.log(JSON.stringify({
+                r1: r1.label, r2: r2.label,
+            }));
+        ''')
+        assert out == {"r1": "element", "r2": "name"}
+
+    def test_pick_legacy_haloColor_haloRadius_promoted(self):
+        """Per § 3.8: when halo is absent and legacy haloColor /
+        haloRadius are present, the legacy pair is synthesised
+        into the new halo object."""
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normalisePick({
+                mode: "multi",
+                haloColor: "#0000ff",
+                haloRadius: 0.42,
+            });
+            console.log(JSON.stringify(r.halo));
+        ''')
+        assert out == {"color": "#0000ff", "radius": 0.42,
+                       "opacity": 0.5}
+
+    def test_pick_halo_supplied_ignores_legacy_fields(self):
+        """Per § 3.8 deprecated-field precedence: if halo is
+        supplied at all, deprecated haloColor / haloRadius are
+        IGNORED entirely (no field-level merge)."""
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normalisePick({
+                mode: "multi",
+                halo: { color: "#00ff00" },
+                haloColor: "#ff0000",   // ignored
+                haloRadius: 0.99,       // ignored
+            });
+            console.log(JSON.stringify(r.halo));
+        ''')
+        # halo.radius defaults from the halo object (0.6), NOT
+        # from the legacy haloRadius (0.99).
+        assert out == {"color": "#00ff00", "radius": 0.6,
+                       "opacity": 0.5}
+
+    def test_pick_style_override_kept(self):
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normalisePick({
+                mode: "single",
+                style: { color: "#abc", opacity: 0.4 },
+            });
+            console.log(JSON.stringify(r.style));
+        ''')
+        assert out == {"color": "#abc", "opacity": 0.4}
+
+    def test_labels_invalid_format_falls_back_to_index(self):
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normaliseLabels({
+                atoms:  "all",
+                format: "octopus",
+            });
+            console.log(JSON.stringify({format: r.format}));
+        ''')
+        assert out == {"format": "index"}
 
     def test_labels_index_list_preserved(self):
         out = _run_node('''
@@ -503,6 +683,34 @@ class TestViewerError:
             "cause":   {"detail": 1},
             "isError": False,
             "proto":   True,
+        }
+
+    def test_throwable_is_real_Error_subclass(self):
+        """Review fix D4: synchronous throw paths (embed() hard-
+        deps) must throw something ``instanceof Error`` so consumer
+        try/catch + monitoring libraries handle it normally.  The
+        {code, message, cause} fields are still readable on the
+        Error instance."""
+        out = _run_node('''
+            const t = window.molbuilder.viewer._throwable;
+            let caught;
+            try { throw t("missing_dependency", "test msg", null); }
+            catch (e) { caught = e; }
+            console.log(JSON.stringify({
+                isError:   caught instanceof Error,
+                code:      caught.code,
+                message:   caught.message,
+                name:      caught.name,
+                hasStack:  typeof caught.stack === "string"
+                           && caught.stack.length > 0,
+            }));
+        ''')
+        assert out == {
+            "isError":  True,
+            "code":     "missing_dependency",
+            "message":  "test msg",
+            "name":     "ViewerError",
+            "hasStack": True,
         }
 
     def test_makeError_unknown_code_becomes_unknown(self):

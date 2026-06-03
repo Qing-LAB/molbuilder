@@ -49,11 +49,28 @@
     ]);
 
     /**
+     * Promote a ViewerError plain object to a real JS Error so
+     * sync ``throw`` paths satisfy ``instanceof Error`` checks
+     * and get a stack trace (review fix D4).  The {code, message,
+     * cause} fields are also copied onto the Error so callers
+     * can still switch on ``err.code``.
+     */
+    function _throwable(code, message, cause) {
+        const v = _makeError(code, message, cause);
+        const e = new Error(v.message);
+        e.code  = v.code;
+        e.cause = v.cause;
+        e.name  = "ViewerError";
+        return e;
+    }
+
+    /**
      * Construct a ViewerError per § 3.14.  Uses a plain object
      * (not a JS Error subclass) so the shape round-trips cleanly
      * through Promise.reject and structuredClone, and so consumers
      * can `if (err && err.code === "no_project")` without an
-     * `instanceof` check.
+     * `instanceof` check.  For SYNCHRONOUS throw paths use
+     * ``_throwable()`` instead so the thrown value is a real Error.
      */
     function _makeError(code, message, cause) {
         if (VIEWER_ERROR_CODES.indexOf(code) < 0) {
@@ -134,6 +151,10 @@
     }
 
     function _normaliseStyle(s) {
+        // Per § 3.3: ``showLabels`` was REMOVED — labels are controlled
+        // exclusively via ``opts.labels`` / ``setLabels()`` (§ 3.6).
+        // Two paths to the same state caused precedence ambiguity in
+        // the v1 draft; the field is gone (review fix D3).
         s = s || {};
         return {
             rep:          s.rep         || "stick",
@@ -141,7 +162,6 @@
                             ? s.radiusScale : 1.0,
             colorScheme:  s.colorScheme || null,
             background:   s.background  || DEFAULT_BACKGROUND,
-            showLabels:   s.showLabels  || false,
         };
     }
 
@@ -168,10 +188,35 @@
     }
 
     function _normaliseLabels(l) {
+        // Per § 3.6 (review fix D2):
+        //   atoms  → "all" or number[] — WHICH atoms get a label
+        //   format → "index" | "name" | "element" — WHAT each label says
+        // The two are independent so a per-index selection can use any
+        // text format.  Defaults: atoms="all", format="index".
         if (l === false || l === undefined || l === null) return null;
-        if (l === true) return { atoms: "indices", fontSize: 12 };
+        if (l === true) {
+            return { atoms: "all", format: "index", fontSize: 12,
+                     fontColor: null, background: null };
+        }
+        // Normalise the legacy ``atoms: "indices" | "names"`` sentinel
+        // to the modern split shape so downstream code only has to
+        // handle one shape.  "indices" → all atoms, format index;
+        // "names" → all atoms, format name.
+        let atoms  = l.atoms;
+        let format = l.format;
+        if (atoms === "indices") { atoms = "all"; if (!format) format = "index"; }
+        if (atoms === "names")   { atoms = "all"; if (!format) format = "name"; }
+        // Validate atoms shape.
+        if (atoms !== "all" && !Array.isArray(atoms)) atoms = "all";
+        if (Array.isArray(atoms)) {
+            atoms = atoms.filter((v) => Number.isInteger(v) && v >= 0);
+        }
+        // Validate format.
+        if (format !== "index" && format !== "name"
+            && format !== "element") format = "index";
         return {
-            atoms:       l.atoms      || "indices",
+            atoms:       atoms,
+            format:      format,
             fontSize:    l.fontSize   || 12,
             fontColor:   l.fontColor  || null,
             background:  l.background || null,
@@ -179,14 +224,91 @@
     }
 
     function _normalisePick(p) {
+        // Per § 3.8 (review fix D5): the modern shape with halo
+        // (object), style override, label format, plus a deprecated-
+        // field precedence rule for the legacy haloColor / haloRadius
+        // pair.
+        //
+        // If the caller supplies ``halo`` at all (even ``{}`` or
+        // ``false``), the deprecated fields are ignored entirely.
+        // Otherwise the legacy {haloColor, haloRadius} is synthesised
+        // into the new halo object.
         if (!p || p === false || p.mode === "none") return null;
+        const mode = p.mode || "single";
+
+        // Halo normalisation.
+        let halo;
+        if (p.halo === false) {
+            halo = null;   // explicit opt-out
+        } else if (p.halo === undefined) {
+            // Legacy fallback OR default.
+            const legacyColor  = typeof p.haloColor  === "string"  ? p.haloColor  : null;
+            const legacyRadius = typeof p.haloRadius === "number" ? p.haloRadius : null;
+            if (legacyColor !== null || legacyRadius !== null) {
+                halo = {
+                    color:   legacyColor  || "#ffd54a",
+                    radius:  legacyRadius || 0.6,
+                    opacity: 0.5,
+                };
+            } else {
+                // Modern default per § 3.8: halo on by default.
+                halo = { color: "#ffd54a", radius: 0.6, opacity: 0.5 };
+            }
+        } else if (p.halo && typeof p.halo === "object") {
+            halo = {
+                color:   typeof p.halo.color   === "string" ? p.halo.color   : "#ffd54a",
+                radius:  typeof p.halo.radius  === "number" ? p.halo.radius  : 0.6,
+                opacity: typeof p.halo.opacity === "number"
+                            ? Math.max(0, Math.min(1, p.halo.opacity)) : 0.5,
+            };
+        } else {
+            halo = null;
+        }
+
+        // Optional style override on picked atoms.
+        let style = null;
+        if (p.style && typeof p.style === "object") {
+            const s = {};
+            let any = false;
+            if (typeof p.style.color === "string") {
+                s.color = p.style.color; any = true;
+            }
+            if (typeof p.style.opacity === "number") {
+                s.opacity = Math.max(0, Math.min(1, p.style.opacity));
+                any = true;
+            }
+            if (typeof p.style.radiusScale === "number") {
+                s.radiusScale = p.style.radiusScale; any = true;
+            }
+            if (any) style = s;
+        }
+
+        // Auto-label format.  Default: "index" per § 3.8.  False
+        // explicitly disables; "name" / "element" are documented
+        // alternatives.  Anything else falls back to "index".
+        let label;
+        if (p.label === false) {
+            label = false;
+        } else if (p.label === undefined) {
+            label = "index";
+        } else if (p.label === "index" || p.label === "name"
+                   || p.label === "element") {
+            label = p.label;
+        } else {
+            label = "index";
+        }
+
         return {
-            mode:        p.mode       || "single",
-            haloColor:   p.haloColor  || "#ffd54a",
-            haloRadius:  typeof p.haloRadius === "number"
-                            ? p.haloRadius : 0.6,
-            onPick:      typeof p.onPick === "function"
-                            ? p.onPick : null,
+            mode:       mode,
+            halo:       halo,
+            style:      style,
+            label:      label,
+            // Legacy compat: still expose the flat fields as derived
+            // values for code that reads them (will drop once all
+            // call sites move to the nested form).
+            haloColor:  halo ? halo.color  : null,
+            haloRadius: halo ? halo.radius : null,
+            onPick:     typeof p.onPick === "function" ? p.onPick : null,
         };
     }
 
@@ -309,21 +431,48 @@
     function _normaliseKnobs(k) {
         if (k === false) return null;
         const opts = (k && typeof k === "object" && k !== true) ? k : {};
-        const lf  = Array.isArray(opts.labelsFormats)
-                    ? opts.labelsFormats
-                          .filter((s) => s === "index" || s === "name"
-                                       || s === "element")
-                    : ["index", "name", "element"];
-        // De-duplicate, preserve order.
-        const seenLf = new Set();
-        const lfClean = lf.filter((s) => {
-            if (seenLf.has(s)) return false;
-            seenLf.add(s);
-            return true;
-        });
+
+        // Per § 3.10 (review fix D6): handle the four ``labelsFormats``
+        // edge cases.
+        //   undefined            → all three formats offered
+        //   ["index"] etc.       → single-format toggle
+        //   []                   → invalid: hide the Labels knob AND
+        //                          signal via the bag's
+        //                          _invalidLabelsFormats flag so the
+        //                          caller can dispatch onError
+        //   duplicate entries    → de-duplicated, order preserved
+        let lfClean;
+        let labelsHidden = opts.labels === false;
+        let invalidLabelsFormats = false;
+        if (opts.labelsFormats === undefined) {
+            lfClean = ["index", "name", "element"];
+        } else if (Array.isArray(opts.labelsFormats)) {
+            if (opts.labelsFormats.length === 0) {
+                invalidLabelsFormats = true;
+                labelsHidden = true;
+                lfClean = [];
+            } else {
+                const filtered = opts.labelsFormats.filter(
+                    (s) => s === "index" || s === "name"
+                        || s === "element");
+                const seen = new Set();
+                lfClean = filtered.filter((s) => {
+                    if (seen.has(s)) return false;
+                    seen.add(s);
+                    return true;
+                });
+                if (lfClean.length === 0) {
+                    invalidLabelsFormats = true;
+                    labelsHidden = true;
+                }
+            }
+        } else {
+            lfClean = ["index", "name", "element"];
+        }
+
         return {
             style:      opts.style      !== false,
-            labels:     opts.labels     !== false,
+            labels:     !labelsHidden,
             axes:       opts.axes       !== false,
             reset:      opts.reset      !== false,
             screenshot: opts.screenshot !== false,
@@ -336,6 +485,9 @@
                 ? opts.backgroundPresets.slice()
                 : ["#ffffff", "#1c1c1c", "transparent"],
             backgroundAllowCustom: opts.backgroundAllowCustom !== false,
+            // Internal flag so embed() can dispatch invalid_input
+            // exactly once at mount.  Not part of the public KnobBarOpts.
+            _invalidLabelsFormats: invalidLabelsFormats,
         };
     }
 
@@ -935,21 +1087,33 @@
     /* ------------------------------------------------------------ */
 
     function _drawAtomLabels(viewer, opts) {
+        // Per § 3.6 (review fix D2): opts.atoms picks WHICH atoms;
+        // opts.format picks WHAT text each label says.
         if (!opts) return [];
         const handles = [];
+        const fmt = opts.format || "index";
         try {
             const model = viewer.getModel();
             const atoms = model ? model.selectedAtoms({}) : [];
+            // Build the "draw this atom?" predicate from opts.atoms.
+            let shouldDraw;
+            if (Array.isArray(opts.atoms)) {
+                const set = new Set(opts.atoms);
+                shouldDraw = (i) => set.has(i);
+            } else {
+                // "all" (default after normalisation) labels every atom.
+                shouldDraw = () => true;
+            }
             for (let i = 0; i < atoms.length; i++) {
+                if (!shouldDraw(i)) continue;
                 const a = atoms[i];
                 let text;
-                if (Array.isArray(opts.atoms)) {
-                    if (opts.atoms.indexOf(i) < 0) continue;
-                    text = String(i);
-                } else if (opts.atoms === "names") {
+                if (fmt === "name") {
                     text = a.atom || a.name || a.elem || String(i);
+                } else if (fmt === "element") {
+                    text = a.elem || a.element || "?";
                 } else {
-                    text = String(i);
+                    text = String(i);   // "index" (default)
                 }
                 const lbl = viewer.addLabel(text, {
                     position:          { x: a.x, y: a.y, z: a.z },
@@ -1009,15 +1173,22 @@
 
     function _wirePick(viewer, state) {
         if (!state.current.pick) return;
-        // Use 3Dmol's setClickable; per-atom click handler routes to
-        // our pick handler.
+        // Review fix U7: avoid re-registering setClickable on every
+        // setStructure call.  The captured handler already reads
+        // state.current.pick dynamically, so the wiring only needs
+        // to happen ONCE per atom-load cycle.  pickWired is reset
+        // by _loadStructure (which swaps the model out from under
+        // 3Dmol and invalidates the per-atom clickable flags).
+        if (state.pickWired) return;
         try {
             viewer.setClickable({}, true, function (atom, _viewer, _evt) {
                 if (state.disposed) return;
+                if (!state.current.pick) return;
                 const idx = atom && (atom.index != null ? atom.index : atom.serial);
                 if (typeof idx !== "number") return;
                 _togglePick(state, idx);
             });
+            state.pickWired = true;
         } catch (_) {}
     }
 
@@ -1047,30 +1218,57 @@
     }
 
     function _redrawPickHalos(state) {
-        // Clear previous halos.
+        // Clear previous halos + auto-labels (review fix D5).
         for (const s of state.pickShapes) {
             try { state.viewer.removeShape(s); } catch (_) {}
         }
+        for (const l of state.pickLabels) {
+            try { state.viewer.removeLabel(l); } catch (_) {}
+        }
         state.pickShapes = [];
-        if (!state.current.pick) {
+        state.pickLabels = [];
+        const pick = state.current.pick;
+        if (!pick) {
             state.viewer.render();
             return;
         }
-        const color = state.current.pick.haloColor;
-        const radius = state.current.pick.haloRadius;
         try {
             const model = state.viewer.getModel();
             const atoms = model ? model.selectedAtoms({}) : [];
             for (const idx of state.pickedIndices) {
                 if (idx < 0 || idx >= atoms.length) continue;
                 const a = atoms[idx];
-                const halo = state.viewer.addSphere({
-                    center: { x: a.x, y: a.y, z: a.z },
-                    radius: radius,
-                    color:  color,
-                    opacity: 0.35,
-                });
-                state.pickShapes.push(halo);
+                // Halo overlay.
+                if (pick.halo) {
+                    const halo = state.viewer.addSphere({
+                        center:  { x: a.x, y: a.y, z: a.z },
+                        radius:  pick.halo.radius,
+                        color:   pick.halo.color,
+                        opacity: pick.halo.opacity,
+                    });
+                    state.pickShapes.push(halo);
+                }
+                // Auto-label per § 3.8 (default "index").
+                if (pick.label) {
+                    let text;
+                    if (pick.label === "name") {
+                        text = a.atom || a.name || a.elem || String(idx);
+                    } else if (pick.label === "element") {
+                        text = a.elem || a.element || "?";
+                    } else {
+                        text = String(idx);
+                    }
+                    const lbl = state.viewer.addLabel(text, {
+                        position:          { x: a.x, y: a.y, z: a.z },
+                        fontSize:          11,
+                        fontColor:         "#fff",
+                        backgroundColor:   pick.halo
+                                             ? pick.halo.color : "#ffd54a",
+                        backgroundOpacity: 0.85,
+                        inFront:           true,
+                    });
+                    state.pickLabels.push(lbl);
+                }
             }
         } catch (_) {}
         state.viewer.render();
@@ -1566,9 +1764,11 @@
     /* ------------------------------------------------------------ */
 
     function _buildFrameStrip(state) {
+        // Per § 6.3 (review fix D7): frame strip auto-mounts whenever
+        // animation.kind === "trajectory".  The legacy
+        // ``card.frameStrip`` opt was an undocumented gate that
+        // would have required every trajectory consumer to opt in.
         if (state.frameStripEl) return;  // already built
-        const opts = state.cardOpts || {};
-        if (!opts.frameStrip) return;
         const a = state.current.animation;
         if (!a || a.kind !== "trajectory") return;
 
@@ -1729,20 +1929,20 @@
         // loader fail fast.
         const viewerApi = (root.molbuilder || {}).viewer;
         if (typeof root.$3Dmol === "undefined") {
-            throw _makeError(
+            throw _throwable(
                 "missing_dependency",
                 "viewer.embed: $3Dmol global must be loaded "
               + "(static/vendor/3dmol-min.js)"
             );
         }
         if (!viewerApi || typeof viewerApi.create !== "function") {
-            throw _makeError(
+            throw _throwable(
                 "missing_dependency",
                 "viewer.embed: lib/mol-viewer.js must be loaded first"
             );
         }
         if (!root.molbuilder || !root.molbuilder.fmt) {
-            throw _makeError(
+            throw _throwable(
                 "missing_dependency",
                 "viewer.embed: lib/mol-format.js must be loaded first "
               + "(expected window.molbuilder.fmt)"
@@ -1793,7 +1993,9 @@
             arrowShapes:         [],
             arrowLabels:         [],
             pickShapes:          [],
+            pickLabels:          [],
             pickedIndices:       [],
+            pickWired:           false,
 
             // Per-atom overlay state (§ 3.12).  Style overrides are
             // baked into 3Dmol's setStyle and don't need handles;
@@ -1857,31 +2059,49 @@
             }));
         }
 
-        // 4b. If the caller supplied opts.animation, set it up now
+        // 4b. Build the handle + stash on state BEFORE applying the
+        //     initial animation.  Trajectory autoplay (paused:false)
+        //     fires onFrame(idx, handle) on its first tick; if the
+        //     handle isn't on state yet, the callback receives
+        //     undefined and the silent catch swallows the failure.
+        //     Review fix P1 (#221).
+        const handle = _buildHandle(state);
+        state.handle = handle;
+
+        // Diagnostic dispatches per § 3.10 edge cases (review fix D6).
+        // The knob bar is already built without the Labels knob when
+        // labelsFormats: [] was passed; we just need to signal the
+        // misconfiguration so the host's onError sees it.
+        if (state.current.knobs
+            && state.current.knobs._invalidLabelsFormats) {
+            _dispatchError(state, _makeError(
+                "invalid_input",
+                "KnobBarOpts.labelsFormats: empty array hides the Labels "
+              + "knob entirely; pass labels: false explicitly OR a "
+              + "non-empty subset of ['index', 'name', 'element']."));
+        }
+
+        // 4c. Wire the standard knob bar's click handlers + keyboard
+        //     shortcuts now that the handle exists.  Phase 5 will
+        //     extend the export / background actions; Phase 2 covers
+        //     the static-rendering knobs (style / labels / axes / reset).
+        if (state.scaffold && state.scaffold.knobsEl) {
+            _wireKnobBar(state, state.scaffold.knobsEl,
+                                state.scaffold.knobs);
+        }
+
+        // 4d. If the caller supplied opts.animation, set it up now
         //     (after the structure is loaded so baseline coord
-        //     capture sees the right atoms).  The setAnimation impl
-        //     handles trajectory frame-strip mount + autoplay-unless-
-        //     paused semantics.
+        //     capture sees the right atoms; AND after state.handle
+        //     is set so onFrame can fire correctly).  The setAnimation
+        //     impl handles trajectory frame-strip mount + autoplay-
+        //     unless-paused semantics.
         if (current.animation) {
             _setAnimationImpl(state, current.animation);
         }
 
         // 5. Fire onReady on the next microtask so the caller sees a
         //    fully-mounted handle (post-state-init + post-first-render).
-        const handle = _buildHandle(state);
-        // Stash the handle on state so internal callbacks (e.g.
-        // trajectory's onFrame, which needs to receive the handle
-        // as its second argument per § 3.9) can find it without
-        // capturing closures across the buildHandle boundary.
-        state.handle = handle;
-        // Wire the standard knob bar's click handlers + keyboard
-        // shortcuts now that the handle exists.  Phase 5 will
-        // extend the export / background actions; Phase 2 covers
-        // the static-rendering knobs (style / labels / axes / reset).
-        if (state.scaffold && state.scaffold.knobsEl) {
-            _wireKnobBar(state, state.scaffold.knobsEl,
-                                state.scaffold.knobs);
-        }
         if (typeof opts.onReady === "function") {
             Promise.resolve().then(() => {
                 if (state.disposed) return;
@@ -1923,6 +2143,10 @@
             state.current.animation = null;
             _removeFrameStrip(state);
             _loadStructure(state.viewer, state.current);
+            // Review fix U7: new atom set → clickable flags reset on
+            // 3Dmol's side; force _wirePick to re-register on the new
+            // atoms.
+            state.pickWired = false;
             _applyStyle(state.viewer, state.current.style);
             _redrawAllOverlays(state);
             _wirePick(state.viewer, state);
@@ -2012,6 +2236,51 @@
             state.pickedIndices = [];
             _redrawPickHalos(state);
             _wirePick(state.viewer, state);
+        }
+
+        function setBackground(color) {
+            // Per § 3.2: a CSS color string applied to the canvas
+            // backdrop ONLY.  Implemented as setStyle({background})
+            // so the existing style pipeline owns the actual paint
+            // and the idempotence diff works the same way.
+            if (state.disposed) return;
+            if (typeof color !== "string" || color.length === 0) {
+                _dispatchError(state, _makeError(
+                    "invalid_input",
+                    "setBackground: color must be a non-empty CSS color string"));
+                return;
+            }
+            setStyle({
+                rep:         state.current.style.rep,
+                radiusScale: state.current.style.radiusScale,
+                colorScheme: state.current.style.colorScheme,
+                background:  color,
+            });
+        }
+
+        function setKnobs(k) {
+            // Per § 3.2: reconfigure visible knobs at runtime.
+            // Rebuilds the knob bar DOM in place + re-wires it
+            // against the same handle.  Idempotent against an
+            // identical opts object via _equalNormalised.
+            if (state.disposed) return;
+            const next = _normaliseKnobs(k);
+            if (_equalNormalised(state.current.knobs, next)) return;
+            state.current.knobs = next;
+            if (!state.cardEl) return;
+            // Remove old bar (if any).
+            const old = state.cardEl.querySelector(":scope > .mol-viewer-knobs");
+            if (old) old.remove();
+            state.scaffold.knobsEl = null;
+            state.scaffold.knobs   = next;
+            if (next) {
+                const bar = _buildKnobBarDOM(next);
+                state.scaffold.knobsEl = bar;
+                // Insert before the canvas (and frame strip if any)
+                // to keep the §6.1 anatomy order.
+                state.cardEl.insertBefore(bar, state.canvasEl);
+                _wireKnobBar(state, bar, next);
+            }
         }
 
         function setOverlays(o) {
@@ -2330,6 +2599,46 @@
             });
         }
 
+        function captureFrames(opts) {
+            // Documented per § 3.2; landing in Phase 5b.  Stub
+            // returns a clean reject so consumers get a typed
+            // error rather than "method is undefined".
+            opts = opts || {};
+            if (state.disposed) {
+                return Promise.reject(_makeError("disposed",
+                    "captureFrames: viewer disposed"));
+            }
+            const a = state.current.animation;
+            if (!a) {
+                return Promise.reject(_makeError("static_structure",
+                    "captureFrames: opts.animation is null"));
+            }
+            return Promise.reject(_makeError("unknown",
+                "captureFrames: not yet implemented (Phase 5b)"));
+        }
+
+        function exportAnimation(opts) {
+            // Documented per § 3.2; landing in Phase 5b.  Stub
+            // returns a clean reject so consumers get a typed
+            // error rather than "method is undefined".
+            opts = opts || {};
+            if (state.disposed) {
+                return Promise.reject(_makeError("disposed",
+                    "exportAnimation: viewer disposed"));
+            }
+            const a = state.current.animation;
+            if (!a) {
+                return Promise.reject(_makeError("static_structure",
+                    "exportAnimation: opts.animation is null"));
+            }
+            if (opts.format !== "webm" && opts.format !== "gif") {
+                return Promise.reject(_makeError("invalid_input",
+                    "exportAnimation: format must be 'webm' or 'gif'"));
+            }
+            return Promise.reject(_makeError("unknown",
+                "exportAnimation: not yet implemented (Phase 5b)"));
+        }
+
         function screenshot(opts) {
             opts = opts || {};
             if (state.disposed) {
@@ -2418,6 +2727,7 @@
                 for (const s of state.arrowShapes) state.viewer.removeShape(s);
                 for (const l of state.arrowLabels) state.viewer.removeLabel(l);
                 for (const s of state.pickShapes) state.viewer.removeShape(s);
+                for (const l of state.pickLabels) state.viewer.removeLabel(l);
                 for (const s of state.overlayHaloShapes) state.viewer.removeShape(s);
                 for (const l of state.overlayMarkerLabels) state.viewer.removeLabel(l);
                 state.viewer.clear();
@@ -2469,8 +2779,11 @@
             setLabels:          setLabels,
             setArrows:          setArrows,
             setPick:            setPick,
+            setBackground:      setBackground,
             setOverlays:        setOverlays,
             setAtomStyle:       setAtomStyle,
+
+            setKnobs:           setKnobs,
 
             setAnimation:       setAnimation,
             appendFrames:       appendFrames,
@@ -2489,6 +2802,8 @@
 
             exportData:         exportData,
             screenshot:         screenshot,
+            captureFrames:      captureFrames,
+            exportAnimation:    exportAnimation,
 
             refit:              refit,
             render:             render,
@@ -2638,5 +2953,6 @@
     // the embed builds its own).
     root.molbuilder.viewer.ViewerErrorCodes   = VIEWER_ERROR_CODES;
     root.molbuilder.viewer._makeError         = _makeError;
+    root.molbuilder.viewer._throwable         = _throwable;
     root.molbuilder.viewer._dispatchError     = _dispatchError;
 })(typeof window !== "undefined" ? window : this);
