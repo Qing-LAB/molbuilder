@@ -450,3 +450,161 @@ class TestAnimationNormalisation:
             console.log(JSON.stringify({paused: r.paused}));
         ''')
         assert out == {"paused": False}
+
+
+# --------------------------------------------------------------------- #
+#  Error model (§ 3.14 + § 5)                                          #
+# --------------------------------------------------------------------- #
+
+
+class TestViewerError:
+    """The closed error model that callers switch on by ``code``.
+
+    These tests pin the shape (plain object, not Error subclass),
+    the closed code list, and the rate-limit dispatcher invariants
+    from § 5.4."""
+
+    def test_error_codes_is_a_frozen_array_of_12(self):
+        """The user-visible code union per § 5.2.  Number is
+        load-bearing — adding a new code is a contract change."""
+        out = _run_node('''
+            const codes = window.molbuilder.viewer.ViewerErrorCodes;
+            console.log(JSON.stringify({
+                len:      codes.length,
+                frozen:   Object.isFrozen(codes),
+                has_io:   codes.indexOf("io_error") >= 0,
+                has_abort: codes.indexOf("aborted") >= 0,
+            }));
+        ''')
+        assert out == {
+            "len": 12, "frozen": True,
+            "has_io": True, "has_abort": True,
+        }
+
+    def test_makeError_shape_is_plain_object(self):
+        """ViewerError is {code, message, cause} — NOT an Error
+        subclass — so it round-trips through Promise.reject and
+        structuredClone cleanly per § 5.1."""
+        out = _run_node('''
+            const e = window.molbuilder.viewer._makeError(
+                "no_project", "no active dir", {detail: 1});
+            console.log(JSON.stringify({
+                code:    e.code,
+                message: e.message,
+                cause:   e.cause,
+                isError: e instanceof Error,
+                proto:   Object.getPrototypeOf(e) === Object.prototype,
+            }));
+        ''')
+        assert out == {
+            "code":    "no_project",
+            "message": "no active dir",
+            "cause":   {"detail": 1},
+            "isError": False,
+            "proto":   True,
+        }
+
+    def test_makeError_unknown_code_becomes_unknown(self):
+        """A misspelled code in the embed itself is a programming
+        error.  Fall back to "unknown" + a marker so tests catch
+        it instead of silently shipping a bad code."""
+        out = _run_node('''
+            const e = window.molbuilder.viewer._makeError(
+                "no_such_code", "oops");
+            console.log(JSON.stringify({
+                code:    e.code,
+                hasMarker: e.message.indexOf("bad error code") >= 0,
+            }));
+        ''')
+        assert out == {"code": "unknown", "hasMarker": True}
+
+    def test_dispatchError_fires_onError_once(self):
+        """Single error → single onError fire.  No rate-limit
+        engagement on the first occurrence."""
+        out = _run_node('''
+            let count = 0;
+            const state = { userOpts: {
+                onError: (e) => { count++; }
+            }};
+            const err = window.molbuilder.viewer._makeError(
+                "io_error", "disk full");
+            window.molbuilder.viewer._dispatchError(state, err);
+            console.log(JSON.stringify({count}));
+        ''')
+        assert out == {"count": 1}
+
+    def test_dispatchError_rate_limits_same_code(self):
+        """Per § 5.4: one fire per code per 500 ms per embed.
+        Two errors with the same code in tight succession should
+        fire onError exactly once."""
+        out = _run_node('''
+            let count = 0;
+            const state = { userOpts: {
+                onError: (e) => { count++; }
+            }};
+            const err = window.molbuilder.viewer._makeError(
+                "io_error", "disk full");
+            window.molbuilder.viewer._dispatchError(state, err);
+            window.molbuilder.viewer._dispatchError(state, err);
+            window.molbuilder.viewer._dispatchError(state, err);
+            console.log(JSON.stringify({count}));
+        ''')
+        assert out == {"count": 1}
+
+    def test_dispatchError_different_codes_pass_independently(self):
+        """Rate-limit is per-code, not global — two DIFFERENT
+        errors fire onError twice in tight succession."""
+        out = _run_node('''
+            let count = 0;
+            const state = { userOpts: {
+                onError: (e) => { count++; }
+            }};
+            window.molbuilder.viewer._dispatchError(state,
+                window.molbuilder.viewer._makeError("io_error", "a"));
+            window.molbuilder.viewer._dispatchError(state,
+                window.molbuilder.viewer._makeError("no_project", "b"));
+            console.log(JSON.stringify({count}));
+        ''')
+        assert out == {"count": 2}
+
+    def test_dispatchError_swallows_onError_throws(self):
+        """Per § 5.4: if onError throws, the embed catches and
+        the original error path is uninterrupted (no propagation
+        out of _dispatchError)."""
+        out = _run_node('''
+            let downstream = "not-reached";
+            const state = { userOpts: {
+                onError: () => { throw new Error("bad handler"); }
+            }};
+            try {
+                window.molbuilder.viewer._dispatchError(state,
+                    window.molbuilder.viewer._makeError("unknown", "x"));
+                downstream = "reached";
+            } catch (e) {
+                downstream = "leaked-" + e.message;
+            }
+            console.log(JSON.stringify({downstream}));
+        ''')
+        assert out == {"downstream": "reached"}
+
+    def test_dispatchError_noop_when_onError_absent(self):
+        """No onError supplied → no fire, no throw, no console
+        spam (well, we DO console.warn but that's expected
+        infrastructure logging)."""
+        out = _run_node('''
+            const state = { userOpts: {} };  // no onError
+            // Capture console.warn to confirm it fired:
+            let warns = 0;
+            const realWarn = console.warn;
+            console.warn = () => { warns++; };
+            try {
+                window.molbuilder.viewer._dispatchError(state,
+                    window.molbuilder.viewer._makeError("aborted", "x"));
+            } finally {
+                console.warn = realWarn;
+            }
+            console.log(JSON.stringify({warns}));
+        ''')
+        # Exactly one console.warn fire (the embed's "[viewer.embed]" log)
+        # plus zero onError callbacks (none supplied).
+        assert out == {"warns": 1}

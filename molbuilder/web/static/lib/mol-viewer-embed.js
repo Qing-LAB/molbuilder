@@ -34,6 +34,76 @@
     const DEFAULT_BACKGROUND = "#ffffff";   // 3Dmol convention (web-api.md § 11.4)
 
     /* ------------------------------------------------------------ */
+    /*  Error model — contract § 3.14 + § 5                          */
+    /* ------------------------------------------------------------ */
+
+    // The closed set of error codes per § 5.2.  Used for `instanceof`
+    // checks and direct equality in tests / consumers.
+    const VIEWER_ERROR_CODES = Object.freeze([
+        "missing_dependency",
+        "no_structure", "static_structure",
+        "no_project", "no_clipboard",
+        "no_media_recorder", "no_gif_encoder",
+        "io_error", "aborted", "disposed",
+        "invalid_input", "unknown",
+    ]);
+
+    /**
+     * Construct a ViewerError per § 3.14.  Uses a plain object
+     * (not a JS Error subclass) so the shape round-trips cleanly
+     * through Promise.reject and structuredClone, and so consumers
+     * can `if (err && err.code === "no_project")` without an
+     * `instanceof` check.
+     */
+    function _makeError(code, message, cause) {
+        if (VIEWER_ERROR_CODES.indexOf(code) < 0) {
+            // Defensive: a misspelled code in the embed itself is a
+            // programming error.  Fall back to "unknown" + a marker
+            // so tests catch it.
+            return {
+                code:    "unknown",
+                message: "(viewer internal: bad error code '" + code
+                       + "') " + (message || ""),
+                cause:   cause,
+            };
+        }
+        return {
+            code:    code,
+            message: message || code,
+            cause:   cause,
+        };
+    }
+
+    /**
+     * Fire opts.onError per § 5.4 — rate-limited to one fire per
+     * code per 500 ms per embed instance.  If onError itself throws,
+     * the embed catches and logs to console; the original error
+     * path continues uninterrupted.
+     */
+    function _dispatchError(state, err) {
+        if (!err) return;
+        try { console.warn("[viewer.embed]", err.code, err.message); }
+        catch (_) { /* console may be absent in tests */ }
+
+        const onError = state && state.userOpts && state.userOpts.onError;
+        if (typeof onError !== "function") return;
+
+        // Rate-limit: skip if this code fired within the last 500 ms.
+        const now = Date.now();
+        const lastFires = state._errorLastFires
+                       || (state._errorLastFires = {});
+        const prev = lastFires[err.code] || 0;
+        if (now - prev < 500) return;
+        lastFires[err.code] = now;
+
+        try { onError(err); }
+        catch (e) {
+            try { console.error("[viewer.embed onError threw]", e); }
+            catch (_) { /* console may be absent */ }
+        }
+    }
+
+    /* ------------------------------------------------------------ */
     /*  Pure-logic helpers (exported for unit testing)               */
     /* ------------------------------------------------------------ */
 
@@ -852,10 +922,29 @@
         // build a viewer before the user has picked a file (/modify,
         // /build) -- the viewer renders an empty canvas until the
         // first setStructure call.
+
+        // Hard dependencies per § 2.5.1 — throw ViewerError with
+        // code "missing_dependency" if any is absent.  These are
+        // programming errors; throwing synchronously lets the page
+        // loader fail fast.
         const viewerApi = (root.molbuilder || {}).viewer;
+        if (typeof root.$3Dmol === "undefined") {
+            throw _makeError(
+                "missing_dependency",
+                "viewer.embed: $3Dmol global must be loaded "
+              + "(static/vendor/3dmol-min.js)"
+            );
+        }
         if (!viewerApi || typeof viewerApi.create !== "function") {
-            throw new Error(
+            throw _makeError(
+                "missing_dependency",
                 "viewer.embed: lib/mol-viewer.js must be loaded first"
+            );
+        }
+        if (!root.molbuilder || !root.molbuilder.format) {
+            throw _makeError(
+                "missing_dependency",
+                "viewer.embed: lib/mol-format.js must be loaded first"
             );
         }
 
@@ -876,6 +965,15 @@
             canvasEl:      scaffold.canvas,
             infoLineEl:    scaffold.infoLineEl,
             cardOpts:      opts.card || {},
+
+            // Retain caller's full opts so error dispatch + onReady
+            // + onError can find their callbacks without per-callsite
+            // plumbing.  Read-only after mount; do NOT mutate.
+            userOpts:      opts,
+
+            // Rate-limit table for _dispatchError per § 5.4.
+            // Allocated lazily on first error.
+            _errorLastFires: null,
 
             current:       current,
 
@@ -1171,4 +1269,11 @@
     root.molbuilder.viewer._normaliseLattice  = _normaliseLattice;
     root.molbuilder.viewer._normaliseAnimation = _normaliseAnimation;
     root.molbuilder.viewer._equalNormalised   = _equalNormalised;
+
+    // Error model — § 3.14, § 5.  Exposed for consumers that want to
+    // construct ViewerErrors at the host/test boundary (rare; mostly
+    // the embed builds its own).
+    root.molbuilder.viewer.ViewerErrorCodes   = VIEWER_ERROR_CODES;
+    root.molbuilder.viewer._makeError         = _makeError;
+    root.molbuilder.viewer._dispatchError     = _dispatchError;
 })(typeof window !== "undefined" ? window : this);
