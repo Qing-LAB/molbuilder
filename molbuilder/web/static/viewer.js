@@ -21,7 +21,38 @@
         pyscf: null,
     };
 
-    const viewer = window.molbuilder.viewer.create("viewer");
+    // Embedded MolViewer (#198, 2026-06-02; contract:
+    // docs/protocols/embedded-viewer.md).  The handle's declarative
+    // API drives style / labels / structure load; the raw 3Dmol
+    // viewer (handle._viewer3dmol()) is still used directly for:
+    //   1. ResizeObserver hookup (viewer.resize() on container box
+    //      change) -- the embed contract doesn't expose this and the
+    //      .viewer-wrap host has a CSS resize handle.
+    //   2. Camera get/setView for the cross-session save/restore
+    //      flow (viewer.getView() / setView() round-trip the camera
+    //      matrix; not covered by handle.refit()).
+    const _viewerHandle = window.molbuilder.viewer.embed(
+        $("viewer"),
+        {
+            // No xyz at mount -- Build loads structures asynchronously
+            // (via the Build / Load forms or the sidebar handoff);
+            // the viewer renders an empty canvas until the first
+            // setStructure call inside renderStructure() below.
+            style: {
+                rep:         "stick",
+                radiusScale: 1.0,
+            },
+            // No pick (the Build viewer is read-only -- the user
+            // edits via the build form, not via clicks on atoms).
+            pick:    { mode: "none" },
+            card: {
+                bare:         true,    // Build owns its own card chrome
+                showInfoLine: false,
+                height:       "100%",
+            },
+        }
+    );
+    const viewer = _viewerHandle._viewer3dmol();
 
     // Keep the 3Dmol canvas in sync with the user-resizable container.
     // 3Dmol's WebGL context doesn't auto-track its parent box; we have
@@ -762,61 +793,48 @@
         });
     }
 
-    function clearLabels() {
-        for (const l of state.labels) viewer.removeLabel(l);
-        state.labels = [];
-    }
-
+    // Index-label state is now owned by the embed (handle.setLabels);
+    // the legacy state.labels array is retained for backwards
+    // compatibility with the cross-session save/restore path that
+    // serialises it as part of the snapshot (drawLabels reads the
+    // ``show-labels`` checkbox at restore time so the array is
+    // recomputed by the handle without us tracking it manually).
     function drawLabels() {
-        clearLabels();
-        if (!$("show-labels").checked || !state.xyz) {
-            viewer.render(); return;
-        }
-        const lines = state.xyz.split("\n");
-        const n = parseInt(lines[0], 10);
-        for (let i = 0; i < n; i++) {
-            const parts = (lines[i + 2] || "").trim().split(/\s+/);
-            if (parts.length < 4) continue;
-            const x = parseFloat(parts[1]),
-                  y = parseFloat(parts[2]),
-                  z = parseFloat(parts[3]);
-            const lbl = viewer.addLabel(String(i + 1), {
-                position: { x, y, z },
-                backgroundColor: "black",
-                backgroundOpacity: 0.55,
-                fontColor: "white",
-                fontSize: 9,
-                inFront: true,
-                showBackground: true,
-            });
-            state.labels.push(lbl);
-        }
-        viewer.render();
+        const show = $("show-labels").checked && !!state.xyz;
+        _viewerHandle.setLabels(show
+            ? { atoms: "indices", fontSize: 9, fontColor: "white",
+                background: "rgba(0,0,0,0.55)" }
+            : false);
     }
 
     function applyStyle() {
-        viewer.setStyle({}, styleSpec());
-        viewer.render();
+        _viewerHandle.setStyle({
+            rep:         $("rep").value,
+            radiusScale: parseFloat($("radius").value),
+            background:  $("bg").value || undefined,
+        });
     }
 
     function renderStructure() {
-        viewer.removeAllModels();
-        viewer.removeAllLabels();
-        state.labels = [];
-        if (!state.xyz) return;
-        viewer.addModel(state.xyz, "xyz");
+        if (!state.xyz) {
+            // No structure to mount -- clear via raw viewer (the
+            // embed's setStructure rejects empty xyz).
+            viewer.removeAllModels();
+            viewer.removeAllLabels();
+            state.labels = [];
+            viewer.render();
+            return;
+        }
+        _viewerHandle.setStructure({ xyz: state.xyz });
         applyStyle();
-        viewer.zoomTo();
         drawLabels();
+        _viewerHandle.refit();
     }
 
     $("rep").addEventListener("change", applyStyle);
     $("radius").addEventListener("input", applyStyle);
     $("show-labels").addEventListener("change", drawLabels);
-    $("bg").addEventListener("change", (e) => {
-        viewer.setBackgroundColor(e.target.value);
-        viewer.render();
-    });
+    $("bg").addEventListener("change", applyStyle);
 
     // ----- Downloads --------------------------------------------------
     function downloadAs(text, filename, mime = "text/plain") {
