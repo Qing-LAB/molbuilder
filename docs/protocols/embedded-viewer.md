@@ -526,16 +526,28 @@ Drawn from `opts.lattice`. No-op when no lattice is supplied.
 
 ```ts
 type LabelOpts = {
-  atoms?:  "indices" | "names" | number[],
-  //         indices  → "0", "1", "2", ...
-  //         names    → atom_name field (PDB-derived; falls back
-  //                    to element symbol)
-  //         number[] → label only these specific atom indices
+  // ---- Which atoms to label ------------------------------------ //
+  atoms?: "all" | number[],
+  //   "all"     → every atom (default when labels is enabled)
+  //   number[]  → label only these specific atom indices
+
+  // ---- Label text format --------------------------------------- //
+  format?: "index" | "name" | "element",
+  //   "index"   → "0", "1", "2", ...                  (default)
+  //   "name"    → atom_name field (PDB-derived; falls back to
+  //               element symbol)
+  //   "element" → element symbol only ("C", "H", "O", ...)
+
+  // ---- Cosmetics ----------------------------------------------- //
   fontSize?:   number,            // default 12
   fontColor?:  string,
   background?: string,
 }
 ```
+
+`atoms` controls WHICH atoms are labelled; `format` controls WHAT
+each label says. The two are independent — a per-index selection
+with element-symbol labels is `{atoms: [1, 5, 9], format: "element"}`.
 
 ### 3.7 `ArrowSpec[]`
 
@@ -561,12 +573,52 @@ swaps arrows automatically as frames advance.
 
 ```ts
 type PickOpts = {
-  mode:        "none" | "single" | "pair" | "multi",
-  haloColor?:  string,           // default page-theme accent
-  haloRadius?: number,           // default 0.6 Å
-  onPick?:     (indices: number[]) => void,
+  mode: "none" | "single" | "pair" | "multi",
+
+  // ---- Visual treatment of selected atoms ----------------------- //
+  // Selected atoms get a halo + an index label by DEFAULT.  This
+  // matches /modify's existing behaviour (click an atom → it
+  // highlights and shows its index) and gives Build / inspectors
+  // the same informative pick UX without per-tab CSS work.
+  halo?:  { color?:   string,            // default page-theme accent
+            radius?:  number,            // default 0.6 Å
+            opacity?: number             // default 0.5
+          } | false,                     // false = no halo
+  style?: { color?:       string,        // tint applied to picked atoms
+            opacity?:     number,        // default 1
+            radiusScale?: number },      // optional; no default override
+
+  label?: false | "index" | "name" | "element",
+  //   false      → no auto labels on picked atoms
+  //   "index"    → "0", "1", ...                       (DEFAULT)
+  //   "name"     → atom_name field (PDB-derived)
+  //   "element"  → element symbol
+
+  // ---- Callback ------------------------------------------------ //
+  onPick?: (indices: number[]) => void,
+
+  // ---- Backwards-compat shims (deprecated) --------------------- //
+  haloColor?:  string,           // use halo.color instead
+  haloRadius?: number,           // use halo.radius instead
 }
 ```
+
+**Defaults.** `halo: { color: "var(--accent)", radius: 0.6,
+opacity: 0.5 }` plus `label: "index"`. Hosts that want minimal
+selection rendering pass `halo: false, label: false`; hosts that
+want richer rendering compose `halo + style + label` per
+preference.
+
+**Layering.** Selection halos draw above OverlaySpec halos
+(§ 3.12). Selection style overrides apply ABOVE base style and
+ABOVE OverlaySpec style overrides — picked atoms always "win" the
+style fight so the user can SEE what's selected. Selection labels
+draw above other labels.
+
+**Persistence.** Picked indices survive `setStructure({xyz: ...})`
+IFF the atom count and element ordering match; otherwise the pick
+state is cleared. Picked indices are NOT affected by
+`setOverlays()`, `setStyle()`, or `setAnimation()`.
 
 Delegates to `lib/mol-pick.js` for halo geometry; the embedded
 viewer owns the click-handler registration.
@@ -659,6 +711,14 @@ type KnobBarOpts = {
                                    // alongside the presets;
                                    // default true
 
+  // Optional labels-knob configuration:
+  labelsFormats?: ("index" | "name" | "element")[],
+  // Format choices offered by the Labels popover.  Default:
+  // ["index", "name", "element"] (all three).  Pass a single-item
+  // array to suppress the format selector and make the knob a
+  // plain on/off toggle in that format (e.g. ["index"] for tabs
+  // that only ever want index labels).
+
   // Cosmetic / layout
   position?:   "top" | "bottom",   // default "top"
   compact?:    boolean,            // default false — when true,
@@ -674,7 +734,7 @@ type KnobBarOpts = {
 | Knob | Maps to | UI element |
 |---|---|---|
 | Style | `setStyle({rep, radiusScale})` | `<select>` |
-| Labels | `setLabels(true \| false)` | toggle button |
+| Labels | `setLabels({atoms: "all", format})` or `setLabels(false)` | popover (Index / Name / Element / Off) |
 | Axes | `setAxes(true \| false)` | toggle button |
 | Reset | `refit()` | button |
 | Screenshot | `screenshot({target:"download"})` | button (downloads PNG immediately) |
@@ -1093,8 +1153,14 @@ layout.
        aria-label="Viewer controls">
     <select class="mol-viewer-knob mol-viewer-knob-style"
             aria-label="Representation style">…</select>
-    <button class="mol-viewer-knob mol-viewer-knob-toggle"
-            data-knob="labels" aria-pressed="false">Labels</button>
+    <details class="mol-viewer-knob mol-viewer-knob-labels">
+      <summary aria-pressed="false">Labels</summary>
+      <!-- Format options come from KnobBarOpts.labelsFormats -->
+      <button data-format="index"  >Index</button>
+      <button data-format="name"   >Name</button>
+      <button data-format="element">Element</button>
+      <button data-format="off"    >Off</button>
+    </details>
     <button class="mol-viewer-knob mol-viewer-knob-toggle"
             data-knob="axes"   aria-pressed="true" >Axes</button>
     <button class="mol-viewer-knob"
@@ -1244,6 +1310,10 @@ const handle = embed(document.getElementById("viewer"), {
   style:   { rep: "ball-and-stick" },
   pick:    { mode: "multi",
              onPick: idx => selectionStore.setIndices(idx) },
+  //         Default rendering: picked atoms get an accent halo
+  //         + an index label automatically.  Matches /modify's
+  //         pre-embed behaviour.  Override via pick.halo /
+  //         pick.style / pick.label if needed.
   axes:    true,
   cell:    true,
   onError(err) { showToast(err.message, { variant: "error" }); },
@@ -1581,3 +1651,8 @@ CSS.
 | 2026-06-03 | Add § 9 Testing affordances + `handle._test` + `opts.testInjection`. | Independent gap review G10: tests reached into `_viewer3dmol()` and ad-hoc globals. The new test surface (normalise functions + `handle._test`) is the stable contract; injection lets tests mock projects/clipboard/MediaRecorder/gif.js cleanly. |
 | 2026-06-03 | Document keyboard shortcuts (`R`, `L`, `A`, `Space`, `←`/`→`) for the knob bar + frame strip. | Independent gap review G9.1: a11y was implicit. Spec the minimum keyboard surface; hosts can suppress via input focus. |
 | 2026-06-03 | Remove `style.showLabels` (was an alias for `labels.atoms`). | Two paths to the same state caused precedence ambiguity (G1.4). `setLabels`/`opts.labels` is the sole path. |
+| 2026-06-03 | `LabelOpts.atoms` split into `atoms` (which) + `format` (what). | User asked for richer atom-label UX (index vs name vs element selectable from the knob bar). Old shape conflated "which atoms to label" with "what to label them with"; new shape lets the two vary independently. `atoms: number[]` previously had no documented format — now uses `format: "index"` by default. |
+| 2026-06-03 | Labels knob becomes a 4-option popover (Index / Name / Element / Off); `labelsFormats` opt narrows the choices. | User picked "Labels-format popover" over plain on/off and over per-atom custom text. The popover matches the Background and Export pattern; `labelsFormats: ["index"]` reduces it to a plain toggle for tabs that don't need format choice. |
+| 2026-06-03 | `PickOpts` extended with `halo` (object), `style`, `label` fields. Default selection rendering is halo + index label. | User confirmed this matches /modify's existing behaviour (click an atom → halo + index visible). Building it into PickOpts means every consumer site renders selections the same way without each tab wiring `onPick → setOverlays`. Hosts opt out via `halo: false, label: false`; richer custom rendering via the `style` override. |
+| 2026-06-03 | Selection state survives `setStructure` IFF atom count + element ordering match; cleared otherwise. | Explicit so implementer doesn't invent semantics. Atom-edit ops in /modify that preserve count keep the selection visible mid-edit; an actual file swap (Build's file picker) drops it. |
+| 2026-06-03 | Selection halos / style / labels layer above OverlaySpec equivalents. | Pick state is the most "user-driven" of all overlays — the user must be able to see what they just clicked, even when a region tint or frozen-atom overlay would otherwise compete. Layering pinned: base style → OverlaySpec style → pick style; OverlaySpec halo → pick halo; labels follow the same ordering. |
