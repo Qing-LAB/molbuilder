@@ -74,6 +74,9 @@ type ViewerOpts = {
   // ---- Atom-pick interaction ------------------------------------ //
   pick?: PickOpts,               // see § 2.8
 
+  // ---- Animation (vibrational mode OR trajectory frames) -------- //
+  animation?: AnimationOpts,     // see § 2.9
+
   // ---- Card chrome (the embeddable panel) ----------------------- //
   card?: {
     title?:        string,
@@ -104,6 +107,14 @@ type ViewerHandle = {
   setLabels(labels: LabelOpts | bool): void,
   setArrows(arrows: ArrowSpec[]): void,
   setPick(pick: PickOpts):        void,
+
+  // Animation control (only meaningful when opts.animation is set):
+  setAnimation(animation: AnimationOpts | null): void,
+  playAnimation():        void,
+  pauseAnimation():       void,
+  isAnimationPlaying():   boolean,
+  setAnimationFrame(idx: number): void,  // trajectory mode only
+  getAnimationFrame():    number,
 
   // Read accessors:
   getAtomCount():     number,
@@ -225,6 +236,64 @@ type PickOpts = {
 Delegates to `lib/mol-pick.js` for the halo geometry; the
 embedded viewer owns the click-handler registration.
 
+### 2.9 `AnimationOpts` — atoms moving over time
+
+Two animation kinds share one contract: the viewer maintains the
+per-frame redraw loop, the caller supplies the motion description.
+
+```ts
+type AnimationOpts =
+  | VibrationAnimation
+  | TrajectoryAnimation;
+
+type VibrationAnimation = {
+  kind:          "vibration",
+  // Per-atom displacement direction (Å).  Length must match the
+  // structure's atom count.  Position at phase φ:
+  //     pos_i(φ) = baseline_i + amplitude · cos(φ) · displacement_i
+  displacements: number[][][3],
+  amplitude?:    number,         // peak Cartesian amplitude (Å); default 0.15
+  speedHz?:      number,         // cycle-rate multiplier; default 1.0
+  paused?:       boolean,        // start in paused state; default false
+};
+
+type TrajectoryAnimation = {
+  kind:          "trajectory",
+  // Each frame is a full [n_atoms][3] coordinate set.  The
+  // structure's atom count + element ordering must match the
+  // baseline structure (changing the topology mid-trajectory
+  // is not supported).
+  frames:        number[][][3],
+  startFrame?:   number,         // default 0
+  fps?:          number,         // playback rate; default 10
+  paused?:       boolean,        // start in paused state; default true
+  loop?:         boolean,        // wrap at end; default true
+};
+```
+
+**Vibration mode** drives spectra's per-mode visualisation: the
+selected mode's eigenvector becomes `displacements`; the viewer
+loops through one cosine cycle per second (modulated by
+`speedHz`).
+
+**Trajectory mode** drives the trajectory inspector's frame
+playback: each tick advances to the next frame at `fps`. The
+caller manipulates the current frame via `setAnimationFrame(idx)`
+(e.g. wired to a slider).
+
+Both modes preserve the user's camera, atom-pick state, axes,
+cell, labels, and arrows across every frame — the viewer
+updates ONLY the atom positions; every other overlay is
+position-aware and recomputes per-frame automatically.
+
+**Card chrome integration.** When `animation.kind === "trajectory"`
+AND `opts.card.frameStrip === true` (default for trajectory mode),
+the card renders a frame-strip control bar above the canvas:
+prev / play-pause / next buttons + frame counter + slider. The
+strip wires directly to `playAnimation` / `pauseAnimation` /
+`setAnimationFrame`; tabs that want their own controls pass
+`card.frameStrip: false` and use the handle methods.
+
 ---
 
 ## 3. Lifecycle
@@ -310,11 +379,14 @@ per session, not all at once):
 | `/modify` | `static/modify/viewer.js` — owns 3Dmol mount + style + axes + atom-pick | Embed with `pick: "single"`, `axes: true` |
 | `/` (Build) | `static/viewer.js` | Embed with `axes: true` |
 | `/results` structure inspector | `lib/inspectors/structure.js` | Embed (simplest case) |
-| `/results` trajectory inspector | `lib/trajectory/core.js` | **Stays** for now — it owns frame stepping + polling + plots; the embedded viewer's data API would need to grow trajectory support before migration. Out of scope for the initial embed contract. |
-| `/results` spectra inspector | `lib/spectra/core.js` | **Stays** for similar reasons — owns mode animation + plotly. |
+| `/results` trajectory inspector | `lib/trajectory/core.js` | Embed with `animation: { kind: "trajectory", frames: [...] }` and `card.frameStrip: true`. The inspector keeps its plotly chart + polling glue (those are outside the viewer's responsibility); the viewer takes over frame management, atom-pick, axes, cell, force-arrows. |
+| `/results` spectra inspector | `lib/spectra/core.js` | Embed with `animation: { kind: "vibration", displacements: <selected-mode eigenvector> }`. The inspector keeps the mode-table + plotly spectrum chart; the viewer takes over mode visualisation entirely. |
 
-The two inspectors that stay still **conform to the same handle
-interface** so a future migration is mechanical.
+The migration order respects feature dependencies: `/modify`
+and Build come first (use only static-structure features the
+composer can ship in stage 2); the two animation-driven
+inspectors migrate after stage 3 wires up the unified
+animation loop.
 
 ---
 
@@ -352,5 +424,6 @@ Live-mount tests (Playwright) verify:
 | 2026-06-02 | Single declarative `embed(host, opts)` entry point — no per-feature constructor. | User's spec: "the viewer takes an input of xyz or pdb data, and a few options". Multiple constructors would invite tab-specific drift; one entry point with optional features keeps the API surface small and composable. |
 | 2026-06-02 | Data-in via opts (xyz/pdb text); the viewer never fetches. | Keeps the viewer testable + reusable. Fetching is the tab's job (sidebar reads, projects.readFile, /api/build/load, etc.). The viewer is a pure renderer + state manager. |
 | 2026-06-02 | Card chrome owned by the viewer (the embedded panel includes title + info-line). | Per the user: "embedded as a card/panel where needed". Tabs that want bare-canvas can pass `card.className` to suppress chrome via CSS. |
-| 2026-06-02 | Trajectory + spectra inspectors stay on their own for now. | They've evolved rich domain-specific UX (frame stepping, mode animation, plotly integration) the initial embed contract doesn't yet cover. They CONFORM to the handle interface so a future migration is mechanical, but the embed contract focuses on the common case first. |
+| 2026-06-02 | Unified `animation` opt covers BOTH vibrational-mode visualisation (spectra) AND frame-by-frame trajectory replay. | Both are "atoms moving over time"; the viewer's job is the per-frame redraw loop + maintaining all other overlays across frames. The shape discriminator (`kind: "vibration" \| "trajectory"`) keeps the data shapes honest (vibration uses an eigenvector + phase; trajectory uses discrete frames + index) without splintering the API surface. The frame-strip is opt-in card chrome so non-trajectory consumers don't pay the DOM cost. |
+| 2026-06-02 | The trajectory inspector's plotly chart + polling stay outside the viewer. | The viewer is a renderer + state manager for the 3-D drawing; the energy / max-force / SCF-residual plots and the mtime polling are tab-level concerns that belong to the inspector. The handle's animation API gives the inspector everything it needs to drive the viewer; the inspector keeps the plot wiring + the `/api/watch/data` polling. |
 | 2026-06-02 | `_viewer3dmol()` escape hatch documented but discouraged. | Legacy migrations may need direct 3Dmol access during transition; the named accessor + docstring makes the boundary explicit so review can catch unjustified uses. |
