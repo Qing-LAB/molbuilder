@@ -354,7 +354,7 @@ NOT:
 
 ---
 
-## 8. Test coverage
+## 7. Test coverage
 
 | Test file | Layer | Coverage |
 |---|---|---|
@@ -366,7 +366,7 @@ NOT:
 
 ---
 
-## 9. Decisions log
+## 8. Decisions log
 
 | Date | Decision | Rationale |
 |---|---|---|

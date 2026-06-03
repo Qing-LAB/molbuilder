@@ -592,7 +592,16 @@ callback; the design does not prohibit it.  Behaviour:
 must use `expected_mtime` from the read result.  The design exposes
 mtime on every read envelope precisely so tabs can pin it.
 
-The contract for every subscriber API on the sidebar:
+---
+
+## 6. Subscribe model
+
+The sidebar exposes three subscriber surfaces:
+`projects.onChange(cb)` (selection mutations),
+`projects.onLockChange(cb)` (lock acquire/release), and
+`projects.onProjectsRootResolved(cb)` (one-shot fire when the
+roots fetch completes). Every subscriber API on the sidebar
+follows the same contract:
 
 ```mermaid
 sequenceDiagram

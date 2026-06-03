@@ -875,7 +875,7 @@ detection chain (in-tree → `$X3DNA` → `fiber` on PATH; see
 
 ---
 
-## 11.1 Request-size cap
+### 11.1 Request-size cap
 
 `MAX_CONTENT_LENGTH = 50 MB` on the Flask app (`web/app.py`).
 Watch uploads (large trajectory logs) need the headroom; Build's
@@ -886,7 +886,7 @@ into JSON so the JS uploaders' `r.json()` doesn't crash).
 
 Pinned by `tests/test_review_fixes.py::test_s6_web_app_caps_upload_size`.
 
-## 11.2 Naming constraint (project / structure / topic)
+### 11.2 Naming constraint (project / structure / topic)
 
 Every name that participates in a
 `projects/<project>/<topic>/<structure>/` path MUST satisfy
@@ -908,10 +908,27 @@ Enforced at three layers:
   client-side against the same regex, then re-validates
   server-side on submit.
 
-`topic` is even more constrained: must be one of the canonical
-topics (`structure`, `optimization`, `frequency`, `spectrum`,
-`transport`, `single-point`, `scan`). Validated by
-`molbuilder.projects.validate_topic`. See
+`topic` is even more constrained: must be one of the nine
+canonical topics, validated by
+`molbuilder.projects.validate_topic`:
+
+| Topic | Flavour | Use |
+|---|---|---|
+| `structure` | flat storage | `.xyz` / `.pdb` / `.cif` source structures |
+| `pseudopotential` | flat storage | SIESTA pseudos (project-local cache) |
+| `optimization` | run topic | geometry relaxation jobs |
+| `frequency` | run topic | harmonic frequencies |
+| `spectrum` | run topic | spectra generators (Raman / IR) |
+| `transport` | run topic | tunneling / transport calcs |
+| `single-point` | run topic | one-shot SCF |
+| `scan` | run topic | parameter / geometry scans |
+| `user` | free-form workspace | notes, scratch files, ad-hoc organisation; no rules below it |
+
+The flavour split is documentation only; `validate_topic`
+treats every entry identically. Ad-hoc names at depth 1 are
+rejected to keep the workflow vocabulary consistent across
+projects; if a real new analysis category emerges, extend
+`CANONICAL_TOPICS` in `molbuilder/projects.py`. See
 [`job-layout.md`](job-layout.md) for the on-disk convention.
 
 The picker itself does NOT filter on-disk directory names — it
@@ -920,7 +937,7 @@ shows what's there. A user who hand-creates a directory named
 and rename it) but won't be able to use it as the target of a
 project-create / rename action without renaming.
 
-## 11.3 Projects-hierarchy convention
+### 11.3 Projects-hierarchy convention
 
 The picker is intentionally **generic** — it doesn't enforce the
 `<project>/<topic>/<structure>/` shape, because users may want
@@ -940,7 +957,7 @@ Beyond the topic level, the structure directory is flat by
 job-layout-v1 convention; the picker will still show whatever
 exists there (including any subdirs the user created off-spec).
 
-## 11.4 Front-end contract
+### 11.4 Front-end contract
 
 All tabs share these conventions:
 
@@ -977,7 +994,7 @@ All tabs share these conventions:
   `sessionStorage["builder-form"]` survives form values across
   navigation.
 
-## 11.5 Form-side compatibility rules
+### 11.5 Form-side compatibility rules
 
 `viewer.js::applyCompatibility()` locks parameter combinations
 that would produce an invalid or wrong-physics config. Runs on
@@ -1000,7 +1017,7 @@ field gets `disabled` + a `.lock-reason` hint span.
 | `spin_polarized = false` | `spin_total` | SpinTotal meaningless without polarisation |
 | `relax_type = "none"` | `relax_steps`, `force_tol`, `max_displ` | no MD block emitted |
 
-## 11.6 Defence in depth
+### 11.6 Defence in depth
 
 The server does NOT trust the UI. Even if a malicious or buggy
 client submits an invalid combination, the same validators
@@ -1008,7 +1025,7 @@ client submits an invalid combination, the same validators
 field metadata. The UI rules give the user fast feedback; the
 server rules protect the data.
 
-## 11.7 Forbidden patterns
+### 11.7 Forbidden patterns
 
 The Flask app must NOT:
 
