@@ -493,3 +493,171 @@ class TestTestHandle:
             }
         """)
         assert kind["isCanvas"] is True
+
+
+# --------------------------------------------------------------------- #
+#  Tests — Export plumbing (§ 3.11 + § 5)                              #
+# --------------------------------------------------------------------- #
+
+
+class TestExportData:
+    """exportData routes xyz/pdb text to project / download /
+    clipboard targets.  Uses opts.testInjection per § 9.3 so the
+    tests don't depend on the real projects sidebar state."""
+
+    def test_export_to_clipboard_via_injection(
+            self, page, flask_server):
+        """clipboard target writes structure text via the injected
+        clipboardApi.writeText mock; onExport fires with the right
+        info."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.width = "300px";
+                host.style.height = "200px";
+                document.body.appendChild(host);
+                let copied = null;
+                let onExportInfo = null;
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    card: { bare: true, showInfoLine: false },
+                    export: { onExport: (info) => { onExportInfo = info; } },
+                    testInjection: {
+                        clipboardApi: {
+                            writeText: async (s) => { copied = s; },
+                        },
+                    },
+                });
+                const result = await h.exportData({
+                    target: "clipboard", format: "xyz" });
+                h.dispose();
+                host.remove();
+                return { copied, result, onExportInfo };
+            }
+        """)
+        assert out["copied"].startswith("3"), \
+            "clipboard should receive the xyz text"
+        assert out["result"]["bytes"] > 0
+        assert out["onExportInfo"]["kind"]   == "structure"
+        assert out["onExportInfo"]["target"] == "clipboard"
+        assert out["onExportInfo"]["format"] == "xyz"
+
+    def test_export_to_project_via_injection(
+            self, page, flask_server):
+        """project target writes via the injected projectsApi.
+        writeFile mock; path is constructed as currentDir + "/" +
+        filename per § 2.5.4."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.width = "300px";
+                host.style.height = "200px";
+                document.body.appendChild(host);
+                let writtenPath = null;
+                let writtenData = null;
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    card: { bare: true, showInfoLine: false },
+                    export: { defaultName: "water" },
+                    testInjection: {
+                        projectsApi: {
+                            writeFile: async (path, data) => {
+                                writtenPath = path;
+                                writtenData = data;
+                                return { ok: true, path: path };
+                            },
+                            currentDir: () => "/tmp/proj1",
+                        },
+                    },
+                });
+                const result = await h.exportData({ target: "project" });
+                h.dispose();
+                host.remove();
+                return { writtenPath, hasData: !!writtenData,
+                         resultFilename: result.filename };
+            }
+        """)
+        assert out["writtenPath"] == "/tmp/proj1/water.xyz"
+        assert out["hasData"] is True
+        assert out["resultFilename"] == "/tmp/proj1/water.xyz"
+
+    def test_export_to_project_rejects_when_no_active_dir(
+            self, page, flask_server):
+        """No currentDir → reject with code: no_project per § 5.3."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.width = "300px";
+                host.style.height = "200px";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    card: { bare: true, showInfoLine: false },
+                    testInjection: {
+                        projectsApi: {
+                            writeFile: async () =>
+                                ({ ok: true }),
+                            currentDir: () => "",   // no active dir
+                        },
+                    },
+                });
+                let code = null;
+                try { await h.exportData({ target: "project" }); }
+                catch (e) { code = e && e.code; }
+                h.dispose();
+                host.remove();
+                return { code };
+            }
+        """)
+        assert out["code"] == "no_project"
+
+
+class TestScreenshot:
+    """screenshot returns the canvas as PNG.  Live test uses the
+    real 3Dmol pngURI; we just confirm the result has the right
+    shape + non-zero bytes."""
+
+    def test_screenshot_returns_dataurl_and_blob(
+            self, page, flask_server):
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(500)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.width = "300px";
+                host.style.height = "200px";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    card: { bare: true, showInfoLine: false },
+                });
+                // Wait one tick for the 3Dmol render to commit.
+                await new Promise(r => requestAnimationFrame(r));
+                await new Promise(r => requestAnimationFrame(r));
+                const r = await h.screenshot();   // no target = capture only
+                h.dispose();
+                host.remove();
+                return {
+                    isDataUrl: r.dataUrl.startsWith("data:image/png"),
+                    blobSize:  r.blob.size,
+                    blobType:  r.blob.type,
+                };
+            }
+        """)
+        assert out["isDataUrl"] is True
+        assert out["blobSize"]  > 0
+        assert out["blobType"]  == "image/png"

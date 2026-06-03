@@ -717,15 +717,40 @@
             }
         }
 
-        // Screenshot + Export — DOM exists; Phase 5 will wire the
-        // actions.  For Phase 2 we attach a stub so clicks don't
-        // produce console errors.
+        // Screenshot button → download a PNG immediately (Phase 5a).
         const ssBtn = bar.querySelector('[data-knob="screenshot"]');
         if (ssBtn) {
             ssBtn.addEventListener("click", () => {
-                // Phase 5 will implement screenshot.  For now, no-op
-                // (silently); avoid surfacing a misleading error.
+                handle.screenshot({ target: "download" })
+                      .catch((err) => _dispatchError(state, err));
             });
+        }
+
+        // Export popover — Structure / Image actions wire to
+        // handle.exportData / handle.screenshot.  Animation
+        // actions are stubbed until Phase 5b.
+        const expDet = bar.querySelector(".mol-viewer-knob-export");
+        if (expDet) {
+            for (const btn of expDet.querySelectorAll("button[data-kind]")) {
+                btn.addEventListener("click", () => {
+                    const kind   = btn.getAttribute("data-kind");
+                    const target = btn.getAttribute("data-target");
+                    const format = btn.getAttribute("data-format");
+                    let p;
+                    if (kind === "structure") {
+                        p = handle.exportData({ target: target });
+                    } else if (kind === "image") {
+                        p = handle.screenshot({ target: target });
+                    } else if (kind === "animation") {
+                        // Phase 5b: animation export.  Silent stub
+                        // for now (no console spam from a click).
+                        expDet.open = false;
+                        return;
+                    }
+                    if (p) p.catch((err) => _dispatchError(state, err));
+                    expDet.open = false;
+                });
+            }
         }
 
         // Popover mutual-exclusion: opening one closes the others
@@ -1276,6 +1301,34 @@
                     } catch (_) {}
                 }
             }
+        }
+    }
+
+    /**
+     * Convert a data: URL (e.g. canvas.toDataURL output) to a
+     * Blob.  Synchronous via atob; sufficient for the modest PNGs
+     * 3Dmol produces.  Returns null on parse failure.
+     */
+    function _dataUrlToBlob(dataUrl) {
+        try {
+            const m = /^data:([^;,]+)(;base64)?,(.*)$/.exec(dataUrl);
+            if (!m) return null;
+            const mime = m[1] || "application/octet-stream";
+            const isB64 = !!m[2];
+            const body  = decodeURIComponent(m[3]);
+            let bytes;
+            if (isB64) {
+                const bin = root.atob(body);
+                bytes = new Uint8Array(bin.length);
+                for (let i = 0; i < bin.length; i++) {
+                    bytes[i] = bin.charCodeAt(i);
+                }
+            } else {
+                bytes = new root.TextEncoder().encode(body);
+            }
+            return new root.Blob([bytes], { type: mime });
+        } catch (_) {
+            return null;
         }
     }
 
@@ -2094,6 +2147,254 @@
             return state.pickedIndices.slice();
         }
 
+        function getStructureText(format) {
+            // Returns the current structure as text in the
+            // requested format per § 3.2.  Omit ``format`` →
+            // returns whatever was supplied (pdb wins if both).
+            // Phase 5a does NOT convert between formats; if the
+            // caller asks for xyz but only pdb was supplied,
+            // returns "".
+            if (state.disposed) return "";
+            const c = state.current;
+            if (format === "xyz") return c.xyz || "";
+            if (format === "pdb") return c.pdb || "";
+            return c.pdb || c.xyz || "";
+        }
+
+        // -------------------------------------------------------- //
+        //  Export helpers — § 3.11 + § 5                            //
+        // -------------------------------------------------------- //
+
+        function _filename(stem, ext) {
+            const e = (state.userOpts.export
+                       && state.userOpts.export.defaultName)
+                       || stem
+                       || "structure";
+            // Strip illegal filesystem chars; keep ASCII-ish names.
+            const safe = String(e).replace(/[^\w.\-]+/g, "_");
+            return safe + "." + ext;
+        }
+
+        function _projectsApi() {
+            return (state.testInjection && state.testInjection.projectsApi)
+                || (root.molbuilder && root.molbuilder.projects)
+                || null;
+        }
+
+        function _clipboardApi() {
+            return (state.testInjection && state.testInjection.clipboardApi)
+                || (root.navigator && root.navigator.clipboard)
+                || null;
+        }
+
+        function _writeToProject(filename, data) {
+            const proj = _projectsApi();
+            if (!proj || typeof proj.writeFile !== "function") {
+                return Promise.reject(_makeError(
+                    "no_project",
+                    "save-to-project: window.molbuilder.projects.writeFile "
+                  + "not available"));
+            }
+            const currentDir = typeof proj.currentDir === "function"
+                                 ? proj.currentDir() : proj.currentDir;
+            if (!currentDir) {
+                return Promise.reject(_makeError(
+                    "no_project",
+                    "save-to-project: no active project directory"));
+            }
+            const path = currentDir.replace(/\/$/, "") + "/" + filename;
+            return Promise.resolve(proj.writeFile(path, data))
+                .then((env) => {
+                    if (env && env.ok === false) {
+                        throw _makeError(
+                            "io_error",
+                            (env.error || "writeFile failed"), env);
+                    }
+                    return { filename: path, bytes:
+                        typeof data === "string"
+                            ? data.length
+                            : (data && data.size) || 0 };
+                });
+        }
+
+        function _triggerDownload(filename, blob) {
+            try {
+                const url = root.URL.createObjectURL(blob);
+                const a = root.document.createElement("a");
+                a.href = url;
+                a.download = filename;
+                a.style.display = "none";
+                root.document.body.appendChild(a);
+                a.click();
+                a.remove();
+                // Revoke the object URL on the next microtask
+                // (some browsers need a tick before the download
+                // starts).
+                Promise.resolve().then(() =>
+                    root.URL.revokeObjectURL(url));
+                return Promise.resolve({
+                    filename: filename, bytes: blob.size,
+                });
+            } catch (e) {
+                return Promise.reject(_makeError(
+                    "io_error",
+                    "download trigger failed: " + (e && e.message), e));
+            }
+        }
+
+        function _aborted(signal) {
+            if (!signal) return null;
+            if (signal.aborted) {
+                return _makeError("aborted",
+                                  "operation aborted before start");
+            }
+            return null;
+        }
+
+        function _fireOnExport(info) {
+            const cb = state.userOpts.export
+                        && typeof state.userOpts.export.onExport === "function"
+                        ? state.userOpts.export.onExport : null;
+            if (cb) {
+                try { cb(info); } catch (_) {}
+            }
+        }
+
+        function exportData(opts) {
+            opts = opts || {};
+            if (state.disposed) {
+                return Promise.reject(_makeError("disposed",
+                    "exportData: viewer disposed"));
+            }
+            const aborted = _aborted(opts.signal);
+            if (aborted) return Promise.reject(aborted);
+
+            // Decide format.  Default: whatever the embed has.
+            let format = opts.format;
+            const haveXyz = !!state.current.xyz;
+            const havePdb = !!state.current.pdb;
+            if (!format) format = havePdb ? "pdb" : (haveXyz ? "xyz" : null);
+            if (!format) {
+                return Promise.reject(_makeError("no_structure",
+                    "exportData: no structure loaded"));
+            }
+            const text = getStructureText(format);
+            if (!text) {
+                return Promise.reject(_makeError("no_structure",
+                    "exportData: requested format '" + format
+                  + "' not available (supplied format was "
+                  + (havePdb ? "pdb" : "xyz") + ")"));
+            }
+            const fname = _filename(null, format);
+
+            let p;
+            if (opts.target === "project") {
+                p = _writeToProject(opts.filename || fname, text);
+            } else if (opts.target === "download") {
+                const blob = new root.Blob([text],
+                                           { type: "text/plain" });
+                p = _triggerDownload(opts.filename || fname, blob);
+            } else if (opts.target === "clipboard") {
+                const cb = _clipboardApi();
+                if (!cb || typeof cb.writeText !== "function") {
+                    p = Promise.reject(_makeError("no_clipboard",
+                        "exportData: clipboard API unavailable "
+                      + "(HTTPS or localhost required)"));
+                } else {
+                    p = cb.writeText(text)
+                        .then(() => ({
+                            filename: opts.filename || fname,
+                            bytes: text.length,
+                        }))
+                        .catch((e) => {
+                            throw _makeError("io_error",
+                                "clipboard write failed: "
+                              + (e && e.message), e);
+                        });
+                }
+            } else {
+                return Promise.reject(_makeError("invalid_input",
+                    "exportData: target must be 'project', "
+                  + "'download', or 'clipboard'"));
+            }
+
+            return p.then((r) => {
+                _fireOnExport({
+                    kind:     "structure",
+                    target:   opts.target,
+                    format:   format,
+                    filename: r.filename,
+                    bytes:    r.bytes,
+                });
+                return r;
+            });
+        }
+
+        function screenshot(opts) {
+            opts = opts || {};
+            if (state.disposed) {
+                return Promise.reject(_makeError("disposed",
+                    "screenshot: viewer disposed"));
+            }
+            const aborted = _aborted(opts.signal);
+            if (aborted) return Promise.reject(aborted);
+
+            // 3Dmol.pngURI(width, height) supports super-resolution
+            // capture when width/height exceed the on-screen canvas
+            // (§ 11.3 doc note).
+            let dataUrl;
+            try {
+                const v = state.viewer;
+                if (opts.width || opts.height) {
+                    dataUrl = v.pngURI(opts.width || undefined,
+                                       opts.height || undefined);
+                } else {
+                    dataUrl = v.pngURI();
+                }
+            } catch (e) {
+                return Promise.reject(_makeError("io_error",
+                    "screenshot: pngURI failed: "
+                  + (e && e.message), e));
+            }
+            if (!dataUrl) {
+                return Promise.reject(_makeError("no_structure",
+                    "screenshot: pngURI returned empty"));
+            }
+            // Convert data URL to a Blob synchronously.
+            const blob = _dataUrlToBlob(dataUrl);
+            if (!blob) {
+                return Promise.reject(_makeError("io_error",
+                    "screenshot: dataURL → blob conversion failed"));
+            }
+            const fname = _filename(null, "png");
+
+            let chain;
+            if (opts.target === "project") {
+                chain = _writeToProject(opts.filename || fname, blob);
+            } else if (opts.target === "download") {
+                chain = _triggerDownload(opts.filename || fname, blob);
+            } else {
+                // No target: capture-only, resolve with the blob.
+                chain = Promise.resolve({
+                    filename: opts.filename || fname,
+                    bytes:    blob.size,
+                });
+            }
+            return chain.then((r) => {
+                if (opts.target) {
+                    _fireOnExport({
+                        kind:     "image",
+                        target:   opts.target,
+                        format:   "png",
+                        filename: r.filename,
+                        bytes:    r.bytes,
+                    });
+                }
+                return { dataUrl: dataUrl, blob: blob,
+                         filename: r.filename, bytes: r.bytes };
+            });
+        }
+
         function refit() {
             if (state.disposed) return;
             try { state.viewer.zoomTo(); state.viewer.render(); }
@@ -2182,8 +2483,13 @@
             getAtomCount:       getAtomCount,
             getElements:        getElements,
             getPickedIndices:   getPickedIndices,
+            getStructureText:   getStructureText,
             getCamera:          getCamera,
             setCamera:          setCamera,
+
+            exportData:         exportData,
+            screenshot:         screenshot,
+
             refit:              refit,
             render:             render,
             dispose:            dispose,
