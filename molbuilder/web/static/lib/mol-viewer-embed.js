@@ -846,11 +846,12 @@
                 "viewer.embed(host, opts): host must be a DOM element"
             );
         }
-        if (!opts.xyz && !opts.pdb) {
-            throw new TypeError(
-                "viewer.embed(host, opts): opts.xyz OR opts.pdb is required"
-            );
-        }
+        // xyz/pdb are OPTIONAL at mount.  The caller can mount an
+        // empty viewer (no structure loaded yet) and populate later
+        // via handle.setStructure(...).  This matters for tabs that
+        // build a viewer before the user has picked a file (/modify,
+        // /build) -- the viewer renders an empty canvas until the
+        // first setStructure call.
         const viewerApi = (root.molbuilder || {}).viewer;
         if (!viewerApi || typeof viewerApi.create !== "function") {
             throw new Error(

@@ -52,12 +52,16 @@ window.molbuilder.viewer.embed(host: HTMLElement, opts: ViewerOpts)
 
 ```ts
 type ViewerOpts = {
-  // ---- Structure data (at least one required at mount) -------- //
+  // ---- Structure data (both optional at mount) ----------------- //
   xyz?: string,                  // XYZ text
   pdb?: string,                  // PDB text
   // If both supplied, pdb wins (richer metadata).  Pass one OR the
   // other in production; both is a programmer convenience for the
-  // "load by extension" path.
+  // "load by extension" path.  If NEITHER is supplied, the viewer
+  // mounts an empty canvas; populate later via
+  // ``handle.setStructure({xyz | pdb})``.  Tabs that build the
+  // viewer before the user has picked a file (/modify, /build)
+  // rely on this empty-mount behavior.
 
   // ---- Style ----------------------------------------------------- //
   style?: StyleOpts,             // see § 2.3

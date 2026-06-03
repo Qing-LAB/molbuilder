@@ -79,64 +79,86 @@
     }
 
     // --------------------------------------------------------------- //
-    //  3Dmol viewer.                                                   //
-    // --------------------------------------------------------------- //
-    const viewer = window.molbuilder.viewer.create("viewer");
-
-    function styleSpec() {
-        const rep = $("rep").value;
-        return window.molbuilder?.style?.spec
-            ? window.molbuilder.style.spec({ rep, scale: 1.0 })
-            : { stick: { radius: 0.13 } };
-    }
+    //  Embedded MolViewer.                                             //
+    //                                                                  //
+    //  Migrated to the standard embeddable viewer (#198, 2026-06-02;   //
+    //  contract: docs/protocols/embedded-viewer.md).  The handle's     //
+    //  declarative API drives style / axes / index labels; the raw    //
+    //  3Dmol viewer (handle._viewer3dmol()) is still used directly    //
+    //  for two things the embed contract doesn't cover:               //
+    //    1. The selection-store viewer-adapter (atom-pick + selection-//
+    //       halo overlays).  The adapter calls 3Dmol primitives       //
+    //       (setClickable / addSphere) on the underlying viewer.      //
+    //    2. Camera-pivot recentering (focusMolecule / pivotSelection ///
+    //       snapPivotToCenter) which needs ``viewer.zoomTo(selection)``//
+    //       semantics not exposed via the embed.                       //
+    //  --------------------------------------------------------------- //
+    const _viewerHost = $("viewer");
+    const _viewerHandle = window.molbuilder.viewer.embed(_viewerHost, {
+        // No xyz at mount -- /modify loads structures asynchronously
+        // via the sidebar's loadStructureText -> applyStructure path.
+        // The viewer renders an empty canvas until the first
+        // setStructure call.
+        style: {
+            rep:         "stick",
+            radiusScale: 1.0,
+        },
+        // Axes are toggle-driven (show-axes checkbox); start with the
+        // checkbox's initial state.
+        axes:    ($("show-axes") && $("show-axes").checked) ? true : false,
+        labels:  ($("show-indices") && $("show-indices").checked)
+                    ? { atoms: "indices", fontSize: 9,
+                        fontColor: "white",
+                        background: "rgba(0,0,0,0.55)" }
+                    : false,
+        // /modify uses the selection-store viewer-adapter for atom
+        // pick; the embed's built-in pick is NOT used here (the
+        // adapter does its own setClickable wiring + draws labelled
+        // region halos which the embed's pick mode doesn't support).
+        pick:    { mode: "none" },
+        card: {
+            // Modify owns its own card chrome (header + title-readout
+            // + viewer-controls + send-to-Build bar); embed in bare
+            // mode + suppress the info-line.
+            bare:         true,
+            showInfoLine: false,
+            height:       "100%",
+        },
+    });
+    const viewer = _viewerHandle._viewer3dmol();
 
     function applyStyle() {
-        viewer.setStyle({}, styleSpec());
-        renderIndexLabels();
-        // Axes are independent shapes; setStyle doesn't disturb them
-        // but we redraw whenever the structure changes.  Render once
-        // at the end so partial updates aren't visible.
-        drawAxes();
-        // Selection halos are drawn by the viewer-adapter
-        // (lib/selection/viewer-adapter.js) which subscribes to the
-        // selection store.  setStyle() above does NOT wipe the
-        // adapter's shape overlays (addSphere ≠ style) so no manual
-        // re-paint is needed here.
+        const rep = $("rep").value;
+        _viewerHandle.setStyle({ rep: rep, radiusScale: 1.0 });
+        // Labels + axes are handled by their own toggles below; this
+        // call is style-only.
     }
 
-    let _indexLabels = [];
-    function clearIndexLabels() {
-        _indexLabels.forEach((lbl) => viewer.removeLabel(lbl));
-        _indexLabels = [];
-    }
     function renderIndexLabels() {
-        clearIndexLabels();
-        if (!$("show-indices").checked) return;
-        // 3Dmol's selectedAtoms returns the atom records (with x/y/z and
-        // serial).  Label every atom with its 1-based index (matches
-        // the Build viewer's overlay and PDB/SIESTA conventions).  The
-        // Python API uses 0-based indices; we convert at the UI
-        // boundary (the viewer-adapter forwards 3Dmol's 0-based
-        // ``atom.serial`` straight to ``store.toggleAtom``).
-        const atoms = viewer.selectedAtoms({});
-        atoms.forEach((a, i) => {
-            const lbl = viewer.addLabel(String(i + 1), {
-                position: { x: a.x, y: a.y, z: a.z },
-                backgroundColor: "rgba(0,0,0,0.55)",
-                fontColor: "white",
-                fontSize: 9,
-                inFront: true,
-                showBackground: true,
-            });
-            _indexLabels.push(lbl);
-        });
+        const show = $("show-indices") && $("show-indices").checked;
+        _viewerHandle.setLabels(show
+            ? { atoms: "indices", fontSize: 9, fontColor: "white",
+                background: "rgba(0,0,0,0.55)" }
+            : false);
+    }
+
+    // ``clearIndexLabels`` retained as a backwards-compatible alias
+    // for the callers that still use the historical name.  Now a
+    // thin pass-through to setLabels(false).
+    function clearIndexLabels() {
+        _viewerHandle.setLabels(false);
     }
 
     function clearViewer() {
+        // The embed's setStructure handles atom + model teardown;
+        // here we drop the index labels + axes (they auto-rebuild on
+        // the next applyStructure call).  Raw viewer used for the
+        // shape teardown because the embed doesn't expose
+        // removeAllShapes() (the selection-store viewer-adapter's
+        // halos sit there and we want them gone on a hard clear).
         viewer.removeAllModels();
         viewer.removeAllLabels();
         viewer.removeAllShapes();
-        _indexLabels = [];
     }
 
     // ----- Camera anchoring -------------------------------------- //
@@ -218,51 +240,15 @@
     // adapter: read the checkbox state, gather the cell (if any),
     // delegate.
 
-    let _axesHandle = null;
-
-    function clearAxes() {
-        if (_axesHandle) {
-            _axesHandle.clear();
-            _axesHandle = null;
-        }
-    }
-
-    /**
-     * Return the currently-known cell vectors for the structure
-     * loaded in /modify, or ``null`` if no cell info is available.
-     *
-     * For the modify tab today: structures arrive via the sidebar
-     * loadStructureText path which parses XYZ (no cell) or PDB
-     * (CRYST1-bearing PDBs do produce a cell on the 3Dmol model, but
-     * the modify path normalises through XYZ).  Returning ``null``
-     * here keeps the Cartesian fallback in effect.
-     *
-     * When future workflows pipe cell vectors into the modify state
-     * (e.g. a "SIESTA cell from sidecar" handoff), return them as a
-     * 3x3 numeric array ``[[ax,ay,az],[bx,by,bz],[cx,cy,cz]]`` and
-     * the axes module will switch into cell mode automatically.
-     */
-    function getCurrentCell() {
-        return null;
-    }
-
     function drawAxes() {
-        clearAxes();
+        // Delegates to the embed's setAxes contract.  Auto-mode
+        // (the default when ``cell`` isn't supplied) falls back to
+        // Cartesian; cell mode would kick in if /modify ever
+        // received a lattice (none today; future SIESTA-cell-from-
+        // sidecar handoff would set it via handle.setStructure({
+        // xyz, lattice})).
         const cb = $("show-axes");
-        if (!cb || !cb.checked) {
-            viewer.render();
-            return;
-        }
-        const axesApi = window.molbuilder && window.molbuilder.axes;
-        if (!axesApi || typeof axesApi.draw !== "function") {
-            // lib/mol-axes.js missing from the template's <script>
-            // order; render a no-op rather than crashing the viewer.
-            viewer.render();
-            return;
-        }
-        _axesHandle = axesApi.draw(viewer, {
-            cell: getCurrentCell(),
-        });
+        _viewerHandle.setAxes(cb && cb.checked ? true : false);
     }
 
     // --------------------------------------------------------------- //
@@ -455,18 +441,24 @@
             state.title ? `${state.title} (${formula(state.elements)})`
                         : formula(state.elements);
 
-        // Render in viewer.
-        clearViewer();
+        // Render via the embed.  setStructure replaces the model,
+        // re-applies style + overlays (axes / labels / etc.), and
+        // refits the camera.  Index labels + axes follow the
+        // toggle-driven state below; setStructure leaves those
+        // settings intact so they re-render against the new atoms.
         if (state.xyz) {
-            viewer.addModel(state.xyz, "xyz");
+            _viewerHandle.setStructure({ xyz: state.xyz });
             applyStyle();
+            renderIndexLabels();
+            drawAxes();
             // Default fit shows the whole structure (atoms + slabs)
             // so the user always sees what's in the model after a
             // refresh.  The Focus-molecule toolbar button switches to
             // a molecule-anchored pivot for smooth zoom on the small
             // molecule when slabs are present.
-            viewer.zoomTo();
-            viewer.render();
+            _viewerHandle.refit();
+        } else {
+            clearViewer();
         }
         // Atom-level clicks + halo overlays are wired by the
         // viewer-adapter (lib/selection/viewer-adapter.js), which
