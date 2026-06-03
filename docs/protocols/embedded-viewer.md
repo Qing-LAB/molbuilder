@@ -788,12 +788,21 @@ Background, Export):
   the one exception — typing in it does NOT close the popover.
 - Only one popover open at a time. Opening one closes the others.
 
-Single-letter keys (`R`, `L`, `A`) do NOT fire while a
+Single-letter keys (`R`, `L`, `A`, `B`, `E`) do NOT fire while a
 `<input>`, `<textarea>`, or `[contenteditable]` element inside
 the card is focused (notably the Background popover's
 custom-color `<input type="color">`). `Space` and arrow keys
 behave the same — they only fire when the canvas, a knob button,
 or the frame strip is the active element.
+
+**While a popover is open** (Labels / Background / Export), the
+embed suppresses single-letter shortcuts mapped to OTHER knobs.
+Only the popover's own opening key (a second press of `L` / `B` /
+`E` closes it), the arrow/Enter focus-navigation keys, and `Esc`
+fire. `R` and `A` are suppressed; `Space` and trajectory arrow
+keys are also suppressed (they expect canvas/frame-strip focus,
+not popover focus). This prevents accidental toggles while the
+user is navigating a popover with the keyboard.
 
 Hosts can suppress all key handling by setting `knobs.compact:
 true` AND focusing an input outside the card; the embed never
@@ -1062,9 +1071,11 @@ on `setStructure({preserveCamera: ...})` overrides for that call.
 
 This is the same rule documented in § 3.8 (PickOpts § Persistence)
 but called out here because `setStructure` is a cross-cutting
-lifecycle event and the pick contract is one of the four overlay
-contracts that survive it (camera, animation-IFF-extending,
-pick-IFF-same-atoms).
+lifecycle event and the pick contract is one of the three overlay
+contracts that survive it (camera-via-preserveCamera, animation-
+via-appendFrames-only, pick-IFF-same-atoms). OverlaySpec entries
+do NOT survive `setStructure` automatically — hosts re-apply
+overlays after the structure swap if needed.
 
 The atom-edit ops in `/modify` that preserve atom count and order
 (e.g. moving a single atom's position) keep selection visible
@@ -1166,7 +1177,7 @@ This table is **the** reference for code-vs-doc review.
 |---|---|---|---|
 | `embed()` | `missing_dependency` | — | — |
 | `setStructure` | — | — | `invalid_input` (malformed xyz/pdb) |
-| `appendFrames` | — | — | `invalid_input` (no animation, wrong kind, atom-count mismatch) |
+| `appendFrames` | — | — | `invalid_input` (atom-count mismatch only). No-animation and wrong-kind paths are silent no-ops per § 3.2; no error fires. |
 | `setStyle` | — | — | `invalid_input` (bad rep, NaN radius) |
 | `setAxes` | — | — | `invalid_input` (bad mode) |
 | `setCell` | — | — | — |
