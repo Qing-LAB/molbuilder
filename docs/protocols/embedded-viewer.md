@@ -804,6 +804,15 @@ keys are also suppressed (they expect canvas/frame-strip focus,
 not popover focus). This prevents accidental toggles while the
 user is navigating a popover with the keyboard.
 
+This is the keyboard exception to the *click/tap* rule "Only one
+popover open at a time — opening one closes the others." That rule
+applies to click and touch opens, where the user is consciously
+switching focus between popovers. Cross-knob *keystrokes* (e.g.
+pressing `B` while Labels is open) are suppressed instead of
+chaining: the user has to `Esc` out of Labels first, then press
+`B`. Keyboard chaining would invite accidental popover swaps
+mid-arrow-navigation.
+
 Hosts can suppress all key handling by setting `knobs.compact:
 true` AND focusing an input outside the card; the embed never
 captures `Tab`.
