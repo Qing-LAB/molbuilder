@@ -1,0 +1,57 @@
+/* mol-viewer-embed.css — card chrome for the embedded MolViewer.
+ *
+ * Contract: docs/protocols/embedded-viewer.md § 4 "Card structure".
+ * Theme through the standard tokens (tokens.css); per-tab overrides
+ * via opts.card.className from the embed call site.
+ */
+
+.mol-viewer-card {
+    /* Inherit base .card padding + radius from tokens.css; this
+       file only adds the per-component overrides. */
+    display:        flex;
+    flex-direction: column;
+    gap:            var(--space-xs, 0.4rem);
+}
+
+.mol-viewer-card-header {
+    display:        flex;
+    align-items:    baseline;
+    justify-content: space-between;
+    gap:            var(--space-md, 0.8rem);
+    /* Header has a slim baseline so it doesn't bulk-up over the
+       viewer canvas; padding inherited from .card. */
+    padding-bottom: var(--space-xs, 0.4rem);
+    border-bottom:  1px solid var(--border-soft, rgba(0,0,0,0.08));
+}
+
+.mol-viewer-card-title {
+    margin:         0;
+    font-size:      var(--text-md, 1rem);
+    font-weight:    600;
+    color:          var(--text-primary, #222);
+    /* Long titles wrap to a second line rather than push the
+       info-line off the right edge. */
+    flex:           1 1 auto;
+    min-width:      0;
+}
+
+.mol-viewer-info-line {
+    flex:           0 0 auto;
+    font-size:      var(--text-sm, 0.875rem);
+    color:          var(--text-muted, #666);
+    font-variant-numeric: tabular-nums;
+    /* The info-line is steady-state secondary text -- right-aligned
+       so it doesn't compete with the title for primary attention. */
+    text-align:     right;
+}
+
+.mol-viewer-canvas {
+    /* Height is opt.card.height (default clamp(360px, 52vh, 500px)),
+       set as an inline style at mount time so tabs can override. */
+    position:       relative;
+    width:          100%;
+    background:     var(--bg-code, #fafafa);
+    border:         1px solid var(--border-soft, rgba(0,0,0,0.08));
+    border-radius:  var(--radius-sm, 6px);
+    overflow:       hidden;
+}
