@@ -183,7 +183,178 @@ inspector needs range reads.
 
 ---
 
-## 6. Test coverage
+## 6. Trajectory inspector — internal contract
+
+The trajectory inspector core (`lib/trajectory/core.js`) is the
+most complex inspector and has its own internal contracts that
+existed before the registry was introduced. These contracts are
+preserved here (migrated from the archived `tabs/watch.md` doc)
+because the same code powers both the legacy `/watch` page and
+the active mount on `/results`.
+
+### 6.1 Inspector partial layout (`_trajectory_inspector.html`)
+
+The DOM scaffold injected by the partial:
+
+- **Row 1 (`.viewer-row`)** — a 2-column grid: the 3Dmol viewer
+  on the left and a `.controls` aside on the right. Both columns
+  are locked to the same height via the `--viewer-height` CSS
+  variable (`clamp(360px, 52vh, 500px)`) so the layout is
+  responsive without one column stretching the row.
+
+  The controls aside is **tabbed** (not stacked): **Style /
+  Overlays / Playback** are a horizontal tab bar with one panel
+  visible at a time. Above the tabs sits an always-visible
+  **frame strip** with the frame counter, prev/play/pause/next
+  buttons, and the frame slider. The most-used controls stay
+  reachable regardless of which tab is open.
+
+  The Playback tab carries a **"Save current frame as XYZ"**
+  button (`#save-frame`). Disabled until a file with frames is
+  loaded; clicking it builds a standard 4-column XYZ from
+  `state.data.frames[state.currentFrame]` and triggers a browser
+  download. The comment line records the source engine, the step
+  index from `state.data.iterations`, and the energy in eV when
+  known. Filename is `<label>_step<N>.xyz`. This is the handoff
+  point to downstream pipelines (tunneling-gap construction,
+  transport calc) that want a single static structure rather
+  than the live trajectory.
+
+- **Row 2 (`.plots-row`)** — two Plotly canvases (energy vs step,
+  max force vs step).
+
+- **Row 3 (`.scf-row`, engine-agnostic, hidden when empty)** —
+  a banner summarising the current opt step + SCF cycle plus two
+  Plotly canvases (SCF energy + a residual within the current
+  step). Visible iff `state.data.scf_history` is non-empty. Both
+  engines populate this row via the same `scf_history` schema;
+  the UI adapts three things by engine (§ 6.2 below).
+
+**Mobile breakpoints**: 980 px collapses every plot row to single
+column. 640 px tightens header + plot heights.
+
+### 6.2 Engine-specific UI adaptation
+
+The trajectory inspector renders the same DOM for SIESTA / PySCF
+/ molwatch but adjusts three labels by engine. Source of truth
+is `renderScfProgress()` in `lib/trajectory/core.js`.
+
+| UI element | SIESTA | PySCF | Unknown engine |
+|---|---|---|---|
+| Banner title (`#scf-title`) | "SIESTA DFT SCF progress" | "PySCF SCF progress" | "SCF progress" |
+| Step label | "CG/MD step" | "Geom-opt step" | "Opt step" |
+| Residual axis | `dHmax` (eV) | `|g|` (eV/Å) | data-driven sniff |
+
+SIESTA only implements Kohn-Sham DFT, so calling it just "SCF"
+is correct but underspecified. PySCF supports both HF (RHF/UHF)
+and DFT (RKS/UKS) and the parser doesn't currently extract which
+one a given log used, so the generic "SCF" label is correct for
+both.
+
+**Residual selection is data-driven**: a key sniff on
+`scf_history[-1][0]` chooses between `gnorm` (PySCF) and `dHmax`
+(SIESTA), so future parsers that expose either set of keys work
+without UI changes.
+
+The HTML template starts with the generic "SCF progress" text in
+`#scf-title` so the placeholder is meaningful before any file is
+loaded; `renderScfProgress()` rewrites it on every refresh.
+
+### 6.3 State invariants
+
+`state` (a single JS object inside the trajectory core) holds:
+
+```js
+state = {
+    data:         <last parsed payload | null>,
+    mtime:        <float | null>,
+    format:       "siesta" | "pyscf" | "molwatch" | null,
+    label:        "<parser label>" | null,
+    currentFrame: <int>,
+    pollTimer:    <interval id | null>,
+    playTimer:    <interval id | null>,
+    firstFit:     <bool>,         // re-fit camera on a fresh structure
+    pickedAtoms:  [<int>, ...],   // up to 2 selected atom indices
+    // ... cell / force / index / pick overlay buckets
+    loadAbort:    <AbortController | null>,
+    pollAbort:    <AbortController | null>,
+}
+```
+
+**Invariants:**
+
+- On a successful `/api/watch/load`, `state.data / mtime / format
+  / label` are replaced atomically.
+- `state.currentFrame` is preserved across refreshes when the
+  user has scrubbed away from the end; clamped to the new last
+  frame if the trajectory grew.
+- When the user IS at the last frame, refreshes advance the
+  frame index to the new last frame so live-watching feels live.
+- `loadAbort` cancels in-flight `/api/watch/load`; `pollAbort`
+  cancels in-flight `/api/watch/data`. `dispose()` aborts both.
+
+### 6.4 Polling cadence
+
+- Active polling timer interval: `POLL_MS` (default 15 000 ms).
+- Each tick: `GET /api/watch/data?mtime=<state.mtime>`.
+- Server-side: if mtime unchanged, returns `{changed: false}`
+  and the front-end refreshes only the "Up to date — N frames"
+  status text.
+- When `data.changed`, `applyNewData(r)` rebuilds the model,
+  frames, plots.
+- `pageshow` / `visibilitychange` handlers (§ 4) call
+  `pollOnce()` immediately on tab re-entry so a 15 s wait isn't
+  imposed after a bfcache restore (audit #194).
+
+### 6.5 Load button — dual mode (legacy `/watch` only)
+
+The trajectory loader on the legacy `/watch` page has two
+behaviours, branching on the path field's content. The
+inspector-on-`/results` does NOT use this loader — it receives
+the file path through `opts.file` at mount time — but the dual
+mode is still wired in the core for `/watch`'s benefit:
+
+- **Path field has text**: POST `{path}` as JSON to
+  `/api/watch/load`. Server reads from disk; front-end starts a
+  polling timer at 15 s intervals (live-watching mode).
+- **Path field empty**: trigger the hidden `<input type="file">`.
+  When the user picks a file, upload as `multipart/form-data` to
+  `/api/watch/load`. The path field updates to
+  `(uploaded) <filename>` for clarity. Polling timer is
+  **stopped** because uploaded files don't change on disk.
+
+Pressing Enter in the path input triggers Load.
+
+### 6.6 Status messages
+
+- Single-line for normal updates: `"Loaded N siesta frames —
+  mtime HH:MM:SS."`
+- Multi-line allowed for errors (e.g. unsupported-format hints).
+  The status `<span>` has `white-space: pre-line` so newlines in
+  the server's error message render correctly.
+
+### 6.7 Forbidden patterns (trajectory inspector front-end)
+
+In addition to the cross-cutting front-end conventions in
+[`web-api.md`](web-api.md) § 11.4, the trajectory inspector must
+NOT:
+
+1. **Use `innerHTML` for any user-controlled string.** Everything
+   goes through `textContent` to prevent XSS via parser output
+   (e.g. a malicious filename in `r.uploaded_filename`).
+2. **Continue polling after an upload** — uploaded files don't
+   change on disk, the timer would burn requests for nothing.
+3. **Retry a failed `/api/watch/load` automatically.** The user
+   clicks Load again to retry; auto-retry would hammer a known-
+   bad path.
+4. **Pin the 3Dmol library at `https://3Dmol.org/build/...`** —
+   that URL serves a moving target. Use the cdnjs pinned URL
+   `https://cdnjs.cloudflare.com/ajax/libs/3Dmol/2.1.0/3Dmol-min.js`
+   (also see web-api.md § 11.4).
+
+---
+
+## 8. Test coverage
 
 | Test file | Layer | Coverage |
 |---|---|---|
@@ -195,7 +366,7 @@ inspector needs range reads.
 
 ---
 
-## 7. Decisions log
+## 9. Decisions log
 
 | Date | Decision | Rationale |
 |---|---|---|

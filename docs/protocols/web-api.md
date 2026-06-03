@@ -383,22 +383,117 @@ clean run).
 
 ### 4.6 `/api/build/preflight`
 
-Fast validate-only path: runs `validate(struct, cfg)` but does
-NOT call the emitter. Returns `{ok: true, issues}` whether
-issues exist or not (the issues themselves carry severity:
-error / warn / info). Used by the form's live preflight that
-fires on field edit.
+Validation-only sibling of `/fdf` and `/pyscf`. Same body shape
+plus an `engine: "siesta" | "pyscf"` discriminator; returns just
+`{ok, issues}` so the UI's issues panel can update live without
+generating the file body.
+
+**Error-response policy** (load-bearing — keeps the UI's
+issues-panel a single render path):
+
+- Missing `xyz`, unknown `engine`, or unparseable `xyz` → HTTP
+  400 with `{"ok": false, "error": "<reason>"}`. These are
+  programmer / wiring errors — the caller should fix the
+  request rather than display the failure to the user.
+- Config-parse failure (the form sent values that don't coerce
+  into the dataclass — e.g. a non-numeric `mesh_cutoff`) → HTTP
+  200 with `{"ok": true, "issues": [{"severity": "error",
+  "message": "bad parameters: <exc>", "where": "config"}]}`.
+  The same issues panel renders this alongside warn-severity
+  field-range messages, so the UI doesn't need a separate
+  error-handling branch for "user-typed-something-invalid".
 
 ### 4.7 `/api/build/schema/<engine>`
 
-Returns the dataclass-introspection output the schema-driven
-form consumes. Sections are pinned in order via
-`SiestaConfig._form_section_order` /
-`PySCFConfig._form_section_order`; per-field metadata includes
-`label`, `unit`, `range`, `choices`, `tier`, `id_suffix`,
-`null_label`, `pattern`, `help`, and **`engine_key`** (the
-keyword each field writes, or `(molbuilder: ...)` for non-engine
-knobs — pinned by `test_web.py::test_engine_key_present_on_every_*`).
+Read-only. Returns the JSON-friendly schema produced by
+`_shared.dataclass_to_form_schema(cls, id_prefix)` for the
+SIESTA / PySCF Build panels — the JS renderer
+(`web/static/lib/form-schema.js`) consumes this directly so the
+dataclass is the only place form-field declarations live.
+
+**Response shape:**
+
+```json
+{
+  "ok": true,
+  "schema": {
+    "config":    "SiestaConfig" | "PySCFConfig",
+    "id_prefix": "p" | "py",
+    "sections": [
+      { "name": "<section legend>", "fields": [<field_schema>, ...] },
+      ...
+    ]
+  }
+}
+```
+
+**Per-field schema** (only the keys relevant to the inferred
+`kind` are populated):
+
+```json
+{
+  "name":       "<dataclass field name>",
+  "id":         "<id_prefix>-<id_suffix>",     // HTML id; renderer/compat-engine contract
+  "label":      "<human label>",
+  "help":       "<tooltip text>",
+  "default":    <JSON-serialisable default>,
+  "optional":   bool,
+  "tier":       "basic" | "advanced",
+  "kind":       "checkbox" | "int" | "number" | "text"
+                | "select" | "tri-select" | "int-triple",
+  "engine_key": "<engine keyword>" | "(molbuilder: <marker>)",
+
+  // number / int kinds:
+  "min": ..., "max": ..., "step": ...,
+
+  // select / tri-select kinds:
+  "choices":     [...],
+  "null_option": true,
+  "null_label":  "(default)" | "(auto)" | ...,
+
+  // int-triple (kgrid) kind:
+  "labels":  ["x", "y", "z"],
+
+  // display hints:
+  "unit":    "Å" | "Ry" | "Hartree" | ...,
+  "pattern": "<HTML5 pattern attr>"
+}
+```
+
+**Contract:**
+
+- **Opt-in**: only dataclass fields whose metadata declares a
+  `"section"` key are exposed. Unsectioned fields (path-typed
+  knobs, always-on flags, MD-only state) stay on the dataclass
+  for the Python API + CLI but stay off the form.
+- **ID stability**: default `id = f"{id_prefix}-{field_name.replace('_', '-')}"`.
+  Fields with legacy short IDs (e.g. `p-temperature` for
+  `electronic_temperature`, `p-block-size` for
+  `parallel_block_size`) declare `metadata["id_suffix"]` so the
+  compatibility engine + sessionStorage list stay
+  backwards-compatible.
+- **Section ordering**: the dataclass declares a class-level
+  `_form_section_order` tuple to pin section order; otherwise
+  sections appear in the order the first field declaring each
+  section is declared.
+- **`engine_key` mandatory** on every form field (decision
+  2026-05-26). The rendered form shows a `<code class="schema-engine-key">`
+  badge next to each label so the user can audit "what
+  engine keyword does this control write". Pinned by
+  `test_web.py::test_engine_key_present_on_every_{siesta,pyscf,spectra}_form_field`.
+- **Unknown engine** → 404 with `{ok: false, error: "..."}`.
+- **No POST equivalent**: the schema is the contract, not a
+  validator hook. The existing `/api/build/{fdf,pyscf,preflight}`
+  routes consume the JSON dict the JS collector produces from
+  the rendered DOM.
+
+**Pin-tests** (regression-protect schema → form binding):
+
+- `tests/test_web.py::test_siesta_form_schema_matches_documented_layout`
+- `tests/test_web.py::test_pyscf_form_schema_matches_documented_layout`
+
+Both lock the section names + per-section field counts so a
+stray field-reorder doesn't silently rearrange the UI.
 
 ---
 
@@ -567,28 +662,167 @@ Used by the spectra inspector on `/results`.
 
 Implementation: `molbuilder/web/blueprints/watch.py`. The `/watch`
 page itself is retired (2026-05-19); these endpoints back the
-trajectory inspector on `/results` instead.
+trajectory inspector on `/results` instead. Tests:
+`tests/watch/test_api_load.py`, `tests/watch/test_app_concurrency.py`,
+`tests/watch/test_registry.py`.
 
-| Route | Method | Body | Success |
-|---|---|---|---|
-| `/api/watch/formats` | GET | — | `{ok, formats: [{name, exts, description}]}` |
-| `/api/watch/load` | POST | `{path}` OR multipart `file=` | `{ok, mtime, data, format, label, resolved_from?}` |
-| `/api/watch/data` | GET | `?mtime=` | `{ok, changed: bool, data?, mtime?}` |
+### 8.1 Endpoint table
 
-`/api/watch/data` is the polling endpoint: pass the last known
-`mtime`; the server returns `{ok, changed: false}` if the file
-hasn't moved, or the full updated trajectory dict if it has.
+| Route | Method | Body | Success | Error codes |
+|---|---|---|---|---|
+| `/api/watch/formats` | GET | — | `{ok, formats: [{name, label, hint}]}` | — |
+| `/api/watch/load` | POST | JSON `{path}` OR multipart `file=` | see § 8.3 | 400 · 403 (outside `MOLBUILDER_WATCH_ROOT`) · 404 · 413 · 500 |
+| `/api/watch/data` | GET | `?mtime=` (optional) | see § 8.4 | 200 (errors carry `{ok:false, error}`) |
+
+### 8.2 `/api/watch/load` — two modes
+
+**Mode A — JSON path (live-watching).** Body `{"path": "/abs/path"}`.
+Server-side handling:
+
+1. Reject empty path with HTTP 400.
+2. Resolve via `os.path.abspath(os.path.expanduser(path))`.
+3. If `MOLBUILDER_WATCH_ROOT` is set, refuse paths outside it
+   with HTTP 403 (see § 8.5).
+4. Reject non-existent file with HTTP 404.
+5. `detect_parser(path)`; reject unsupported with HTTP 400 (the
+   error body uses the multi-line message from
+   `molbuilder/parsers/__init__.py`).
+6. Replace `_state` (path / parser) atomically; force a re-parse
+   on the next refresh.
+
+Detection happens **before** the new path is committed to
+`_state`, so an unsupported file doesn't blank out a working one.
+
+**Mode B — multipart upload (ephemeral tempfile).** Body
+`Content-Type: multipart/form-data` with `file=<binary>`.
+Server-side handling:
+
+1. Save to `tempfile.gettempdir()` with prefix
+   `molwatch_<unix_ts>_<sanitised_basename>` and the original
+   suffix preserved (so format detection's content sniff sees
+   the right extension).
+2. `detect_parser` on the temp path. If unsupported, delete the
+   temp file and HTTP 400.
+3. Clean up any previous upload's temp file.
+4. `_state["uploaded"] = True` so `/api/watch/data` and the
+   front-end know not to expect mtime-driven updates.
+
+### 8.3 `/api/watch/load` response (both modes)
+
+```json
+{
+  "ok":       true,
+  "path":     "<resolved or temp path>",
+  "mtime":    <unix epoch seconds, float>,
+  "format":   "siesta" | "pyscf" | "molwatch" | ...,
+  "label":    "<human label from the parser>",
+  "data":     { /* legacy v1 trajectory dict — see § 8.4 */ },
+  "uploaded": <bool — true for multipart-upload temp files>,
+  "uploaded_filename": "<original name>"        // multipart only
+}
+```
+
+`resolved_from` (Mode A) appears when the user pointed at a
+directory rather than a file: the server picks the canonical
+run output via the [`job-layout.md`](job-layout.md) discovery
+chain and reports which file it resolved to.
+
+### 8.4 `/api/watch/data` — polling endpoint
+
 The trajectory inspector polls this every 15 s + on every
-`pageshow` / `visibilitychange` (#194).
+`pageshow` / `visibilitychange` (#194). Pass the last known
+mtime; the server short-circuits the cheap path.
 
-`resolved_from` appears when the user pointed at a directory
-(not a file): the server picks the canonical run output via
-[`job-layout.md`](job-layout.md) discovery chain and reports
-which file it resolved to.
+```json
+// when mtime unchanged (cheap path):
+{ "ok": true, "changed": false, "mtime": <float> }
 
-The `data` payload is the parsed trajectory dict (frames,
-energies, forces, lattice, runtime_info, run_state, error_message).
-Shape spec lives in [`docs/types/parsers.md`](../types/parsers.md).
+// when changed:
+{
+  "ok":       true,
+  "changed":  true,
+  "path":     "<absolute path of the active file>",
+  "mtime":    <float>,
+  "format":   "siesta" | "pyscf" | "molwatch" | ...,
+  "label":    "<parser label>",
+  "data":     { /* legacy v1 trajectory dict, below */ },
+  "uploaded": <bool>
+}
+```
+
+If no file is loaded yet:
+`{"ok": false, "error": "No file loaded yet."}`.
+
+The `data` sub-dict is the legacy v1 trajectory shape produced
+by `parsers/__init__.py::trajectory_to_legacy_dict`:
+
+```json
+{
+  "frames":        [ [[el, x, y, z], ...], ... ],
+  "energies":      [<float|null>, ...],
+  "max_forces":    [<float|null>, ...],
+  "forces":        [ [[fx, fy, fz], ...] | [], ...],
+  "iterations":    [<int>, ...],
+  "step_indices":  [<int>, ...],
+  "wall_times":    [<float|null>, ...],
+  "scf_history":   [ [{"cycle", "energy", "delta_E", ...}, ...], ... ] | [],
+  "lattice":       [[ax,ay,az], [bx,by,bz], [cx,cy,cz]] | null,
+  "source_format": "<engine name>",
+  "run_state":     "ongoing" | "finished" | "errored",
+  "error_message": "<string when run_state=errored>",
+  "stages":        [<merged stage info — multi-stage runs>] | [],
+  "runtime_info":  { /* per-stage CPU/MPI/GPU report — see types/parsers.md */ }
+}
+```
+
+Multi-stage runs (job-layout v1: multiple
+`<basename>-stage<N>.molwatch.log` files in the same directory)
+get one stage entry per file in `stages`; the frontend uses
+those to draw stage-boundary markers on plots.
+
+Per-field semantics + per-engine carry rules live in
+[`docs/types/parsers.md`](../types/parsers.md).
+
+### 8.5 `MOLBUILDER_WATCH_ROOT` env var
+
+When the operator sets `MOLBUILDER_WATCH_ROOT=/abs/path` before
+starting the server, `/api/watch/load` Mode A refuses any path
+outside that subtree (HTTP 403, structured error). Intended
+deployment posture on shared / multi-user hosts: scope the
+read-arbitrary-file primitive to the operator's intended run
+area. Unset by default; the server trusts the caller's path
+when the env var is absent.
+
+### 8.6 Concurrency contract
+
+`_refresh_if_changed` snapshots `(path, parser, cached_mtime)`
+under `_lock`, **drops the lock during the parse**, then
+re-acquires briefly to commit. Three guarantees:
+
+1. A long parse (multi-MB log) doesn't block other concurrent
+   requests for its duration.
+2. If a `/api/watch/load` swaps the active file mid-parse, the
+   stale parse result is dropped on the floor instead of
+   clobbering the new state. Pinned by
+   `test_stale_parse_doesnt_clobber_swapped_state`.
+3. Cheap path (mtime unchanged) returns the cached state under a
+   short lock — no parse, no I/O.
+
+### 8.7 Security model
+
+- **Default bind is `127.0.0.1`** (loopback only).
+- When `--host` is set to anything other than `127.0.0.1` /
+  `localhost` / `::1`, the CLI prints a loud stderr warning that
+  `/api/watch/load` reads any local file the server can access
+  (see `web/blueprints/watch.py::warn_if_remote`).
+- Browser CORS provides a default CSRF mitigation:
+  `/api/watch/load` requires `Content-Type: application/json`
+  for the path mode, which triggers a CORS preflight that the
+  default Flask response (no `Access-Control-Allow-Origin`
+  header) fails. Form-style cross-origin POSTs land with the
+  wrong content-type and are rejected with "Empty path".
+  Document this; don't rely on it for security if exposing
+  publicly.
 
 ---
 
@@ -641,6 +875,171 @@ detection chain (in-tree → `$X3DNA` → `fiber` on PATH; see
 
 ---
 
+## 11.1 Request-size cap
+
+`MAX_CONTENT_LENGTH = 50 MB` on the Flask app (`web/app.py`).
+Watch uploads (large trajectory logs) need the headroom; Build's
+typical PDB / XYZ uploads are < 1 MB. Oversized bodies → HTTP
+413 with the standard `{ok: false, error: "..."}` JSON shape
+(a Flask error handler converts Werkzeug's default HTML 413 page
+into JSON so the JS uploaders' `r.json()` doesn't crash).
+
+Pinned by `tests/test_review_fixes.py::test_s6_web_app_caps_upload_size`.
+
+## 11.2 Naming constraint (project / structure / topic)
+
+Every name that participates in a
+`projects/<project>/<topic>/<structure>/` path MUST satisfy
+`molbuilder.projects.validate_name` — i.e. the regex
+`^[A-Za-z0-9_-]+$`. Spaces, dots, slashes, unicode are rejected.
+The constraint exists because SIESTA's filename discovery is
+basename-based; a structure named `"my mol.run #1"` silently
+breaks the pipeline downstream.
+
+Enforced at three layers:
+
+- **Path construction** (`molbuilder.projects.*`): raises
+  `InvalidName` on bad input. All directory-creating code paths
+  go through these constructors.
+- **`/api/projects/create`** + **`/api/files/mkdir`**: validate
+  via the same helpers; return HTTP 400 with the `InvalidName`
+  message verbatim so the UI can echo it next to the form field.
+- **Future "create new project" UI**: the form validates
+  client-side against the same regex, then re-validates
+  server-side on submit.
+
+`topic` is even more constrained: must be one of the canonical
+topics (`structure`, `optimization`, `frequency`, `spectrum`,
+`transport`, `single-point`, `scan`). Validated by
+`molbuilder.projects.validate_topic`. See
+[`job-layout.md`](job-layout.md) for the on-disk convention.
+
+The picker itself does NOT filter on-disk directory names — it
+shows what's there. A user who hand-creates a directory named
+`my project/` will see it in the picker tree (so they can find
+and rename it) but won't be able to use it as the target of a
+project-create / rename action without renaming.
+
+## 11.3 Projects-hierarchy convention
+
+The picker is intentionally **generic** — it doesn't enforce the
+`<project>/<topic>/<structure>/` shape, because users may want
+to load files from outside `projects/` (browsing scratch dirs).
+But when the user IS inside `projects/`, the path naturally
+reflects the hierarchy:
+
+```
+projects/<project>/<topic>/<structure>/<file>
+         └──── tree expandable ────┘ └─ FLAT directory; files only by ──┘
+                                      convention (no subdirs)
+```
+
+The frontend can detect "we're inside projects" by prefix-matching
+against the `projects` root and render topic-aware labels.
+Beyond the topic level, the structure directory is flat by
+job-layout-v1 convention; the picker will still show whatever
+exists there (including any subdirs the user created off-spec).
+
+## 11.4 Front-end contract
+
+All tabs share these conventions:
+
+- Load 3Dmol.js from `cdnjs/3Dmol/2.1.0/3Dmol-min.js` (pinned).
+- Share `static/lib/tabs.css` (top-of-page nav) and
+  `static/lib/tokens.css` (CSS custom properties for colours /
+  radii / spacing).
+- Share `static/lib/mol-style.js` (3Dmol style-spec builder),
+  `mol-format.js` (chemical-formula renderer), `mol-pick.js`
+  (selection halo helper used by Modify and the trajectory
+  inspector).
+- Theme: dark. CSS variables in `:root` for every colour. No
+  hardcoded `#fff` / `#000` in selectors. 3Dmol viewer canvas
+  keeps a **white background** (`#ffffff`) regardless of the
+  surrounding theme — chemistry viewers conventionally use white
+  for clarity / publication-readiness.
+- Every dynamic insertion uses `textContent` (not `innerHTML`)
+  for any user-supplied string.
+
+**Build page (`index.html`) specifics:**
+
+- Layout: header, 12-col grid main, footer.
+- Left column (controls): "1. Build / Load" card, "2. Generate
+  input" card (with SIESTA `.fdf` | PySCF script tabs).
+- Right column (viewer): "Inspect" card with a resizable 3Dmol
+  viewer (CSS `resize: both` on `.viewer-wrap`).
+- A `ResizeObserver` on `.viewer-wrap` calls
+  `viewer.resize() + render()` on dimension change.
+- Every successful build / load resets `state.fdf` / `state.pyscf`
+  to null and disables the download buttons so the user can't
+  accidentally download text from the previous structure.
+- `sessionStorage["molbuilder.current_file"]` carries the
+  sidebar's selection across tabs (M4 handoff);
+  `sessionStorage["builder-form"]` survives form values across
+  navigation.
+
+## 11.5 Form-side compatibility rules
+
+`viewer.js::applyCompatibility()` locks parameter combinations
+that would produce an invalid or wrong-physics config. Runs on
+page load and on `change` of any trigger input. Each locked
+field gets `disabled` + a `.lock-reason` hint span.
+
+**PySCF tab:**
+
+| Trigger | Dependent | Lock |
+|---|---|---|
+| `method ∈ {RKS, RHF}` | `spin` | force `spin = 0` |
+| `optimize = false` | optimizer, geom_*, preopt | lock entire Optimization + Pre-opt sections |
+| `optimize = true` AND `preopt = false` | preopt_* | lock with "Pre-opt is disabled" |
+| `solvent = ""` | solvent_method | lock with "No solvent selected (gas phase)" |
+
+**SIESTA tab:**
+
+| Trigger | Dependent | Lock |
+|---|---|---|
+| `spin_polarized = false` | `spin_total` | SpinTotal meaningless without polarisation |
+| `relax_type = "none"` | `relax_steps`, `force_tol`, `max_displ` | no MD block emitted |
+
+## 11.6 Defence in depth
+
+The server does NOT trust the UI. Even if a malicious or buggy
+client submits an invalid combination, the same validators
+(`validation.py::validate(struct, cfg)`) run server-side via
+field metadata. The UI rules give the user fast feedback; the
+server rules protect the data.
+
+## 11.7 Forbidden patterns
+
+The Flask app must NOT:
+
+1. **Run with `debug=True` by default** — Flask's debugger
+   allows arbitrary code execution. Enable only via the
+   explicit `--debug` CLI flag.
+2. **Bind to `0.0.0.0` by default** — that exposes
+   `/api/watch/load` (reads any local file the server can
+   access) to the network. Default `127.0.0.1`; print a loud
+   warning when the user opts in to a non-loopback host
+   (`warn_if_remote` in `web/blueprints/watch.py`). The
+   per-deployment scope is further narrowed by
+   `MOLBUILDER_WATCH_ROOT` (§ 8.5).
+3. **Echo unsanitised user input as HTML.** Every dynamic
+   insertion uses `textContent`; templated values escape
+   through Jinja2's autoescape.
+4. **Trust the UI's compatibility-locking to validate inputs** —
+   the server-side validation pass is the source of truth
+   (§ 11.6).
+5. **Hold the global `_lock` during a parse** — see § 8.6
+   concurrency contract. The `/api/watch/data` endpoint
+   snapshots state under the lock, drops it, parses, then
+   re-acquires for the commit.
+6. **Return parser-specific keys outside `data`** — the JSON
+   shape is uniform across formats; format-specific fields go
+   inside `data` (parser's responsibility).
+7. **Re-parse on every poll when mtime hasn't changed** — the
+   snapshot under the lock catches this (§ 8.6 guarantee 3).
+
+---
+
 ## 12. Test coverage map
 
 | Endpoint group | Primary test file | Test count |
@@ -656,29 +1055,52 @@ detection chain (in-tree → `$X3DNA` → `fiber` on PATH; see
 
 ---
 
-## 13. Code-vs-doc gaps detected during this rewrite
+## 13. Rewrite history (this file)
 
-Per the audit method (full code cross-check, 2026-06-02), the
-following discrepancies between the OLD `web-api.md` and the
-implementing code were found and corrected here:
+This doc was fully rewritten 2026-06-02 (task #196) against the
+implementing code. The OLD `web-api.md` covered only ~30% of
+the actual HTTP surface; the rewrite enumerated every blueprint
+endpoint. The substantive contract detail (preflight error
+policy, full per-field schema, watch concurrency + security,
+naming constraint, front-end shared conventions, form-side
+compatibility rules, defense-in-depth, forbidden patterns) was
+preserved from the old doc and restored here after an audit
+caught initial over-compression.
 
-| Gap | Resolution |
+| Source of detail | Location now |
 |---|---|
-| OLD doc said "3 tabs: Build / Modify / Watch" — actually 4 (Build / Modify / Spectra / Results); Watch retired | Fixed in §2 + § 11 |
-| OLD `/api/files/*` table listed 5 endpoints (roots, list, stat, read, mkdir) — code has 11 | Full enumeration in § 3.1 |
-| OLD doc claimed "no upload/rename/delete/move in v1" — all four exist | Removed claim; documented in § 3.1 |
-| `/api/files/read_range` (2026-06-02) entirely missing | Added § 3.4 |
-| `/api/files/rename` (2026-05-31) entirely missing | Added in § 3.1 |
-| `/api/selection/*` (4 endpoints) entirely missing | Added § 6 |
-| `/api/modify/*` (9 endpoints) entirely missing | Added § 5 |
-| `/api/spectra/*` (2 endpoints) entirely missing | Added § 7 |
-| `/api/structure/analyze` entirely missing | Added § 10 |
-| `/api/run/install-wrapper`, `/api/siesta/{install,check}-pseudos` entirely missing | Added § 9 |
-| `/results` route + `/partials/*` entirely missing | Added § 11 |
-| Uniform `{ok}` envelope rule (#187) not codified | § 1.1 |
-| `cache: "no-store"` default (#193) not codified | § 1.3 |
-| AbortSignal threading contract (#174) not codified | § 1.4 |
-| Files.py module docstring lists a deleted `/api/files/result-list` route | **Code-cleanup needed** — see task #197 candidate |
+| OLD `web-api.md` § "`/api/build/preflight`" error policy | § 4.6 |
+| OLD `web-api.md` § "`/api/build/schema/<engine>`" full schema | § 4.7 |
+| OLD `web-api.md` § "`MOLBUILDER_WATCH_ROOT`" | § 8.5 |
+| OLD `web-api.md` § "`/api/watch/data` response shape" | § 8.4 |
+| OLD `web-api.md` § "Naming constraint" | § 11.2 |
+| OLD `web-api.md` § "Projects-hierarchy convention" | § 11.3 |
+| OLD `web-api.md` § "Request-size cap" | § 11.1 |
+| OLD `web-api.md` § "Front-end contract" + "Form-side compatibility rules" | § 11.4 + § 11.5 |
+| OLD `web-api.md` § "Defence in depth" | § 11.6 |
+| OLD `web-api.md` § "Forbidden patterns" | § 11.7 |
+| Archived `protocols/watch-api.md` Mode A / Mode B distinction | § 8.2 |
+| Archived `protocols/watch-api.md` concurrency contract | § 8.6 |
+| Archived `protocols/watch-api.md` security model | § 8.7 |
 
-The stale `files.py` docstring is the only code-side fix that
-fell out of this audit; everything else was a doc deficit.
+Newly documented (not in the old doc, found during code
+cross-check):
+
+| Item | Section |
+|---|---|
+| All 11 `/api/files/*` endpoints (old doc listed 5) | § 3.1 |
+| `/api/files/read_range` (2026-06-02) | § 3.4 |
+| `/api/files/rename` (2026-05-31) | § 3.1 |
+| `/api/selection/*` (4 endpoints) | § 6 |
+| `/api/modify/*` (9 endpoints) | § 5 |
+| `/api/spectra/*` (2 endpoints) | § 7 |
+| `/api/structure/analyze` | § 10 |
+| `/api/run/install-wrapper`, `/api/siesta/{install,check}-pseudos` | § 9 |
+| `/results` route + `/partials/*` | § 11 |
+| Uniform `{ok}` envelope rule (#187) | § 1.1 |
+| `cache: "no-store"` default (#193) | § 1.3 |
+| AbortSignal threading contract (#174) | § 1.4 |
+
+**Code-side fix that fell out of the audit:** `files.py` module
+docstring listed a deleted `/api/files/result-list` route
+(closed as #197).

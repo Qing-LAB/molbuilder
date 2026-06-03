@@ -19,8 +19,19 @@ Each archived doc has either been:
 
 ## Index
 
-| File | Reason archived | Superseded by |
+| File | Reason archived | Substance migrated to |
 |---|---|---|
 | `2026-06-02-REVIEW_FINDINGS.md` | One-shot code-review log; work landed | n/a (historical) |
-| `2026-06-02-watch-api.md` | `/api/watch/*` HTTP reference; merged into `web-api.md` § 8 | [`../protocols/web-api.md`](../protocols/web-api.md) |
-| `2026-06-02-tabs-watch.md` | Legacy `/watch` UI spec; trajectory inspector lives on `/results` post-2026-05-19 | [`../protocols/results-tab.md`](../protocols/results-tab.md) + [`../protocols/inspector-registry.md`](../protocols/inspector-registry.md) |
+| `2026-06-02-watch-api.md` | `/api/watch/*` HTTP reference | [`../protocols/web-api.md`](../protocols/web-api.md) § 8 — endpoint table, Mode A / Mode B distinction, full `/api/watch/data` shape, `MOLBUILDER_WATCH_ROOT`, concurrency contract, security model |
+| `2026-06-02-tabs-watch.md` | Legacy `/watch` UI spec; trajectory inspector lives on `/results` post-2026-05-19 | [`../protocols/inspector-registry.md`](../protocols/inspector-registry.md) § 6 — partial layout, engine-specific UI adaptation, state invariants, polling cadence, dual-mode loader, status messages, forbidden patterns. Cross-cutting front-end conventions (3Dmol CDN pin, textContent rule, theme) → `web-api.md` § 11.4 |
+
+## Audit principle
+
+When archiving a doc, the substance of every still-live contract
+must be migrated to the canonical doc BEFORE the archive move.
+The archived file is a snapshot for historical reference; it
+must not be the only place a live invariant lives. The audit
+that produced this archive (2026-06-02) initially over-compressed
+the migration; the corrected version restored ~15 substantive
+contracts that had been dropped (see the gap audit in
+`web-api.md` § 13).
