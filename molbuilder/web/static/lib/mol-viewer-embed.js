@@ -915,6 +915,25 @@
         viewer.render();
         _refreshInfoLine(state);
 
+        // 4a. Schedule a deferred resize() + render() so the 3Dmol
+        // canvas picks up the host's final layout dimensions.  The
+        // first render above measures clientWidth/clientHeight
+        // synchronously -- which works IF the host was already
+        // visible + sized -- but mounts inside a freshly-shown card
+        // (e.g. /modify's #viewer with aspect-ratio + min-height
+        // CSS) can see 0x0 before layout settles, leaving the WebGL
+        // canvas blank.  A double-rAF gives the browser two paint
+        // cycles to commit the layout, matching the existing
+        // ``molbuilder:inspector:ready`` deferral pattern used on
+        // /results.
+        if (typeof requestAnimationFrame === "function") {
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+                if (state.disposed) return;
+                try { viewer.resize(); viewer.render(); }
+                catch (_) {}
+            }));
+        }
+
         // 4b. If the caller supplied opts.animation, set it up now
         //     (after the structure is loaded so baseline coord
         //     capture sees the right atoms).  The setAnimation impl

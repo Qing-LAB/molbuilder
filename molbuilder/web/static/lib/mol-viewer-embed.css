@@ -47,13 +47,45 @@
 
 .mol-viewer-canvas {
     /* Height is opt.card.height (default clamp(360px, 52vh, 500px)),
-       set as an inline style at mount time so tabs can override. */
+       set as an inline style at mount time so tabs can override.
+       Width is 100% so the canvas fills the card's content area. */
     position:       relative;
     width:          100%;
     background:     var(--bg-code, #fafafa);
     border:         1px solid var(--border-soft, rgba(0,0,0,0.08));
     border-radius:  var(--radius-sm, 6px);
     overflow:       hidden;
+}
+
+/* --- Bare mode -----------------------------------------------------
+ * When ``opts.card.bare === true`` the embed wraps the canvas in a
+ * <div class="mol-viewer-bare"> (instead of the full .card chrome)
+ * so it can mount INSIDE a host the caller has already styled
+ * (e.g. /modify's #viewer with its aspect-ratio + max-width box,
+ * or /results' inspector cards).  The wrapper MUST be a full-size
+ * pass-through, otherwise the inner canvas's ``height: 100%`` inline
+ * style resolves against a 0-height parent and 3Dmol mounts on a
+ * 0x0 canvas (blank viewer bug, #198 stage 5 fix).
+ *
+ * The bare-mode canvas also DROPS its own chrome (border, background,
+ * border-radius) -- the host already provides those.  Without this
+ * drop, the host's border would double-up + the bare canvas's grey
+ * background would peek through when 3Dmol's WebGL canvas hasn't
+ * mounted yet.
+ */
+.mol-viewer-bare {
+    display:        block;
+    position:       relative;
+    width:          100%;
+    height:         100%;
+}
+
+.mol-viewer-bare > .mol-viewer-canvas {
+    width:          100%;
+    height:         100%;
+    background:     transparent;
+    border:         none;
+    border-radius:  0;
 }
 
 /* Frame-strip card chrome — appears above the canvas when
