@@ -128,6 +128,7 @@
             arrows:     Array.isArray(opts.arrows) ? opts.arrows.slice() : [],
             pick:       _normalisePick(opts.pick),
             lattice:    _normaliseLattice(opts.lattice),
+            overlays:   _normaliseOverlays(opts.overlays),
         };
     }
 
@@ -185,6 +186,111 @@
                             ? p.haloRadius : 0.6,
             onPick:      typeof p.onPick === "function"
                             ? p.onPick : null,
+        };
+    }
+
+    /**
+     * Normalise an OverlaySpec per § 3.12.  Each AtomOverlaySpec
+     * entry is reshaped into a uniform internal form:
+     *   { selectorKind: "indices"|"elements"|"residues",
+     *     selectorValue: number[]|string[],
+     *     style:  {...}|null, halo: {...}|null, marker: {...}|null }
+     *
+     * Selectors must specify EXACTLY ONE of indices / elements /
+     * residues; entries with zero or multiple selectors are
+     * dropped (the embed dispatches an invalid_input error per
+     * § 5.3 at render time).
+     *
+     * Entries with no style/halo/marker are dropped (no-op).
+     */
+    function _normaliseOverlays(o) {
+        if (!o || typeof o !== "object") return null;
+        const inAtoms = Array.isArray(o.atoms) ? o.atoms : [];
+        const atoms = [];
+        for (const entry of inAtoms) {
+            if (!entry || typeof entry !== "object") continue;
+
+            // Resolve selector (exactly one of indices / elements / residues).
+            const sel = _normaliseOverlaySelector(entry);
+            if (sel === null) continue;
+
+            // Resolve treatments (at least one of style / halo / marker).
+            const style  = _normaliseOverlayStyle(entry.style);
+            const halo   = _normaliseOverlayHalo(entry.halo);
+            const marker = _normaliseOverlayMarker(entry.marker);
+            if (!style && !halo && !marker) continue;
+
+            atoms.push({
+                selectorKind:  sel.kind,
+                selectorValue: sel.value,
+                style:  style,
+                halo:   halo,
+                marker: marker,
+            });
+        }
+        if (atoms.length === 0) return null;
+        return { atoms: atoms };
+    }
+
+    function _normaliseOverlaySelector(entry) {
+        let count = 0;
+        let result = null;
+        if (Array.isArray(entry.indices)) {
+            const vals = entry.indices.filter(
+                (v) => Number.isInteger(v) && v >= 0);
+            if (vals.length) { count++; result = { kind: "indices",  value: vals }; }
+        }
+        if (Array.isArray(entry.elements)) {
+            const vals = entry.elements.filter(
+                (v) => typeof v === "string" && v.length > 0);
+            if (vals.length) { count++; result = { kind: "elements", value: vals }; }
+        }
+        if (Array.isArray(entry.residues)) {
+            const vals = entry.residues.filter(
+                (v) => Number.isInteger(v) && v >= 0);
+            if (vals.length) { count++; result = { kind: "residues", value: vals }; }
+        }
+        // Exactly one selector required per § 3.12.
+        if (count !== 1) return null;
+        return result;
+    }
+
+    function _normaliseOverlayStyle(s) {
+        if (!s || typeof s !== "object") return null;
+        const out = {};
+        let any = false;
+        if (typeof s.rep === "string") {
+            out.rep = s.rep; any = true;
+        }
+        if (typeof s.radiusScale === "number" && Number.isFinite(s.radiusScale)) {
+            out.radiusScale = s.radiusScale; any = true;
+        }
+        if (typeof s.color === "string") {
+            out.color = s.color; any = true;
+        }
+        if (typeof s.opacity === "number" && Number.isFinite(s.opacity)) {
+            out.opacity = Math.max(0, Math.min(1, s.opacity)); any = true;
+        }
+        return any ? out : null;
+    }
+
+    function _normaliseOverlayHalo(h) {
+        if (!h || typeof h !== "object") return null;
+        return {
+            color:   typeof h.color === "string"  ? h.color   : "#6ba6ff",
+            radius:  typeof h.radius === "number" ? h.radius  : 0.6,
+            opacity: typeof h.opacity === "number"
+                       ? Math.max(0, Math.min(1, h.opacity)) : 0.5,
+        };
+    }
+
+    function _normaliseOverlayMarker(m) {
+        if (!m || typeof m !== "object") return null;
+        const kind = m.kind;
+        if (kind !== "lock" && kind !== "star" && kind !== "dot") return null;
+        return {
+            kind:  kind,
+            color: typeof m.color === "string" ? m.color : "#222",
         };
     }
 
@@ -590,9 +696,206 @@
     function _redrawAllOverlays(state) {
         _redrawAxes(state);
         _redrawCell(state);
+        // Per § 3.12 layering: per-atom style overlays apply BEFORE
+        // labels/arrows/markers/halos (which sit on top), and pick
+        // halos draw above overlay halos.  Order:
+        //   axes / cell -> per-atom-style overlays -> labels ->
+        //   arrows -> overlay halos -> overlay markers -> pick halos.
+        _redrawOverlayStyles(state);
         _redrawLabels(state);
         _redrawArrows(state);
+        _redrawOverlayHalosAndMarkers(state);
         _redrawPickHalos(state);
+    }
+
+    /* ------------------------------------------------------------ */
+    /*  Overlay rendering — § 3.12                                   */
+    /* ------------------------------------------------------------ */
+
+    /**
+     * Build a 3Dmol stylespec selector from a normalised overlay
+     * selector + the loaded atoms list.  Returns both the 3Dmol
+     * selector (for setStyle calls) and the resolved 0-based
+     * index list (for per-atom halo / marker positioning).
+     */
+    function _resolveOverlaySelector(sel, atoms) {
+        const out = { spec: null, indices: [] };
+        if (sel.selectorKind === "indices") {
+            // Filter to atoms that actually exist.
+            const valid = sel.selectorValue.filter(
+                (i) => i >= 0 && i < atoms.length);
+            out.spec    = { index: valid };
+            out.indices = valid;
+        } else if (sel.selectorKind === "elements") {
+            const set = new Set(sel.selectorValue.map((s) => s.toUpperCase()));
+            const resolved = [];
+            for (let i = 0; i < atoms.length; i++) {
+                const e = (atoms[i].elem || "").toUpperCase();
+                if (set.has(e)) resolved.push(i);
+            }
+            out.spec    = { elem: Array.from(set) };
+            out.indices = resolved;
+        } else if (sel.selectorKind === "residues") {
+            const set = new Set(sel.selectorValue);
+            const resolved = [];
+            for (let i = 0; i < atoms.length; i++) {
+                if (set.has(atoms[i].resi)) resolved.push(i);
+            }
+            out.spec    = { resi: Array.from(set) };
+            out.indices = resolved;
+        }
+        return out;
+    }
+
+    /**
+     * Per-atom style overrides.  3Dmol's setStyle replaces the
+     * stylespec for matching atoms (later calls win), so iterating
+     * the array in order naturally implements § 3.12 layering
+     * rule 2 ("later entry wins for overlapping atom sets").
+     *
+     * Style overlays do NOT use a removable handle — they're
+     * "baked into" 3Dmol's style state and reset only when
+     * _applyStyle is called next (which we do via the redraw
+     * pipeline).
+     */
+    function _redrawOverlayStyles(state) {
+        // First, restore base style for ALL atoms.  This wipes any
+        // overlay-style overrides from a prior frame so the new
+        // overlay set starts clean.  _applyStyle already did this
+        // at structure-load + setStyle time, but we call it again
+        // here for setOverlays / setAtomStyle paths.
+        _applyStyle(state.viewer, state.current.style);
+
+        if (!state.current.overlays) return;
+        const styleApi = (root.molbuilder || {}).style;
+        let atoms = [];
+        try {
+            const model = state.viewer.getModel();
+            atoms = model ? model.selectedAtoms({}) : [];
+        } catch (_) {}
+        if (atoms.length === 0) return;
+
+        for (const entry of state.current.overlays.atoms) {
+            if (!entry.style) continue;
+            const sel = _resolveOverlaySelector(entry, atoms);
+            if (sel.indices.length === 0) continue;
+
+            // Build a 3Dmol stylespec from the overlay's style block.
+            // We start from the base stylespec so partial overrides
+            // (e.g. just color) compose with the base rep correctly.
+            const baseSpec = styleApi && typeof styleApi.spec === "function"
+                ? styleApi.spec({
+                    rep:         entry.style.rep || state.current.style.rep,
+                    scale:       typeof entry.style.radiusScale === "number"
+                                   ? entry.style.radiusScale
+                                   : state.current.style.radiusScale,
+                  })
+                : { stick: {} };
+
+            // Apply color + opacity to every rep key in the spec.
+            for (const k of Object.keys(baseSpec)) {
+                const sub = baseSpec[k];
+                if (entry.style.color   !== undefined) sub.color   = entry.style.color;
+                if (entry.style.opacity !== undefined) sub.opacity = entry.style.opacity;
+            }
+
+            try { state.viewer.setStyle(sel.spec, baseSpec); }
+            catch (_) {}
+        }
+    }
+
+    /**
+     * Halos + markers draw as removable 3Dmol shapes / labels so
+     * they can be cleared cleanly on next redraw or dispose.
+     */
+    function _redrawOverlayHalosAndMarkers(state) {
+        // Clear previous overlay halo / marker shapes.
+        for (const s of state.overlayHaloShapes) {
+            try { state.viewer.removeShape(s); } catch (_) {}
+        }
+        for (const l of state.overlayMarkerLabels) {
+            try { state.viewer.removeLabel(l); } catch (_) {}
+        }
+        state.overlayHaloShapes   = [];
+        state.overlayMarkerLabels = [];
+        if (!state.current.overlays) return;
+        let atoms = [];
+        try {
+            const model = state.viewer.getModel();
+            atoms = model ? model.selectedAtoms({}) : [];
+        } catch (_) {}
+        if (atoms.length === 0) return;
+
+        for (const entry of state.current.overlays.atoms) {
+            if (!entry.halo && !entry.marker) continue;
+            const sel = _resolveOverlaySelector(entry, atoms);
+            for (const idx of sel.indices) {
+                const a = atoms[idx];
+                if (entry.halo) {
+                    try {
+                        const halo = state.viewer.addSphere({
+                            center:  { x: a.x, y: a.y, z: a.z },
+                            radius:  entry.halo.radius,
+                            color:   entry.halo.color,
+                            opacity: entry.halo.opacity,
+                        });
+                        state.overlayHaloShapes.push(halo);
+                    } catch (_) {}
+                }
+                if (entry.marker) {
+                    try {
+                        const glyph = _markerGlyph(entry.marker.kind);
+                        const lbl = state.viewer.addLabel(glyph, {
+                            position:          { x: a.x, y: a.y, z: a.z },
+                            fontSize:          14,
+                            fontColor:         entry.marker.color,
+                            backgroundOpacity: 0,
+                            inFront:           true,
+                        });
+                        state.overlayMarkerLabels.push(lbl);
+                    } catch (_) {}
+                }
+            }
+        }
+    }
+
+    function _markerGlyph(kind) {
+        if (kind === "lock") return "\u{1F512}";  // 🔒
+        if (kind === "star") return "★";      // ★
+        if (kind === "dot")  return "•";      // •
+        return "?";
+    }
+
+    /**
+     * Normalise a setAtomStyle selector argument into the same
+     * shape as a normalised overlay entry (kind + value).  Returns
+     * null on invalid input.
+     */
+    function _selectorToOverlayEntry(selector) {
+        if (Array.isArray(selector)) {
+            const vals = selector.filter(
+                (v) => Number.isInteger(v) && v >= 0);
+            return vals.length
+                ? { selectorKind: "indices",  selectorValue: vals }
+                : null;
+        }
+        if (selector && typeof selector === "object") {
+            if (Array.isArray(selector.elements)) {
+                const vals = selector.elements.filter(
+                    (v) => typeof v === "string" && v.length > 0);
+                return vals.length
+                    ? { selectorKind: "elements", selectorValue: vals }
+                    : null;
+            }
+            if (Array.isArray(selector.residues)) {
+                const vals = selector.residues.filter(
+                    (v) => Number.isInteger(v) && v >= 0);
+                return vals.length
+                    ? { selectorKind: "residues", selectorValue: vals }
+                    : null;
+            }
+        }
+        return null;
     }
 
     /* ------------------------------------------------------------ */
@@ -941,10 +1244,11 @@
                 "viewer.embed: lib/mol-viewer.js must be loaded first"
             );
         }
-        if (!root.molbuilder || !root.molbuilder.format) {
+        if (!root.molbuilder || !root.molbuilder.fmt) {
             throw _makeError(
                 "missing_dependency",
-                "viewer.embed: lib/mol-format.js must be loaded first"
+                "viewer.embed: lib/mol-format.js must be loaded first "
+              + "(expected window.molbuilder.fmt)"
             );
         }
 
@@ -977,13 +1281,19 @@
 
             current:       current,
 
-            axesHandle:    null,
-            cellShapes:    [],
-            labelHandles:  [],
-            arrowShapes:   [],
-            arrowLabels:   [],
-            pickShapes:    [],
-            pickedIndices: [],
+            axesHandle:          null,
+            cellShapes:          [],
+            labelHandles:        [],
+            arrowShapes:         [],
+            arrowLabels:         [],
+            pickShapes:          [],
+            pickedIndices:       [],
+
+            // Per-atom overlay state (§ 3.12).  Style overrides are
+            // baked into 3Dmol's setStyle and don't need handles;
+            // halos and markers are removable shapes / labels.
+            overlayHaloShapes:   [],
+            overlayMarkerLabels: [],
 
             // Animation runtime state.  vibrationBaseline is captured
             // on first vibration play so we can restore on stop /
@@ -1100,6 +1410,10 @@
             if (_equalNormalised(state.current.style, next)) return;
             state.current.style = next;
             _applyStyle(state.viewer, next);
+            // Per § 3.12 layering: overlay style overrides must be
+            // re-applied after the base style is reset (setStyle is
+            // a replace, not an add).
+            _redrawOverlayStyles(state);
             state.viewer.render();
         }
 
@@ -1150,6 +1464,60 @@
             _wirePick(state.viewer, state);
         }
 
+        function setOverlays(o) {
+            if (state.disposed) return;
+            const next = _normaliseOverlays(o);
+            if (_equalNormalised(state.current.overlays, next)) return;
+            state.current.overlays = next;
+            // Style overrides are baked into setStyle, so a full
+            // redraw is needed (base style → overlay styles → halos
+            // → markers → pick halos all re-render in order).
+            _redrawOverlayStyles(state);
+            _redrawOverlayHalosAndMarkers(state);
+            _redrawPickHalos(state);   // pick draws above overlay halos
+            state.viewer.render();
+        }
+
+        function setAtomStyle(selector, style) {
+            // Sugar for the common "give these atoms this style"
+            // call.  Upserts a single overlays.atoms[] entry keyed
+            // on the selector's normalised form per § 3.12.
+            if (state.disposed) return;
+            const entry = _selectorToOverlayEntry(selector);
+            if (!entry) {
+                _dispatchError(state, _makeError(
+                    "invalid_input",
+                    "setAtomStyle: selector must be number[] OR "
+                  + "{elements: string[]} OR {residues: number[]}"));
+                return;
+            }
+            // style: null removes the entry; otherwise apply style.
+            const current = state.current.overlays
+                          ? state.current.overlays.atoms.slice() : [];
+            const keyFor = (e) => e.selectorKind + ":"
+                                + JSON.stringify(e.selectorValue);
+            const want = keyFor(entry);
+            const filtered = current.filter((e) => keyFor(e) !== want);
+            if (style !== null && style !== undefined) {
+                const normStyle = _normaliseOverlayStyle(style);
+                if (!normStyle) {
+                    _dispatchError(state, _makeError(
+                        "invalid_input",
+                        "setAtomStyle: style must include at least one of "
+                      + "{rep, radiusScale, color, opacity}"));
+                    return;
+                }
+                filtered.push({
+                    selectorKind:  entry.selectorKind,
+                    selectorValue: entry.selectorValue,
+                    style:  normStyle,
+                    halo:   null,
+                    marker: null,
+                });
+            }
+            setOverlays({ atoms: filtered });
+        }
+
         function getAtomCount() {
             if (state.disposed) return 0;
             return _atomCount(state.viewer);
@@ -1186,6 +1554,8 @@
                 for (const s of state.arrowShapes) state.viewer.removeShape(s);
                 for (const l of state.arrowLabels) state.viewer.removeLabel(l);
                 for (const s of state.pickShapes) state.viewer.removeShape(s);
+                for (const s of state.overlayHaloShapes) state.viewer.removeShape(s);
+                for (const l of state.overlayMarkerLabels) state.viewer.removeLabel(l);
                 state.viewer.clear();
             } catch (_) {}
             try {
@@ -1235,6 +1605,8 @@
             setLabels:          setLabels,
             setArrows:          setArrows,
             setPick:            setPick,
+            setOverlays:        setOverlays,
+            setAtomStyle:       setAtomStyle,
 
             setAnimation:       setAnimation,
             playAnimation:      playAnimation,
@@ -1268,6 +1640,7 @@
     root.molbuilder.viewer._normalisePick     = _normalisePick;
     root.molbuilder.viewer._normaliseLattice  = _normaliseLattice;
     root.molbuilder.viewer._normaliseAnimation = _normaliseAnimation;
+    root.molbuilder.viewer._normaliseOverlays = _normaliseOverlays;
     root.molbuilder.viewer._equalNormalised   = _equalNormalised;
 
     // Error model — § 3.14, § 5.  Exposed for consumers that want to

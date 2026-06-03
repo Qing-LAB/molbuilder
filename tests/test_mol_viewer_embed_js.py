@@ -69,6 +69,7 @@ class TestNormaliseOpts:
         assert out == sorted([
             "xyz", "pdb", "style", "axes", "cell",
             "labels", "arrows", "pick", "lattice",
+            "overlays",
         ])
 
     def test_xyz_string_passes_through(self):
@@ -608,3 +609,211 @@ class TestViewerError:
         # Exactly one console.warn fire (the embed's "[viewer.embed]" log)
         # plus zero onError callbacks (none supplied).
         assert out == {"warns": 1}
+
+
+# --------------------------------------------------------------------- #
+#  OverlaySpec normalisation (§ 3.12)                                  #
+# --------------------------------------------------------------------- #
+
+
+class TestNormaliseOverlays:
+    """Per-atom overlays drive /modify's frozen-atom greying,
+    region tints, and selection halos; /spectra's spectator-atom
+    greying; future custom-style use cases.  The normaliser
+    must reject malformed inputs cleanly so the renderer can
+    assume a uniform internal shape."""
+
+    def test_undefined_or_null_returns_null(self):
+        out = _run_node('''
+            const a = window.molbuilder.viewer._normaliseOverlays(undefined);
+            const b = window.molbuilder.viewer._normaliseOverlays(null);
+            console.log(JSON.stringify({a, b}));
+        ''')
+        assert out == {"a": None, "b": None}
+
+    def test_empty_atoms_array_returns_null(self):
+        """No entries → null (renderer skips entirely)."""
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normaliseOverlays({atoms: []});
+            console.log(JSON.stringify({r}));
+        ''')
+        assert out == {"r": None}
+
+    def test_indices_selector_with_style_kept(self):
+        """The most common use case (/modify frozen atoms)."""
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normaliseOverlays({
+                atoms: [{
+                    indices: [0, 2, 5],
+                    style: { color: "#888", opacity: 0.55 },
+                }],
+            });
+            console.log(JSON.stringify(r));
+        ''')
+        assert out == {
+            "atoms": [{
+                "selectorKind":  "indices",
+                "selectorValue": [0, 2, 5],
+                "style": {"color": "#888", "opacity": 0.55},
+                "halo":   None,
+                "marker": None,
+            }],
+        }
+
+    def test_elements_selector_kept(self):
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normaliseOverlays({
+                atoms: [{
+                    elements: ["C", "N"],
+                    halo: { color: "red", radius: 0.7 },
+                }],
+            });
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["atoms"][0]["selectorKind"]  == "elements"
+        assert out["atoms"][0]["selectorValue"] == ["C", "N"]
+        assert out["atoms"][0]["halo"] == {
+            "color": "red", "radius": 0.7, "opacity": 0.5,
+        }
+
+    def test_residues_selector_kept(self):
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normaliseOverlays({
+                atoms: [{
+                    residues: [1, 3],
+                    marker: { kind: "lock", color: "#222" },
+                }],
+            });
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["atoms"][0]["selectorKind"]  == "residues"
+        assert out["atoms"][0]["selectorValue"] == [1, 3]
+        assert out["atoms"][0]["marker"] == {"kind": "lock", "color": "#222"}
+
+    def test_no_selector_drops_entry(self):
+        """Per § 3.12: exactly ONE of indices/elements/residues
+        is required.  Zero selectors → dropped."""
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normaliseOverlays({
+                atoms: [{ style: { color: "red" } }],   // no selector
+            });
+            console.log(JSON.stringify({r}));
+        ''')
+        assert out == {"r": None}
+
+    def test_multiple_selectors_drops_entry(self):
+        """Multiple selectors → also dropped (ambiguous intent)."""
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normaliseOverlays({
+                atoms: [{
+                    indices:  [1, 2],
+                    elements: ["C"],
+                    halo: { color: "red" },
+                }],
+            });
+            console.log(JSON.stringify({r}));
+        ''')
+        assert out == {"r": None}
+
+    def test_no_treatment_drops_entry(self):
+        """Selector with no style/halo/marker is a no-op → drop."""
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normaliseOverlays({
+                atoms: [{ indices: [0, 1] }],
+            });
+            console.log(JSON.stringify({r}));
+        ''')
+        assert out == {"r": None}
+
+    def test_invalid_marker_kind_drops_marker_only(self):
+        """Bad marker kind drops the marker field; if style/halo
+        is also present, the entry survives without the marker."""
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normaliseOverlays({
+                atoms: [{
+                    indices: [0],
+                    style:  { color: "red" },
+                    marker: { kind: "octopus" },
+                }],
+            });
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["atoms"][0]["style"]  == {"color": "red"}
+        assert out["atoms"][0]["marker"] is None
+
+    def test_opacity_clamped_to_0_1(self):
+        """Style opacity outside [0, 1] is clamped, not rejected."""
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normaliseOverlays({
+                atoms: [
+                    { indices: [0], style: { opacity: 2.5 } },
+                    { indices: [1], style: { opacity: -0.3 } },
+                ],
+            });
+            console.log(JSON.stringify({
+                hi: r.atoms[0].style.opacity,
+                lo: r.atoms[1].style.opacity,
+            }));
+        ''')
+        assert out == {"hi": 1.0, "lo": 0.0}
+
+    def test_three_marker_kinds_accepted(self):
+        """The closed marker enum per § 3.12: lock / star / dot."""
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normaliseOverlays({
+                atoms: [
+                    { indices: [0], marker: { kind: "lock" } },
+                    { indices: [1], marker: { kind: "star" } },
+                    { indices: [2], marker: { kind: "dot"  } },
+                ],
+            });
+            console.log(JSON.stringify(r.atoms.map((e) => e.marker.kind)));
+        ''')
+        assert out == ["lock", "star", "dot"]
+
+    def test_overlays_idempotence_equal(self):
+        """Two equivalent overlay specs normalise to deeply-equal
+        structures so _equalNormalised → no re-render."""
+        out = _run_node('''
+            const a = window.molbuilder.viewer._normaliseOverlays({
+                atoms: [{ indices: [1, 2], style: { color: "red" } }],
+            });
+            const b = window.molbuilder.viewer._normaliseOverlays({
+                atoms: [{ indices: [1, 2], style: { color: "red" } }],
+            });
+            console.log(JSON.stringify({
+                eq: window.molbuilder.viewer._equalNormalised(a, b),
+            }));
+        ''')
+        assert out == {"eq": True}
+
+    def test_overlays_idempotence_differs_on_index_change(self):
+        out = _run_node('''
+            const a = window.molbuilder.viewer._normaliseOverlays({
+                atoms: [{ indices: [1, 2], style: { color: "red" } }],
+            });
+            const b = window.molbuilder.viewer._normaliseOverlays({
+                atoms: [{ indices: [1, 3], style: { color: "red" } }],
+            });
+            console.log(JSON.stringify({
+                eq: window.molbuilder.viewer._equalNormalised(a, b),
+            }));
+        ''')
+        assert out == {"eq": False}
+
+    def test_normaliseOpts_includes_overlays(self):
+        """Spot check that the overlay slot is plumbed through
+        the top-level normaliser used at embed time."""
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normaliseOpts({
+                xyz: "dummy",
+                overlays: {
+                    atoms: [{ indices: [0], style: { color: "red" } }],
+                },
+            });
+            console.log(JSON.stringify({
+                kind: r.overlays.atoms[0].selectorKind,
+                idx:  r.overlays.atoms[0].selectorValue,
+            }));
+        ''')
+        assert out == {"kind": "indices", "idx": [0]}

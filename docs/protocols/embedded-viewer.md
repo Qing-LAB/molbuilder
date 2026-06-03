@@ -153,7 +153,7 @@ time, and what happens when a dependency is absent.
 |---|---|---|
 | `$3Dmol` (window global) | 3Dmol GLViewer + primitives | `static/vendor/3dmol-min.js` |
 | `window.molbuilder.viewer.create` | low-level GLViewer mount helper | `static/lib/mol-viewer.js` |
-| `window.molbuilder.format` | XYZ/PDB parse + element extraction | `static/lib/mol-format.js` |
+| `window.molbuilder.fmt` | XYZ/PDB parse + element extraction + formula | `static/lib/mol-format.js` |
 
 Missing any of these is a programming error: the embed throws
 synchronously with a `ViewerError` of code `"missing_dependency"`
