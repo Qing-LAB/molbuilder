@@ -1,11 +1,14 @@
 /* Structure-preview inspector: read-only 3-D view of a .xyz / .pdb
- * file.  Mounts a 3Dmol viewer inside the host element, loads the
- * file via /api/files/read, and feeds it to the viewer in the
- * matching format.  Provides a small "Open in Modify" affordance
- * for the natural next step.
+ * file.  Loads the file via ``ctx.readFile`` and hands the text +
+ * format to the standard embedded MolViewer (lib/mol-viewer-embed.js,
+ * contract: docs/protocols/embedded-viewer.md).
  *
  * No frame playback, no atom-pick, no force overlay -- that's the
  * trajectory inspector's job.  This is a static-structure peek.
+ *
+ * The inspector owns its OWN card (with the "Open in Modify" link
+ * the user expects on /results); the embedded viewer is mounted in
+ * bare mode inside that card so we don't double-wrap.
  */
 (function (root) {
     "use strict";
@@ -27,6 +30,7 @@
         mount(host, file, ctx) {
             host.innerHTML = "";
 
+            // -- Outer card scaffold (per-inspector chrome) ------- //
             const card = document.createElement("section");
             card.className = "inspector-card structure-card";
 
@@ -55,19 +59,15 @@
             status.textContent = "Loading…";
             card.appendChild(status);
 
-            const viewerEl = document.createElement("div");
-            viewerEl.className = "structure-viewer";
-            // The 3Dmol viewer needs a non-zero size BEFORE init.
-            // Inline style keeps the per-inspector concern in one
-            // file (no CSS dependency for this small inspector).
-            viewerEl.style.width  = "100%";
-            viewerEl.style.height = "420px";
-            card.appendChild(viewerEl);
+            // -- Slot the embedded viewer will mount into --------- //
+            const viewerSlot = document.createElement("div");
+            viewerSlot.className = "structure-viewer-slot";
+            card.appendChild(viewerSlot);
 
             host.appendChild(card);
 
-            let viewerInstance = null;
-            let disposed = false;
+            let viewerHandle = null;
+            let disposed     = false;
 
             ctx.readFile(file).then((r) => {
                 if (disposed) return;
@@ -78,40 +78,67 @@
                 }
                 const fmt = file.toLowerCase().endsWith(".pdb")
                     ? "pdb" : "xyz";
+                const embedApi = (root.molbuilder
+                                  && root.molbuilder.viewer
+                                  && root.molbuilder.viewer.embed);
+                if (typeof embedApi !== "function") {
+                    status.textContent = (
+                        "Viewer unavailable: lib/mol-viewer-embed.js "
+                        + "missing from the template script tags."
+                    );
+                    status.classList.add("inspector-inline-error");
+                    return;
+                }
+                const opts = {
+                    // Source data flows in through the API; the
+                    // viewer doesn't fetch.
+                    [fmt]: r.text,
+                    // Style matches the legacy structure inspector's
+                    // ball-and-stick rendering.
+                    style: { rep: "ballstick", radiusScale: 1.0 },
+                    // Bare mode -- the inspector already owns the
+                    // outer card; embed inside our slot.  Info-line
+                    // suppressed because the inspector's status note
+                    // above the canvas already shows "Loaded N atoms".
+                    card: {
+                        bare:         true,
+                        showInfoLine: false,
+                        height:       "420px",
+                    },
+                    onReady: function (handle) {
+                        if (disposed) return;
+                        const n = handle.getAtomCount();
+                        status.textContent = n > 0
+                            ? "Loaded " + n + " atoms."
+                            : "Loaded.";
+                        // Signal "first render visible" so the
+                        // /results tab-level picker drops its
+                        // "Parsing…" status.  Deferred via double-rAF
+                        // so the browser paints the 3Dmol canvas
+                        // before the picker meta clears -- matches
+                        // the trajectory inspector's pattern; see
+                        // ``lib/trajectory/core.js`` for the reasoning
+                        // behind the double-tick wait.
+                        try {
+                            const dispatch = () => document.dispatchEvent(
+                                new CustomEvent(
+                                    "molbuilder:inspector:ready",
+                                    { detail: { inspector: "structure" } }
+                                )
+                            );
+                            if (typeof requestAnimationFrame === "function") {
+                                requestAnimationFrame(
+                                    () => requestAnimationFrame(dispatch));
+                            } else {
+                                dispatch();
+                            }
+                        } catch (_) { /* see core.js for context */ }
+                    },
+                };
                 try {
-                    viewerInstance = root.molbuilder.viewer.create(viewerEl);
-                    viewerInstance.addModel(r.text, fmt);
-                    viewerInstance.setStyle({}, {
-                        stick:  { radius: 0.18 },
-                        sphere: { scale: 0.28 },
-                    });
-                    viewerInstance.zoomTo();
-                    viewerInstance.render();
-                    status.textContent = "Loaded " + _atomCount(r.text, fmt)
-                                       + " atoms.";
-                    // Signal "first render visible" so the /results
-                    // tab-level picker drops its "Parsing…" status.
-                    // Deferred via double-rAF so the browser paints
-                    // the 3Dmol canvas before the picker meta
-                    // clears -- matches the trajectory inspector's
-                    // pattern; see ``lib/trajectory/core.js`` for
-                    // the reasoning behind the double-tick wait.
-                    try {
-                        const dispatch = () => document.dispatchEvent(
-                            new CustomEvent(
-                                "molbuilder:inspector:ready",
-                                { detail: { inspector: "structure" } }
-                            )
-                        );
-                        if (typeof requestAnimationFrame === "function") {
-                            requestAnimationFrame(
-                                () => requestAnimationFrame(dispatch));
-                        } else {
-                            dispatch();
-                        }
-                    } catch (_) { /* see core.js for context */ }
+                    viewerHandle = embedApi(viewerSlot, opts);
                 } catch (e) {
-                    status.textContent = "3Dmol failed: "
+                    status.textContent = "Viewer failed: "
                                        + (e && e.message ? e.message : String(e));
                     status.classList.add("inspector-inline-error");
                 }
@@ -120,9 +147,9 @@
             return {
                 dispose() {
                     disposed = true;
-                    if (viewerInstance) {
-                        try { viewerInstance.removeAllModels(); }
-                        catch (_) { /* viewer already torn down */ }
+                    if (viewerHandle && typeof viewerHandle.dispose === "function") {
+                        try { viewerHandle.dispose(); }
+                        catch (_) { /* already torn down */ }
                     }
                     host.innerHTML = "";
                 },
@@ -134,27 +161,6 @@
                        && window.molbuilder.path
                        && window.molbuilder.path.basename)
                     || ((p) => p || "");
-
-    function _atomCount(text, fmt) {
-        // Cheap heuristic so the user gets immediate feedback.
-        // Best-effort: an unparseable file still shows the viewer.
-        try {
-            if (fmt === "xyz") {
-                const first = text.split(/\r?\n/, 1)[0].trim();
-                const n = parseInt(first, 10);
-                return Number.isFinite(n) && n > 0 ? n : "?";
-            }
-            // PDB: count ATOM + HETATM lines.
-            const lines = text.split(/\r?\n/);
-            let n = 0;
-            for (const ln of lines) {
-                if (ln.startsWith("ATOM ") || ln.startsWith("HETATM")) n++;
-            }
-            return n > 0 ? n : "?";
-        } catch (_) {
-            return "?";
-        }
-    }
 
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.inspectors = root.molbuilder.inspectors || {};

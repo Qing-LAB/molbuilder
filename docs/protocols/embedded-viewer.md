@@ -83,6 +83,10 @@ type ViewerOpts = {
     showInfoLine?: boolean,       // "N atoms · R residues · CxHyOz"
     height?:       string,        // CSS value; default "clamp(360px, 52vh, 500px)"
     className?:    string,        // extra class for outermost card div
+    bare?:         boolean,       // suppress the standard .card chrome
+                                  // (use when embedding inside an
+                                  // existing card; the host owns the
+                                  // outer card, viewer owns canvas)
   },
 
   // ---- Lifecycle ------------------------------------------------- //

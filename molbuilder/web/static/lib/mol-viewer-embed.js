@@ -152,13 +152,27 @@
 
     function _buildCardScaffold(opts) {
         const card = opts.card || {};
-        const section = document.createElement("section");
-        section.className = CARD_CLASS + (card.className
-            ? " " + card.className : "");
+
+        // ``bare`` mode: embed inside an existing card without the
+        // standard .card.mol-viewer-card chrome.  Use when the host
+        // already has its own card wrapper (e.g. the structure /
+        // trajectory / spectra inspectors, which carry per-tab
+        // actions in their card headers).  The viewer still owns
+        // the canvas + info-line via the handle methods; only the
+        // outermost wrapper is suppressed.
+        const bare = card.bare === true;
+        const section = document.createElement(bare ? "div" : "section");
+        section.className = (bare
+                ? "mol-viewer-bare"
+                : CARD_CLASS)
+            + (card.className ? " " + card.className : "");
         section.setAttribute("data-mol-viewer", "1");
 
         // Header — only rendered if title or info-line is requested.
-        const titleText = card.title;
+        // In bare mode the title is also suppressed (the host card's
+        // header already shows it); the info-line still renders if
+        // requested.
+        const titleText = bare ? null : card.title;
         const showInfo  = card.showInfoLine !== false;
         let infoLineEl = null;
         if (titleText || showInfo) {
