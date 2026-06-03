@@ -69,6 +69,7 @@ subsystem-specific decisions land in the subsystem doc.
 | [`results-tab.md`](protocols/results-tab.md) | `/results` dispatch architecture |
 | [`runtime-registry.md`](protocols/runtime-registry.md) | `molbuilder-runtime.js` register/whenReady contract |
 | [`inspector-registry.md`](protocols/inspector-registry.md) | Inspector `mount(host, file, ctx) → {dispose}` contract |
+| [`embedded-viewer.md`](protocols/embedded-viewer.md) | Standard embeddable 3D viewer — `viewer.embed(host, opts) → handle` contract |
 | [`playwright-tests.md`](protocols/playwright-tests.md) | Test design patterns + anti-patterns |
 | [`job-layout.md`](protocols/job-layout.md) | On-disk basename + `*-runN.out` convention |
 | [`cli.md`](protocols/cli.md) | click-based CLI conventions |
