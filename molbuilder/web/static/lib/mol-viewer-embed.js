@@ -932,15 +932,24 @@
                                 && a.startFrame >= 0
                                 && a.startFrame < nFrames)
                 ? Math.floor(a.startFrame) : 0;
+            // Optional per-frame arrow overlays per § 3.9.  Length
+            // mismatch with frames.length is invalid_input territory;
+            // we accept and let the renderer cap at min(arrows,
+            // frames) so a too-short arrowsPerFrame degrades gracefully.
+            const apf = Array.isArray(a.arrowsPerFrame)
+                ? a.arrowsPerFrame : null;
             return {
-                kind:         "trajectory",
-                frames:       a.frames,
-                startFrame:   startFrame,
-                currentFrame: startFrame,
-                fps:          typeof a.fps === "number" && a.fps > 0
-                                ? a.fps : 10,
-                paused:       a.paused !== false,  // default paused
-                loop:         a.loop !== false,    // default loop
+                kind:           "trajectory",
+                frames:         a.frames,
+                arrowsPerFrame: apf,
+                onFrame:        typeof a.onFrame === "function"
+                                  ? a.onFrame : null,
+                startFrame:     startFrame,
+                currentFrame:   startFrame,
+                fps:            typeof a.fps === "number" && a.fps > 0
+                                  ? a.fps : 10,
+                paused:         a.paused !== false,  // default paused
+                loop:           a.loop !== false,    // default loop
             };
         }
         return null;
@@ -1058,7 +1067,22 @@
         if (!a || a.kind !== "trajectory") return;
         if (idx < 0 || idx >= a.frames.length) return;
         a.currentFrame = idx;
+        // Per § 3.9: onFrame fires BEFORE each frame renders so the
+        // host can mutate overlays / arrows reactively.  Setter
+        // calls from inside onFrame are supported but add render
+        // cost; prefer arrowsPerFrame for the common case.
+        if (a.onFrame && state.handle) {
+            try { a.onFrame(idx, state.handle); } catch (_) {}
+        }
         _applyCoords(state.viewer, a.frames[idx]);
+        // Per-frame arrows (arrowsPerFrame) overlay any
+        // host-supplied arrows when they're available for this
+        // frame.  Empty arrows[i] = "no arrows during frame i".
+        if (a.arrowsPerFrame && idx < a.arrowsPerFrame.length) {
+            const frameArrows = a.arrowsPerFrame[idx] || [];
+            state.current.arrows = frameArrows.slice();
+            _redrawArrows(state);
+        }
         _postFramePositionRedraw(state);
         state.viewer.render();
         _refreshFrameStrip(state);
@@ -1363,6 +1387,11 @@
         // 5. Fire onReady on the next microtask so the caller sees a
         //    fully-mounted handle (post-state-init + post-first-render).
         const handle = _buildHandle(state);
+        // Stash the handle on state so internal callbacks (e.g.
+        // trajectory's onFrame, which needs to receive the handle
+        // as its second argument per § 3.9) can find it without
+        // capturing closures across the buildHandle boundary.
+        state.handle = handle;
         if (typeof opts.onReady === "function") {
             Promise.resolve().then(() => {
                 if (state.disposed) return;
@@ -1538,6 +1567,35 @@
             setOverlays({ atoms: filtered });
         }
 
+        function appendFrames(frames) {
+            // Trajectory live-poll path per § 3.2 + § 4.3:
+            //   - vibration or no animation: silent no-op
+            //   - trajectory: extend frames, preserve currentFrame
+            //   - atom-count mismatch: invalid_input via onError
+            if (state.disposed) return;
+            const a = state.current.animation;
+            if (!a || a.kind !== "trajectory") return;
+            if (!Array.isArray(frames) || frames.length === 0) return;
+            // Validate atom-count against the existing frames.
+            const expectedN = (a.frames[0] && a.frames[0].length) || 0;
+            for (const f of frames) {
+                if (!Array.isArray(f) || f.length !== expectedN) {
+                    _dispatchError(state, _makeError(
+                        "invalid_input",
+                        "appendFrames: atom count mismatch — existing "
+                      + "trajectory has " + expectedN + " atoms per frame, "
+                      + "appended frame has " + (Array.isArray(f) ? f.length : "?")
+                    ));
+                    return;
+                }
+            }
+            // Mutate in place; currentFrame is index-based so the
+            // playhead naturally stays put.  The frame strip auto-
+            // refreshes its counter / slider max via _refreshFrameStrip.
+            for (const f of frames) a.frames.push(f);
+            _refreshFrameStrip(state);
+        }
+
         function getCamera() {
             // Capture position / look-at / zoom / rotation as an
             // opaque blob per § 3.13.  The discriminator + version
@@ -1666,6 +1724,7 @@
             setAtomStyle:       setAtomStyle,
 
             setAnimation:       setAnimation,
+            appendFrames:       appendFrames,
             playAnimation:      playAnimation,
             pauseAnimation:     pauseAnimation,
             isAnimationPlaying: isAnimationPlaying,

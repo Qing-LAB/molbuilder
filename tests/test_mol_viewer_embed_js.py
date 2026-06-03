@@ -801,6 +801,65 @@ class TestNormaliseOverlays:
         ''')
         assert out == {"eq": False}
 
+    def test_normaliseAnimation_trajectory_arrowsPerFrame_kept(self):
+        """Per § 3.9: optional parallel array of per-frame arrow
+        overlays.  Used by the trajectory inspector to flip force
+        vectors per frame without 30Hz setArrows churn."""
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normaliseAnimation({
+                kind: "trajectory",
+                frames: [[[0,0,0]], [[1,0,0]]],
+                arrowsPerFrame: [
+                    [{ start:[0,0,0], end:[1,0,0], color:"red" }],
+                    [{ start:[1,0,0], end:[0,0,0], color:"blue" }],
+                ],
+            });
+            console.log(JSON.stringify({
+                hasApf: Array.isArray(r.arrowsPerFrame),
+                len:    r.arrowsPerFrame.length,
+                color0: r.arrowsPerFrame[0][0].color,
+                color1: r.arrowsPerFrame[1][0].color,
+            }));
+        ''')
+        assert out == {
+            "hasApf": True,  "len": 2,
+            "color0": "red", "color1": "blue",
+        }
+
+    def test_normaliseAnimation_trajectory_onFrame_kept(self):
+        """onFrame is a function reference; non-function values
+        normalise to null (so the renderer's call site can do a
+        cheap typeof check)."""
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normaliseAnimation({
+                kind: "trajectory",
+                frames: [[[0,0,0]]],
+                onFrame: () => {},
+            });
+            const r2 = window.molbuilder.viewer._normaliseAnimation({
+                kind: "trajectory",
+                frames: [[[0,0,0]]],
+                onFrame: "not a function",
+            });
+            console.log(JSON.stringify({
+                kept: typeof r.onFrame === "function",
+                drop: r2.onFrame === null,
+            }));
+        ''')
+        assert out == {"kept": True, "drop": True}
+
+    def test_normaliseAnimation_trajectory_apf_missing_is_null(self):
+        """No arrowsPerFrame supplied → field is null (renderer
+        skips the per-frame arrow branch)."""
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normaliseAnimation({
+                kind: "trajectory",
+                frames: [[[0,0,0]]],
+            });
+            console.log(JSON.stringify({apf: r.arrowsPerFrame}));
+        ''')
+        assert out == {"apf": None}
+
     def test_normaliseOpts_includes_overlays(self):
         """Spot check that the overlay slot is plumbed through
         the top-level normaliser used at embed time."""
