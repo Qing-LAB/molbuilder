@@ -306,3 +306,147 @@ class TestCellAndLabels:
             console.log(JSON.stringify(r.atoms));
         ''')
         assert out == [0, 5, 12]
+
+
+# --------------------------------------------------------------------- #
+#  Animation normalisation (stage 3)                                    #
+# --------------------------------------------------------------------- #
+
+
+class TestAnimationNormalisation:
+
+    def test_null_or_undefined_yields_null(self):
+        for falsy in ("null", "undefined"):
+            out = _run_node(
+                f'''
+                    const r = window.molbuilder.viewer._normaliseAnimation({falsy});
+                    console.log(JSON.stringify({{anim: r}}));
+                '''
+            )
+            assert out == {"anim": None}, f"animation({falsy}) should be null"
+
+    def test_unknown_kind_yields_null(self):
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normaliseAnimation({
+                kind: "spin", frames: 42
+            });
+            console.log(JSON.stringify({anim: r}));
+        ''')
+        assert out == {"anim": None}
+
+    def test_vibration_requires_displacements_array(self):
+        out = _run_node('''
+            // No displacements -> invalid
+            const a = window.molbuilder.viewer._normaliseAnimation({
+                kind: "vibration"
+            });
+            // Displacements present -> valid
+            const b = window.molbuilder.viewer._normaliseAnimation({
+                kind: "vibration",
+                displacements: [[1,0,0],[0,1,0],[0,0,1]],
+            });
+            console.log(JSON.stringify({
+                aIsNull: a === null,
+                bKind:   b ? b.kind : null,
+                bAmp:    b ? b.amplitude : null,
+                bHz:     b ? b.speedHz : null,
+            }));
+        ''')
+        assert out == {
+            "aIsNull": True,
+            "bKind":   "vibration",
+            "bAmp":    0.15,    # default
+            "bHz":     1.0,     # default
+        }
+
+    def test_vibration_overrides_apply(self):
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normaliseAnimation({
+                kind: "vibration",
+                displacements: [[1,0,0]],
+                amplitude: 0.05,
+                speedHz: 2.5,
+                paused: true,
+            });
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["kind"] == "vibration"
+        assert out["amplitude"] == 0.05
+        assert out["speedHz"] == 2.5
+        assert out["paused"] is True
+
+    def test_trajectory_requires_frames_array(self):
+        out = _run_node('''
+            // No frames -> invalid
+            const a = window.molbuilder.viewer._normaliseAnimation({
+                kind: "trajectory"
+            });
+            // Empty frames array -> invalid
+            const b = window.molbuilder.viewer._normaliseAnimation({
+                kind: "trajectory",
+                frames: [],
+            });
+            // Valid 2-frame trajectory
+            const c = window.molbuilder.viewer._normaliseAnimation({
+                kind: "trajectory",
+                frames: [[[0,0,0],[1,0,0]], [[0,1,0],[1,1,0]]],
+            });
+            console.log(JSON.stringify({
+                aIsNull: a === null,
+                bIsNull: b === null,
+                cKind:   c ? c.kind : null,
+                cFrameCount: c ? c.frames.length : 0,
+                cCurrent: c ? c.currentFrame : null,
+                cFps:    c ? c.fps : null,
+                cPaused: c ? c.paused : null,
+                cLoop:   c ? c.loop : null,
+            }));
+        ''')
+        assert out["aIsNull"] is True
+        assert out["bIsNull"] is True
+        assert out["cKind"] == "trajectory"
+        assert out["cFrameCount"] == 2
+        assert out["cCurrent"] == 0     # startFrame default
+        assert out["cFps"] == 10        # default
+        assert out["cPaused"] is True   # trajectory defaults paused
+        assert out["cLoop"] is True     # default
+
+    def test_trajectory_startframe_clamped(self):
+        """A startFrame outside [0, n_frames) falls back to 0."""
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normaliseAnimation({
+                kind: "trajectory",
+                frames: [[[0,0,0]],[[1,0,0]],[[2,0,0]]],
+                startFrame: 99,
+            });
+            console.log(JSON.stringify({
+                start:   r.startFrame,
+                current: r.currentFrame,
+            }));
+        ''')
+        assert out == {"start": 0, "current": 0}
+
+    def test_trajectory_paused_defaults_true(self):
+        """Trajectories don't auto-play by default -- the user
+        expects to scrub via the slider OR click play."""
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normaliseAnimation({
+                kind: "trajectory",
+                frames: [[[0,0,0]],[[1,0,0]]],
+            });
+            console.log(JSON.stringify({paused: r.paused}));
+        ''')
+        assert out == {"paused": True}
+
+    def test_vibration_paused_defaults_false(self):
+        """Vibration auto-plays by default -- the spectra UX
+        expects "click a mode, see it move" without a separate
+        play action."""
+        out = _run_node('''
+            const r = window.molbuilder.viewer._normaliseAnimation({
+                kind: "vibration",
+                displacements: [[1,0,0]],
+            });
+            console.log(JSON.stringify({paused: r.paused}));
+        ''')
+        assert out == {"paused": False}

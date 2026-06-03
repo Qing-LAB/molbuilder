@@ -55,3 +55,48 @@
     border-radius:  var(--radius-sm, 6px);
     overflow:       hidden;
 }
+
+/* Frame-strip card chrome — appears above the canvas when
+   ``card.frameStrip`` is true AND animation is trajectory mode.
+   Hosts prev / play-pause / next buttons + frame counter +
+   slider.  Wired directly to the handle's
+   playAnimation / pauseAnimation / setAnimationFrame methods. */
+.mol-viewer-frame-strip {
+    display:        flex;
+    align-items:    center;
+    gap:            var(--space-xs, 0.4rem);
+    padding:        var(--space-xs, 0.4rem) 0;
+    font-size:      var(--text-sm, 0.875rem);
+    color:          var(--text-primary, #222);
+}
+
+.mol-viewer-frame-strip button {
+    flex:           0 0 auto;
+    min-width:      2rem;
+    padding:        var(--space-xs, 0.3rem) var(--space-sm, 0.5rem);
+    background:     var(--bg-input, #fff);
+    border:         1px solid var(--border-strong, rgba(0,0,0,0.18));
+    border-radius:  var(--radius-sm, 4px);
+    color:          var(--text-primary, #222);
+    cursor:         pointer;
+    font-size:      var(--text-sm, 0.875rem);
+    font-variant-numeric: tabular-nums;
+}
+
+.mol-viewer-frame-strip button:hover {
+    background:     var(--bg-input-focus, #f4f4f4);
+    border-color:   var(--accent, #6ba6ff);
+}
+
+.mol-viewer-frame-strip .frame-counter {
+    flex:           0 0 auto;
+    min-width:      4rem;
+    text-align:     center;
+    font-variant-numeric: tabular-nums;
+    color:          var(--text-muted, #666);
+}
+
+.mol-viewer-frame-strip .frame-slider {
+    flex:           1 1 auto;
+    min-width:      6rem;
+}

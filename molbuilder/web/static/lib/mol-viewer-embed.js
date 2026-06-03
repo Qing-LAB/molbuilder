@@ -535,6 +535,307 @@
     }
 
     /* ------------------------------------------------------------ */
+    /*  Animation — vibration (rAF cosine) + trajectory (interval)  */
+    /* ------------------------------------------------------------ */
+
+    function _normaliseAnimation(a) {
+        if (!a || typeof a !== "object") return null;
+        if (a.kind === "vibration") {
+            if (!Array.isArray(a.displacements)) return null;
+            return {
+                kind:         "vibration",
+                displacements: a.displacements,
+                amplitude:    typeof a.amplitude === "number"
+                                ? a.amplitude : 0.15,
+                speedHz:      typeof a.speedHz === "number"
+                                ? a.speedHz : 1.0,
+                paused:       a.paused === true,
+            };
+        }
+        if (a.kind === "trajectory") {
+            if (!Array.isArray(a.frames) || a.frames.length === 0) return null;
+            const nFrames = a.frames.length;
+            const startFrame = (typeof a.startFrame === "number"
+                                && a.startFrame >= 0
+                                && a.startFrame < nFrames)
+                ? Math.floor(a.startFrame) : 0;
+            return {
+                kind:         "trajectory",
+                frames:       a.frames,
+                startFrame:   startFrame,
+                currentFrame: startFrame,
+                fps:          typeof a.fps === "number" && a.fps > 0
+                                ? a.fps : 10,
+                paused:       a.paused !== false,  // default paused
+                loop:         a.loop !== false,    // default loop
+            };
+        }
+        return null;
+    }
+
+    function _captureBaselineCoords(viewer) {
+        try {
+            const model = viewer.getModel();
+            const atoms = model ? model.selectedAtoms({}) : [];
+            const out = [];
+            for (const a of atoms) {
+                out.push([a.x, a.y, a.z]);
+            }
+            return out;
+        } catch (_) { return []; }
+    }
+
+    function _applyCoords(viewer, coords) {
+        try {
+            const model = viewer.getModel();
+            const atoms = model ? model.selectedAtoms({}) : [];
+            const n = Math.min(atoms.length, coords.length);
+            for (let i = 0; i < n; i++) {
+                const c = coords[i];
+                if (!c) continue;
+                atoms[i].x = c[0];
+                atoms[i].y = c[1];
+                atoms[i].z = c[2];
+            }
+        } catch (_) {}
+    }
+
+    function _postFramePositionRedraw(state) {
+        // Position-aware overlays must recompute every frame so they
+        // track the moving atoms.  Cell wireframe is lattice-only
+        // (static); axes are origin-anchored (static); arrows are
+        // caller-supplied (static unless caller updates via
+        // setArrows during animation).
+        _redrawLabels(state);
+        _redrawPickHalos(state);
+    }
+
+    function _stopAnimationLoop(state) {
+        const a = state._anim;
+        if (a.rafId !== null) {
+            try { cancelAnimationFrame(a.rafId); } catch (_) {}
+            a.rafId = null;
+        }
+        if (a.intervalId !== null) {
+            try { clearInterval(a.intervalId); } catch (_) {}
+            a.intervalId = null;
+        }
+        a.playing = false;
+        _refreshFrameStrip(state);
+    }
+
+    function _startVibrationLoop(state) {
+        if (!state._anim.vibrationBaseline) {
+            state._anim.vibrationBaseline = _captureBaselineCoords(state.viewer);
+        }
+        state._anim.startTimeMs = (typeof performance !== "undefined"
+                                    && performance.now)
+            ? performance.now() : Date.now();
+        state._anim.playing = true;
+        const tick = (tsMs) => {
+            if (state.disposed || !state._anim.playing) return;
+            const v = state.current.animation;
+            if (!v || v.kind !== "vibration") return;
+            const baseline = state._anim.vibrationBaseline;
+            const disp     = v.displacements;
+            const elapsedSec = (tsMs - state._anim.startTimeMs) / 1000;
+            const phase = 2 * Math.PI * v.speedHz * elapsedSec;
+            const factor = v.amplitude * Math.cos(phase);
+            const out = [];
+            for (let i = 0; i < baseline.length; i++) {
+                const d = (i < disp.length) ? disp[i] : [0, 0, 0];
+                out.push([
+                    baseline[i][0] + factor * d[0],
+                    baseline[i][1] + factor * d[1],
+                    baseline[i][2] + factor * d[2],
+                ]);
+            }
+            _applyCoords(state.viewer, out);
+            _postFramePositionRedraw(state);
+            state.viewer.render();
+            state._anim.rafId = requestAnimationFrame(tick);
+        };
+        state._anim.rafId = requestAnimationFrame(tick);
+        _refreshFrameStrip(state);
+    }
+
+    function _startTrajectoryLoop(state) {
+        state._anim.playing = true;
+        const t = state.current.animation;
+        const periodMs = 1000 / Math.max(1, t.fps);
+        state._anim.intervalId = setInterval(() => {
+            if (state.disposed || !state._anim.playing) return;
+            const a = state.current.animation;
+            if (!a || a.kind !== "trajectory") return;
+            let next = a.currentFrame + 1;
+            if (next >= a.frames.length) {
+                if (a.loop) next = 0;
+                else {
+                    _stopAnimationLoop(state);
+                    return;
+                }
+            }
+            _showTrajectoryFrame(state, next);
+        }, periodMs);
+        _refreshFrameStrip(state);
+    }
+
+    function _showTrajectoryFrame(state, idx) {
+        const a = state.current.animation;
+        if (!a || a.kind !== "trajectory") return;
+        if (idx < 0 || idx >= a.frames.length) return;
+        a.currentFrame = idx;
+        _applyCoords(state.viewer, a.frames[idx]);
+        _postFramePositionRedraw(state);
+        state.viewer.render();
+        _refreshFrameStrip(state);
+    }
+
+    /* ------------------------------------------------------------ */
+    /*  Frame-strip card chrome (trajectory animation only)         */
+    /* ------------------------------------------------------------ */
+
+    function _buildFrameStrip(state) {
+        if (state.frameStripEl) return;  // already built
+        const opts = state.cardOpts || {};
+        if (!opts.frameStrip) return;
+        const a = state.current.animation;
+        if (!a || a.kind !== "trajectory") return;
+
+        const strip = document.createElement("div");
+        strip.className = "mol-viewer-frame-strip";
+
+        const prev = document.createElement("button");
+        prev.type = "button";
+        prev.className = "frame-prev";
+        prev.textContent = "‹";
+        prev.title = "Previous frame";
+        prev.addEventListener("click", () => {
+            _stopAnimationLoop(state);
+            const cur = state.current.animation;
+            if (!cur) return;
+            const i = (cur.currentFrame - 1 + cur.frames.length) % cur.frames.length;
+            _showTrajectoryFrame(state, i);
+        });
+
+        const playPause = document.createElement("button");
+        playPause.type = "button";
+        playPause.className = "frame-play-pause";
+        playPause.textContent = "▶";
+        playPause.title = "Play / pause";
+        playPause.addEventListener("click", () => {
+            if (state._anim.playing) _pauseImpl(state);
+            else _playImpl(state);
+        });
+
+        const next = document.createElement("button");
+        next.type = "button";
+        next.className = "frame-next";
+        next.textContent = "›";
+        next.title = "Next frame";
+        next.addEventListener("click", () => {
+            _stopAnimationLoop(state);
+            const cur = state.current.animation;
+            if (!cur) return;
+            const i = (cur.currentFrame + 1) % cur.frames.length;
+            _showTrajectoryFrame(state, i);
+        });
+
+        const counter = document.createElement("span");
+        counter.className = "frame-counter";
+
+        const slider = document.createElement("input");
+        slider.type = "range";
+        slider.className = "frame-slider";
+        slider.min = "0";
+        slider.max = String(a.frames.length - 1);
+        slider.step = "1";
+        slider.addEventListener("input", () => {
+            _stopAnimationLoop(state);
+            _showTrajectoryFrame(state, parseInt(slider.value, 10));
+        });
+
+        strip.appendChild(prev);
+        strip.appendChild(playPause);
+        strip.appendChild(next);
+        strip.appendChild(counter);
+        strip.appendChild(slider);
+
+        // Insert before the canvas so the strip sits above it.
+        state.cardEl.insertBefore(strip, state.canvasEl);
+        state.frameStripEl = strip;
+        state.frameStripParts = {
+            prev: prev, playPause: playPause, next: next,
+            counter: counter, slider: slider,
+        };
+        _refreshFrameStrip(state);
+    }
+
+    function _removeFrameStrip(state) {
+        if (!state.frameStripEl) return;
+        try { state.frameStripEl.remove(); } catch (_) {}
+        state.frameStripEl = null;
+        state.frameStripParts = null;
+    }
+
+    function _refreshFrameStrip(state) {
+        if (!state.frameStripEl) return;
+        const a = state.current.animation;
+        if (!a || a.kind !== "trajectory") return;
+        const p = state.frameStripParts;
+        if (!p) return;
+        p.counter.textContent = (a.currentFrame + 1) + " / " + a.frames.length;
+        p.slider.max = String(a.frames.length - 1);
+        p.slider.value = String(a.currentFrame);
+        p.playPause.textContent = state._anim.playing ? "❚❚" : "▶";
+    }
+
+    /* ------------------------------------------------------------ */
+    /*  Animation control implementations (shared by handle methods)*/
+    /* ------------------------------------------------------------ */
+
+    function _setAnimationImpl(state, next) {
+        // Stop any in-flight loop + reset to baseline (vibration).
+        _stopAnimationLoop(state);
+        if (state._anim.vibrationBaseline) {
+            // Snap back to baseline so the next setAnimation lands
+            // on a known clean state.
+            _applyCoords(state.viewer, state._anim.vibrationBaseline);
+            _postFramePositionRedraw(state);
+            state.viewer.render();
+        }
+        state._anim.vibrationBaseline = null;
+        if (next && next.kind === "trajectory") {
+            // Land on the requested startFrame so the user sees it.
+            state.current.animation = next;
+            _buildFrameStrip(state);
+            _showTrajectoryFrame(state, next.startFrame);
+            if (!next.paused) _playImpl(state);
+        } else if (next && next.kind === "vibration") {
+            state.current.animation = next;
+            _removeFrameStrip(state);
+            if (!next.paused) _playImpl(state);
+        } else {
+            state.current.animation = null;
+            _removeFrameStrip(state);
+        }
+    }
+
+    function _playImpl(state) {
+        if (state.disposed) return;
+        const a = state.current.animation;
+        if (!a) return;
+        if (state._anim.playing) return;
+        if (a.kind === "vibration") _startVibrationLoop(state);
+        else if (a.kind === "trajectory") _startTrajectoryLoop(state);
+    }
+
+    function _pauseImpl(state) {
+        if (state.disposed) return;
+        _stopAnimationLoop(state);
+    }
+
+    /* ------------------------------------------------------------ */
     /*  Public embed() entry point                                   */
     /* ------------------------------------------------------------ */
 
@@ -565,14 +866,17 @@
         const viewer = viewerApi.create(scaffold.canvas);
 
         // 3. Initial state.
+        const current = _normaliseOpts(opts);
+        current.animation = _normaliseAnimation(opts.animation);
         const state = {
             viewer:        viewer,
             hostEl:        host,
             cardEl:        scaffold.section,
             canvasEl:      scaffold.canvas,
             infoLineEl:    scaffold.infoLineEl,
+            cardOpts:      opts.card || {},
 
-            current:       _normaliseOpts(opts),
+            current:       current,
 
             axesHandle:    null,
             cellShapes:    [],
@@ -581,6 +885,22 @@
             arrowLabels:   [],
             pickShapes:    [],
             pickedIndices: [],
+
+            // Animation runtime state.  vibrationBaseline is captured
+            // on first vibration play so we can restore on stop /
+            // setAnimation(null) without re-loading the structure.
+            _anim: {
+                playing:            false,
+                rafId:              null,
+                intervalId:         null,
+                startTimeMs:        null,
+                vibrationBaseline:  null,
+            },
+
+            // Frame-strip DOM (built lazily when animation:trajectory
+            // is set + card.frameStrip === true).
+            frameStripEl:    null,
+            frameStripParts: null,
 
             disposed:      false,
         };
@@ -593,6 +913,15 @@
         viewer.zoomTo();
         viewer.render();
         _refreshInfoLine(state);
+
+        // 4b. If the caller supplied opts.animation, set it up now
+        //     (after the structure is loaded so baseline coord
+        //     capture sees the right atoms).  The setAnimation impl
+        //     handles trajectory frame-strip mount + autoplay-unless-
+        //     paused semantics.
+        if (current.animation) {
+            _setAnimationImpl(state, current.animation);
+        }
 
         // 5. Fire onReady on the next microtask so the caller sees a
         //    fully-mounted handle (post-state-init + post-first-render).
@@ -628,6 +957,15 @@
             if (opts.xyz && !opts.pdb) next.pdb = null;
             if (opts.pdb && !opts.xyz) next.xyz = null;
             state.current = next;
+            // Setting a fresh structure invalidates the animation
+            // baseline (different atom count / different topology).
+            // Stop the loop + clear the baseline; the caller can
+            // re-call setAnimation with new displacements if they
+            // want animation against the new structure.
+            _stopAnimationLoop(state);
+            state._anim.vibrationBaseline = null;
+            state.current.animation = null;
+            _removeFrameStrip(state);
             _loadStructure(state.viewer, state.current);
             _applyStyle(state.viewer, state.current.style);
             _redrawAllOverlays(state);
@@ -720,6 +1058,9 @@
         function dispose() {
             if (state.disposed) return;
             state.disposed = true;
+            // Stop the animation loop FIRST so a late rAF / interval
+            // tick doesn't race against the teardown below.
+            _stopAnimationLoop(state);
             try {
                 if (state.axesHandle) state.axesHandle.clear();
                 for (const s of state.cellShapes) state.viewer.removeShape(s);
@@ -741,25 +1082,32 @@
             return state.viewer;
         }
 
-        // Animation stubs — stage 3 lands the real implementation.
-        // Defined as no-ops so callers can safely write code against
-        // the full handle shape today; calling them logs a debug
-        // breadcrumb in dev consoles so a feature-flag pre-flight
-        // can detect "animation requested but not yet implemented".
-        function _animationNotImplemented() {
-            if (root.console) {
-                root.console.debug(
-                    "[mol-viewer-embed] animation API is stubbed; " +
-                    "stage 3 implementation lands the loop."
-                );
-            }
+        function setAnimation(animation) {
+            if (state.disposed) return;
+            const next = _normaliseAnimation(animation);
+            _setAnimationImpl(state, next);
         }
-        const setAnimation        = _animationNotImplemented;
-        const playAnimation       = _animationNotImplemented;
-        const pauseAnimation      = _animationNotImplemented;
-        const isAnimationPlaying  = function () { return false; };
-        const setAnimationFrame   = _animationNotImplemented;
-        const getAnimationFrame   = function () { return 0; };
+        function playAnimation() {
+            _playImpl(state);
+        }
+        function pauseAnimation() {
+            _pauseImpl(state);
+        }
+        function isAnimationPlaying() {
+            return !state.disposed && state._anim.playing;
+        }
+        function setAnimationFrame(idx) {
+            if (state.disposed) return;
+            const a = state.current.animation;
+            if (!a || a.kind !== "trajectory") return;
+            _stopAnimationLoop(state);
+            _showTrajectoryFrame(state, idx);
+        }
+        function getAnimationFrame() {
+            const a = state && state.current && state.current.animation;
+            if (!a || a.kind !== "trajectory") return 0;
+            return a.currentFrame;
+        }
 
         return {
             setStructure:       setStructure,
@@ -801,5 +1149,6 @@
     root.molbuilder.viewer._normaliseLabels   = _normaliseLabels;
     root.molbuilder.viewer._normalisePick     = _normalisePick;
     root.molbuilder.viewer._normaliseLattice  = _normaliseLattice;
+    root.molbuilder.viewer._normaliseAnimation = _normaliseAnimation;
     root.molbuilder.viewer._equalNormalised   = _equalNormalised;
 })(typeof window !== "undefined" ? window : this);
