@@ -603,6 +603,16 @@ type PickOpts = {
 }
 ```
 
+**Deprecated-field precedence.** If the new `halo` object is
+supplied (even as `halo: {}` or `halo: false`), the deprecated
+`haloColor` / `haloRadius` are **ignored entirely** — no
+field-level merge. The deprecated path applies ONLY when `halo`
+is absent and `{haloColor, haloRadius}` is supplied; in that case
+the embed synthesises `halo: {color: haloColor, radius: haloRadius,
+opacity: <default>}` and proceeds as if the new shape was used.
+This keeps the merge rule trivial to reason about (you're either
+in the legacy lane or the modern lane, never both).
+
 **Defaults.** `halo: { color: "var(--accent)", radius: 0.6,
 opacity: 0.5 }` plus `label: "index"`. Hosts that want minimal
 selection rendering pass `halo: false, label: false`; hosts that
@@ -713,11 +723,18 @@ type KnobBarOpts = {
 
   // Optional labels-knob configuration:
   labelsFormats?: ("index" | "name" | "element")[],
-  // Format choices offered by the Labels popover.  Default:
-  // ["index", "name", "element"] (all three).  Pass a single-item
-  // array to suppress the format selector and make the knob a
-  // plain on/off toggle in that format (e.g. ["index"] for tabs
-  // that only ever want index labels).
+  // Format choices offered by the Labels popover.  Defaults +
+  // edge cases:
+  //   - undefined → all three formats offered
+  //   - ["index"] (single item) → suppresses the popover; the
+  //     Labels knob collapses to a plain on/off toggle in that
+  //     format
+  //   - []        → hides the entire Labels knob (same as
+  //                  ``labels: false``); the embed warns once via
+  //                  ``onError(invalid_input)`` because the empty
+  //                  array is almost certainly a bug
+  //   - duplicate entries → de-duplicated silently, original
+  //                          order preserved
 
   // Cosmetic / layout
   position?:   "top" | "bottom",   // default "top"
@@ -747,12 +764,29 @@ or any knob is focused:
 | Key | Action |
 |---|---|
 | `R` | Reset view (`refit()`) |
-| `L` | Toggle labels |
+| `L` | Open the Labels popover (focus first format button). Repeat `L` while open → close. |
 | `A` | Toggle axes |
-| `Space` | Play/pause (when animation is set) |
+| `B` | Open the Background popover (focus first preset). Repeat `B` → close. |
+| `E` | Open the Export popover. Repeat `E` → close. |
+| `↑` / `↓` (inside popover) | move focus between format / preset / target buttons |
+| `Enter` (inside popover) | activate focused button |
+| `Space` | Play/pause (when animation is set; only when canvas or frame strip is focused, not while a popover is open) |
 | `←` / `→` | prev / next frame (trajectory only) |
 | `Home` / `End` | first / last frame (trajectory only) |
-| `Esc` | Close any open knob popover (background, export) |
+| `Esc` | Close any open knob popover (Labels, Background, Export) |
+
+**Popover open/close patterns** (consistent across Labels,
+Background, Export):
+
+- Click on a closed popover's summary → opens it. Click elsewhere
+  in the card → closes it.
+- Click on a popover's action button (Index / Name / Off /
+  preset swatch / export target) → fires the action AND closes
+  the popover. This matches the Export pattern; Background's
+  "click a preset" already used this.
+- Background's custom color picker (`<input type="color">`) is
+  the one exception — typing in it does NOT close the popover.
+- Only one popover open at a time. Opening one closes the others.
 
 Single-letter keys (`R`, `L`, `A`) do NOT fire while a
 `<input>`, `<textarea>`, or `[contenteditable]` element inside
@@ -1019,6 +1053,24 @@ sequenceDiagram
 The opt-level `preserveCamera` is the default; the per-call value
 on `setStructure({preserveCamera: ...})` overrides for that call.
 
+### 4.2.1 `setStructure` × pick state
+
+| Atom count + element ordering vs new structure | Result |
+|---|---|
+| Match exactly (same N atoms, same element at each index) | picked indices preserved; halo + label re-render against new coordinates |
+| Mismatch (different N, or any element changes) | picked indices cleared; `onPick([])` fires |
+
+This is the same rule documented in § 3.8 (PickOpts § Persistence)
+but called out here because `setStructure` is a cross-cutting
+lifecycle event and the pick contract is one of the four overlay
+contracts that survive it (camera, animation-IFF-extending,
+pick-IFF-same-atoms).
+
+The atom-edit ops in `/modify` that preserve atom count and order
+(e.g. moving a single atom's position) keep selection visible
+mid-edit; a real file swap via the Build file picker drops
+selection.
+
 ### 4.3 `setStructure` × animation
 
 | Call | Animation behavior |
@@ -1113,14 +1165,27 @@ This table is **the** reference for code-vs-doc review.
 | Method | Sync throw | Promise reject codes | onError codes |
 |---|---|---|---|
 | `embed()` | `missing_dependency` | — | — |
-| `setStructure` | — | — | `invalid_input` |
-| `setStyle` etc. | — | — | `invalid_input` |
+| `setStructure` | — | — | `invalid_input` (malformed xyz/pdb) |
+| `appendFrames` | — | — | `invalid_input` (no animation, wrong kind, atom-count mismatch) |
+| `setStyle` | — | — | `invalid_input` (bad rep, NaN radius) |
+| `setAxes` | — | — | `invalid_input` (bad mode) |
+| `setCell` | — | — | — |
+| `setLabels` | — | — | `invalid_input` (atoms out of range) |
+| `setArrows` | — | — | `invalid_input` (bad shape) |
+| `setPick` | — | — | `invalid_input` (bad mode) |
+| `setBackground` | — | — | — (any CSS color accepted; renderer absorbs invalid) |
+| `setOverlays` | — | — | `invalid_input` (atoms out of range, missing selector) |
+| `setAtomStyle` | — | — | `invalid_input` (atoms out of range) |
+| `setAnimation` | — | — | `invalid_input` (atom-count mismatch, wrong kind) |
+| `setKnobs` | — | — | `invalid_input` (unknown knob name) |
 | `screenshot` | — | `no_structure`, `no_project`, `io_error`, `aborted`, `disposed`, `unknown` | — |
 | `exportData` | — | `no_structure`, `no_project`, `no_clipboard`, `io_error`, `aborted`, `disposed`, `unknown` | — |
 | `captureFrames` | — | `no_structure`, `static_structure`, `aborted`, `disposed`, `unknown` | — |
 | `exportAnimation` | — | `no_structure`, `static_structure`, `no_project`, `no_media_recorder`, `no_gif_encoder`, `io_error`, `aborted`, `disposed`, `unknown` | — |
 | `getCamera` | — | — | — |
-| `setCamera` | — | — | `invalid_input` |
+| `setCamera` | — | — | `invalid_input` (mismatched `_viewer` / `_version` → no-op, no error) |
+| `playAnimation` / `pauseAnimation` / `setAnimationFrame` | — | — | — (no-op when no animation; frame index clamped) |
+| `refit` / `render` / `dispose` | — | — | — |
 
 ### 5.4 `opts.onError` semantics
 
@@ -1154,7 +1219,11 @@ layout.
     <select class="mol-viewer-knob mol-viewer-knob-style"
             aria-label="Representation style">…</select>
     <details class="mol-viewer-knob mol-viewer-knob-labels">
-      <summary aria-pressed="false">Labels</summary>
+      <summary>Labels</summary>
+      <!-- aria-expanded on summary is implicit via the <details>
+           open attribute; do NOT set aria-pressed on <summary>
+           (invalid: <summary> has implicit button role but the
+           open/close state is "expanded", not "pressed"). -->
       <!-- Format options come from KnobBarOpts.labelsFormats -->
       <button data-format="index"  >Index</button>
       <button data-format="name"   >Name</button>
@@ -1493,9 +1562,34 @@ type TestHandle = {
   },
 
   // Force operations for tests:
-  triggerKnob(name: "labels" | "axes" | "reset" | "screenshot"
-              | "background" | "export"): void,
+  triggerKnob(
+    name: "labels" | "axes" | "reset" | "screenshot"
+        | "background" | "export" | "style",
+    arg?: {
+      // For popover knobs (labels / background / export), arg
+      // selects a specific sub-action; without it, triggerKnob
+      // just toggles the popover open / closed.
+      format?: "index" | "name" | "element" | "off",  // labels
+      color?:  string,                                  // background preset
+      kind?:   "structure" | "image" | "animation",    // export
+      target?: "project" | "download" | "clipboard",   // export
+      formatExport?: "xyz" | "pdb" | "webm" | "gif",   // export
+      // For style: select a representation:
+      rep?:    "stick" | "ball-and-stick" | "sphere" | "line"
+             | "cartoon" | "cross",
+    },
+  ): void,
 };
+
+// triggerKnob semantics:
+//   "axes" / "reset" / "screenshot"  → click the button
+//   "labels" / "background" / "export"
+//                                    → without arg: toggle popover
+//                                    → with arg:    fire the specific
+//                                                   sub-action AND close
+//                                                   the popover (matching
+//                                                   the real-user click flow)
+//   "style"                          → arg.rep required; sets the <select> value
 ```
 
 Tests reach for these instead of `_viewer3dmol()`; they cover
@@ -1546,7 +1640,12 @@ churn:
 | `.mol-viewer-info-line` | atom-count / formula text |
 | `.mol-viewer-knobs` | knob bar container |
 | `.mol-viewer-knob[data-knob="reset"]` | individual knob (replace knob name) |
-| `.mol-viewer-knob-export summary` | export-menu toggle |
+| `.mol-viewer-knob-labels summary` | Labels popover toggle |
+| `.mol-viewer-knob-labels [data-format="index"]` | Labels format button (replace format name) |
+| `.mol-viewer-knob-background summary` | Background popover toggle |
+| `.mol-viewer-knob-background [data-color="#ffffff"]` | Background preset swatch (replace color) |
+| `.mol-viewer-knob-background [data-knob="background-custom"]` | Background custom color `<input type="color">` |
+| `.mol-viewer-knob-export summary` | Export popover toggle |
 | `.mol-viewer-knob-export [data-kind="structure"][data-target="download"]` | individual export action |
 | `.mol-viewer-frame-strip` | frame strip container |
 | `.mol-viewer-frame-strip [data-action="play"]` | play button |
