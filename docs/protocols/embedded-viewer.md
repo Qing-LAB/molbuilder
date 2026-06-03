@@ -124,7 +124,7 @@ tab decide its own responsive behavior.
 | Host → viewer (mutate) | `handle.setStructure(...)`, `setStyle(...)`, `setAxes(...)`, `setOverlays(...)`, etc. |
 | Host → viewer (read) | `handle.getAtomCount()`, `getPickedIndices()`, `getCamera()`, `getAnimationFrame()` |
 | Host → viewer (commands) | `handle.playAnimation()`, `refit()`, `screenshot()`, `exportData(...)`, `dispose()` |
-| Viewer → host (events) | `opts.onReady(handle)`, `opts.onError(err)`, `opts.pick.onPick(indices)`, `opts.export.onExport(info)`, `opts.animation.onFrame(idx, handle)` |
+| Viewer → host (events) | `opts.onReady(handle)`, `opts.onError(err)`, `opts.pick.onPick(indices)`, `opts.export.onExport(info)`, `opts.animation.onFrame(idx, handle)` *(trajectory only)* |
 
 The host never reads 3Dmol objects directly; the viewer never
 reads host DOM outside its own card; neither inspects the other's
@@ -237,25 +237,25 @@ type ViewerOpts = {
   // ``handle.setStructure({xyz | pdb})``.
 
   // ---- Style --------------------------------------------------- //
-  style?: StyleOpts,             // see § 3.4
+  style?: StyleOpts,             // see § 3.3
 
   // ---- Overlays (each opt-in; all default off) ----------------- //
-  axes?:   AxesOpts | boolean,   // see § 3.5; true = Cartesian default
-  cell?:   CellOpts | boolean,   // see § 3.6; true = use opts.lattice
-  labels?: LabelOpts | boolean,  // see § 3.7
-  arrows?: ArrowSpec[],          // see § 3.8
+  axes?:   AxesOpts | boolean,   // see § 3.4; true = Cartesian default
+  cell?:   CellOpts | boolean,   // see § 3.5; true = use opts.lattice
+  labels?: LabelOpts | boolean,  // see § 3.6
+  arrows?: ArrowSpec[],          // see § 3.7
 
   // ---- Per-atom overlays (subset styling, halos, markers) ------ //
-  overlays?: OverlaySpec,        // see § 3.13
+  overlays?: OverlaySpec,        // see § 3.12
 
   // ---- Lattice (drives cell mode for axes + cell wireframe) ---- //
   lattice?: number[3][3],        // a, b, c row vectors in Å.
 
   // ---- Atom-pick interaction ----------------------------------- //
-  pick?: PickOpts,               // see § 3.9
+  pick?: PickOpts,               // see § 3.8
 
   // ---- Animation (vibrational mode OR trajectory frames) ------- //
-  animation?: AnimationOpts,     // see § 3.10
+  animation?: AnimationOpts,     // see § 3.9
 
   // ---- Camera persistence -------------------------------------- //
   preserveCamera?: boolean,
@@ -267,10 +267,10 @@ type ViewerOpts = {
   // ``zoomTo()`` on every ``setStructure``.
 
   // ---- Standard knob bar (canonical chrome) -------------------- //
-  knobs?: KnobBarOpts | boolean, // see § 3.11; true = all defaults
+  knobs?: KnobBarOpts | boolean, // see § 3.10; true = all defaults
 
   // ---- Export plumbing ----------------------------------------- //
-  export?: ExportOpts | boolean, // see § 3.12; true = all defaults
+  export?: ExportOpts | boolean, // see § 3.11; true = all defaults
 
   // ---- Card chrome (the embeddable panel) ---------------------- //
   card?: {
@@ -317,6 +317,15 @@ type ViewerHandle = {
   // preserved (does NOT auto-jump to the new tail).  Used by the
   // trajectory inspector's live polling path.  No-op for
   // vibration mode or when no animation is set.
+  //
+  // ``arrowsPerFrame`` (if it was supplied at ``setAnimation``
+  // time) is NOT extended; new tail frames render with NO arrows
+  // for indices beyond the original ``arrowsPerFrame.length``.
+  // To update arrows for new tail frames, either re-call
+  // ``setAnimation({...current, frames: ..., arrowsPerFrame: ...})``
+  // with the new combined arrays, OR use the ``onFrame`` callback
+  // (§ 3.9) to source arrows from a host-side data store per
+  // frame.  The live-poll usage pattern (§ 7.4) shows both.
 
   // ---- Style + overlay setters --------------------------------- //
   setStyle(style: StyleOpts):              void,
@@ -341,7 +350,7 @@ type ViewerHandle = {
   // Sugar for the common "style these atoms differently" call.
   // Internally upserts a single ``overlays.atoms[]`` entry keyed
   // on the selector's normalised form.  Passing ``style: null``
-  // removes that entry.  See § 3.13 for layering rules.
+  // removes that entry.  See § 3.12 for layering rules.
 
   // ---- Camera -------------------------------------------------- //
   getCamera(): CameraState,
@@ -405,7 +414,7 @@ type ViewerHandle = {
                      filename?: string,
                      signal?:   AbortSignal }):
       Promise<{ filename: string, bytes: number }>,
-  // Imperative version of the structure-export menu.  See § 3.12
+  // Imperative version of the structure-export menu.  See § 3.11
   // for target semantics.
 
   // ---- Animation export ---------------------------------------- //
@@ -476,7 +485,7 @@ type StyleOpts = {
 
 The `showLabels` field from earlier drafts has been **removed** —
 labels are controlled exclusively via `opts.labels` / `setLabels()`
-(§ 3.7). Two paths to the same state caused precedence ambiguity.
+(§ 3.6). Two paths to the same state caused precedence ambiguity.
 
 ### 3.4 `AxesOpts`
 
@@ -545,7 +554,7 @@ annotations all use this one primitive. The viewer redraws when
 `setArrows()` is called with a different array; identity comparison
 decides "did the array change".
 
-For trajectory animations, see `arrowsPerFrame` (§ 3.10) which
+For trajectory animations, see `arrowsPerFrame` (§ 3.9) which
 swaps arrows automatically as frames advance.
 
 ### 3.8 `PickOpts`
@@ -670,7 +679,7 @@ type KnobBarOpts = {
 | Reset | `refit()` | button |
 | Screenshot | `screenshot({target:"download"})` | button (downloads PNG immediately) |
 | Background | `setBackground(color)` | popover with preset swatches + optional color picker |
-| Export | dispatches based on submenu selection (see § 6 + § 3.12) | `<details>` menu |
+| Export | dispatches based on submenu selection (see § 6 + § 3.11) | `<details>` menu |
 
 **Keyboard shortcuts** the knob bar listens for when the canvas
 or any knob is focused:
@@ -685,8 +694,15 @@ or any knob is focused:
 | `Home` / `End` | first / last frame (trajectory only) |
 | `Esc` | Close any open knob popover (background, export) |
 
-Hosts can suppress key handling by setting `knobs.compact: true`
-AND focusing an input outside the card; the embed never
+Single-letter keys (`R`, `L`, `A`) do NOT fire while a
+`<input>`, `<textarea>`, or `[contenteditable]` element inside
+the card is focused (notably the Background popover's
+custom-color `<input type="color">`). `Space` and arrow keys
+behave the same — they only fire when the canvas, a knob button,
+or the frame strip is the active element.
+
+Hosts can suppress all key handling by setting `knobs.compact:
+true` AND focusing an input outside the card; the embed never
 captures `Tab`.
 
 ### 3.11 `ExportOpts`
@@ -846,6 +862,15 @@ Use cases:
 - Tests verify reset-view actually moves the camera.
 - A future "share a view" link would round-trip the blob.
 
+**Version-bump policy.** `_version` is reserved for breaking
+changes to the underlying `data` layout. Consumers that persist
+`CameraState` across page reloads (e.g. into `sessionStorage`)
+MUST accept that a future `_version` bump will silently reset
+the saved camera — `setCamera()` no-ops on mismatch rather than
+attempting to migrate the blob. This is the forward-compat policy
+for the opaque blob; it keeps the embed free to switch renderers
+without coordinating a migration with every persisted session.
+
 ### 3.14 `ViewerError`
 
 See § 5 for the complete error model. Every async handle method
@@ -952,10 +977,13 @@ The live-poll path is intentionally `appendFrames`, not
 | Previous state | Resulting state |
 |---|---|
 | vibration playing | loop stops; atoms snap back to baseline |
-| trajectory playing | loop stops; atoms stay on whatever frame they were on |
+| vibration paused (any phase, including initial `paused: true`) | atoms snap back to baseline; vibration cleared |
+| trajectory playing | loop stops; atoms stay on the current frame |
+| trajectory paused (default `paused: true`) | atoms stay on the current frame; trajectory cleared |
+| animation set but no structure mounted yet | animation state cleared; no positional change (no atoms to move) |
 | no animation | no-op |
 
-The frame strip is removed in all cases.
+The frame strip is removed in all cases (when it was present).
 
 ### 4.5 `dispose()` during in-flight async export
 
@@ -1027,11 +1055,12 @@ This table is **the** reference for code-vs-doc review.
 | `embed()` | `missing_dependency` | — | — |
 | `setStructure` | — | — | `invalid_input` |
 | `setStyle` etc. | — | — | `invalid_input` |
-| `screenshot` | — | `no_structure`, `io_error`, `aborted`, `disposed`, `unknown` | — |
+| `screenshot` | — | `no_structure`, `no_project`, `io_error`, `aborted`, `disposed`, `unknown` | — |
 | `exportData` | — | `no_structure`, `no_project`, `no_clipboard`, `io_error`, `aborted`, `disposed`, `unknown` | — |
 | `captureFrames` | — | `no_structure`, `static_structure`, `aborted`, `disposed`, `unknown` | — |
 | `exportAnimation` | — | `no_structure`, `static_structure`, `no_project`, `no_media_recorder`, `no_gif_encoder`, `io_error`, `aborted`, `disposed`, `unknown` | — |
-| `getCamera` / `setCamera` | — | — | `invalid_input` |
+| `getCamera` | — | — | — |
+| `setCamera` | — | — | `invalid_input` |
 
 ### 5.4 `opts.onError` semantics
 
@@ -1424,6 +1453,16 @@ When supplied, the substitutes REPLACE the global lookup for
 THIS embed instance. Production embeds pass nothing and fall
 back to the globals (§ 2.5.3). Mocks for `projectsApi` etc. are
 provided by `tests/conftest.py` for Playwright fixtures.
+
+**Soft-dep degradation (§ 2.5.2) is NOT injectable.** Tests that
+need to assert "axes were skipped because mol-axes.js is absent"
+delete the relevant `window.molbuilder.*` global before calling
+`embed()`, then read `handle._test.getDependencyStatus()`. The
+embed performs a one-time lookup at mount; injecting a soft-dep
+mock per-instance would let one embed see mol-axes while a
+neighbour doesn't, which is a misleading test setup. Hard deps
+(§ 2.5.1) similarly use the real globals — there is no test
+substitute for `$3Dmol`.
 
 ### 9.4 Visual / DOM observability
 
