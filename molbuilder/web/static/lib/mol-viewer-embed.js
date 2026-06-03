@@ -1295,6 +1295,15 @@
             overlayHaloShapes:   [],
             overlayMarkerLabels: [],
 
+            // Camera persistence per § 4.2.  hasFirstStructure flips
+            // true after the first non-empty structure mounts; before
+            // that, every setStructure calls zoomTo() so the first
+            // sight of atoms is framed.  preserveCameraDefault is
+            // the opt-level default (opts.preserveCamera; defaults
+            // to true) — per-call overrides take precedence.
+            hasFirstStructure:      !!(current.xyz || current.pdb),
+            preserveCameraDefault:  opts.preserveCamera !== false,
+
             // Animation runtime state.  vibrationBaseline is captured
             // on first vibration play so we can restore on stop /
             // setAnimation(null) without re-loading the structure.
@@ -1399,7 +1408,18 @@
             _redrawAllOverlays(state);
             _wirePick(state.viewer, state);
             state.pickedIndices = [];
-            state.viewer.zoomTo();
+            // Camera per § 4.2: the FIRST load (no prior structure)
+            // always calls zoomTo() to frame the new structure;
+            // subsequent loads preserve the user's camera unless
+            // the caller explicitly opts out (per-call or opt-level
+            // preserveCamera: false).
+            const preserveCall = typeof opts.preserveCamera === "boolean"
+                                   ? opts.preserveCamera
+                                   : state.preserveCameraDefault;
+            if (!state.hasFirstStructure || !preserveCall) {
+                state.viewer.zoomTo();
+            }
+            state.hasFirstStructure = true;
             state.viewer.render();
             _refreshInfoLine(state);
         }
@@ -1518,6 +1538,43 @@
             setOverlays({ atoms: filtered });
         }
 
+        function getCamera() {
+            // Capture position / look-at / zoom / rotation as an
+            // opaque blob per § 3.13.  The discriminator + version
+            // let setCamera() no-op on mismatch so a future
+            // renderer swap doesn't crash consumers persisting old
+            // states.
+            if (state.disposed) {
+                return { _viewer: "3dmol", _version: 1, data: null };
+            }
+            let data = null;
+            try {
+                if (typeof state.viewer.getView === "function") {
+                    data = state.viewer.getView();
+                }
+            } catch (_) {}
+            return { _viewer: "3dmol", _version: 1, data: data };
+        }
+
+        function setCamera(s) {
+            if (state.disposed) return;
+            if (!s || typeof s !== "object") {
+                _dispatchError(state, _makeError(
+                    "invalid_input",
+                    "setCamera: argument must be a CameraState object"));
+                return;
+            }
+            // Version mismatch is silent (forward-compat) per § 3.13.
+            if (s._viewer !== "3dmol" || s._version !== 1) return;
+            if (s.data === null || s.data === undefined) return;
+            try {
+                if (typeof state.viewer.setView === "function") {
+                    state.viewer.setView(s.data);
+                    state.viewer.render();
+                }
+            } catch (_) {}
+        }
+
         function getAtomCount() {
             if (state.disposed) return 0;
             return _atomCount(state.viewer);
@@ -1618,6 +1675,8 @@
             getAtomCount:       getAtomCount,
             getElements:        getElements,
             getPickedIndices:   getPickedIndices,
+            getCamera:          getCamera,
+            setCamera:          setCamera,
             refit:              refit,
             render:             render,
             dispose:            dispose,

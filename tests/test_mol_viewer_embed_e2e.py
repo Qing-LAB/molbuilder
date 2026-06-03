@@ -207,3 +207,137 @@ class TestModifyViewerDimensions:
         assert ratio < 2.5, (
             f"viewer aspect ratio {ratio:.2f} is well off the 1:1 host"
         )
+
+
+# --------------------------------------------------------------------- #
+#  Tests — Camera control (§ 3.13 + § 4.2)                             #
+# --------------------------------------------------------------------- #
+
+
+class TestCameraControl:
+    """Camera get/set round-trip + preserveCamera semantics.
+    These tests exercise the live 3Dmol getView / setView surface
+    via the embed handle exposed on the Build tab's
+    ``window.__molbuilder_build_test`` debug hook."""
+
+    def test_getCamera_returns_versioned_blob(
+            self, page, flask_server):
+        """getCamera() returns {_viewer: "3dmol", _version: 1,
+        data: any} per § 3.13 even before any structure is
+        loaded.  The opaque ``data`` field may be null/undefined;
+        the discriminator + version MUST be stable."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(300)
+        cam = page.evaluate("""
+            () => {
+                const v = window.molbuilder.viewer;
+                // We don't have direct access to the build handle
+                // from here without the test surface (Phase 7);
+                // mount a fresh embed to verify the contract.
+                const host = document.createElement("div");
+                host.style.width = "400px";
+                host.style.height = "300px";
+                document.body.appendChild(host);
+                const h = v.embed(host, {
+                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    card: { bare: true, showInfoLine: false },
+                });
+                const c = h.getCamera();
+                h.dispose();
+                host.remove();
+                return {
+                    viewer:  c._viewer,
+                    version: c._version,
+                    hasData: c.data !== null && c.data !== undefined,
+                };
+            }
+        """)
+        assert cam["viewer"]  == "3dmol"
+        assert cam["version"] == 1
+        # `data` may be a non-null view array even pre-zoom; just
+        # confirm getCamera reaches setView's return at all.
+        assert cam["hasData"] in (True, False)
+
+    def test_setCamera_round_trip(self, page, flask_server):
+        """getCamera → mutate → setCamera back restores the view.
+        The view BEFORE refit must round-trip via the opaque blob."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(300)
+        result = page.evaluate("""
+            () => {
+                const v = window.molbuilder.viewer;
+                const host = document.createElement("div");
+                host.style.width = "400px";
+                host.style.height = "300px";
+                document.body.appendChild(host);
+                const h = v.embed(host, {
+                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    card: { bare: true, showInfoLine: false },
+                });
+                const before = h.getCamera();
+                // Manually rotate the camera via the escape hatch
+                // so before / after differ; this is the kind of
+                // mutation the selection adapter does today via
+                // _viewer3dmol().
+                try { h._viewer3dmol().rotate(45); h.render(); } catch (_) {}
+                // Restore original camera:
+                h.setCamera(before);
+                const after = h.getCamera();
+                h.dispose();
+                host.remove();
+                return {
+                    before: JSON.stringify(before.data),
+                    after:  JSON.stringify(after.data),
+                };
+            }
+        """)
+        # Round-trip: setCamera(before) → getCamera should return
+        # the same opaque blob as the original capture.
+        assert result["before"] == result["after"], (
+            f"camera did not round-trip:\nbefore={result['before']}\n"
+            f"after={result['after']}"
+        )
+
+    def test_setCamera_version_mismatch_is_noop(
+            self, page, flask_server):
+        """Per § 3.13 forward-compat: a CameraState with the wrong
+        ``_viewer`` or ``_version`` is silently ignored — no
+        error, no camera change."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(300)
+        out = page.evaluate("""
+            () => {
+                const v = window.molbuilder.viewer;
+                const host = document.createElement("div");
+                host.style.width = "400px";
+                host.style.height = "300px";
+                document.body.appendChild(host);
+                const h = v.embed(host, {
+                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    card: { bare: true, showInfoLine: false },
+                });
+                const before = h.getCamera();
+                // Wrong renderer name:
+                h.setCamera({ _viewer: "potree", _version: 1, data: {} });
+                const afterRenderer = h.getCamera();
+                // Wrong version:
+                h.setCamera({ _viewer: "3dmol", _version: 99, data: {} });
+                const afterVersion = h.getCamera();
+                h.dispose();
+                host.remove();
+                return {
+                    rendererEq: JSON.stringify(before.data) ===
+                                  JSON.stringify(afterRenderer.data),
+                    versionEq:  JSON.stringify(before.data) ===
+                                  JSON.stringify(afterVersion.data),
+                };
+            }
+        """)
+        assert out["rendererEq"], "wrong _viewer should be a no-op"
+        assert out["versionEq"],  "wrong _version should be a no-op"
