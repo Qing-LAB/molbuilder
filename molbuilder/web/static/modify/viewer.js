@@ -200,28 +200,51 @@
     }
 
     // ----- xyz axis triad ----------------------------------------- //
-    // Draws a small RGB axis triad just outside the structure's
-    // bounding box so the user has a fixed orientation reference.
-    // Always anchored at the world origin; the arrows visually
-    // co-move with the molecule when the user rotates the camera,
-    // which is what makes them useful.
+    //
+    // The triad gives the user a fixed orientation reference while
+    // rotating the camera.  Two modes (selected automatically based
+    // on whether the loaded structure carries lattice vectors):
+    //
+    //   * Cartesian — fixed-length unit X/Y/Z arrows at the origin.
+    //     Used when no cell is defined (the common case for /modify
+    //     where structures load from XYZ before any cell is set).
+    //   * Cell      — arrows along a/b/c lattice vectors, scaled to
+    //     the cell vector lengths.  Used when a cell IS defined
+    //     (PDB CRYST1 records, future sidecar metadata, etc.).
+    //
+    // The actual drawing logic lives in ``lib/mol-axes.js`` so the
+    // contract is shared with /results' trajectory inspector and any
+    // future tab that mounts a 3Dmol viewer.  This handler is a thin
+    // adapter: read the checkbox state, gather the cell (if any),
+    // delegate.
 
-    let _axisShapes = [];
-    let _axisLabels = [];
+    let _axesHandle = null;
 
     function clearAxes() {
-        _axisShapes.forEach((s) => viewer.removeShape(s));
-        _axisLabels.forEach((l) => viewer.removeLabel(l));
-        _axisShapes = [];
-        _axisLabels = [];
+        if (_axesHandle) {
+            _axesHandle.clear();
+            _axesHandle = null;
+        }
     }
 
-    // Fixed length for the xyz triad so the axes always read as a
-    // compact compass marker at the world origin -- NOT a coordinate
-    // grid that scales with the molecule.  At 1.5 Å the triad is
-    // longer than a typical bond (~1.4 Å) and short enough to stay
-    // out of the way of the structure even in dense junctions.
-    const AXIS_LEN = 1.5;
+    /**
+     * Return the currently-known cell vectors for the structure
+     * loaded in /modify, or ``null`` if no cell info is available.
+     *
+     * For the modify tab today: structures arrive via the sidebar
+     * loadStructureText path which parses XYZ (no cell) or PDB
+     * (CRYST1-bearing PDBs do produce a cell on the 3Dmol model, but
+     * the modify path normalises through XYZ).  Returning ``null``
+     * here keeps the Cartesian fallback in effect.
+     *
+     * When future workflows pipe cell vectors into the modify state
+     * (e.g. a "SIESTA cell from sidecar" handoff), return them as a
+     * 3x3 numeric array ``[[ax,ay,az],[bx,by,bz],[cx,cy,cz]]`` and
+     * the axes module will switch into cell mode automatically.
+     */
+    function getCurrentCell() {
+        return null;
+    }
 
     function drawAxes() {
         clearAxes();
@@ -230,33 +253,16 @@
             viewer.render();
             return;
         }
-        const triplet = [
-            { dir: [AXIS_LEN, 0, 0], color: "0xff5555", label: "x" },  // red
-            { dir: [0, AXIS_LEN, 0], color: "0x55cc55", label: "y" },  // green
-            { dir: [0, 0, AXIS_LEN], color: "0x5588ff", label: "z" },  // blue
-        ];
-        for (const { dir, color, label } of triplet) {
-            const arrow = viewer.addArrow({
-                start:       { x: 0, y: 0, z: 0 },
-                end:         { x: dir[0], y: dir[1], z: dir[2] },
-                radius:      0.05,
-                radiusRatio: 2.5,
-                mid:         0.85,
-                color:       color,
-            });
-            _axisShapes.push(arrow);
-            const lbl = viewer.addLabel(label, {
-                position: {
-                    x: dir[0] * 1.15, y: dir[1] * 1.15, z: dir[2] * 1.15,
-                },
-                fontColor: color,
-                backgroundOpacity: 0.0,
-                fontSize: 12,
-                inFront: true,
-            });
-            _axisLabels.push(lbl);
+        const axesApi = window.molbuilder && window.molbuilder.axes;
+        if (!axesApi || typeof axesApi.draw !== "function") {
+            // lib/mol-axes.js missing from the template's <script>
+            // order; render a no-op rather than crashing the viewer.
+            viewer.render();
+            return;
         }
-        viewer.render();
+        _axesHandle = axesApi.draw(viewer, {
+            cell: getCurrentCell(),
+        });
     }
 
     // --------------------------------------------------------------- //
