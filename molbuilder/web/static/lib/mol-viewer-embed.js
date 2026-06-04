@@ -532,26 +532,20 @@
     function _buildCardScaffold(opts) {
         const card = opts.card || {};
 
-        // ``bare`` mode: embed inside an existing card without the
-        // standard .card.mol-viewer-card chrome.  Use when the host
-        // already has its own card wrapper (e.g. the structure /
-        // trajectory / spectra inspectors, which carry per-tab
-        // actions in their card headers).  The viewer still owns
-        // the canvas + info-line via the handle methods; only the
-        // outermost wrapper is suppressed.
-        const bare = card.bare === true;
-        const section = document.createElement(bare ? "div" : "section");
-        section.className = (bare
-                ? "mol-viewer-bare"
-                : CARD_CLASS)
-            + (card.className ? " " + card.className : "");
+        // ``card.bare`` was a first-pass migration shim that let
+        // host pages skip the standard chrome.  All five consumer
+        // sites (Build, Modify, structure/trajectory/spectra
+        // inspectors) finished migration on 2026-06-03; the option
+        // is gone per § 2.4 deprecation removal trigger.  If a
+        // legacy caller still passes ``card.bare: true`` we now
+        // ignore it (the standard chrome shows regardless).
+        const section = document.createElement("section");
+        section.className = CARD_CLASS
+                          + (card.className ? " " + card.className : "");
         section.setAttribute("data-mol-viewer", "1");
 
         // Header — only rendered if title or info-line is requested.
-        // In bare mode the title is also suppressed (the host card's
-        // header already shows it); the info-line still renders if
-        // requested.
-        const titleText = bare ? null : card.title;
+        const titleText = card.title;
         const showInfo  = card.showInfoLine !== false;
         let infoLineEl = null;
         if (titleText || showInfo) {
@@ -572,15 +566,13 @@
             section.appendChild(header);
         }
 
-        // Standard knob bar per § 6.2 — built only when knobs is
-        // not explicitly disabled AND the card isn't in bare mode
-        // (bare hosts own their own chrome).  The knob bar element
-        // is created here so it sits between header and canvas in
-        // the DOM; click handlers wire to the handle methods in a
-        // second pass after _buildHandle finishes (§ 6.2 lifecycle).
+        // Standard knob bar per § 6.2 — built unless explicitly
+        // disabled.  Sits between header and canvas; click handlers
+        // wire to the handle methods in a second pass after
+        // _buildHandle finishes.
         let knobsEl = null;
         const knobs = _normaliseKnobs(opts.knobs);
-        if (knobs && !bare) {
+        if (knobs) {
             knobsEl = _buildKnobBarDOM(knobs);
             section.appendChild(knobsEl);
         }

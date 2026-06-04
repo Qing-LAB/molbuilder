@@ -135,7 +135,7 @@ CSS or in-page state.
 | Hatch | Reason it still exists | Removal trigger |
 |---|---|---|
 | `handle._viewer3dmol()` | `lib/selection/viewer-adapter.js` reaches in for camera ops + click polling | When the selection-store adopts § 3.2 (`setOverlays`, `getCamera`/`setCamera`) |
-| `opts.card.bare` | First-pass migration shim that lets hosts skip the standard chrome | When all five consumers adopt the standard knob bar (see § 8 migration map) |
+| `opts.card.bare` | REMOVED 2026-06-03 — all five consumers migrated to the standard chrome (#202–#206). The opt is now ignored; callers still passing `bare: true` get the standard card chrome. The DOM class `.mol-viewer-bare` is no longer emitted and the corresponding CSS rules are gone. | — |
 
 Both are documented but **MUST NOT** be used in new code. Tab
 authors that find themselves wanting one should propose a new
@@ -278,7 +278,8 @@ type ViewerOpts = {
     showInfoLine?: boolean,       // "N atoms · R residues · CxHyOz"
     height?:       string,        // CSS value; default "clamp(360px, 52vh, 500px)"
     className?:    string,        // extra class for outermost card div
-    bare?:         boolean,       // DEPRECATED — see § 2.4
+    bare?:         boolean,       // REMOVED 2026-06-03 — ignored;
+                                  // standard chrome shows regardless.
   },
 
   // ---- Test injection (production embeds pass nothing) -------- //

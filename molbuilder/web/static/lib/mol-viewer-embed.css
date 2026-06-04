@@ -70,36 +70,10 @@
     overflow:       hidden;
 }
 
-/* --- Bare mode -----------------------------------------------------
- * When ``opts.card.bare === true`` the embed wraps the canvas in a
- * <div class="mol-viewer-bare"> (instead of the full .card chrome)
- * so it can mount INSIDE a host the caller has already styled
- * (e.g. /modify's #viewer with its aspect-ratio + max-width box,
- * or /results' inspector cards).  The wrapper MUST be a full-size
- * pass-through, otherwise the inner canvas's ``height: 100%`` inline
- * style resolves against a 0-height parent and 3Dmol mounts on a
- * 0x0 canvas (blank viewer bug, #198 stage 5 fix).
- *
- * The bare-mode canvas also DROPS its own chrome (border, background,
- * border-radius) -- the host already provides those.  Without this
- * drop, the host's border would double-up + the bare canvas's grey
- * background would peek through when 3Dmol's WebGL canvas hasn't
- * mounted yet.
- */
-.mol-viewer-bare {
-    display:        block;
-    position:       relative;
-    width:          100%;
-    height:         100%;
-}
-
-.mol-viewer-bare > .mol-viewer-canvas {
-    width:          100%;
-    height:         100%;
-    background:     transparent;
-    border:         none;
-    border-radius:  0;
-}
+/* Bare-mode CSS removed by #208 after all five consumer sites
+   migrated to the standard chrome (2026-06-03).  The deprecated
+   ``opts.card.bare`` opt is ignored by _buildCardScaffold; the
+   ``.mol-viewer-bare`` class is no longer emitted. */
 
 /* Frame-strip card chrome — appears above the canvas when
    ``card.frameStrip`` is true AND animation is trajectory mode.
@@ -338,10 +312,6 @@
 }
 
 /* In bare mode (host owns chrome), the knob bar is hidden -- but
-   the DOM stays so test affordances still work.  The bar visibility
-   is controlled by the bare CSS already (the bare wrapper has no
-   header / knobs branch in _buildCardScaffold; this rule is a
-   defensive belt-and-braces). */
-.mol-viewer-bare > .mol-viewer-knobs {
-    display:        none;
-}
+   the DOM stays so test affordances still work.  After #208 the
+   ``.mol-viewer-bare`` wrapper is no longer emitted; the legacy
+   defensive belt-and-braces rule is gone with it. */
