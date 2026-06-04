@@ -141,10 +141,37 @@
         pollAbort:  null,
     };
 
-    // Pass the resolved DOM element (not the literal id string) so
-    // the viewer factory mounts inside our scoped root rather than
-    // wherever the document happens to expose an ``id="viewer"``.
-    const viewer = window.molbuilder.viewer.create($("viewer"));
+    // #205 Part A migration: mount via the standard embed so the
+    // knob bar (Style / Labels / Axes / Reset / PNG / Background /
+    // Export) appears above the canvas, matching every other tab.
+    // ``_viewer3dmol()`` returns the underlying 3Dmol viewer so the
+    // existing inspector machinery (cell wireframe, atom indices,
+    // force arrows, movie-mode playback via addModelsAsFrames +
+    // setFrame, setClickable for picking) continues to work
+    // untouched.
+    //
+    // Part B follow-up: migrate playback to
+    // ``animation: { kind: "trajectory", frames, arrowsPerFrame }``
+    // + ``appendFrames`` for live polling; drop the raw setFrame /
+    // addModelsAsFrames / per-frame redraw loop.
+    const _handle = window.molbuilder.viewer.embed($("viewer"), {
+        style: { rep: "stick", radiusScale: 1.0 },
+        // Trajectory inspector has its own atom-pick path (click
+        // routes to onWatchAtomClick + Inspect-tab atom list); the
+        // embed's built-in pick stays off.
+        pick:  { mode: "none" },
+        card:  { title:        "Trajectory",
+                 showInfoLine: false,
+                 height:       "100%" },
+        axes:    true,
+        export:  { defaultName: "trajectory" },
+        onError(err) {
+            try { console.warn("[trajectory.inspector]",
+                                err.code, err.message); }
+            catch (_) {}
+        },
+    });
+    const viewer = _handle._viewer3dmol();
 
     /* ------------------------------------------------------------------ */
     /*  Status banner                                                      */
@@ -239,11 +266,23 @@
      * the Build and Watch viewers stay in lock-step on representation
      * numerics.  The Watch tab additionally exposes a `colorscheme`
      * select, which we forward through the shared helper. */
+    // Post-#205 Part A: rep + radius + colorscheme + background
+    // are all owned by the embed's standard knob bar.  applyStyle
+    // is kept as a thin re-apply path for the rebuildModel/atom-
+    // reset case (called once per addModelsAsFrames swap so the
+    // current knob settings paint the new movie frames).  Reads
+    // the current rep from the knob bar's <select> directly per
+    // § 9.4 stable selector.
+    function _currentRep() {
+        const sel = document.querySelector(
+            "#viewer .mol-viewer-knob-style");
+        return (sel && sel.value) || "stick";
+    }
     function styleSpec() {
         return molbuilder.style.spec({
-            rep:         $("rep").value,
-            scale:       parseFloat($("radius").value),
-            colorscheme: $("colorscheme").value,
+            rep:         _currentRep(),
+            scale:       1.0,
+            colorscheme: null,    // embed's default (Jmol)
         });
     }
 
@@ -264,11 +303,24 @@
     // back to mid-grey, which is at least visible on most surfaces
     // even if not optimal.
     function cellLineColor() {
-        const bg = ($("bg") || {}).value || "white";
-        if (bg === "black" || bg === "0x000000" || bg === "#000000") {
+        // Post-#205 the bespoke #bg <select> is gone; the embed's
+        // Background popover owns the canvas backdrop.  Read the
+        // current background via the test handle's getter so the
+        // cell wireframe still picks a contrasting grey.
+        let bg = "#ffffff";
+        try {
+            if (_handle && _handle._test
+                && typeof _handle._test.getCurrentBackground === "function") {
+                bg = _handle._test.getCurrentBackground() || "#ffffff";
+            }
+        } catch (_) {}
+        bg = String(bg).toLowerCase();
+        if (bg === "black" || bg === "#000000" || bg === "#1c1c1c"
+            || bg === "0x000000") {
             return 0xcccccc;
         }
-        if (bg === "white" || bg === "0xeeeeee" || bg === "#eeeeee") {
+        if (bg === "white" || bg === "#ffffff" || bg === "#eeeeee"
+            || bg === "0xeeeeee" || bg === "transparent") {
             return 0x444444;
         }
         return 0x888888;       // unknown bg -- safe middle ground
@@ -744,10 +796,14 @@
         }
     }
 
-    // Also re-install setClickable whenever applyStyle re-runs (rep /
-    // radius / colour-scheme dropdown changes call applyStyle without
-    // a full rebuildModel; without this the click handler silently
-    // dies after the first dropdown change).
+    // applyStyleAndRewireClicks: Post-#205 kept as an unused helper
+    // for symmetry with the spectra inspector + as a hook for the
+    // Part B migration to animation:trajectory + arrowsPerFrame
+    // where rep changes will need a coordinated re-arm.  The
+    // bespoke dropdowns that called this are gone; the embed's
+    // standard knob bar preserves clickability via its own
+    // pickWired flag (#225) when its setStyle re-applies, so we
+    // don't need the manual re-wire here.
     function applyStyleAndRewireClicks() {
         applyStyle();
         if (state.data && state.data.frames && state.data.frames.length) {
@@ -1529,16 +1585,10 @@
         showFrame(parseInt(e.target.value, 10));
     });
 
-    _on($("rep"),         "change", applyStyleAndRewireClicks);
-    _on($("radius"),      "input",  applyStyleAndRewireClicks);
-    _on($("colorscheme"), "change", applyStyleAndRewireClicks);
+    // #205 Part A: #rep / #radius / #bg / #colorscheme are all
+    // owned by the embed's standard knob bar now.  Cell wireframe
+    // toggle remains a trajectory-specific overlay control.
     _on($("show-cell"),   "change", drawCell);
-    _on($("bg"), "change", (e) => {
-        viewer.setBackgroundColor(e.target.value);
-        // Cell line colour is bg-contrast-driven; redraw with the
-        // new colour so the box stays visible on the new background.
-        drawCell();
-    });
 
     /* Overlays */
     _on($("show-indices"), "change", drawIndices);

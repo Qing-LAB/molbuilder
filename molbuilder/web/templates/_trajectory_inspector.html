@@ -101,35 +101,10 @@
     </nav>
 
     <div class="ctab-panel is-active" data-panel="style" role="tabpanel">
-      <label>Representation
-        <select id="rep">
-          <option value="stick" selected>stick</option>
-          <option value="ballstick">ball &amp; stick</option>
-          <option value="sphere">sphere (CPK)</option>
-          <option value="line">line</option>
-        </select>
-      </label>
-
-      <label>Atom radius scale
-        <input id="radius" type="range" min="0.2" max="2.5" step="0.05" value="1.0">
-      </label>
-
-      <label>Color scheme
-        <select id="colorscheme">
-          <option value="Jmol" selected>Jmol (CPK)</option>
-          <option value="rasmol">Rasmol</option>
-          <option value="default">3Dmol default</option>
-        </select>
-      </label>
-
-      <label>Background
-        <select id="bg">
-          <option value="white" selected>white</option>
-          <option value="0xeeeeee">light grey</option>
-          <option value="black">black</option>
-        </select>
-      </label>
-
+      <!-- Representation / Atom radius / Background / Color scheme
+           are owned by the embed's standard knob bar (above the
+           canvas) after the #205 migration.  Show unit cell stays
+           here as a trajectory-specific overlay. -->
       <label class="check"><input type="checkbox" id="show-cell" checked>
         Show unit cell</label>
     </div>
