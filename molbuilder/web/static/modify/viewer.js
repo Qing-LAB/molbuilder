@@ -103,51 +103,37 @@
             rep:         "stick",
             radiusScale: 1.0,
         },
-        // Axes are toggle-driven (show-axes checkbox); start with the
-        // checkbox's initial state.
-        axes:    ($("show-axes") && $("show-axes").checked) ? true : false,
-        labels:  ($("show-indices") && $("show-indices").checked)
-                    ? { atoms: "indices", fontSize: 9,
-                        fontColor: "white",
-                        background: "rgba(0,0,0,0.55)" }
-                    : false,
+        axes:    true,
         // /modify uses the selection-store viewer-adapter for atom
         // pick; the embed's built-in pick is NOT used here (the
         // adapter does its own setClickable wiring + draws labelled
-        // region halos which the embed's pick mode doesn't support).
+        // region halos which the embed's pick mode doesn't support
+        // declaratively yet -- follow-up #203b).
         pick:    { mode: "none" },
-        card: {
-            // Modify owns its own card chrome (header + title-readout
-            // + viewer-controls + send-to-Build bar); embed in bare
-            // mode + suppress the info-line.
-            bare:         true,
-            showInfoLine: false,
-            height:       "100%",
+        // Standard knob bar above the canvas after #203 migration.
+        // The card header is /modify's own ``card.viewer-card``
+        // (with #title-readout); the embed's knob bar slots between
+        // that header and the 3D canvas via the standard chrome.
+        card:    { title: "Structure", showInfoLine: false,
+                   height: "100%" },
+        export:  { defaultName: "modify" },
+        onError(err) {
+            // Surface viewer errors via the same status pattern
+            // /modify already uses (preflight / generator panels).
+            try { console.warn("[modify.viewer]", err.code, err.message); }
+            catch (_) {}
         },
     });
+    // _viewer3dmol() is still required for two /modify-specific paths
+    // that the embed contract does not yet expose declaratively:
+    //   1. The selection-store viewer-adapter (atom-pick + region /
+    //      frozen / selection halo overlays) -- follow-up #203b will
+    //      migrate this to handle.setOverlays + the embed's pick.
+    //   2. The Focus-molecule / Snap-pivot logic (zoomTo({not: {resn:
+    //      "ELC"}}) + center()) which the embed's refit() cannot
+    //      express -- follow-up will extend setStructure/refit with
+    //      a selection arg, or expose a setPivot method.
     const viewer = _viewerHandle._viewer3dmol();
-
-    function applyStyle() {
-        const rep = $("rep").value;
-        _viewerHandle.setStyle({ rep: rep, radiusScale: 1.0 });
-        // Labels + axes are handled by their own toggles below; this
-        // call is style-only.
-    }
-
-    function renderIndexLabels() {
-        const show = $("show-indices") && $("show-indices").checked;
-        _viewerHandle.setLabels(show
-            ? { atoms: "indices", fontSize: 9, fontColor: "white",
-                background: "rgba(0,0,0,0.55)" }
-            : false);
-    }
-
-    // ``clearIndexLabels`` retained as a backwards-compatible alias
-    // for the callers that still use the historical name.  Now a
-    // thin pass-through to setLabels(false).
-    function clearIndexLabels() {
-        _viewerHandle.setLabels(false);
-    }
 
     function clearViewer() {
         // The embed's setStructure handles atom + model teardown;
@@ -240,16 +226,10 @@
     // adapter: read the checkbox state, gather the cell (if any),
     // delegate.
 
-    function drawAxes() {
-        // Delegates to the embed's setAxes contract.  Auto-mode
-        // (the default when ``cell`` isn't supplied) falls back to
-        // Cartesian; cell mode would kick in if /modify ever
-        // received a lattice (none today; future SIESTA-cell-from-
-        // sidecar handoff would set it via handle.setStructure({
-        // xyz, lattice})).
-        const cb = $("show-axes");
-        _viewerHandle.setAxes(cb && cb.checked ? true : false);
-    }
+    // drawAxes() removed by #203 — the Axes toggle now lives in
+    // the embed's standard knob bar, which calls setAxes directly.
+    // Any code still calling drawAxes() should be replaced with a
+    // direct _viewerHandle.setAxes(boolean) call.
 
     // --------------------------------------------------------------- //
     //  Atom list + click-to-select are owned by the selection panel    //
@@ -448,9 +428,9 @@
         // settings intact so they re-render against the new atoms.
         if (state.xyz) {
             _viewerHandle.setStructure({ xyz: state.xyz });
-            applyStyle();
-            renderIndexLabels();
-            drawAxes();
+            // Style / labels / axes are owned by the standard knob
+            // bar after #203; setStructure leaves the current settings
+            // intact so they re-render against the new atoms.
             // Default fit shows the whole structure (atoms + slabs)
             // so the user always sees what's in the model after a
             // refresh.  The Focus-molecule toolbar button switches to
@@ -956,10 +936,10 @@
         // tests/test_web_files.py::TestNoLocalFileInputs pins that
         // #load-btn and #file-picker are NOT in the rendered
         // template.)
-        $("rep").addEventListener("change", applyStyle);
-        $("show-indices").addEventListener("change", applyStyle);
-        const showAxes = $("show-axes");
-        if (showAxes) showAxes.addEventListener("change", drawAxes);
+        // Style / labels / axes wiring removed by #203 -- the embed's
+        // standard knob bar owns those controls now.  The bespoke
+        // #rep / #show-indices / #show-axes HTML inputs are gone from
+        // modify.html.
         $("clear-selection").addEventListener("click", () => {
             // Delegate to the selection store; its subscriber will
             // re-run refreshSelectionUI automatically.
@@ -1173,9 +1153,15 @@
             n_atoms:       state.n_atoms,
             selected:      selectedIndices(),
             camera:        camera,
-            show_axes:     ($("show-axes")    || {}).checked || false,
-            show_indices:  ($("show-indices") || {}).checked || false,
-            rep:           ($("rep") || {}).value || "stick",
+            // show_axes / show_indices / rep are no longer persisted
+            // here -- the standard knob bar owns those controls and
+            // they will round-trip via handle.getCamera/setCamera
+            // once setKnobs persistence lands.  Retained as historical
+            // payload fields so an older snapshot still deserialises
+            // cleanly during the transition.
+            show_axes:     true,
+            show_indices:  false,
+            rep:           "stick",
         };
         try {
             sessionStorage.setItem(
@@ -1199,11 +1185,11 @@
         }
         if (!saved || saved.v !== STATE_SCHEMA_VERSION) return;
         if (!saved.xyz) return;
-        // Restore the toolbar toggles BEFORE rendering so the first
-        // applyStyle picks up the saved representation.
-        if ($("rep") && saved.rep) $("rep").value = saved.rep;
-        if ($("show-indices")) $("show-indices").checked = !!saved.show_indices;
-        if ($("show-axes"))    $("show-axes").checked    = !!saved.show_axes;
+        // Style / labels / axes are owned by the knob bar after #203
+        // and don't need restoring here -- the standard chrome shows
+        // the current state directly.  Saved fields (rep / show_axes
+        // / show_indices) are kept in the payload for older snapshots
+        // but no longer drive any input element.
         // Feed the saved structure through the existing
         // applyStructure() path so the atom list, viewer, and info
         // panel all re-render via the same code as a fresh load.

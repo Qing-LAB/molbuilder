@@ -61,23 +61,11 @@
       <span id="title-readout" class="muted"></span>
     </header>
     <div id="viewer" class="viewer"></div>
+    <!-- Style / labels / axes / reset live in the embed's standard
+         knob bar above the canvas after the #203 migration.  Only
+         /modify-specific actions (Focus molecule, Clear selection)
+         stay in this row. -->
     <div class="viewer-controls">
-      <label>Style
-        <select id="rep">
-          <option value="stick" selected>stick</option>
-          <option value="ballstick">ball &amp; stick</option>
-          <option value="sphere">sphere (CPK)</option>
-          <option value="line">line</option>
-        </select>
-      </label>
-      <label class="check">
-        <input type="checkbox" id="show-indices">
-        Show atom indices
-      </label>
-      <label class="check">
-        <input type="checkbox" id="show-axes" checked>
-        Show xyz axes
-      </label>
       <button id="focus-molecule" class="ghost"
         title="Re-anchor the rotation/zoom pivot on the molecule (ignoring electrode slabs).
 Use this whenever zoom/rotate feels off-centre; after adding slabs the bounding box

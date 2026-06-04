@@ -188,24 +188,34 @@ class TestModifyViewerDimensions:
 
     def test_modify_viewer_respects_host_aspect_ratio(
             self, page, flask_server):
-        """The host ``#viewer.viewer`` has aspect-ratio 1/1; the
-        embed's bare-mode wrapper must pass the host's dimensions
-        through unchanged.  Width should approximately equal
-        height (small tolerance for sub-pixel rounding + the
-        max-height: min(60vh, 560px) clamp)."""
+        """The host ``#viewer.viewer`` has aspect-ratio 1/1 and
+        min-height 320 px.  After #203 (knob bar visible), the
+        canvas sits beneath a ~60 px header + knob bar inside
+        the host card, so it's NOT the full host area anymore.
+
+        The regression we still guard: the canvas must not
+        collapse to near-zero height (the 2026-06-02 blank-viewer
+        bug).  We assert it stays above 200 px tall — comfortably
+        above any rounding-noise floor but well below the host's
+        320 min-height, accounting for the chrome above."""
         page.goto(f"{flask_server}/modify")
         page.wait_for_selector("#viewer", timeout=_BOOT_TIMEOUT_MS)
         w, h = _canvas_dimensions(page, "#viewer")
-        # min-height: 320px → both should be at least 320.
-        assert min(w, h) >= 320, (
-            f"viewer collapsed below the host's min-height: ({w}, {h})"
+        assert h >= 200, (
+            f"viewer canvas height {h} collapsed; the blank-viewer "
+            f"bug class is back"
         )
-        # The host's max-width is 560 px and aspect-ratio is 1/1;
-        # the canvas should be reasonably square (within the
-        # min(60vh, 560px) height clamp).
-        ratio = max(w, h) / max(1, min(w, h))
-        assert ratio < 2.5, (
-            f"viewer aspect ratio {ratio:.2f} is well off the 1:1 host"
+        assert w >= 320, (
+            f"viewer canvas width {w} below host min-height; check "
+            f"that the embed's flex column isn't squashing the canvas"
+        )
+        # Width is still roughly the host's max-width (560 px);
+        # the canvas should still appear square-ish (within a
+        # factor of 2 of being square, accounting for the chrome).
+        ratio = w / max(1, h)
+        assert 0.5 < ratio < 3.0, (
+            f"viewer aspect ratio {ratio:.2f} drifted too far from "
+            f"the host's 1:1"
         )
 
 

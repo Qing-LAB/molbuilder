@@ -11,6 +11,14 @@
     display:        flex;
     flex-direction: column;
     gap:            var(--space-xs, 0.4rem);
+    /* When the host fixes the card's height (e.g. /modify's
+       #viewer with aspect-ratio: 1/1 + max-width: 560px), the
+       flex column must respect that height instead of stretching
+       beyond it.  Combined with the canvas's flex: 1 below,
+       header + knob bar take natural size and the canvas fills
+       whatever space remains. */
+    height:         100%;
+    min-height:     0;
 }
 
 .mol-viewer-card-header {
@@ -48,9 +56,14 @@
 .mol-viewer-canvas {
     /* Height is opt.card.height (default clamp(360px, 52vh, 500px)),
        set as an inline style at mount time so tabs can override.
-       Width is 100% so the canvas fills the card's content area. */
+       Width is 100% so the canvas fills the card's content area.
+       Hosts that fix the CARD's height (e.g. /modify aspect-ratio)
+       can pass card.height: "100%" so the canvas absorbs whatever
+       space the flex column gives it after the header + knob bar. */
     position:       relative;
     width:          100%;
+    flex:           1 1 auto;
+    min-height:     0;
     background:     var(--bg-code, #fafafa);
     border:         1px solid var(--border-soft, rgba(0,0,0,0.08));
     border-radius:  var(--radius-sm, 6px);

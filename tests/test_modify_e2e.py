@@ -920,8 +920,11 @@ def test_clickable_survives_repeated_apply_style(
 
     # Force three style cycles to make the regression mode likely to
     # surface (each setStyle re-applies the highlight overlay path).
-    for rep in ("ballstick", "sphere", "stick"):
-        page.locator("#rep").select_option(rep)
+    # Post-#203 migration the bespoke #rep <select> is gone; the
+    # standard knob bar's ``.mol-viewer-knob-style`` select drives
+    # the rep cycle now (values per § 3.3 StyleOpts.rep).
+    for rep in ("ball-and-stick", "sphere", "stick"):
+        page.locator(".mol-viewer-knob-style").select_option(rep)
         page.wait_for_timeout(50)
     clickable_after = page.evaluate("""() => {
         const v = window.__molbuilder_modify_test.getViewer();
@@ -1159,7 +1162,12 @@ def test_axes_have_fixed_length_at_origin(
     bug)."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
-    assert page.locator("#show-axes").is_checked()
+    # Post-#203 migration: axes are toggled via the standard knob
+    # bar's Axes button (data-knob="axes") rather than #show-axes.
+    # The embed's pre-mount axes:true opt + the knob's
+    # aria-pressed="true" state confirm the initial-on default.
+    axes_btn = page.locator('.mol-viewer-knob[data-knob="axes"]')
+    assert axes_btn.get_attribute("aria-pressed") == "true"
     # Probe the axis arrows' encoded vertex distance (3Dmol caches
     # the start/end vectors on the underlying CylinderShape; we read
     # them via the viewer's shapes array).  All three axis arrows
@@ -1196,13 +1204,51 @@ def test_axes_have_fixed_length_at_origin(
         f"expected >= 3 axis-length cylinders at {expected_shaft:.3f} Å; "
         f"got lengths {lengths}"
     )
-    page.locator("#show-axes").uncheck()
-    page.wait_for_function(
-        "() => window.__molbuilder_modify_test.getViewer().shapes.length === 0"
+    # Toggle off via the knob, expect axis shapes gone (the
+    # selection adapter may have added its own shapes, so filter
+    # to axis-length cylinders rather than asserting total == 0).
+    axes_btn.click()
+    page.wait_for_timeout(200)
+    after_off = page.evaluate("""() => {
+        const v = window.__molbuilder_modify_test.getViewer();
+        let n = 0;
+        for (const s of (v.shapes || [])) {
+            const cyl = s && s.intersectionShape && s.intersectionShape.cylinder;
+            if (!cyl) continue;
+            for (const c of cyl) {
+                const dx = c.c2.x - c.c1.x,
+                      dy = c.c2.y - c.c1.y,
+                      dz = c.c2.z - c.c1.z;
+                const L = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                if (Math.abs(L - 1.275) < 1e-3) n++;
+            }
+        }
+        return n;
+    }""")
+    assert after_off == 0, (
+        f"axis cylinders survived knob-off: {after_off}"
     )
-    page.locator("#show-axes").check()
-    page.wait_for_function(
-        "() => window.__molbuilder_modify_test.getViewer().shapes.length === 3"
+    # Toggle back on.
+    axes_btn.click()
+    page.wait_for_timeout(200)
+    after_on = page.evaluate("""() => {
+        const v = window.__molbuilder_modify_test.getViewer();
+        let n = 0;
+        for (const s of (v.shapes || [])) {
+            const cyl = s && s.intersectionShape && s.intersectionShape.cylinder;
+            if (!cyl) continue;
+            for (const c of cyl) {
+                const dx = c.c2.x - c.c1.x,
+                      dy = c.c2.y - c.c1.y,
+                      dz = c.c2.z - c.c1.z;
+                const L = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                if (Math.abs(L - 1.275) < 1e-3) n++;
+            }
+        }
+        return n;
+    }""")
+    assert after_on >= 3, (
+        f"axis cylinders did not return after knob-on: {after_on}"
     )
 
 
