@@ -366,6 +366,11 @@
 
 <script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-format.js') }}"></script>
+{# Phase 5e B4: load mol-pick alongside the other soft deps so the
+   embed's pre-load contract (§ 2.5.1/§ 2.5.2) holds even though
+   /build mounts with pick.mode: "none".  A future Build edit that
+   enables picking would otherwise silently lose halos. #}
+<script src="{{ url_for('static', filename='lib/mol-pick.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-viewer.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-axes.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-viewer-embed.js') }}"></script>

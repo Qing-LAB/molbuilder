@@ -7,8 +7,12 @@
  * trajectory inspector's job.  This is a static-structure peek.
  *
  * The inspector owns its OWN card (with the "Open in Modify" link
- * the user expects on /results); the embedded viewer is mounted in
- * bare mode inside that card so we don't double-wrap.
+ * the user expects on /results); the embedded viewer mounts inside
+ * that card with ``card.title: ""`` so the embed doesn't render a
+ * second header — the host's card-header is the title strip.  The
+ * ``card.bare`` opt was retired 2026-06-03 along with the
+ * .mol-viewer-bare CSS class; ``card.title: ""`` is the canonical
+ * way to skip the embed's header.
  */
 (function (root) {
     "use strict";

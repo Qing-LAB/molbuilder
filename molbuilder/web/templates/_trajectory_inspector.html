@@ -70,25 +70,14 @@
   <div id="viewer"></div>
 
   <aside class="controls">
-    <!-- Always-visible frame strip: the slider is the most-used
-         control, so it sits above the tabs and is reachable
-         regardless of which tab panel is open. -->
-    <div class="frame-strip">
-      <div class="frame-strip-row">
-        <span class="frame-counter">Frame
-          <b id="frame-idx">0</b> / <b id="frame-tot">0</b>
-        </span>
-        <span class="frame-strip-buttons">
-          <button id="prev" title="Previous frame">&lsaquo;</button>
-          <button id="play" title="Play">&#9654;</button>
-          <button id="pause" title="Pause">&#9208;</button>
-          <button id="next" title="Next frame">&rsaquo;</button>
-        </span>
-      </div>
-      <input id="frame-slider" type="range"
-             min="0" max="0" value="0" step="1"
-             aria-label="Frame slider">
-    </div>
+    <!-- The frame strip used to live here, but moved into the
+         embed in #205 (auto-mounts whenever animation.kind ===
+         "trajectory" per § 6.3 of the embed contract).  Dropping
+         the partial's parallel strip in #246 retired the
+         duplicate UI + the parallel state.playTimer playback
+         loop that was racing with the embed's own animation
+         cadence.  The Inspect tab still owns the playback config
+         (speed / loop) and the data-export knob (save-frame). -->
 
     <!-- Three tab panels condense the previous stacked fieldsets;
          only one is visible at a time so the controls aside never

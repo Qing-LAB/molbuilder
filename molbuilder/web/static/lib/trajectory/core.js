@@ -115,17 +115,18 @@
         data: null,            // {frames, lattice, iterations, energies, max_forces, forces}
         currentFrame: 0,
         pollTimer: null,
-        playTimer: null,
+        // playTimer removed by #246 A1: the embed owns playback now;
+        // the parallel setInterval was racing with the embed loop.
         firstFit: true,        // call handle.refit() once after first load
         // #234 / #236 follow-up: cellShapes / forceShapes / indexLabels
         // / pickShapes arrays gone -- cell wireframe, atom-index
         // labels, force arrows, and pick halos are all owned by the
         // embed now (setCell / setLabels / arrowsPerFrame / pick.halo
         // + setPickedIndices).
-        // Inspect tab: up to two picked atoms (0-based indices into
-        // frame[currentFrame]); mirrors the embed's pickedIndices for
-        // the Inspect panel readout + atom-list row highlight.
-        pickedAtoms: [],
+        // Inspect-tab pick state lives in the embed (D3 contract);
+        // trajectory reads via _handle.getPickedIndices() so there
+        // is only one source of truth.  The pickedAtoms mirror was
+        // dropped in #246 B3.
         // AbortControllers for in-flight HTTP requests.  Separate
         // load + poll so a new file load supersedes the previous
         // load but doesn't kill the poll cadence, and a poll never
@@ -162,10 +163,12 @@
         // handle.setPickedIndices (no separate halo path).
         pick:  {
             mode:  "pair",
-            halo:  true,
+            halo:  true,    // accepts boolean per § 3.8 after #246 B7
             label: false,
-            onPick(curr) {
-                state.pickedAtoms = curr.slice();
+            onPick() {
+                // #246 B3: pick state lives in the embed; read
+                // live via _handle.getPickedIndices() at each
+                // panel refresh.  No host-side mirror.
                 updateInspectPanel();
                 refreshAtomListHighlights();
             },
@@ -297,13 +300,13 @@
     function cellLineColor() {
         // Post-#205 the bespoke #bg <select> is gone; the embed's
         // Background popover owns the canvas backdrop.  Read the
-        // current background via the test handle's getter so the
-        // cell wireframe still picks a contrasting grey.
+        // current background via the public getter (#245 added it
+        // precisely so this consumer didn't need to reach into the
+        // test affordance surface).  B1, 2026-06-04.
         let bg = "#ffffff";
         try {
-            if (_handle && _handle._test
-                && typeof _handle._test.getCurrentBackground === "function") {
-                bg = _handle._test.getCurrentBackground() || "#ffffff";
+            if (_handle && typeof _handle.getBackground === "function") {
+                bg = _handle.getBackground() || "#ffffff";
             }
         } catch (_) {}
         bg = String(bg).toLowerCase();
@@ -512,12 +515,18 @@
     // The embed owns halo rendering via pick.mode = "pair" + pick.halo;
     // _postFramePositionRedraw re-renders halos every frame so they
     // track trajectory motion.  Atom-list row clicks push into the
-    // embed's pick state via handle.setPickedIndices, keeping a single
-    // source of truth.  state.pickedAtoms mirrors the embed's
-    // pickedIndices for the Inspect panel + row-highlight DOM.
+    // embed's pick state via handle.setPickedIndices.  Single source
+    // of truth: the embed's pickedIndices.  Trajectory queries it
+    // live via _handle.getPickedIndices() in updateInspectPanel +
+    // refreshAtomListHighlights (no host-side mirror per D3
+    // contract, fixed in #246 B3).
+
+    function _picks() {
+        return _handle ? _handle.getPickedIndices() : [];
+    }
 
     function updateInspectPanel() {
-        const pa = state.pickedAtoms;
+        const pa = _picks();
         const frame = (state.data && state.data.frames[state.currentFrame])
                     || [];
         const fmt = (idx) => {
@@ -566,7 +575,8 @@
     // pick.mode = "pair" wiring.  Pushes the new state into the
     // embed via setPickedIndices so halos stay in sync.
     function togglePickFromRow(idx) {
-        const pa = state.pickedAtoms.slice();
+        if (!_handle) return;
+        const pa = _handle.getPickedIndices();
         const existing = pa.indexOf(idx);
         if (existing !== -1) {
             pa.splice(existing, 1);
@@ -574,14 +584,12 @@
             if (pa.length >= 2) pa.shift();
             pa.push(idx);
         }
-        state.pickedAtoms = pa;
-        if (_handle) _handle.setPickedIndices(pa);
+        _handle.setPickedIndices(pa);
         updateInspectPanel();
         refreshAtomListHighlights();
     }
 
     function clearAtomPicks() {
-        state.pickedAtoms = [];
         if (_handle) _handle.setPickedIndices([]);
         updateInspectPanel();
         refreshAtomListHighlights();
@@ -602,8 +610,8 @@
         for (let i = 0; i < frame.length; i++) {
             const r = frame[i];
             const tr = document.createElement("tr");
-            // dataset.atomIndex stays 0-based (matches state.pickedAtoms
-            // and 3Dmol's atom.serial); the displayed ``#`` column is
+            // dataset.atomIndex stays 0-based (matches the embed's
+            // pickedIndices and 3Dmol's atom.serial); the displayed ``#`` column is
             // 1-based to match the overlay labels in the Overlays tab.
             tr.dataset.atomIndex = String(i);
 
@@ -671,7 +679,7 @@
     function refreshAtomListHighlights() {
         const tbody = $("inspect-atom-list-body");
         if (!tbody) return;
-        const picked = new Set(state.pickedAtoms);
+        const picked = new Set(_picks());
         for (const tr of tbody.children) {
             tr.classList.toggle(
                 "is-selected",
@@ -731,15 +739,14 @@
                 state.currentFrame = idx;
                 // Pick halos + atom-index labels follow frames
                 // automatically via the embed's
-                // _postFramePositionRedraw; only the trajectory's
-                // own per-frame DOM bookkeeping is wired here.
+                // _postFramePositionRedraw; the embed's frame
+                // strip self-updates its counter / slider.  Only
+                // the trajectory's own per-frame DOM bookkeeping
+                // (Inspect panel atom list, force overlay status)
+                // is wired here.
                 updateInspectPanel();
                 updateAtomListCoords();
                 refreshForcesStatus();
-                const fi = $("frame-idx");
-                const fs = $("frame-slider");
-                if (fi) fi.textContent = idx;
-                if (fs) fs.value = idx;
             },
         });
         // Atom-index labels via the embed's setLabels (#234 follow-up).
@@ -765,20 +772,14 @@
         const n = state.data.frames.length;
         idx = Math.max(0, Math.min(n - 1, idx));
         // #230 Part B: delegate to handle.setAnimationFrame; the
-        // embed fires onFrame which runs all the per-frame side
+        // embed fires onFrame which runs the per-frame side
         // effects (updateInspectPanel, updateAtomListCoords,
-        // refreshForcesStatus, frame-strip DOM).  Pick halos +
-        // atom-index labels follow frames natively in the embed via
+        // refreshForcesStatus).  Pick halos + atom-index labels
+        // follow frames natively in the embed via
         // _postFramePositionRedraw.  See rebuildModel() above.
         if (_handle && typeof _handle.setAnimationFrame === "function") {
             _handle.setAnimationFrame(idx);
         }
-        // The frame-idx / frame-slider DOM updates also happen in
-        // onFrame but the slider-input listener that called us
-        // (line 1632) expects the readouts to be authoritative on
-        // return; we set them here too for synchronous correctness.
-        $("frame-idx").textContent = idx;
-        $("frame-slider").value = idx;
     }
 
     /* ------------------------------------------------------------------ */
@@ -1259,11 +1260,11 @@
             setStatus("File loaded ("+ state.label +") but no frames yet.", "");
             return;
         }
-        $("frame-tot").textContent = n - 1;
-        $("frame-slider").max      = n - 1;
         // Frames now exist -> enable the "Save current frame as XYZ"
         // button (it's disabled-by-default in the template so users
-        // can't click it before any data is loaded).
+        // can't click it before any data is loaded).  The frame
+        // count + slider max are owned by the embed's auto-mounted
+        // frame strip (§ 6.3); no host-side DOM update needed.
         $("save-frame").disabled = false;
 
         rebuildModel();
@@ -1418,27 +1419,14 @@
     /*  Playback                                                           */
     /* ------------------------------------------------------------------ */
 
-    function step(delta) {
-        if (!state.data || !state.data.frames.length) return;
-        const n = state.data.frames.length;
-        let next = state.currentFrame + delta;
-        if (next >= n) next = $("loop").checked ? 0     : n - 1;
-        if (next < 0)  next = $("loop").checked ? n - 1 : 0;
-        showFrame(next);
-    }
-
-    function play() {
-        if (state.playTimer) clearInterval(state.playTimer);
-        const speed = parseInt($("speed").value, 10) || 150;
-        state.playTimer = setInterval(() => step(1), speed);
-    }
-
-    function pause() {
-        if (state.playTimer) {
-            clearInterval(state.playTimer);
-            state.playTimer = null;
-        }
-    }
+    // Playback control (step / play / pause / state.playTimer)
+    // removed by #246 A1.  The embed owns playback now via its
+    // animation loop + auto-mounted frame strip (prev/play/next
+    // + slider per § 6.3).  The Inspect tab's #speed and #loop
+    // controls flow into the embed via setAnimation partial
+    // updates per § 3.9.  showFrame() above is still used by the
+    // load path (jump to last frame on append) but goes through
+    // _handle.setAnimationFrame.
 
     /* ------------------------------------------------------------------ */
     /*  UI wiring                                                          */
@@ -1452,7 +1440,9 @@
     // ?path=... query-param pre-fill) is gone for the same reason.
 
     async function loadByPath(path) {
-        pause();
+        // The embed's animation starts paused (initial setAnimation
+        // call below uses paused: true) so no host-side pause is
+        // needed -- rebuildModel() replaces the active animation.
         // Drop atom picks: a fresh load means a new trajectory and
         // the picked indices may not exist in the new model.
         clearAtomPicks();
@@ -1527,9 +1517,11 @@
     // the registry's mount(host, file, ctx) call -- no URL query
     // pre-fill, no Enter-to-load shortcut.
 
-    _on($("frame-slider"), "input", (e) => {
-        showFrame(parseInt(e.target.value, 10));
-    });
+    // Frame-slider + prev/play/pause/next click wiring removed in
+    // #246 A1: those controls now live in the embed's auto-
+    // mounted frame strip (§ 6.3).  The Inspect-tab playback
+    // configuration (#speed, #loop) flows into the embed via
+    // setAnimation partial updates per § 3.9.
 
     // #205 Part A: #rep / #radius / #bg / #colorscheme are all
     // owned by the embed's standard knob bar now.  Cell wireframe
@@ -1546,12 +1538,19 @@
     _on($("force-min"),     "input",  drawForces);
     _on($("highlight-max"), "change", drawForces);
 
-    _on($("play"),  "click", play);
-    _on($("pause"), "click", pause);
-    _on($("prev"),  "click", () => step(-1));
-    _on($("next"),  "click", () => step(1));
+    // Playback configuration → embed animation partial-update
+    // (§ 3.9).  Speed slider is in ms-per-frame; fps = 1000/ms.
+    // Loop checkbox drives the embed's loop opt directly.
     _on($("speed"), "change", () => {
-        if (state.playTimer) play();    // restart with new cadence
+        if (!_handle) return;
+        const ms = parseInt($("speed").value, 10) || 150;
+        try { _handle.setAnimation({ fps: 1000 / ms }); }
+        catch (_) {}
+    });
+    _on($("loop"), "change", () => {
+        if (!_handle) return;
+        try { _handle.setAnimation({ loop: !!$("loop").checked }); }
+        catch (_) {}
     });
 
     /* ---- Inspect-tab: Clear-picks button ------------------------- */
@@ -1735,10 +1734,9 @@
             if (state.loadAbort) { state.loadAbort.abort(); state.loadAbort = null; }
             if (state.pollAbort) { state.pollAbort.abort(); state.pollAbort = null; }
             stopPolling();
-            if (state.playTimer) {
-                clearInterval(state.playTimer);
-                state.playTimer = null;
-            }
+            // playTimer cleanup removed in #246 A1 (no parallel
+            // playback loop anymore); handle.dispose() below tears
+            // down the embed's animation loop on its own.
             // handle.dispose() tears down the embed's animation loop,
             // ResizeObserver, knob bar, models / shapes / labels and
             // releases its references on the 3Dmol viewer.

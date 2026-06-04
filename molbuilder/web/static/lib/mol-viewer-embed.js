@@ -268,10 +268,20 @@
         let halo;
         if (p.halo === false) {
             halo = null;   // explicit opt-out
-        } else if (p.halo === undefined) {
-            // Legacy fallback OR default.
-            const legacyColor  = typeof p.haloColor  === "string"  ? p.haloColor  : null;
-            const legacyRadius = typeof p.haloRadius === "number" ? p.haloRadius : null;
+        } else if (p.halo === undefined || p.halo === true) {
+            // Phase 5e B7: treat ``halo: true`` as alias for "enabled
+            // with defaults", matching the convention used for
+            // ``opts.axes`` / ``opts.cell``.  Before this fix,
+            // ``true`` fell into the trailing else and became null —
+            // so trajectory's atom-pick halos rendered nothing since
+            // #236.  Legacy fallback (haloColor / haloRadius) still
+            // honored when ``halo`` is undefined.
+            const legacyColor  = (p.halo === undefined
+                                  && typeof p.haloColor  === "string")
+                                  ? p.haloColor  : null;
+            const legacyRadius = (p.halo === undefined
+                                  && typeof p.haloRadius === "number")
+                                  ? p.haloRadius : null;
             if (legacyColor !== null || legacyRadius !== null) {
                 halo = {
                     color:   legacyColor  || "#ffd54a",

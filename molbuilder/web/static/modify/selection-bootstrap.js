@@ -115,10 +115,15 @@
         }
 
         // 4. Attach the viewer-adapter once modify/viewer.js has
-        // exposed its viewer.  Both this bootstrap and viewer.js
-        // run on DOMContentLoaded; in practice viewer.js executes
-        // first (script order in modify.html), but we poll briefly
-        // to be robust against future ordering changes.
+        // registered its embed handle on the runtime registry.
+        // #246 B2: the previous 10×100ms poll for
+        // ``window.molbuilder.modify.handle`` is exactly the bug
+        // class the runtime registry exists to retire (cf.
+        // /build's runtime.whenReady("projects") pattern, see
+        // lib/molbuilder-runtime.js docstring).  modify/viewer.js
+        // calls ``runtime.register("modify.handle", _handle)`` at
+        // boot; whenReady fires synchronously if already-registered
+        // and queues otherwise.
         const adapterModule =
             (window.molbuilder.selection && window.molbuilder.selection.viewerAdapter)
                 ? window.molbuilder.selection.viewerAdapter : null;
@@ -126,28 +131,18 @@
             console.warn("[selection-bootstrap] viewerAdapter module missing");
             return;
         }
-        let tries = 0;
-        const timer = setInterval(() => {
-            // #229 Part B: pass the embed HANDLE (not the raw 3Dmol
-            // viewer) so the adapter drives overlays + picks via
-            // the declarative API.  Falls back to viewer for legacy
-            // pre-migration tabs that haven't exposed .handle yet
-            // (none in production today; the warn-then-skip below
-            // surfaces the misconfiguration).
-            const h = (window.molbuilder.modify
-                       && window.molbuilder.modify.handle)
-                      ? window.molbuilder.modify.handle : null;
-            if (h) {
-                adapterModule.attach(h);
-                clearInterval(timer);
-            } else if (++tries >= 10) {
-                clearInterval(timer);
-                console.warn(
-                    "[selection-bootstrap] handle never appeared; "
-                    + "click integration disabled"
-                );
-            }
-        }, 100);
+        const runtime = window.molbuilder.runtime;
+        if (!runtime || typeof runtime.whenReady !== "function") {
+            console.warn(
+                "[selection-bootstrap] molbuilder.runtime unavailable; "
+              + "click integration disabled (lib/molbuilder-runtime.js "
+              + "is the hard dep that should always load first)"
+            );
+            return;
+        }
+        runtime.whenReady("modify.handle").then((h) => {
+            adapterModule.attach(h);
+        });
     }
 
     if (document.readyState === "loading") {

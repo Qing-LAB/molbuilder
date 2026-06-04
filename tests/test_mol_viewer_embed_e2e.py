@@ -1147,6 +1147,53 @@ class TestHandleSurface:
             f"round-trip: {out['axes']!r}"
         )
 
+    def test_pick_halo_true_renders_halos_with_defaults(
+            self, page, flask_server):
+        """Per § 3.8 (Phase 5e B7): pick.halo: true is an alias for
+        ``{}`` (enabled with defaults), matching the boolean-
+        shorthand convention used for opts.axes / opts.cell.
+        Before this fix, ``halo: true`` silently fell through to
+        null in _normalisePick — trajectory atom-pick halos
+        rendered nothing.  Pin the alias + verify the embed
+        actually draws a halo shape after setPickedIndices."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    pick: { mode: "pair", halo: true, label: false,
+                            onPick() {} },
+                });
+                h.setPickedIndices([0, 2]);
+                const haloCount = h._test.getOverlayShapeCount();
+                const pick = h.getPick();
+                h.dispose();
+                host.remove();
+                return {
+                    haloCount,
+                    haloOpts: pick && pick.halo,
+                };
+            }
+        """)
+        # halo defaults: color #ffd54a, radius 0.6, opacity 0.5
+        assert out["haloOpts"] is not None, (
+            "halo: true did not produce a halo config; B7 regression"
+        )
+        assert out["haloOpts"]["color"] == "#ffd54a"
+        assert out["haloOpts"]["radius"] == 0.6
+        assert out["haloCount"] >= 2, (
+            f"halo: true didn't draw halo shapes after "
+            f"setPickedIndices([0,2]); shapes drawn: {out['haloCount']}"
+        )
+
     def test_setStructure_preserves_picks_when_elements_match(
             self, page, flask_server):
         """Per § 3.8 + § 4.2.1: pickedIndices survives setStructure

@@ -1617,7 +1617,21 @@
         // § 3.12.
         state.handle = window.molbuilder.viewer.embed(
             els.modeViewer, {
-                style:  { rep: "ball-and-stick", radiusScale: 1.0 },
+                // Phase 5e B5: backdrop colour set declaratively at
+                // mount via style.background so the embed's
+                // normalised state agrees with the canvas.  The
+                // Background knob's preset list is widened to
+                // include "#1d2128" so the active-swatch state
+                // matches what the user sees.  Previously the
+                // backdrop was set imperatively post-mount via
+                // setBackground("#1d2128") while the preset list
+                // defaulted to {#ffffff, #1c1c1c, transparent} —
+                // chip swatches showed the user "active: #1c1c1c"
+                // while the canvas was actually #1d2128.
+                style:  { rep: "ball-and-stick", radiusScale: 1.0,
+                          background: "#1d2128" },
+                knobs:  { backgroundPresets:
+                          ["#1d2128", "#ffffff", "transparent"] },
                 pick:   { mode: "none" },
                 card:   { title: "Vibrational mode",
                           showInfoLine: false,
@@ -1631,12 +1645,6 @@
                 },
             }
         );
-        // #232 cleanup: state.viewer alias dropped — _viewer3dmol()
-        // capture was unused after Part B (only state.handle is read).
-        // Match the inspector's prior dark backdrop via the embed
-        // contract (was a viewer.create({backgroundColor}) opt;
-        // now setBackground is the documented path).
-        try { state.handle.setBackground("#1d2128"); } catch (_) {}
     }
 
     // _buildFrameMovie removed by #231 Part B.  The embed's

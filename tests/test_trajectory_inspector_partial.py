@@ -81,12 +81,13 @@ class TestPartialIntegrity:
     # the embed has no concept of and that have no equivalent on
     # /build, /modify, or the spectra inspector.
     TRAJECTORY_PARTIAL_IDS = {
-        # Embed mount + frame strip wrapper (the strip itself lives
-        # inside the embed per § 6.3; the OUTER controls are still
-        # the partial's responsibility).
+        # Embed mount target.  The frame strip itself (#prev /
+        # #play / #pause / #next / #frame-slider / #frame-idx /
+        # #frame-tot) moved into the embed in #246 A1; the partial
+        # is no longer responsible for declaring those IDs.  Any
+        # re-introduction would be caught by the embed-leak test
+        # below.
         "viewer",
-        "frame-idx", "frame-tot", "frame-slider",
-        "prev", "play", "pause", "next",
         # Run-state badge + compact runtime-info one-liner.
         "run-state-badge", "run-state-label", "run-state-detail",
         "runtime-summary",
@@ -115,13 +116,19 @@ class TestPartialIntegrity:
         "scf-energy-plot", "scf-gnorm-plot",
     }
 
-    # IDs the partial MUST NOT declare — they belong to the embed's
-    # standard knob bar (style.rep / radiusScale / colorScheme /
-    # background per § 3.3 + § 6).  A re-introduction here means a
-    # consumer hand-rolled chrome that should go through setStyle /
-    # setBackground / the knob bar.
+    # IDs the partial MUST NOT declare — they belong to the embed.
+    # Chrome IDs (rep / radius / colorscheme / bg) moved to the
+    # standard knob bar in #205; frame-strip IDs (prev / play /
+    # pause / next / frame-slider / frame-idx / frame-tot) moved
+    # to the embed's auto-mounted frame strip in #246 A1.  A
+    # re-introduction here means a consumer hand-rolled chrome
+    # or duplicated frame-strip UI that should go through the
+    # embed APIs (setStyle / setBackground / setAnimation +
+    # frame-strip auto-mount per § 6.3).
     EMBED_OWNED_IDS = {
         "rep", "radius", "colorscheme", "bg",
+        "prev", "play", "pause", "next",
+        "frame-slider", "frame-idx", "frame-tot",
     }
 
     def test_partial_declares_trajectory_specific_ids(self, partial_ids):
@@ -519,11 +526,23 @@ class TestTrajectoryCoreMountContract:
             "loop would survive every file swap on /results"
         )
 
-    def test_dispose_clears_play_timer(self, viewer_js):
+    def test_dispose_does_not_carry_a_play_timer(self, viewer_js):
+        # Phase 5e A1 (#246): the partial frame strip + parallel
+        # state.playTimer playback loop are gone — the embed owns
+        # playback now and handle.dispose() tears down the embed's
+        # animation loop.  Pin that the trajectory core no longer
+        # initialises or tears down its own playTimer (a re-
+        # introduction would race with the embed loop).
         body = self._dispose_body(viewer_js)
-        assert "clearInterval(state.playTimer)" in body, (
-            "dispose() doesn't clear the playback timer -- the "
-            "frame-step interval would survive every file swap"
+        assert "clearInterval(state.playTimer)" not in body, (
+            "dispose() still references state.playTimer — the "
+            "parallel playback loop was removed in #246 A1; if "
+            "you need playback control, drive it through the "
+            "embed's setAnimation API"
+        )
+        assert "playTimer: null" not in viewer_js, (
+            "state.playTimer field reintroduced — playback is "
+            "owned by the embed (handle.setAnimation) per § 3.9"
         )
 
     def test_dispose_tears_down_listeners_via_cleanups(self, viewer_js):

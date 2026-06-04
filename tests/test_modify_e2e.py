@@ -2369,17 +2369,17 @@ def _load_watch_log(page, base_url, log_path):
     )
     # The trajectory adapter fetches /partials/trajectory-inspector
     # async, injects it, then calls the core's mount(host,{file}).
-    # Wait for both: the partial's ids land, then loadByPath
-    # completes (frame-tot becomes non-zero OR the atom list
-    # populates -- accommodates fixture trajectories that have one
-    # frame with N atoms).
-    page.wait_for_selector("#frame-tot", timeout=8000)
-    page.wait_for_function(
-        "() => document.querySelector('#frame-tot')"
-        " && (document.querySelector('#frame-tot').textContent !== '0'"
-        "  || document.querySelectorAll('#inspect-atom-list-body tr').length > 0)",
-        timeout=8000,
-    )
+    # Phase 5e A1 (#246) retired the partial's #frame-tot/#frame-idx
+    # in favor of the embed's auto-mounted frame strip; we wait
+    # instead on the atom-list body populating, which is the
+    # deterministic "data loaded" signal that still lives in the
+    # partial.  state="attached" — the rows live inside an
+    # initially-hidden table (the Inspect tab isn't active by
+    # default) so we don't wait for visibility, only for
+    # presence in the DOM.
+    page.wait_for_selector(
+        "#inspect-atom-list-body tr",
+        state="attached", timeout=8000)
 
 
 def test_watch_inspect_atom_list_populates(page, flask_server, watch_log_file):

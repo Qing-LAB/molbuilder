@@ -9,11 +9,16 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-schema.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/projects-sidebar.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='spectra/style.css') }}">
-{# Plotly + 3Dmol are NOT loaded on /spectra: this is the generator
-   tab.  Charts (Plotly) and the per-mode eigenvector animation
-   (3Dmol) belong to /results' spectra inspector and load there
-   via _spectra_inspector.html.  Loading them here added ~MB of
-   unused JS to every /spectra page view. #}
+{# /spectra is the generator-only tab.  3Dmol's heavy vendor bundle
+   + Plotly are intentionally NOT loaded here -- the per-mode
+   eigenvector animation + bode plots belong to /results' spectra
+   inspector and load via _spectra_inspector.html.  spectra/core.js
+   ships some helper modules (mol-style for the embed handle's
+   style normaliser, mol-viewer for the embed mount target lookup)
+   because the same core.js file IS shared with /results.  On the
+   generator page these helpers cost ~10 KB each and never run
+   anything that needs the full embed stack.  Phase 5e B4
+   (2026-06-04) confirmed this asymmetry is intentional. #}
 {# molbuilder-runtime.js MUST load before any other molbuilder script.
    Defines window.molbuilder.runtime (register/whenReady).  See
    design.md "Module init contract". #}

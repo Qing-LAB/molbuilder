@@ -114,8 +114,12 @@
         // The card header is /modify's own ``card.viewer-card``
         // (with #title-readout); the embed's knob bar slots between
         // that header and the 3D canvas via the standard chrome.
-        card:    { title: "Structure", showInfoLine: false,
-                   height: "100%" },
+        // card.title: "" so the embed skips its own header — the
+        // host's <header class="card-header">Viewer</header> in
+        // modify.html already owns the title strip.  Without this
+        // the user saw stacked "Viewer" + "Structure" h2s (A2,
+        // 2026-06-04).
+        card:    { title: "", showInfoLine: false, height: "100%" },
         export:  { defaultName: "modify" },
         // Rotation pivot snap policy.  3Dmol's pivot is the camera
         // lookAt; ctrl/shift-pan moves the lookAt off the molecule
@@ -145,18 +149,13 @@
             catch (_) {}
         },
     });
-    // /modify viewer.js #235 follow-up: production code no longer
-    // reaches for _viewer3dmol().  The selection-store viewer-
-    // adapter (#229) uses handle.setOverlays + handle.setPick
-    // exclusively; focusMolecule / snapPivotToCenter (#235) flow
-    // through handle.refit({indices, pullback}) + handle.setPivot.
-    // The capture below is ONLY for the Playwright test surface
-    // (window.__molbuilder_modify_test.getViewer()) which probes
-    // raw 3Dmol state (atom.serial, atom.clickable) for invariant
-    // checks tests/test_modify_e2e.py:443+ cannot do via the
-    // handle.  Production registry slot is window.molbuilder.
-    // modify.handle (handle, NOT raw viewer) per #239.
-    const viewer = _handle._viewer3dmol();
+    // /modify viewer.js #235 follow-up: production code uses only
+    // the handle.  Phase 5e B6 (#246) dropped the module-scope
+    // ``const viewer = _handle._viewer3dmol()`` capture — the
+    // Playwright test fixture (window.__molbuilder_modify_test.
+    // getViewer) calls _handle._viewer3dmol() at request time
+    // instead, so production code carries no production-tempting
+    // reference to the raw 3Dmol viewer.
 
     // clearViewer() removed by #235 -- it was only callable from
     // applyStructure's `else` branch when state.xyz is falsy, and
@@ -1233,7 +1232,12 @@
     // ``getSelected`` reads live from the selection store (the
     // viewer no longer owns selection state).
     window.__molbuilder_modify_test = {
-        getViewer:   () => viewer,
+        // Phase 5e B6: query the handle escape hatch lazily at call
+        // time instead of caching the raw viewer at module scope.
+        // Production code never has a tempting raw-viewer reference
+        // to misuse, and tests still get the same object back via
+        // the documented _viewer3dmol() escape (§ 2.4).
+        getViewer:   () => _handle._viewer3dmol(),
         getSelected: () => selectedIndices(),
         getNAtoms:   () => state.n_atoms,
         // getState is read-only (we expose the raw state object,

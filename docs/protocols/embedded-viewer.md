@@ -664,7 +664,15 @@ type PickOpts = {
   halo?:  { color?:   string,            // default page-theme accent
             radius?:  number,            // default 0.6 Å
             opacity?: number             // default 0.5
-          } | false,                     // false = no halo
+          } | true | false,
+  //   {color, radius, opacity} → halo on with field overrides
+  //   true                     → halo on with all defaults
+  //                              (alias for ``{}``, matches the
+  //                              ``axes: true`` / ``cell: true``
+  //                              boolean-shorthand convention)
+  //   false                    → no halo
+  //   undefined                → halo on with all defaults (same
+  //                              as ``true``)
   style?: { color?:       string,        // tint applied to picked atoms
             opacity?:     number,        // default 1
             radiusScale?: number },      // optional; no default override

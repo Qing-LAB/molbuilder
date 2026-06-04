@@ -109,38 +109,11 @@
     box-shadow: var(--shadow-card);
 }
 
-.frame-strip {
-    padding: 10px 14px 12px;
-    border-bottom: 1px solid var(--border-soft);
-    background: var(--bg-card-elev);
-}
-.frame-strip-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 8px;
-}
-.frame-counter {
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
-}
-.frame-counter b {
-    color: var(--text-primary);
-    font-weight: 600;
-    font-variant-numeric: tabular-nums;
-}
-.frame-strip-buttons {
-    display: inline-flex;
-    gap: 4px;
-}
-.frame-strip-buttons button {
-    width: 30px;
-    padding: 3px 0;
-    font-size: 0.85rem;
-    text-align: center;
-}
+/* Frame-strip CSS (.frame-strip, .frame-strip-row, .frame-counter,
+   .frame-strip-buttons) deleted in #246 A1 — the embed's auto-
+   mounted .mol-viewer-frame-strip (§ 6.3) owns the styles + DOM
+   now.  The partial used to ship a parallel strip with these
+   rules; the duplicate UI is gone. */
 
 .control-tabs {
     display: flex;
