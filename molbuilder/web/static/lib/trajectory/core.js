@@ -117,10 +117,10 @@
         pollTimer: null,
         playTimer: null,
         firstFit: true,        // call viewer.zoomTo() once after first load
-        // Separate buckets so toggling one overlay doesn't clobber another.
-        cellShapes:  [],
-        forceShapes: [],
-        indexLabels: [],
+        // #234 follow-up: cellShapes / forceShapes / indexLabels
+        // arrays gone -- cell wireframe, atom-index labels, and
+        // force arrows are all owned by the embed now (setCell /
+        // setLabels / arrowsPerFrame).
         // Inspect tab: up to two picked atoms (0-based indices into
         // frame[currentFrame]).  Halo shapes are tracked separately
         // from cell / force / index overlays so toggling any one of
@@ -309,59 +309,157 @@
         return 0x888888;       // unknown bg -- safe middle ground
     }
 
-    function drawCell() {
-        // Remove only the cell shapes -- leave force arrows alone.
-        for (const s of state.cellShapes) viewer.removeShape(s);
-        state.cellShapes = [];
+    // ------------------------------------------------------------ //
+    // #234 follow-up (2026-06-03): cell wireframe / atom-index      //
+    // labels / force vectors all migrated to the embed's            //
+    // declarative API.  drawCell / drawIndices / drawForces are     //
+    // now thin shims that delegate to applyCell / applyIndexLabels  //
+    // / applyForces below; the legacy state.cellShapes /            //
+    // .indexLabels / .forceShapes arrays + the HEAD_FRAC / CONE_SEGS//
+    // arrowhead constants are dead code but kept until a single     //
+    // cleanup commit retires them everywhere (the old draw*         //
+    // functions still hold onto the array names).                   //
+    // ------------------------------------------------------------ //
 
-        if (!$("show-cell").checked) {
-            viewer.render();
-            return;
-        }
+    function applyCell() {
+        if (!_handle) return;
+        const cb = $("show-cell");
         const lat = state.data && state.data.lattice;
-        if (!lat || lat.length !== 3) {
-            viewer.render();
+        if (cb && cb.checked && lat && lat.length === 3) {
+            _handle.setCell({ color: cellLineColor(), radius: 0.04 });
+        } else {
+            _handle.setCell(false);
+        }
+    }
+
+    function applyIndexLabels() {
+        if (!_handle) return;
+        const cb = $("show-indices");
+        _handle.setLabels(cb && cb.checked
+            ? { atoms: "all", format: "index", fontSize: 9 }
+            : false);
+    }
+
+    // Build the ArrowSpec array for ONE frame given the current
+    // force-knob settings.  Returns [] when forces are off OR the
+    // parser didn't capture forces for this frame.
+    function _buildArrowsForFrame(frameIdx) {
+        if (!$("show-forces") || !$("show-forces").checked) return [];
+        if (!state.data) return [];
+        const frame  = state.data.frames[frameIdx];
+        const forces = state.data.forces && state.data.forces[frameIdx];
+        if (!frame || !forces || !forces.length) return [];
+
+        const fscale    = parseFloat($("force-scale").value) || 1.0;
+        const fmin      = parseFloat($("force-min").value)   || 0.0;
+        const highlight = $("highlight-max").checked;
+
+        const mags = forces.map(function (f) {
+            return Math.sqrt(f[0]*f[0] + f[1]*f[1] + f[2]*f[2]);
+        });
+        let maxMag = 0, maxIdx = -1;
+        for (let i = 0; i < mags.length; i++) {
+            if (mags[i] > maxMag) { maxMag = mags[i]; maxIdx = i; }
+        }
+
+        const arrows = [];
+        for (let i = 0; i < frame.length && i < forces.length; i++) {
+            const mag = mags[i];
+            if (mag < fmin) continue;
+            const a = frame[i], f = forces[i];
+            const sx = a[1], sy = a[2], sz = a[3];
+            const ex = sx + f[0] * fscale;
+            const ey = sy + f[1] * fscale;
+            const ez = sz + f[2] * fscale;
+
+            // Gold for the highlighted-max arrow; dim red ->
+            // bright orange-red ramp by magnitude for the rest.
+            let color;
+            if (highlight && i === maxIdx) {
+                color = "#ffc400";
+            } else {
+                const t = maxMag > 0 ? mag / maxMag : 0;
+                const r = Math.floor(170 + 85 * t);
+                const g = Math.floor( 40 + 60 * t);
+                color = "rgb(" + r + "," + g + ",32)";
+            }
+            arrows.push({
+                start:  [sx, sy, sz],
+                end:    [ex, ey, ez],
+                color:  color,
+                radius: 0.05 + 0.04 * (maxMag > 0 ? mag / maxMag : 0),
+            });
+        }
+        return arrows;
+    }
+
+    // Build the FULL arrowsPerFrame array for the current
+    // trajectory.  Called at setAnimation time AND on every
+    // force-knob change (which calls handle.setAnimation with a
+    // partial { arrowsPerFrame } update; the embed's #233
+    // partial-update path mutates in place + refreshes the current
+    // frame without restarting the loop).
+    function buildArrowsPerFrame() {
+        if (!state.data || !state.data.frames) return null;
+        const apf = [];
+        for (let i = 0; i < state.data.frames.length; i++) {
+            apf.push(_buildArrowsForFrame(i));
+        }
+        return apf;
+    }
+
+    function refreshForcesStatus() {
+        const cb = $("show-forces");
+        if (!cb || !cb.checked) {
+            setForcesStatus("Off — tick to overlay arrows.");
             return;
         }
-
-        const [a, b, c] = lat;
-        const corner = (i, j, k) => ({
-            x: i * a[0] + j * b[0] + k * c[0],
-            y: i * a[1] + j * b[1] + k * c[1],
-            z: i * a[2] + j * b[2] + k * c[2],
-        });
-
-        const edges = [
-            // edges along a
-            [[0, 0, 0], [1, 0, 0]],
-            [[0, 1, 0], [1, 1, 0]],
-            [[0, 0, 1], [1, 0, 1]],
-            [[0, 1, 1], [1, 1, 1]],
-            // edges along b
-            [[0, 0, 0], [0, 1, 0]],
-            [[1, 0, 0], [1, 1, 0]],
-            [[0, 0, 1], [0, 1, 1]],
-            [[1, 0, 1], [1, 1, 1]],
-            // edges along c
-            [[0, 0, 0], [0, 0, 1]],
-            [[1, 0, 0], [1, 0, 1]],
-            [[0, 1, 0], [0, 1, 1]],
-            [[1, 1, 0], [1, 1, 1]],
-        ];
-
-        const lineColor = cellLineColor();
-        for (const [u, v] of edges) {
-            const s = viewer.addCylinder({
-                start:  corner(u[0], u[1], u[2]),
-                end:    corner(v[0], v[1], v[2]),
-                radius: 0.04,
-                color:  lineColor,
-                fromCap: 1,
-                toCap:   1,
-            });
-            state.cellShapes.push(s);
+        if (!state.data) {
+            setForcesStatus("No trajectory loaded yet.");
+            return;
         }
-        viewer.render();
+        const forces = state.data.forces
+                       && state.data.forces[state.currentFrame];
+        if (!forces || !forces.length) {
+            setForcesStatus(
+                "No force data on this frame "
+              + "(parser did not capture it).");
+            return;
+        }
+        const fmin = parseFloat($("force-min").value) || 0.0;
+        const mags = forces.map(function (f) {
+            return Math.sqrt(f[0]*f[0] + f[1]*f[1] + f[2]*f[2]);
+        });
+        let maxMag = 0;
+        for (const m of mags) if (m > maxMag) maxMag = m;
+        const drawn = mags.filter(function (m) { return m >= fmin; }).length;
+        if (drawn === 0) {
+            setForcesStatus(
+                "0 arrows shown (all |F| < threshold "
+              + fmin.toFixed(3) + " eV/Å; max |F| = "
+              + maxMag.toFixed(3) + ").");
+        } else {
+            setForcesStatus(
+                "Showing " + drawn + " arrow"
+              + (drawn === 1 ? "" : "s")
+              + " (max |F| = " + maxMag.toFixed(3) + " eV/Å).");
+        }
+    }
+
+    function applyForces() {
+        if (!_handle || !state.data) return;
+        const apf = buildArrowsPerFrame();
+        try { _handle.setAnimation({ arrowsPerFrame: apf }); }
+        catch (_) {}
+        refreshForcesStatus();
+    }
+
+    function drawCell() {
+        // Thin shim — see applyCell above.  Kept under the legacy
+        // name so existing callers (rebuildModel, knob listeners,
+        // applyStructure restore paths) don't need updating in
+        // the same commit.
+        applyCell();
     }
 
     /* ------------------------------------------------------------------ */
@@ -369,49 +467,21 @@
     /* ------------------------------------------------------------------ */
 
     function drawIndices() {
-        for (const l of state.indexLabels) viewer.removeLabel(l);
-        state.indexLabels = [];
-
-        if (!$("show-indices").checked) {
-            viewer.render();
-            return;
-        }
-        if (!state.data) return;
-
-        const frame = state.data.frames[state.currentFrame];
-        if (!frame) return;
-
-        for (let i = 0; i < frame.length; i++) {
-            const a = frame[i];
-            const lbl = viewer.addLabel(String(i + 1), {
-                position:          { x: a[1], y: a[2], z: a[3] },
-                backgroundColor:   "black",
-                backgroundOpacity: 0.55,
-                fontColor:         "white",
-                fontSize:          9,
-                inFront:           true,
-                showBackground:    true,
-                alignment:         "centerCenter",
-            });
-            state.indexLabels.push(lbl);
-        }
-        viewer.render();
+        // Thin shim — see applyIndexLabels above (#234 follow-up).
+        applyIndexLabels();
     }
 
     /* ------------------------------------------------------------------ */
     /*  Force-vector arrows                                                */
     /* ------------------------------------------------------------------ */
 
-    /* `viewer.addArrow` has historically been unreliable across 3Dmol
-     * releases (sometimes it silently fails to render).  Instead we
-     * assemble each arrow from primitives that we know work in this
-     * app (the unit-cell box uses the same `addCylinder` call):
-     *   - one cylinder for the shaft;
-     *   - a stack of CONE_SEGS cylinders with linearly decreasing
-     *     radius, which approximates a true cone for the arrowhead.
-     * With ~6 segments the staircase is invisible at typical zoom. */
-    const HEAD_FRAC = 0.30;     // last 30% of the arrow length is the head
-    const CONE_SEGS = 6;        // radial slices in the cone (more = smoother)
+    // #234 follow-up: force arrows are now an embed concern.  The
+    // embed's mol-axes.js ArrowSpec primitive owns the shaft + cone
+    // geometry; this file just builds an ArrowSpec[] per frame via
+    // _buildArrowsForFrame + buildArrowsPerFrame above and hands it
+    // to handle.setAnimation({arrowsPerFrame}).  HEAD_FRAC /
+    // CONE_SEGS constants gone with the bespoke addCylinder loop.
+
     function setForcesStatus(msg) {
         // Single point of truth for the diagnostic readout next to
         // the Show-force-vectors checkbox.  Empty string clears the
@@ -422,137 +492,8 @@
     }
 
     function drawForces() {
-        for (const s of state.forceShapes) viewer.removeShape(s);
-        state.forceShapes = [];
-
-        if (!$("show-forces").checked) {
-            setForcesStatus("Off — tick to overlay arrows.");
-            viewer.render();
-            return;
-        }
-        if (!state.data) {
-            setForcesStatus("No trajectory loaded yet.");
-            viewer.render();
-            return;
-        }
-
-        const frame  = state.data.frames[state.currentFrame];
-        const forces = state.data.forces && state.data.forces[state.currentFrame];
-        if (!frame || !forces || !forces.length) {
-            // The parser couldn't extract forces for this step.
-            // Typical for geomeTRIC .xyz trajectories (which carry
-            // no forces at all) and for an in-flight CG step that
-            // hasn't written its force block yet.
-            setForcesStatus(
-                "No force data on this frame (parser did not capture it)."
-            );
-            console.info(
-                "[viewer] no per-atom forces for frame",
-                state.currentFrame,
-                "(forces array length =", (forces || []).length, ")"
-            );
-            viewer.render();
-            return;
-        }
-
-        const fscale    = parseFloat($("force-scale").value) || 1.0;
-        const fmin      = parseFloat($("force-min").value)   || 0.0;
-        const highlight = $("highlight-max").checked;
-
-        const mags = forces.map(([fx, fy, fz]) =>
-            Math.sqrt(fx * fx + fy * fy + fz * fz));
-
-        let maxMag = 0, maxIdx = -1;
-        for (let i = 0; i < mags.length; i++) {
-            if (mags[i] > maxMag) { maxMag = mags[i]; maxIdx = i; }
-        }
-
-        let drawn = 0;
-
-        for (let i = 0; i < frame.length && i < forces.length; i++) {
-            const a   = frame[i];
-            const f   = forces[i];
-            const mag = mags[i];
-            if (mag < fmin) continue;
-
-            // Colour:
-            //   - the largest force (highlight) is gold so it pops;
-            //   - others go from dim red to bright orange-red by magnitude.
-            let color;
-            if (highlight && i === maxIdx) {
-                color = 0xffc400;          // gold
-            } else {
-                const t = maxMag > 0 ? mag / maxMag : 0;
-                const r = Math.floor(170 + 85 * t);
-                const g = Math.floor( 40 + 60 * t);
-                color = (r << 16) | (g << 8) | 0x20;
-            }
-
-            const sx = a[1], sy = a[2], sz = a[3];
-            const ex = sx + f[0] * fscale;
-            const ey = sy + f[1] * fscale;
-            const ez = sz + f[2] * fscale;
-            // Linear interpolation along the arrow axis.
-            const lerp = (t) => ({
-                x: sx + (ex - sx) * t,
-                y: sy + (ey - sy) * t,
-                z: sz + (ez - sz) * t,
-            });
-
-            const baseR = 0.05 + 0.04 * (maxMag > 0 ? mag / maxMag : 0);
-            const headR = baseR * 2.6;
-            const tShaft = 1 - HEAD_FRAC;
-
-            // --- shaft ---
-            state.forceShapes.push(viewer.addCylinder({
-                start:   { x: sx, y: sy, z: sz },
-                end:     lerp(tShaft),
-                radius:  baseR,
-                color:   color,
-                fromCap: 1, toCap: 1,
-            }));
-            // --- arrowhead: stack of N cylinders tapering to zero ---
-            // Segment k spans t1->t2 with radius taken at the midpoint of
-            // the linear taper (headR at the base, 0 at the tip).
-            for (let k = 0; k < CONE_SEGS; k++) {
-                const t1   = tShaft + HEAD_FRAC * (k    ) / CONE_SEGS;
-                const t2   = tShaft + HEAD_FRAC * (k + 1) / CONE_SEGS;
-                const tmid = (k + 0.5) / CONE_SEGS;
-                const r    = headR * (1 - tmid);
-                if (r < 0.005) continue;       // skip the vanishing tip
-                state.forceShapes.push(viewer.addCylinder({
-                    start:   lerp(t1),
-                    end:     lerp(t2),
-                    radius:  r,
-                    color:   color,
-                    fromCap: 1, toCap: 1,
-                }));
-            }
-            drawn++;
-        }
-
-        console.info(
-            "[viewer] drew", drawn, "force arrows on frame",
-            state.currentFrame,
-            "(maxMag =", maxMag.toFixed(3), "eV/\u00C5 at atom", maxIdx + 1, ")"
-        );
-        // Surface the same information to the user-visible readout
-        // next to the toggle.  When `drawn === 0` and forces are
-        // present, fmin is too tight -- tell the user explicitly so
-        // they can lower it.
-        if (drawn === 0) {
-            setForcesStatus(
-                "0 arrows shown (all |F| < threshold " +
-                fmin.toFixed(3) + " eV/\u00C5; max |F| = " +
-                maxMag.toFixed(3) + ")."
-            );
-        } else {
-            setForcesStatus(
-                "Showing " + drawn + " arrow" + (drawn === 1 ? "" : "s") +
-                " (max |F| = " + maxMag.toFixed(3) + " eV/\u00C5)."
-            );
-        }
-        viewer.render();
+        // Thin shim -- see applyForces above (#234 follow-up).
+        applyForces();
     }
 
     /* ------------------------------------------------------------------ */
@@ -767,11 +708,19 @@
         // cell wireframe, atom-list coords) re-render per frame via
         // the onFrame callback so they track each animated frame.
         const allFrames = state.data.frames;
-        // First frame's xyz text seeds the embed's structure baseline.
-        // PDB conversion isn't needed -- xyz round-trips through both
-        // 3Dmol and the embed's setStructure path.
+        // #234 follow-up: pass the lattice + first-frame xyz to
+        // setStructure so the embed owns the cell wireframe via
+        // setCell.  Drops the bespoke drawCell + state.cellShapes
+        // machinery.
         const firstFrameXyz = framesToMultiXyz([allFrames[0]]);
-        _handle.setStructure({ xyz: firstFrameXyz });
+        _handle.setStructure({
+            xyz:     firstFrameXyz,
+            lattice: state.data.lattice || undefined,
+        });
+        // Cell visibility tracks the #show-cell checkbox; applyCell
+        // reads the checkbox + lattice and toggles the embed's
+        // setCell.
+        applyCell();
         // Extract per-frame coordinates ([x, y, z]) for the embed's
         // animation API.  state.data.frames carries each atom as
         // [sym, x, y, z, ...optional cols]; the embed's trajectory
@@ -782,30 +731,44 @@
             });
         });
         _handle.setAnimation({
-            kind:    "trajectory",
-            frames:  coordFrames,
-            fps:     10,
-            paused:  true,   // user opts in via the strip or showFrame()
+            kind:           "trajectory",
+            frames:         coordFrames,
+            // #234 follow-up: force vectors flip per frame via the
+            // embed's arrowsPerFrame contract per § 3.9.  Built
+            // from the trajectory's parsed forces + current force-
+            // knob settings; rebuilt on every knob change via a
+            // partial setAnimation update (#233).
+            arrowsPerFrame: buildArrowsPerFrame(),
+            fps:            10,
+            paused:         true,
             onFrame: function (idx, _h) {
                 state.currentFrame = idx;
-                drawIndices();
-                drawForces();
+                // #234 follow-up: drawIndices + drawForces no longer
+                // called here -- handle.setLabels carries atom-index
+                // labels via the embed's position-aware recompute;
+                // arrowsPerFrame swaps force arrows per frame in the
+                // embed.  renderPickHighlights still needed for the
+                // trajectory's bespoke 2-atom distance pick
+                // (state.pickedAtoms uses the raw viewer for
+                // sphere overlays).
                 renderPickHighlights();
                 updateInspectPanel();
                 updateAtomListCoords();
+                refreshForcesStatus();
                 const fi = $("frame-idx");
                 const fs = $("frame-slider");
                 if (fi) fi.textContent = idx;
                 if (fs) fs.value = idx;
             },
         });
+        // Atom-index labels via the embed's setLabels (#234 follow-up).
+        applyIndexLabels();
         // Re-arm the trajectory inspector's own click handler.  The
         // embed's pick.mode is "none" so the embed doesn't capture
         // clicks; we route them straight to onWatchAtomClick via
         // setClickable on the raw viewer.  setStructure rebuilds
         // the per-atom render objects so clickability resets here.
         viewer.setClickable({}, true, onWatchAtomClick);
-        drawCell();
         // Populate the Inspect-tab atom list now that the model is
         // loaded; the list mirrors the per-frame coordinates and is
         // the keyboard-friendly path to selection.

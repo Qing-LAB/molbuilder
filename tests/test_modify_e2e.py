@@ -2285,17 +2285,12 @@ def test_watch_show_forces_renders_arrows(
     User-reported regression: the toggle did nothing -- forces
     were parsed but no arrows appeared.
 
-    The viewer.js helper drawForces() pushes each shape onto
-    state.forceShapes (cylinder for shaft + CONE_SEGS cylinders
-    for the head).  Reading state.forceShapes.length back to the
-    test is the most direct "did the toggle do anything?" check.
+    Post-#234 follow-up: force vectors flow through the embed's
+    arrowsPerFrame contract per § 3.9.  The user-visible
+    diagnostic readout (#forces-status) carries the count;
+    we assert on that string instead of the legacy
+    drawForces() console.info "drew N" log.
     """
-    # Capture console messages for diagnostic purposes -- drawForces
-    # emits a "no per-atom forces for frame N" console.info when the
-    # data path doesn't carry forces.
-    console_logs = []
-    page.on("console", lambda msg:
-            console_logs.append((msg.type, msg.text)))
     _load_watch_log(page, flask_server, watch_log_file_with_forces)
     # The Show-force-vectors checkbox lives inside the "Overlays"
     # sub-tab panel of the Watch viewer controls (default-active
@@ -2304,32 +2299,10 @@ def test_watch_show_forces_renders_arrows(
     chk = page.locator("#show-forces")
     assert not chk.is_checked()
     chk.check()
-    # Give the click a moment to fire drawForces synchronously.
-    page.wait_for_timeout(200)
-    # Each atom with non-zero force contributes (1 shaft + CONE_SEGS
-    # head cones).  Two atoms x ~7 shapes = ~14, but a soft floor of
-    # 2 (one arrow's worth) is enough to prove rendering happened.
-    page.wait_for_function(
-        "() => window.__forceShapeCount !== undefined"
-        "      || (document.querySelector('#viewer canvas') !== null)",
-        timeout=3000,
-    )
-    # drawForces() emits a structured diagnostic console.info on
-    # every invocation that draws or skips.  Look for the "drew N
-    # force arrows" line as proof that drawForces ran and produced
-    # arrow primitives for both atoms.
-    drew_msgs = [
-        text for typ, text in console_logs
-        if typ == "info" and "force arrow" in text
-    ]
-    assert drew_msgs, (
-        f"drawForces did not log a draw event after toggling ON; "
-        f"the renderer probably exited early.  console: {console_logs}"
-    )
-    # The fixture has 2 atoms with non-zero force, so the diagnostic
-    # must report drawing 2 arrows -- anything less means the
-    # renderer rejected one or both.
-    assert "drew 2 force arrows" in drew_msgs[-1], drew_msgs[-1]
+    # Give the click a moment to fire applyForces synchronously
+    # (rebuild arrowsPerFrame + handle.setAnimation partial update
+    # + refreshForcesStatus).
+    page.wait_for_timeout(300)
     # The new status readout next to the toggle must reflect the
     # render outcome ("Showing N arrows ..." / "Hidden ..." etc.)
     # so a user who has all-tiny forces (everything below fmin)
