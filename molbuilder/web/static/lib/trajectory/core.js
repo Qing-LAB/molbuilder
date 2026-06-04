@@ -771,19 +771,56 @@
     }
 
     function rebuildModel() {
-        viewer.removeAllModels();
-        if (!state.data || !state.data.frames.length) {
-            viewer.render();
+        if (!_handle || !state.data || !state.data.frames.length) {
+            try { viewer.removeAllModels(); viewer.render(); }
+            catch (_) {}
             return;
         }
-        viewer.addModelsAsFrames(framesToMultiXyz(state.data.frames), "xyz");
-        applyStyle();
-        // Wire the per-atom click hook AFTER applyStyle: 3Dmol's
-        // setStyle() rebuilds the per-atom render objects, which on
-        // movie-mode models (addModelsAsFrames) drops the clickable
-        // flag installed by an earlier setClickable.  Re-installing
-        // it last keeps clicks alive across rep / radius /
-        // colour-scheme changes.
+        // #230 Part B: mount the first frame's structure via
+        // handle.setStructure + drive playback via handle.setAnimation
+        // ({kind: "trajectory", frames}).  Replaces the raw
+        // addModelsAsFrames + setFrame loop.  Trajectory-specific
+        // overlays (atom indices, force vectors, picked-atom halos,
+        // cell wireframe, atom-list coords) re-render per frame via
+        // the onFrame callback so they track each animated frame.
+        const allFrames = state.data.frames;
+        // First frame's xyz text seeds the embed's structure baseline.
+        // PDB conversion isn't needed -- xyz round-trips through both
+        // 3Dmol and the embed's setStructure path.
+        const firstFrameXyz = framesToMultiXyz([allFrames[0]]);
+        _handle.setStructure({ xyz: firstFrameXyz });
+        // Extract per-frame coordinates ([x, y, z]) for the embed's
+        // animation API.  state.data.frames carries each atom as
+        // [sym, x, y, z, ...optional cols]; the embed's trajectory
+        // animation only needs the position triples.
+        const coordFrames = allFrames.map(function (frame) {
+            return frame.map(function (atom) {
+                return [atom[1], atom[2], atom[3]];
+            });
+        });
+        _handle.setAnimation({
+            kind:    "trajectory",
+            frames:  coordFrames,
+            fps:     10,
+            paused:  true,   // user opts in via the strip or showFrame()
+            onFrame: function (idx, _h) {
+                state.currentFrame = idx;
+                drawIndices();
+                drawForces();
+                renderPickHighlights();
+                updateInspectPanel();
+                updateAtomListCoords();
+                const fi = $("frame-idx");
+                const fs = $("frame-slider");
+                if (fi) fi.textContent = idx;
+                if (fs) fs.value = idx;
+            },
+        });
+        // Re-arm the trajectory inspector's own click handler.  The
+        // embed's pick.mode is "none" so the embed doesn't capture
+        // clicks; we route them straight to onWatchAtomClick via
+        // setClickable on the raw viewer.  setStructure rebuilds
+        // the per-atom render objects so clickability resets here.
         viewer.setClickable({}, true, onWatchAtomClick);
         drawCell();
         // Populate the Inspect-tab atom list now that the model is
@@ -791,7 +828,7 @@
         // the keyboard-friendly path to selection.
         rebuildInspectAtomList();
         if (state.firstFit) {
-            viewer.zoomTo();
+            _handle.refit();
             state.firstFit = false;
         }
     }
@@ -815,22 +852,18 @@
         if (!state.data || !state.data.frames.length) return;
         const n = state.data.frames.length;
         idx = Math.max(0, Math.min(n - 1, idx));
-        state.currentFrame = idx;
-        viewer.setFrame(idx);
-        // Labels and force arrows are not animated by 3Dmol's frame system,
-        // so we redraw them whenever the active frame changes.  Each of
-        // these calls also issues viewer.render(), so no extra render here.
-        drawIndices();
-        drawForces();
-        // Picked-atom halos sit on absolute coordinates and 3Dmol
-        // doesn't animate Shape objects with setFrame, so re-render
-        // them at every frame change.  Cheap (max 2 spheres).
-        renderPickHighlights();
-        updateInspectPanel();
-        // Refresh the per-row coordinates in the atom list so the
-        // user sees per-frame xyz drift.  Cheap: rewrites 3 text
-        // nodes per atom, no DOM reshape, no listener churn.
-        updateAtomListCoords();
+        // #230 Part B: delegate to handle.setAnimationFrame; the
+        // embed fires onFrame which runs all the per-frame side
+        // effects (drawIndices, drawForces, renderPickHighlights,
+        // updateInspectPanel, updateAtomListCoords).  See
+        // rebuildModel() above for the onFrame wiring.
+        if (_handle && typeof _handle.setAnimationFrame === "function") {
+            _handle.setAnimationFrame(idx);
+        }
+        // The frame-idx / frame-slider DOM updates also happen in
+        // onFrame but the slider-input listener that called us
+        // (line 1632) expects the readouts to be authoritative on
+        // return; we set them here too for synchronous correctness.
         $("frame-idx").textContent = idx;
         $("frame-slider").value = idx;
     }
