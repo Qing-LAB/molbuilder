@@ -1037,8 +1037,20 @@
         // structure.
         if (state.viewer) {
             _stopAnimation();
-            try { state.viewer.clear(); } catch (_) {}
+            // #206: dispose via the embed handle so the standard
+            // knob bar DOM + ResizeObserver get torn down cleanly
+            // (was just viewer.clear() before).  innerHTML="" then
+            // wipes any lingering markup.
+            try {
+                if (state.handle && typeof state.handle.dispose
+                    === "function") {
+                    state.handle.dispose();
+                } else {
+                    state.viewer.clear();
+                }
+            } catch (_) {}
             state.viewer = null;
+            state.handle = null;
             if (els.modeViewer) els.modeViewer.innerHTML = "";
         }
         renderModeViewer();
@@ -1600,9 +1612,40 @@
         // viewer instance.
         if (state.viewer) return;
         els.modeViewer.innerHTML = "";
-        state.viewer = window.molbuilder.viewer.create(els.modeViewer, {
-            backgroundColor: "#1d2128",
-        });
+        // #206 Part A migration: mount via the standard embed so
+        // the knob bar (Style / Labels / Axes / Reset / PNG /
+        // Background / Export) appears above the mode-viewer
+        // canvas, matching every other tab.  ``_viewer3dmol()``
+        // returns the underlying 3Dmol viewer so the existing
+        // vibration machinery (addModelsAsFrames + setFrame +
+        // amplitude/speed loop in _startAnimation) continues
+        // untouched.
+        //
+        // Part B follow-up: migrate to ``animation: {kind:
+        // "vibration", displacements}`` per § 7.5; the embed's
+        // vibration loop replaces _startAnimation, and frozen
+        // atom greying becomes an OverlaySpec.atoms entry.
+        state.handle = window.molbuilder.viewer.embed(
+            els.modeViewer, {
+                style:  { rep: "ball-and-stick", radiusScale: 1.0 },
+                pick:   { mode: "none" },
+                card:   { title: "Vibrational mode",
+                          showInfoLine: false,
+                          height: "100%" },
+                axes:   true,
+                export: { defaultName: "vibration" },
+                onError(err) {
+                    try { console.warn("[spectra.inspector]",
+                                        err.code, err.message); }
+                    catch (_) {}
+                },
+            }
+        );
+        state.viewer = state.handle._viewer3dmol();
+        // Match the inspector's prior dark backdrop via the embed
+        // contract (was a viewer.create({backgroundColor}) opt;
+        // now setBackground is the documented path).
+        try { state.handle.setBackground("#1d2128"); } catch (_) {}
     }
 
     function _buildFrameMovie(geom, mode) {
