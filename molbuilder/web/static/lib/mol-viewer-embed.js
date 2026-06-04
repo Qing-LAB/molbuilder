@@ -3389,6 +3389,21 @@
                 ? root.MediaRecorder : null;
         }
 
+        function _gifEncoderCtor() {
+            // testInjection.gifEncoder === null forces "absent"
+            // (used by tests on environments where the vendor file
+            // IS available, so the lazy-load path can't be used to
+            // surface no_gif_encoder).  undefined falls through to
+            // the lazy-load (which checks window.GIF then attempts
+            // /static/vendor/gif.min.js).  A function override
+            // skips the lazy-load entirely.
+            if (state.testInjection
+                && "gifEncoder" in state.testInjection) {
+                return Promise.resolve(state.testInjection.gifEncoder);
+            }
+            return _loadGifEncoder();
+        }
+
         function _exportAnimationWebm(opts, a, fps, duration, total) {
             const MR = _mediaRecorderApi();
             if (!MR) {
@@ -3465,7 +3480,12 @@
         }
 
         function _exportAnimationGif(opts, a, fps, duration, total) {
-            return _loadGifEncoder().then((GIF) => {
+            return _gifEncoderCtor().then((GIF) => {
+                if (!GIF) {
+                    throw _makeError("no_gif_encoder",
+                        "exportAnimation: GIF encoder unavailable "
+                      + "(testInjection.gifEncoder forced absent)");
+                }
                 const canvas = state.viewer.container.querySelector("canvas");
                 const w = canvas.width || canvas.clientWidth;
                 const h = canvas.height || canvas.clientHeight;

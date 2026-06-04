@@ -1864,6 +1864,16 @@ type TestInjection = {
   // MediaRecorder as absent, so exportAnimation({format: "webm"})
   // rejects with no_media_recorder.  Used by tests on browsers
   // that ship MediaRecorder natively.
+
+  gifEncoder?: GifEncoderCtor | null,
+  // If supplied → used instead of the lazy-loaded window.GIF (skips
+  // the /static/vendor/gif.min.js fetch entirely).  If ``null``
+  // (explicit) → forces the embed to treat the encoder as absent,
+  // so exportAnimation({format: "gif"}) rejects with
+  // no_gif_encoder.  Used by tests when gif.js IS shipped at
+  // /static/vendor/ (the lazy-load would otherwise succeed and
+  // produce a real GIF, making the rejection-path test
+  // unreachable).
 };
 ```
 

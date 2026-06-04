@@ -1913,8 +1913,11 @@ class TestHandleSurface:
     def test_exportAnimation_rejects_no_gif_encoder(
             self, page, flask_server):
         """Per § 5.3: exportAnimation({format: "gif"}) rejects with
-        no_gif_encoder when the gif.js lazy-load fails (typically
-        because /static/vendor/gif.min.js isn't present yet)."""
+        no_gif_encoder when the gif.js lib is unavailable.  We use
+        testInjection.gifEncoder = null to force "absent" because
+        gif.min.js IS shipped in /static/vendor/ — the lazy-load
+        path would otherwise succeed (covered separately by
+        test_exportAnimation_gif_produces_real_blob)."""
         page.goto(f"{flask_server}/")
         page.wait_for_selector("#viewer .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
@@ -1933,6 +1936,7 @@ class TestHandleSurface:
                         displacements: [[0,0,0.1]],
                         amplitude: 0.1, speedHz: 1.0, paused: true,
                     },
+                    testInjection: { gifEncoder: null },
                 });
                 let code = null;
                 try {
@@ -1947,6 +1951,71 @@ class TestHandleSurface:
             }
         """)
         assert code == "no_gif_encoder"
+
+    def test_exportAnimation_gif_produces_real_blob(
+            self, page, flask_server):
+        """Per § 3.2 + Phase 5c: the GIF format produces a real
+        image/gif blob via the vendored gif.js at /static/vendor/
+        gif.min.js + gif.worker.min.js.  This is the end-to-end
+        proof that GIF export works — the test fails if either
+        vendor file goes missing OR if the gif.js integration
+        breaks."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        # Allow plenty of time — gif.js encodes off the main
+        # thread but small frames still take a beat.
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:240px;height:160px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                let lastBlob = null;
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    animation: {
+                        kind: "vibration",
+                        displacements: [[0,0,0.05],[0,0,0.05],[0,0,0.05]],
+                        amplitude: 0.1, speedHz: 1.0, paused: true,
+                    },
+                    export: {
+                        onExport: (info) => { lastInfo = info; },
+                    },
+                });
+                let lastInfo = null;
+                // Mock projects API so target:"project" lands a
+                // blob we can inspect (download triggers an
+                // anchor click which the test can't intercept).
+                let savedBlob = null;
+                window.molbuilder = window.molbuilder || {};
+                window.molbuilder.projects = {
+                    currentDir: () => "/tmp/fake",
+                    writeFile: (path, blob) => {
+                        savedBlob = blob;
+                        return Promise.resolve({ ok: true });
+                    },
+                };
+                const r = await h.exportAnimation({
+                    format: "gif", target: "project",
+                    fps: 2, duration: 0.5,
+                });
+                h.dispose();
+                host.remove();
+                return {
+                    filename: r.filename,
+                    bytes:    r.bytes,
+                    mime:     savedBlob && savedBlob.type,
+                    size:     savedBlob && savedBlob.size,
+                };
+            }
+        """)
+        assert out["filename"].endswith(".gif"), out
+        assert out["mime"]  == "image/gif", out
+        assert out["size"]  > 0, out
+        assert out["bytes"] > 0, out
 
     def test_exportAnimation_rejects_bad_target(
             self, page, flask_server):

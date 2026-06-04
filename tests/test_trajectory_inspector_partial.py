@@ -56,59 +56,110 @@ def partial_ids(partial_path) -> set[str]:
 
 class TestPartialIntegrity:
 
-    def test_partial_declares_the_canonical_inspector_ids(self, partial_ids):
-        """The partial owns the canonical inspector ids; deleting any
-        without an explicit JS-side change is a silent regression."""
-        # Updating this set is a deliberate API change.  Each id below
-        # is read by watch/viewer.js via getElementById (or $()); see
-        # the grep at the top of viewer.js for the full list.
-        EXPECTED = {
-            # Frame strip + viewer.
-            "viewer",
-            "frame-idx", "frame-tot", "frame-slider",
-            "prev", "play", "pause", "next",
-            # Run-state badge + compact runtime-info one-liner.
-            "run-state-badge", "run-state-label", "run-state-detail",
-            "runtime-summary",
-            # Parse-warnings panel (Level-3 parser, 2026-05-28).
-            # Hidden by default; shows when the parser hit non-fatal
-            # issues so the user can see "what was lost" without the
-            # plot going blank.  Owned by trajectory/core.js's
-            # ``_renderParseWarnings``.
-            "parse-warnings",
-            "parse-warnings-count",
-            "parse-warnings-list",
-            # Style panel.
-            "rep", "radius", "colorscheme", "bg", "show-cell",
-            # Overlays panel.
-            "show-indices", "show-forces", "forces-status",
-            "force-scale", "force-scale-val", "force-min",
-            "highlight-max",
-            # Inspect panel.
-            "inspect-hint", "inspect-atom-list-body",
-            "inspect-table", "inspect-a", "inspect-b", "inspect-d",
-            "inspect-clear",
-            # Playback panel.
-            "speed", "loop", "save-frame",
-            # SCF banner.
-            "scf-section", "scf-title", "scf-status",
-            # Plots.
-            "energy-plot", "force-plot",
-            "scf-energy-plot", "scf-gnorm-plot",
-        }
-        missing = EXPECTED - partial_ids
-        extra   = partial_ids - EXPECTED
+    # ------------------------------------------------------------- #
+    # Partial-vs-embed boundary (post-#205 architecture).
+    #
+    # When the standard knob bar moved into the embedded MolViewer
+    # in #205, the trajectory partial stopped owning chrome controls
+    # (style.rep, style.radiusScale, style.colorScheme,
+    # style.background — formerly the ``rep``, ``radius``,
+    # ``colorscheme``, ``bg`` IDs).  The embed's knob bar (see
+    # docs/protocols/embedded-viewer.md § 6) now owns those, and
+    # they're tested separately via test_mol_viewer_embed_e2e.py's
+    # knob-bar contract.
+    #
+    # The boundary is encoded below as two explicit sets so a future
+    # accidental re-introduction of chrome IDs into the partial
+    # fails the build, AND a missing trajectory-specific ID also
+    # fails.  This replaces the pre-#205 EXPECTED set that mixed
+    # both responsibilities.
+    # ------------------------------------------------------------- #
+
+    # IDs the trajectory partial MUST declare.  These are
+    # trajectory-domain UI (data display, parse warnings, run-
+    # state, force overlay toggles, inspect panel, plots) — things
+    # the embed has no concept of and that have no equivalent on
+    # /build, /modify, or the spectra inspector.
+    TRAJECTORY_PARTIAL_IDS = {
+        # Embed mount + frame strip wrapper (the strip itself lives
+        # inside the embed per § 6.3; the OUTER controls are still
+        # the partial's responsibility).
+        "viewer",
+        "frame-idx", "frame-tot", "frame-slider",
+        "prev", "play", "pause", "next",
+        # Run-state badge + compact runtime-info one-liner.
+        "run-state-badge", "run-state-label", "run-state-detail",
+        "runtime-summary",
+        # Parse-warnings panel (Level-3 parser, 2026-05-28).  Hidden
+        # by default; shows when the parser hit non-fatal issues.
+        "parse-warnings",
+        "parse-warnings-count",
+        "parse-warnings-list",
+        # Trajectory-specific overlay toggles.  show-cell + show-
+        # indices wire to handle.setCell / handle.setLabels; show-
+        # forces drives the trajectory's arrowsPerFrame (DFT force
+        # vectors — the embed knows nothing about forces).
+        "show-cell", "show-indices",
+        "show-forces", "forces-status",
+        "force-scale", "force-scale-val", "force-min",
+        "highlight-max",
+        # Inspect panel (atom list + distance pick readout).
+        "inspect-hint", "inspect-atom-list-body",
+        "inspect-table", "inspect-a", "inspect-b", "inspect-d",
+        "inspect-clear",
+        # Trajectory playback knobs.
+        "speed", "loop", "save-frame",
+        # SCF banner + plots.
+        "scf-section", "scf-title", "scf-status",
+        "energy-plot", "force-plot",
+        "scf-energy-plot", "scf-gnorm-plot",
+    }
+
+    # IDs the partial MUST NOT declare — they belong to the embed's
+    # standard knob bar (style.rep / radiusScale / colorScheme /
+    # background per § 3.3 + § 6).  A re-introduction here means a
+    # consumer hand-rolled chrome that should go through setStyle /
+    # setBackground / the knob bar.
+    EMBED_OWNED_IDS = {
+        "rep", "radius", "colorscheme", "bg",
+    }
+
+    def test_partial_declares_trajectory_specific_ids(self, partial_ids):
+        """The partial owns trajectory-domain UI; deleting any of
+        these IDs without an explicit JS-side change is a silent
+        regression.  Updating the set is a deliberate API change."""
+        missing = self.TRAJECTORY_PARTIAL_IDS - partial_ids
         assert not missing, (
-            f"partial is missing canonical inspector ids: "
+            f"partial is missing trajectory-specific IDs: "
             f"{sorted(missing)}"
         )
-        # Extras are fine in principle, but they're worth flagging so
-        # the contract stays explicit.  Update EXPECTED when adding
-        # a new inspector control.
+        # Extras flag IDs not covered by the explicit contract.
+        # Exclude embed-owned IDs from this check — they're handled
+        # by the next test as a separate boundary violation.
+        extra = (partial_ids
+                 - self.TRAJECTORY_PARTIAL_IDS
+                 - self.EMBED_OWNED_IDS)
         assert not extra, (
-            f"partial has ids not in the canonical set: {sorted(extra)}."
-            f"  Add them to the EXPECTED set in this test if they're "
-            f"intentional new inspector controls."
+            f"partial has IDs not in the explicit contract: "
+            f"{sorted(extra)}.  Add them to "
+            f"TRAJECTORY_PARTIAL_IDS if intentional."
+        )
+
+    def test_partial_does_not_redeclare_embed_chrome_ids(self, partial_ids):
+        """Post-#205 the embed's standard knob bar owns the style /
+        background controls.  Re-introducing ``rep`` / ``radius`` /
+        ``colorscheme`` / ``bg`` in the trajectory partial would
+        be a double-UI bug: the partial's input would fight (or
+        silently shadow) the knob bar's input.  Hosts that need
+        custom chrome should configure ``opts.knobs`` per § 3.10
+        instead of hand-rolling DOM."""
+        leaked = self.EMBED_OWNED_IDS & partial_ids
+        assert not leaked, (
+            f"partial re-declares embed-owned chrome IDs: "
+            f"{sorted(leaked)}.  These moved to the embed's knob "
+            f"bar in #205 (see docs/protocols/embedded-viewer.md "
+            f"§ 6).  If the partial needs a custom chrome control, "
+            f"configure opts.knobs at mount instead."
         )
 
     def test_partial_has_no_page_specific_markup(self, partial_path):

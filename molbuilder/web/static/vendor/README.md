@@ -40,6 +40,40 @@ renders.
 
 ---
 
+## gif.js
+
+| Field | Value |
+|---|---|
+| Files | `gif.min.js` (13 451 bytes), `gif.worker.min.js` (16 636 bytes) |
+| Version | 0.2.0 |
+| Upstream | https://github.com/jnordberg/gif.js |
+| Distribution | https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/ |
+| License | MIT — see banner in `gif.min.js.LICENSE.txt` |
+
+Powers the GIF format of the embedded viewer's `handle.exportAnimation`
+(see `docs/protocols/embedded-viewer.md` § 3.2). Loaded lazily on first
+use via `/static/vendor/gif.min.js`; the main library spawns a Web
+Worker that loads `/static/vendor/gif.worker.min.js` to do the LZW
+encoding off the main thread. Both files must be present together
+or the lazy-load surfaces `no_gif_encoder` per § 5.2.
+
+### Upgrade procedure
+
+```bash
+cd molbuilder/web/static/vendor
+curl -fsSL https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js \
+     -o gif.min.js
+curl -fsSL https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.worker.js \
+     -o gif.worker.min.js
+```
+
+The cdnjs distribution names mirror the upstream `dist/` directory
+exactly; the `.min` suffix is our local convention indicating that
+these are production-ready bundles (gif.js v0.2.0 is already
+minified by upstream).
+
+---
+
 ## plotly.min.js
 
 Plotly is **not** vendored as a file in this directory. The route
