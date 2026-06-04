@@ -839,7 +839,7 @@ Names are flat, dotted, lowercased.  Current modules:
 | `selection.store` | `lib/selection/store.js` | Selection state + HTTP |
 | `selection.panel` | `lib/selection-panel.js` | Selection DOM panel |
 | `selection.viewerAdapter` | `lib/selection/viewer-adapter.js` | Selection 3Dmol overlay |
-| `modify.viewer` | `modify/viewer.js` | per-tab 3Dmol viewer |
+| `modify.handle` | `modify/viewer.js` | per-tab embed handle (NOT raw 3Dmol) |
 | `modify.loadXyzText` | `modify/viewer.js` | XYZ loader callback |
 | `inspectors` | `lib/inspectors/registry.js` | Inspector dispatch |
 

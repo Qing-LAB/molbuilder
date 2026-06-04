@@ -74,7 +74,7 @@ The naming scheme is **flat, dotted, lowercased**.
 | `selection.store` | `lib/selection/store.js` | classic IIFE |
 | `selection.panel` | `lib/selection-panel.js` | classic IIFE |
 | `selection.viewerAdapter` | `lib/selection/viewer-adapter.js` | classic IIFE |
-| `modify.viewer` | `modify/viewer.js` | classic IIFE (per-tab) |
+| `modify.handle` | `modify/viewer.js` | classic IIFE (per-tab); embed handle, not raw 3Dmol viewer |
 | `modify.loadStructureText` | `modify/viewer.js` | classic IIFE (per-tab) |
 | `inspectors` | `lib/inspectors/registry.js` | classic IIFE |
 

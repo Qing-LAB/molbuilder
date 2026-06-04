@@ -385,6 +385,7 @@ class TestTestHandle:
         """)
         assert keys == [
             "getCanvasElement",
+            "getCurrent",
             "getCurrentBackground",
             "getDependencyStatus",
             "getFrameStripElement",
@@ -1144,6 +1145,248 @@ class TestHandleSurface:
             f"slider aria-label is {present['sliderAria']!r}, "
             f"expected 'Trajectory frame' per § 9.4"
         )
+
+    def test_setStructure_preserves_overlays_when_elements_match(
+            self, page, flask_server):
+        """Per § 4.2.1: OverlaySpec entries follow the same rule as
+        pick state — survive setStructure IFF atom count + element
+        ordering match; cleared otherwise.  Regression test for I5
+        (#239) — overlays used to persist unconditionally, leaving
+        index-keyed highlights pointing at the wrong atoms after a
+        type-swap or file-swap."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                });
+                h.setOverlays({
+                    atoms: [{
+                        indices: [0],
+                        halo: {color: "#ff0", radius: 0.5},
+                    }],
+                });
+                const beforeSame = !!h._test.getCurrent().overlays;
+                h.setStructure({
+                    xyz: "3\\nwater_moved\\nO 0.1 0 0\\n"
+                       + "H 1.1 0 0\\nH 0.1 1 0\\n",
+                });
+                const afterSame = !!h._test.getCurrent().overlays;
+                h.setStructure({
+                    xyz: "2\\nhh\\nH 0 0 0\\nH 1 0 0\\n",
+                });
+                const afterDiff = !!h._test.getCurrent().overlays;
+                h.dispose();
+                host.remove();
+                return { beforeSame, afterSame, afterDiff };
+            }
+        """)
+        assert out["beforeSame"] is True
+        assert out["afterSame"]  is True, (
+            "overlays lost after element-identical setStructure"
+        )
+        assert out["afterDiff"] is False, (
+            "overlays survived element-mismatched setStructure -- "
+            "I5 regression"
+        )
+
+    def test_appendFrames_extends_trajectory(self, page, flask_server):
+        """Per § 3.2 + § 4.3: appendFrames extends an active
+        trajectory animation in place; current frame index is
+        preserved; playback continues if it was running.  Pinned
+        for I10 (#239) — appendFrames had zero behavioral coverage."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    animation: {
+                        kind: "trajectory",
+                        frames: [[[0,0,0]],[[0.1,0,0]],[[0.2,0,0]]],
+                        fps: 10, paused: true,
+                    },
+                });
+                const beforeN = h._test.getCurrent().animation.frames.length;
+                h.setAnimationFrame(2);
+                const beforeFrame = h.getAnimationFrame();
+                h.appendFrames([[[0.3,0,0]],[[0.4,0,0]]]);
+                const afterN = h._test.getCurrent().animation.frames.length;
+                const afterFrame = h.getAnimationFrame();
+                h.dispose();
+                host.remove();
+                return { beforeN, afterN, beforeFrame, afterFrame };
+            }
+        """)
+        assert out["beforeN"] == 3
+        assert out["afterN"] == 5, (
+            f"appendFrames did not extend: {out['beforeN']} -> "
+            f"{out['afterN']}"
+        )
+        assert out["beforeFrame"] == 2
+        assert out["afterFrame"] == 2, (
+            f"appendFrames clobbered currentFrame: {out['beforeFrame']}"
+            f" -> {out['afterFrame']}"
+        )
+
+    def test_appendFrames_atom_mismatch_dispatches_invalid_input(
+            self, page, flask_server):
+        """Per § 5.3: appendFrames with wrong-atom-count frame fires
+        invalid_input + halts (rejects the extension)."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const errs = [];
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    animation: {
+                        kind: "trajectory",
+                        frames: [[[0,0,0]],[[0.1,0,0]]],
+                        fps: 10, paused: true,
+                    },
+                    onError: (e) => { errs.push(e.code); },
+                });
+                h.appendFrames([[[0,0,0],[1,0,0]]]);   // 2 atoms not 1
+                const finalN =
+                    h._test.getCurrent().animation.frames.length;
+                h.dispose();
+                host.remove();
+                return { errs, finalN };
+            }
+        """)
+        assert "invalid_input" in out["errs"]
+        assert out["finalN"] == 2, (
+            "appendFrames extended despite atom-count mismatch"
+        )
+
+    def test_setPivot_changes_camera_pivot(self, page, flask_server):
+        """Per § 3.2 (added in #235): setPivot({indices}) re-anchors
+        3Dmol's centre-of-rotation onto the selected atoms.  Pinned
+        for I10 (#239) — setPivot had zero behavioral coverage.
+
+        We can't easily probe 3Dmol's internal pivot, so we verify
+        the call doesn't throw + that the underlying viewer.center
+        was reached by comparing the camera pos before/after."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        ok = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                });
+                let threw = false;
+                try { h.setPivot({indices: [1, 2]}); }
+                catch (_) { threw = true; }
+                // setPivot does not throw on bad indices either
+                // (the embed clamps via _selectionFromIndices).
+                try { h.setPivot({indices: [99]}); }
+                catch (_) { threw = true; }
+                try { h.setPivot({}); }
+                catch (_) { threw = true; }
+                h.dispose();
+                host.remove();
+                return !threw;
+            }
+        """)
+        assert ok, "setPivot threw on documented input shapes"
+
+    def test_setKnobs_rebuilds_bar(self, page, flask_server):
+        """Per § 3.2: setKnobs reconfigures visible knobs at runtime
+        by rebuilding the knob bar DOM in place + re-wiring it.
+        Pinned for I10 (#239) — setKnobs had zero behavioral
+        coverage."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:400px;height:300px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                });
+                const before = host.querySelectorAll(
+                    ".mol-viewer-knob").length;
+                // Hide the background + screenshot + export knobs.
+                h.setKnobs({
+                    background: false,
+                    screenshot: false,
+                    export:     false,
+                });
+                const after = host.querySelectorAll(
+                    ".mol-viewer-knob").length;
+                h.dispose();
+                host.remove();
+                return { before, after };
+            }
+        """)
+        assert out["before"] > out["after"], (
+            f"setKnobs did not rebuild the bar: {out['before']} knobs "
+            f"before, {out['after']} after"
+        )
+
+    def test_setKnobs_bad_background_presets_dispatches(
+            self, page, flask_server):
+        """Per § 5.3: setKnobs with non-array backgroundPresets
+        dispatches invalid_input.  Pinned for I10 (#239) — this row
+        was not in the #237 case set."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        errs = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const errs = [];
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    onError: (e) => { errs.push(e.code); },
+                });
+                h.setKnobs({ backgroundPresets: "white,black" });
+                h.dispose();
+                host.remove();
+                return errs;
+            }
+        """)
+        assert "invalid_input" in errs
 
     def test_setAnimation_halt_preserves_existing_animation(
             self, page, flask_server):

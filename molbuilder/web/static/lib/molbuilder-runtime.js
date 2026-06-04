@@ -38,7 +38,7 @@
  *   "selection.store"           -- lib/selection/store.js
  *   "selection.panel"           -- lib/selection-panel.js
  *   "selection.viewerAdapter"   -- lib/selection/viewer-adapter.js
- *   "modify.viewer"             -- modify/viewer.js (per-tab)
+ *   "modify.handle"             -- modify/viewer.js (per-tab; embed handle, not raw 3Dmol)
  *   "modify.loadStructureText"  -- modify/viewer.js (per-tab; accepts XYZ + PDB)
  *   "inspectors"                -- lib/inspectors/registry.js
  *

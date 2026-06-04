@@ -1104,25 +1104,35 @@ sequenceDiagram
 The opt-level `preserveCamera` is the default; the per-call value
 on `setStructure({preserveCamera: ...})` overrides for that call.
 
-### 4.2.1 `setStructure` × pick state
+### 4.2.1 `setStructure` × declarative atom-indexed state
 
-| Atom count + element ordering vs new structure | Result |
-|---|---|
-| Match exactly (same N atoms, same element at each index) | picked indices preserved; halo + label re-render against new coordinates |
-| Mismatch (different N, or any element changes) | picked indices cleared; `onPick([])` fires |
+Pick state (§ 3.8) and OverlaySpec entries (§ 3.12) both name
+atoms by index, so both follow one rule across `setStructure`:
 
-This is the same rule documented in § 3.8 (PickOpts § Persistence)
-but called out here because `setStructure` is a cross-cutting
-lifecycle event and the pick contract is one of the three overlay
-contracts that survive it (camera-via-preserveCamera, animation-
-via-appendFrames-only, pick-IFF-same-atoms). OverlaySpec entries
-do NOT survive `setStructure` automatically — hosts re-apply
-overlays after the structure swap if needed.
+| Atom count + element ordering vs new structure | Pick state | OverlaySpec |
+|---|---|---|
+| Match exactly (same N atoms, same element at each index) | picked indices preserved; halo + label re-render against new coordinates | preserved; halos / styles / markers re-render against new coordinates |
+| Mismatch (different N, or any element changes) | picked indices cleared; `onPick([])` fires | cleared (`state.current.overlays` set to `null`); host re-applies via `setOverlays(...)` if highlights are still wanted |
+
+The "atom-index space changed" case (different N or different
+elements) makes index-keyed state stale by definition — an
+overlay that meant "highlight the carbon at position 5" no longer
+makes sense once that slot holds a different element. The embed
+clears it rather than re-render against the wrong atoms.
+
+Cross-cutting lifecycle invariants that ALSO carry across
+`setStructure`:
+- **Camera** — preserved iff `preserveCamera: true` (§ 4.2).
+- **Animation** — cleared (the baseline atom set changed); host
+  must call `setAnimation(...)` to re-arm. See § 4.3.
+- **Knob bar / chrome** — unaffected (DOM independent).
 
 The atom-edit ops in `/modify` that preserve atom count and order
-(e.g. moving a single atom's position) keep selection visible
-mid-edit; a real file swap via the Build file picker drops
-selection.
+(e.g. moving a single atom's position) keep selection AND
+overlays visible mid-edit; a real file swap via the Build file
+picker drops both. Type-swap edits (e.g. C → N) change element
+ordering and therefore clear both — the highlight on "atom 5 was
+C" is no longer meaningful.
 
 ### 4.3 `setStructure` × animation
 
@@ -1621,6 +1631,7 @@ type TestHandle = {
   // State inspection:
   hasAnimationLoop(): boolean,
   getCurrentBackground(): string,
+  getCurrent(): NormalisedState,    // live snapshot; READ ONLY
   getDependencyStatus(): {
     axes: boolean, style: boolean, pick: boolean, format: boolean,
     projects: boolean, clipboard: boolean,

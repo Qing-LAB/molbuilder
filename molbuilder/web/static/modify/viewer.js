@@ -129,11 +129,12 @@
     // adapter (#229) uses handle.setOverlays + handle.setPick
     // exclusively; focusMolecule / snapPivotToCenter (#235) flow
     // through handle.refit({indices, pullback}) + handle.setPivot.
-    // The capture below is for the Playwright test surface
-    // (window.__molbuilder_modify_test.getViewer()) + the
-    // window.molbuilder.modify.viewer legacy export that the
-    // runtime registry advertises -- both are test/external glue
-    // and not on the production hot path.
+    // The capture below is ONLY for the Playwright test surface
+    // (window.__molbuilder_modify_test.getViewer()) which probes
+    // raw 3Dmol state (atom.serial, atom.clickable) for invariant
+    // checks tests/test_modify_e2e.py:443+ cannot do via the
+    // handle.  Production registry slot is window.molbuilder.
+    // modify.handle (handle, NOT raw viewer) per #239.
     const viewer = _viewerHandle._viewer3dmol();
 
     // clearViewer() removed by #235 -- it was only callable from
@@ -1259,16 +1260,16 @@
     // any future tab-coordination code).  Reuses /api/build/load's
     // JSON path so we don't need a browser File object.
     window.molbuilder = window.molbuilder || {};
-    // Expose the 3Dmol viewer so the selection panel (bootstrapped in
-    // modify/selection-bootstrap.js) can register click handlers + add
-    // highlight overlays.  Kept under a per-tab namespace so it
-    // doesn't collide with /spectra or future tabs that also create
-    // their own viewer.
+    // Expose the embed HANDLE (NOT a raw 3Dmol viewer) under the
+    // per-tab namespace.  Every consumer drives the viewer via the
+    // declarative handle API — `modify.handle.setOverlays(...)`,
+    // `modify.handle.setPick(...)`, etc.  /modify is a single-mount
+    // page (no within-page remount), so the handle reference is
+    // stable for the page lifetime.  The legacy raw-viewer slot
+    // ``modify.viewer`` was dropped in #239 (no Layer-1 self-
+    // protection: a torn-down 3Dmol viewer crashes on access;
+    // handle methods short-circuit on state.disposed).
     window.molbuilder.modify = window.molbuilder.modify || {};
-    window.molbuilder.modify.viewer = viewer;
-    // #229 Part B: expose the embed handle so the selection
-    // viewer-adapter can drive overlays + picks via the declarative
-    // API instead of reaching into 3Dmol directly.
     window.molbuilder.modify.handle = _viewerHandle;
     // Load a structure text blob (XYZ or PDB) via /api/build/load,
     // which sniffs the format from the filename + content.  The
@@ -1308,13 +1309,13 @@
             "ok",
         );
     };
-    // Module-init contract: register the modify viewer + loader
-    // with the runtime so consumers can ``whenReady("modify.viewer")``
+    // Module-init contract: register the modify handle + loader
+    // with the runtime so consumers can ``whenReady("modify.handle")``
     // or ``whenReady("modify.loadStructureText")``.  See design.md.
     if (window.molbuilder.runtime
         && typeof window.molbuilder.runtime.register === "function") {
         window.molbuilder.runtime.register(
-            "modify.viewer", window.molbuilder.modify.viewer);
+            "modify.handle", window.molbuilder.modify.handle);
         window.molbuilder.runtime.register(
             "modify.loadStructureText",
             window.molbuilder.loadStructureText);

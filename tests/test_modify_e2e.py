@@ -381,7 +381,7 @@ def test_runtime_modules_registered_on_modify(page, flask_server):
         "selection.store",
         "selection.panel",
         "selection.viewerAdapter",
-        "modify.viewer",
+        "modify.handle",
         "modify.loadStructureText",
     ):
         assert required in registered, (

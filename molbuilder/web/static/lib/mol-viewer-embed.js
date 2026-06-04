@@ -2241,13 +2241,19 @@
             _applyStyle(state.viewer, state.current.style);
             _redrawAllOverlays(state);
             _wirePick(state.viewer, state);
-            // Pick persistence per § 3.8 / § 4.2.1: keep
-            // pickedIndices only when the new element sequence is
-            // identical to the previous one.  Otherwise clear AND
-            // fire onPick([]) so hosts mirroring picks into a store
-            // see the transition.  The empty-prev case (initial
-            // mount with no prior picks) skips the onPick fire to
-            // avoid a spurious empty event at boot.
+            // Declarative atom-indexed state persistence per § 3.8
+            // / § 3.12 / § 4.2.1: pickedIndices + overlays (which
+            // includes per-atom AtomStyleSpec) survive setStructure
+            // IFF the new element sequence is identical to the
+            // previous one (same count + same element-by-element
+            // ordering).  Otherwise clear them — the atom-index
+            // space changed, so an index that used to mean "the
+            // carbon at position 5" now means something else.  Fire
+            // onPick([]) on a clear so hosts mirroring picks into a
+            // store see the transition.  The empty-prev case
+            // (initial mount with no prior picks / overlays) skips
+            // the onPick fire to avoid a spurious empty event at
+            // boot.
             const nextElements = _elements(state.viewer);
             const sameAtoms =
                 prevElements.length === nextElements.length
@@ -2262,6 +2268,13 @@
                     && typeof state.current.pick.onPick === "function") {
                     try { state.current.pick.onPick([]); }
                     catch (_) {}
+                }
+                // Clear declarative overlays whose selectors are
+                // index-keyed; hosts that want the highlights back
+                // re-apply setOverlays against the new atom space.
+                if (state.current.overlays) {
+                    state.current.overlays = null;
+                    _redrawAllOverlays(state);
                 }
             }
             _redrawPickHalos(state);
@@ -3308,6 +3321,15 @@
             getCurrentBackground() {
                 return state.current && state.current.style
                     ? state.current.style.background : null;
+            },
+            getCurrent() {
+                // Snapshot of the embed's normalised render state.
+                // Used by tests that need to assert on internal state
+                // shape (e.g. "overlays cleared after element-mismatch
+                // setStructure") without reaching into private state.
+                // Returns the live ``state.current`` object — callers
+                // MUST treat it as read-only.
+                return state.current || null;
             },
             getDependencyStatus() {
                 // Snapshot of soft / integration dep availability
