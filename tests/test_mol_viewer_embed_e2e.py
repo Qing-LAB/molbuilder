@@ -773,6 +773,53 @@ class TestHandleSurface:
             f"Either remove them or document them in § 3.2."
         )
 
+    def test_setAnimation_partial_update_keeps_vibration_running(
+            self, page, flask_server):
+        """Per § 3.2: setAnimation with a partial object (no kind)
+        merges into the active animation without stopping the loop.
+        Regression test for D1/N1: spectra amplitude/speed sliders
+        called setAnimation({amplitude: v}) on every tick, which
+        previously normalised to null and STOPPED the vibration."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    animation: {
+                        kind: "vibration",
+                        displacements: [[0,0,0.1],[0,0,0.1],[0,0,0.1]],
+                        amplitude: 0.2, speedHz: 1.0, paused: false,
+                    },
+                });
+                await new Promise(r => requestAnimationFrame(r));
+                const beforeLoop = h._test.hasAnimationLoop();
+                // Drive 5 partial updates in tight succession (the
+                // pattern spectra's amplitude/speed sliders use).
+                for (const a of [0.3, 0.35, 0.4, 0.45, 0.5]) {
+                    h.setAnimation({ amplitude: a });
+                    await new Promise(r => requestAnimationFrame(r));
+                }
+                const afterLoop = h._test.hasAnimationLoop();
+                h.dispose();
+                host.remove();
+                return { beforeLoop, afterLoop };
+            }
+        """)
+        assert out["beforeLoop"] is True, \
+            "vibration loop not running after initial setAnimation"
+        assert out["afterLoop"]  is True, (
+            "partial setAnimation({amplitude}) stopped the loop "
+            "(D1/N1 regression)"
+        )
+
     def test_chrome_consistency_across_build_and_modify(
             self, page, flask_server):
         """The standard knob bar's DOM structure is identical on

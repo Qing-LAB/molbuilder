@@ -266,30 +266,13 @@
      * the Build and Watch viewers stay in lock-step on representation
      * numerics.  The Watch tab additionally exposes a `colorscheme`
      * select, which we forward through the shared helper. */
-    // Post-#205 Part A: rep + radius + colorscheme + background
-    // are all owned by the embed's standard knob bar.  applyStyle
-    // is kept as a thin re-apply path for the rebuildModel/atom-
-    // reset case (called once per addModelsAsFrames swap so the
-    // current knob settings paint the new movie frames).  Reads
-    // the current rep from the knob bar's <select> directly per
-    // § 9.4 stable selector.
-    function _currentRep() {
-        const sel = document.querySelector(
-            "#viewer .mol-viewer-knob-style");
-        return (sel && sel.value) || "stick";
-    }
-    function styleSpec() {
-        return molbuilder.style.spec({
-            rep:         _currentRep(),
-            scale:       1.0,
-            colorscheme: null,    // embed's default (Jmol)
-        });
-    }
-
-    function applyStyle() {
-        viewer.setStyle({}, styleSpec());
-        viewer.render();
-    }
+    // Post-#205/#230 Part A+B: style (rep/radius/background/
+    // colorscheme) is fully owned by the embed's standard knob
+    // bar.  The trajectory-side applyStyle / styleSpec /
+    // _currentRep helpers and the applyStyleAndRewireClicks
+    // shim (further down) were removed by #232 review cleanup —
+    // handle.setStructure re-applies the embed's current style on
+    // every movie swap so no trajectory-side re-apply is needed.
 
     // Cell line colour is contrast-driven so the box stays visible
     // across every background option.  3Dmol takes integer or
@@ -833,20 +816,11 @@
         }
     }
 
-    // applyStyleAndRewireClicks: Post-#205 kept as an unused helper
-    // for symmetry with the spectra inspector + as a hook for the
-    // Part B migration to animation:trajectory + arrowsPerFrame
-    // where rep changes will need a coordinated re-arm.  The
-    // bespoke dropdowns that called this are gone; the embed's
-    // standard knob bar preserves clickability via its own
-    // pickWired flag (#225) when its setStyle re-applies, so we
-    // don't need the manual re-wire here.
-    function applyStyleAndRewireClicks() {
-        applyStyle();
-        if (state.data && state.data.frames && state.data.frames.length) {
-            viewer.setClickable({}, true, onWatchAtomClick);
-        }
-    }
+    // applyStyleAndRewireClicks removed by #232 review cleanup.
+    // The embed's standard knob bar preserves clickability via the
+    // pickWired flag (#225) when its setStyle re-applies, so no
+    // trajectory-side re-arm is needed.  The bespoke dropdowns
+    // that used to call this helper are also gone (#205 Part A).
 
     function showFrame(idx) {
         if (!state.data || !state.data.frames.length) return;

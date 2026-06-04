@@ -2812,7 +2812,61 @@
         }
 
         function setAnimation(animation) {
+            // Per § 3.2: ``null`` clears; full opts (with ``kind``)
+            // replaces; PARTIAL opts (no ``kind``) merge into the
+            // active animation and update individual fields without
+            // restarting the loop.  Review fix D1/N1: partial-update
+            // path was previously broken — _normaliseAnimation
+            // returned null for partials, which stopped the loop
+            // on every spectra amplitude/speed slider tick.
             if (state.disposed) return;
+            if (animation === null || animation === undefined) {
+                _setAnimationImpl(state, null);
+                return;
+            }
+            const cur = state.current.animation;
+            const hasKind = animation && typeof animation === "object"
+                            && (animation.kind === "vibration"
+                                || animation.kind === "trajectory");
+            if (!hasKind && cur) {
+                // Partial update: mutate live-readable fields in
+                // place.  The vibration tick reads ``amplitude`` and
+                // ``speedHz`` every frame, so a direct assignment
+                // takes effect on the next rAF.  Trajectory's
+                // ``fps`` requires re-arming the setInterval; we
+                // handle that via _setAnimationImpl with the merged
+                // payload.
+                if (cur.kind === "vibration") {
+                    if (typeof animation.amplitude === "number"
+                        && Number.isFinite(animation.amplitude)) {
+                        cur.amplitude = animation.amplitude;
+                    }
+                    if (typeof animation.speedHz === "number"
+                        && animation.speedHz > 0) {
+                        cur.speedHz = animation.speedHz;
+                    }
+                    if (typeof animation.paused === "boolean") {
+                        if (animation.paused) _pauseImpl(state);
+                        else _playImpl(state);
+                    }
+                    return;
+                }
+                if (cur.kind === "trajectory") {
+                    const merged = Object.assign({}, cur, animation);
+                    // Re-normalise to revalidate field types.
+                    merged.kind = "trajectory";
+                    const next = _normaliseAnimation(merged);
+                    if (next) {
+                        // Preserve the live playback index so a
+                        // partial update doesn't snap back to frame 0.
+                        next.currentFrame = cur.currentFrame;
+                        _setAnimationImpl(state, next);
+                    }
+                    return;
+                }
+            }
+            // Full update (kind supplied) OR no current animation
+            // to merge into — go through the normal replace path.
             const next = _normaliseAnimation(animation);
             _setAnimationImpl(state, next);
         }

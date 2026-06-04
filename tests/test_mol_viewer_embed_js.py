@@ -25,7 +25,13 @@ MODULE = ROOT / "molbuilder/web/static/lib/mol-viewer-embed.js"
 
 def _run_node(snippet: str) -> object:
     """Load the embed module under Node with the minimal globals it
-    needs, run the snippet, return the parsed JSON output."""
+    needs, run the snippet, return the parsed JSON output.
+
+    Uses a temp file rather than -e because the embed module text
+    has grown past the kernel's ARG_MAX (the test harness used
+    to inline the full module + snippet via -e; that started
+    failing once mol-viewer-embed.js crossed ~2500 lines)."""
+    import tempfile
     node = shutil.which("node")
     if node is None:
         pytest.skip("node not available")
@@ -38,10 +44,21 @@ def _run_node(snippet: str) -> object:
         global.window.molbuilder.viewer = global.window.molbuilder.viewer || {};
     """
     full = bootstrap + "\n" + MODULE.read_text() + "\n" + snippet
-    proc = subprocess.run(
-        [node, "--input-type=commonjs", "-e", full],
-        capture_output=True, text=True, timeout=10,
-    )
+    with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".js", delete=False,
+            encoding="utf-8") as tmp:
+        tmp.write(full)
+        tmp_path = tmp.name
+    try:
+        proc = subprocess.run(
+            [node, tmp_path],
+            capture_output=True, text=True, timeout=15,
+        )
+    finally:
+        try:
+            Path(tmp_path).unlink()
+        except OSError:
+            pass
     if proc.returncode != 0:
         pytest.fail(
             f"node exited {proc.returncode}\n"

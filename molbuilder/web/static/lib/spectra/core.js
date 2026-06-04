@@ -137,7 +137,8 @@
         // 0 disables the overlay (sticks only).
         broadeningFWHM: 20,
         // 3Dmol mode-animation viewer.
-        viewer:         null,    // 3Dmol GLViewer instance (lazy-built)
+        // viewer:        null (removed by #232) — state.handle is
+        //                       the only viewer reference now.
         // animTimer / animPhase / animLastTs removed by #231 Part B
         // — the embed owns the vibration rAF loop now.
         animPaused:     false,
@@ -1029,21 +1030,15 @@
         // Geometry changed (new results loaded) -- discard the old
         // 3Dmol viewer so the next render rebuilds with the fresh
         // structure.
-        if (state.viewer) {
+        if (state.handle) {
             _stopAnimation();
-            // #206: dispose via the embed handle so the standard
-            // knob bar DOM + ResizeObserver get torn down cleanly
-            // (was just viewer.clear() before).  innerHTML="" then
-            // wipes any lingering markup.
-            try {
-                if (state.handle && typeof state.handle.dispose
-                    === "function") {
-                    state.handle.dispose();
-                } else {
-                    state.viewer.clear();
-                }
-            } catch (_) {}
-            state.viewer = null;
+            // #206 / #232 cleanup: handle.dispose() tears down the
+            // standard knob bar DOM + ResizeObserver + the embed's
+            // vibration loop.  state.viewer was a redundant alias
+            // for state.handle._viewer3dmol() left over from the
+            // pre-Part-B path; #232 review collapses to the handle.
+            try { state.handle.dispose(); }
+            catch (_) {}
             state.handle = null;
             if (els.modeViewer) els.modeViewer.innerHTML = "";
         }
@@ -1599,12 +1594,10 @@
     }
 
     function _ensureViewer() {
-        // Create the 3Dmol viewer ONCE per mount.  Owns just the
-        // empty viewer + canvas; model loading + style + animation
-        // setup all live in _startAnimation so each mode/amplitude
-        // change can rebuild the frame movie without touching the
-        // viewer instance.
-        if (state.viewer) return;
+        // Create the embed handle ONCE per mount.  Owns the canvas
+        // + standard knob bar + vibration animation; mode swaps
+        // re-run setStructure + setAnimation without re-mounting.
+        if (state.handle) return;
         els.modeViewer.innerHTML = "";
         // #206 Part A migration: mount via the standard embed so
         // the knob bar (Style / Labels / Axes / Reset / PNG /
@@ -1638,7 +1631,8 @@
                 },
             }
         );
-        state.viewer = state.handle._viewer3dmol();
+        // #232 cleanup: state.viewer alias dropped — _viewer3dmol()
+        // capture was unused after Part B (only state.handle is read).
         // Match the inspector's prior dark backdrop via the embed
         // contract (was a viewer.create({backgroundColor}) opt;
         // now setBackground is the documented path).
@@ -2289,7 +2283,6 @@
                 try { state.handle.dispose(); } catch (_) {}
                 state.handle = null;
             }
-            state.viewer = null;
             if (typeof Plotly !== "undefined" && els.spectrumChart) {
                 try { Plotly.purge(els.spectrumChart); } catch (_) {}
             }
