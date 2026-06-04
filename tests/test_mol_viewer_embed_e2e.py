@@ -773,6 +773,67 @@ class TestHandleSurface:
             f"Either remove them or document them in § 3.2."
         )
 
+    def test_chrome_consistency_across_build_and_modify(
+            self, page, flask_server):
+        """The standard knob bar's DOM structure is identical on
+        Build (/) and Modify (/modify) — same 7 knobs in the same
+        order: Style / Labels / Axes / Reset / Screenshot /
+        Background / Export.
+
+        Pins the chrome-consistency contract for #207: a future
+        edit that adds / removes / reorders a knob on one site
+        fails this test, forcing the change to either land on
+        every site or update the contract."""
+        def _knob_signature(path):
+            page.goto(f"{flask_server}{path}")
+            page.wait_for_selector("#viewer .mol-viewer-knobs",
+                                   timeout=_BOOT_TIMEOUT_MS)
+            page.wait_for_timeout(200)
+            # Get the ordered class signature of each knob bar
+            # child (top-level only; popover contents are tested
+            # separately).
+            return page.evaluate("""() => {
+                const bar = document.querySelector(
+                    '#viewer .mol-viewer-knobs');
+                if (!bar) return null;
+                return Array.from(bar.children).map((el) => {
+                    if (el.tagName === 'SELECT') return 'select';
+                    if (el.tagName === 'DETAILS') {
+                        const cls = Array.from(el.classList)
+                            .find((c) => c.startsWith(
+                                'mol-viewer-knob-'));
+                        return 'details:' + (cls || '?');
+                    }
+                    if (el.tagName === 'BUTTON') {
+                        const k = el.getAttribute('data-knob');
+                        return 'button:' + (k || '?');
+                    }
+                    return el.tagName.toLowerCase();
+                });
+            }""")
+        build_sig  = _knob_signature("/")
+        modify_sig = _knob_signature("/modify")
+        assert build_sig == modify_sig, (
+            f"Knob bar drifted between Build and Modify:\n"
+            f"  Build:  {build_sig}\n  Modify: {modify_sig}"
+        )
+        # Verify the EXPECTED signature so an addition to BOTH
+        # sites still has to update this test (catches an
+        # unwanted change that's symmetric across consumers).
+        EXPECTED = [
+            "select",                              # Style picker
+            "details:mol-viewer-knob-labels",      # Labels popover
+            "button:axes",                          # Axes toggle
+            "button:reset",                         # Reset
+            "button:screenshot",                    # PNG
+            "details:mol-viewer-knob-background",  # Background popover
+            "details:mol-viewer-knob-export",      # Export popover
+        ]
+        assert build_sig == EXPECTED, (
+            f"Knob bar order drifted from § 6.2 spec:\n"
+            f"  Expected: {EXPECTED}\n  Got:      {build_sig}"
+        )
+
     def test_handle_has_test_affordance_object(
             self, page, flask_server):
         """The ``_test`` affordance object is documented in § 9.2
