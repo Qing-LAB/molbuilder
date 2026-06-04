@@ -138,12 +138,11 @@
         broadeningFWHM: 20,
         // 3Dmol mode-animation viewer.
         viewer:         null,    // 3Dmol GLViewer instance (lazy-built)
-        animTimer:      null,    // requestAnimationFrame handle
+        // animTimer / animPhase / animLastTs removed by #231 Part B
+        // — the embed owns the vibration rAF loop now.
         animPaused:     false,
         animAmplitude:  0.15,    // peak Cartesian amplitude in Å (see partial)
         animSpeed:      1.0,     // cycle-rate multiplier (1.0 = ~1 Hz)
-        animPhase:      0.0,     // current phase in radians
-        animLastTs:     null,    // last frame timestamp for dt
         // AbortControllers for in-flight HTTP requests.  ``loadAbort``
         // covers /api/spectra/load (Load + watch ticks); ``renderAbort``
         // covers /api/spectra/render (Generate script).  dispose()
@@ -169,15 +168,10 @@
     // CODATA 2018 value.
     const EH_TO_EV = 27.211386245988;
 
-    // Mode-animation frame count.  3Dmol's animation API takes a
-    // pre-built "movie" of frames (addModelsAsFrames) and scrubs
-    // through with setFrame(idx) -- the SUPPORTED path; the older
-    // "mutate atom.x/y/z + viewer.render()" pattern doesn't trigger
-    // 3Dmol's geometry-buffer rebuild, so the molecule looks frozen.
-    // 30 samples per cycle = 12 fps at 1x speed before frame reuse;
-    // looks smooth to the eye and keeps the precompute cost trivial
-    // (30 small XYZ strings parsed once per mode/amplitude change).
-    const ANIM_FRAMES_PER_CYCLE = 30;
+    // ANIM_FRAMES_PER_CYCLE constant removed by #231 Part B — the
+    // embed's vibration animation (handle.setAnimation({kind:
+    // "vibration", displacements})) drives the rAF loop at the
+    // browser's native cadence; no pre-computed frame count needed.
 
     // ----- Listener bookkeeping ---------------------------------
     //
@@ -1621,10 +1615,13 @@
         // amplitude/speed loop in _startAnimation) continues
         // untouched.
         //
-        // Part B follow-up: migrate to ``animation: {kind:
-        // "vibration", displacements}`` per § 7.5; the embed's
-        // vibration loop replaces _startAnimation, and frozen
-        // atom greying becomes an OverlaySpec.atoms entry.
+        // Part B (#231, landed 2026-06-03): vibration playback now
+        // goes through the embed's ``animation: {kind: "vibration",
+        // displacements}`` per § 3.9 — the bespoke
+        // ANIM_FRAMES_PER_CYCLE pre-computed sine cycle + raw
+        // setFrame loop are gone.  Frozen-atom greying goes through
+        // ``handle.setOverlays({atoms: [{indices, style}]})`` per
+        // § 3.12.
         state.handle = window.molbuilder.viewer.embed(
             els.modeViewer, {
                 style:  { rep: "ball-and-stick", radiusScale: 1.0 },
@@ -1648,134 +1645,105 @@
         try { state.handle.setBackground("#1d2128"); } catch (_) {}
     }
 
-    function _buildFrameMovie(geom, mode) {
-        // Pre-compute ANIM_FRAMES_PER_CYCLE samples of the
-        // sinusoidal mode motion, encoded as a multi-frame XYZ
-        // string for ``viewer.addModelsAsFrames(..., "xyz")``.  This
-        // is the 3Dmol-blessed animation API: the viewer ingests
-        // every frame's geometry once, then ``setFrame(idx)`` flips
-        // between them with proper geometry-buffer updates.  The
-        // older "mutate atoms[i].x + viewer.render()" pattern is
-        // unsupported -- it changes the underlying JS objects but
-        // doesn't dirty 3Dmol's vertex buffers, so the molecule
-        // visibly freezes even though the data layer is moving.
-        //
-        // Frames are at amplitudes ``A · sin(2π f/N)`` for
-        // f = 0..N-1.  Free atoms get the eigenvector
-        // displacement; frozen atoms stay at the equilibrium
-        // position (zero displacement).
-        const free = state.results.free_atom_idxs || [];
-        const evec_free = mode.eigenvector_display;
-        const nAtoms = geom.elements.length;
-        const displacement = new Array(nAtoms);
-        for (let i = 0; i < nAtoms; i++) displacement[i] = [0, 0, 0];
-        for (let k = 0; k < free.length; k++) {
-            const atomIdx = free[k];
-            if (atomIdx >= 0 && atomIdx < nAtoms) {
-                displacement[atomIdx] = evec_free[k].slice();
-            }
-        }
-        const A = state.animAmplitude;
-        const N = ANIM_FRAMES_PER_CYCLE;
-        const frameBlocks = [];
-        for (let f = 0; f < N; f++) {
-            const s = Math.sin((2 * Math.PI * f) / N);
-            const lines = [String(nAtoms), ""];
-            for (let i = 0; i < nAtoms; i++) {
-                const x = geom.positions[i][0]
-                        + A * s * displacement[i][0];
-                const y = geom.positions[i][1]
-                        + A * s * displacement[i][1];
-                const z = geom.positions[i][2]
-                        + A * s * displacement[i][2];
-                lines.push(
-                    geom.elements[i]
-                    + " " + x.toFixed(6)
-                    + " " + y.toFixed(6)
-                    + " " + z.toFixed(6)
-                );
-            }
-            frameBlocks.push(lines.join("\n"));
-        }
-        return frameBlocks.join("\n");
-    }
+    // _buildFrameMovie removed by #231 Part B.  The embed's
+    // vibration animation (handle.setAnimation({kind: "vibration",
+    // displacements})) replaces the bespoke ANIM_FRAMES_PER_CYCLE
+    // pre-computed sine cycle.  The embed's loop computes
+    // pos_i(φ) = baseline_i + amplitude · cos(φ) · displacement_i
+    // and applies it natively at requestAnimationFrame cadence;
+    // amplitude / speedHz changes are partial-update opts on
+    // setAnimation, no frame rebuild needed.
 
     function _applyModeViewerStyle() {
-        // Re-applied after every removeAllModels + addModelsAsFrames
-        // since 3Dmol's style state attaches to the active model.
-        state.viewer.setStyle({}, {
-            stick:  { radius: 0.15 },
-            sphere: { scale: 0.25 },
-        });
-        // Grey out frozen atoms so the user sees the static anchor.
-        const frozen = new Set(
-            (state.results.frozen_atom_idxs || []).map(Number)
-        );
-        if (frozen.size) {
-            // 3Dmol atom serial is 1-based; our indices are 0-based.
-            for (const idx of frozen) {
-                state.viewer.setStyle(
-                    { serial: idx + 1 },
-                    { sphere: { scale: 0.25, color: "#555" },
-                      stick:  { radius: 0.15, color: "#555" } }
-                );
-            }
+        // #231 Part B: base style flows through the embed's
+        // handle.setStyle (ball-and-stick) -- already set at
+        // mount time.  Frozen atoms grey out via the OverlaySpec
+        // per-atom style override per § 3.12.  Replaces the raw
+        // viewer.setStyle({serial: idx+1}, ...) per-atom loop.
+        const frozen = (state.results.frozen_atom_idxs || []).map(Number);
+        if (frozen.length) {
+            state.handle.setOverlays({
+                atoms: [{
+                    indices: frozen,
+                    style:   { color: "#555" },
+                }],
+            });
+        } else {
+            // Clear any prior frozen-atom overlay so a mode swap
+            // doesn't leave stale greys when the new geometry has
+            // no frozen atoms.
+            state.handle.setOverlays(null);
         }
     }
 
     function _startAnimation(geom, mode) {
-        // Cancel any previous frame loop, then kick a fresh one.
+        // #231 Part B: vibration playback is the embed's
+        // ``animation: {kind: "vibration", displacements,
+        // amplitude, speedHz, paused}`` contract per § 3.9.
+        // The embed's loop computes pos_i(φ) = baseline_i +
+        // amplitude · cos(φ) · displacement_i; the previous
+        // bespoke ANIM_FRAMES_PER_CYCLE pre-computed sine cycle
+        // produces the same visible oscillation (sin vs cos is
+        // a 90° phase shift the user can't see).
         _stopAnimation();
         state.animPaused = false;
-        state.animPhase = 0;
-        state.animLastTs = null;
         if (els.animToggle) els.animToggle.textContent = "Pause";
 
-        // Build + load the frame movie.  Done on every mode change
-        // AND on every amplitude change (the precomputed amplitudes
-        // bake in state.animAmplitude).  Speed changes don't need a
-        // rebuild -- speed only affects the phase-advance rate in
-        // tick(), the frames themselves are the same.
-        const multiXyz = _buildFrameMovie(geom, mode);
-        state.viewer.removeAllModels();
-        state.viewer.addModelsAsFrames(multiXyz, "xyz");
-        _applyModeViewerStyle();
-        state.viewer.zoomTo();
-        state.viewer.setFrame(0);
-        state.viewer.render();
-
-        const N = ANIM_FRAMES_PER_CYCLE;
-
-        function tick(ts) {
-            if (!state.viewer) return;
-            if (state.animPaused) {
-                state.animLastTs = ts;
-                state.animTimer = requestAnimationFrame(tick);
-                return;
+        // Build the per-atom displacement vector.  Free atoms
+        // get the mode's eigenvector entry; frozen atoms stay
+        // at zero (no motion, anchors the visualisation).
+        const free       = state.results.free_atom_idxs || [];
+        const evec_free  = mode.eigenvector_display;
+        const nAtoms     = geom.elements.length;
+        const displacements = new Array(nAtoms);
+        for (let i = 0; i < nAtoms; i++) displacements[i] = [0, 0, 0];
+        for (let k = 0; k < free.length; k++) {
+            const atomIdx = free[k];
+            if (atomIdx >= 0 && atomIdx < nAtoms) {
+                displacements[atomIdx] = evec_free[k].slice();
             }
-            if (state.animLastTs != null) {
-                const dt = (ts - state.animLastTs) / 1000;   // seconds
-                // 1.0× speed = 1 cycle / second = 2π rad/s.
-                state.animPhase += 2 * Math.PI * state.animSpeed * dt;
-            }
-            state.animLastTs = ts;
-            // Map phase [0, 2π) -> frame index [0, N).  Normalise so
-            // the modulo handles negative phases cleanly (defensive
-            // against future code that runs the phase backward).
-            const period = 2 * Math.PI;
-            const phaseN = ((state.animPhase % period) + period) % period;
-            const frameIdx = Math.floor((phaseN / period) * N);
-            state.viewer.setFrame(frameIdx);
-            state.viewer.render();
-            state.animTimer = requestAnimationFrame(tick);
         }
-        state.animTimer = requestAnimationFrame(tick);
+
+        // Build the equilibrium-structure xyz text and mount it
+        // as the embed's baseline.  The vibration loop applies
+        // amplitude · cos(φ) · displacement on top of these
+        // baseline coordinates.
+        const lines = [String(nAtoms), ""];
+        for (let i = 0; i < nAtoms; i++) {
+            const p = geom.positions[i];
+            lines.push(
+                geom.elements[i]
+                + " " + p[0].toFixed(6)
+                + " " + p[1].toFixed(6)
+                + " " + p[2].toFixed(6)
+            );
+        }
+        state.handle.setStructure({ xyz: lines.join("\n") });
+        _applyModeViewerStyle();
+        state.handle.refit();
+
+        // Hand the vibration to the embed.  Amplitude + speedHz
+        // changes after this point just call ``setAnimation`` with
+        // a partial payload (see onAnimAmplitudeChange + speed
+        // listener); the displacements stay until a new mode is
+        // selected, when the whole vibration is re-set with the
+        // new eigenvector.
+        state.handle.setAnimation({
+            kind:          "vibration",
+            displacements: displacements,
+            amplitude:     state.animAmplitude,
+            speedHz:       state.animSpeed,
+            paused:        false,
+        });
     }
 
     function _stopAnimation() {
-        if (state.animTimer) cancelAnimationFrame(state.animTimer);
-        state.animTimer = null;
-        state.animLastTs = null;
+        // Cancel embed-driven vibration playback.  The handle's
+        // pauseAnimation tears down the rAF loop the embed runs.
+        if (state.handle
+            && typeof state.handle.pauseAnimation === "function") {
+            try { state.handle.pauseAnimation(); } catch (_) {}
+        }
     }
 
     function onAnimAmplitudeChange() {
@@ -1783,15 +1751,13 @@
         if (Number.isFinite(v)) state.animAmplitude = v;
         if (els.animAmplitudeVal)
             els.animAmplitudeVal.textContent = v.toFixed(2) + " Å";
-        // Amplitude is baked into the precomputed frame coordinates,
-        // so a slider change requires rebuilding the frame movie.
-        // renderModeViewer is idempotent and cheap (re-uses the
-        // existing viewer; only the frames + style get rebuilt) --
-        // safe to call on every input event during a drag.  Guard on
-        // ``state.viewer`` so amplitude changes before the viewer
-        // mounts (e.g., during init) just update the state value.
-        if (state.viewer && state.results && state.selectedMode != null) {
-            renderModeViewer();
+        // #231 Part B: amplitude is a partial-update field on the
+        // embed's vibration animation.  No frame rebuild needed --
+        // the embed's loop reads amplitude live.
+        if (state.handle && state.results && state.selectedMode != null) {
+            try {
+                state.handle.setAnimation({ amplitude: v });
+            } catch (_) {}
         }
     }
     function onAnimSpeedChange() {
@@ -1799,11 +1765,24 @@
         if (Number.isFinite(v)) state.animSpeed = v;
         if (els.animSpeedVal)
             els.animSpeedVal.textContent = v.toFixed(1) + "×";
+        if (state.handle && state.results && state.selectedMode != null) {
+            try {
+                state.handle.setAnimation({ speedHz: v });
+            } catch (_) {}
+        }
     }
     function onAnimToggle() {
         state.animPaused = !state.animPaused;
         if (els.animToggle)
             els.animToggle.textContent = state.animPaused ? "Play" : "Pause";
+        // #231 Part B: drive play / pause through the embed handle
+        // instead of the bespoke rAF loop.
+        if (state.handle) {
+            try {
+                if (state.animPaused) state.handle.pauseAnimation();
+                else                  state.handle.playAnimation();
+            } catch (_) {}
+        }
     }
 
     // ----- Spectrum chart (Plotly) -----------------------------
@@ -2303,14 +2282,14 @@
                 clearInterval(state.watchTimer);
                 state.watchTimer = null;
             }
-            if (state.animTimer) {
-                cancelAnimationFrame(state.animTimer);
-                state.animTimer = null;
+            // #231 Part B: bespoke animation loop (state.animTimer +
+            // rAF) is gone -- handle.dispose() tears down the embed's
+            // own vibration loop.
+            if (state.handle) {
+                try { state.handle.dispose(); } catch (_) {}
+                state.handle = null;
             }
-            if (state.viewer) {
-                try { state.viewer.clear(); } catch (_) {}
-                state.viewer = null;
-            }
+            state.viewer = null;
             if (typeof Plotly !== "undefined" && els.spectrumChart) {
                 try { Plotly.purge(els.spectrumChart); } catch (_) {}
             }
