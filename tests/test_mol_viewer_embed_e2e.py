@@ -968,6 +968,183 @@ class TestHandleSurface:
                 f"errs={cur['errs']!r}, result={cur['result']!r}"
             )
 
+    def test_setAxes_accepts_documented_modes(
+            self, page, flask_server):
+        """Per § 3.4 + § 5.3: setAxes accepts mode ∈ {auto, cartesian,
+        cell}.  Regression test for B1 (#238) — VALID_AXES_MODES used
+        to be ["auto", "world"] which silently coerced the legal
+        cartesian / cell modes."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            () => {
+                const r = {};
+                for (const mode of ["auto", "cartesian", "cell"]) {
+                    const host = document.createElement("div");
+                    host.style.cssText =
+                        "width:300px;height:200px;position:fixed;top:-9999px;";
+                    document.body.appendChild(host);
+                    const errs = [];
+                    const h = window.molbuilder.viewer.embed(host, {
+                        xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                        card: { showInfoLine: false, height: "100%" },
+                        onError: (e) => { errs.push(e.code); },
+                    });
+                    h.setAxes({mode});
+                    r[mode] = errs.slice();
+                    h.dispose();
+                    host.remove();
+                }
+                return r;
+            }
+        """)
+        for mode in ["auto", "cartesian", "cell"]:
+            assert "invalid_input" not in out[mode], (
+                f"setAxes({{mode: {mode!r}}}) fired invalid_input "
+                f"({out[mode]!r}); see B1 review finding"
+            )
+
+    def test_setStructure_preserves_picks_when_elements_match(
+            self, page, flask_server):
+        """Per § 3.8 + § 4.2.1: pickedIndices survives setStructure
+        IFF atom count + element-by-element ordering match.  On
+        mismatch the embed fires onPick([]) so hosts mirroring picks
+        into a store see the clear.  Regression test for B2 (#238).
+        """
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const calls = [];
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    pick: {
+                        mode: "pair", halo: true, label: false,
+                        onPick: (curr) => { calls.push(curr.slice()); },
+                    },
+                });
+                h.setPickedIndices([0, 1]);
+                // Swap to a structure with IDENTICAL elements (perturb
+                // coords only) -- picks must survive.
+                h.setStructure({
+                    xyz: "3\\nwater_moved\\nO 0.1 0 0\\n"
+                       + "H 1.1 0 0\\nH 0.1 1 0\\n",
+                });
+                const afterSame = h.getPickedIndices();
+                // Swap to a structure with DIFFERENT elements -- picks
+                // must clear AND onPick([]) must fire.
+                h.setStructure({
+                    xyz: "2\\nhh\\nH 0 0 0\\nH 1 0 0\\n",
+                });
+                const afterDiff = h.getPickedIndices();
+                h.dispose();
+                host.remove();
+                return { afterSame, afterDiff, calls };
+            }
+        """)
+        assert out["afterSame"] == [0, 1], (
+            f"picks lost after element-identical setStructure: "
+            f"{out['afterSame']!r}"
+        )
+        assert out["afterDiff"] == [], (
+            f"picks survived element-mismatched setStructure: "
+            f"{out['afterDiff']!r}"
+        )
+        assert [] in out["calls"], (
+            f"setStructure did NOT fire onPick([]) on clear; calls="
+            f"{out['calls']!r}"
+        )
+
+    def test_test_surface_normaliser_exports_callable(
+            self, page, flask_server):
+        """Per § 9.1: every listed normaliser is callable on
+        window.molbuilder.viewer.*.  Regression test for B3 (#238) —
+        the doc used to list a fictional _normaliseExport and omit
+        _normaliseKnobs from the actual export."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        present = page.evaluate("""
+            () => {
+                const v = window.molbuilder.viewer;
+                const wanted = [
+                    "_normaliseOpts",     "_normaliseStyle",
+                    "_normaliseAxes",     "_normaliseCell",
+                    "_normaliseLabels",   "_normalisePick",
+                    "_normaliseAnimation","_normaliseOverlays",
+                    "_normaliseLattice",  "_normaliseKnobs",
+                    "_equalNormalised",
+                ];
+                const out = {};
+                for (const k of wanted) out[k] = typeof v[k];
+                return out;
+            }
+        """)
+        for name, kind in present.items():
+            assert kind == "function", (
+                f"{name} not exported as a function (got {kind!r}); "
+                f"see B3 review finding"
+            )
+
+    def test_frame_strip_documented_selectors_present(
+            self, page, flask_server):
+        """Per § 9.4: the frame-strip exposes data-action="prev|play|
+        next" + slider with aria-label="Trajectory frame".  Pinned by
+        I2 (#238) — these selectors used to be promised but absent."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        present = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:400px;height:300px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    animation: {
+                        kind: "trajectory",
+                        frames: [[[0,0,0]],[[0.1,0,0]],[[0.2,0,0]]],
+                        fps: 5, paused: true,
+                    },
+                });
+                const strip = host.querySelector(
+                    ".mol-viewer-frame-strip");
+                const out = {
+                    strip:    !!strip,
+                    prev:     !!strip.querySelector('[data-action="prev"]'),
+                    play:     !!strip.querySelector('[data-action="play"]'),
+                    next:     !!strip.querySelector('[data-action="next"]'),
+                    sliderAria: strip.querySelector(".frame-slider")
+                                ?.getAttribute("aria-label"),
+                };
+                h.dispose();
+                host.remove();
+                return out;
+            }
+        """)
+        assert present["strip"], "frame-strip not mounted"
+        for k in ("prev", "play", "next"):
+            assert present[k], (
+                f"frame-strip missing [data-action={k!r}] per § 9.4"
+            )
+        assert present["sliderAria"] == "Trajectory frame", (
+            f"slider aria-label is {present['sliderAria']!r}, "
+            f"expected 'Trajectory frame' per § 9.4"
+        )
+
     def test_setAnimation_halt_preserves_existing_animation(
             self, page, flask_server):
         """Per § 5.3 "halt" semantics: a setAnimation call with an

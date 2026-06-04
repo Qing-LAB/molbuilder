@@ -42,7 +42,7 @@
         "stick", "ball-and-stick", "sphere", "line", "cross",
         "cartoon",
     ];
-    const VALID_AXES_MODES   = ["auto", "world"];
+    const VALID_AXES_MODES   = ["auto", "cartesian", "cell"];
     const VALID_PICK_MODES   = ["none", "single", "pair", "multi"];
     const VALID_LABEL_FORMS  = ["index", "name", "element"];
     const VALID_KNOB_POSITIONS = ["top", "bottom"];
@@ -1821,6 +1821,8 @@
         const prev = document.createElement("button");
         prev.type = "button";
         prev.className = "frame-prev";
+        prev.setAttribute("data-action", "prev");
+        prev.setAttribute("aria-label", "Previous frame");
         prev.textContent = "‹";
         prev.title = "Previous frame";
         prev.addEventListener("click", () => {
@@ -1834,6 +1836,8 @@
         const playPause = document.createElement("button");
         playPause.type = "button";
         playPause.className = "frame-play-pause";
+        playPause.setAttribute("data-action", "play");
+        playPause.setAttribute("aria-label", "Play / pause trajectory");
         playPause.textContent = "▶";
         playPause.title = "Play / pause";
         playPause.addEventListener("click", () => {
@@ -1844,6 +1848,8 @@
         const next = document.createElement("button");
         next.type = "button";
         next.className = "frame-next";
+        next.setAttribute("data-action", "next");
+        next.setAttribute("aria-label", "Next frame");
         next.textContent = "›";
         next.title = "Next frame";
         next.addEventListener("click", () => {
@@ -1860,6 +1866,7 @@
         const slider = document.createElement("input");
         slider.type = "range";
         slider.className = "frame-slider";
+        slider.setAttribute("aria-label", "Trajectory frame");
         slider.min = "0";
         slider.max = String(a.frames.length - 1);
         slider.step = "1";
@@ -2207,6 +2214,15 @@
             // doesn't end up with both.
             if (opts.xyz && !opts.pdb) next.pdb = null;
             if (opts.pdb && !opts.xyz) next.xyz = null;
+            // Capture the pre-swap atom-element ordering so we can
+            // honour § 3.8 / § 4.2.1 pick persistence: the pick state
+            // (state.pickedIndices) survives setStructure IFF the new
+            // structure has the same atom count AND element-by-element
+            // ordering as the old one.  /modify's per-atom edit ops
+            // (move / rotate / type-swap) preserve count + ordering, so
+            // selection-survival across them is observable.
+            const prevElements = _elements(state.viewer);
+            const prevPicked   = state.pickedIndices.slice();
             state.current = next;
             // Setting a fresh structure invalidates the animation
             // baseline (different atom count / different topology).
@@ -2225,7 +2241,30 @@
             _applyStyle(state.viewer, state.current.style);
             _redrawAllOverlays(state);
             _wirePick(state.viewer, state);
-            state.pickedIndices = [];
+            // Pick persistence per § 3.8 / § 4.2.1: keep
+            // pickedIndices only when the new element sequence is
+            // identical to the previous one.  Otherwise clear AND
+            // fire onPick([]) so hosts mirroring picks into a store
+            // see the transition.  The empty-prev case (initial
+            // mount with no prior picks) skips the onPick fire to
+            // avoid a spurious empty event at boot.
+            const nextElements = _elements(state.viewer);
+            const sameAtoms =
+                prevElements.length === nextElements.length
+                && prevElements.length > 0
+                && prevElements.every((e, i) => e === nextElements[i]);
+            if (sameAtoms) {
+                state.pickedIndices = prevPicked;
+            } else {
+                state.pickedIndices = [];
+                if (prevPicked.length > 0
+                    && state.current.pick
+                    && typeof state.current.pick.onPick === "function") {
+                    try { state.current.pick.onPick([]); }
+                    catch (_) {}
+                }
+            }
+            _redrawPickHalos(state);
             // Camera per § 4.2: the FIRST load (no prior structure)
             // always calls zoomTo() to frame the new structure;
             // subsequent loads preserve the user's camera unless
@@ -3356,6 +3395,7 @@
     root.molbuilder.viewer._normaliseLattice  = _normaliseLattice;
     root.molbuilder.viewer._normaliseAnimation = _normaliseAnimation;
     root.molbuilder.viewer._normaliseOverlays = _normaliseOverlays;
+    root.molbuilder.viewer._normaliseKnobs    = _normaliseKnobs;
     root.molbuilder.viewer._equalNormalised   = _equalNormalised;
 
     // Error model — § 3.14, § 5.  Exposed for consumers that want to

@@ -1228,7 +1228,7 @@ below — used when continuing would corrupt state, e.g. non-string
 | `setStructure` | — | — | `invalid_input` (`xyz` / `pdb` not a string → halt) |
 | `appendFrames` | — | — | `invalid_input` (atom-count mismatch → halt). No-animation and wrong-kind calls are silent no-ops per § 3.2. |
 | `setStyle` | — | — | `invalid_input` (`rep` outside `{stick, ball-and-stick, sphere, line, cross, cartoon}`; non-finite `radiusScale`) |
-| `setAxes` | — | — | `invalid_input` (`mode` outside `{auto, world}`) |
+| `setAxes` | — | — | `invalid_input` (`mode` outside `{auto, cartesian, cell}`) |
 | `setCell` | — | — | — (`color`/`radius` coerced to defaults) |
 | `setLabels` | — | — | `invalid_input` (`atoms` not `"all"`/`"indices"`/`"names"`/`number[]`; non-int / negative entries in `atoms` array; `format` outside `{index, name, element}`) |
 | `setArrows` | — | — | `invalid_input` (argument not an array → halt; per-entry missing `start`/`end`) |
@@ -1599,7 +1599,7 @@ window.molbuilder.viewer._normaliseLabels(labels)
 window.molbuilder.viewer._normalisePick(pick)
 window.molbuilder.viewer._normaliseAnimation(animation)
 window.molbuilder.viewer._normaliseOverlays(overlays)
-window.molbuilder.viewer._normaliseExport(export_)
+window.molbuilder.viewer._normaliseLattice(lattice)
 window.molbuilder.viewer._normaliseKnobs(knobs)
 window.molbuilder.viewer._equalNormalised(a, b)
 ```
