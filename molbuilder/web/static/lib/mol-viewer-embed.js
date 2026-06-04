@@ -898,9 +898,9 @@
             });
         }
 
-        // Export popover — Structure / Image actions wire to
-        // handle.exportData / handle.screenshot.  Animation
-        // actions are stubbed until Phase 5b.
+        // Export popover — Structure / Image / Animation actions
+        // wire to handle.exportData / handle.screenshot /
+        // handle.exportAnimation.
         const expDet = bar.querySelector(".mol-viewer-knob-export");
         if (expDet) {
             for (const btn of expDet.querySelectorAll("button[data-kind]")) {
@@ -914,10 +914,16 @@
                     } else if (kind === "image") {
                         p = handle.screenshot({ target: target });
                     } else if (kind === "animation") {
-                        // Phase 5b: animation export.  Silent stub
-                        // for now (no console spam from a click).
-                        expDet.open = false;
-                        return;
+                        // Animation buttons declare
+                        // ``data-format="webm" | "gif"`` and
+                        // ``data-target="project" | "download"``;
+                        // exportAnimation surfaces a typed reject
+                        // (no_media_recorder / no_gif_encoder /
+                        // static_structure / ...) via onError.
+                        p = handle.exportAnimation({
+                            format: format || "webm",
+                            target: target || "download",
+                        });
                     }
                     if (p) p.catch((err) => _dispatchError(state, err));
                     expDet.open = false;
@@ -1660,6 +1666,150 @@
         } catch (_) {
             return null;
         }
+    }
+
+    /**
+     * Phase 5b helper: drive the animation to a specific phase
+     * point deterministically.  Used by captureFrames +
+     * exportAnimation to step the animation frame-by-frame
+     * without depending on the playback loop's wall-clock timing.
+     *
+     *   frameIdx     — 0-based output frame number
+     *   totalFrames  — total output frames in the capture
+     *   durationSec  — total capture duration in seconds
+     *
+     * For vibration: maps frameIdx to a cosine phase scaled by
+     * speedHz so the capture covers ``durationSec`` worth of
+     * oscillation.  For trajectory: maps frameIdx → input frame
+     * index, wrapping if duration exceeds one loop.
+     */
+    function _driveAnimationFrame(state, frameIdx,
+                                  totalFrames, durationSec) {
+        const a = state.current.animation;
+        if (!a) return;
+        if (a.kind === "vibration") {
+            if (!state._anim.vibrationBaseline) {
+                state._anim.vibrationBaseline =
+                    _captureBaselineCoords(state.viewer);
+            }
+            const baseline = state._anim.vibrationBaseline;
+            const disp     = a.displacements;
+            // elapsed seconds at this frame.
+            const t = durationSec * (frameIdx / Math.max(1, totalFrames));
+            const phase = 2 * Math.PI * a.speedHz * t;
+            const factor = a.amplitude * Math.cos(phase);
+            const out = [];
+            for (let i = 0; i < baseline.length; i++) {
+                const d = (i < disp.length) ? disp[i] : [0, 0, 0];
+                out.push([
+                    baseline[i][0] + factor * d[0],
+                    baseline[i][1] + factor * d[1],
+                    baseline[i][2] + factor * d[2],
+                ]);
+            }
+            _applyCoords(state.viewer, out);
+            _postFramePositionRedraw(state);
+        } else if (a.kind === "trajectory") {
+            const n = a.frames.length;
+            // Spread the capture across all input frames evenly so
+            // duration scales the playback rate independently of fps.
+            const inputIdx = Math.min(n - 1,
+                Math.floor((frameIdx / Math.max(1, totalFrames)) * n));
+            _showTrajectoryFrame(state, inputIdx);
+        }
+    }
+
+    /**
+     * Phase 5b helper: capture the embed's 3Dmol canvas as a PNG
+     * Blob at the requested dimensions.  Resolves via
+     * canvas.toBlob (async), which avoids the dataURL → Blob
+     * conversion + base64 overhead that ``screenshot()`` pays for
+     * single-frame capture.
+     */
+    function _canvasToPngBlob(state, width, height) {
+        return new Promise((resolve, reject) => {
+            try {
+                // 3Dmol's pngURI generates a PNG at the requested
+                // size by re-rendering at that resolution.  Use it
+                // for size-override capture; otherwise grab the
+                // live canvas directly via toBlob for speed.
+                if ((width && width !== state.viewer.container.clientWidth)
+                    || (height && height !== state.viewer.container.clientHeight)) {
+                    const dataUrl = state.viewer.pngURI(width, height);
+                    const blob = _dataUrlToBlob(dataUrl);
+                    if (!blob) {
+                        reject(_makeError("io_error",
+                            "captureFrame: pngURI conversion failed"));
+                        return;
+                    }
+                    resolve(blob);
+                    return;
+                }
+                const canvas = state.viewer.container.querySelector("canvas");
+                if (!canvas || typeof canvas.toBlob !== "function") {
+                    // Fallback: dataURL path.
+                    const dataUrl = state.viewer.pngURI();
+                    const blob = _dataUrlToBlob(dataUrl);
+                    if (!blob) {
+                        reject(_makeError("io_error",
+                            "captureFrame: no canvas + pngURI fallback failed"));
+                        return;
+                    }
+                    resolve(blob);
+                    return;
+                }
+                canvas.toBlob((b) => {
+                    if (!b) {
+                        reject(_makeError("io_error",
+                            "captureFrame: canvas.toBlob returned null"));
+                    } else {
+                        resolve(b);
+                    }
+                }, "image/png");
+            } catch (e) {
+                reject(_makeError("io_error",
+                    "captureFrame: " + (e && e.message), e));
+            }
+        });
+    }
+
+    /**
+     * Phase 5b: lazy-load static/vendor/gif.min.js the first time
+     * a GIF export is requested.  Cached on window so multiple
+     * embeds share the load.  Resolves once ``window.GIF`` is
+     * defined; rejects ``no_gif_encoder`` if the script tag fails.
+     */
+    function _loadGifEncoder() {
+        if (root.GIF) return Promise.resolve(root.GIF);
+        if (root._molbuilderGifLoading) {
+            return root._molbuilderGifLoading;
+        }
+        root._molbuilderGifLoading = new Promise((resolve, reject) => {
+            try {
+                const s = root.document.createElement("script");
+                s.src = "/static/vendor/gif.min.js";
+                s.async = true;
+                s.onload = () => {
+                    if (root.GIF) resolve(root.GIF);
+                    else reject(_makeError("no_gif_encoder",
+                        "GIF encoder: script loaded but window.GIF "
+                      + "is undefined"));
+                };
+                s.onerror = () => reject(_makeError("no_gif_encoder",
+                    "GIF encoder: failed to load /static/vendor/"
+                  + "gif.min.js (file may be absent)"));
+                root.document.head.appendChild(s);
+            } catch (e) {
+                reject(_makeError("no_gif_encoder",
+                    "GIF encoder: " + (e && e.message), e));
+            }
+        });
+        // Wrap so a failure doesn't pin the rejection forever; next
+        // call can try again.
+        return root._molbuilderGifLoading.catch((err) => {
+            root._molbuilderGifLoading = null;
+            throw err;
+        });
     }
 
     function _markerGlyph(kind) {
@@ -3128,10 +3278,23 @@
             });
         }
 
+        function _defaultFps(a) {
+            if (a.kind === "trajectory" && a.fps > 0) return a.fps;
+            return 30;
+        }
+        function _defaultDuration(a) {
+            if (a.kind === "trajectory") {
+                // Full one-loop = frames.length / fps.
+                return a.frames.length / Math.max(1, _defaultFps(a));
+            }
+            // Vibration: one cosine cycle = 1 / speedHz.
+            return 1 / Math.max(0.01, a.speedHz);
+        }
+
         function captureFrames(opts) {
-            // Documented per § 3.2; landing in Phase 5b.  Stub
-            // returns a clean reject so consumers get a typed
-            // error rather than "method is undefined".
+            // Per § 3.2 + 2026-06-03 decision log: drive the
+            // animation deterministically and capture each frame as
+            // a PNG blob.  Resolves with a Blob[] in render order.
             opts = opts || {};
             if (state.disposed) {
                 return Promise.reject(_makeError("disposed",
@@ -3142,14 +3305,233 @@
                 return Promise.reject(_makeError("static_structure",
                     "captureFrames: opts.animation is null"));
             }
-            return Promise.reject(_makeError("unknown",
-                "captureFrames: not yet implemented (Phase 5b)"));
+            if (_atomCount(state.viewer) === 0) {
+                return Promise.reject(_makeError("no_structure",
+                    "captureFrames: no structure loaded"));
+            }
+            const abortNow = _aborted(opts.signal);
+            if (abortNow) return Promise.reject(abortNow);
+
+            const fps = typeof opts.fps === "number"
+                            && opts.fps > 0 ? opts.fps : _defaultFps(a);
+            const duration = typeof opts.duration === "number"
+                            && opts.duration > 0
+                            ? opts.duration : _defaultDuration(a);
+            const total = Math.max(1, Math.round(fps * duration));
+            const width  = typeof opts.width  === "number" ? opts.width  : 0;
+            const height = typeof opts.height === "number" ? opts.height : 0;
+
+            // Pause the live playback loop so it doesn't fight the
+            // deterministic frame drive.  Restored in the finally
+            // block at the end.
+            const wasPlaying = state._anim.playing;
+            if (wasPlaying) _stopAnimationLoop(state);
+
+            // Capture the original animation phase so we can
+            // restore it post-capture (so a host's "Capture →
+            // continue editing" flow doesn't lose its position).
+            const savedFrame = a.kind === "trajectory"
+                                 ? a.currentFrame : null;
+
+            const blobs = [];
+            let i = 0;
+
+            function step() {
+                if (state.disposed) {
+                    return Promise.reject(_makeError("disposed",
+                        "captureFrames: viewer disposed mid-capture"));
+                }
+                const ab = _aborted(opts.signal);
+                if (ab) return Promise.reject(ab);
+                if (i >= total) return Promise.resolve();
+                _driveAnimationFrame(state, i, total, duration);
+                state.viewer.render();
+                return _canvasToPngBlob(state, width, height)
+                    .then((blob) => {
+                        blobs.push(blob);
+                        if (typeof opts.onProgress === "function") {
+                            try {
+                                opts.onProgress((i + 1) / total,
+                                    "frame " + (i + 1) + "/" + total);
+                            } catch (_) {}
+                        }
+                        i++;
+                        return step();
+                    });
+            }
+
+            return step()
+                .then(() => blobs)
+                .finally(() => {
+                    // Restore the pre-capture animation phase so
+                    // the viewer doesn't jump on the user.
+                    if (savedFrame !== null && state.current.animation
+                        && state.current.animation.kind === "trajectory") {
+                        try {
+                            _showTrajectoryFrame(state, savedFrame);
+                        } catch (_) {}
+                    }
+                    if (wasPlaying && !state.disposed) {
+                        try { _playImpl(state); } catch (_) {}
+                    }
+                });
+        }
+
+        function _mediaRecorderApi() {
+            // testInjection.mediaRecorder === null forces "absent"
+            // (used by tests on browsers that ship MediaRecorder
+            // natively).  undefined falls through to the global.
+            if (state.testInjection
+                && "mediaRecorder" in state.testInjection) {
+                return state.testInjection.mediaRecorder;
+            }
+            return typeof root.MediaRecorder !== "undefined"
+                ? root.MediaRecorder : null;
+        }
+
+        function _exportAnimationWebm(opts, a, fps, duration, total) {
+            const MR = _mediaRecorderApi();
+            if (!MR) {
+                return Promise.reject(_makeError("no_media_recorder",
+                    "exportAnimation: MediaRecorder unavailable"));
+            }
+            const canvas = state.viewer.container.querySelector("canvas");
+            if (!canvas || typeof canvas.captureStream !== "function") {
+                return Promise.reject(_makeError("no_media_recorder",
+                    "exportAnimation: canvas.captureStream unavailable"));
+            }
+            let stream;
+            try { stream = canvas.captureStream(fps); }
+            catch (e) {
+                return Promise.reject(_makeError("io_error",
+                    "exportAnimation: canvas.captureStream threw: "
+                  + (e && e.message), e));
+            }
+            const chunks = [];
+            const mime = (typeof MR.isTypeSupported === "function"
+                          && MR.isTypeSupported("video/webm;codecs=vp9"))
+                ? "video/webm;codecs=vp9"
+                : "video/webm";
+            let recorder;
+            try { recorder = new MR(stream, { mimeType: mime }); }
+            catch (e) {
+                return Promise.reject(_makeError("io_error",
+                    "exportAnimation: MediaRecorder ctor failed: "
+                  + (e && e.message), e));
+            }
+            recorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) chunks.push(e.data);
+            };
+            const stopped = new Promise((resolve) => {
+                recorder.onstop = resolve;
+            });
+            recorder.start();
+
+            // Drive frames at fps cadence.  setTimeout cadence
+            // doesn't have to be exact — MediaRecorder samples the
+            // captureStream at its own rate; we just need to keep
+            // pushing new frames so the recorder has content.
+            const frameMs = 1000 / fps;
+            let i = 0;
+            return new Promise((resolve, reject) => {
+                function tick() {
+                    if (state.disposed) {
+                        try { recorder.stop(); } catch (_) {}
+                        return reject(_makeError("disposed",
+                            "exportAnimation: disposed mid-record"));
+                    }
+                    const ab = _aborted(opts.signal);
+                    if (ab) {
+                        try { recorder.stop(); } catch (_) {}
+                        return reject(ab);
+                    }
+                    if (i >= total) {
+                        try { recorder.stop(); } catch (_) {}
+                        return stopped.then(resolve);
+                    }
+                    _driveAnimationFrame(state, i, total, duration);
+                    state.viewer.render();
+                    if (typeof opts.onProgress === "function") {
+                        try {
+                            opts.onProgress((i + 1) / total,
+                                "encoding " + (i + 1) + "/" + total);
+                        } catch (_) {}
+                    }
+                    i++;
+                    setTimeout(tick, frameMs);
+                }
+                tick();
+            }).then(() => new Blob(chunks, { type: "video/webm" }));
+        }
+
+        function _exportAnimationGif(opts, a, fps, duration, total) {
+            return _loadGifEncoder().then((GIF) => {
+                const canvas = state.viewer.container.querySelector("canvas");
+                const w = canvas.width || canvas.clientWidth;
+                const h = canvas.height || canvas.clientHeight;
+                const gif = new GIF({
+                    workers: 2, quality: 10,
+                    width:   w, height: h,
+                    workerScript: "/static/vendor/gif.worker.min.js",
+                });
+                return new Promise((resolve, reject) => {
+                    let cancelled = false;
+                    const ab = _aborted(opts.signal);
+                    if (ab) return reject(ab);
+                    if (opts.signal) {
+                        opts.signal.addEventListener("abort", () => {
+                            cancelled = true;
+                            try { gif.abort(); } catch (_) {}
+                            reject(_makeError("aborted",
+                                "exportAnimation: aborted"));
+                        });
+                    }
+                    let i = 0;
+                    const delayMs = 1000 / fps;
+                    function step() {
+                        if (cancelled) return;
+                        if (state.disposed) {
+                            return reject(_makeError("disposed",
+                                "exportAnimation: disposed mid-encode"));
+                        }
+                        if (i >= total) {
+                            gif.on("finished", (blob) => resolve(blob));
+                            gif.render();
+                            return;
+                        }
+                        _driveAnimationFrame(state, i, total, duration);
+                        state.viewer.render();
+                        try {
+                            gif.addFrame(canvas, {
+                                copy: true, delay: delayMs,
+                            });
+                        } catch (e) {
+                            return reject(_makeError("io_error",
+                                "exportAnimation: gif.addFrame threw: "
+                              + (e && e.message), e));
+                        }
+                        if (typeof opts.onProgress === "function") {
+                            try {
+                                opts.onProgress(
+                                    0.5 * (i + 1) / total,
+                                    "frame " + (i + 1) + "/" + total);
+                            } catch (_) {}
+                        }
+                        i++;
+                        // Yield to the browser so the canvas
+                        // re-renders between addFrame calls.
+                        setTimeout(step, 0);
+                    }
+                    step();
+                });
+            });
         }
 
         function exportAnimation(opts) {
-            // Documented per § 3.2; landing in Phase 5b.  Stub
-            // returns a clean reject so consumers get a typed
-            // error rather than "method is undefined".
+            // Per § 3.2 + § 5.3: encode the animation to WebM (via
+            // canvas.captureStream + MediaRecorder) or GIF (via
+            // lazy-loaded gif.js).  Saves to project or triggers a
+            // download per opts.target.
             opts = opts || {};
             if (state.disposed) {
                 return Promise.reject(_makeError("disposed",
@@ -3160,12 +3542,69 @@
                 return Promise.reject(_makeError("static_structure",
                     "exportAnimation: opts.animation is null"));
             }
+            if (_atomCount(state.viewer) === 0) {
+                return Promise.reject(_makeError("no_structure",
+                    "exportAnimation: no structure loaded"));
+            }
             if (opts.format !== "webm" && opts.format !== "gif") {
                 return Promise.reject(_makeError("invalid_input",
                     "exportAnimation: format must be 'webm' or 'gif'"));
             }
-            return Promise.reject(_makeError("unknown",
-                "exportAnimation: not yet implemented (Phase 5b)"));
+            if (opts.target !== "project" && opts.target !== "download") {
+                return Promise.reject(_makeError("invalid_input",
+                    "exportAnimation: target must be 'project' or 'download'"));
+            }
+            const abortNow = _aborted(opts.signal);
+            if (abortNow) return Promise.reject(abortNow);
+
+            const fps = typeof opts.fps === "number"
+                            && opts.fps > 0 ? opts.fps : _defaultFps(a);
+            const duration = typeof opts.duration === "number"
+                            && opts.duration > 0
+                            ? opts.duration : _defaultDuration(a);
+            const total = Math.max(1, Math.round(fps * duration));
+
+            // Pause live playback so the encoder owns frame timing.
+            const wasPlaying = state._anim.playing;
+            if (wasPlaying) _stopAnimationLoop(state);
+            const savedFrame = a.kind === "trajectory"
+                                 ? a.currentFrame : null;
+
+            const ext = opts.format === "webm" ? "webm" : "gif";
+            const filename = opts.filename || _filename(null, ext);
+
+            const encoded = opts.format === "webm"
+                ? _exportAnimationWebm(opts, a, fps, duration, total)
+                : _exportAnimationGif(opts, a, fps, duration, total);
+
+            return encoded
+                .then((blob) => {
+                    if (opts.target === "project") {
+                        return _writeToProject(filename, blob);
+                    }
+                    return _triggerDownload(filename, blob);
+                })
+                .then((r) => {
+                    _fireOnExport({
+                        kind:     "animation",
+                        target:   opts.target,
+                        format:   opts.format,
+                        filename: r.filename,
+                        bytes:    r.bytes,
+                    });
+                    return r;
+                })
+                .finally(() => {
+                    if (savedFrame !== null && state.current.animation
+                        && state.current.animation.kind === "trajectory") {
+                        try {
+                            _showTrajectoryFrame(state, savedFrame);
+                        } catch (_) {}
+                    }
+                    if (wasPlaying && !state.disposed) {
+                        try { _playImpl(state); } catch (_) {}
+                    }
+                });
         }
 
         function screenshot(opts) {

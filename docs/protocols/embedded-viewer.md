@@ -1858,9 +1858,12 @@ type TestInjection = {
   clipboardApi?: {
     writeText: (s: string) => Promise<void>,
   },
-  mediaRecorderCtor?: typeof MediaRecorder,
-  gifEncoderFactory?: () => GifEncoder,
-  // GifEncoder: { addFrame(canvas, opts?), on(event, cb), render(), abort() }
+  mediaRecorder?: typeof MediaRecorder | null,
+  // If supplied as a constructor → used instead of window.MediaRecorder.
+  // If supplied as ``null`` (explicit) → forces the embed to treat
+  // MediaRecorder as absent, so exportAnimation({format: "webm"})
+  // rejects with no_media_recorder.  Used by tests on browsers
+  // that ship MediaRecorder natively.
 };
 ```
 

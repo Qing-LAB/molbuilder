@@ -1797,6 +1797,319 @@ class TestHandleSurface:
         """)
         assert "invalid_input" in errs
 
+    def test_captureFrames_returns_blobs_for_vibration(
+            self, page, flask_server):
+        """Per § 3.2 + Phase 5b: captureFrames drives the animation
+        deterministically + captures one PNG blob per frame.  For a
+        2-fps × 1-sec capture, expect 2 blobs."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    animation: {
+                        kind: "vibration",
+                        displacements: [[0,0,0.1],[0,0,0.1],[0,0,0.1]],
+                        amplitude: 0.2, speedHz: 1.0, paused: true,
+                    },
+                });
+                await new Promise(r => requestAnimationFrame(r));
+                const blobs = await h.captureFrames({
+                    fps: 2, duration: 1,
+                });
+                const types = blobs.map((b) => b.type);
+                const sizes = blobs.map((b) => b.size);
+                h.dispose();
+                host.remove();
+                return { count: blobs.length, types, sizes };
+            }
+        """)
+        assert out["count"] == 2, (
+            f"captureFrames(fps=2, duration=1) returned "
+            f"{out['count']} blobs, expected 2"
+        )
+        assert all(t == "image/png" for t in out["types"]), (
+            f"unexpected blob types: {out['types']!r}"
+        )
+        assert all(s > 0 for s in out["sizes"]), (
+            f"empty blob in output: {out['sizes']!r}"
+        )
+
+    def test_captureFrames_rejects_when_no_animation(
+            self, page, flask_server):
+        """Per § 5.3: captureFrames rejects with static_structure
+        when ``opts.animation`` is null."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        code = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                });
+                let code = null;
+                try { await h.captureFrames({fps: 5, duration: 0.2}); }
+                catch (e) { code = e.code; }
+                h.dispose();
+                host.remove();
+                return code;
+            }
+        """)
+        assert code == "static_structure"
+
+    def test_exportAnimation_rejects_no_media_recorder(
+            self, page, flask_server):
+        """Per § 5.3: exportAnimation({format: "webm"}) rejects with
+        no_media_recorder when MediaRecorder is unavailable.  The
+        testInjection slot lets the test force-mock the absence."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        code = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    animation: {
+                        kind: "vibration",
+                        displacements: [[0,0,0.1]],
+                        amplitude: 0.1, speedHz: 1.0, paused: true,
+                    },
+                    testInjection: { mediaRecorder: null },
+                });
+                let code = null;
+                try {
+                    await h.exportAnimation({
+                        format: "webm", target: "download",
+                        fps: 2, duration: 0.1,
+                    });
+                } catch (e) { code = e.code; }
+                h.dispose();
+                host.remove();
+                return code;
+            }
+        """)
+        assert code == "no_media_recorder"
+
+    def test_exportAnimation_rejects_no_gif_encoder(
+            self, page, flask_server):
+        """Per § 5.3: exportAnimation({format: "gif"}) rejects with
+        no_gif_encoder when the gif.js lazy-load fails (typically
+        because /static/vendor/gif.min.js isn't present yet)."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        code = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    animation: {
+                        kind: "vibration",
+                        displacements: [[0,0,0.1]],
+                        amplitude: 0.1, speedHz: 1.0, paused: true,
+                    },
+                });
+                let code = null;
+                try {
+                    await h.exportAnimation({
+                        format: "gif", target: "download",
+                        fps: 2, duration: 0.1,
+                    });
+                } catch (e) { code = e.code; }
+                h.dispose();
+                host.remove();
+                return code;
+            }
+        """)
+        assert code == "no_gif_encoder"
+
+    def test_exportAnimation_rejects_bad_target(
+            self, page, flask_server):
+        """Per § 5.3: target ∉ {project, download} → invalid_input.
+        Animation export has no clipboard target per § 3.2."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        code = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    animation: {
+                        kind: "vibration",
+                        displacements: [[0,0,0.1]],
+                        amplitude: 0.1, speedHz: 1.0, paused: true,
+                    },
+                });
+                let code = null;
+                try {
+                    await h.exportAnimation({
+                        format: "webm", target: "clipboard",
+                        fps: 2, duration: 0.1,
+                    });
+                } catch (e) { code = e.code; }
+                h.dispose();
+                host.remove();
+                return code;
+            }
+        """)
+        assert code == "invalid_input"
+
+    def test_exportAnimation_webm_with_injected_recorder(
+            self, page, flask_server):
+        """Per § 3.2 + Phase 5b: exportAnimation drives the
+        animation, feeds the canvas captureStream to MediaRecorder,
+        and resolves with {filename, bytes}.  Uses testInjection to
+        supply a deterministic recorder so the test isn't tied to
+        Chromium's MediaRecorder timing."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                // Minimal MediaRecorder mock that captures the
+                // ctor args + simulates dataavailable+stop.
+                class FakeRecorder {
+                    constructor(stream, opts) {
+                        this.stream = stream;
+                        this.opts   = opts;
+                        this.state  = "inactive";
+                    }
+                    start() { this.state = "recording"; }
+                    stop() {
+                        this.state = "inactive";
+                        const blob = new Blob(
+                            [new Uint8Array([1, 2, 3, 4])],
+                            { type: "video/webm" });
+                        if (this.ondataavailable) {
+                            this.ondataavailable({ data: blob });
+                        }
+                        if (this.onstop) this.onstop();
+                    }
+                    static isTypeSupported(_) { return true; }
+                }
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    animation: {
+                        kind: "vibration",
+                        displacements: [[0,0,0.1]],
+                        amplitude: 0.1, speedHz: 1.0, paused: true,
+                    },
+                    testInjection: { mediaRecorder: FakeRecorder },
+                });
+                const r = await h.exportAnimation({
+                    format: "webm", target: "download",
+                    fps: 2, duration: 0.5,
+                });
+                h.dispose();
+                host.remove();
+                return r;
+            }
+        """)
+        assert out["filename"].endswith(".webm")
+        assert out["bytes"] > 0
+
+    def test_exportAnimation_to_project(
+            self, page, flask_server):
+        """target: "project" calls window.molbuilder.projects.
+        writeFile.  Uses testInjection to mock the projects API so
+        the test doesn't depend on a real project being open."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                let wroteTo = null;
+                let wroteBytes = 0;
+                class FakeRecorder {
+                    constructor(s, o) { this.s = s; this.o = o; }
+                    start() {}
+                    stop() {
+                        const blob = new Blob(
+                            [new Uint8Array([9, 9, 9])],
+                            { type: "video/webm" });
+                        if (this.ondataavailable)
+                            this.ondataavailable({ data: blob });
+                        if (this.onstop) this.onstop();
+                    }
+                    static isTypeSupported() { return true; }
+                }
+                const projectsApi = {
+                    currentDir: () => "/tmp/fake-project",
+                    writeFile: (path, data) => {
+                        wroteTo = path;
+                        wroteBytes = data && data.size;
+                        return Promise.resolve({ ok: true });
+                    },
+                };
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    animation: {
+                        kind: "vibration",
+                        displacements: [[0,0,0.1]],
+                        amplitude: 0.1, speedHz: 1.0, paused: true,
+                    },
+                    testInjection: {
+                        mediaRecorder: FakeRecorder,
+                        projectsApi:   projectsApi,
+                    },
+                });
+                const r = await h.exportAnimation({
+                    format: "webm", target: "project",
+                    fps: 2, duration: 0.5,
+                });
+                h.dispose();
+                host.remove();
+                return { r, wroteTo, wroteBytes };
+            }
+        """)
+        assert out["wroteTo"].endswith(".webm")
+        assert out["wroteTo"].startswith("/tmp/fake-project/")
+        assert out["wroteBytes"] > 0
+        assert out["r"]["filename"].endswith(".webm")
+
     def test_setAnimation_halt_preserves_existing_animation(
             self, page, flask_server):
         """Per § 5.3 "halt" semantics: a setAnimation call with an
