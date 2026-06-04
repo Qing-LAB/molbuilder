@@ -230,15 +230,11 @@
             return { atoms: "all", format: "index", fontSize: 12,
                      fontColor: null, background: null };
         }
-        // Normalise the legacy ``atoms: "indices" | "names"`` sentinel
-        // to the modern split shape so downstream code only has to
-        // handle one shape.  "indices" → all atoms, format index;
-        // "names" → all atoms, format name.
         let atoms  = l.atoms;
         let format = l.format;
-        if (atoms === "indices") { atoms = "all"; if (!format) format = "index"; }
-        if (atoms === "names")   { atoms = "all"; if (!format) format = "name"; }
-        // Validate atoms shape.
+        // Validate atoms shape: only "all" or number[] per § 3.6
+        // (the v1 legacy sentinels "indices" / "names" were dropped
+        // in #240 — no production consumer used them).
         if (atoms !== "all" && !Array.isArray(atoms)) atoms = "all";
         if (Array.isArray(atoms)) {
             atoms = atoms.filter((v) => Number.isInteger(v) && v >= 0);
@@ -987,9 +983,8 @@
                 axesBtn.click(); e.preventDefault();
             } else if (key === "b" && bgDet) {
                 bgDet.open = true; e.preventDefault();
-            } else if (key === "e") {
-                const expDet = bar.querySelector(".mol-viewer-knob-export");
-                if (expDet) { expDet.open = true; e.preventDefault(); }
+            } else if (key === "e" && expDet) {
+                expDet.open = true; e.preventDefault();
             }
         });
         // Card must accept focus for keyboard handling to work.
@@ -2073,8 +2068,8 @@
                 vibrationBaseline:  null,
             },
 
-            // Frame-strip DOM (built lazily when animation:trajectory
-            // is set + card.frameStrip === true).
+            // Frame-strip DOM (built lazily whenever
+            // animation.kind === "trajectory"; auto-mount per § 6.3).
             frameStripEl:    null,
             frameStripParts: null,
 
@@ -2141,11 +2136,10 @@
         // misconfiguration so the host's onError sees it.
         if (state.current.knobs
             && state.current.knobs._invalidLabelsFormats) {
-            _dispatchError(state, _makeError(
-                "invalid_input",
+            _dispatchInvalidInput(state,
                 "KnobBarOpts.labelsFormats: empty array hides the Labels "
               + "knob entirely; pass labels: false explicitly OR a "
-              + "non-empty subset of ['index', 'name', 'element']."));
+              + "non-empty subset of ['index', 'name', 'element'].");
         }
 
         // 4c. Wire the standard knob bar's click handlers + keyboard
@@ -2364,7 +2358,6 @@
             if (state.disposed) return;
             if (l && typeof l === "object" && l !== true) {
                 if (l.atoms !== undefined && l.atoms !== "all"
-                    && l.atoms !== "indices" && l.atoms !== "names"
                     && !Array.isArray(l.atoms)) {
                     _dispatchInvalidInput(state,
                         "setLabels: 'atoms' must be 'all' or a "
@@ -2374,9 +2367,9 @@
                         (v) => !Number.isInteger(v) || v < 0);
                     if (bad.length) {
                         _dispatchInvalidInput(state,
-                            "setLabels: " + bad.length + " atom index/"
-                          + "indices out of range (must be non-negative "
-                          + "integers); dropping them");
+                            "setLabels: " + bad.length + " atom "
+                          + "indices dropped (must be non-negative "
+                          + "integers)");
                     }
                 }
                 if (l.format !== undefined
@@ -2460,9 +2453,8 @@
             // and the idempotence diff works the same way.
             if (state.disposed) return;
             if (typeof color !== "string" || color.length === 0) {
-                _dispatchError(state, _makeError(
-                    "invalid_input",
-                    "setBackground: color must be a non-empty CSS color string"));
+                _dispatchInvalidInput(state,
+                    "setBackground: color must be a non-empty CSS color string");
                 return;
             }
             setStyle({
@@ -2513,7 +2505,6 @@
             const old = state.cardEl.querySelector(":scope > .mol-viewer-knobs");
             if (old) old.remove();
             state.scaffold.knobsEl = null;
-            state.scaffold.knobs   = next;
             if (next) {
                 const bar = _buildKnobBarDOM(next);
                 state.scaffold.knobsEl = bar;
@@ -2534,11 +2525,10 @@
                 const inN  = o.atoms.length;
                 const outN = next ? next.atoms.length : 0;
                 if (outN < inN) {
-                    _dispatchError(state, _makeError(
-                        "invalid_input",
+                    _dispatchInvalidInput(state,
                         "setOverlays: " + (inN - outN) + " of " + inN
                       + " atom entries dropped (bad/missing/multiple "
-                      + "selectors, or no style/halo/marker)."));
+                      + "selectors, or no style/halo/marker).");
                 }
             }
             if (_equalNormalised(state.current.overlays, next)) return;
@@ -2559,10 +2549,9 @@
             if (state.disposed) return;
             const entry = _selectorToOverlayEntry(selector);
             if (!entry) {
-                _dispatchError(state, _makeError(
-                    "invalid_input",
+                _dispatchInvalidInput(state,
                     "setAtomStyle: selector must be number[] OR "
-                  + "{elements: string[]} OR {residues: number[]}"));
+                  + "{elements: string[]} OR {residues: number[]}");
                 return;
             }
             // style: null removes the entry; otherwise apply style.
@@ -2575,10 +2564,9 @@
             if (style !== null && style !== undefined) {
                 const normStyle = _normaliseOverlayStyle(style);
                 if (!normStyle) {
-                    _dispatchError(state, _makeError(
-                        "invalid_input",
+                    _dispatchInvalidInput(state,
                         "setAtomStyle: style must include at least one of "
-                      + "{rep, radiusScale, color, opacity}"));
+                      + "{rep, radiusScale, color, opacity}");
                     return;
                 }
                 filtered.push({
@@ -2605,12 +2593,11 @@
             const expectedN = (a.frames[0] && a.frames[0].length) || 0;
             for (const f of frames) {
                 if (!Array.isArray(f) || f.length !== expectedN) {
-                    _dispatchError(state, _makeError(
-                        "invalid_input",
+                    _dispatchInvalidInput(state,
                         "appendFrames: atom count mismatch — existing "
                       + "trajectory has " + expectedN + " atoms per frame, "
-                      + "appended frame has " + (Array.isArray(f) ? f.length : "?")
-                    ));
+                      + "appended frame has "
+                      + (Array.isArray(f) ? f.length : "?"));
                     return;
                 }
             }
@@ -2642,9 +2629,8 @@
         function setCamera(s) {
             if (state.disposed) return;
             if (!s || typeof s !== "object") {
-                _dispatchError(state, _makeError(
-                    "invalid_input",
-                    "setCamera: argument must be a CameraState object"));
+                _dispatchInvalidInput(state,
+                    "setCamera: argument must be a CameraState object");
                 return;
             }
             // Version mismatch is silent (forward-compat) per § 3.13.

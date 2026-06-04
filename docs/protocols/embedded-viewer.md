@@ -661,7 +661,10 @@ The embed clamps to the mode's max (single: 1, pair: 2; multi:
 unbounded) and re-renders halos + labels per the active config.
 External pushes DO NOT fire `onPick` — that callback is reserved
 for click-driven changes so hosts that mirror picks into a store
-don't see a feedback loop.
+don't see a feedback loop. Calling `setPickedIndices` when no
+pick mode is configured (`pick: undefined` or `pick.mode: "none"`)
+is a silent no-op AFTER the type check — the argument shape is
+still validated and bad input still fires `invalid_input`.
 
 Delegates to `lib/mol-pick.js` for halo geometry; the embedded
 viewer owns the click-handler registration.
@@ -1240,7 +1243,7 @@ below — used when continuing would corrupt state, e.g. non-string
 | `setStyle` | — | — | `invalid_input` (`rep` outside `{stick, ball-and-stick, sphere, line, cross, cartoon}`; non-finite `radiusScale`) |
 | `setAxes` | — | — | `invalid_input` (`mode` outside `{auto, cartesian, cell}`) |
 | `setCell` | — | — | — (`color`/`radius` coerced to defaults) |
-| `setLabels` | — | — | `invalid_input` (`atoms` not `"all"`/`"indices"`/`"names"`/`number[]`; non-int / negative entries in `atoms` array; `format` outside `{index, name, element}`) |
+| `setLabels` | — | — | `invalid_input` (`atoms` not `"all"`/`number[]`; non-int / negative entries in `atoms` array; `format` outside `{index, name, element}`) |
 | `setArrows` | — | — | `invalid_input` (argument not an array → halt; per-entry missing `start`/`end`) |
 | `setPick` | — | — | `invalid_input` (`mode` outside `{none, single, pair, multi}`; `label` outside `false`/`{index, name, element}`) |
 | `setBackground` | — | — | `invalid_input` (`color` not a non-empty string → halt) |

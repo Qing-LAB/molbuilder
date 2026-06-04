@@ -94,7 +94,7 @@
     //       semantics not exposed via the embed.                       //
     //  --------------------------------------------------------------- //
     const _viewerHost = $("viewer");
-    const _viewerHandle = window.molbuilder.viewer.embed(_viewerHost, {
+    const _handle = window.molbuilder.viewer.embed(_viewerHost, {
         // No xyz at mount -- /modify loads structures asynchronously
         // via the sidebar's loadStructureText -> applyStructure path.
         // The viewer renders an empty canvas until the first
@@ -135,7 +135,7 @@
     // checks tests/test_modify_e2e.py:443+ cannot do via the
     // handle.  Production registry slot is window.molbuilder.
     // modify.handle (handle, NOT raw viewer) per #239.
-    const viewer = _viewerHandle._viewer3dmol();
+    const viewer = _handle._viewer3dmol();
 
     // clearViewer() removed by #235 -- it was only callable from
     // applyStructure's `else` branch when state.xyz is falsy, and
@@ -187,9 +187,9 @@
             // Pull back so the slabs remain visible in the periphery;
             // without the pullback the slabs would be clipped or
             // behind the camera.
-            _viewerHandle.refit({ indices: mol, pullback: 0.55 });
+            _handle.refit({ indices: mol, pullback: 0.55 });
         } else {
-            _viewerHandle.refit();
+            _handle.refit();
         }
     }
 
@@ -202,7 +202,7 @@
     // the structure regardless of any pan the user did before.
     function snapPivotToCenter() {
         if (!state.xyz || state.n_atoms === 0) return;
-        _viewerHandle.setPivot({ indices: _moleculeIndices() || [] });
+        _handle.setPivot({ indices: _moleculeIndices() || [] });
     }
 
     // ----- xyz axis triad ----------------------------------------- //
@@ -227,7 +227,7 @@
     // drawAxes() removed by #203 — the Axes toggle now lives in
     // the embed's standard knob bar, which calls setAxes directly.
     // Any code still calling drawAxes() should be replaced with a
-    // direct _viewerHandle.setAxes(boolean) call.
+    // direct _handle.setAxes(boolean) call.
 
     // --------------------------------------------------------------- //
     //  Atom list + click-to-select are owned by the selection panel    //
@@ -425,7 +425,7 @@
         // toggle-driven state below; setStructure leaves those
         // settings intact so they re-render against the new atoms.
         if (state.xyz) {
-            _viewerHandle.setStructure({ xyz: state.xyz });
+            _handle.setStructure({ xyz: state.xyz });
             // Style / labels / axes are owned by the standard knob
             // bar after #203; setStructure leaves the current settings
             // intact so they re-render against the new atoms.
@@ -434,7 +434,7 @@
             // refresh.  The Focus-molecule toolbar button switches to
             // a molecule-anchored pivot for smooth zoom on the small
             // molecule when slabs are present.
-            _viewerHandle.refit();
+            _handle.refit();
         }
         // No else-branch needed: applyStructure is only called with
         // an xyz from a successful /api/build/load response; the
@@ -1126,7 +1126,7 @@
         // Round-trips cleanly through sessionStorage; restoreModifyState
         // hands it back via setCamera which no-ops on a future
         // _version bump (forward-compat).
-        const camera = _viewerHandle.getCamera();
+        const camera = _handle.getCamera();
         const _s = _selStore();
         const sourceFile = _s ? (_s.getState().sourceFile || null) : null;
         const payload = {
@@ -1231,7 +1231,7 @@
         // saved a raw 3Dmol view array (#229 pre-migration) are
         // ignored — setCamera rejects non-object inputs.
         if (saved.camera) {
-            _viewerHandle.setCamera(saved.camera);
+            _handle.setCamera(saved.camera);
         }
         setStatus(
             `Restored ${state.n_atoms}-atom structure (${saved.title || "unnamed"}).`,
@@ -1270,7 +1270,7 @@
     // protection: a torn-down 3Dmol viewer crashes on access;
     // handle methods short-circuit on state.disposed).
     window.molbuilder.modify = window.molbuilder.modify || {};
-    window.molbuilder.modify.handle = _viewerHandle;
+    window.molbuilder.modify.handle = _handle;
     // Load a structure text blob (XYZ or PDB) via /api/build/load,
     // which sniffs the format from the filename + content.  The
     // function is named ``loadStructureText`` (renamed 2026-05-22

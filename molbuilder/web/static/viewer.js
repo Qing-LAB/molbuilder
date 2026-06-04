@@ -31,7 +31,7 @@
     // the embed's internal ResizeObserver tracks #viewer's
     // resizable container box (was a bespoke RO + window-resize
     // listener).  The handle is the only viewer touchpoint.
-    const _viewerHandle = window.molbuilder.viewer.embed(
+    const _handle = window.molbuilder.viewer.embed(
         $("viewer"),
         {
             // No xyz at mount -- Build loads structures asynchronously
@@ -791,8 +791,8 @@
             // until the user builds something.
             return;
         }
-        _viewerHandle.setStructure({ xyz: state.xyz });
-        _viewerHandle.refit();
+        _handle.setStructure({ xyz: state.xyz });
+        _handle.refit();
     }
 
     // ----- Downloads --------------------------------------------------
@@ -1594,7 +1594,7 @@
         // {_viewer, _version, data} we round-trip through
         // setCamera at restore time.  Drops the raw viewer.getView
         // touchpoint that #202 migration eliminated.
-        const camera = _viewerHandle.getCamera();
+        const camera = _handle.getCamera();
         const payload = {
             v: STRUCTURE_SCHEMA_VERSION,
             saved_at: new Date().toISOString(),
@@ -1632,7 +1632,7 @@
         // inside renderStructure().  Per § 3.13 setCamera no-ops
         // on _viewer / _version mismatch (forward-compat).
         if (saved.camera) {
-            _viewerHandle.setCamera(saved.camera);
+            _handle.setCamera(saved.camera);
         }
         return true;
     }
