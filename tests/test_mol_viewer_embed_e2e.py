@@ -716,7 +716,7 @@ class TestHandleSurface:
         # Declarative-state getters (D3 symmetry — round-trip with setX)
         "getStyle", "getAxes", "getCell", "getLabels",
         "getOverlays", "getPick", "getKnobs", "getArrows",
-        "getAnimation",
+        "getAnimation", "getBackground", "getLattice",
         # Ordered batch runner (D4)
         "applyState",
         # Output / export
@@ -988,6 +988,10 @@ class TestHandleSurface:
         out = page.evaluate("""
             () => {
                 const r = {};
+                // Phase 5d: mode "cell" requires a lattice (see
+                // test_setAxes_cell_without_lattice below for the
+                // halt path).  Supply a 10 Å cubic cell here so
+                // the accept-path covers all three modes.
                 for (const mode of ["auto", "cartesian", "cell"]) {
                     const host = document.createElement("div");
                     host.style.cssText =
@@ -996,6 +1000,7 @@ class TestHandleSurface:
                     const errs = [];
                     const h = window.molbuilder.viewer.embed(host, {
                         xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                        lattice: [[10,0,0],[0,10,0],[0,0,10]],
                         card: { showInfoLine: false, height: "100%" },
                         onError: (e) => { errs.push(e.code); },
                     });
@@ -1012,6 +1017,135 @@ class TestHandleSurface:
                 f"setAxes({{mode: {mode!r}}}) fired invalid_input "
                 f"({out[mode]!r}); see B1 review finding"
             )
+
+    def test_setAxes_cell_without_lattice_halts(
+            self, page, flask_server):
+        """Per § 5.3 Phase 5d: setAxes({mode: "cell"}) without a
+        lattice on the current structure dispatches invalid_input
+        + halts (so the user doesn't silently get Cartesian when
+        they asked for cell)."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const errs = [];
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    onError: (e) => { errs.push(e.code); },
+                });
+                // No lattice configured — cell mode must halt.
+                h.setAxes({ mode: "cell" });
+                const afterAxes = h.getAxes();
+                h.dispose();
+                host.remove();
+                return { errs, afterAxes };
+            }
+        """)
+        assert "invalid_input" in out["errs"]
+        # Halt: axes state unchanged (still default null, not "cell").
+        assert (out["afterAxes"] is None
+                or out["afterAxes"].get("mode") != "cell"), (
+            f"setAxes({{mode: 'cell'}}) did not halt — axes state "
+            f"changed: {out['afterAxes']!r}"
+        )
+
+    def test_getBackground_and_getLattice_round_trip(
+            self, page, flask_server):
+        """Per § 3.2 Phase 5d: getBackground + getLattice complete
+        the D3/D4 round-trip story for the cell-bearing structures
+        and background field that applyState already accepted."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    lattice: [[5,0,0],[0,5,0],[0,0,5]],
+                    card: { showInfoLine: false, height: "100%" },
+                    style: { background: "#abcdef" },
+                });
+                const bg = h.getBackground();
+                const lat = h.getLattice();
+                // Defensive-clone: mutating the returned lattice
+                // must NOT leak back into the embed.
+                if (lat) lat[0][0] = 999;
+                const latAgain = h.getLattice();
+                h.dispose();
+                host.remove();
+                return { bg, lat0: lat && lat[0][0],
+                         latUnchanged: latAgain && latAgain[0][0] };
+            }
+        """)
+        assert out["bg"] == "#abcdef", out
+        assert out["lat0"] == 999, "mutation didn't take on the clone"
+        assert out["latUnchanged"] == 5, (
+            f"getLattice didn't return a defensive clone — mutation "
+            f"leaked: {out['latUnchanged']!r}"
+        )
+
+    def test_applyState_lattice_round_trip(
+            self, page, flask_server):
+        """Per § 4.2.2 Phase 5d: the round-trip example must work for
+        cell-bearing structures — handle.applyState({structure: {xyz:
+        getStructureText(), lattice: getLattice()}}) preserves the
+        cell, which means setAxes({mode: "cell"}) keeps working
+        post-restore."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    lattice: [[7,0,0],[0,7,0],[0,0,7]],
+                    card: { showInfoLine: false, height: "100%" },
+                });
+                // Snapshot + re-apply structure with lattice.
+                const snap = {
+                    structure: {
+                        xyz: h.getStructureText(),
+                        lattice: h.getLattice(),
+                    },
+                };
+                h.applyState(snap);
+                const lat = h.getLattice();
+                // After re-apply, cell-mode axes must work without
+                // dispatching invalid_input.
+                const errs = [];
+                window.molbuilder.viewer.embed; // ref
+                h.applyState({}); // no-op
+                // Hook into onError via a fresh setter call:
+                h.setAxes({ mode: "cell" });
+                const axes = h.getAxes();
+                h.dispose();
+                host.remove();
+                return { lat, axes };
+            }
+        """)
+        assert out["lat"] is not None, "lattice lost after applyState round-trip"
+        assert out["lat"][0][0] == 7, out
+        assert out["axes"] and out["axes"]["mode"] == "cell", (
+            f"setAxes({{mode: 'cell'}}) failed after applyState "
+            f"round-trip: {out['axes']!r}"
+        )
 
     def test_setStructure_preserves_picks_when_elements_match(
             self, page, flask_server):

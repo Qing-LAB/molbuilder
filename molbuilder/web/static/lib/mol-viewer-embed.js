@@ -604,7 +604,10 @@
         canvas.style.height = card.height || DEFAULT_HEIGHT;
         section.appendChild(canvas);
 
-        return { section, canvas, infoLineEl, knobsEl, knobs };
+        // Phase 5d C2: don't return ``knobs`` — it's already in
+        // state.current.knobs (the source of truth); returning it
+        // here forced two parallel copies of the same data.
+        return { section, canvas, infoLineEl, knobsEl };
     }
 
     /* ------------------------------------------------------------ */
@@ -1221,6 +1224,7 @@
             && interaction.dragThresholdPx > 0
             ? interaction.dragThresholdPx : 4;
         let pressX = null, pressY = null, pressMods = null;
+        let lastX  = null, lastY  = null;
         let dragging = false;
         function _modifiers(e) {
             return {
@@ -1235,7 +1239,13 @@
             dragging = false;
         }
         function _onMouseMove(e) {
-            if (pressX === null || dragging) return;
+            if (pressX === null) return;
+            // Track the latest cursor position so mouseleave can
+            // report the where-the-pointer-just-was coords (Phase 5d
+            // C8) instead of falling back to the press point.
+            lastX = e.clientX;
+            lastY = e.clientY;
+            if (dragging) return;
             const dx = e.clientX - pressX;
             const dy = e.clientY - pressY;
             if (dx * dx + dy * dy < threshold * threshold) return;
@@ -1264,14 +1274,22 @@
                     catch (_) {}
                 }
             }
-            pressX = pressY = null;
+            pressX = pressY = lastX = lastY = null;
             pressMods = null;
             dragging = false;
         }
         function _onMouseLeave() {
+            // Phase 5d C8: report the last-known cursor coords
+            // (where the pointer was when it left the canvas) on
+            // mouseleave instead of falling back to the press
+            // point.  Closer to the documented "end-point coords"
+            // contract.  Falls back to press if no mousemove has
+            // fired since mousedown (shouldn't happen given the
+            // drag-detection threshold but kept defensive).
             if (dragging && onEnd) {
                 try { onEnd({
-                    x: pressX, y: pressY,
+                    x: lastX !== null ? lastX : pressX,
+                    y: lastY !== null ? lastY : pressY,
                     modifiers: pressMods,
                 }); }
                 catch (err) {
@@ -1280,7 +1298,7 @@
                     catch (_) {}
                 }
             }
-            pressX = pressY = null;
+            pressX = pressY = lastX = lastY = null;
             pressMods = null;
             dragging = false;
         }
@@ -1784,7 +1802,15 @@
         if (root._molbuilderGifLoading) {
             return root._molbuilderGifLoading;
         }
-        root._molbuilderGifLoading = new Promise((resolve, reject) => {
+        // Phase 5d fix: store the WRAPPED promise (inner + catch
+        // cleanup) in the cache, not the inner promise.  Otherwise a
+        // second concurrent caller arriving at line "return cached"
+        // gets the inner promise — its rejection bypasses the
+        // catch-cleanup the first caller wired, and the cache is left
+        // referencing a rejected promise.  Now both callers receive
+        // the same wrapped promise and BOTH catch handlers run (the
+        // cleanup is idempotent: setting null twice is fine).
+        const inner = new Promise((resolve, reject) => {
             try {
                 const s = root.document.createElement("script");
                 s.src = "/static/vendor/gif.min.js";
@@ -1804,12 +1830,12 @@
                     "GIF encoder: " + (e && e.message), e));
             }
         });
-        // Wrap so a failure doesn't pin the rejection forever; next
-        // call can try again.
-        return root._molbuilderGifLoading.catch((err) => {
+        const wrapped = inner.catch((err) => {
             root._molbuilderGifLoading = null;
             throw err;
         });
+        root._molbuilderGifLoading = wrapped;
+        return wrapped;
     }
 
     function _markerGlyph(kind) {
@@ -2403,13 +2429,12 @@
         //     extend the export / background actions; Phase 2 covers
         //     the static-rendering knobs (style / labels / axes / reset).
         //     state.scaffold is retained (not nulled here) because
-        //     setKnobs needs to find scaffold.knobsEl + scaffold.knobs
-        //     to rebuild the bar in place (review fix O6 — could
-        //     null after wiring + look up via the DOM, but the
-        //     scaffold ref is cheap to retain).
+        //     setKnobs needs scaffold.knobsEl to rebuild the bar in
+        //     place; the knob config itself is read from
+        //     state.current.knobs (the single source of truth).
         if (state.scaffold && state.scaffold.knobsEl) {
             _wireKnobBar(state, state.scaffold.knobsEl,
-                                state.scaffold.knobs);
+                                state.current.knobs);
         }
 
         // 4d. If the caller supplied opts.animation, set it up now
@@ -2590,6 +2615,21 @@
                     "setAxes: 'mode' must be one of " +
                     VALID_AXES_MODES.join(", ") +
                     "; got " + JSON.stringify(a.mode));
+            }
+            // Phase 5d: explicit ``mode: "cell"`` requires a lattice
+            // (§ 3.4 + § 5.3).  Without one, the renderer would
+            // silently fall back to Cartesian — the user asked for
+            // a cell-aligned triad and got x/y/z with no signal.
+            // Halt so the caller knows; use ``mode: "auto"`` for the
+            // graceful-fallback behavior.
+            if (a && typeof a === "object" && a !== true
+                && a.mode === "cell"
+                && !state.current.lattice) {
+                _dispatchInvalidInput(state,
+                    "setAxes: mode 'cell' requires a lattice; call "
+                  + "setStructure({xyz, lattice}) first OR use "
+                  + "mode 'auto' for graceful fallback");
+                return;
             }
             const next = _normaliseAxes(a);
             if (_equalNormalised(state.current.axes, next)) return;
@@ -3041,6 +3081,23 @@
             if (typeof a.onFrame === "function") out.onFrame = a.onFrame;
             return out;
         }
+        function getBackground() {
+            // Phase 5d: getBackground completes the applyState round-
+            // trip for the background field (which applyState already
+            // accepts, but had no documented producer).
+            if (state.disposed) return null;
+            return (state.current.style
+                    && state.current.style.background) || null;
+        }
+        function getLattice() {
+            // Phase 5d: getLattice closes the gap in the applyState
+            // round-trip for cell-bearing structures.  Without this,
+            // ``applyState({structure: {xyz: getStructureText()}})``
+            // silently loses the cell + makes setAxes mode "cell"
+            // unreachable post-round-trip.
+            if (state.disposed) return null;
+            return _clone(state.current.lattice);
+        }
 
         function getPickedIndices() {
             if (state.disposed) return [];
@@ -3363,12 +3420,27 @@
             return step()
                 .then(() => blobs)
                 .finally(() => {
-                    // Restore the pre-capture animation phase so
-                    // the viewer doesn't jump on the user.
+                    // Restore the pre-capture animation phase so the
+                    // viewer doesn't jump on the user.  Phase 5d C3:
+                    // also restore the vibration baseline coords —
+                    // captureFrames left them at the last-driven
+                    // cosine phase, so a one-shot capture from a
+                    // paused vibration would freeze the model mid-
+                    // displacement.
                     if (savedFrame !== null && state.current.animation
                         && state.current.animation.kind === "trajectory") {
                         try {
                             _showTrajectoryFrame(state, savedFrame);
+                        } catch (_) {}
+                    } else if (state.current.animation
+                               && state.current.animation.kind === "vibration"
+                               && state._anim.vibrationBaseline
+                               && !state.disposed) {
+                        try {
+                            _applyCoords(state.viewer,
+                                state._anim.vibrationBaseline);
+                            _postFramePositionRedraw(state);
+                            state.viewer.render();
                         } catch (_) {}
                     }
                     if (wasPlaying && !state.disposed) {
@@ -3449,16 +3521,22 @@
             const frameMs = 1000 / fps;
             let i = 0;
             return new Promise((resolve, reject) => {
+                // Phase 5d C4: on abort / disposed paths we still
+                // await ``stopped`` before rejecting so the
+                // recorder finishes flushing.  The chunks are
+                // discarded by the rejected branch but the
+                // recorder is no longer in a half-stopped state.
                 function tick() {
                     if (state.disposed) {
                         try { recorder.stop(); } catch (_) {}
-                        return reject(_makeError("disposed",
-                            "exportAnimation: disposed mid-record"));
+                        return stopped.then(() => reject(_makeError(
+                            "disposed",
+                            "exportAnimation: disposed mid-record")));
                     }
                     const ab = _aborted(opts.signal);
                     if (ab) {
                         try { recorder.stop(); } catch (_) {}
-                        return reject(ab);
+                        return stopped.then(() => reject(ab));
                     }
                     if (i >= total) {
                         try { recorder.stop(); } catch (_) {}
@@ -3496,26 +3574,46 @@
                 });
                 return new Promise((resolve, reject) => {
                     let cancelled = false;
+                    let abortListener = null;
                     const ab = _aborted(opts.signal);
                     if (ab) return reject(ab);
+                    // Phase 5d C5: track the abort listener so it
+                    // can be removed on completion / cancellation.
+                    // Without this, a long-lived AbortController
+                    // reused across many exports accumulates
+                    // listeners and leaks closures.
+                    function _detachAbort() {
+                        if (opts.signal && abortListener) {
+                            opts.signal.removeEventListener(
+                                "abort", abortListener);
+                            abortListener = null;
+                        }
+                    }
                     if (opts.signal) {
-                        opts.signal.addEventListener("abort", () => {
+                        abortListener = () => {
                             cancelled = true;
                             try { gif.abort(); } catch (_) {}
+                            _detachAbort();
                             reject(_makeError("aborted",
                                 "exportAnimation: aborted"));
-                        });
+                        };
+                        opts.signal.addEventListener(
+                            "abort", abortListener);
                     }
                     let i = 0;
                     const delayMs = 1000 / fps;
                     function step() {
                         if (cancelled) return;
                         if (state.disposed) {
+                            _detachAbort();
                             return reject(_makeError("disposed",
                                 "exportAnimation: disposed mid-encode"));
                         }
                         if (i >= total) {
-                            gif.on("finished", (blob) => resolve(blob));
+                            gif.on("finished", (blob) => {
+                                _detachAbort();
+                                resolve(blob);
+                            });
                             gif.render();
                             return;
                         }
@@ -3526,6 +3624,7 @@
                                 copy: true, delay: delayMs,
                             });
                         } catch (e) {
+                            _detachAbort();
                             return reject(_makeError("io_error",
                                 "exportAnimation: gif.addFrame threw: "
                               + (e && e.message), e));
@@ -3615,10 +3714,23 @@
                     return r;
                 })
                 .finally(() => {
+                    // Phase 5d C3: restore vibration baseline as
+                    // well as trajectory savedFrame (same rule as
+                    // captureFrames above).
                     if (savedFrame !== null && state.current.animation
                         && state.current.animation.kind === "trajectory") {
                         try {
                             _showTrajectoryFrame(state, savedFrame);
+                        } catch (_) {}
+                    } else if (state.current.animation
+                               && state.current.animation.kind === "vibration"
+                               && state._anim.vibrationBaseline
+                               && !state.disposed) {
+                        try {
+                            _applyCoords(state.viewer,
+                                state._anim.vibrationBaseline);
+                            _postFramePositionRedraw(state);
+                            state.viewer.render();
                         } catch (_) {}
                     }
                     if (wasPlaying && !state.disposed) {
@@ -3964,6 +4076,8 @@
             getKnobs:           getKnobs,
             getArrows:          getArrows,
             getAnimation:       getAnimation,
+            getBackground:      getBackground,
+            getLattice:         getLattice,
 
             // Ordered batch runner (D4 — persistence round-trip).
             applyState:         applyState,

@@ -425,6 +425,8 @@ type ViewerHandle = {
   getKnobs():     KnobBarOpts,
   getArrows():    ArrowSpec[],
   getAnimation(): AnimationOpts | null,
+  getBackground(): string | null,
+  getLattice():   number[3][3] | null,
 
   // ---- Ordered batch runner --------------------------------- //
   // Apply many sections at once in a canonical order so atom-
@@ -576,10 +578,16 @@ type AxesOpts = {
 ```
 
 Mode selection:
-- If `opts.lattice` (or `opts.cell`) is set → cell mode (a/b/c).
-- Else → Cartesian mode (x/y/z).
-- To force Cartesian even when a lattice is present, set
-  `mode: "cartesian"` explicitly.
+- `mode: "auto"` (default) — cell mode (a/b/c) when a lattice is
+  present; Cartesian (x/y/z) when none is. Hosts that don't care
+  about the cell distinction should use this.
+- `mode: "cartesian"` — force Cartesian even when a lattice is
+  present. Always works.
+- `mode: "cell"` — force cell-aligned axes. **Requires a lattice
+  on the current structure**; calling `setAxes({mode: "cell"})`
+  with no lattice dispatches `invalid_input` and halts (so the
+  caller isn't silently downgraded to Cartesian). Hosts that
+  want graceful fallback should use `mode: "auto"` instead.
 
 Delegates to `window.molbuilder.axes.draw()` from `lib/mol-axes.js`
 (soft dependency; see § 2.5.2).
@@ -1270,8 +1278,12 @@ subtly wrong here.
 ```js
 // Save: snapshot every section the host wants to round-trip.
 const snap = {
-  structure:  { xyz: handle.getStructureText() },
+  structure:  {
+    xyz:     handle.getStructureText(),
+    lattice: handle.getLattice(),    // cell-bearing structures
+  },
   style:      handle.getStyle(),
+  background: handle.getBackground(),
   axes:       handle.getAxes(),
   cell:       handle.getCell(),
   labels:     handle.getLabels(),
@@ -1286,6 +1298,11 @@ const snap = {
 // Restore: one call, canonical order.
 handle.applyState(snap);
 ```
+
+Round-trip invariant: every documented getter is paired with a
+setter (direct or via `applyState`). Skipping `getLattice()` in
+the save snapshot silently loses the cell, which makes
+`setAxes({mode: "cell"})` unreachable post-restore — see § 3.4.
 
 Order (each field is optional):
 
@@ -1410,8 +1427,8 @@ below — used when continuing would corrupt state, e.g. non-string
 | `embed()` | `missing_dependency` | — | `invalid_input` (mount-time `KnobBarOpts.labelsFormats: []` per § 3.10) |
 | `setStructure` | — | — | `invalid_input` (`xyz` / `pdb` not a string → halt) |
 | `appendFrames` | — | — | `invalid_input` (atom-count mismatch → halt). No-animation and wrong-kind calls are silent no-ops per § 3.2. |
-| `setStyle` | — | — | `invalid_input` (`rep` outside `{stick, ball-and-stick, sphere, line, cross, cartoon}`; non-finite `radiusScale`) |
-| `setAxes` | — | — | `invalid_input` (`mode` outside `{auto, cartesian, cell}`) |
+| `setStyle` | — | — | `invalid_input` (`rep` outside `{stick, ball-and-stick, sphere, line, cross, cartoon}` — non-halt: `rep` clamps to `"stick"` default; non-finite `radiusScale` — non-halt: clamps to `1.0`) |
+| `setAxes` | — | — | `invalid_input` (`mode` outside `{auto, cartesian, cell}`; `mode: "cell"` without a lattice on the current structure → halt with hint to use `mode: "auto"` for graceful fallback) |
 | `setCell` | — | — | — (`color`/`radius` coerced to defaults) |
 | `setLabels` | — | — | `invalid_input` (`atoms` not `"all"`/`number[]`; non-int / negative entries in `atoms` array; `format` outside `{index, name, element}`) |
 | `setArrows` | — | — | `invalid_input` (argument not an array → halt; per-entry missing `start`/`end`) |
