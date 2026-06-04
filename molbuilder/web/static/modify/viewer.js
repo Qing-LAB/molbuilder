@@ -117,6 +117,27 @@
         card:    { title: "Structure", showInfoLine: false,
                    height: "100%" },
         export:  { defaultName: "modify" },
+        // Rotation pivot snap policy.  3Dmol's pivot is the camera
+        // lookAt; ctrl/shift-pan moves the lookAt off the molecule
+        // and a follow-up rotation orbits eccentrically.  Snapping
+        // the pivot back onto the molecule on the first drag-confirm
+        // mousemove fixes that — the snap is invisible because the
+        // user is already moving the camera at that moment.
+        // Embed owns the threshold + modifier filtering + canvas
+        // listener bookkeeping; we just pass the policy as data.
+        interaction: {
+            dragThresholdPx: 4,
+            onDragStart(ev) {
+                // Ctrl/shift/alt drags are pan/zoom gestures — leave
+                // the pivot alone.  Plain left-drag is rotation;
+                // snap.  snapPivotToCenter is defined below at the
+                // top of the IIFE.
+                if (ev.modifiers.ctrl
+                    || ev.modifiers.shift
+                    || ev.modifiers.alt) return;
+                snapPivotToCenter();
+            },
+        },
         onError(err) {
             // Surface viewer errors via the same status pattern
             // /modify already uses (preflight / generator panels).
@@ -950,54 +971,11 @@
         const focusBtn = $("focus-molecule");
         if (focusBtn) focusBtn.addEventListener("click", focusMolecule);
 
-        // Re-anchor the rotation pivot on the FIRST drag-confirming
-        // mousemove of every plain left-button gesture.  3Dmol's
-        // pivot is the camera lookAt; ctrl/shift-pan moves the
-        // lookAt, so a follow-up rotation would orbit the molecule
-        // eccentrically.  Snapping back to the structure centroid
-        // before rotation kicks in fixes that.
-        //
-        // We DON'T snap on raw mousedown -- that would visibly jump
-        // the camera every time the user clicks an atom to select it
-        // (mousedown without drag).  Instead we wait for a movement
-        // > DRAG_THRESHOLD_PX from the press point; at that point
-        // the gesture has committed to "drag", so a snap is invisible
-        // (the user is already moving the camera).  Modifier keys
-        // (ctrl / shift / alt) signal pan / zoom and must NOT snap.
-        const DRAG_THRESHOLD_PX = 4;
-        const viewerEl = $("viewer");
-        if (viewerEl) {
-            let pressX = null, pressY = null, pressNoMods = false;
-            let snapped = false;
-            viewerEl.addEventListener("mousedown", (e) => {
-                if (e.button !== 0) {
-                    pressNoMods = false;
-                    return;
-                }
-                pressX = e.clientX;
-                pressY = e.clientY;
-                pressNoMods = !(e.ctrlKey || e.shiftKey || e.altKey);
-                snapped = false;
-            });
-            viewerEl.addEventListener("mousemove", (e) => {
-                if (!pressNoMods || snapped) return;
-                if (pressX === null || pressY === null) return;
-                const dx = e.clientX - pressX;
-                const dy = e.clientY - pressY;
-                if (dx * dx + dy * dy >= DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) {
-                    snapPivotToCenter();
-                    snapped = true;
-                }
-            });
-            viewerEl.addEventListener("mouseup", () => {
-                pressX = pressY = null;
-                pressNoMods = false;
-            });
-            viewerEl.addEventListener("mouseleave", () => {
-                pressX = pressY = null;
-                pressNoMods = false;
-            });
-        }
+        // Rotation-pivot snap is now wired via opts.interaction.
+        // onDragStart on the embed mount above (search for
+        // "interaction:"); the embed owns the drag-detection
+        // plumbing (threshold + modifier filtering + canvas-scoped
+        // listeners) so we just register the policy here as data.
 
         // Geom subtab: center-at-origin + translate-by-offset.
         const centerBtn = $("center-apply");
@@ -1151,15 +1129,15 @@
             n_atoms:       state.n_atoms,
             selected:      selectedIndices(),
             camera:        camera,
-            // show_axes / show_indices / rep are no longer persisted
-            // here -- the standard knob bar owns those controls and
-            // they will round-trip via handle.getCamera/setCamera
-            // once setKnobs persistence lands.  Retained as historical
-            // payload fields so an older snapshot still deserialises
-            // cleanly during the transition.
-            show_axes:     true,
-            show_indices:  false,
-            rep:           "stick",
+            // Read the current chrome state via the embed's getters
+            // (D3 — added 2026-06-04).  show_axes is "axes are
+            // enabled" which on the handle = getAxes() returning a
+            // truthy normalised object; show_indices is the same
+            // shape for getLabels().  rep is the current
+            // representation per getStyle().
+            show_axes:     _handle.getAxes() !== null,
+            show_indices:  _handle.getLabels() !== null,
+            rep:           (_handle.getStyle() || {}).rep || "stick",
         };
         try {
             sessionStorage.setItem(
@@ -1183,11 +1161,21 @@
         }
         if (!saved || saved.v !== STATE_SCHEMA_VERSION) return;
         if (!saved.xyz) return;
-        // Style / labels / axes are owned by the knob bar after #203
-        // and don't need restoring here -- the standard chrome shows
-        // the current state directly.  Saved fields (rep / show_axes
-        // / show_indices) are kept in the payload for older snapshots
-        // but no longer drive any input element.
+        // Restore the chrome state via the embed setters (D3 round-
+        // trip pattern — getStyle/getAxes/getLabels at save time,
+        // setStyle/setAxes/setLabels at restore time).  Fall back to
+        // the documented defaults for snapshots saved BEFORE this
+        // landed; they had show_axes/show_indices/rep with reasonable
+        // defaults already.
+        if (typeof saved.rep === "string") {
+            _handle.setStyle({ rep: saved.rep });
+        }
+        if (typeof saved.show_axes === "boolean") {
+            _handle.setAxes(saved.show_axes);
+        }
+        if (typeof saved.show_indices === "boolean") {
+            _handle.setLabels(saved.show_indices);
+        }
         // Feed the saved structure through the existing
         // applyStructure() path so the atom list, viewer, and info
         // panel all re-render via the same code as a fresh load.

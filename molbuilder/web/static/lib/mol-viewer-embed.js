@@ -1194,6 +1194,102 @@
     /*  Atom-pick wiring                                             */
     /* ------------------------------------------------------------ */
 
+    function _wireInteractionHooks(state, canvasEl, interaction) {
+        // Canonical drag detection: fire onDragStart exactly once
+        // per gesture after the pointer moves more than
+        // dragThresholdPx (default 4) from the press point; fire
+        // onDragEnd on mouseup or mouseleave for any gesture where
+        // onDragStart fired.  Consumers receive the modifier state
+        // so they can filter (e.g. plain-drag = rotate, ctrl-drag =
+        // pan).  All listeners are scoped to the canvas host so
+        // they don't leak; dispose() removes them via
+        // _interactionTeardown.
+        if (!interaction || typeof interaction !== "object"
+            || !canvasEl) return;
+        const onStart = typeof interaction.onDragStart === "function"
+            ? interaction.onDragStart : null;
+        const onEnd   = typeof interaction.onDragEnd === "function"
+            ? interaction.onDragEnd : null;
+        if (!onStart && !onEnd) return;
+        const threshold = typeof interaction.dragThresholdPx === "number"
+            && interaction.dragThresholdPx > 0
+            ? interaction.dragThresholdPx : 4;
+        let pressX = null, pressY = null, pressMods = null;
+        let dragging = false;
+        function _modifiers(e) {
+            return {
+                ctrl:  !!e.ctrlKey, shift: !!e.shiftKey,
+                alt:   !!e.altKey,  meta:  !!e.metaKey,
+            };
+        }
+        function _onMouseDown(e) {
+            if (e.button !== 0) { pressX = pressY = null; return; }
+            pressX = e.clientX; pressY = e.clientY;
+            pressMods = _modifiers(e);
+            dragging = false;
+        }
+        function _onMouseMove(e) {
+            if (pressX === null || dragging) return;
+            const dx = e.clientX - pressX;
+            const dy = e.clientY - pressY;
+            if (dx * dx + dy * dy < threshold * threshold) return;
+            dragging = true;
+            if (onStart) {
+                try { onStart({
+                    x: pressX, y: pressY,
+                    modifiers: pressMods,
+                }); }
+                catch (err) {
+                    try { console.error(
+                        "[viewer.embed] onDragStart threw:", err); }
+                    catch (_) {}
+                }
+            }
+        }
+        function _onMouseUp(e) {
+            if (dragging && onEnd) {
+                try { onEnd({
+                    x: e.clientX, y: e.clientY,
+                    modifiers: pressMods,
+                }); }
+                catch (err) {
+                    try { console.error(
+                        "[viewer.embed] onDragEnd threw:", err); }
+                    catch (_) {}
+                }
+            }
+            pressX = pressY = null;
+            pressMods = null;
+            dragging = false;
+        }
+        function _onMouseLeave() {
+            if (dragging && onEnd) {
+                try { onEnd({
+                    x: pressX, y: pressY,
+                    modifiers: pressMods,
+                }); }
+                catch (err) {
+                    try { console.error(
+                        "[viewer.embed] onDragEnd threw:", err); }
+                    catch (_) {}
+                }
+            }
+            pressX = pressY = null;
+            pressMods = null;
+            dragging = false;
+        }
+        canvasEl.addEventListener("mousedown",  _onMouseDown);
+        canvasEl.addEventListener("mousemove",  _onMouseMove);
+        canvasEl.addEventListener("mouseup",    _onMouseUp);
+        canvasEl.addEventListener("mouseleave", _onMouseLeave);
+        state._interactionTeardown = function () {
+            canvasEl.removeEventListener("mousedown",  _onMouseDown);
+            canvasEl.removeEventListener("mousemove",  _onMouseMove);
+            canvasEl.removeEventListener("mouseup",    _onMouseUp);
+            canvasEl.removeEventListener("mouseleave", _onMouseLeave);
+        };
+    }
+
     function _wirePick(viewer, state) {
         if (!state.current.pick) return;
         // Review fix U7: avoid re-registering setClickable on every
@@ -2121,6 +2217,16 @@
             catch (_) {}
         }
 
+        // 4a-3. InteractionOpts mouse hooks per § 3.14.  Canonical
+        //       drag-start / drag-end events let consumer tabs
+        //       implement custom interaction policies (e.g. snap
+        //       camera pivot to the molecule on first drag) without
+        //       reaching into the raw canvas event stream.  All
+        //       wiring lives in the embed so a UI redesign that
+        //       changes the threshold / modifier filtering doesn't
+        //       need a per-consumer edit.
+        _wireInteractionHooks(state, scaffold.canvas, opts.interaction);
+
         // 4b. Build the handle + stash on state BEFORE applying the
         //     initial animation.  Trajectory autoplay (paused:false)
         //     fires onFrame(idx, handle) on its first tick; if the
@@ -2652,6 +2758,62 @@
             if (state.disposed) return [];
             return _elements(state.viewer);
         }
+        // Read accessors for declarative state.  Each returns a
+        // defensive deep-clone of the current section so callers
+        // can persist + restore via the matching setX without
+        // mirroring their own bookkeeping.  Returns null when the
+        // section is disabled (matches the setX null-clear shape);
+        // setX(getX()) is the round-trip.
+        function _clone(v) {
+            // JSON round-trip is fine: the embed's normalised state
+            // contains only plain objects / arrays / scalars (no
+            // Date / Function / undefined keys / cycles).
+            return v === null || v === undefined
+                 ? v : JSON.parse(JSON.stringify(v));
+        }
+        function getStyle() {
+            return state.disposed ? null : _clone(state.current.style);
+        }
+        function getAxes() {
+            return state.disposed ? null : _clone(state.current.axes);
+        }
+        function getCell() {
+            return state.disposed ? null : _clone(state.current.cell);
+        }
+        function getLabels() {
+            return state.disposed ? null : _clone(state.current.labels);
+        }
+        function getOverlays() {
+            return state.disposed ? null : _clone(state.current.overlays);
+        }
+        function getPick() {
+            // PickOpts.onPick is a function which JSON-clone drops;
+            // pick state is otherwise plain.  Surface the cloneable
+            // fields + the live onPick reference so the getter can be
+            // round-tripped via setPick.
+            if (state.disposed) return null;
+            const p = state.current.pick;
+            if (!p) return null;
+            const out = _clone(p);
+            if (typeof p.onPick === "function") out.onPick = p.onPick;
+            return out;
+        }
+        function getKnobs() {
+            return state.disposed ? null : _clone(state.current.knobs);
+        }
+        function getArrows() {
+            return state.disposed ? [] : _clone(state.current.arrows) || [];
+        }
+        function getAnimation() {
+            // AnimationOpts.onFrame is a function; preserve like getPick.
+            if (state.disposed) return null;
+            const a = state.current.animation;
+            if (!a) return null;
+            const out = _clone(a);
+            if (typeof a.onFrame === "function") out.onFrame = a.onFrame;
+            return out;
+        }
+
         function getPickedIndices() {
             if (state.disposed) return [];
             return state.pickedIndices.slice();
@@ -3067,6 +3229,12 @@
                 catch (_) {}
                 state._resizeObserver = null;
             }
+            // Remove interaction hooks (4a-3 setup).
+            if (typeof state._interactionTeardown === "function") {
+                try { state._interactionTeardown(); }
+                catch (_) {}
+                state._interactionTeardown = null;
+            }
             try {
                 if (state.cardEl && state.cardEl.parentNode) {
                     state.cardEl.parentNode.removeChild(state.cardEl);
@@ -3246,6 +3414,19 @@
             getStructureText:   getStructureText,
             getCamera:          getCamera,
             setCamera:          setCamera,
+
+            // Read accessors for declarative state (D3 — round-trip
+            // pattern for host-side persistence; setX(getX()) is
+            // idempotent).
+            getStyle:           getStyle,
+            getAxes:            getAxes,
+            getCell:            getCell,
+            getLabels:          getLabels,
+            getOverlays:        getOverlays,
+            getPick:            getPick,
+            getKnobs:           getKnobs,
+            getArrows:          getArrows,
+            getAnimation:       getAnimation,
 
             exportData:         exportData,
             screenshot:         screenshot,

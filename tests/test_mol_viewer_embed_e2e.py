@@ -713,6 +713,10 @@ class TestHandleSurface:
         # Read accessors
         "getAtomCount", "getElements", "getPickedIndices",
         "setPickedIndices", "getStructureText",
+        # Declarative-state getters (D3 symmetry — round-trip with setX)
+        "getStyle", "getAxes", "getCell", "getLabels",
+        "getOverlays", "getPick", "getKnobs", "getArrows",
+        "getAnimation",
         # Output / export
         "screenshot", "exportData",
         "captureFrames", "exportAnimation",
@@ -1387,6 +1391,213 @@ class TestHandleSurface:
             }
         """)
         assert "invalid_input" in errs
+
+    def test_getters_round_trip_with_setters(
+            self, page, flask_server):
+        """Per § 3.2 D3 symmetry: every documented getX returns a
+        defensive deep-clone of the current section, and
+        ``setX(getX())`` is idempotent — the embed's internal state
+        diff equals the prior state, so no spurious re-renders happen.
+        Pinned for Bundle 4 (#241)."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    axes: true, cell: true,
+                    style: { rep: "sphere", radiusScale: 0.5 },
+                    labels: { atoms: "all", format: "element" },
+                    pick: { mode: "single", halo: true, label: false },
+                });
+                const r = {};
+                // Snapshot the getter values first so the later
+                // mutation test doesn't clobber what we're asserting
+                // on.
+                const s0 = h.getStyle();
+                r.styleRep         = s0.rep;
+                r.styleRadiusScale = s0.radiusScale;
+                r.axes     = h.getAxes();
+                r.cell     = h.getCell();
+                r.labels   = h.getLabels();
+                r.pick     = h.getPick();
+                r.knobs    = h.getKnobs();
+                r.arrows   = h.getArrows();
+                r.overlays = h.getOverlays();
+                r.animation= h.getAnimation();
+                // Defensive-clone: mutating the returned object MUST
+                // NOT affect future getters.
+                s0.rep = "MUTATED";
+                r.styleAfterMutate = h.getStyle();
+                // Round-trip: setStyle(getStyle()) preserves rep.
+                const before = h.getStyle().rep;
+                h.setStyle(h.getStyle());
+                const after = h.getStyle().rep;
+                h.dispose();
+                host.remove();
+                return { r, beforeAfter: [before, after] };
+            }
+        """)
+        r = out["r"]
+        # Sanity: every getter returns a value of the expected
+        # cardinality.
+        assert r["styleRep"]         == "sphere"
+        assert r["styleRadiusScale"] == 0.5
+        assert r["axes"] is not None, "getAxes returned null"
+        assert r["cell"] is not None, "getCell returned null"
+        assert r["labels"]["format"] == "element"
+        assert r["pick"]["mode"]   == "single"
+        assert isinstance(r["knobs"], dict)
+        assert r["arrows"]   == []
+        assert r["overlays"] is None
+        assert r["animation"] is None
+        # Defensive-clone invariant.
+        assert r["styleAfterMutate"]["rep"] == "sphere", (
+            f"getStyle returned a live reference; mutation leaked: "
+            f"{r['styleAfterMutate']}"
+        )
+        # Round-trip preserves state.
+        assert out["beforeAfter"][0] == out["beforeAfter"][1]
+
+    def test_interaction_onDragStart_fires_after_threshold(
+            self, page, flask_server):
+        """Per § 3.15: onDragStart fires once when the pointer moves
+        more than dragThresholdPx from the press point, AFTER
+        capturing the modifier state at mousedown.  A press-then-
+        release without movement (a click) does NOT fire it.
+        Pinned for Bundle 4 (#241)."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:400px;height:300px;position:fixed;top:0;left:0;";
+                document.body.appendChild(host);
+                const starts = [], ends = [];
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    interaction: {
+                        dragThresholdPx: 4,
+                        onDragStart(ev) { starts.push(ev); },
+                        onDragEnd(ev)   { ends.push(ev); },
+                    },
+                });
+                const canvas = host.querySelector(".mol-viewer-canvas");
+                function send(type, x, y, mods) {
+                    mods = mods || {};
+                    canvas.dispatchEvent(new MouseEvent(type, {
+                        clientX: x, clientY: y, button: 0,
+                        bubbles: true,
+                        ctrlKey:  !!mods.ctrl,
+                        shiftKey: !!mods.shift,
+                        altKey:   !!mods.alt,
+                    }));
+                }
+                // Click without drag — must NOT fire onDragStart.
+                send("mousedown", 100, 100);
+                send("mousemove", 101, 100);   // 1px < threshold
+                send("mouseup",   101, 100);
+                const clickStarts = starts.length;
+                // Plain drag > threshold — must fire once.
+                send("mousedown", 200, 200);
+                send("mousemove", 210, 210);   // ~14px > threshold
+                send("mousemove", 220, 220);   // already dragging, no new fire
+                send("mouseup",   220, 220);
+                const dragStarts = starts.length;
+                const dragEnds   = ends.length;
+                // Ctrl+drag — modifiers carried in payload.
+                send("mousedown", 100, 100, {ctrl: true});
+                send("mousemove", 120, 120, {ctrl: true});
+                send("mouseup",   120, 120, {ctrl: true});
+                h.dispose();
+                host.remove();
+                return {
+                    clickStarts, dragStarts, dragEnds,
+                    firstDragMods:  starts[0] && starts[0].modifiers,
+                    ctrlDragMods:   starts[1] && starts[1].modifiers,
+                    firstDragXY:    starts[0]
+                        && [starts[0].x, starts[0].y],
+                };
+            }
+        """)
+        assert out["clickStarts"] == 0, (
+            "onDragStart fired on a click (no drag); threshold "
+            "filtering is broken"
+        )
+        assert out["dragStarts"] == 1, (
+            f"onDragStart fired {out['dragStarts']}x for one drag "
+            f"gesture (must fire exactly once per gesture)"
+        )
+        assert out["dragEnds"] == 1
+        assert out["firstDragMods"] == {
+            "ctrl": False, "shift": False, "alt": False, "meta": False
+        }
+        assert out["ctrlDragMods"]["ctrl"] is True
+        assert out["firstDragXY"] == [200, 200], (
+            "onDragStart x/y must be the PRESS point, not the "
+            "current pointer position"
+        )
+
+    def test_interaction_callback_error_is_isolated(
+            self, page, flask_server):
+        """Per § 3.15: a host onDragStart/onDragEnd callback that
+        throws must not break pointer handling.  The embed catches +
+        logs, then continues."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        ok = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:0;left:0;";
+                document.body.appendChild(host);
+                let secondFired = false;
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    interaction: {
+                        onDragStart() { throw new Error("buggy host"); },
+                    },
+                });
+                const canvas = host.querySelector(".mol-viewer-canvas");
+                function send(type, x, y) {
+                    canvas.dispatchEvent(new MouseEvent(type, {
+                        clientX: x, clientY: y, button: 0,
+                        bubbles: true,
+                    }));
+                }
+                let threw = false;
+                try {
+                    send("mousedown", 0, 0);
+                    send("mousemove", 30, 30);   // triggers onDragStart
+                    send("mouseup",   30, 30);
+                    // A second gesture must still work.
+                    send("mousedown", 100, 100);
+                    send("mousemove", 130, 130);
+                    send("mouseup",   130, 130);
+                } catch (_) { threw = true; }
+                h.dispose();
+                host.remove();
+                return !threw;
+            }
+        """)
+        assert ok, (
+            "embed propagated a buggy onDragStart throw instead of "
+            "isolating it"
+        )
 
     def test_setAnimation_halt_preserves_existing_animation(
             self, page, flask_server):

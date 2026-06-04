@@ -254,6 +254,9 @@ type ViewerOpts = {
   // ---- Atom-pick interaction ----------------------------------- //
   pick?: PickOpts,               // see § 3.8
 
+  // ---- Interaction hooks (canonical pointer events) ------------ //
+  interaction?: InteractionOpts, // see § 3.15
+
   // ---- Animation (vibrational mode OR trajectory frames) ------- //
   animation?: AnimationOpts,     // see § 3.9
 
@@ -393,6 +396,27 @@ type ViewerHandle = {
   // changes so hosts mirroring picks into a store don't see a
   // feedback loop.  Clamps to the mode's max (single: 1, pair: 2,
   // multi: unbounded); pass null or [] to clear.
+  // ---- Declarative-state getters (round-trip with setX) ------- //
+  // Each returns a defensive deep-clone of the current section so
+  // callers can persist or restore via the matching setX without
+  // mirroring their own bookkeeping.  Returns null when the
+  // section is disabled (matches the setX null-clear shape).
+  //   setStyle(getStyle())   is idempotent
+  //   setAxes(getAxes())     is idempotent
+  //   setLabels(getLabels()) is idempotent
+  //   etc.
+  // Function fields (PickOpts.onPick, AnimationOpts.onFrame) are
+  // preserved as live references — JSON clone would drop them.
+  getStyle():     StyleOpts,
+  getAxes():      AxesOpts     | null,
+  getCell():      CellOpts     | null,
+  getLabels():    LabelOpts    | null,
+  getOverlays():  OverlaySpec  | null,
+  getPick():      PickOpts     | null,
+  getKnobs():     KnobBarOpts,
+  getArrows():    ArrowSpec[],
+  getAnimation(): AnimationOpts | null,
+
   getStructureText(format?: "xyz" | "pdb"): string,
   // Returns the current structure as text in the requested format.
   // If ``format`` is omitted, returns whatever was supplied
@@ -1038,6 +1062,66 @@ type ViewerError = {
 };
 ```
 
+### 3.15 `InteractionOpts`
+
+```ts
+type InteractionOpts = {
+  // Distance in CSS pixels the pointer must move from the press
+  // point before a press-then-move gesture commits to "drag".
+  // Default 4.  Smaller values fire onDragStart on accidental
+  // wiggle; larger values delay the fire past the visible motion.
+  dragThresholdPx?: number,
+
+  // Fires exactly ONCE per gesture, on the first mousemove past
+  // ``dragThresholdPx`` from the press point.  Receives the press-
+  // point coords + the modifier state captured at mousedown so the
+  // host can branch on plain-drag vs ctrl-drag vs shift-drag etc.
+  // Hosts use this to implement custom interaction policies
+  // (e.g. /modify snaps the camera pivot onto the molecule on the
+  // first plain-drag mousemove so the rotation is centred).
+  onDragStart?: (event: {
+    x: number, y: number,
+    modifiers: { ctrl: boolean, shift: boolean,
+                 alt: boolean,  meta: boolean },
+  }) => void,
+
+  // Fires on mouseup OR mouseleave when a gesture that fired
+  // onDragStart ends.  Receives the end-point coords + the
+  // modifier state from mousedown (the same payload onDragStart
+  // saw, so hosts can pair-match).
+  onDragEnd?: (event: {
+    x: number, y: number,
+    modifiers: { ctrl: boolean, shift: boolean,
+                 alt: boolean,  meta: boolean },
+  }) => void,
+};
+```
+
+**Why this exists.** Consumer tabs sometimes need to react to
+pointer gestures on the viewer canvas — e.g. /modify snaps the
+camera pivot onto the molecule on the first drag mousemove so
+rotation is centred. Before this opt, every such consumer had
+to hand-roll mousedown / mousemove / mouseup / mouseleave
+listeners, replicate the same modifier-key + drag-threshold
+plumbing, and remember to remove the listeners on teardown.
+`InteractionOpts` centralises the boilerplate so consumers express
+the *policy* (the if-modifier branch + the action) without owning
+the *mechanics*.
+
+**Threshold rationale.** Snapping on raw mousedown would jump the
+camera every time the user clicks an atom to select it (mousedown
+without drag). Waiting for the gesture to commit to "drag" past
+`dragThresholdPx` makes the snap invisible — the camera was
+already moving at that frame.
+
+**Mount-only, no setInteraction.** The policy is registered at
+mount and torn down on dispose; runtime swaps aren't supported.
+This matches how `onError` / `onReady` are wired.
+
+**Failure isolation.** If `onDragStart` or `onDragEnd` throws, the
+embed catches the exception, logs it to `console.error`, and
+continues — a buggy host callback never breaks pointer handling.
+
 ---
 
 ## 4. Lifecycle and state transitions
@@ -1245,7 +1329,7 @@ below — used when continuing would corrupt state, e.g. non-string
 | `setCell` | — | — | — (`color`/`radius` coerced to defaults) |
 | `setLabels` | — | — | `invalid_input` (`atoms` not `"all"`/`number[]`; non-int / negative entries in `atoms` array; `format` outside `{index, name, element}`) |
 | `setArrows` | — | — | `invalid_input` (argument not an array → halt; per-entry missing `start`/`end`) |
-| `setPick` | — | — | `invalid_input` (`mode` outside `{none, single, pair, multi}`; `label` outside `false`/`{index, name, element}`) |
+| `setPick` | — | — | `invalid_input` (`mode` outside `{none, single, pair, multi}`; `label` neither `false` nor one of `{index, name, element}`) |
 | `setBackground` | — | — | `invalid_input` (`color` not a non-empty string → halt) |
 | `setOverlays` | — | — | `invalid_input` (entries dropped: bad/missing/multiple selectors, or no style/halo/marker) |
 | `setAtomStyle` | — | — | `invalid_input` (bad selector → halt; style with no `{rep, radiusScale, color, opacity}` → halt) |
