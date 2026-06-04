@@ -134,6 +134,12 @@
      * for unit testing.
      */
     function _normaliseOpts(opts) {
+        // Review fix D14: scope is render-only state (the inputs
+        // _equalNormalised diffs against to decide if a setX call
+        // is a no-op).  Non-render opts (animation, knobs, export,
+        // onReady, onError, testInjection, preserveCamera, card)
+        // are handled directly in embed() — they don't participate
+        // in the idempotence diff path.
         opts = opts || {};
         return {
             xyz:        typeof opts.xyz === "string" ? opts.xyz : null,
@@ -970,7 +976,11 @@
         });
         // Card must accept focus for keyboard handling to work.
         if (!state.cardEl.hasAttribute("tabindex")) {
-            state.cardEl.setAttribute("tabindex", "-1");
+            // Review fix U3: tabindex="0" so the card is part of
+            // the natural tab order; keyboard users can Tab onto
+            // the viewer and trigger R / L / A / B / E shortcuts
+            // without first clicking a knob.
+            state.cardEl.setAttribute("tabindex", "0");
         }
     }
 
@@ -1506,23 +1516,21 @@
      * Convert a data: URL (e.g. canvas.toDataURL output) to a
      * Blob.  Synchronous via atob; sufficient for the modest PNGs
      * 3Dmol produces.  Returns null on parse failure.
+     *
+     * Review fix O8: simplified to the base64 branch only since
+     * canvas.toDataURL always emits ``;base64,...`` (the only
+     * caller of this helper).  The non-base64 + URL-decode path
+     * was dead code in practice.
      */
     function _dataUrlToBlob(dataUrl) {
         try {
-            const m = /^data:([^;,]+)(;base64)?,(.*)$/.exec(dataUrl);
+            const m = /^data:([^;,]+);base64,(.*)$/.exec(dataUrl);
             if (!m) return null;
             const mime = m[1] || "application/octet-stream";
-            const isB64 = !!m[2];
-            const body  = decodeURIComponent(m[3]);
-            let bytes;
-            if (isB64) {
-                const bin = root.atob(body);
-                bytes = new Uint8Array(bin.length);
-                for (let i = 0; i < bin.length; i++) {
-                    bytes[i] = bin.charCodeAt(i);
-                }
-            } else {
-                bytes = new root.TextEncoder().encode(body);
+            const bin = root.atob(m[2]);
+            const bytes = new Uint8Array(bin.length);
+            for (let i = 0; i < bin.length; i++) {
+                bytes[i] = bin.charCodeAt(i);
             }
             return new root.Blob([bytes], { type: mime });
         } catch (_) {
@@ -1603,10 +1611,12 @@
                                 && a.startFrame >= 0
                                 && a.startFrame < nFrames)
                 ? Math.floor(a.startFrame) : 0;
-            // Optional per-frame arrow overlays per § 3.9.  Length
-            // mismatch with frames.length is invalid_input territory;
-            // we accept and let the renderer cap at min(arrows,
-            // frames) so a too-short arrowsPerFrame degrades gracefully.
+            // Optional per-frame arrow overlays per § 3.9.  If the
+            // supplied array is shorter than frames.length, frames
+            // beyond the tail render with no arrows (review fix O9
+            // — was previously documented as "we cap" + dispatch
+            // invalid_input, but neither cap nor dispatch actually
+            // happens; the renderer just bounds-checks per-frame).
             const apf = Array.isArray(a.arrowsPerFrame)
                 ? a.arrowsPerFrame : null;
             return {
@@ -2102,6 +2112,11 @@
         //     shortcuts now that the handle exists.  Phase 5 will
         //     extend the export / background actions; Phase 2 covers
         //     the static-rendering knobs (style / labels / axes / reset).
+        //     state.scaffold is retained (not nulled here) because
+        //     setKnobs needs to find scaffold.knobsEl + scaffold.knobs
+        //     to rebuild the bar in place (review fix O6 — could
+        //     null after wiring + look up via the DOM, but the
+        //     scaffold ref is cheap to retain).
         if (state.scaffold && state.scaffold.knobsEl) {
             _wireKnobBar(state, state.scaffold.knobsEl,
                                 state.scaffold.knobs);
@@ -2303,6 +2318,20 @@
         function setOverlays(o) {
             if (state.disposed) return;
             const next = _normaliseOverlays(o);
+            // Review fix U9: dispatch invalid_input when entries
+            // were silently dropped (bad selector / no treatment /
+            // multiple selectors) so the host's onError sees it.
+            if (o && Array.isArray(o.atoms)) {
+                const inN  = o.atoms.length;
+                const outN = next ? next.atoms.length : 0;
+                if (outN < inN) {
+                    _dispatchError(state, _makeError(
+                        "invalid_input",
+                        "setOverlays: " + (inN - outN) + " of " + inN
+                      + " atom entries dropped (bad/missing/multiple "
+                      + "selectors, or no style/halo/marker)."));
+                }
+            }
             if (_equalNormalised(state.current.overlays, next)) return;
             state.current.overlays = next;
             // Style overrides are baked into setStyle, so a full
@@ -2496,10 +2525,16 @@
                             "io_error",
                             (env.error || "writeFile failed"), env);
                     }
-                    return { filename: path, bytes:
-                        typeof data === "string"
-                            ? data.length
-                            : (data && data.size) || 0 };
+                    // Review fix D12: contract says ``filename`` is
+                    // the leaf name; expose the full path separately
+                    // so consumers can still log / display it.
+                    return {
+                        filename: filename,
+                        path:     path,
+                        bytes:    typeof data === "string"
+                                    ? data.length
+                                    : (data && data.size) || 0,
+                    };
                 });
         }
 
@@ -2566,7 +2601,11 @@
             }
             const text = getStructureText(format);
             if (!text) {
-                return Promise.reject(_makeError("no_structure",
+                // Review fix D10: format mismatch is invalid_input
+                // (the caller asked for a format the embed wasn't
+                // given), not no_structure (which means "no structure
+                // loaded at all").
+                return Promise.reject(_makeError("invalid_input",
                     "exportData: requested format '" + format
                   + "' not available (supplied format was "
                   + (havePdb ? "pdb" : "xyz") + ")"));
@@ -2665,6 +2704,13 @@
             const aborted = _aborted(opts.signal);
             if (aborted) return Promise.reject(aborted);
 
+            // Review fix P7: empty canvas isn't meaningful to capture.
+            // Reject early with no_structure to match § 5.3.
+            if (_atomCount(state.viewer) === 0) {
+                return Promise.reject(_makeError("no_structure",
+                    "screenshot: no structure loaded"));
+            }
+
             // 3Dmol.pngURI(width, height) supports super-resolution
             // capture when width/height exceed the on-screen canvas
             // (§ 11.3 doc note).
@@ -2760,6 +2806,12 @@
                     state.cardEl.parentNode.removeChild(state.cardEl);
                 }
             } catch (_) {}
+            // Review fix U2: break the state ↔ handle reference
+            // cycle so GC can collect both promptly.  state.handle's
+            // closure captures state; state.handle references the
+            // handle.  Clearing both ends drops the cycle.
+            state.handle = null;
+            state.scaffold = null;
         }
 
         function _viewer3dmol() {

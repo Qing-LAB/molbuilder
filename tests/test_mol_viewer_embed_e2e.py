@@ -592,12 +592,15 @@ class TestExportData:
                 h.dispose();
                 host.remove();
                 return { writtenPath, hasData: !!writtenData,
-                         resultFilename: result.filename };
+                         resultFilename: result.filename,
+                         resultPath:     result.path };
             }
         """)
-        assert out["writtenPath"] == "/tmp/proj1/water.xyz"
-        assert out["hasData"] is True
-        assert out["resultFilename"] == "/tmp/proj1/water.xyz"
+        # Review fix D12: filename is leaf name; path is full path.
+        assert out["writtenPath"]    == "/tmp/proj1/water.xyz"
+        assert out["hasData"]        is True
+        assert out["resultFilename"] == "water.xyz"
+        assert out["resultPath"]     == "/tmp/proj1/water.xyz"
 
     def test_export_to_project_rejects_when_no_active_dir(
             self, page, flask_server):

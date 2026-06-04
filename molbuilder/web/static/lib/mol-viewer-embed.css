@@ -219,7 +219,13 @@
     z-index:        10;
     top:            100%;
     left:           0;
+    /* Review fix U1: cap the popover width + allow vertical scroll
+       so rightmost knobs (Export) don't push their popover off the
+       right edge of the card at narrow viewports. */
     min-width:      9rem;
+    max-width:      min(18rem, calc(100vw - 2rem));
+    max-height:     min(24rem, calc(100vh - 8rem));
+    overflow:       auto;
     margin:         0;
     padding:        var(--space-xs, 0.4rem);
     background:     var(--bg-card, #fff);
@@ -227,6 +233,13 @@
     border:         1px solid var(--border-strong, rgba(0,0,0,0.18));
     border-radius:  0 var(--radius-sm, 4px) var(--radius-sm, 4px) var(--radius-sm, 4px);
     box-shadow:     0 4px 12px rgba(0,0,0,0.15);
+}
+
+/* Anchor the rightmost popover (Export) at the right edge so it
+   doesn't shoot off-card. */
+.mol-viewer-knobs > details.mol-viewer-knob-export > *:not(summary) {
+    left:   auto;
+    right:  0;
 }
 
 /* Labels popover format buttons. */
