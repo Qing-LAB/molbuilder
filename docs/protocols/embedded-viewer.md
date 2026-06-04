@@ -692,15 +692,19 @@ type PickOpts = {
 }
 ```
 
-**Deprecated-field precedence.** If the new `halo` object is
-supplied (even as `halo: {}` or `halo: false`), the deprecated
-`haloColor` / `haloRadius` are **ignored entirely** — no
-field-level merge. The deprecated path applies ONLY when `halo`
-is absent and `{haloColor, haloRadius}` is supplied; in that case
-the embed synthesises `halo: {color: haloColor, radius: haloRadius,
+**Deprecated-field precedence.** If the new `halo` field is
+supplied as any value OTHER than `undefined` — including `{}`,
+`false`, or `true` — the deprecated `haloColor` / `haloRadius`
+are **ignored entirely**, no field-level merge. The deprecated
+path applies ONLY when `halo` itself is omitted (`undefined`)
+and `{haloColor, haloRadius}` is supplied; in that case the
+embed synthesises `halo: {color: haloColor, radius: haloRadius,
 opacity: <default>}` and proceeds as if the new shape was used.
 This keeps the merge rule trivial to reason about (you're either
-in the legacy lane or the modern lane, never both).
+in the legacy lane or the modern lane, never both). Hosts on the
+legacy lane that want to keep their colour override should NOT
+also pass `halo: true`; pass the legacy fields alone, OR migrate
+to `halo: {color: "...", radius: ...}` directly.
 
 **Defaults.** `halo: { color: "var(--accent)", radius: 0.6,
 opacity: 0.5 }` plus `label: "index"`. Hosts that want minimal

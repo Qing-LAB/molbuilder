@@ -724,6 +724,17 @@
                 return [atom[1], atom[2], atom[3]];
             });
         });
+        // Phase 5f B-1: read the Inspect-tab playback knobs at
+        // mount so a user who set #speed / #loop BEFORE the file
+        // loaded gets their preferences honored (previously the
+        // partial-update path was a no-op pre-mount → user's
+        // pre-load slider changes silently dropped).
+        const speedEl = $("speed");
+        const loopEl  = $("loop");
+        const fpsAtMount = speedEl
+            ? Math.max(1, Math.round(
+                1000 / (parseInt(speedEl.value, 10) || 150)))
+            : 10;
         _handle.setAnimation({
             kind:           "trajectory",
             frames:         coordFrames,
@@ -733,7 +744,8 @@
             // knob settings; rebuilt on every knob change via a
             // partial setAnimation update (#233).
             arrowsPerFrame: buildArrowsPerFrame(),
-            fps:            10,
+            fps:            fpsAtMount,
+            loop:           loopEl ? !!loopEl.checked : true,
             paused:         true,
             onFrame: function (idx, _h) {
                 state.currentFrame = idx;
@@ -1709,11 +1721,14 @@
     return {
         /**
          * Tear down every long-lived resource this mount created:
-         * polling timer, playback timer, window resize listener,
-         * and the 3Dmol viewer's models/shapes/labels (releases
-         * the WebGL context's bookkeeping; the canvas itself is
-         * freed when the host's innerHTML is cleared by the
-         * caller).
+         * polling timer, in-flight HTTP requests, and the embed
+         * handle (the embed's dispose() releases the WebGL
+         * context's bookkeeping + its animation loop + its
+         * ResizeObserver; the canvas itself is freed when the
+         * host's innerHTML is cleared by the caller).  The
+         * parallel state.playTimer + the window resize listener
+         * were retired in #246 — the embed owns playback +
+         * resize.
          */
         dispose() {
             // Walk listener teardowns in reverse so the most recent

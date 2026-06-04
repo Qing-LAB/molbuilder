@@ -2380,6 +2380,22 @@ def _load_watch_log(page, base_url, log_path):
     page.wait_for_selector(
         "#inspect-atom-list-body tr",
         state="attached", timeout=8000)
+    # Phase 5f B-4: the atom-list populates from rebuildModel
+    # AFTER setAnimation runs (trajectory/core.js:760) — but
+    # rebuildModel calls setAnimation synchronously, so the atom
+    # list landing IS evidence that setAnimation didn't throw.
+    # Belt-and-braces: also assert the embed's frame strip is
+    # showing a non-zero frame count, which catches a regression
+    # where setAnimation silently rejects with invalid_input
+    # (e.g. atom-count mismatch) while atom-list still renders.
+    page.wait_for_function(
+        "() => {"
+        "  const el = document.querySelector("
+        "    '.mol-viewer-frame-strip .frame-counter');"
+        "  return el && /\\d+/.test(el.textContent || '');"
+        "}",
+        timeout=8000,
+    )
 
 
 def test_watch_inspect_atom_list_populates(page, flask_server, watch_log_file):

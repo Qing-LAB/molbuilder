@@ -1194,6 +1194,57 @@ class TestHandleSurface:
             f"setPickedIndices([0,2]); shapes drawn: {out['haloCount']}"
         )
 
+    def test_setAnimation_partial_update_preserves_trajectory_playback(
+            self, page, flask_server):
+        """Phase 5f A-1 regression catcher: a partial-update
+        setAnimation({fps: N}) on an actively-playing trajectory
+        must NOT pause the loop.  Before this fix, the merged
+        opts inherited the stale mount-time ``paused: true`` from
+        cur.animation, and _normaliseAnimation re-emitted it,
+        silently stopping playback.  /results trajectory's
+        #speed and #loop sliders surfaced the bug to end users.
+        """
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    animation: {
+                        kind: "trajectory",
+                        frames: [[[0,0,0]],[[0.1,0,0]],[[0.2,0,0]]],
+                        fps: 10, paused: true,
+                    },
+                });
+                // Start playback via the API.
+                h.playAnimation();
+                await new Promise(r => requestAnimationFrame(r));
+                const wasPlaying = h.isAnimationPlaying();
+                // Partial update like the trajectory's #speed
+                // slider — change fps WITHOUT touching paused.
+                h.setAnimation({ fps: 5 });
+                await new Promise(r => requestAnimationFrame(r));
+                const stillPlaying = h.isAnimationPlaying();
+                h.dispose();
+                host.remove();
+                return { wasPlaying, stillPlaying };
+            }
+        """)
+        assert out["wasPlaying"] is True, (
+            "playAnimation didn't start the loop"
+        )
+        assert out["stillPlaying"] is True, (
+            "setAnimation({fps: N}) paused active playback — "
+            "Phase 5f A-1 regression"
+        )
+
     def test_setStructure_preserves_picks_when_elements_match(
             self, page, flask_server):
         """Per § 3.8 + § 4.2.1: pickedIndices survives setStructure

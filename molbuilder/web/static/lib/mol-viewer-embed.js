@@ -3956,6 +3956,19 @@
                     const merged = Object.assign({}, cur, animation);
                     // Re-normalise to revalidate field types.
                     merged.kind = "trajectory";
+                    // Phase 5f A-1: ``cur.paused`` is the mount-time
+                    // value and is NOT updated by _playImpl /
+                    // _pauseImpl (those only flip
+                    // state._anim.playing).  Without this override,
+                    // a partial update like {fps: N} would
+                    // re-normalise paused=true from cur and silently
+                    // pause active playback.  Honor the caller's
+                    // explicit paused if supplied; otherwise mirror
+                    // the live runtime state.
+                    if (!Object.prototype.hasOwnProperty
+                            .call(animation, "paused")) {
+                        merged.paused = !state._anim.playing;
+                    }
                     const next = _normaliseAnimation(merged);
                     if (next) {
                         // Preserve the live playback index so a
