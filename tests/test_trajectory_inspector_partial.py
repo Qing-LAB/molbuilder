@@ -500,29 +500,29 @@ class TestTrajectoryCoreMountContract:
         assert "function _on(target, event, handler" in viewer_js, (
             "_on() helper missing from lib/trajectory/core.js"
         )
-        # Window resize is registered through _on (the most important
-        # tracked listener since window survives the host's innerHTML
-        # clear).
-        assert '_on(window, "resize"' in viewer_js, (
-            "window resize listener isn't registered through _on() "
-            "-- it would leak across mounts"
+        # #236: the embed installs its own ResizeObserver on the
+        # canvas host so the window resize listener went away with
+        # the raw-viewer escape hatch.  Pin that the legacy wiring
+        # is gone (no _on(window, "resize"...) registration).
+        assert '_on(window, "resize"' not in viewer_js, (
+            "window resize listener resurfaced -- the embed already "
+            "owns canvas resize via ResizeObserver; remove the "
+            "duplicate wiring"
         )
 
     def test_dispose_tears_down_3Dmol_viewer(self, viewer_js):
-        """dispose() must drop 3Dmol's bookkeeping (models + shapes
-        + labels) so the WebGL state of one mount doesn't carry over
-        to the next.  Pinned via the ``viewer.clear()`` call which
-        is 3Dmol's documented one-liner for this -- matches the
-        spectra core's dispose pattern.  Previously the test pinned
-        three fine-grained calls (removeAllShapes / removeAllLabels
-        / removeAllModels); harmonised 2026-05-20 to a single
-        viewer.clear() for cross-inspector parity."""
+        """dispose() must tear down the 3Dmol WebGL state so one
+        mount doesn't leak into the next.  Post-#236 the trajectory
+        no longer holds a raw viewer reference; the embed handle
+        carries the dispose responsibility and ``_handle.dispose()``
+        is the single call that drops models + shapes + labels +
+        ResizeObserver + animation loop in one go (matches the
+        spectra and modify dispose paths)."""
         body = self._dispose_body(viewer_js)
-        assert "viewer.clear()" in body, (
-            "dispose() doesn't call viewer.clear() -- 3Dmol "
-            "bookkeeping (models + shapes + labels) leaks across "
-            "mounts.  Spectra core uses the same pattern; check "
-            "lib/spectra/core.js for the reference."
+        assert "_handle.dispose()" in body, (
+            "dispose() doesn't call _handle.dispose() -- the embed's "
+            "3Dmol bookkeeping (models + shapes + labels) leaks "
+            "across mounts.  Spectra core uses the same pattern."
         )
 
     def test_module_exposes_trajectoryInspector_mount(self, viewer_js):

@@ -711,7 +711,7 @@ class TestHandleSurface:
         "isAnimationPlaying", "setAnimationFrame", "getAnimationFrame",
         # Read accessors
         "getAtomCount", "getElements", "getPickedIndices",
-        "getStructureText",
+        "setPickedIndices", "getStructureText",
         # Output / export
         "screenshot", "exportData",
         "captureFrames", "exportAnimation",
@@ -818,6 +818,71 @@ class TestHandleSurface:
         assert out["afterLoop"]  is True, (
             "partial setAnimation({amplitude}) stopped the loop "
             "(D1/N1 regression)"
+        )
+
+    def test_setPickedIndices_drives_halo_state(
+            self, page, flask_server):
+        """Per § 3.2: setPickedIndices pushes the pick state from an
+        external source.  The embed re-renders halos through
+        _redrawPickHalos and clamps to the active mode's max
+        (single: 1, pair: 2).  Pinned for #236: trajectory's atom-
+        list row click drives picks via this API instead of a
+        bespoke halo path."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                let onPickFires = 0;
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    pick: {
+                        mode: "pair", halo: true, label: false,
+                        onPick: () => { onPickFires++; },
+                    },
+                });
+                const r = {};
+                // Push 2 picks via setPickedIndices.
+                h.setPickedIndices([0, 2]);
+                r.afterTwo  = h.getPickedIndices();
+                // Clamp to pair-max=2 when 3 supplied.
+                h.setPickedIndices([0, 1, 2]);
+                r.afterThree = h.getPickedIndices();
+                // Clear via null.
+                h.setPickedIndices(null);
+                r.afterNull  = h.getPickedIndices();
+                // Clear via [].
+                h.setPickedIndices([1]);
+                h.setPickedIndices([]);
+                r.afterEmpty = h.getPickedIndices();
+                // onPick must NOT fire for external pushes (per § 3.2
+                // contract -- avoids feedback loops when hosts mirror
+                // picks into a store).
+                r.onPickFires = onPickFires;
+                h.dispose();
+                host.remove();
+                return r;
+            }
+        """)
+        assert out["afterTwo"]   == [0, 2], (
+            f"setPickedIndices([0,2]) -> {out['afterTwo']}, "
+            f"expected [0, 2]"
+        )
+        assert out["afterThree"] == [1, 2], (
+            f"setPickedIndices([0,1,2]) -> {out['afterThree']}, "
+            f"expected [1, 2] (pair mode keeps last 2)"
+        )
+        assert out["afterNull"]  == []
+        assert out["afterEmpty"] == []
+        assert out["onPickFires"] == 0, (
+            "setPickedIndices fired onPick -- it must not (feedback "
+            "loop risk per § 3.2 contract)"
         )
 
     def test_chrome_consistency_across_build_and_modify(

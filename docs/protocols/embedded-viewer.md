@@ -385,6 +385,14 @@ type ViewerHandle = {
   getAtomCount():     number,
   getElements():      string[],
   getPickedIndices(): number[],
+  setPickedIndices(indices: number[] | null): void,
+  // Push the pick state from an external source (host atom list,
+  // panel, undo).  Re-renders halos + labels according to the
+  // active pick.mode / pick.halo / pick.label.  Does NOT fire
+  // ``onPick`` — that callback is reserved for click-driven
+  // changes so hosts mirroring picks into a store don't see a
+  // feedback loop.  Clamps to the mode's max (single: 1, pair: 2,
+  // multi: unbounded); pass null or [] to clear.
   getStructureText(format?: "xyz" | "pdb"): string,
   // Returns the current structure as text in the requested format.
   // If ``format`` is omitted, returns whatever was supplied
@@ -645,6 +653,15 @@ draw above other labels.
 IFF the atom count and element ordering match; otherwise the pick
 state is cleared. Picked indices are NOT affected by
 `setOverlays()`, `setStyle()`, or `setAnimation()`.
+
+**External push (`setPickedIndices`)**. Hosts with their own
+selection UI (atom-list rows, panels, undo) push the pick state
+into the embed via `handle.setPickedIndices(indices)` (see § 3.2).
+The embed clamps to the mode's max (single: 1, pair: 2; multi:
+unbounded) and re-renders halos + labels per the active config.
+External pushes DO NOT fire `onPick` — that callback is reserved
+for click-driven changes so hosts that mirror picks into a store
+don't see a feedback loop.
 
 Delegates to `lib/mol-pick.js` for halo geometry; the embedded
 viewer owns the click-handler registration.

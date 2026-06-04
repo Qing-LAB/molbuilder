@@ -2469,6 +2469,41 @@
             return state.pickedIndices.slice();
         }
 
+        function setPickedIndices(indices) {
+            // Push the pick state from an external source (host
+            // atom list, panel, undo).  Re-renders halos / labels
+            // according to the active pick.mode + pick.halo +
+            // pick.label.  Does NOT fire onPick — that callback is
+            // reserved for click-driven changes so hosts that
+            // mirror picks into a store don't see a feedback loop.
+            // Clamps to the mode's max (single: 1; pair: 2; multi:
+            // unbounded).  Pass null or [] to clear.
+            if (state.disposed) return;
+            if (!state.current.pick) return;
+            let next;
+            if (indices === null || indices === undefined) {
+                next = [];
+            } else if (Array.isArray(indices)) {
+                next = indices.filter(function (v) {
+                    return Number.isInteger(v) && v >= 0;
+                });
+            } else {
+                _dispatchError(state, _makeError(
+                    "invalid_input",
+                    "setPickedIndices: argument must be an array of "
+                  + "non-negative integers or null"));
+                return;
+            }
+            const mode = state.current.pick.mode;
+            if (mode === "single" && next.length > 1) {
+                next = next.slice(-1);
+            } else if (mode === "pair" && next.length > 2) {
+                next = next.slice(-2);
+            }
+            state.pickedIndices = next;
+            _redrawPickHalos(state);
+        }
+
         function getStructureText(format) {
             // Returns the current structure as text in the
             // requested format per § 3.2.  Omit ``format`` →
@@ -2965,6 +3000,7 @@
             getAtomCount:       getAtomCount,
             getElements:        getElements,
             getPickedIndices:   getPickedIndices,
+            setPickedIndices:   setPickedIndices,
             getStructureText:   getStructureText,
             getCamera:          getCamera,
             setCamera:          setCamera,

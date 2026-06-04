@@ -116,17 +116,16 @@
         currentFrame: 0,
         pollTimer: null,
         playTimer: null,
-        firstFit: true,        // call viewer.zoomTo() once after first load
-        // #234 follow-up: cellShapes / forceShapes / indexLabels
-        // arrays gone -- cell wireframe, atom-index labels, and
-        // force arrows are all owned by the embed now (setCell /
-        // setLabels / arrowsPerFrame).
+        firstFit: true,        // call handle.refit() once after first load
+        // #234 / #236 follow-up: cellShapes / forceShapes / indexLabels
+        // / pickShapes arrays gone -- cell wireframe, atom-index
+        // labels, force arrows, and pick halos are all owned by the
+        // embed now (setCell / setLabels / arrowsPerFrame / pick.halo
+        // + setPickedIndices).
         // Inspect tab: up to two picked atoms (0-based indices into
-        // frame[currentFrame]).  Halo shapes are tracked separately
-        // from cell / force / index overlays so toggling any one of
-        // those doesn't clobber the picks.
+        // frame[currentFrame]); mirrors the embed's pickedIndices for
+        // the Inspect panel readout + atom-list row highlight.
         pickedAtoms: [],
-        pickShapes:  [],
         // AbortControllers for in-flight HTTP requests.  Separate
         // load + poll so a new file load supersedes the previous
         // load but doesn't kill the poll cadence, and a poll never
@@ -156,10 +155,21 @@
     // addModelsAsFrames / per-frame redraw loop.
     const _handle = window.molbuilder.viewer.embed($("viewer"), {
         style: { rep: "stick", radiusScale: 1.0 },
-        // Trajectory inspector has its own atom-pick path (click
-        // routes to onWatchAtomClick + Inspect-tab atom list); the
-        // embed's built-in pick stays off.
-        pick:  { mode: "none" },
+        // 2-atom distance pick for the Inspect panel.  ``halo: true``
+        // draws the yellow sphere overlay; ``label: false`` keeps the
+        // viewer uncluttered (the Inspect panel shows the readout).
+        // Atom-list row clicks share the embed's pick state via
+        // handle.setPickedIndices (no separate halo path).
+        pick:  {
+            mode:  "pair",
+            halo:  true,
+            label: false,
+            onPick(curr) {
+                state.pickedAtoms = curr.slice();
+                updateInspectPanel();
+                refreshAtomListHighlights();
+            },
+        },
         card:  { title:        "Trajectory",
                  showInfoLine: false,
                  height:       "100%" },
@@ -171,7 +181,6 @@
             catch (_) {}
         },
     });
-    const viewer = _handle._viewer3dmol();
 
     /* ------------------------------------------------------------------ */
     /*  Status banner                                                      */
@@ -499,32 +508,13 @@
     /* ------------------------------------------------------------------ */
     /*  Inspect tab: two-atom picking + live distance                      */
     /* ------------------------------------------------------------------ */
-
-    // Selection halo shared with the Modify tab via static/lib/mol-pick.js
-    // (one source of truth for the colour / radius / shape).
-    const pick = (window.molbuilder && window.molbuilder.pick) || null;
-
-    function clearPickHighlights() {
-        if (pick) pick.clearHalos(viewer, state.pickShapes);
-        else state.pickShapes.length = 0;
-    }
-
-    function renderPickHighlights() {
-        clearPickHighlights();
-        if (!state.data || !state.data.frames.length) {
-            viewer.render();
-            return;
-        }
-        const frame = state.data.frames[state.currentFrame] || [];
-        for (const idx of state.pickedAtoms) {
-            const row = frame[idx];
-            if (!row || !pick) continue;
-            state.pickShapes.push(
-                pick.addHalo(viewer, {x: row[1], y: row[2], z: row[3]})
-            );
-        }
-        viewer.render();
-    }
+    //
+    // The embed owns halo rendering via pick.mode = "pair" + pick.halo;
+    // _postFramePositionRedraw re-renders halos every frame so they
+    // track trajectory motion.  Atom-list row clicks push into the
+    // embed's pick state via handle.setPickedIndices, keeping a single
+    // source of truth.  state.pickedAtoms mirrors the embed's
+    // pickedIndices for the Inspect panel + row-highlight DOM.
 
     function updateInspectPanel() {
         const pa = state.pickedAtoms;
@@ -571,10 +561,12 @@
 
     // Toggle pick state for ``idx`` (0-based atom index): drop if
     // already picked, append if new; cap at 2 picks total (a third
-    // pick drops the oldest).  Shared between the viewer click hook
-    // and the atom-list row click.
-    function togglePick(idx) {
-        const pa = state.pickedAtoms;
+    // pick drops the oldest).  Drives the atom-list row click path;
+    // the embed handles the viewer-click path natively via its
+    // pick.mode = "pair" wiring.  Pushes the new state into the
+    // embed via setPickedIndices so halos stay in sync.
+    function togglePickFromRow(idx) {
+        const pa = state.pickedAtoms.slice();
         const existing = pa.indexOf(idx);
         if (existing !== -1) {
             pa.splice(existing, 1);
@@ -582,21 +574,15 @@
             if (pa.length >= 2) pa.shift();
             pa.push(idx);
         }
-        renderPickHighlights();
+        state.pickedAtoms = pa;
+        if (_handle) _handle.setPickedIndices(pa);
         updateInspectPanel();
         refreshAtomListHighlights();
     }
 
-    // 3Dmol click callback.  ``atom.serial`` is 0-based for XYZ-
-    // loaded models (every Watch trajectory goes through
-    // viewer.addModelsAsFrames(framesToMultiXyz(...), "xyz")).
-    function onWatchAtomClick(atom) {
-        togglePick(Number(atom.serial));
-    }
-
     function clearAtomPicks() {
         state.pickedAtoms = [];
-        renderPickHighlights();
+        if (_handle) _handle.setPickedIndices([]);
         updateInspectPanel();
         refreshAtomListHighlights();
     }
@@ -654,7 +640,7 @@
             // re-renders without practical benefit.  A future
             // event-delegation refactor (one tbody listener +
             // event.target.closest("tr")) would let us track via _on.
-            tr.addEventListener("click", () => togglePick(i));
+            tr.addEventListener("click", () => togglePickFromRow(i));
             frag.appendChild(tr);
         }
         tbody.appendChild(frag);
@@ -696,8 +682,8 @@
 
     function rebuildModel() {
         if (!_handle || !state.data || !state.data.frames.length) {
-            try { viewer.removeAllModels(); viewer.render(); }
-            catch (_) {}
+            // No data to mount; the next successful rebuildModel
+            // will replace whatever (if anything) is loaded.
             return;
         }
         // #230 Part B: mount the first frame's structure via
@@ -743,15 +729,10 @@
             paused:         true,
             onFrame: function (idx, _h) {
                 state.currentFrame = idx;
-                // #234 follow-up: drawIndices + drawForces no longer
-                // called here -- handle.setLabels carries atom-index
-                // labels via the embed's position-aware recompute;
-                // arrowsPerFrame swaps force arrows per frame in the
-                // embed.  renderPickHighlights still needed for the
-                // trajectory's bespoke 2-atom distance pick
-                // (state.pickedAtoms uses the raw viewer for
-                // sphere overlays).
-                renderPickHighlights();
+                // Pick halos + atom-index labels follow frames
+                // automatically via the embed's
+                // _postFramePositionRedraw; only the trajectory's
+                // own per-frame DOM bookkeeping is wired here.
                 updateInspectPanel();
                 updateAtomListCoords();
                 refreshForcesStatus();
@@ -763,12 +744,6 @@
         });
         // Atom-index labels via the embed's setLabels (#234 follow-up).
         applyIndexLabels();
-        // Re-arm the trajectory inspector's own click handler.  The
-        // embed's pick.mode is "none" so the embed doesn't capture
-        // clicks; we route them straight to onWatchAtomClick via
-        // setClickable on the raw viewer.  setStructure rebuilds
-        // the per-atom render objects so clickability resets here.
-        viewer.setClickable({}, true, onWatchAtomClick);
         // Populate the Inspect-tab atom list now that the model is
         // loaded; the list mirrors the per-frame coordinates and is
         // the keyboard-friendly path to selection.
@@ -791,9 +766,10 @@
         idx = Math.max(0, Math.min(n - 1, idx));
         // #230 Part B: delegate to handle.setAnimationFrame; the
         // embed fires onFrame which runs all the per-frame side
-        // effects (drawIndices, drawForces, renderPickHighlights,
-        // updateInspectPanel, updateAtomListCoords).  See
-        // rebuildModel() above for the onFrame wiring.
+        // effects (updateInspectPanel, updateAtomListCoords,
+        // refreshForcesStatus, frame-strip DOM).  Pick halos +
+        // atom-index labels follow frames natively in the embed via
+        // _postFramePositionRedraw.  See rebuildModel() above.
         if (_handle && typeof _handle.setAnimationFrame === "function") {
             _handle.setAnimationFrame(idx);
         }
@@ -1670,23 +1646,10 @@
         });
     });
 
-    /* ---- Re-fit 3Dmol on viewport resize ------------------------- */
-    /* The viewer height is `clamp(360px, 52vh, 500px)` -- it changes
-       when the user resizes the window or rotates a tablet.  3Dmol
-       caches canvas size at init, so we have to nudge it to refresh
-       its WebGL viewport whenever the container size actually changes;
-       debounce with rAF to avoid storming during drag. */
-    let _resizeRAF = 0;
-    const _onResize = () => {
-        cancelAnimationFrame(_resizeRAF);
-        _resizeRAF = requestAnimationFrame(() => {
-            if (viewer && typeof viewer.resize === "function") {
-                viewer.resize();
-                viewer.render();
-            }
-        });
-    };
-    _on(window, "resize", _onResize, { passive: true });
+    // Viewer resize: the embed installs its own ResizeObserver on the
+    // canvas host so 3Dmol's WebGL viewport stays in sync as the card
+    // resizes (clamp(360px, 52vh, 500px)).  No window-resize wiring
+    // needed here.
 
     // ---- pageshow / visibilitychange: force-refresh on tab re-entry  //
     //
@@ -1776,17 +1739,11 @@
                 clearInterval(state.playTimer);
                 state.playTimer = null;
             }
-            cancelAnimationFrame(_resizeRAF);
-            if (viewer) {
-                // ``viewer.clear()`` removes models + shapes + labels
-                // in one call -- matches the spectra core's dispose
-                // pattern for cross-inspector consistency.  The
-                // fine-grained removeAllShapes/Labels/Models calls
-                // it replaced were equivalent (3Dmol's clear() is
-                // the documented one-liner; the three-line form was
-                // a 2026-04 artefact from an earlier version that
-                // had per-bucket viewer instances).
-                try { viewer.clear(); } catch (_) { /* already torn down */ }
+            // handle.dispose() tears down the embed's animation loop,
+            // ResizeObserver, knob bar, models / shapes / labels and
+            // releases its references on the 3Dmol viewer.
+            if (_handle && typeof _handle.dispose === "function") {
+                try { _handle.dispose(); } catch (_) {}
             }
         },
         /**
