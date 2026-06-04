@@ -168,30 +168,11 @@
       </div>
 
       <div class="viewer-controls">
-        <details>
-          <summary>Style</summary>
-          <div class="control-row">
-            <label>Rep
-              <select id="rep">
-                <option value="ballstick" selected>ball &amp; stick</option>
-                <option value="sphere">sphere (CPK)</option>
-                <option value="stick">stick</option>
-                <option value="line">line</option>
-              </select>
-            </label>
-            <label>Atom radius
-              <input id="radius" type="range" min="0.2" max="2.0" step="0.05" value="1.0">
-            </label>
-            <label>Background
-              <select id="bg">
-                <option value="white" selected>white</option>
-                <option value="0xeeeeee">light grey</option>
-                <option value="black">black</option>
-              </select>
-            </label>
-            <label><input type="checkbox" id="show-labels"> Atom indices</label>
-          </div>
-        </details>
+        <!-- The bespoke <details> Style block was removed by the
+             #202 migration: rep / radius / background / atom-labels
+             now live in the embed's standard knob bar above the
+             canvas.  Only tab-specific actions stay here. -->
+
 
         <div class="control-row download-row">
           <span class="dl-label">Download:</span>

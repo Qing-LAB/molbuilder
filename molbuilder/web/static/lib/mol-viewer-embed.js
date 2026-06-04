@@ -2059,6 +2059,23 @@
             }));
         }
 
+        // 4a-2. ResizeObserver on the canvas host so the 3Dmol WebGL
+        //       viewport tracks user-resizable containers (e.g. the
+        //       Build tab's CSS resize handle on #viewer-wrap).
+        //       3Dmol's canvas doesn't auto-track its parent box;
+        //       this used to be wired per-tab via _viewer3dmol() +
+        //       a bespoke ResizeObserver.  Now lives in the embed
+        //       so every consumer benefits without per-tab code.
+        if (typeof root.ResizeObserver === "function") {
+            state._resizeObserver = new root.ResizeObserver(() => {
+                if (state.disposed) return;
+                try { viewer.resize(); viewer.render(); }
+                catch (_) {}
+            });
+            try { state._resizeObserver.observe(scaffold.canvas); }
+            catch (_) {}
+        }
+
         // 4b. Build the handle + stash on state BEFORE applying the
         //     initial animation.  Trajectory autoplay (paused:false)
         //     fires onFrame(idx, handle) on its first tick; if the
@@ -2732,6 +2749,12 @@
                 for (const l of state.overlayMarkerLabels) state.viewer.removeLabel(l);
                 state.viewer.clear();
             } catch (_) {}
+            // Stop tracking container size changes (4a-2 setup).
+            if (state._resizeObserver) {
+                try { state._resizeObserver.disconnect(); }
+                catch (_) {}
+                state._resizeObserver = null;
+            }
             try {
                 if (state.cardEl && state.cardEl.parentNode) {
                     state.cardEl.parentNode.removeChild(state.cardEl);

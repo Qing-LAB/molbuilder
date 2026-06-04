@@ -22,15 +22,15 @@
     };
 
     // Embedded MolViewer (#198, 2026-06-02; contract:
-    // docs/protocols/embedded-viewer.md).  The handle's declarative
-    // API drives style / labels / structure load; the raw 3Dmol
-    // viewer (handle._viewer3dmol()) is still used directly for:
-    //   1. ResizeObserver hookup (viewer.resize() on container box
-    //      change) -- the embed contract doesn't expose this and the
-    //      .viewer-wrap host has a CSS resize handle.
-    //   2. Camera get/setView for the cross-session save/restore
-    //      flow (viewer.getView() / setView() round-trip the camera
-    //      matrix; not covered by handle.refit()).
+    // docs/protocols/embedded-viewer.md).  Site migration #202
+    // landed 2026-06-03 — Build now uses the standard knob bar
+    // (Style / Labels / Axes / Reset / PNG / Background / Export)
+    // owned by the embed.  The bespoke <details> Style block in
+    // index.html is gone; getCamera/setCamera handle the cross-
+    // session camera persistence (was raw viewer.getView/setView);
+    // the embed's internal ResizeObserver tracks #viewer's
+    // resizable container box (was a bespoke RO + window-resize
+    // listener).  The handle is the only viewer touchpoint.
     const _viewerHandle = window.molbuilder.viewer.embed(
         $("viewer"),
         {
@@ -44,29 +44,23 @@
             },
             // No pick (the Build viewer is read-only -- the user
             // edits via the build form, not via clicks on atoms).
-            pick:    { mode: "none" },
-            card: {
-                bare:         true,    // Build owns its own card chrome
-                showInfoLine: false,
-                height:       "100%",
+            pick:   { mode: "none" },
+            // Default canonical chrome (knob bar visible above
+            // the canvas) per § 7.1 usage pattern.
+            card:   { title: "Structure", showInfoLine: true,
+                      height: "100%" },
+            // Default export filename when the user clicks Save
+            // to project / Download from the Export popover.
+            export: { defaultName: "structure" },
+            // Surface viewer errors via the existing setStatus
+            // helper (defined below) instead of silently logging.
+            onError(err) {
+                try { setStatus("status", err.message || err.code,
+                                "err"); }
+                catch (_) {}
             },
         }
     );
-    const viewer = _viewerHandle._viewer3dmol();
-
-    // Keep the 3Dmol canvas in sync with the user-resizable container.
-    // 3Dmol's WebGL context doesn't auto-track its parent box; we have
-    // to call viewer.resize() whenever the container's dimensions change
-    // (CSS resize handle, window resize, layout reflow).
-    function syncViewerSize() {
-        viewer.resize();
-        viewer.render();
-    }
-    const wrapEl = $("viewer-wrap");
-    if (wrapEl && typeof ResizeObserver !== "undefined") {
-        new ResizeObserver(syncViewerSize).observe(wrapEl);
-    }
-    window.addEventListener("resize", syncViewerSize);
 
     // ----- Status helpers --------------------------------------------
     function setStatus(elId, msg, kind) {
@@ -780,61 +774,26 @@
                      : (els) => (els && els.length ? els.join("") : "—"));
 
     // ----- 2. Render --------------------------------------------------
-    // Sizing math lives in molbuilder/web/static/lib/mol-style.js so the
-    // Build and Watch viewers stay in lock-step on representation
-    // numerics.  The Build form has no colorscheme picker -- pass null
-    // and 3Dmol falls back to the viewer-level Jmol defaults set at
-    // createViewer() time above.
-    function styleSpec() {
-        return molbuilder.style.spec({
-            rep:         $("rep").value,
-            scale:       parseFloat($("radius").value),
-            colorscheme: null,
-        });
-    }
-
-    // Index-label state is now owned by the embed (handle.setLabels);
-    // the legacy state.labels array is retained for backwards
-    // compatibility with the cross-session save/restore path that
-    // serialises it as part of the snapshot (drawLabels reads the
-    // ``show-labels`` checkbox at restore time so the array is
-    // recomputed by the handle without us tracking it manually).
-    function drawLabels() {
-        const show = $("show-labels").checked && !!state.xyz;
-        _viewerHandle.setLabels(show
-            ? { atoms: "indices", fontSize: 9, fontColor: "white",
-                background: "rgba(0,0,0,0.55)" }
-            : false);
-    }
-
-    function applyStyle() {
-        _viewerHandle.setStyle({
-            rep:         $("rep").value,
-            radiusScale: parseFloat($("radius").value),
-            background:  $("bg").value || undefined,
-        });
-    }
+    // The standard knob bar (style picker / labels popover / axes /
+    // reset / background / export) owns all the per-viewer chrome
+    // post-migration; Build's host page only owns its tab-specific
+    // controls (Build form, Generate buttons, Download row).  The
+    // bespoke <details> Style block in index.html is gone with this
+    // migration; rep / radius / background / labels move into the
+    // knob bar where every consumer site shares the same UX.
 
     function renderStructure() {
         if (!state.xyz) {
-            // No structure to mount -- clear via raw viewer (the
-            // embed's setStructure rejects empty xyz).
-            viewer.removeAllModels();
-            viewer.removeAllLabels();
-            state.labels = [];
-            viewer.render();
+            // No structure to mount.  setStructure with an empty
+            // xyz/pdb is a no-op in the embed; Build's empty state
+            // is rare (only at first page load before any build /
+            // load).  Leaves whatever was previously rendered
+            // until the user builds something.
             return;
         }
         _viewerHandle.setStructure({ xyz: state.xyz });
-        applyStyle();
-        drawLabels();
         _viewerHandle.refit();
     }
-
-    $("rep").addEventListener("change", applyStyle);
-    $("radius").addEventListener("input", applyStyle);
-    $("show-labels").addEventListener("change", drawLabels);
-    $("bg").addEventListener("change", applyStyle);
 
     // ----- Downloads --------------------------------------------------
     function downloadAs(text, filename, mime = "text/plain") {
@@ -1631,12 +1590,11 @@
 
     function saveStructureState() {
         if (!state.xyz || !state.last_response) return;
-        let camera = null;
-        try {
-            camera = viewer.getView();
-        } catch (_e) {
-            // 3Dmol's getView is synchronous; defensive on teardown.
-        }
+        // Per § 3.13: getCamera returns an opaque CameraState
+        // {_viewer, _version, data} we round-trip through
+        // setCamera at restore time.  Drops the raw viewer.getView
+        // touchpoint that #202 migration eliminated.
+        const camera = _viewerHandle.getCamera();
         const payload = {
             v: STRUCTURE_SCHEMA_VERSION,
             saved_at: new Date().toISOString(),
@@ -1671,15 +1629,10 @@
         // the Generate buttons consistent with a fresh build.
         applyStructureResult(r);
         // Restore the camera last so it doesn't fight the zoomTo()
-        // inside renderStructure().
-        if (Array.isArray(saved.camera)) {
-            try {
-                viewer.setView(saved.camera);
-                viewer.render();
-            } catch (_e) {
-                viewer.zoomTo();
-                viewer.render();
-            }
+        // inside renderStructure().  Per § 3.13 setCamera no-ops
+        // on _viewer / _version mismatch (forward-compat).
+        if (saved.camera) {
+            _viewerHandle.setCamera(saved.camera);
         }
         return true;
     }
