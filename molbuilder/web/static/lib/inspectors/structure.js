@@ -95,16 +95,20 @@
                     [fmt]: r.text,
                     // Style matches the legacy structure inspector's
                     // ball-and-stick rendering.
-                    style: { rep: "ballstick", radiusScale: 1.0 },
-                    // Bare mode -- the inspector already owns the
-                    // outer card; embed inside our slot.  Info-line
-                    // suppressed because the inspector's status note
-                    // above the canvas already shows "Loaded N atoms".
+                    style: { rep: "ball-and-stick", radiusScale: 1.0 },
+                    // Post-#204: standard knob bar visible above the
+                    // canvas (Style / Labels / Axes / Reset / PNG /
+                    // Background / Export).  Title suppressed because
+                    // the inspector's parent .inspector-pane already
+                    // shows the file name + status note; the embed's
+                    // info-line stays off for the same reason.
                     card: {
-                        bare:         true,
+                        title:        "",
                         showInfoLine: false,
                         height:       "420px",
                     },
+                    axes:   true,
+                    export: { defaultName: r.basename || "structure" },
                     onReady: function (handle) {
                         if (disposed) return;
                         const n = handle.getAtomCount();
