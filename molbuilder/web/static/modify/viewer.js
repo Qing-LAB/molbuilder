@@ -1272,6 +1272,10 @@
     // their own viewer.
     window.molbuilder.modify = window.molbuilder.modify || {};
     window.molbuilder.modify.viewer = viewer;
+    // #229 Part B: expose the embed handle so the selection
+    // viewer-adapter can drive overlays + picks via the declarative
+    // API instead of reaching into 3Dmol directly.
+    window.molbuilder.modify.handle = _viewerHandle;
     // Load a structure text blob (XYZ or PDB) via /api/build/load,
     // which sniffs the format from the filename + content.  The
     // function is named ``loadStructureText`` (renamed 2026-05-22

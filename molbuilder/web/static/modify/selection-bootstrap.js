@@ -128,16 +128,22 @@
         }
         let tries = 0;
         const timer = setInterval(() => {
-            const v = (window.molbuilder.modify
-                       && window.molbuilder.modify.viewer)
-                      ? window.molbuilder.modify.viewer : null;
-            if (v) {
-                adapterModule.attach(v);
+            // #229 Part B: pass the embed HANDLE (not the raw 3Dmol
+            // viewer) so the adapter drives overlays + picks via
+            // the declarative API.  Falls back to viewer for legacy
+            // pre-migration tabs that haven't exposed .handle yet
+            // (none in production today; the warn-then-skip below
+            // surfaces the misconfiguration).
+            const h = (window.molbuilder.modify
+                       && window.molbuilder.modify.handle)
+                      ? window.molbuilder.modify.handle : null;
+            if (h) {
+                adapterModule.attach(h);
                 clearInterval(timer);
             } else if (++tries >= 10) {
                 clearInterval(timer);
                 console.warn(
-                    "[selection-bootstrap] viewer never appeared; "
+                    "[selection-bootstrap] handle never appeared; "
                     + "click integration disabled"
                 );
             }
