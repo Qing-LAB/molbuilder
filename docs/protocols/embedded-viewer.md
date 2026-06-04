@@ -1213,32 +1213,45 @@ not on `message`.
 
 ### 5.3 Method → possible-error matrix
 
-This table is **the** reference for code-vs-doc review.
+This table is **the** reference for code-vs-doc review. Sync setters
+dispatch `invalid_input` on input that fails type / shape / enum /
+range validation against the documented contract; they then proceed
+with the documented default and continue rendering. They do NOT
+throw and they do NOT skip the call (except where noted as "halt"
+below — used when continuing would corrupt state, e.g. non-string
+`xyz`). Async methods reject the Promise rather than firing
+`onError`.
 
 | Method | Sync throw | Promise reject codes | onError codes |
 |---|---|---|---|
-| `embed()` | `missing_dependency` | — | — |
-| `setStructure` | — | — | `invalid_input` (malformed xyz/pdb) |
-| `appendFrames` | — | — | `invalid_input` (atom-count mismatch only). No-animation and wrong-kind paths are silent no-ops per § 3.2; no error fires. |
-| `setStyle` | — | — | `invalid_input` (bad rep, NaN radius) |
-| `setAxes` | — | — | `invalid_input` (bad mode) |
-| `setCell` | — | — | — |
-| `setLabels` | — | — | `invalid_input` (atoms out of range) |
-| `setArrows` | — | — | `invalid_input` (bad shape) |
-| `setPick` | — | — | `invalid_input` (bad mode) |
-| `setBackground` | — | — | — (any CSS color accepted; renderer absorbs invalid) |
-| `setOverlays` | — | — | `invalid_input` (atoms out of range, missing selector) |
-| `setAtomStyle` | — | — | `invalid_input` (atoms out of range) |
-| `setAnimation` | — | — | `invalid_input` (atom-count mismatch, wrong kind) |
-| `setKnobs` | — | — | `invalid_input` (unknown knob name) |
+| `embed()` | `missing_dependency` | — | `invalid_input` (mount-time `KnobBarOpts.labelsFormats: []` per § 3.10) |
+| `setStructure` | — | — | `invalid_input` (`xyz` / `pdb` not a string → halt) |
+| `appendFrames` | — | — | `invalid_input` (atom-count mismatch → halt). No-animation and wrong-kind calls are silent no-ops per § 3.2. |
+| `setStyle` | — | — | `invalid_input` (`rep` outside `{stick, ball-and-stick, sphere, line, cross, cartoon}`; non-finite `radiusScale`) |
+| `setAxes` | — | — | `invalid_input` (`mode` outside `{auto, world}`) |
+| `setCell` | — | — | — (`color`/`radius` coerced to defaults) |
+| `setLabels` | — | — | `invalid_input` (`atoms` not `"all"`/`"indices"`/`"names"`/`number[]`; non-int / negative entries in `atoms` array; `format` outside `{index, name, element}`) |
+| `setArrows` | — | — | `invalid_input` (argument not an array → halt; per-entry missing `start`/`end`) |
+| `setPick` | — | — | `invalid_input` (`mode` outside `{none, single, pair, multi}`; `label` outside `false`/`{index, name, element}`) |
+| `setBackground` | — | — | `invalid_input` (`color` not a non-empty string → halt) |
+| `setOverlays` | — | — | `invalid_input` (entries dropped: bad/missing/multiple selectors, or no style/halo/marker) |
+| `setAtomStyle` | — | — | `invalid_input` (bad selector → halt; style with no `{rep, radiusScale, color, opacity}` → halt) |
+| `setAnimation` | — | — | `invalid_input` (`kind` outside `{vibration, trajectory}` → halt; vibration without `displacements` array → halt; vibration `displacements.length ≠ atom_count` → halt; trajectory without `frames` array → halt; trajectory `frames[0].length ≠ atom_count` → halt). Partial updates (no `kind`) merge silently. |
+| `setKnobs` | — | — | `invalid_input` (`position` outside `{top, bottom}`; `labelsFormats` entries outside `{index, name, element}`; `backgroundPresets` not an array) |
+| `setPickedIndices` | — | — | `invalid_input` (argument not `number[] \| null` → halt) |
+| `setCamera` | — | — | `invalid_input` (argument not an object → halt). Version mismatch is silent (forward-compat) per § 3.13. |
 | `screenshot` | — | `no_structure`, `no_project`, `io_error`, `aborted`, `disposed`, `unknown` | — |
-| `exportData` | — | `no_structure`, `no_project`, `no_clipboard`, `io_error`, `aborted`, `disposed`, `unknown` | — |
+| `exportData` | — | `invalid_input`, `no_structure`, `no_project`, `no_clipboard`, `io_error`, `aborted`, `disposed`, `unknown` | — |
 | `captureFrames` | — | `no_structure`, `static_structure`, `aborted`, `disposed`, `unknown` | — |
-| `exportAnimation` | — | `no_structure`, `static_structure`, `no_project`, `no_media_recorder`, `no_gif_encoder`, `io_error`, `aborted`, `disposed`, `unknown` | — |
-| `getCamera` | — | — | — |
-| `setCamera` | — | — | `invalid_input` (mismatched `_viewer` / `_version` → no-op, no error) |
+| `exportAnimation` | — | `invalid_input`, `no_structure`, `static_structure`, `no_project`, `no_media_recorder`, `no_gif_encoder`, `io_error`, `aborted`, `disposed`, `unknown` | — |
+| `getCamera` / `getAtomCount` / `getElements` / `getPickedIndices` / `getStructureText` / `getAnimationFrame` / `isAnimationPlaying` | — | — | — |
 | `playAnimation` / `pauseAnimation` / `setAnimationFrame` | — | — | — (no-op when no animation; frame index clamped) |
-| `refit` / `render` / `dispose` | — | — | — |
+| `refit` / `setPivot` / `render` / `dispose` / `_viewer3dmol` | — | — | — |
+
+**"halt" semantics.** When a row says "→ halt", the method returns
+early without mutating state — there is no half-applied side effect.
+This applies to every `invalid_input` that would otherwise corrupt
+the structure / animation / camera baseline.
 
 ### 5.4 `opts.onError` semantics
 

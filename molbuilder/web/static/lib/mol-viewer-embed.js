@@ -33,6 +33,20 @@
     const DEFAULT_HEIGHT     = "clamp(360px, 52vh, 500px)";
     const DEFAULT_BACKGROUND = "#ffffff";   // 3Dmol convention (web-api.md § 11.4)
 
+    // Closed enums for sync setX input validation (§ 5.3).  Mirrors
+    // the option lists in § 3.3 / 3.4 / 3.6 / 3.8 / 3.10 of the
+    // embed contract; the corresponding setters dispatch
+    // ``invalid_input`` when the supplied value falls outside the
+    // closed set and continue with the documented default.
+    const VALID_REPS = [
+        "stick", "ball-and-stick", "sphere", "line", "cross",
+        "cartoon",
+    ];
+    const VALID_AXES_MODES   = ["auto", "world"];
+    const VALID_PICK_MODES   = ["none", "single", "pair", "multi"];
+    const VALID_LABEL_FORMS  = ["index", "name", "element"];
+    const VALID_KNOB_POSITIONS = ["top", "bottom"];
+
     /* ------------------------------------------------------------ */
     /*  Error model — contract § 3.14 + § 5                          */
     /* ------------------------------------------------------------ */
@@ -120,6 +134,14 @@
         }
     }
 
+    function _dispatchInvalidInput(state, message) {
+        // Sugar for "input failed a § 5.3 validation check".  Callers
+        // pass a one-line message naming the method + the offending
+        // field; the embed continues with the documented default and
+        // surfaces this through opts.onError.
+        _dispatchError(state, _makeError("invalid_input", message));
+    }
+
     /* ------------------------------------------------------------ */
     /*  Pure-logic helpers (exported for unit testing)               */
     /* ------------------------------------------------------------ */
@@ -162,10 +184,14 @@
         // Two paths to the same state caused precedence ambiguity in
         // the v1 draft; the field is gone (review fix D3).
         s = s || {};
+        const rep = (typeof s.rep === "string" && VALID_REPS.includes(s.rep))
+                       ? s.rep : "stick";
+        const radiusScale = (typeof s.radiusScale === "number"
+                             && Number.isFinite(s.radiusScale))
+                       ? s.radiusScale : 1.0;
         return {
-            rep:          s.rep         || "stick",
-            radiusScale:  typeof s.radiusScale === "number"
-                            ? s.radiusScale : 1.0,
+            rep:          rep,
+            radiusScale:  radiusScale,
             colorScheme:  s.colorScheme || null,
             background:   s.background  || DEFAULT_BACKGROUND,
         };
@@ -2159,6 +2185,16 @@
         function setStructure(opts) {
             if (state.disposed) return;
             opts = opts || {};
+            if (opts.xyz !== undefined && typeof opts.xyz !== "string") {
+                _dispatchInvalidInput(state,
+                    "setStructure: 'xyz' must be a string");
+                return;
+            }
+            if (opts.pdb !== undefined && typeof opts.pdb !== "string") {
+                _dispatchInvalidInput(state,
+                    "setStructure: 'pdb' must be a string");
+                return;
+            }
             const next = Object.assign({}, state.current, {
                 xyz:     typeof opts.xyz === "string" ? opts.xyz : state.current.xyz,
                 pdb:     typeof opts.pdb === "string" ? opts.pdb : state.current.pdb,
@@ -2208,6 +2244,22 @@
 
         function setStyle(s) {
             if (state.disposed) return;
+            if (s && typeof s === "object") {
+                if (s.rep !== undefined
+                    && (typeof s.rep !== "string"
+                        || !VALID_REPS.includes(s.rep))) {
+                    _dispatchInvalidInput(state,
+                        "setStyle: 'rep' must be one of " +
+                        VALID_REPS.join(", ") +
+                        "; got " + JSON.stringify(s.rep));
+                }
+                if (s.radiusScale !== undefined
+                    && (typeof s.radiusScale !== "number"
+                        || !Number.isFinite(s.radiusScale))) {
+                    _dispatchInvalidInput(state,
+                        "setStyle: 'radiusScale' must be a finite number");
+                }
+            }
             const next = _normaliseStyle(s);
             if (_equalNormalised(state.current.style, next)) return;
             state.current.style = next;
@@ -2221,6 +2273,14 @@
 
         function setAxes(a) {
             if (state.disposed) return;
+            if (a && typeof a === "object" && a !== true
+                && a.mode !== undefined
+                && !VALID_AXES_MODES.includes(a.mode)) {
+                _dispatchInvalidInput(state,
+                    "setAxes: 'mode' must be one of " +
+                    VALID_AXES_MODES.join(", ") +
+                    "; got " + JSON.stringify(a.mode));
+            }
             const next = _normaliseAxes(a);
             if (_equalNormalised(state.current.axes, next)) return;
             state.current.axes = next;
@@ -2250,6 +2310,31 @@
 
         function setLabels(l) {
             if (state.disposed) return;
+            if (l && typeof l === "object" && l !== true) {
+                if (l.atoms !== undefined && l.atoms !== "all"
+                    && l.atoms !== "indices" && l.atoms !== "names"
+                    && !Array.isArray(l.atoms)) {
+                    _dispatchInvalidInput(state,
+                        "setLabels: 'atoms' must be 'all' or a "
+                      + "number[]");
+                } else if (Array.isArray(l.atoms)) {
+                    const bad = l.atoms.filter(
+                        (v) => !Number.isInteger(v) || v < 0);
+                    if (bad.length) {
+                        _dispatchInvalidInput(state,
+                            "setLabels: " + bad.length + " atom index/"
+                          + "indices out of range (must be non-negative "
+                          + "integers); dropping them");
+                    }
+                }
+                if (l.format !== undefined
+                    && !VALID_LABEL_FORMS.includes(l.format)) {
+                    _dispatchInvalidInput(state,
+                        "setLabels: 'format' must be one of " +
+                        VALID_LABEL_FORMS.join(", ") +
+                        "; got " + JSON.stringify(l.format));
+                }
+            }
             const next = _normaliseLabels(l);
             if (_equalNormalised(state.current.labels, next)) return;
             state.current.labels = next;
@@ -2259,6 +2344,29 @@
 
         function setArrows(arr) {
             if (state.disposed) return;
+            if (arr !== undefined && arr !== null
+                && !Array.isArray(arr)) {
+                _dispatchInvalidInput(state,
+                    "setArrows: argument must be an array of ArrowSpec "
+                  + "or null");
+                return;
+            }
+            if (Array.isArray(arr)) {
+                let badCount = 0;
+                for (const a of arr) {
+                    if (!a || typeof a !== "object"
+                        || !Array.isArray(a.start) || a.start.length !== 3
+                        || !Array.isArray(a.end)   || a.end.length   !== 3) {
+                        badCount++;
+                    }
+                }
+                if (badCount) {
+                    _dispatchInvalidInput(state,
+                        "setArrows: " + badCount + " of " + arr.length
+                      + " entries dropped (each must have start:[x,y,z] "
+                      + "and end:[x,y,z])");
+                }
+            }
             const next = Array.isArray(arr) ? arr.slice() : [];
             // Idempotence: identity-stringify is fine at this scale.
             if (JSON.stringify(state.current.arrows) === JSON.stringify(next)) return;
@@ -2269,6 +2377,22 @@
 
         function setPick(p) {
             if (state.disposed) return;
+            if (p && typeof p === "object") {
+                if (p.mode !== undefined
+                    && !VALID_PICK_MODES.includes(p.mode)) {
+                    _dispatchInvalidInput(state,
+                        "setPick: 'mode' must be one of " +
+                        VALID_PICK_MODES.join(", ") +
+                        "; got " + JSON.stringify(p.mode));
+                }
+                if (p.label !== undefined && p.label !== false
+                    && !VALID_LABEL_FORMS.includes(p.label)) {
+                    _dispatchInvalidInput(state,
+                        "setPick: 'label' must be false or one of " +
+                        VALID_LABEL_FORMS.join(", ") +
+                        "; got " + JSON.stringify(p.label));
+                }
+            }
             const next = _normalisePick(p);
             if (_equalNormalised(state.current.pick, next)) return;
             state.current.pick = next;
@@ -2303,6 +2427,32 @@
             // against the same handle.  Idempotent against an
             // identical opts object via _equalNormalised.
             if (state.disposed) return;
+            if (k && typeof k === "object" && k !== true) {
+                if (k.position !== undefined
+                    && !VALID_KNOB_POSITIONS.includes(k.position)) {
+                    _dispatchInvalidInput(state,
+                        "setKnobs: 'position' must be one of " +
+                        VALID_KNOB_POSITIONS.join(", ") +
+                        "; got " + JSON.stringify(k.position));
+                }
+                if (k.labelsFormats !== undefined
+                    && Array.isArray(k.labelsFormats)) {
+                    const bad = k.labelsFormats.filter(
+                        (v) => !VALID_LABEL_FORMS.includes(v));
+                    if (bad.length) {
+                        _dispatchInvalidInput(state,
+                            "setKnobs: 'labelsFormats' contains "
+                          + bad.length + " unknown format(s); valid: "
+                          + VALID_LABEL_FORMS.join(", "));
+                    }
+                }
+                if (k.backgroundPresets !== undefined
+                    && !Array.isArray(k.backgroundPresets)) {
+                    _dispatchInvalidInput(state,
+                        "setKnobs: 'backgroundPresets' must be a string[] "
+                      + "of CSS colors");
+                }
+            }
             const next = _normaliseKnobs(k);
             if (_equalNormalised(state.current.knobs, next)) return;
             state.current.knobs = next;
@@ -2479,7 +2629,10 @@
             // Clamps to the mode's max (single: 1; pair: 2; multi:
             // unbounded).  Pass null or [] to clear.
             if (state.disposed) return;
-            if (!state.current.pick) return;
+            // Validate the argument type FIRST so a bad call fires
+            // invalid_input even when no pick mode is configured
+            // (per § 5.3 "halt" semantics — type errors are caller
+            // bugs regardless of state).
             let next;
             if (indices === null || indices === undefined) {
                 next = [];
@@ -2488,12 +2641,12 @@
                     return Number.isInteger(v) && v >= 0;
                 });
             } else {
-                _dispatchError(state, _makeError(
-                    "invalid_input",
+                _dispatchInvalidInput(state,
                     "setPickedIndices: argument must be an array of "
-                  + "non-negative integers or null"));
+                  + "non-negative integers or null");
                 return;
             }
+            if (!state.current.pick) return;
             const mode = state.current.pick.mode;
             if (mode === "single" && next.length > 1) {
                 next = next.slice(-1);
@@ -2950,6 +3103,57 @@
             }
             // Full update (kind supplied) OR no current animation
             // to merge into — go through the normal replace path.
+            // Validate first per § 5.3: explicit kind + bad shape +
+            // atom-count mismatch all fire invalid_input.
+            if (animation && typeof animation === "object") {
+                if (animation.kind !== undefined
+                    && animation.kind !== "vibration"
+                    && animation.kind !== "trajectory") {
+                    _dispatchInvalidInput(state,
+                        "setAnimation: 'kind' must be 'vibration' or "
+                      + "'trajectory'; got "
+                      + JSON.stringify(animation.kind));
+                    return;
+                }
+                if (animation.kind === "vibration") {
+                    if (!Array.isArray(animation.displacements)) {
+                        _dispatchInvalidInput(state,
+                            "setAnimation: vibration requires "
+                          + "'displacements' as a number[][][3] array");
+                        return;
+                    }
+                    const nAtoms = _atomCount(state.viewer);
+                    if (nAtoms > 0
+                        && animation.displacements.length !== nAtoms) {
+                        _dispatchInvalidInput(state,
+                            "setAnimation: vibration atom-count "
+                          + "mismatch — structure has " + nAtoms
+                          + " atoms, displacements supplied for "
+                          + animation.displacements.length);
+                        return;
+                    }
+                }
+                if (animation.kind === "trajectory") {
+                    if (!Array.isArray(animation.frames)
+                        || animation.frames.length === 0) {
+                        _dispatchInvalidInput(state,
+                            "setAnimation: trajectory requires "
+                          + "non-empty 'frames' array");
+                        return;
+                    }
+                    const nAtoms = _atomCount(state.viewer);
+                    const f0 = animation.frames[0];
+                    if (nAtoms > 0 && Array.isArray(f0)
+                        && f0.length !== nAtoms) {
+                        _dispatchInvalidInput(state,
+                            "setAnimation: trajectory atom-count "
+                          + "mismatch — structure has " + nAtoms
+                          + " atoms, frame[0] supplied for "
+                          + f0.length);
+                        return;
+                    }
+                }
+            }
             const next = _normaliseAnimation(animation);
             _setAnimationImpl(state, next);
         }

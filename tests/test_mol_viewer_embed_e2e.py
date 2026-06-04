@@ -885,6 +885,138 @@ class TestHandleSurface:
             "loop risk per § 3.2 contract)"
         )
 
+    def test_setX_dispatches_invalid_input_per_5_3(
+            self, page, flask_server):
+        """Per § 5.3: every documented sync setter dispatches
+        ``invalid_input`` on input that fails type / shape / enum /
+        range validation against the contract.  Pinned for #237 so a
+        future edit that silently coerces a bad value (instead of
+        firing onError) fails this test.
+
+        Each subcase mounts a fresh embed, calls one setter with a
+        single bad value, and asserts the error code + that the
+        setter either halted (for halt cases) or proceeded with the
+        documented default."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            () => {
+                const cases = {};
+                function run(name, ctor) {
+                    const host = document.createElement("div");
+                    host.style.cssText =
+                        "width:300px;height:200px;position:fixed;top:-9999px;";
+                    document.body.appendChild(host);
+                    const errs = [];
+                    const h = window.molbuilder.viewer.embed(host, {
+                        xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                        card: { showInfoLine: false, height: "100%" },
+                        onError: (e) => { errs.push(e.code); },
+                    });
+                    let result;
+                    try { result = ctor(h); }
+                    catch (e) { result = "threw:" + e.message; }
+                    cases[name] = { errs: errs.slice(), result };
+                    h.dispose();
+                    host.remove();
+                }
+                run("setStructure_bad_xyz",
+                    (h) => h.setStructure({xyz: 42}));
+                run("setStyle_bad_rep",
+                    (h) => h.setStyle({rep: "bogus"}));
+                run("setStyle_NaN_radius",
+                    (h) => h.setStyle({radiusScale: NaN}));
+                run("setAxes_bad_mode",
+                    (h) => h.setAxes({mode: "diagonal"}));
+                run("setLabels_bad_format",
+                    (h) => h.setLabels({atoms: "all", format: "weird"}));
+                run("setLabels_negative_idx",
+                    (h) => h.setLabels({atoms: [-1, 0]}));
+                run("setArrows_not_array",
+                    (h) => h.setArrows("nope"));
+                run("setArrows_bad_entry",
+                    (h) => h.setArrows([{start: [0,0,0]}]));
+                run("setPick_bad_mode",
+                    (h) => h.setPick({mode: "quintuple"}));
+                run("setPick_bad_label",
+                    (h) => h.setPick({mode: "single", label: "bogus"}));
+                run("setBackground_empty",
+                    (h) => h.setBackground(""));
+                run("setKnobs_bad_position",
+                    (h) => h.setKnobs({position: "middle"}));
+                run("setKnobs_bad_lf",
+                    (h) => h.setKnobs({labelsFormats: ["index", "bogus"]}));
+                run("setAnimation_bad_kind",
+                    (h) => h.setAnimation({kind: "rotation"}));
+                run("setAnimation_atom_mismatch",
+                    (h) => h.setAnimation({
+                        kind: "vibration",
+                        displacements: [[0,0,0.1],[0,0,0.1]],  // 2 not 3
+                    }));
+                run("setPickedIndices_bad",
+                    (h) => h.setPickedIndices("nope"));
+                run("setCamera_not_object",
+                    (h) => h.setCamera(42));
+                return cases;
+            }
+        """)
+        for name, cur in out.items():
+            assert "invalid_input" in cur["errs"], (
+                f"{name}: expected onError(invalid_input); got "
+                f"errs={cur['errs']!r}, result={cur['result']!r}"
+            )
+
+    def test_setAnimation_halt_preserves_existing_animation(
+            self, page, flask_server):
+        """Per § 5.3 "halt" semantics: a setAnimation call with an
+        invalid full-update payload (bad kind / missing displacements /
+        atom-count mismatch) must NOT clear or replace the active
+        animation.  Pinned for #237: regression guard against a future
+        edit that validates after _setAnimationImpl runs."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const errs = [];
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    animation: {
+                        kind: "vibration",
+                        displacements: [[0,0,0.1],[0,0,0.1],[0,0,0.1]],
+                        amplitude: 0.2, speedHz: 1.0, paused: false,
+                    },
+                    onError: (e) => { errs.push(e.code); },
+                });
+                await new Promise(r => requestAnimationFrame(r));
+                const before = h._test.hasAnimationLoop();
+                // Bad atom count -- must halt + preserve.
+                h.setAnimation({
+                    kind: "vibration",
+                    displacements: [[1,0,0]],   // 1 not 3
+                });
+                await new Promise(r => requestAnimationFrame(r));
+                const after = h._test.hasAnimationLoop();
+                h.dispose();
+                host.remove();
+                return { before, after, errs };
+            }
+        """)
+        assert out["before"] is True
+        assert out["after"]  is True, (
+            "setAnimation with atom-count mismatch wiped the active "
+            "animation -- § 5.3 \"halt\" semantics violated"
+        )
+        assert "invalid_input" in out["errs"]
+
     def test_chrome_consistency_across_build_and_modify(
             self, page, flask_server):
         """The standard knob bar's DOM structure is identical on
