@@ -307,13 +307,22 @@ type ViewerOpts = {
 ```ts
 type ViewerHandle = {
   // ---- Data setters (re-renders automatically) ----------------- //
-  setStructure(opts: { xyz?:           string,
-                       pdb?:           string,
-                       lattice?:       number[3][3],
-                       preserveCamera?: boolean }): void,
+  setStructure(opts: { xyz?:             string,
+                       pdb?:             string,
+                       lattice?:         number[3][3],
+                       preserveCamera?:  boolean,
+                       preservePick?:    boolean,
+                       preserveOverlays?:boolean }): void,
   // See § 4.2 for setStructure × animation interactions and the
   // camera-preservation rule.  ``preserveCamera`` here overrides
   // the embed-level opts.preserveCamera for THIS call only.
+  // ``preservePick`` / ``preserveOverlays`` override the default
+  // § 4.2.1 element-comparison rule: ``true`` keeps the state
+  // unconditionally (host knows the swap is logically same-
+  // structure, e.g. an atom-type edit where the index space
+  // survives by host bookkeeping); ``false`` clears
+  // unconditionally; ``undefined`` (default) follows the
+  // element-comparison rule.
 
   appendFrames(frames: number[][][3]): void,
   // Trajectory mode only.  Extends ``animation.frames`` with the
@@ -416,6 +425,22 @@ type ViewerHandle = {
   getKnobs():     KnobBarOpts,
   getArrows():    ArrowSpec[],
   getAnimation(): AnimationOpts | null,
+
+  // ---- Ordered batch runner --------------------------------- //
+  // Apply many sections at once in a canonical order so atom-
+  // keyed state (overlays, labels-as-array, picks, animation,
+  // camera) lands AFTER setStructure has reloaded the model.
+  // Every field is optional; ``applyState({})`` is a no-op.  Use
+  // case: host-side persistence round-trip —
+  //   const snap = {
+  //     structure: { xyz: handle.getStructureText() },
+  //     style: handle.getStyle(), axes: handle.getAxes(),
+  //     overlays: handle.getOverlays(),
+  //     camera: handle.getCamera(),
+  //   };
+  //   // ... later, after a reload ...
+  //   handle.applyState(snap);
+  applyState(spec: ApplyStateSpec): void,
 
   getStructureText(format?: "xyz" | "pdb"): string,
   // Returns the current structure as text in the requested format.
@@ -1221,6 +1246,67 @@ picker drops both. Type-swap edits (e.g. C → N) change element
 ordering and therefore clear both — the highlight on "atom 5 was
 C" is no longer meaningful.
 
+**`preservePick` / `preserveOverlays` escape hatch.** Hosts that
+track their own index mapping (a /modify atom-type edit that
+keeps the index space stable by host bookkeeping; a programmatic
+batch that swaps an atom and re-applies the same selection
+afterward) can override the element comparison via
+`setStructure({xyz, preservePick: true, preserveOverlays: true})`.
+`true` keeps the state unconditionally; `false` clears
+unconditionally; `undefined` follows the default rule above.
+Equally useful for hosts that want to clear even when elements
+match (e.g. "user pressed Reset → drop selection regardless").
+
+### 4.2.2 Persistence round-trip via `applyState`
+
+Hosts that persist + restore the embed's state should use the
+nine declarative-state getters (§ 3.2) at save time and
+`applyState(spec)` at restore time. The batch runner enforces
+the canonical order so atom-keyed sections (overlays, labels-as-
+array, picks, animation, camera) land AFTER `setStructure` has
+reloaded the model — manual call sequences are easy to get
+subtly wrong here.
+
+```js
+// Save: snapshot every section the host wants to round-trip.
+const snap = {
+  structure:  { xyz: handle.getStructureText() },
+  style:      handle.getStyle(),
+  axes:       handle.getAxes(),
+  cell:       handle.getCell(),
+  labels:     handle.getLabels(),
+  overlays:   handle.getOverlays(),
+  pick:       handle.getPick(),
+  pickedIndices: handle.getPickedIndices(),
+  animation:  handle.getAnimation(),
+  camera:     handle.getCamera(),
+};
+// ... store snap somewhere, e.g. sessionStorage ...
+
+// Restore: one call, canonical order.
+handle.applyState(snap);
+```
+
+Order (each field is optional):
+
+1. `structure` (atom space may change; everything below depends
+   on the new model existing)
+2. `style` → `background`
+3. `axes`, `cell`, `labels`, `arrows`
+4. `overlays` (atom-keyed; layered above base style per § 3.12)
+5. `pick`, `pickedIndices`
+6. `animation`
+7. `camera` (frames the new structure)
+8. `knobs` (DOM chrome; independent)
+
+`interaction`, `export`, `card`, `onError`, `onReady`,
+`preserveCamera`, and `testInjection` are **mount-only** opts —
+they're NOT batchable via `applyState` because the embed's
+lifecycle owns them.
+
+`applyState` is NOT a "single render frame" guarantee — 3Dmol's
+render is cheap and the intermediate renders are fine.
+
 ### 4.3 `setStructure` × animation
 
 | Call | Animation behavior |
@@ -1336,6 +1422,7 @@ below — used when continuing would corrupt state, e.g. non-string
 | `setAnimation` | — | — | `invalid_input` (`kind` outside `{vibration, trajectory}` → halt; vibration without `displacements` array → halt; vibration `displacements.length ≠ atom_count` → halt; trajectory without `frames` array → halt; trajectory `frames[0].length ≠ atom_count` → halt). Partial updates (no `kind`) merge silently. |
 | `setKnobs` | — | — | `invalid_input` (`position` outside `{top, bottom}`; `labelsFormats` entries outside `{index, name, element}`; `backgroundPresets` not an array) |
 | `setPickedIndices` | — | — | `invalid_input` (argument not `number[] \| null` → halt) |
+| `applyState` | — | — | `invalid_input` (argument not an object → halt). Otherwise transitive: each subsection's errors fire per its own row above. |
 | `setCamera` | — | — | `invalid_input` (argument not an object → halt). Version mismatch is silent (forward-compat) per § 3.13. |
 | `screenshot` | — | `no_structure`, `no_project`, `io_error`, `aborted`, `disposed`, `unknown` | — |
 | `exportData` | — | `invalid_input`, `no_structure`, `no_project`, `no_clipboard`, `io_error`, `aborted`, `disposed`, `unknown` | — |

@@ -717,6 +717,8 @@ class TestHandleSurface:
         "getStyle", "getAxes", "getCell", "getLabels",
         "getOverlays", "getPick", "getKnobs", "getArrows",
         "getAnimation",
+        # Ordered batch runner (D4)
+        "applyState",
         # Output / export
         "screenshot", "exportData",
         "captureFrames", "exportAnimation",
@@ -1598,6 +1600,202 @@ class TestHandleSurface:
             "embed propagated a buggy onDragStart throw instead of "
             "isolating it"
         )
+
+    def test_setStructure_preservePick_overrides_element_clear(
+            self, page, flask_server):
+        """Per § 4.2.1 D1 escape hatch: ``preservePick: true`` keeps
+        picked indices even when atom-element ordering changes
+        (e.g. a /modify atom-type-swap where the host tracks the
+        index mapping itself).  ``preservePick: false`` forces clear
+        even when elements DO match.  Regression test for Bundle 5
+        (#242)."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    pick: { mode: "pair", halo: true, label: false,
+                            onPick() {} },
+                });
+                h.setPickedIndices([0, 1]);
+                // Element mismatch + preservePick:true → KEEP.
+                h.setStructure({
+                    xyz: "3\\nch3\\nC 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    preservePick: true,
+                });
+                const afterKeep = h.getPickedIndices();
+                // Element match + preservePick:false → CLEAR.
+                h.setPickedIndices([0]);
+                h.setStructure({
+                    xyz: "3\\nch3moved\\nC 0.5 0 0\\n"
+                       + "H 1 0 0\\nH 0 1 0\\n",
+                    preservePick: false,
+                });
+                const afterForcedClear = h.getPickedIndices();
+                h.dispose();
+                host.remove();
+                return { afterKeep, afterForcedClear };
+            }
+        """)
+        assert out["afterKeep"] == [0, 1], (
+            f"preservePick:true did not survive element mismatch: "
+            f"{out['afterKeep']!r}"
+        )
+        assert out["afterForcedClear"] == [], (
+            f"preservePick:false did not force clear on element "
+            f"match: {out['afterForcedClear']!r}"
+        )
+
+    def test_applyState_orders_atom_keyed_after_structure(
+            self, page, flask_server):
+        """Per § 4.2.2 D4: applyState runs the setX calls in a
+        canonical order so atom-keyed state (overlays, picks)
+        lands AFTER setStructure has reloaded the model.  Manually
+        calling setOverlays before setStructure would clear them
+        on the next structure swap; applyState gets the ordering
+        right."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    pick: { mode: "pair", halo: true, label: false,
+                            onPick() {} },
+                });
+                // applyState with structure swap + overlays + picks.
+                // The 3-atom xyz has 3 atoms, and the overlay /
+                // pickedIndices reference indices in that space.  If
+                // applyState applied overlays BEFORE setStructure
+                // (wrong order), the new atoms wouldn't exist when
+                // overlays validate; if it applied them AFTER (right
+                // order) they should land correctly.
+                h.applyState({
+                    structure: {
+                        xyz: "3\\nh3\\nH 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    },
+                    overlays: { atoms: [{
+                        indices: [0, 2],
+                        halo: { color: "#0ff", radius: 0.4 },
+                    }]},
+                    pickedIndices: [1],
+                });
+                const overlaysSet = !!h.getOverlays();
+                const picks = h.getPickedIndices();
+                h.dispose();
+                host.remove();
+                return { overlaysSet, picks };
+            }
+        """)
+        assert out["overlaysSet"] is True, (
+            "overlays did not land after structure swap — applyState "
+            "ordering broken"
+        )
+        assert out["picks"] == [1], (
+            f"picks did not land after structure swap: {out['picks']!r}"
+        )
+
+    def test_applyState_round_trip_with_getters(
+            self, page, flask_server):
+        """Per § 4.2.2: the round-trip pattern getX-then-applyState
+        round-trips cleanly.  Snapshot every section, then re-apply
+        and verify the embed's state matches."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    style: { rep: "sphere", radiusScale: 0.7 },
+                    axes:  true,
+                    labels: { atoms: "all", format: "element" },
+                });
+                // Snapshot.
+                const snap = {
+                    style:  h.getStyle(),
+                    axes:   h.getAxes(),
+                    labels: h.getLabels(),
+                };
+                // Mutate to a different state.
+                h.setStyle({ rep: "stick", radiusScale: 1.5 });
+                h.setAxes(false);
+                h.setLabels(false);
+                const between = {
+                    style:  h.getStyle(),
+                    axes:   h.getAxes(),
+                    labels: h.getLabels(),
+                };
+                // Round-trip back via applyState.
+                h.applyState(snap);
+                const after = {
+                    style:  h.getStyle(),
+                    axes:   h.getAxes(),
+                    labels: h.getLabels(),
+                };
+                h.dispose();
+                host.remove();
+                return { between, after };
+            }
+        """)
+        # The "between" state is distinct from the original.
+        assert out["between"]["style"]["rep"] == "stick"
+        assert out["between"]["axes"] is None
+        # After applyState, the original state is restored.
+        assert out["after"]["style"]["rep"]   == "sphere"
+        assert out["after"]["style"]["radiusScale"] == 0.7
+        assert out["after"]["axes"] is not None, (
+            "axes did not restore after applyState"
+        )
+        assert out["after"]["labels"]["format"] == "element"
+
+    def test_applyState_bad_input_dispatches(self, page, flask_server):
+        """Per § 5.3: applyState with a non-object argument fires
+        invalid_input and halts."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        errs = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const errs = [];
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    onError: (e) => { errs.push(e.code); },
+                });
+                h.applyState("not an object");
+                h.dispose();
+                host.remove();
+                return errs;
+            }
+        """)
+        assert "invalid_input" in errs
 
     def test_setAnimation_halt_preserves_existing_animation(
             self, page, flask_server):

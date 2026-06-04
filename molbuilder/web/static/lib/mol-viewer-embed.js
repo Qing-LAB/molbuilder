@@ -2359,7 +2359,18 @@
                 prevElements.length === nextElements.length
                 && prevElements.length > 0
                 && prevElements.every((e, i) => e === nextElements[i]);
-            if (sameAtoms) {
+            // Per § 4.2.1 + D1 escape hatch: ``preservePick`` /
+            // ``preserveOverlays`` let hosts override the element-
+            // comparison rule when they KNOW the swap is logically
+            // same-structure (e.g. an atom-type edit where /modify
+            // tracks the index mapping itself).  ``true`` forces
+            // preservation; ``false`` forces clear; ``undefined``
+            // (default) follows the element comparison above.
+            const keepPick = typeof opts.preservePick === "boolean"
+                ? opts.preservePick : sameAtoms;
+            const keepOverlays = typeof opts.preserveOverlays === "boolean"
+                ? opts.preserveOverlays : sameAtoms;
+            if (keepPick) {
                 state.pickedIndices = prevPicked;
             } else {
                 state.pickedIndices = [];
@@ -2369,13 +2380,10 @@
                     try { state.current.pick.onPick([]); }
                     catch (_) {}
                 }
-                // Clear declarative overlays whose selectors are
-                // index-keyed; hosts that want the highlights back
-                // re-apply setOverlays against the new atom space.
-                if (state.current.overlays) {
-                    state.current.overlays = null;
-                    _redrawAllOverlays(state);
-                }
+            }
+            if (!keepOverlays && state.current.overlays) {
+                state.current.overlays = null;
+                _redrawAllOverlays(state);
             }
             _redrawPickHalos(state);
             // Camera per § 4.2: the FIRST load (no prior structure)
@@ -2618,6 +2626,76 @@
                 // to keep the §6.1 anatomy order.
                 state.cardEl.insertBefore(bar, state.canvasEl);
                 _wireKnobBar(state, bar, next);
+            }
+        }
+
+        function applyState(spec) {
+            // Per § 3.2 D4: ordered batch runner.  Each field is
+            // optional; the embed dispatches the matching setX call
+            // in a defined order so atom-keyed state (overlays,
+            // labels-as-array, picks, animation, camera) lands AFTER
+            // setStructure has reloaded the model.  Useful for host-
+            // side persistence round-trips:
+            //   const snap = {
+            //     structure: { xyz, lattice },
+            //     style: h.getStyle(), axes: h.getAxes(),
+            //     overlays: h.getOverlays(),
+            //     camera: h.getCamera(),
+            //   };
+            //   // ... later ...
+            //   h.applyState(snap);
+            // Not a "single render frame" guarantee — 3Dmol's render
+            // is cheap and multiple intermediate renders are fine.
+            // For atomic visual swaps a future ``defer: true`` flag
+            // could defer rendering; not implemented today.
+            if (state.disposed) return;
+            if (!spec || typeof spec !== "object") {
+                _dispatchInvalidInput(state,
+                    "applyState: argument must be an object");
+                return;
+            }
+            // Order matters: structure → base style → background →
+            // world overlays → atom-keyed overlays → pick → animation
+            // → camera → knobs.  Each step is independent of the
+            // ones below it but depends on the ones above.
+            if (spec.structure !== undefined && spec.structure !== null) {
+                setStructure(spec.structure);
+            }
+            if (spec.style !== undefined) {
+                setStyle(spec.style);
+            }
+            if (spec.background !== undefined) {
+                setBackground(spec.background);
+            }
+            if (spec.axes !== undefined) {
+                setAxes(spec.axes);
+            }
+            if (spec.cell !== undefined) {
+                setCell(spec.cell);
+            }
+            if (spec.labels !== undefined) {
+                setLabels(spec.labels);
+            }
+            if (spec.arrows !== undefined) {
+                setArrows(spec.arrows);
+            }
+            if (spec.overlays !== undefined) {
+                setOverlays(spec.overlays);
+            }
+            if (spec.pick !== undefined) {
+                setPick(spec.pick);
+            }
+            if (spec.pickedIndices !== undefined) {
+                setPickedIndices(spec.pickedIndices);
+            }
+            if (spec.animation !== undefined) {
+                setAnimation(spec.animation);
+            }
+            if (spec.camera !== undefined && spec.camera !== null) {
+                setCamera(spec.camera);
+            }
+            if (spec.knobs !== undefined) {
+                setKnobs(spec.knobs);
             }
         }
 
@@ -3427,6 +3505,9 @@
             getKnobs:           getKnobs,
             getArrows:          getArrows,
             getAnimation:       getAnimation,
+
+            // Ordered batch runner (D4 — persistence round-trip).
+            applyState:         applyState,
 
             exportData:         exportData,
             screenshot:         screenshot,

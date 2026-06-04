@@ -1161,21 +1161,22 @@
         }
         if (!saved || saved.v !== STATE_SCHEMA_VERSION) return;
         if (!saved.xyz) return;
-        // Restore the chrome state via the embed setters (D3 round-
-        // trip pattern — getStyle/getAxes/getLabels at save time,
-        // setStyle/setAxes/setLabels at restore time).  Fall back to
-        // the documented defaults for snapshots saved BEFORE this
-        // landed; they had show_axes/show_indices/rep with reasonable
-        // defaults already.
-        if (typeof saved.rep === "string") {
-            _handle.setStyle({ rep: saved.rep });
-        }
-        if (typeof saved.show_axes === "boolean") {
-            _handle.setAxes(saved.show_axes);
-        }
-        if (typeof saved.show_indices === "boolean") {
-            _handle.setLabels(saved.show_indices);
-        }
+        // Restore the chrome state via the embed batch runner
+        // (D4 — applyState canonical-order restore; D3 getX/setX
+        // round-trip pattern).  Only the fields the snapshot
+        // actually carries are passed; undefined fields skip via
+        // the applyState contract.  applyStructure() below handles
+        // the structure swap separately because it does additional
+        // /modify-side bookkeeping (atom list, info panel) that
+        // applyState({structure:...}) wouldn't touch.
+        _handle.applyState({
+            style: typeof saved.rep === "string"
+                       ? { rep: saved.rep } : undefined,
+            axes:  typeof saved.show_axes === "boolean"
+                       ? saved.show_axes : undefined,
+            labels: typeof saved.show_indices === "boolean"
+                       ? saved.show_indices : undefined,
+        });
         // Feed the saved structure through the existing
         // applyStructure() path so the atom list, viewer, and info
         // panel all re-render via the same code as a fresh load.
@@ -1212,14 +1213,12 @@
                 selection:  validSelection,
             });
         }
-        // Restore the camera last so it doesn't fight refit() inside
-        // applyStructure.  #235 follow-up: setCamera handles the
-        // CameraState blob format AND silently no-ops on a future
-        // _version bump (forward-compat).  Legacy snapshots that
-        // saved a raw 3Dmol view array (#229 pre-migration) are
-        // ignored — setCamera rejects non-object inputs.
+        // Restore the camera AFTER applyStructure so it doesn't
+        // fight the refit() that lives inside.  Camera goes
+        // through applyState too for consistency, though a bare
+        // setCamera would be equivalent for this one field.
         if (saved.camera) {
-            _handle.setCamera(saved.camera);
+            _handle.applyState({ camera: saved.camera });
         }
         setStatus(
             `Restored ${state.n_atoms}-atom structure (${saved.title || "unnamed"}).`,
