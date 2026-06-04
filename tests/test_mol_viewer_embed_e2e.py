@@ -716,7 +716,7 @@ class TestHandleSurface:
         "screenshot", "exportData",
         "captureFrames", "exportAnimation",
         # Lifecycle
-        "refit", "render", "dispose",
+        "refit", "setPivot", "render", "dispose",
         # Escape hatch + test surface
         "_viewer3dmol",
     ])

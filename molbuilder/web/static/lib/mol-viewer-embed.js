@@ -1363,6 +1363,21 @@
      * selector (for setStyle calls) and the resolved 0-based
      * index list (for per-atom halo / marker positioning).
      */
+    /**
+     * Map an opts.indices array (0-based atom indices) to a
+     * 3Dmol selector dict.  An empty / missing array becomes
+     * ``{}`` (select all atoms — 3Dmol's "no filter" default).
+     * Shared between handle.refit({indices}) and
+     * handle.setPivot({indices}).
+     */
+    function _selectionFromIndices(indices) {
+        if (!Array.isArray(indices) || indices.length === 0) return {};
+        // 3Dmol's ``index`` selector takes 0-based indices; ``serial``
+        // is 1-based.  We expose 0-based externally to match every
+        // other handle method (overlays, animation frames).
+        return { index: indices.slice() };
+    }
+
     function _resolveOverlaySelector(sel, atoms) {
         const out = { spec: null, indices: [] };
         if (sel.selectorKind === "indices") {
@@ -2759,10 +2774,43 @@
             });
         }
 
-        function refit() {
+        function refit(opts) {
+            // Per § 3.2: re-fit the camera to the structure (or to
+            // a subset of atoms when ``opts.indices`` is supplied).
+            // Optional ``opts.pullback`` multiplies the zoom AFTER
+            // the fit (e.g. 0.55 = pull back so 45% more of the
+            // surroundings stay in frame).  Defaults: no opts =
+            // ``zoomTo()`` on all atoms (the historical behavior).
             if (state.disposed) return;
-            try { state.viewer.zoomTo(); state.viewer.render(); }
-            catch (_) {}
+            opts = opts || {};
+            const sel = _selectionFromIndices(opts.indices);
+            try {
+                state.viewer.zoomTo(sel);
+                if (typeof opts.pullback === "number"
+                    && opts.pullback > 0 && opts.pullback !== 1) {
+                    state.viewer.zoom(opts.pullback, 0);
+                }
+                state.viewer.render();
+            } catch (_) {}
+        }
+
+        function setPivot(opts) {
+            // Per § 3.2: re-anchor the rotation / zoom-into-cursor
+            // pivot on a subset of atoms.  3Dmol's ``center()``
+            // translates the model so the selection's centroid
+            // lands on the world origin (where rotations pivot);
+            // the camera distance stays exactly where the user
+            // left it.  Used by /modify's snap-pivot-to-molecule
+            // pattern when slabs are present + the bounding box
+            // would otherwise dominate the auto-pivot.
+            //
+            // ``opts.indices: number[]`` selects the subset;
+            // omitting opts (or passing ``{}``) centers on all
+            // atoms — equivalent to 3Dmol's ``center({}, 0)``.
+            if (state.disposed) return;
+            opts = opts || {};
+            const sel = _selectionFromIndices(opts.indices);
+            try { state.viewer.center(sel, 0); } catch (_) {}
         }
         function render() {
             if (state.disposed) return;
@@ -2927,6 +2975,7 @@
             exportAnimation:    exportAnimation,
 
             refit:              refit,
+            setPivot:           setPivot,
             render:             render,
             dispose:            dispose,
             _viewer3dmol:       _viewer3dmol,

@@ -458,7 +458,22 @@ type ViewerHandle = {
   // target — binary video isn't pasteable in molbuilder's contexts.
 
   // ---- Lifecycle ----------------------------------------------- //
-  refit():    void,               // re-fit camera to structure
+  refit(opts?: { indices?: number[], pullback?: number }): void,
+  // Re-fit camera to the structure (default) or to a subset of
+  // atoms (``opts.indices`` — 0-based).  ``opts.pullback`` is a
+  // post-fit zoom multiplier (e.g. 0.55 pulls the camera back so
+  // surrounding atoms stay in frame; 2.0 zooms in tighter).
+  // ``refit()`` with no opts is the historical behavior:
+  // zoom-to-fit on every atom.
+
+  setPivot(opts?: { indices?: number[] }): void,
+  // Re-anchor the rotation / zoom-into-cursor pivot on a subset
+  // of atoms (or all atoms when ``opts.indices`` is omitted).
+  // The camera distance stays exactly where the user left it;
+  // only the world origin moves.  Used by tabs like /modify that
+  // need to snap the pivot back onto a focal sub-structure
+  // (e.g. molecule between two electrode slabs) so rotations
+  // orbit the right point.
   render():   void,               // force a render (rarely needed)
   dispose():  void,               // tear down 3Dmol + remove DOM
 

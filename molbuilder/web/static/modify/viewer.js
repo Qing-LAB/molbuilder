@@ -124,28 +124,25 @@
             catch (_) {}
         },
     });
-    // _viewer3dmol() is still required for two /modify-specific paths
-    // that the embed contract does not yet expose declaratively:
-    //   1. The selection-store viewer-adapter (atom-pick + region /
-    //      frozen / selection halo overlays) -- follow-up #203b will
-    //      migrate this to handle.setOverlays + the embed's pick.
-    //   2. The Focus-molecule / Snap-pivot logic (zoomTo({not: {resn:
-    //      "ELC"}}) + center()) which the embed's refit() cannot
-    //      express -- follow-up will extend setStructure/refit with
-    //      a selection arg, or expose a setPivot method.
+    // /modify viewer.js #235 follow-up: production code no longer
+    // reaches for _viewer3dmol().  The selection-store viewer-
+    // adapter (#229) uses handle.setOverlays + handle.setPick
+    // exclusively; focusMolecule / snapPivotToCenter (#235) flow
+    // through handle.refit({indices, pullback}) + handle.setPivot.
+    // The capture below is for the Playwright test surface
+    // (window.__molbuilder_modify_test.getViewer()) + the
+    // window.molbuilder.modify.viewer legacy export that the
+    // runtime registry advertises -- both are test/external glue
+    // and not on the production hot path.
     const viewer = _viewerHandle._viewer3dmol();
 
-    function clearViewer() {
-        // The embed's setStructure handles atom + model teardown;
-        // here we drop the index labels + axes (they auto-rebuild on
-        // the next applyStructure call).  Raw viewer used for the
-        // shape teardown because the embed doesn't expose
-        // removeAllShapes() (the selection-store viewer-adapter's
-        // halos sit there and we want them gone on a hard clear).
-        viewer.removeAllModels();
-        viewer.removeAllLabels();
-        viewer.removeAllShapes();
-    }
+    // clearViewer() removed by #235 -- it was only callable from
+    // applyStructure's `else` branch when state.xyz is falsy, and
+    // every caller of applyStructure now passes xyz from a fresh
+    // /api/build/load response.  Label / overlay teardown on a
+    // structure swap is handled by handle.setStructure (label/axes
+    // re-apply automatically) and by the selection adapter's
+    // store-subscribe path (overlays clear on the next render).
 
     // ----- Camera anchoring -------------------------------------- //
     // 3Dmol's mouse-zoom and rotate-around-cursor handlers anchor on
@@ -164,47 +161,47 @@
     // centre.  ``applyStructure`` does NOT call this automatically;
     // its default fit is a plain ``zoomTo`` showing the whole
     // structure so a fresh render always frames everything.
-    function focusMolecule() {
-        if (!state.xyz || state.n_atoms === 0) return;
-        const hasSlabs = state.residue_names &&
-            state.residue_names.indexOf("ELC") !== -1;
-        if (hasSlabs) {
-            // Pivot + zoom-fit to the molecule (non-ELC atoms only).
-            // Then back the camera off so the slabs remain visible
-            // in the periphery; without the zoom-out the slabs would
-            // be clipped or behind the camera.
-            viewer.zoomTo({not: {resn: "ELC"}});
-            viewer.zoom(0.55, 0);   // 0.55 = pull back; instant (0 ms)
-        } else {
-            viewer.zoomTo();
+    // Indices of the "molecule" atoms (everything that isn't an
+    // ELC electrode-slab residue).  Returns ``null`` when no slabs
+    // are present — the camera ops then fall back to refit() /
+    // setPivot() with no opts (= all atoms).  Shared between
+    // focusMolecule + snapPivotToCenter so they always operate on
+    // the same selection.
+    function _moleculeIndices() {
+        const rn = state.residue_names;
+        if (!Array.isArray(rn) || rn.length === 0) return null;
+        if (rn.indexOf("ELC") === -1) return null;
+        const out = [];
+        for (let i = 0; i < rn.length; i++) {
+            if (rn[i] !== "ELC") out.push(i);
         }
-        viewer.render();
+        return out;
     }
 
-    // Selection used by ``snapPivotToCenter``: the molecule when
-    // slabs are present, every atom otherwise.  Centred separately
-    // from ``focusMolecule`` because rotation re-anchoring must NOT
-    // change the zoom level (only the lookAt).
-    function pivotSelection() {
-        if (state.residue_names &&
-            state.residue_names.indexOf("ELC") !== -1) {
-            return {not: {resn: "ELC"}};
+    function focusMolecule() {
+        if (!state.xyz || state.n_atoms === 0) return;
+        const mol = _moleculeIndices();
+        if (mol) {
+            // Pivot + zoom-fit to the molecule (non-ELC atoms only).
+            // Pull back so the slabs remain visible in the periphery;
+            // without the pullback the slabs would be clipped or
+            // behind the camera.
+            _viewerHandle.refit({ indices: mol, pullback: 0.55 });
+        } else {
+            _viewerHandle.refit();
         }
-        return {};
     }
 
     // Snap the camera lookAt onto the structure centroid without
-    // touching the zoom level.  3Dmol's ``center()`` translates the
-    // model so the selection's centroid lands on the world origin
-    // (which is where rotations pivot) -- the camera distance stays
-    // exactly where the user left it.  Used as a mousedown hook so
-    // every rotation drag pivots on the structure regardless of any
-    // pan the user did before.
+    // touching the zoom level.  ``handle.setPivot`` delegates to
+    // 3Dmol's ``center()`` which translates the model so the
+    // selection's centroid lands on the world origin (the rotation
+    // pivot) — the camera distance stays where the user left it.
+    // Used as a mousedown hook so every rotation drag pivots on
+    // the structure regardless of any pan the user did before.
     function snapPivotToCenter() {
         if (!state.xyz || state.n_atoms === 0) return;
-        try {
-            viewer.center(pivotSelection(), 0);
-        } catch (_e) { /* ok if viewer isn't ready yet */ }
+        _viewerHandle.setPivot({ indices: _moleculeIndices() || [] });
     }
 
     // ----- xyz axis triad ----------------------------------------- //
@@ -437,9 +434,10 @@
             // a molecule-anchored pivot for smooth zoom on the small
             // molecule when slabs are present.
             _viewerHandle.refit();
-        } else {
-            clearViewer();
         }
+        // No else-branch needed: applyStructure is only called with
+        // an xyz from a successful /api/build/load response; the
+        // empty-xyz path is unreachable in practice.  See #235.
         // Atom-level clicks + halo overlays are wired by the
         // viewer-adapter (lib/selection/viewer-adapter.js), which
         // re-arms ``setClickable`` on every render so a model swap
@@ -1122,13 +1120,12 @@
 
     function saveModifyState() {
         if (!state.xyz) return;     // nothing to save
-        let camera = null;
-        try {
-            camera = viewer.getView();
-        } catch (_e) {
-            // 3Dmol's getView is synchronous and shouldn't throw, but
-            // be defensive in case the viewer was torn down early.
-        }
+        // #235 follow-up: getCamera returns the documented opaque
+        // CameraState {_viewer, _version, data} per § 3.13.
+        // Round-trips cleanly through sessionStorage; restoreModifyState
+        // hands it back via setCamera which no-ops on a future
+        // _version bump (forward-compat).
+        const camera = _viewerHandle.getCamera();
         const _s = _selStore();
         const sourceFile = _s ? (_s.getState().sourceFile || null) : null;
         const payload = {
@@ -1226,17 +1223,14 @@
                 selection:  validSelection,
             });
         }
-        // Restore the camera last so it doesn't fight zoomTo() inside
-        // applyStructure.
-        if (Array.isArray(saved.camera)) {
-            try {
-                viewer.setView(saved.camera);
-                viewer.render();
-            } catch (_e) {
-                // Bad cached camera array -- fall back to default.
-                viewer.zoomTo();
-                viewer.render();
-            }
+        // Restore the camera last so it doesn't fight refit() inside
+        // applyStructure.  #235 follow-up: setCamera handles the
+        // CameraState blob format AND silently no-ops on a future
+        // _version bump (forward-compat).  Legacy snapshots that
+        // saved a raw 3Dmol view array (#229 pre-migration) are
+        // ignored — setCamera rejects non-object inputs.
+        if (saved.camera) {
+            _viewerHandle.setCamera(saved.camera);
         }
         setStatus(
             `Restored ${state.n_atoms}-atom structure (${saved.title || "unnamed"}).`,
