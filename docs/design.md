@@ -1838,12 +1838,45 @@ may match on; only the Python module name changes.
 
 ## Next steps
 
-_The previous Next-steps list is empty as of 2026-05-11._
-The Build-tab dataclass-driven form (the last Principle-#1
-anti-pattern) shipped in commit `20f6d49`; the related decision
-row is in the log above.  Add items here when new design gaps
-surface; otherwise leave this section as the visible-clean
-indicator that nothing is pending.
+Open work, verified against actual code on 2026-06-05.  Items
+here are real and unstarted (or only stub-level); finishing one
+collapses it back into the decisions log above.  Don't list
+cleanup / review tasks here — those live in commit messages.
+
+1. **Phase B.2 — Transport engine abstraction.**
+   `molbuilder/config/transport.py` (TransportConfig) is the only
+   transport artefact today; its docstring explicitly defers the
+   engine layer to Phase B.2.  Needed: a `TransportEngine`
+   Protocol parallel to `spectra/engine_base.SpectraEngine`, a
+   registry for transiesta / pyscf-negf backends, and a
+   `TransportResults` dataclass.  See `docs/engines/` for the
+   spectra precedent.
+
+2. **Results > Structure inspector: edit controls.**
+   `lib/inspectors/structure.js` is read-only today (179 LOC: an
+   embed mount + a static `Open in Modify` link that drops any
+   selection / file context on the way out).  Needed: either the
+   /modify edit-panel surface (Delete / Add / Orient / Rotate /
+   Electrode + selection panel) mounted alongside the inspector,
+   OR a real bridge that hands the current file plus selection
+   state to /modify so the user lands on the same atoms they were
+   inspecting.  Decide direction (in-page edits vs hand-off)
+   before implementing.
+
+3. **Makov-Payne image-charge correction (emit, not just warn).**
+   `validation.py:_check_siesta_charged_makov_payne_notice` plus
+   the `siesta/input.py` FDF comment block detect charged PBC
+   systems and tell the user to apply MP post-hoc.  Needed: the
+   compute side — either an FDF post-process script emitted next
+   to the input deck (parses `Total energy`, applies the
+   $\alpha q^2 / 2\epsilon L$ correction, prints corrected total)
+   or an explicit decision to keep this as a documentation-only
+   warning forever.  Today's behaviour is silent on the value;
+   the user has to do the arithmetic.
+
+Add items here when new design gaps surface.  Don't list anything
+that's just code-review polish or stylistic cleanup — those live
+in commit messages and PRs, not the roadmap.
 
 ---
 
