@@ -180,7 +180,15 @@ export async function apiUpload(targetDir, file, opts) {
   opts = opts || {};
   const fd = new FormData();
   fd.append("target_dir", targetDir);
-  fd.append("file", file);
+  // Phase 6e: optional filename override.  Used by writeFile(Blob)
+  // to set the destination filename when the Blob has no .name
+  // (Blobs assembled from a stream / encoder don't carry one).
+  if (opts.filename) {
+    fd.append("file", file, opts.filename);
+  } else {
+    fd.append("file", file);
+  }
+  if (opts.overwrite) fd.append("overwrite", "true");
   return await _fetchEnvelope("/api/files/upload", {
     method: "POST",
     body:   fd,

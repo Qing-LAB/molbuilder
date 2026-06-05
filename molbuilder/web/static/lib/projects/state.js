@@ -257,10 +257,17 @@ async function refresh(opts) {
 }
 
 /**
- * Low-level primitive: write text to a specific path.
+ * Low-level primitive: write text (or a Blob) to a specific path.
  *
- * The path is sent to /api/files/write as-is; the backend validates
- * (inside an allowed root, depth >= 1, parent exists, etc.).
+ * For a string ``text`` argument the path is sent to
+ * /api/files/write as JSON; the backend validates (inside an
+ * allowed root, depth >= 1, parent exists, etc.).
+ *
+ * For a Blob argument (Phase 6e: viewer animation / image export
+ * save-to-project) the call is routed to /api/files/upload as a
+ * multipart POST with ``overwrite=true`` (the write-text path
+ * supports clobber; uploads now do too).  Same envelope shape on
+ * return.
  *
  * Returns:
  *   * ``{ok: true, path, relPath, size, mtime}`` on success.
@@ -277,6 +284,46 @@ async function refresh(opts) {
  * pattern, use :func:`saveToWorkspace` instead.
  */
 async function writeFile(path, text, opts) {
+  // Phase 6e: binary path.  Blob | File | TypedArray → multipart
+  // upload.  We split path into parent dir + filename so the
+  // upload endpoint (which takes target_dir + filename) gets the
+  // right pieces without a second roundtrip.  The text path stays
+  // bit-identical to its prior behaviour.
+  const isBlob = (typeof Blob !== "undefined" && text instanceof Blob)
+              || (typeof File !== "undefined" && text instanceof File);
+  if (isBlob) {
+    const ix = path.lastIndexOf("/");
+    if (ix < 0) {
+      return { ok: false,
+               error: "writeFile: path must be absolute, got " + path };
+    }
+    const dir = path.slice(0, ix);
+    const filename = path.slice(ix + 1);
+    const w = await apiUpload(dir, text, {
+      filename:  filename,
+      overwrite: true,
+      signal:    opts && opts.signal,
+    });
+    if (!w.ok) {
+      const err = { ok: false, error: w.error };
+      if (w.aborted) err.aborted = true;
+      return err;
+    }
+    try {
+      const cur = sessionStorage.getItem(SS_DIR);
+      if (cur && path.startsWith(cur.replace(/\/$/, "") + "/")
+          && refreshHandler) {
+        await refreshHandler(cur);
+      }
+    } catch (_) { /* refresh failure shouldn't fail the write */ }
+    return {
+      ok:      true,
+      path:    w.path,
+      relPath: relativeToProjects(w.path),
+      size:    w.size,
+      mtime:   w.mtime,
+    };
+  }
   const w = await apiWrite(path, text, opts);
   if (!w.ok) {
     // Preserve `actual_mtime` on a 409 edit-conflict so tabs can

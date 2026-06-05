@@ -877,10 +877,16 @@ def api_files_upload():
         (no uploads directly under ``projects/``) + already exist.
       * ``file``       -- the multipart file part.  ``file.filename``
         is validated against the upload-filename regex below.
+      * ``overwrite``  -- optional "true"/"1" string.  When set, an
+        existing file at the destination is replaced instead of
+        returning 409.  Phase 6e: required by the embed's
+        save-to-project for animation / image (Blob) exports, which
+        re-use a deterministic filename and expect overwrite
+        semantics matching the text-write path.
 
     Behaviour:
-      * No implicit overwrite: name conflict at destination is 409.
-        UI deletes first if the user wants to replace.
+      * No implicit overwrite unless ``overwrite=true`` is sent;
+        otherwise name conflict at destination returns 409.
       * Max upload size is enforced globally by Flask's
         ``MAX_CONTENT_LENGTH`` (50 MB; the app-level 413 handler
         catches oversize uploads with a clean message).
@@ -936,12 +942,14 @@ def api_files_upload():
         return jsonify({"ok": False, "error": err}), 400
 
     dest = target_dir / filename
-    if dest.exists():
+    overwrite_raw = (request.form.get("overwrite") or "").strip().lower()
+    overwrite = overwrite_raw in ("1", "true", "yes", "on")
+    if dest.exists() and not overwrite:
         return jsonify({
             "ok": False,
             "error": (f"file already exists: {str(dest)!r}.  "
                       f"Delete it first via the sidebar (or your shell) "
-                      f"and re-upload."),
+                      f"and re-upload, or pass overwrite=true."),
         }), 409
 
     try:

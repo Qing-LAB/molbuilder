@@ -419,6 +419,102 @@
     border-color:   var(--accent, #5fb6ff);
 }
 
+/* Export menu sections (Phase 6e) ---------------------------
+   Group the data / snapshot / animation buttons so the user can
+   see they are three different export kinds at a glance, instead
+   of one undifferentiated row. */
+.mol-viewer-export-section {
+    display:        flex;
+    flex-direction: column;
+    gap:            4px;
+}
+.mol-viewer-export-section + .mol-viewer-export-section {
+    margin-top:     0.6rem;
+    padding-top:    0.5rem;
+    border-top:     1px solid var(--border-soft, rgba(255,255,255,0.06));
+}
+.mol-viewer-export-section-label {
+    font-size:      0.7rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color:          var(--text-muted, #98a3b0);
+    opacity:        0.85;
+}
+
+/* Export progress modal (Phase 6e) --------------------------- */
+.mol-viewer-export-modal {
+    position:       fixed;
+    inset:          0;
+    z-index:        99999;
+    display:        flex;
+    align-items:    center;
+    justify-content: center;
+    background:     rgba(0, 0, 0, 0.55);
+    backdrop-filter: blur(2px);
+    pointer-events: auto;
+    animation:      mol-viewer-export-modal-fade 100ms ease-out;
+}
+@keyframes mol-viewer-export-modal-fade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+.mol-viewer-export-modal-card {
+    min-width:      320px;
+    max-width:      440px;
+    padding:        1.1rem 1.3rem 1.0rem;
+    background:     var(--bg-panel, #20242b);
+    color:          var(--text-primary, #e6e9ee);
+    border:         1px solid var(--border-soft, rgba(255,255,255,0.08));
+    border-radius:  var(--radius-md, 10px);
+    box-shadow:     0 12px 32px rgba(0, 0, 0, 0.45);
+    display:        flex;
+    flex-direction: column;
+    gap:            0.7rem;
+    font-family:    var(--font-sans, system-ui, -apple-system, sans-serif);
+}
+.mol-viewer-export-modal-title {
+    font-size:      1rem;
+    font-weight:    600;
+}
+.mol-viewer-export-modal-phase {
+    font-size:      0.85rem;
+    color:          var(--text-muted, #98a3b0);
+    font-variant-numeric: tabular-nums;
+}
+.mol-viewer-export-modal-bar {
+    width:          100%;
+    height:         8px;
+    background:     var(--bg-input, #262b33);
+    border-radius:  4px;
+    overflow:       hidden;
+}
+.mol-viewer-export-modal-bar-fill {
+    height:         100%;
+    width:          0%;
+    background:     var(--accent, #5fb6ff);
+    transition:     width 120ms ease;
+}
+.mol-viewer-export-modal-actions {
+    display:        flex;
+    justify-content: flex-end;
+    gap:            0.5rem;
+}
+.mol-viewer-export-modal-cancel {
+    padding:        0.35rem 0.85rem;
+    background:     var(--bg-input, #262b33);
+    color:          var(--text-primary, #e6e9ee);
+    border:         1px solid var(--border-soft, rgba(255,255,255,0.08));
+    border-radius:  var(--radius-sm, 6px);
+    cursor:         pointer;
+}
+.mol-viewer-export-modal-cancel:hover {
+    border-color:   var(--accent, #5fb6ff);
+}
+.mol-viewer-export-modal-cancel:disabled {
+    opacity:        0.5;
+    cursor:         not-allowed;
+}
+
 /* Narrow viewports ------------------------------------------ */
 @media (max-width: 480px) {
     .mol-viewer-knobs {

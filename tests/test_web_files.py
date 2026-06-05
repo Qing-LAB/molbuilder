@@ -1388,6 +1388,49 @@ class TestFilesUpload:
         # Original file content is untouched.
         assert (target / "geom.xyz").read_text() == "existing\n"
 
+    def test_upload_overwrite_replaces_existing(self, web, picker_root):
+        """Phase 6e: ``overwrite=true`` lets the upload endpoint
+        replace an existing file.  Used by the embed's
+        save-to-project for animation / image (Blob) exports — the
+        text-write path supports overwrite; binary writes route
+        through upload, which now does too."""
+        import io
+        target = picker_root / "proj" / "spectrum"
+        target.mkdir(parents=True)
+        (target / "movie.gif").write_bytes(b"old-bytes")
+        r = web.post(
+            "/api/files/upload",
+            data={
+                "target_dir": str(target),
+                "file":       (io.BytesIO(b"new-bytes"), "movie.gif"),
+                "overwrite":  "true",
+            },
+            content_type="multipart/form-data",
+        )
+        assert r.status_code == 200, r.get_data(as_text=True)
+        body = r.get_json()
+        assert body["ok"] is True
+        assert (target / "movie.gif").read_bytes() == b"new-bytes"
+
+    def test_upload_overwrite_false_still_409(self, web, picker_root):
+        """Without overwrite (or with overwrite=false), conflict is
+        still 409 — same as the no-flag default."""
+        import io
+        target = picker_root / "proj" / "spectrum"
+        target.mkdir(parents=True)
+        (target / "movie.gif").write_bytes(b"original")
+        r = web.post(
+            "/api/files/upload",
+            data={
+                "target_dir": str(target),
+                "file":       (io.BytesIO(b"replacement"), "movie.gif"),
+                "overwrite":  "false",
+            },
+            content_type="multipart/form-data",
+        )
+        assert r.status_code == 409
+        assert (target / "movie.gif").read_bytes() == b"original"
+
     def test_upload_filename_with_path_separator_400(self, web, picker_root):
         # ``file.filename`` may carry the client's full path on some
         # browsers; we basename it server-side.  This test sends a

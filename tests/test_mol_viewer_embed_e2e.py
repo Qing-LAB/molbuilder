@@ -388,11 +388,13 @@ class TestTestHandle:
             "getCurrent",
             "getCurrentBackground",
             "getDependencyStatus",
+            "getFrameRebuildTimings",
             "getFrameStripElement",
             "getKnobBarElement",
             "getOverlayLabelCount",
             "getOverlayShapeCount",
             "hasAnimationLoop",
+            "resetFrameRebuildTimings",
             "triggerKnob",
         ]
 
@@ -3549,3 +3551,545 @@ class TestHandleSurface:
         assert out["hasTest"]    is True
         assert out["isObject"]   is True
         assert out["isFunction"] is False
+
+
+# --------------------------------------------------------------------- #
+#  Phase 6e — animation rebuild perf bench                              #
+# --------------------------------------------------------------------- #
+
+
+def _make_synthetic_xyz(n):
+    """Generate a synthetic XYZ block of ``n`` hydrogen atoms on a
+    simple cubic grid.  Used by the perf bench below; not meant to
+    represent any real chemistry — just a stable, well-defined
+    structure that produces N atoms for the embed to render."""
+    side = max(1, int(round(n ** (1.0 / 3.0))))
+    coords = []
+    for i in range(side):
+        for j in range(side):
+            for k in range(side):
+                if len(coords) >= n:
+                    break
+                coords.append(
+                    f"H {i * 1.5:.4f} {j * 1.5:.4f} {k * 1.5:.4f}"
+                )
+            if len(coords) >= n:
+                break
+        if len(coords) >= n:
+            break
+    while len(coords) < n:
+        coords.append(
+            f"H 0.0 0.0 {len(coords) * 1.5:.4f}"
+        )
+    return f"{n}\nsynth\n" + "\n".join(coords) + "\n"
+
+
+class TestAnimationRebuildPerf:
+    """Phase 6e: measure the wall cost of
+    ``_rebuildGeometryForCoordChange`` across atom-count scales so we
+    can decide whether Phase 6f (native 3Dmol frame indexing) is
+    worth the engineering cost.
+
+    These tests don't gate CI on perf — they only print the numbers
+    and assert that timing infrastructure works.  The actual
+    interpretation (is 5 ms/frame fine? is 50 ms/frame painful?
+    when do we pull the trigger on 6f?) is a human-judgment call
+    made by reading the printed table.
+
+    Why this matters for export:
+        ``captureFrames`` (which ``exportAnimation`` uses) iterates
+        every frame through the same ``_applyCoords`` ⇒
+        ``_rebuildGeometryForCoordChange`` ⇒ ``viewer.render()``
+        path the interactive playback uses.  A 60 fps × 5 s WebM
+        = 300 rebuilds.  If each rebuild is 100 ms at 5000 atoms
+        that's 30 s of export per 5 s of animation — likely
+        painful but tolerable.  10 s of animation at 10000 atoms
+        could blow past the browser's "kill page" threshold.
+    """
+
+    @pytest.mark.parametrize("n_atoms", [100, 500, 2000])
+    def test_rebuild_timing_scales(
+            self, page, flask_server, n_atoms):
+        """Run ``n_frames`` rebuilds at a given atom count and
+        record the timing distribution.  Asserts only that the
+        timing infrastructure recorded the right number of samples
+        and produced finite numbers — perf interpretation is by
+        eye (look at the printed line)."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        xyz = _make_synthetic_xyz(n_atoms)
+        n_frames = 30
+        out = page.evaluate(
+            """
+            async ({xyz, nFrames, nAtoms}) => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:400px;height:300px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                // Build a 2-frame trajectory: frame 0 = input
+                // coords, frame 1 = same coords shifted by 0.01.
+                // We won't actually play it through the rAF loop —
+                // we directly call setAnimationFrame in a tight
+                // loop to get N rebuilds with no scheduling
+                // interference.
+                const lines = xyz.trim().split("\\n").slice(2);
+                const f0 = lines.map(l => {
+                    const p = l.trim().split(/\\s+/);
+                    return [
+                        parseFloat(p[1]),
+                        parseFloat(p[2]),
+                        parseFloat(p[3]),
+                    ];
+                });
+                const f1 = f0.map(([x, y, z]) => [x + 0.01, y, z]);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: xyz,
+                    card: {showInfoLine: false, height: "100%"},
+                    animation: {
+                        kind: "trajectory",
+                        frames: [f0, f1],
+                        fps: 30,
+                        paused: true,
+                    },
+                });
+                // Wait for first paint before starting timing.
+                await new Promise(r => requestAnimationFrame(r));
+                h._test.resetFrameRebuildTimings();
+                for (let i = 0; i < nFrames; i++) {
+                    h.setAnimationFrame(i % 2);
+                }
+                const stats = h._test.getFrameRebuildTimings();
+                h.dispose();
+                host.remove();
+                return {
+                    nAtoms: nAtoms,
+                    nFrames: nFrames,
+                    samples: stats.samples.length,
+                    mean: stats.mean,
+                    p50: stats.p50,
+                    p95: stats.p95,
+                    p99: stats.p99,
+                    max: stats.max,
+                };
+            }
+            """,
+            {"xyz": xyz, "nFrames": n_frames, "nAtoms": n_atoms},
+        )
+        # Print a digest line for the human reading the test output.
+        # `-s` flag on pytest shows it; otherwise pytest captures
+        # but still includes it in failure logs.
+        print(
+            f"[phase-6e] n_atoms={out['nAtoms']:>5d}  "
+            f"frames={out['samples']:>3d}  "
+            f"mean={out['mean']:6.2f}ms  "
+            f"p50={out['p50']:6.2f}ms  "
+            f"p95={out['p95']:6.2f}ms  "
+            f"p99={out['p99']:6.2f}ms  "
+            f"max={out['max']:6.2f}ms"
+        )
+        # Infrastructure assertions.  No perf gate — interpretation
+        # is human-eye on the printed line above.
+        assert out["samples"] == n_frames, (
+            f"timing ring buffer recorded {out['samples']} samples; "
+            f"expected {n_frames}.  _rebuildGeometryForCoordChange "
+            f"was either skipped on some frames or the buffer cap "
+            f"is too low."
+        )
+        assert out["mean"] > 0.0, (
+            "mean rebuild time was 0 ms — either performance.now() "
+            "lacks resolution in the test browser or "
+            "_rebuildGeometryForCoordChange short-circuited"
+        )
+        assert out["max"] < 5000.0, (
+            f"a single rebuild took {out['max']:.1f} ms — that's a "
+            f"performance cliff, not just a slow frame.  Something "
+            f"in _applyStyle or _redrawOverlayStyles is doing "
+            f"unbounded work at n_atoms={n_atoms}."
+        )
+
+
+# --------------------------------------------------------------------- #
+#  Phase 6e — animation export UX (modal + save-to-project + menus)     #
+# --------------------------------------------------------------------- #
+
+
+class TestAnimationExportUX:
+    """Regression catchers for the Phase 6e gripes:
+      * Save-to-project of an animation Blob silently 400'd
+        because /api/files/write rejects non-string bodies.
+        Fix: writeFile(Blob) routes to /api/files/upload with
+        overwrite=true.
+      * No progress UI on a slow encode → user thought nothing
+        was happening.  Fix: blocking modal with progress + cancel.
+      * View / Export menu didn't close on outside-click.
+      * Export menu mixed kinds; now sectioned Data / Snapshot /
+        Animation.
+    """
+
+    def test_animation_save_to_project_passes_blob_through(
+            self, page, flask_server):
+        """The embed's _writeToProject must hand the Blob to
+        projectsApi.writeFile unchanged — no JSON.stringify, no
+        silent drop.  This catches the JSON-only bug class where
+        a Blob hitting JSON.stringify({text: blob}) flattens to
+        {} and the file lands empty / errored."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:400px;height:300px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                let receivedPath = null;
+                let receivedKind = null;
+                let receivedSize = null;
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { bare: true, showInfoLine: false,
+                            height: "100%" },
+                    export: { defaultName: "movie" },
+                    animation: {
+                        kind: "trajectory",
+                        frames: [
+                            [[0.0, 0.0, 0.0]],
+                            [[0.5, 0.0, 0.0]],
+                        ],
+                        fps: 10, paused: true,
+                    },
+                    testInjection: {
+                        projectsApi: {
+                            writeFile: async (path, data) => {
+                                receivedPath = path;
+                                receivedKind = (data
+                                    && typeof data === "object"
+                                    && typeof data.size === "number")
+                                    ? "blob" : typeof data;
+                                receivedSize = data && data.size;
+                                return { ok: true, path: path };
+                            },
+                            currentDir: () => "/tmp/proj1",
+                        },
+                    },
+                });
+                // Drive a short export.  webm/gif both go through
+                // the same _writeToProject; gif is simpler in test
+                // contexts because MediaRecorder may not be
+                // available headlessly.
+                let err = null;
+                try {
+                    await h.exportAnimation({
+                        format: "webm",
+                        target: "project",
+                        duration: 0.1,  // short capture
+                        fps: 10,
+                    });
+                } catch (e) {
+                    err = (e && e.message) || String(e);
+                }
+                h.dispose();
+                host.remove();
+                return {
+                    receivedPath, receivedKind, receivedSize, err,
+                };
+            }
+        """)
+        # In headless Chromium, MediaRecorder + canvas.captureStream
+        # are both available, so the export should succeed.  If
+        # the browser is configured without them, we get the
+        # canonical "MediaRecorder unavailable" reject — accept
+        # that as a SKIP (the binary-write path is still exercised
+        # through the screenshot test below).
+        if out["err"] and ("MediaRecorder" in out["err"]
+                            or "captureStream" in out["err"]):
+            pytest.skip(
+                "test browser lacks MediaRecorder/captureStream — "
+                "binary save-to-project is also covered by "
+                "screenshot()"
+            )
+        assert out["err"] is None, (
+            f"exportAnimation rejected unexpectedly: {out['err']}"
+        )
+        assert out["receivedPath"] == "/tmp/proj1/movie.webm", (
+            f"projectsApi.writeFile got wrong path: {out['receivedPath']!r}"
+        )
+        assert out["receivedKind"] == "blob", (
+            f"projectsApi.writeFile received a {out['receivedKind']} "
+            f"instead of a Blob — the binary path collapsed to "
+            f"text somewhere"
+        )
+        assert out["receivedSize"] and out["receivedSize"] > 0, (
+            f"the Blob handed to writeFile had size "
+            f"{out['receivedSize']!r}; an empty Blob means the "
+            f"encoder produced no data and the save silently "
+            f"succeeded with garbage"
+        )
+
+    def test_screenshot_save_to_project_passes_blob_through(
+            self, page, flask_server):
+        """Same bug class as the animation case but for the .png
+        screenshot path — also went through _writeToProject(Blob)."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                let kind = null;
+                let size = null;
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { bare: true, showInfoLine: false,
+                            height: "100%" },
+                    export: { defaultName: "snap" },
+                    testInjection: {
+                        projectsApi: {
+                            writeFile: async (path, data) => {
+                                kind = (data && typeof data === "object"
+                                       && typeof data.size === "number")
+                                       ? "blob" : typeof data;
+                                size = data && data.size;
+                                return { ok: true, path: path };
+                            },
+                            currentDir: () => "/tmp/proj1",
+                        },
+                    },
+                });
+                await h.screenshot({ target: "project" });
+                h.dispose();
+                host.remove();
+                return { kind, size };
+            }
+        """)
+        assert out["kind"] == "blob", (
+            f"screenshot save-to-project sent {out['kind']!r} not "
+            "a Blob"
+        )
+        assert out["size"] and out["size"] > 0
+
+    def test_view_menu_closes_on_outside_click(
+            self, page, flask_server):
+        """Outside-click should dismiss any open knob-bar menu.
+        Before Phase 6e the menu only closed when the user clicked
+        the trigger again, which was annoying."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:400px;height:300px;position:fixed;top:20px;left:20px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                });
+                const bar = h._test.getKnobBarElement();
+                const viewDet = bar.querySelector(
+                    ".mol-viewer-menu-view");
+                viewDet.open = true;
+                viewDet.dispatchEvent(new Event("toggle"));
+                const wasOpen = viewDet.open;
+                // Click on an element outside the menu.
+                const outside = document.createElement("div");
+                outside.style.cssText =
+                    "position:fixed;top:500px;left:500px;width:50px;height:50px;";
+                document.body.appendChild(outside);
+                outside.click();
+                const stillOpen = viewDet.open;
+                h.dispose();
+                host.remove();
+                outside.remove();
+                return { wasOpen, stillOpen };
+            }
+        """)
+        assert out["wasOpen"] is True, (
+            "test setup error: View menu didn't open"
+        )
+        assert out["stillOpen"] is False, (
+            "View menu stayed open after outside click — Phase 6e "
+            "regression"
+        )
+
+    def test_export_menu_has_three_kind_sections(
+            self, page, flask_server):
+        """Export menu must group buttons into Data / Snapshot /
+        Animation sections, not mix them into one flat row.
+        Animation section starts hidden (no animation mounted) but
+        the DOM element exists."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:400px;height:300px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                });
+                const bar = h._test.getKnobBarElement();
+                const sections = Array.from(bar.querySelectorAll(
+                    ".mol-viewer-export-section"))
+                    .map(s => ({
+                        key:    s.getAttribute("data-section"),
+                        hidden: s.hidden,
+                    }));
+                h.dispose();
+                host.remove();
+                return sections;
+            }
+        """)
+        keys = [s["key"] for s in out]
+        assert keys == ["data", "snapshot", "animation"], (
+            f"Export menu sections in wrong order: {keys}"
+        )
+        # Animation hidden when no animation mounted.
+        anim = next(s for s in out if s["key"] == "animation")
+        assert anim["hidden"] is True, (
+            "Animation section should be hidden when no animation "
+            "is mounted"
+        )
+        # Data + Snapshot always visible.
+        data = next(s for s in out if s["key"] == "data")
+        snap = next(s for s in out if s["key"] == "snapshot")
+        assert data["hidden"] is False
+        assert snap["hidden"] is False
+
+    def test_export_menu_animation_section_visible_with_animation(
+            self, page, flask_server):
+        """Mounting a trajectory animation should reveal the
+        Animation section in the Export menu."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        hidden = page.evaluate("""
+            () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:400px;height:300px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    animation: {
+                        kind: "trajectory",
+                        frames: [
+                            [[0.0, 0.0, 0.0]],
+                            [[1.0, 0.0, 0.0]],
+                        ],
+                        fps: 10, paused: true,
+                    },
+                });
+                const bar = h._test.getKnobBarElement();
+                const sect = bar.querySelector(
+                    ".mol-viewer-export-section[data-section='animation']");
+                const v = sect ? sect.hidden : null;
+                h.dispose();
+                host.remove();
+                return v;
+            }
+        """)
+        assert hidden is False, (
+            "Animation section should be visible when a "
+            "trajectory animation is mounted; got hidden=" + str(hidden)
+        )
+
+    def test_animation_export_shows_progress_modal(
+            self, page, flask_server):
+        """Clicking a .gif / .webm export button must put up a
+        blocking modal with a progress bar + Cancel.  Closes when
+        the export finishes."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:400px;height:300px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    animation: {
+                        kind: "trajectory",
+                        frames: [
+                            [[0.0, 0.0, 0.0]],
+                            [[0.5, 0.0, 0.0]],
+                        ],
+                        fps: 10, paused: true,
+                    },
+                });
+                const bar = h._test.getKnobBarElement();
+                // Open Export menu, then click a download .webm.
+                const exportDet = bar.querySelector(
+                    ".mol-viewer-menu-export");
+                exportDet.open = true;
+                const btn = bar.querySelector(
+                    ".mol-viewer-export-btn[data-kind='animation']"
+                  + "[data-target='download'][data-format='webm']");
+                btn.click();
+                // Modal is created synchronously inside the click
+                // handler — query it BEFORE any await so we observe
+                // it before .finally(() => modal.close()) runs in
+                // the next microtask (headless browsers without
+                // MediaRecorder reject immediately).
+                const modal = document.querySelector(
+                    ".mol-viewer-export-modal");
+                const modalVisible = !!modal;
+                const hasCancel = !!(modal && modal.querySelector(
+                    ".mol-viewer-export-modal-cancel"));
+                const hasBar = !!(modal && modal.querySelector(
+                    ".mol-viewer-export-modal-bar"));
+                const title = modal
+                    ? modal.querySelector(
+                        ".mol-viewer-export-modal-title").textContent
+                    : null;
+                // Now let the export resolve / reject so the modal
+                // closes via .finally.
+                for (let i = 0; i < 80; i++) {
+                    await new Promise(r => setTimeout(r, 100));
+                    if (!document.querySelector(
+                        ".mol-viewer-export-modal")) break;
+                }
+                const modalClosed = !document.querySelector(
+                    ".mol-viewer-export-modal");
+                h.dispose();
+                host.remove();
+                return { modalVisible, hasCancel, hasBar, title,
+                         modalClosed };
+            }
+        """)
+        # Headless browsers may lack MediaRecorder/captureStream;
+        # in that case the export rejects fast but the modal still
+        # appears and is closed in the .finally branch — that's
+        # exactly the behaviour we want to verify.
+        assert out["modalVisible"] is True, (
+            "Export modal should appear when animation export is "
+            "kicked off"
+        )
+        assert out["hasCancel"] is True, "modal needs a Cancel button"
+        assert out["hasBar"] is True, "modal needs a progress bar"
+        assert "WEBM" in (out["title"] or ""), (
+            f"modal title should name the format; got {out['title']!r}"
+        )
+        assert out["modalClosed"] is True, (
+            "Modal didn't close after export finished — the .finally "
+            "branch in the click handler is broken"
+        )

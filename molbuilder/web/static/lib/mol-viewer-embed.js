@@ -758,40 +758,182 @@
         const body = document.createElement("div");
         body.className = "mol-viewer-menu-body";
 
-        // Each target opens to the same 5 format buttons.  Animation
-        // formats (gif / webm) default-hidden; toggled visible via
-        // _syncKnobBarToAnimation when a trajectory or vibration
-        // animation is mounted (covers § 4.3 onMount path).
-        const FORMATS = [
-            { kind: "structure", format: "xyz",  label: ".xyz" },
-            { kind: "structure", format: "pdb",  label: ".pdb" },
-            { kind: "image",     format: "png",  label: ".png" },
-            { kind: "animation", format: "gif",  label: ".gif" },
-            { kind: "animation", format: "webm", label: ".webm" },
+        // Phase 6e: three kind-first sections (Data / Snapshot /
+        // Animation) instead of the prior target-first layout.
+        // Each section nests two target sub-rows (Save / Download).
+        // Animation section is wrapped in a `data-kind` group so it
+        // can be hidden as a whole when no animation is mounted (vs
+        // the prior style of hiding individual buttons, which left
+        // an empty row + label visible).
+        const SECTIONS = [
+            {
+                key:   "data",
+                label: "Data",
+                formats: [
+                    { format: "xyz",  label: ".xyz" },
+                    { format: "pdb",  label: ".pdb" },
+                ],
+                kind: "structure",
+            },
+            {
+                key:   "snapshot",
+                label: "Snapshot",
+                formats: [
+                    { format: "png",  label: ".png" },
+                ],
+                kind: "image",
+            },
+            {
+                key:   "animation",
+                label: "Animation",
+                formats: [
+                    { format: "gif",  label: ".gif" },
+                    { format: "webm", label: ".webm" },
+                ],
+                kind: "animation",
+            },
         ];
-        for (const target of ["project", "download"]) {
-            const sect = _menuSection(
-                "target-" + target,
-                target === "project" ? "Save to project" : "Download");
-            const row = document.createElement("div");
-            row.className = "mol-viewer-export-row";
-            for (const f of FORMATS) {
-                const b = document.createElement("button");
-                b.type = "button";
-                b.className = "mol-viewer-export-btn";
-                b.setAttribute("data-target", target);
-                b.setAttribute("data-kind",   f.kind);
-                b.setAttribute("data-format", f.format);
-                if (f.kind === "animation") b.hidden = true;
-                b.textContent = f.label;
-                row.appendChild(b);
+        for (const section of SECTIONS) {
+            const sect = document.createElement("div");
+            sect.className = "mol-viewer-export-section";
+            sect.setAttribute("data-section", section.key);
+            // Animation section starts hidden; revealed by
+            // _syncKnobBarToAnimation when state.current.animation
+            // is non-null.
+            if (section.kind === "animation") sect.hidden = true;
+
+            const label = document.createElement("div");
+            label.className = "mol-viewer-export-section-label";
+            label.textContent = section.label;
+            sect.appendChild(label);
+
+            for (const target of ["project", "download"]) {
+                const row = document.createElement("div");
+                row.className = "mol-viewer-export-row";
+                row.setAttribute("data-target", target);
+                // Tiny inline target hint to disambiguate the
+                // duplicated format rows (".xyz" appears twice in
+                // each section — once for Save, once for Download).
+                const hint = document.createElement("span");
+                hint.className = "mol-viewer-export-section-label";
+                hint.style.minWidth = "5.6rem";
+                hint.style.opacity = "0.6";
+                hint.textContent = target === "project"
+                    ? "Save →" : "Download →";
+                row.appendChild(hint);
+
+                for (const f of section.formats) {
+                    const b = document.createElement("button");
+                    b.type = "button";
+                    b.className = "mol-viewer-export-btn";
+                    b.setAttribute("data-target", target);
+                    b.setAttribute("data-kind",   section.kind);
+                    b.setAttribute("data-format", f.format);
+                    b.textContent = f.label;
+                    row.appendChild(b);
+                }
+                sect.appendChild(row);
             }
-            sect.appendChild(row);
             body.appendChild(sect);
         }
 
         det.appendChild(body);
         return det;
+    }
+
+    /**
+     * Phase 6e: blocking progress modal for animation export.
+     *
+     * Why blocking?  GIF encode of a 5-second 30-fps clip at
+     * 600×400 takes ~10-30 s on a modest laptop.  Without a
+     * modal the user clicks Export, sees no feedback, and
+     * assumes "nothing happened" — then clicks other UI which
+     * either races with the in-flight encoder (changes the
+     * scene mid-frame) or is silently ignored.  Both modes
+     * confuse the user.
+     *
+     * The modal:
+     *   - covers the whole viewport (backdrop catches clicks)
+     *   - shows phase label + progress bar + Cancel button
+     *   - cancellation aborts the export Promise via the
+     *     AbortController plumbed into exportAnimation.
+     *
+     * Module-scope so the click-handler wiring inside
+     * ``_wireKnobBar`` can reach it (the wiring runs before
+     * embed()'s inner closures define their helpers).
+     *
+     * Returns ``{ update(frac, label), setPhase(label),
+     * close(), root }``.  Caller MUST eventually call close()
+     * in both success and failure branches (the .finally rule).
+     */
+    function _showExportProgressModal(opts) {
+        opts = opts || {};
+        const doc = root.document;
+        const overlay = doc.createElement("div");
+        overlay.className = "mol-viewer-export-modal";
+        overlay.setAttribute("role", "dialog");
+        overlay.setAttribute("aria-modal", "true");
+        overlay.setAttribute("aria-label",
+            opts.title || "Exporting");
+
+        const card = doc.createElement("div");
+        card.className = "mol-viewer-export-modal-card";
+        overlay.appendChild(card);
+
+        const title = doc.createElement("div");
+        title.className = "mol-viewer-export-modal-title";
+        title.textContent = opts.title || "Exporting…";
+        card.appendChild(title);
+
+        const phase = doc.createElement("div");
+        phase.className = "mol-viewer-export-modal-phase";
+        phase.textContent = opts.phase || "Preparing…";
+        card.appendChild(phase);
+
+        const barWrap = doc.createElement("div");
+        barWrap.className = "mol-viewer-export-modal-bar";
+        const barFill = doc.createElement("div");
+        barFill.className = "mol-viewer-export-modal-bar-fill";
+        barFill.style.width = "0%";
+        barWrap.appendChild(barFill);
+        card.appendChild(barWrap);
+
+        const actions = doc.createElement("div");
+        actions.className = "mol-viewer-export-modal-actions";
+        const cancelBtn = doc.createElement("button");
+        cancelBtn.type = "button";
+        cancelBtn.className = "mol-viewer-export-modal-cancel";
+        cancelBtn.textContent = "Cancel";
+        cancelBtn.addEventListener("click", () => {
+            if (typeof opts.onCancel === "function") {
+                try { opts.onCancel(); } catch (_) {}
+            }
+            cancelBtn.disabled = true;
+            phase.textContent = "Cancelling…";
+        });
+        actions.appendChild(cancelBtn);
+        card.appendChild(actions);
+
+        doc.body.appendChild(overlay);
+        try { cancelBtn.focus(); } catch (_) {}
+
+        return {
+            root: overlay,
+            update(frac, label) {
+                const pct = Math.max(0,
+                    Math.min(100, Math.round(frac * 100)));
+                barFill.style.width = pct + "%";
+                if (label) phase.textContent = label;
+            },
+            setPhase(label) {
+                if (label) phase.textContent = label;
+            },
+            close() {
+                if (overlay.parentNode) {
+                    overlay.parentNode.removeChild(overlay);
+                }
+            },
+        };
     }
 
     function _menuSection(key, heading) {
@@ -881,16 +1023,18 @@
     }
 
     function _syncKnobBarToAnimation(state) {
-        // Phase 6: gif / webm Export buttons are hidden by default
-        // and revealed only when a trajectory or vibration animation
-        // is currently mounted.  PNG, XYZ, PDB stay visible
-        // unconditionally — they don't need an animation.
+        // Phase 6: Animation Export section is hidden by default and
+        // revealed only when a trajectory or vibration animation is
+        // currently mounted.  Data + Snapshot sections stay visible
+        // unconditionally — they don't need an animation.  Phase 6e
+        // toggles the whole `<div data-section="animation">` wrapper
+        // (label + Save row + Download row) instead of individual
+        // buttons, so the user doesn't see an empty section label.
         if (!state.scaffold || !state.scaffold.knobsEl) return;
         const hasAnim = !!state.current.animation;
-        const sel = ".mol-viewer-export-btn[data-kind=\"animation\"]";
-        for (const btn of state.scaffold.knobsEl.querySelectorAll(sel)) {
-            btn.hidden = !hasAnim;
-        }
+        const sect = state.scaffold.knobsEl.querySelector(
+            ".mol-viewer-export-section[data-section=\"animation\"]");
+        if (sect) sect.hidden = !hasAnim;
     }
 
     function _wireKnobBar(state, bar, knobs) {
@@ -987,9 +1131,49 @@
                     } else if (kind === "image") {
                         p = handle.screenshot({ target: target });
                     } else if (kind === "animation") {
+                        // Phase 6e: GIF/WebM encode is slow + the
+                        // save-to-project step that follows is even
+                        // slower for large blobs.  Show a blocking
+                        // modal with progress + cancel so the user
+                        // doesn't think "nothing happened" and
+                        // doesn't fire other UI mid-encode.
+                        const fmtLabel = (format || "webm").toUpperCase();
+                        const tgtLabel = target === "project"
+                            ? "Saving to project" : "Downloading";
+                        const ac = (typeof AbortController !== "undefined")
+                            ? new AbortController() : null;
+                        const modal = _showExportProgressModal({
+                            title:  "Exporting " + fmtLabel,
+                            phase:  "Encoding frames…",
+                            onCancel: ac ? () => ac.abort() : null,
+                        });
+                        // We catch the encode here so the modal-close
+                        // logic doesn't compete with the existing
+                        // catch a few lines below.  Net effect:
+                        // success → close modal, fire onExport;
+                        // failure / abort → close modal, dispatch
+                        // error.
                         p = handle.exportAnimation({
                             format: format || "webm",
                             target: target || "download",
+                            signal: ac ? ac.signal : undefined,
+                            onProgress: (frac, label) => {
+                                modal.update(frac, label);
+                            },
+                        }).then((r) => {
+                            // Encode done; if saving to project,
+                            // surface "Saving…" phase.  (Write call
+                            // happens inside exportAnimation already
+                            // — by the time we see ``r`` it has
+                            // returned, so this label is informative
+                            // only when the save is fast.)
+                            modal.setPhase(
+                                target === "project"
+                                    ? "Saved." : "Downloaded.");
+                            modal.update(1.0);
+                            return r;
+                        }).finally(() => {
+                            modal.close();
                         });
                     }
                     if (p) p.catch((err) => _dispatchError(state, err));
@@ -1066,6 +1250,29 @@
                               { passive: true, capture: true });
         root.addEventListener("resize", _onScrollOrResize,
                               { passive: true });
+
+        // Phase 6e: outside-click closes any open menu.  Previously
+        // the user had to click the trigger again to dismiss, which
+        // was annoying when the menu had drifted off-focus.  We
+        // check `det.contains(e.target)` so clicks inside the
+        // menu body (sliders, swatches, sub-buttons) don't close
+        // it — only true outside-clicks do.
+        function _onDocClick(e) {
+            const openMenus = bar.querySelectorAll(
+                "details.mol-viewer-menu[open]");
+            if (!openMenus.length) return;
+            for (const det of openMenus) {
+                if (!det.contains(e.target)) det.open = false;
+            }
+        }
+        // Capture phase so we run before the export button's own
+        // click handler closes the menu manually — order doesn't
+        // affect correctness either way, but capture means our
+        // close-on-outside fires reliably even if a child handler
+        // calls stopPropagation.
+        const _doc = root.document;
+        _doc.addEventListener("click", _onDocClick, true);
+
         // Compose teardown into a single closure dispose() invokes.
         // ``setKnobs`` rebuilds the bar in place; that path will call
         // _wireKnobBar again, which would install duplicate
@@ -1077,6 +1284,7 @@
             root.removeEventListener("scroll", _onScrollOrResize,
                                      { capture: true });
             root.removeEventListener("resize", _onScrollOrResize);
+            _doc.removeEventListener("click", _onDocClick, true);
         };
 
         // Keyboard shortcuts per § 6.2 (Phase 6 simplified):
@@ -2128,10 +2336,24 @@
         // atoms scale molbuilder targets.  See trajectory + vibration
         // tick loops — without this call, frames don't move on
         // screen even though state.current.animation advances.
+        const now = (typeof performance !== "undefined" && performance.now)
+            ? () => performance.now() : () => Date.now();
+        const t0 = now();
         _applyStyle(state.viewer, state.current.style);
         // OverlaySpec atom-style overrides must layer back on top of
         // the rebuilt base, matching the § 3.12 ordering rule.
         _redrawOverlayStyles(state);
+        // Phase 6e: ring-buffer sample.  Wall time covers setStyle +
+        // overlay re-layer but NOT viewer.render() (the caller does
+        // that next).  Caller-side render() is the dominant cost on
+        // large structures, so the rebuild metric isolates the part
+        // _this function_ owns.
+        const p = state._perf;
+        if (p) {
+            p.rebuildMs[p.rebuildHead] = now() - t0;
+            p.rebuildHead = (p.rebuildHead + 1) % p.rebuildMs.length;
+            if (p.rebuildCount < p.rebuildMs.length) p.rebuildCount++;
+        }
     }
 
     function _postFramePositionRedraw(state) {
@@ -2540,6 +2762,16 @@
             // animation.kind === "trajectory"; auto-mount per § 6.3).
             frameStripEl:    null,
             frameStripParts: null,
+
+            // Phase 6e: per-instance ring buffer of recent
+            // _rebuildGeometryForCoordChange wall times in ms.  Capped
+            // at 240 samples (~4 s at 60 fps) so it never grows.  Read
+            // via handle._test.getFrameRebuildTimings().
+            _perf: {
+                rebuildMs: new Array(240),
+                rebuildHead: 0,
+                rebuildCount: 0,
+            },
 
             disposed:      false,
         };
@@ -3420,6 +3652,27 @@
             return null;
         }
 
+        /**
+         * Phase 6e: blocking progress modal for animation export.
+         *
+         * Why blocking?  GIF encode of a 5-second 30-fps clip at
+         * 600×400 takes ~10-30 s on a modest laptop.  Without a
+         * modal the user clicks Export, sees no feedback, and
+         * assumes "nothing happened" — then clicks other UI which
+         * either races with the in-flight encoder (changes the
+         * scene mid-frame) or is silently ignored.  Both modes
+         * confuse the user.
+         *
+         * The modal:
+         *   - covers the whole viewport (backdrop catches clicks)
+         *   - shows phase label + progress bar + Cancel button
+         *   - cancellation aborts the export Promise via the
+         *     AbortController plumbed into exportAnimation.
+         *
+         * Returns ``{ update(frac, label), setPhase(label),
+         * close(), root }``.  Caller MUST eventually call close()
+         * in both success and failure branches (the .finally rule).
+         */
         function _fireOnExport(info) {
             const cb = state.userOpts.export
                         && typeof state.userOpts.export.onExport === "function"
@@ -4353,6 +4606,47 @@
             hasAnimationLoop() {
                 return !!(state._anim && (state._anim.rafId !== null
                                        || state._anim.intervalId !== null));
+            },
+            getFrameRebuildTimings() {
+                // Phase 6e: snapshot of recent
+                // _rebuildGeometryForCoordChange wall times in ms.
+                // Returns { samples: [...], mean, p50, p95, p99, max }
+                // computed over the ring buffer's filled portion.
+                // Benchmarks call resetFrameRebuildTimings(), run N
+                // frames, then read this back.  Empty samples ⇒
+                // every aggregate is 0 (caller doesn't need to guard).
+                const p = state._perf;
+                if (!p || p.rebuildCount === 0) {
+                    return {
+                        samples: [], mean: 0, p50: 0,
+                        p95: 0, p99: 0, max: 0,
+                    };
+                }
+                const samples = [];
+                for (let i = 0; i < p.rebuildCount; i++) {
+                    samples.push(p.rebuildMs[i]);
+                }
+                const sorted = samples.slice().sort((a, b) => a - b);
+                const pct = (q) => sorted[Math.min(
+                    sorted.length - 1,
+                    Math.floor(q * sorted.length))];
+                let sum = 0;
+                for (const v of samples) sum += v;
+                return {
+                    samples: samples,
+                    mean:    sum / samples.length,
+                    p50:     pct(0.50),
+                    p95:     pct(0.95),
+                    p99:     pct(0.99),
+                    max:     sorted[sorted.length - 1],
+                };
+            },
+            resetFrameRebuildTimings() {
+                const p = state._perf;
+                if (p) {
+                    p.rebuildHead = 0;
+                    p.rebuildCount = 0;
+                }
             },
             getCurrentBackground() {
                 return state.current && state.current.style
