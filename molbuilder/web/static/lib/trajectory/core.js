@@ -25,25 +25,14 @@
  * The inspector body lives inside ``mountInspector(rootEl)`` so DOM
  * queries are scoped.  All inside-partial ids (defined in
  * ``_trajectory_inspector.html``) go through ``$()`` (scoped to
- * rootEl, which is the host element on /results).  ``$doc()`` is
- * kept as a vestigial helper for the few status / banner ids that
- * used to live on /watch's loader bar; with /watch gone, every
- * ``$doc()`` lookup returns null on /results, and the call sites
- * guard against that (silent no-op).  See the per-call-site
- * comments below for which $doc lookups are still meaningfully
- * used.
+ * rootEl, which is the host element on /results).  The single
+ * page-level lookup (``status`` banner) is inlined as
+ * ``document.getElementById`` in ``setStatus`` — a no-op on
+ * /results where that banner doesn't exist.
  */
 
 (function (root) {
     "use strict";
-
-    // Page-level lookup -- kept as a vestigial helper from the
-    // /watch era.  Today every site that uses $doc() targets an id
-    // that's no longer rendered on /results (status banner, loader-
-    // bar inputs); the helper returns null and the call sites
-    // short-circuit.  Future cleanup: replace the few remaining
-    // $doc() calls with explicit nulls + delete the helper.
-    const $doc = (id) => document.getElementById(id);
 
     /**
      * Mount the trajectory inspector inside ``rootEl``.
@@ -239,11 +228,11 @@
     }
 
     function setStatus(msg, kind) {
-        // Status banner lives in /watch's loader bar (page-level,
-        // not in the inspector partial).  Silent no-op when the
-        // inspector mounts in a host without it -- /results has
-        // its own per-inspector error rendering via ctx.showError.
-        const el = $doc("status");
+        // Status banner is page-level (not in the inspector partial),
+        // a legacy of the /watch loader bar.  On /results no such
+        // element exists, so this is a silent no-op there — error
+        // surfacing is the embed's onError + per-inspector renderers.
+        const el = document.getElementById("status");
         if (!el) return;
         el.textContent = msg;
         el.className = "status" + (kind ? " " + kind : "");
@@ -1175,7 +1164,7 @@
         // the compact ``#runtime-summary`` span inside the run-state
         // badge -- one organised line, small font, low-key.  Empty
         // (no runtime_info on the file) -> blank, no visible row.
-        const el = $doc("runtime-summary");
+        const el = $("runtime-summary");
         if (!el) return;
         if (!rt || Object.keys(rt).length === 0) {
             el.textContent = "";
@@ -1223,9 +1212,9 @@
         // non-fatal parse issues into a collapsible panel.  Hidden
         // when there are no issues -- a well-parsed file shows no
         // clutter at all.
-        const panel = $doc("parse-warnings");
-        const list  = $doc("parse-warnings-list");
-        const label = $doc("parse-warnings-count");
+        const panel = $("parse-warnings");
+        const list  = $("parse-warnings-list");
+        const label = $("parse-warnings-count");
         if (!panel || !list) return;
         const ws = Array.isArray(warnings) ? warnings : [];
         if (ws.length === 0) {
@@ -1513,8 +1502,6 @@
                         + "/  \u2014 mtime " + ts + ".";
                 }
                 setStatus(msg, "ok");
-                const _pi = $doc("path-input");
-                if (_pi) _pi.value = r.path;
             }
             startPolling();
         } catch (e) {

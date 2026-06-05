@@ -519,15 +519,16 @@ class TestPartialTrajectoryInspectorEndpoint:
     # caught by either test surfaces here too.
     REQUIRED_IDS = (
         "viewer",                  # 3Dmol viewport container
-        "frame-slider",            # frame scrubber
-        "frame-idx",               # current-frame readout
-        "play",                    # playback start
-        "pause",                   # playback stop
         "force-scale",             # force overlay magnitude knob
         "inspect-atom-list-body",  # atom-pick table body
         "energy-plot",             # Plotly chart: per-frame energy
         "force-plot",              # Plotly chart: max force
         "scf-energy-plot",         # Plotly chart: SCF history (hidden when no data)
+        # Frame-strip controls (prev/play/pause/next/frame-slider/
+        # frame-idx) moved to the embed's auto-mounted frame strip
+        # in #246 A1 — they are intentionally NOT in the partial
+        # anymore.  See test_trajectory_inspector_partial.py
+        # EMBED_OWNED_IDS for the authoritative split.
     )
 
     def test_endpoint_returns_html_200(self, web):

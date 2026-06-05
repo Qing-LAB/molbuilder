@@ -1309,6 +1309,72 @@ class TestHandleSurface:
             "stopped the loop — round-trip contract broken"
         )
 
+    def test_applyState_preserves_trajectory_currentFrame(
+            self, page, flask_server):
+        """Phase 5i regression catcher: applyState({animation:
+        getAnimation()}) must preserve the trajectory playhead.
+
+        The Phase 5h I-1 fix made _normaliseAnimation honor caller-
+        supplied currentFrame, but _setAnimationImpl was still
+        calling _showTrajectoryFrame(state, next.startFrame) — which
+        wrote a.currentFrame = startFrame, clobbering the preserved
+        value just before autoplay resumed.  Symptom: a user paused
+        on frame 5 who snapshots+applies would land on frame 0.
+        """
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    animation: {
+                        kind: "trajectory",
+                        frames: [[[0,0,0]],[[0.1,0,0]],[[0.2,0,0]],
+                                 [[0.3,0,0]],[[0.4,0,0]],[[0.5,0,0]]],
+                        fps: 10, paused: true,
+                    },
+                });
+                // Move playhead to frame 4 (well past startFrame=0).
+                h.setAnimationFrame(4);
+                const beforeIdx  = h.getAnimationFrame();
+                const beforeSnap = h.getAnimation().currentFrame;
+                // Full-replace round-trip via applyState — must
+                // preserve currentFrame.
+                h.applyState({ animation: h.getAnimation() });
+                const afterIdx = h.getAnimationFrame();
+                // Partial-update round-trip — also must preserve.
+                h.setAnimation({ fps: 5 });
+                const afterPartial = h.getAnimationFrame();
+                h.dispose();
+                host.remove();
+                return { beforeIdx, beforeSnap, afterIdx, afterPartial };
+            }
+        """)
+        assert out["beforeIdx"]  == 4, (
+            "setAnimationFrame(4) didn't move the playhead"
+        )
+        assert out["beforeSnap"] == 4, (
+            "getAnimation() snapshot lost currentFrame "
+            "(Phase 5h I-1 regression)"
+        )
+        assert out["afterIdx"]   == 4, (
+            "applyState round-trip reset trajectory currentFrame "
+            "from 4 to 0 (Phase 5i regression — _setAnimationImpl "
+            "clobbered via _showTrajectoryFrame(startFrame))"
+        )
+        assert out["afterPartial"] == 4, (
+            "partial-update setAnimation({fps:N}) clobbered "
+            "currentFrame (Phase 5h I-1 regression — the partial "
+            "merge path relies on _normaliseAnimation preservation)"
+        )
+
     def test_setStructure_preserves_picks_when_elements_match(
             self, page, flask_server):
         """Per § 3.8 + § 4.2.1: pickedIndices survives setStructure

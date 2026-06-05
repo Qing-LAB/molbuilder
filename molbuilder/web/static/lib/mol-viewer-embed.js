@@ -565,13 +565,8 @@
     function _buildCardScaffold(opts) {
         const card = opts.card || {};
 
-        // ``card.bare`` was a first-pass migration shim that let
-        // host pages skip the standard chrome.  All five consumer
-        // sites (Build, Modify, structure/trajectory/spectra
-        // inspectors) finished migration on 2026-06-03; the option
-        // is gone per § 2.4 deprecation removal trigger.  If a
-        // legacy caller still passes ``card.bare: true`` we now
-        // ignore it (the standard chrome shows regardless).
+        // ``card.bare`` removed 2026-06-03 after the 5 consumer-site
+        // migrations completed; silently ignored if still passed.
         const section = document.createElement("section");
         section.className = CARD_CLASS
                           + (card.className ? " " + card.className : "");
@@ -2100,10 +2095,8 @@
     /* ------------------------------------------------------------ */
 
     function _buildFrameStrip(state) {
-        // Per § 6.3 (review fix D7): frame strip auto-mounts whenever
-        // animation.kind === "trajectory".  The legacy
-        // ``card.frameStrip`` opt was an undocumented gate that
-        // would have required every trajectory consumer to opt in.
+        // Per § 6.3: frame strip auto-mounts whenever
+        // animation.kind === "trajectory".
         if (state.frameStripEl) return;  // already built
         const a = state.current.animation;
         if (!a || a.kind !== "trajectory") return;
@@ -2226,10 +2219,15 @@
         }
         state._anim.vibrationBaseline = null;
         if (next && next.kind === "trajectory") {
-            // Land on the requested startFrame so the user sees it.
+            // Land on the desired frame.  ``currentFrame`` was already
+            // resolved by _normaliseAnimation: a caller-supplied value
+            // (round-trip) is honored, otherwise it falls back to
+            // ``startFrame`` (fresh mount).  Passing startFrame here
+            // unconditionally — as we did pre-Phase-5h — would clobber
+            // the preserved playhead just before autoplay resumed.
             state.current.animation = next;
             _buildFrameStrip(state);
-            _showTrajectoryFrame(state, next.startFrame);
+            _showTrajectoryFrame(state, next.currentFrame);
             if (autoplay) _playImpl(state);
         } else if (next && next.kind === "vibration") {
             state.current.animation = next;
