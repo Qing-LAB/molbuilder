@@ -140,8 +140,12 @@
         // viewer:        null (removed by #232) — state.handle is
         //                       the only viewer reference now.
         // animTimer / animPhase / animLastTs removed by #231 Part B
-        // — the embed owns the vibration rAF loop now.
-        animPaused:     false,
+        // — the embed owns the vibration rAF loop now.  Phase 5h I-3:
+        // animPaused mirror retired too — read the live state from
+        // _handle.isAnimationPlaying() (Phase 5g B-1 unified
+        // store).  Mirror would drift on mode-switch (we force-play
+        // via setAnimation({paused: false}) without touching the
+        // shadow).
         animAmplitude:  0.15,    // peak Cartesian amplitude in Å (see partial)
         animSpeed:      1.0,     // cycle-rate multiplier (1.0 = ~1 Hz)
         // AbortControllers for in-flight HTTP requests.  ``loadAbort``
@@ -1688,7 +1692,6 @@
         // produces the same visible oscillation (sin vs cos is
         // a 90° phase shift the user can't see).
         _stopAnimation();
-        state.animPaused = false;
         if (els.animToggle) els.animToggle.textContent = "Pause";
 
         // Build the per-atom displacement vector.  Free atoms
@@ -1774,16 +1777,19 @@
         }
     }
     function onAnimToggle() {
-        state.animPaused = !state.animPaused;
-        if (els.animToggle)
-            els.animToggle.textContent = state.animPaused ? "Play" : "Pause";
-        // #231 Part B: drive play / pause through the embed handle
-        // instead of the bespoke rAF loop.
-        if (state.handle) {
-            try {
-                if (state.animPaused) state.handle.pauseAnimation();
-                else                  state.handle.playAnimation();
-            } catch (_) {}
+        // Phase 5h I-3: read the live runtime state from the embed
+        // (Phase 5g B-1 unified store) rather than a host-side
+        // mirror.  Without B-1 the mirror would silently drift
+        // every time _setMode forced playback via
+        // setAnimation({paused: false}).
+        if (!state.handle) return;
+        const wasPlaying = state.handle.isAnimationPlaying();
+        try {
+            if (wasPlaying) state.handle.pauseAnimation();
+            else            state.handle.playAnimation();
+        } catch (_) {}
+        if (els.animToggle) {
+            els.animToggle.textContent = wasPlaying ? "Play" : "Pause";
         }
     }
 

@@ -1937,7 +1937,16 @@
                 onFrame:        typeof a.onFrame === "function"
                                   ? a.onFrame : null,
                 startFrame:     startFrame,
-                currentFrame:   startFrame,
+                // Phase 5h I-1: honor caller-supplied currentFrame so
+                // applyState({animation: getAnimation()}) preserves the
+                // playhead.  Without this clause the round-trip resets
+                // to startFrame even mid-playback.  Out-of-range falls
+                // back to startFrame.
+                currentFrame:   (typeof a.currentFrame === "number"
+                                 && a.currentFrame >= 0
+                                 && a.currentFrame < nFrames)
+                                  ? Math.floor(a.currentFrame)
+                                  : startFrame,
                 fps:            typeof a.fps === "number" && a.fps > 0
                                   ? a.fps : 10,
                 paused:         a.paused !== false,  // default paused
@@ -3972,9 +3981,11 @@
                     merged.kind = "trajectory";
                     const next = _normaliseAnimation(merged);
                     if (next) {
-                        // Preserve the live playback index so a
-                        // partial update doesn't snap back to frame 0.
-                        next.currentFrame = cur.currentFrame;
+                        // Phase 5h I-1: currentFrame preservation now
+                        // lives in _normaliseAnimation (honors caller-
+                        // supplied currentFrame), so the merge inherits
+                        // cur.currentFrame via Object.assign + normalise
+                        // without an explicit override here.
                         _setAnimationImpl(state, next);
                     }
                     return;
@@ -4191,7 +4202,9 @@
                                       && root.navigator.clipboard),
                     mediaRecorder: typeof root.MediaRecorder !== "undefined",
                     gif:           !!root.GIF
-                                      ? "loaded" : "absent",
+                                      ? "loaded"
+                                      : (root._molbuilderGifLoading
+                                          ? "loading" : "absent"),
                 };
             },
             triggerKnob(name, arg) {
