@@ -1297,6 +1297,7 @@
             // without resetting the animation loop.  Playback that
             // was running keeps running; arrowsPerFrame for the new
             // frames is recomputed from the updated state.data.
+            const wasPlaying = _handle.isAnimationPlaying();
             const newCoords = [];
             for (let i = oldLen; i < newLen; i++) {
                 newCoords.push(r.data.frames[i].map(
@@ -1304,11 +1305,10 @@
             }
             _handle.appendFrames(newCoords);
             // arrowsPerFrame is a live array on the animation; the
-            // embed's renderer reads it per-frame.  Replace via a
-            // partial setAnimation update so the renderer sees the
-            // new entries; appendFrames itself doesn't accept
-            // per-frame arrows (the contract leaves it to a
-            // companion partial-update call).
+            // embed's renderer reads it per-frame.  setAnimation
+            // with only ``arrowsPerFrame`` routes through the
+            // trajectory in-place fast path (no setInterval
+            // re-arm).  See mol-viewer-embed.js setAnimation merge.
             try {
                 _handle.setAnimation({
                     arrowsPerFrame: buildArrowsPerFrame(),
@@ -1316,7 +1316,13 @@
             } catch (_) {}
             // Seek to the new tail if the user was watching the end;
             // otherwise leave the playhead where it is.
+            // showFrame() routes through setAnimationFrame which
+            // stops the loop as a side effect, so restore playback
+            // afterwards if we tore it down.
             if (wasAtEnd) showFrame(n - 1);
+            if (wasPlaying && !_handle.isAnimationPlaying()) {
+                try { _handle.playAnimation(); } catch (_) {}
+            }
         } else {
             rebuildModel();
             const targetIdx = wasAtEnd

@@ -855,15 +855,19 @@
         // setBackground(), the matching preset swatch gets
         // ``is-active``.  Custom colors that don't match any preset
         // leave every swatch inactive (the colour picker carries the
-        // value).
+        // value).  Compare lower-cased so a host passing "#FFFFFF"
+        // matches the lower-case "#ffffff" preset.
         if (!state.scaffold || !state.scaffold.knobsEl) return;
         const det = state.scaffold.knobsEl.querySelector(
             ".mol-viewer-knob-background");
         if (!det) return;
-        const cur = state.current.style && state.current.style.background;
+        const raw = state.current.style && state.current.style.background;
+        const cur = typeof raw === "string" ? raw.toLowerCase() : raw;
         for (const btn of det.querySelectorAll("button[data-color]")) {
-            btn.classList.toggle("is-active",
-                btn.getAttribute("data-color") === cur);
+            const swatch = btn.getAttribute("data-color");
+            const sw = typeof swatch === "string"
+                ? swatch.toLowerCase() : swatch;
+            btn.classList.toggle("is-active", sw === cur);
         }
     }
 
@@ -4029,6 +4033,42 @@
                     return;
                 }
                 if (cur.kind === "trajectory") {
+                    // Phase 5k B-1 fast path: fields the renderer
+                    // reads live per frame (arrowsPerFrame, onFrame,
+                    // loop) mutate in place without restarting the
+                    // setInterval — matches the vibration partial-
+                    // update model (amplitude / speedHz / paused
+                    // above).  This keeps the live-poll cadence
+                    // jitter-free.  Fields that require a timer
+                    // re-arm (fps) or a structural restart (frames)
+                    // fall through to the full _setAnimationImpl
+                    // path below.
+                    const liveFields = ["arrowsPerFrame", "onFrame",
+                                        "loop"];
+                    const restartFields = ["fps", "frames",
+                                           "currentFrame", "startFrame"];
+                    let needRestart = false;
+                    for (const f of restartFields) {
+                        if (Object.prototype.hasOwnProperty
+                                .call(animation, f)) {
+                            needRestart = true;
+                            break;
+                        }
+                    }
+                    if (!needRestart) {
+                        for (const f of liveFields) {
+                            if (Object.prototype.hasOwnProperty
+                                    .call(animation, f)) {
+                                cur[f] = animation[f];
+                            }
+                        }
+                        if (typeof animation.paused === "boolean") {
+                            if (animation.paused) _pauseImpl(state);
+                            else _playImpl(state);
+                        }
+                        _refreshFrameStrip(state);
+                        return;
+                    }
                     const merged = Object.assign({}, cur, animation);
                     // Re-normalise to revalidate field types.
                     merged.kind = "trajectory";
