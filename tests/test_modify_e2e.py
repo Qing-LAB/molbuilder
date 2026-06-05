@@ -920,11 +920,14 @@ def test_clickable_survives_repeated_apply_style(
 
     # Force three style cycles to make the regression mode likely to
     # surface (each setStyle re-applies the highlight overlay path).
-    # Post-#203 migration the bespoke #rep <select> is gone; the
-    # standard knob bar's ``.mol-viewer-knob-style`` select drives
-    # the rep cycle now (values per § 3.3 StyleOpts.rep).
+    # Post-Phase-6 the rep picker is a button group inside the View
+    # menu's closed <details>.  Playwright auto-waits for visibility
+    # on .click(); dispatch the event programmatically to bypass
+    # the popover-open animation.
     for rep in ("ball-and-stick", "sphere", "stick"):
-        page.locator(".mol-viewer-knob-style").select_option(rep)
+        page.locator(
+            f'.mol-viewer-rep-btn[data-rep="{rep}"]'
+        ).dispatch_event("click")
         page.wait_for_timeout(50)
     clickable_after = page.evaluate("""() => {
         const v = window.__molbuilder_modify_test.getViewer();
@@ -1162,11 +1165,11 @@ def test_axes_have_fixed_length_at_origin(
     bug)."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
-    # Post-#203 migration: axes are toggled via the standard knob
-    # bar's Axes button (data-knob="axes") rather than #show-axes.
-    # The embed's pre-mount axes:true opt + the knob's
-    # aria-pressed="true" state confirm the initial-on default.
-    axes_btn = page.locator('.mol-viewer-knob[data-knob="axes"]')
+    # Post-Phase-6: axes toggle lives inside View → Axes as a
+    # button with data-action="axes".  Click handler is wired even
+    # when the View menu is closed; the menu is purely cosmetic.
+    axes_btn = page.locator(
+        '.mol-viewer-toggle[data-action="axes"]')
     assert axes_btn.get_attribute("aria-pressed") == "true"
     # Probe the axis arrows' encoded vertex distance (3Dmol caches
     # the start/end vectors on the underlying CylinderShape; we read
@@ -1207,7 +1210,8 @@ def test_axes_have_fixed_length_at_origin(
     # Toggle off via the knob, expect axis shapes gone (the
     # selection adapter may have added its own shapes, so filter
     # to axis-length cylinders rather than asserting total == 0).
-    axes_btn.click()
+    # dispatch_event bypasses the popover-closed visibility wait.
+    axes_btn.dispatch_event("click")
     page.wait_for_timeout(200)
     after_off = page.evaluate("""() => {
         const v = window.__molbuilder_modify_test.getViewer();
@@ -1229,7 +1233,7 @@ def test_axes_have_fixed_length_at_origin(
         f"axis cylinders survived knob-off: {after_off}"
     )
     # Toggle back on.
-    axes_btn.click()
+    axes_btn.dispatch_event("click")
     page.wait_for_timeout(200)
     after_on = page.evaluate("""() => {
         const v = window.__molbuilder_modify_test.getViewer();
@@ -1750,10 +1754,12 @@ def test_build_structure_survives_navigation(page, flask_server):
     page.locator("#kind").select_option("peptide")
     page.locator("#input-text").fill("AC")
     page.locator("#build-btn").click()
-    # Wait for the build response: dl-xyz becomes enabled and
-    # info-atoms shows a non-empty atom count.
+    # Wait for the build response: #generate-fdf becomes enabled
+    # (signals build success — was #dl-xyz pre-Phase-6 when the
+    # bespoke download buttons existed below the viewer; now it's
+    # the next sibling in the same enable-all batch).
     page.wait_for_function(
-        "() => !document.getElementById('dl-xyz').disabled"
+        "() => !document.getElementById('generate-fdf').disabled"
     )
     n_atoms_before = page.locator("#info-atoms").inner_text()
     assert n_atoms_before and n_atoms_before != "—"
@@ -1770,7 +1776,7 @@ def test_build_structure_survives_navigation(page, flask_server):
     page.wait_for_url(f"{flask_server}/")
     # The structure was restored from sessionStorage.
     page.wait_for_function(
-        "() => !document.getElementById('dl-xyz').disabled",
+        "() => !document.getElementById('generate-fdf').disabled",
         timeout=5000,
     )
     n_atoms_after = page.locator("#info-atoms").inner_text()
@@ -2039,7 +2045,7 @@ def test_send_to_build_handoff_renders_structure_in_build(
     # On the Build tab now: restoreStructureState fires during JS
     # init and applyStructureResult enables the Generate buttons.
     page.wait_for_function(
-        "() => !document.getElementById('dl-xyz').disabled",
+        "() => !document.getElementById('generate-fdf').disabled",
         timeout=5000,
     )
     assert page.locator("#info-atoms").inner_text() == "2"
@@ -2594,7 +2600,7 @@ def test_build_form_live_preflight_fires_on_field_edit(
     page.locator("#input-text").fill("AC")
     page.locator("#build-btn").click()
     page.wait_for_function(
-        "() => !document.getElementById('dl-xyz').disabled",
+        "() => !document.getElementById('generate-fdf').disabled",
         timeout=8000,
     )
     # Drop MeshCutoff below its declared range=(100, 1000) -- the

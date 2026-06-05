@@ -152,11 +152,14 @@ class TestNormaliseStyle:
         # Per § 3.3 (review fix D3): ``showLabels`` was removed
         # because two paths to the same state caused precedence
         # ambiguity.  setLabels / opts.labels is the sole path.
+        # Phase 6: DEFAULT_BACKGROUND switched from "#ffffff" to
+        # the page card colour ("#1d2128") so the canvas reads as
+        # part of the dark theme.
         assert out == {
             "rep": "stick",
             "radiusScale": 1.0,
             "colorScheme": None,
-            "background": "#ffffff",
+            "background": "#1d2128",
         }
 
     def test_overrides_apply(self):

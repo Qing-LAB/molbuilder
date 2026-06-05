@@ -402,8 +402,6 @@
             bs.placeholder =
                 "auto (" + autoBlockSize(r.n_atoms) + ", n=" + r.n_atoms + ")";
         }
-        $("dl-xyz").disabled = false;
-        $("dl-pdb").disabled = false;
         $("generate-fdf").disabled = false;
         $("generate-pyscf").disabled = false;
         // Stale outputs / status / download buttons -> reset
@@ -807,16 +805,10 @@
         setTimeout(() => URL.revokeObjectURL(url), 0);
     }
 
-    $("dl-xyz").addEventListener("click", () => {
-        if (!state.xyz) return;
-        downloadAs(state.xyz, safeName(state.title) + ".xyz",
-                   "chemical/x-xyz");
-    });
-    $("dl-pdb").addEventListener("click", () => {
-        if (!state.pdb) return;
-        downloadAs(state.pdb, safeName(state.title) + ".pdb",
-                   "chemical/x-pdb");
-    });
+    // Phase 6: #dl-xyz / #dl-pdb retired — the embed's Export menu
+    // (View / Export → Download → .xyz | .pdb) owns structure
+    // download now.  ``downloadAs`` is still used below for .fdf
+    // and .py generator outputs.
 
     function safeName(s) {
         return (s || "molecule").replace(/[^A-Za-z0-9._-]+/g, "_");

@@ -971,11 +971,14 @@ All tabs share these conventions:
   (`_redrawPickHalos`); the standalone `mol-pick.js` was retired
   in Phase 5g (2026-06-04) once all consumers went through the
   embed pick contract.
-- Theme: dark. CSS variables in `:root` for every colour. No
-  hardcoded `#fff` / `#000` in selectors. 3Dmol viewer canvas
-  keeps a **white background** (`#ffffff`) regardless of the
-  surrounding theme — chemistry viewers conventionally use white
-  for clarity / publication-readiness.
+- Theme: dark.  CSS variables in `:root` for every colour.  No
+  hardcoded `#fff` / `#000` in selectors.  The 3Dmol viewer canvas
+  defaults to `#1d2128` (the page card colour) so it reads as part
+  of the dark theme; hosts that want a white canvas (publication
+  figures) pass `style.background: "#ffffff"` at mount or pick the
+  white preset from the Background submenu (View → Background).
+  This default flipped in Phase 6 (2026-06-04) from `#ffffff` to
+  `#1d2128` — see `embedded-viewer.md § 3.3` + decisions log.
 - Every dynamic insertion uses `textContent` (not `innerHTML`)
   for any user-supplied string.
 

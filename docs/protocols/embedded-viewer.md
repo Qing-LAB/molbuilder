@@ -547,13 +547,16 @@ type ViewerHandle = {
 
 ```ts
 type StyleOpts = {
-  rep?:         "stick" | "ball-and-stick" | "sphere" | "line"
-              | "cartoon" | "cross",
+  rep?:         "stick" | "ball-and-stick" | "sphere" | "line",
   radiusScale?: number,           // default 1.0
   colorScheme?: "element" | "chain" | "residue" | "spectrum",
-  background?:  string,           // CSS color; default "#ffffff"
-                                  // Canvas backdrop only; never
-                                  // affects the page theme.
+  background?:  string,           // CSS color; default "#1d2128"
+                                  // (page card colour — matches the
+                                  // dark theme).  Pass "#ffffff" for
+                                  // a white canvas; "transparent"
+                                  // for compositing.  Canvas
+                                  // backdrop only; never affects
+                                  // the page theme.
 }
 ```
 
@@ -800,126 +803,87 @@ handles vibration.
 
 ### 3.10 `KnobBarOpts`
 
+Phase 6 redesign — the knob bar collapses to **two top-level
+menus** (View + Export) instead of seven flat knobs.  The menus
+expand to structured submenus with labelled sections.
+
 ```ts
 type KnobBarOpts = {
-  // Each knob is independently controllable:
-  //   true   → always visible
-  //   false  → hidden
-  //   "auto" → visible only when meaningful for the current state
-  //            (e.g. play/pause shows only when opts.animation is
-  //            set; screenshot shows only when a structure exists)
-  style?:      boolean | "auto",   // default true
-  labels?:     boolean | "auto",   // default true
-  axes?:       boolean | "auto",   // default true
-  reset?:      boolean | "auto",   // default true
-  screenshot?: boolean | "auto",   // default true
-  background?: boolean | "auto",   // default true
-  export?:     boolean | "auto",   // default true
+  // Top-level menus:
+  view?:   boolean,    // default true — show the View menu
+  export?: boolean,    // default true — show the Export menu
 
-  // Optional background-knob configuration:
-  backgroundPresets?: string[],    // CSS colors offered as
-                                   // one-click presets; default
-                                   // ["#ffffff", "#1c1c1c",
-                                   //  "transparent"]
-  backgroundAllowCustom?: boolean, // show a color-picker input
-                                   // alongside the presets;
-                                   // default true
+  // View → submenu sections (all default true):
+  style?:      boolean,    // 4-button rep picker
+  labels?:     boolean,    // On/Off toggle
+  background?: boolean,    // preset swatches + custom-colour chip
+  axes?:       boolean,    // On/Off toggle
+  reset?:      boolean,    // plain action button
 
-  // Optional labels-knob configuration:
-  labelsFormats?: ("index" | "name" | "element")[],
-  // Format choices offered by the Labels popover.  Defaults +
-  // edge cases:
-  //   - undefined → all three formats offered
-  //   - ["index"] (single item) → suppresses the popover; the
-  //     Labels knob collapses to a plain on/off toggle in that
-  //     format
-  //   - []        → hides the entire Labels knob (same as
-  //                  ``labels: false``); the embed warns once via
-  //                  ``onError(invalid_input)`` because the empty
-  //                  array is almost certainly a bug
-  //   - duplicate entries → de-duplicated silently, original
-  //                          order preserved
-
-  // Cosmetic / layout
-  position?:   "top" | "bottom",   // default "top"
-  compact?:    boolean,            // default false — when true,
-                                   // some labels collapse to icons.
+  // Background section configuration:
+  backgroundPresets?:     string[],    // default ["#1d2128",
+                                       //          "#ffffff",
+                                       //          "transparent"]
+  backgroundAllowCustom?: boolean,     // default true
 };
 
-// ``knobs: true`` (or omitted) shows the full default knob set.
-// ``knobs: false`` hides the entire bar.
+// ``knobs: true`` (or omitted) shows both menus with all sections.
+// ``knobs: false`` hides the bar entirely.
 ```
 
-**Knob semantics** — each wires to the indicated handle method:
+**Menu semantics**:
 
-| Knob | Maps to | UI element |
-|---|---|---|
-| Style | `setStyle({rep, radiusScale})` | `<select>` |
-| Labels | `setLabels({atoms: "all", format})` or `setLabels(false)` | popover (Index / Name / Element / Off) |
-| Axes | `setAxes(true \| false)` | toggle button |
-| Reset | `refit()` | button |
-| Screenshot | `screenshot({target:"download"})` | button (downloads PNG immediately) |
-| Background | `setBackground(color)` | popover with preset swatches + optional color picker |
-| Export | dispatches based on submenu selection (see § 6 + § 3.11) | `<details>` menu |
+| Menu | Submenu | Maps to | UI |
+|---|---|---|---|
+| View | Style | `setStyle({rep})` | 4-button row: Stick / Ball & stick / Sphere / Line |
+| View | Labels | `setLabels(true \| false)` | toggle (uses the host's mount-time `LabelOpts.format`; default `"index"`) |
+| View | Background | `setBackground(color)` | preset swatches + styled custom-colour chip wrapping `<input type="color">` |
+| View | Axes | `setAxes(true \| false)` | toggle |
+| View | Reset | `refit()` | plain button |
+| Export | Save to project / Download | `exportData` / `screenshot` / `exportAnimation` | 5 format buttons per target: `.xyz` `.pdb` `.png` `.gif` `.webm` (gif/webm hidden when no animation mounted) |
 
-**Keyboard shortcuts** the knob bar listens for when the canvas
-or any knob is focused:
+**Style picker** offers exactly the four representations
+`lib/mol-style.js` implements.  The picker passes the spelled-out
+form (`"ball-and-stick"`) on the wire; the embed translates to
+mol-style's historical identifier (`"ballstick"`) at the
+`_applyStyle` boundary.
+
+**Labels** is a single on/off toggle.  Format choice (index / name
+/ element) is not user-pickable through the UI — it's a mount-time
+config (`LabelOpts.format`).  Toggling Off then On restores the
+last LabelOpts the embed saw, falling back to the documented
+`{atoms:"all", format:"index"}` default.
+
+**Background** defaults to `#1d2128` (the page card colour) so
+the viewer reads as part of the dark theme.  White is one of the
+default presets; pass `style.background: "#ffffff"` at mount or
+call `setBackground("#ffffff")` for publication figures.  The
+styled custom-colour chip wraps a native `<input type="color">`
+so the OS picker still opens on click; the chip presents the
+chosen colour as a small swatch matching the preset row.
+
+**Keyboard shortcuts**:
 
 | Key | Action |
 |---|---|
+| `V` | Toggle the View menu open/close |
+| `X` | Toggle the Export menu open/close |
 | `R` | Reset view (`refit()`) |
-| `L` | Open the Labels popover (focus first format button). Repeat `L` while open → close. |
-| `A` | Toggle axes |
-| `B` | Open the Background popover (focus first preset). Repeat `B` → close. |
-| `E` | Open the Export popover. Repeat `E` → close. |
-| `↑` / `↓` (inside popover) | move focus between format / preset / target buttons |
-| `Enter` (inside popover) | activate focused button |
-| `Space` | Play/pause (when animation is set; only when canvas or frame strip is focused, not while a popover is open) |
+| `Space` | Play/pause (animation only, canvas/frame-strip focus) |
 | `←` / `→` | prev / next frame (trajectory only) |
 | `Home` / `End` | first / last frame (trajectory only) |
-| `Esc` | Close any open knob popover (Labels, Background, Export) |
+| `Esc` | Close any open menu |
 
-**Popover open/close patterns** (consistent across Labels,
-Background, Export):
+Per-knob shortcuts (L / A / B / E) from the previous flat layout
+are gone — the 2-menu structure is deep enough that hover-to-open
+is sufficient discoverability and dedicated keys for sub-items
+would crowd the keymap.
 
-- Click on a closed popover's summary → opens it. Click elsewhere
-  in the card → closes it.
-- Click on a popover's action button (Index / Name / Off /
-  preset swatch / export target) → fires the action AND closes
-  the popover. This matches the Export pattern; Background's
-  "click a preset" already used this.
-- Background's custom color picker (`<input type="color">`) is
-  the one exception — typing in it does NOT close the popover.
-- Only one popover open at a time. Opening one closes the others.
+Single-letter keys do NOT fire while a `<input>`, `<textarea>`,
+or `[contenteditable]` element inside the card is focused.
 
-Single-letter keys (`R`, `L`, `A`, `B`, `E`) do NOT fire while a
-`<input>`, `<textarea>`, or `[contenteditable]` element inside
-the card is focused (notably the Background popover's
-custom-color `<input type="color">`). `Space` and arrow keys
-behave the same — they only fire when the canvas, a knob button,
-or the frame strip is the active element.
-
-**While a popover is open** (Labels / Background / Export), the
-embed suppresses single-letter shortcuts mapped to OTHER knobs.
-Only the popover's own opening key (a second press of `L` / `B` /
-`E` closes it), the arrow/Enter focus-navigation keys, and `Esc`
-fire. `R` and `A` are suppressed; `Space` and trajectory arrow
-keys are also suppressed (they expect canvas/frame-strip focus,
-not popover focus). This prevents accidental toggles while the
-user is navigating a popover with the keyboard.
-
-This is the keyboard exception to the *click/tap* rule "Only one
-popover open at a time — opening one closes the others." That rule
-applies to click and touch opens, where the user is consciously
-switching focus between popovers. Cross-knob *keystrokes* (e.g.
-pressing `B` while Labels is open) are suppressed instead of
-chaining: the user has to `Esc` out of Labels first, then press
-`B`. Keyboard chaining would invite accidental popover swaps
-mid-arrow-navigation.
-
-Hosts can suppress all key handling by setting `knobs.compact:
-true` AND focusing an input outside the card; the embed never
-captures `Tab`.
+**Mutual exclusion** — opening View closes Export and vice versa
+(click rule).
 
 ### 3.11 `ExportOpts`
 
@@ -1219,19 +1183,22 @@ sequenceDiagram
 - After `dispose()`, every other sync handle method becomes a
   no-op rather than throwing; every async handle method's Promise
   rejects with `ViewerError(code: "disposed")`.
-- The knob bar reflects current state.  Toggling a knob updates
-  the viewer AND the knob's visible affordance — `aria-pressed`
-  for `Axes`, `<select>.value` for `Style`, `is-active` marker on
-  the active option for the Labels and Background popovers.
-  Programmatic calls flow the same way: `setStyle()` / `setLabels()`
-  / `setAxes()` / `setBackground()` from the handle re-sync the
-  matching affordance.  Custom background colours that don't match
-  any preset leave every swatch unmarked (the picker carries the
-  value).  Setters that have no knob-bar representation
-  (`setOverlays`, `setPick`, `setArrows`, `setCell`,
-  `setAnimation`, `setStructure`, `setCamera`, `setKnobs`) do not
-  drive any chrome — by design, since the corresponding state
-  isn't exposed in the standard 7-knob bar.
+- The knob bar reflects current state.  Phase 6 affordance map:
+  `aria-pressed` on the Labels and Axes toggles (View menu);
+  `is-active` on the matching rep button (View → Style);
+  `is-active` on the matching Background preset swatch (View →
+  Background).  Programmatic calls flow the same way:
+  `setStyle()` / `setLabels()` / `setAxes()` / `setBackground()`
+  from the handle re-sync the matching affordance.  Custom
+  background colours that don't match any preset leave every
+  swatch unmarked (the custom-colour chip carries the value).
+  Setters that have no knob-bar representation (`setOverlays`,
+  `setPick`, `setArrows`, `setCell`, `setAnimation`,
+  `setStructure`, `setCamera`, `setKnobs`) do not drive any
+  chrome — by design, since the corresponding state isn't exposed
+  in the View / Export menus.  `setAnimation` does toggle the
+  visibility of the gif / webm Export buttons (hidden when no
+  animation is mounted).
 
 ### 4.2 `setStructure` × camera
 
@@ -1447,10 +1414,10 @@ below — used when continuing would corrupt state, e.g. non-string
 
 | Method | Sync throw | Promise reject codes | onError codes |
 |---|---|---|---|
-| `embed()` | `missing_dependency` | — | `invalid_input` (mount-time `KnobBarOpts.labelsFormats: []` per § 3.10) |
+| `embed()` | `missing_dependency` | — | — |
 | `setStructure` | — | — | `invalid_input` (`xyz` / `pdb` not a string → halt) |
 | `appendFrames` | — | — | `invalid_input` (atom-count mismatch → halt). No-animation and wrong-kind calls are silent no-ops per § 3.2. |
-| `setStyle` | — | — | `invalid_input` (`rep` outside `{stick, ball-and-stick, sphere, line, cross, cartoon}` — non-halt: `rep` clamps to `"stick"` default; non-finite `radiusScale` — non-halt: clamps to `1.0`) |
+| `setStyle` | — | — | `invalid_input` (`rep` outside `{stick, ball-and-stick, sphere, line}` — non-halt: `rep` clamps to `"stick"` default; non-finite `radiusScale` — non-halt: clamps to `1.0`) |
 | `setAxes` | — | — | `invalid_input` (`mode` outside `{auto, cartesian, cell}`; `mode: "cell"` without a lattice on the current structure → halt with hint to use `mode: "auto"` for graceful fallback) |
 | `setCell` | — | — | — (`color`/`radius` coerced to defaults) |
 | `setLabels` | — | — | `invalid_input` (`atoms` not `"all"`/`number[]`; non-int / negative entries in `atoms` array; `format` outside `{index, name, element}`) |
@@ -1460,7 +1427,7 @@ below — used when continuing would corrupt state, e.g. non-string
 | `setOverlays` | — | — | `invalid_input` (entries dropped: bad/missing/multiple selectors, or no style/halo/marker) |
 | `setAtomStyle` | — | — | `invalid_input` (bad selector → halt; style with no `{rep, radiusScale, color, opacity}` → halt) |
 | `setAnimation` | — | — | `invalid_input` (`kind` outside `{vibration, trajectory}` → halt; vibration without `displacements` array → halt; vibration `displacements.length ≠ atom_count` → halt; trajectory without `frames` array → halt; trajectory `frames[0].length ≠ atom_count` → halt). Partial updates (no `kind`) merge silently. |
-| `setKnobs` | — | — | `invalid_input` (`position` outside `{top, bottom}`; `labelsFormats` entries outside `{index, name, element}`; `backgroundPresets` not an array) |
+| `setKnobs` | — | — | `invalid_input` (`backgroundPresets` not an array) |
 | `setPickedIndices` | — | — | `invalid_input` (argument not `number[] \| null` → halt) |
 | `applyState` | — | — | `invalid_input` (argument not an object → halt). Otherwise transitive: each subsection's errors fire per its own row above. |
 | `setCamera` | — | — | `invalid_input` (argument not an object → halt). Version mismatch is silent (forward-compat) per § 3.13. |
@@ -1503,59 +1470,79 @@ layout.
     <span class="mol-viewer-info-line">3 atoms · 1 residue · H₂O</span>
   </header>
 
-  <!-- §6.2 Standard knob bar — always present unless knobs:false -->
+  <!-- §6.2 Standard knob bar — 2 menus (View + Export).
+       knobs: false hides this bar entirely. -->
   <div class="mol-viewer-knobs" role="toolbar"
        aria-label="Viewer controls">
-    <select class="mol-viewer-knob mol-viewer-knob-style"
-            aria-label="Representation style">…</select>
-    <details class="mol-viewer-knob mol-viewer-knob-labels">
-      <summary>Labels</summary>
-      <!-- aria-expanded on summary is implicit via the <details>
-           open attribute; do NOT set aria-pressed on <summary>
-           (invalid: <summary> has implicit button role but the
-           open/close state is "expanded", not "pressed"). -->
-      <!-- Format options come from KnobBarOpts.labelsFormats -->
-      <button data-format="index"  >Index</button>
-      <button data-format="name"   >Name</button>
-      <button data-format="element">Element</button>
-      <button data-format="off"    >Off</button>
+
+    <details class="mol-viewer-knob mol-viewer-menu mol-viewer-menu-view">
+      <summary>View</summary>
+      <div class="mol-viewer-menu-body">
+        <section class="mol-viewer-menu-section" data-section="style">
+          <h4 class="mol-viewer-menu-heading">Style</h4>
+          <div class="mol-viewer-rep-row">
+            <button class="mol-viewer-rep-btn is-active" data-rep="stick">Stick</button>
+            <button class="mol-viewer-rep-btn" data-rep="ball-and-stick">Ball &amp; stick</button>
+            <button class="mol-viewer-rep-btn" data-rep="sphere">Sphere</button>
+            <button class="mol-viewer-rep-btn" data-rep="line">Line</button>
+          </div>
+        </section>
+        <section class="mol-viewer-menu-section" data-section="labels">
+          <h4 class="mol-viewer-menu-heading">Labels</h4>
+          <button class="mol-viewer-toggle" data-action="labels"
+                  aria-pressed="false">Show labels</button>
+        </section>
+        <section class="mol-viewer-menu-section" data-section="background">
+          <h4 class="mol-viewer-menu-heading">Background</h4>
+          <div class="mol-viewer-bg-row">
+            <button class="mol-viewer-bg-swatch is-active"
+                    data-color="#1d2128" style="background:#1d2128"></button>
+            <button class="mol-viewer-bg-swatch"
+                    data-color="#ffffff" style="background:#ffffff"></button>
+            <button class="mol-viewer-bg-swatch is-transparent"
+                    data-color="transparent">·</button>
+            <label class="mol-viewer-bg-custom">
+              <input type="color" data-knob="background-custom">
+            </label>
+          </div>
+        </section>
+        <section class="mol-viewer-menu-section" data-section="axes">
+          <h4 class="mol-viewer-menu-heading">Axes</h4>
+          <button class="mol-viewer-toggle" data-action="axes"
+                  aria-pressed="false">Show axes</button>
+        </section>
+        <section class="mol-viewer-menu-section" data-section="reset">
+          <button class="mol-viewer-action" data-action="reset">Reset view</button>
+        </section>
+      </div>
     </details>
-    <button class="mol-viewer-knob mol-viewer-knob-toggle"
-            data-knob="axes"   aria-pressed="true" >Axes</button>
-    <button class="mol-viewer-knob"
-            data-knob="reset">Reset</button>
-    <button class="mol-viewer-knob"
-            data-knob="screenshot">PNG</button>
-    <details class="mol-viewer-knob mol-viewer-knob-background">
-      <summary>Background</summary>
-      <!-- Preset swatches from KnobBarOpts.backgroundPresets -->
-      <button data-color="#ffffff"   style="background:#ffffff"></button>
-      <button data-color="#1c1c1c"   style="background:#1c1c1c"></button>
-      <button data-color="transparent">·</button>
-      <!-- Custom picker when backgroundAllowCustom: true -->
-      <input type="color" data-knob="background-custom">
-    </details>
-    <details class="mol-viewer-knob mol-viewer-knob-export">
+
+    <details class="mol-viewer-knob mol-viewer-menu mol-viewer-menu-export">
       <summary>Export</summary>
-      <fieldset data-kind="structure">
-        <legend>Structure</legend>
-        <button data-kind="structure" data-target="project"  >Save to project (xyz)</button>
-        <button data-kind="structure" data-target="download" >Download (xyz)</button>
-        <button data-kind="structure" data-target="clipboard">Copy (xyz)</button>
-      </fieldset>
-      <fieldset data-kind="image">
-        <legend>Image</legend>
-        <button data-kind="image" data-target="project" >Save PNG to project</button>
-        <button data-kind="image" data-target="download">Download PNG</button>
-      </fieldset>
-      <fieldset data-kind="animation">
-        <legend>Animation</legend>
-        <button data-kind="animation" data-format="webm" data-target="project" >Save WebM to project</button>
-        <button data-kind="animation" data-format="webm" data-target="download">Download WebM</button>
-        <button data-kind="animation" data-format="gif"  data-target="project" >Save GIF to project</button>
-        <button data-kind="animation" data-format="gif"  data-target="download">Download GIF</button>
-      </fieldset>
+      <div class="mol-viewer-menu-body">
+        <section class="mol-viewer-menu-section" data-section="target-project">
+          <h4 class="mol-viewer-menu-heading">Save to project</h4>
+          <div class="mol-viewer-export-row">
+            <button class="mol-viewer-export-btn" data-target="project" data-kind="structure" data-format="xyz">.xyz</button>
+            <button class="mol-viewer-export-btn" data-target="project" data-kind="structure" data-format="pdb">.pdb</button>
+            <button class="mol-viewer-export-btn" data-target="project" data-kind="image"     data-format="png">.png</button>
+            <button class="mol-viewer-export-btn" data-target="project" data-kind="animation" data-format="gif"  hidden>.gif</button>
+            <button class="mol-viewer-export-btn" data-target="project" data-kind="animation" data-format="webm" hidden>.webm</button>
+          </div>
+        </section>
+        <section class="mol-viewer-menu-section" data-section="target-download">
+          <h4 class="mol-viewer-menu-heading">Download</h4>
+          <div class="mol-viewer-export-row">
+            <button class="mol-viewer-export-btn" data-target="download" data-kind="structure" data-format="xyz">.xyz</button>
+            <button class="mol-viewer-export-btn" data-target="download" data-kind="structure" data-format="pdb">.pdb</button>
+            <button class="mol-viewer-export-btn" data-target="download" data-kind="image"     data-format="png">.png</button>
+            <button class="mol-viewer-export-btn" data-target="download" data-kind="animation" data-format="gif"  hidden>.gif</button>
+            <button class="mol-viewer-export-btn" data-target="download" data-kind="animation" data-format="webm" hidden>.webm</button>
+          </div>
+        </section>
+      </div>
     </details>
+
   </div>
 
   <!-- §6.3 Frame strip — only when animation.kind === "trajectory" -->
@@ -1579,29 +1566,44 @@ layout.
 
 ### 6.2 Knob bar
 
+Phase 6 redesign: two top-level menus (View + Export) replace the
+flat 7-knob row.  Layout is now compact and readable on narrow
+viewports without the previous wrap-and-collapse machinery.
+
 - Lives between header and frame strip (or canvas if no frame
   strip).
-- Lays out as a single horizontal row; wraps to multiple rows at
-  widths < 480 px; collapses labels to icons at < 360 px.
-- Buttons are themed via `tokens.css` (`--bg-input`, `--accent`,
-  `--border-strong`).
-- Toggle buttons use `aria-pressed` to reflect state.
-- User interaction → handle: every knob click routes through the
-  matching public setter (`setStyle` / `setLabels` / `setAxes` /
-  `setBackground` / `screenshot` / `exportData` / `exportAnimation`)
-  so a host's `onError` / `onExport` callbacks see knob-driven
-  actions identically to programmatic ones.
-- Handle → UI: every setX above re-syncs the matching knob's
-  visible affordance — `aria-pressed` for `Axes`, `<select>.value`
-  for `Style`, `is-active` marker on the active option for the
-  Labels popover and the Background swatches.  Custom background
-  colours that don't match any preset leave every swatch
-  unmarked (the picker input carries the value).
-- Background and Export knobs use `<details>` for popover open/
-  close; one popover open at a time (opening one closes the
-  others). `Esc` closes any open popover.
-- Knob suppression is per-knob via `KnobBarOpts`; hiding the
-  whole bar is `knobs: false`.
+- The bar itself is a `<div class="mol-viewer-knobs" role="toolbar">`
+  containing exactly two top-level `<details>` elements:
+  - `<details class="mol-viewer-menu mol-viewer-menu-view">`
+  - `<details class="mol-viewer-menu mol-viewer-menu-export">`
+- Each `<summary>` is the menu trigger; the body
+  (`.mol-viewer-menu-body`) is a popover containing labelled
+  `<section class="mol-viewer-menu-section">` rows.  Each section
+  has a small uppercase `<h4>` heading + the section's controls
+  (rep button row, toggle, swatch row, action button, etc.).
+- Themed via `tokens.css`: `--bg-card`, `--bg-input`,
+  `--bg-input-focus`, `--accent`, `--text-primary`,
+  `--text-muted`, `--border-soft`, `--border-strong`.
+- Toggle buttons (Labels, Axes) use `aria-pressed` and a
+  ●/○ marker glyph that flips based on pressed state.
+- Style rep buttons get an `is-active` class on the current
+  representation; Background swatches get `is-active` on the
+  matching preset (case-insensitive); custom colours that don't
+  match a preset leave every swatch unmarked (the chip carries
+  the value).
+- User interaction → handle: every submenu control routes through
+  the matching public setter (`setStyle` / `setLabels` /
+  `setBackground` / `setAxes` / `refit` / `exportData` /
+  `screenshot` / `exportAnimation`) so a host's `onError` /
+  `onExport` callbacks see UI-driven actions identically to
+  programmatic ones.
+- Handle → UI: every setX above re-syncs the matching submenu
+  affordance.  See § 4.1.
+- Mutual exclusion: opening View closes Export and vice versa.
+- `Esc` closes any open menu.
+- Knob suppression: top-level `view: false` / `export: false`
+  hide the whole menu; per-section flags hide rows inside View;
+  `knobs: false` hides the bar entirely.
 
 ### 6.3 Frame strip
 
@@ -1967,14 +1969,15 @@ churn:
 | `.mol-viewer-card-header` | header strip |
 | `.mol-viewer-info-line` | atom-count / formula text |
 | `.mol-viewer-knobs` | knob bar container |
-| `.mol-viewer-knob[data-knob="reset"]` | individual knob (replace knob name) |
-| `.mol-viewer-knob-labels summary` | Labels popover toggle |
-| `.mol-viewer-knob-labels [data-format="index"]` | Labels format button (replace format name) |
-| `.mol-viewer-knob-background summary` | Background popover toggle |
-| `.mol-viewer-knob-background [data-color="#ffffff"]` | Background preset swatch (replace color) |
-| `.mol-viewer-knob-background [data-knob="background-custom"]` | Background custom color `<input type="color">` |
-| `.mol-viewer-knob-export summary` | Export popover toggle |
-| `.mol-viewer-knob-export [data-kind="structure"][data-target="download"]` | individual export action |
+| `.mol-viewer-menu-view > summary` | View menu trigger |
+| `.mol-viewer-menu-export > summary` | Export menu trigger |
+| `.mol-viewer-rep-btn[data-rep="stick"]` | Style rep button (replace rep name) |
+| `.mol-viewer-toggle[data-action="labels"]` | Labels on/off toggle |
+| `.mol-viewer-toggle[data-action="axes"]` | Axes on/off toggle |
+| `.mol-viewer-action[data-action="reset"]` | Reset view button |
+| `.mol-viewer-bg-swatch[data-color="#ffffff"]` | Background preset swatch (replace colour) |
+| `.mol-viewer-bg-custom > input[type="color"]` | Background custom-colour native picker |
+| `.mol-viewer-export-btn[data-target="download"][data-kind="structure"][data-format="xyz"]` | individual export action (vary target / kind / format) |
 | `.mol-viewer-frame-strip` | frame strip container |
 | `.mol-viewer-frame-strip [data-action="play"]` | play button |
 | `.mol-viewer-canvas` | canvas host div |
@@ -2091,3 +2094,7 @@ CSS.
 | 2026-06-04 | Programmatic→UI sync extended to every documented setX. | Phase 5k closed R1/R2 + Background-swatch sync: ``setStyle`` re-syncs the Style picker, ``setLabels`` marks the matching popover button ``is-active``, ``setBackground`` (which routes through ``setStyle``) outlines the matching swatch.  Custom colours that don't match a preset leave every swatch unmarked.  Mount-time + every ``setKnobs`` rebuild also seed the affordances from current state.  New test ``test_programmatic_setX_syncs_knob_bar_ui`` pins the invariant. |
 | 2026-06-04 | Trajectory partial-update splits into in-place (live-readable fields) vs full restart. | Phase 5l B-1: ``setAnimation({arrowsPerFrame, onFrame, loop})`` now mutates ``state.current.animation`` in place (matches the vibration partial-update pattern for amplitude/speedHz).  ``fps`` / ``frames`` / ``currentFrame`` / ``startFrame`` still take the full `_setAnimationImpl` path because they need an interval re-arm or seek.  Eliminates timing jitter on every live-poll tick. |
 | 2026-06-04 | Trajectory live-poll uses `appendFrames(newCoords)` for strict-tail-append. | Phase 5k I1 + 5l B-2: when the polled trajectory grows monotonically with unchanged topology/lattice, the inspector pushes only the new frames instead of re-mounting the full animation.  Playback that was running stays running (captured via ``isAnimationPlaying`` before the seek, restored after if the tail-snap stopped the loop).  Non-tail-append cases (structure swap, frames shrank) fall back to a full rebuild. |
+| 2026-06-04 | Knob bar collapses to 2 menus (View + Export); 7-knob flat row retired. | Phase 6: View → Style / Labels / Background / Axes / Reset; Export → Save to project / Download × {.xyz, .pdb, .png, .gif, .webm} with animation formats hidden when no animation is mounted.  Screenshot button absorbed into Export → Download → .png.  Style picker trimmed to the 4 reps mol-style.js actually implements (stick / ball-and-stick / sphere / line); the previous picker exposed "cross" and "cartoon" which fell through to stick, and the embed→mol-style boundary translates "ball-and-stick" → "ballstick" so "Ball & stick" renders correctly.  Labels collapses to On/Off (format is mount-time config, default "index"); the 4-button Index / Name / Element / Off popover and the `labelsFormats` opt are gone.  Background picker gets bigger preset swatches + a styled custom-colour chip that wraps the native `<input type="color">`. |
+| 2026-06-04 | DEFAULT_BACKGROUND switched from `#ffffff` to `#1d2128` (page card colour). | Phase 6: the white canvas was a bright cut-out against the dark theme.  Dark default matches the surrounding card; white stays a preset for publication figures.  Spectra used to override to `#1d2128` explicitly — now picks up the default implicitly and drops its bespoke `style.background` + `knobs.backgroundPresets` configuration. |
+| 2026-06-04 | Build's `#dl-xyz` / `#dl-pdb` buttons + `style.css .resize-hint` retired. | Phase 6: structure download now lives in the Export menu (Save to project / Download → .xyz | .pdb), so the bespoke Build buttons below the viewer were duplicate plumbing through a separate `downloadAs` helper.  The `<div class="resize-hint">drag corner to resize</div>` was dead text never wired to any resize handler. |
+| 2026-06-04 | KnobBarOpts hard-break: `position`, `compact`, `screenshot`, `labelsFormats` dropped. | Phase 6 redesign has no horizontal-placement variant, no compact mode (the menus are always menu-sized), no separate screenshot button (folded into Export), and no labels-format popover (Labels is on/off only).  Five in-tree consumers updated in the same commit; no out-of-tree consumers to migrate. |

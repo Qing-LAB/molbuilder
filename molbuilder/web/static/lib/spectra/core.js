@@ -1621,21 +1621,11 @@
         // § 3.12.
         state.handle = window.molbuilder.viewer.embed(
             els.modeViewer, {
-                // Phase 5e B5: backdrop colour set declaratively at
-                // mount via style.background so the embed's
-                // normalised state agrees with the canvas.  The
-                // Background knob's preset list is widened to
-                // include "#1d2128" so the active-swatch state
-                // matches what the user sees.  Previously the
-                // backdrop was set imperatively post-mount via
-                // setBackground("#1d2128") while the preset list
-                // defaulted to {#ffffff, #1c1c1c, transparent} —
-                // chip swatches showed the user "active: #1c1c1c"
-                // while the canvas was actually #1d2128.
-                style:  { rep: "ball-and-stick", radiusScale: 1.0,
-                          background: "#1d2128" },
-                knobs:  { backgroundPresets:
-                          ["#1d2128", "#ffffff", "transparent"] },
+                // Phase 6: ``#1d2128`` is now the embed-wide default
+                // background; spectra no longer needs to override it
+                // explicitly (or widen the preset list — the default
+                // list is ["#1d2128", "#ffffff", "transparent"]).
+                style:  { rep: "ball-and-stick", radiusScale: 1.0 },
                 pick:   { mode: "none" },
                 card:   { title: "Vibrational mode",
                           showInfoLine: false,

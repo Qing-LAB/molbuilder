@@ -949,10 +949,12 @@ class TestHandleSurface:
                     (h) => h.setPick({mode: "single", label: "bogus"}));
                 run("setBackground_empty",
                     (h) => h.setBackground(""));
-                run("setKnobs_bad_position",
-                    (h) => h.setKnobs({position: "middle"}));
-                run("setKnobs_bad_lf",
-                    (h) => h.setKnobs({labelsFormats: ["index", "bogus"]}));
+                // Phase 6 dropped KnobBarOpts.position and
+                // labelsFormats (2-menu redesign — no horizontal
+                // placement variant, no labels-format popover).
+                // Test cases retired with them.
+                run("setKnobs_bad_presets",
+                    (h) => h.setKnobs({backgroundPresets: "nope"}));
                 run("setAnimation_bad_kind",
                     (h) => h.setAnimation({kind: "rotation"}));
                 run("setAnimation_atom_mismatch",
@@ -1377,15 +1379,14 @@ class TestHandleSurface:
 
     def test_programmatic_setX_syncs_knob_bar_ui(
             self, page, flask_server):
-        """Phase 5k regression catcher for § 4.1 + § 6.2 invariant:
-        ``setStyle`` / ``setLabels`` / ``setBackground`` called via
-        the handle (not the knob UI) must push the new state into
-        the visible affordance — Style picker value, Labels popover
-        active button, Background swatch active class.  Without this
-        a host driving viewer state from a non-knob source (e.g.
-        keyboard shortcut, restore-from-snapshot) leaves the chrome
-        lying about current state.  Axes already had this since
-        Bundle 4; this pins parity for the other three knobs.
+        """Phase 6 regression catcher for § 4.1 + § 6.2 invariant:
+        ``setStyle`` / ``setLabels`` / ``setBackground`` / ``setAxes``
+        called via the handle must push the new state into the
+        visible affordance — active rep button (Style submenu),
+        pressed state on the Labels / Axes toggles, ``is-active``
+        ring on the matching Background swatch.  Without this a host
+        driving viewer state from a non-knob source (keyboard
+        shortcut, restore-from-snapshot) leaves the chrome lying.
         """
         page.goto(f"{flask_server}/")
         page.wait_for_selector("#viewer .mol-viewer-canvas",
@@ -1404,64 +1405,70 @@ class TestHandleSurface:
                     labels: false,
                 });
                 const bar = h._test.getKnobBarElement();
-                const sel = bar.querySelector(".mol-viewer-knob-style");
-                const labelsDet = bar.querySelector(
-                    ".mol-viewer-knob-labels");
-                const bgDet = bar.querySelector(
-                    ".mol-viewer-knob-background");
+                const activeRep = () => {
+                    const b = bar.querySelector(
+                        ".mol-viewer-rep-btn.is-active");
+                    return b ? b.getAttribute("data-rep") : null;
+                };
+                const labelsBtn = bar.querySelector(
+                    '.mol-viewer-toggle[data-action="labels"]');
+                const axesBtn = bar.querySelector(
+                    '.mol-viewer-toggle[data-action="axes"]');
+                const activeBg = () => {
+                    const b = bar.querySelector(
+                        ".mol-viewer-bg-swatch.is-active");
+                    return b ? b.getAttribute("data-color") : null;
+                };
                 const r = {};
                 // Initial state.
-                r.initStyle = sel.value;
-                r.initLabelsActive = labelsDet
-                    .querySelector("button.is-active")
-                    .getAttribute("data-format");
-                r.initBgActive = (bgDet
-                    .querySelector("button.is-active") || {})
-                    .getAttribute && bgDet
-                    .querySelector("button.is-active")
-                    .getAttribute("data-color");
+                r.initRep = activeRep();
+                r.initLabels = labelsBtn.getAttribute("aria-pressed");
+                r.initAxes = axesBtn.getAttribute("aria-pressed");
+                r.initBg = activeBg();
                 // Drive each from the handle.
                 h.setStyle({ rep: "sphere" });
-                r.afterStyle = sel.value;
+                r.afterStyle = activeRep();
                 h.setLabels({ atoms: "all", format: "name" });
-                r.afterLabelsActive = labelsDet
-                    .querySelector("button.is-active")
-                    .getAttribute("data-format");
-                h.setBackground("#1c1c1c");
-                r.afterBgActive = bgDet
-                    .querySelector("button.is-active")
-                    .getAttribute("data-color");
-                // Off-state for labels.
+                r.afterLabelsOn = labelsBtn.getAttribute("aria-pressed");
+                h.setAxes(true);
+                r.afterAxesOn = axesBtn.getAttribute("aria-pressed");
+                h.setBackground("#ffffff");
+                r.afterBg = activeBg();
                 h.setLabels(false);
-                r.afterLabelsOff = labelsDet
-                    .querySelector("button.is-active")
-                    .getAttribute("data-format");
+                r.afterLabelsOff = labelsBtn.getAttribute("aria-pressed");
                 h.dispose();
                 host.remove();
                 return r;
             }
         """)
-        assert out["initStyle"] == "stick", \
-            "mount-time Style picker did not seed from opts.style.rep"
-        assert out["initLabelsActive"] == "off", \
-            "mount-time Labels popover did not mark Off active"
-        assert out["initBgActive"] == "#ffffff", \
-            "mount-time Background did not mark default white swatch"
+        assert out["initRep"] == "stick", \
+            "mount-time Style did not seed active rep from opts.style.rep"
+        assert out["initLabels"] == "false", \
+            "mount-time Labels toggle should be unpressed (labels: false)"
+        assert out["initAxes"] == "false", \
+            "mount-time Axes toggle should be unpressed (default off)"
+        assert out["initBg"] == "#1d2128", (
+            "mount-time Background did not mark the default "
+            "dark swatch (#1d2128) — DEFAULT_BACKGROUND drift"
+        )
         assert out["afterStyle"] == "sphere", (
-            "setStyle({rep:'sphere'}) did not re-sync the Style "
-            "<select>.value — programmatic→UI sync broken (R2)"
+            "setStyle({rep:'sphere'}) did not re-sync the active "
+            "rep button — programmatic→UI sync broken (R2)"
         )
-        assert out["afterLabelsActive"] == "name", (
-            "setLabels({format:'name'}) did not mark the Name button "
-            "is-active in the popover — programmatic→UI sync "
-            "broken (R1)"
+        assert out["afterLabelsOn"] == "true", (
+            "setLabels({...}) did not set the Labels toggle to "
+            "aria-pressed=true — programmatic→UI sync broken (R1)"
         )
-        assert out["afterBgActive"] == "#1c1c1c", (
-            "setBackground('#1c1c1c') did not mark the matching "
-            "preset swatch is-active — programmatic→UI sync broken"
+        assert out["afterAxesOn"] == "true", (
+            "setAxes(true) did not set the Axes toggle to "
+            "aria-pressed=true"
         )
-        assert out["afterLabelsOff"] == "off", (
-            "setLabels(false) did not mark the Off button is-active"
+        assert out["afterBg"] == "#ffffff", (
+            "setBackground('#ffffff') did not mark the white "
+            "preset swatch is-active"
+        )
+        assert out["afterLabelsOff"] == "false", (
+            "setLabels(false) did not unpress the Labels toggle"
         )
 
     def test_setStructure_preserves_picks_when_elements_match(
@@ -2695,24 +2702,20 @@ class TestHandleSurface:
             page.wait_for_selector("#viewer .mol-viewer-knobs",
                                    timeout=_BOOT_TIMEOUT_MS)
             page.wait_for_timeout(200)
-            # Get the ordered class signature of each knob bar
-            # child (top-level only; popover contents are tested
-            # separately).
+            # Phase 6: bar has exactly two <details> children — the
+            # View menu and the Export menu (in that order).  The
+            # signature captures their menu-class so a swap/reorder
+            # is caught.
             return page.evaluate("""() => {
                 const bar = document.querySelector(
                     '#viewer .mol-viewer-knobs');
                 if (!bar) return null;
                 return Array.from(bar.children).map((el) => {
-                    if (el.tagName === 'SELECT') return 'select';
                     if (el.tagName === 'DETAILS') {
                         const cls = Array.from(el.classList)
                             .find((c) => c.startsWith(
-                                'mol-viewer-knob-'));
+                                'mol-viewer-menu-'));
                         return 'details:' + (cls || '?');
-                    }
-                    if (el.tagName === 'BUTTON') {
-                        const k = el.getAttribute('data-knob');
-                        return 'button:' + (k || '?');
                     }
                     return el.tagName.toLowerCase();
                 });
@@ -2723,32 +2726,23 @@ class TestHandleSurface:
             f"Knob bar drifted between Build and Modify:\n"
             f"  Build:  {build_sig}\n  Modify: {modify_sig}"
         )
-        # Verify the EXPECTED signature so an addition to BOTH
-        # sites still has to update this test (catches an
-        # unwanted change that's symmetric across consumers).
         EXPECTED = [
-            "select",                              # Style picker
-            "details:mol-viewer-knob-labels",      # Labels popover
-            "button:axes",                          # Axes toggle
-            "button:reset",                         # Reset
-            "button:screenshot",                    # PNG
-            "details:mol-viewer-knob-background",  # Background popover
-            "details:mol-viewer-knob-export",      # Export popover
+            "details:mol-viewer-menu-view",
+            "details:mol-viewer-menu-export",
         ]
         assert build_sig == EXPECTED, (
-            f"Knob bar order drifted from § 6.2 spec:\n"
+            f"Knob bar order drifted from § 6.2 spec (Phase 6):\n"
             f"  Expected: {EXPECTED}\n  Got:      {build_sig}"
         )
 
     def test_chrome_consistency_across_three_inspectors(
             self, page, flask_server):
-        """Phase 5m T1: the three /results inspectors (structure,
-        trajectory, spectra) must render the same canonical 7-knob
-        bar as Build / Modify.  Tests it by mounting the embed
-        directly with each inspector's actual opts so the test
-        catches a per-inspector drift even when the dispatch path
-        (file extension → registry.pick → inspector.mount) isn't
-        exercised end-to-end.
+        """Phase 5m T1 + Phase 6: the three /results inspectors
+        (structure, trajectory, spectra) must render the same
+        canonical 2-menu bar (View + Export) as Build / Modify.
+        Mounts the embed directly with each inspector's actual opts
+        so the test catches per-inspector drift without exercising
+        the full registry dispatch.
 
         Pins § 6.2 chrome-consistency across all five consumers."""
         page.goto(f"{flask_server}/")
@@ -2757,9 +2751,6 @@ class TestHandleSurface:
         page.wait_for_timeout(200)
         signatures = page.evaluate("""
             () => {
-                // Replicate each inspector's embed config verbatim
-                // (mirrors lib/inspectors/structure.js,
-                // lib/trajectory/core.js, lib/spectra/core.js).
                 const inspectors = {
                     structure: {
                         xyz: "1\\nh\\nH 0 0 0\\n",
@@ -2780,10 +2771,7 @@ class TestHandleSurface:
                     },
                     spectra: {
                         xyz: "1\\nh\\nH 0 0 0\\n",
-                        style: { rep: "ball-and-stick", radiusScale: 1.0,
-                                 background: "#1d2128" },
-                        knobs: { backgroundPresets:
-                                 ["#1d2128", "#ffffff", "transparent"] },
+                        style: { rep: "ball-and-stick", radiusScale: 1.0 },
                         pick:   { mode: "none" },
                         card:   { title: "Vibrational mode",
                                   showInfoLine: false, height: "100%" },
@@ -2801,16 +2789,11 @@ class TestHandleSurface:
                     const bar = h._test.getKnobBarElement();
                     out[name] = bar
                         ? Array.from(bar.children).map((el) => {
-                            if (el.tagName === 'SELECT') return 'select';
                             if (el.tagName === 'DETAILS') {
                                 const cls = Array.from(el.classList)
                                     .find((c) => c.startsWith(
-                                        'mol-viewer-knob-'));
+                                        'mol-viewer-menu-'));
                                 return 'details:' + (cls || '?');
-                            }
-                            if (el.tagName === 'BUTTON') {
-                                return 'button:' +
-                                    (el.getAttribute('data-knob') || '?');
                             }
                             return el.tagName.toLowerCase();
                           })
@@ -2822,18 +2805,13 @@ class TestHandleSurface:
             }
         """)
         EXPECTED = [
-            "select",
-            "details:mol-viewer-knob-labels",
-            "button:axes",
-            "button:reset",
-            "button:screenshot",
-            "details:mol-viewer-knob-background",
-            "details:mol-viewer-knob-export",
+            "details:mol-viewer-menu-view",
+            "details:mol-viewer-menu-export",
         ]
         for name in ("structure", "trajectory", "spectra"):
             assert signatures[name] == EXPECTED, (
                 f"Knob bar order on the {name} inspector drifted "
-                f"from § 6.2 spec:\n"
+                f"from § 6.2 spec (Phase 6):\n"
                 f"  Expected: {EXPECTED}\n  Got: {signatures[name]}"
             )
 
@@ -2871,8 +2849,7 @@ class TestHandleSurface:
                     },
                     spectra: {
                         xyz: "1\\nh\\nH 0 0 0\\n",
-                        style: { rep: "ball-and-stick", radiusScale: 1.0,
-                                 background: "#1d2128" },
+                        style: { rep: "ball-and-stick", radiusScale: 1.0 },
                     },
                 };
                 const out = {};
@@ -2889,18 +2866,25 @@ class TestHandleSurface:
                 return out;
             }
         """)
+        # Phase 6: DEFAULT_BACKGROUND switched from white to the
+        # page's card colour (#1d2128) so the viewer reads as part
+        # of the dark theme instead of a bright cut-out.  White stays
+        # available as a preset for publication figures; consumers
+        # who want it call setBackground("#ffffff") or pass
+        # style.background at mount.  Spectra used to override to
+        # #1d2128 explicitly; now it picks up the same default
+        # implicitly.
         EXPECTED = {
-            "build":      "#ffffff",
-            "modify":     "#ffffff",
-            "structure":  "#ffffff",
-            "trajectory": "#ffffff",
+            "build":      "#1d2128",
+            "modify":     "#1d2128",
+            "structure":  "#1d2128",
+            "trajectory": "#1d2128",
             "spectra":    "#1d2128",
         }
         for name, expected in EXPECTED.items():
             assert actual[name] == expected, (
                 f"{name}: getBackground() returned {actual[name]!r}; "
-                f"expected {expected!r} per § 3.3 + spectra's dark-"
-                f"backdrop decision"
+                f"expected {expected!r} per § 3.3 (Phase 6 default)"
             )
 
     def test_handle_has_test_affordance_object(

@@ -124,214 +124,270 @@
 /*  Standard knob bar (§ 6.2)                                    */
 /* ============================================================ */
 
+/* Phase 6 chrome: 2-menu bar (View + Export) replaces the flat
+   7-knob row.  Each menu is a <details> with a <summary> trigger
+   and a structured popover body containing labelled <section>s. */
+
 .mol-viewer-knobs {
     display:        flex;
-    flex-wrap:      wrap;
     align-items:    center;
-    gap:            var(--space-xs, 0.4rem);
-    padding:        var(--space-xs, 0.4rem) 0;
+    gap:            var(--space-sm, 0.5rem);
+    padding:        var(--space-sm, 0.5rem) var(--space-sm, 0.5rem);
+    background:     var(--bg-card, #1d2128);
+    border-bottom:  1px solid var(--border-soft, rgba(255,255,255,0.06));
     font-size:      var(--text-sm, 0.875rem);
-    color:          var(--text-primary, #222);
+    color:          var(--text-primary, #e6e9ee);
 }
 
-.mol-viewer-knobs > .mol-viewer-knob {
+/* Top-level menu trigger ------------------------------------- */
+.mol-viewer-knobs > .mol-viewer-menu {
     flex:           0 0 auto;
-    background:     var(--bg-input, #fff);
-    color:          var(--text-primary, #222);
-    border:         1px solid var(--border-strong, rgba(0,0,0,0.18));
-    border-radius:  var(--radius-sm, 4px);
-    padding:        var(--space-xs, 0.3rem) var(--space-sm, 0.5rem);
-    font-size:      var(--text-sm, 0.875rem);
-    font-variant-numeric: tabular-nums;
-    cursor:         pointer;
-}
-
-.mol-viewer-knobs > .mol-viewer-knob:hover {
-    background:     var(--bg-input-focus, #f4f4f4);
-    border-color:   var(--accent, #6ba6ff);
-}
-
-/* Toggle buttons show pressed state via aria-pressed. */
-.mol-viewer-knobs > .mol-viewer-knob-toggle[aria-pressed="true"] {
-    background:     var(--accent, #6ba6ff);
-    color:          var(--accent-on, #fff);
-    border-color:   var(--accent, #6ba6ff);
-}
-
-/* The Style select shouldn't get the rounded button look's
-   double-padding -- override the padding so it matches button
-   height. */
-.mol-viewer-knobs > select.mol-viewer-knob {
-    padding-right:  1.5em;   /* room for the dropdown arrow */
-}
-
-/* Popover knobs (Labels / Background / Export) use <details>.
-   <summary> is the visible knob; the popover content sits
-   absolutely-positioned below so it doesn't push other knobs. */
-.mol-viewer-knobs > details.mol-viewer-knob {
     position:       relative;
-    padding:        0;
 }
-
-.mol-viewer-knobs > details.mol-viewer-knob > summary {
-    list-style:     none;        /* remove default disclosure triangle */
-    padding:        var(--space-xs, 0.3rem) var(--space-sm, 0.5rem);
+.mol-viewer-menu > summary {
+    list-style:     none;
+    display:        inline-flex;
+    align-items:    center;
+    gap:            0.35em;
+    padding:        0.35rem 0.85rem;
+    background:     var(--bg-input, #262b33);
+    color:          var(--text-primary, #e6e9ee);
+    border:         1px solid transparent;
+    border-radius:  var(--radius-sm, 6px);
+    font-weight:    500;
     cursor:         pointer;
+    user-select:    none;
+    transition:     background 120ms ease, border-color 120ms ease;
 }
-.mol-viewer-knobs > details.mol-viewer-knob > summary::-webkit-details-marker {
-    display:        none;
+.mol-viewer-menu > summary::-webkit-details-marker { display: none; }
+.mol-viewer-menu > summary::after {
+    content:        "";
+    width:          0; height: 0;
+    border:         3px solid transparent;
+    border-top:     4px solid currentColor;
+    margin-top:     2px;
+    opacity:        0.7;
+}
+.mol-viewer-menu > summary:hover,
+.mol-viewer-menu > summary:focus-visible {
+    background:     var(--bg-input-focus, #2c323b);
+    border-color:   var(--border-strong, rgba(255,255,255,0.12));
+    outline:        none;
+}
+.mol-viewer-menu[open] > summary {
+    background:     var(--accent, #5fb6ff);
+    color:          var(--accent-on, #14171c);
+    border-color:   var(--accent, #5fb6ff);
 }
 
-.mol-viewer-knobs > details.mol-viewer-knob[open] > summary {
-    background:     var(--accent, #6ba6ff);
-    color:          var(--accent-on, #fff);
-    border-radius:  var(--radius-sm, 4px) var(--radius-sm, 4px) 0 0;
-}
-
-.mol-viewer-knobs > details.mol-viewer-knob > *:not(summary) {
+/* Menu body (popover) --------------------------------------- */
+.mol-viewer-menu-body {
     position:       absolute;
     z-index:        10;
-    top:            100%;
+    top:            calc(100% + 4px);
     left:           0;
-    /* Review fix U1: cap the popover width + allow vertical scroll
-       so rightmost knobs (Export) don't push their popover off the
-       right edge of the card at narrow viewports. */
-    min-width:      9rem;
-    max-width:      min(18rem, calc(100vw - 2rem));
-    max-height:     min(24rem, calc(100vh - 8rem));
+    min-width:      14rem;
+    max-width:      min(22rem, calc(100vw - 2rem));
+    max-height:     min(28rem, calc(100vh - 8rem));
     overflow:       auto;
-    margin:         0;
-    padding:        var(--space-xs, 0.4rem);
-    background:     var(--bg-card, #fff);
-    color:          var(--text-primary, #222);
-    border:         1px solid var(--border-strong, rgba(0,0,0,0.18));
-    border-radius:  0 var(--radius-sm, 4px) var(--radius-sm, 4px) var(--radius-sm, 4px);
-    box-shadow:     0 4px 12px rgba(0,0,0,0.15);
+    padding:        0.5rem;
+    background:     var(--bg-card-hover, #232831);
+    color:          var(--text-primary, #e6e9ee);
+    border:         1px solid var(--border-strong, rgba(255,255,255,0.12));
+    border-radius:  var(--radius-md, 8px);
+    box-shadow:     0 8px 24px rgba(0,0,0,0.45);
 }
-
-/* Anchor the rightmost popover (Export) at the right edge so it
-   doesn't shoot off-card. */
-.mol-viewer-knobs > details.mol-viewer-knob-export > *:not(summary) {
+.mol-viewer-menu-export > .mol-viewer-menu-body {
+    /* Anchor the Export menu at the right edge so it doesn't shoot
+       off-card on narrow viewports. */
     left:   auto;
     right:  0;
 }
 
-/* Labels popover format buttons. */
-.mol-viewer-knob-labels button {
-    display:        block;
-    width:          100%;
-    text-align:     left;
-    padding:        var(--space-xs, 0.3rem) var(--space-sm, 0.5rem);
-    background:     transparent;
-    border:         none;
-    border-radius:  var(--radius-sm, 4px);
-    color:          inherit;
-    font-size:      inherit;
-    cursor:         pointer;
+/* Sections inside a menu body ------------------------------- */
+.mol-viewer-menu-section {
+    padding:        0.4rem 0.25rem;
+    border-top:     1px solid var(--border-soft, rgba(255,255,255,0.06));
 }
-.mol-viewer-knob-labels button:hover {
-    background:     var(--bg-input-focus, #f4f4f4);
+.mol-viewer-menu-section:first-child {
+    border-top:     none;
 }
-/* Active-format marker for programmatic→UI sync (§ 4.1).  setLabels()
-   from the handle adds this class to the matching format button so
-   the popover reflects current state even when the user didn't open
-   it via this picker. */
-.mol-viewer-knob-labels button.is-active {
-    background:     var(--accent, #5fb6ff);
-    color:          var(--accent-fg, #fff);
+.mol-viewer-menu-heading {
+    margin:         0 0 0.35rem 0;
+    font-size:      var(--text-xs, 0.75rem);
+    font-weight:    600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color:          var(--text-muted, #97a0ad);
 }
 
-/* Background swatches: round chips in a flex row. */
-.mol-viewer-knob-background {
-    /* The whole popover is absolute via the generic rule above. */
+/* Style rep button row --------------------------------------- */
+.mol-viewer-rep-row {
+    display:        flex;
+    flex-wrap:      wrap;
+    gap:            4px;
 }
-.mol-viewer-knob-background > *:not(summary) {
+.mol-viewer-rep-btn {
+    flex:           1 1 calc(50% - 4px);
+    padding:        0.35rem 0.6rem;
+    background:     var(--bg-input, #262b33);
+    color:          var(--text-primary, #e6e9ee);
+    border:         1px solid var(--border-soft, rgba(255,255,255,0.08));
+    border-radius:  var(--radius-sm, 6px);
+    cursor:         pointer;
+    text-align:     center;
+    transition:     background 120ms ease, border-color 120ms ease;
+}
+.mol-viewer-rep-btn:hover {
+    background:     var(--bg-input-focus, #2c323b);
+    border-color:   var(--border-strong, rgba(255,255,255,0.16));
+}
+.mol-viewer-rep-btn.is-active {
+    background:     var(--accent, #5fb6ff);
+    color:          var(--accent-on, #14171c);
+    border-color:   var(--accent, #5fb6ff);
+    font-weight:    500;
+}
+
+/* Toggle (Labels, Axes) ------------------------------------- */
+.mol-viewer-toggle {
+    width:          100%;
+    padding:        0.4rem 0.6rem;
+    background:     var(--bg-input, #262b33);
+    color:          var(--text-primary, #e6e9ee);
+    border:         1px solid var(--border-soft, rgba(255,255,255,0.08));
+    border-radius:  var(--radius-sm, 6px);
+    text-align:     left;
+    cursor:         pointer;
+    transition:     background 120ms ease, border-color 120ms ease;
+}
+.mol-viewer-toggle::before {
+    content:        "○";
+    display:        inline-block;
+    margin-right:   0.5em;
+    color:          var(--text-muted, #97a0ad);
+}
+.mol-viewer-toggle[aria-pressed="true"]::before {
+    content:        "●";
+    color:          var(--accent, #5fb6ff);
+}
+.mol-viewer-toggle:hover {
+    background:     var(--bg-input-focus, #2c323b);
+    border-color:   var(--border-strong, rgba(255,255,255,0.16));
+}
+.mol-viewer-toggle[aria-pressed="true"] {
+    background:     var(--bg-input-focus, #2c323b);
+    border-color:   var(--accent, #5fb6ff);
+}
+
+/* Plain action button (Reset view) -------------------------- */
+.mol-viewer-action {
+    width:          100%;
+    padding:        0.4rem 0.6rem;
+    background:     var(--bg-input, #262b33);
+    color:          var(--text-primary, #e6e9ee);
+    border:         1px solid var(--border-soft, rgba(255,255,255,0.08));
+    border-radius:  var(--radius-sm, 6px);
+    text-align:     left;
+    cursor:         pointer;
+    transition:     background 120ms ease, border-color 120ms ease;
+}
+.mol-viewer-action:hover {
+    background:     var(--bg-input-focus, #2c323b);
+    border-color:   var(--border-strong, rgba(255,255,255,0.16));
+}
+
+/* Background row (preset swatches + custom chip) ------------ */
+.mol-viewer-bg-row {
     display:        flex;
     flex-wrap:      wrap;
     align-items:    center;
-    gap:            var(--space-xs, 0.4rem);
-    /* Reserve room for the .is-active swatch outline (2px solid +
-       1px offset) so the active ring on the edge swatch never
-       clips against the popover's overflow box. */
-    padding:        3px;
+    gap:            0.4rem;
+    padding:        3px; /* room for .is-active outline */
 }
-.mol-viewer-knob-background button[data-color] {
-    width:          1.6rem;
-    height:         1.6rem;
+.mol-viewer-bg-swatch,
+.mol-viewer-bg-custom {
+    width:          1.8rem;
+    height:         1.8rem;
     padding:        0;
-    border:         1px solid var(--border-strong, rgba(0,0,0,0.18));
+    border:         1px solid var(--border-strong, rgba(255,255,255,0.18));
     border-radius:  50%;
     cursor:         pointer;
+    box-sizing:     border-box;
+    transition:     transform 100ms ease;
+}
+.mol-viewer-bg-swatch:hover,
+.mol-viewer-bg-custom:hover {
+    transform:      scale(1.08);
+}
+.mol-viewer-bg-swatch.is-transparent {
+    background:
+        linear-gradient(45deg, #888 25%, transparent 25%, transparent 75%, #888 75%) 0 0/0.5rem 0.5rem,
+        linear-gradient(45deg, #888 25%, transparent 25%, transparent 75%, #888 75%) 0.25rem 0.25rem/0.5rem 0.5rem;
+    color:          #fff;
+    font-size:      0.7rem;
+    line-height:    1.6rem;
     text-align:     center;
 }
-.mol-viewer-knob-background button[data-color="transparent"] {
-    background:
-        linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%) 0 0/0.5rem 0.5rem,
-        linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%) 0.25rem 0.25rem/0.5rem 0.5rem;
-}
-/* Active-swatch marker for programmatic→UI sync (§ 4.1).  After
-   setBackground() the matching swatch gets a ring so the popover
-   reflects current state.  Custom colours that don't match a preset
-   leave every swatch unmarked. */
-.mol-viewer-knob-background button[data-color].is-active {
+.mol-viewer-bg-swatch.is-active {
     outline:        2px solid var(--accent, #5fb6ff);
-    outline-offset: 1px;
+    outline-offset: 2px;
 }
-.mol-viewer-knob-background input[type="color"] {
-    width:          2rem;
-    height:         1.6rem;
+/* Styled custom-colour chip wraps the native <input type="color"> so
+   the OS picker still opens on click but the visible chip matches
+   the preset row.  The native input is sized to fill the chip and
+   the bg-clip trick lets the chosen colour show through.  No bare
+   browser widget is visible. */
+.mol-viewer-bg-custom {
+    position:       relative;
+    overflow:       hidden;
+    /* Rainbow ring so the chip is recognisable as "pick a colour". */
+    background:     conic-gradient(
+                        #ff5050, #ffd54a, #5fdc7a, #5fb6ff,
+                        #b75fff, #ff5fb0, #ff5050);
+}
+.mol-viewer-bg-custom > input[type="color"] {
+    position:       absolute;
+    inset:          -25%;        /* hide the OS chrome around the chip */
+    width:          150%;
+    height:         150%;
     padding:        0;
-    border:         1px solid var(--border-strong, rgba(0,0,0,0.18));
-    background:     transparent;
-    cursor:         pointer;
-}
-
-/* Export popover fieldsets. */
-.mol-viewer-knob-export fieldset {
     margin:         0;
-    padding:        var(--space-xs, 0.3rem) 0;
     border:         none;
-    border-top:     1px solid var(--border-soft, rgba(0,0,0,0.08));
-}
-.mol-viewer-knob-export fieldset:first-of-type {
-    border-top:     none;
-}
-.mol-viewer-knob-export fieldset legend {
-    padding:        0 var(--space-xs, 0.3rem);
-    font-size:      var(--text-xs, 0.75rem);
-    color:          var(--text-muted, #666);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-}
-.mol-viewer-knob-export button {
-    display:        block;
-    width:          100%;
-    text-align:     left;
-    padding:        var(--space-xs, 0.3rem) var(--space-sm, 0.5rem);
-    background:     transparent;
-    border:         none;
-    border-radius:  var(--radius-sm, 4px);
-    color:          inherit;
-    font-size:      inherit;
+    background:     none;
+    opacity:        0;           /* the chip background carries the look */
     cursor:         pointer;
 }
-.mol-viewer-knob-export button:hover {
-    background:     var(--bg-input-focus, #f4f4f4);
+
+/* Export rows ----------------------------------------------- */
+.mol-viewer-export-row {
+    display:        flex;
+    flex-wrap:      wrap;
+    gap:            4px;
+}
+.mol-viewer-export-btn {
+    flex:           0 0 auto;
+    padding:        0.3rem 0.65rem;
+    background:     var(--bg-input, #262b33);
+    color:          var(--text-primary, #e6e9ee);
+    border:         1px solid var(--border-soft, rgba(255,255,255,0.08));
+    border-radius:  var(--radius-sm, 6px);
+    font-variant-numeric: tabular-nums;
+    cursor:         pointer;
+    transition:     background 120ms ease, border-color 120ms ease;
+}
+.mol-viewer-export-btn:hover {
+    background:     var(--bg-input-focus, #2c323b);
+    border-color:   var(--accent, #5fb6ff);
 }
 
-/* Narrow viewports: collapse labels to icons + reduce padding. */
+/* Narrow viewports ------------------------------------------ */
 @media (max-width: 480px) {
     .mol-viewer-knobs {
-        gap:        var(--space-xs, 0.3rem);
+        gap:        0.3rem;
+        padding:    0.4rem;
+    }
+    .mol-viewer-menu > summary {
+        padding:    0.3rem 0.65rem;
     }
 }
-@media (max-width: 360px) {
-    .mol-viewer-knobs-compact > .mol-viewer-knob {
-        padding:    var(--space-xs, 0.25rem);
-    }
-}
-
-/* In bare mode (host owns chrome), the knob bar is hidden -- but
-   the DOM stays so test affordances still work.  After #208 the
-   ``.mol-viewer-bare`` wrapper is no longer emitted; the legacy
-   defensive belt-and-braces rule is gone with it. */

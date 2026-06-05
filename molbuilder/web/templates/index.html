@@ -164,22 +164,10 @@
 
       <div class="viewer-wrap" id="viewer-wrap">
         <div id="viewer"></div>
-        <div class="resize-hint" aria-hidden="true">drag corner to resize</div>
       </div>
-
-      <div class="viewer-controls">
-        <!-- The bespoke <details> Style block was removed by the
-             #202 migration: rep / radius / background / atom-labels
-             now live in the embed's standard knob bar above the
-             canvas.  Only tab-specific actions stay here. -->
-
-
-        <div class="control-row download-row">
-          <span class="dl-label">Download:</span>
-          <button class="dl-btn" id="dl-xyz" disabled>.xyz</button>
-          <button class="dl-btn" id="dl-pdb" disabled>.pdb</button>
-        </div>
-      </div>
+      <!-- Phase 6: dedicated #dl-xyz / #dl-pdb buttons retired;
+           structure download lives in the embed's Export menu
+           (View / Export → Download → .xyz | .pdb). -->
     </section>
   </aside>
 

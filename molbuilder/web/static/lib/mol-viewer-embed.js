@@ -32,21 +32,29 @@
     const INFO_LINE_CLASS    = "mol-viewer-info-line";
     const CANVAS_CLASS       = "mol-viewer-canvas";
     const DEFAULT_HEIGHT     = "clamp(360px, 52vh, 500px)";
-    const DEFAULT_BACKGROUND = "#ffffff";   // 3Dmol convention (web-api.md § 11.4)
+    // Phase 6 chrome redesign: canvas backdrop defaults to the page's
+    // card colour so the viewer reads as part of the dark theme
+    // instead of a bright cut-out.  White stays a preset for
+    // publication figures; transparent stays a preset for screenshots
+    // composited over other media.
+    const DEFAULT_BACKGROUND = "#1d2128";
+    const DEFAULT_BG_PRESETS = ["#1d2128", "#ffffff", "transparent"];
 
     // Closed enums for sync setX input validation (§ 5.3).  Mirrors
     // the option lists in § 3.3 / 3.4 / 3.6 / 3.8 / 3.10 of the
     // embed contract; the corresponding setters dispatch
     // ``invalid_input`` when the supplied value falls outside the
     // closed set and continue with the documented default.
+    // Phase 6: VALID_REPS trimmed to the four reps mol-style.js
+    // actually implements (was [..., "cross", "cartoon"] — cartoon
+    // is a macromolecular renderer that molbuilder doesn't ship;
+    // cross was never wired through).
     const VALID_REPS = [
-        "stick", "ball-and-stick", "sphere", "line", "cross",
-        "cartoon",
+        "stick", "ball-and-stick", "sphere", "line",
     ];
     const VALID_AXES_MODES   = ["auto", "cartesian", "cell"];
     const VALID_PICK_MODES   = ["none", "single", "pair", "multi"];
     const VALID_LABEL_FORMS  = ["index", "name", "element"];
-    const VALID_KNOB_POSITIONS = ["top", "bottom"];
 
     /* ------------------------------------------------------------ */
     /*  Error model — contract § 3.14 + § 5                          */
@@ -459,74 +467,37 @@
     /**
      * Normalise a KnobBarOpts object per § 3.10.  Returns the
      * canonical internal form used by the knob-bar builder.
-     * Edge cases pinned per § 3.10:
-     *   - true / undefined → all default knobs visible.
+     * Edge cases pinned per § 3.10 (Phase 6):
+     *   - true / undefined → both menus visible with all submenu items.
      *   - false            → bar hidden entirely (null return).
-     *   - object           → per-knob true / false / "auto"; missing
+     *   - object           → per-menu / per-item suppression; missing
      *                        keys default to true.
-     *   - labelsFormats: [] → format selector empty (and bar warns
-     *                        via dispatch caller).
      */
     function _normaliseKnobs(k) {
+        // Phase 6: two-menu shape — ``view`` collects style / labels /
+        // background / axes / reset; ``export`` collects save-to-
+        // project / download × {.xyz, .pdb, .png, .gif, .webm}.  The
+        // top-level ``view`` / ``export`` keys (boolean) suppress the
+        // matching menu entirely; per-item keys (style / labels /
+        // background / axes / reset) suppress submenu rows.  Old
+        // shape fields (``screenshot`` / ``labelsFormats`` /
+        // ``position`` / ``compact``) are silently dropped — there
+        // are no out-of-tree consumers.
         if (k === false) return null;
         const opts = (k && typeof k === "object" && k !== true) ? k : {};
 
-        // Per § 3.10 (review fix D6): handle the four ``labelsFormats``
-        // edge cases.
-        //   undefined            → all three formats offered
-        //   ["index"] etc.       → single-format toggle
-        //   []                   → invalid: hide the Labels knob AND
-        //                          signal via the bag's
-        //                          _invalidLabelsFormats flag so the
-        //                          caller can dispatch onError
-        //   duplicate entries    → de-duplicated, order preserved
-        let lfClean;
-        let labelsHidden = opts.labels === false;
-        let invalidLabelsFormats = false;
-        if (opts.labelsFormats === undefined) {
-            lfClean = ["index", "name", "element"];
-        } else if (Array.isArray(opts.labelsFormats)) {
-            if (opts.labelsFormats.length === 0) {
-                invalidLabelsFormats = true;
-                labelsHidden = true;
-                lfClean = [];
-            } else {
-                const filtered = opts.labelsFormats.filter(
-                    (s) => s === "index" || s === "name"
-                        || s === "element");
-                const seen = new Set();
-                lfClean = filtered.filter((s) => {
-                    if (seen.has(s)) return false;
-                    seen.add(s);
-                    return true;
-                });
-                if (lfClean.length === 0) {
-                    invalidLabelsFormats = true;
-                    labelsHidden = true;
-                }
-            }
-        } else {
-            lfClean = ["index", "name", "element"];
-        }
-
         return {
+            view:       opts.view       !== false,
+            export:     opts.export     !== false,
             style:      opts.style      !== false,
-            labels:     !labelsHidden,
+            labels:     opts.labels     !== false,
+            background: opts.background !== false,
             axes:       opts.axes       !== false,
             reset:      opts.reset      !== false,
-            screenshot: opts.screenshot !== false,
-            background: opts.background !== false,
-            export:     opts.export     !== false,
-            position:   opts.position === "bottom" ? "bottom" : "top",
-            compact:    opts.compact === true,
-            labelsFormats: lfClean,
             backgroundPresets: Array.isArray(opts.backgroundPresets)
                 ? opts.backgroundPresets.slice()
-                : ["#ffffff", "#1c1c1c", "transparent"],
+                : DEFAULT_BG_PRESETS.slice(),
             backgroundAllowCustom: opts.backgroundAllowCustom !== false,
-            // Internal flag so embed() can dispatch invalid_input
-            // exactly once at mount.  Not part of the public KnobBarOpts.
-            _invalidLabelsFormats: invalidLabelsFormats,
         };
     }
 
@@ -622,197 +593,190 @@
     /* ------------------------------------------------------------ */
 
     function _buildKnobBarDOM(knobs) {
+        // Phase 6: two-menu structure — View + Export — replaces the
+        // 7-flat-knob bar.  Each menu opens an expandable panel
+        // containing labelled sections.  HTML <details>/<summary>
+        // provides native open/close + accessibility for free; mutual
+        // exclusion is wired in _wireKnobBar.
         const bar = document.createElement("div");
-        bar.className = "mol-viewer-knobs"
-                      + (knobs.compact ? " mol-viewer-knobs-compact" : "");
+        bar.className = "mol-viewer-knobs";
         bar.setAttribute("role", "toolbar");
         bar.setAttribute("aria-label", "Viewer controls");
 
-        // Style picker (HTML <select>; default rep options come
-        // from mol-style.js).
+        if (knobs.view) {
+            bar.appendChild(_buildViewMenu(knobs));
+        }
+        if (knobs.export) {
+            bar.appendChild(_buildExportMenu());
+        }
+        return bar;
+    }
+
+    function _buildViewMenu(knobs) {
+        const det = document.createElement("details");
+        det.className = "mol-viewer-knob mol-viewer-menu mol-viewer-menu-view";
+        const sum = document.createElement("summary");
+        sum.textContent = "View";
+        det.appendChild(sum);
+        const body = document.createElement("div");
+        body.className = "mol-viewer-menu-body";
+
         if (knobs.style) {
-            const sel = document.createElement("select");
-            sel.className = "mol-viewer-knob mol-viewer-knob-style";
-            sel.setAttribute("aria-label", "Representation style");
+            const sect = _menuSection("style", "Style");
+            const row = document.createElement("div");
+            row.className = "mol-viewer-rep-row";
             const reps = [
                 ["stick",          "Stick"],
                 ["ball-and-stick", "Ball & stick"],
                 ["sphere",         "Sphere"],
                 ["line",           "Line"],
-                ["cross",          "Cross"],
-                ["cartoon",        "Cartoon"],
             ];
             for (const [v, label] of reps) {
-                const opt = document.createElement("option");
-                opt.value = v;
-                opt.textContent = label;
-                sel.appendChild(opt);
-            }
-            bar.appendChild(sel);
-        }
-
-        // Labels popover (4 buttons: Index / Name / Element / Off).
-        if (knobs.labels) {
-            const det = document.createElement("details");
-            det.className = "mol-viewer-knob mol-viewer-knob-labels";
-            const sum = document.createElement("summary");
-            sum.textContent = "Labels";
-            det.appendChild(sum);
-            for (const fmt of knobs.labelsFormats) {
-                const btn = document.createElement("button");
-                btn.type = "button";
-                btn.setAttribute("data-format", fmt);
-                btn.textContent = fmt === "index"
-                    ? "Index"
-                    : fmt === "name"
-                        ? "Name"
-                        : "Element";
-                det.appendChild(btn);
-            }
-            const off = document.createElement("button");
-            off.type = "button";
-            off.setAttribute("data-format", "off");
-            off.textContent = "Off";
-            det.appendChild(off);
-            bar.appendChild(det);
-        }
-
-        // Axes toggle button.
-        if (knobs.axes) {
-            const btn = document.createElement("button");
-            btn.type = "button";
-            btn.className = "mol-viewer-knob mol-viewer-knob-toggle";
-            btn.setAttribute("data-knob", "axes");
-            btn.setAttribute("aria-pressed", "false");
-            btn.textContent = "Axes";
-            bar.appendChild(btn);
-        }
-
-        // Reset view button.
-        if (knobs.reset) {
-            const btn = document.createElement("button");
-            btn.type = "button";
-            btn.className = "mol-viewer-knob";
-            btn.setAttribute("data-knob", "reset");
-            btn.textContent = "Reset";
-            bar.appendChild(btn);
-        }
-
-        // Screenshot button (Phase 5 wires the action).
-        if (knobs.screenshot) {
-            const btn = document.createElement("button");
-            btn.type = "button";
-            btn.className = "mol-viewer-knob";
-            btn.setAttribute("data-knob", "screenshot");
-            btn.textContent = "PNG";
-            btn.title = "Save current view as PNG";
-            bar.appendChild(btn);
-        }
-
-        // Background popover (Phase 5 wires the action; DOM exists
-        // now so test selectors are stable).
-        if (knobs.background) {
-            const det = document.createElement("details");
-            det.className = "mol-viewer-knob mol-viewer-knob-background";
-            const sum = document.createElement("summary");
-            sum.textContent = "Background";
-            det.appendChild(sum);
-            for (const c of knobs.backgroundPresets) {
-                const btn = document.createElement("button");
-                btn.type = "button";
-                btn.setAttribute("data-color", c);
-                if (c !== "transparent") {
-                    btn.style.background = c;
-                    btn.setAttribute("aria-label", "Background " + c);
-                } else {
-                    btn.textContent = "·";
-                    btn.title = "Transparent";
-                }
-                det.appendChild(btn);
-            }
-            if (knobs.backgroundAllowCustom) {
-                const input = document.createElement("input");
-                input.type = "color";
-                input.setAttribute("data-knob", "background-custom");
-                input.setAttribute("aria-label", "Custom background color");
-                det.appendChild(input);
-            }
-            bar.appendChild(det);
-        }
-
-        // Export popover (DOM only; Phase 5 wires handlers).
-        if (knobs.export) {
-            const det = document.createElement("details");
-            det.className = "mol-viewer-knob mol-viewer-knob-export";
-            const sum = document.createElement("summary");
-            sum.textContent = "Export";
-            det.appendChild(sum);
-            // Submenu fieldsets per § 6 DOM.  Hidden until structure
-            // is loaded or animation is set — Phase 5 will toggle
-            // their display on getStructureText / animation presence.
-            for (const fieldset of _buildExportFieldsets()) {
-                det.appendChild(fieldset);
-            }
-            bar.appendChild(det);
-        }
-        return bar;
-    }
-
-    function _buildExportFieldsets() {
-        const sets = [];
-
-        const struct = document.createElement("fieldset");
-        struct.setAttribute("data-kind", "structure");
-        const sLeg = document.createElement("legend");
-        sLeg.textContent = "Structure";
-        struct.appendChild(sLeg);
-        for (const t of ["project", "download", "clipboard"]) {
-            const b = document.createElement("button");
-            b.type = "button";
-            b.setAttribute("data-kind",   "structure");
-            b.setAttribute("data-target", t);
-            b.textContent = t === "project"
-                ? "Save to project"
-                : t === "download" ? "Download" : "Copy";
-            struct.appendChild(b);
-        }
-        sets.push(struct);
-
-        const img = document.createElement("fieldset");
-        img.setAttribute("data-kind", "image");
-        const iLeg = document.createElement("legend");
-        iLeg.textContent = "Image";
-        img.appendChild(iLeg);
-        for (const t of ["project", "download"]) {
-            const b = document.createElement("button");
-            b.type = "button";
-            b.setAttribute("data-kind",   "image");
-            b.setAttribute("data-target", t);
-            b.textContent = t === "project" ? "Save PNG to project" : "Download PNG";
-            img.appendChild(b);
-        }
-        sets.push(img);
-
-        const anim = document.createElement("fieldset");
-        anim.setAttribute("data-kind", "animation");
-        const aLeg = document.createElement("legend");
-        aLeg.textContent = "Animation";
-        anim.appendChild(aLeg);
-        for (const f of ["webm", "gif"]) {
-            for (const t of ["project", "download"]) {
                 const b = document.createElement("button");
                 b.type = "button";
-                b.setAttribute("data-kind",   "animation");
-                b.setAttribute("data-format", f);
-                b.setAttribute("data-target", t);
-                b.textContent = (t === "project" ? "Save " : "Download ")
-                              + f.toUpperCase()
-                              + (t === "project" ? " to project" : "");
-                anim.appendChild(b);
+                b.className = "mol-viewer-rep-btn";
+                b.setAttribute("data-rep", v);
+                b.textContent = label;
+                row.appendChild(b);
             }
+            sect.appendChild(row);
+            body.appendChild(sect);
         }
-        sets.push(anim);
-        return sets;
+
+        if (knobs.labels) {
+            const sect = _menuSection("labels", "Labels");
+            const b = document.createElement("button");
+            b.type = "button";
+            b.className = "mol-viewer-toggle";
+            b.setAttribute("data-action", "labels");
+            b.setAttribute("aria-pressed", "false");
+            b.textContent = "Show labels";
+            sect.appendChild(b);
+            body.appendChild(sect);
+        }
+
+        if (knobs.background) {
+            const sect = _menuSection("background", "Background");
+            const row = document.createElement("div");
+            row.className = "mol-viewer-bg-row";
+            for (const c of knobs.backgroundPresets) {
+                const b = document.createElement("button");
+                b.type = "button";
+                b.className = "mol-viewer-bg-swatch";
+                b.setAttribute("data-color", c);
+                if (c === "transparent") {
+                    b.classList.add("is-transparent");
+                    b.setAttribute("aria-label", "Transparent");
+                    b.title = "Transparent";
+                } else {
+                    b.style.background = c;
+                    b.setAttribute("aria-label", "Background " + c);
+                }
+                row.appendChild(b);
+            }
+            if (knobs.backgroundAllowCustom) {
+                // Styled label wraps the native <input type="color">
+                // so the OS picker still opens on click, but the
+                // visible chip is a swatch-sized button that matches
+                // the preset row.  The input itself is sized to fill
+                // the label so click-target is the whole chip.
+                const lbl = document.createElement("label");
+                lbl.className = "mol-viewer-bg-custom";
+                lbl.setAttribute("aria-label", "Custom colour");
+                lbl.title = "Custom colour";
+                const inp = document.createElement("input");
+                inp.type = "color";
+                inp.setAttribute("data-knob", "background-custom");
+                lbl.appendChild(inp);
+                row.appendChild(lbl);
+            }
+            sect.appendChild(row);
+            body.appendChild(sect);
+        }
+
+        if (knobs.axes) {
+            const sect = _menuSection("axes", "Axes");
+            const b = document.createElement("button");
+            b.type = "button";
+            b.className = "mol-viewer-toggle";
+            b.setAttribute("data-action", "axes");
+            b.setAttribute("aria-pressed", "false");
+            b.textContent = "Show axes";
+            sect.appendChild(b);
+            body.appendChild(sect);
+        }
+
+        if (knobs.reset) {
+            const sect = _menuSection("reset", null);
+            const b = document.createElement("button");
+            b.type = "button";
+            b.className = "mol-viewer-action";
+            b.setAttribute("data-action", "reset");
+            b.textContent = "Reset view";
+            sect.appendChild(b);
+            body.appendChild(sect);
+        }
+
+        det.appendChild(body);
+        return det;
+    }
+
+    function _buildExportMenu() {
+        const det = document.createElement("details");
+        det.className = "mol-viewer-knob mol-viewer-menu mol-viewer-menu-export";
+        const sum = document.createElement("summary");
+        sum.textContent = "Export";
+        det.appendChild(sum);
+        const body = document.createElement("div");
+        body.className = "mol-viewer-menu-body";
+
+        // Each target opens to the same 5 format buttons.  Animation
+        // formats (gif / webm) default-hidden; toggled visible via
+        // _syncKnobBarToAnimation when a trajectory or vibration
+        // animation is mounted (covers § 4.3 onMount path).
+        const FORMATS = [
+            { kind: "structure", format: "xyz",  label: ".xyz" },
+            { kind: "structure", format: "pdb",  label: ".pdb" },
+            { kind: "image",     format: "png",  label: ".png" },
+            { kind: "animation", format: "gif",  label: ".gif" },
+            { kind: "animation", format: "webm", label: ".webm" },
+        ];
+        for (const target of ["project", "download"]) {
+            const sect = _menuSection(
+                "target-" + target,
+                target === "project" ? "Save to project" : "Download");
+            const row = document.createElement("div");
+            row.className = "mol-viewer-export-row";
+            for (const f of FORMATS) {
+                const b = document.createElement("button");
+                b.type = "button";
+                b.className = "mol-viewer-export-btn";
+                b.setAttribute("data-target", target);
+                b.setAttribute("data-kind",   f.kind);
+                b.setAttribute("data-format", f.format);
+                if (f.kind === "animation") b.hidden = true;
+                b.textContent = f.label;
+                row.appendChild(b);
+            }
+            sect.appendChild(row);
+            body.appendChild(sect);
+        }
+
+        det.appendChild(body);
+        return det;
+    }
+
+    function _menuSection(key, heading) {
+        const sect = document.createElement("section");
+        sect.className = "mol-viewer-menu-section";
+        sect.setAttribute("data-section", key);
+        if (heading) {
+            const h = document.createElement("h4");
+            h.className = "mol-viewer-menu-heading";
+            h.textContent = heading;
+            sect.appendChild(h);
+        }
+        return sect;
     }
 
     /* ------------------------------------------------------------ */
@@ -820,50 +784,43 @@
     /* ------------------------------------------------------------ */
 
     function _syncKnobBarToStyle(state) {
-        // Programmatic→UI sync per § 4.1 + § 6.2: after setStyle(),
-        // the Style picker should reflect the new representation.
-        // No-op when the knob bar is suppressed (knobs: false) or
-        // the picker is per-knob disabled (knobs.style: false).
+        // Programmatic→UI sync per § 4.1 + § 6.2 (Phase 6 rewrite):
+        // after setStyle(), the matching rep button in View → Style
+        // gets ``is-active``.  No-op when the menu / section is
+        // suppressed.
         if (!state.scaffold || !state.scaffold.knobsEl) return;
-        const sel = state.scaffold.knobsEl.querySelector(
-            ".mol-viewer-knob-style");
-        if (sel && state.current.style
-            && sel.value !== state.current.style.rep) {
-            sel.value = state.current.style.rep;
+        const rep = state.current.style && state.current.style.rep;
+        for (const btn of state.scaffold.knobsEl
+                                .querySelectorAll(".mol-viewer-rep-btn")) {
+            btn.classList.toggle("is-active",
+                btn.getAttribute("data-rep") === rep);
         }
     }
 
     function _syncKnobBarToLabels(state) {
-        // Programmatic→UI sync per § 4.1 + § 6.2: after setLabels(),
-        // the Labels popover's active format gets an ``is-active``
-        // class so users see the current state.  ``labels === null``
-        // (i.e. labels off) marks the Off button active.
+        // Phase 6: Labels is now a single On/Off toggle.  ``labels
+        // === null`` → unpressed; any LabelOpts → pressed.  Format is
+        // a mount-time config; user-facing UI no longer picks it.
         if (!state.scaffold || !state.scaffold.knobsEl) return;
-        const det = state.scaffold.knobsEl.querySelector(
-            ".mol-viewer-knob-labels");
-        if (!det) return;
-        const lbl = state.current.labels;
-        const activeFmt = lbl ? lbl.format : "off";
-        for (const btn of det.querySelectorAll("button[data-format]")) {
-            btn.classList.toggle("is-active",
-                btn.getAttribute("data-format") === activeFmt);
-        }
+        const btn = state.scaffold.knobsEl.querySelector(
+            '.mol-viewer-toggle[data-action="labels"]');
+        if (!btn) return;
+        btn.setAttribute("aria-pressed",
+            state.current.labels ? "true" : "false");
     }
 
     function _syncKnobBarToBackground(state) {
         // Programmatic→UI sync per § 4.1 + § 6.2: after
         // setBackground(), the matching preset swatch gets
-        // ``is-active``.  Custom colors that don't match any preset
-        // leave every swatch inactive (the colour picker carries the
+        // ``is-active``.  Custom colours that don't match a preset
+        // leave every swatch unmarked (the picker chip carries the
         // value).  Compare lower-cased so a host passing "#FFFFFF"
         // matches the lower-case "#ffffff" preset.
         if (!state.scaffold || !state.scaffold.knobsEl) return;
-        const det = state.scaffold.knobsEl.querySelector(
-            ".mol-viewer-knob-background");
-        if (!det) return;
         const raw = state.current.style && state.current.style.background;
         const cur = typeof raw === "string" ? raw.toLowerCase() : raw;
-        for (const btn of det.querySelectorAll("button[data-color]")) {
+        for (const btn of state.scaffold.knobsEl
+                                .querySelectorAll(".mol-viewer-bg-swatch")) {
             const swatch = btn.getAttribute("data-color");
             const sw = typeof swatch === "string"
                 ? swatch.toLowerCase() : swatch;
@@ -871,124 +828,120 @@
         }
     }
 
+    function _syncKnobBarToAxes(state) {
+        // Phase 6: Axes lives inside View → Axes as a toggle button.
+        if (!state.scaffold || !state.scaffold.knobsEl) return;
+        const btn = state.scaffold.knobsEl.querySelector(
+            '.mol-viewer-toggle[data-action="axes"]');
+        if (!btn) return;
+        btn.setAttribute("aria-pressed",
+            state.current.axes ? "true" : "false");
+    }
+
+    function _syncKnobBarToAnimation(state) {
+        // Phase 6: gif / webm Export buttons are hidden by default
+        // and revealed only when a trajectory or vibration animation
+        // is currently mounted.  PNG, XYZ, PDB stay visible
+        // unconditionally — they don't need an animation.
+        if (!state.scaffold || !state.scaffold.knobsEl) return;
+        const hasAnim = !!state.current.animation;
+        const sel = ".mol-viewer-export-btn[data-kind=\"animation\"]";
+        for (const btn of state.scaffold.knobsEl.querySelectorAll(sel)) {
+            btn.hidden = !hasAnim;
+        }
+    }
+
     function _wireKnobBar(state, bar, knobs) {
         const handle = state.handle;
 
-        // Style picker.
-        const styleSel = bar.querySelector(".mol-viewer-knob-style");
-        if (styleSel) {
-            styleSel.value = state.current.style.rep || "stick";
-            styleSel.addEventListener("change", () => {
-                handle.setStyle({ rep: styleSel.value });
+        // ----- View menu --------------------------------------------
+        const viewDet = bar.querySelector(".mol-viewer-menu-view");
+
+        // Style: button group of 4 reps; click sets that rep.
+        for (const btn of bar.querySelectorAll(".mol-viewer-rep-btn")) {
+            btn.addEventListener("click", () => {
+                handle.setStyle({ rep: btn.getAttribute("data-rep") });
             });
         }
 
-        // Labels popover — each format button sets labels with that
-        // format; "off" disables.  Per § 6.2 popover pattern: click
-        // an action button → fires AND closes the popover.
-        const labelsDet = bar.querySelector(".mol-viewer-knob-labels");
-        if (labelsDet) {
-            for (const btn of labelsDet.querySelectorAll("button[data-format]")) {
-                btn.addEventListener("click", () => {
-                    const fmt = btn.getAttribute("data-format");
-                    if (fmt === "off") {
-                        handle.setLabels(false);
-                    } else {
-                        handle.setLabels({ atoms: "all", format: fmt });
-                    }
-                    labelsDet.open = false;
-                });
-            }
+        // Labels: single On/Off toggle.  When turning on, restore
+        // the host-configured format (state.lastLabelsConfig
+        // remembers the last LabelOpts setLabels saw; falls back to
+        // the documented {atoms:"all", format:"index"} default).
+        const labelsBtn = bar.querySelector(
+            '.mol-viewer-toggle[data-action="labels"]');
+        if (labelsBtn) {
+            labelsBtn.addEventListener("click", () => {
+                if (state.current.labels) {
+                    handle.setLabels(false);
+                } else {
+                    handle.setLabels(state.lastLabelsConfig
+                                     || { atoms: "all", format: "index" });
+                }
+            });
         }
 
-        // Axes toggle.
-        const axesBtn = bar.querySelector('[data-knob="axes"]');
+        // Background: preset swatches + styled custom-colour chip.
+        for (const btn of bar.querySelectorAll(".mol-viewer-bg-swatch")) {
+            btn.addEventListener("click", () => {
+                handle.setBackground(btn.getAttribute("data-color"));
+            });
+        }
+        const customInput = bar.querySelector(
+            '[data-knob="background-custom"]');
+        if (customInput) {
+            customInput.addEventListener("input", () => {
+                handle.setBackground(customInput.value);
+            });
+        }
+
+        // Axes: toggle.
+        const axesBtn = bar.querySelector(
+            '.mol-viewer-toggle[data-action="axes"]');
         if (axesBtn) {
-            const initOn = !!state.current.axes;
-            axesBtn.setAttribute("aria-pressed", initOn ? "true" : "false");
             axesBtn.addEventListener("click", () => {
-                const nowOn = state.current.axes
-                            ? false : true;
-                handle.setAxes(nowOn);
-                axesBtn.setAttribute("aria-pressed", nowOn ? "true" : "false");
+                handle.setAxes(state.current.axes ? false : true);
             });
         }
 
         // Reset view.
-        const resetBtn = bar.querySelector('[data-knob="reset"]');
+        const resetBtn = bar.querySelector(
+            '.mol-viewer-action[data-action="reset"]');
         if (resetBtn) {
             resetBtn.addEventListener("click", () => handle.refit());
         }
 
-        // Background popover — preset swatches change canvas color;
-        // custom picker via <input type="color">.  Routes through
-        // the documented setBackground() setter (§ 3.10 knob-mapping
-        // table) — that path preserves any active colorScheme +
-        // tube + radius fields, which the previous direct-setStyle
-        // call would silently drop because it reconstructed style
-        // from only {rep, radiusScale, background}.
-        const bgDet = bar.querySelector(".mol-viewer-knob-background");
-        if (bgDet) {
-            for (const btn of bgDet.querySelectorAll("button[data-color]")) {
-                btn.addEventListener("click", () => {
-                    handle.setBackground(btn.getAttribute("data-color"));
-                    bgDet.open = false;
-                });
-            }
-            const customInput = bgDet.querySelector(
-                '[data-knob="background-custom"]');
-            if (customInput) {
-                customInput.addEventListener("input", () => {
-                    handle.setBackground(customInput.value);
-                });
-            }
-        }
-
-        // Screenshot button → download a PNG immediately (Phase 5a).
-        const ssBtn = bar.querySelector('[data-knob="screenshot"]');
-        if (ssBtn) {
-            ssBtn.addEventListener("click", () => {
-                handle.screenshot({ target: "download" })
-                      .catch((err) => _dispatchError(state, err));
-            });
-        }
-
-        // Export popover — Structure / Image / Animation actions
-        // wire to handle.exportData / handle.screenshot /
-        // handle.exportAnimation.
-        const expDet = bar.querySelector(".mol-viewer-knob-export");
-        if (expDet) {
-            for (const btn of expDet.querySelectorAll("button[data-kind]")) {
+        // ----- Export menu ------------------------------------------
+        const exportDet = bar.querySelector(".mol-viewer-menu-export");
+        if (exportDet) {
+            for (const btn of exportDet.querySelectorAll(
+                                ".mol-viewer-export-btn")) {
                 btn.addEventListener("click", () => {
                     const kind   = btn.getAttribute("data-kind");
                     const target = btn.getAttribute("data-target");
                     const format = btn.getAttribute("data-format");
                     let p;
                     if (kind === "structure") {
-                        p = handle.exportData({ target: target });
+                        p = handle.exportData({
+                            target: target, format: format });
                     } else if (kind === "image") {
                         p = handle.screenshot({ target: target });
                     } else if (kind === "animation") {
-                        // Animation buttons declare
-                        // ``data-format="webm" | "gif"`` and
-                        // ``data-target="project" | "download"``;
-                        // exportAnimation surfaces a typed reject
-                        // (no_media_recorder / no_gif_encoder /
-                        // static_structure / ...) via onError.
                         p = handle.exportAnimation({
                             format: format || "webm",
                             target: target || "download",
                         });
                     }
                     if (p) p.catch((err) => _dispatchError(state, err));
-                    expDet.open = false;
+                    exportDet.open = false;
                 });
             }
         }
 
-        // Popover mutual-exclusion: opening one closes the others
-        // (click/tap rule per § 3.10).
-        const allDetails = bar.querySelectorAll("details.mol-viewer-knob");
+        // Mutual exclusion: opening one top-level menu closes the
+        // other (click/tap rule per § 6.2).
+        const allDetails = bar.querySelectorAll(
+            "details.mol-viewer-menu");
         for (const d of allDetails) {
             d.addEventListener("toggle", () => {
                 if (d.open) {
@@ -999,10 +952,14 @@
             });
         }
 
-        // Keyboard shortcuts per § 3.10.  Listen on the card root so
-        // typing in <input>/<textarea>/[contenteditable] inside the
-        // card doesn't trigger.  When a popover is open, only its
-        // own key / Esc / arrow nav fire.
+        // Keyboard shortcuts per § 6.2 (Phase 6 simplified):
+        //   V toggles the View menu,
+        //   X toggles the Export menu,
+        //   R is Reset view (always),
+        //   Esc closes any open menu.
+        // Per-knob shortcuts (L / A / B / E) are gone; the deep menu
+        // structure makes them less useful and the surface is now
+        // discoverable by hover instead.
         if (!state.cardEl) return;
         state.cardEl.addEventListener("keydown", (e) => {
             if (state.disposed) return;
@@ -1011,58 +968,36 @@
             if (tag === "INPUT" || tag === "TEXTAREA"
                 || (t && t.isContentEditable)) return;
 
-            const openPopover = bar.querySelector("details.mol-viewer-knob[open]");
+            const openMenu = bar.querySelector(
+                "details.mol-viewer-menu[open]");
             const key = (e.key || "").toLowerCase();
 
-            // Esc closes any popover.
-            if (e.key === "Escape" && openPopover) {
-                openPopover.open = false;
+            if (e.key === "Escape" && openMenu) {
+                openMenu.open = false;
                 e.preventDefault();
                 return;
             }
-
-            // While a popover is open, only the popover's own
-            // opening key (re-press to close) fires; cross-knob
-            // shortcuts are suppressed per § 3.10.
-            if (openPopover) {
-                const ownKey =
-                    (openPopover.classList.contains("mol-viewer-knob-labels")    && key === "l")
-                 || (openPopover.classList.contains("mol-viewer-knob-background") && key === "b")
-                 || (openPopover.classList.contains("mol-viewer-knob-export")    && key === "e");
-                if (ownKey) {
-                    openPopover.open = false;
-                    e.preventDefault();
-                }
-                return;
-            }
-
             if (key === "r" && resetBtn) {
                 resetBtn.click(); e.preventDefault();
-            } else if (key === "l" && labelsDet) {
-                labelsDet.open = true; e.preventDefault();
-            } else if (key === "a" && axesBtn) {
-                axesBtn.click(); e.preventDefault();
-            } else if (key === "b" && bgDet) {
-                bgDet.open = true; e.preventDefault();
-            } else if (key === "e" && expDet) {
-                expDet.open = true; e.preventDefault();
+            } else if (key === "v" && viewDet) {
+                viewDet.open = !viewDet.open; e.preventDefault();
+            } else if (key === "x" && exportDet) {
+                exportDet.open = !exportDet.open; e.preventDefault();
             }
         });
         // Card must accept focus for keyboard handling to work.
         if (!state.cardEl.hasAttribute("tabindex")) {
-            // Review fix U3: tabindex="0" so the card is part of
-            // the natural tab order; keyboard users can Tab onto
-            // the viewer and trigger R / L / A / B / E shortcuts
-            // without first clicking a knob.
             state.cardEl.setAttribute("tabindex", "0");
         }
 
-        // Seed the initial active-affordance state so the popovers
-        // / picker / swatches reflect mount-time opts (and any later
-        // setKnobs() rebuild lands consistent with the live style).
+        // Seed the initial active-affordance state so the menus
+        // reflect mount-time opts (and any later setKnobs() rebuild
+        // lands consistent with the live state).
         _syncKnobBarToStyle(state);
         _syncKnobBarToLabels(state);
         _syncKnobBarToBackground(state);
+        _syncKnobBarToAxes(state);
+        _syncKnobBarToAnimation(state);
     }
 
     /* ------------------------------------------------------------ */
@@ -1120,8 +1055,15 @@
         const styleApi = (root.molbuilder || {}).style;
         let spec;
         if (styleApi && typeof styleApi.spec === "function") {
+            // mol-style.js's switch uses ``ballstick`` (one word) for
+            // historical reasons.  The embed contract spells the rep
+            // out hyphenated (``ball-and-stick``) per the picker
+            // labels; translate at the boundary so "Ball & stick"
+            // doesn't silently fall through to the stick default.
+            const repForSpec = style.rep === "ball-and-stick"
+                ? "ballstick" : style.rep;
             spec = styleApi.spec({
-                rep:         style.rep,
+                rep:         repForSpec,
                 scale:       style.radiusScale,
                 colorscheme: style.colorScheme,
             });
@@ -2290,6 +2232,12 @@
             state.current.animation = null;
             _removeFrameStrip(state);
         }
+        // Phase 6: Export menu's gif / webm buttons visibility
+        // tracks animation presence.  Toggle on every _setAnimation
+        // call so a mount-time animation, a partial-update that
+        // changes kind, and a setAnimation(null) all stay
+        // consistent.
+        _syncKnobBarToAnimation(state);
     }
 
     function _playImpl(state) {
@@ -2495,18 +2443,6 @@
         //     Review fix P1 (#221).
         const handle = _buildHandle(state);
         state.handle = handle;
-
-        // Diagnostic dispatches per § 3.10 edge cases (review fix D6).
-        // The knob bar is already built without the Labels knob when
-        // labelsFormats: [] was passed; we just need to signal the
-        // misconfiguration so the host's onError sees it.
-        if (state.current.knobs
-            && state.current.knobs._invalidLabelsFormats) {
-            _dispatchInvalidInput(state,
-                "KnobBarOpts.labelsFormats: empty array hides the Labels "
-              + "knob entirely; pass labels: false explicitly OR a "
-              + "non-empty subset of ['index', 'name', 'element'].");
-        }
 
         // 4c. Wire the standard knob bar's click handlers + keyboard
         //     shortcuts now that the handle exists.  Phase 5 will
@@ -2725,17 +2661,7 @@
             state.current.axes = next;
             _redrawAxes(state);
             state.viewer.render();
-            // Sync the knob bar's aria-pressed state per § 4.1
-            // invariant ("calling setLabels(true) programmatically
-            // also updates the labels knob's pressed state").
-            if (state.scaffold && state.scaffold.knobsEl) {
-                const btn = state.scaffold.knobsEl.querySelector(
-                    '[data-knob="axes"]');
-                if (btn) {
-                    btn.setAttribute("aria-pressed",
-                                     next ? "true" : "false");
-                }
-            }
+            _syncKnobBarToAxes(state);
         }
 
         function setCell(c) {
@@ -2774,6 +2700,12 @@
                 }
             }
             const next = _normaliseLabels(l);
+            // Phase 6: remember the last non-null LabelOpts so the
+            // View → Labels toggle can restore it when flipped back
+            // on (otherwise toggle Off → On would always land on the
+            // {atoms:"all", format:"index"} default, dropping the
+            // host's chosen format).
+            if (next) state.lastLabelsConfig = next;
             if (_equalNormalised(state.current.labels, next)) return;
             state.current.labels = next;
             _redrawLabels(state);
@@ -2866,24 +2798,6 @@
             // identical opts object via _equalNormalised.
             if (state.disposed) return;
             if (k && typeof k === "object" && k !== true) {
-                if (k.position !== undefined
-                    && !VALID_KNOB_POSITIONS.includes(k.position)) {
-                    _dispatchInvalidInput(state,
-                        "setKnobs: 'position' must be one of " +
-                        VALID_KNOB_POSITIONS.join(", ") +
-                        "; got " + JSON.stringify(k.position));
-                }
-                if (k.labelsFormats !== undefined
-                    && Array.isArray(k.labelsFormats)) {
-                    const bad = k.labelsFormats.filter(
-                        (v) => !VALID_LABEL_FORMS.includes(v));
-                    if (bad.length) {
-                        _dispatchInvalidInput(state,
-                            "setKnobs: 'labelsFormats' contains "
-                          + bad.length + " unknown format(s); valid: "
-                          + VALID_LABEL_FORMS.join(", "));
-                    }
-                }
                 if (k.backgroundPresets !== undefined
                     && !Array.isArray(k.backgroundPresets)) {
                     _dispatchInvalidInput(state,
@@ -4301,48 +4215,48 @@
                 };
             },
             triggerKnob(name, arg) {
-                // Phase 2 (knob bar) wires the actual click flows.
-                // Phase 7 stub: locate the knob element + delegate
-                // to a click() on the right sub-element.  Without
-                // the knob bar built, this is a no-op so tests can
-                // be written before Phase 2 lands.
+                // Phase 6: 2-menu structure — name targets the
+                // submenu item directly.  Supported names:
+                //   "style"      → arg.rep (button under View → Style)
+                //   "labels"     → toggle in View → Labels
+                //   "background" → arg.color or arg.custom
+                //   "axes"       → toggle in View → Axes
+                //   "reset"      → button in View → Reset
+                //   "export"     → arg.target + arg.kind + arg.format
+                //                  (button in Export menu)
+                //   "view"       → toggle the View menu open/close
+                //   "export-menu"→ toggle the Export menu open/close
                 const bar = this.getKnobBarElement();
                 if (!bar) return;
                 arg = arg || {};
                 let target = null;
-                if (name === "labels"     && arg.format) {
+                if (name === "style" && arg.rep) {
                     target = bar.querySelector(
-                        ".mol-viewer-knob-labels [data-format=\""
-                          + arg.format + "\"]");
+                        '.mol-viewer-rep-btn[data-rep="' + arg.rep + '"]');
+                } else if (name === "labels") {
+                    target = bar.querySelector(
+                        '.mol-viewer-toggle[data-action="labels"]');
                 } else if (name === "background" && arg.color) {
                     target = bar.querySelector(
-                        ".mol-viewer-knob-background [data-color=\""
-                          + arg.color + "\"]");
-                } else if (name === "export"  && arg.kind && arg.target) {
-                    let sel = ".mol-viewer-knob-export [data-kind=\""
-                            + arg.kind + "\"][data-target=\""
-                            + arg.target + "\"]";
-                    if (arg.formatExport) {
-                        sel += "[data-format=\"" + arg.formatExport + "\"]";
-                    }
-                    target = bar.querySelector(sel);
-                } else if (name === "style"      && arg.rep) {
-                    const sel = bar.querySelector(".mol-viewer-knob-style");
-                    if (sel) {
-                        sel.value = arg.rep;
-                        sel.dispatchEvent(new root.Event("change",
-                                                         { bubbles: true }));
-                    }
-                    return;
-                } else {
-                    // Plain button: axes / reset / screenshot, or
-                    // popover toggle (labels / background / export
-                    // without arg → click the summary).
+                        '.mol-viewer-bg-swatch[data-color="' + arg.color + '"]');
+                } else if (name === "axes") {
                     target = bar.querySelector(
-                        ".mol-viewer-knob[data-knob=\"" + name + "\"]"
-                    ) || bar.querySelector(
-                        ".mol-viewer-knob-" + name + " summary"
-                    );
+                        '.mol-viewer-toggle[data-action="axes"]');
+                } else if (name === "reset") {
+                    target = bar.querySelector(
+                        '.mol-viewer-action[data-action="reset"]');
+                } else if (name === "export"
+                           && arg.kind && arg.target && arg.format) {
+                    target = bar.querySelector(
+                        '.mol-viewer-export-btn[data-kind="' + arg.kind
+                        + '"][data-target="' + arg.target
+                        + '"][data-format="' + arg.format + '"]');
+                } else if (name === "view") {
+                    target = bar.querySelector(
+                        ".mol-viewer-menu-view > summary");
+                } else if (name === "export-menu") {
+                    target = bar.querySelector(
+                        ".mol-viewer-menu-export > summary");
                 }
                 if (target && typeof target.click === "function") {
                     target.click();
