@@ -1854,6 +1854,7 @@
                 ]);
             }
             _applyCoords(state.viewer, out);
+            _rebuildGeometryForCoordChange(state);
             _postFramePositionRedraw(state);
         } else if (a.kind === "trajectory") {
             const n = a.frames.length;
@@ -2100,6 +2101,24 @@
         } catch (_) {}
     }
 
+    function _rebuildGeometryForCoordChange(state) {
+        // 3Dmol caches its rep meshes (stick cylinders, sphere
+        // instances, line segments) at setStyle time.  Mutating
+        // ``atom.x`` afterwards updates the data model but the
+        // visible geometry stays put until something forces a
+        // rebuild.  Re-applying the current style spec is the
+        // cheapest mol-style.js-side regeneration: ``setStyle({},
+        // spec)`` rebuilds with the new atom positions in one pass.
+        // Cost is ~per-atom-mesh O(N); fine for the few-hundred-
+        // atoms scale molbuilder targets.  See trajectory + vibration
+        // tick loops — without this call, frames don't move on
+        // screen even though state.current.animation advances.
+        _applyStyle(state.viewer, state.current.style);
+        // OverlaySpec atom-style overrides must layer back on top of
+        // the rebuilt base, matching the § 3.12 ordering rule.
+        _redrawOverlayStyles(state);
+    }
+
     function _postFramePositionRedraw(state) {
         // Position-aware overlays must recompute every frame so they
         // track the moving atoms.  Cell wireframe is lattice-only
@@ -2156,6 +2175,7 @@
                 ]);
             }
             _applyCoords(state.viewer, out);
+            _rebuildGeometryForCoordChange(state);
             _postFramePositionRedraw(state);
             state.viewer.render();
             state._anim.rafId = requestAnimationFrame(tick);
@@ -2199,6 +2219,7 @@
             try { a.onFrame(idx, state.handle); } catch (_) {}
         }
         _applyCoords(state.viewer, a.frames[idx]);
+        _rebuildGeometryForCoordChange(state);
         // Per-frame arrows (arrowsPerFrame) overlay any
         // host-supplied arrows when they're available for this
         // frame.  Empty arrows[i] = "no arrows during frame i".
@@ -2336,6 +2357,7 @@
             // Snap back to baseline so the next setAnimation lands
             // on a known clean state.
             _applyCoords(state.viewer, state._anim.vibrationBaseline);
+            _rebuildGeometryForCoordChange(state);
             _postFramePositionRedraw(state);
             state.viewer.render();
         }
@@ -3570,6 +3592,7 @@
                         try {
                             _applyCoords(state.viewer,
                                 state._anim.vibrationBaseline);
+                            _rebuildGeometryForCoordChange(state);
                             _postFramePositionRedraw(state);
                             state.viewer.render();
                         } catch (_) {}
@@ -3860,6 +3883,7 @@
                         try {
                             _applyCoords(state.viewer,
                                 state._anim.vibrationBaseline);
+                            _rebuildGeometryForCoordChange(state);
                             _postFramePositionRedraw(state);
                             state.viewer.render();
                         } catch (_) {}

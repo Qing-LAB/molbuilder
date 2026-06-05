@@ -1377,6 +1377,134 @@ class TestHandleSurface:
             "merge path relies on _normaliseAnimation preservation)"
         )
 
+    def test_trajectory_frame_advance_actually_moves_atoms(
+            self, page, flask_server):
+        """Phase 6c regression catcher: 3Dmol caches rep geometry
+        meshes at setStyle time, so mutating ``atom.x`` alone leaves
+        the visible atoms stuck on the original frame even though
+        state.current.animation.currentFrame advances.  The bug
+        surfaced on the /results trajectory tab: play cycled the
+        counter but the molecule never moved.  Fix: every
+        ``_applyCoords`` site now follows up with
+        ``_rebuildGeometryForCoordChange`` which calls
+        ``_applyStyle`` again to rebuild the geometry mesh from the
+        new positions.
+
+        This test reads atom coords through 3Dmol's
+        ``selectedAtoms({})`` after a ``setAnimationFrame`` call
+        and asserts they match the frame's input coords."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:400px;height:300px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    animation: {
+                        kind: "trajectory",
+                        frames: [
+                            [[0.0, 0.0, 0.0]],
+                            [[1.0, 0.0, 0.0]],
+                            [[2.0, 0.0, 0.0]],
+                        ],
+                        fps: 10,
+                        paused: true,
+                    },
+                });
+                const viewer = h._viewer3dmol();
+                const readX = () =>
+                    viewer.getModel().selectedAtoms({})[0].x;
+                const r = {};
+                r.atFrame0 = readX();
+                h.setAnimationFrame(1);
+                await new Promise(r => requestAnimationFrame(r));
+                r.atFrame1 = readX();
+                h.setAnimationFrame(2);
+                await new Promise(r => requestAnimationFrame(r));
+                r.atFrame2 = readX();
+                h.dispose();
+                host.remove();
+                return r;
+            }
+        """)
+        assert out["atFrame0"] == 0.0, (
+            f"mount-time frame 0 should land at x=0; got {out['atFrame0']}"
+        )
+        assert out["atFrame1"] == 1.0, (
+            "setAnimationFrame(1) did not move the atom to x=1.  "
+            "_rebuildGeometryForCoordChange regression — 3Dmol's "
+            "rep mesh is stale (see Phase 6c)"
+        )
+        assert out["atFrame2"] == 2.0, (
+            "setAnimationFrame(2) did not move the atom to x=2"
+        )
+
+    def test_vibration_loop_actually_displaces_atoms(
+            self, page, flask_server):
+        """Phase 6c regression catcher: same root cause as the
+        trajectory bug — vibration's per-rAF coord update never
+        triggered a 3Dmol mesh rebuild, so the molecule visibly
+        sat still even with the loop running.  Surfaced on /results
+        spectra (mode animation didn't show).  This test runs the
+        vibration for a couple of frames and asserts the atom's
+        x position moves away from baseline."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:400px;height:300px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    animation: {
+                        kind: "vibration",
+                        // Large amplitude + 100 Hz so a couple of
+                        // rAF ticks produce a visibly-non-zero
+                        // displacement, regardless of the test
+                        // host's rAF cadence.
+                        displacements: [[1.0, 0.0, 0.0]],
+                        amplitude: 2.0,
+                        speedHz: 100.0,
+                        paused: false,
+                    },
+                });
+                const viewer = h._viewer3dmol();
+                const readX = () =>
+                    viewer.getModel().selectedAtoms({})[0].x;
+                // Spin a few rAFs to let the loop tick at least
+                // once or twice.
+                for (let i = 0; i < 8; i++) {
+                    await new Promise(r => requestAnimationFrame(r));
+                }
+                const x = readX();
+                h.pauseAnimation();
+                h.dispose();
+                host.remove();
+                return { x };
+            }
+        """)
+        # After several rAFs at 100 Hz, the atom should have
+        # displaced from x=0 in either direction by some
+        # non-negligible amount (cosine phase is between -2 and
+        # +2 with amplitude=2).
+        assert abs(out["x"]) > 0.05, (
+            f"vibration loop ran but atom.x = {out['x']!r}; the per-rAF "
+            "coord update is not actually moving the visible atom "
+            "(Phase 6c regression — _rebuildGeometryForCoordChange "
+            "missed a code path)"
+        )
+
     def test_style_radius_slider_drives_setStyle(
             self, page, flask_server):
         """Phase 6b: View → Style carries a radius slider that
