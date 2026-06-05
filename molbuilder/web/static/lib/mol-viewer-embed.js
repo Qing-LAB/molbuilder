@@ -640,6 +640,34 @@
                 row.appendChild(b);
             }
             sect.appendChild(row);
+            // Radius / scale slider — pre-Phase-6 the /modify viewer
+            // had a bespoke #radius input; Phase 6b puts it inside
+            // the embed contract so every consumer gets the same
+            // control.  Drives setStyle({radiusScale}); the embed
+            // already pipes radiusScale through to mol-style.js's
+            // ``scale`` parameter (applied as stick.radius factor,
+            // sphere.scale factor, line.linewidth factor).
+            const rad = document.createElement("div");
+            rad.className = "mol-viewer-radius-row";
+            const radLabel = document.createElement("label");
+            radLabel.setAttribute("for", "mol-viewer-radius");
+            radLabel.textContent = "Radius";
+            const radInput = document.createElement("input");
+            radInput.type = "range";
+            radInput.id = "mol-viewer-radius";
+            radInput.className = "mol-viewer-radius";
+            radInput.min = "0.2";
+            radInput.max = "2.5";
+            radInput.step = "0.05";
+            radInput.value = "1.0";
+            radInput.setAttribute("aria-label", "Atom radius scale");
+            const radOut = document.createElement("output");
+            radOut.className = "mol-viewer-radius-out";
+            radOut.textContent = "1.00";
+            rad.appendChild(radLabel);
+            rad.appendChild(radInput);
+            rad.appendChild(radOut);
+            sect.appendChild(rad);
             body.appendChild(sect);
         }
 
@@ -795,6 +823,20 @@
             btn.classList.toggle("is-active",
                 btn.getAttribute("data-rep") === rep);
         }
+        // Phase 6b: radius slider mirrors radiusScale.
+        const radInput = state.scaffold.knobsEl.querySelector(
+            ".mol-viewer-radius");
+        const radOut = state.scaffold.knobsEl.querySelector(
+            ".mol-viewer-radius-out");
+        if (radInput && state.current.style) {
+            const s = state.current.style.radiusScale;
+            const v = (typeof s === "number" && Number.isFinite(s))
+                        ? s : 1.0;
+            if (parseFloat(radInput.value) !== v) {
+                radInput.value = String(v);
+            }
+            if (radOut) radOut.textContent = v.toFixed(2);
+        }
     }
 
     function _syncKnobBarToLabels(state) {
@@ -861,6 +903,24 @@
         for (const btn of bar.querySelectorAll(".mol-viewer-rep-btn")) {
             btn.addEventListener("click", () => {
                 handle.setStyle({ rep: btn.getAttribute("data-rep") });
+            });
+        }
+
+        // Style radius slider — Phase 6b.  Live update on every
+        // tick (cheap: setStyle's diff bails when value is
+        // unchanged, and mol-style.js's spec build is pure
+        // arithmetic).  ``output`` element shows the numeric
+        // value next to the slider so the user has feedback
+        // even before the canvas re-renders.
+        const radInput = bar.querySelector(".mol-viewer-radius");
+        const radOut = bar.querySelector(".mol-viewer-radius-out");
+        if (radInput) {
+            radInput.addEventListener("input", () => {
+                const v = parseFloat(radInput.value);
+                if (Number.isFinite(v)) {
+                    if (radOut) radOut.textContent = v.toFixed(2);
+                    handle.setStyle({ radiusScale: v });
+                }
             });
         }
 
@@ -938,19 +998,86 @@
             }
         }
 
-        // Mutual exclusion: opening one top-level menu closes the
-        // other (click/tap rule per § 6.2).
+        // Mutual exclusion + popover positioning.  Phase 6b: popovers
+        // use ``position: fixed`` so they escape any clipping
+        // ancestor (e.g. Build's ``.viewer-wrap`` has
+        // ``overflow: hidden`` for canvas rounded corners, which
+        // would clip an ``absolute``-positioned popover).  When a
+        // menu opens, position its body via getBoundingClientRect
+        // off the summary trigger.  Re-runs on scroll + resize while
+        // any menu is open so the popover tracks its trigger.
         const allDetails = bar.querySelectorAll(
             "details.mol-viewer-menu");
+        function _positionMenuBody(det) {
+            const summary = det.querySelector(":scope > summary");
+            const body = det.querySelector(":scope > .mol-viewer-menu-body");
+            if (!summary || !body) return;
+            const sr = summary.getBoundingClientRect();
+            // Provisional placement just below the summary.  Then
+            // measure the body and clamp so it stays on screen.
+            // Use a 4-px gap to match the design's visual rhythm.
+            body.style.top = (sr.bottom + 4) + "px";
+            // Anchor strategy depends on which menu.  Export menu
+            // anchors on the RIGHT of its summary (matches the
+            // pre-Phase-6b CSS-side ``right: 0`` behaviour); View
+            // anchors LEFT.
+            const isExport = det.classList.contains(
+                "mol-viewer-menu-export");
+            // Reset the inactive axis to "auto" so the measurement
+            // below doesn't read stale positioning.
+            body.style.left = "0px";
+            body.style.right = "auto";
+            const br = body.getBoundingClientRect();
+            const vw = (root.innerWidth || document.documentElement.clientWidth);
+            const vh = (root.innerHeight || document.documentElement.clientHeight);
+            let left;
+            if (isExport) {
+                left = sr.right - br.width;
+            } else {
+                left = sr.left;
+            }
+            // Keep within viewport horizontally with 8 px margin.
+            if (left + br.width > vw - 8) left = vw - 8 - br.width;
+            if (left < 8) left = 8;
+            body.style.left = left + "px";
+            // If the popover would overflow the bottom of the
+            // viewport, flip above the summary.
+            if (sr.bottom + 4 + br.height > vh - 8) {
+                const above = sr.top - 4 - br.height;
+                if (above >= 8) body.style.top = above + "px";
+            }
+        }
+        function _onScrollOrResize() {
+            const open = bar.querySelector(
+                "details.mol-viewer-menu[open]");
+            if (open) _positionMenuBody(open);
+        }
         for (const d of allDetails) {
             d.addEventListener("toggle", () => {
                 if (d.open) {
                     for (const other of allDetails) {
                         if (other !== d) other.open = false;
                     }
+                    _positionMenuBody(d);
                 }
             });
         }
+        root.addEventListener("scroll", _onScrollOrResize,
+                              { passive: true, capture: true });
+        root.addEventListener("resize", _onScrollOrResize,
+                              { passive: true });
+        // Compose teardown into a single closure dispose() invokes.
+        // ``setKnobs`` rebuilds the bar in place; that path will call
+        // _wireKnobBar again, which would install duplicate
+        // listeners — so tear the previous set down first.
+        if (typeof state._knobBarTeardown === "function") {
+            try { state._knobBarTeardown(); } catch (_) {}
+        }
+        state._knobBarTeardown = function () {
+            root.removeEventListener("scroll", _onScrollOrResize,
+                                     { capture: true });
+            root.removeEventListener("resize", _onScrollOrResize);
+        };
 
         // Keyboard shortcuts per § 6.2 (Phase 6 simplified):
         //   V toggles the View menu,
@@ -3887,6 +4014,13 @@
                 try { state._interactionTeardown(); }
                 catch (_) {}
                 state._interactionTeardown = null;
+            }
+            // Phase 6b: tear down the popover-positioning scroll +
+            // resize listeners installed in _wireKnobBar.
+            if (typeof state._knobBarTeardown === "function") {
+                try { state._knobBarTeardown(); }
+                catch (_) {}
+                state._knobBarTeardown = null;
             }
             try {
                 if (state.cardEl && state.cardEl.parentNode) {

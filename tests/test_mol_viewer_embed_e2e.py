@@ -1377,6 +1377,124 @@ class TestHandleSurface:
             "merge path relies on _normaliseAnimation preservation)"
         )
 
+    def test_style_radius_slider_drives_setStyle(
+            self, page, flask_server):
+        """Phase 6b: View → Style carries a radius slider that
+        drives ``setStyle({radiusScale: v})``.  Pre-Phase-6 the
+        /modify viewer had a bespoke #radius input; the Phase 6b
+        slider gives every embed consumer the same control through
+        the documented contract instead of bespoke chrome."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:400px;height:300px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    style: { rep: "stick", radiusScale: 1.0 },
+                });
+                const bar = h._test.getKnobBarElement();
+                const slider = bar.querySelector(".mol-viewer-radius");
+                const out_ = bar.querySelector(
+                    ".mol-viewer-radius-out");
+                const r = {};
+                r.initRadius = h.getStyle().radiusScale;
+                r.initSlider = parseFloat(slider.value);
+                r.initOut = out_.textContent;
+                // Drag-style update: dispatch input event with a
+                // new value.
+                slider.value = "0.5";
+                slider.dispatchEvent(
+                    new Event("input", { bubbles: true }));
+                r.afterSlider = h.getStyle().radiusScale;
+                r.afterOut = out_.textContent;
+                // Programmatic→UI sync: setStyle from the handle
+                // pushes the new value back into the slider.
+                h.setStyle({ radiusScale: 1.8 });
+                r.afterProgSlider = parseFloat(slider.value);
+                r.afterProgOut = out_.textContent;
+                h.dispose();
+                host.remove();
+                return r;
+            }
+        """)
+        assert out["initRadius"] == 1.0
+        assert out["initSlider"] == 1.0
+        assert out["initOut"] == "1.00"
+        assert out["afterSlider"] == 0.5, (
+            "slider input event did not drive setStyle({radiusScale}) "
+            "— handler regression"
+        )
+        assert out["afterOut"] == "0.50"
+        assert out["afterProgSlider"] == 1.8, (
+            "setStyle({radiusScale: 1.8}) did not re-sync the slider "
+            "input value — programmatic→UI sync regression"
+        )
+        assert out["afterProgOut"] == "1.80"
+
+    def test_menu_popover_escapes_clipping_ancestor(
+            self, page, flask_server):
+        """Phase 6b: popover menus use ``position: fixed`` so they
+        escape a clipping ancestor (e.g. Build's ``.viewer-wrap``
+        has ``overflow: hidden``).  An ``absolute``-positioned
+        popover would get clipped by the wrap and the Export menu
+        would be unreachable.  Pin the fix: when the user opens the
+        Export menu, the popover's bounding rect must extend beyond
+        the wrap's right edge (the popover is wider than the
+        Export trigger).
+        """
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                // Open the Export menu on the live #viewer card.
+                const det = document.querySelector(
+                    "#viewer .mol-viewer-menu-export");
+                const summary = det.querySelector(":scope > summary");
+                summary.click();
+                await new Promise(r => requestAnimationFrame(r));
+                await new Promise(r => requestAnimationFrame(r));
+                const body = det.querySelector(
+                    ":scope > .mol-viewer-menu-body");
+                const bRect = body.getBoundingClientRect();
+                // Phase 6b: position must be ``fixed`` (escapes
+                // clipping); JS positioning sets top/left after
+                // toggle.
+                const cs = getComputedStyle(body);
+                const r = {
+                    position: cs.position,
+                    visible: bRect.width > 0 && bRect.height > 0,
+                    left:  bRect.left,
+                    top:   bRect.top,
+                };
+                summary.click();  // close
+                return r;
+            }
+        """)
+        assert out["position"] == "fixed", (
+            "popover must use position:fixed to escape clipping "
+            "ancestors (Phase 6b)"
+        )
+        assert out["visible"], "popover has zero size when open"
+        # Bounding rect must be a real on-screen position, not
+        # the off-screen -9999px stub.
+        assert out["left"] > -1000, (
+            f"popover left={out['left']} suggests JS positioning "
+            f"didn't fire on open"
+        )
+        assert out["top"] > -1000, (
+            f"popover top={out['top']} suggests JS positioning "
+            f"didn't fire on open"
+        )
+
     def test_programmatic_setX_syncs_knob_bar_ui(
             self, page, flask_server):
         """Phase 6 regression catcher for § 4.1 + § 6.2 invariant:

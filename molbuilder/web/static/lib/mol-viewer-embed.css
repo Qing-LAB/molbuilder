@@ -18,7 +18,12 @@
        header + knob bar take natural size and the canvas fills
        whatever space remains. */
     height:         100%;
-    min-height:     0;
+    /* Realistic usability floor — below these sizes the 2-menu
+       bar wraps onto two rows and the canvas becomes a strip.
+       Consumers that need smaller (e.g. an icon-mode embed) can
+       override; the defaults guard against accidental tiny cards. */
+    min-width:      320px;
+    min-height:     280px;
 }
 
 .mol-viewer-card-header {
@@ -181,11 +186,21 @@
 }
 
 /* Menu body (popover) --------------------------------------- */
+/* Position is FIXED (not absolute) so the popover escapes any
+   clipping ancestor — e.g. Build's ``.viewer-wrap`` has
+   ``overflow: hidden`` to keep 3Dmol's canvas inside its rounded
+   corners; an absolutely-positioned popover would get clipped by
+   that wrapper and become unusable.  Coordinates are set in JS
+   via ``_positionMenuBody`` against the summary's bounding rect
+   when the menu opens and on scroll / resize while it stays
+   open.  Initial top/left are no-op stubs so the popover is
+   off-screen until the JS positioning fires (avoids a one-frame
+   flash at 0,0). */
 .mol-viewer-menu-body {
-    position:       absolute;
-    z-index:        10;
-    top:            calc(100% + 4px);
-    left:           0;
+    position:       fixed;
+    z-index:        1000;
+    top:            -9999px;
+    left:           -9999px;
     min-width:      14rem;
     max-width:      min(22rem, calc(100vw - 2rem));
     max-height:     min(28rem, calc(100vh - 8rem));
@@ -196,12 +211,6 @@
     border:         1px solid var(--border-strong, rgba(255,255,255,0.12));
     border-radius:  var(--radius-md, 8px);
     box-shadow:     0 8px 24px rgba(0,0,0,0.45);
-}
-.mol-viewer-menu-export > .mol-viewer-menu-body {
-    /* Anchor the Export menu at the right edge so it doesn't shoot
-       off-card on narrow viewports. */
-    left:   auto;
-    right:  0;
 }
 
 /* Sections inside a menu body ------------------------------- */
@@ -247,6 +256,35 @@
     color:          var(--accent-on, #14171c);
     border-color:   var(--accent, #5fb6ff);
     font-weight:    500;
+}
+
+/* Radius / scale slider — sits below the rep button row.
+   Adjusts atom-sphere + stick thickness via setStyle({radiusScale}).
+   Pre-Phase-6 the /modify viewer had a bespoke #radius input;
+   Phase 6b puts it inside the embed contract so every consumer
+   gets the same control. */
+.mol-viewer-radius-row {
+    display:        flex;
+    align-items:    center;
+    gap:            0.5rem;
+    margin-top:     0.4rem;
+}
+.mol-viewer-radius-row > label {
+    font-size:      0.8rem;
+    color:          var(--text-muted, #97a0ad);
+    flex:           0 0 auto;
+}
+.mol-viewer-radius-row > input[type="range"] {
+    flex:           1 1 auto;
+    min-width:      0;
+    accent-color:   var(--accent, #5fb6ff);
+}
+.mol-viewer-radius-row > output {
+    font-size:      0.78rem;
+    color:          var(--text-primary, #e6e9ee);
+    font-variant-numeric: tabular-nums;
+    min-width:      2.2rem;
+    text-align:     right;
 }
 
 /* Toggle (Labels, Axes) ------------------------------------- */
