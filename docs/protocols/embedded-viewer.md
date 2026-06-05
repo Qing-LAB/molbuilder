@@ -1227,7 +1227,11 @@ sequenceDiagram
   / `setAxes()` / `setBackground()` from the handle re-sync the
   matching affordance.  Custom background colours that don't match
   any preset leave every swatch unmarked (the picker carries the
-  value).
+  value).  Setters that have no knob-bar representation
+  (`setOverlays`, `setPick`, `setArrows`, `setCell`,
+  `setAnimation`, `setStructure`, `setCamera`, `setKnobs`) do not
+  drive any chrome — by design, since the corresponding state
+  isn't exposed in the standard 7-knob bar.
 
 ### 4.2 `setStructure` × camera
 

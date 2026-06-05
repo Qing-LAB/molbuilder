@@ -250,6 +250,10 @@
     flex-wrap:      wrap;
     align-items:    center;
     gap:            var(--space-xs, 0.4rem);
+    /* Reserve room for the .is-active swatch outline (2px solid +
+       1px offset) so the active ring on the edge swatch never
+       clips against the popover's overflow box. */
+    padding:        3px;
 }
 .mol-viewer-knob-background button[data-color] {
     width:          1.6rem;

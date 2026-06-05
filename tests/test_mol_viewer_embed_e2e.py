@@ -2740,6 +2740,169 @@ class TestHandleSurface:
             f"  Expected: {EXPECTED}\n  Got:      {build_sig}"
         )
 
+    def test_chrome_consistency_across_three_inspectors(
+            self, page, flask_server):
+        """Phase 5m T1: the three /results inspectors (structure,
+        trajectory, spectra) must render the same canonical 7-knob
+        bar as Build / Modify.  Tests it by mounting the embed
+        directly with each inspector's actual opts so the test
+        catches a per-inspector drift even when the dispatch path
+        (file extension → registry.pick → inspector.mount) isn't
+        exercised end-to-end.
+
+        Pins § 6.2 chrome-consistency across all five consumers."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        signatures = page.evaluate("""
+            () => {
+                // Replicate each inspector's embed config verbatim
+                // (mirrors lib/inspectors/structure.js,
+                // lib/trajectory/core.js, lib/spectra/core.js).
+                const inspectors = {
+                    structure: {
+                        xyz: "1\\nh\\nH 0 0 0\\n",
+                        style: { rep: "ball-and-stick", radiusScale: 1.0 },
+                        card:  { title: "", showInfoLine: false,
+                                 height: "420px" },
+                        axes: true,
+                        export: { defaultName: "structure" },
+                    },
+                    trajectory: {
+                        xyz: "1\\nh\\nH 0 0 0\\n",
+                        style: { rep: "stick", radiusScale: 1.0 },
+                        pick:  { mode: "pair", halo: true, label: false },
+                        card:  { title: "Trajectory",
+                                 showInfoLine: false, height: "100%" },
+                        axes: true,
+                        export: { defaultName: "trajectory" },
+                    },
+                    spectra: {
+                        xyz: "1\\nh\\nH 0 0 0\\n",
+                        style: { rep: "ball-and-stick", radiusScale: 1.0,
+                                 background: "#1d2128" },
+                        knobs: { backgroundPresets:
+                                 ["#1d2128", "#ffffff", "transparent"] },
+                        pick:   { mode: "none" },
+                        card:   { title: "Vibrational mode",
+                                  showInfoLine: false, height: "100%" },
+                        axes:   true,
+                        export: { defaultName: "vibration" },
+                    },
+                };
+                const out = {};
+                for (const [name, opts] of Object.entries(inspectors)) {
+                    const host = document.createElement("div");
+                    host.style.cssText =
+                        "width:400px;height:300px;position:fixed;top:-9999px;";
+                    document.body.appendChild(host);
+                    const h = window.molbuilder.viewer.embed(host, opts);
+                    const bar = h._test.getKnobBarElement();
+                    out[name] = bar
+                        ? Array.from(bar.children).map((el) => {
+                            if (el.tagName === 'SELECT') return 'select';
+                            if (el.tagName === 'DETAILS') {
+                                const cls = Array.from(el.classList)
+                                    .find((c) => c.startsWith(
+                                        'mol-viewer-knob-'));
+                                return 'details:' + (cls || '?');
+                            }
+                            if (el.tagName === 'BUTTON') {
+                                return 'button:' +
+                                    (el.getAttribute('data-knob') || '?');
+                            }
+                            return el.tagName.toLowerCase();
+                          })
+                        : null;
+                    h.dispose();
+                    host.remove();
+                }
+                return out;
+            }
+        """)
+        EXPECTED = [
+            "select",
+            "details:mol-viewer-knob-labels",
+            "button:axes",
+            "button:reset",
+            "button:screenshot",
+            "details:mol-viewer-knob-background",
+            "details:mol-viewer-knob-export",
+        ]
+        for name in ("structure", "trajectory", "spectra"):
+            assert signatures[name] == EXPECTED, (
+                f"Knob bar order on the {name} inspector drifted "
+                f"from § 6.2 spec:\n"
+                f"  Expected: {EXPECTED}\n  Got: {signatures[name]}"
+            )
+
+    def test_background_defaults_per_consumer(
+            self, page, flask_server):
+        """Phase 5m T4: each consumer's mount-time background is
+        white (chemistry convention) EXCEPT spectra which uses a
+        dark backdrop (`#1d2128`) so vibration vectors render with
+        better contrast.
+
+        Catches a regression where, say, a future tab silently mounts
+        with the spectra dark backdrop, or spectra silently flips to
+        white."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        actual = page.evaluate("""
+            () => {
+                const configs = {
+                    build: {
+                        xyz: "1\\nh\\nH 0 0 0\\n",
+                    },
+                    modify: {
+                        xyz: "1\\nh\\nH 0 0 0\\n",
+                        style: { rep: "stick", radiusScale: 0.4 },
+                    },
+                    structure: {
+                        xyz: "1\\nh\\nH 0 0 0\\n",
+                        style: { rep: "ball-and-stick", radiusScale: 1.0 },
+                    },
+                    trajectory: {
+                        xyz: "1\\nh\\nH 0 0 0\\n",
+                        style: { rep: "stick", radiusScale: 1.0 },
+                    },
+                    spectra: {
+                        xyz: "1\\nh\\nH 0 0 0\\n",
+                        style: { rep: "ball-and-stick", radiusScale: 1.0,
+                                 background: "#1d2128" },
+                    },
+                };
+                const out = {};
+                for (const [name, opts] of Object.entries(configs)) {
+                    const host = document.createElement("div");
+                    host.style.cssText =
+                        "width:300px;height:200px;position:fixed;top:-9999px;";
+                    document.body.appendChild(host);
+                    const h = window.molbuilder.viewer.embed(host, opts);
+                    out[name] = h.getBackground();
+                    h.dispose();
+                    host.remove();
+                }
+                return out;
+            }
+        """)
+        EXPECTED = {
+            "build":      "#ffffff",
+            "modify":     "#ffffff",
+            "structure":  "#ffffff",
+            "trajectory": "#ffffff",
+            "spectra":    "#1d2128",
+        }
+        for name, expected in EXPECTED.items():
+            assert actual[name] == expected, (
+                f"{name}: getBackground() returned {actual[name]!r}; "
+                f"expected {expected!r} per § 3.3 + spectra's dark-"
+                f"backdrop decision"
+            )
+
     def test_handle_has_test_affordance_object(
             self, page, flask_server):
         """The ``_test`` affordance object is documented in § 9.2

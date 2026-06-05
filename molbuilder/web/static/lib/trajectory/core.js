@@ -1250,6 +1250,27 @@
         }
     }
 
+    function _latticeEqual(a, b) {
+        // Element-wise compare for the 3×3 lattice array (or null on
+        // both sides).  Avoids the JSON.stringify proxy which is
+        // brittle to parser-shape changes (sparse arrays, key
+        // ordering on flattened encodings, etc.).
+        if (a === b) return true;
+        if (a == null || b == null) return false;
+        if (!Array.isArray(a) || !Array.isArray(b)) return false;
+        if (a.length !== b.length) return false;
+        for (let i = 0; i < a.length; i++) {
+            const ra = a[i];
+            const rb = b[i];
+            if (!Array.isArray(ra) || !Array.isArray(rb)) return false;
+            if (ra.length !== rb.length) return false;
+            for (let j = 0; j < ra.length; j++) {
+                if (ra[j] !== rb[j]) return false;
+            }
+        }
+        return true;
+    }
+
     function applyNewData(r) {
         // Decide poll path: strict-tail-append (cheap; keeps playback
         // running) vs full rebuild (structure changed or frames
@@ -1264,12 +1285,11 @@
         const sameAtomCount = oldData
             && oldLen > 0 && newLen > 0
             && oldData.frames[0].length === r.data.frames[0].length;
-        const oldLatticeJson = JSON.stringify(oldData && oldData.lattice || null);
-        const newLatticeJson = JSON.stringify(r.data    && r.data.lattice    || null);
         const canAppend = _handle
             && sameAtomCount
             && newLen > oldLen
-            && oldLatticeJson === newLatticeJson;
+            && _latticeEqual(oldData && oldData.lattice,
+                             r.data    && r.data.lattice);
 
         const wasAtEnd = !oldData || state.currentFrame >= oldLen - 1;
 
