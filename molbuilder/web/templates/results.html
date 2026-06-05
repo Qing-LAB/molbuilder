@@ -128,11 +128,10 @@
 {# Script order matters: the registry must be present BEFORE any
    inspector module loads (each inspector self-registers at script
    load time).  mol-viewer + xyz-io are dependencies of the
-   structure inspector.  mol-style + mol-pick are dependencies of
-   the trajectory core (style spec builder + atom-pick gestures).
-   trajectory/core.js exposes window.molbuilder.trajectoryInspector;
-   no auto-bootstrap, so it sits idle until lib/inspectors/trajectory.js
-   asks to mount.
+   structure inspector.  mol-style is the style-spec builder used by
+   the trajectory core; trajectory/core.js exposes
+   window.molbuilder.trajectoryInspector; no auto-bootstrap, so it
+   sits idle until lib/inspectors/trajectory.js asks to mount.
 
    INSPECTOR REGISTRATION ORDER IS LOAD-BEARING.  ``pick()`` returns
    the FIRST match, so inspectors with more-specific predicates
@@ -142,7 +141,6 @@
    "Ordering".  Pinned by
    tests/test_results_blueprint.py::TestInspectorRegistrationOrder. #}
 <script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/mol-pick.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-viewer.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-format.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-axes.js') }}"></script>

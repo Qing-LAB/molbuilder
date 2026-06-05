@@ -1135,7 +1135,6 @@ molbuilder/
         tabs.css           # top-of-page Build/Modify/Watch nav
         mol-style.js       # shared 3Dmol style-spec builder
         mol-format.js      # chemical-formula renderer
-        mol-pick.js        # shared wireframe-halo helper (Modify + Watch)
       modify/{viewer.js, style.css}
       watch/{viewer.js, style.css}
 

@@ -6,9 +6,10 @@
  *
  *   window.molbuilder.viewer.embed(host, opts) -> handle
  *
- * Composes the existing primitives (mol-style, mol-axes, mol-pick,
+ * Composes the existing primitives (mol-style, mol-axes,
  * mol-format) into a card/panel + 3Dmol viewer that maintains its
- * own drawing.  The caller never reaches into 3Dmol directly --
+ * own drawing.  The pick halo geometry is internal — see
+ * ``_redrawPickHalos``; the caller never reaches into 3Dmol directly --
  * all mutations go through the handle's methods.
  *
  * This file covers the STATIC-FEATURES contract (no animation):
@@ -1994,6 +1995,10 @@
             a.intervalId = null;
         }
         a.playing = false;
+        // Single source of truth: keep config-state paused in sync with
+        // runtime-state playing so getAnimation()/applyState round-trip
+        // reflects current state, not mount-time intent.
+        if (state.current.animation) state.current.animation.paused = true;
         _refreshFrameStrip(state);
     }
 
@@ -2005,6 +2010,7 @@
                                     && performance.now)
             ? performance.now() : Date.now();
         state._anim.playing = true;
+        if (state.current.animation) state.current.animation.paused = false;
         const tick = (tsMs) => {
             if (state.disposed || !state._anim.playing) return;
             const v = state.current.animation;
@@ -2034,6 +2040,7 @@
 
     function _startTrajectoryLoop(state) {
         state._anim.playing = true;
+        if (state.current.animation) state.current.animation.paused = false;
         const t = state.current.animation;
         const periodMs = 1000 / Math.max(1, t.fps);
         state._anim.intervalId = setInterval(() => {
@@ -2192,6 +2199,13 @@
     /* ------------------------------------------------------------ */
 
     function _setAnimationImpl(state, next) {
+        // Capture autoplay intent BEFORE _stopAnimationLoop, which now
+        // syncs ``state.current.animation.paused = true`` (Phase 5g B-1
+        // single-source-of-truth fix).  At mount, ``next`` aliases
+        // ``state.current.animation`` (caller passes the same object),
+        // so without this capture the autoplay check below would read
+        // back ``true`` and skip _playImpl.
+        const autoplay = !!(next && !next.paused);
         // Stop any in-flight loop + reset to baseline (vibration).
         _stopAnimationLoop(state);
         if (state._anim.vibrationBaseline) {
@@ -2207,11 +2221,11 @@
             state.current.animation = next;
             _buildFrameStrip(state);
             _showTrajectoryFrame(state, next.startFrame);
-            if (!next.paused) _playImpl(state);
+            if (autoplay) _playImpl(state);
         } else if (next && next.kind === "vibration") {
             state.current.animation = next;
             _removeFrameStrip(state);
-            if (!next.paused) _playImpl(state);
+            if (autoplay) _playImpl(state);
         } else {
             state.current.animation = null;
             _removeFrameStrip(state);
@@ -3956,19 +3970,6 @@
                     const merged = Object.assign({}, cur, animation);
                     // Re-normalise to revalidate field types.
                     merged.kind = "trajectory";
-                    // Phase 5f A-1: ``cur.paused`` is the mount-time
-                    // value and is NOT updated by _playImpl /
-                    // _pauseImpl (those only flip
-                    // state._anim.playing).  Without this override,
-                    // a partial update like {fps: N} would
-                    // re-normalise paused=true from cur and silently
-                    // pause active playback.  Honor the caller's
-                    // explicit paused if supplied; otherwise mirror
-                    // the live runtime state.
-                    if (!Object.prototype.hasOwnProperty
-                            .call(animation, "paused")) {
-                        merged.paused = !state._anim.playing;
-                    }
                     const next = _normaliseAnimation(merged);
                     if (next) {
                         // Preserve the live playback index so a
@@ -4184,7 +4185,6 @@
                 return {
                     axes:          !!mb.axes,
                     style:         !!mb.style,
-                    pick:          !!mb.pick,
                     format:        !!mb.fmt,
                     projects:      !!mb.projects,
                     clipboard:     !!(root.navigator

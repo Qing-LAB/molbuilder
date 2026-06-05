@@ -965,10 +965,12 @@ All tabs share these conventions:
 - Share `static/lib/tabs.css` (top-of-page nav) and
   `static/lib/tokens.css` (CSS custom properties for colours /
   radii / spacing).
-- Share `static/lib/mol-style.js` (3Dmol style-spec builder),
-  `mol-format.js` (chemical-formula renderer), `mol-pick.js`
-  (selection halo helper used by Modify and the trajectory
-  inspector).
+- Share `static/lib/mol-style.js` (3Dmol style-spec builder) and
+  `mol-format.js` (chemical-formula renderer).  Selection halo
+  geometry lives inside `mol-viewer-embed.js`
+  (`_redrawPickHalos`); the standalone `mol-pick.js` was retired
+  in Phase 5g (2026-06-04) once all consumers went through the
+  embed pick contract.
 - Theme: dark. CSS variables in `:root` for every colour. No
   hardcoded `#fff` / `#000` in selectors. 3Dmol viewer canvas
   keeps a **white background** (`#ffffff`) regardless of the

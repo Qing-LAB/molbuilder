@@ -59,11 +59,13 @@
      *              dispatch can mount + auto-load in one call.
      *
      * Returns a handle ``{dispose(), load(path)}``:
-     *   dispose() -- stops polling + playback timers, removes the
-     *                window resize listener, tears down 3Dmol's
-     *                models/shapes/labels.  After dispose() the
-     *                rootEl's contents are no longer owned by the
-     *                inspector; caller may clear/replace freely.
+     *   dispose() -- stops the polling timer, cancels any in-flight
+     *                HTTP request, disposes the embed handle (which
+     *                stops its own animation loop + tears down its
+     *                3Dmol viewer), and removes window-level
+     *                listeners (resize, pagehide).  After dispose()
+     *                the rootEl's contents are no longer owned by
+     *                the inspector; caller may clear/replace freely.
      *   load(path) -- swap the displayed trajectory to ``path``
      *                 without re-mounting.  Used by the registry-
      *                 side dispatch when the user picks a new
@@ -87,7 +89,8 @@
     // goes through _on() so the registered teardown closure is
     // captured in _cleanups[].  dispose() walks _cleanups in
     // reverse + then runs the per-resource teardowns (polling
-    // timer, playback timer, resize rAF, 3Dmol viewer).
+    // timer, in-flight HTTP request, embed handle, window-level
+    // listeners).
     //
     // The window-level listeners (``resize``, ``pagehide`` on the
     // legacy /watch handoff) MUST be tracked here -- they survive
@@ -728,12 +731,14 @@
         // mount so a user who set #speed / #loop BEFORE the file
         // loaded gets their preferences honored (previously the
         // partial-update path was a no-op pre-mount → user's
-        // pre-load slider changes silently dropped).
+        // pre-load slider changes silently dropped).  Phase 5g B-4:
+        // match the slider-change handler exactly (1000/ms as a
+        // float, no Math.round) so the same #speed value produces
+        // the same period whether read at mount or after a tick.
         const speedEl = $("speed");
         const loopEl  = $("loop");
         const fpsAtMount = speedEl
-            ? Math.max(1, Math.round(
-                1000 / (parseInt(speedEl.value, 10) || 150)))
+            ? 1000 / (parseInt(speedEl.value, 10) || 150)
             : 10;
         _handle.setAnimation({
             kind:           "trajectory",

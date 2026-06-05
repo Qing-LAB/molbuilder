@@ -32,8 +32,8 @@
  * tests/test_mol_axes_js.py.
  *
  * Registry note: this module follows the same sync-IIFE convention
- * as ``mol-style`` / ``mol-format`` / ``mol-viewer`` / ``mol-pick``
- * (see docs/protocols/runtime-registry.md § 4 "Non-registered
+ * as ``mol-style`` / ``mol-format`` / ``mol-viewer`` (see
+ * docs/protocols/runtime-registry.md § 4 "Non-registered
  * globals"). Classic script tag in document order; no runtime
  * registration needed because every consumer loads AFTER this file
  * via the template's script order.

@@ -272,10 +272,10 @@ state = {
     label:        "<parser label>" | null,
     currentFrame: <int>,
     pollTimer:    <interval id | null>,
-    playTimer:    <interval id | null>,
     firstFit:     <bool>,         // re-fit camera on a fresh structure
-    pickedAtoms:  [<int>, ...],   // up to 2 selected atom indices
-    // ... cell / force / index / pick overlay buckets
+    // Playback timer + pick mirror live inside the embed now (#246):
+    // playback is driven by the embed's animation loop, and picked
+    // indices are read on demand via _handle.getPickedIndices().
     loadAbort:    <AbortController | null>,
     pollAbort:    <AbortController | null>,
 }

@@ -166,7 +166,6 @@ tab is interactive.
 |---|---|---|
 | `window.molbuilder.axes` (`lib/mol-axes.js`) | `opts.axes`, `setAxes()` | silently no-op; no axes drawn |
 | `window.molbuilder.style` (`lib/mol-style.js`) | `opts.style.rep` mapping | falls back to 3Dmol's default stylespec; `colorScheme` ignored |
-| `window.molbuilder.pick` (`lib/mol-pick.js`) | `opts.pick`, halo rendering | click events still fire but no halo overlay |
 
 Soft-dep degradation is silent in production. Tests assert it via
 `handle._test.getDependencyStatus()` (§ 9.4).
@@ -706,7 +705,7 @@ legacy lane that want to keep their colour override should NOT
 also pass `halo: true`; pass the legacy fields alone, OR migrate
 to `halo: {color: "...", radius: ...}` directly.
 
-**Defaults.** `halo: { color: "var(--accent)", radius: 0.6,
+**Defaults.** `halo: { color: "#ffd54a", radius: 0.6,
 opacity: 0.5 }` plus `label: "index"`. Hosts that want minimal
 selection rendering pass `halo: false, label: false`; hosts that
 want richer rendering compose `halo + style + label` per
@@ -735,8 +734,8 @@ pick mode is configured (`pick: undefined` or `pick.mode: "none"`)
 is a silent no-op AFTER the type check — the argument shape is
 still validated and bad input still fires `invalid_input`.
 
-Delegates to `lib/mol-pick.js` for halo geometry; the embedded
-viewer owns the click-handler registration.
+Halo geometry is internal (see `_redrawPickHalos`); the embedded
+viewer owns both rendering and click-handler registration.
 
 ### 3.9 `AnimationOpts`
 
@@ -1836,7 +1835,7 @@ type TestHandle = {
   getCurrentBackground(): string,
   getCurrent(): NormalisedState,    // live snapshot; READ ONLY
   getDependencyStatus(): {
-    axes: boolean, style: boolean, pick: boolean, format: boolean,
+    axes: boolean, style: boolean, format: boolean,
     projects: boolean, clipboard: boolean,
     mediaRecorder: boolean, gif: "loaded" | "loading" | "absent",
   },

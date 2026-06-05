@@ -399,10 +399,10 @@ class TestTestHandle:
     def test_dependency_status_reports_loaded_modules(
             self, page, flask_server):
         """In production, the page boot loads mol-axes / mol-style /
-        mol-pick / mol-format before mol-viewer-embed.  ``axes``,
-        ``style``, ``pick``, ``format`` should all be true; the
-        integration deps (projects / clipboard / mediaRecorder /
-        gif) vary by environment."""
+        mol-format before mol-viewer-embed.  ``axes``, ``style``,
+        ``format`` should all be true; the integration deps
+        (projects / clipboard / mediaRecorder / gif) vary by
+        environment."""
         page.goto(f"{flask_server}/")
         page.wait_for_selector("#viewer .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
@@ -423,9 +423,7 @@ class TestTestHandle:
             }
         """)
         # mol-axes / mol-style / mol-format are loaded on the
-        # Build page boot.  (mol-pick is loaded only on /modify
-        # where it's actually used — its absence here demonstrates
-        # the soft-dep degradation pattern.)
+        # Build page boot.
         assert status["axes"]   is True, "mol-axes.js should be loaded"
         assert status["style"]  is True, "mol-style.js should be loaded"
         assert status["format"] is True, "mol-format.js should be loaded"
@@ -434,7 +432,7 @@ class TestTestHandle:
         assert status["gif"] == "absent"
         # Status shape includes every documented key (§ 9.2)
         # even when the dep is absent.
-        for key in ("axes", "style", "pick", "format",
+        for key in ("axes", "style", "format",
                     "projects", "clipboard", "mediaRecorder", "gif"):
             assert key in status, f"missing status key: {key}"
 
@@ -1243,6 +1241,72 @@ class TestHandleSurface:
         assert out["stillPlaying"] is True, (
             "setAnimation({fps: N}) paused active playback — "
             "Phase 5f A-1 regression"
+        )
+
+    def test_getAnimation_paused_reflects_runtime_state(
+            self, page, flask_server):
+        """Phase 5g B-1 regression catcher: getAnimation() must
+        return the LIVE paused state, not the mount-time value.
+        A host that snapshots getAnimation() during playback and
+        re-applies it via applyState() must NOT silently pause
+        the loop.  Single source of truth: state.current.animation
+        .paused tracks state._anim.playing.
+        """
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    animation: {
+                        kind: "trajectory",
+                        frames: [[[0,0,0]],[[0.1,0,0]],[[0.2,0,0]]],
+                        fps: 10, paused: true,
+                    },
+                });
+                const atMount = h.getAnimation().paused;
+                h.playAnimation();
+                await new Promise(r => requestAnimationFrame(r));
+                const whilePlaying = h.getAnimation().paused;
+                h.pauseAnimation();
+                const afterPause = h.getAnimation().paused;
+                // Round-trip via applyState while playing — must
+                // not silently stop the loop.
+                h.playAnimation();
+                await new Promise(r => requestAnimationFrame(r));
+                const snap = { animation: h.getAnimation() };
+                h.applyState(snap);
+                await new Promise(r => requestAnimationFrame(r));
+                const afterRoundTrip = h.isAnimationPlaying();
+                h.dispose();
+                host.remove();
+                return {
+                    atMount, whilePlaying, afterPause,
+                    afterRoundTrip,
+                };
+            }
+        """)
+        assert out["atMount"] is True, (
+            "mount-time paused should be True (we passed paused: true)"
+        )
+        assert out["whilePlaying"] is False, (
+            "getAnimation().paused returned True during active "
+            "playback — config-state out of sync with runtime "
+            "(Phase 5g B-1 regression)"
+        )
+        assert out["afterPause"] is True, (
+            "getAnimation().paused returned False after pauseAnimation()"
+        )
+        assert out["afterRoundTrip"] is True, (
+            "applyState({animation: getAnimation()}) during playback "
+            "stopped the loop — round-trip contract broken"
         )
 
     def test_setStructure_preserves_picks_when_elements_match(

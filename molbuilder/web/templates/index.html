@@ -366,14 +366,6 @@
 
 <script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-format.js') }}"></script>
-{# /build mounts the embed with pick.mode: "none" so the soft
-   ``mol-pick.js`` dep is genuinely unused here — a future Build
-   edit that enables picking would go through the embed's
-   pick.mode = "pair" | "single" wiring (yellow halo via the
-   embed's _redrawPickHalos), NOT mol-pick.js's bespoke
-   addHalo with its orange #fb923c colour.  Phase 5f B-2
-   (2026-06-04) reverted Phase 5e B4's mol-pick.js addition;
-   the parity justification doesn't hold. #}
 <script src="{{ url_for('static', filename='lib/mol-viewer.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-axes.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-viewer-embed.js') }}"></script>
