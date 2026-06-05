@@ -1251,8 +1251,27 @@
     }
 
     function applyNewData(r) {
-        const wasAtEnd = !state.data
-            || state.currentFrame >= state.data.frames.length - 1;
+        // Decide poll path: strict-tail-append (cheap; keeps playback
+        // running) vs full rebuild (structure changed or frames
+        // shrank).  Strict-tail criteria: existing data present, new
+        // frame count > old, first-frame atom count unchanged
+        // (proxy for atom-topology unchanged), and the new lattice
+        // is equal-or-absent.  Server-side trajectory parsers are
+        // monotonic so this catches the common live-watch case.
+        const oldData = state.data;
+        const oldLen  = oldData ? oldData.frames.length : 0;
+        const newLen  = (r.data && r.data.frames && r.data.frames.length) || 0;
+        const sameAtomCount = oldData
+            && oldLen > 0 && newLen > 0
+            && oldData.frames[0].length === r.data.frames[0].length;
+        const oldLatticeJson = JSON.stringify(oldData && oldData.lattice || null);
+        const newLatticeJson = JSON.stringify(r.data    && r.data.lattice    || null);
+        const canAppend = _handle
+            && sameAtomCount
+            && newLen > oldLen
+            && oldLatticeJson === newLatticeJson;
+
+        const wasAtEnd = !oldData || state.currentFrame >= oldLen - 1;
 
         state.mtime  = r.mtime;
         state.data   = r.data;
@@ -1273,9 +1292,38 @@
         // frame strip (§ 6.3); no host-side DOM update needed.
         $("save-frame").disabled = false;
 
-        rebuildModel();
-        const targetIdx = wasAtEnd ? n - 1 : Math.min(state.currentFrame, n - 1);
-        showFrame(targetIdx);
+        if (canAppend) {
+            // Strict tail-append: hand the new frames to the embed
+            // without resetting the animation loop.  Playback that
+            // was running keeps running; arrowsPerFrame for the new
+            // frames is recomputed from the updated state.data.
+            const newCoords = [];
+            for (let i = oldLen; i < newLen; i++) {
+                newCoords.push(r.data.frames[i].map(
+                    (atom) => [atom[1], atom[2], atom[3]]));
+            }
+            _handle.appendFrames(newCoords);
+            // arrowsPerFrame is a live array on the animation; the
+            // embed's renderer reads it per-frame.  Replace via a
+            // partial setAnimation update so the renderer sees the
+            // new entries; appendFrames itself doesn't accept
+            // per-frame arrows (the contract leaves it to a
+            // companion partial-update call).
+            try {
+                _handle.setAnimation({
+                    arrowsPerFrame: buildArrowsPerFrame(),
+                });
+            } catch (_) {}
+            // Seek to the new tail if the user was watching the end;
+            // otherwise leave the playhead where it is.
+            if (wasAtEnd) showFrame(n - 1);
+        } else {
+            rebuildModel();
+            const targetIdx = wasAtEnd
+                ? n - 1
+                : Math.min(state.currentFrame, n - 1);
+            showFrame(targetIdx);
+        }
         makePlots();
 
         // Signal to the /results tab-level picker (and any other

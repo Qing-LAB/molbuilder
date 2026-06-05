@@ -232,6 +232,14 @@
 .mol-viewer-knob-labels button:hover {
     background:     var(--bg-input-focus, #f4f4f4);
 }
+/* Active-format marker for programmatic→UI sync (§ 4.1).  setLabels()
+   from the handle adds this class to the matching format button so
+   the popover reflects current state even when the user didn't open
+   it via this picker. */
+.mol-viewer-knob-labels button.is-active {
+    background:     var(--accent, #5fb6ff);
+    color:          var(--accent-fg, #fff);
+}
 
 /* Background swatches: round chips in a flex row. */
 .mol-viewer-knob-background {
@@ -256,6 +264,14 @@
     background:
         linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%) 0 0/0.5rem 0.5rem,
         linear-gradient(45deg, #ccc 25%, transparent 25%, transparent 75%, #ccc 75%) 0.25rem 0.25rem/0.5rem 0.5rem;
+}
+/* Active-swatch marker for programmatic→UI sync (§ 4.1).  After
+   setBackground() the matching swatch gets a ring so the popover
+   reflects current state.  Custom colours that don't match a preset
+   leave every swatch unmarked. */
+.mol-viewer-knob-background button[data-color].is-active {
+    outline:        2px solid var(--accent, #5fb6ff);
+    outline-offset: 1px;
 }
 .mol-viewer-knob-background input[type="color"] {
     width:          2rem;

@@ -1375,6 +1375,95 @@ class TestHandleSurface:
             "merge path relies on _normaliseAnimation preservation)"
         )
 
+    def test_programmatic_setX_syncs_knob_bar_ui(
+            self, page, flask_server):
+        """Phase 5k regression catcher for § 4.1 + § 6.2 invariant:
+        ``setStyle`` / ``setLabels`` / ``setBackground`` called via
+        the handle (not the knob UI) must push the new state into
+        the visible affordance — Style picker value, Labels popover
+        active button, Background swatch active class.  Without this
+        a host driving viewer state from a non-knob source (e.g.
+        keyboard shortcut, restore-from-snapshot) leaves the chrome
+        lying about current state.  Axes already had this since
+        Bundle 4; this pins parity for the other three knobs.
+        """
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:400px;height:300px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    style: { rep: "stick" },
+                    labels: false,
+                });
+                const bar = h._test.getKnobBarElement();
+                const sel = bar.querySelector(".mol-viewer-knob-style");
+                const labelsDet = bar.querySelector(
+                    ".mol-viewer-knob-labels");
+                const bgDet = bar.querySelector(
+                    ".mol-viewer-knob-background");
+                const r = {};
+                // Initial state.
+                r.initStyle = sel.value;
+                r.initLabelsActive = labelsDet
+                    .querySelector("button.is-active")
+                    .getAttribute("data-format");
+                r.initBgActive = (bgDet
+                    .querySelector("button.is-active") || {})
+                    .getAttribute && bgDet
+                    .querySelector("button.is-active")
+                    .getAttribute("data-color");
+                // Drive each from the handle.
+                h.setStyle({ rep: "sphere" });
+                r.afterStyle = sel.value;
+                h.setLabels({ atoms: "all", format: "name" });
+                r.afterLabelsActive = labelsDet
+                    .querySelector("button.is-active")
+                    .getAttribute("data-format");
+                h.setBackground("#1c1c1c");
+                r.afterBgActive = bgDet
+                    .querySelector("button.is-active")
+                    .getAttribute("data-color");
+                // Off-state for labels.
+                h.setLabels(false);
+                r.afterLabelsOff = labelsDet
+                    .querySelector("button.is-active")
+                    .getAttribute("data-format");
+                h.dispose();
+                host.remove();
+                return r;
+            }
+        """)
+        assert out["initStyle"] == "stick", \
+            "mount-time Style picker did not seed from opts.style.rep"
+        assert out["initLabelsActive"] == "off", \
+            "mount-time Labels popover did not mark Off active"
+        assert out["initBgActive"] == "#ffffff", \
+            "mount-time Background did not mark default white swatch"
+        assert out["afterStyle"] == "sphere", (
+            "setStyle({rep:'sphere'}) did not re-sync the Style "
+            "<select>.value — programmatic→UI sync broken (R2)"
+        )
+        assert out["afterLabelsActive"] == "name", (
+            "setLabels({format:'name'}) did not mark the Name button "
+            "is-active in the popover — programmatic→UI sync "
+            "broken (R1)"
+        )
+        assert out["afterBgActive"] == "#1c1c1c", (
+            "setBackground('#1c1c1c') did not mark the matching "
+            "preset swatch is-active — programmatic→UI sync broken"
+        )
+        assert out["afterLabelsOff"] == "off", (
+            "setLabels(false) did not mark the Off button is-active"
+        )
+
     def test_setStructure_preserves_picks_when_elements_match(
             self, page, flask_server):
         """Per § 3.8 + § 4.2.1: pickedIndices survives setStructure

@@ -1219,17 +1219,15 @@ sequenceDiagram
 - After `dispose()`, every other sync handle method becomes a
   no-op rather than throwing; every async handle method's Promise
   rejects with `ViewerError(code: "disposed")`.
-- The knob bar reflects user interaction immediately: toggling a
-  knob (`Axes`) updates the viewer AND the knob's `aria-pressed`.
-  **Programmatic→UI sync is currently partial**: `setAxes()` from
-  the handle re-syncs the Axes button's `aria-pressed`, but
-  `setLabels()` / `setStyle()` / `setBackground()` do not yet
-  push state back into the Labels popover / Style `<select>` /
-  Background swatches.  Hosts that drive these from a non-knob
-  UI should manage the visible affordance themselves (or stage a
-  full chrome refresh).  Tracked as an open polish item; the
-  cheap landing is an `is-active` marker class on each popover
-  option synced inside the matching setX.
+- The knob bar reflects current state.  Toggling a knob updates
+  the viewer AND the knob's visible affordance — `aria-pressed`
+  for `Axes`, `<select>.value` for `Style`, `is-active` marker on
+  the active option for the Labels and Background popovers.
+  Programmatic calls flow the same way: `setStyle()` / `setLabels()`
+  / `setAxes()` / `setBackground()` from the handle re-sync the
+  matching affordance.  Custom background colours that don't match
+  any preset leave every swatch unmarked (the picker carries the
+  value).
 
 ### 4.2 `setStructure` × camera
 
@@ -1589,10 +1587,12 @@ layout.
   `setBackground` / `screenshot` / `exportData` / `exportAnimation`)
   so a host's `onError` / `onExport` callbacks see knob-driven
   actions identically to programmatic ones.
-- Handle → UI: `setAxes()` re-syncs the Axes button's
-  `aria-pressed`.  The popover knobs (Labels / Background / Export)
-  and the Style `<select>` do NOT yet reflect programmatic
-  setX calls in their visible affordance — see § 4.1 note.
+- Handle → UI: every setX above re-syncs the matching knob's
+  visible affordance — `aria-pressed` for `Axes`, `<select>.value`
+  for `Style`, `is-active` marker on the active option for the
+  Labels popover and the Background swatches.  Custom background
+  colours that don't match any preset leave every swatch
+  unmarked (the picker input carries the value).
 - Background and Export knobs use `<details>` for popover open/
   close; one popover open at a time (opening one closes the
   others). `Esc` closes any open popover.

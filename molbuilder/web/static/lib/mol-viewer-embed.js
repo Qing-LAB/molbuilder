@@ -819,6 +819,54 @@
     /*  Knob bar wiring — called after handle is built              */
     /* ------------------------------------------------------------ */
 
+    function _syncKnobBarToStyle(state) {
+        // Programmatic→UI sync per § 4.1 + § 6.2: after setStyle(),
+        // the Style picker should reflect the new representation.
+        // No-op when the knob bar is suppressed (knobs: false) or
+        // the picker is per-knob disabled (knobs.style: false).
+        if (!state.scaffold || !state.scaffold.knobsEl) return;
+        const sel = state.scaffold.knobsEl.querySelector(
+            ".mol-viewer-knob-style");
+        if (sel && state.current.style
+            && sel.value !== state.current.style.rep) {
+            sel.value = state.current.style.rep;
+        }
+    }
+
+    function _syncKnobBarToLabels(state) {
+        // Programmatic→UI sync per § 4.1 + § 6.2: after setLabels(),
+        // the Labels popover's active format gets an ``is-active``
+        // class so users see the current state.  ``labels === null``
+        // (i.e. labels off) marks the Off button active.
+        if (!state.scaffold || !state.scaffold.knobsEl) return;
+        const det = state.scaffold.knobsEl.querySelector(
+            ".mol-viewer-knob-labels");
+        if (!det) return;
+        const lbl = state.current.labels;
+        const activeFmt = lbl ? lbl.format : "off";
+        for (const btn of det.querySelectorAll("button[data-format]")) {
+            btn.classList.toggle("is-active",
+                btn.getAttribute("data-format") === activeFmt);
+        }
+    }
+
+    function _syncKnobBarToBackground(state) {
+        // Programmatic→UI sync per § 4.1 + § 6.2: after
+        // setBackground(), the matching preset swatch gets
+        // ``is-active``.  Custom colors that don't match any preset
+        // leave every swatch inactive (the colour picker carries the
+        // value).
+        if (!state.scaffold || !state.scaffold.knobsEl) return;
+        const det = state.scaffold.knobsEl.querySelector(
+            ".mol-viewer-knob-background");
+        if (!det) return;
+        const cur = state.current.style && state.current.style.background;
+        for (const btn of det.querySelectorAll("button[data-color]")) {
+            btn.classList.toggle("is-active",
+                btn.getAttribute("data-color") === cur);
+        }
+    }
+
     function _wireKnobBar(state, bar, knobs) {
         const handle = state.handle;
 
@@ -1004,6 +1052,13 @@
             // without first clicking a knob.
             state.cardEl.setAttribute("tabindex", "0");
         }
+
+        // Seed the initial active-affordance state so the popovers
+        // / picker / swatches reflect mount-time opts (and any later
+        // setKnobs() rebuild lands consistent with the live style).
+        _syncKnobBarToStyle(state);
+        _syncKnobBarToLabels(state);
+        _syncKnobBarToBackground(state);
     }
 
     /* ------------------------------------------------------------ */
@@ -2629,6 +2684,11 @@
             // a replace, not an add).
             _redrawOverlayStyles(state);
             state.viewer.render();
+            // Programmatic→UI sync per § 4.1.  setStyle covers both
+            // the style picker (rep changed) and the background
+            // swatch (setBackground routes through setStyle).
+            _syncKnobBarToStyle(state);
+            _syncKnobBarToBackground(state);
         }
 
         function setAxes(a) {
@@ -2714,6 +2774,7 @@
             state.current.labels = next;
             _redrawLabels(state);
             state.viewer.render();
+            _syncKnobBarToLabels(state);
         }
 
         function setArrows(arr) {
