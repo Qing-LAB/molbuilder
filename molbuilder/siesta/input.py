@@ -768,17 +768,19 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             "# interaction with its own periodic replicas, going as",
             "#     E_bias ~ q^2 * alpha / (2 * L * eps_r)",
             "# where alpha is the Madelung constant (~2.84 for simple",
-            "# cubic), L is the supercell side, and eps_r is the",
-            "# relative permittivity of the medium (1 in vacuum).  For",
-            "# q = +/- 1 at L ~ 15-25 A this is 0.5-1.5 eV -- much",
-            "# larger than chemical accuracy.  molbuilder does NOT",
-            "# auto-apply the Makov & Payne (PRB 51, 4014, 1995)",
-            "# correction.  If you are computing redox potentials,",
-            "# deprotonation energies, binding energies of charged",
-            "# species, or any other charge-state difference, apply",
-            "# Makov-Payne post-hoc OR extrapolate to L -> infinity by",
-            "# running multiple cell sizes.  Tracked for future",
-            "# molbuilder support (see design.md decisions log).",
+            "# cubic), L = V^(1/3) is the effective supercell side,",
+            "# and eps_r is the relative permittivity of the medium",
+            "# (1 in vacuum).  For q = +/- 1 at L ~ 15-25 A this is",
+            "# 0.5-1.5 eV -- much larger than chemical accuracy.",
+            "#",
+            "# molbuilder emits ``makov_payne_correction.py`` next to",
+            "# this FDF.  After SIESTA finishes, run:",
+            "#     python3 makov_payne_correction.py",
+            "# The script reads the .out, extracts the converged total",
+            "# energy and the final lattice vectors, computes",
+            "# DeltaE_MP, and prints the corrected total in eV.  Pass",
+            "# --epsilon <eps_r> if your medium isn't vacuum.",
+            "# See Makov & Payne, Phys. Rev. B 51, 4014 (1995).",
         ]
         out.append(f"NetCharge       {auto_charge:+d}")
     out.append("")
@@ -1191,6 +1193,28 @@ def convert(
         "species": species,
         "missing_psml": [],
     }
+
+    # Makov-Payne correction script.  Emitted whenever the input
+    # carries a non-zero net charge so the user can run a single
+    # post-process command after SIESTA finishes and get the
+    # finite-size-corrected total energy.  The FDF header already
+    # tells the user about the artefact; the script makes the
+    # correction numeric instead of "go do the arithmetic
+    # yourself".
+    from .makov_payne import emit_correction_script
+    from ..chemistry import resolve_net_charge
+    try:
+        _q = resolve_net_charge(struct, getattr(cfg, "net_charge", None))
+    except Exception:
+        _q = 0
+    if _q != 0:
+        emitted = emit_correction_script(
+            fdf_path=fdf_p,
+            system_label=cfg.system_label,
+            q=_q,
+        )
+        if emitted is not None:
+            summary["makov_payne_script"] = str(emitted)
 
     if cfg.psml_lib and cfg.copy_psml:
         lib = Path(cfg.psml_lib).expanduser()

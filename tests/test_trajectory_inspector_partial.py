@@ -379,56 +379,21 @@ class TestViewerJsRootScoping:
             f"be added to the partial."
         )
 
-    def test_page_level_dollar_doc_helper_exists(self, viewer_js):
-        """The page-level $doc helper must be defined and stay
-        document-scoped (rootEl-independent) so the loader-bar
-        handlers find their elements regardless of which page is
-        hosting the inspector."""
-        m = re.search(
-            r'const\s+\$doc\s*=\s*\(id\)\s*=>\s*document\.getElementById\(id\)',
-            viewer_js,
-        )
-        assert m, "$doc helper missing or no longer document-scoped"
-
-    def test_page_level_ids_use_dollar_doc(self, viewer_js):
-        """The four loader-bar ids (path-input + load-btn + status
-        + file-picker) must go through $doc, never the scoped $."""
-        for the_id in ("path-input", "load-btn", "status",
-                       "file-picker"):
-            scoped = re.search(
-                r'\$\("' + re.escape(the_id) + r'"\)', viewer_js
-            )
-            assert scoped is None, (
-                f"page-level id {the_id!r} is still being looked "
-                f"up via the scoped $() (would miss it when the "
-                f"inspector mounts inside a smaller rootEl)"
-            )
-
-    def test_no_unguarded_dollar_doc_dereference(self, viewer_js):
-        """Stage 1D readiness: when /results' dispatcher calls
-        ``mountInspector(panel)`` against a host that doesn't carry
-        /watch's loader bar, every $doc lookup must return null
-        without crashing.  The required pattern is:
-
-            const _foo = $doc("foo");
-            if (_foo) _foo.addEventListener(...);
-
-        ANY direct ``$doc("X").<member>`` is an NPE waiting to
-        happen.  This test fails the moment one creeps back in.
-        """
-        # Match the dangerous pattern: $doc("id").something
-        # without a preceding `if (` on the same line (single-line
-        # guards like `if (_foo) _foo.bar` ARE safe but use the
-        # captured variable, not the literal $doc call).
-        sites = re.findall(
-            r'\$doc\("[\w-]+"\)\s*\.', viewer_js
-        )
-        assert sites == [], (
-            f"viewer.js has {len(sites)} unguarded $doc dereference "
-            f"site(s); each is an NPE risk when the inspector mounts "
-            f"in a host without the loader bar.  Capture to a const "
-            f"first + guard with `if (el)`."
-        )
+    # Phase 5i retired the ``$doc`` helper.  At the time it existed
+    # to keep page-level loader-bar ids (path-input / load-btn /
+    # status / file-picker) addressable from inside the inspector
+    # mount via document-scoped lookups, while the inspector's own
+    # ids went through the rootEl-scoped ``$``.  After the /watch
+    # retirement and the structure-inspector cleanup, the only
+    # page-level lookup left was the ``status`` banner, and that
+    # single call is now inlined as ``document.getElementById`` in
+    # ``setStatus`` (see ``lib/trajectory/core.js``).  The three
+    # tests this block used to host (``$doc`` helper exists,
+    # page-level ids use ``$doc``, no-unguarded-deref) all enforced
+    # an invariant the code no longer needs.  Removed in the same
+    # commit that lands the transport + Makov-Payne items, where
+    # the test sweep first surfaced the stale assertion.
+    pass
 
 
 # --------------------------------------------------------------------- #

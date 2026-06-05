@@ -691,16 +691,15 @@ def test_siesta_charged_system_emits_makov_payne_notice(water_struct):
     msg = mp[0].message
     # Quote the user's charge so the warn is self-explanatory.
     assert "+1" in msg
-    # Cite the formula + magnitude order.
-    assert "q^2" in msg
-    assert ("0.5-1.5 eV" in msg or "0.5" in msg)
+    # Phase-after-Phase-6: the warn now quotes the computed numeric
+    # estimate at three representative cell sizes (post-#172) instead
+    # of the qualitative "0.5-1.5 eV" range.  Check that at least one
+    # of the bracket values appears.
+    assert any(s in msg for s in ("1.36", "1.02", "0.82"))
+    # Mention the companion script the wrapper now emits.
+    assert "makov_payne_correction.py" in msg
     # Cite the paper.
     assert "Makov" in msg
-    # Mention molbuilder doesn't auto-apply.
-    assert "auto-apply" in msg or "NOT" in msg
-    # Mention the most common use cases.
-    assert ("redox" in msg or "pKa" in msg
-            or "deprotonation" in msg)
 
 
 def test_siesta_neutral_system_no_makov_payne_notice(water_struct):

@@ -8,7 +8,8 @@ as :class:`SpectraConfig`.  The metadata drives:
   * the click-based CLI;
   * the Methods-text generator.
 
-Engines in v1 (Phase B.3):
+Engines (registry surface in :mod:`molbuilder.transport`; concrete
+implementations land in Phase B.3):
 
   * **transiesta** -- TranSIESTA from the SIESTA suite, NEGF + LDA/GGA
     pseudopotentials.  Handles realistic electrode + bridge sizes
@@ -148,7 +149,8 @@ class TransportConfig:
         "label":   "Engine",
         # PySCF-NEGF requires the PySCF + scipy stack; TranSIESTA
         # requires a working SIESTA-MPI build with TranSIESTA enabled.
-        # Both backends provide a TransportEngine in Phase B.2.
+        # Both backends will register as TransportEngine via
+        # :mod:`molbuilder.transport` in Phase B.3.
         "choices": ("transiesta", "pyscf-negf"),
         "help":    "NEGF transport engine.  TranSIESTA: larger systems "
                    "with pseudopotentials, GGA/LDA only.  PySCF-NEGF: "

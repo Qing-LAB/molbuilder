@@ -683,6 +683,9 @@ These have been considered and rejected; do not reintroduce them.
 
 | Date | Decision | Rationale |
 |---|---|---|
+| 2026-06-05 | **Transport engine abstraction landed (Phase B.2; task #135).** New package `molbuilder/transport/` with `engine_base.TransportEngine` Protocol + decorator-based registry + `TransportResults` dataclass.  Mirrors `molbuilder/spectra/engine_base.py` 1:1 so the dispatch pattern is identical across tabs.  No backend implementations yet — those land in B.3 as `transiesta_engine.py` / `pyscf_negf_engine.py` + their methods-fragment + a small per-engine config validation pass.  Tests in `tests/test_transport.py` pin the registry contract (register / get / re-register-fails / unknown-engine-error / dataclass round-trip / equality refused / config.engine.choices match registry names). | The Spectra precedent showed the registry pattern earns its keep when a second backend lands: backends become independently testable, the web blueprint dispatches uniformly, the methods generator composes from a per-engine fragment.  Doing the abstraction BEFORE the first backend (rather than discovering it during B.3) means the first backend writer doesn't carry the cost of inventing the surface in addition to integrating the physics — same logic the Spectra blueprint followed. |
+| 2026-06-05 | **Makov-Payne post-process correction script (task #172).** New `molbuilder/siesta/makov_payne.py` exposes `compute_correction(q, L, ε_r, α)` and `emit_correction_script(fdf_path, system_label, q)`.  SIESTA wrapper drops a self-contained `makov_payne_correction.py` next to the FDF whenever `NetCharge != 0`; the script reads the SIESTA `.out`, extracts the converged `E_KS(eV)` and the final `outcell` lattice vectors, computes ΔE_MP at L=V^(1/3) with cubic Madelung α=2.8373 in vacuum (`--epsilon` overridable on the command line), and prints the corrected total.  Validation warn at `config.net_charge.makov_payne` now quotes numeric estimates (~1.36 eV at L=15 Å, etc.) instead of "go do the arithmetic yourself".  FDF header points at the companion script. | The detect-and-warn half had been in place for months; the user kept asking "what's the actual value".  Emitting the script is the small final step that makes the warn actionable: paste the input deck into a cluster, run SIESTA, then `python3 makov_payne_correction.py` and copy the corrected number into the manuscript.  No FDF keyword exists in upstream SIESTA for this correction — it's a finite-size cosmetic — so a separate script is the right shape; the SIESTA input deck stays bit-for-bit standard.  Cubic Madelung is the right default since molbuilder's auto-pad routine produces cubic vacuum cells; the script warns when the post-SIESTA cell is markedly non-cubic so the user knows to re-run with `--madelung`. |
+| 2026-06-05 | **Structure-inspector hand-off to /modify (task #117).** `lib/inspectors/structure.js` "Open in Modify" click now writes the current file path to `sessionStorage["molbuilder.current_file"]` and the parent directory to `sessionStorage["molbuilder.current_dir"]` before navigating.  /modify's selection-bootstrap reads the same keys via `projects.getCurrentFile()` on mount and dispatches the auto-load through `store.setSourceFile()`.  The sidebar opens to the correct folder with the file highlighted; the viewer auto-loads. | Two viable shapes were on the table: an in-page edit panel mounted alongside the inspector (full /modify control set duplicated into the Results tab) OR a clean hand-off (current shape).  The hand-off won because (a) the /modify infrastructure for atom-edit / orient / pose / electrode is substantial and already tested — duplicating it would invite drift; (b) /modify's URL is a meaningful breadcrumb of "what am I editing" that an in-page panel hides; (c) the user's mental model of /results is "look at output" not "mutate input", so the explicit nav reinforces the right boundary.  Tracked as #117. |
 | 2026-04-30 | Merge `Qing-LAB/molwatch` into `Qing-LAB/molbuilder`. molwatch repo archived after merge stabilizes. | Already coupled by file format spec, web stack, and author. Single repo removes drift surface. |
 | 2026-05-01 | Top-level package name remains `molbuilder`. | Established name; "watch" is a verb on it. |
 | 2026-05-01 | Keep a `molwatch` console-script shim in `pyproject.toml` post-merge. | Zero cost, real friction saved for existing users / scripts. |
@@ -1838,45 +1841,15 @@ may match on; only the Python module name changes.
 
 ## Next steps
 
-Open work, verified against actual code on 2026-06-05.  Items
-here are real and unstarted (or only stub-level); finishing one
-collapses it back into the decisions log above.  Don't list
-cleanup / review tasks here — those live in commit messages.
+The three open items from the 2026-06-05 cross-audit
+(transport engine abstraction, structure-inspector hand-off,
+Makov-Payne emit) landed; each collapsed back into the decisions
+log above.  No items here now.
 
-1. **Phase B.2 — Transport engine abstraction.**
-   `molbuilder/config/transport.py` (TransportConfig) is the only
-   transport artefact today; its docstring explicitly defers the
-   engine layer to Phase B.2.  Needed: a `TransportEngine`
-   Protocol parallel to `spectra/engine_base.SpectraEngine`, a
-   registry for transiesta / pyscf-negf backends, and a
-   `TransportResults` dataclass.  See `docs/engines/` for the
-   spectra precedent.
-
-2. **Results > Structure inspector: edit controls.**
-   `lib/inspectors/structure.js` is read-only today (179 LOC: an
-   embed mount + a static `Open in Modify` link that drops any
-   selection / file context on the way out).  Needed: either the
-   /modify edit-panel surface (Delete / Add / Orient / Rotate /
-   Electrode + selection panel) mounted alongside the inspector,
-   OR a real bridge that hands the current file plus selection
-   state to /modify so the user lands on the same atoms they were
-   inspecting.  Decide direction (in-page edits vs hand-off)
-   before implementing.
-
-3. **Makov-Payne image-charge correction (emit, not just warn).**
-   `validation.py:_check_siesta_charged_makov_payne_notice` plus
-   the `siesta/input.py` FDF comment block detect charged PBC
-   systems and tell the user to apply MP post-hoc.  Needed: the
-   compute side — either an FDF post-process script emitted next
-   to the input deck (parses `Total energy`, applies the
-   $\alpha q^2 / 2\epsilon L$ correction, prints corrected total)
-   or an explicit decision to keep this as a documentation-only
-   warning forever.  Today's behaviour is silent on the value;
-   the user has to do the arithmetic.
-
-Add items here when new design gaps surface.  Don't list anything
-that's just code-review polish or stylistic cleanup — those live
-in commit messages and PRs, not the roadmap.
+Add items here when new design gaps surface (verified against
+actual code, not commit history).  Don't list code-review polish
+or stylistic cleanup — those live in commit messages and PRs,
+not the roadmap.
 
 ---
 

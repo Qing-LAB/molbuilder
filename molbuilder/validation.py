@@ -711,27 +711,35 @@ def _check_siesta_charged_makov_payne_notice(struct: Structure,
     """
     # Resolve charge: explicit user override or auto-detected.
     from .chemistry import resolve_net_charge
+    from .siesta.makov_payne import compute_correction
     try:
         q = resolve_net_charge(struct, getattr(cfg, "net_charge", None))
     except Exception:
         return []
     if q == 0:
         return []
+    # Estimate the correction magnitude at a representative vacuum
+    # cell size.  Real SIESTA cells vary; the message gives the user
+    # the order-of-magnitude before they actually run.  Cell sizes
+    # 15 / 20 / 25 Å bracket the typical molbuilder vacuum range.
+    eps_ref = 1.0
+    dE_15 = compute_correction(q=q, L_angstrom=15.0, epsilon_r=eps_ref)
+    dE_20 = compute_correction(q=q, L_angstrom=20.0, epsilon_r=eps_ref)
+    dE_25 = compute_correction(q=q, L_angstrom=25.0, epsilon_r=eps_ref)
     return [Issue(
         "warn",
         (f"Charged system (NetCharge = {q:+d}) in a finite supercell.  "
          f"SIESTA's periodic-cell setup adds a uniform compensating "
          f"background charge so the calculation runs, but the total "
-         f"energy carries an image-charge bias E_bias ~ q^2 * "
-         f"alpha / (2 * L * eps_r) -- typically 0.5-1.5 eV for "
-         f"q=+/-1 at vacuum cell sides of 15-25 A, well above "
-         f"chemical accuracy.  molbuilder does NOT auto-apply the "
-         f"Makov-Payne correction (PRB 51, 4014, 1995).  If you are "
-         f"computing redox / pKa / deprotonation / charged-binding "
-         f"energies, apply Makov-Payne post-hoc or extrapolate to "
-         f"L -> infinity from multiple cell sizes.  This warn is a "
-         f"notice; future molbuilder versions may auto-emit the "
-         f"correction value alongside the SIESTA output."),
+         f"energy carries an image-charge bias from the molecule's "
+         f"interaction with its periodic replicas.  Estimated "
+         f"correction magnitude (vacuum, cubic-Madelung): "
+         f"~{dE_15:.2f} eV at L=15 Å, ~{dE_20:.2f} eV at L=20 Å, "
+         f"~{dE_25:.2f} eV at L=25 Å — well above chemical accuracy.  "
+         f"molbuilder emits a companion ``makov_payne_correction.py`` "
+         f"script alongside the FDF; after SIESTA finishes, run it "
+         f"to get the corrected total for the cell SIESTA actually "
+         f"used.  See Makov & Payne, PRB 51, 4014 (1995)."),
         "config.net_charge.makov_payne",
     )]
 

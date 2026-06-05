@@ -54,6 +54,34 @@
                 "Loads the structure into the Modify tab so you can "
                 + "rotate / orient / add electrodes / etc."
             );
+            // Hand the current file off to /modify via the
+            // sessionStorage keys the Projects sidebar uses (see
+            // ``lib/projects/state.js`` SS_FILE / SS_DIR).
+            // /modify's selection-bootstrap reads SS_FILE on mount
+            // via ``projects.getCurrentFile()`` and dispatches the
+            // auto-load.  Without setting these the user would land
+            // on /modify with whatever file was previously active —
+            // or an empty viewer.  Setting both keys also makes the
+            // sidebar open to the correct folder with the file
+            // highlighted.  Closes #117.
+            modifyLink.addEventListener("click", () => {
+                try {
+                    root.sessionStorage.setItem(
+                        "molbuilder.current_file", file);
+                    // Derive the parent dir from the file path so
+                    // the sidebar lands on the right folder.
+                    const i = file.lastIndexOf("/");
+                    if (i >= 0) {
+                        root.sessionStorage.setItem(
+                            "molbuilder.current_dir",
+                            file.slice(0, i));
+                    }
+                } catch (_) {
+                    // sessionStorage may throw under private-browsing
+                    // / quota-exceeded; the link still navigates and
+                    // /modify falls back to its previous state.
+                }
+            });
             actions.appendChild(modifyLink);
             header.appendChild(actions);
             card.appendChild(header);

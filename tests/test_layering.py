@@ -66,6 +66,7 @@ _L2_MODULES = {
     "backends",          # back-compat shim re-exporting builders.backends
     "siesta", "pyscf",   # script generators
     "spectra",           # spectra engines + script renderers
+    "transport",         # transport engines + results (Phase B.2)
     "parsers",           # trajectory parsers
     "projects",          # filesystem layout / naming rules
     "runtime_config",    # molbuilder.json reader

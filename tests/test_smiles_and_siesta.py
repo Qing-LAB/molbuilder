@@ -217,17 +217,18 @@ def test_fdf_charged_system_emits_makov_payne_notice():
     fdf = render_fdf(s, cfg)
     # NetCharge line emitted as before.
     assert "NetCharge       -1" in fdf
-    # New informational block: name the formula + the magnitude.
+    # Informational block: name the artefact, the formula, the
+    # typical magnitude order.
     assert "Makov-Payne" in fdf
     assert "q^2" in fdf
-    assert "0.5-1.5 eV" in fdf or "0.5" in fdf
-    # Explicitly states molbuilder does NOT auto-apply.
-    assert "NOT" in fdf and "auto-apply" in fdf
+    assert "0.5-1.5 eV" in fdf
+    # Phase-after-Phase-6 (#172): the block now points the user at
+    # the companion ``makov_payne_correction.py`` script the wrapper
+    # emits.  Was previously a "do the arithmetic yourself" notice.
+    assert "makov_payne_correction.py" in fdf
+    assert "python3 makov_payne_correction.py" in fdf
     # Cites the paper.
-    assert "PRB 51" in fdf or "Makov & Payne" in fdf
-    # Points the user at the right action.
-    assert ("redox" in fdf or "deprotonation" in fdf
-            or "extrapolate" in fdf)
+    assert "Makov & Payne" in fdf
 
 
 def test_fdf_neutral_system_no_makov_payne_block():
