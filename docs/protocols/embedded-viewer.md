@@ -92,7 +92,7 @@ Everything inside the viewer card, plus all 3Dmol-side state:
 | 3-D rendering | 3Dmol GLViewer mounted in `.mol-viewer-canvas` |
 | Standard knob bar | `.mol-viewer-knobs` — style / labels / axes / reset / screenshot / background / export |
 | Animation frame strip | `.mol-viewer-frame-strip` (auto-shown for trajectory animation) |
-| Info line | `.mol-viewer-info-line` — atom count, residue count, formula |
+| Info line | `.mol-viewer-info-line` — atom count, formula (residue count was promised in an earlier draft but never rendered; if needed, surface it through a card header or via `info` opts on a future iteration) |
 | Overlay state | axes, cell wireframe, labels, arrows, atom overlays, pick halos, animation frame, camera |
 | 3Dmol object lifecycle | shapes, labels, models — create / update / destroy |
 | Render scheduling | when to call `viewer.render()` |
@@ -134,7 +134,7 @@ CSS or in-page state.
 
 | Hatch | Reason it still exists | Removal trigger |
 |---|---|---|
-| `handle._viewer3dmol()` | `lib/selection/viewer-adapter.js` reaches in for camera ops + click polling | When the selection-store adopts § 3.2 (`setOverlays`, `getCamera`/`setCamera`) |
+| `handle._viewer3dmol()` | `modify/viewer.js` exposes it through a Playwright fixture (`window.__molbuilder_modify_test.getViewer`) so the e2e tests can introspect the live 3Dmol viewer.  Production code paths (`lib/selection/viewer-adapter.js` included) migrated to `setOverlays` + `getCamera` / `setCamera` + native pick on 2026-06-03. | When the test fixtures port to the embed's `handle._test` surface or to a `getViewerSnapshot()`-style read-only accessor.  Production code paths are already off the hatch. |
 | `opts.card.bare` | REMOVED 2026-06-03 — all five consumers migrated to the standard chrome (#202–#206). The opt is now ignored; callers still passing `bare: true` get the standard card chrome. The DOM class `.mol-viewer-bare` is no longer emitted and the corresponding CSS rules are gone. | — |
 
 Both are documented but **MUST NOT** be used in new code. Tab
@@ -421,7 +421,7 @@ type ViewerHandle = {
   getLabels():    LabelOpts    | null,
   getOverlays():  OverlaySpec  | null,
   getPick():      PickOpts     | null,
-  getKnobs():     KnobBarOpts,
+  getKnobs():     KnobBarOpts | null,
   getArrows():    ArrowSpec[],
   getAnimation(): AnimationOpts | null,
   getBackground(): string | null,
@@ -660,7 +660,7 @@ type PickOpts = {
   // matches /modify's existing behaviour (click an atom → it
   // highlights and shows its index) and gives Build / inspectors
   // the same informative pick UX without per-tab CSS work.
-  halo?:  { color?:   string,            // default page-theme accent
+  halo?:  { color?:   string,            // default #ffd54a (yellow)
             radius?:  number,            // default 0.6 Å
             opacity?: number             // default 0.5
           } | true | false,
@@ -1016,7 +1016,10 @@ type AtomOverlaySpec = {
 
   // Halo overlay (drawn on top of the per-atom style):
   halo?: {
-    color?:   string,            // CSS color; default page accent
+    color?:   string,            // CSS color; default #6ba6ff (blue —
+                                 // distinct from PickOpts halo's
+                                 // yellow so host overlays don't
+                                 // collide with the pick affordance)
     radius?:  number,            // Å; default 0.6
     opacity?: number,            // 0..1; default 0.5
   },
@@ -1216,10 +1219,17 @@ sequenceDiagram
 - After `dispose()`, every other sync handle method becomes a
   no-op rather than throwing; every async handle method's Promise
   rejects with `ViewerError(code: "disposed")`.
-- The knob bar reflects current state: toggling a knob updates
-  the viewer AND the knob's `aria-pressed`; calling
-  `setLabels(true)` programmatically also updates the labels
-  knob's pressed state.
+- The knob bar reflects user interaction immediately: toggling a
+  knob (`Axes`) updates the viewer AND the knob's `aria-pressed`.
+  **Programmatic→UI sync is currently partial**: `setAxes()` from
+  the handle re-syncs the Axes button's `aria-pressed`, but
+  `setLabels()` / `setStyle()` / `setBackground()` do not yet
+  push state back into the Labels popover / Style `<select>` /
+  Background swatches.  Hosts that drive these from a non-knob
+  UI should manage the visible affordance themselves (or stage a
+  full chrome refresh).  Tracked as an open polish item; the
+  cheap landing is an `is-active` marker class on each popover
+  option synced inside the matching setX.
 
 ### 4.2 `setStructure` × camera
 
@@ -1574,8 +1584,15 @@ layout.
 - Buttons are themed via `tokens.css` (`--bg-input`, `--accent`,
   `--border-strong`).
 - Toggle buttons use `aria-pressed` to reflect state.
-- The knob bar reacts to handle state changes (`setLabels(true)`
-  from outside also updates the Labels knob's pressed state).
+- User interaction → handle: every knob click routes through the
+  matching public setter (`setStyle` / `setLabels` / `setAxes` /
+  `setBackground` / `screenshot` / `exportData` / `exportAnimation`)
+  so a host's `onError` / `onExport` callbacks see knob-driven
+  actions identically to programmatic ones.
+- Handle → UI: `setAxes()` re-syncs the Axes button's
+  `aria-pressed`.  The popover knobs (Labels / Background / Export)
+  and the Style `<select>` do NOT yet reflect programmatic
+  setX calls in their visible affordance — see § 4.1 note.
 - Background and Export knobs use `<details>` for popover open/
   close; one popover open at a time (opening one closes the
   others). `Esc` closes any open popover.
@@ -1682,9 +1699,10 @@ selectionStore.subscribe(state => {
 });
 ```
 
-This replaces the selection-store viewer-adapter's direct 3Dmol
-calls. After this lands the adapter migrates to `setOverlays` and
-`getCamera`/`setCamera`; `_viewer3dmol()` can be removed.
+This replaced the selection-store viewer-adapter's direct 3Dmol
+calls.  The adapter is now off the escape hatch (migrated to
+`setOverlays` + `getCamera` / `setCamera` + native pick on
+2026-06-03); see § 2.4 for the remaining hatch usage.
 
 ### 7.3 Results > structure inspector
 
@@ -1778,7 +1796,8 @@ controls.
 | `/results` trajectory inspector | `lib/trajectory/core.js` | Embed with `animation: {kind: "trajectory", frames, arrowsPerFrame}`; live polling via `appendFrames`; viewer owns frame strip; inspector keeps plotly + polling. |
 | `/results` spectra inspector | `lib/spectra/core.js` | Embed with `animation: {kind: "vibration", displacements}`; frozen-atom highlight via `overlays`; mode-list stays adjacent. |
 
-Migration order respects feature dependencies:
+Migration order respected feature dependencies (all DONE as of
+2026-06-03):
 
 1. Update doc (this commit + this revision).
 2. Implement § 3 additions (overlays, camera, animation extensions,
@@ -1786,10 +1805,23 @@ Migration order respects feature dependencies:
 3. Implement standard knob bar + export plumbing.
 4. Migrate sites one at a time (Build → Modify → structure →
    trajectory → spectra), browser-verifying each.
-5. Migrate selection-store viewer-adapter to declarative API;
-   remove `_viewer3dmol()`.
-6. Add cross-site chrome-consistency tests.
-7. Remove `card.bare` code path; remove deprecation notes.
+5. Migrate selection-store viewer-adapter to declarative API.
+   `_viewer3dmol()` removed from production code paths;
+   surviving call site is the `/modify` Playwright fixture
+   (see § 2.4).
+6. Add cross-site chrome-consistency tests.  Currently pins
+   Build + Modify; the three /results inspectors are not yet
+   covered by an automated chrome-signature assertion.
+7. `card.bare` code path removed; the opt is silently ignored
+   if any legacy caller still passes it.
+
+Live-polling refinement: trajectory's poll path currently issues a
+full `setAnimation({kind:"trajectory", frames})` on every refresh
+instead of using the contract's `appendFrames(newFrames)`
+short-circuit.  Switching the strict-superset case to
+`appendFrames` keeps the playback loop running across polls
+(today it restarts paused) and avoids re-baking the embed's
+coord baseline.
 
 ---
 
@@ -2047,3 +2079,8 @@ CSS.
 | 2026-06-03 | `PickOpts` extended with `halo` (object), `style`, `label` fields. Default selection rendering is halo + index label. | User confirmed this matches /modify's existing behaviour (click an atom → halo + index visible). Building it into PickOpts means every consumer site renders selections the same way without each tab wiring `onPick → setOverlays`. Hosts opt out via `halo: false, label: false`; richer custom rendering via the `style` override. |
 | 2026-06-03 | Selection state survives `setStructure` IFF atom count + element ordering match; cleared otherwise. | Explicit so implementer doesn't invent semantics. Atom-edit ops in /modify that preserve count keep the selection visible mid-edit; an actual file swap (Build's file picker) drops it. |
 | 2026-06-03 | Selection halos / style / labels layer above OverlaySpec equivalents. | Pick state is the most "user-driven" of all overlays — the user must be able to see what they just clicked, even when a region tint or frozen-atom overlay would otherwise compete. Layering pinned: base style → OverlaySpec style → pick style; OverlaySpec halo → pick halo; labels follow the same ordering. |
+| 2026-06-04 | Unified `state.current.animation.paused` with `state._anim.playing` (single source of truth). | Phase 5g B-1 root-cause fix: `getAnimation().paused` was returning the mount-time value forever because play/pause flipped only the runtime flag.  Round-trip `applyState({animation: getAnimation()})` during playback silently stopped the loop.  Both stores now mutate together at three flip sites (`_stopAnimationLoop`, `_startVibrationLoop`, `_startTrajectoryLoop`); the Phase 5f write-side override became redundant and was removed. |
+| 2026-06-04 | `_normaliseAnimation` honors caller-supplied `currentFrame`; `_setAnimationImpl` lands on `next.currentFrame` not `next.startFrame`. | Phase 5h I-1 + Phase 5i: a host snapshotting + re-applying animation state mid-trajectory now keeps the playhead.  Without these two changes the round-trip drifted to frame 0 on every applyState. |
+| 2026-06-04 | Retired `lib/mol-pick.js` (53 LOC, zero callers).  Halo geometry is internal to the embed. | Phase 5g B-2: the standalone helper drew orange `#fb923c` halos; the embed's `_redrawPickHalos` draws yellow `#ffd54a` and is the only path any consumer reached.  `getDependencyStatus().pick` field also dropped. |
+| 2026-06-04 | Background knob routes through `setBackground()` (not synthetic `setStyle`). | Phase 5j R3: the popover's swatch + custom-color handlers were reconstructing `setStyle({rep, radiusScale, background})` which silently dropped any active `colorScheme` (and `tube` / `radius`).  Routing through the documented setter preserves the full style spec. |
+| 2026-06-04 | `getKnobs()` documented as nullable.  Programmatic→UI sync is partial (Axes only). | Phase 5j D7/D8: code returned `null` when `knobs: false`; doc lied about non-nullability.  Doc also overstated the knob-bar's reactivity to programmatic setX calls — the Labels popover / Style `<select>` / Background swatches don't visually re-sync after handle-driven changes.  Doc now reflects the partial implementation and points at the cheap landing (per-knob `is-active` markers). |

@@ -869,19 +869,17 @@
         }
 
         // Background popover — preset swatches change canvas color;
-        // custom picker via <input type="color">.  Phase 2 wires
-        // the action via handle.setStyle({background}); Phase 5
-        // will integrate with save-to-project if requested.
+        // custom picker via <input type="color">.  Routes through
+        // the documented setBackground() setter (§ 3.10 knob-mapping
+        // table) — that path preserves any active colorScheme +
+        // tube + radius fields, which the previous direct-setStyle
+        // call would silently drop because it reconstructed style
+        // from only {rep, radiusScale, background}.
         const bgDet = bar.querySelector(".mol-viewer-knob-background");
         if (bgDet) {
             for (const btn of bgDet.querySelectorAll("button[data-color]")) {
                 btn.addEventListener("click", () => {
-                    const c = btn.getAttribute("data-color");
-                    handle.setStyle({
-                        rep:         state.current.style.rep,
-                        radiusScale: state.current.style.radiusScale,
-                        background:  c,
-                    });
+                    handle.setBackground(btn.getAttribute("data-color"));
                     bgDet.open = false;
                 });
             }
@@ -889,11 +887,7 @@
                 '[data-knob="background-custom"]');
             if (customInput) {
                 customInput.addEventListener("input", () => {
-                    handle.setStyle({
-                        rep:         state.current.style.rep,
-                        radiusScale: state.current.style.radiusScale,
-                        background:  customInput.value,
-                    });
+                    handle.setBackground(customInput.value);
                 });
             }
         }
@@ -2424,7 +2418,7 @@
             catch (_) {}
         }
 
-        // 4a-3. InteractionOpts mouse hooks per § 3.14.  Canonical
+        // 4a-3. InteractionOpts mouse hooks per § 3.15.  Canonical
         //       drag-start / drag-end events let consumer tabs
         //       implement custom interaction policies (e.g. snap
         //       camera pivot to the molecule on first drag) without
@@ -3788,7 +3782,7 @@
 
             // 3Dmol.pngURI(width, height) supports super-resolution
             // capture when width/height exceed the on-screen canvas
-            // (§ 11.3 doc note).
+            // (see § 3.2 screenshot() docstring).
             let dataUrl;
             try {
                 const v = state.viewer;
@@ -3929,7 +3923,7 @@
         }
 
         function _viewer3dmol() {
-            // Escape hatch — see embedded-viewer.md § 2.2 notice.
+            // Escape hatch — see embedded-viewer.md § 2.4 notice.
             return state.viewer;
         }
 
