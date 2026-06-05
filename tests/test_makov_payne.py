@@ -174,6 +174,68 @@ class TestScriptGeneration:
             )
             assert result.returncode != 0
 
+    def test_outcell_parser_tolerates_blank_line(self):
+        """6th-review A1: the outcell parser must skip a blank line
+        between the marker and the lattice rows (some SIESTA builds
+        print one).  Before the fix the script bailed out with
+        'could not parse outcell' on a perfectly-good .out.
+        """
+        s = render_correction_script(system_label="job", q=1)
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            (d / "makov_payne_correction.py").write_text(s)
+            (d / "job.out").write_text(
+                "siesta: E_KS(eV) =       -100.0\n"
+                "outcell: Unit cell vectors (Ang):\n"
+                "\n"  # blank line — was the bug
+                "       15.0 0.0 0.0\n"
+                "        0.0 15.0 0.0\n"
+                "        0.0  0.0 15.0\n"
+            )
+            r = subprocess.run(
+                [sys.executable, "makov_payne_correction.py"],
+                cwd=str(d), capture_output=True, text=True,
+                timeout=10,
+            )
+            assert r.returncode == 0, r.stderr
+            assert "E_total (corrected, eV)" in r.stdout
+
+    def test_outcell_parser_case_insensitive(self):
+        """6th-review A2: real SIESTA builds emit OUTCELL or
+        outcell.  The script must match either."""
+        s = render_correction_script(system_label="job", q=1)
+        with tempfile.TemporaryDirectory() as d:
+            d = Path(d)
+            (d / "makov_payne_correction.py").write_text(s)
+            (d / "job.out").write_text(
+                "siesta: E_KS(eV) =       -100.0\n"
+                "OUTCELL: Unit cell vectors (Ang):\n"
+                "       15.0 0.0 0.0\n"
+                "        0.0 15.0 0.0\n"
+                "        0.0  0.0 15.0\n"
+            )
+            r = subprocess.run(
+                [sys.executable, "makov_payne_correction.py"],
+                cwd=str(d), capture_output=True, text=True,
+                timeout=10,
+            )
+            assert r.returncode == 0, r.stderr
+
+    def test_script_header_warns_about_slab_crystal(self):
+        """6th-review B3: the emit fires unconditionally on
+        NetCharge != 0, but Makov-Payne is the WRONG correction for
+        a charged crystal (3-D periodic with the unit cell carrying
+        net charge) OR a charged slab (2-D + vacuum normal).  The
+        script header must surface this applicability caveat so a
+        user running on a slab doesn't paste the wrong number into
+        a manuscript."""
+        s = render_correction_script(system_label="job", q=1)
+        assert "vacuum supercell" in s.lower()
+        assert "slab" in s.lower()
+        assert "crystal" in s.lower()
+        # Mentions the 2-D dipole/quadrupole alternative for slabs.
+        assert "SlabDipoleCorrection" in s
+
 
 # --------------------------------------------------------------------- #
 #  emit_correction_script — writes the script to disk                    #

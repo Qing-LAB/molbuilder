@@ -185,6 +185,33 @@ finite-size correction
 
 with L = V^(1/3), and prints the corrected total energy in eV.
 
+================================================================
+APPLICABILITY: vacuum supercell of an isolated charged molecule
+================================================================
+
+This correction is the right physics for a *charged molecule in
+a finite vacuum supercell* — the standard molbuilder build path
+(auto-pad / cell_padding).  Two NON-vacuum cases the script will
+silently compute the WRONG number for:
+
+  1. A charged periodic crystal (the unit cell carries net
+     charge and the lattice is the physical periodic
+     repetition).  Here the image-image interaction IS the
+     physics, not an artefact.  Don't apply this correction.
+
+  2. A charged slab / surface (2-D periodicity + vacuum on the
+     non-periodic axis).  The correct finite-size correction is
+     a 2-D dipole/quadrupole correction
+     (e.g. Bengtsson PRB 59, 12301 (1999); SIESTA has built-in
+     SlabDipoleCorrection support for this).  Makov-Payne is the
+     3-D-periodic formula; applying it to a 2-D slab over-counts.
+
+If your cell is anything other than a vacuum box containing an
+isolated charged molecule, IGNORE the corrected value below.
+molbuilder emits this script unconditionally on NetCharge != 0;
+the script does not know whether the cell SIESTA used was a
+vacuum box, a crystal, or a slab.
+
 Emitted by molbuilder because the input deck has NetCharge = {q:+d}.
 See Makov & Payne, Phys. Rev. B 51, 4014 (1995).
 """
@@ -230,21 +257,50 @@ def parse_lattice_vectors_angstrom(text):
                 a1x  a1y  a1z
                 a2x  a2y  a2z
                 a3x  a3y  a3z
+
+    Tolerates the case variants real SIESTA builds produce
+    (``outcell`` / ``OUTCELL``) and skips blank/comment lines
+    between the marker and the lattice rows — molbuilder's
+    first-class SIESTA parser already handles both
+    (``parsers/siesta.py``); the post-process script mirrors that
+    leniency so it doesn't fail on a perfectly-good .out from a
+    build that prints a blank line after the marker.
     """
-    marker = "outcell: Unit cell vectors (Ang):"
-    idx = text.rfind(marker)
-    if idx < 0:
+    # Case-insensitive marker search via re.IGNORECASE on a plain
+    # substring — cheaper than lowercasing the whole text.
+    pat = re.compile(
+        r"outcell:\\s*Unit cell vectors \\(Ang\\):", re.IGNORECASE)
+    matches = list(pat.finditer(text))
+    if not matches:
         return None
+    idx_end = matches[-1].end()
+    # Walk forward, skipping blanks / comments / continuation
+    # whitespace until we accumulate 3 rows of 3+ floats each.
     rows = []
-    for line in text[idx + len(marker):].splitlines()[1:4]:
+    for line in text[idx_end:].splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if line.startswith("#"):
+            continue
         parts = line.split()
         if len(parts) < 3:
-            return None
+            # If we already have rows but hit a non-data line, the
+            # block is malformed.  If we have no rows yet, keep
+            # walking — some printers add a header row before the
+            # data.
+            if rows:
+                return None
+            continue
         try:
-            rows.append([float(parts[0]), float(parts[1]),
-                         float(parts[2])])
+            row = [float(parts[0]), float(parts[1]), float(parts[2])]
         except ValueError:
-            return None
+            if rows:
+                return None
+            continue
+        rows.append(row)
+        if len(rows) == 3:
+            break
     return rows if len(rows) == 3 else None
 
 
