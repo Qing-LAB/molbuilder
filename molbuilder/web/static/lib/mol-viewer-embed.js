@@ -2087,6 +2087,21 @@
     }
 
     function _applyCoords(viewer, coords) {
+        // CONTRACT — DO NOT CALL THIS ALONE.
+        // This writes atom.x/y/z on the live model.  3Dmol caches
+        // its rep meshes (stick / sphere / line geometry) at
+        // ``setStyle({}, spec)`` time, so writing coords here does
+        // NOT change the visible scene — ``viewer.render()`` will
+        // redraw the OLD mesh.  This bug class shipped for ten
+        // phases of "animation fixes" before being noticed.
+        //
+        // Every caller MUST invoke ``_rebuildGeometryForCoordChange``
+        // (or an equivalent setStyle rebuild) before
+        // ``viewer.render()`` for the new positions to appear on
+        // screen.  Six call sites at last audit: _showTrajectoryFrame,
+        // _startVibrationLoop tick, _setAnimationImpl vibration-
+        // baseline restore, _driveAnimationFrame, and two
+        // screenshot-side vibration-baseline restores.
         try {
             const model = viewer.getModel();
             const atoms = model ? model.selectedAtoms({}) : [];

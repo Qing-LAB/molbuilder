@@ -1505,6 +1505,392 @@ class TestHandleSurface:
             "missed a code path)"
         )
 
+    def test_setStructure_loads_atoms_at_input_coords(
+            self, page, flask_server):
+        """Phase 6d / audit B11: read actual atom coords from the
+        3Dmol model after setStructure() and assert they match the
+        input XYZ.  The existing tests only checked atom COUNT via
+        getAtomCount() — a setStructure regression that loaded the
+        right number of atoms but at wrong positions (silent
+        try/catch around _loadStructure was the original concern)
+        would have passed every state-machine test."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:400px;height:300px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                });
+                // Swap to water with three known coords.
+                h.setStructure({ xyz:
+                    "3\\nwater\\n"
+                    + "O 1.5 0.0 0.0\\n"
+                    + "H 2.4 0.7 0.0\\n"
+                    + "H 0.6 0.7 0.0\\n" });
+                const atoms = h._viewer3dmol().getModel()
+                                              .selectedAtoms({});
+                const r = atoms.map((a) => ({
+                    elem: a.elem || a.atom,
+                    x: a.x, y: a.y, z: a.z,
+                }));
+                h.dispose();
+                host.remove();
+                return r;
+            }
+        """)
+        assert len(out) == 3, f"expected 3 atoms post-swap; got {len(out)}"
+        assert out[0]["x"] == 1.5 and out[0]["y"] == 0.0, (
+            f"O atom mis-positioned: {out[0]}"
+        )
+        assert out[1]["x"] == 2.4 and out[1]["y"] == 0.7, (
+            f"H1 atom mis-positioned: {out[1]}"
+        )
+        assert out[2]["x"] == 0.6 and out[2]["y"] == 0.7, (
+            f"H2 atom mis-positioned: {out[2]}"
+        )
+
+    def test_setStyle_actually_changes_atom_style_spec(
+            self, page, flask_server):
+        """Phase 6d / audit B1: after setStyle({rep:"sphere"}), the
+        per-atom style spec on the 3Dmol model must contain a sphere
+        entry (and no stick).  Tests previously only checked
+        getStyle().rep === "sphere" (state read-back).  This is the
+        same bug class as Phase 6c's animation bug: setStyle writes
+        state, but if the 3Dmol setStyle({}, spec) call breaks
+        silently, the canvas shows the old rep while the test still
+        passes."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:400px;height:300px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    style: { rep: "stick", radiusScale: 1.0 },
+                });
+                const readSpec = () =>
+                    h._viewer3dmol().getModel().selectedAtoms({})[0].style;
+                const r = {};
+                r.afterStick = JSON.stringify(readSpec());
+                h.setStyle({ rep: "sphere" });
+                r.afterSphere = JSON.stringify(readSpec());
+                h.setStyle({ rep: "line" });
+                r.afterLine = JSON.stringify(readSpec());
+                h.setStyle({ rep: "ball-and-stick" });
+                r.afterBS = JSON.stringify(readSpec());
+                h.dispose();
+                host.remove();
+                return r;
+            }
+        """)
+        # Stick spec has a stick component (and a tiny sphere
+        # overlay per mol-style.js).
+        assert "stick" in out["afterStick"]
+        # Sphere: spec has sphere only.
+        assert "sphere" in out["afterSphere"]
+        assert "stick" not in out["afterSphere"], (
+            "setStyle({rep:'sphere'}) did not actually flip the model's "
+            "style spec; the 3Dmol setStyle call may have been a no-op "
+            "(audit B1 bomb-class)"
+        )
+        # Line: spec has line only.
+        assert "line" in out["afterLine"]
+        assert "sphere" not in out["afterLine"], (
+            "setStyle({rep:'line'}) did not remove sphere from spec"
+        )
+        # Ball & stick (mol-style.js identifier is 'ballstick' — Phase 6
+        # translation at the boundary): spec has both stick and sphere.
+        assert "stick" in out["afterBS"] and "sphere" in out["afterBS"]
+
+    def test_setBackground_actually_changes_3dmol_bgcolor(
+            self, page, flask_server):
+        """Phase 6d / audit B3: after setBackground(color), 3Dmol's
+        actual background color must change.  Previous tests checked
+        getBackground() and swatch.is-active (both state read-back) —
+        the 3Dmol setBackgroundColor call is wrapped in a swallowing
+        try/catch (line ~1226 of mol-viewer-embed.js), so a future
+        3Dmol API rename would leave state advancing while the canvas
+        kept the old colour."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:400px;height:300px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                });
+                const v = h._viewer3dmol();
+                // 3Dmol exposes the bg via getBgColor() (modern
+                // versions) or the bgColor field.  Both should work
+                // for our vendored copy.
+                const readBg = () => {
+                    if (typeof v.getBgColor === "function") {
+                        const c = v.getBgColor();
+                        return (typeof c === "object" && c !== null)
+                            ? c : Number(c);
+                    }
+                    return v.bgColor !== undefined ? v.bgColor : null;
+                };
+                const r = {};
+                r.afterMount = readBg();
+                h.setBackground("#ffffff");
+                r.afterWhite = readBg();
+                h.setBackground("#1d2128");
+                r.afterDark = readBg();
+                h.dispose();
+                host.remove();
+                return {
+                    afterMount: String(r.afterMount),
+                    afterWhite: String(r.afterWhite),
+                    afterDark:  String(r.afterDark),
+                };
+            }
+        """)
+        # Don't pin exact numeric form (3Dmol uses 0xRRGGBB; getBgColor
+        # may also return a THREE.Color).  What we care about: the
+        # value CHANGES between setBackground calls.  If 3Dmol's
+        # setBackgroundColor were silently dropped, white and dark
+        # would both equal afterMount.
+        assert out["afterWhite"] != out["afterMount"], (
+            f"setBackground('#ffffff') did not change 3Dmol's bg "
+            f"({out['afterMount']!r}) — audit B3 bomb-class"
+        )
+        assert out["afterWhite"] != out["afterDark"], (
+            f"setBackground white vs dark gave the same 3Dmol bg "
+            f"({out['afterWhite']!r}); setBackgroundColor call may "
+            f"be a no-op"
+        )
+
+    def test_setLabels_actually_creates_label_objects(
+            self, page, flask_server):
+        """Phase 6d / audit B4: after setLabels({atoms:'all',
+        format:'element'}), 3Dmol must hold real label objects
+        positioned at the atom coords with the right text.  Tests
+        previously asserted state.current.labels was set; nothing
+        verified the 3Dmol labels actually appeared with the right
+        format.  Doc § 3.6 promises format dispatch maps
+        'element'→element symbol, 'name'→atom name, 'index'→serial."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:400px;height:300px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                });
+                const r = {};
+                r.beforeCount = h._test.getOverlayLabelCount();
+                h.setLabels({ atoms: "all", format: "element" });
+                r.afterElementCount = h._test.getOverlayLabelCount();
+                // Read the actual rendered label text via the
+                // labels[i].text() / .stylespec backing.  3Dmol stores
+                // labels in viewer.labels; each has a ``text`` field.
+                const v = h._viewer3dmol();
+                // 3Dmol stores labels in viewer.labels; each label
+                // object carries the rendered text on the ``text``
+                // field at the top level (not under stylespec).
+                const readLabelTexts = () => (v.labels || []).map(
+                    (l) => (l && (l.text || (l.stylespec
+                                              && l.stylespec.text))) || "");
+                r.elementTexts = readLabelTexts().slice().sort().join(",");
+                h.setLabels({ atoms: "all", format: "index" });
+                r.indexTexts = readLabelTexts().slice().sort().join(",");
+                h.setLabels(false);
+                r.afterOff = h._test.getOverlayLabelCount();
+                h.dispose();
+                host.remove();
+                return r;
+            }
+        """)
+        assert out["beforeCount"] == 0
+        assert out["afterElementCount"] >= 3, (
+            f"setLabels(atoms:'all') did not create 3 labels for "
+            f"water; got {out['afterElementCount']} (audit B4 bomb-class)"
+        )
+        # Format 'element' must produce element symbols (O, H, H).
+        assert "O" in out["elementTexts"] and "H" in out["elementTexts"], (
+            f"format:'element' did not produce element-symbol labels: "
+            f"{out['elementTexts']!r}"
+        )
+        # Format 'index' must produce numeric strings.
+        assert any(c.isdigit() for c in out["indexTexts"]), (
+            f"format:'index' did not produce numeric labels: "
+            f"{out['indexTexts']!r}"
+        )
+        # Element and index formats must differ.
+        assert out["elementTexts"] != out["indexTexts"], (
+            "setLabels(format) appears to ignore the format field — "
+            "element and index labels look identical"
+        )
+        # Off must clear.
+        assert out["afterOff"] == 0
+
+    def test_captureFrames_produces_diverse_frames(
+            self, page, flask_server):
+        """Phase 6d / audit C6: captureFrames must produce DIFFERENT
+        frames over the requested duration.  Previous test only
+        asserted ``count == fps * duration`` and ``size > 0`` per
+        blob.  Two identical (frozen-baseline) blobs would have
+        satisfied that — Phase 6c's animation bug would have shipped
+        a captureFrames that returned 10 identical PNGs and the test
+        would have been green.
+
+        Compares the first and last blob byte-by-byte; for a real
+        vibration their PNGs MUST differ because the atom positions
+        are different at different cosine phases."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:400px;height:300px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    animation: {
+                        kind: "vibration",
+                        displacements: [[1.0, 0.0, 0.0]],
+                        amplitude: 1.0,
+                        speedHz: 0.5,
+                        paused: true,
+                    },
+                });
+                // Capture 6 frames spread across 2 s — covers a
+                // significant portion of one 0.5-Hz cycle.
+                const blobs = await h.captureFrames({
+                    fps: 3, duration: 2.0 });
+                // Reduce each blob to a short hex prefix so the test
+                // signal is loud (differs sharply on different frames).
+                const summarize = async (b) => {
+                    const buf = new Uint8Array(await b.arrayBuffer());
+                    // Use a middle slice — PNG headers are identical
+                    // across frames; the pixel-data chunk differs.
+                    const start = Math.min(80, buf.length - 16);
+                    return Array.from(buf.slice(start, start + 16))
+                                .map((b) => b.toString(16).padStart(2, '0'))
+                                .join('');
+                };
+                const summaries = await Promise.all(
+                    blobs.map(summarize));
+                h.dispose();
+                host.remove();
+                return summaries;
+            }
+        """)
+        assert len(out) == 6, f"expected 6 blobs; got {len(out)}"
+        # The first and last frame MUST differ — atoms are at
+        # different phases of the cosine cycle.  If captureFrames
+        # froze the baseline (Phase 6c regression class), every
+        # summary would be identical.
+        assert out[0] != out[-1], (
+            "captureFrames produced identical first and last frames "
+            f"({out[0]!r} == {out[-1]!r}) — the animation did not "
+            "advance during capture (audit C6 bomb-class)"
+        )
+        # And at least one intermediate frame should also differ from
+        # the first — guards against alternating-pattern bugs.
+        differing = sum(1 for s in out[1:] if s != out[0])
+        assert differing >= 3, (
+            f"only {differing}/5 frames differ from the first; "
+            f"animation may be running at a tiny fraction of "
+            f"expected speed"
+        )
+
+    def test_applyState_round_trip_restores_visible_atom_coords(
+            self, page, flask_server):
+        """Phase 6d / audit D2: applyState round-trip must restore
+        the visible canvas state, not just state.current.*.  The
+        previous round-trip test (test_applyState_round_trip_with_getters)
+        verified getStyle/getAxes/getLabels returned matching values
+        — pure state read-back.  This test pushes the round-trip
+        through a real coord change: snapshot at frame 2, advance to
+        frame 5, applyState(snapshot), verify atom coords match frame
+        2's input."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:400px;height:300px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    animation: {
+                        kind: "trajectory",
+                        frames: [
+                            [[0.0, 0.0, 0.0]],
+                            [[1.0, 0.0, 0.0]],
+                            [[2.0, 0.0, 0.0]],
+                            [[3.0, 0.0, 0.0]],
+                            [[4.0, 0.0, 0.0]],
+                            [[5.0, 0.0, 0.0]],
+                        ],
+                        fps: 10, paused: true,
+                    },
+                });
+                const readX = () =>
+                    h._viewer3dmol().getModel().selectedAtoms({})[0].x;
+                // Land on frame 2 (x=2.0); snapshot.
+                h.setAnimationFrame(2);
+                await new Promise(r => requestAnimationFrame(r));
+                const xAtSnap = readX();
+                const snap = { animation: h.getAnimation() };
+                // Drift to frame 5.
+                h.setAnimationFrame(5);
+                await new Promise(r => requestAnimationFrame(r));
+                const xAtDrift = readX();
+                // Restore via applyState — visible atom MUST move
+                // back to frame 2's x.
+                h.applyState(snap);
+                await new Promise(r => requestAnimationFrame(r));
+                const xAfterRestore = readX();
+                h.dispose();
+                host.remove();
+                return { xAtSnap, xAtDrift, xAfterRestore };
+            }
+        """)
+        assert out["xAtSnap"] == 2.0
+        assert out["xAtDrift"] == 5.0
+        assert out["xAfterRestore"] == 2.0, (
+            f"applyState round-trip did not restore the visible "
+            f"atom position; expected x=2.0, got {out['xAfterRestore']}.  "
+            "State-machine round-trip may be intact while rendered "
+            "state lags — audit D2 bomb-class"
+        )
+
     def test_style_radius_slider_drives_setStyle(
             self, page, flask_server):
         """Phase 6b: View → Style carries a radius slider that
