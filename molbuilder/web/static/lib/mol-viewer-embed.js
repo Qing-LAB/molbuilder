@@ -904,15 +904,37 @@
         cancelBtn.type = "button";
         cancelBtn.className = "mol-viewer-export-modal-cancel";
         cancelBtn.textContent = "Cancel";
-        cancelBtn.addEventListener("click", () => {
+        function _doCancel() {
+            if (cancelBtn.disabled) return;  // already cancelling
             if (typeof opts.onCancel === "function") {
                 try { opts.onCancel(); } catch (_) {}
             }
             cancelBtn.disabled = true;
             phase.textContent = "Cancelling…";
-        });
+        }
+        cancelBtn.addEventListener("click", _doCancel);
         actions.appendChild(cancelBtn);
         card.appendChild(actions);
+
+        // Phase 6e third-review LANDMINE-3: mirror the params
+        // dialog's dismissal affordances so users don't sit
+        // staring at an unresponsive modal during a long encode.
+        // Esc + backdrop click → Cancel (same as the button).
+        // stopPropagation guards against host-page Esc handlers
+        // (matches the params dialog).
+        card.addEventListener("click", (e) => e.stopPropagation());
+        overlay.addEventListener("click", _doCancel);
+        const keyHandler = (e) => {
+            if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.stopImmediatePropagation) {
+                    e.stopImmediatePropagation();
+                }
+                _doCancel();
+            }
+        };
+        doc.addEventListener("keydown", keyHandler, true);
 
         doc.body.appendChild(overlay);
         try { cancelBtn.focus(); } catch (_) {}
@@ -929,6 +951,7 @@
                 if (label) phase.textContent = label;
             },
             close() {
+                doc.removeEventListener("keydown", keyHandler, true);
                 if (overlay.parentNode) {
                     overlay.parentNode.removeChild(overlay);
                 }
@@ -1085,6 +1108,7 @@
 
             let keyHandler = null;
             let settled = false;
+            let focusRestored = false;
             function _close(rejectAs) {
                 if (keyHandler) {
                     doc.removeEventListener("keydown", keyHandler, true);
@@ -1092,6 +1116,15 @@
                 }
                 if (overlay.parentNode) {
                     overlay.parentNode.removeChild(overlay);
+                }
+                // LANDMINE-4: restore focus to the trigger
+                // element (typically the Export submenu button).
+                // _restoreFocus is defined later — guard against
+                // the (impossible-but-defensive) early-call case.
+                if (!focusRestored && typeof _restoreFocus
+                                                 === "function") {
+                    focusRestored = true;
+                    _restoreFocus();
                 }
                 // Phase 6e second-review BOMB #14: if the caller
                 // (typically dispose()) requested rejection, do
@@ -1158,6 +1191,21 @@
                 resolve(out);
             });
 
+            // Phase 6e third-review LANDMINE-4: capture the
+            // pre-open focus owner so we can restore on close.
+            // aria-modal="true" advertises modal behaviour to AT;
+            // restoring focus is the minimum that lives up to the
+            // contract.  A full Tab-key focus trap (cycling within
+            // the dialog) is deferred — tracked as a known
+            // limitation; today the dialog has a small fixed set
+            // of inputs and the natural Tab order works inside it.
+            const _prevFocus = doc.activeElement;
+            const _restoreFocus = () => {
+                if (_prevFocus && typeof _prevFocus.focus === "function"
+                    && doc.body.contains(_prevFocus)) {
+                    try { _prevFocus.focus(); } catch (_) {}
+                }
+            };
             doc.body.appendChild(overlay);
             try {
                 if (inputs.filename) inputs.filename.focus();
@@ -1256,10 +1304,14 @@
         // Dialog's close() is registered on state so dispose() can
         // tear it down (review LANDMINE #9).  Unregister on settle.
         let dialogClose = null;
-        // Phase 6e second-review BOMB #13: tag the overlay with
-        // an instance id so multi-embed pages don't cross-cancel
-        // each other's dialogs.  Backdrop-click cancel inside the
-        // dialog checks the same id and ignores foreign clicks.
+        // Phase 6e third-review LANDMINE-2: a per-instance id is
+        // tagged on the overlay so future multi-embed work (when
+        // someone needs two viewers on the same page) can gate
+        // the document-level keyHandler on focus ownership.
+        // TODAY the codebase mounts one embed per page so backdrop
+        // clicks rely on event-tree boundaries (each overlay is
+        // its own subtree) and the keyHandler is single-listener-
+        // safe.  Don't claim the tag is "checked" — it's not.
         const instanceId = state._instanceId
             || (state._instanceId = "mv-" + Math.random()
                                                 .toString(36)
@@ -1489,7 +1541,13 @@
             // mirror the params-dialog Cancel policy and stay
             // silent.  Other reject codes (no_media_recorder,
             // io_error, ...) still dispatch.
-            if (err && err.code === "aborted") return;
+            // Phase 6e third-review BOMB-2: ``disposed`` also
+            // arrives here when handle.dispose() is called mid-
+            // encode; the host has already torn down their
+            // banner system / DOM, so calling onError on a dead
+            // handle was just leaking spurious errors.
+            if (err && (err.code === "aborted"
+                     || err.code === "disposed")) return;
             _dispatchError(state, err);
         });
     }
@@ -4174,8 +4232,17 @@
                         : proj.writeFile(path, data))
                 .then((env) => {
                     if (env && env.ok === false) {
+                        // Phase 6e third-review BOMB-1: preserve
+                        // the ``aborted`` flag from the upload
+                        // envelope so the downstream catch in
+                        // _runExportWithParams can filter it the
+                        // same way it filters the encode-phase
+                        // abort.  Without this, Cancel mid-upload
+                        // surfaced as io_error and ran the host's
+                        // onError banner on a user-initiated
+                        // Cancel.
                         throw _makeError(
-                            "io_error",
+                            env.aborted ? "aborted" : "io_error",
                             (env.error || "writeFile failed"), env);
                     }
                     // Use the server-reported path when present
@@ -4253,6 +4320,11 @@
          * in both success and failure branches (the .finally rule).
          */
         function _fireOnExport(info) {
+            // Phase 6e third-review LANDMINE-1: a slow upload can
+            // complete after dispose; without this guard the host's
+            // onExport callback fires on a dead handle and may
+            // reference DOM the host already cleaned up.
+            if (state.disposed) return;
             const cb = state.userOpts.export
                         && typeof state.userOpts.export.onExport === "function"
                         ? state.userOpts.export.onExport : null;

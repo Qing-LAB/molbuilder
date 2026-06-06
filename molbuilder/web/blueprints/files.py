@@ -1044,6 +1044,16 @@ def api_files_write():
 
     JSON body: ``{path, text, overwrite?, auto_rename?, expected_mtime?}``
 
+    Conflict-handling precedence (most-specific wins):
+      1. ``expected_mtime`` (edit-save path) — mtime mismatch is
+         409 regardless of overwrite / auto_rename.  Matching
+         mtime is treated as an authorised overwrite.
+      2. ``overwrite=true`` — explicit clobber.  Wins over
+         auto_rename.
+      3. ``auto_rename=true`` — pick ``<stem>-2``, ``<stem>-3``
+         … on collision.
+      4. Default — 409 with a hint pointing at the two flags.
+
     Two distinct call patterns share this endpoint:
 
       1. **Generate-and-save** (Spectra / Build Generate buttons):
@@ -1108,6 +1118,18 @@ def api_files_write():
                       f"Use /api/files/mkdir to create it first."),
         }), 400
 
+    # Phase 6e third-review POLISH-3: reject directory targets
+    # explicitly.  Without this, ``write_text`` failed with a
+    # noisy IsADirectoryError (caught as 500) and ``auto_rename``
+    # produced ``<dirname>-2`` files next to the directory.
+    if resolved.is_dir():
+        return jsonify({
+            "ok":   False,
+            "error": (f"path is a directory, not a file: "
+                      f"{str(resolved)!r}.  Pick a filename inside "
+                      f"the directory."),
+        }), 400
+
     # Conflict checks (both apply when relevant).
     if resolved.exists():
         if expected_mtime is not None:
@@ -1137,11 +1159,20 @@ def api_files_write():
             # implemented it, so text writes (.xyz/.pdb) silently
             # 409'd on collision after the dialog said they
             # wouldn't.  Mirror the /upload picker here.
+            # Phase 6e third-review BOMB-3: keep filename
+            # validation parity with /upload's auto_rename loop
+            # so a future tightening of _validate_upload_filename
+            # is enforced symmetrically by both endpoints.  /write
+            # accepts paths (not raw filenames), but the
+            # synthesised <stem>-<n><suffix> is itself a leaf
+            # name and must pass the same regex /upload demands.
             stem = resolved.stem
             suffix = resolved.suffix
             chosen = None
             for n in range(2, 1000):
                 candidate = resolved.with_name(f"{stem}-{n}{suffix}")
+                if _validate_upload_filename(candidate.name) is not None:
+                    continue
                 if not candidate.exists():
                     chosen = candidate
                     break

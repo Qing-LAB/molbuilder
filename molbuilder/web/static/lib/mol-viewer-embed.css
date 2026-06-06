@@ -458,6 +458,14 @@
     from { opacity: 0; }
     to   { opacity: 1; }
 }
+/* Phase 6e third-review POLISH-1: respect user's reduced-motion
+   preference (WCAG 2.1 SC 2.3.3).  100ms is short but the rule
+   is the rule. */
+@media (prefers-reduced-motion: reduce) {
+    .mol-viewer-export-modal {
+        animation: none;
+    }
+}
 .mol-viewer-export-modal-card {
     min-width:      320px;
     max-width:      440px;

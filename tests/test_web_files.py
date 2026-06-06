@@ -1665,6 +1665,32 @@ class TestFilesWriteAutoRename:
         assert "symlink" in r.get_json()["error"]
         assert not outside.exists()
 
+    def test_write_refuses_directory_target(
+            self, web, picker_root):
+        """Phase 6e third-review POLISH-3: writing to a directory
+        path should 400 with a clean message rather than 500'ing
+        on IsADirectoryError (or 200'ing into ``<dirname>-2``
+        via auto_rename)."""
+        target = picker_root / "proj" / "spectrum"
+        target.mkdir(parents=True)
+        # Try to write to the directory itself.
+        r = self._post(web, target, "data\n", overwrite=True)
+        assert r.status_code == 400, r.get_data(as_text=True)
+        assert "directory" in r.get_json()["error"]
+
+    def test_write_directory_target_with_auto_rename_still_400(
+            self, web, picker_root):
+        """auto_rename must NOT turn a directory target into
+        ``<dirname>-2`` — that was the worse failure mode the
+        is_dir guard prevents."""
+        target = picker_root / "proj" / "spectrum"
+        target.mkdir(parents=True)
+        r = self._post(web, target, "data\n", auto_rename=True)
+        assert r.status_code == 400
+        # Sibling file did NOT appear.
+        sibling = target.parent / "spectrum-2"
+        assert not sibling.exists()
+
 
 class TestSidebarStubsUI:
     """The stub features ship with their full UI surface so the design

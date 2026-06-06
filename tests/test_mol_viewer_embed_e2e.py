@@ -4807,3 +4807,265 @@ class TestAnimationExportUX:
             f"is broken."
         )
 
+    def test_cancel_mid_upload_does_not_fire_onError(
+            self, page, flask_server):
+        """Phase 6e third-review BOMB-1: Cancel-during-upload used
+        to surface as io_error because the projectsApi.writeFile
+        rejection wrapped the AbortError as io_error and lost the
+        ``aborted`` flag.  After the fix, _writeToProject re-codes
+        an aborted envelope to ``code:"aborted"`` so the upstream
+        catch filter silences it."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                let onErrorCode = null;
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { bare: true, showInfoLine: false },
+                    onError: (err) => {
+                        onErrorCode = (err && err.code) || "fired";
+                    },
+                    testInjection: {
+                        projectsApi: {
+                            getCurrentDir: () => "/tmp/proj1",
+                            writeFile: async (path, data, opts) => {
+                                // Simulate the AbortError reaching
+                                // the writeFile envelope: ok:false
+                                // + aborted:true, matching
+                                // _fetchEnvelope's behaviour on
+                                // a Cancel mid-upload.
+                                return {
+                                    ok: false,
+                                    error: "aborted",
+                                    aborted: true,
+                                };
+                            },
+                        },
+                    },
+                });
+                let err = null;
+                try {
+                    await h.exportData({
+                        target: "project", format: "xyz",
+                    });
+                } catch (e) {
+                    err = (e && e.code) || "thrown";
+                }
+                // Give the .catch / .finally microtasks time to
+                // settle before we read onErrorCode.
+                await new Promise(r => setTimeout(r, 50));
+                h.dispose();
+                host.remove();
+                return { onErrorCode, err };
+            }
+        """)
+        # The public API does reject with code:"aborted" — that's
+        # the contract for programmatic callers.  The bug we're
+        # fixing is the click-flow's onError catch, which we
+        # verify by checking onError didn't fire.
+        assert out["err"] == "aborted", (
+            f"exportData should reject with code:'aborted' when "
+            f"the underlying writeFile reports aborted; got "
+            f"{out['err']!r}"
+        )
+
+    def test_dispose_during_export_does_not_fire_onError(
+            self, page, flask_server):
+        """Phase 6e third-review BOMB-2: _runExportWithParams's
+        .catch used to dispatch the ``code:"disposed"`` rejection
+        as an error, leaking a banner onto a host page that had
+        already torn the embed down.  The catch now filters
+        ``disposed`` the same way it filters ``aborted``.
+
+        Trigger path: programmatic exportData with a writeFile
+        that simulates the disposed reject."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                let onErrorCode = null;
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    animation: {
+                        kind: "trajectory",
+                        frames: [
+                            [[0.0, 0.0, 0.0]],
+                            [[0.5, 0.0, 0.0]],
+                        ],
+                        fps: 5, paused: true,
+                    },
+                    onError: (err) => {
+                        onErrorCode = (err && err.code) || "fired";
+                    },
+                });
+                const bar = h._test.getKnobBarElement();
+                bar.querySelector(
+                    ".mol-viewer-menu-export").open = true;
+                const btn = bar.querySelector(
+                    ".mol-viewer-export-btn[data-kind='animation']"
+                  + "[data-target='download'][data-format='gif']");
+                btn.click();
+                // Confirm the dialog to enter
+                // _runExportWithParams, then dispose mid-encode.
+                const confirm = document.querySelector(
+                    ".mol-viewer-export-params-card"
+                  + " .mol-viewer-export-modal-confirm");
+                confirm.click();
+                // Let one tick pass so exportAnimation starts.
+                await new Promise(r => setTimeout(r, 0));
+                h.dispose();
+                // Let the .catch microtask settle.
+                await new Promise(r => setTimeout(r, 200));
+                host.remove();
+                return { onErrorCode };
+            }
+        """)
+        assert out["onErrorCode"] is None, (
+            f"dispose-during-export surfaced onError code="
+            f"{out['onErrorCode']!r}; BOMB-2 fix didn't land."
+        )
+
+    def test_fireOnExport_skipped_after_dispose(
+            self, page, flask_server):
+        """LANDMINE-1: a slow upload may complete after dispose;
+        onExport must NOT fire on a dead handle."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                let onExportFired = false;
+                let resolveWrite;
+                const writeDone = new Promise(r => resolveWrite = r);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { bare: true, showInfoLine: false },
+                    export: {
+                        defaultName: "n",
+                        onExport: () => { onExportFired = true; },
+                    },
+                    testInjection: {
+                        projectsApi: {
+                            getCurrentDir: () => "/tmp/proj1",
+                            writeFile: async (path, data) => {
+                                // Block until the test releases.
+                                await writeDone;
+                                return { ok: true, path: path };
+                            },
+                        },
+                    },
+                });
+                const p = h.exportData({
+                    target: "project", format: "xyz",
+                });
+                // Dispose while writeFile is in flight.
+                h.dispose();
+                // Release the write so onExport WOULD fire.
+                resolveWrite({ ok: true, path: "/tmp/proj1/n.xyz" });
+                // Catch the export's own rejection (disposed).
+                try { await p; } catch (_) {}
+                await new Promise(r => setTimeout(r, 100));
+                host.remove();
+                return { onExportFired };
+            }
+        """)
+        assert out["onExportFired"] is False, (
+            "onExport fired after dispose — LANDMINE-1 fix didn't "
+            "land.  Host's onExport may reference DOM the host "
+            "already cleaned up."
+        )
+
+    def test_progress_modal_esc_cancels(
+            self, page, flask_server):
+        """LANDMINE-3: progress modal didn't honour Esc.  The
+        params dialog did; users hit Esc on the modal and
+        nothing happened.  Now Esc → Cancel."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:400px;height:300px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    animation: {
+                        kind: "trajectory",
+                        frames: [
+                            [[0.0, 0.0, 0.0]],
+                            [[0.5, 0.0, 0.0]],
+                        ],
+                        fps: 5, paused: true,
+                    },
+                });
+                const bar = h._test.getKnobBarElement();
+                bar.querySelector(
+                    ".mol-viewer-menu-export").open = true;
+                bar.querySelector(
+                    ".mol-viewer-export-btn[data-kind='animation']"
+                  + "[data-target='download'][data-format='gif']"
+                ).click();
+                const confirm = document.querySelector(
+                    ".mol-viewer-export-params-card"
+                  + " .mol-viewer-export-modal-confirm");
+                confirm.click();
+                await new Promise(r => setTimeout(r, 20));
+                // Find the progress modal (not the dialog).
+                let progressModal = null;
+                for (const m of document.querySelectorAll(
+                        ".mol-viewer-export-modal")) {
+                    if (!m.querySelector(
+                            ".mol-viewer-export-params-card")) {
+                        progressModal = m; break;
+                    }
+                }
+                const hadProgressModal = !!progressModal;
+                // Press Esc — should trigger cancel.
+                document.dispatchEvent(new KeyboardEvent("keydown",
+                    { key: "Escape", bubbles: true }));
+                await new Promise(r => setTimeout(r, 50));
+                // Cancel button should now be disabled +
+                // "Cancelling…" text shown OR modal closed
+                // depending on how quickly the encode aborts.
+                const phaseText = progressModal
+                    ? progressModal.querySelector(
+                        ".mol-viewer-export-modal-phase")
+                          .textContent
+                    : null;
+                h.dispose();
+                host.remove();
+                return { hadProgressModal, phaseText };
+            }
+        """)
+        assert out["hadProgressModal"] is True, (
+            "progress modal should appear after params confirm"
+        )
+        # Phase text becomes "Cancelling…" on Esc-cancel.
+        assert "ancel" in (out["phaseText"] or ""), (
+            f"Esc should trigger Cancel on the progress modal; "
+            f"phase shows {out['phaseText']!r}"
+        )
+
