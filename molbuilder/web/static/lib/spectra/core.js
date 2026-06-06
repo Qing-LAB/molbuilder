@@ -781,14 +781,20 @@
         if (state.loadAbort) state.loadAbort.abort();
         state.loadAbort = new AbortController();
         const signal = state.loadAbort.signal;
-        let r;
+        let body;
         try {
-            r = await fetch("/api/spectra/load", {
+            const r = await fetch("/api/spectra/load", {
                 method:  "POST",
                 headers: { "Content-Type": "application/json" },
                 body:    JSON.stringify({ path: path }),
                 signal:  signal,
             });
+            // Phase 6e seventh-review LANDMINE-4: r.json() used to
+            // live OUTSIDE this try, so a malformed / truncated
+            // JSON body became an unhandled promise rejection.
+            // Inside the try the SyntaxError lands on the same
+            // status-banner path as the network error.
+            body = await r.json();
         } catch (exc) {
             // AbortError: a newer loadByPath() superseded us, or
             // dispose() ran.  Silent -- the newer action owns the
@@ -798,7 +804,6 @@
                       "Network error: " + exc.message, "error");
             return;
         }
-        const body = await r.json();
         if (!body.ok) {
             let msg = body.error || "Load failed.";
             if (body.kind === "schema_mismatch") {
@@ -887,13 +892,18 @@
 
     async function watchTick() {
         if (!state.watchPath) return;
-        let r;
+        let body;
         try {
-            r = await fetch("/api/spectra/load", {
+            const r = await fetch("/api/spectra/load", {
                 method:  "POST",
                 headers: { "Content-Type": "application/json" },
                 body:    JSON.stringify({ path: state.watchPath }),
             });
+            // Phase 6e seventh-review LANDMINE-4: r.json() inside
+            // the try so malformed JSON (proxy drop, SIESTA
+            // mid-write race) doesn't become an unhandled
+            // rejection in the setInterval that drives the watch.
+            body = await r.json();
         } catch (exc) {
             state.watchErrors++;
             setStatus(els.watchStatus,
@@ -905,7 +915,6 @@
             }
             return;
         }
-        const body = await r.json();
         if (!body.ok) {
             // 404 (file not yet written) is the COMMON case during
             // the equilibrium SCF -- treat it as "still warming up",

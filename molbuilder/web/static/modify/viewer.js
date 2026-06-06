@@ -554,8 +554,18 @@
         // race with the first (e.g. add_atom twice with stale xyz
         // before the first response updates state).  Buttons are
         // also disabled while in-flight so the visible UI matches.
+        // Phase 6e seventh-review LANDMINE-3: thread an
+        // AbortController so a wedged backend doesn't permanently
+        // disable the buttons.  If the user navigates away or
+        // page is bfcache-restored, the next pageshow handler
+        // (or any caller of state.abortInFlight()) can release
+        // the wedge.  A future UI affordance (Cancel button)
+        // can call abortInFlight directly.
         if (state.inFlight) return null;
+        const ac = (typeof AbortController !== "undefined")
+            ? new AbortController() : null;
         state.inFlight = true;
+        state._inFlightAbort = ac;
         refreshSelectionUI();    // disable Delete/Add buttons during fetch
         setEditStatus(`${label}…`);
         const body = Object.assign(currentStateBody(), extraBody);
@@ -566,8 +576,13 @@
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(body),
+                    signal: ac ? ac.signal : undefined,
                 }).then((x) => x.json());
             } catch (e) {
+                if (e && e.name === "AbortError") {
+                    setEditStatus(`${label} cancelled.`, "muted");
+                    return null;
+                }
                 setEditStatus(`Network error: ${e.message}`, "error");
                 return null;
             }
@@ -593,9 +608,21 @@
             // applyStructure already ran on the success path; on the
             // error path we run it explicitly to flip buttons back.
             state.inFlight = false;
+            state._inFlightAbort = null;
             refreshSelectionUI();
         }
     }
+
+    // Phase 6e seventh-review LANDMINE-3: expose the wedge-
+    // release path.  Today only the bfcache-restore handler
+    // calls it; a future Cancel button is a trivial UI
+    // addition that wires here.
+    state.abortInFlight = function () {
+        const ac = state._inFlightAbort;
+        if (ac) {
+            try { ac.abort(); } catch (_) {}
+        }
+    };
 
     async function applyDelete() {
         const indices = selectedIndices();

@@ -793,6 +793,73 @@ class TestSafeSave:
         ''')
         assert out["ok"] is True
 
+    def test_safeSave_signal_actually_propagates_abort(self):
+        """Phase 6e seventh-review LANDMINE-7: prior test only
+        verified the type check passed.  This test verifies the
+        signal end-to-end: ac.abort() reaches fetch, fetch
+        rejects with AbortError, writeFile envelope carries
+        aborted:true, safeSave folds to cancelled:true."""
+        out = _run_node('''
+            global.fetch = async (url, opts) => {
+                return new Promise((resolve, reject) => {
+                    if (opts && opts.signal) {
+                        if (opts.signal.aborted) {
+                            const e = new Error("aborted");
+                            e.name = "AbortError";
+                            reject(e);
+                            return;
+                        }
+                        opts.signal.addEventListener("abort", () => {
+                            const e = new Error("aborted");
+                            e.name = "AbortError";
+                            reject(e);
+                        });
+                    }
+                    // Never resolve otherwise — caller must abort.
+                });
+            };
+            global.sessionStorage = {
+                _v: {"molbuilder.current_dir": "/projects/proj1"},
+                getItem(k) { return this._v[k] || null; },
+                setItem(k, v) { this._v[k] = v; },
+            };
+            state.setProjectsRoot("/projects");
+            const ac = new AbortController();
+            const p = state.projects.safeSave("text", "f.xyz",
+                { signal: ac.signal });
+            // Abort on next microtask so the fetch is in-flight
+            // when the signal fires.
+            await new Promise(r => setImmediate(r));
+            ac.abort();
+            const r = await p;
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["ok"] is False
+        assert out["cancelled"] is True
+
+    def test_isCancelError_total_over_throwing_getter(self):
+        """Phase 6e seventh-review LANDMINE-1: the predicate must
+        be total over every object input, including ones whose
+        property accessors throw.  A throwing getter used to
+        propagate the throw through isCancelError, breaking the
+        contract for callers doing
+        ``if (isCancelError(e)) { ... } else { ... }``."""
+        out = _run_node('''
+            const e = Object.create(null);
+            Object.defineProperty(e, "name", {
+                get() { throw new Error("evil"); },
+            });
+            // Should return false, not throw.
+            let result;
+            try {
+                result = state.projects.isCancelError(e);
+            } catch (exc) {
+                result = { threw: exc.message };
+            }
+            console.log(JSON.stringify({ result }));
+        ''')
+        assert out["result"] is False
+
     def test_safeSave_returns_null_on_no_current_dir(self):
         """safeSave inherits saveToWorkspace's ``null`` for the
         no-current-dir case so callers can fall back to local

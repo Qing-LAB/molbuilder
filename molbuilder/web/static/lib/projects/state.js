@@ -408,15 +408,28 @@ async function saveToWorkspace(text, filename, opts) {
  *   r.ok === true             → success: {path, relPath, size, mtime}
  *   r.ok === false            → real failure: {error[, actual_mtime]}
  *
- * Canonical caller pattern:
+ * Canonical caller pattern (replace ``setStatus`` with whatever
+ * status sink the page uses — ``setStatus(elementId, msg, kind)``
+ * for viewer.js, ``setStatus(element, msg, kind)`` for spectra/
+ * core.js, etc.):
  *   ```
  *   const r = await proj.safeSave(text, name, {signal: ac.signal});
- *   if (r == null)      { localFallback();                    return; }
- *   if (r.cancelled)    { setStatus("Save cancelled.", "muted"); return; }
- *   if (!r.ok)          { setStatus("Save failed: " + r.error,
- *                                   "error");                  return; }
+ *   if (r == null) {
+ *       // No current dir (or projects/ root selected).  Most
+ *       // callers gate on this BEFORE calling safeSave; the
+ *       // null return is the "you didn't check?" backstop.
+ *       return;
+ *   }
+ *   if (r.cancelled) { showStatus("Save cancelled.", "muted"); return; }
+ *   if (!r.ok)       { showStatus("Save failed: " + r.error,
+ *                                 "error");                    return; }
  *   // r.path is the resolved file path.
  *   ```
+ *
+ * Seventh-review LANDMINE-5/6: the prior docstring used the
+ * 2-arg ``setStatus(msg, kind)`` form (no real caller uses that)
+ * and referenced a ``localFallback()`` no call site implements.
+ * The shape above is what production actually does.
  *
  * Sixth-review LANDMINE-2: the cancelled envelope DOES carry a
  * fallback ``error: "cancelled"`` text so a mis-written caller
@@ -437,16 +450,30 @@ async function saveToWorkspace(text, filename, opts) {
  */
 async function safeSave(text, filename, opts) {
   if (opts && opts.signal !== undefined && opts.signal !== null) {
-    // Loose duck-type check: an AbortSignal exposes a boolean
-    // ``aborted`` property + supports addEventListener.  We
-    // don't ``instanceof AbortSignal`` because some test harnesses
-    // mock the signal.
+    // Phase 6e seventh-review LANDMINE-2: prefer the strict
+    // ``instanceof AbortSignal`` check; some test harnesses
+    // mock the signal so fall back to a duck-type check that
+    // ALSO requires the constructor name "AbortSignal" — that
+    // catches the prior loose-duck failure mode where any
+    // ``{aborted:false, addEventListener:()=>{}}`` shape passed.
     const s = opts.signal;
-    if (typeof s.aborted !== "boolean"
-        || typeof s.addEventListener !== "function") {
+    let isSignal = false;
+    try {
+      if (typeof AbortSignal !== "undefined"
+          && s instanceof AbortSignal) {
+        isSignal = true;
+      } else if (typeof s.aborted === "boolean"
+                 && typeof s.addEventListener === "function"
+                 && s.constructor
+                 && s.constructor.name === "AbortSignal") {
+        isSignal = true;
+      }
+    } catch (_) { /* instanceof can throw on cross-realm objects */ }
+    if (!isSignal) {
       throw new TypeError(
         "safeSave: opts.signal must be an AbortSignal "
-      + "(got " + typeof s + ")");
+      + "(got " + (s && s.constructor && s.constructor.name
+                    || typeof s) + ")");
     }
   }
   const w = await saveToWorkspace(text, filename, opts);
@@ -487,10 +514,18 @@ async function safeSave(text, filename, opts) {
  */
 function isCancelError(err) {
   if (!err) return false;
-  if (err.name === "AbortError") return true;
-  if (err.aborted === true) return true;
-  if (err.cancelled === true) return true;
-  if (err.code === "aborted") return true;
+  // Seventh-review LANDMINE-1: defensive against errors whose
+  // property accessors throw (instrumented Proxy mocks; weird
+  // host objects).  The predicate is a contract surface — it
+  // must be total over every shape callers might pass.
+  try {
+    if (err.name === "AbortError") return true;
+    if (err.aborted === true) return true;
+    if (err.cancelled === true) return true;
+    if (err.code === "aborted") return true;
+  } catch (_) {
+    return false;
+  }
   return false;
 }
 

@@ -1748,6 +1748,45 @@ class TestFilesWriteAutoRename:
                 f"upload={r_u.status_code}"
             )
 
+    def test_write_upload_auto_rename_collision_parity(
+            self, web, picker_root):
+        """Phase 6e seventh-review LANDMINE-8: the auto_rename
+        suffix-picker is duplicated across /upload + /write.
+        Pin the invariant that both pick the SAME ``<stem>-N<ext>``
+        for the same collision state — otherwise a future change
+        that tightens one loop's validator won't be mirrored by
+        the other.
+        """
+        import io
+        target = picker_root / "proj"
+        target.mkdir(parents=True)
+        (target / "movie.gif").write_bytes(b"first")
+
+        # Upload with auto_rename: picks movie-2.gif.
+        r_u = web.post(
+            "/api/files/upload",
+            data={
+                "target_dir":  str(target),
+                "file":        (io.BytesIO(b"u"), "movie.gif"),
+                "auto_rename": "true",
+            },
+            content_type="multipart/form-data",
+        )
+        assert r_u.status_code == 200
+        upload_path = r_u.get_json()["path"]
+        # Clean up so write sees the same collision state.
+        (target / "movie-2.gif").unlink()
+
+        # Write with auto_rename: should also pick movie-2.gif.
+        r_w = self._post(web, target / "movie.gif", "w\n",
+                         auto_rename=True)
+        assert r_w.status_code == 200
+        write_path = r_w.get_json()["path"]
+        assert upload_path == write_path, (
+            f"auto_rename parity drift: upload picked "
+            f"{upload_path!r}; write picked {write_path!r}"
+        )
+
 
 class TestSidebarStubsUI:
     """The stub features ship with their full UI surface so the design
