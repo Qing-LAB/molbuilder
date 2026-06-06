@@ -17,7 +17,8 @@ the same PR as the code change.
 molbuilder builds 3-D molecular structures from sequence / SMILES / name
 input, modifies them into derived geometries (e.g. metal-molecule-metal
 nanojunctions), generates SIESTA and PySCF input files for those structures,
-and provides a live trajectory viewer that monitors the resulting calculations.
+and presents the resulting trajectories through a unified Results-tab
+inspector.
 
 The package is a single, internally-coherent toolkit covering the full
 pipeline:
@@ -26,14 +27,15 @@ pipeline:
 sequence ──► Structure ──► (modify) ──► SIESTA .fdf  ──► siesta ──┐
                                     └─► PySCF .py    ──► python  ─┴──► .molwatch.log
                                                                               │
-                                                           ◄──── live watch ──┘
+                                                ◄── /results inspector ───────┘
 ```
 
-Both halves were initially separate repos (`Qing-LAB/molbuilder` for the
-build side, `Qing-LAB/molwatch` for the watch side). They are being merged
-into `molbuilder` because they share a single file-format contract
-(`.molwatch.log v1`), a single core dataclass (`Structure`), and the same
-Flask + 3Dmol.js stack. See "Merge plan" below.
+The package consolidates what was originally two separate repos
+(`Qing-LAB/molbuilder` build side + `Qing-LAB/molwatch` viewer side; merged
+2026-05).  The merge collapsed the shared file-format contract
+(`.molwatch.log v1`), the shared core dataclass (`Structure`), and the
+shared Flask + 3Dmol.js stack into one codebase.  History reconstructable
+from `git log`; per-component contracts under [`docs/`](README.md).
 
 ---
 
@@ -283,12 +285,16 @@ the adapter goes away then.
 
 | Verb | Module | Consumes | Yields |
 |---|---|---|---|
-| Build | `builders/peptide.py`, `builders/nucleic.py`, `builders/smiles.py`, `builders/pubchem.py` | sequence / SMILES / name + builder backend | `Structure` |
-| Build (backends) | `builders/backends/_amber.py`, `_rdkit.py`, `_threedna.py` | builder request | `Structure` (or `BackendUnavailable`) |
-| Generate | `generators/siesta.py:render_fdf`, `generators/pyscf.py:render_script` | `Structure` + `Config` | string (the .fdf or .py text) |
-| Parse | `parsers/molwatch_log.py`, `parsers/siesta.py`, `parsers/pyscf.py` | trajectory file path | `Trajectory` (i.e. `(source_format, List[Frame], lattice)`) |
-| Validate | `validation.py:validate_geometry` | `Structure`, `Config` | `List[Issue]` |
-| Write log | `trajectory_log/format.py` | `Frame` (or initial `Structure`) | appends a block to `.molwatch.log` |
+| Build | `molbuilder/peptide.py`, `molbuilder/nucleic.py`, `molbuilder/smiles.py`, `molbuilder/pubchem.py` | sequence / SMILES / name + builder backend | `Structure` |
+| Build (backends) | `molbuilder/builders/backends/_amber.py`, `_rdkit.py`, `_threedna.py` | builder request | `Structure` (or `BackendUnavailable`) |
+| Modify | `molbuilder/modify.py` | `Structure` | `Structure` (delete / add / orient / electrode ops) |
+| Generate | `molbuilder/siesta/input.py:render_fdf`, `molbuilder/pyscf/input.py:render_script` | `Structure` + `Config` | string (the .fdf or .py text) |
+| Spectra | `molbuilder/spectra/pyscf_script.py:render_script` | `Structure` + `SpectraConfig` | string (the PySCF spectra .py text) |
+| Parse | `molbuilder/parsers/molwatch_log.py`, `molbuilder/parsers/siesta.py`, `molbuilder/parsers/pyscf.py`, `molbuilder/parsers/molstruct_json.py` | trajectory or sidecar file path | `Trajectory` (or `Structure` for sidecar) |
+| Validate | `molbuilder/validation.py:validate_geometry` | `Structure`, `Config` | `List[Issue]` |
+| Write log | `molbuilder/trajectory_log/format.py` + `emitter.py` | `Frame` (or initial `Structure`) | appends a block to `.molwatch.log` |
+
+Full folder map in [`package-layout.md`](package-layout.md).
 
 Each verb is small, takes L1 types in, and returns L1 types out. No
 verb hides state in module-level globals (apart from the parser
@@ -304,13 +310,13 @@ conversion, help text, choice validation, and `--help` rendering. The
 bridge converts our `field.metadata` dict into click's existing
 parameters; no extension framework on top of click.
 
-**Web — Flask + Blueprints.** The Build and Watch route groups become
-two `flask.Blueprint`s registered at `/api/build` and `/api/watch`.
-Blueprints are Flask's native mechanism for URL prefixing; we don't
-roll a custom router. Each route handler is a thin wrapper:
-deserialize → call L2 verb → serialize. No business logic.
+**Web — Flask + Blueprints.** Each tab + cross-cutting concern is its
+own `flask.Blueprint` mounted under a URL prefix.  Blueprints are
+Flask's native mechanism for URL prefixing; we don't roll a custom
+router.  Each route handler is a thin wrapper: deserialize → call L2
+verb → serialize.  No business logic.
 
-CLI surface (Phase 5 target):
+CLI surface:
 
 ```bash
 molbuilder peptide  ASEQ                  # Structure → stdout XYZ (default)
@@ -338,37 +344,23 @@ Pipe contract:
   stdout. Default stdout is human text or the generated file body.
 - Status / progress / warnings always go to stderr.
 
-Web routes:
+Web routes are the **HTTP wire contract**; full request/response
+shapes live in
+[`protocols/web-api.md`](protocols/web-api.md).  The Blueprint set
+today:
 
-> **Both halves are now namespaced.**  Build routes live at
-> `/api/build/{molecule,load,fdf,pyscf}` (the verb-builder endpoint
-> is `molecule` rather than per-kind sub-routes; per-kind splitting
-> can come later if useful).  Watch routes at `/api/watch/*`.
-> The two top-level routes shared between tabs (`/api/health`,
-> `/api/backends`) stay un-namespaced.
+| Blueprint | URL prefix | Owns |
+|---|---|---|
+| `build` | `/api/build/*` | structure-from-input + Build-tab generate + schema endpoint |
+| `modify` | `/api/modify/*` | atom-level edit operations + meta endpoint |
+| `spectra` | `/api/spectra/*` | Spectra-tab schema + render + load |
+| `files` | `/api/files/*` | projects sidebar (list, read, write, upload, delete, mkdir, rename) |
+| `results` | `/api/results/*` | partials registry for `/results` inspectors |
+| `selection` | `/api/selection/*` | selection store HTTP surface |
+| `watch` | `/api/watch/*` | trajectory inspector data + polling |
 
-```
-GET  /                              # tabbed UI shell
-GET  /api/backends                  # available builder backends
-                                    # (lifted from build blueprint;
-                                    # consumed by both tabs' Backend pickers)
-
-# Build blueprint  (mounted at /api/build)
-POST /api/build/peptide
-POST /api/build/dna
-POST /api/build/rna
-POST /api/build/smiles
-POST /api/build/name
-POST /api/build/load                # XYZ/PDB upload → Structure JSON
-POST /api/build/fdf                 # → text
-POST /api/build/pyscf               # → text
-POST /api/build/validate            # → Issue list JSON
-
-# Watch blueprint (mounted at /api/watch)
-GET  /api/watch/formats             # registered parsers
-POST /api/watch/load                # trajectory file → Frame list JSON
-GET  /api/watch/data                # browser-driven polling (~15s)
-```
+Plus a small set of un-namespaced top-level routes (`/api/backends`,
+`/api/health`, the partial-template endpoints).
 
 ### Field metadata as the unifier
 
@@ -453,15 +445,24 @@ stderr so they don't pollute the pipe.
 
 ### 3. The web UI is a portal, not a separate product
 
-The UI calls the same Python API the CLI calls. It contains no logic
-that isn't trivially also exposed elsewhere. Tabs (Build / Watch)
-share the 3Dmol viewer, style controls, atom rendering, and CSS. The
-Build tab's "Generate FDF / script" flow drops a "Watch this run"
-affordance that pre-fills the Watch tab with the predicted output
-path so the user moves naturally from one phase to the next.
+The UI calls the same Python API the CLI calls.  It contains no logic
+that isn't trivially also exposed elsewhere.  Every tab shares the
+standard embeddable 3D viewer
+([`embedded-viewer.md`](protocols/embedded-viewer.md)), the
+field-metadata-driven form renderer, the projects sidebar
+([`projects-sidebar.md`](protocols/projects-sidebar.md)), and the
+common CSS shell.
 
-UI redesign mandate: concise, easy, visually fluent. Single layout
-shell, two views, no duplicated chrome.
+The current tab set + the planned Phase 7 reorganization live in
+[`tabs/architecture.md`](tabs/architecture.md).  Cross-tab workflow:
+the user builds + edits in the Structure tab (today: Build + Modify),
+saves to project, then picks the saved file in a task tab
+(Structure-optimization / Spectrum-calculation / Transport-calculation)
+to generate the script.  Inspection of the run output lives on the
+Results tab via the inspector registry.
+
+UI mandate: concise, easy, visually fluent.  Single layout shell, one
+tab per workflow phase, no duplicated chrome.
 
 ### 4. Generated outputs must be both syntactically correct AND scientifically defensible
 
@@ -472,8 +473,8 @@ broken-symmetry saddle for an open-shell system is a bug.
 Code review for this project must include target-platform correctness
 checks: are the keywords real? Are the values in scientifically
 defensible ranges? Are open-shell / charged / periodic special cases
-handled? See "Scientific correctness" below for the validation
-requirements and the known gap list.
+handled? See [`science.md`](science.md) for the validation contract,
+the cross-engine consistency rule, and the closed gap list.
 
 ### 5. Generated outputs are tunable by manual editing
 
@@ -491,10 +492,10 @@ in the file work for someone unfamiliar with the platform.
 ### 6. Pre-emission geometry validation
 
 Before any FDF or PySCF script is written, run a scientific sanity
-pass on the structure + cell. Errors stop emission; warnings print
-to stderr but proceed. Validators are pure functions reading field
-metadata; they never call out to the engine. See "Validation pass"
-below for the check list.
+pass on the structure + cell.  Errors stop emission; warnings print
+to stderr but proceed.  Validators are pure functions reading field
+metadata; they never call out to the engine.  Full check list lives
+in [`science.md`](science.md) § 3.
 
 ### 7. Generated artifacts are self-contained
 
@@ -645,15 +646,23 @@ These have been considered and rejected; do not reintroduce them.
 
 ## Next steps
 
-The three open items from the 2026-06-05 cross-audit
-(transport engine abstraction, structure-inspector hand-off,
-Makov-Payne emit) landed; each collapsed back into the decisions
-log above.  No items here now.
+Active cross-cutting work:
 
-Add items here when new design gaps surface (verified against
-actual code, not commit history).  Don't list code-review polish
-or stylistic cleanup — those live in commit messages and PRs,
-not the roadmap.
+- **Phase 7 — tab UI reorganization.**  Five-tab navigation
+  (Structure / Structure optimization / Spectrum calculation /
+  Transport calculation / Results) replacing today's four-tab
+  Build / Modify / Spectra / Results.  Full spec + phases A/B/C/D
+  in [`tabs/architecture.md`](tabs/architecture.md).
+- **Phase B.3 — transport engine implementations.**  TranSIESTA
+  + PySCF-NEGF backends behind the Phase B.2 abstraction.  Lands
+  alongside or after Phase D of the tab reorganization.  See
+  [`roadmap.md`](roadmap.md) § 2.
+
+Open backend / feature roadmap items live in
+[`roadmap.md`](roadmap.md).  Add cross-cutting items here when
+new design gaps surface (verified against actual code, not commit
+history).  Don't list code-review polish or stylistic cleanup —
+those live in commit messages and PRs, not the roadmap.
 
 ---
 

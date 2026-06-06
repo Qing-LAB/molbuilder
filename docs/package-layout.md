@@ -108,10 +108,12 @@ molbuilder/
   parsers/
     __init__.py            # PARSERS registry + detect_parser
     base.py                # TrajectoryParser ABC; parse() -> Trajectory
+    _rules.py              # shared parse-rule helpers (detection signals, etc.)
     molwatch_log.py
     siesta.py
     pyscf.py
     molstruct_json.py      # .molstruct.json sidecar parser
+    spectra_json.py        # .spectra.json results parser
   data/
     README.md              # citations for every numeric value below
     fcc_lattice.json       # supported FCC metals (closed list)
