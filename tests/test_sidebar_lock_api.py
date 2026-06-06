@@ -52,7 +52,7 @@ def _open_index(page, base_url):
         errors.append(("console.error", msg.text))
         if msg.type == "error" else None
     ))
-    page.goto(f"{base_url}/")
+    page.goto(f"{base_url}/structure-optimization")
     page.wait_for_function(
         "() => window.molbuilder "
         "&& window.molbuilder.projects "

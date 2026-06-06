@@ -177,7 +177,7 @@ def _open_modify(page, base_url):
         errors.append(("console.error", msg.text))
         if msg.type == "error" else None
     ))
-    page.goto(f"{base_url}/modify")
+    page.goto(f"{base_url}/structure")
     page.wait_for_function(
         "() => !!window.molbuilder"
         "       && typeof window.molbuilder.loadStructureText === 'function'"
@@ -348,9 +348,11 @@ def test_modify_page_loads_without_js_errors(page, flask_server):
     errors = _open_modify(page, flask_server)
     # Wait a brief moment so any deferred init fires.
     page.wait_for_timeout(200)
-    assert errors == [], f"JS errors during /modify boot: {errors}"
-    # Active-tab marker matches what /modify owns.
-    assert page.locator("a.app-tab.is-active").inner_text() == "Modify"
+    assert errors == [], f"JS errors during /structure boot: {errors}"
+    # Active-tab marker matches what /structure owns
+    # (renamed from "Modify" in Phase A of the 2026-06-06
+    # tab reorganization; see docs/tabs/architecture.md § 2.1).
+    assert page.locator("a.app-tab.is-active").inner_text() == "Structure"
 
 
 def test_runtime_modules_registered_on_modify(page, flask_server):
@@ -363,7 +365,7 @@ def test_runtime_modules_registered_on_modify(page, flask_server):
     to register would still work for same-tick consumers (because of
     the backward-compat global) but break any consumer that
     legitimately uses ``whenReady``.  This test catches that drift."""
-    page.goto(f"{flask_server}/modify")
+    page.goto(f"{flask_server}/structure")
     page.wait_for_function(
         "() => window.molbuilder && window.molbuilder.runtime "
         "      && window.molbuilder.runtime.listRegistered()"
@@ -1588,7 +1590,7 @@ def test_modify_page_resources_load_with_200(page, flask_server):
         failures.append((r.status, r.url))
         if r.status >= 400 else None
     ))
-    page.goto(f"{flask_server}/modify")
+    page.goto(f"{flask_server}/structure")
     page.wait_for_load_state("networkidle")
     # Filter out the CDN host (network-flake-prone in CI); only assert
     # on locally-served paths.
@@ -1630,8 +1632,8 @@ def test_modify_structure_survives_navigation_to_watch_and_back(
     page.locator('a.app-tab[href="/results"]').click()
     page.wait_for_url(f"{flask_server}/results")
     # And back.
-    page.locator('a.app-tab[href="/modify"]').click()
-    page.wait_for_url(f"{flask_server}/modify")
+    page.locator('a.app-tab[href="/structure"]').click()
+    page.wait_for_url(f"{flask_server}/structure")
     # Structure restored by Phase 1 sessionStorage round-trip.
     page.wait_for_function(
         "() => window.__molbuilder_modify_test"
@@ -1657,8 +1659,8 @@ def test_modify_selection_survives_navigation(
     _set_selection(page, [1])
     page.locator('a.app-tab[href="/results"]').click()
     page.wait_for_url(f"{flask_server}/results")
-    page.locator('a.app-tab[href="/modify"]').click()
-    page.wait_for_url(f"{flask_server}/modify")
+    page.locator('a.app-tab[href="/structure"]').click()
+    page.wait_for_url(f"{flask_server}/structure")
     # Structure restored.
     page.wait_for_function(
         "() => window.__molbuilder_modify_test"
@@ -1686,8 +1688,8 @@ def test_modify_state_after_op_survives_navigation(
     )
     page.locator('a.app-tab[href="/results"]').click()
     page.wait_for_url(f"{flask_server}/results")
-    page.locator('a.app-tab[href="/modify"]').click()
-    page.wait_for_url(f"{flask_server}/modify")
+    page.locator('a.app-tab[href="/structure"]').click()
+    page.wait_for_url(f"{flask_server}/structure")
     # Post-delete state is what restores.
     page.wait_for_function(
         "() => window.__molbuilder_modify_test"
@@ -1747,7 +1749,7 @@ def test_build_structure_survives_navigation(page, flask_server):
     must still show n_atoms, and the Generate buttons must still
     be enabled -- without Phase 1 the user lost everything and
     had to click Build again."""
-    page.goto(f"{flask_server}/")
+    page.goto(f"{flask_server}/structure-optimization")
     page.wait_for_selector("#build-btn")
     # Build a tiny peptide.  AmberTools/RDKit/3DNA -- whichever the
     # ``auto`` backend resolves to is fine for this test.
@@ -1772,8 +1774,8 @@ def test_build_structure_survives_navigation(page, flask_server):
     page.locator('a.app-tab[href="/results"]').click()
     page.wait_for_url(f"{flask_server}/results")
     # And back.
-    page.locator('a.app-tab[href="/"]').click()
-    page.wait_for_url(f"{flask_server}/")
+    page.locator('a.app-tab[href="/structure-optimization"]').click()
+    page.wait_for_url(f"{flask_server}/structure-optimization")
     # The structure was restored from sessionStorage.
     page.wait_for_function(
         "() => !document.getElementById('generate-fdf').disabled",
@@ -1800,7 +1802,7 @@ def test_build_structure_state_round_trips_modify(
     _load_water(page, water_xyz_file)
     page.evaluate("() => window.dispatchEvent(new Event('pagehide'))")
     # Now visit Build.  No prior Build save -> empty viewer.
-    page.goto(f"{flask_server}/")
+    page.goto(f"{flask_server}/structure-optimization")
     page.wait_for_selector("#build-btn")
     # Generate buttons start disabled (no structure built).
     assert page.locator("#generate-fdf").is_disabled()
@@ -2003,11 +2005,14 @@ def test_send_to_build_writes_handoff_payload(
     _open_modify(page, flask_server)
     _load_file(page, ss_pair_xyz_file, expected_atoms=2)
     _open_op_tab(page, "junction")
-    # Click and wait for the URL to flip to "/".
+    # Click and wait for the URL to flip to the destination tab.
+    # Phase 7 (Phase A): send-to-build now navigates to
+    # /structure-optimization (the renamed Build tab) instead of "/".
     with page.expect_navigation():
         page.locator("#send-to-build").click()
-    assert page.url.rstrip("/") == flask_server.rstrip("/"), (
-        f"expected redirect to /, got {page.url}"
+    expected = flask_server.rstrip("/") + "/structure-optimization"
+    assert page.url.rstrip("/") == expected, (
+        f"expected redirect to {expected}, got {page.url}"
     )
     # Read the handoff payload from sessionStorage on the destination.
     saved = page.evaluate(
@@ -2548,7 +2553,7 @@ def test_watch_run_state_badge_finished_shows_ended_timestamp(
 def _open_build(page, base_url):
     """Open the Build page and wait until both schema-driven forms
     have rendered (their containers gain children)."""
-    page.goto(f"{base_url}/", wait_until="domcontentloaded")
+    page.goto(f"{base_url}/structure-optimization", wait_until="domcontentloaded")
     page.wait_for_function(
         "() => document.querySelector('#siesta-form-container fieldset')"
         " && document.querySelector('#pyscf-form-container fieldset')",
@@ -2569,7 +2574,7 @@ def test_build_page_loads_without_js_errors(page, flask_server):
     page.on("console", lambda msg:
             errors.append("console.error: " + msg.text)
             if msg.type == "error" else None)
-    page.goto(f"{flask_server}/", wait_until="networkidle")
+    page.goto(f"{flask_server}/structure-optimization", wait_until="networkidle")
     # Wait for the schema-driven form to render too, so any error
     # in the async path also surfaces.
     page.wait_for_function(
@@ -2840,10 +2845,10 @@ class TestModifySecondVisitExternalChange:
             ".atoms.length"
         ) == 3
 
-        page.goto(f"{flask_server}/")
+        page.goto(f"{flask_server}/structure-optimization")
         page.wait_for_selector("#build-btn", timeout=5000)
 
-        page.goto(f"{flask_server}/modify")
+        page.goto(f"{flask_server}/structure")
         # The selection store MUST repopulate.  Without the refresh
         # contract, sessionStorage has the file path but the store's
         # internal "lastSourceFile" still matches -> no re-fetch.
@@ -2869,7 +2874,7 @@ class TestModifySecondVisitExternalChange:
         _open_modify(page, flask_server)
         _load_file(page, str(xyz_path), expected_atoms=3)
 
-        page.goto(f"{flask_server}/")
+        page.goto(f"{flask_server}/structure-optimization")
         page.wait_for_selector("#build-btn", timeout=5000)
 
         # Replace the file with a different structure (5 atoms,
@@ -2885,7 +2890,7 @@ class TestModifySecondVisitExternalChange:
         )
         time.sleep(0.5)
 
-        page.goto(f"{flask_server}/modify")
+        page.goto(f"{flask_server}/structure")
         # The atom list MUST reflect the new structure on re-entry.
         # If the JS subscriber bails on "same source file path",
         # the user sees stale 3 atoms.  This is the same bug shape

@@ -57,7 +57,7 @@ import json
 import typing
 from typing import Any, Dict, Optional, Tuple
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, jsonify, redirect, render_template, request
 
 from ._shared import (
     config_from_params as _config_from_params,
@@ -102,16 +102,26 @@ _NONE_SENTINELS = ("freq_min_cm1", "freq_max_cm1", "threads")
 # ===================================================================== #
 
 
-@bp.route("/spectra")
-def spectra_page():
-    """Render the Spectra tab.
+@bp.route("/spectrum-calculation")
+def spectrum_calculation_page():
+    """Render the Spectrum calculation tab.
 
     Heavy lifting (form schema, render, load) is done by the API
     routes below; this just hands back the template.  The JS does
     a /api/build/schema/spectra call on page load to populate the
     form.
+
+    Phase 7 (Phase A, 2026-06-06) renamed the route from /spectra
+    to /spectrum-calculation to match the visible tab label.  The
+    legacy /spectra path 301-redirects below.
     """
     return render_template("spectra.html")
+
+
+@bp.route("/spectra")
+def spectra_page_redirect():
+    """301 redirect: legacy /spectra → /spectrum-calculation."""
+    return redirect("/spectrum-calculation", code=301)
 
 
 # ===================================================================== #

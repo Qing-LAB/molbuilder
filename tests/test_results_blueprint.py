@@ -71,7 +71,10 @@ class TestResultsInTabNav:
     """Results must appear in the shared app-tabs nav on every page,
     AND the /results page itself must mark its own tab active."""
 
-    @pytest.mark.parametrize("path", ["/", "/modify", "/spectra",
+    @pytest.mark.parametrize("path", ["/structure",
+                                       "/structure-optimization",
+                                       "/spectrum-calculation",
+                                       "/transport-calculation",
                                        "/results"])
     def test_results_link_present_on_every_page(self, web, path):
         body = web.get(path).get_data(as_text=True)
@@ -88,7 +91,8 @@ class TestResultsInTabNav:
 
     def test_other_pages_do_not_mark_results_active(self, web):
         import re
-        for path in ("/", "/modify", "/spectra"):
+        for path in ("/structure", "/structure-optimization",
+                     "/spectrum-calculation", "/transport-calculation"):
             body = web.get(path).get_data(as_text=True)
             m = re.search(
                 r'<a[^>]*href="/results"[^>]*class="[^"]*is-active[^"]*"',

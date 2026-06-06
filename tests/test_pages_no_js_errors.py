@@ -77,19 +77,20 @@ _PAGE_BOOT_TIMEOUT_MS = 5000   # generous; module scripts on a cold
                                # headless Chromium take ~1-2 s in CI
 
 _PAGES = [
-    # The Build page is the canonical "/" tab.
-    ("/",        "#build-btn"),
-    # The Modify page is also covered by test_modify_e2e.py but we
-    # exercise it here too so the cross-page guard catches a future
-    # regression even if that file gets reorganised.  Probe for the
-    # selection panel's host since 2026-05-20 (the legacy left-
-    # column ``#atom-list`` was retired with the store refactor).
-    ("/modify",  "#selection-host"),
+    # Phase 7 tab reorganization (Phase A, 2026-06-06): canonical
+    # routes match the visible tab labels.  The Structure-optimization
+    # tab (was Build, "/") is the renamed task tab; the Structure tab
+    # (was Modify, "/modify") is the interactive workspace.
+    ("/structure-optimization", "#build-btn"),
+    # Probe for the selection panel's host since 2026-05-20 (the
+    # legacy left-column ``#atom-list`` was retired with the store
+    # refactor).
+    ("/structure", "#selection-host"),
     # Spectra has JS-error coverage from this list.  ``/watch`` was
     # retired 2026-05-19 (see design.md decision log); its
     # trajectory-inspector now lives on ``/results`` and is covered
     # via that route below.
-    ("/spectra", "#generate-btn"),
+    ("/spectrum-calculation", "#generate-btn"),
     # /results landed 2026-05-16 as the dispatch shell (step 3 of
     # the tab-merge migration, docs/protocols/results-tab.md § 4).
     ("/results", "#results-current-file"),
@@ -151,7 +152,7 @@ def test_spectra_form_populates_after_init(page, flask_server):
     end-to-end proof that ``init()`` reached its post-schema-fetch
     rendering step (i.e. nothing silently swallowed the schema fetch)."""
     errors = _collect_js_errors(page)
-    page.goto(f"{flask_server}/spectra")
+    page.goto(f"{flask_server}/spectrum-calculation")
     page.wait_for_selector("#generate-btn", timeout=_PAGE_BOOT_TIMEOUT_MS)
     # init() does:  fetch schema -> render fields into #spectra-form-container
     # Wait for ANY <input>/<select> to appear inside that container.

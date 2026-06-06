@@ -1,7 +1,8 @@
 {#- molbuilder shared header + app-tabs nav.
 
    Included by every main tab template.  Each caller sets active_tab
-   (one of "build", "modify", "spectra", "results").
+   (one of "structure", "structure-optimization",
+   "spectrum-calculation", "transport-calculation", "results").
 
    The project-wide tagline lives HERE -- one canonical sentence
    that describes what molbuilder is, shown on every page (so users
@@ -17,6 +18,11 @@
    of truth for the tab nav -- changing any link text or order is a
    one-place change here.
 
+   Tab labels + routes match the Phase 7 reorganization landed via
+   docs/tabs/architecture.md (Phase A, 2026-06-06).  Legacy paths
+   (/, /modify, /spectra) 301-redirect to the new canonical URLs
+   so existing bookmarks survive.
+
    Watch was retired 2026-05-19 -- the /watch route + template +
    bootstrap are gone; trajectory inspection is /results-only via
    the registry's trajectory adapter.  Picking a ``.molwatch.log``,
@@ -25,22 +31,26 @@
 -#}
 <header>
   <h1>molbuilder</h1>
-  <p class="tagline">Build 3-D molecules from sequence / SMILES / name; modify geometry; inspect IR / Raman spectra and trajectories; emit SIESTA / PySCF input.</p>
+  <p class="tagline">Build 3-D molecules from sequence / SMILES / name; modify geometry; emit SIESTA / PySCF input for optimization, spectrum, and transport calculations; inspect the resulting trajectories and spectra.</p>
 </header>
 
 <nav class="app-tabs" role="tablist" aria-label="molbuilder sections">
-  <a href="/"
-     class="app-tab{% if active_tab == 'build' %} is-active{% endif %}"
+  <a href="/structure"
+     class="app-tab{% if active_tab == 'structure' %} is-active{% endif %}"
      role="tab"
-     {% if active_tab == 'build' %}aria-current="page"{% endif %}>Build</a>
-  <a href="/modify"
-     class="app-tab{% if active_tab == 'modify' %} is-active{% endif %}"
+     {% if active_tab == 'structure' %}aria-current="page"{% endif %}>Structure</a>
+  <a href="/structure-optimization"
+     class="app-tab{% if active_tab == 'structure-optimization' %} is-active{% endif %}"
      role="tab"
-     {% if active_tab == 'modify' %}aria-current="page"{% endif %}>Modify</a>
-  <a href="/spectra"
-     class="app-tab{% if active_tab == 'spectra' %} is-active{% endif %}"
+     {% if active_tab == 'structure-optimization' %}aria-current="page"{% endif %}>Structure optimization</a>
+  <a href="/spectrum-calculation"
+     class="app-tab{% if active_tab == 'spectrum-calculation' %} is-active{% endif %}"
      role="tab"
-     {% if active_tab == 'spectra' %}aria-current="page"{% endif %}>Spectra</a>
+     {% if active_tab == 'spectrum-calculation' %}aria-current="page"{% endif %}>Spectrum calculation</a>
+  <a href="/transport-calculation"
+     class="app-tab{% if active_tab == 'transport-calculation' %} is-active{% endif %}"
+     role="tab"
+     {% if active_tab == 'transport-calculation' %}aria-current="page"{% endif %}>Transport calculation</a>
   <a href="/results"
      class="app-tab{% if active_tab == 'results' %} is-active{% endif %}"
      role="tab"

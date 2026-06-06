@@ -12,12 +12,13 @@
 > decided, it lands here first, then propagates into the per-tab
 > specs.  Pointer in `design.md` § 0 (UI tabs).
 
-Status (2026-06-06): planning phase.  The reorganization
-described below is **not yet implemented**.  Code still uses the
-pre-reorganization names (`/build`, `/modify`, `/spectra`,
-`/results`).  Phases land one PR at a time, each commit keeps
+Status (2026-06-06): **Phase A complete.**  Phase B/C/D still
+planning.  The route table + 301 redirects + 5-tab nav landed; the
+view functions still render the legacy templates (Phase B will
+rebuild the Structure tab to absorb Build's structure-generation
+paths).  Phases land one PR at a time, each commit keeps
 `pytest tests/ -q` green.  This doc is the design reference for
-the work.
+the remaining work.
 
 ---
 

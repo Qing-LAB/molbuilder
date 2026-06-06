@@ -126,7 +126,7 @@ def _open_build(page, base_url):
         errors.append(("console.error", msg.text))
         if msg.type == "error" else None
     ))
-    page.goto(f"{base_url}/")
+    page.goto(f"{base_url}/structure-optimization")
     # #build-btn is rendered by the server-side template; its presence
     # proves the HTML reached the browser.  The form-container fields
     # are added by JS after the schema fetch lands.
@@ -420,12 +420,12 @@ class TestBuildSecondVisitExternalChange:
 
         # Navigate to /modify -- sessionStorage carries dir + file
         # over (cross-tab handoff).
-        page.goto(f"{flask_server}/modify")
+        page.goto(f"{flask_server}/structure")
         page.wait_for_selector("#projects-sidebar", timeout=_BOOT_TIMEOUT_MS)
 
         # Come back to /build.  The viewer MUST reload from the
         # persisted selection without a sidebar click.
-        page.goto(f"{flask_server}/")
+        page.goto(f"{flask_server}/structure-optimization")
         page.wait_for_function(
             "() => document.querySelector('#info-atoms').textContent"
             ".trim() === '3'",
@@ -462,7 +462,7 @@ class TestBuildSecondVisitExternalChange:
             timeout=_BOOT_TIMEOUT_MS,
         )
 
-        page.goto(f"{flask_server}/modify")
+        page.goto(f"{flask_server}/structure")
         page.wait_for_selector("#projects-sidebar", timeout=_BOOT_TIMEOUT_MS)
 
         # Replace the file on disk with a different structure
@@ -478,7 +478,7 @@ class TestBuildSecondVisitExternalChange:
         )
         time.sleep(0.5)
 
-        page.goto(f"{flask_server}/")
+        page.goto(f"{flask_server}/structure-optimization")
         # The new structure must appear; the OLD cached "3" must
         # NOT be what the viewer shows.
         page.wait_for_function(

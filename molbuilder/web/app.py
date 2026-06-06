@@ -34,7 +34,7 @@ both /results and a legacy tab call into -- live under
 
 from __future__ import annotations
 
-from flask import Flask, abort, jsonify, render_template, request, send_file
+from flask import Flask, abort, jsonify, redirect, render_template, request, send_file
 
 from ..diagnostics import initialize as _initialize_diagnostics
 
@@ -235,17 +235,46 @@ def create_app(*, config=None) -> Flask:
             )
         return response
 
+    # Phase 7 tab reorganization (Phase A, 2026-06-06): canonical
+    # routes match the visible tab labels.  Legacy URLs 301-redirect
+    # to their new homes so existing bookmarks and shared links keep
+    # working.  See docs/tabs/architecture.md § 3 for the route table.
+    #
+    # The view-function bodies (the actual templates rendered) don't
+    # change in Phase A.  Phase B will rebuild the Structure tab to
+    # absorb Build's structure-generation paths.
+
+    @app.route("/structure")
+    def structure_page():
+        # Renders the legacy modify.html template — Phase B merges
+        # Build's generator paths into this tab.
+        return render_template("modify.html")
+
+    @app.route("/structure-optimization")
+    def structure_optimization_page():
+        # Renders the legacy index.html (Build) template — Phase B
+        # strips structure-generation from this template; the form +
+        # generate flow stay.
+        return render_template("index.html")
+
+    @app.route("/transport-calculation")
+    def transport_calculation_page():
+        # Phase D will replace this placeholder with a form skeleton
+        # driven by TransportConfig.  Phase B.3 wires the engine
+        # backends.
+        return render_template("transport_calculation.html")
+
     @app.route("/")
     def index():
-        return render_template("index.html")
+        # 301: legacy home was the Build tab; the new home is the
+        # Structure tab per the Phase 7 reorganization.
+        return redirect("/structure", code=301)
 
     @app.route("/modify")
     def modify_page():
-        # M2: read-only inspection (load XYZ/PDB, atom list, viewer
-        # click-sync).  M3-M5 add edits, anchor-pair selection, and
-        # the electrode panel.  The shared app-tabs nav lives in the
-        # template just like /watch -- no business logic here.
-        return render_template("modify.html")
+        # 301: legacy /modify is now /structure (same view function,
+        # new canonical URL).
+        return redirect("/structure", code=301)
 
     @app.route("/api/health")
     def api_health():
