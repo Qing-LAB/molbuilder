@@ -1691,6 +1691,63 @@ class TestFilesWriteAutoRename:
         sibling = target.parent / "spectrum-2"
         assert not sibling.exists()
 
+    def test_write_rejects_leading_space_filename(
+            self, web, picker_root):
+        """Phase 6e sixth-review LANDMINE-6: ``/api/files/write``
+        must reject the same filenames ``/upload`` does.  Leading
+        space is the canonical case the sixth audit flagged."""
+        target = picker_root / "proj"
+        target.mkdir(parents=True)
+        r = self._post(web, target / " foo.xyz", "data\n",
+                       overwrite=True)
+        assert r.status_code == 400
+        assert "unsupported" in r.get_json()["error"].lower()
+        # Confirm the file was NOT written.
+        assert not (target / " foo.xyz").exists()
+
+    def test_write_rejects_dotfile_leaf(
+            self, web, picker_root):
+        """LANDMINE-6 mirror: dotfiles (``.bashrc``) rejected by
+        /upload; same shape on /write."""
+        target = picker_root / "proj"
+        target.mkdir(parents=True)
+        r = self._post(web, target / ".bashrc", "data\n",
+                       overwrite=True)
+        assert r.status_code == 400
+        assert "unsupported" in r.get_json()["error"].lower()
+
+    def test_write_upload_filename_parity(
+            self, web, picker_root):
+        """Symmetric assertion: every filename one endpoint accepts
+        the other accepts; every filename one rejects the other
+        rejects.  Pins the parity invariant."""
+        import io
+        target = picker_root / "proj"
+        target.mkdir(parents=True)
+        cases = [
+            "good.xyz",       # accepted
+            " bad.xyz",       # rejected (leading space)
+            ".dotfile",       # rejected (leading dot)
+            "with space.xyz", # rejected (space in middle)
+            "1-numeric.xyz",  # accepted
+        ]
+        for name in cases:
+            r_w = self._post(
+                web, target / name, "x\n", overwrite=True)
+            r_u = web.post(
+                "/api/files/upload",
+                data={
+                    "target_dir": str(target),
+                    "file":       (io.BytesIO(b"x"), name),
+                    "overwrite":  "true",
+                },
+                content_type="multipart/form-data",
+            )
+            assert r_w.status_code == r_u.status_code, (
+                f"parity drift on {name!r}: write={r_w.status_code} "
+                f"upload={r_u.status_code}"
+            )
+
 
 class TestSidebarStubsUI:
     """The stub features ship with their full UI surface so the design

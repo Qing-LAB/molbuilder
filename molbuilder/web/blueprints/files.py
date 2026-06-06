@@ -1110,6 +1110,18 @@ def api_files_write():
                       f"{str(resolved)!r}"),
         }), 400
 
+    # Phase 6e sixth-review LANDMINE-6: validate the leaf name with
+    # the same regex /upload uses, so the two endpoints don't drift
+    # apart.  Previously ``/write`` accepted ``" foo.xyz"`` (leading
+    # space), ``.bashrc`` (dotfile), names with NUL bytes, etc. —
+    # which then surfaced as confusing user reports ("why does Save
+    # accept what Upload rejects?").  Also unblocks LANDMINE-7: the
+    # auto_rename loop's misleading 500 for leading-space stems is
+    # now unreachable.
+    leaf_err = _validate_upload_filename(resolved.name)
+    if leaf_err is not None:
+        return jsonify({"ok": False, "error": leaf_err}), 400
+
     parent = resolved.parent
     if not parent.is_dir():
         return jsonify({

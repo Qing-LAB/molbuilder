@@ -400,19 +400,35 @@ async function saveToWorkspace(text, filename, opts) {
  * found bugs at sites that forgot to check ``.aborted`` first and
  * surfaced cancellation as a red error banner.
  *
- * Contract:
- *   - Returns ``null`` when there's no current dir (same as
- *     saveToWorkspace).
- *   - Returns ``{ok:true, path, relPath, size, mtime}`` on success.
- *   - Returns ``{ok:false, cancelled:true}`` when the caller's
- *     opts.signal aborted the write.  No ``error`` field — the
- *     cancel is the explanation.
- *   - Returns ``{ok:false, error, actual_mtime?}`` on real failure
- *     (server 4xx/5xx, no network, etc.).
+ * CONTRACT — four terminal shapes, distinct intents:
  *
- * Callers branch on ``r.cancelled`` first (mute + return), then on
- * ``!r.ok`` (show error), then on ``!r`` (no current dir).  The
- * three branches are distinct intents.
+ *   r == null                 → no current dir (fall back to local
+ *                                Download / Copy without UI error)
+ *   r.cancelled === true      → user cancelled (show muted status)
+ *   r.ok === true             → success: {path, relPath, size, mtime}
+ *   r.ok === false            → real failure: {error[, actual_mtime]}
+ *
+ * Canonical caller pattern:
+ *   ```
+ *   const r = await proj.safeSave(text, name, {signal: ac.signal});
+ *   if (r == null)      { localFallback();                    return; }
+ *   if (r.cancelled)    { setStatus("Save cancelled.", "muted"); return; }
+ *   if (!r.ok)          { setStatus("Save failed: " + r.error,
+ *                                   "error");                  return; }
+ *   // r.path is the resolved file path.
+ *   ```
+ *
+ * Sixth-review LANDMINE-2: the cancelled envelope DOES carry a
+ * fallback ``error: "cancelled"`` text so a mis-written caller
+ * doing ``"Save failed: " + (r.error || "no current_dir")`` shows
+ * "Save failed: cancelled" instead of "Save failed: undefined" or
+ * "Save failed: no current_dir".  Bad behaviour, but visibly
+ * wrong, not insidiously wrong.
+ *
+ * Sixth-review LANDMINE-5: when ``opts.signal`` is set we sanity-
+ * check it's an AbortSignal so a caller typo (``signl``) surfaces
+ * as a thrown TypeError in dev rather than silently producing an
+ * uncancellable save.
  *
  * NOTE: the caller still threads ``opts.signal`` themselves; this
  * helper does NOT create an AbortController, because the caller is
@@ -420,9 +436,24 @@ async function saveToWorkspace(text, filename, opts) {
  * button or a programmatic abort).
  */
 async function safeSave(text, filename, opts) {
+  if (opts && opts.signal !== undefined && opts.signal !== null) {
+    // Loose duck-type check: an AbortSignal exposes a boolean
+    // ``aborted`` property + supports addEventListener.  We
+    // don't ``instanceof AbortSignal`` because some test harnesses
+    // mock the signal.
+    const s = opts.signal;
+    if (typeof s.aborted !== "boolean"
+        || typeof s.addEventListener !== "function") {
+      throw new TypeError(
+        "safeSave: opts.signal must be an AbortSignal "
+      + "(got " + typeof s + ")");
+    }
+  }
   const w = await saveToWorkspace(text, filename, opts);
   if (w == null) return null;
-  if (w.aborted) return { ok: false, cancelled: true };
+  if (w.aborted) {
+    return { ok: false, cancelled: true, error: "cancelled" };
+  }
   return w;
 }
 
@@ -437,16 +468,28 @@ async function safeSave(text, filename, opts) {
  * a future change to the cancellation contract has one place to
  * touch.
  *
- * Accepts both shapes:
+ * Accepts every shape the cancellation contract arrives in:
  *   - DOMException with ``name === "AbortError"`` (thrown by
  *     ``fetch`` when the signal aborts).
- *   - An ``ApiError`` envelope with ``aborted === true`` (for
- *     code paths that wrap the throw into a result).
+ *   - An ApiError envelope with ``aborted === true`` (raw
+ *     /api/files/write or /api/files/upload result).
+ *   - A safeSave envelope with ``cancelled === true`` (the
+ *     post-fold shape this module returns to callers).
+ *   - A ViewerError with ``code === "aborted"`` (mol-viewer-embed
+ *     export errors that bubble out of the embed).
+ *
+ * Sixth-review LANDMINE-4: does NOT match ``code === "disposed"``
+ * — that's a distinct lifecycle event (host tore the embed down
+ * during an in-flight operation), not a user-initiated cancel,
+ * and should be handled by its own filter at the call site.  If
+ * a future feature wants to fold disposed into cancel UX, ADD a
+ * separate predicate here rather than widening this one.
  */
 function isCancelError(err) {
   if (!err) return false;
   if (err.name === "AbortError") return true;
   if (err.aborted === true) return true;
+  if (err.cancelled === true) return true;
   if (err.code === "aborted") return true;
   return false;
 }
