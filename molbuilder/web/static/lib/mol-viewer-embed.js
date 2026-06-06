@@ -1080,16 +1080,27 @@
             actions.appendChild(exportBtn);
             card.appendChild(actions);
 
+            let keyHandler = null;
             function _close() {
+                if (keyHandler) {
+                    doc.removeEventListener("keydown", keyHandler, true);
+                    keyHandler = null;
+                }
                 if (overlay.parentNode) {
                     overlay.parentNode.removeChild(overlay);
                 }
             }
-            cancelBtn.addEventListener("click", () => {
+            function _cancel() {
                 _close();
                 reject(_makeErrorModule("aborted",
                     "exportParamsDialog: cancelled"));
-            });
+            }
+            cancelBtn.addEventListener("click", _cancel);
+            // Phase 6e review: backdrop click (anywhere outside
+            // the card) cancels.  The card stops propagation on
+            // its own clicks so this only fires on actual backdrop.
+            card.addEventListener("click", (e) => e.stopPropagation());
+            overlay.addEventListener("click", _cancel);
             exportBtn.addEventListener("click", () => {
                 const out = {};
                 if (inputs.filename) {
@@ -1121,6 +1132,29 @@
                 if (inputs.filename) inputs.filename.focus();
                 if (inputs.filename) inputs.filename.select();
             } catch (_) {}
+
+            // Phase 6e review: Esc → Cancel; Enter → Export.
+            // Capture phase so we intercept before the input fields
+            // try to swallow Enter (number inputs trigger form
+            // submit on Enter by default).
+            keyHandler = (e) => {
+                if (e.key === "Escape") {
+                    e.preventDefault();
+                    _cancel();
+                } else if (e.key === "Enter") {
+                    e.preventDefault();
+                    exportBtn.click();
+                }
+            };
+            doc.addEventListener("keydown", keyHandler, true);
+
+            // Phase 6e review: expose close() to the caller so the
+            // owning embed can register it on state._openExportOverlays
+            // and tear it down at dispose().  Optional — calling
+            // without onMounted just runs the dialog normally.
+            if (typeof opts.onMounted === "function") {
+                try { opts.onMounted(_close); } catch (_) {}
+            }
         });
     }
 
@@ -1160,19 +1194,33 @@
      */
     function _runExportFlow(state, handle, kind, target, format) {
         const defaults = _exportDefaultsFor(state, kind, format);
+        // Dialog's close() is registered on state so dispose() can
+        // tear it down (review LANDMINE #9).  Unregister on settle.
+        let dialogClose = null;
         const dialogPromise = _showExportParamsDialog({
             kind:   kind,
             format: format,
             target: target,
             title:  _exportDialogTitle(kind, format, target),
             defaults: defaults,
+            onMounted: (closeFn) => {
+                dialogClose = closeFn;
+                state._openExportOverlays.add(closeFn);
+            },
         });
+        const _unregisterDialog = () => {
+            if (dialogClose) {
+                state._openExportOverlays.delete(dialogClose);
+                dialogClose = null;
+            }
+        };
         dialogPromise.then((params) => {
+            _unregisterDialog();
+            if (state.disposed) return;
             _runExportWithParams(
                 state, handle, kind, target, format, params);
         }, (err) => {
-            // Cancel from the params dialog: silent.  Any other
-            // error here is an unexpected bug — surface it.
+            _unregisterDialog();
             if (err && err.code === "aborted") return;
             _dispatchError(state, err);
         });
@@ -1208,25 +1256,31 @@
             } else {
                 out.fps = 30; out.duration = 1;
             }
-            // Default capture resolution: match the on-screen
-            // canvas if we can find one, else a safe 600x400.  The
-            // dialog lets the user override.
+            // Default capture resolution: match the on-screen CSS
+            // dimensions (clientWidth/clientHeight) — canvas.width
+            // is the DPR-scaled backing buffer (2× on retina) which
+            // would push the default to 1200×800 on a 600×400
+            // visible canvas, doubling encode time for no visible
+            // benefit.  User can dial it up in the dialog.
             const canvas = state.viewer
                 ? state.viewer.container.querySelector("canvas")
                 : null;
-            out.width  = (canvas && canvas.width)  || 600;
-            out.height = (canvas && canvas.height) || 400;
+            out.width  = (canvas && canvas.clientWidth)  || 600;
+            out.height = (canvas && canvas.clientHeight) || 400;
             if (format === "webm") {
                 out.videoBitsPerSecond = 8_000_000;
             }
         } else if (kind === "image") {
             // PNG: super-resolution capture supported by
-            // viewer.pngURI(w, h); default to 2× on-screen.
+            // viewer.pngURI(w, h); default to 2× on-screen CSS
+            // dimensions (so retina canvases get 4× pixel density;
+            // standard canvases get 2× which is still a visible
+            // quality bump).
             const canvas = state.viewer
                 ? state.viewer.container.querySelector("canvas")
                 : null;
-            out.width  = (canvas && canvas.width  * 2) || 1200;
-            out.height = (canvas && canvas.height * 2) || 800;
+            out.width  = (canvas && canvas.clientWidth  * 2) || 1200;
+            out.height = (canvas && canvas.clientHeight * 2) || 800;
         }
         return out;
     }
@@ -1237,18 +1291,36 @@
         const ac = (typeof AbortController !== "undefined")
             ? new AbortController() : null;
 
-        // Animation gets the progress modal (slow).  Image + data
-        // are fast enough to skip the modal — they resolve in <1s
-        // typically, and the params dialog already confirmed the
-        // user's intent.
-        const wantModal = kind === "animation";
+        // Phase 6e review fix: ANY project save shows the modal,
+        // not just animation.  Auto-rename can land the file at
+        // ``<name>-2.<ext>`` instead of the requested name and the
+        // modal is the only feedback channel that surfaces it.
+        // Downloads remain modal-free for fast kinds (the browser
+        // surfaces them via its own download tray).
+        const wantModal = kind === "animation"
+                       || target === "project";
+        const initialPhase = kind === "animation"
+            ? "Encoding frames…"
+            : (target === "project" ? "Saving…" : "Preparing…");
         const modal = wantModal
             ? _showExportProgressModal({
                 title:  "Exporting " + fmtLabel,
-                phase:  "Encoding frames…",
+                phase:  initialPhase,
                 onCancel: ac ? () => ac.abort() : null,
               })
             : null;
+        if (modal) {
+            // Register so dispose() tears it down on an unmounted
+            // embed.  Wrap close() so we also drop the registration
+            // when it's called from the normal success/fail path.
+            const origClose = modal.close.bind(modal);
+            const wrappedClose = () => {
+                state._openExportOverlays.delete(wrappedClose);
+                origClose();
+            };
+            modal.close = wrappedClose;
+            state._openExportOverlays.add(wrappedClose);
+        }
 
         const baseOpts = {
             target:     target || "download",
@@ -1279,12 +1351,13 @@
             }));
         }
         if (!p) return;
+        // Track whether we should delay the modal close — only on
+        // SUCCESS so the user can read the "Saved as X" line.  On
+        // failure / abort we close immediately so the next interaction
+        // isn't gated on a stale confirmation panel.
+        let succeeded = false;
         p.then((r) => {
-            // Saved-as tail: when auto-rename picked a different
-            // name, surface it.  The modal's phase line is the
-            // natural channel; for non-modal flows we dispatch a
-            // light-weight info via the host's onExport (which
-            // exportAnimation/screenshot already fire).
+            succeeded = true;
             if (modal) {
                 const note = r && r.filename
                     ? (target === "project"
@@ -1297,8 +1370,25 @@
             }
             return r;
         }).finally(() => {
-            if (modal) modal.close();
+            if (!modal) return;
+            // Phase 6e review polish: when we succeeded, hold the
+            // modal open ~1.2 s so the "Saved as X" message is
+            // visible (auto-rename, in particular, must be
+            // surfaced — silent rename is the bug class we're
+            // fixing).  Close immediately on failure / abort.
+            if (succeeded) {
+                root.setTimeout(() => modal.close(), 1200);
+            } else {
+                modal.close();
+            }
         }).catch((err) => {
+            // Cancel from the progress modal triggers
+            // ac.abort() which rejects exportAnimation with
+            // code:"aborted".  That's user intent, not an error;
+            // mirror the params-dialog Cancel policy and stay
+            // silent.  Other reject codes (no_media_recorder,
+            // io_error, ...) still dispatch.
+            if (err && err.code === "aborted") return;
             _dispatchError(state, err);
         });
     }
@@ -3088,6 +3178,15 @@
                 rebuildCount: 0,
             },
 
+            // Phase 6e review fix: set of currently-open export
+            // overlays (params dialog + progress modal).  Each
+            // entry is the overlay's close() function.  dispose()
+            // calls them all so a disposed handle doesn't leave
+            // orphaned modals on screen.  _runExportFlow /
+            // _runExportWithParams register on open + unregister
+            // on close.
+            _openExportOverlays: new Set(),
+
             disposed:      false,
         };
 
@@ -3906,8 +4005,24 @@
                     "save-to-project: window.molbuilder.projects.writeFile "
                   + "not available"));
             }
-            const currentDir = typeof proj.currentDir === "function"
-                                 ? proj.currentDir() : proj.currentDir;
+            // Production projects API exposes ``getCurrentDir``
+            // (see molbuilder/web/static/lib/projects/state.js line
+            // 623); the Phase 5a embed used ``currentDir`` which
+            // silently returned ``undefined`` and broke every
+            // save-to-project from the embed for ~3 weeks before
+            // the Phase 6e review caught it.  Tests had been
+            // masking the bug by stubbing ``currentDir: () => …``
+            // on ``testInjection.projectsApi``.  Try the canonical
+            // name first, fall back to the legacy name for old
+            // stubs / hosts that still expose it.
+            let currentDir = null;
+            if (typeof proj.getCurrentDir === "function") {
+                currentDir = proj.getCurrentDir();
+            } else if (typeof proj.currentDir === "function") {
+                currentDir = proj.currentDir();
+            } else if (typeof proj.currentDir === "string") {
+                currentDir = proj.currentDir;
+            }
             if (!currentDir) {
                 return Promise.reject(_makeError(
                     "no_project",
@@ -3917,9 +4032,14 @@
             // Phase 6e: opts.autoRename routes binary writes through
             // the server's auto_rename branch (text writes ignore it
             // — text save-to-project is rare from the embed and the
-            // existing overwrite semantics are fine).
-            const writeOpts = opts.autoRename
-                ? { autoRename: true } : undefined;
+            // existing overwrite semantics are fine).  Phase 6e
+            // review fix: thread opts.signal so Cancel mid-upload
+            // (a slow LAN write of a multi-MB WebM) actually
+            // aborts; the AbortController from _runExportWithParams
+            // already covers the encode phase, this closes the gap.
+            const writeOpts = (opts.autoRename || opts.signal)
+                ? { autoRename: !!opts.autoRename, signal: opts.signal }
+                : undefined;
             return Promise.resolve(
                     writeOpts
                         ? proj.writeFile(path, data, writeOpts)
@@ -4047,7 +4167,8 @@
             let p;
             if (opts.target === "project") {
                 p = _writeToProject(opts.filename || fname, text,
-                    { autoRename: !!opts.autoRename });
+                    { autoRename: !!opts.autoRename,
+                      signal: opts.signal });
             } else if (opts.target === "download") {
                 const blob = new root.Blob([text],
                                            { type: "text/plain" });
@@ -4257,10 +4378,21 @@
             const resized = wantW || wantH;
             if (resized) {
                 let newW = wantW, newH = wantH;
-                if (newW && !newH) newH = Math.round(
-                    newW * (origH / origW));
-                if (newH && !newW) newW = Math.round(
-                    newH * (origW / origH));
+                // Aspect-preserve only when origW + origH are both
+                // positive — a freshly-mounted embed (display:none
+                // container, pre-render) has 0×0 backing buffer and
+                // ratio math would NaN.  Without both axes
+                // available, fall through with whatever was given:
+                // the missing dim stays 0 which we then clamp to
+                // a safe default below.
+                if (origW > 0 && origH > 0) {
+                    if (newW && !newH) newH = Math.round(
+                        newW * (origH / origW));
+                    if (newH && !newW) newW = Math.round(
+                        newH * (origW / origH));
+                }
+                if (!newW) newW = 600;
+                if (!newH) newH = 400;
                 try {
                     canvas.width  = newW;
                     canvas.height = newH;
@@ -4270,6 +4402,7 @@
                     state.viewer.render();
                 } catch (e) {
                     canvas.width = origW; canvas.height = origH;
+                    try { state.viewer.resize(); } catch (_) {}
                     return Promise.reject(_makeError("io_error",
                         "exportAnimation: canvas resize failed: "
                       + (e && e.message), e));
@@ -4404,10 +4537,14 @@
                 const resized = !!(wantW || wantH);
                 if (resized) {
                     let newW = wantW, newH = wantH;
-                    if (newW && !newH) newH = Math.round(
-                        newW * (origH / origW));
-                    if (newH && !newW) newW = Math.round(
-                        newH * (origW / origH));
+                    if (origW > 0 && origH > 0) {
+                        if (newW && !newH) newH = Math.round(
+                            newW * (origH / origW));
+                        if (newH && !newW) newW = Math.round(
+                            newH * (origW / origH));
+                    }
+                    if (!newW) newW = 600;
+                    if (!newH) newH = 400;
                     canvas.width  = newW;
                     canvas.height = newH;
                     if (typeof state.viewer.resize === "function") {
@@ -4562,7 +4699,8 @@
                 .then((blob) => {
                     if (opts.target === "project") {
                         return _writeToProject(filename, blob,
-                            { autoRename: !!opts.autoRename });
+                            { autoRename: !!opts.autoRename,
+                              signal: opts.signal });
                     }
                     return _triggerDownload(filename, blob);
                 })
@@ -4651,7 +4789,8 @@
             let chain;
             if (opts.target === "project") {
                 chain = _writeToProject(opts.filename || fname, blob,
-                    { autoRename: !!opts.autoRename });
+                    { autoRename: !!opts.autoRename,
+                      signal: opts.signal });
             } else if (opts.target === "download") {
                 chain = _triggerDownload(opts.filename || fname, blob);
             } else {
@@ -4755,6 +4894,17 @@
                 try { state._knobBarTeardown(); }
                 catch (_) {}
                 state._knobBarTeardown = null;
+            }
+            // Phase 6e review fix: close any open export overlays
+            // (params dialog + progress modal) so the user isn't
+            // left with a stale form pointing at a dead handle.
+            if (state._openExportOverlays
+                && state._openExportOverlays.size) {
+                const closes = Array.from(state._openExportOverlays);
+                state._openExportOverlays.clear();
+                for (const close of closes) {
+                    try { close(); } catch (_) {}
+                }
             }
             try {
                 if (state.cardEl && state.cardEl.parentNode) {

@@ -4241,3 +4241,370 @@ class TestAnimationExportUX:
             f"User-edited filename did not propagate to writeFile; "
             f"saw: {out['writtenPath']!r}"
         )
+
+    def test_writeToProject_uses_real_getCurrentDir_api(
+            self, page, flask_server):
+        """Phase 6e review BOMB #1: the production
+        window.molbuilder.projects API exposes ``getCurrentDir``,
+        not ``currentDir``.  The embed had been reading
+        ``proj.currentDir`` (undefined in prod) → every
+        save-to-project from the embed silently rejected with
+        "no_project" since Phase 5a (2026-06-03).  Existing tests
+        masked the bug by stubbing ``currentDir: () => …`` on the
+        injected projectsApi.  This test stubs ONLY the real prod
+        shape (``getCurrentDir``) and asserts save-to-project
+        works."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                let writtenPath = null;
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { bare: true, showInfoLine: false },
+                    export: { defaultName: "n" },
+                    testInjection: {
+                        projectsApi: {
+                            // ONLY the production API shape, no
+                            // legacy currentDir.
+                            getCurrentDir: () => "/tmp/proj1",
+                            writeFile: async (path, data) => {
+                                writtenPath = path;
+                                return { ok: true, path: path };
+                            },
+                        },
+                    },
+                });
+                const r = await h.exportData({
+                    target: "project", format: "xyz",
+                });
+                h.dispose();
+                host.remove();
+                return { writtenPath, ok: !!r };
+            }
+        """)
+        assert out["ok"] is True, (
+            "exportData rejected even with getCurrentDir stub — "
+            "BOMB #1 fix didn't land"
+        )
+        assert out["writtenPath"] == "/tmp/proj1/n.xyz"
+
+    def test_writeToProject_falls_back_to_legacy_currentDir(
+            self, page, flask_server):
+        """The fallback to ``proj.currentDir()`` is kept so older
+        test stubs and any host code still passing it work; this
+        test pins that compat path so a future cleanup doesn't
+        silently break it without flagging."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                let writtenPath = null;
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { bare: true, showInfoLine: false },
+                    export: { defaultName: "n" },
+                    testInjection: {
+                        projectsApi: {
+                            currentDir: () => "/tmp/legacy",
+                            writeFile: async (path, data) => {
+                                writtenPath = path;
+                                return { ok: true, path: path };
+                            },
+                        },
+                    },
+                });
+                await h.exportData({
+                    target: "project", format: "xyz",
+                });
+                h.dispose();
+                host.remove();
+                return { writtenPath };
+            }
+        """)
+        assert out["writtenPath"] == "/tmp/legacy/n.xyz"
+
+    def test_progress_modal_cancel_does_not_dispatch_error(
+            self, page, flask_server):
+        """Phase 6e review BOMB #2: clicking Cancel on the
+        progress modal during an animation export triggers
+        ac.abort() which rejects exportAnimation with
+        code:"aborted".  That's user intent, not an error.  The
+        catch handler must filter it so hosts wired to onError
+        don't see a spurious error banner.  Mirrors the
+        params-dialog Cancel policy (which already filters
+        aborted)."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:400px;height:300px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                let errorFired = null;
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    onError: (err) => {
+                        errorFired = (err && err.code) || "unknown";
+                    },
+                    animation: {
+                        kind: "trajectory",
+                        frames: [
+                            [[0.0, 0.0, 0.0]],
+                            [[0.5, 0.0, 0.0]],
+                            [[1.0, 0.0, 0.0]],
+                        ],
+                        fps: 5, paused: true,
+                    },
+                });
+                const bar = h._test.getKnobBarElement();
+                bar.querySelector(
+                    ".mol-viewer-menu-export").open = true;
+                const exportBtn = bar.querySelector(
+                    ".mol-viewer-export-btn[data-kind='animation']"
+                  + "[data-target='download'][data-format='gif']");
+                exportBtn.click();
+                // Dialog → confirm → progress modal.
+                const dialogConfirm = document.querySelector(
+                    ".mol-viewer-export-params-card"
+                  + " .mol-viewer-export-modal-confirm");
+                dialogConfirm.click();
+                await new Promise(r => setTimeout(r, 50));
+                // Now the progress modal is up; press its Cancel.
+                let pmCancel = null;
+                for (const m of document.querySelectorAll(
+                        ".mol-viewer-export-modal")) {
+                    if (!m.querySelector(
+                            ".mol-viewer-export-params-card")) {
+                        pmCancel = m.querySelector(
+                            ".mol-viewer-export-modal-cancel");
+                        break;
+                    }
+                }
+                if (pmCancel) pmCancel.click();
+                await new Promise(r => setTimeout(r, 300));
+                h.dispose();
+                host.remove();
+                return { errorFired, hadCancelBtn: !!pmCancel };
+            }
+        """)
+        assert out["hadCancelBtn"] is True, (
+            "test setup error: progress modal Cancel button "
+            "missing"
+        )
+        assert out["errorFired"] is None, (
+            f"Cancelling the progress modal surfaced onError "
+            f"with code={out['errorFired']!r} — BOMB #2 fix "
+            f"didn't land.  Cancel is user intent, not an error."
+        )
+
+    def test_dialog_escape_cancels_no_export(
+            self, page, flask_server):
+        """LANDMINE #6: Esc should cancel the params dialog."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                let writeFileCalled = false;
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { bare: true, showInfoLine: false },
+                    testInjection: {
+                        projectsApi: {
+                            getCurrentDir: () => "/tmp/proj1",
+                            writeFile: async () => {
+                                writeFileCalled = true;
+                                return { ok: true };
+                            },
+                        },
+                    },
+                });
+                const bar = h._test.getKnobBarElement();
+                bar.querySelector(
+                    ".mol-viewer-menu-export").open = true;
+                bar.querySelector(
+                    ".mol-viewer-export-btn[data-kind='structure']"
+                  + "[data-target='project'][data-format='xyz']"
+                ).click();
+                const hadDialog = !!document.querySelector(
+                    ".mol-viewer-export-params-card");
+                document.dispatchEvent(new KeyboardEvent("keydown",
+                    { key: "Escape", bubbles: true }));
+                await new Promise(r => setTimeout(r, 100));
+                const stillVisible = !!document.querySelector(
+                    ".mol-viewer-export-params-card");
+                h.dispose();
+                host.remove();
+                return { hadDialog, stillVisible, writeFileCalled };
+            }
+        """)
+        assert out["hadDialog"] is True
+        assert out["stillVisible"] is False, (
+            "Esc should close the params dialog"
+        )
+        assert out["writeFileCalled"] is False
+
+    def test_dialog_enter_confirms_export(
+            self, page, flask_server):
+        """LANDMINE #6: Enter in any dialog field should confirm
+        the export."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                let writtenPath = null;
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { bare: true, showInfoLine: false },
+                    export: { defaultName: "enter-test" },
+                    testInjection: {
+                        projectsApi: {
+                            getCurrentDir: () => "/tmp/proj1",
+                            writeFile: async (path, data) => {
+                                writtenPath = path;
+                                return { ok: true, path: path };
+                            },
+                        },
+                    },
+                });
+                const bar = h._test.getKnobBarElement();
+                bar.querySelector(
+                    ".mol-viewer-menu-export").open = true;
+                bar.querySelector(
+                    ".mol-viewer-export-btn[data-kind='structure']"
+                  + "[data-target='project'][data-format='xyz']"
+                ).click();
+                document.dispatchEvent(new KeyboardEvent("keydown",
+                    { key: "Enter", bubbles: true }));
+                await new Promise(r => setTimeout(r, 200));
+                h.dispose();
+                host.remove();
+                return { writtenPath };
+            }
+        """)
+        assert out["writtenPath"] == "/tmp/proj1/enter-test.xyz", (
+            f"Enter should confirm the dialog and trigger export; "
+            f"wrote: {out['writtenPath']!r}"
+        )
+
+    def test_dialog_backdrop_click_cancels(
+            self, page, flask_server):
+        """LANDMINE #6: clicking the modal backdrop (outside the
+        card) cancels the dialog without running the export."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                let writeFileCalled = false;
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { bare: true, showInfoLine: false },
+                    testInjection: {
+                        projectsApi: {
+                            getCurrentDir: () => "/tmp/proj1",
+                            writeFile: async () => {
+                                writeFileCalled = true;
+                                return { ok: true };
+                            },
+                        },
+                    },
+                });
+                const bar = h._test.getKnobBarElement();
+                bar.querySelector(
+                    ".mol-viewer-menu-export").open = true;
+                bar.querySelector(
+                    ".mol-viewer-export-btn[data-kind='structure']"
+                  + "[data-target='project'][data-format='xyz']"
+                ).click();
+                const overlay = document.querySelector(
+                    ".mol-viewer-export-modal");
+                // Click directly on the overlay (backdrop), NOT
+                // on the card.
+                overlay.click();
+                await new Promise(r => setTimeout(r, 100));
+                const stillVisible = !!document.querySelector(
+                    ".mol-viewer-export-params-card");
+                h.dispose();
+                host.remove();
+                return { stillVisible, writeFileCalled };
+            }
+        """)
+        assert out["stillVisible"] is False, (
+            "Backdrop click should close the dialog"
+        )
+        assert out["writeFileCalled"] is False
+
+    def test_dispose_during_open_dialog_tears_it_down(
+            self, page, flask_server):
+        """LANDMINE #9: handle.dispose() while a params dialog is
+        up must remove the dialog from the DOM so it can't post
+        edits to a dead handle."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { bare: true, showInfoLine: false },
+                });
+                const bar = h._test.getKnobBarElement();
+                bar.querySelector(
+                    ".mol-viewer-menu-export").open = true;
+                bar.querySelector(
+                    ".mol-viewer-export-btn[data-kind='structure']"
+                  + "[data-target='download'][data-format='xyz']"
+                ).click();
+                const hadDialog = !!document.querySelector(
+                    ".mol-viewer-export-params-card");
+                h.dispose();
+                const stillVisible = !!document.querySelector(
+                    ".mol-viewer-export-params-card");
+                host.remove();
+                return { hadDialog, stillVisible };
+            }
+        """)
+        assert out["hadDialog"] is True
+        assert out["stillVisible"] is False, (
+            "dispose() should tear down any open params dialog so "
+            "stale UI doesn't survive the handle"
+        )

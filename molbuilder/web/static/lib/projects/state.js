@@ -284,10 +284,13 @@ async function refresh(opts) {
  * pattern, use :func:`saveToWorkspace` instead.
  */
 async function writeFile(path, text, opts) {
-  // Phase 6e: binary path.  Blob | File | TypedArray → multipart
-  // upload.  We split path into parent dir + filename so the
-  // upload endpoint (which takes target_dir + filename) gets the
-  // right pieces without a second roundtrip.  The text path stays
+  // Phase 6e: binary path.  Blob | File only — TypedArray /
+  // ArrayBuffer fall through to the text path and the server
+  // 400's with "text must be a string" (callers needing raw
+  // bytes should wrap in ``new Blob([typedArray])`` first).
+  // We split path into parent dir + filename so the upload
+  // endpoint (which takes target_dir + filename) gets the right
+  // pieces without a second roundtrip.  The text path stays
   // bit-identical to its prior behaviour.
   const isBlob = (typeof Blob !== "undefined" && text instanceof Blob)
               || (typeof File !== "undefined" && text instanceof File);
