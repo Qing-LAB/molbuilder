@@ -595,6 +595,17 @@
             const wrote = await proj.saveToWorkspace(
                 state.lastScript, state.lastJobName + ".spectra.py",
                 { overwrite: true });
+            // Phase 6e fourth-review BOMB-1: a user-initiated Cancel
+            // (the sidebar lock's Cancel button → saveSpectraAbort
+            // → AbortError) lands here as ``{ok:false,
+            // error:"aborted", aborted:true}``.  Treat that as
+            // user intent, not as a Save failure — otherwise the
+            // user sees a red "Save failed: aborted" banner for
+            // their own click.
+            if (wrote && wrote.aborted) {
+                setStatus(els.saveStatus, "Save cancelled.", "muted");
+                return;
+            }
             if (!wrote || !wrote.ok) {
                 setStatus(els.saveStatus,
                     "Save failed: " + (wrote && wrote.error || "no current_dir"),

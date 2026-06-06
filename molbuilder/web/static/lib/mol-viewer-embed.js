@@ -937,7 +937,13 @@
         doc.addEventListener("keydown", keyHandler, true);
 
         doc.body.appendChild(overlay);
-        try { cancelBtn.focus(); } catch (_) {}
+        // Phase 6e fourth-review LANDMINE-4: focus the CARD (with
+        // tabindex=-1), NOT the Cancel button.  Auto-repeating
+        // Enter from a dialog confirm would otherwise carry over
+        // into the modal and instantly trigger Cancel.  Cancel
+        // remains reachable via Tab + Enter and via Esc.
+        card.setAttribute("tabindex", "-1");
+        try { card.focus(); } catch (_) {}
 
         return {
             root: overlay,
@@ -1106,6 +1112,42 @@
             actions.appendChild(exportBtn);
             card.appendChild(actions);
 
+            // Phase 6e fourth-review LANDMINE-2 + LANDMINE-3:
+            // declare focus-capture BEFORE _close so the previous
+            // typeof guard (which would TDZ-throw, not skip) is
+            // unnecessary.  Also walk up from the live
+            // activeElement to the nearest open ancestor so we
+            // don't restore focus into a closed <details>: when
+            // the Export submenu click handler sets
+            // exportDet.open = false BEFORE _runExportFlow runs,
+            // activeElement is the Export button inside the now-
+            // collapsed <details>.  Restoring focus there leaves
+            // keyboard users on an invisible element.  Walk up
+            // and pick the summary of the closest closed
+            // <details> instead, falling back to the original
+            // element if nothing is collapsed.
+            const _liveFocus = doc.activeElement;
+            let _restoreTarget = _liveFocus;
+            try {
+                let cursor = _liveFocus;
+                while (cursor && cursor !== doc.body) {
+                    if (cursor.tagName === "DETAILS"
+                        && !cursor.open) {
+                        const sum = cursor.querySelector(
+                            ":scope > summary");
+                        if (sum) { _restoreTarget = sum; break; }
+                    }
+                    cursor = cursor.parentNode;
+                }
+            } catch (_) { /* not catastrophic */ }
+            const _restoreFocus = () => {
+                if (_restoreTarget
+                    && typeof _restoreTarget.focus === "function"
+                    && doc.body.contains(_restoreTarget)) {
+                    try { _restoreTarget.focus(); } catch (_) {}
+                }
+            };
+
             let keyHandler = null;
             let settled = false;
             let focusRestored = false;
@@ -1117,12 +1159,7 @@
                 if (overlay.parentNode) {
                     overlay.parentNode.removeChild(overlay);
                 }
-                // LANDMINE-4: restore focus to the trigger
-                // element (typically the Export submenu button).
-                // _restoreFocus is defined later — guard against
-                // the (impossible-but-defensive) early-call case.
-                if (!focusRestored && typeof _restoreFocus
-                                                 === "function") {
+                if (!focusRestored) {
                     focusRestored = true;
                     _restoreFocus();
                 }
@@ -1149,10 +1186,47 @@
             // its own clicks so this only fires on actual backdrop.
             card.addEventListener("click", (e) => e.stopPropagation());
             overlay.addEventListener("click", _cancel);
+            // Inline filename validation feedback line.  Tucked
+            // under the filename row when populated; cleared when
+            // the user starts editing.
+            const filenameError = doc.createElement("div");
+            filenameError.className = "mol-viewer-export-params-error";
+            filenameError.style.display = "none";
+            if (inputs.filename && inputs.filename.parentNode) {
+                inputs.filename.parentNode.appendChild(filenameError);
+                inputs.filename.addEventListener("input", () => {
+                    filenameError.style.display = "none";
+                });
+            }
+            function _showFilenameError(msg) {
+                filenameError.textContent = msg;
+                filenameError.style.display = "block";
+                try { inputs.filename.focus(); } catch (_) {}
+            }
             exportBtn.addEventListener("click", () => {
                 const out = {};
                 if (inputs.filename) {
                     out.filename = inputs.filename.value.trim();
+                    // Phase 6e fourth-review LANDMINE-6: reject
+                    // empty + illegal filenames here rather than
+                    // silently falling back to the default.  The
+                    // regex matches the server's
+                    // _validate_upload_filename so user feedback
+                    // is consistent with what the server would
+                    // accept.
+                    if (!out.filename) {
+                        _showFilenameError(
+                            "Filename can't be empty.");
+                        return;
+                    }
+                    if (!/^[A-Za-z0-9][A-Za-z0-9._\-]*$/
+                            .test(out.filename)) {
+                        _showFilenameError(
+                            "Filename must start with a letter or "
+                          + "digit and contain only letters, "
+                          + "digits, dots, hyphens, underscores.");
+                        return;
+                    }
                 }
                 if (inputs.fps) {
                     out.fps = parseFloat(inputs.fps.value);
@@ -1191,21 +1265,11 @@
                 resolve(out);
             });
 
-            // Phase 6e third-review LANDMINE-4: capture the
-            // pre-open focus owner so we can restore on close.
-            // aria-modal="true" advertises modal behaviour to AT;
-            // restoring focus is the minimum that lives up to the
-            // contract.  A full Tab-key focus trap (cycling within
-            // the dialog) is deferred — tracked as a known
-            // limitation; today the dialog has a small fixed set
-            // of inputs and the natural Tab order works inside it.
-            const _prevFocus = doc.activeElement;
-            const _restoreFocus = () => {
-                if (_prevFocus && typeof _prevFocus.focus === "function"
-                    && doc.body.contains(_prevFocus)) {
-                    try { _prevFocus.focus(); } catch (_) {}
-                }
-            };
+            // _restoreFocus is captured above (before _close) so
+            // the comment + reference order match.  aria-modal=true
+            // promises modal behaviour to assistive tech; this is
+            // the minimum.  A full Tab focus trap is deferred —
+            // tracked as a known limitation.
             doc.body.appendChild(overlay);
             try {
                 if (inputs.filename) inputs.filename.focus();

@@ -4875,6 +4875,13 @@ class TestAnimationExportUX:
             f"the underlying writeFile reports aborted; got "
             f"{out['err']!r}"
         )
+        # Phase 6e fourth-review LANDMINE-1: the prior version of
+        # this test forgot this assertion.  Now pinned: onError
+        # MUST NOT fire on a user-initiated cancel.
+        assert out["onErrorCode"] is None, (
+            f"onError fired with code={out['onErrorCode']!r} for a "
+            f"Cancel-mid-upload — BOMB-1 fix regressed."
+        )
 
     def test_dispose_during_export_does_not_fire_onError(
             self, page, flask_server):
@@ -5068,4 +5075,208 @@ class TestAnimationExportUX:
             f"Esc should trigger Cancel on the progress modal; "
             f"phase shows {out['phaseText']!r}"
         )
+
+    def test_writeFile_mock_actually_observes_signal(
+            self, page, flask_server):
+        """Phase 6e fourth-review LANDMINE-5: every other test in
+        this class uses a writeFile mock that synthesizes the
+        post-abort envelope.  None proves the AbortSignal is
+        actually plumbed end-to-end.  This test uses a mock that
+        ONLY resolves abort when the signal fires, so a regression
+        that drops opts.signal from _writeToProject would deadlock
+        the await."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                let sawSignal = false;
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { bare: true, showInfoLine: false },
+                    testInjection: {
+                        projectsApi: {
+                            getCurrentDir: () => "/tmp/proj1",
+                            writeFile: async (path, data, opts) => {
+                                return new Promise((resolve) => {
+                                    if (opts && opts.signal) {
+                                        sawSignal = true;
+                                        opts.signal.addEventListener(
+                                            "abort", () => {
+                                              resolve({
+                                                ok: false,
+                                                error: "aborted",
+                                                aborted: true,
+                                              });
+                                            });
+                                    } else {
+                                        // No signal threaded —
+                                        // deadlock (intentional);
+                                        // the test will timeout
+                                        // and fail.
+                                    }
+                                });
+                            },
+                        },
+                    },
+                });
+                const ac = new AbortController();
+                const p = h.exportData({
+                    target: "project", format: "xyz",
+                    signal: ac.signal,
+                });
+                // Give the call time to reach writeFile.
+                await new Promise(r => setTimeout(r, 50));
+                ac.abort();
+                let err = null;
+                try { await p; } catch (e) {
+                    err = (e && e.code) || "thrown";
+                }
+                h.dispose();
+                host.remove();
+                return { sawSignal, err };
+            }
+        """)
+        assert out["sawSignal"] is True, (
+            "_writeToProject didn't forward opts.signal to the "
+            "projectsApi.writeFile mock — LANDMINE-5 fix didn't "
+            "land, the signal plumbing is dropped at some layer"
+        )
+        assert out["err"] == "aborted", (
+            f"Cancel-via-AbortController should reject with "
+            f"code:'aborted'; got {out['err']!r}"
+        )
+
+    def test_dialog_rejects_empty_filename_inline(
+            self, page, flask_server):
+        """Phase 6e fourth-review LANDMINE-6: empty filename used
+        to silently fall back to the default name; now the dialog
+        shows an inline error and refuses to confirm."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                let writeFileCalled = false;
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { bare: true, showInfoLine: false },
+                    testInjection: {
+                        projectsApi: {
+                            getCurrentDir: () => "/tmp/proj1",
+                            writeFile: async () => {
+                                writeFileCalled = true;
+                                return { ok: true };
+                            },
+                        },
+                    },
+                });
+                const bar = h._test.getKnobBarElement();
+                bar.querySelector(
+                    ".mol-viewer-menu-export").open = true;
+                bar.querySelector(
+                    ".mol-viewer-export-btn[data-kind='structure']"
+                  + "[data-target='project'][data-format='xyz']"
+                ).click();
+                // Clear the filename, then confirm.
+                const filenameInp = document.querySelector(
+                    ".mol-viewer-export-params-card"
+                  + " .mol-viewer-export-params-input");
+                filenameInp.value = "";
+                const confirm = document.querySelector(
+                    ".mol-viewer-export-params-card"
+                  + " .mol-viewer-export-modal-confirm");
+                confirm.click();
+                await new Promise(r => setTimeout(r, 50));
+                const stillVisible = !!document.querySelector(
+                    ".mol-viewer-export-params-card");
+                const errMsg = document.querySelector(
+                    ".mol-viewer-export-params-error");
+                const errVisible = errMsg
+                    && errMsg.style.display !== "none";
+                h.dispose();
+                host.remove();
+                return { stillVisible, errVisible,
+                         writeFileCalled,
+                         errText: errMsg && errMsg.textContent };
+            }
+        """)
+        assert out["stillVisible"] is True, (
+            "Empty filename should keep the dialog open"
+        )
+        assert out["errVisible"] is True, (
+            "Empty filename should surface an inline error; got "
+            f"errText={out['errText']!r}"
+        )
+        assert out["writeFileCalled"] is False, (
+            "writeFile must NOT be called when filename is invalid"
+        )
+
+    def test_dialog_rejects_illegal_filename(
+            self, page, flask_server):
+        """LANDMINE-6 mirror: `../escape.xyz` etc must be caught
+        client-side, not just by the server's path resolver."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                let writeFileCalled = false;
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { bare: true, showInfoLine: false },
+                    testInjection: {
+                        projectsApi: {
+                            getCurrentDir: () => "/tmp/proj1",
+                            writeFile: async () => {
+                                writeFileCalled = true;
+                                return { ok: true };
+                            },
+                        },
+                    },
+                });
+                const bar = h._test.getKnobBarElement();
+                bar.querySelector(
+                    ".mol-viewer-menu-export").open = true;
+                bar.querySelector(
+                    ".mol-viewer-export-btn[data-kind='structure']"
+                  + "[data-target='project'][data-format='xyz']"
+                ).click();
+                const filenameInp = document.querySelector(
+                    ".mol-viewer-export-params-card"
+                  + " .mol-viewer-export-params-input");
+                filenameInp.value = "../escape.xyz";
+                const confirm = document.querySelector(
+                    ".mol-viewer-export-params-card"
+                  + " .mol-viewer-export-modal-confirm");
+                confirm.click();
+                await new Promise(r => setTimeout(r, 50));
+                const errMsg = document.querySelector(
+                    ".mol-viewer-export-params-error");
+                const errVisible = errMsg
+                    && errMsg.style.display !== "none";
+                h.dispose();
+                host.remove();
+                return { errVisible, writeFileCalled };
+            }
+        """)
+        assert out["errVisible"] is True, (
+            "Filename with .. should be rejected with inline error"
+        )
+        assert out["writeFileCalled"] is False
 

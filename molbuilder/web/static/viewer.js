@@ -1106,6 +1106,14 @@
             const w = await proj.saveToWorkspace(
                 state.fdf, filename,
                 { overwrite: true, signal: abortSignal });
+            // Phase 6e fourth-review BOMB-2: Cancel mid-save shows
+            // up as ``{ok:false, aborted:true}``.  Stay silent
+            // instead of flashing a red error banner for the user's
+            // own Cancel click.
+            if (w && w.aborted) {
+                setStatus("fdf-status", "Save cancelled.", "muted");
+                return;
+            }
             if (!w || !w.ok) {
                 setStatus("fdf-status",
                     "Save failed: " + (w && w.error || "no current_dir"),
@@ -1405,6 +1413,12 @@
             const w = await proj.saveToWorkspace(
                 state.pyscf, meta.filename,
                 { overwrite: true, signal: abortSignal });
+            // Phase 6e fourth-review BOMB-3: mirror the SIESTA + Spectra
+            // Cancel-vs-error filters.
+            if (w && w.aborted) {
+                setStatus("pyscf-status", "Save cancelled.", "muted");
+                return;
+            }
             if (!w || !w.ok) {
                 setStatus("pyscf-status",
                     "Save failed: " + (w && w.error || "no current_dir"),
