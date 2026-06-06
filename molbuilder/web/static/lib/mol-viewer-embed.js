@@ -967,6 +967,9 @@
             overlay.setAttribute("aria-modal", "true");
             overlay.setAttribute("aria-label",
                 opts.title || "Export options");
+            if (opts.instanceId) {
+                overlay.setAttribute("data-embed-id", opts.instanceId);
+            }
 
             const card = doc.createElement("div");
             card.className = "mol-viewer-export-modal-card "
@@ -1081,7 +1084,8 @@
             card.appendChild(actions);
 
             let keyHandler = null;
-            function _close() {
+            let settled = false;
+            function _close(rejectAs) {
                 if (keyHandler) {
                     doc.removeEventListener("keydown", keyHandler, true);
                     keyHandler = null;
@@ -1089,8 +1093,19 @@
                 if (overlay.parentNode) {
                     overlay.parentNode.removeChild(overlay);
                 }
+                // Phase 6e second-review BOMB #14: if the caller
+                // (typically dispose()) requested rejection, do
+                // that — otherwise leaving the Promise pending
+                // forever leaks the closure + state references.
+                if (rejectAs && !settled) {
+                    settled = true;
+                    reject(_makeErrorModule(rejectAs,
+                        "exportParamsDialog: " + rejectAs));
+                }
             }
             function _cancel() {
+                if (settled) { _close(); return; }
+                settled = true;
                 _close();
                 reject(_makeErrorModule("aborted",
                     "exportParamsDialog: cancelled"));
@@ -1123,6 +1138,22 @@
                         parseFloat(inputs.bitrate.value)
                             * 1_000_000);
                 }
+                // Phase 6e POLISH #22: silently fall back to
+                // engine defaults for NaN values rather than
+                // crashing exportAnimation downstream; better UX
+                // would be inline error highlights but the engine
+                // already guards via ``> 0`` checks (see line
+                // 4433 et al).
+                for (const k of ["fps", "duration",
+                                 "width", "height",
+                                 "videoBitsPerSecond"]) {
+                    if (out[k] !== undefined
+                        && !Number.isFinite(out[k])) {
+                        delete out[k];
+                    }
+                }
+                if (settled) return;
+                settled = true;
                 _close();
                 resolve(out);
             });
@@ -1139,10 +1170,26 @@
             // submit on Enter by default).
             keyHandler = (e) => {
                 if (e.key === "Escape") {
+                    // Phase 6e second-review LANDMINE #19:
+                    // stopPropagation prevents a host-page Esc
+                    // handler (e.g. close-sidebar) from firing
+                    // when the user only intended to dismiss the
+                    // dialog.  stopImmediatePropagation also
+                    // blocks any other listener on the same
+                    // element with higher priority — defensive
+                    // against future capture-phase listeners.
                     e.preventDefault();
+                    e.stopPropagation();
+                    if (e.stopImmediatePropagation) {
+                        e.stopImmediatePropagation();
+                    }
                     _cancel();
                 } else if (e.key === "Enter") {
                     e.preventDefault();
+                    e.stopPropagation();
+                    if (e.stopImmediatePropagation) {
+                        e.stopImmediatePropagation();
+                    }
                     exportBtn.click();
                 }
             };
@@ -1162,6 +1209,18 @@
     // Mirrors the inner _makeError shape so dialog rejections plug
     // into the same _dispatchError path.
     function _makeErrorModule(code, message, extra) {
+        // Phase 6e second-review POLISH #20: validate against the
+        // same VIEWER_ERROR_CODES list that _makeError uses, so a
+        // future caller passing a typo can't pollute the
+        // rate-limit table or sneak past downstream code:checks.
+        if (VIEWER_ERROR_CODES.indexOf(code) < 0) {
+            const e = new Error(
+                "(viewer internal: bad error code '" + code + "') "
+              + (message || ""));
+            e.code = "unknown";
+            if (extra) e.extra = extra;
+            return e;
+        }
         const e = new Error(message || code);
         e.code = code;
         if (extra) e.extra = extra;
@@ -1197,15 +1256,29 @@
         // Dialog's close() is registered on state so dispose() can
         // tear it down (review LANDMINE #9).  Unregister on settle.
         let dialogClose = null;
+        // Phase 6e second-review BOMB #13: tag the overlay with
+        // an instance id so multi-embed pages don't cross-cancel
+        // each other's dialogs.  Backdrop-click cancel inside the
+        // dialog checks the same id and ignores foreign clicks.
+        const instanceId = state._instanceId
+            || (state._instanceId = "mv-" + Math.random()
+                                                .toString(36)
+                                                .slice(2, 10));
         const dialogPromise = _showExportParamsDialog({
             kind:   kind,
             format: format,
             target: target,
             title:  _exportDialogTitle(kind, format, target),
             defaults: defaults,
+            instanceId: instanceId,
             onMounted: (closeFn) => {
-                dialogClose = closeFn;
-                state._openExportOverlays.add(closeFn);
+                // Phase 6e second-review BOMB #14: register a
+                // wrapper that rejects the dialog Promise as
+                // "disposed" when dispose() triggers close.
+                // Regular Cancel / Export paths call closeFn()
+                // with no arg.
+                dialogClose = () => closeFn("disposed");
+                state._openExportOverlays.add(dialogClose);
             },
         });
         const _unregisterDialog = () => {
@@ -1221,7 +1294,10 @@
                 state, handle, kind, target, format, params);
         }, (err) => {
             _unregisterDialog();
-            if (err && err.code === "aborted") return;
+            // Cancel and dispose-driven rejection are both
+            // silent — they're not user-visible errors.
+            if (err && (err.code === "aborted"
+                     || err.code === "disposed")) return;
             _dispatchError(state, err);
         });
     }
@@ -1287,6 +1363,11 @@
 
     function _runExportWithParams(
             state, handle, kind, target, format, params) {
+        // Phase 6e second-review LANDMINE #16: dispose may have
+        // run while the dialog was open or in the gap between
+        // _runExportFlow's disposed-check and here.  Bail before
+        // any UI.
+        if (state.disposed) return;
         const fmtLabel = (format || "").toUpperCase();
         const ac = (typeof AbortController !== "undefined")
             ? new AbortController() : null;
@@ -1319,6 +1400,14 @@
                 origClose();
             };
             modal.close = wrappedClose;
+            // LANDMINE #16: a dispose() that fired between our
+            // entry check and now would have cleared
+            // _openExportOverlays already — adding to a cleared
+            // Set leaks the modal forever.  Re-check and bail.
+            if (state.disposed) {
+                origClose();
+                return;
+            }
             state._openExportOverlays.add(wrappedClose);
         }
 
@@ -1328,6 +1417,18 @@
             autoRename: target === "project",
             signal:     ac ? ac.signal : undefined,
         };
+        // Phase 6e review BOMB #12: unknown kind would leave the
+        // modal hung (created above, p stays undefined, the early
+        // return below would skip the modal close).  Guard up
+        // front before any irreversible UI.
+        if (kind !== "structure" && kind !== "image"
+            && kind !== "animation") {
+            if (modal) modal.close();
+            _dispatchError(state, _makeErrorModule(
+                "invalid_input",
+                "exportFlow: unknown kind " + JSON.stringify(kind)));
+            return;
+        }
         let p;
         if (kind === "structure") {
             p = handle.exportData(Object.assign(
@@ -3996,6 +4097,33 @@
                 || null;
         }
 
+        /**
+         * Phase 6e save-to-project pipe.
+         *
+         * @param {string} filename — leaf filename (no slashes).
+         *   The owning embed's `_filename()` helper sanitises this
+         *   but callers may pass `opts.filename` from the params
+         *   dialog verbatim.  Server-side `_validate_upload_filename`
+         *   re-checks.
+         * @param {string|Blob} data
+         *   Text saves are routed to `/api/files/write`; Blobs to
+         *   `/api/files/upload` (multipart).  TypedArrays + ArrayBuffers
+         *   are NOT auto-converted; wrap with `new Blob([...])` first.
+         * @param {object} [opts]
+         * @param {boolean} [opts.autoRename] — server picks
+         *   `<stem>-2`, `<stem>-3` … on name collision.  Set TRUE for
+         *   project saves driven by the params dialog so default
+         *   filenames don't silently clobber prior exports.
+         * @param {AbortSignal} [opts.signal] — abort the in-flight
+         *   upload.  Threads through `state.js writeFile` → `apiUpload`
+         *   → fetch.  Without this, Cancel mid-upload silently lets
+         *   the bytes land server-side.
+         *
+         * MUST be kept in sync with the three call sites in
+         * `exportData`, `screenshot`, and `exportAnimation`.  A new
+         * caller that forgets `signal` recreates the 3-week silent-
+         * cancellation regression from the Phase 6e first review.
+         */
         function _writeToProject(filename, data, opts) {
             opts = opts || {};
             const proj = _projectsApi();
@@ -4545,12 +4673,27 @@
                     }
                     if (!newW) newW = 600;
                     if (!newH) newH = 400;
-                    canvas.width  = newW;
-                    canvas.height = newH;
-                    if (typeof state.viewer.resize === "function") {
+                    // Phase 6e second-review LANDMINE #15:
+                    // mirror the WebM path — surface the resize
+                    // failure rather than swallowing.  A silent
+                    // throw left the canvas pixel buffer at the
+                    // new size but the WebGL viewport at the old
+                    // size, and gif.addFrame() then captured
+                    // junk pixels outside the live viewport.
+                    try {
+                        canvas.width  = newW;
+                        canvas.height = newH;
+                        if (typeof state.viewer.resize === "function") {
+                            state.viewer.resize();
+                        }
+                        state.viewer.render();
+                    } catch (e) {
+                        canvas.width = origW; canvas.height = origH;
                         try { state.viewer.resize(); } catch (_) {}
+                        throw _makeError("io_error",
+                            "exportAnimation: canvas resize failed: "
+                          + (e && e.message), e);
                     }
-                    try { state.viewer.render(); } catch (_) {}
                 }
                 const w = canvas.width || canvas.clientWidth;
                 const h = canvas.height || canvas.clientHeight;
@@ -5198,6 +5341,14 @@
             hasAnimationLoop() {
                 return !!(state._anim && (state._anim.rafId !== null
                                        || state._anim.intervalId !== null));
+            },
+            getOpenExportOverlayCount() {
+                // Phase 6e second-review POLISH #23: lets tests
+                // assert that dispose() truly cleared the Set
+                // (DOM-emptiness assertions miss leaks of the
+                // close() closures themselves).
+                return state._openExportOverlays
+                    ? state._openExportOverlays.size : 0;
             },
             getFrameRebuildTimings() {
                 // Phase 6e: snapshot of recent

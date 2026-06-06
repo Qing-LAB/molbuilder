@@ -336,7 +336,15 @@ async function writeFile(path, text, opts) {
       mtime:   w.mtime,
     };
   }
-  const w = await apiWrite(path, text, opts);
+  // Phase 6e second-review BOMB #11: forward camelCase
+  // ``autoRename`` from the embed caller as snake_case
+  // ``auto_rename`` to the server.  ``opts.signal`` already
+  // works because apiWrite forwards it unchanged.
+  const writeOpts = opts ? {
+    ...opts,
+    auto_rename: !!(opts.auto_rename || opts.autoRename),
+  } : undefined;
+  const w = await apiWrite(path, text, writeOpts);
   if (!w.ok) {
     // Preserve `actual_mtime` on a 409 edit-conflict so tabs can
     // distinguish edit-conflict from other failures per design § 6.2.

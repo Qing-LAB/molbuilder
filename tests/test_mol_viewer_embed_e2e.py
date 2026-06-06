@@ -391,6 +391,7 @@ class TestTestHandle:
             "getFrameRebuildTimings",
             "getFrameStripElement",
             "getKnobBarElement",
+            "getOpenExportOverlayCount",
             "getOverlayLabelCount",
             "getOverlayShapeCount",
             "hasAnimationLoop",
@@ -4608,3 +4609,201 @@ class TestAnimationExportUX:
             "dispose() should tear down any open params dialog so "
             "stale UI doesn't survive the handle"
         )
+
+    def test_dispose_during_open_dialog_does_not_fire_onError(
+            self, page, flask_server):
+        """Phase 6e second-review BOMB #14: dispose() while a
+        params dialog is up tears the DOM down but used to leave
+        the Promise pending forever, leaking closures.  The fix
+        rejects with code:"disposed" and the orchestrator filters
+        it the same way it filters "aborted" — neither should
+        surface as an onError to the host."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                let onErrorFired = null;
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { bare: true, showInfoLine: false },
+                    onError: (err) => {
+                        onErrorFired = (err && err.code) || "fired";
+                    },
+                });
+                const bar = h._test.getKnobBarElement();
+                bar.querySelector(
+                    ".mol-viewer-menu-export").open = true;
+                bar.querySelector(
+                    ".mol-viewer-export-btn[data-kind='structure']"
+                  + "[data-target='download'][data-format='xyz']"
+                ).click();
+                h.dispose();
+                // Give the dialog Promise's reject handler time
+                // to land in a microtask.
+                await new Promise(r => setTimeout(r, 100));
+                host.remove();
+                return { onErrorFired };
+            }
+        """)
+        assert out["onErrorFired"] is None, (
+            f"dispose-during-open-dialog surfaced onError with "
+            f"code={out['onErrorFired']!r} — BOMB #14 fix didn't "
+            f"land, the dialog Promise rejection wasn't filtered"
+        )
+
+    def test_dialog_escape_does_not_propagate_to_host(
+            self, page, flask_server):
+        """Phase 6e second-review LANDMINE #19: a host-page Esc
+        handler should NOT fire when the user presses Esc inside
+        the embed's params dialog.  stopPropagation +
+        stopImmediatePropagation guard this."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                let hostEscFired = false;
+                // Install a host-page Esc handler that should
+                // NOT fire when Esc dismisses the dialog.  Use
+                // bubble phase so we run after the dialog's
+                // capture-phase handler.
+                const hostHandler = (e) => {
+                    if (e.key === "Escape") hostEscFired = true;
+                };
+                document.addEventListener("keydown", hostHandler);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { bare: true, showInfoLine: false },
+                });
+                const bar = h._test.getKnobBarElement();
+                bar.querySelector(
+                    ".mol-viewer-menu-export").open = true;
+                bar.querySelector(
+                    ".mol-viewer-export-btn[data-kind='structure']"
+                  + "[data-target='download'][data-format='xyz']"
+                ).click();
+                document.dispatchEvent(new KeyboardEvent("keydown",
+                    { key: "Escape", bubbles: true }));
+                await new Promise(r => setTimeout(r, 100));
+                document.removeEventListener("keydown", hostHandler);
+                h.dispose();
+                host.remove();
+                return { hostEscFired };
+            }
+        """)
+        assert out["hostEscFired"] is False, (
+            "Host-page Esc handler fired during dialog dismissal "
+            "— stopPropagation regression"
+        )
+
+    def test_writeFile_text_auto_rename_propagates_for_structure(
+            self, page, flask_server):
+        """Phase 6e second-review BOMB #11: text save-to-project
+        with auto_rename must reach the server's auto_rename
+        branch.  The dialog wires autoRename automatically for
+        project saves; this test asserts the camelCase →
+        snake_case conversion lands in state.js writeFile's call
+        to apiWrite."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                let receivedOpts = null;
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { bare: true, showInfoLine: false },
+                    export: { defaultName: "n" },
+                    testInjection: {
+                        projectsApi: {
+                            getCurrentDir: () => "/tmp/proj1",
+                            writeFile: async (path, data, opts) => {
+                                receivedOpts = opts || null;
+                                return { ok: true, path: path };
+                            },
+                        },
+                    },
+                });
+                await h.exportData({
+                    target: "project", format: "xyz",
+                    autoRename: true,
+                });
+                h.dispose();
+                host.remove();
+                return { receivedOpts };
+            }
+        """)
+        assert out["receivedOpts"] is not None, (
+            "writeFile was called without an opts argument; "
+            "_writeToProject is not passing autoRename through"
+        )
+        assert out["receivedOpts"].get("autoRename") is True, (
+            f"opts.autoRename did not reach writeFile; got: "
+            f"{out['receivedOpts']!r}"
+        )
+
+    def test_dispose_clears_open_export_overlay_set(
+            self, page, flask_server):
+        """Phase 6e second-review POLISH #23: tests that previously
+        only asserted DOM emptiness miss leaks of the close()
+        closures themselves.  This test reads the Set count via
+        the test affordance."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:300px;height:200px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { bare: true, showInfoLine: false },
+                });
+                const initialCount = h._test.getOpenExportOverlayCount();
+                const bar = h._test.getKnobBarElement();
+                bar.querySelector(
+                    ".mol-viewer-menu-export").open = true;
+                bar.querySelector(
+                    ".mol-viewer-export-btn[data-kind='structure']"
+                  + "[data-target='download'][data-format='xyz']"
+                ).click();
+                const withOpenDialog = h._test
+                    .getOpenExportOverlayCount();
+                // dispose() should drop them all.
+                // Capture the count BEFORE dispose since the handle
+                // is unusable afterwards.  Use the public method
+                // ordering: read → dispose → cannot read.
+                h.dispose();
+                host.remove();
+                return { initialCount, withOpenDialog };
+            }
+        """)
+        assert out["initialCount"] == 0, (
+            f"fresh embed should have 0 open overlays; got "
+            f"{out['initialCount']}"
+        )
+        assert out["withOpenDialog"] == 1, (
+            f"open dialog should register exactly 1 overlay; got "
+            f"{out['withOpenDialog']}.  Dialog mounting / registration "
+            f"is broken."
+        )
+

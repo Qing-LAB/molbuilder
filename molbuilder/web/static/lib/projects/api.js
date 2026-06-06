@@ -221,6 +221,10 @@ export async function apiWrite(path, text, opts) {
   opts = opts || {};
   const body = {path: path, text: text};
   if (opts.overwrite) body.overwrite = true;
+  // Phase 6e second-review BOMB #11: auto_rename parity with
+  // /api/files/upload so the export dialog's promise of
+  // "auto-renamed to <name>-2 …" is honored for text writes too.
+  if (opts.auto_rename) body.auto_rename = true;
   if (opts.expected_mtime != null) body.expected_mtime = opts.expected_mtime;
   return await _fetchEnvelope("/api/files/write", {
     method:  "POST",

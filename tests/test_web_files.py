@@ -1500,6 +1500,38 @@ class TestFilesUpload:
         assert r.status_code == 200
         assert r.get_json()["path"] == str(target / "fresh.gif")
 
+    def test_upload_refuses_to_write_through_symlink(
+            self, web, picker_root, tmp_path):
+        """Phase 6e second-review LANDMINE #18: a symlink at the
+        destination must NOT be followed.  Otherwise an attacker
+        could plant a dangling symlink pointing at a sensitive
+        file and a subsequent upload would clobber it through the
+        link."""
+        import io, os
+        target = picker_root / "proj" / "spectrum"
+        target.mkdir(parents=True)
+        # Plant a dangling symlink at the upload target.  Use an
+        # outside-roots target so we can verify nothing was
+        # written there even when the upload succeeds elsewhere.
+        outside = tmp_path / "outside-target"
+        os.symlink(str(outside), str(target / "movie.gif"))
+        r = web.post(
+            "/api/files/upload",
+            data={
+                "target_dir":  str(target),
+                "file":        (io.BytesIO(b"replaced"), "movie.gif"),
+                "overwrite":   "true",
+            },
+            content_type="multipart/form-data",
+        )
+        assert r.status_code == 400, r.get_data(as_text=True)
+        assert "symlink" in r.get_json()["error"]
+        # The link target was never created; the link itself is
+        # still where we planted it.
+        assert not outside.exists()
+        assert (target / "movie.gif").is_symlink()
+
+
     def test_upload_filename_with_path_separator_400(self, web, picker_root):
         # ``file.filename`` may carry the client's full path on some
         # browsers; we basename it server-side.  This test sends a
@@ -1552,6 +1584,86 @@ class TestFilesUpload:
         body = r.get_json()
         assert body["path"] == str(target / "water.xyz")
         assert (target / "water.xyz").read_bytes() == b"data\n"
+
+
+class TestFilesWriteAutoRename:
+    """Phase 6e second-review BOMB #11: the export dialog promises
+    auto-rename for ALL kinds; previously only /upload (binary)
+    honored auto_rename, so text exports (.xyz/.pdb) 409'd on
+    collision after the dialog said they wouldn't.  These tests
+    pin the /write parity."""
+
+    def _post(self, web, path, text, **extra):
+        body = {"path": str(path), "text": text}
+        body.update(extra)
+        return web.post(
+            "/api/files/write",
+            json=body,
+        )
+
+    def test_auto_rename_picks_dash_2_on_first_collision(
+            self, web, picker_root):
+        target = picker_root / "proj"
+        target.mkdir(parents=True)
+        (target / "structure.xyz").write_text("first\n")
+        r = self._post(web, target / "structure.xyz", "second\n",
+                       auto_rename=True)
+        assert r.status_code == 200, r.get_data(as_text=True)
+        body = r.get_json()
+        assert body["ok"] is True
+        assert body["path"] == str(target / "structure-2.xyz")
+        # Original untouched.
+        assert (target / "structure.xyz").read_text() == "first\n"
+        assert (target / "structure-2.xyz").read_text() == "second\n"
+
+    def test_auto_rename_walks_multiple_collisions(
+            self, web, picker_root):
+        target = picker_root / "proj"
+        target.mkdir(parents=True)
+        for n in ["structure.xyz", "structure-2.xyz",
+                  "structure-3.xyz"]:
+            (target / n).write_text("prior\n")
+        r = self._post(web, target / "structure.xyz", "n4\n",
+                       auto_rename=True)
+        assert r.status_code == 200
+        assert r.get_json()["path"] == str(target / "structure-4.xyz")
+
+    def test_auto_rename_no_collision_uses_original_path(
+            self, web, picker_root):
+        target = picker_root / "proj"
+        target.mkdir(parents=True)
+        r = self._post(web, target / "fresh.xyz", "data\n",
+                       auto_rename=True)
+        assert r.status_code == 200
+        assert r.get_json()["path"] == str(target / "fresh.xyz")
+
+    def test_overwrite_wins_when_both_flags_set(
+            self, web, picker_root):
+        """overwrite=true wins over auto_rename=true; the request
+        is treated as an explicit clobber.  Matches /upload's
+        precedence."""
+        target = picker_root / "proj"
+        target.mkdir(parents=True)
+        (target / "x.xyz").write_text("first\n")
+        r = self._post(web, target / "x.xyz", "second\n",
+                       overwrite=True, auto_rename=True)
+        assert r.status_code == 200
+        assert r.get_json()["path"] == str(target / "x.xyz")
+        assert (target / "x.xyz").read_text() == "second\n"
+
+    def test_write_refuses_symlink_target(
+            self, web, picker_root, tmp_path):
+        """LANDMINE #18 mirror for the text-write path."""
+        import os
+        target = picker_root / "proj"
+        target.mkdir(parents=True)
+        outside = tmp_path / "outside.txt"
+        os.symlink(str(outside), str(target / "linky.xyz"))
+        r = self._post(web, target / "linky.xyz", "data\n",
+                       overwrite=True)
+        assert r.status_code == 400
+        assert "symlink" in r.get_json()["error"]
+        assert not outside.exists()
 
 
 class TestSidebarStubsUI:

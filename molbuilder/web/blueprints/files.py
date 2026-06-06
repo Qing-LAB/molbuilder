@@ -962,10 +962,18 @@ def api_files_upload():
             # of the same default name doesn't silently clobber the
             # previous one.  Cap at 999 to avoid pathological loops
             # (the directory's truly broken at that point).
+            # Phase 6e second-review LANDMINE #17: each synthesised
+            # candidate must re-pass _validate_upload_filename so
+            # any future tightening of the regex can't be bypassed
+            # by the suffix-picker.  Today's regex permits all
+            # outputs of this loop, but the invariant is now
+            # checked rather than coincidental.
             stem = dest.stem
             suffix = dest.suffix
             for n in range(2, 1000):
                 candidate = dest.with_name(f"{stem}-{n}{suffix}")
+                if _validate_upload_filename(candidate.name) is not None:
+                    continue
                 if not candidate.exists():
                     dest = candidate
                     break
@@ -986,6 +994,23 @@ def api_files_upload():
                           f"colliding name."),
             }), 409
 
+    # Phase 6e second-review LANDMINE #18: refuse to follow a
+    # symlink at the destination.  Without this, an attacker (or
+    # honest mistake) could plant a dangling symlink at
+    # ``<target_dir>/movie-2.gif`` pointing at ``~/.ssh/...``;
+    # the existence check above sees the link as "doesn't exist"
+    # (dangling), then upload.save writes through it.  Refuse if
+    # the destination is a symlink AT ALL.
+    try:
+        if dest.is_symlink():
+            return jsonify({
+                "ok": False,
+                "error": (f"refusing to write through a symlink at "
+                          f"{str(dest)!r}; delete the link and retry."),
+            }), 400
+    except OSError as exc:
+        return jsonify({"ok": False,
+                        "error": f"is_symlink check failed: {exc}"}), 500
     try:
         upload.save(str(dest))
     except PermissionError as exc:
@@ -1017,7 +1042,7 @@ def api_files_upload():
 def api_files_write():
     """Write text content to a file inside an allowed picker root.
 
-    JSON body: ``{path, text, overwrite?, expected_mtime?}``
+    JSON body: ``{path, text, overwrite?, auto_rename?, expected_mtime?}``
 
     Two distinct call patterns share this endpoint:
 
@@ -1048,6 +1073,7 @@ def api_files_write():
     raw_path = body.get("path", "")
     text     = body.get("text", "")
     overwrite      = bool(body.get("overwrite", False))
+    auto_rename    = bool(body.get("auto_rename", False))
     expected_mtime = body.get("expected_mtime", None)
 
     if not isinstance(text, str):
@@ -1103,14 +1129,51 @@ def api_files_write():
                     "actual_mtime": actual_mtime,
                 }), 409
             # mtime matches: this is a valid edit-save; overwrite OK.
-        elif not overwrite:
+        elif overwrite:
+            pass  # explicit overwrite
+        elif auto_rename:
+            # Phase 6e second-review BOMB #11: the dialog promises
+            # auto-rename for all kinds; previously only /upload
+            # implemented it, so text writes (.xyz/.pdb) silently
+            # 409'd on collision after the dialog said they
+            # wouldn't.  Mirror the /upload picker here.
+            stem = resolved.stem
+            suffix = resolved.suffix
+            chosen = None
+            for n in range(2, 1000):
+                candidate = resolved.with_name(f"{stem}-{n}{suffix}")
+                if not candidate.exists():
+                    chosen = candidate
+                    break
+            if chosen is None:
+                return jsonify({
+                    "ok": False,
+                    "error": (f"could not find an unused "
+                              f"auto-rename candidate for "
+                              f"{resolved.name!r} after 998 tries"),
+                }), 500
+            resolved = chosen
+        else:
             return jsonify({
                 "ok":   False,
                 "error": (f"file already exists: {str(resolved)!r}.  "
-                          f"Set overwrite=true to replace it, or pick "
-                          f"a different name / directory."),
+                          f"Set overwrite=true or auto_rename=true, "
+                          f"or pick a different name / directory."),
             }), 409
 
+    # LANDMINE #18 mirror: refuse to clobber a symlink with text
+    # writes too.  The write_text() helper resolves and follows
+    # links; refusing here keeps the write inside the picker root.
+    try:
+        if resolved.is_symlink():
+            return jsonify({
+                "ok": False,
+                "error": (f"refusing to write through a symlink at "
+                          f"{str(resolved)!r}"),
+            }), 400
+    except OSError as exc:
+        return jsonify({"ok": False,
+                        "error": f"is_symlink check failed: {exc}"}), 500
     try:
         resolved.write_text(text, encoding="utf-8")
     except PermissionError as exc:
