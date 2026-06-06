@@ -703,6 +703,105 @@ Errors are returned, never thrown.  The `error` field IS:
   failure without parsing the error string — typically used to
   silently dismiss the failure UI when the user pressed Cancel.
 
+### 6.3 Cancel-aware helpers: `safeSave` + `isCancelError`
+
+Cancel-vs-error came up eight times across six audit rounds in the
+Phase 6e work.  Every save flow in the codebase has three terminal
+states (success, user-cancelled, real-failure), but the raw
+envelope shape (`{ok: false, error, aborted?}`) conflates the last
+two — and forgetting to filter `aborted` before treating `!ok` as
+a hard failure surfaces user-Cancel clicks as red error banners.
+
+Two helpers on the public surface make the pattern explicit:
+
+* **`projects.safeSave(text, filename, opts)`** — thin Cancel-aware
+  wrapper over `saveToWorkspace`.  Folds the `{aborted: true}`
+  envelope into `{cancelled: true}` so the three terminal states
+  are syntactically distinct:
+
+  ```
+  r == null            → no current dir (caller gates before call;
+                         null is the backstop)
+  r.cancelled === true → user cancelled via opts.signal
+  r.ok === true        → success: {path, relPath, size, mtime}
+  r.ok === false       → real failure: {error[, actual_mtime]}
+  ```
+
+* **`projects.isCancelError(err)`** — predicate for the catch path.
+  Returns true for every cancel shape that appears in production
+  code:
+
+  | Shape                               | Where it comes from                        |
+  |-------------------------------------|--------------------------------------------|
+  | `err.name === "AbortError"`         | thrown by `fetch` when an AbortSignal fires|
+  | `err.aborted === true`              | raw `api.js` / `writeFile` envelope        |
+  | `err.cancelled === true`            | post-fold `safeSave` envelope              |
+  | `err.code === "aborted"`            | `mol-viewer-embed` ViewerError shape       |
+
+  Returns false for `null`, generic errors, and explicitly
+  excludes `err.code === "disposed"` — that's a distinct
+  lifecycle event (embed teardown), not user-initiated cancel.
+
+**Canonical caller pattern** (live examples: `viewer.js`
+`_runSaveFdfPipeline` + `_runSavePyscfPipeline`, `lib/spectra/
+core.js` `saveSpectraToCurrentDir`):
+
+```js
+const ac = new AbortController();
+state.fooAbort = ac;   // wire to lock cancel handler
+if (proj.lock) {
+    proj.lock("Saving Foo…", [() => ac.abort()]);
+}
+try {
+    // Primary write — safeSave folds the cancel envelope.
+    const r = await proj.safeSave(text, name, {
+        overwrite: true, signal: ac.signal,
+    });
+    if (r == null)   return;
+    if (r.cancelled) { setStatus(elOrId, "Save cancelled.", "muted"); return; }
+    if (!r.ok)       { setStatus(elOrId, "Save failed: " + r.error, "error"); return; }
+
+    // Secondary step (wrapper-install, pseudo-install, …) —
+    // catch path uses isCancelError for the thrown AbortError.
+    try {
+        await fetch("/api/run/install-wrapper", {
+            method: "POST", body: ..., signal: ac.signal,
+        });
+    } catch (e) {
+        if (proj.isCancelError(e)) {
+            setStatus(elOrId, "Save cancelled after primary write.", "muted");
+            return;
+        }
+        // Other failures non-fatal — primary write already landed.
+    }
+    setStatus(elOrId, "Wrote " + r.relPath, "ok");
+} finally {
+    if (proj.unlock) proj.unlock();
+}
+```
+
+**Caller contract** (enforced by code review, not runtime):
+
+1. `opts.signal`, if present, MUST be a real `AbortSignal` from
+   `new AbortController().signal`.  Typos (`signl: …`) silently
+   produce an uncancellable save.
+
+2. Check `r.cancelled` BEFORE `!r.ok`.  The cancel envelope has
+   no useful `error` text to render.
+
+3. The cancel envelope is for `safeSave` RESULTS.  For
+   `catch (e)` blocks around `fetch` (the secondary steps of a
+   multi-step pipeline), use `proj.isCancelError(e)` instead.
+   Don't cross the streams — the catch-on-the-result pattern is
+   not what `isCancelError` is designed for, even though it
+   happens to work because the predicate accepts the envelope
+   shape too.
+
+4. Embed-side errors with `code: "disposed"` are NOT cancels.
+   They're host-tear-down lifecycle events.  Filter them at the
+   embed call site with an inline check — `isCancelError` will
+   not match.
+
 ---
 
 ## 7. Lifecycle

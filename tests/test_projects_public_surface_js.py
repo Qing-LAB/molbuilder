@@ -711,18 +711,21 @@ class TestWriteFileEdgeFields:
 
 
 class TestSafeSave:
-    """Phase 6e sixth (audit-recommended) follow-up: ``safeSave``
-    is a thin Cancel-aware wrapper that renames the envelope's
-    ``aborted`` field to ``cancelled`` so the three terminal states
-    (success, cancel, real-failure) are syntactically distinct at
-    every call site."""
+    """``safeSave`` wraps ``saveToWorkspace`` so the three terminal
+    states are distinct: null (no current dir), {cancelled:true}
+    (user cancel), {ok:true|false, ...} (write outcome).  Tests
+    here cover the shapes the three real callers (SIESTA + PySCF
+    save in viewer.js, Spectra save in spectra/core.js) actually
+    consume.  Tests for theoretical caller mistakes were removed
+    after the 8-audit-round cleanup: callers are reviewed for
+    contract compliance, the helper is not hardened against
+    impossible inputs."""
 
-    def test_safeSave_returns_cancelled_on_abort_envelope(self):
-        """safeSave folds ``aborted:true`` into ``cancelled:true``
-        + carries a defensive ``error:"cancelled"`` so a
-        mis-written caller doing ``"Save failed: " + (r.error
-        || "no current_dir")`` shows "Save failed: cancelled"
-        instead of "Save failed: undefined" or worse."""
+    def test_safeSave_folds_abort_envelope_to_cancelled(self):
+        """The only fold safeSave does: ``{ok:false, aborted:true}``
+        from saveToWorkspace → ``{ok:false, cancelled:true}`` for
+        the call site to branch on.  All three real callers
+        check ``r.cancelled`` first."""
         out = _run_node('''
             global.fetch = async () => {
                 const err = new Error("aborted");
@@ -735,70 +738,18 @@ class TestSafeSave:
                 setItem(k, v) { this._v[k] = v; },
             };
             state.setProjectsRoot("/projects");
+            const ac = new AbortController();
             const r = await state.projects.safeSave("text", "f.xyz",
-                { overwrite: true });
+                { overwrite: true, signal: ac.signal });
             console.log(JSON.stringify(r));
         ''')
         assert out["ok"] is False
         assert out["cancelled"] is True
-        # Sixth-review LANDMINE-2: defensive error field present.
-        assert out["error"] == "cancelled"
 
-    def test_safeSave_rejects_bad_signal_type(self):
-        """Sixth-review LANDMINE-5: a caller typo like ``signl``
-        used to silently produce an uncancellable save.  Now the
-        helper throws TypeError in dev so the bug surfaces
-        immediately."""
-        out = _run_node('''
-            global.sessionStorage = {
-                _v: {"molbuilder.current_dir": "/projects/proj1"},
-                getItem(k) { return this._v[k] || null; },
-                setItem(k, v) { this._v[k] = v; },
-            };
-            state.setProjectsRoot("/projects");
-            let caught = null;
-            try {
-                await state.projects.safeSave("text", "f.xyz",
-                    { signal: "not-a-signal" });
-            } catch (e) {
-                caught = { name: e.name, message: e.message };
-            }
-            console.log(JSON.stringify(caught));
-        ''')
-        assert out is not None, "TypeError not thrown"
-        assert out["name"] == "TypeError"
-        assert "AbortSignal" in out["message"]
-
-    def test_safeSave_accepts_real_abort_signal(self):
-        """Sanity: a real AbortSignal passes the type check."""
-        out = _run_node('''
-            global.fetch = async () => ({
-                ok: true, status: 200,
-                json: async () => ({
-                    ok: true,
-                    path: "/projects/proj1/f.xyz",
-                    size: 7, mtime: 1,
-                }),
-            });
-            global.sessionStorage = {
-                _v: {"molbuilder.current_dir": "/projects/proj1"},
-                getItem(k) { return this._v[k] || null; },
-                setItem(k, v) { this._v[k] = v; },
-            };
-            state.setProjectsRoot("/projects");
-            const ac = new AbortController();
-            const r = await state.projects.safeSave("text", "f.xyz",
-                { signal: ac.signal });
-            console.log(JSON.stringify(r));
-        ''')
-        assert out["ok"] is True
-
-    def test_safeSave_signal_actually_propagates_abort(self):
-        """Phase 6e seventh-review LANDMINE-7: prior test only
-        verified the type check passed.  This test verifies the
-        signal end-to-end: ac.abort() reaches fetch, fetch
-        rejects with AbortError, writeFile envelope carries
-        aborted:true, safeSave folds to cancelled:true."""
+    def test_safeSave_signal_propagates_to_fetch(self):
+        """Pin that ``opts.signal`` reaches fetch end-to-end.  A
+        future refactor that drops the signal would deadlock this
+        test (the mock fetch only resolves when the signal fires)."""
         out = _run_node('''
             global.fetch = async (url, opts) => {
                 return new Promise((resolve, reject) => {
@@ -815,7 +766,7 @@ class TestSafeSave:
                             reject(e);
                         });
                     }
-                    // Never resolve otherwise — caller must abort.
+                    // No signal → no resolution; deadlock by design.
                 });
             };
             global.sessionStorage = {
@@ -827,8 +778,6 @@ class TestSafeSave:
             const ac = new AbortController();
             const p = state.projects.safeSave("text", "f.xyz",
                 { signal: ac.signal });
-            // Abort on next microtask so the fetch is in-flight
-            // when the signal fires.
             await new Promise(r => setImmediate(r));
             ac.abort();
             const r = await p;
@@ -837,33 +786,10 @@ class TestSafeSave:
         assert out["ok"] is False
         assert out["cancelled"] is True
 
-    def test_isCancelError_total_over_throwing_getter(self):
-        """Phase 6e seventh-review LANDMINE-1: the predicate must
-        be total over every object input, including ones whose
-        property accessors throw.  A throwing getter used to
-        propagate the throw through isCancelError, breaking the
-        contract for callers doing
-        ``if (isCancelError(e)) { ... } else { ... }``."""
-        out = _run_node('''
-            const e = Object.create(null);
-            Object.defineProperty(e, "name", {
-                get() { throw new Error("evil"); },
-            });
-            // Should return false, not throw.
-            let result;
-            try {
-                result = state.projects.isCancelError(e);
-            } catch (exc) {
-                result = { threw: exc.message };
-            }
-            console.log(JSON.stringify({ result }));
-        ''')
-        assert out["result"] is False
-
     def test_safeSave_returns_null_on_no_current_dir(self):
-        """safeSave inherits saveToWorkspace's ``null`` for the
-        no-current-dir case so callers can fall back to local
-        download / copy without showing an error."""
+        """The null backstop — callers gate on this before calling
+        in practice; the helper preserves the saveToWorkspace
+        contract."""
         out = _run_node('''
             global.sessionStorage = {
                 getItem() { return null; },
@@ -873,13 +799,11 @@ class TestSafeSave:
             const r = await state.projects.safeSave("text", "f.xyz");
             console.log(JSON.stringify(r));
         ''')
-        # null serialises to JSON null → Python None.
         assert out is None
 
     def test_safeSave_returns_null_at_projects_root(self):
-        """When current_dir IS the projects/ root, there's no
-        subdir to write into; safeSave returns null so the caller
-        falls back gracefully."""
+        """current_dir IS the projects/ root → null (no writeable
+        subdir).  Matches saveToWorkspace behaviour."""
         out = _run_node('''
             global.sessionStorage = {
                 _v: {"molbuilder.current_dir": "/projects"},
@@ -893,9 +817,9 @@ class TestSafeSave:
         assert out is None
 
     def test_safeSave_passes_through_real_failure(self):
-        """A real 409 (file exists, no overwrite) stays
-        ``{ok:false, error:"..."}``.  No ``cancelled`` field for
-        non-cancel failures."""
+        """Real 409 stays ``{ok:false, error:"..."}``.  Callers
+        check ``r.cancelled`` THEN ``!r.ok`` so the failure path
+        gets the real error text."""
         out = _run_node('''
             global.fetch = async () => ({
                 ok: false, status: 409,
@@ -942,10 +866,25 @@ class TestSafeSave:
 
 
 class TestIsCancelError:
-    """Predicate over both shapes the cancellation contract can
-    arrive in (DOMException AbortError + ApiError envelope)."""
+    """Predicate accepting every shape the cancellation contract
+    arrives in across the codebase:
+
+      - DOMException ``name === "AbortError"`` — thrown by fetch
+        when an AbortSignal aborts (the 4 wrapper-install / pseudo-
+        install catches in SIESTA/PySCF/Spectra pipelines).
+      - ``{aborted: true}`` — the raw envelope shape returned by
+        api.js / writeFile / saveToWorkspace.
+      - ``{cancelled: true}`` — the post-fold envelope shape
+        returned by safeSave.
+      - ``{code: "aborted"}`` — the ViewerError shape produced by
+        mol-viewer-embed.
+
+    Each shape exists in production code paths; the predicate
+    centralises the match so a future change to the cancellation
+    contract has ONE place to touch."""
 
     def test_isCancelError_matches_abort_error_name(self):
+        """The shape fetch throws on abort."""
         out = _run_node('''
             const e = new Error("aborted");
             e.name = "AbortError";
@@ -956,6 +895,7 @@ class TestIsCancelError:
         assert out["hit"] is True
 
     def test_isCancelError_matches_aborted_flag(self):
+        """The raw api.js / writeFile envelope shape."""
         out = _run_node('''
             console.log(JSON.stringify({
                 hit: state.projects.isCancelError(
@@ -965,6 +905,7 @@ class TestIsCancelError:
         assert out["hit"] is True
 
     def test_isCancelError_matches_aborted_code(self):
+        """The ViewerError shape produced by mol-viewer-embed."""
         out = _run_node('''
             console.log(JSON.stringify({
                 hit: state.projects.isCancelError(
@@ -974,26 +915,24 @@ class TestIsCancelError:
         assert out["hit"] is True
 
     def test_isCancelError_matches_safeSave_cancelled_envelope(self):
-        """Sixth-review LANDMINE-1: safeSave renames
-        ``aborted`` → ``cancelled`` on its envelope.
-        ``isCancelError`` must recognise both shapes or the API is
-        a footgun: a caller chaining
-        ``if (isCancelError(r))`` on a safeSave result would have
-        gotten FALSE and fallen through to the error branch."""
+        """The post-fold envelope shape returned by safeSave.  A
+        maintainer using both safeSave AND isCancelError naturally
+        would pass a safeSave result here; pinning that the match
+        works avoids the footgun where mixed use leaks cancels as
+        errors."""
         out = _run_node('''
             console.log(JSON.stringify({
                 hit: state.projects.isCancelError(
-                    { ok: false, cancelled: true, error: "cancelled" }),
+                    { ok: false, cancelled: true }),
             }));
         ''')
         assert out["hit"] is True
 
     def test_isCancelError_does_NOT_match_disposed(self):
-        """Sixth-review LANDMINE-4: ``disposed`` is a distinct
-        lifecycle event (host tore the embed down), not a user-
-        initiated cancel.  Pinning the current behaviour so a
-        future widening of isCancelError is a conscious decision,
-        not an accidental drift."""
+        """``code: "disposed"`` is a distinct lifecycle event (host
+        tore an embed down), not a user-initiated cancel.  Pinning
+        the exclusion so a future widening is a conscious decision,
+        not accidental drift."""
         out = _run_node('''
             console.log(JSON.stringify({
                 hit: state.projects.isCancelError(
@@ -1003,6 +942,7 @@ class TestIsCancelError:
         assert out["hit"] is False
 
     def test_isCancelError_rejects_null_and_other_errors(self):
+        """Null/undefined guard + non-cancel error rejection."""
         out = _run_node('''
             console.log(JSON.stringify({
                 forNull:    state.projects.isCancelError(null),

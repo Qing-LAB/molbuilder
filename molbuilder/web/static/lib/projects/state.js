@@ -390,142 +390,32 @@ async function saveToWorkspace(text, filename, opts) {
 }
 
 /**
- * Phase 6e fifth-review follow-up: thin Cancel-aware wrapper over
- * ``saveToWorkspace``.
- *
- * Why this exists: every save flow (SIESTA, PySCF, Spectra, …) has
- * three terminal states — success, user-cancelled, real-failure —
- * but the underlying ``writeFile`` envelope conflates the last two
- * (both arrive as ``{ok:false, error, aborted?}``).  Five audits
- * found bugs at sites that forgot to check ``.aborted`` first and
- * surfaced cancellation as a red error banner.
- *
- * CONTRACT — four terminal shapes, distinct intents:
- *
- *   r == null                 → no current dir (fall back to local
- *                                Download / Copy without UI error)
- *   r.cancelled === true      → user cancelled (show muted status)
- *   r.ok === true             → success: {path, relPath, size, mtime}
- *   r.ok === false            → real failure: {error[, actual_mtime]}
- *
- * Canonical caller pattern (replace ``setStatus`` with whatever
- * status sink the page uses — ``setStatus(elementId, msg, kind)``
- * for viewer.js, ``setStatus(element, msg, kind)`` for spectra/
- * core.js, etc.):
- *   ```
- *   const r = await proj.safeSave(text, name, {signal: ac.signal});
- *   if (r == null) {
- *       // No current dir (or projects/ root selected).  Most
- *       // callers gate on this BEFORE calling safeSave; the
- *       // null return is the "you didn't check?" backstop.
- *       return;
- *   }
- *   if (r.cancelled) { showStatus("Save cancelled.", "muted"); return; }
- *   if (!r.ok)       { showStatus("Save failed: " + r.error,
- *                                 "error");                    return; }
- *   // r.path is the resolved file path.
- *   ```
- *
- * Seventh-review LANDMINE-5/6: the prior docstring used the
- * 2-arg ``setStatus(msg, kind)`` form (no real caller uses that)
- * and referenced a ``localFallback()`` no call site implements.
- * The shape above is what production actually does.
- *
- * Sixth-review LANDMINE-2: the cancelled envelope DOES carry a
- * fallback ``error: "cancelled"`` text so a mis-written caller
- * doing ``"Save failed: " + (r.error || "no current_dir")`` shows
- * "Save failed: cancelled" instead of "Save failed: undefined" or
- * "Save failed: no current_dir".  Bad behaviour, but visibly
- * wrong, not insidiously wrong.
- *
- * Sixth-review LANDMINE-5: when ``opts.signal`` is set we sanity-
- * check it's an AbortSignal so a caller typo (``signl``) surfaces
- * as a thrown TypeError in dev rather than silently producing an
- * uncancellable save.
- *
- * NOTE: the caller still threads ``opts.signal`` themselves; this
- * helper does NOT create an AbortController, because the caller is
- * the only one who can trigger one (via the sidebar lock's Cancel
- * button or a programmatic abort).
+ * Cancel-aware save helper.  See docs/protocols/projects-sidebar.md
+ * § 6.3 for the contract, the canonical caller pattern, and the
+ * four-way return shape (null / cancelled / ok / error).  Live
+ * examples: viewer.js _runSaveFdfPipeline + _runSavePyscfPipeline,
+ * lib/spectra/core.js saveSpectraToCurrentDir.
  */
 async function safeSave(text, filename, opts) {
-  if (opts && opts.signal !== undefined && opts.signal !== null) {
-    // Phase 6e seventh-review LANDMINE-2: prefer the strict
-    // ``instanceof AbortSignal`` check; some test harnesses
-    // mock the signal so fall back to a duck-type check that
-    // ALSO requires the constructor name "AbortSignal" — that
-    // catches the prior loose-duck failure mode where any
-    // ``{aborted:false, addEventListener:()=>{}}`` shape passed.
-    const s = opts.signal;
-    let isSignal = false;
-    try {
-      if (typeof AbortSignal !== "undefined"
-          && s instanceof AbortSignal) {
-        isSignal = true;
-      } else if (typeof s.aborted === "boolean"
-                 && typeof s.addEventListener === "function"
-                 && s.constructor
-                 && s.constructor.name === "AbortSignal") {
-        isSignal = true;
-      }
-    } catch (_) { /* instanceof can throw on cross-realm objects */ }
-    if (!isSignal) {
-      throw new TypeError(
-        "safeSave: opts.signal must be an AbortSignal "
-      + "(got " + (s && s.constructor && s.constructor.name
-                    || typeof s) + ")");
-    }
-  }
   const w = await saveToWorkspace(text, filename, opts);
   if (w == null) return null;
-  if (w.aborted) {
-    return { ok: false, cancelled: true, error: "cancelled" };
-  }
+  if (w.aborted) return { ok: false, cancelled: true };
   return w;
 }
 
 /**
- * Predicate: was this Error / envelope produced by user
- * cancellation?
- *
- * Use in ``catch (e)`` blocks around ``fetch(...)`` calls (the
- * subsequent steps of a multi-step pipeline — pseudo-install,
- * wrapper-install, etc.) where Cancel arrives as a thrown
- * AbortError, not as an envelope.  Centralises the predicate so
- * a future change to the cancellation contract has one place to
- * touch.
- *
- * Accepts every shape the cancellation contract arrives in:
- *   - DOMException with ``name === "AbortError"`` (thrown by
- *     ``fetch`` when the signal aborts).
- *   - An ApiError envelope with ``aborted === true`` (raw
- *     /api/files/write or /api/files/upload result).
- *   - A safeSave envelope with ``cancelled === true`` (the
- *     post-fold shape this module returns to callers).
- *   - A ViewerError with ``code === "aborted"`` (mol-viewer-embed
- *     export errors that bubble out of the embed).
- *
- * Sixth-review LANDMINE-4: does NOT match ``code === "disposed"``
- * — that's a distinct lifecycle event (host tore the embed down
- * during an in-flight operation), not a user-initiated cancel,
- * and should be handled by its own filter at the call site.  If
- * a future feature wants to fold disposed into cancel UX, ADD a
- * separate predicate here rather than widening this one.
+ * Predicate matching every cancellation shape in the codebase
+ * (AbortError thrown by fetch, raw envelope ``aborted``, safeSave
+ * envelope ``cancelled``, embed ViewerError ``code:"aborted"``).
+ * Does NOT match ``code:"disposed"`` (host-teardown is not user
+ * cancellation).  See docs/protocols/projects-sidebar.md § 6.3.
  */
 function isCancelError(err) {
   if (!err) return false;
-  // Seventh-review LANDMINE-1: defensive against errors whose
-  // property accessors throw (instrumented Proxy mocks; weird
-  // host objects).  The predicate is a contract surface — it
-  // must be total over every shape callers might pass.
-  try {
-    if (err.name === "AbortError") return true;
-    if (err.aborted === true) return true;
-    if (err.cancelled === true) return true;
-    if (err.code === "aborted") return true;
-  } catch (_) {
-    return false;
-  }
+  if (err.name === "AbortError") return true;
+  if (err.aborted === true) return true;
+  if (err.cancelled === true) return true;
+  if (err.code === "aborted") return true;
   return false;
 }
 

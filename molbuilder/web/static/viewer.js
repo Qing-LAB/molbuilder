@@ -1106,10 +1106,9 @@
             const w = await proj.safeSave(
                 state.fdf, filename,
                 { overwrite: true, signal: abortSignal });
-            // safeSave returns {ok:false, cancelled:true} for
-            // user-initiated abort; the {error} field is reserved
-            // for real failures.  See projects/state.js safeSave
-            // contract.
+            // safeSave contract: branch on r.cancelled BEFORE
+            // !r.ok so user-initiated Cancel doesn't render as a
+            // red "Save failed: …" banner.  See state.js safeSave.
             if (w && w.cancelled) {
                 setStatus("fdf-status", "Save cancelled.", "muted");
                 return;
@@ -1445,6 +1444,7 @@
             const w = await proj.safeSave(
                 state.pyscf, meta.filename,
                 { overwrite: true, signal: abortSignal });
+            // safeSave contract: see SIESTA mirror above + state.js.
             if (w && w.cancelled) {
                 setStatus("pyscf-status", "Save cancelled.", "muted");
                 return;
