@@ -515,6 +515,64 @@
     cursor:         not-allowed;
 }
 
+/* Export params dialog (Phase 6e) ----------------------------
+   Shown before the progress modal so the user can edit defaults
+   (filename, fps, duration, resolution, bitrate). */
+.mol-viewer-export-params-card {
+    min-width:      380px;
+    max-width:      520px;
+}
+.mol-viewer-export-params-form {
+    display:        flex;
+    flex-direction: column;
+    gap:            0.6rem;
+}
+.mol-viewer-export-params-row {
+    display:        grid;
+    grid-template-columns: 8rem 1fr;
+    grid-column-gap: 0.6rem;
+    grid-row-gap:   0.15rem;
+    align-items:    baseline;
+}
+.mol-viewer-export-params-label {
+    font-size:      0.85rem;
+    color:          var(--text-muted, #98a3b0);
+}
+.mol-viewer-export-params-input {
+    padding:        0.3rem 0.5rem;
+    background:     var(--bg-input, #262b33);
+    color:          var(--text-primary, #e6e9ee);
+    border:         1px solid var(--border-soft, rgba(255,255,255,0.08));
+    border-radius:  var(--radius-sm, 6px);
+    font-variant-numeric: tabular-nums;
+    font:           inherit;
+    min-width:      0;
+    width:          100%;
+}
+.mol-viewer-export-params-input:focus {
+    outline:        none;
+    border-color:   var(--accent, #5fb6ff);
+}
+.mol-viewer-export-params-hint {
+    grid-column:    2;
+    font-size:      0.72rem;
+    color:          var(--text-muted, #98a3b0);
+    opacity:        0.75;
+    line-height:    1.3;
+}
+.mol-viewer-export-modal-confirm {
+    padding:        0.35rem 0.95rem;
+    background:     var(--accent, #5fb6ff);
+    color:          var(--bg-panel, #20242b);
+    border:         1px solid var(--accent, #5fb6ff);
+    border-radius:  var(--radius-sm, 6px);
+    cursor:         pointer;
+    font-weight:    600;
+}
+.mol-viewer-export-modal-confirm:hover {
+    filter:         brightness(1.08);
+}
+
 /* Narrow viewports ------------------------------------------ */
 @media (max-width: 480px) {
     .mol-viewer-knobs {

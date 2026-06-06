@@ -883,10 +883,18 @@ def api_files_upload():
         save-to-project for animation / image (Blob) exports, which
         re-use a deterministic filename and expect overwrite
         semantics matching the text-write path.
+      * ``auto_rename`` -- optional "true"/"1" string.  When set
+        AND ``overwrite`` is absent, name collisions are resolved
+        by appending ``-2``, ``-3``, ... to the stem until a free
+        slot is found (capped at 999 retries).  Used by the embed's
+        export-params dialog so the user doesn't silently clobber
+        a previous save when they keep the default filename.  The
+        chosen name is reported back in ``path``.
 
     Behaviour:
       * No implicit overwrite unless ``overwrite=true`` is sent;
-        otherwise name conflict at destination returns 409.
+        otherwise name conflict at destination returns 409 (or is
+        resolved to a free name when ``auto_rename=true``).
       * Max upload size is enforced globally by Flask's
         ``MAX_CONTENT_LENGTH`` (50 MB; the app-level 413 handler
         catches oversize uploads with a clean message).
@@ -944,13 +952,39 @@ def api_files_upload():
     dest = target_dir / filename
     overwrite_raw = (request.form.get("overwrite") or "").strip().lower()
     overwrite = overwrite_raw in ("1", "true", "yes", "on")
+    auto_rename_raw = (request.form.get("auto_rename") or "").strip().lower()
+    auto_rename = auto_rename_raw in ("1", "true", "yes", "on")
     if dest.exists() and not overwrite:
-        return jsonify({
-            "ok": False,
-            "error": (f"file already exists: {str(dest)!r}.  "
-                      f"Delete it first via the sidebar (or your shell) "
-                      f"and re-upload, or pass overwrite=true."),
-        }), 409
+        if auto_rename:
+            # Phase 6e: pick the first non-colliding name in the
+            # series ``<stem>-2.<ext>``, ``<stem>-3.<ext>``, ...
+            # Used by the embed's export-params dialog so a re-save
+            # of the same default name doesn't silently clobber the
+            # previous one.  Cap at 999 to avoid pathological loops
+            # (the directory's truly broken at that point).
+            stem = dest.stem
+            suffix = dest.suffix
+            for n in range(2, 1000):
+                candidate = dest.with_name(f"{stem}-{n}{suffix}")
+                if not candidate.exists():
+                    dest = candidate
+                    break
+            else:
+                return jsonify({
+                    "ok": False,
+                    "error": (f"could not find an unused auto-rename "
+                              f"candidate for {filename!r} after 998 "
+                              f"tries; directory may be malfunctioning"),
+                }), 500
+        else:
+            return jsonify({
+                "ok": False,
+                "error": (f"file already exists: {str(dest)!r}.  "
+                          f"Delete it first via the sidebar (or your "
+                          f"shell) and re-upload, pass overwrite=true, "
+                          f"or pass auto_rename=true to pick a non-"
+                          f"colliding name."),
+            }), 409
 
     try:
         upload.save(str(dest))

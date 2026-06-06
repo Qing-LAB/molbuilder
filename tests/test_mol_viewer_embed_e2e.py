@@ -4009,11 +4009,15 @@ class TestAnimationExportUX:
             "trajectory animation is mounted; got hidden=" + str(hidden)
         )
 
-    def test_animation_export_shows_progress_modal(
+    def test_animation_export_shows_params_dialog_then_progress(
             self, page, flask_server):
-        """Clicking a .gif / .webm export button must put up a
-        blocking modal with a progress bar + Cancel.  Closes when
-        the export finishes."""
+        """Phase 6e: clicking an Export button no longer kicks off
+        the encode immediately.  Instead the user first sees a
+        PARAMS dialog with editable defaults (filename, fps,
+        duration, width, height, bitrate for webm).  Clicking the
+        dialog's Export button THEN puts up the progress modal.
+        Cancelling the dialog runs nothing.  This test walks that
+        full chain."""
         page.goto(f"{flask_server}/")
         page.wait_for_selector("#viewer .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
@@ -4037,7 +4041,6 @@ class TestAnimationExportUX:
                     },
                 });
                 const bar = h._test.getKnobBarElement();
-                // Open Export menu, then click a download .webm.
                 const exportDet = bar.querySelector(
                     ".mol-viewer-menu-export");
                 exportDet.open = true;
@@ -4045,51 +4048,196 @@ class TestAnimationExportUX:
                     ".mol-viewer-export-btn[data-kind='animation']"
                   + "[data-target='download'][data-format='webm']");
                 btn.click();
-                // Modal is created synchronously inside the click
-                // handler — query it BEFORE any await so we observe
-                // it before .finally(() => modal.close()) runs in
-                // the next microtask (headless browsers without
-                // MediaRecorder reject immediately).
-                const modal = document.querySelector(
-                    ".mol-viewer-export-modal");
-                const modalVisible = !!modal;
-                const hasCancel = !!(modal && modal.querySelector(
-                    ".mol-viewer-export-modal-cancel"));
-                const hasBar = !!(modal && modal.querySelector(
-                    ".mol-viewer-export-modal-bar"));
-                const title = modal
-                    ? modal.querySelector(
-                        ".mol-viewer-export-modal-title").textContent
-                    : null;
-                // Now let the export resolve / reject so the modal
-                // closes via .finally.
+                // Params dialog is created synchronously inside the
+                // click handler.  Query it BEFORE any await.
+                const paramsDialog = document.querySelector(
+                    ".mol-viewer-export-params-card");
+                const paramsVisible = !!paramsDialog;
+                const filenameInput = paramsDialog && paramsDialog
+                    .querySelector(".mol-viewer-export-params-input");
+                const filenameDefault = filenameInput
+                    ? filenameInput.value : null;
+                const confirmBtn = paramsDialog && paramsDialog
+                    .querySelector(".mol-viewer-export-modal-confirm");
+                const hasExportBtn = !!confirmBtn;
+                // Click the dialog's Export button to start the
+                // encode.  The dialog Promise resolves in a
+                // microtask, then _runExportWithParams opens the
+                // progress modal — yield once so we observe it.
+                confirmBtn.click();
+                await new Promise(r => setTimeout(r, 0));
+                // Look for any modal whose card is NOT the params
+                // card (avoids :has() browser-support concerns).
+                let pmVisible = false;
+                for (const m of document.querySelectorAll(
+                        ".mol-viewer-export-modal")) {
+                    if (!m.querySelector(
+                            ".mol-viewer-export-params-card")) {
+                        pmVisible = true; break;
+                    }
+                }
+                // Wait for the export to settle + the progress
+                // modal to close.
                 for (let i = 0; i < 80; i++) {
                     await new Promise(r => setTimeout(r, 100));
                     if (!document.querySelector(
                         ".mol-viewer-export-modal")) break;
                 }
-                const modalClosed = !document.querySelector(
+                const allClosed = !document.querySelector(
                     ".mol-viewer-export-modal");
                 h.dispose();
                 host.remove();
-                return { modalVisible, hasCancel, hasBar, title,
-                         modalClosed };
+                return {
+                    paramsVisible, filenameDefault, hasExportBtn,
+                    pmVisible, allClosed,
+                };
             }
         """)
-        # Headless browsers may lack MediaRecorder/captureStream;
-        # in that case the export rejects fast but the modal still
-        # appears and is closed in the .finally branch — that's
-        # exactly the behaviour we want to verify.
-        assert out["modalVisible"] is True, (
-            "Export modal should appear when animation export is "
-            "kicked off"
+        assert out["paramsVisible"] is True, (
+            "Phase 6e: clicking the Export button should open the "
+            "params dialog FIRST, not the progress modal"
         )
-        assert out["hasCancel"] is True, "modal needs a Cancel button"
-        assert out["hasBar"] is True, "modal needs a progress bar"
-        assert "WEBM" in (out["title"] or ""), (
-            f"modal title should name the format; got {out['title']!r}"
+        assert out["filenameDefault"] and ".webm" in out["filenameDefault"], (
+            f"Params dialog filename default should end in .webm; "
+            f"got {out['filenameDefault']!r}"
         )
-        assert out["modalClosed"] is True, (
-            "Modal didn't close after export finished — the .finally "
-            "branch in the click handler is broken"
+        assert out["hasExportBtn"] is True, (
+            "Params dialog must have an Export confirm button"
+        )
+        assert out["pmVisible"] is True, (
+            "Progress modal should appear after the params dialog "
+            "is confirmed"
+        )
+        assert out["allClosed"] is True, (
+            "Both modal layers should close after the export "
+            "finishes"
+        )
+
+    def test_export_params_dialog_cancel_runs_nothing(
+            self, page, flask_server):
+        """Cancelling the params dialog should NOT trigger any
+        export call.  exportAnimation must never run when the user
+        cancels."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:400px;height:300px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                let writeFileCalled = false;
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "1\\nh\\nH 0 0 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    animation: {
+                        kind: "trajectory",
+                        frames: [
+                            [[0.0, 0.0, 0.0]],
+                            [[0.5, 0.0, 0.0]],
+                        ],
+                        fps: 10, paused: true,
+                    },
+                    testInjection: {
+                        projectsApi: {
+                            writeFile: async (path, data) => {
+                                writeFileCalled = true;
+                                return { ok: true, path: path };
+                            },
+                            currentDir: () => "/tmp/proj1",
+                        },
+                    },
+                });
+                const bar = h._test.getKnobBarElement();
+                bar.querySelector(
+                    ".mol-viewer-menu-export").open = true;
+                const btn = bar.querySelector(
+                    ".mol-viewer-export-btn[data-kind='animation']"
+                  + "[data-target='project'][data-format='gif']");
+                btn.click();
+                // Dialog appears; press its Cancel button.
+                const cancelBtn = document.querySelector(
+                    ".mol-viewer-export-params-card"
+                  + " .mol-viewer-export-modal-cancel");
+                const hadDialog = !!cancelBtn;
+                if (cancelBtn) cancelBtn.click();
+                // Settle — no progress modal should appear, no
+                // writeFile should fire.
+                await new Promise(r => setTimeout(r, 200));
+                const stillModal = !!document.querySelector(
+                    ".mol-viewer-export-modal");
+                h.dispose();
+                host.remove();
+                return { hadDialog, stillModal, writeFileCalled };
+            }
+        """)
+        assert out["hadDialog"] is True
+        assert out["stillModal"] is False, (
+            "Cancelling the params dialog should not open the "
+            "progress modal"
+        )
+        assert out["writeFileCalled"] is False, (
+            "Cancelling the params dialog should not run any export "
+            "side-effect"
+        )
+
+    def test_export_params_dialog_uses_user_edited_filename(
+            self, page, flask_server):
+        """Editing the filename in the params dialog must propagate
+        all the way through to the projectsApi.writeFile path.
+        This guards against the dialog gathering values but the
+        confirm handler still using defaults."""
+        page.goto(f"{flask_server}/")
+        page.wait_for_selector("#viewer .mol-viewer-canvas",
+                               timeout=_BOOT_TIMEOUT_MS)
+        page.wait_for_timeout(200)
+        out = page.evaluate("""
+            async () => {
+                const host = document.createElement("div");
+                host.style.cssText =
+                    "width:400px;height:300px;position:fixed;top:-9999px;";
+                document.body.appendChild(host);
+                let writtenPath = null;
+                const h = window.molbuilder.viewer.embed(host, {
+                    xyz: "3\\nwater\\nO 0 0 0\\nH 1 0 0\\nH 0 1 0\\n",
+                    card: { showInfoLine: false, height: "100%" },
+                    export: { defaultName: "water" },
+                    testInjection: {
+                        projectsApi: {
+                            writeFile: async (path, data, opts) => {
+                                writtenPath = path;
+                                return { ok: true, path: path };
+                            },
+                            currentDir: () => "/tmp/proj1",
+                        },
+                    },
+                });
+                const bar = h._test.getKnobBarElement();
+                bar.querySelector(
+                    ".mol-viewer-menu-export").open = true;
+                const btn = bar.querySelector(
+                    ".mol-viewer-export-btn[data-kind='structure']"
+                  + "[data-target='project'][data-format='xyz']");
+                btn.click();
+                // Edit the filename field, then Export.
+                const filenameInp = document.querySelector(
+                    ".mol-viewer-export-params-card"
+                  + " .mol-viewer-export-params-input");
+                filenameInp.value = "my-custom-name.xyz";
+                const confirmBtn = document.querySelector(
+                    ".mol-viewer-export-params-card"
+                  + " .mol-viewer-export-modal-confirm");
+                confirmBtn.click();
+                // exportData is fast — wait one tick.
+                await new Promise(r => setTimeout(r, 100));
+                h.dispose();
+                host.remove();
+                return { writtenPath };
+            }
+        """)
+        assert out["writtenPath"] == "/tmp/proj1/my-custom-name.xyz", (
+            f"User-edited filename did not propagate to writeFile; "
+            f"saw: {out['writtenPath']!r}"
         )

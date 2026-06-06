@@ -189,6 +189,7 @@ export async function apiUpload(targetDir, file, opts) {
     fd.append("file", file);
   }
   if (opts.overwrite) fd.append("overwrite", "true");
+  if (opts.auto_rename) fd.append("auto_rename", "true");
   return await _fetchEnvelope("/api/files/upload", {
     method: "POST",
     body:   fd,

@@ -299,10 +299,19 @@ async function writeFile(path, text, opts) {
     }
     const dir = path.slice(0, ix);
     const filename = path.slice(ix + 1);
+    // Phase 6e: opts.autoRename (camelCase from the embed) maps to
+    // the server's auto_rename form field.  When set, overwrite is
+    // intentionally omitted so the server falls through to the
+    // suffix-picker path rather than clobbering.  Both falsy →
+    // default to overwrite=true (the original 6e behaviour) so the
+    // text-write callers that don't know about the new knob keep
+    // working unchanged.
+    const useAutoRename = opts && opts.autoRename;
     const w = await apiUpload(dir, text, {
-      filename:  filename,
-      overwrite: true,
-      signal:    opts && opts.signal,
+      filename:    filename,
+      overwrite:   useAutoRename ? false : true,
+      auto_rename: !!useAutoRename,
+      signal:      opts && opts.signal,
     });
     if (!w.ok) {
       const err = { ok: false, error: w.error };

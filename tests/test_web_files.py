@@ -1431,6 +1431,75 @@ class TestFilesUpload:
         assert r.status_code == 409
         assert (target / "movie.gif").read_bytes() == b"original"
 
+    def test_upload_auto_rename_picks_unused_name(
+            self, web, picker_root):
+        """Phase 6e: ``auto_rename=true`` resolves a collision by
+        appending ``-2``, ``-3``, ... until a free slot is found.
+        Used by the embed's export-params dialog so a re-save of
+        the default filename produces a new file rather than
+        clobbering."""
+        import io
+        target = picker_root / "proj" / "spectrum"
+        target.mkdir(parents=True)
+        (target / "movie.gif").write_bytes(b"first")
+        r = web.post(
+            "/api/files/upload",
+            data={
+                "target_dir":  str(target),
+                "file":        (io.BytesIO(b"second"), "movie.gif"),
+                "auto_rename": "true",
+            },
+            content_type="multipart/form-data",
+        )
+        assert r.status_code == 200, r.get_data(as_text=True)
+        body = r.get_json()
+        assert body["ok"] is True
+        # Server picked "movie-2.gif"; original is untouched.
+        assert body["path"] == str(target / "movie-2.gif")
+        assert (target / "movie.gif").read_bytes() == b"first"
+        assert (target / "movie-2.gif").read_bytes() == b"second"
+
+    def test_upload_auto_rename_walks_past_multiple_collisions(
+            self, web, picker_root):
+        """When -2, -3 are also taken, the picker continues to -4."""
+        import io
+        target = picker_root / "proj" / "spectrum"
+        target.mkdir(parents=True)
+        for name in ["movie.gif", "movie-2.gif", "movie-3.gif"]:
+            (target / name).write_bytes(b"prior")
+        r = web.post(
+            "/api/files/upload",
+            data={
+                "target_dir":  str(target),
+                "file":        (io.BytesIO(b"new"), "movie.gif"),
+                "auto_rename": "true",
+            },
+            content_type="multipart/form-data",
+        )
+        assert r.status_code == 200, r.get_data(as_text=True)
+        body = r.get_json()
+        assert body["path"] == str(target / "movie-4.gif")
+        assert (target / "movie-4.gif").read_bytes() == b"new"
+
+    def test_upload_auto_rename_no_collision_uses_original_name(
+            self, web, picker_root):
+        """auto_rename is a no-op when the original name is free —
+        the file lands at the requested path."""
+        import io
+        target = picker_root / "proj" / "spectrum"
+        target.mkdir(parents=True)
+        r = web.post(
+            "/api/files/upload",
+            data={
+                "target_dir":  str(target),
+                "file":        (io.BytesIO(b"x"), "fresh.gif"),
+                "auto_rename": "true",
+            },
+            content_type="multipart/form-data",
+        )
+        assert r.status_code == 200
+        assert r.get_json()["path"] == str(target / "fresh.gif")
+
     def test_upload_filename_with_path_separator_400(self, web, picker_root):
         # ``file.filename`` may carry the client's full path on some
         # browsers; we basename it server-side.  This test sends a

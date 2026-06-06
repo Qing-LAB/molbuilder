@@ -936,6 +936,373 @@
         };
     }
 
+    /**
+     * Phase 6e: Export params dialog.
+     *
+     * Shown BEFORE the progress modal whenever the user clicks an
+     * Export button.  Lets them edit defaults — filename always;
+     * fps/duration/width/height/bitrate when the kind is
+     * animation; width/height when the kind is image.  Data
+     * exports (.xyz, .pdb) get filename only.
+     *
+     * Why a dialog before the encode (not after a default-export
+     * happens silently): the encode of a 5-second clip takes
+     * 10-30 s; if the user wanted a different fps or filename
+     * they should say so up front, not abort + re-export.  The
+     * defaults are user-tunable per-call so the dialog is also
+     * the only place to set width/height for animation export.
+     *
+     * Returns a Promise that resolves with the chosen params
+     * object on Export, or rejects with code:"aborted" on Cancel
+     * (so callers can wire into the same .catch path as the
+     * progress modal's Cancel).
+     */
+    function _showExportParamsDialog(opts) {
+        opts = opts || {};
+        return new Promise((resolve, reject) => {
+            const doc = root.document;
+            const overlay = doc.createElement("div");
+            overlay.className = "mol-viewer-export-modal";
+            overlay.setAttribute("role", "dialog");
+            overlay.setAttribute("aria-modal", "true");
+            overlay.setAttribute("aria-label",
+                opts.title || "Export options");
+
+            const card = doc.createElement("div");
+            card.className = "mol-viewer-export-modal-card "
+                           + "mol-viewer-export-params-card";
+            overlay.appendChild(card);
+
+            const title = doc.createElement("div");
+            title.className = "mol-viewer-export-modal-title";
+            title.textContent = opts.title || "Export options";
+            card.appendChild(title);
+
+            const form = doc.createElement("form");
+            form.className = "mol-viewer-export-params-form";
+            // Don't submit on Enter — we handle it via the Export
+            // button so values are gathered uniformly.
+            form.addEventListener("submit", (e) => e.preventDefault());
+            card.appendChild(form);
+
+            // Build one labelled row.  ``input`` is the actual
+            // form control (number, text, ...).  ``hint`` (optional)
+            // appears below as a small grey caption.
+            const inputs = {};
+            function _row(name, label, input, hint) {
+                const row = doc.createElement("label");
+                row.className = "mol-viewer-export-params-row";
+                const lbl = doc.createElement("span");
+                lbl.className = "mol-viewer-export-params-label";
+                lbl.textContent = label;
+                row.appendChild(lbl);
+                row.appendChild(input);
+                if (hint) {
+                    const h = doc.createElement("span");
+                    h.className = "mol-viewer-export-params-hint";
+                    h.textContent = hint;
+                    row.appendChild(h);
+                }
+                form.appendChild(row);
+                inputs[name] = input;
+            }
+
+            function _number(value, min, max, step) {
+                const inp = doc.createElement("input");
+                inp.type = "number";
+                inp.value = String(value);
+                if (typeof min === "number") inp.min = String(min);
+                if (typeof max === "number") inp.max = String(max);
+                if (typeof step === "number") inp.step = String(step);
+                inp.className = "mol-viewer-export-params-input";
+                return inp;
+            }
+            function _text(value) {
+                const inp = doc.createElement("input");
+                inp.type = "text";
+                inp.value = value || "";
+                inp.className = "mol-viewer-export-params-input";
+                return inp;
+            }
+
+            const d = opts.defaults || {};
+
+            // Filename row — always shown.  For project target,
+            // an auto-rename note clarifies what happens on collision.
+            _row("filename", "Filename",
+                _text(d.filename || ""),
+                opts.target === "project"
+                    ? "Auto-renamed to <name>-2, <name>-3 … if a "
+                      + "file with this name already exists."
+                    : null);
+
+            if (opts.kind === "animation") {
+                _row("fps", "Frame rate (fps)",
+                    _number(d.fps || 30, 1, 120, 1),
+                    "1–120 fps.  Higher = smoother + larger file.");
+                _row("duration", "Duration (s)",
+                    _number(d.duration || 1, 0.1, 60, 0.1),
+                    "Total length of the encoded clip.");
+                _row("width", "Width (px)",
+                    _number(d.width || 600, 100, 4096, 10),
+                    "Set both width + height to control aspect; "
+                    + "leave one blank to scale.");
+                _row("height", "Height (px)",
+                    _number(d.height || 400, 100, 4096, 10), null);
+                if (opts.format === "webm") {
+                    _row("bitrate", "Bitrate (Mbps)",
+                        _number(
+                            (d.videoBitsPerSecond || 8_000_000)
+                                / 1_000_000,
+                            0.5, 50, 0.5),
+                        "Higher = sharper video, larger file.  "
+                        + "Default 8 Mbps.");
+                }
+            } else if (opts.kind === "image") {
+                _row("width", "Width (px)",
+                    _number(d.width || 1200, 100, 8192, 10),
+                    "Super-resolution capture supported.");
+                _row("height", "Height (px)",
+                    _number(d.height || 800, 100, 8192, 10), null);
+            }
+
+            const actions = doc.createElement("div");
+            actions.className = "mol-viewer-export-modal-actions";
+            const cancelBtn = doc.createElement("button");
+            cancelBtn.type = "button";
+            cancelBtn.className = "mol-viewer-export-modal-cancel";
+            cancelBtn.textContent = "Cancel";
+            const exportBtn = doc.createElement("button");
+            exportBtn.type = "button";
+            exportBtn.className = "mol-viewer-export-modal-confirm";
+            exportBtn.textContent = "Export";
+            actions.appendChild(cancelBtn);
+            actions.appendChild(exportBtn);
+            card.appendChild(actions);
+
+            function _close() {
+                if (overlay.parentNode) {
+                    overlay.parentNode.removeChild(overlay);
+                }
+            }
+            cancelBtn.addEventListener("click", () => {
+                _close();
+                reject(_makeErrorModule("aborted",
+                    "exportParamsDialog: cancelled"));
+            });
+            exportBtn.addEventListener("click", () => {
+                const out = {};
+                if (inputs.filename) {
+                    out.filename = inputs.filename.value.trim();
+                }
+                if (inputs.fps) {
+                    out.fps = parseFloat(inputs.fps.value);
+                }
+                if (inputs.duration) {
+                    out.duration = parseFloat(inputs.duration.value);
+                }
+                if (inputs.width) {
+                    out.width = parseInt(inputs.width.value, 10) || 0;
+                }
+                if (inputs.height) {
+                    out.height = parseInt(inputs.height.value, 10) || 0;
+                }
+                if (inputs.bitrate) {
+                    out.videoBitsPerSecond = Math.round(
+                        parseFloat(inputs.bitrate.value)
+                            * 1_000_000);
+                }
+                _close();
+                resolve(out);
+            });
+
+            doc.body.appendChild(overlay);
+            try {
+                if (inputs.filename) inputs.filename.focus();
+                if (inputs.filename) inputs.filename.select();
+            } catch (_) {}
+        });
+    }
+
+    // Module-scope error builder used by helpers outside embed().
+    // Mirrors the inner _makeError shape so dialog rejections plug
+    // into the same _dispatchError path.
+    function _makeErrorModule(code, message, extra) {
+        const e = new Error(message || code);
+        e.code = code;
+        if (extra) e.extra = extra;
+        return e;
+    }
+
+    /**
+     * Phase 6e: orchestrates the click → params dialog →
+     * progress modal → export chain.
+     *
+     * Why a separate module-scope function: the click handler
+     * inside _wireKnobBar runs inside the embed's wiring code
+     * which is itself called early in embed().  Pulling this
+     * logic out keeps the click handler narrow (look up the
+     * handle method by kind, dispatch) and the orchestration
+     * testable in isolation if needed later.
+     *
+     * Flow:
+     *   1. Compute the default filename + animation/image params
+     *      from current embed state.
+     *   2. Show the params dialog; user edits and clicks Export
+     *      (resolve) or Cancel (reject with code:"aborted").
+     *   3. On Export: open the progress modal, wire its
+     *      AbortController into the export call, plumb onProgress.
+     *   4. On success / failure / abort: close the progress modal,
+     *      surface a "Saved as <name>" tail (so auto-rename'd
+     *      filenames are visible to the user).
+     *   5. Cancel from the params dialog is silent (no error
+     *      dispatch — user just chose not to export).
+     */
+    function _runExportFlow(state, handle, kind, target, format) {
+        const defaults = _exportDefaultsFor(state, kind, format);
+        const dialogPromise = _showExportParamsDialog({
+            kind:   kind,
+            format: format,
+            target: target,
+            title:  _exportDialogTitle(kind, format, target),
+            defaults: defaults,
+        });
+        dialogPromise.then((params) => {
+            _runExportWithParams(
+                state, handle, kind, target, format, params);
+        }, (err) => {
+            // Cancel from the params dialog: silent.  Any other
+            // error here is an unexpected bug — surface it.
+            if (err && err.code === "aborted") return;
+            _dispatchError(state, err);
+        });
+    }
+
+    function _exportDialogTitle(kind, format, target) {
+        const fmt = (format || "").toUpperCase();
+        const tgt = target === "project" ? "save" : "download";
+        if (kind === "animation") {
+            return "Export animation (" + tgt + " " + fmt + ")";
+        }
+        if (kind === "image") {
+            return "Export snapshot (" + tgt + " PNG)";
+        }
+        return "Export data (" + tgt + " " + fmt + ")";
+    }
+
+    function _exportDefaultsFor(state, kind, format) {
+        const userExp = (state.userOpts && state.userOpts.export) || {};
+        const stem = userExp.defaultName || "structure";
+        const safe = String(stem).replace(/[^\w.\-]+/g, "_");
+        const ext = format || "bin";
+        const out = { filename: safe + "." + ext };
+        if (kind === "animation") {
+            const a = state.current && state.current.animation;
+            if (a && a.kind === "trajectory") {
+                out.fps = a.fps || 30;
+                out.duration = (a.frames && a.frames.length
+                                ? a.frames.length : 1) / (a.fps || 30);
+            } else if (a && a.kind === "vibration") {
+                out.fps = 30;
+                out.duration = 1 / Math.max(0.01, a.speedHz || 1);
+            } else {
+                out.fps = 30; out.duration = 1;
+            }
+            // Default capture resolution: match the on-screen
+            // canvas if we can find one, else a safe 600x400.  The
+            // dialog lets the user override.
+            const canvas = state.viewer
+                ? state.viewer.container.querySelector("canvas")
+                : null;
+            out.width  = (canvas && canvas.width)  || 600;
+            out.height = (canvas && canvas.height) || 400;
+            if (format === "webm") {
+                out.videoBitsPerSecond = 8_000_000;
+            }
+        } else if (kind === "image") {
+            // PNG: super-resolution capture supported by
+            // viewer.pngURI(w, h); default to 2× on-screen.
+            const canvas = state.viewer
+                ? state.viewer.container.querySelector("canvas")
+                : null;
+            out.width  = (canvas && canvas.width  * 2) || 1200;
+            out.height = (canvas && canvas.height * 2) || 800;
+        }
+        return out;
+    }
+
+    function _runExportWithParams(
+            state, handle, kind, target, format, params) {
+        const fmtLabel = (format || "").toUpperCase();
+        const ac = (typeof AbortController !== "undefined")
+            ? new AbortController() : null;
+
+        // Animation gets the progress modal (slow).  Image + data
+        // are fast enough to skip the modal — they resolve in <1s
+        // typically, and the params dialog already confirmed the
+        // user's intent.
+        const wantModal = kind === "animation";
+        const modal = wantModal
+            ? _showExportProgressModal({
+                title:  "Exporting " + fmtLabel,
+                phase:  "Encoding frames…",
+                onCancel: ac ? () => ac.abort() : null,
+              })
+            : null;
+
+        const baseOpts = {
+            target:     target || "download",
+            filename:   params.filename,
+            autoRename: target === "project",
+            signal:     ac ? ac.signal : undefined,
+        };
+        let p;
+        if (kind === "structure") {
+            p = handle.exportData(Object.assign(
+                { format: format }, baseOpts));
+        } else if (kind === "image") {
+            p = handle.screenshot(Object.assign({}, baseOpts, {
+                width:  params.width  || undefined,
+                height: params.height || undefined,
+            }));
+        } else if (kind === "animation") {
+            p = handle.exportAnimation(Object.assign({}, baseOpts, {
+                format:   format || "webm",
+                fps:      params.fps,
+                duration: params.duration,
+                width:    params.width  || undefined,
+                height:   params.height || undefined,
+                videoBitsPerSecond: params.videoBitsPerSecond,
+                onProgress: (frac, label) => {
+                    if (modal) modal.update(frac, label);
+                },
+            }));
+        }
+        if (!p) return;
+        p.then((r) => {
+            // Saved-as tail: when auto-rename picked a different
+            // name, surface it.  The modal's phase line is the
+            // natural channel; for non-modal flows we dispatch a
+            // light-weight info via the host's onExport (which
+            // exportAnimation/screenshot already fire).
+            if (modal) {
+                const note = r && r.filename
+                    ? (target === "project"
+                        ? "Saved as " + r.filename
+                        : "Downloaded " + r.filename)
+                    : (target === "project"
+                        ? "Saved." : "Downloaded.");
+                modal.setPhase(note);
+                modal.update(1.0);
+            }
+            return r;
+        }).finally(() => {
+            if (modal) modal.close();
+        }).catch((err) => {
+            _dispatchError(state, err);
+        });
+    }
+
     function _menuSection(key, heading) {
         const sect = document.createElement("section");
         sect.className = "mol-viewer-menu-section";
@@ -1124,60 +1491,8 @@
                     const kind   = btn.getAttribute("data-kind");
                     const target = btn.getAttribute("data-target");
                     const format = btn.getAttribute("data-format");
-                    let p;
-                    if (kind === "structure") {
-                        p = handle.exportData({
-                            target: target, format: format });
-                    } else if (kind === "image") {
-                        p = handle.screenshot({ target: target });
-                    } else if (kind === "animation") {
-                        // Phase 6e: GIF/WebM encode is slow + the
-                        // save-to-project step that follows is even
-                        // slower for large blobs.  Show a blocking
-                        // modal with progress + cancel so the user
-                        // doesn't think "nothing happened" and
-                        // doesn't fire other UI mid-encode.
-                        const fmtLabel = (format || "webm").toUpperCase();
-                        const tgtLabel = target === "project"
-                            ? "Saving to project" : "Downloading";
-                        const ac = (typeof AbortController !== "undefined")
-                            ? new AbortController() : null;
-                        const modal = _showExportProgressModal({
-                            title:  "Exporting " + fmtLabel,
-                            phase:  "Encoding frames…",
-                            onCancel: ac ? () => ac.abort() : null,
-                        });
-                        // We catch the encode here so the modal-close
-                        // logic doesn't compete with the existing
-                        // catch a few lines below.  Net effect:
-                        // success → close modal, fire onExport;
-                        // failure / abort → close modal, dispatch
-                        // error.
-                        p = handle.exportAnimation({
-                            format: format || "webm",
-                            target: target || "download",
-                            signal: ac ? ac.signal : undefined,
-                            onProgress: (frac, label) => {
-                                modal.update(frac, label);
-                            },
-                        }).then((r) => {
-                            // Encode done; if saving to project,
-                            // surface "Saving…" phase.  (Write call
-                            // happens inside exportAnimation already
-                            // — by the time we see ``r`` it has
-                            // returned, so this label is informative
-                            // only when the save is fast.)
-                            modal.setPhase(
-                                target === "project"
-                                    ? "Saved." : "Downloaded.");
-                            modal.update(1.0);
-                            return r;
-                        }).finally(() => {
-                            modal.close();
-                        });
-                    }
-                    if (p) p.catch((err) => _dispatchError(state, err));
                     exportDet.open = false;
+                    _runExportFlow(state, handle, kind, target, format);
                 });
             }
         }
@@ -3582,7 +3897,8 @@
                 || null;
         }
 
-        function _writeToProject(filename, data) {
+        function _writeToProject(filename, data, opts) {
+            opts = opts || {};
             const proj = _projectsApi();
             if (!proj || typeof proj.writeFile !== "function") {
                 return Promise.reject(_makeError(
@@ -3598,19 +3914,34 @@
                     "save-to-project: no active project directory"));
             }
             const path = currentDir.replace(/\/$/, "") + "/" + filename;
-            return Promise.resolve(proj.writeFile(path, data))
+            // Phase 6e: opts.autoRename routes binary writes through
+            // the server's auto_rename branch (text writes ignore it
+            // — text save-to-project is rare from the embed and the
+            // existing overwrite semantics are fine).
+            const writeOpts = opts.autoRename
+                ? { autoRename: true } : undefined;
+            return Promise.resolve(
+                    writeOpts
+                        ? proj.writeFile(path, data, writeOpts)
+                        : proj.writeFile(path, data))
                 .then((env) => {
                     if (env && env.ok === false) {
                         throw _makeError(
                             "io_error",
                             (env.error || "writeFile failed"), env);
                     }
-                    // Review fix D12: contract says ``filename`` is
-                    // the leaf name; expose the full path separately
-                    // so consumers can still log / display it.
+                    // Use the server-reported path when present
+                    // (auto_rename may have picked a different leaf
+                    // name than what we asked for).  Derive the
+                    // updated leaf so the caller can show "saved
+                    // as X".
+                    const actualPath = (env && env.path) || path;
+                    const ix = actualPath.lastIndexOf("/");
+                    const actualName = ix >= 0
+                        ? actualPath.slice(ix + 1) : actualPath;
                     return {
-                        filename: filename,
-                        path:     path,
+                        filename: actualName,
+                        path:     actualPath,
                         bytes:    typeof data === "string"
                                     ? data.length
                                     : (data && data.size) || 0,
@@ -3715,7 +4046,8 @@
 
             let p;
             if (opts.target === "project") {
-                p = _writeToProject(opts.filename || fname, text);
+                p = _writeToProject(opts.filename || fname, text,
+                    { autoRename: !!opts.autoRename });
             } else if (opts.target === "download") {
                 const blob = new root.Blob([text],
                                            { type: "text/plain" });
@@ -3909,9 +4241,47 @@
                 return Promise.reject(_makeError("no_media_recorder",
                     "exportAnimation: canvas.captureStream unavailable"));
             }
+            // Phase 6e: optional resize so the recorded WebM matches
+            // a user-picked resolution.  3Dmol's viewer.resize() is
+            // the canonical resize entry — it updates the WebGL
+            // viewport AND the canvas pixel buffer.  We restore on
+            // tear-down so an Export doesn't shrink the host's
+            // viewer.  If only one of width/height is given, scale
+            // the other to keep the aspect ratio.
+            const origW = canvas.width;
+            const origH = canvas.height;
+            const wantW = (typeof opts.width  === "number"
+                            && opts.width  > 0) ? opts.width  : 0;
+            const wantH = (typeof opts.height === "number"
+                            && opts.height > 0) ? opts.height : 0;
+            const resized = wantW || wantH;
+            if (resized) {
+                let newW = wantW, newH = wantH;
+                if (newW && !newH) newH = Math.round(
+                    newW * (origH / origW));
+                if (newH && !newW) newW = Math.round(
+                    newH * (origW / origH));
+                try {
+                    canvas.width  = newW;
+                    canvas.height = newH;
+                    if (typeof state.viewer.resize === "function") {
+                        state.viewer.resize();
+                    }
+                    state.viewer.render();
+                } catch (e) {
+                    canvas.width = origW; canvas.height = origH;
+                    return Promise.reject(_makeError("io_error",
+                        "exportAnimation: canvas resize failed: "
+                      + (e && e.message), e));
+                }
+            }
             let stream;
             try { stream = canvas.captureStream(fps); }
             catch (e) {
+                if (resized) {
+                    canvas.width = origW; canvas.height = origH;
+                    try { state.viewer.resize(); } catch (_) {}
+                }
                 return Promise.reject(_makeError("io_error",
                     "exportAnimation: canvas.captureStream threw: "
                   + (e && e.message), e));
@@ -3921,9 +4291,26 @@
                           && MR.isTypeSupported("video/webm;codecs=vp9"))
                 ? "video/webm;codecs=vp9"
                 : "video/webm";
+            // Phase 6e: caller-set bitrate.  MediaRecorder's default
+            // is browser-dependent (~2.5 Mbps in Chrome) which looks
+            // muddy on flat-colored 3D scenes with motion.  Bump to
+            // ~8 Mbps by default; expose opts.videoBitsPerSecond
+            // for the dialog.  WebM/VP9 honors the hint even though
+            // the spec doesn't guarantee it.
+            const bps = (typeof opts.videoBitsPerSecond === "number"
+                         && opts.videoBitsPerSecond > 0)
+                ? opts.videoBitsPerSecond : 8_000_000;
             let recorder;
-            try { recorder = new MR(stream, { mimeType: mime }); }
-            catch (e) {
+            try {
+                recorder = new MR(stream, {
+                    mimeType: mime,
+                    videoBitsPerSecond: bps,
+                });
+            } catch (e) {
+                if (resized) {
+                    canvas.width = origW; canvas.height = origH;
+                    try { state.viewer.resize(); } catch (_) {}
+                }
                 return Promise.reject(_makeError("io_error",
                     "exportAnimation: MediaRecorder ctor failed: "
                   + (e && e.message), e));
@@ -3976,7 +4363,24 @@
                     setTimeout(tick, frameMs);
                 }
                 tick();
-            }).then(() => new Blob(chunks, { type: "video/webm" }));
+            }).then(
+                (resolved) => {
+                    if (resized && !state.disposed) {
+                        canvas.width = origW; canvas.height = origH;
+                        try { state.viewer.resize(); } catch (_) {}
+                        try { state.viewer.render(); } catch (_) {}
+                    }
+                    return new Blob(chunks, { type: "video/webm" });
+                },
+                (err) => {
+                    if (resized && !state.disposed) {
+                        canvas.width = origW; canvas.height = origH;
+                        try { state.viewer.resize(); } catch (_) {}
+                        try { state.viewer.render(); } catch (_) {}
+                    }
+                    throw err;
+                }
+            );
         }
 
         function _exportAnimationGif(opts, a, fps, duration, total) {
@@ -3987,6 +4391,30 @@
                       + "(testInjection.gifEncoder forced absent)");
                 }
                 const canvas = state.viewer.container.querySelector("canvas");
+                // Phase 6e: same resize semantics as the WebM path —
+                // a user-picked width/height (from the export dialog)
+                // resizes the canvas before encoding and restores
+                // afterwards.  Aspect-preserve when only one is given.
+                const origW = canvas.width;
+                const origH = canvas.height;
+                const wantW = (typeof opts.width  === "number"
+                                && opts.width  > 0) ? opts.width  : 0;
+                const wantH = (typeof opts.height === "number"
+                                && opts.height > 0) ? opts.height : 0;
+                const resized = !!(wantW || wantH);
+                if (resized) {
+                    let newW = wantW, newH = wantH;
+                    if (newW && !newH) newH = Math.round(
+                        newW * (origH / origW));
+                    if (newH && !newW) newW = Math.round(
+                        newH * (origW / origH));
+                    canvas.width  = newW;
+                    canvas.height = newH;
+                    if (typeof state.viewer.resize === "function") {
+                        try { state.viewer.resize(); } catch (_) {}
+                    }
+                    try { state.viewer.render(); } catch (_) {}
+                }
                 const w = canvas.width || canvas.clientWidth;
                 const h = canvas.height || canvas.clientHeight;
                 const gif = new GIF({
@@ -3994,11 +4422,19 @@
                     width:   w, height: h,
                     workerScript: "/static/vendor/gif.worker.min.js",
                 });
+                // Restore-on-end helper used by every termination
+                // path (success / reject / abort / dispose).
+                const _restoreCanvas = () => {
+                    if (!resized || state.disposed) return;
+                    canvas.width = origW; canvas.height = origH;
+                    try { state.viewer.resize(); } catch (_) {}
+                    try { state.viewer.render(); } catch (_) {}
+                };
                 return new Promise((resolve, reject) => {
                     let cancelled = false;
                     let abortListener = null;
                     const ab = _aborted(opts.signal);
-                    if (ab) return reject(ab);
+                    if (ab) { _restoreCanvas(); return reject(ab); }
                     // Phase 5d C5: track the abort listener so it
                     // can be removed on completion / cancellation.
                     // Without this, a long-lived AbortController
@@ -4016,6 +4452,7 @@
                             cancelled = true;
                             try { gif.abort(); } catch (_) {}
                             _detachAbort();
+                            _restoreCanvas();
                             reject(_makeError("aborted",
                                 "exportAnimation: aborted"));
                         };
@@ -4028,12 +4465,14 @@
                         if (cancelled) return;
                         if (state.disposed) {
                             _detachAbort();
+                            _restoreCanvas();
                             return reject(_makeError("disposed",
                                 "exportAnimation: disposed mid-encode"));
                         }
                         if (i >= total) {
                             gif.on("finished", (blob) => {
                                 _detachAbort();
+                                _restoreCanvas();
                                 resolve(blob);
                             });
                             gif.render();
@@ -4047,6 +4486,7 @@
                             });
                         } catch (e) {
                             _detachAbort();
+                            _restoreCanvas();
                             return reject(_makeError("io_error",
                                 "exportAnimation: gif.addFrame threw: "
                               + (e && e.message), e));
@@ -4121,7 +4561,8 @@
             return encoded
                 .then((blob) => {
                     if (opts.target === "project") {
-                        return _writeToProject(filename, blob);
+                        return _writeToProject(filename, blob,
+                            { autoRename: !!opts.autoRename });
                     }
                     return _triggerDownload(filename, blob);
                 })
@@ -4209,7 +4650,8 @@
 
             let chain;
             if (opts.target === "project") {
-                chain = _writeToProject(opts.filename || fname, blob);
+                chain = _writeToProject(opts.filename || fname, blob,
+                    { autoRename: !!opts.autoRename });
             } else if (opts.target === "download") {
                 chain = _triggerDownload(opts.filename || fname, blob);
             } else {
