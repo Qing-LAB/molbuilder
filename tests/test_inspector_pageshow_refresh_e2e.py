@@ -150,12 +150,23 @@ class TestTrajectoryInspectorPageshowRefresh:
         _open_results_and_select(
             page, flask_server, project_with_trajectory)
         # Wait for the trajectory inspector to land + the initial
-        # /api/watch/load to complete.
+        # /api/watch/load to complete.  The frame strip's
+        # .frame-counter element renders "<i+1> / <total>" — i.e.
+        # the second number > 0 once frames have loaded.  (The old
+        # #frame-tot was retired during #246-A1 when the frame
+        # strip moved into the embed; see EMBED_OWNED_IDS in
+        # test_trajectory_inspector_partial.py.)
         page.wait_for_selector("#viewer", timeout=5000)
         page.wait_for_function(
-            "() => document.querySelector('#frame-tot') "
-            "      && document.querySelector('#frame-tot').textContent "
-            "             !== '0'",
+            """() => {
+                const el = document.querySelector('.frame-counter');
+                if (!el) return false;
+                const ix = el.textContent.indexOf('/');
+                if (ix < 0) return false;
+                const total = parseInt(
+                    el.textContent.slice(ix + 1).trim(), 10);
+                return total > 0;
+            }""",
             timeout=5000,
         )
 
@@ -194,10 +205,17 @@ class TestTrajectoryInspectorPageshowRefresh:
         _open_results_and_select(
             page, flask_server, project_with_trajectory)
         page.wait_for_selector("#viewer", timeout=5000)
+        # See pageshow test for the .frame-counter rationale.
         page.wait_for_function(
-            "() => document.querySelector('#frame-tot') "
-            "      && document.querySelector('#frame-tot').textContent "
-            "             !== '0'",
+            """() => {
+                const el = document.querySelector('.frame-counter');
+                if (!el) return false;
+                const ix = el.textContent.indexOf('/');
+                if (ix < 0) return false;
+                const total = parseInt(
+                    el.textContent.slice(ix + 1).trim(), 10);
+                return total > 0;
+            }""",
             timeout=5000,
         )
 
