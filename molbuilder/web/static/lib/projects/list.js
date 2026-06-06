@@ -166,6 +166,13 @@ async function _confirmAndDelete(fullPath, entry) {
     + "This cannot be undone."
   )) return;
   const j = await apiDelete(fullPath, entry.kind === "directory");
+  // Phase 6e fifth-review LANDMINE-A: filter user-initiated
+  // Cancel before treating as failure.  No signal is wired in
+  // today's caller, so this is defensive — but the public
+  // ``projects.deleteEntry`` contract advertises ``opts.signal``,
+  // so the next caller that adopts a Cancel widget would hit
+  // ``window.alert("aborted")`` without this guard.
+  if (j && j.aborted) return;
   if (!j.ok) {
     window.alert(j.error || "Delete failed.");
     return;

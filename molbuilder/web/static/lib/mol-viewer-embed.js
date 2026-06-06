@@ -996,9 +996,6 @@
             overlay.setAttribute("aria-modal", "true");
             overlay.setAttribute("aria-label",
                 opts.title || "Export options");
-            if (opts.instanceId) {
-                overlay.setAttribute("data-embed-id", opts.instanceId);
-            }
 
             const card = doc.createElement("div");
             card.className = "mol-viewer-export-modal-card "
@@ -1368,25 +1365,21 @@
         // Dialog's close() is registered on state so dispose() can
         // tear it down (review LANDMINE #9).  Unregister on settle.
         let dialogClose = null;
-        // Phase 6e third-review LANDMINE-2: a per-instance id is
-        // tagged on the overlay so future multi-embed work (when
-        // someone needs two viewers on the same page) can gate
-        // the document-level keyHandler on focus ownership.
-        // TODAY the codebase mounts one embed per page so backdrop
-        // clicks rely on event-tree boundaries (each overlay is
-        // its own subtree) and the keyHandler is single-listener-
-        // safe.  Don't claim the tag is "checked" — it's not.
-        const instanceId = state._instanceId
-            || (state._instanceId = "mv-" + Math.random()
-                                                .toString(36)
-                                                .slice(2, 10));
+        // Phase 6e fifth-review: deleted the speculative
+        // instanceId / data-embed-id plumbing.  It was added in
+        // the third review for a "future multi-embed page" use
+        // case that has no design + no tracked task.  YAGNI —
+        // when multi-embed actually lands, the right shape is
+        // not "tag the overlay" anyway (the key handler is
+        // document-level, gating would need focus-ownership
+        // dispatch).  Easier to design then than to maintain
+        // dead code now.
         const dialogPromise = _showExportParamsDialog({
             kind:   kind,
             format: format,
             target: target,
             title:  _exportDialogTitle(kind, format, target),
             defaults: defaults,
-            instanceId: instanceId,
             onMounted: (closeFn) => {
                 // Phase 6e second-review BOMB #14: register a
                 // wrapper that rejects the dialog Promise as

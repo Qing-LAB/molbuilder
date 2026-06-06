@@ -592,9 +592,18 @@
         }
         try {
             setStatus(els.saveStatus, "Saving to " + destDir + " …", "muted");
+            // Phase 6e fifth-review BOMB-A: the lock's Cancel button
+            // wired ``state.saveSpectraAbort.abort()`` as the
+            // canceler — but the abort never reached the write
+            // because saveToWorkspace was called WITHOUT
+            // ``signal``.  The Cancel button thus did nothing
+            // visible while the write completed silently; the user
+            // thought they cancelled but the .spectra.py landed on
+            // disk anyway.  Thread the signal so the cancel
+            // semantics aren't a lie.
             const wrote = await proj.saveToWorkspace(
                 state.lastScript, state.lastJobName + ".spectra.py",
-                { overwrite: true });
+                { overwrite: true, signal: _saveSignal });
             // Phase 6e fourth-review BOMB-1: a user-initiated Cancel
             // (the sidebar lock's Cancel button → saveSpectraAbort
             // → AbortError) lands here as ``{ok:false,
@@ -613,6 +622,7 @@
                 return;
             }
             let wrapperMsg = "";
+            let wrapperCancelled = false;
             try {
                 const wr = await fetch("/api/run/install-wrapper", {
                     method:  "POST",
@@ -629,7 +639,22 @@
                     const verb = wr.overwritten ? "overwrote" : "wrote";
                     wrapperMsg = " · " + verb + " " + wr.wrapper_name;
                 }
-            } catch (_) { /* non-fatal */ }
+            } catch (e) {
+                // Phase 6e fifth-review BOMB-A follow-up: user
+                // Cancel during the wrapper step is silent today;
+                // surface a "partial" message so the user knows
+                // the .spectra.py landed but the wrapper didn't.
+                if (e && e.name === "AbortError") {
+                    wrapperCancelled = true;
+                }
+                /* other failures stay non-fatal */
+            }
+            if (wrapperCancelled) {
+                setStatus(els.saveStatus,
+                    "Save cancelled after writing " + wrote.relPath
+                  + " (wrapper not installed).", "muted");
+                return;
+            }
             setStatus(els.saveStatus,
                 "Wrote " + wrote.relPath + wrapperMsg, "ok");
             // Refresh sidebar so the .spectra.py + .run.sh both appear.

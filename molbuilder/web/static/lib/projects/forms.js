@@ -81,6 +81,10 @@ async function _submitMkdir(ev) {
   }
   const parent = sessionStorage.getItem(SS_DIR) || getProjectsRoot();
   const j = await apiMkdir(parent, name);
+  // Phase 6e fifth-review LANDMINE-A: filter aborted before
+  // surfacing as error.  No Cancel widget today; defensive for
+  // future callers per the public projects.mkdir contract.
+  if (j && j.aborted) return;
   if (!j.ok) {
     // Backend's 409 / 400 / 403 message verbatim -- already says
     // what to do (rename, pick a different parent, etc.).
@@ -107,6 +111,7 @@ async function _submitNewProject(ev) {
     return;
   }
   const j = await apiCreateProject(name);
+  if (j && j.aborted) return;
   if (!j.ok) {
     elNewProjError.textContent = j.error || "create failed.";
     return;
@@ -132,6 +137,7 @@ async function _submitUpload(ev) {
   const file = elUploadInput.files[0];
   const target = sessionStorage.getItem(SS_DIR) || getProjectsRoot();
   const j = await apiUpload(target, file);
+  if (j && j.aborted) return;
   if (!j.ok) {
     // Today the 501 message lands here.  Tomorrow the real backend's
     // 409 / 400 / 403 land via the same path -- no caller changes.

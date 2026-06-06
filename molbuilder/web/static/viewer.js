@@ -1163,6 +1163,26 @@
                     installedOk = false;
                 }
             } catch (e) {
+                // Phase 6e fifth-review BOMB-B: user-initiated
+                // Cancel reaches this catch as AbortError.  Bail
+                // the whole pipeline rather than continue into
+                // the wrapper-install step under a cancelled
+                // intent (which produced a red "pseudo install
+                // network error: AbortError…" banner the user
+                // saw after their own click).  The .fdf already
+                // landed; refresh the sidebar so the user sees
+                // partial-state.
+                if (e && e.name === "AbortError") {
+                    setStatus("fdf-status",
+                        "Save cancelled. (Wrote " + written.relPath
+                      + " before cancel; pseudos and .run.sh not "
+                      + "installed.)",
+                        "muted");
+                    try {
+                        if (proj.refresh) await proj.refresh();
+                    } catch (_) {}
+                    return;
+                }
                 psmlMsg = "pseudo install network error: " + e.message;
                 installedOk = false;
             }
@@ -1182,6 +1202,7 @@
             return Number.isFinite(n) && n > 0 ? n : null;
         };
         let wrapperMsg = "";
+        let wrapperCancelled = false;
         if (!installedOk) {
             wrapperMsg = "skipped .run.sh (pseudos incomplete; "
                        + "fix the install-pseudos errors above and "
@@ -1203,7 +1224,25 @@
                     const verb = wr.overwritten ? "overwrote" : "wrote";
                     wrapperMsg = `${verb} ${wr.wrapper_name}`;
                 }
-            } catch (_) { /* non-fatal; user can run the .fdf manually */ }
+            } catch (e) {
+                // Phase 6e fifth-review BOMB-B follow-up: surface
+                // Cancel-during-wrapper as a partial-save message
+                // rather than the previous silent "Wrote X" line
+                // that ignored the user's cancel click.
+                if (e && e.name === "AbortError") {
+                    wrapperCancelled = true;
+                }
+                /* other failures stay non-fatal */
+            }
+        }
+        if (wrapperCancelled) {
+            setStatus("fdf-status",
+                "Save cancelled after writing " + written.relPath
+              + " (.run.sh not installed).", "muted");
+            try {
+                if (proj.refresh) await proj.refresh();
+            } catch (_) {}
+            return;
         }
 
         // Step 4: rewrite the psml_lib form field to relative-to-dest
@@ -1435,6 +1474,7 @@
         // PySCF wrapper: no mpi_np / no omp / no memory cap (the
         // in-script runtime block handles those).
         let wrapperMsg = "";
+        let wrapperCancelled = false;
         try {
             const wr = await fetch("/api/run/install-wrapper", {
                 method: "POST",
@@ -1451,7 +1491,19 @@
                 const verb = wr.overwritten ? "overwrote" : "wrote";
                 wrapperMsg = `${verb} ${wr.wrapper_name}`;
             }
-        } catch (_) { /* non-fatal */ }
+        } catch (e) {
+            // Phase 6e fifth-review: mirror SIESTA + Spectra.
+            if (e && e.name === "AbortError") {
+                wrapperCancelled = true;
+            }
+            /* other failures stay non-fatal */
+        }
+        if (wrapperCancelled) {
+            setStatus("pyscf-status",
+                "Save cancelled after writing " + written.relPath
+              + " (.run.sh not installed).", "muted");
+            return;
+        }
         const segs = ["Wrote " + written.relPath];
         if (wrapperMsg) segs.push(wrapperMsg);
         setStatus("pyscf-status", segs.join(" · "), "ok");
