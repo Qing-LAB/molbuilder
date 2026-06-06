@@ -1103,14 +1103,14 @@
         // (#174 sidebar gap M1 -- writeFile now honours opts.signal).
         let written;
         try {
-            const w = await proj.saveToWorkspace(
+            const w = await proj.safeSave(
                 state.fdf, filename,
                 { overwrite: true, signal: abortSignal });
-            // Phase 6e fourth-review BOMB-2: Cancel mid-save shows
-            // up as ``{ok:false, aborted:true}``.  Stay silent
-            // instead of flashing a red error banner for the user's
-            // own Cancel click.
-            if (w && w.aborted) {
+            // safeSave returns {ok:false, cancelled:true} for
+            // user-initiated abort; the {error} field is reserved
+            // for real failures.  See projects/state.js safeSave
+            // contract.
+            if (w && w.cancelled) {
                 setStatus("fdf-status", "Save cancelled.", "muted");
                 return;
             }
@@ -1167,12 +1167,9 @@
                 // Cancel reaches this catch as AbortError.  Bail
                 // the whole pipeline rather than continue into
                 // the wrapper-install step under a cancelled
-                // intent (which produced a red "pseudo install
-                // network error: AbortError…" banner the user
-                // saw after their own click).  The .fdf already
-                // landed; refresh the sidebar so the user sees
-                // partial-state.
-                if (e && e.name === "AbortError") {
+                // intent.  proj.isCancelError centralises the
+                // predicate (sixth-review follow-up).
+                if (proj.isCancelError(e)) {
                     setStatus("fdf-status",
                         "Save cancelled. (Wrote " + written.relPath
                       + " before cancel; pseudos and .run.sh not "
@@ -1225,11 +1222,7 @@
                     wrapperMsg = `${verb} ${wr.wrapper_name}`;
                 }
             } catch (e) {
-                // Phase 6e fifth-review BOMB-B follow-up: surface
-                // Cancel-during-wrapper as a partial-save message
-                // rather than the previous silent "Wrote X" line
-                // that ignored the user's cancel click.
-                if (e && e.name === "AbortError") {
+                if (proj.isCancelError(e)) {
                     wrapperCancelled = true;
                 }
                 /* other failures stay non-fatal */
@@ -1449,12 +1442,10 @@
         // button can interrupt this fetch (#174 sidebar gap M1).
         let written;
         try {
-            const w = await proj.saveToWorkspace(
+            const w = await proj.safeSave(
                 state.pyscf, meta.filename,
                 { overwrite: true, signal: abortSignal });
-            // Phase 6e fourth-review BOMB-3: mirror the SIESTA + Spectra
-            // Cancel-vs-error filters.
-            if (w && w.aborted) {
+            if (w && w.cancelled) {
                 setStatus("pyscf-status", "Save cancelled.", "muted");
                 return;
             }
@@ -1492,8 +1483,7 @@
                 wrapperMsg = `${verb} ${wr.wrapper_name}`;
             }
         } catch (e) {
-            // Phase 6e fifth-review: mirror SIESTA + Spectra.
-            if (e && e.name === "AbortError") {
+            if (proj.isCancelError(e)) {
                 wrapperCancelled = true;
             }
             /* other failures stay non-fatal */

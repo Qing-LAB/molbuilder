@@ -389,6 +389,68 @@ async function saveToWorkspace(text, filename, opts) {
   return await writeFile(path, text, opts);
 }
 
+/**
+ * Phase 6e fifth-review follow-up: thin Cancel-aware wrapper over
+ * ``saveToWorkspace``.
+ *
+ * Why this exists: every save flow (SIESTA, PySCF, Spectra, …) has
+ * three terminal states — success, user-cancelled, real-failure —
+ * but the underlying ``writeFile`` envelope conflates the last two
+ * (both arrive as ``{ok:false, error, aborted?}``).  Five audits
+ * found bugs at sites that forgot to check ``.aborted`` first and
+ * surfaced cancellation as a red error banner.
+ *
+ * Contract:
+ *   - Returns ``null`` when there's no current dir (same as
+ *     saveToWorkspace).
+ *   - Returns ``{ok:true, path, relPath, size, mtime}`` on success.
+ *   - Returns ``{ok:false, cancelled:true}`` when the caller's
+ *     opts.signal aborted the write.  No ``error`` field — the
+ *     cancel is the explanation.
+ *   - Returns ``{ok:false, error, actual_mtime?}`` on real failure
+ *     (server 4xx/5xx, no network, etc.).
+ *
+ * Callers branch on ``r.cancelled`` first (mute + return), then on
+ * ``!r.ok`` (show error), then on ``!r`` (no current dir).  The
+ * three branches are distinct intents.
+ *
+ * NOTE: the caller still threads ``opts.signal`` themselves; this
+ * helper does NOT create an AbortController, because the caller is
+ * the only one who can trigger one (via the sidebar lock's Cancel
+ * button or a programmatic abort).
+ */
+async function safeSave(text, filename, opts) {
+  const w = await saveToWorkspace(text, filename, opts);
+  if (w == null) return null;
+  if (w.aborted) return { ok: false, cancelled: true };
+  return w;
+}
+
+/**
+ * Predicate: was this Error / envelope produced by user
+ * cancellation?
+ *
+ * Use in ``catch (e)`` blocks around ``fetch(...)`` calls (the
+ * subsequent steps of a multi-step pipeline — pseudo-install,
+ * wrapper-install, etc.) where Cancel arrives as a thrown
+ * AbortError, not as an envelope.  Centralises the predicate so
+ * a future change to the cancellation contract has one place to
+ * touch.
+ *
+ * Accepts both shapes:
+ *   - DOMException with ``name === "AbortError"`` (thrown by
+ *     ``fetch`` when the signal aborts).
+ *   - An ``ApiError`` envelope with ``aborted === true`` (for
+ *     code paths that wrap the throw into a result).
+ */
+function isCancelError(err) {
+  if (!err) return false;
+  if (err.name === "AbortError") return true;
+  if (err.aborted === true) return true;
+  if (err.code === "aborted") return true;
+  return false;
+}
+
 // ---- Public mutator wrappers (sidebar gap M4, #175, 2026-05-31) //
 //
 // Thin pass-throughs over api.js that ALSO trigger a sidebar
@@ -665,6 +727,9 @@ export const projects = {
   refresh,
   writeFile,
   saveToWorkspace,
+  // Phase 6e fifth-review follow-up: Cancel-aware save helpers.
+  safeSave,
+  isCancelError,
   // ---- Public mutator + navigation surface (#175, 2026-05-31) -- //
   // Promoted from internal api.js consumers so external callers
   // (the /results tab-level file-picker dropdown at

@@ -114,14 +114,19 @@ class TestSurfacePresence:
                 setShared:                  typeof p.setShared,
                 navigateTo:                 typeof p.navigateTo,
                 onProjectsRootResolved:     typeof p.onProjectsRootResolved,
+                safeSave:                   typeof p.safeSave,
+                isCancelError:              typeof p.isCancelError,
             }));
         ''')
         # readRange was added in #189 (2026-06-02) so the source
         # inspector (and any future range-aware viewer) goes through
         # the uniform envelope instead of raw fetch.
+        # safeSave + isCancelError landed in the sixth Phase 6e
+        # review as the centralised Cancel-vs-error contract.
         for fn in ("readFile", "readRange", "createProject", "mkdir",
                    "deleteEntry", "rename", "upload", "setShared",
-                   "navigateTo", "onProjectsRootResolved"):
+                   "navigateTo", "onProjectsRootResolved",
+                   "safeSave", "isCancelError"):
             assert out[fn] == "function", f"missing public method: {fn}"
 
 
@@ -703,6 +708,170 @@ class TestWriteFileEdgeFields:
         ''')
         assert out["ok"] is False
         assert out["aborted"] is True
+
+
+class TestSafeSave:
+    """Phase 6e sixth (audit-recommended) follow-up: ``safeSave``
+    is a thin Cancel-aware wrapper that renames the envelope's
+    ``aborted`` field to ``cancelled`` so the three terminal states
+    (success, cancel, real-failure) are syntactically distinct at
+    every call site."""
+
+    def test_safeSave_returns_cancelled_on_abort_envelope(self):
+        """safeSave folds ``aborted:true`` into ``cancelled:true``
+        + drops the spurious ``error:"aborted"`` text."""
+        out = _run_node('''
+            global.fetch = async () => {
+                const err = new Error("aborted");
+                err.name = "AbortError";
+                throw err;
+            };
+            global.sessionStorage = {
+                _v: {"molbuilder.current_dir": "/projects/proj1"},
+                getItem(k) { return this._v[k] || null; },
+                setItem(k, v) { this._v[k] = v; },
+            };
+            // safeSave goes through saveToWorkspace which gates on
+            // atProjectsRoot — initialise projectsRoot so the
+            // current_dir is recognised as a real subdir.
+            state.setProjectsRoot("/projects");
+            const r = await state.projects.safeSave("text", "f.xyz",
+                { overwrite: true });
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["ok"] is False
+        assert out["cancelled"] is True
+        # No `error` field — the cancel IS the explanation.
+        assert "error" not in out
+
+    def test_safeSave_returns_null_on_no_current_dir(self):
+        """safeSave inherits saveToWorkspace's ``null`` for the
+        no-current-dir case so callers can fall back to local
+        download / copy without showing an error."""
+        out = _run_node('''
+            global.sessionStorage = {
+                getItem() { return null; },
+                setItem() {},
+            };
+            state.setProjectsRoot("/projects");
+            const r = await state.projects.safeSave("text", "f.xyz");
+            console.log(JSON.stringify(r));
+        ''')
+        # null serialises to JSON null → Python None.
+        assert out is None
+
+    def test_safeSave_returns_null_at_projects_root(self):
+        """When current_dir IS the projects/ root, there's no
+        subdir to write into; safeSave returns null so the caller
+        falls back gracefully."""
+        out = _run_node('''
+            global.sessionStorage = {
+                _v: {"molbuilder.current_dir": "/projects"},
+                getItem(k) { return this._v[k] || null; },
+                setItem(k, v) { this._v[k] = v; },
+            };
+            state.setProjectsRoot("/projects");
+            const r = await state.projects.safeSave("text", "f.xyz");
+            console.log(JSON.stringify(r));
+        ''')
+        assert out is None
+
+    def test_safeSave_passes_through_real_failure(self):
+        """A real 409 (file exists, no overwrite) stays
+        ``{ok:false, error:"..."}``.  No ``cancelled`` field for
+        non-cancel failures."""
+        out = _run_node('''
+            global.fetch = async () => ({
+                ok: false, status: 409,
+                json: async () => ({
+                    ok: false, error: "file already exists: 'f.xyz'",
+                }),
+            });
+            global.sessionStorage = {
+                _v: {"molbuilder.current_dir": "/projects/proj1"},
+                getItem(k) { return this._v[k] || null; },
+                setItem(k, v) { this._v[k] = v; },
+            };
+            state.setProjectsRoot("/projects");
+            const r = await state.projects.safeSave("text", "f.xyz");
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["ok"] is False
+        assert "already exists" in out["error"]
+        assert "cancelled" not in out
+
+    def test_safeSave_success_passthrough(self):
+        """Success envelope flows through unchanged."""
+        out = _run_node('''
+            global.fetch = async () => ({
+                ok: true, status: 200,
+                json: async () => ({
+                    ok: true,
+                    path: "/projects/proj1/f.xyz",
+                    size: 7, mtime: 1717174420.5,
+                }),
+            });
+            global.sessionStorage = {
+                _v: {"molbuilder.current_dir": "/projects/proj1"},
+                getItem(k) { return this._v[k] || null; },
+                setItem(k, v) { this._v[k] = v; },
+            };
+            state.setProjectsRoot("/projects");
+            const r = await state.projects.safeSave("text", "f.xyz");
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["ok"] is True
+        assert out["path"] == "/projects/proj1/f.xyz"
+        assert "cancelled" not in out
+
+
+class TestIsCancelError:
+    """Predicate over both shapes the cancellation contract can
+    arrive in (DOMException AbortError + ApiError envelope)."""
+
+    def test_isCancelError_matches_abort_error_name(self):
+        out = _run_node('''
+            const e = new Error("aborted");
+            e.name = "AbortError";
+            console.log(JSON.stringify({
+                hit: state.projects.isCancelError(e),
+            }));
+        ''')
+        assert out["hit"] is True
+
+    def test_isCancelError_matches_aborted_flag(self):
+        out = _run_node('''
+            console.log(JSON.stringify({
+                hit: state.projects.isCancelError(
+                    { ok: false, aborted: true, error: "x" }),
+            }));
+        ''')
+        assert out["hit"] is True
+
+    def test_isCancelError_matches_aborted_code(self):
+        out = _run_node('''
+            console.log(JSON.stringify({
+                hit: state.projects.isCancelError(
+                    { code: "aborted", message: "x" }),
+            }));
+        ''')
+        assert out["hit"] is True
+
+    def test_isCancelError_rejects_null_and_other_errors(self):
+        out = _run_node('''
+            console.log(JSON.stringify({
+                forNull:    state.projects.isCancelError(null),
+                forUndef:   state.projects.isCancelError(undefined),
+                forNetwork: state.projects.isCancelError(
+                    new TypeError("Failed to fetch")),
+                forGeneric: state.projects.isCancelError(
+                    { ok: false, error: "permission denied" }),
+            }));
+        ''')
+        assert out["forNull"] is False
+        assert out["forUndef"] is False
+        assert out["forNetwork"] is False
+        assert out["forGeneric"] is False
 
 
 # ----- upload adds relPath (design § C6) ------------------------- #

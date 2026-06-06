@@ -592,26 +592,17 @@
         }
         try {
             setStatus(els.saveStatus, "Saving to " + destDir + " …", "muted");
-            // Phase 6e fifth-review BOMB-A: the lock's Cancel button
-            // wired ``state.saveSpectraAbort.abort()`` as the
-            // canceler — but the abort never reached the write
-            // because saveToWorkspace was called WITHOUT
-            // ``signal``.  The Cancel button thus did nothing
-            // visible while the write completed silently; the user
-            // thought they cancelled but the .spectra.py landed on
-            // disk anyway.  Thread the signal so the cancel
-            // semantics aren't a lie.
-            const wrote = await proj.saveToWorkspace(
+            // safeSave threads the signal end-to-end and renames
+            // the abort envelope's ``aborted`` flag to
+            // ``cancelled`` — see projects/state.js safeSave.
+            // Without it, callers used to forget either the signal
+            // (BOMB-A, fifth review) or the filter (BOMB-1, fourth
+            // review).  The helper makes both invariants the
+            // default shape.
+            const wrote = await proj.safeSave(
                 state.lastScript, state.lastJobName + ".spectra.py",
                 { overwrite: true, signal: _saveSignal });
-            // Phase 6e fourth-review BOMB-1: a user-initiated Cancel
-            // (the sidebar lock's Cancel button → saveSpectraAbort
-            // → AbortError) lands here as ``{ok:false,
-            // error:"aborted", aborted:true}``.  Treat that as
-            // user intent, not as a Save failure — otherwise the
-            // user sees a red "Save failed: aborted" banner for
-            // their own click.
-            if (wrote && wrote.aborted) {
+            if (wrote && wrote.cancelled) {
                 setStatus(els.saveStatus, "Save cancelled.", "muted");
                 return;
             }
@@ -640,11 +631,7 @@
                     wrapperMsg = " · " + verb + " " + wr.wrapper_name;
                 }
             } catch (e) {
-                // Phase 6e fifth-review BOMB-A follow-up: user
-                // Cancel during the wrapper step is silent today;
-                // surface a "partial" message so the user knows
-                // the .spectra.py landed but the wrapper didn't.
-                if (e && e.name === "AbortError") {
+                if (proj.isCancelError(e)) {
                     wrapperCancelled = true;
                 }
                 /* other failures stay non-fatal */
