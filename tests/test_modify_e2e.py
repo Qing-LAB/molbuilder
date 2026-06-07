@@ -527,6 +527,145 @@ def test_smiles_generator_renders_structure_in_viewer(page, flask_server):
     assert "9" in status_text and "CCO" in status_text
 
 
+def _load_water_via_button(page, water_xyz_file):
+    """Load water.xyz the way a real user does: drive the
+    candidate-only pick + click the Load button.  This routes
+    through structurePage.loadIntoCanvas so canvas-state actually
+    sees the load — the legacy ``_load_water`` helper calls
+    ``store.setSourceFile`` directly and bypasses the canvas state
+    machine, fine for viewer-only tests but not for canvas-aware
+    ones.
+    """
+    import os as _os
+    water_dir = _os.path.dirname(water_xyz_file)
+    page.evaluate(
+        """(c) => window.molbuilder.projects.setShared(c.dir, c.file)""",
+        {"dir": water_dir, "file": water_xyz_file},
+    )
+    page.wait_for_function(
+        "() => !document.getElementById('load-candidate-btn').disabled"
+    )
+    page.locator("#load-candidate-btn").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 3"
+    )
+
+
+def test_modifier_op_marks_canvas_dirty(
+        page, flask_server, water_xyz_file):
+    """A modifier op (here: Delete) flips canvas-state's dirty flag
+    so a subsequent Load / Generate would fire the unsaved-
+    modifications warning.  Without this wire-up, the warning
+    primitive lives but never fires for non-SMILES workflows."""
+    _open_modify(page, flask_server)
+    _load_water_via_button(page, water_xyz_file)
+    # Pre-op: canvas exists but isn't dirty (just loaded).
+    state_before = page.evaluate("""() => ({
+        empty: window.molbuilder.structureCanvas.isEmpty(),
+        dirty: window.molbuilder.structureCanvas.isDirty(),
+    })""")
+    assert state_before == {"empty": False, "dirty": False}, (
+        f"pre-op state should be loaded+clean, got {state_before!r}"
+    )
+    # Apply a Delete op (pick the O atom and delete).
+    _set_selection(page, [0])
+    page.locator("#delete-apply").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 2"
+    )
+    # Post-op: canvas-state is dirty.
+    is_dirty = page.evaluate(
+        "() => window.molbuilder.structureCanvas.isDirty()"
+    )
+    assert is_dirty is True, (
+        "modifier op should flip canvas-state.dirty so a subsequent "
+        "Load / Generate fires the warning modal"
+    )
+
+
+def test_smiles_with_dirty_canvas_fires_warning_modal(
+        page, flask_server, water_xyz_file):
+    """End-to-end gate behavior: a dirty canvas + a SMILES Generate
+    click MUST fire the warning modal before discarding edits.
+    Click Discard → the new structure lands.  This is what makes
+    the canvas-state primitive load-bearing for user-facing safety
+    (vs being a passive bit nothing reads)."""
+    try:
+        import rdkit  # noqa: F401
+    except ImportError:
+        pytest.skip("rdkit not installed; cannot exercise SMILES build")
+
+    _open_modify(page, flask_server)
+    _load_water_via_button(page, water_xyz_file)
+    # Make the canvas dirty by deleting an atom.
+    _set_selection(page, [0])
+    page.locator("#delete-apply").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 2"
+    )
+    # Now click Generate-from-SMILES.  Warning modal must appear.
+    page.locator(
+        ".source-panel:has(> summary:has-text('SMILES'))"
+    ).evaluate("el => el.open = true")
+    page.locator("#smiles-input").fill("C")
+    page.locator("#smiles-generate-btn").click()
+    # Wait for the modal to appear in the DOM.
+    page.wait_for_selector("dialog.molbuilder-warning-modal",
+                           state="attached", timeout=2000)
+    # Click "Discard and continue" — the new structure lands.
+    page.locator(
+        'dialog.molbuilder-warning-modal [data-action="discard"]'
+    ).click()
+    # Methane has 5 atoms (1 C + 4 H) via RDKit.
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 5",
+        timeout=10_000,
+    )
+
+
+def test_smiles_with_dirty_canvas_cancel_keeps_edit(
+        page, flask_server, water_xyz_file):
+    """Same warning flow, but the user picks Cancel — the
+    in-progress structure stays put.  Pins the "no surprise
+    overwrite" promise."""
+    try:
+        import rdkit  # noqa: F401
+    except ImportError:
+        pytest.skip("rdkit not installed; cannot exercise SMILES build")
+
+    _open_modify(page, flask_server)
+    _load_water_via_button(page, water_xyz_file)
+    _set_selection(page, [0])
+    page.locator("#delete-apply").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 2"
+    )
+    n_before = page.evaluate(
+        "() => window.__molbuilder_modify_test.getNAtoms()"
+    )
+    page.locator(
+        ".source-panel:has(> summary:has-text('SMILES'))"
+    ).evaluate("el => el.open = true")
+    page.locator("#smiles-input").fill("C")
+    page.locator("#smiles-generate-btn").click()
+    page.wait_for_selector("dialog.molbuilder-warning-modal",
+                           state="attached", timeout=2000)
+    # Cancel.  The viewer keeps the edited 2-atom structure.
+    page.locator(
+        'dialog.molbuilder-warning-modal [data-action="cancel"]'
+    ).click()
+    # Modal closes; viewer state unchanged.
+    page.wait_for_selector("dialog.molbuilder-warning-modal",
+                           state="detached", timeout=2000)
+    n_after = page.evaluate(
+        "() => window.__molbuilder_modify_test.getNAtoms()"
+    )
+    assert n_after == n_before, (
+        f"cancel kept edits intact: was {n_before} atoms, "
+        f"now {n_after}"
+    )
+
+
 def test_smiles_generator_empty_input_surfaces_inline_error(
         page, flask_server):
     """Click Generate with an empty SMILES input → inline error,

@@ -595,6 +595,17 @@
             // after delete).  applyStructure() will rebuild the list
             // and call refreshSelectionUI which re-enables buttons.
             applyStructure(r);
+            // Flag the canvas dirty so a subsequent Load / Generate
+            // fires the unsaved-modifications warning.  Idempotent
+            // when already dirty; no-op when the canvas-state module
+            // hasn't been wired (e.g. early page-load races).
+            try {
+                const sp = window.molbuilder
+                        && window.molbuilder.structurePage;
+                if (sp && typeof sp.markDirtyAfterModification === "function") {
+                    sp.markDirtyAfterModification();
+                }
+            } catch (_) { /* nothing to do — UX unaffected */ }
             setEditStatus(
                 r.issues && r.issues.length
                     ? `${label}: ${r.n_atoms} atoms, ${r.issues.length} issue(s).`

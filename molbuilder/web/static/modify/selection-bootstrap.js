@@ -179,8 +179,53 @@
             }
         }
         _onCandidateChange(_refreshLoadUI);
+
+        // The Load button gates the load through the canvas-state
+        // orchestrator so a Load with a dirty canvas fires the
+        // unsaved-modifications warning before discarding edits.
+        // Fall back to a direct setSourceFile if the orchestrator
+        // isn't wired (early-boot race; the modules load after this
+        // bootstrap on /molbuilder).
+        async function _loadButtonClicked() {
+            const path = _candidate;
+            if (!path) return;
+            const sp = window.molbuilder
+                    && window.molbuilder.structurePage;
+            const projectsApi = window.molbuilder
+                    && window.molbuilder.projects;
+            // If either dependency is missing, take the direct path
+            // — the candidate-only contract still holds; only the
+            // warning-modal gate is skipped.
+            if (!sp || !projectsApi
+                || typeof projectsApi.readFile !== "function") {
+                store.setSourceFile(path);
+                return;
+            }
+            const r = await projectsApi.readFile(path);
+            if (!r || !r.ok) {
+                // Surface inline via the existing #status element
+                // that modify/viewer.js's setStatus already writes
+                // to.  No new element needed.
+                const s = document.getElementById("status");
+                if (s) {
+                    s.textContent = (r && r.error)
+                        ? "Could not read file: " + r.error
+                        : "Could not read file.";
+                    s.className = "status error";
+                }
+                return;
+            }
+            const format = path.toLowerCase().endsWith(".pdb")
+                ? "pdb" : "xyz";
+            const gate = await sp.loadIntoCanvas(
+                { source_format: format, text: r.text },
+                { kind: "file", file: path }
+            );
+            if (!gate.ok) return;  // cancelled — leave viewer alone
+            store.setSourceFile(path);
+        }
         if (_loadBtn) {
-            _loadBtn.addEventListener("click", _commitCandidate);
+            _loadBtn.addEventListener("click", _loadButtonClicked);
         }
 
         // 4. Attach the viewer-adapter once modify/viewer.js has
