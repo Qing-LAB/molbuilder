@@ -30,13 +30,15 @@
 {#- Reopen handle for the desktop-collapsed sidebar (B.5.4).
     Hidden unless ``body.is-projects-sidebar-collapsed`` is set;
     click brings the sidebar back.  Lives outside .projects-sidebar
-    so it stays visible when the sidebar itself is hidden. -#}
+    so it stays visible when the sidebar itself is hidden.  Styled
+    as a prominent dock tab (accent-coloured, vertical "Projects"
+    label) so users discover it without hunting the screen edge. -#}
 <button type="button" id="ps-collapsed-handle"
         class="ps-collapsed-handle"
         aria-label="Show projects sidebar"
         aria-controls="projects-sidebar"
         title="Show projects sidebar"
-        aria-expanded="false">▶</button>
+        aria-expanded="false">Projects</button>
 
 <aside class="projects-sidebar" id="projects-sidebar" aria-label="Projects file explorer">
   <header class="ps-header">

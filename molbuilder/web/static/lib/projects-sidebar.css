@@ -100,28 +100,55 @@ body.has-projects-sidebar {
   border-color: var(--ps-border, #333);
 }
 
+/* Reopen handle — sized + styled to be obvious.  Before the
+ * 2026-06-07 visibility pass this was 18×60 px in the sidebar's
+ * dim palette; users reported missing it entirely.  Now wider +
+ * accent-coloured + with a "Projects" label so it reads as a
+ * dock affordance, not noise. */
 .ps-collapsed-handle {
   position: fixed;
   left: 0;
   top: 50%;
   transform: translateY(-50%);
-  width: 18px;
-  height: 60px;
-  background: var(--ps-bg, #1a1a1a);
-  color: var(--ps-fg, #ccc);
-  border: 1px solid var(--ps-border, #333);
+  width: 28px;
+  height: 110px;
+  background: linear-gradient(180deg, #4f7ab8 0%, #355a90 100%);
+  color: #fff;
+  border: 1px solid #355a90;
   border-left: none;
-  border-radius: 0 4px 4px 0;
+  border-radius: 0 6px 6px 0;
   cursor: pointer;
   z-index: 6;
-  font-size: 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
   padding: 0;
   display: none;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 0.35rem;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.35);
+  /* Vertical "Projects" label reads bottom-to-top so it tracks
+   * the eye from the chevron downward. */
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+}
+.ps-collapsed-handle::before {
+  /* Larger chevron on top of the vertical label.  Decorative
+   * (the aria-label on the button is the accessible name). */
+  content: "▶";
+  font-size: 1rem;
+  writing-mode: horizontal-tb;
+  line-height: 1;
 }
 .ps-collapsed-handle:hover {
-  background: #222;
+  background: linear-gradient(180deg, #5b8ad0 0%, #4068a8 100%);
+  box-shadow: 2px 0 12px rgba(80, 130, 200, 0.45);
+}
+.ps-collapsed-handle:focus-visible {
+  outline: 2px solid #88bbff;
+  outline-offset: 2px;
 }
 
 body.is-projects-sidebar-collapsed {
