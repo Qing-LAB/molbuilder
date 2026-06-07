@@ -971,6 +971,41 @@ def test_save_button_disabled_for_smiles_without_prior_save(
     )
 
 
+def test_dna_generator_renders_structure_in_viewer(page, flask_server):
+    """End-to-end DNA flow: type "ACGT" into the DNA input, click
+    Generate.  Backend picks 3DNA → AmberTools → RDKit in that
+    preference order; the panel routes the XYZ through the canvas
+    gate and the viewer renders the helix.
+
+    Skips if no DNA backend is installed (the 3-backend cascade
+    needs at least one of 3DNA / AmberTools / RDKit).
+    """
+    try:
+        from molbuilder.backends import available_backends
+    except ImportError:
+        pytest.skip("molbuilder.backends import failed")
+    avail = available_backends()
+    if not (avail.get("threedna", False)
+            or avail.get("amber",    False)
+            or avail.get("rdkit",    False)):
+        pytest.skip("no DNA backend (3DNA / AmberTools / RDKit) installed")
+
+    _open_modify(page, flask_server)
+    page.locator(
+        ".source-panel:has(> summary:has-text('Generate DNA'))"
+    ).evaluate("el => el.open = true")
+    page.locator("#dna-input").fill("ACGT")
+    page.locator("#dna-generate-btn").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test"
+        "      && window.__molbuilder_modify_test.getNAtoms() >= 50",
+        timeout=20_000,
+    )
+    status_text = page.locator("#dna-status").inner_text()
+    assert "ACGT" in status_text
+    assert "B-form" in status_text
+
+
 def test_peptide_generator_renders_structure_in_viewer(page, flask_server):
     """End-to-end peptide flow: type "AC" (alanine-cysteine) into
     the Peptide input, click Generate.  Backend dispatches to
