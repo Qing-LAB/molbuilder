@@ -125,6 +125,7 @@ class TestStoreAPISurface:
             "  source_file:   typeof store.setSourceFile === 'function' && "
             "                  typeof store.refreshAtoms === 'function' && "
             "                  typeof store.adoptSession === 'function' && "
+            "                  typeof store.adoptAtoms === 'function' && "
             "                  typeof store.setLoader === 'function',\n"
             "  mode:          typeof store.setMode === 'function',\n"
             "  click_editing: typeof store.toggleAtom === 'function' && "
@@ -190,6 +191,82 @@ class TestInitialState:
 # --------------------------------------------------------------------
 # Synchronous selection mutators
 # --------------------------------------------------------------------
+
+
+class TestAdoptAtoms:
+    """``store.adoptAtoms(rawAtoms)`` — the in-memory sync path the
+    BOMB-0 selection-staleness fix added (2026-06-07).  Each
+    modifier-op response (Delete / Add / Orient / ...) now carries
+    an ``atoms`` array; the front-end pushes it through this method
+    instead of going through the disk-bound ``_fetchAtoms`` re-fetch
+    that would return pre-op atoms (the disk hasn't changed yet)."""
+
+    def test_replaces_atoms_with_normalised_rows(self):
+        out = _run_node(
+            "const store = window.molbuilder.selection._createStore();\n"
+            "store.adoptAtoms([\n"
+            "  {index: 0, element: 'C', regions: ['L-electrode'], is_frozen: false, atom_name: 'CA'},\n"
+            "  {index: 1, element: 'H', regions: [],              is_frozen: true},\n"
+            "]);\n"
+            "console.log(JSON.stringify(store.getState().atoms));"
+        )
+        assert out == [
+            {"index": 0, "element": "C",
+             "labels": ["L-electrode"], "isFrozen": False,
+             "atomName": "CA"},
+            {"index": 1, "element": "H",
+             "labels": [], "isFrozen": True},
+        ]
+
+    def test_filters_selection_to_in_range_indices(self):
+        """A Delete op shrinks the atom list; any selection indices
+        that no longer exist MUST be dropped.  Otherwise downstream
+        ops resolve indices against the wrong list."""
+        out = _run_node(
+            "const store = window.molbuilder.selection._createStore();\n"
+            "store.setSelection([0, 2, 5]).then(() => {\n"
+            "  // Pretend a Delete op shrank the structure to 2 atoms.\n"
+            "  store.adoptAtoms([\n"
+            "    {index: 0, element: 'C', regions: [], is_frozen: false},\n"
+            "    {index: 1, element: 'C', regions: [], is_frozen: false},\n"
+            "  ]);\n"
+            "  console.log(JSON.stringify(store.getState().selection));\n"
+            "});"
+        )
+        # 0 is still in range (kept); 2 and 5 are out of range (dropped).
+        assert out == [0]
+
+    def test_notifies_subscribers_once(self):
+        """Single fanout for the bulk update.  Notification is
+        microtask-deferred (the store coalesces synchronous
+        mutations), so the test awaits microtasks before counting."""
+        out = _run_node(
+            "const store = window.molbuilder.selection._createStore();\n"
+            "let calls = 0;\n"
+            "store.subscribe(() => { calls++; });\n"
+            "// Subscribe fires immediately via the deferred notify\n"
+            "// path; await it first so it doesn't inflate the count.\n"
+            "Promise.resolve().then(() => {\n"
+            "  calls = 0;\n"
+            "  store.adoptAtoms([\n"
+            "    {index: 0, element: 'C', regions: [], is_frozen: false},\n"
+            "    {index: 1, element: 'H', regions: [], is_frozen: false},\n"
+            "  ]);\n"
+            "  return Promise.resolve();\n"
+            "}).then(() => {\n"
+            "  console.log(JSON.stringify(calls));\n"
+            "});"
+        )
+        assert out == 1
+
+    def test_rejects_non_array(self):
+        out = _run_node(
+            "const store = window.molbuilder.selection._createStore();\n"
+            "try { store.adoptAtoms({not: 'an array'}); "
+            "  console.log(JSON.stringify('resolved')); }\n"
+            "catch (e) { console.log(JSON.stringify(e.name)); }"
+        )
+        assert out == "TypeError"
 
 
 class TestToggleAtom:

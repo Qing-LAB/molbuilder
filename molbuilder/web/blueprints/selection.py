@@ -367,48 +367,17 @@ def selection_atoms():
         if not isinstance(path, str) or not path:
             return _bad_request("missing 'structure_path'")
         struct = _load_structure(path)
-
-        n = len(struct.elements)
-        # Build a reverse index: atom -> [region_label, ...].  Most
-        # atoms have zero or one label; a sidecar where the same atom
-        # appears in two regions would have been rejected at load
-        # time, but we still defend against it here by appending.
-        atom_to_regions: Dict[int, list] = {}
-        regions = getattr(struct, "regions", {}) or {}
-        for label, idxs in regions.items():
-            for idx in idxs:
-                atom_to_regions.setdefault(idx, []).append(label)
-
-        frozen_set = set(getattr(struct, "frozen_atoms", []) or [])
-
-        # Empty Structure metadata lists round-trip as empty arrays
-        # via :class:`Structure`'s dataclass; we still guard with the
-        # `or []` so a future "make these Optional" refactor doesn't
-        # bite the route.
-        atom_names    = struct.atom_names    or []
-        residue_names = struct.residue_names or []
-        chain_ids     = struct.chain_ids     or []
-
-        atoms = []
-        for i in range(n):
-            row: Dict[str, Any] = {
-                "index":    i,
-                "element":  struct.elements[i],
-                "regions":  atom_to_regions.get(i, []),
-                "is_frozen": i in frozen_set,
-            }
-            # PDB-derived metadata is optional; omit when empty so the
-            # JSON stays compact for plain-XYZ structures (the common
-            # /modify case).
-            if i < len(atom_names)    and atom_names[i]:
-                row["atom_name"]    = atom_names[i]
-            if i < len(residue_names) and residue_names[i]:
-                row["residue_name"] = residue_names[i]
-            if i < len(chain_ids)     and chain_ids[i]:
-                row["chain_id"]     = chain_ids[i]
-            atoms.append(row)
-
-        return jsonify({"ok": True, "n_atoms": n, "atoms": atoms})
+        # Atoms-list construction lives in ``_shared.atoms_list`` so
+        # the disk-read path here AND the in-memory modifier-op path
+        # (every /api/modify/* response via structure_to_dict) emit
+        # the SAME wire shape.  Pre-2026-06-07 the two paths drifted:
+        # this route returned the canonical shape, modify responses
+        # returned a structure-minus-atoms shape, and the front-end's
+        # selection store could only sync from the disk-read path —
+        # so modifier ops left it stale.
+        from ._shared import atoms_list as _atoms_list
+        rows = _atoms_list(struct)
+        return jsonify({"ok": True, "n_atoms": len(rows), "atoms": rows})
     except _PickerError as exc:
         return _bad_request(exc.message, exc.status)
 

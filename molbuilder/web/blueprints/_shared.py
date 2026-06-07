@@ -106,10 +106,70 @@ def struct_from_body(body: Dict[str, Any]) -> Structure:
     )
 
 
+def atoms_list(struct: Structure) -> List[Dict[str, Any]]:
+    """Build the per-atom payload list — the same shape
+    ``/api/selection/atoms`` returns.
+
+    Used by every response that carries a Structure so the front-end's
+    selection store stays in sync with the in-memory geometry without
+    a separate fetch.  Pre-2026-06-07, modifier-op responses lacked
+    this and the selection panel went stale after every Delete / Add /
+    Orient / etc — the disk hadn't changed yet so the
+    ``/api/selection/atoms`` re-fetch returned pre-op atoms.
+
+    Each row:
+
+        {
+            "index":         int,
+            "element":       "C" | "H" | ...,
+            "regions":       [str, ...],     # from struct.regions
+            "is_frozen":     bool,           # from struct.frozen_atoms
+            "atom_name":     "CA" | ...,     # optional, PDB-derived
+            "residue_name":  "ALA" | ...,    # optional
+            "chain_id":      "A"   | ...,    # optional
+        }
+    """
+    n = len(struct.elements)
+    atom_to_regions: Dict[int, list] = {}
+    regions = getattr(struct, "regions", {}) or {}
+    for label, idxs in regions.items():
+        for idx in idxs:
+            atom_to_regions.setdefault(idx, []).append(label)
+
+    frozen_set = set(getattr(struct, "frozen_atoms", []) or [])
+
+    atom_names    = struct.atom_names    or []
+    residue_names = struct.residue_names or []
+    chain_ids     = struct.chain_ids     or []
+
+    rows: List[Dict[str, Any]] = []
+    for i in range(n):
+        row: Dict[str, Any] = {
+            "index":     i,
+            "element":   struct.elements[i],
+            "regions":   atom_to_regions.get(i, []),
+            "is_frozen": i in frozen_set,
+        }
+        if i < len(atom_names)    and atom_names[i]:
+            row["atom_name"]    = atom_names[i]
+        if i < len(residue_names) and residue_names[i]:
+            row["residue_name"] = residue_names[i]
+        if i < len(chain_ids)     and chain_ids[i]:
+            row["chain_id"]     = chain_ids[i]
+        rows.append(row)
+    return rows
+
+
 def structure_to_dict(struct: Structure) -> Dict[str, Any]:
     """Serialise a Structure into the per-atom-metadata-rich JSON shape
     used by ``/api/build/load`` and every ``/api/modify/*`` response.
     Callers wrap with ``jsonify`` and add their own extra keys.
+
+    Includes ``atoms`` (per :func:`atoms_list`) so a single response
+    keeps the selection store + viewer in sync.  The front-end's
+    postOp handler picks up ``r.atoms`` and calls
+    ``store.adoptAtoms`` instead of going through the disk-bound
+    ``/api/selection/atoms`` re-fetch.
     """
     return {
         "xyz":           struct.to_xyz(),
@@ -121,6 +181,7 @@ def structure_to_dict(struct: Structure) -> Dict[str, Any]:
         "n_atoms":       struct.n_atoms,
         "n_residues":    struct.n_residues,
         "title":         struct.title or "",
+        "atoms":         atoms_list(struct),
     }
 
 

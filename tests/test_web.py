@@ -930,6 +930,35 @@ def test_modify_delete_drops_listed_indices(web_client):
     assert body["elements"] == ["O"]
 
 
+def test_modify_responses_carry_atoms_list(web_client):
+    """BOMB-0 fix (2026-06-07): every /api/modify/* response carries
+    an ``atoms`` list in the same shape ``/api/selection/atoms``
+    returns, so the front-end's selection store stays in sync
+    with the in-memory post-op structure without a disk re-fetch.
+
+    Pre-fix, modifier-op responses only carried xyz + elements +
+    metadata lists; the selection panel went stale after every op."""
+    r = web_client.post("/api/modify/delete", json={
+        "xyz": _H2O_XYZ,
+        "indices": [1, 2],   # delete both H, keep O
+    })
+    body = r.get_json()
+    assert body["ok"] is True
+    assert "atoms" in body, (
+        "modify response must include atoms list "
+        "(BOMB-0 selection-store sync fix)"
+    )
+    atoms = body["atoms"]
+    assert len(atoms) == 1, (
+        f"post-delete atoms list should have 1 row; got {len(atoms)}"
+    )
+    row = atoms[0]
+    assert row["index"]    == 0
+    assert row["element"]  == "O"
+    assert row["regions"]  == []
+    assert row["is_frozen"] is False
+
+
 def test_modify_delete_silently_ignores_out_of_range(web_client):
     """Matches molbuilder.modify.delete_atoms behaviour."""
     r = web_client.post("/api/modify/delete", json={

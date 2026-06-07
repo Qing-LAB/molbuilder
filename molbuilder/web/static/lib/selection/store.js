@@ -360,6 +360,38 @@
             });
         }
 
+        /**
+         * Replace state.atoms with a server-provided list — for
+         * modifier-op responses + cross-tab handoff payloads that
+         * already carry the canonical per-atom shape (the same
+         * /api/selection/atoms returns).  No HTTP roundtrip, no
+         * signal abort, no source-file mutation — this is the
+         * in-memory sync path the BOMB-0 fix needs.
+         *
+         * Selection state is filtered: indices that no longer
+         * exist (e.g. atoms removed by a Delete op) are dropped.
+         * Per-op subtree state (filter drafts, mode) is preserved.
+         *
+         * Synchronous publication — subscribers see the new atoms
+         * + the filtered selection in a single fanout.
+         */
+        function adoptAtoms(rawAtoms) {
+            if (!Array.isArray(rawAtoms)) {
+                throw new TypeError(
+                    "adoptAtoms: rawAtoms must be an array");
+            }
+            state.atoms = rawAtoms.map(_normaliseAtom);
+            // Drop selection indices that no longer exist (the
+            // op may have removed atoms; the array length is now
+            // the upper bound).  Sorted-ascending invariant
+            // preserved.
+            const n = state.atoms.length;
+            state.selection = state.selection.filter(
+                (i) => Number.isInteger(i) && i >= 0 && i < n);
+            state.error = null;
+            _notify();
+        }
+
         // ----------------------------------------------------------- //
         //  PUBLIC: UI mode  (just controls which editor is visible)   //
         //  Switching modes does NOT touch state.selection.            //
@@ -623,6 +655,7 @@
             // source file
             setSourceFile:      setSourceFile,
             refreshAtoms:       refreshAtoms,
+            adoptAtoms:         adoptAtoms,
             adoptSession:       adoptSession,
             setLoader:          setLoader,
             // mode

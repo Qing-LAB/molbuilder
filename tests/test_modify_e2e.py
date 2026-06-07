@@ -1758,6 +1758,48 @@ def test_apply_delete_drops_selected_row(
     assert errors == [], f"JS errors during delete: {errors}"
 
 
+def test_selection_store_atoms_sync_with_in_memory_edits(
+        page, flask_server, water_xyz_file):
+    """BOMB-0 fix (2026-06-07): after a modifier op the selection
+    store's ``state.atoms`` MUST reflect the post-op structure.
+    Pre-fix, modifier responses lacked the atoms list, so the
+    panel re-fetched from disk via /api/selection/atoms — which
+    returned the pre-op atom list because the disk hadn't been
+    written yet.  Result: viewer shows 2 atoms (correct), panel
+    shows 3 (stale)."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    # Pre-delete: 3 atoms in both the viewer AND the store.
+    pre = page.evaluate("""() => ({
+        viewer_n: window.__molbuilder_modify_test.getNAtoms(),
+        store_n:  window.molbuilder.selection.store
+                    .getState().atoms.length,
+    })""")
+    assert pre == {"viewer_n": 3, "store_n": 3}
+    # Delete the O.
+    _set_selection(page, [0])
+    page.locator("#delete-apply").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 2"
+    )
+    # Post-delete: BOTH viewer AND store report 2 atoms.  Pre-fix
+    # the store stayed at 3 indefinitely (no disk write).
+    post = page.evaluate("""() => ({
+        viewer_n:    window.__molbuilder_modify_test.getNAtoms(),
+        store_n:     window.molbuilder.selection.store
+                       .getState().atoms.length,
+        store_elements: window.molbuilder.selection.store
+                       .getState().atoms.map(a => a.element),
+    })""")
+    assert post["viewer_n"] == 2
+    assert post["store_n"] == 2, (
+        f"store atoms list out of sync; expected 2 rows after "
+        f"deleting O, got {post['store_n']}"
+    )
+    # The post-delete atoms are the two H.
+    assert post["store_elements"] == ["H", "H"]
+
+
 def test_add_button_disabled_without_single_selection(
         page, flask_server, water_xyz_file):
     """The Add button is enabled only when EXACTLY ONE atom is the

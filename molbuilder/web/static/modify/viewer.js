@@ -612,6 +612,20 @@
                     cs.replaceContent(r.xyz);
                 }
             } catch (_) { /* nothing to do — UX unaffected */ }
+            // Sync the selection store's atoms list to the post-op
+            // structure (BOMB-0 fix, 2026-06-07).  Modifier
+            // responses now carry ``r.atoms`` in the same shape
+            // ``/api/selection/atoms`` returns; without this
+            // adoptAtoms call the panel keeps showing the pre-op
+            // atoms list (the disk hasn't changed, so the disk-
+            // bound _fetchAtoms re-fetch would also return stale).
+            try {
+                const s = _selStore();
+                if (s && typeof s.adoptAtoms === "function"
+                     && r && Array.isArray(r.atoms)) {
+                    s.adoptAtoms(r.atoms);
+                }
+            } catch (_) { /* nothing to do — UX unaffected */ }
             setEditStatus(
                 r.issues && r.issues.length
                     ? `${label}: ${r.n_atoms} atoms, ${r.issues.length} issue(s).`
