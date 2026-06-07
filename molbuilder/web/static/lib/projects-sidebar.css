@@ -290,6 +290,66 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
   background: transparent;
 }
 
+/* ---- Filter bar (B.5.5) --------------------------------------
+ *
+ * Sits between the breadcrumb and the entry list.  Free-text
+ * input hides non-matching files (folders always stay visible).
+ * Matching is case-insensitive substring; a leading "." is
+ * shorthand for extension match (".xyz" matches ``*.xyz``).  See
+ * ``applyFilter`` in lib/projects/list.js. */
+.ps-filter-bar {
+  position: relative;
+  padding: 0.3rem 0.7rem 0.2rem;
+  background: var(--ps-bg, #1a1a1a);
+  border-bottom: 1px solid var(--ps-border, #333);
+}
+.ps-filter-input {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--ps-fg, #ccc);
+  border: 1px solid var(--ps-border, #333);
+  border-radius: 3px;
+  padding: 0.25rem 1.5rem 0.25rem 0.5rem;
+  font: 0.85rem/1.4 ui-monospace, "SF Mono", Menlo, monospace;
+}
+.ps-filter-input:focus {
+  outline: 1px solid var(--accent, #6aa);
+  outline-offset: -1px;
+}
+.ps-filter-clear {
+  position: absolute;
+  right: 0.95rem;
+  top: 50%;
+  transform: translateY(-50%);
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--ps-fg, #ccc);
+  cursor: pointer;
+  font-size: 0.95rem;
+  padding: 0 0.25rem;
+  line-height: 1;
+}
+.ps-filter-clear:hover { color: #fff; }
+
+/* When the filter hides every entry in the current dir, the list
+ * is empty after filtering; surface the same "(no match)" affordance
+ * the .is-empty::before pattern already uses. */
+.ps-list.is-filtered-empty::before {
+  content: "(no match)";
+  color: var(--ps-fg-dim, #888);
+  font-style: italic;
+  display: block;
+  padding: 0.4rem 0.7rem;
+}
+
+/* Entry hidden by the active filter.  Keeps the entry in the DOM
+ * (click handlers + dataset.path stay live) so clearing the
+ * filter doesn't require a re-render. */
+.ps-list .ps-entry.is-hidden {
+  display: none;
+}
+
 /* ---- Entry list ----------------------------------------------- */
 
 .ps-list {

@@ -460,6 +460,101 @@ def test_sidebar_pick_is_candidate_only_not_auto_load(
     )
 
 
+def test_sidebar_filter_hides_non_matching_files(
+        page, flask_server, tmp_path, monkeypatch):
+    """B.5.5: the filter input at #ps-filter-input hides files whose
+    names don't match.  Substring match by default; a leading-dot
+    is the extension shortcut.  Folders always stay visible (they're
+    navigation, not data)."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    # Build a small project dir with a mix of file types.
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    (proj / "water.xyz").write_text(_H2O_XYZ)
+    (proj / "benzene.xyz").write_text(_H2O_XYZ)  # contents irrelevant
+    (proj / "notes.md").write_text("# notes\n")
+    (proj / "structure").mkdir()  # folder
+    _open_modify(page, flask_server)
+    # Navigate into the project dir via the sidebar API.
+    page.evaluate(
+        """(d) => window.molbuilder.projects.navigateTo(d)""",
+        str(proj),
+    )
+    page.wait_for_function(
+        "() => document.querySelectorAll('#ps-list .ps-entry').length >= 4"
+    )
+    # Filter to .xyz only.
+    page.locator("#ps-filter-input").fill(".xyz")
+    # Verify: 2 xyz files visible + 1 folder (always visible) = 3.
+    # notes.md is hidden.
+    def _visible_names():
+        return page.evaluate("""() =>
+            Array.from(
+                document.querySelectorAll('#ps-list .ps-entry')
+            ).filter(li => !li.classList.contains('is-hidden'))
+             .map(li => li.querySelector('.ps-entry-name').textContent)
+             .sort()""")
+    visible = _visible_names()
+    assert "water.xyz" in visible
+    assert "benzene.xyz" in visible
+    assert "structure" in visible, "folders must stay visible"
+    assert "notes.md" not in visible, (
+        f"filter '.xyz' must hide notes.md; visible: {visible}"
+    )
+    # Clear via the × button → all entries visible again.
+    page.locator("#ps-filter-clear").click()
+    visible = _visible_names()
+    assert "notes.md" in visible
+    # SessionStorage flag cleared too.
+    assert page.evaluate(
+        "() => sessionStorage.getItem("
+        "'molbuilder.projects_sidebar_filter') === null"
+    )
+
+
+def test_sidebar_filter_survives_directory_change(
+        page, flask_server, tmp_path, monkeypatch):
+    """The active filter re-applies after a directory change so the
+    user doesn't have to re-type ``.xyz`` every time they navigate
+    into a new project sub-folder."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    sub = proj / "structure"
+    sub.mkdir()
+    (sub / "water.xyz").write_text(_H2O_XYZ)
+    (sub / "readme.txt").write_text("hi\n")
+    _open_modify(page, flask_server)
+    page.evaluate(
+        """(d) => window.molbuilder.projects.navigateTo(d)""",
+        str(proj),
+    )
+    # Apply the filter at the project root.
+    page.locator("#ps-filter-input").fill(".xyz")
+    # Navigate into the structure/ sub-folder.
+    page.evaluate(
+        """(d) => window.molbuilder.projects.navigateTo(d)""",
+        str(sub),
+    )
+    # Wait for the new listing.
+    page.wait_for_function(
+        "() => document.querySelectorAll('#ps-list .ps-entry').length >= 2"
+    )
+    # The filter is still in the input AND was re-applied: readme.txt
+    # is hidden in the new directory too.
+    assert page.locator("#ps-filter-input").input_value() == ".xyz"
+    is_hidden = page.evaluate("""() => {
+        const e = Array.from(
+            document.querySelectorAll('#ps-list .ps-entry')
+        ).find(li => li.querySelector('.ps-entry-name')
+                           .textContent === 'readme.txt');
+        return e ? e.classList.contains('is-hidden') : null;
+    }""")
+    assert is_hidden is True, (
+        "active filter must re-apply after a directory change"
+    )
+
+
 def test_sidebar_collapse_toggle_hides_and_shows(page, flask_server):
     """B.5.4: clicking #ps-collapse-toggle adds
     ``is-projects-sidebar-collapsed`` to body (sidebar slides off,

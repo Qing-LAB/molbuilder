@@ -142,6 +142,23 @@
     <!-- Crumbs inserted by projects-sidebar.js. -->
   </nav>
 
+  {#- Filter input (B.5.5).  Case-insensitive substring match
+      against filenames + a leading-dot shortcut for extensions
+      (".xyz" matches files whose name ends in ".xyz").  Folders
+      always stay visible (navigation).  State persists per
+      origin in sessionStorage so a refresh keeps the filter. -#}
+  <div class="ps-filter-bar">
+    <input type="search" id="ps-filter-input"
+           class="ps-filter-input"
+           placeholder="Filter files (e.g. .xyz)"
+           autocomplete="off" spellcheck="false"
+           aria-label="Filter files in this directory">
+    <button type="button" id="ps-filter-clear"
+            class="ps-filter-clear"
+            title="Clear filter"
+            aria-label="Clear filter" hidden>×</button>
+  </div>
+
   <ul class="ps-list" id="ps-list" aria-live="polite">
     <!-- Current-directory entries inserted by projects-sidebar.js. -->
   </ul>

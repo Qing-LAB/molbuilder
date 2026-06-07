@@ -346,6 +346,10 @@ export async function openDir(absPath) {
   }
   _renderBreadcrumb(resp.path);
   _renderList(resp.entries, resp.path);
+  // Re-apply the persisted filter after each render — entries are
+  // rebuilt on every openDir, so a previously-active filter would
+  // otherwise show ALL entries on directory change.
+  _applyFilter();
 
   // Determine whether prevFile survives the refresh.
   let keptFile = "";
@@ -446,21 +450,101 @@ export function initLockUI() {
   _projectsApi.onLockChange(_applyLockVisual);
 }
 
+// Filter state (B.5.5).  Free-text filter that hides non-matching
+// FILES from the rendered entry list — folders always stay visible
+// so the user can still navigate.  Case-insensitive substring; a
+// leading "." is a shortcut for extension match (".xyz" matches
+// files whose name ends in ".xyz" only, not "water.xyz.bak").
+const FILTER_KEY = "molbuilder.projects_sidebar_filter";
+let _filterQuery = "";
+
+function _filterMatches(name, kind) {
+  if (kind === "directory") return true;   // folders always visible
+  if (!_filterQuery) return true;
+  const lc = name.toLowerCase();
+  if (_filterQuery.startsWith(".")) {
+    return lc.endsWith(_filterQuery);
+  }
+  return lc.includes(_filterQuery);
+}
+
+/**
+ * Apply the current filter to the rendered entries.  Called after
+ * every render + every filter-input keystroke.  Hides via the
+ * ``is-hidden`` class so the entry DOM (click handlers, dataset
+ * attrs) stays intact for when the user clears the filter.
+ *
+ * Also flips ``is-filtered-empty`` on the list root so the CSS
+ * "(no match)" placeholder surfaces when every entry is hidden.
+ */
+function _applyFilter() {
+  if (!elList) return;
+  let visibleCount = 0;
+  for (const li of elList.children) {
+    const kind = li.dataset.kind || "";
+    const name = (li.querySelector(".ps-entry-name") || {}).textContent || "";
+    const show = _filterMatches(name, kind);
+    li.classList.toggle("is-hidden", !show);
+    if (show) visibleCount++;
+  }
+  // Don't flip is-filtered-empty when the underlying list is
+  // empty (no entries to filter) — the existing is-empty
+  // "(empty)" affordance fires there.
+  const underlyingEmpty = elList.children.length === 0;
+  elList.classList.toggle(
+    "is-filtered-empty",
+    !underlyingEmpty && visibleCount === 0 && Boolean(_filterQuery)
+  );
+  const clearBtn = document.getElementById("ps-filter-clear");
+  if (clearBtn) clearBtn.hidden = !_filterQuery;
+}
+
+/**
+ * Wire the filter <input> + clear button.  Idempotent — calling
+ * twice is a no-op on the second call (the listener-already-
+ * attached guard prevents stacking).
+ */
+function _initFilter() {
+  const input = document.getElementById("ps-filter-input");
+  if (!input || input.dataset.psFilterWired === "1") return;
+  input.dataset.psFilterWired = "1";
+  try { _filterQuery = (sessionStorage.getItem(FILTER_KEY) || "").toLowerCase(); }
+  catch (_) { _filterQuery = ""; }
+  if (_filterQuery) input.value = _filterQuery;
+  input.addEventListener("input", () => {
+    _filterQuery = input.value.trim().toLowerCase();
+    try {
+      if (_filterQuery) sessionStorage.setItem(FILTER_KEY, _filterQuery);
+      else              sessionStorage.removeItem(FILTER_KEY);
+    } catch (_) { /* swallow quota / private-mode throws */ }
+    _applyFilter();
+  });
+  const clearBtn = document.getElementById("ps-filter-clear");
+  if (clearBtn) {
+    clearBtn.addEventListener("click", () => {
+      input.value = "";
+      _filterQuery = "";
+      try { sessionStorage.removeItem(FILTER_KEY); } catch (_) {}
+      _applyFilter();
+      input.focus();
+    });
+  }
+}
+
 export function initList() {
   elCrumb = document.getElementById("ps-breadcrumb");
   elList  = document.getElementById("ps-list");
   // Lock-UI wiring lives in initLockUI() and runs unconditionally in
   // projects-sidebar.js's init() -- KEEP IT THAT WAY.  Pulling those
-  // calls back into initList would re-couple lock to file-listing
-  // (the 2026-05-28 bug).
+  // calls back into initList would re-couple lock to file-listing.
   setRefreshHandler(openDir);
-  // 2026-05-31 #166: renderSidebar subscriber.  Single point of
-  // selection-state-to-DOM sync.  Fires once on subscribe with the
-  // current state (per the onChange contract in state.js), so the
-  // initial paint happens here without a manual call.  Every
-  // ``setShared`` / ``navigateTo`` thereafter -- whether from a
-  // sidebar click, the /results file-picker dropdown, or any future
-  // programmatic navigator -- auto-syncs the entry-marker + status
-  // line.
+  _initFilter();
+  // renderSidebar subscriber.  Single point of selection-state-to-DOM
+  // sync.  Fires once on subscribe with the current state (per the
+  // onChange contract in state.js), so the initial paint happens
+  // here without a manual call.  Every ``setShared`` / ``navigateTo``
+  // thereafter -- whether from a sidebar click, the /results file-
+  // picker dropdown, or any future programmatic navigator -- auto-
+  // syncs the entry-marker + status line.
   _projectsApi.onChange(renderSidebar);
 }
