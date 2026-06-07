@@ -279,7 +279,7 @@ class TestRefusals:
             console.log(JSON.stringify({envelope: r, writeCalls}));
         ''')
         assert out["envelope"]["ok"] is False
-        assert "No save target" in out["envelope"]["error"]
+        assert "Save as" in out["envelope"]["error"]
         assert out["writeCalls"] == 0
 
 

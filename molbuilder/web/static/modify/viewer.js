@@ -600,13 +600,15 @@
             // the dirty flag flips so a subsequent Load / Generate
             // fires the warning modal.  Idempotent / safe no-op
             // when canvas-state hasn't mounted yet (early-boot
-            // race; the modules load after this script on
-            // /molbuilder).
+            // race; the modules load after this script).
+            // Truthy ``r.xyz`` (not just typeof string) so an empty
+            // string from a buggy server response is skipped
+            // instead of throwing inside ``replaceContent``.
             try {
                 const cs = window.molbuilder
                         && window.molbuilder.structureCanvas;
                 if (cs && typeof cs.replaceContent === "function"
-                       && r && typeof r.xyz === "string") {
+                       && r && r.xyz) {
                     cs.replaceContent(r.xyz);
                 }
             } catch (_) { /* nothing to do — UX unaffected */ }
@@ -1234,6 +1236,24 @@
             title:         saved.title,
             n_atoms:       saved.n_atoms,
         });
+        // Hydrate canvas-state too so Save / Load / Generate know
+        // there's something in the workspace.  Without this, a
+        // session-restored structure leaves canvas-state empty:
+        // Save reports "No structure to save" and a Load doesn't
+        // fire the warning modal even after the user makes edits.
+        try {
+            const cs = window.molbuilder
+                    && window.molbuilder.structureCanvas;
+            if (cs && typeof cs.setStructure === "function"
+                   && saved.xyz) {
+                cs.setStructure(
+                    { source_format: "xyz", text: saved.xyz },
+                    { kind: saved.source_file ? "file" : "load",
+                      file: saved.source_file || null,
+                      generator_input: null }
+                );
+            }
+        } catch (_) { /* canvas-state optional — UX unaffected */ }
         // Rehydrate the store atomically.  We can't call
         // ``setSourceFile`` here because that path would re-issue
         // ``GET /api/files/read`` + a viewer model swap -- we just

@@ -106,8 +106,9 @@
         if (!path) {
             return Promise.resolve({
                 ok: false,
-                error: "No save target — the current structure has no "
-                     + "source file.  (Save as… coming in a later phase.)",
+                error: "This structure was built in the workspace "
+                     + "and hasn't been written to a project file "
+                     + "yet — Save as… will be available soon.",
             });
         }
         var struct = _canvas.getStructure();
@@ -158,9 +159,10 @@
             return i >= 0 ? p.slice(i + 1) : p;
         }
         function refreshState() {
+            _lazyResolve();
             var path = targetPath();
             var dirty = _canvas && _canvas.isDirty();
-            button.disabled = !path || _canvas.isEmpty();
+            button.disabled = !_canvas || !path || _canvas.isEmpty();
             if (readout) {
                 if (path) {
                     readout.textContent = (dirty ? "Unsaved — " : "")

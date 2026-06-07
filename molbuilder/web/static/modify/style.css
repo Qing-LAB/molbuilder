@@ -37,9 +37,9 @@ header .tagline {
  * Full-width card above the modify-grid.  Holds every path that
  * brings a structure INTO the workspace, as foldable <details>
  * panels.  Order matches docs/tabs/architecture.md § 5.1.  Each
- * panel keeps its open/closed state across page lifetime (native
- * <details> behaviour); after Phase B.3 we may persist that state
- * to sessionStorage. */
+ * panel keeps its open/closed state across page lifetime via the
+ * native <details> behaviour; not persisted to sessionStorage
+ * today. */
 .sources-card {
     margin: 1rem 2rem 0;
     padding: 0.6rem 1rem 0.4rem;

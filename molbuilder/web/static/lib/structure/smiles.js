@@ -170,17 +170,24 @@
         }
 
         button.addEventListener("click", function () {
+            // Capture the SMILES at click time so the success
+            // status reports what was BUILT, not whatever the user
+            // typed while the request was in flight.
+            var echo = input.value.trim();
             button.disabled = true;
             setStatus("Generating…", "generating");
-            generate(input.value).then(function (r) {
+            generate(echo).then(function (r) {
                 button.disabled = false;
                 if (r.ok) {
                     setStatus(
                         "Generated " + (r.n_atoms != null
                             ? r.n_atoms + " atoms" : "")
-                        + " from " + input.value.trim());
+                        + " from " + echo);
                 } else if (r.cancelled) {
-                    setStatus("");  // user chose Cancel; no error
+                    // User clicked Cancel on the warning modal —
+                    // tell them their workspace is untouched so
+                    // they don't think Generate silently failed.
+                    setStatus("Kept existing workspace.");
                 } else {
                     setStatus(r.error || "Generation failed.",
                               "error");

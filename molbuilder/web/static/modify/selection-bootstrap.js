@@ -154,7 +154,13 @@
             const initial = projects.getCurrentFile() || "";
             if (_isLoadableStructure(initial)) {
                 // Cross-tab handoff: commit immediately on mount.
-                store.setSourceFile(initial);
+                // Goes through the same _commitFile path as the Load
+                // button so canvas-state stays in sync (the legacy
+                // ``store.setSourceFile(initial)`` shortcut left
+                // canvas-state empty for cross-tab-handed-off
+                // structures, and Save then failed with
+                // "No structure to save").
+                _commitFile(initial);
                 _setCandidate(initial);
             }
             projects.onChange((sel) => {
@@ -180,22 +186,28 @@
         }
         _onCandidateChange(_refreshLoadUI);
 
-        // The Load button gates the load through the canvas-state
-        // orchestrator so a Load with a dirty canvas fires the
-        // unsaved-modifications warning before discarding edits.
-        // Fall back to a direct setSourceFile if the orchestrator
-        // isn't wired (early-boot race; the modules load after this
-        // bootstrap on /molbuilder).
-        async function _loadButtonClicked() {
-            const path = _candidate;
+        // The single "commit a structure file into the workspace"
+        // path.  Read the file ONCE, gate through structurePage so
+        // a dirty canvas fires the warning modal, then drive the
+        // viewer + selection-store atomically — without going
+        // through ``store.setSourceFile`` (which would re-read the
+        // file + re-invoke the viewer loader, racing the
+        // already-rendered structure and wasting a roundtrip).
+        // Used by the Load button AND the page-mount cross-tab
+        // handoff so canvas-state stays populated either way.
+        //
+        // Falls back to a direct ``setSourceFile`` only when the
+        // orchestrator + projects API aren't wired (early-boot
+        // race in tests / non-Molbuilder embeds); the candidate-
+        // only contract is unaffected.
+        async function _commitFile(path) {
             if (!path) return;
             const sp = window.molbuilder
                     && window.molbuilder.structurePage;
             const projectsApi = window.molbuilder
                     && window.molbuilder.projects;
-            // If either dependency is missing, take the direct path
-            // — the candidate-only contract still holds; only the
-            // warning-modal gate is skipped.
+            const viewerLoader = window.molbuilder
+                    && window.molbuilder.loadStructureText;
             if (!sp || !projectsApi
                 || typeof projectsApi.readFile !== "function") {
                 store.setSourceFile(path);
@@ -203,9 +215,6 @@
             }
             const r = await projectsApi.readFile(path);
             if (!r || !r.ok) {
-                // Surface inline via the existing #status element
-                // that modify/viewer.js's setStatus already writes
-                // to.  No new element needed.
                 const s = document.getElementById("status");
                 if (s) {
                     s.textContent = (r && r.error)
@@ -222,10 +231,31 @@
                 { kind: "file", file: path }
             );
             if (!gate.ok) return;  // cancelled — leave viewer alone
-            store.setSourceFile(path);
+            // Drive the viewer with the bytes we already have.
+            if (typeof viewerLoader === "function") {
+                try {
+                    await viewerLoader(r.text, _basename(path));
+                } catch (e) {
+                    const s = document.getElementById("status");
+                    if (s) {
+                        s.textContent = "Viewer failed: "
+                            + (e && e.message ? e.message : String(e));
+                        s.className = "status error";
+                    }
+                    return;
+                }
+            }
+            // Tell the selection store the file is now the source
+            // WITHOUT re-loading the viewer (we just did).  This
+            // fetches the atoms list for the panel.
+            if (typeof store.adoptSession === "function") {
+                store.adoptSession({ sourceFile: path, selection: [] });
+            } else {
+                store.setSourceFile(path);  // legacy fallback
+            }
         }
         if (_loadBtn) {
-            _loadBtn.addEventListener("click", _loadButtonClicked);
+            _loadBtn.addEventListener("click", () => _commitFile(_candidate));
         }
 
         // 4. Attach the viewer-adapter once modify/viewer.js has
