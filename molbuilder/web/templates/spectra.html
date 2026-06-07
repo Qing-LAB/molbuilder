@@ -202,6 +202,11 @@
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/xyz-io.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
+{# warning-modal is shared across editor + form tabs.  Spectra's
+   sidebar-commit handler gates form-dirty discards through it
+   so a user mid-edit doesn't lose work to a stray dblclick on a
+   different structure. #}
+<script src="{{ url_for('static', filename='lib/structure/warning-modal.js') }}"></script>
 {# Shared inspector core -- exposes window.molbuilder.spectraInspector
    .mount, which spectra/viewer.js calls below for the /spectra page
    and lib/inspectors/spectra.js calls on /results.  Script-order

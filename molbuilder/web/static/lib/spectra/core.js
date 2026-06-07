@@ -204,6 +204,16 @@
         });
     }
 
+    // Form-dirty primitive (B.5.3) — flipped true on any
+    // user-driven input/change inside #spectra-form-container.
+    // Used by the commit handler to fire the shared warning
+    // modal before a sidebar dblclick rebuilds the schema for
+    // a different structure, which would silently discard the
+    // user's parameter edits.  Cleared on commit-accept,
+    // Generate, and Save (the values have been emitted into a
+    // script or written to disk).
+    let _formDirty = false;
+
     // ----- Status helper ----------------------------------------
     function setStatus(el, msg, kind) {
         if (!el) return;
@@ -274,23 +284,52 @@
             ? _rt.whenReady("projects")
             : Promise.resolve((window.molbuilder || {}).projects);
         _projP.then((proj) => {
-        if (proj && typeof proj.onChange === "function") {
-            const unsub = proj.onChange((sel) => {
-                const f = (sel && sel.file) ? String(sel.file) : "";
-                // Both .xyz and .pdb are loadable into /spectra
-                // -- the server (web/blueprints/spectra.py)
-                // dispatches by extension to Structure.from_xyz /
-                // from_pdb when applying the sidecar.  Picks of
-                // .log, .fdf, etc. are "view this file" gestures
-                // and don't touch the form.
-                const lc = f.toLowerCase();
-                if (lc.endsWith(".xyz") || lc.endsWith(".pdb")) {
-                    _reloadSchemaForCurrentStructure(fs).catch(() => {});
-                }
-            });
-            if (typeof unsub === "function") {
-                _cleanups.push(unsub);
+        if (!proj) return;
+        // The "use this file in Spectra" handler — schema reload
+        // for the picked structure.  Defined once and wired to
+        // both the universal commit channel AND the page-mount
+        // cross-tab handoff (a structure file already in
+        // sessionStorage when /spectrum-calculation mounts should
+        // be treated as a commit; the user picked it on another
+        // tab and navigated here to configure spectra for it).
+        async function _commitStructureForSpectra(sel) {
+            const f = (sel && sel.file) ? String(sel.file) : "";
+            const lc = f.toLowerCase();
+            if (!lc.endsWith(".xyz") && !lc.endsWith(".pdb")) return;
+            // Form-dirty gate: if the user has typed parameter
+            // edits since the last commit/Generate, ask before
+            // discarding via the shared warning modal.
+            const modal = window.molbuilder
+                       && window.molbuilder.warningModal;
+            if (_formDirty && modal
+                && typeof modal.confirmDiscardUnsaved === "function") {
+                const proceed = await modal.confirmDiscardUnsaved();
+                if (!proceed) return;
             }
+            _formDirty = false;
+            await _reloadSchemaForCurrentStructure(fs).catch(() => {});
+        }
+        // Universal commit subscription — dblclick on a structure
+        // file in the sidebar.  Falls back to onChange for older
+        // deployments without onCommit.
+        const _subscribe = (typeof proj.onCommit === "function")
+            ? proj.onCommit.bind(proj)
+            : proj.onChange.bind(proj);
+        const unsub = _subscribe(_commitStructureForSpectra);
+        if (typeof unsub === "function") {
+            _cleanups.push(unsub);
+        }
+        // Cross-tab handoff: if a structure is already in
+        // sessionStorage when this tab mounts, treat it as a commit
+        // so the user doesn't have to re-click in the sidebar.
+        // Only fires once on mount; onCommit itself doesn't fire-
+        // on-subscribe.
+        const _initFile = (typeof proj.getCurrentFile === "function")
+            ? proj.getCurrentFile() : "";
+        if (_initFile) {
+            const _initDir = (typeof proj.getCurrentDir === "function")
+                ? proj.getCurrentDir() : "";
+            _commitStructureForSpectra({ dir: _initDir, file: _initFile });
         }
         });   // close _projP.then(...)
     }
@@ -2170,6 +2209,21 @@
             _on(els.methodsCopy,  "click", copyMethods);
             if (els.saveBtn) {
                 _on(els.saveBtn, "click", saveSpectraToCurrentDir);
+            }
+            // Form-dirty tracking (B.5.3): user-driven input on
+            // the param form flips the flag; Generate / Save
+            // clear it (params have been emitted).  Delegated
+            // listeners on the container so re-renders of the
+            // form schema don't need to re-wire each field.
+            _on(els.formContainer, "input",
+                () => { _formDirty = true; });
+            _on(els.formContainer, "change",
+                () => { _formDirty = true; });
+            _on(els.generateBtn, "click",
+                () => { _formDirty = false; });
+            if (els.saveBtn) {
+                _on(els.saveBtn, "click",
+                    () => { _formDirty = false; });
             }
             // Live re-evaluate save-button enable state on sidebar pick.
             const proj = (window.molbuilder || {}).projects;
