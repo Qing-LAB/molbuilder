@@ -460,6 +460,62 @@ def test_sidebar_pick_is_candidate_only_not_auto_load(
     )
 
 
+def test_sidebar_collapse_toggle_hides_and_shows(page, flask_server):
+    """B.5.4: clicking #ps-collapse-toggle adds
+    ``is-projects-sidebar-collapsed`` to body (sidebar slides off,
+    handle floats at the edge); clicking #ps-collapsed-handle
+    brings it back.  State persists per origin in sessionStorage
+    so a refresh keeps the user's preference."""
+    _open_modify(page, flask_server)
+    # Sidebar visible at start; body doesn't carry the collapsed class.
+    assert not page.evaluate(
+        "() => document.body.classList.contains("
+        "'is-projects-sidebar-collapsed')"
+    )
+    # Collapse.
+    page.locator("#ps-collapse-toggle").click()
+    page.wait_for_function(
+        "() => document.body.classList.contains("
+        "'is-projects-sidebar-collapsed')"
+    )
+    # Sessionstorage persisted the preference.
+    assert page.evaluate(
+        "() => sessionStorage.getItem("
+        "'molbuilder.projects_sidebar_collapsed') === '1'"
+    )
+    # Reopen via the floating handle.
+    page.locator("#ps-collapsed-handle").click()
+    page.wait_for_function(
+        "() => !document.body.classList.contains("
+        "'is-projects-sidebar-collapsed')"
+    )
+    # SessionStorage cleared on reopen.
+    assert page.evaluate(
+        "() => sessionStorage.getItem("
+        "'molbuilder.projects_sidebar_collapsed') === null"
+    )
+
+
+def test_sidebar_collapse_state_survives_reload(page, flask_server):
+    """The collapsed state is restored from sessionStorage on the
+    next page mount — before any layout-sensitive widget (3Dmol,
+    Plotly, CSS-grid auto-fit) measures geometry."""
+    _open_modify(page, flask_server)
+    page.locator("#ps-collapse-toggle").click()
+    page.wait_for_function(
+        "() => document.body.classList.contains("
+        "'is-projects-sidebar-collapsed')"
+    )
+    # Same-tab navigation — sessionStorage survives, the new mount
+    # picks up the persisted state.
+    page.goto(f"{flask_server}/molbuilder")
+    page.wait_for_selector("#projects-sidebar", state="attached")
+    assert page.evaluate(
+        "() => document.body.classList.contains("
+        "'is-projects-sidebar-collapsed')"
+    ), "collapsed state should restore from sessionStorage on reload"
+
+
 def test_dblclick_in_sidebar_commits_the_file(
         page, flask_server, water_xyz_file):
     """Per the universal sidebar interaction model: a single click

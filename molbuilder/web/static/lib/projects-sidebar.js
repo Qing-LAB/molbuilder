@@ -65,6 +65,69 @@ if (window.molbuilder.runtime
  * so older partial revisions (and any future template that doesn't
  * include the drawer scaffolding) just retain desktop behaviour.
  */
+/**
+ * Desktop collapse toggle (B.5.4).  Hide/show the sidebar on
+ * viewports >= 640 px (the mobile drawer handles narrow ones).
+ * Wires:
+ *   - #ps-collapse-toggle (in the sidebar header) → click to hide
+ *   - #ps-collapsed-handle (floating at the left edge) → click to show
+ *
+ * State persists per origin in sessionStorage under
+ * ``molbuilder.projects_sidebar_collapsed`` so a refresh keeps the
+ * preference within a tab.  Initial state is read on mount BEFORE
+ * any layout-sensitive widget paints so 3Dmol / Plotly measure the
+ * correct geometry.
+ *
+ * No-ops gracefully when the toggle elements are missing (older
+ * partial revisions, future templates that don't include the
+ * collapse scaffolding).
+ */
+const COLLAPSED_KEY = "molbuilder.projects_sidebar_collapsed";
+function initDesktopCollapse() {
+  const toggle = document.getElementById("ps-collapse-toggle");
+  const handle = document.getElementById("ps-collapsed-handle");
+  if (!toggle || !handle) return;
+
+  const CLASS = "is-projects-sidebar-collapsed";
+
+  function setCollapsed(collapsed) {
+    document.body.classList.toggle(CLASS, collapsed);
+    toggle.setAttribute("aria-expanded", String(!collapsed));
+    handle.setAttribute("aria-expanded", String(!collapsed));
+    try {
+      if (collapsed) sessionStorage.setItem(COLLAPSED_KEY, "1");
+      else           sessionStorage.removeItem(COLLAPSED_KEY);
+    } catch (_) {
+      // sessionStorage may throw on quota / private-mode; the
+      // collapse state still applies to the current page —
+      // it just won't survive a refresh.
+    }
+  }
+  toggle.addEventListener("click",
+    () => setCollapsed(true));
+  handle.addEventListener("click",
+    () => setCollapsed(false));
+}
+
+/**
+ * Read the persisted collapsed-state and apply it BEFORE the
+ * sidebar JS init runs.  Called synchronously during module init
+ * so the body class is set before any layout-sensitive widget
+ * (Plotly, 3Dmol, CSS-grid auto-fit) takes its first measurement.
+ */
+function _restoreCollapsedState() {
+  let collapsed = false;
+  try { collapsed = sessionStorage.getItem(COLLAPSED_KEY) === "1"; }
+  catch (_) { /* swallow */ }
+  if (collapsed) {
+    document.body.classList.add("is-projects-sidebar-collapsed");
+    const toggle = document.getElementById("ps-collapse-toggle");
+    const handle = document.getElementById("ps-collapsed-handle");
+    if (toggle) toggle.setAttribute("aria-expanded", "false");
+    if (handle) handle.setAttribute("aria-expanded", "false");
+  }
+}
+
 function initMobileDrawer() {
   const toggle   = document.getElementById("ps-mobile-toggle");
   const backdrop = document.getElementById("ps-mobile-backdrop");
@@ -102,12 +165,20 @@ async function init() {
   const sidebar = document.getElementById("projects-sidebar");
   if (!sidebar) return;                  // page didn't include the partial
 
-  // Wire the narrow-viewport drawer toggle.  Independent of
-  // project-root resolution; runs first so the toggle is responsive
-  // even if /api/files/roots is slow / fails (the user would see an
-  // error in the sidebar list, but can still close the drawer to
-  // reach the rest of the page).
+  // Restore the desktop-collapse state from sessionStorage BEFORE
+  // any further wiring so layout-sensitive widgets (Plotly, 3Dmol,
+  // CSS-grid) measure the correct geometry on their first paint.
+  // The body class controls padding-left + sidebar visibility.
+  _restoreCollapsedState();
+
+  // Wire the narrow-viewport drawer toggle + the desktop collapse
+  // toggle.  Independent of project-root resolution; runs first so
+  // the toggles are responsive even if /api/files/roots is slow /
+  // fails (the user would see an error in the sidebar list, but
+  // can still close the drawer / sidebar to reach the rest of the
+  // page).
   initMobileDrawer();
+  initDesktopCollapse();
 
   // Wire the lock UI FIRST -- before any await that could throw or
   // bail.  The lock UI needs to work regardless of project-root

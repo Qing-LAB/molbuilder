@@ -27,9 +27,30 @@
 <div id="ps-mobile-backdrop" class="ps-mobile-backdrop"
      aria-hidden="true"></div>
 
+{#- Reopen handle for the desktop-collapsed sidebar (B.5.4).
+    Hidden unless ``body.is-projects-sidebar-collapsed`` is set;
+    click brings the sidebar back.  Lives outside .projects-sidebar
+    so it stays visible when the sidebar itself is hidden. -#}
+<button type="button" id="ps-collapsed-handle"
+        class="ps-collapsed-handle"
+        aria-label="Show projects sidebar"
+        aria-controls="projects-sidebar"
+        title="Show projects sidebar"
+        aria-expanded="false">▶</button>
+
 <aside class="projects-sidebar" id="projects-sidebar" aria-label="Projects file explorer">
   <header class="ps-header">
     <h2 class="ps-title">Projects</h2>
+    {#- Desktop collapse toggle (B.5.4).  Visible only on viewports
+        >= 640 px (the mobile drawer toggle handles narrow ones).
+        Click hides the sidebar; #ps-collapsed-handle below brings
+        it back.  State persists per-origin in sessionStorage. -#}
+    <button type="button" id="ps-collapse-toggle"
+            class="ps-collapse-toggle"
+            aria-label="Hide projects sidebar"
+            aria-controls="projects-sidebar"
+            title="Hide projects sidebar"
+            aria-expanded="true">◀</button>
   </header>
 
   <!-- Lock banner.  Hidden by default; shown by lib/projects/list.js when

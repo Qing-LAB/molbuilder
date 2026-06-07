@@ -72,6 +72,76 @@ body.has-projects-sidebar {
   font-weight: 600;
 }
 
+/* ---- Desktop collapse toggle + reopen handle (B.5.4) ----------
+ *
+ * The sidebar hides via ``body.is-projects-sidebar-collapsed``:
+ * the body padding-left collapses to 0 and the .projects-sidebar
+ * goes off-screen.  A small reopen handle (.ps-collapsed-handle)
+ * floats at the left edge so the user can bring it back.
+ *
+ * State persists in sessionStorage per origin (key
+ * ``molbuilder.projects_sidebar_collapsed``) so a refresh keeps
+ * the user's preference.  Behaviour wired in
+ * ``lib/projects-sidebar.js``. */
+
+.ps-collapse-toggle {
+  appearance: none;
+  background: transparent;
+  color: var(--ps-fg, #ccc);
+  border: 1px solid transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  padding: 0 0.35rem;
+  line-height: 1.6;
+}
+.ps-collapse-toggle:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--ps-border, #333);
+}
+
+.ps-collapsed-handle {
+  position: fixed;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 60px;
+  background: var(--ps-bg, #1a1a1a);
+  color: var(--ps-fg, #ccc);
+  border: 1px solid var(--ps-border, #333);
+  border-left: none;
+  border-radius: 0 4px 4px 0;
+  cursor: pointer;
+  z-index: 6;
+  font-size: 0.75rem;
+  padding: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+.ps-collapsed-handle:hover {
+  background: #222;
+}
+
+body.is-projects-sidebar-collapsed {
+  padding-left: 0;
+}
+body.is-projects-sidebar-collapsed .projects-sidebar {
+  transform: translateX(-100%);
+  visibility: hidden;
+}
+body.is-projects-sidebar-collapsed .ps-collapsed-handle {
+  display: flex;
+}
+/* Narrow-viewport drawer mode takes over below 640 px (the
+ * existing mobile toggle handles open/close there); hide the
+ * desktop affordances so they don't double up. */
+@media (max-width: 640px) {
+  .ps-collapse-toggle { display: none; }
+  .ps-collapsed-handle { display: none !important; }
+}
+
 /* ---- Foldable "+ New project" / "+ New subdir" sections -------- */
 /* Each section is a <details> in the partial; users click to expand
  * the form.  Two sections, separately collapsible.  Together they
