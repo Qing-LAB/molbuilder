@@ -86,6 +86,26 @@
   </details>
 
   <details class="source-panel">
+    <summary>Generate from name</summary>
+    <div class="source-panel-body">
+      <p class="source-hint">
+        Look up a molecule by IUPAC or common name (PubChem) and
+        build a 3-D structure.
+      </p>
+      <label class="source-input-row">
+        <span>Name</span>
+        <input id="name-input" type="text"
+               placeholder="e.g. ethanol  /  benzene  /  caffeine"
+               autocomplete="off" spellcheck="false">
+      </label>
+      <div class="source-actions">
+        <button id="name-generate-btn" class="ghost">Generate</button>
+        <span id="name-status" class="muted" role="status"></span>
+      </div>
+    </div>
+  </details>
+
+  <details class="source-panel">
     <summary>Save</summary>
     <div class="source-panel-body">
       <p class="source-hint">
@@ -506,6 +526,7 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
 <script src="{{ url_for('static', filename='lib/structure/warning-modal.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/page.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/smiles.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/structure/name.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/save.js') }}"></script>
 </body>
 </html>

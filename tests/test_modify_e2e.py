@@ -971,6 +971,39 @@ def test_save_button_disabled_for_smiles_without_prior_save(
     )
 
 
+def test_name_generator_renders_structure_in_viewer(page, flask_server):
+    """End-to-end name flow: type "water" into the Name input,
+    click Generate.  The backend hits PubChem (cached or live);
+    the panel routes the XYZ through ``structurePage.loadIntoCanvas``
+    and the viewer renders the molecule.
+
+    Skips if the PubChem lookup fails (no rdkit available, no
+    network) — the test wants the happy path.
+    """
+    try:
+        import rdkit  # noqa: F401
+    except ImportError:
+        pytest.skip("rdkit not installed; cannot exercise name build")
+
+    _open_modify(page, flask_server)
+    page.locator(
+        ".source-panel:has(> summary:has-text('Generate from name'))"
+    ).evaluate("el => el.open = true")
+    page.locator("#name-input").fill("water")
+    page.locator("#name-generate-btn").click()
+    # water has 3 atoms (O + 2H).  PubChem 3D record may add no
+    # extras; assert "loaded a structure" rather than an exact count
+    # so a future lookup that resolves the same molecule via a
+    # different conformer still passes.
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test"
+        "      && window.__molbuilder_modify_test.getNAtoms() >= 3",
+        timeout=15_000,
+    )
+    status_text = page.locator("#name-status").inner_text()
+    assert "water" in status_text.lower()
+
+
 def test_smiles_generator_empty_input_surfaces_inline_error(
         page, flask_server):
     """Click Generate with an empty SMILES input → inline error,
