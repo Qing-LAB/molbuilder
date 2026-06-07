@@ -50,6 +50,27 @@
     }
 
     /**
+     * Lazy-resolve production singletons from window.molbuilder.
+     * Pre-fix this module's IIFE captured them once at script-eval
+     * time (LANDMINE-2): if a future template change loaded this
+     * script BEFORE page.js / mol-viewer.js finished
+     * registering their globals, those slots stayed null and the
+     * first generate() call hit the "not configured" branch.
+     * Re-reads on every call so a later script-load doesn't
+     * silently degrade.  Test contexts that called configure()
+     * with explicit fakes are unaffected (their values stay).
+     */
+    function _lazyResolve() {
+        if (typeof root === "undefined" || !root.molbuilder) return;
+        if (!_fetch && root.fetch)
+            _fetch = root.fetch.bind(root);
+        if (!_structurePage && root.molbuilder.structurePage)
+            _structurePage = root.molbuilder.structurePage;
+        if (!_viewerLoader && root.molbuilder.loadStructureText)
+            _viewerLoader = root.molbuilder.loadStructureText;
+    }
+
+    /**
      * Load a structure from raw XYZ / PDB text — typically from
      * a FileReader read in production; tests pass the text
      * directly.
@@ -67,6 +88,9 @@
             return Promise.resolve({
                 ok: false, error: "File appears to be empty." });
         }
+        // Lazy-resolve dependencies in case the script-load
+        // order put us above page.js / lib/* (LANDMINE-2 fix).
+        _lazyResolve();
         if (!_fetch) {
             return Promise.reject(new Error(
                 "file: fetch not configured"));

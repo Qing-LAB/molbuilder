@@ -36,6 +36,27 @@
         if (opts.viewerLoader)  _viewerLoader  = opts.viewerLoader;
     }
 
+    /**
+     * Lazy-resolve production singletons from window.molbuilder.
+     * Pre-fix this module's IIFE captured them once at script-eval
+     * time (LANDMINE-2): if a future template change loaded this
+     * script BEFORE page.js / mol-viewer.js finished
+     * registering their globals, those slots stayed null and the
+     * first generate() call hit the "not configured" branch.
+     * Re-reads on every call so a later script-load doesn't
+     * silently degrade.  Test contexts that called configure()
+     * with explicit fakes are unaffected (their values stay).
+     */
+    function _lazyResolve() {
+        if (typeof root === "undefined" || !root.molbuilder) return;
+        if (!_fetch && root.fetch)
+            _fetch = root.fetch.bind(root);
+        if (!_structurePage && root.molbuilder.structurePage)
+            _structurePage = root.molbuilder.structurePage;
+        if (!_viewerLoader && root.molbuilder.loadStructureText)
+            _viewerLoader = root.molbuilder.loadStructureText;
+    }
+
     function generate(sequence, opts) {
         opts = opts || {};
         if (typeof sequence !== "string" || !sequence.trim()) {
@@ -61,6 +82,9 @@
                      + JSON.stringify(form),
             });
         }
+        // Lazy-resolve dependencies in case the script-load
+        // order put us above page.js / lib/* (LANDMINE-2 fix).
+        _lazyResolve();
         if (!_fetch) {
             return Promise.reject(new Error(
                 "rna: fetch not configured"));

@@ -93,6 +93,41 @@ class TestSurfacePresence:
 # ----- Input validation ------------------------------------------ #
 
 
+class TestLazyResolve:
+    """LANDMINE-2 fix (2026-06-07): smiles.js (and the other 5
+    generator modules) used to capture window.molbuilder.* at IIFE
+    eval time.  A future template change that loaded smiles.js
+    before page.js / mol-viewer.js would have left the slots null
+    forever — first generate() click would reject with "not
+    configured".  Pin the lazy-resolve so a later registration is
+    picked up."""
+
+    def test_generate_picks_up_late_structurePage(self):
+        out = _run_node('''
+            // Don't call configure().  Simulate: smiles.js IIFE ran
+            // when window.molbuilder.structurePage was still undefined.
+            // Then page.js loaded LATER and registered it.  smiles.js's
+            // next generate() call should pick it up via _lazyResolve.
+            const root = (typeof globalThis !== "undefined") ? globalThis : global;
+            root.molbuilder = {
+                structurePage: {
+                    loadIntoCanvas: async () => ({ok: true}),
+                },
+            };
+            root.fetch = async () => ({
+                ok: true,
+                json: async () => ({
+                    ok: true, xyz: "1\\nC\\nC 0 0 0\\n", n_atoms: 1,
+                }),
+            });
+            const r = await smiles.generate("C");
+            console.log(JSON.stringify(r));
+        ''')
+        # Without the lazy-resolve fix this would be
+        # {rejected: true, msg: "smiles: fetch not configured"}.
+        assert out == {"ok": True, "n_atoms": 1}
+
+
 class TestInputValidation:
 
     def test_empty_smiles_rejected_without_fetch(self):

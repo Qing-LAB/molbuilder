@@ -207,14 +207,39 @@
         // Used by the Load button AND the page-mount cross-tab
         // handoff so canvas-state stays populated either way.
         //
+        // Dependency resolution uses ``runtime.whenReady`` instead
+        // of a synchronous read so a future template change that
+        // reorders the structure modules below this script doesn't
+        // silently drop the warning-modal gate.  Pre-fix the
+        // ordering invariant was "lib/structure/* loads before
+        // ``DOMContentLoaded`` fires + selection-bootstrap runs"
+        // — true today (the classic-script load order in
+        // ``modify.html`` enforces it) but a single re-ordering
+        // would silently degrade to the no-canvas-state fallback.
         // Falls back to a direct ``setSourceFile`` only when the
-        // orchestrator + projects API aren't wired (early-boot
-        // race in tests / non-Molbuilder embeds); the candidate-
-        // only contract is unaffected.
+        // orchestrator is genuinely absent (non-Molbuilder embeds);
+        // the candidate-only contract is unaffected.
+        async function _resolveStructurePage() {
+            // Fast path: already on window.
+            const sp0 = window.molbuilder
+                     && window.molbuilder.structurePage;
+            if (sp0) return sp0;
+            // Slow path: wait via the runtime registry.  If the
+            // runtime isn't installed at all (tests / non-Molbuilder
+            // embeds), return null and the caller drops to the
+            // legacy setSourceFile path.
+            const rt = window.molbuilder
+                    && window.molbuilder.runtime;
+            if (!rt || typeof rt.whenReady !== "function") return null;
+            try {
+                return await rt.whenReady("structure.page");
+            } catch (_) {
+                return null;
+            }
+        }
         async function _commitFile(path) {
             if (!path) return;
-            const sp = window.molbuilder
-                    && window.molbuilder.structurePage;
+            const sp = await _resolveStructurePage();
             const projectsApi = window.molbuilder
                     && window.molbuilder.projects;
             const viewerLoader = window.molbuilder
