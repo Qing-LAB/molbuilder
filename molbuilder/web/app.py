@@ -148,6 +148,7 @@ def create_app(*, config=None) -> Flask:
     from .blueprints.watch     import bp as watch_bp
     from .blueprints.modify    import bp as modify_bp
     from .blueprints.spectra   import bp as spectra_bp
+    from .blueprints.transport import bp as transport_bp
     from .blueprints.files     import bp as files_bp
     from .blueprints.results   import bp as results_bp
     from .blueprints.selection import bp as selection_bp
@@ -155,6 +156,7 @@ def create_app(*, config=None) -> Flask:
     app.register_blueprint(watch_bp)
     app.register_blueprint(modify_bp)
     app.register_blueprint(spectra_bp)
+    app.register_blueprint(transport_bp)
     app.register_blueprint(files_bp)
     app.register_blueprint(results_bp)
     app.register_blueprint(selection_bp)

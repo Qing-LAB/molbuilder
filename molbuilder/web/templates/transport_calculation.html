@@ -2,11 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>molbuilder &mdash; transport calculation</title>
+<title>molbuilder &mdash; Transport calculation</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/projects-sidebar.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/form-schema.css') }}">
 {# molbuilder-runtime.js MUST load before any other molbuilder script.
    Defines window.molbuilder.runtime (register/whenReady).  See
    protocols/runtime-registry.md. #}
@@ -19,37 +20,45 @@
 {% include "_projects_sidebar.html" %}
 
 <main class="page-shell">
-  <section class="card" style="max-width: 720px; margin: 2rem auto;">
-    <h2>Transport calculation</h2>
+  <section class="card" style="max-width: 880px; margin: 2rem auto;">
+    <header class="card-header">
+      <h2>Transport calculation</h2>
+      <span id="transport-status" class="muted"
+            role="status" aria-live="polite"></span>
+    </header>
+
     <p>
-      This tab will generate TranSIESTA (NEGF) and PySCF-NEGF input
-      scripts for a relaxed device geometry with electrode and bridge
-      regions tagged in the Structure tab's <code>.molstruct.json</code>
-      sidecar.
+      Generates TranSIESTA (NEGF) and PySCF-NEGF input scripts for
+      a relaxed device geometry.  Pick the relaxed structure in the
+      Projects sidebar (double-click to commit); the form below is
+      populated from <code>TransportConfig</code> via the schema
+      endpoint <code>/api/transport/schema</code>.
     </p>
-    <p>
-      <strong>Status</strong>: placeholder.  Form skeleton and
-      backend implementations are not yet wired; see
-      <code>docs/tabs/architecture.md</code> and
-      <code>docs/roadmap.md</code> for the planned scope.
-    </p>
-    <p>
-      Foundations already in place (no UI yet):
-    </p>
-    <ul>
-      <li><code>molbuilder/transport/</code> — engine abstraction
-          + <code>TransportConfig</code> + <code>TransportResults</code>.</li>
-      <li>Region labeling on the Structure tab — the
-          <code>.molstruct.json</code> sidecar carries
-          <code>regions</code> assigned via the selection panel.</li>
-      <li>Both transport engines (planned: TranSIESTA and PySCF-NEGF)
-          will consume the same relaxed geometry + sidecar; their
-          <code>render_script</code> methods will emit
-          engine-specific inputs from the same config + structure
-          pair.</li>
-    </ul>
+
+    <div id="transport-form-container" class="param-grid">
+      <p class="muted">Loading form schema&hellip;</p>
+    </div>
+
+    <div class="generate-row"
+         style="display: flex; align-items: center; gap: 1rem;
+                margin-top: 1.5rem;">
+      <button id="transport-generate-btn" class="full-btn" disabled
+              title="Engine implementations land in a follow-up phase; until then this button is disabled by design.">
+        Generate transport script
+      </button>
+      <span id="transport-generate-hint" class="muted">
+        Engine backends (TranSIESTA, PySCF-NEGF) are not yet wired;
+        Generate is disabled until they land.  Form values still
+        round-trip through the dataclass and persist across page
+        reloads — useful for prototyping configurations now.
+      </span>
+    </div>
   </section>
 </main>
+
+<script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/transport/core.js') }}"></script>
 
 </body>
 </html>
