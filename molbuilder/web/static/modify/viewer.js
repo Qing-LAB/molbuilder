@@ -21,7 +21,7 @@
  * trip preserves the loaded structure, the selection, and the
  * 3Dmol camera.
  *
- * Spec: docs/tabs/modify.md (M2-M4 + Phase 1 cross-tab
+ * Spec: docs/tabs/molbuilder.md (M2-M4 + Phase 1 cross-tab
  * persistence as of 2026-05-09).
  */
 (function () {

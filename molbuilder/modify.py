@@ -603,7 +603,7 @@ def _check_fcc_element(element: str) -> None:
             f"supported FCC metals are: "
             f"{', '.join(SUPPORTED_FCC_ELEMENTS)}.  "
             f"For BCC / HCP electrodes, see "
-            f"docs/tabs/modify.md § 'Off-scope'."
+            f"docs/tabs/molbuilder.md § 'Off-scope'."
         )
 
 
@@ -639,7 +639,7 @@ def _build_ase_slab(element: str, plane: str, size: Tuple[int, int, int],
     and re-raise as ``ValueError`` so callers (and the future Modify
     UI) can display the message inline as a hint.
 
-    See ``docs/tabs/modify.md § 8`` for the per-(plane, orthogonal)
+    See ``docs/tabs/molbuilder.md § 8`` for the per-(plane, orthogonal)
     compatibility table -- determined empirically once, but enforced
     by passing through to ASE rather than re-implementing the rules.
     """
@@ -651,7 +651,7 @@ def _build_ase_slab(element: str, plane: str, size: Tuple[int, int, int],
             f"ASE rejected the {element} fcc({plane}) slab with "
             f"size={size}, orthogonal={orthogonal}: {exc}.  "
             f"Adjust (m, n) to satisfy ASE's constraint, or flip "
-            f"the orthogonal switch (see docs/tabs/modify.md § 8)."
+            f"the orthogonal switch (see docs/tabs/molbuilder.md § 8)."
         ) from exc
 
 
@@ -723,7 +723,7 @@ def add_electrode_slab(
         the (plane, orthogonal, size) tuple is rejected, ASE's own
         error message is re-raised as a ``ValueError`` so the caller
         / UI can display it as a hint and the user can adjust manually.
-        See ``docs/tabs/modify.md § 8``.
+        See ``docs/tabs/molbuilder.md § 8``.
     offset
         ``(Δx, Δy)`` lateral shift in Å applied to the slab's centroid
         relative to the anchor's xy.  Default ``(0.0, 0.0)`` puts the

@@ -95,8 +95,8 @@ archived).
 | Doc | Owns |
 |---|---|
 | [`architecture.md`](tabs/architecture.md) | Tab inventory + routes + cross-tab workflow + phase plan.  Phases A + B.1 + B.2 + B.5 complete; C + D planned. |
-| [`build.md`](tabs/build.md) | `/structure-optimization` tab — SIESTA / PySCF form (route was `/build`; doc rename planned).  |
-| [`modify.md`](tabs/modify.md) | Modify half of the `/molbuilder` tab (route was `/modify`; doc rename to `molbuilder.md` planned).  |
+| [`molbuilder.md`](tabs/molbuilder.md) | `/molbuilder` tab — Modify subset (atom selection + edit ops + electrode panel + Geom).  The Sources card (Load + SMILES + Save) is documented in `tabs/architecture.md` § 5.  Was `modify.md` until 2026-06-07. |
+| [`structure-optimization.md`](tabs/structure-optimization.md) | `/structure-optimization` tab — SIESTA / PySCF form.  Was `build.md` until 2026-06-07. |
 | [`spectra/spec.md`](tabs/spectra/spec.md) | `/spectrum-calculation` tab — IR/Raman generator (route was `/spectra`). |
 | [`results.md`](tabs/results.md) | `/results` tab — registry dispatch, file picker. |
 
