@@ -1,5 +1,14 @@
 # Spec — `/results` tab (post-merge unified inspector)
 
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
+
 **Status**: canonical spec for task #58 (signed off 2026-05-16).
 See § 2 for the locked-in decisions.
 

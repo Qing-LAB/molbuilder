@@ -122,7 +122,7 @@ occupancies, hence the enormous gradient.
 - Add `total_electrons` + `check_spin_charge_parity` +
   `explain_metal_spin` as standalone helpers for any future
   engine that needs to do the same checks.
-- The /spectra and /build forms now show the help text inline
+- The /spectrum-calculation and /structure-optimization forms now show the help text inline
   (the field metadata's `help` is rendered as a tooltip / aside
   by `form-schema.js`); the spin field's help enumerates the
   common Fe(II) / Fe(III) spin combinations so the user has a

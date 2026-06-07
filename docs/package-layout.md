@@ -1,5 +1,14 @@
 # Package layout
 
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](tabs/architecture.md) § 3 for the canonical
+> route table.
+
 > **This document is the sole source of truth for molbuilder's
 > on-disk package structure** — the L1/L2/L3 split, the import
 > stability promises (re-export shims), and the per-folder

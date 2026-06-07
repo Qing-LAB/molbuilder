@@ -291,8 +291,8 @@ dataclass).  Phase B.3 implements the first concrete engines:
   higher-level XC.
 
 Both consume the SAME relaxed geometry + the SAME
-`.molstruct.json` sidecar (region labels assigned in /modify —
-see `molbuilder/parsers/molstruct_json.py`).  The two engines'
+`.molstruct.json` sidecar (region labels assigned in the
+Molbuilder tab — see `molbuilder/parsers/molstruct_json.py`).  The two engines'
 `render_script` methods emit different inputs from the same
 TransportConfig + Structure pair.
 
@@ -320,7 +320,7 @@ log when it shipped:
 - Embed module ship + 5 site migrations (Phase 5a–5g).
 - Transport engine abstraction (Phase B.2, 2026-06-05).
 - Makov-Payne charge-correction emit (2026-06-05).
-- Structure-inspector hand-off to /modify (2026-06-05).
+- Structure-inspector hand-off to /molbuilder (2026-06-05; route was /modify).
 - Animation/snapshot save-to-project fix + export modal (Phase
   6e, 2026-06-05 + cleanup commits through 2026-06-06).
 

@@ -1,13 +1,27 @@
-# `/build` tab — structure-from-input + SIESTA/PySCF form
+# `/structure-optimization` tab — SIESTA/PySCF form
 
-The `/build` tab (URL: `/`, also reachable as the "Build" nav
-link) is molbuilder's primary entry point: the user picks a
-build method (peptide / DNA / RNA / SMILES / name), gets a 3-D
-structure, and emits a SIESTA `.fdf` or PySCF `.py` script for
-that structure.
+> Status (2026-06-07): the page route is `/structure-optimization`
+> (was `/build`).  Per the Phase B reorganization, the structure-
+> from-input paths (SMILES generator, file load) have already
+> moved to the Molbuilder tab Sources card; this tab is now
+> generator-only — it consumes a project-saved structure (picked
+> via sidebar dblclick) and emits SIESTA `.fdf` or PySCF `.py`.
+>
+> `/api/build/*` BACKEND routes are unchanged (the API prefix
+> kept its name for stability); only the page route + the in-tab
+> generator UI moved.  Doc will be renamed to
+> `structure-optimization.md` in a future cleanup.
 
-This doc covers the `/build` tab specifically. Cross-cutting
-contracts the tab depends on:
+The user picks a structure via the projects sidebar (dblclick =
+commit; single click is preview only per
+[`projects-sidebar.md`](../protocols/projects-sidebar.md) § 6).
+A form-dirty warning fires before the schema rebuilds if the
+user has typed parameter edits since the last commit — see
+[`tabs/architecture.md`](architecture.md) § 9.2 (B.5.3) for the
+gate.
+
+This doc covers the tab specifically.  Cross-cutting contracts
+the tab depends on:
 [`projects-sidebar.md`](../protocols/projects-sidebar.md),
 [`web-api.md`](../protocols/web-api.md),
 [`runtime-registry.md`](../protocols/runtime-registry.md). The

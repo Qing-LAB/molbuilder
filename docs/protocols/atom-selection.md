@@ -160,7 +160,7 @@ to atom-list-only / "headless" mode -- atoms still fetch but no
 viewer is driven, useful for tests + the future structure
 inspector adapter).  Throws `TypeError` for any other type.
 
-Wired by `/modify`'s bootstrap shortly after page load; tests can
+Wired by the Molbuilder tab's bootstrap shortly after page load; tests can
 swap in a stub via the store's test-only `_createStore` factory
 (see playwright-tests.md § 1.1 "Module singletons and test
 isolation").
@@ -170,7 +170,7 @@ store.adoptSession({sourceFile, selection}) -> Promise
 ```
 
 Rehydrate from a session snapshot WITHOUT re-loading the viewer.
-Used by `/modify`'s sessionStorage restore path where the viewer
+Used by the Molbuilder tab's sessionStorage restore path where the viewer
 model has already been populated synchronously via
 `applyStructure(...)`.  Differs from `setSourceFile` in two ways:
 

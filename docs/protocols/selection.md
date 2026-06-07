@@ -100,28 +100,33 @@ auto-refreshes the sidebar on success.
 
 Each tab that wants to consume sidebar selections:
 
-1. **Subscribes via `onChange`** on `DOMContentLoaded` and reacts
-   when the current selection changes.  No polling.  /modify uses
-   the auto-load pattern (see below); other tabs may choose an
-   explicit-button pattern instead.
-2. **Auto-load pattern** (e.g. /modify since 2026-05-20): the
-   tab's bootstrap subscribes to `onChange` and forwards XYZ picks
-   directly to its loader (in /modify's case,
-   `store.setSourceFile`, which fetches + mounts the structure).
-   The user picks a file and the tab updates without an extra
-   click.
-3. **Explicit-button pattern** (legacy / one-off tabs): a tab may
-   render its own action button keyed off `onChange` to gate
-   enablement.  Useful when loading the file has side effects the
-   user should consent to.
-4. **Workspace indicator (optional)**: displays the current dir near
+> **Updated 2026-06-07 (Phase B.5):** auto-load on `onChange` is
+> the LEGACY pattern.  The current model is single-click =
+> preview (`onChange`), double-click = commit (`onCommit`).  Tabs
+> with editable state subscribe to `onCommit` and gate their
+> "use this file" action through a dirty-state warning modal.
+> See [`projects-sidebar.md`](projects-sidebar.md) § 6 + § 9
+> for the universal model and [`tabs/architecture.md`](
+> ../tabs/architecture.md) § 9.2 for the per-tab status (B.5.3
+> wired Build + Spectra to onCommit; B.5.2 wired Molbuilder
+> directly).
+
+1. **Subscribes via `onCommit`** (current model) for tabs whose
+   state would be lost by an auto-load — Molbuilder workspace,
+   Build form, Spectra form.  Single-click stays preview;
+   double-click commits.
+2. **Subscribes via `onChange`** (read-only inspector pattern)
+   for tabs that have nothing to lose — `/results` auto-mounts
+   the inspector on single click because nothing is editable.
+3. **Workspace indicator (optional)**: displays the current dir near
    the tab's Generate button so the user knows where new output will
    land.  Updates live via the same `onChange` subscription.
 
 Reference implementations in:
-* `molbuilder/web/templates/spectra.html` (script block at the bottom)
-* `molbuilder/web/templates/watch.html`
-* `molbuilder/web/templates/modify.html`
+* `molbuilder/web/templates/modify.html` (Molbuilder tab)
+* `molbuilder/web/templates/index.html` (Structure-optimization)
+* `molbuilder/web/templates/spectra.html` (Spectrum-calculation)
+* `molbuilder/web/templates/results.html` (Results)
 
 ## 5. Sidebar interaction rules
 

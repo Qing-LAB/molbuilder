@@ -1,5 +1,14 @@
 # Sidecar-driven boundary conditions — the three-stage contract
 
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
+
 > **This document is the sole source of truth for the
 > sidecar-driven boundary-condition contract.**  Any code that
 > touches sidecar metadata, simulation boundary conditions, or
@@ -142,9 +151,27 @@ The script generator (`molbuilder/spectra/pyscf_script.py`) emits
 
 ```python
 # Inside the generated PySCF script:
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 FROZEN_INDICES_USER = list(cfg.frozen_indices)  # verbatim from form
 
 # Runtime computation (in the generated script itself):
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 _frozen = set(FROZEN_INDICES_USER) | {
     i for i, el in enumerate(ELEMENTS) if el in FROZEN_ELEMENTS
 }
@@ -165,15 +192,42 @@ frozen set.
 
 ```python
 # REJECTED — silent merge at emit time hides the user's intent:
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 all_frozen = sorted(set(cfg.frozen_indices) | set(struct.frozen_atoms))
 script.write(f"FROZEN_INDICES = {all_frozen}")
 
 # REJECTED — reading sidecar at script run time:
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 with open(sidecar_path) as f:
     sidecar = json.load(f)
 FROZEN_INDICES = sidecar["frozen_atoms"]  # script reads what the form said it would not
 
 # ACCEPTED — verbatim form-to-script:
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 script.write(f"FROZEN_INDICES_USER = {list(cfg.frozen_indices)}")
 ```
 

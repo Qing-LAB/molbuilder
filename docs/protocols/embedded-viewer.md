@@ -1,5 +1,14 @@
 # Embedded MolViewer — the standard structure viewer component
 
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
+
 `window.molbuilder.viewer.embed(host, opts) → handle` is molbuilder's
 **standard embeddable structure viewer**. Every tab and inspector
 that needs to show a 3-D molecular structure drops it into a host

@@ -1,10 +1,27 @@
-# Modify tab — design and contract
+# Molbuilder workspace — Modify subset
 
-> **This document is the sole source of truth for the Modify feature.**
-> Code, tests, and the UI must follow this spec; if any of them diverge,
-> update this document in the same commit.  Pointer in `docs/design.md`.
+> **This document is the sole source of truth for the Modify
+> feature** (atom selection, edit operations, electrode panel,
+> Geom subtab) inside the renamed `/molbuilder` tab.  The Sources
+> card on the same tab (Load + SMILES + Save) is documented in
+> [`tabs/architecture.md`](architecture.md) § 5; their wiring is
+> shared via `lib/structure/` modules.
+>
+> Code, tests, and the UI must follow this spec; if any of them
+> diverge, update this document in the same commit.  Pointer in
+> `docs/design.md`.
 
-Status (2026-05-10): All milestones done.  M1 Python API + CLI + tests; M2 UI skeleton (route, atom list ↔ viewer click sync, file load); M3 delete + add-atom; M4 anchor-pair orient + rotate, per-atom info panel, xyz-axes overlay; M5 electrode panel (pair / single mode) + Send-to-Build handoff via the same ``builder-structure`` sessionStorage key Phase 1 cross-tab persistence uses; M6 Geom subtab (centre-at-origin, translate-by-Δ), anchorless slab mode (slabs at z = ±gap/2 around the world origin), wireframe halo selection marker, Focus-molecule button + rotation-pivot snap on left-drag, slab-only Undo (HISTORY_MAX = 20), single-source-of-truth `/api/modify/meta` for the element + plane dropdowns.
+Status (2026-06-07): the tab is now `/molbuilder` (was `/modify`
+— legacy path returns 404 after the Structure → Molbuilder
+rename).  `/api/modify/*` BACKEND routes are unchanged (the API
+prefix kept its name for stability); only the page route moved.
+Doc will be renamed to `molbuilder.md` in a future cleanup.
+
+M1 Python API + CLI + tests; M2 UI skeleton; M3 delete + add-
+atom; M4 anchor-pair orient + rotate, per-atom info panel,
+xyz-axes overlay; M5 electrode panel (pair / single mode); M6
+Geom subtab + anchorless slab mode + Focus-molecule +
+slab-only Undo.
 
 ---
 

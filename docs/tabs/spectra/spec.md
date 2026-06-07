@@ -1,8 +1,11 @@
-# Spectra tab — design spec
+# Spectrum-calculation tab — design spec
 
 Status: **design-locked, not yet implemented**.  Author-approved
-2026-05-11.  This document is the test contract for the Spectra
-tab and the underlying `molbuilder.spectra` subpackage.  Sister
+2026-05-11.  Renamed Spectra → Spectrum-calculation 2026-06-06
+(route was `/spectra`, now `/spectrum-calculation`); `/api/spectra/*`
+BACKEND routes kept their name for stability.  This document is
+the test contract for the Spectrum-calculation tab and the
+underlying `molbuilder.spectra` subpackage.  Sister
 files in this folder:
 
 * [`references.bib`](references.bib) — curated bibliography (each

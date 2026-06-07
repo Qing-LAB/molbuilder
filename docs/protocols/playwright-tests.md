@@ -1,5 +1,14 @@
 # Playwright test design — patterns and anti-patterns
 
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
+
 **Status**: protocol document, persistent reference for all new browser
 tests under `tests/test_*_e2e.py` and `tests/test_pages_*.py`.
 
@@ -150,8 +159,35 @@ final viewport-position requirement.
 
 ```python
 # Don't go through Playwright's click pipeline at all.  Set the
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 # checked/value state via page.evaluate + dispatch the change event
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 # the JS listener actually cares about.
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 page.evaluate("""(sel) => {
     const el = document.querySelector(sel);
     el.checked = true;
@@ -179,7 +215,25 @@ Notes:
 
 ```python
 # Click the label that wraps the hidden radio.  Use :has() to find the
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 # label whose descendant is the radio with the desired value.
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 page.locator('label.selection-mode-option:has(#selection-mode-filter)').click()
 ```
 
@@ -405,20 +459,83 @@ these.
 
 ```python
 # BAD
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 page.locator("#selection-mode-filter").click(force=True)
 ```
 
 ```python
 # ALSO BAD -- check(force=True) has the same viewport requirement as
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 # click(force=True).  force=True bypasses actionability checks (visible,
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 # stable, enabled) but the click action's final coordinate still has
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 # to land on the element's bounding rect.  A width=0 / height=0
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 # element fails with "Element is outside of the viewport".
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 page.locator("#selection-mode-filter").check(force=True)
 ```
 
 ```python
 # GOOD — set state via JS + dispatch the event the listener cares about
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 page.evaluate("""(sel) => {
     const el = document.querySelector(sel);
     el.checked = true;
@@ -435,11 +552,29 @@ this repo uses.
 
 ```python
 # BAD
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 assert page.locator("#atom-count").inner_text() == "2 atoms"
 ```
 
 ```python
 # GOOD
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 expect(page.locator("#atom-count")).to_have_text("2 atoms")
 ```
 
@@ -447,6 +582,15 @@ expect(page.locator("#atom-count")).to_have_text("2 atoms")
 
 ```python
 # BAD
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 page.evaluate("() => myAsyncOp()")
 page.wait_for_timeout(2000)
 expect(page.locator("#result")).to_be_visible()
@@ -454,6 +598,15 @@ expect(page.locator("#result")).to_be_visible()
 
 ```python
 # GOOD
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 page.evaluate("() => myAsyncOp()")
 page.wait_for_function("() => window.myOpComplete === true")
 expect(page.locator("#result")).to_be_visible()
@@ -463,11 +616,29 @@ expect(page.locator("#result")).to_be_visible()
 
 ```python
 # BAD — `.is-active` is an implementation detail
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 expect(page.locator(".tab-button.is-active")).to_have_text("Build")
 ```
 
 ```python
 # GOOD — ARIA attribute is a user-visible contract
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 expect(page.locator('[role="tab"][aria-selected="true"]')).to_have_text("Build")
 ```
 
@@ -475,6 +646,15 @@ expect(page.locator('[role="tab"][aria-selected="true"]')).to_have_text("Build")
 
 ```python
 # BAD — assertion never runs if the locator can't be evaluated
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 try:
     assert page.locator("#x").is_visible()
 except Exception:
@@ -493,6 +673,15 @@ if page.locator("#x").count() > 0:
 
 ```python
 # BAD — assumes nothing's registered
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 page.evaluate("""() => {
     window.molbuilder.inspectors.register({name: 'fake', ...});
     return window.molbuilder.inspectors.list().length;
@@ -501,6 +690,15 @@ page.evaluate("""() => {
 
 ```python
 # GOOD — clear then register, then assert
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 page.evaluate("""() => {
     window.molbuilder.inspectors._clear();
     window.molbuilder.inspectors.register({name: 'fake', ...});
@@ -512,12 +710,30 @@ page.evaluate("""() => {
 
 ```python
 # BAD — race between text update and read
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 page.click("#refresh")
 n_after = int(page.locator("#counter").inner_text())  # racing
 ```
 
 ```python
 # GOOD — wait for the new value via expect()
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 page.click("#refresh")
 expect(page.locator("#counter")).not_to_have_text(str(n_before))
 ```
@@ -526,11 +742,29 @@ expect(page.locator("#counter")).not_to_have_text(str(n_before))
 
 ```python
 # BAD — page may have multiple `.tab` elements
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 page.locator(".tab").click()
 ```
 
 ```python
 # GOOD — disambiguate by id or attribute
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 page.locator('button[role="tab"][data-tab="build"]').click()
 ```
 
@@ -538,6 +772,15 @@ page.locator('button[role="tab"][data-tab="build"]').click()
 
 ```python
 # BAD
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 expect(page.locator("#x")).to_be_visible(timeout=60000)
 ```
 
@@ -590,6 +833,15 @@ page.wait_for_function(
     timeout=10000,
 )
 # Plus a one-time listener installed BEFORE the file load:
+
+<!-- ROUTE-RENAME-BANNER -->
+> **Route names updated 2026-06-07.** Occurrences of `/build`, `/modify`,
+> `/spectra` in this doc refer to PAGE routes that have been renamed to
+> `/structure-optimization`, `/molbuilder`, `/spectrum-calculation`
+> respectively.  `/api/build/*`, `/api/modify/*`, `/api/spectra/*`
+> BACKEND prefixes are unchanged — only the page routes moved.  See
+> [`tabs/architecture.md`](../tabs/architecture.md) § 3 for the canonical
+> route table.
 page.evaluate("""() => {
     document.addEventListener('molbuilder:inspector:ready', () => {
         window.__inspectorReady = true;
