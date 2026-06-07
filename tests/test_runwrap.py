@@ -713,14 +713,17 @@ def test_help_flag_lists_continue_and_force(tmp_path):
 
 
 def test_pyscf_wrapper_redirects_via_out_file(tmp_path):
-    """PySCF wrapper now redirects stdout to ``$_out_file`` too."""
+    """PySCF wrapper redirects stdout to ``$_out_file`` — which
+    now resolves to ``<basename>-runN.pyscf.log`` instead of
+    ``.out`` so the Results-tab dispatcher can tell PySCF output
+    apart from SIESTA's (Phase C, 2026-06-07)."""
     _bind()
     script = tmp_path / "myjob.py"
     script.write_text("# fake\n")
     wrapper_path = write_run_wrapper(script)
     text = wrapper_path.read_text()
     assert "python myjob.py > $_out_file 2>&1" in text
-    assert '_out_file="myjob-run${_run_n}.out"' in text
+    assert '_out_file="myjob-run${_run_n}.pyscf.log"' in text
 
 
 def test_pyscf_wrapper_emits_continue_args_block(tmp_path):
@@ -740,18 +743,35 @@ def test_pyscf_wrapper_emits_continue_args_block(tmp_path):
 
 def test_pyscf_wrapper_continue_advances_run_index(tmp_path):
     """End-to-end bash check on PySCF wrapper (same resolver code as
-    SIESTA, but via the PySCF render path)."""
+    SIESTA, but PySCF outputs land in ``.pyscf.log`` instead of
+    ``.out``)."""
     w = _emit_truncated_wrapper(tmp_path, "myjob", suffix=".py")
-    (tmp_path / "myjob-run0.out").write_text("prior")
+    (tmp_path / "myjob-run0.pyscf.log").write_text("prior")
     stdout, _stderr, code = _run_wrapper(w, "--continue")
     assert code == 0
-    assert "_out_file=myjob-run1.out" in stdout
+    assert "_out_file=myjob-run1.pyscf.log" in stdout
 
 
 def test_pyscf_wrapper_refuses_overwrite_without_force(tmp_path):
     """No --continue, no --force, prior run exists -> refuse."""
     w = _emit_truncated_wrapper(tmp_path, "myjob", suffix=".py")
-    (tmp_path / "myjob-run0.out").write_text("prior")
+    (tmp_path / "myjob-run0.pyscf.log").write_text("prior")
     _stdout, stderr, code = _run_wrapper(w)
     assert code == 1
     assert "previous output exists" in stderr
+
+
+def test_pyscf_wrapper_does_not_collide_with_siesta_out(tmp_path):
+    """A directory that has BOTH a SIESTA-style ``-run0.out`` AND
+    no PySCF ``-run0.pyscf.log`` must still start the PySCF wrapper
+    at -run0 — the resolver only scans for the engine-specific
+    suffix.  Pins the no-collision guarantee Phase C added (the
+    whole point of the rename)."""
+    w = _emit_truncated_wrapper(tmp_path, "myjob", suffix=".py")
+    # A stale SIESTA-style .out file from a hypothetical earlier
+    # SIESTA run in the same dir — must NOT confuse the PySCF
+    # resolver.
+    (tmp_path / "myjob-run0.out").write_text("SIESTA-style prior")
+    stdout, _stderr, code = _run_wrapper(w)
+    assert code == 0, "fresh PySCF run should start regardless of stale .out"
+    assert "_out_file=myjob-run0.pyscf.log" in stdout

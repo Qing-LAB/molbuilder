@@ -246,6 +246,30 @@ class TestInspectorModulesServed:
             "render as raw text (the 2026-05-18 user-report bug)"
         )
 
+    def test_trajectory_inspector_does_NOT_claim_pyscf_log(self, web):
+        """Phase C (2026-06-07): PySCF wrapper output renamed from
+        ``.out`` to ``.pyscf.log`` so the dispatcher can tell PySCF
+        apart from SIESTA.  The trajectory inspector deliberately
+        does NOT claim ``.pyscf.log`` -- the file is plain PySCF
+        stdout, not a trajectory format; a dedicated pyscf-log
+        inspector is on the roadmap.  Until then ``.pyscf.log``
+        falls through to the source inspector (text viewer)."""
+        body = web.get("/static/lib/inspectors/trajectory.js").get_data(as_text=True)
+        # The match function MUST NOT include .pyscf.log.  The
+        # documentation comment may mention it (noting why it's
+        # excluded), but the actual match clause must not.  Find
+        # the match function body and inspect.
+        import re
+        m = re.search(r'match:\s*\(file\)\s*=>\s*\{(.+?)\},',
+                       body, re.DOTALL)
+        assert m, "trajectory match() function not found"
+        match_body = m.group(1)
+        assert '.pyscf.log' not in match_body, (
+            "trajectory inspector match() claims .pyscf.log; it "
+            "should fall through to source.js until a dedicated "
+            "pyscf-log inspector ships."
+        )
+
     def test_spectra_inspector_matches_compound_extension(self, web):
         body = web.get("/static/lib/inspectors/spectra.js").get_data(as_text=True)
         assert ".spectra.json" in body

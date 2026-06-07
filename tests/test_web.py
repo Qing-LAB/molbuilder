@@ -772,7 +772,7 @@ def test_molbuilder_page_loads(web_client):
     body = r.data.decode()
     for needle in (
         "molbuilder",
-        "modify a structure",
+        "Molbuilder workspace",
         # Static asset paths the template references.
         "modify/style.css",
         "modify/viewer.js",

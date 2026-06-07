@@ -76,15 +76,20 @@
         //     non-SIESTA .out files will fail to load with a
         //     clear server-side error rather than mis-render).
         //
+        // NOT claimed here (intentional):
+        //   * ``.pyscf.log`` -- PySCF wrapper stdout (Phase C,
+        //     2026-06-07 rename from .out).  Plain stdout text;
+        //     not a trajectory format.  Falls through to the
+        //     source inspector (text viewer).  A dedicated
+        //     ``pyscf-log`` inspector that parses PySCF stdout +
+        //     renders a result panel is on the roadmap; until
+        //     then the source viewer is the right surface.
+        //   * ``.log`` (plain, non-compound) -- too generic.
+        //
         // The trajectory inspector renders frames + energies + force
         // arrows + SCF history from whatever parser detect_parser
         // picks at /api/watch/load time.  The frontend doesn't care
         // which parser ran -- TrajectoryParser is the contract.
-        //
-        // .log (plain, non-compound) intentionally NOT claimed here:
-        // it's too generic.  Users with a SIESTA-style ``run.log``
-        // can rename it to ``run.out`` or use the explicit /watch
-        // path-input which doesn't go through registry dispatch.
         match: (file) => {
             const lower = file.toLowerCase();
             return lower.endsWith(".molwatch.log")

@@ -35,36 +35,43 @@ class WrapperError(Exception):
     routing, missing script file, ..."""
 
 
-def _run_index_resolver(basename: str) -> str:
-    """Bash block that resolves ``_out_file`` to ``{basename}-runN.out``.
+def _run_index_resolver(basename: str, ext: str = ".out") -> str:
+    """Bash block that resolves ``_out_file`` to
+    ``{basename}-runN{ext}``.
+
+    ``ext`` is the output-file suffix (with leading dot).  Defaults
+    to ``.out`` for SIESTA wrappers; PySCF wrappers pass
+    ``.pyscf.log`` so the Results-tab dispatcher can tell PySCF
+    output apart from SIESTA's (Phase C, 2026-06-07).
 
     Honours two shell variables that the caller (the engine-specific
     args block) is expected to set:
 
       ``_continue`` (0/1)  -- ``--continue`` was passed; advance to
         next free N.  Without ``--continue`` we refuse to overwrite
-        an existing -runN.out unless ``--force`` was also passed.
+        an existing -runN{ext} unless ``--force`` was also passed.
       ``_force``    (0/1)  -- ``--force`` was passed; allow restart
         from -run0 even if prior runs exist (they are preserved on
         disk; we just don't continue from them).
 
     The resolver is shared by SIESTA + PySCF wrappers so the run-index
-    semantics are identical across engines.  ``basename`` is the
-    script stem (e.g. ``siesta-hemeC-gas-stage3``) baked in at
-    generation time -- the bash itself doesn't try to derive it.
+    semantics are identical across engines; only the suffix differs.
+    ``basename`` is the script stem (e.g. ``siesta-hemeC-gas-stage3``)
+    baked in at generation time -- the bash itself doesn't try to
+    derive it.
     """
     return (
         f"# --- Run index resolution ------------------------------\n"
-        f"# Outputs are ``{basename}-runN.out``.  First run produces\n"
+        f"# Outputs are ``{basename}-runN{ext}``.  First run produces\n"
         f"# -run0; ``--continue`` scans existing -runN files and uses\n"
         f"# max(N)+1.  Without --continue, refuse to overwrite an\n"
         f"# existing -run0 unless --force was passed (otherwise the\n"
         f"# user would silently lose the previous result).\n"
         f"_existing_max=-1\n"
         f'shopt -s nullglob 2>/dev/null || true\n'
-        f'for _f in "{basename}-run"*.out; do\n'
+        f'for _f in "{basename}-run"*{ext}; do\n'
         f'    _n=${{_f#{basename}-run}}\n'
-        f'    _n=${{_n%.out}}\n'
+        f'    _n=${{_n%{ext}}}\n'
         f'    case "$_n" in\n'
         f"        ''|*[!0-9]*) continue ;;\n"
         f"    esac\n"
@@ -78,15 +85,15 @@ def _run_index_resolver(basename: str) -> str:
         f"        _run_n=$((_existing_max + 1))\n"
         f"    else\n"
         f'        echo "[molbuilder] --continue requested but no prior '
-        f'-runN.out found; starting fresh as -run0" >&2\n'
+        f'-runN{ext} found; starting fresh as -run0" >&2\n'
         f"        _run_n=0\n"
         f"    fi\n"
         f"else\n"
         f'    if [ "$_existing_max" -ge 0 ] && [ "$_force" != "1" ]; then\n'
         f'        echo "ERROR: previous output exists '
-        f'(``{basename}-run${{_existing_max}}.out``)." >&2\n'
+        f'(``{basename}-run${{_existing_max}}{ext}``)." >&2\n'
         f'        echo "  Use --continue to add '
-        f'``{basename}-run$((_existing_max + 1)).out`` '
+        f'``{basename}-run$((_existing_max + 1)){ext}`` '
         f'(resume from last state)." >&2\n'
         f'        echo "  Use --force to start over from -run0 '
         f'(overwrites the existing run0)." >&2\n'
@@ -94,7 +101,7 @@ def _run_index_resolver(basename: str) -> str:
         f"    fi\n"
         f"    _run_n=0\n"
         f"fi\n"
-        f'_out_file="{basename}-run${{_run_n}}.out"\n'
+        f'_out_file="{basename}-run${{_run_n}}{ext}"\n'
         f'echo "[molbuilder] run index: $_run_n  ->  $_out_file"\n'
         f"\n"
     )
@@ -534,15 +541,17 @@ def render_run_wrapper(script_path: Path, *,
             f'Usage: bash $(basename "$0") [--continue|-c] [--force|-f] [-h]\n'
             f"\n"
             f"  --continue, -c   resume from prior run.  Scans existing\n"
-            f"                   -runN.out files and writes -run(N+1).\n"
-            f"                   PySCF loads the SCF density matrix from\n"
-            f"                   ``<JOB>.chk`` automatically when present\n"
-            f"                   (the generator emits ``mf.chkfile`` by\n"
+            f"                   -runN.pyscf.log files and writes\n"
+            f"                   -run(N+1).pyscf.log.  PySCF loads the\n"
+            f"                   SCF density matrix from ``<JOB>.chk``\n"
+            f"                   automatically when present (the\n"
+            f"                   generator emits ``mf.chkfile`` by\n"
             f"                   default and the chkfile-init-guess\n"
             f"                   shim auto-loads it on continuation).\n"
             f"  --force, -f      start over from -run0 even if prior\n"
             f"                   runs exist.  Old files are NOT deleted;\n"
-            f"                   the existing -run0.out is overwritten.\n"
+            f"                   the existing -run0.pyscf.log is\n"
+            f"                   overwritten.\n"
             f"  -h               this help.\n"
             f"USAGE\n"
             f"            exit 0 ;;\n"
@@ -552,7 +561,11 @@ def render_run_wrapper(script_path: Path, *,
             f"    esac\n"
             f"done\n"
             f"\n"
-            + _run_index_resolver(basename)
+            # PySCF uses ``.pyscf.log`` instead of ``.out`` so the
+            # Results-tab inspector dispatcher can tell PySCF output
+            # apart from SIESTA's (which keeps ``.out``).  Per
+            # docs/tabs/architecture.md § 7 (Phase C, 2026-06-07).
+            + _run_index_resolver(basename, ext=".pyscf.log")
         )
 
         # Same human-readable banner pattern as SIESTA -- the script

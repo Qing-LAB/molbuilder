@@ -158,9 +158,9 @@ def _setup_picker_root_for(structure_path):
 
 
 def _drive_modify_with(page, base_url, structure_path):
-    """Open /modify, set the projects sidebar to the structure_path,
+    """Open /molbuilder, set the projects sidebar to the structure_path,
     wait until the selection store has loaded N atoms."""
-    page.goto(base_url + "/modify")
+    page.goto(base_url + "/molbuilder")
     page.wait_for_function(
         "() => !!window.molbuilder "
         "      && !!window.molbuilder.selection "
@@ -172,13 +172,17 @@ def _drive_modify_with(page, base_url, structure_path):
         "() => window.molbuilder.runtime.listRegistered()"
         "                 .includes('projects')"
     )
-    # Fire setShared (the sidebar's internal selection mutator) so
-    # the selection-bootstrap subscriber kicks off setSourceFile.
+    # Fire publishCommit (the dblclick-equivalent commit channel)
+    # so the Molbuilder tab's onCommit subscriber kicks off
+    # _commitFile → viewer load + selection store atoms fetch.
+    # B.5.2 (2026-06-07) separated single-click = preview
+    # (setShared/onChange) from dblclick = commit
+    # (publishCommit/onCommit); this test needs the commit path.
     page.evaluate(
         """async (path) => {
             const mod = await import("/static/lib/projects/state.js");
             const dir = path.substring(0, path.lastIndexOf("/"));
-            mod.setShared(dir, path);
+            mod.publishCommit(dir, path);
         }""",
         str(Path(structure_path).resolve()),
     )
