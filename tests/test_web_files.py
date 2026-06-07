@@ -687,11 +687,12 @@ class TestSidebarPartialAndShim:
         assert 'href="/projects"' not in body
         # Each app-tab link points at one of the served routes.  Pull
         # every href from the app-tab class; assert every value is in
-        # the served-routes set.  Adding a new tab updates the served-
-        # routes set, not a magic number.
-        SERVED = {"/molbuilder", "/structure-optimization",
-                  "/spectrum-calculation", "/transport-calculation",
-                  "/results"}
+        # the served-routes set.  SERVED is derived from
+        # ``molbuilder.web.tabs.TABS`` (the canonical tab order) so
+        # adding or reordering a tab is a one-place change in
+        # ``tabs.py``; no test edit needed.
+        from molbuilder.web.tabs import TABS
+        SERVED = {t["path"] for t in TABS}
         hrefs = re.findall(
             r'<a[^>]*href="([^"]+)"[^>]*class="app-tab(?: is-active)?"',
             body,

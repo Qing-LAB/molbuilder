@@ -56,14 +56,28 @@ def test_canonical_path_renders(web, path, expected_in_body):
     )
 
 
-def test_root_renders_molbuilder_page(web):
-    """The bare ``/`` is bound to the Molbuilder page (no redirect)
-    so visiting the host root lands directly on the interactive
-    workspace."""
+def test_root_redirects_to_first_tab(web):
+    """The bare ``/`` 302-redirects to whichever path is FIRST in
+    ``molbuilder.web.tabs.TABS`` — no hard-coded path here so a
+    tab reorder picks up the new first tab automatically."""
+    from molbuilder.web.tabs import TABS
+    expected = TABS[0]["path"]
     r = web.get("/")
-    assert r.status_code == 200
-    body = r.get_data(as_text=True)
-    assert "selection-host" in body
+    assert r.status_code == 302, (
+        f"/ returned {r.status_code}; expected 302 to {expected}"
+    )
+    assert r.headers["Location"].endswith(expected), (
+        f"/ redirected to {r.headers.get('Location')!r}; "
+        f"expected {expected!r}"
+    )
+
+
+def test_root_landing_path_follows_TABS(web):
+    """If someone reorders TABS so a different tab is first, ``/``
+    must redirect to that new first tab without an app.py edit.
+    Pins the single-source-of-truth principle."""
+    from molbuilder.web.tabs import TABS, landing_path
+    assert landing_path() == TABS[0]["path"]
 
 
 # --------------------------------------------------------------------- #
@@ -89,13 +103,15 @@ def test_pre_rename_paths_return_404(web, legacy_path):
 # --------------------------------------------------------------------- #
 
 
-_EXPECTED_NAV_LINKS = [
-    ("/molbuilder",              "Molbuilder"),
-    ("/structure-optimization",  "Structure optimization"),
-    ("/spectrum-calculation",    "Spectrum calculation"),
-    ("/transport-calculation",   "Transport calculation"),
-    ("/results",                 "Results"),
-]
+# The expected (path, label) pairs come from the same TABS list the
+# header iterates over — reordering or renaming a tab in tabs.py
+# updates BOTH the rendered nav and this test in one place.
+def _expected_nav_links():
+    from molbuilder.web.tabs import TABS
+    return [(t["path"], t["label"]) for t in TABS]
+
+
+_EXPECTED_NAV_LINKS = _expected_nav_links()
 
 
 @pytest.mark.parametrize("page_path", [p for p, _ in _EXPECTED_NAV_LINKS])

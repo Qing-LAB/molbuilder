@@ -44,7 +44,9 @@ both /results and a tab call into -- live under
 
 from __future__ import annotations
 
-from flask import Flask, abort, jsonify, render_template, request, send_file
+from flask import Flask, abort, jsonify, redirect, render_template, request, send_file
+
+from .tabs import TABS, landing_path
 
 from ..diagnostics import initialize as _initialize_diagnostics
 
@@ -249,12 +251,25 @@ def create_app(*, config=None) -> Flask:
     # label; route table is documented in
     # docs/tabs/architecture.md § 3.
 
+    # Tab order + labels are the single source of truth in
+    # ``molbuilder.web.tabs``; inject into every template so the
+    # nav partial iterates rather than hard-coding the 5 anchors.
+    @app.context_processor
+    def _inject_tabs():
+        return {"tabs": TABS}
+
     @app.route("/")
+    def index():
+        # Bare host lands on whichever tab is first in the canonical
+        # order — no hard-coded path here, ``landing_path()`` reads
+        # ``TABS[0]["path"]``.  Using 302 (temporary) rather than 301
+        # so a future tab reorder doesn't get cached on clients.
+        return redirect(landing_path(), code=302)
+
     @app.route("/molbuilder")
     def molbuilder_page():
         # Molbuilder tab: build + edit + assemble (modify.html
-        # template).  Also bound to ``/`` so the bare host lands on
-        # the interactive workspace.
+        # template).
         return render_template("modify.html")
 
     @app.route("/structure-optimization")

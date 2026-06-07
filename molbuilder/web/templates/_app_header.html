@@ -1,9 +1,10 @@
 {#- molbuilder shared header + app-tabs nav.
 
    Included by every main tab template.  Each caller sets active_tab
-   to one of the five canonical values: "molbuilder",
+   to one of the canonical key values defined in
+   ``molbuilder.web.tabs.TABS`` (currently: "molbuilder",
    "structure-optimization", "spectrum-calculation",
-   "transport-calculation", "results".
+   "transport-calculation", "results").
 
    The project-wide tagline lives HERE -- one canonical sentence
    that describes what molbuilder is, shown on every page (so users
@@ -15,13 +16,16 @@
    for XSS hygiene) writes ``&`` as ``&amp;`` and the entities then
    render as visible "&mdash;" gibberish.
 
-   Styling lives in static/lib/tabs.css.  This is the SINGLE source
-   of truth for the tab nav -- changing any link text or order is a
-   one-place change here.
+   Styling lives in static/lib/tabs.css.  The order + labels are the
+   single source of truth in ``molbuilder/web/tabs.py``; this
+   partial iterates over the ``tabs`` template variable injected by
+   the app's context processor, so reordering or renaming a tab is a
+   one-place change.
 
    Tab labels and routes are documented in docs/tabs/architecture.md.
-   The bare ``/`` is bound to the Molbuilder page as a convenience
-   for the host root; there are no other route aliases.
+   The bare ``/`` 302-redirects to whichever tab is first in TABS so
+   the host root always lands on the canonical landing tab without
+   hard-coding the path here.
 
    Watch was retired 2026-05-19 -- the /watch route + template +
    bootstrap are gone; trajectory inspection is /results-only via
@@ -35,26 +39,12 @@
 </header>
 
 <nav class="app-tabs" role="tablist" aria-label="molbuilder sections">
-  <a href="/molbuilder"
-     class="app-tab{% if active_tab == 'molbuilder' %} is-active{% endif %}"
+  {% for tab in tabs -%}
+  <a href="{{ tab.path }}"
+     class="app-tab{% if active_tab == tab.key %} is-active{% endif %}"
      role="tab"
-     {% if active_tab == 'molbuilder' %}aria-current="page"{% endif %}>Molbuilder</a>
-  <a href="/structure-optimization"
-     class="app-tab{% if active_tab == 'structure-optimization' %} is-active{% endif %}"
-     role="tab"
-     {% if active_tab == 'structure-optimization' %}aria-current="page"{% endif %}>Structure optimization</a>
-  <a href="/spectrum-calculation"
-     class="app-tab{% if active_tab == 'spectrum-calculation' %} is-active{% endif %}"
-     role="tab"
-     {% if active_tab == 'spectrum-calculation' %}aria-current="page"{% endif %}>Spectrum calculation</a>
-  <a href="/transport-calculation"
-     class="app-tab{% if active_tab == 'transport-calculation' %} is-active{% endif %}"
-     role="tab"
-     {% if active_tab == 'transport-calculation' %}aria-current="page"{% endif %}>Transport calculation</a>
-  <a href="/results"
-     class="app-tab{% if active_tab == 'results' %} is-active{% endif %}"
-     role="tab"
-     {% if active_tab == 'results' %}aria-current="page"{% endif %}>Results</a>
+     {% if active_tab == tab.key %}aria-current="page"{% endif %}>{{ tab.label }}</a>
+  {% endfor -%}
 
   {#- Account strip lives at the right end of the nav row, on the
       same dark background as the tabs -- standard "user menu in
