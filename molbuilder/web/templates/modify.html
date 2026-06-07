@@ -137,6 +137,38 @@
   </details>
 
   <details class="source-panel">
+    <summary>Generate RNA</summary>
+    <div class="source-panel-body">
+      <p class="source-hint">
+        Build single-stranded RNA from a 1-letter sequence (ACGU)
+        in A / B / Z helix form.  A-form is the canonical RNA
+        helix; the backend picks the best installed builder
+        (3DNA preferred, AmberTools fallback).
+      </p>
+      <label class="source-input-row">
+        <span>Sequence</span>
+        <input id="rna-input" type="text"
+               placeholder="e.g. ACGUACGU"
+               autocomplete="off" spellcheck="false">
+      </label>
+      <label class="source-input-row">
+        <span>Form</span>
+        <select id="rna-form-select"
+                class="source-select"
+                title="A = canonical RNA helix (3'-endo sugar), B = canonical DNA helix (2'-endo, RNA rarely), Z = left-handed (alternating-purine)">
+          <option value="A" selected>A (canonical)</option>
+          <option value="B">B (uncommon for RNA)</option>
+          <option value="Z">Z (left-handed)</option>
+        </select>
+      </label>
+      <div class="source-actions">
+        <button id="rna-generate-btn" class="ghost">Generate</button>
+        <span id="rna-status" class="muted" role="status"></span>
+      </div>
+    </div>
+  </details>
+
+  <details class="source-panel">
     <summary>Generate peptide</summary>
     <div class="source-panel-body">
       <p class="source-hint">
@@ -597,6 +629,7 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
 <script src="{{ url_for('static', filename='lib/structure/smiles.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/name.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/dna.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/structure/rna.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/peptide.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/file.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/save.js') }}"></script>

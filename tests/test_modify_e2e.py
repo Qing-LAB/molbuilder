@@ -1006,6 +1006,36 @@ def test_dna_generator_renders_structure_in_viewer(page, flask_server):
     assert "B-form" in status_text
 
 
+def test_rna_generator_renders_structure_in_viewer(page, flask_server):
+    """End-to-end RNA flow: type "ACGU" → click Generate.  Backend
+    picks 3DNA → AmberTools → RDKit; viewer renders the A-form
+    helix.  Skips if no nucleic backend installed."""
+    try:
+        from molbuilder.backends import available_backends
+    except ImportError:
+        pytest.skip("molbuilder.backends import failed")
+    avail = available_backends()
+    if not (avail.get("threedna", False)
+            or avail.get("amber",    False)
+            or avail.get("rdkit",    False)):
+        pytest.skip("no RNA backend (3DNA / AmberTools / RDKit) installed")
+
+    _open_modify(page, flask_server)
+    page.locator(
+        ".source-panel:has(> summary:has-text('Generate RNA'))"
+    ).evaluate("el => el.open = true")
+    page.locator("#rna-input").fill("ACGU")
+    page.locator("#rna-generate-btn").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test"
+        "      && window.__molbuilder_modify_test.getNAtoms() >= 50",
+        timeout=20_000,
+    )
+    status_text = page.locator("#rna-status").inner_text()
+    assert "ACGU" in status_text
+    assert "A-form" in status_text
+
+
 def test_peptide_generator_renders_structure_in_viewer(page, flask_server):
     """End-to-end peptide flow: type "AC" (alanine-cysteine) into
     the Peptide input, click Generate.  Backend dispatches to
