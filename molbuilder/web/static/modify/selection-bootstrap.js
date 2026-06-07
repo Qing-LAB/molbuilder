@@ -81,37 +81,106 @@
             _store0.setLoader(window.molbuilder.loadStructureText);
         }
 
-        // 3. Forward sidebar selection changes into the store.  The
-        // store's setSourceFile is the single entry for "switch
-        // structure" -- it loads the XYZ into the viewer + refetches
-        // the atom list, atomically.  Selection clears on a new
-        // file; filter drafts persist (the user must explicitly
-        // ``applyFilter()`` against the new structure).
+        // 3. Sidebar selection sets a CANDIDATE — does NOT commit
+        // the viewer load.  The user reviews the candidate path in
+        // the loader-bar and clicks "Load picked file" to commit.
+        //
+        // Why candidate-only: clicking a file in the sidebar is a
+        // browse action ("show me what's in this file"); committing
+        // it as the workspace structure is a separate intent and
+        // would discard any unsaved modifications.  See
+        // docs/tabs/architecture.md § 5.2.
+        //
+        // Page-mount seeding: if the bare host was visited with an
+        // existing sidebar selection in sessionStorage (cross-tab
+        // handoff from /structure-optimization etc.), commit it on
+        // mount — the user arrived with intent ("send my structure
+        // to the Molbuilder tab"), not with a stray click.
         const projects = window.molbuilder && window.molbuilder.projects;
         const store    = window.molbuilder.selection.store;
-        // Both .xyz and .pdb are loadable into /modify -- the
+        // Both .xyz and .pdb are loadable into /molbuilder -- the
         // server's selection blueprint dispatches by extension
         // (see web/blueprints/selection.py
         // ``_SUPPORTED_STRUCTURE_SUFFIXES``).  A pick of .log /
-        // .fdf etc. is "view this file" not "swap the /modify
-        // structure" -- those filter out so the user's atom
-        // selection isn't silently wiped when they peek at a log.
+        // .fdf etc. is "view this file" not "swap the workspace
+        // structure" -- those leave the candidate empty so the
+        // Load button stays disabled.
         function _isLoadableStructure(name) {
             const lc = String(name || "").toLowerCase();
             return lc.endsWith(".xyz") || lc.endsWith(".pdb");
         }
+
+        // ----- Candidate state ----------------------------------- //
+        let _candidate = "";
+        const _candidateListeners = [];
+        function _notifyCandidate() {
+            for (const fn of _candidateListeners.slice()) {
+                try { fn(_candidate); } catch (_) {}
+            }
+        }
+        function _setCandidate(path) {
+            const next = _isLoadableStructure(path) ? String(path) : "";
+            if (next === _candidate) return;
+            _candidate = next;
+            _notifyCandidate();
+        }
+        function _commitCandidate() {
+            if (!_candidate) return null;
+            const path = _candidate;
+            store.setSourceFile(path);
+            return path;
+        }
+        function _onCandidateChange(fn) {
+            if (typeof fn !== "function") {
+                throw new TypeError(
+                    "onCandidateChange: fn must be a function");
+            }
+            _candidateListeners.push(fn);
+            // Fire once immediately so subscribers see the current
+            // state without waiting for the next sidebar pick.
+            try { fn(_candidate); } catch (_) {}
+            return function unsubscribe() {
+                const ix = _candidateListeners.indexOf(fn);
+                if (ix >= 0) _candidateListeners.splice(ix, 1);
+            };
+        }
+        window.molbuilder.molbuilderTab = {
+            getCandidate:     () => _candidate,
+            commitCandidate:  _commitCandidate,
+            onCandidateChange: _onCandidateChange,
+        };
+
         if (projects) {
-            // Seed from whatever the sidebar already has selected.
             const initial = projects.getCurrentFile() || "";
             if (_isLoadableStructure(initial)) {
+                // Cross-tab handoff: commit immediately on mount.
                 store.setSourceFile(initial);
+                _setCandidate(initial);
             }
             projects.onChange((sel) => {
                 const f = (sel && sel.file) ? sel.file : "";
-                if (_isLoadableStructure(f)) {
-                    store.setSourceFile(f);
-                }
+                _setCandidate(f);  // empty string clears the candidate
             });
+        }
+
+        // ----- Wire the Load button + readout -------------------- //
+        const _loadBtn  = document.getElementById("load-candidate-btn");
+        const _readout  = document.getElementById("load-candidate-readout");
+        function _basename(p) {
+            const ix = p.lastIndexOf("/");
+            return ix >= 0 ? p.slice(ix + 1) : p;
+        }
+        function _refreshLoadUI() {
+            if (_loadBtn) _loadBtn.disabled = !_candidate;
+            if (_readout) {
+                _readout.textContent = _candidate
+                    ? "Picked: " + _basename(_candidate)
+                    : "";
+            }
+        }
+        _onCandidateChange(_refreshLoadUI);
+        if (_loadBtn) {
+            _loadBtn.addEventListener("click", _commitCandidate);
         }
 
         // 4. Attach the viewer-adapter once modify/viewer.js has

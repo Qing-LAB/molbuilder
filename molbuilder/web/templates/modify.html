@@ -40,9 +40,14 @@
   <div class="loader">
     <span class="loader-hint">
       Pick a structure (<code>.xyz</code> / <code>.pdb</code>) in the
-      <strong>Projects</strong> sidebar — the viewer + selection
-      panel below update automatically.
+      <strong>Projects</strong> sidebar, then click
+      <strong>Load picked file</strong> to bring it into the viewer.
     </span>
+    <button id="load-candidate-btn" class="ghost" disabled
+      title="Load the file currently picked in the Projects sidebar into the viewer. Disabled when no loadable file (.xyz / .pdb) is picked.">
+      Load picked file
+    </button>
+    <span id="load-candidate-readout" class="muted"></span>
     <span id="status" class="status">No structure loaded.</span>
   </div>
 </section>

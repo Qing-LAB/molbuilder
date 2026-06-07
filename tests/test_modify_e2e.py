@@ -404,10 +404,8 @@ def test_runtime_modules_registered_on_modify(page, flask_server):
 
 def test_load_water_populates_structure(page, flask_server, water_xyz_file):
     """Loading water.xyz -> viewer state has 3 atoms; status text
-    flips to ok.  The legacy left-column #atom-list-body was retired
-    2026-05-20; the structure is checked via the in-page test hook
-    instead.  (The selection panel's atom list is exercised by
-    Playwright tests that talk to the panel directly.)"""
+    flips to ok.  The structure is checked via the in-page test hook
+    instead of the legacy left-column atom list."""
     errors = _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
     assert page.evaluate(
@@ -419,6 +417,80 @@ def test_load_water_populates_structure(page, flask_server, water_xyz_file):
         f"#status class should be 'status ok', got {status_class!r}"
     )
     assert errors == [], f"JS errors during load: {errors}"
+
+
+def test_sidebar_pick_is_candidate_only_not_auto_load(
+        page, flask_server, water_xyz_file):
+    """Per docs/tabs/architecture.md § 5.2: sidebar selection sets a
+    CANDIDATE; only an explicit Load button click commits the
+    viewer load.  Pinning the candidate-only contract: after a
+    sidebar pick the viewer must STILL be empty until the user
+    clicks Load.
+
+    This is the contract that makes the dirty-canvas warning useful:
+    if sidebar clicks auto-loaded, a stray browse-click would
+    silently discard unsaved canvas modifications.
+    """
+    import os as _os
+    _open_modify(page, flask_server)
+    # Simulate a sidebar pick of water.xyz via setShared (the same
+    # API the sidebar uses to publish its current selection).
+    water_dir = _os.path.dirname(water_xyz_file)
+    page.evaluate(
+        """(c) => window.molbuilder.projects.setShared(c.dir, c.file)""",
+        {"dir": water_dir, "file": water_xyz_file},
+    )
+    # Candidate is captured + Load button enabled + readout shows
+    # the basename — but the viewer state is STILL empty.
+    page.wait_for_function(
+        "() => document.getElementById('load-candidate-btn')"
+        "        && !document.getElementById('load-candidate-btn').disabled"
+    )
+    assert page.locator("#load-candidate-readout").inner_text() == (
+        "Picked: water.xyz"
+    )
+    assert page.evaluate(
+        "() => window.__molbuilder_modify_test.getNAtoms()"
+    ) == 0, "sidebar pick must NOT auto-load the structure"
+
+    # Click Load.  Now the viewer commits.
+    page.locator("#load-candidate-btn").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 3"
+    )
+
+
+def test_load_button_disabled_when_non_structure_file_picked(
+        page, flask_server, tmp_path, monkeypatch):
+    """A pick of a non-loadable file (.log, .fdf, README.md, ...)
+    must clear the candidate so the Load button disables — a
+    user browsing the project tree doesn't want a stale water.xyz
+    to commit when they click on a README.md afterwards.
+    """
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    structure = tmp_path / "water.xyz"
+    structure.write_text(_H2O_XYZ)
+    readme = tmp_path / "README.md"
+    readme.write_text("# notes\n")
+
+    _open_modify(page, flask_server)
+    # Pick the loadable file first → button enables.
+    page.evaluate(
+        """(c) => window.molbuilder.projects.setShared(c.dir, c.file)""",
+        {"dir": str(tmp_path), "file": str(structure)},
+    )
+    page.wait_for_function(
+        "() => !document.getElementById('load-candidate-btn').disabled"
+    )
+    # Now pick the non-structure file → button disables again.
+    page.evaluate(
+        """(c) => window.molbuilder.projects.setShared(c.dir, c.file)""",
+        {"dir": str(tmp_path), "file": str(readme)},
+    )
+    page.wait_for_function(
+        "() => document.getElementById('load-candidate-btn').disabled"
+    )
+    assert page.locator("#load-candidate-readout").inner_text() == ""
 
 
 # --------------------------------------------------------------------- #
