@@ -775,3 +775,38 @@ def test_pyscf_wrapper_does_not_collide_with_siesta_out(tmp_path):
     stdout, _stderr, code = _run_wrapper(w)
     assert code == 0, "fresh PySCF run should start regardless of stale .out"
     assert "_out_file=myjob-run0.pyscf.log" in stdout
+
+
+def test_pyscf_wrapper_banner_mentions_pyscf_log_not_out(tmp_path):
+    """BOMB-6 fix (2026-06-07): the wrapper's "Run directly:" banner
+    in the header docstring says ``-run0.pyscf.log`` for PySCF
+    scripts and ``-run0.out`` for SIESTA scripts.  Pre-fix the
+    banner always said ``.out`` regardless of engine, so users
+    of the PySCF wrapper went hunting for ``myjob-run0.out``
+    files that didn't exist (the actual emission is .pyscf.log
+    since Phase C).  The launch command emit inside the wrapper
+    body already used $_out_file correctly — only the human-
+    readable banner was stale."""
+    _bind()
+    script = tmp_path / "myjob.py"
+    script.write_text("# fake\n")
+    wrapper_path = write_run_wrapper(script)
+    text = wrapper_path.read_text()
+    assert "first run -> -run0.pyscf.log" in text, (
+        "PySCF wrapper banner must show the .pyscf.log suffix"
+    )
+    assert "first run -> -run0.out" not in text, (
+        "PySCF wrapper banner must NOT show the legacy .out suffix"
+    )
+
+
+def test_siesta_wrapper_banner_still_mentions_out(tmp_path):
+    """Flip side of the BOMB-6 fix: SIESTA wrappers keep saying
+    ``.out`` because their output extension is still ``.out``."""
+    _bind()
+    script = tmp_path / "myjob.fdf"
+    script.write_text("SystemLabel myjob\n")
+    wrapper_path = write_run_wrapper(script)
+    text = wrapper_path.read_text()
+    assert "first run -> -run0.out" in text
+    assert "first run -> -run0.pyscf.log" not in text

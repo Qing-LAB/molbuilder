@@ -187,8 +187,12 @@ def render_run_wrapper(script_path: Path, *,
                   by the wrapper at run time; first run is -run0,
                   ``--continue`` advances to next free N).
     * ``.py``   → PySCF.  Runs ``python <script>`` with the same
-                  ``-runN`` redirect; the inlined ``_MolwatchEmitter``
-                  handles its own log files independently.
+                  ``-runN`` redirect, but the suffix is
+                  ``.pyscf.log`` instead of ``.out`` (Phase C
+                  rename, 2026-06-07) so the Results-tab inspector
+                  dispatcher can distinguish PySCF stdout from
+                  SIESTA's.  The inlined ``_MolwatchEmitter`` handles
+                  its own log files independently.
 
     Both wrappers accept ``--continue`` / ``-c`` and ``--force`` /
     ``-f``.  See the wrapper's ``-h`` for the full flag inventory.
@@ -687,6 +691,12 @@ def render_run_wrapper(script_path: Path, *,
     else:
         launch_block = f"exec {inner}\n"
 
+    # Engine-specific output suffix.  SIESTA's wrapper writes
+    # ``-runN.out``; PySCF's writes ``-runN.pyscf.log`` (Phase C
+    # rename, 2026-06-07).  The banner below shows the suffix the
+    # user will actually see so they don't go hunting for the
+    # wrong filename after the first run.  BOMB-6 fix.
+    _ext = ".pyscf.log" if suffix == ".py" else ".out"
     return (
         f"#!/usr/bin/env bash\n"
         f"#\n"
@@ -698,7 +708,7 @@ def render_run_wrapper(script_path: Path, *,
         f"# not regenerate this file unless `molbuilder run` is invoked\n"
         f"# again on the same script.  Run directly:\n"
         f"#\n"
-        f"#     bash {basename}.run.sh              # first run -> -run0.out\n"
+        f"#     bash {basename}.run.sh              # first run -> -run0{_ext}\n"
         f"#     bash {basename}.run.sh --continue   # resume -> -run1, -run2, ...\n"
         f"#     bash {basename}.run.sh --force      # restart from -run0 (overwrite)\n"
         f"#     bash {basename}.run.sh -np 8        # override mpi_np (SIESTA only)\n"
