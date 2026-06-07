@@ -12,13 +12,28 @@
 > decided, it lands here first, then propagates into the per-tab
 > specs.  Pointer in `design.md` § 0 (UI tabs).
 
-Status (2026-06-06): **Phase A complete; Phase B.1 complete.**
-Phase B.2 in progress.  The 5-tab nav + canonical routes landed
-in Phase A; the Molbuilder tab (formerly "Structure") canvas-state
-+ warning-modal primitives landed in B.1.  Phase B.2 wires the
-foldable panel infrastructure + first migrated generator on the
-Molbuilder tab.  Phases land one PR at a time, each commit keeps
-`pytest tests/ -q` green.
+Status (2026-06-07): **Phases A + B.1 + B.2 + B.5 complete.**
+Phase C (PySCF `.out` → `.pyscf.log` + Results parser) + Phase D
+(Transport-calculation form skeleton) still planned.
+
+  * Phase A landed the 5-tab nav + canonical routes.  Initial
+    plan included 301 redirects from legacy paths; those were
+    **removed** in the post-rename pass — the canonical name is
+    the single source of truth, no aliases.  See § 3.2.
+  * Phase B.1 + B.2 landed the canvas-state / warning-modal
+    primitives, the Sources card on the Molbuilder tab, the
+    SMILES generator, the Save panel, and the dirty-canvas
+    warning across the workspace.
+  * Phase B.5 landed the universal sidebar interaction model
+    (single-click = preview, dblclick = commit) across all
+    non-Results tabs, form-dirty gates on Build + Spectra, the
+    sidebar hide/show toggle, and the file-type filter.
+
+Generators not yet migrated (3DNA, peptide, name, file upload)
++ stripping generators from the Build form remain on the
+roadmap as B.3 + B.4; today the Molbuilder tab ships the Load /
+SMILES / Save subset of the foldable panel set described in
+§ 5.1.
 
 ---
 
@@ -51,10 +66,10 @@ interactive editing from script generation.
 
 | # | Before | After | Role |
 |---|---|---|---|
-| 1 | (was tab 2) Modify | **Structure** | Interactive canvas: build, generate, load, edit, assemble.  Only tab that holds in-memory canvas state. |
+| 1 | (was tab 2) Modify | **Molbuilder** | Interactive workspace: build, generate, load, edit, assemble.  Only tab that holds in-memory canvas state.  Renamed from "Structure" → "Molbuilder" 2026-06-06 so the brand name marks the central tab. |
 | 2 | (was tab 1) Build | **Structure optimization** | Form-driven task generator: SIESTA `.fdf` / PySCF `.py` from a project-saved structure. |
 | 3 | (same) Spectra | **Spectrum calculation** | PySCF spectrum task generator (rename only — same function). |
-| 4 | — | **Transport calculation** | NEW (Phase D).  Form skeleton for TranSIESTA + PySCF-NEGF scripts (Phase B.3 backends not wired yet). |
+| 4 | — | **Transport calculation** | NEW (Phase D).  Form skeleton for TranSIESTA + PySCF-NEGF scripts (engines not wired yet). |
 | 5 | (same) Results | **Results** | Output viewer (no functional change). |
 
 ### 2.2 Functional migration (what moves)
@@ -101,11 +116,17 @@ interactive editing from script generation.
 
 | Tab | Route |
 |---|---|
-| Molbuilder | `/molbuilder` (also bound to `/` so the bare host lands here) |
+| Molbuilder | `/molbuilder` (bare `/` 302-redirects here via `landing_path()` in `molbuilder/web/tabs.py`) |
 | Structure optimization | `/structure-optimization` |
 | Spectrum calculation | `/spectrum-calculation` |
 | Transport calculation | `/transport-calculation` |
 | Results | `/results` |
+
+The canonical tab list + landing path are derived from a single
+constant (`TABS` in `molbuilder/web/tabs.py`); reordering tabs is a
+one-place change.  The header partial iterates over `tabs` via a
+context processor; the bare-`/` redirect calls `landing_path()`
+which always equals `TABS[0]["path"]`.
 
 ### 3.2 No legacy aliases
 
@@ -199,27 +220,32 @@ Foldable panels, each with its own header + invoke button.  No
 sub-tabs or wizard flow — every panel is reachable from one
 screen, collapsed panels stay out of the way.
 
-Panel order (top → bottom):
+> **Shipped subset (2026-06-07):** the Sources card on
+> `/molbuilder` carries panels 1, 2, and 11 below (Load from
+> project + Generate from SMILES + Save).  Modifier panels 6-10
+> still live as sub-tabs in the legacy Edit card; the
+> generators 3DNA/peptide/name/file-upload (panels 3-5) and the
+> Sources-card promotion of the modifier panels are roadmap
+> items (B.3 + B.4).
 
-1. **Load from project** — sidebar selection sets a candidate;
-   the panel shows the candidate path + a **Load** button.
-   Click commits the candidate to the canvas.
-2. **Generator: SMILES** — text input + **Generate** button.
-   Submits to RDKit backend; commits resulting structure.
-3. **Generator: 3DNA** — sequence input + helix parameters +
-   **Generate** button.
-4. **Generator: peptide** (if migrated) — sequence input +
-   geometry options + **Generate** button.
-5. **Generator: (others)** — one panel per Build generator that
-   migrates.
-6. **Modifier: atom edit** — current Modify "Atom subtab"
-   contents.  Operates on the canvas in place.
-7. **Modifier: orient + pose** — current Modify orient panel.
-8. **Modifier: regions** — region tagging (electrode / bridge
-   / anchor) for downstream Transport task.
-9. **Modifier: electrode** — current Modify electrode panel.
+Full panel order, top → bottom (target):
+
+1. **Load from project** — sidebar candidate + **Load** button.
+   Commits the picked file to the canvas (warning modal fires
+   if dirty). ✅ shipped
+2. **Generator: SMILES** — text input + **Generate**; RDKit
+   backend; routes through `structurePage.loadIntoCanvas`. ✅ shipped
+3. **Generator: 3DNA** — sequence + helix parameters.  Roadmap (B.3).
+4. **Generator: peptide** — sequence + geometry options.  Roadmap (B.3).
+5. **Generator: (others)** — name lookup, file upload.  Roadmap (B.3).
+6. **Modifier: atom edit** — Delete + Add (today: Edit card "Atom"
+   sub-tab).
+7. **Modifier: orient + pose** — Orient + Rotate (today: "Pose").
+8. **Modifier: regions** — region tagging (electrode/bridge/anchor)
+   for the downstream Transport task.
+9. **Modifier: electrode** — close-packed slab attachment.
 10. **Modifier: geom** — centre-at-origin, translate, slab mode.
-11. **Save** — Save-to-project + Save-as-new + Discard.
+11. **Save** — Save-to-source.  Save-as + Discard still planned. ✅ partial
 
 All panels are independent `<details>` elements; user state
 (which are open, scroll position) is preserved across browser
@@ -508,27 +534,31 @@ enabled.
 
 ## 9. Phasing
 
-### 9.1 Phase A — labels + routes + redirects
+### 9.1 Phase A — labels + routes (LANDED)
 
 Cheap, safe, visible.  No functional change.
 
 **Files touched:**
 - `molbuilder/web/app.py` — register new routes; map them to
-  existing view functions; add 301 redirects from old paths.
-- `templates/_nav.html` (or wherever the tab bar lives) — new
-  labels + new hrefs + new tab order.
-- `docs/tabs/architecture.md` — mark Phase A complete.
+  existing view functions.
+- `molbuilder/web/tabs.py` — single source of truth for tab
+  order + landing path.
+- `templates/_app_header.html` — iterates over the `tabs`
+  context variable; no hard-coded anchors.
 
 **Tests:**
-- Existing test files referring to old paths get path
-  parameterized or updated.  Most route assertions live in
-  fixtures like `tests/conftest.py`.
-- New test: each old path → new path is a 301.
+- Existing test files referring to old paths updated to the new
+  canonical paths.
+- `tests/test_tab_routes.py` pins the 5-tab nav + tab→template
+  + landing-path-follows-`TABS[0]` contracts.
 
-**Acceptance:**
-- Navigation bar shows new labels in new order.
-- Visiting an old URL lands on the corresponding new URL.
-- All existing functionality works at the new URLs.
+**Decisions log entry (post-Phase A):**
+
+The initial plan included 301 redirects from legacy paths so
+existing bookmarks would survive.  The post-rename pass
+(2026-06-06+, Structure → Molbuilder) deleted all redirects: the
+canonical name is the single source of truth in code, tests, and
+docs; renamed paths break by design.  See § 3.2.
 
 ### 9.2 Phase B — Molbuilder tab merger
 
