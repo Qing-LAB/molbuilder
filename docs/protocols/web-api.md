@@ -862,13 +862,22 @@ button in the SIESTA + PySCF forms.
 |---|---|---|---|
 | `/api/health` | GET | — | `{ok, version}` |
 | `/api/backends` | GET | — | `{ok, available: {rdkit, amber, threedna}: bool}` |
-| `/` | GET | — | Build page HTML |
-| `/modify` | GET | — | Modify page HTML |
-| `/spectra` | GET | — | Spectra page HTML |
+| `/` | GET | — | 302 redirect to `landing_path()` (currently `/molbuilder`) |
+| `/molbuilder` | GET | — | Molbuilder workspace HTML |
+| `/structure-optimization` | GET | — | Structure-optimization (SIESTA / PySCF form) HTML |
+| `/spectrum-calculation` | GET | — | Spectrum-calculation HTML |
+| `/transport-calculation` | GET | — | Transport-calculation HTML (placeholder) |
 | `/results` | GET | — | Results page HTML |
 | `/partials/trajectory-inspector` | GET | — | Inspector HTML fragment |
 | `/partials/spectra-inspector` | GET | — | Inspector HTML fragment |
 | `/partials/selection-panel` | GET | — | Panel HTML fragment |
+
+Tab order + landing path come from `molbuilder/web/tabs.py`
+(`TABS` list + `landing_path()`).  Reordering tabs is a
+one-place change there; the bare-`/` redirect always points at
+`TABS[0]["path"]`.  No legacy redirects from old paths
+(`/modify`, `/structure`, `/spectra`, etc.) — pre-1.0 cleanup,
+renamed paths return 404 by design.
 
 `/api/backends.available.threedna` is `true` only when the
 detection chain (in-tree → `$X3DNA` → `fiber` on PATH; see

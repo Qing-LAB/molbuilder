@@ -596,12 +596,24 @@ mtime on every read envelope precisely so tabs can pin it.
 
 ## 6. Subscribe model
 
-The sidebar exposes three subscriber surfaces:
-`projects.onChange(cb)` (selection mutations),
-`projects.onLockChange(cb)` (lock acquire/release), and
-`projects.onProjectsRootResolved(cb)` (one-shot fire when the
-roots fetch completes). Every subscriber API on the sidebar
-follows the same contract:
+The sidebar exposes four subscriber surfaces:
+
+  * `projects.onChange(cb)` — selection mutations (single-click,
+    `setShared`, `navigateTo`).  Fires once on subscribe with the
+    current state.
+  * `projects.onCommit(cb)` — **commit events** (sidebar
+    double-click on a file fires `publishCommit`).  Does NOT
+    fire-once-on-subscribe — a commit is a discrete event, not a
+    state to mirror, and an initial fire would over-react every
+    tab mount.  Tabs subscribe here to run their "use this file"
+    action (Molbuilder Load, Build form rebuild, Spectra schema
+    reload), gated by their own dirty-state checks.  See
+    [memory/project_sidebar_interaction_model.md] for the design.
+  * `projects.onLockChange(cb)` — lock acquire/release.
+  * `projects.onProjectsRootResolved(cb)` — one-shot fire when the
+    roots fetch completes.
+
+Every subscriber API on the sidebar follows the same contract:
 
 ```mermaid
 sequenceDiagram
@@ -860,7 +872,8 @@ errors — the bug class we keep hitting.
 
 The sidebar has no explicit `dispose()` API today, AND won't add one.
 molbuilder uses the full-page-reload model for tab navigation: every
-move between `/build`, `/modify`, `/spectra`, `/results`, `/watch`
+move between `/molbuilder`, `/structure-optimization`,
+`/spectrum-calculation`, `/transport-calculation`, `/results`
 is a full HTTP load + JS context discard.  **The page-reload boundary
 IS the cleanup mechanism.**  Subscriber sets, AbortControllers,
 3Dmol viewer instances, Plotly charts, lock state — all get thrown
@@ -1068,6 +1081,71 @@ JS wiring lives in `lib/projects-sidebar.js::initMobileDrawer`; the
 function is a no-op if the optional toggle / backdrop elements are
 absent (forward-compat with future templates that drop the
 scaffolding).
+
+### 9.4 Desktop hide/show toggle (Phase B.5.4)
+
+On viewports ≥ 640 px the sidebar can be collapsed entirely so
+the active tab's workspace gets the full window width.  Three
+DOM affordances:
+
+* `#ps-collapse-toggle` — small "◀" button in the sidebar header
+  (`.ps-header`); click hides the sidebar.
+* `#ps-collapsed-handle` — accent-coloured floating dock tab
+  ("Projects" label + chevron) fixed at the page's left edge.
+  Hidden unless the sidebar is collapsed; click brings it back.
+  Lives outside `.projects-sidebar` so it stays visible when the
+  sidebar itself is hidden.
+* `body.is-projects-sidebar-collapsed` — body-level class.  When
+  set, the body's `padding-left` collapses to 0 and
+  `.projects-sidebar` slides off-canvas via `translateX(-100%)`
+  + `visibility: hidden` (keeps it out of the a11y tree).
+
+State persists in `sessionStorage` under
+`molbuilder.projects_sidebar_collapsed`.
+`lib/projects-sidebar.js::_restoreCollapsedState` reads it and
+applies the body class BEFORE the rest of init runs — so any
+layout-sensitive widget (Plotly chart, 3Dmol canvas, CSS-grid
+auto-fit) measures the correct geometry on its first paint.
+
+Below the 640 px breakpoint the desktop affordances hide and the
+mobile drawer (§ 9.3) takes over so the two systems don't double
+up.
+
+### 9.5 File-type filter (Phase B.5.5)
+
+A free-text filter input between the breadcrumb and the entry
+list hides files whose name doesn't match the query.  Folders
+always stay visible — they're navigation, not data — so the
+user can drill into a sub-folder even when the filter is active.
+
+Match rules:
+
+  * **Default**: case-insensitive substring (`"wat"` matches
+    `water.xyz`).
+  * **Leading-dot shortcut**: `".xyz"` matches files whose name
+    ends in `.xyz` only (not `water.xyz.bak`).  Use this for
+    "show me all XYZ files in this directory".
+  * **Empty query**: every file visible (the no-filter state).
+
+DOM:
+
+* `#ps-filter-input` (`<input type="search">`) — the query.
+* `#ps-filter-clear` (`<button>`) — × button revealed only when
+  the filter is active; click resets state + focuses the input.
+* `.ps-list .ps-entry.is-hidden { display: none }` — hidden
+  entries stay in the DOM (click handlers + dataset.path stay
+  live) so clearing the filter doesn't require a re-render.
+* `.ps-list.is-filtered-empty::before` — surfaces "(no match)"
+  when every entry is hidden by the filter (parallel to the
+  existing `.is-empty` "(empty)" affordance).
+
+State persists in `sessionStorage` under
+`molbuilder.projects_sidebar_filter`.  Re-applied after every
+`openDir` so a previously-active filter doesn't reset on
+directory change.
+
+JS lives in `lib/projects/list.js`:
+`_filterMatches`, `_applyFilter`, `_initFilter`.
 
 ---
 
