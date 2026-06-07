@@ -106,6 +106,27 @@
   </details>
 
   <details class="source-panel">
+    <summary>Generate peptide</summary>
+    <div class="source-panel-body">
+      <p class="source-hint">
+        Build a peptide from a one-letter amino-acid sequence
+        (e.g. <code>ACDEF</code>).  Generates an extended
+        conformation via AmberTools' <code>tleap</code>.
+      </p>
+      <label class="source-input-row">
+        <span>Sequence</span>
+        <input id="peptide-input" type="text"
+               placeholder="e.g. ACDEF"
+               autocomplete="off" spellcheck="false">
+      </label>
+      <div class="source-actions">
+        <button id="peptide-generate-btn" class="ghost">Generate</button>
+        <span id="peptide-status" class="muted" role="status"></span>
+      </div>
+    </div>
+  </details>
+
+  <details class="source-panel">
     <summary>Load from local file</summary>
     <div class="source-panel-body">
       <p class="source-hint">
@@ -544,6 +565,7 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
 <script src="{{ url_for('static', filename='lib/structure/page.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/smiles.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/name.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/structure/peptide.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/file.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/save.js') }}"></script>
 </body>

@@ -971,6 +971,42 @@ def test_save_button_disabled_for_smiles_without_prior_save(
     )
 
 
+def test_peptide_generator_renders_structure_in_viewer(page, flask_server):
+    """End-to-end peptide flow: type "AC" (alanine-cysteine) into
+    the Peptide input, click Generate.  Backend dispatches to
+    tleap; the panel routes the XYZ through
+    ``structurePage.loadIntoCanvas`` and the viewer renders the
+    dipeptide.
+
+    Skips if AmberTools isn't available — that's the peptide
+    backend; without it the test would hit a 4xx and pass false.
+    """
+    try:
+        from molbuilder.backends import available_backends
+    except ImportError:
+        pytest.skip("molbuilder.backends import failed")
+    if not available_backends().get("amber", False):
+        pytest.skip("AmberTools not available; cannot exercise peptide build")
+
+    _open_modify(page, flask_server)
+    page.locator(
+        ".source-panel:has(> summary:has-text('Generate peptide'))"
+    ).evaluate("el => el.open = true")
+    page.locator("#peptide-input").fill("AC")
+    page.locator("#peptide-generate-btn").click()
+    # A dipeptide has ~30 atoms (alanine ~13 + cysteine ~14 +
+    # caps).  Assert a reasonable floor rather than an exact
+    # count so a future tleap force-field change with different
+    # cap atoms still passes.
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test"
+        "      && window.__molbuilder_modify_test.getNAtoms() >= 20",
+        timeout=20_000,
+    )
+    status_text = page.locator("#peptide-status").inner_text()
+    assert "AC" in status_text
+
+
 def test_file_upload_panel_loads_local_xyz(
         page, flask_server, water_xyz_file):
     """End-to-end file-upload flow: click the file input, pick a
