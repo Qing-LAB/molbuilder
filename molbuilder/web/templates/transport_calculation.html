@@ -28,28 +28,25 @@
       sidecar.
     </p>
     <p>
-      <strong>Status</strong>: placeholder.  Phase 7 architecture
-      reserves this tab slot now so the navigation lands once.  The
-      form skeleton lands in Phase D
-      (see <a href="https://github.com/Qing-LAB/molbuilder/blob/main/docs/tabs/architecture.md">docs/tabs/architecture.md</a> &sect; 8).
-      Backend engine implementations (<code>transiesta_engine.py</code>
-      + <code>pyscf_negf_engine.py</code>) land in Phase B.3
-      (see <a href="https://github.com/Qing-LAB/molbuilder/blob/main/docs/roadmap.md">docs/roadmap.md</a> &sect; 2).
+      <strong>Status</strong>: placeholder.  Form skeleton and
+      backend implementations are not yet wired; see
+      <code>docs/tabs/architecture.md</code> and
+      <code>docs/roadmap.md</code> for the planned scope.
     </p>
     <p>
-      What already exists (no UI yet):
+      Foundations already in place (no UI yet):
     </p>
     <ul>
-      <li><code>molbuilder/transport/</code> &mdash; engine abstraction
-          + <code>TransportConfig</code> + <code>TransportResults</code>
-          (Phase B.2).</li>
-      <li>Region labeling on the Structure tab &mdash; the
+      <li><code>molbuilder/transport/</code> — engine abstraction
+          + <code>TransportConfig</code> + <code>TransportResults</code>.</li>
+      <li>Region labeling on the Structure tab — the
           <code>.molstruct.json</code> sidecar carries
           <code>regions</code> assigned via the selection panel.</li>
-      <li>Cross-engine contract: both transport engines consume the
-          same relaxed geometry + the same sidecar; their
-          <code>render_script</code> methods will emit different
-          inputs from the same config + structure pair.</li>
+      <li>Both transport engines (planned: TranSIESTA and PySCF-NEGF)
+          will consume the same relaxed geometry + sidecar; their
+          <code>render_script</code> methods will emit
+          engine-specific inputs from the same config + structure
+          pair.</li>
     </ul>
   </section>
 </main>

@@ -1,8 +1,9 @@
 {#- molbuilder shared header + app-tabs nav.
 
    Included by every main tab template.  Each caller sets active_tab
-   (one of "structure", "structure-optimization",
-   "spectrum-calculation", "transport-calculation", "results").
+   to one of the five canonical values: "structure",
+   "structure-optimization", "spectrum-calculation",
+   "transport-calculation", "results".
 
    The project-wide tagline lives HERE -- one canonical sentence
    that describes what molbuilder is, shown on every page (so users
@@ -18,10 +19,9 @@
    of truth for the tab nav -- changing any link text or order is a
    one-place change here.
 
-   Tab labels + routes match the Phase 7 reorganization landed via
-   docs/tabs/architecture.md (Phase A, 2026-06-06).  Legacy paths
-   (/, /modify, /spectra) 301-redirect to the new canonical URLs
-   so existing bookmarks survive.
+   Tab labels and routes are documented in docs/tabs/architecture.md.
+   Legacy paths (/, /modify, /spectra) 301-redirect to the new
+   canonical URLs so existing bookmarks survive.
 
    Watch was retired 2026-05-19 -- the /watch route + template +
    bootstrap are gone; trajectory inspection is /results-only via

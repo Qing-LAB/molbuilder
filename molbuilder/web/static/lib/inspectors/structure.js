@@ -47,14 +47,14 @@
             const actions = document.createElement("div");
             actions.className = "inspector-card-actions";
             const modifyLink = document.createElement("a");
-            modifyLink.href = "/modify";
-            modifyLink.textContent = "Open in Modify";
+            modifyLink.href = "/structure";
+            modifyLink.textContent = "Open in Structure";
             modifyLink.className = "inspector-card-link";
             modifyLink.title = (
-                "Loads the structure into the Modify tab so you can "
+                "Loads the structure into the Structure tab so you can "
                 + "rotate / orient / add electrodes / etc."
             );
-            // Hand the current file off to /modify via the
+            // Hand the current file off to /structure via the
             // sessionStorage keys the Projects sidebar uses (see
             // ``lib/projects/state.js`` SS_FILE / SS_DIR).
             // /modify's selection-bootstrap reads SS_FILE on mount

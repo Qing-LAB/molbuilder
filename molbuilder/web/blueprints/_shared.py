@@ -630,8 +630,8 @@ def apply_sidecar_if_possible(struct, structure_path):
         return (f"sidecar at {sidecar_path.name} could not be "
                 f"applied ({exc}); the form's freeze rules are "
                 f"the sole boundary condition for this run.  "
-                f"Re-export the sidecar from /modify to re-enable "
-                f"sidecar-driven divergence checks.")
+                f"Re-export the sidecar from the Structure tab to "
+                f"re-enable sidecar-driven divergence checks.")
     return None
 
 

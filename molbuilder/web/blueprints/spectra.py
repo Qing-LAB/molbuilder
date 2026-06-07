@@ -108,19 +108,15 @@ def spectrum_calculation_page():
 
     Heavy lifting (form schema, render, load) is done by the API
     routes below; this just hands back the template.  The JS does
-    a /api/build/schema/spectra call on page load to populate the
-    form.
-
-    Phase 7 (Phase A, 2026-06-06) renamed the route from /spectra
-    to /spectrum-calculation to match the visible tab label.  The
-    legacy /spectra path 301-redirects below.
+    a ``/api/build/schema/spectra`` call on page load to populate
+    the form.
     """
     return render_template("spectra.html")
 
 
 @bp.route("/spectra")
 def spectra_page_redirect():
-    """301 redirect: legacy /spectra → /spectrum-calculation."""
+    """301 redirect: legacy ``/spectra`` → ``/spectrum-calculation``."""
     return redirect("/spectrum-calculation", code=301)
 
 
@@ -183,7 +179,7 @@ def _seed_frozen_indices_from_sidecar(
     Returns ``None`` on success (default override applied OR
     nothing to override).  Returns a short, user-facing string
     explaining why the pre-fill was skipped (e.g. "sidecar atom
-    count doesn't match the structure -- re-export from /modify")
+    count doesn't match the structure -- re-export from the Structure tab")
     when something went wrong but in a recoverable way.
 
     The function mutates ``schema`` in place; no return on success.
@@ -229,7 +225,7 @@ def _seed_frozen_indices_from_sidecar(
     if sidecar_data.get("n_atoms_total") != struct.n_atoms:
         return (f"sidecar atom count ({sidecar_data.get('n_atoms_total')}) "
                 f"differs from structure ({struct.n_atoms}); re-export "
-                f"the sidecar from /modify.  Frozen-atom field not pre-filled.")
+                f"the sidecar from the Structure tab.  Frozen-atom field not pre-filled.")
 
     # Find the frozen_indices field in the schema (the section is
     # "Frozen atoms"; the field name is "frozen_indices") and

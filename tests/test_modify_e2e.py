@@ -349,9 +349,8 @@ def test_modify_page_loads_without_js_errors(page, flask_server):
     # Wait a brief moment so any deferred init fires.
     page.wait_for_timeout(200)
     assert errors == [], f"JS errors during /structure boot: {errors}"
-    # Active-tab marker matches what /structure owns
-    # (renamed from "Modify" in Phase A of the 2026-06-06
-    # tab reorganization; see docs/tabs/architecture.md § 2.1).
+    # Active-tab marker matches the tab label owned by /structure
+    # (see docs/tabs/architecture.md § 2.1 for the tab inventory).
     assert page.locator("a.app-tab.is-active").inner_text() == "Structure"
 
 
@@ -2005,9 +2004,8 @@ def test_send_to_build_writes_handoff_payload(
     _open_modify(page, flask_server)
     _load_file(page, ss_pair_xyz_file, expected_atoms=2)
     _open_op_tab(page, "junction")
-    # Click and wait for the URL to flip to the destination tab.
-    # Phase 7 (Phase A): send-to-build now navigates to
-    # /structure-optimization (the renamed Build tab) instead of "/".
+    # Click and wait for the URL to flip to the canonical
+    # Structure-optimization tab where the Build form lives.
     with page.expect_navigation():
         page.locator("#send-to-build").click()
     expected = flask_server.rstrip("/") + "/structure-optimization"

@@ -600,7 +600,10 @@ class TestSidebarPartialAndShim:
         r = web.get("/static/lib/projects-selection.js")
         assert r.status_code == 404
 
-    @pytest.mark.parametrize("path", ["/", "/spectra", "/modify", "/results"])
+    @pytest.mark.parametrize("path", [
+        "/structure", "/structure-optimization",
+        "/spectrum-calculation", "/transport-calculation",
+        "/results"])
     def test_sidebar_included_in_every_tab(self, web, picker_root, path):
         r = web.get(path)
         assert r.status_code == 200, path
@@ -614,7 +617,10 @@ class TestSidebarPartialAndShim:
         assert "projects-sidebar.js" in body, path
         assert "projects-sidebar.css" in body, path
 
-    @pytest.mark.parametrize("path", ["/", "/spectra", "/modify", "/results"])
+    @pytest.mark.parametrize("path", [
+        "/structure", "/structure-optimization",
+        "/spectrum-calculation", "/transport-calculation",
+        "/results"])
     def test_body_class_server_side_for_layout(
         self, web, picker_root, path,
     ):
@@ -634,7 +640,7 @@ class TestSidebarPartialAndShim:
         ).get_data(as_text=True)
         assert 'classList.add("has-projects-sidebar")' not in js
 
-    @pytest.mark.parametrize("path", ["/modify"])
+    @pytest.mark.parametrize("path", ["/structure"])
     def test_subscriber_tabs_use_inquire_api(
         self, web, picker_root, path,
     ):
@@ -675,19 +681,21 @@ class TestSidebarPartialAndShim:
         # serve.  Counting tabs would make this test break every
         # time we add or remove a tab, which is the wrong sensitivity.
         import re
-        body = web.get("/").get_data(as_text=True)
+        body = web.get("/structure-optimization").get_data(as_text=True)
         # No href="/projects" anywhere -- the sidebar replaced the tab.
         assert 'href="/projects"' not in body
         # Each app-tab link points at one of the served routes.  Pull
         # every href from the app-tab class; assert every value is in
         # the served-routes set.  Adding a new tab updates the served-
         # routes set, not a magic number.
-        SERVED = {"/", "/modify", "/spectra", "/results"}
+        SERVED = {"/structure", "/structure-optimization",
+                  "/spectrum-calculation", "/transport-calculation",
+                  "/results"}
         hrefs = re.findall(
             r'<a[^>]*href="([^"]+)"[^>]*class="app-tab(?: is-active)?"',
             body,
         )
-        assert hrefs, "no app-tab links found in /"
+        assert hrefs, "no app-tab links found"
         for h in hrefs:
             assert h in SERVED, (
                 f"app-tab link {h!r} points at an unserved route; "
@@ -932,7 +940,7 @@ class TestSidebarCreateUI:
     partial; the JS wires them to the backend."""
 
     def test_create_project_form_in_partial(self, web, picker_root):
-        body = web.get("/spectra").get_data(as_text=True)
+        body = web.get("/spectrum-calculation").get_data(as_text=True)
         # + New project section (foldable details + form + error slot)
         assert 'class="ps-create-section"' in body
         assert 'class="ps-create-summary">+ New project</summary>' in body
@@ -951,7 +959,7 @@ class TestSidebarMkdirUI:
         # Any tab that includes the sidebar partial carries the markup.
         # The form is now inside a <details class="ps-create-section">,
         # so visibility is HTML-controlled (no `hidden` attr).
-        body = web.get("/spectra").get_data(as_text=True)
+        body = web.get("/spectrum-calculation").get_data(as_text=True)
         assert 'id="ps-mkdir-form"' in body
         assert 'id="ps-mkdir-input"' in body
         assert 'id="ps-mkdir-error"' in body
@@ -1794,7 +1802,7 @@ class TestSidebarStubsUI:
     E2E layer (deferred Playwright suite)."""
 
     def test_upload_section_in_partial(self, web, picker_root):
-        body = web.get("/spectra").get_data(as_text=True)
+        body = web.get("/spectrum-calculation").get_data(as_text=True)
         assert 'id="ps-upload-form"' in body
         assert 'id="ps-upload-input"' in body
         assert 'id="ps-upload-error"' in body
@@ -1803,7 +1811,7 @@ class TestSidebarStubsUI:
         assert '+ Upload file</summary>' in body
 
     def test_preview_modal_markup_full(self, web, picker_root):
-        body = web.get("/spectra").get_data(as_text=True)
+        body = web.get("/spectrum-calculation").get_data(as_text=True)
         # Modal scaffolding: backdrop, window, header (title + close),
         # body (pre for text), error slot, footer (Save + Close).
         assert 'id="ps-preview-modal"' in body
@@ -1823,7 +1831,7 @@ class TestSidebarStubsUI:
     def test_preview_modal_starts_hidden(self, web, picker_root):
         # The hidden attribute ensures it doesn't flash on first paint
         # before JS runs.
-        body = web.get("/spectra").get_data(as_text=True)
+        body = web.get("/spectrum-calculation").get_data(as_text=True)
         assert 'id="ps-preview-modal" class="ps-preview-modal" hidden' in body
 
 class TestRootsContract:

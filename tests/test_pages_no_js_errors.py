@@ -77,22 +77,20 @@ _PAGE_BOOT_TIMEOUT_MS = 5000   # generous; module scripts on a cold
                                # headless Chromium take ~1-2 s in CI
 
 _PAGES = [
-    # Phase 7 tab reorganization (Phase A, 2026-06-06): canonical
-    # routes match the visible tab labels.  The Structure-optimization
-    # tab (was Build, "/") is the renamed task tab; the Structure tab
-    # (was Modify, "/modify") is the interactive workspace.
+    # Structure-optimization tab: SIESTA / PySCF script generator.
     ("/structure-optimization", "#build-btn"),
-    # Probe for the selection panel's host since 2026-05-20 (the
-    # legacy left-column ``#atom-list`` was retired with the store
-    # refactor).
+    # Structure tab: interactive build + edit workspace.  Probe for
+    # the selection panel's host (the legacy left-column
+    # ``#atom-list`` was retired with the store refactor).
     ("/structure", "#selection-host"),
-    # Spectra has JS-error coverage from this list.  ``/watch`` was
-    # retired 2026-05-19 (see design.md decision log); its
-    # trajectory-inspector now lives on ``/results`` and is covered
-    # via that route below.
+    # Spectrum-calculation tab: PySCF spectra script generator.
     ("/spectrum-calculation", "#generate-btn"),
-    # /results landed 2026-05-16 as the dispatch shell (step 3 of
-    # the tab-merge migration, docs/protocols/results-tab.md § 4).
+    # Transport-calculation tab: placeholder; pin its boot too so
+    # silent JS errors don't hide in the placeholder.
+    ("/transport-calculation", "h2"),
+    # Results tab: registry-dispatched inspector shell.  Trajectory
+    # inspection lives here via the inspector registry; the legacy
+    # /watch tab was retired with the migration.
     ("/results", "#results-current-file"),
 ]
 

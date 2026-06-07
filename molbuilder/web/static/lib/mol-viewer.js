@@ -1,11 +1,11 @@
 /* molbuilder shared 3Dmol viewer factory.
  *
- * Single entry point for the four tabs that instantiate a 3Dmol
- * GLViewer.  Three of them (Build, Modify, Watch) want identical
- * defaults (white background, Jmol element colors); the fourth
- * (Spectra mode-animation) wants a dark background.  Routing all
- * four through one factory makes a future change to the default
- * style spec land in ONE place.
+ * Single entry point for tab code that instantiates a 3Dmol
+ * GLViewer.  Most callers want identical defaults (white background,
+ * Jmol element colors); the Spectrum-calculation mode-animation
+ * viewer wants a dark background.  Routing them all through one
+ * factory makes a future change to the default style spec land in
+ * ONE place.
  *
  * Used via ``window.molbuilder.viewer.create(target, opts?)``.
  *

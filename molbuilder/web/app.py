@@ -1,34 +1,46 @@
 """Flask app factory for the molbuilder UI.
 
-The UI has five tabs served by one process, each owned by a
-blueprint under ``web/blueprints/``:
+The UI has five tabs served by one process:
 
-  * Build    at  ``GET /``         (web/blueprints/build.py)
-  * Modify   at  ``GET /modify``   (web/blueprints/modify.py)
-  * Spectra  at  ``GET /spectra``  (web/blueprints/spectra.py)
-  * Results  at  ``GET /results``  (web/blueprints/results.py)
-  * Watch    at  ``GET /watch``    (web/blueprints/watch.py; legacy
-                                    after the tab-merge -- /results
-                                    is the canonical post-run inspector)
+  * Structure              at  ``GET /structure``
+                                renders ``modify.html``
+  * Structure optimization at  ``GET /structure-optimization``
+                                renders ``index.html`` (the Build form)
+  * Spectrum calculation   at  ``GET /spectrum-calculation``
+                                (web/blueprints/spectra.py)
+  * Transport calculation  at  ``GET /transport-calculation``
+                                renders ``transport_calculation.html``
+                                (placeholder; form skeleton + backends
+                                arrive later)
+  * Results                at  ``GET /results``
+                                (web/blueprints/results.py)
+
+Legacy URLs 301-redirect to the canonical paths so existing
+bookmarks survive: ``/`` → ``/structure``, ``/modify`` →
+``/structure``, ``/spectra`` → ``/spectrum-calculation``.  The full
+route table + the cross-tab workflow model lives in
+``docs/tabs/architecture.md``.
 
 Plus the file-picker + project mutations under
 ``web/blueprints/files.py``, the inspector partial endpoints under
-``results.py`` (``/partials/trajectory-inspector`` etc.), the
-optional auth surface in ``auth.py`` + ``auth_providers/``, and a
-small set of app-level routes that don't fit any one blueprint:
+``results.py`` (``/partials/trajectory-inspector`` etc.), the legacy
+``/api/watch/*`` trajectory data routes under
+``web/blueprints/watch.py`` (the standalone ``/watch`` tab itself
+was retired), the optional auth surface in ``auth.py`` +
+``auth_providers/``, and a small set of app-level routes:
 
   * ``GET /api/health``               liveness
   * ``GET /api/backends``             available builder backends
   * ``GET /vendor/plotly.min.js``     plotly JS served from the
-                                       installed Python package's
-                                       package_data (so /spectra
-                                       and /results work offline)
+                                       installed Python package so
+                                       ``/spectrum-calculation`` and
+                                       ``/results`` work offline
 
 The page templates live under ``templates/``; static assets under
 ``static/``, with per-tab subdirectories (e.g. ``static/spectra/``,
-``static/watch/``) for tab-specific JS/CSS that doesn't belong in
+``static/modify/``) for tab-specific JS/CSS that doesn't belong in
 ``static/lib/`` (the shared layer).  Inspector cores -- code that
-both /results and a legacy tab call into -- live under
+both /results and a tab call into -- live under
 ``static/lib/<concept>/`` (e.g. ``static/lib/trajectory/core.js``).
 """
 
@@ -235,45 +247,37 @@ def create_app(*, config=None) -> Flask:
             )
         return response
 
-    # Phase 7 tab reorganization (Phase A, 2026-06-06): canonical
-    # routes match the visible tab labels.  Legacy URLs 301-redirect
-    # to their new homes so existing bookmarks and shared links keep
-    # working.  See docs/tabs/architecture.md § 3 for the route table.
-    #
-    # The view-function bodies (the actual templates rendered) don't
-    # change in Phase A.  Phase B will rebuild the Structure tab to
-    # absorb Build's structure-generation paths.
+    # Canonical tab routes.  Each name matches the visible tab
+    # label; route table is documented in
+    # docs/tabs/architecture.md § 3.
 
     @app.route("/structure")
     def structure_page():
-        # Renders the legacy modify.html template — Phase B merges
-        # Build's generator paths into this tab.
+        # Structure tab: build + edit + assemble (modify.html
+        # template).
         return render_template("modify.html")
 
     @app.route("/structure-optimization")
     def structure_optimization_page():
-        # Renders the legacy index.html (Build) template — Phase B
-        # strips structure-generation from this template; the form +
-        # generate flow stay.
+        # Structure-optimization tab: SIESTA / PySCF script
+        # generator (index.html template).
         return render_template("index.html")
 
     @app.route("/transport-calculation")
     def transport_calculation_page():
-        # Phase D will replace this placeholder with a form skeleton
-        # driven by TransportConfig.  Phase B.3 wires the engine
-        # backends.
+        # Transport-calculation tab: placeholder; form skeleton +
+        # engine backends to follow.
         return render_template("transport_calculation.html")
+
+    # 301 redirects from legacy URLs so existing bookmarks survive.
+    # Canonical home is /structure (the interactive workspace).
 
     @app.route("/")
     def index():
-        # 301: legacy home was the Build tab; the new home is the
-        # Structure tab per the Phase 7 reorganization.
         return redirect("/structure", code=301)
 
     @app.route("/modify")
     def modify_page():
-        # 301: legacy /modify is now /structure (same view function,
-        # new canonical URL).
         return redirect("/structure", code=301)
 
     @app.route("/api/health")

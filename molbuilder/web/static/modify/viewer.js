@@ -954,11 +954,9 @@
         // Save Modify's own state so a back-button trip preserves
         // the source structure too.
         try { saveModifyState(); } catch (_e) { /* ok if not yet wired */ }
-        // Phase 7 tab reorganization (Phase A, 2026-06-06): the
-        // Build tab moved from "/" to "/structure-optimization".
-        // The legacy "/" still 301-redirects but landing there
-        // would bounce the user to /structure (the new home);
-        // hit the canonical URL directly to avoid the redirect.
+        // Navigate directly to the canonical Structure-optimization
+        // URL; "/" 301-redirects to /structure (Structure tab),
+        // which is NOT where send-to-build wants to land.
         window.location.href = "/structure-optimization";
     }
 

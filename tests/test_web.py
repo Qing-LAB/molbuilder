@@ -18,7 +18,7 @@ import pytest
 
 
 def test_index_page_loads(web_client):
-    r = web_client.get("/")
+    r = web_client.get("/structure-optimization")
     assert r.status_code == 200
     body = r.data.decode()
     for needle in (
@@ -29,7 +29,7 @@ def test_index_page_loads(web_client):
 
 
 def test_index_page_has_tab_markup(web_client):
-    r = web_client.get("/")
+    r = web_client.get("/structure-optimization")
     body = r.data.decode()
     for needle in (
         'class="tabs"',
@@ -47,7 +47,7 @@ def test_build_load_source_mode_toggle_present(web_client):
     panels (#build-panel, #load-panel) controlled by it.  Pins the
     contract the JS depends on so a future template refactor that
     drops one of the IDs trips this test instead of a UX bug."""
-    body = web_client.get("/").data.decode()
+    body = web_client.get("/structure-optimization").data.decode()
     # Radio group + the two panels JS toggles between.
     for needle in (
         'name="source-mode"',
@@ -158,7 +158,7 @@ def test_index_page_lists_threedna_in_backend_dropdown(web_client):
     helix).  It must appear as an explicit choice in the dropdown so
     users with x3dna installed can pick it -- and so users without it
     get the (not installed) suffix the JS adds at page load."""
-    body = web_client.get("/").data.decode()
+    body = web_client.get("/structure-optimization").data.decode()
     assert 'value="threedna"' in body, (
         "Backend dropdown should list threedna explicitly"
     )
@@ -181,7 +181,7 @@ def test_index_page_lists_add_hydrogens_select(web_client):
     in the nucleic-options block, NOT a bool checkbox -- the H/heavy
     threshold heuristic is size-dependent and explicit on/off control
     is the user's escape hatch when auto misclassifies."""
-    body = web_client.get("/").data.decode()
+    body = web_client.get("/structure-optimization").data.decode()
     assert 'id="add-hydrogens"' in body
     import re
     m = re.search(r'<select[^>]*id="add-hydrogens"[^>]*>(.*?)</select>',
@@ -274,12 +274,18 @@ def test_project_tagline_renders_identically_on_every_tab(web_client):
     # build-vs-test ergonomics are: a tagline edit fails this
     # test loudly, which is desired: changing what molbuilder
     # CLAIMS to be should not be a silent commit.
+    # Phase 7 tab reorganization (Phase A, 2026-06-06) rewrote the
+    # tagline to mention all four task categories (optimization,
+    # spectrum, transport) and the Results-tab inspection step.
     CANONICAL = (
         "Build 3-D molecules from sequence / SMILES / name; "
-        "modify geometry; inspect IR / Raman spectra and "
-        "trajectories; emit SIESTA / PySCF input."
+        "modify geometry; emit SIESTA / PySCF input for "
+        "optimization, spectrum, and transport calculations; "
+        "inspect the resulting trajectories and spectra."
     )
-    for path in ("/", "/modify", "/spectra", "/results"):
+    for path in ("/structure", "/structure-optimization",
+                 "/spectrum-calculation", "/transport-calculation",
+                 "/results"):
         r = web_client.get(path)
         assert r.status_code == 200, f"{path} -> {r.status_code}"
         body = r.get_data(as_text=True)
@@ -293,13 +299,19 @@ def test_project_tagline_renders_identically_on_every_tab(web_client):
 
 def test_all_pages_serve_with_shared_tab_nav(web_client):
     """The unified UI puts a shared tab nav at the top of every page so
-    a user can flip between tabs without leaving the app.  Post-/watch-
-    removal (2026-05-19) the nav covers FOUR tabs: Build (/),
-    Modify (/modify), Spectra (/spectra), Results (/results).
-    The active tab matches the current page; the tab links point at
-    the canonical paths."""
+    a user can flip between tabs without leaving the app.
+
+    Phase 7 tab reorganization (Phase A, 2026-06-06): five tabs in
+    the new order — Structure (/structure), Structure optimization
+    (/structure-optimization), Spectrum calculation
+    (/spectrum-calculation), Transport calculation
+    (/transport-calculation), Results (/results).  The active tab
+    matches the current page; the tab links point at the canonical
+    paths."""
     import re
-    all_tabs = ["/", "/modify", "/spectra", "/results"]
+    all_tabs = ["/structure", "/structure-optimization",
+                "/spectrum-calculation", "/transport-calculation",
+                "/results"]
     for path in all_tabs:
         r = web_client.get(path)
         assert r.status_code == 200, f"{path} returned {r.status_code}"
@@ -753,32 +765,30 @@ def test_pyscf_missing_xyz_returns_error(web_client):
 # --------------------------------------------------------------------- #
 
 
-def test_modify_page_loads(web_client):
-    """``GET /modify`` returns 200 with the M2 page contents.  M2 is
-    read-only inspection; the edit ops land in M3+."""
-    r = web_client.get("/modify")
+def test_structure_page_loads(web_client):
+    """``GET /structure`` returns 200 with the page scaffolding +
+    edit-op controls the JS expects to find by id."""
+    r = web_client.get("/structure")
     assert r.status_code == 200
     body = r.data.decode()
     for needle in (
         "molbuilder",
-        # The page-title and tagline are Modify-specific.
         "modify a structure",
         # Static asset paths the template references.
         "modify/style.css",
         "modify/viewer.js",
         # Two-pane scaffolding the JS targets by id.  The legacy
         # left-column #atom-list-body + the right-panel
-        # #selection-readout were retired 2026-05-20; the
-        # selection panel above the grid (#selection-host) carries
-        # those affordances now.
+        # #selection-readout were retired with the selection-store
+        # refactor; the selection panel above the grid
+        # (#selection-host) carries those affordances now.  The
+        # representation / atom-label knobs (#rep, #show-indices)
+        # moved into the embedded viewer's knob bar; the partial
+        # itself no longer declares them.
         'id="viewer"',
         'id="selection-host"',
-        # file-picker + load-btn were removed in the Projects-sidebar
-        # pivot (sidebar is the only structure-loading path now).
-        'id="rep"',
-        'id="show-indices"',
         'id="clear-selection"',
-        # All five edit ops are wired (M3 + M4 + M5).
+        # All five edit ops are wired by the JS.
         'id="delete-apply"',
         'id="add-apply"',
         'id="orient-apply"',
@@ -786,7 +796,7 @@ def test_modify_page_loads(web_client):
         'id="elc-apply"',
         'id="send-to-build"',
     ):
-        assert needle in body, f"missing {needle!r} in /modify HTML"
+        assert needle in body, f"missing {needle!r} in /structure HTML"
     # Retired surfaces stay retired -- catch any reintroduction of
     # the legacy left-column atom-list or right-panel selection
     # readout.  The selection panel above the grid (#selection-host)
@@ -819,32 +829,35 @@ def test_modify_static_assets_load(web_client):
     assert "selection.store" in body or "_selStore" in body
 
 
-def test_every_page_links_to_modify_tab(web_client):
-    """Every top-level page must include the Modify tab link in the
-    shared ``app-tabs`` nav.  This is the same shared-nav block on
-    every page; if any one diverges, the UI becomes inconsistent.
+def test_every_page_links_to_structure_tab(web_client):
+    """Every top-level page must include the Structure tab link in
+    the shared ``app-tabs`` nav.  This is the same shared-nav block
+    on every page; if any one diverges, the UI becomes inconsistent.
 
-    Post-/watch-removal (2026-05-19) the page set is /, /modify,
-    /spectra, /results."""
-    for path in ("/", "/modify", "/spectra", "/results"):
+    Phase 7 tab reorganization (Phase A, 2026-06-06): the page set
+    is /structure, /structure-optimization, /spectrum-calculation,
+    /transport-calculation, /results."""
+    for path in ("/structure", "/structure-optimization",
+                 "/spectrum-calculation", "/transport-calculation",
+                 "/results"):
         body = web_client.get(path).data.decode()
-        assert 'href="/modify"' in body, (
-            f"{path!r} doesn't link to /modify in its app-tabs nav"
+        assert 'href="/structure"' in body, (
+            f"{path!r} doesn't link to /structure in its app-tabs nav"
         )
-        assert 'href="/"' in body
+        assert 'href="/structure-optimization"' in body
         assert 'href="/results"' in body
 
 
-def test_modify_page_marks_itself_active_in_tabs(web_client):
-    """The Modify tab link on /modify must carry the is-active class."""
-    body = web_client.get("/modify").data.decode()
-    # The active link must be the /modify one specifically.
+def test_structure_page_marks_itself_active_in_tabs(web_client):
+    """The Structure tab link on /structure must carry the is-active class."""
+    body = web_client.get("/structure").data.decode()
+    # The active link must be the /structure one specifically.
     import re
     m = re.search(
-        r'<a[^>]*href="/modify"[^>]*class="[^"]*is-active[^"]*"',
+        r'<a[^>]*href="/structure"[^>]*class="[^"]*is-active[^"]*"',
         body,
     )
-    assert m, "Modify tab link on /modify is missing is-active"
+    assert m, "Structure tab link on /structure is missing is-active"
 
 
 # --------------------------------------------------------------------- #
@@ -1051,7 +1064,7 @@ def test_modify_page_has_m3_edit_controls(web_client):
     """The Edit panel must expose the M3 op controls (delete button,
     add-atom element input, three offset sliders + live distance
     readout).  M4 / M5 placeholders remain disabled."""
-    body = web_client.get("/modify").data.decode()
+    body = web_client.get("/structure").data.decode()
     for needle in (
         # Delete
         'id="delete-apply"',
@@ -1302,7 +1315,7 @@ def test_modify_page_has_m4_orient_rotate_controls(web_client):
     """The Edit panel must expose the M4 orient + rotate controls
     (anchor-pair readout, axis radios, angle slider, Apply for both
     ops).  The M5 placeholder (electrode panel) stays disabled."""
-    body = web_client.get("/modify").data.decode()
+    body = web_client.get("/structure").data.decode()
     for needle in (
         # Orient
         'id="orient-apply"',

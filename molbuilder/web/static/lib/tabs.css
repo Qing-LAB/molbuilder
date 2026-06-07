@@ -1,18 +1,19 @@
 /* molbuilder shared app-tabs nav styling.
  *
  * Every page in the app shares a top-of-page navigation strip with
- * four tabs in a fixed order: Build (/), Modify (/modify), Spectra
- * (/spectra), Results (/results).  Each page marks its current tab
- * with ``class="app-tab is-active"``.  The markup itself lives in
- * ``templates/_app_header.html`` (a Jinja partial included by every
- * page).  /watch was retired 2026-05-19; the trajectory inspector
- * lives on /results via the registry adapter.
+ * five tabs in a fixed order: Structure (/structure), Structure
+ * optimization (/structure-optimization), Spectrum calculation
+ * (/spectrum-calculation), Transport calculation
+ * (/transport-calculation), Results (/results).  Each page marks
+ * its current tab with ``class="app-tab is-active"``.  The markup
+ * itself lives in ``templates/_app_header.html`` (a Jinja partial
+ * included by every page).
  *
  * If you change the visual treatment of a tab, change it here and
  * every page picks it up.  If you add or remove a tab, update
- * ``_app_header.html`` (the canonical link list) AND
- * ``tests/test_web.py::test_all_pages_serve_with_shared_tab_nav``
- * (the test that pins the four-tab contract).
+ * ``_app_header.html`` (the canonical link list) AND the route
+ * contract pinned in
+ * ``tests/test_tab_routes.py::test_nav_bar_lists_all_five_tabs_in_order``.
  */
 
 .app-tabs {

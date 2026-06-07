@@ -73,19 +73,19 @@ is dominated by the slabs and 3Dmol's auto-pivot drifts off the molecule.">Focus
       <button id="clear-selection" class="ghost">Clear selection</button>
     </div>
 
-    <!-- Send-to-Build handoff bar.  Sits directly below the 3D
-         viewer + viewer-controls so it's visible regardless of
+    <!-- Send-to-optimization handoff bar.  Sits directly below the
+         3D viewer + viewer-controls so it's visible regardless of
          which edit-panel sub-tab (Atom / Pose / Geom / Junction)
          is active.  The handoff is a structure-level action --
-         it ships the current geometry to /build for downstream
-         SIESTA / PySCF input generation -- so visually attaching
-         it to the viewer (the structure's primary surface) is
-         the right semantic.  Style-wise: a dedicated row, NOT
-         folded into viewer-controls (which are display toggles,
-         a different verb class). -->
+         it ships the current geometry to /structure-optimization
+         for downstream SIESTA / PySCF input generation -- so
+         visually attaching it to the viewer (the structure's
+         primary surface) is the right semantic.  Style-wise: a
+         dedicated row, NOT folded into viewer-controls (which are
+         display toggles, a different verb class). -->
     <div class="viewer-handoff">
       <button id="send-to-build" class="full-btn" disabled>
-        Send to Build tab
+        Send to Structure optimization
       </button>
     </div>
   </section>

@@ -1,26 +1,18 @@
-"""Phase A — tab labels + routes + 301 redirects.
+"""Tab routing contract — canonical paths + 301 redirects + nav bar.
 
 Pins the routing contract from `docs/tabs/architecture.md` § 3:
 
-  * `/structure` renders the legacy modify template (Phase B will
-    rebuild it; Phase A just renames the route).
-  * `/structure-optimization` renders the legacy build (index) template.
-  * `/spectrum-calculation` renders the spectra template.
-  * `/transport-calculation` renders the new placeholder template.
-  * `/results` is unchanged.
+  * `/structure`, `/structure-optimization`,
+    `/spectrum-calculation`, `/transport-calculation`, `/results`
+    each render their tab's template and return 200.
 
-  * Legacy URLs 301-redirect:
+  * Legacy URLs 301-redirect to their new homes:
       `/` → `/structure`
       `/modify` → `/structure`
       `/spectra` → `/spectrum-calculation`
 
   * The nav bar on every canonical page shows all five tabs in the
     documented order with the correct active-tab marker.
-
-These tests are intentionally narrow — they pin Phase A's contract
-only.  Phase B/C/D will land on top of this without changing the
-route table (Phase B may swap the templates the routes render, but
-the URLs stay).
 """
 from __future__ import annotations
 
@@ -103,9 +95,14 @@ _EXPECTED_NAV_LINKS = [
 
 @pytest.mark.parametrize("page_path", [p for p, _ in _EXPECTED_NAV_LINKS])
 def test_nav_bar_lists_all_five_tabs_in_order(web, page_path):
-    """The Phase A nav contract: every tab page renders the same
-    5-tab bar in the same order with the same labels.  A regression
-    that drops a tab or reorders them surfaces here."""
+    """Every tab page renders the same 5-tab bar in the same order
+    with the same labels.  A regression that drops a tab or reorders
+    them surfaces here.
+
+    NOTE: the regex relies on each ``<a class="app-tab">`` containing
+    only plain-text label content (no nested ``<svg>`` icons etc.).
+    If a future change adds nested HTML inside the tab anchors, switch
+    to ``lxml.html`` parsing rather than relaxing this assertion."""
     body = web.get(page_path).get_data(as_text=True)
     # Find every <a class="app-tab ..."> link in body order.
     found = re.findall(
@@ -113,7 +110,7 @@ def test_nav_bar_lists_all_five_tabs_in_order(web, page_path):
         body,
     )
     assert found == _EXPECTED_NAV_LINKS, (
-        f"{page_path!r} nav links do not match the Phase A contract.\n"
+        f"{page_path!r} nav links do not match the contract.\n"
         f"  expected: {_EXPECTED_NAV_LINKS}\n"
         f"  got:      {found}"
     )
