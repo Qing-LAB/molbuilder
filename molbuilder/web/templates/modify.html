@@ -106,6 +106,23 @@
   </details>
 
   <details class="source-panel">
+    <summary>Load from local file</summary>
+    <div class="source-panel-body">
+      <p class="source-hint">
+        Load an XYZ or PDB file from your computer.  Use this for
+        structures that aren't in a molbuilder project yet
+        (downloads, exports from other tools).
+      </p>
+      <div class="source-actions">
+        <input id="file-upload-input" type="file"
+               accept=".xyz,.pdb,.XYZ,.PDB"
+               class="source-file-input">
+        <span id="file-upload-status" class="muted" role="status"></span>
+      </div>
+    </div>
+  </details>
+
+  <details class="source-panel">
     <summary>Save</summary>
     <div class="source-panel-body">
       <p class="source-hint">
@@ -527,6 +544,7 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
 <script src="{{ url_for('static', filename='lib/structure/page.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/smiles.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/name.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/structure/file.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/save.js') }}"></script>
 </body>
 </html>

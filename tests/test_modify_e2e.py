@@ -971,6 +971,29 @@ def test_save_button_disabled_for_smiles_without_prior_save(
     )
 
 
+def test_file_upload_panel_loads_local_xyz(
+        page, flask_server, water_xyz_file):
+    """End-to-end file-upload flow: click the file input, pick a
+    local .xyz, watch the viewer render the structure.  Mirrors
+    the SMILES + name happy-path tests; uses the existing
+    water_xyz_file fixture to avoid creating a new disk file."""
+    _open_modify(page, flask_server)
+    page.locator(
+        ".source-panel:has(> summary:has-text('Load from local file'))"
+    ).evaluate("el => el.open = true")
+    # Playwright's set_input_files attaches the disk path as the
+    # selected file — equivalent to the user picking it via the
+    # browser's file dialog.
+    page.locator("#file-upload-input").set_input_files(water_xyz_file)
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test"
+        "      && window.__molbuilder_modify_test.getNAtoms() === 3",
+        timeout=10_000,
+    )
+    status_text = page.locator("#file-upload-status").inner_text()
+    assert "water.xyz" in status_text
+
+
 def test_name_generator_renders_structure_in_viewer(page, flask_server):
     """End-to-end name flow: type "water" into the Name input,
     click Generate.  The backend hits PubChem (cached or live);
