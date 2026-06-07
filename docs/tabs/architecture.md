@@ -4,7 +4,7 @@
 > tab-level UI architecture: the tab inventory, routes, the
 > cross-tab workflow model, and the staging of the 2026-06-06
 > reorganization.**  Per-tab specs in `docs/tabs/` (e.g.
-> `structure.md`, `structure-optimization.md`) own the *internal*
+> `molbuilder.md`, `structure-optimization.md`) own the *internal*
 > contract of each tab; this doc owns *how the tabs relate*.
 >
 > When a phase lands, update both this doc AND the per-tab spec
@@ -12,13 +12,13 @@
 > decided, it lands here first, then propagates into the per-tab
 > specs.  Pointer in `design.md` § 0 (UI tabs).
 
-Status (2026-06-06): **Phase A complete.**  Phase B/C/D still
-planning.  The route table + 301 redirects + 5-tab nav landed; the
-view functions still render the legacy templates (Phase B will
-rebuild the Structure tab to absorb Build's structure-generation
-paths).  Phases land one PR at a time, each commit keeps
-`pytest tests/ -q` green.  This doc is the design reference for
-the remaining work.
+Status (2026-06-06): **Phase A complete; Phase B.1 complete.**
+Phase B.2 in progress.  The 5-tab nav + canonical routes landed
+in Phase A; the Molbuilder tab (formerly "Structure") canvas-state
++ warning-modal primitives landed in B.1.  Phase B.2 wires the
+foldable panel infrastructure + first migrated generator on the
+Molbuilder tab.  Phases land one PR at a time, each commit keeps
+`pytest tests/ -q` green.
 
 ---
 
@@ -90,7 +90,7 @@ interactive editing from script generation.
 
 - **Atom builder UI** (manual atom-by-atom placement) — exists
   conceptually but has a different interaction model from the
-  rest of the tab.  Could ship after the initial Structure tab
+  rest of the tab.  Could ship after the initial Molbuilder tab
   is stable.  Open question; see § 11.
 
 ---
@@ -101,25 +101,20 @@ interactive editing from script generation.
 
 | Tab | Route |
 |---|---|
-| Structure | `/structure` (also reachable as `/` via redirect) |
+| Molbuilder | `/molbuilder` (also bound to `/` so the bare host lands here) |
 | Structure optimization | `/structure-optimization` |
 | Spectrum calculation | `/spectrum-calculation` |
 | Transport calculation | `/transport-calculation` |
-| Results | `/results` (unchanged) |
+| Results | `/results` |
 
-### 3.2 Redirects (Phase A)
+### 3.2 No legacy aliases
 
-Old URLs → 301 redirects:
-
-| Old | New |
-|---|---|
-| `/` | `/structure` |
-| `/modify` | `/structure` |
-| `/spectra` | `/spectrum-calculation` |
-
-Old routes serve a 301 with the `Location` header pointing at the
-new path.  Existing bookmarks, shared links, browser history all
-keep working.
+Pre-1.0 cleanup: there are NO 301 redirects from old paths.  When
+a route is renamed (e.g. `Structure → Molbuilder` 2026-06-06), the
+old path stops working at that commit.  This keeps the route
+surface a single source of truth — every reference in code, tests,
+and docs uses the canonical name; no parallel "either path works"
+branch exists.
 
 ### 3.3 Why long-form route names
 
@@ -142,13 +137,13 @@ recreate the "Build / what does this do?" problem we're fixing.
 
 ### 4.1 Two principles
 
-1. **The Structure tab is the only interactive workspace.**
+1. **The Molbuilder tab is the only interactive workspace.**
    It holds an in-memory canvas.  Everything else reads from
    disk.
 2. **Task tabs are file-driven.**  Structure optimization,
    Spectrum calculation, Transport calculation read their input
    structure from a sidebar-selected project file.  They do NOT
-   consume Structure tab's in-memory canvas state.
+   consume Molbuilder tab's in-memory canvas state.
 
 Together these decouple interactive editing from deterministic
 script generation: the same project directory always produces
@@ -157,7 +152,7 @@ the same script regardless of which tab the user came from.
 ### 4.2 Canonical user flow
 
 ```
-[Structure tab]
+[Molbuilder tab]
    ↓ load file OR generate (SMILES/3DNA/...)
    ↓ edit / orient / label regions
    ↓ Save to project   ──────────► <proj>/<name>.xyz
@@ -180,7 +175,7 @@ workflow phase changes (build → configure → review).
 
 ### 4.3 Why task tabs don't read in-memory canvas
 
-A task tab consuming "whatever is in the Structure tab right
+A task tab consuming "whatever is in the Molbuilder tab right
 now" would mean:
 
 - The generated script depends on hidden state the user can't
@@ -196,7 +191,7 @@ and generating — is small and explicit.
 
 ---
 
-## 5. Structure tab — detailed design
+## 5. Molbuilder tab — detailed design
 
 ### 5.1 Layout
 
@@ -233,7 +228,7 @@ refresh.
 ### 5.2 No auto-load on sidebar selection
 
 Sidebar clicks do NOT replace the canvas.  Today's Modify
-auto-loads on sidebar selection; the new Structure tab keeps
+auto-loads on sidebar selection; the new Molbuilder tab keeps
 that risky pattern at arm's length:
 
 - Sidebar click → sets a "candidate" state (panel 1 shows the
@@ -321,7 +316,7 @@ continue** proceeds.
 
 ### 5.5 Provenance + status display
 
-The Structure tab header shows:
+The Molbuilder tab header shows:
 
 ```
 <canvas source>      [unsaved] / [saved to <path>]
@@ -360,7 +355,7 @@ On successful save:
 - Sidebar pick → reads the file → renders the configuration
   form populated with whatever the file's `.molstruct.json`
   sidecar already declares.
-- Form edits don't touch the Structure tab's canvas.
+- Form edits don't touch the Molbuilder tab's canvas.
 - Generate writes the script next to the source file in the
   same project dir.
 - No "in-memory state from Structure" plumbing.
@@ -370,7 +365,7 @@ On successful save:
 The task tab needs to handle:
 - A picked file with no sidecar (legacy file, generated outside
   molbuilder) — render the form with defaults, user fills.
-- A picked file with sidecar (saved from Structure tab) —
+- A picked file with sidecar (saved from Molbuilder tab) —
   pre-populate region labels, atom-level metadata.
 - A picked file that's a directory (project root) — no-op, prompt
   the user to pick a file.
@@ -495,7 +490,7 @@ User benefit:
 - Tab takes its final navigation slot once — no second nav
   change when B.3 finishes.
 - Region-label workflow (already in current Modify → moves to
-  Structure tab) gets surfaced as a prerequisite — pick a file
+  Molbuilder tab) gets surfaced as a prerequisite — pick a file
   with sidecar regions to enable the form fully.
 
 ### 8.4 Phase B.3 (separate work item, NOT in Phase D scope)
@@ -535,24 +530,26 @@ Cheap, safe, visible.  No functional change.
 - Visiting an old URL lands on the corresponding new URL.
 - All existing functionality works at the new URLs.
 
-### 9.2 Phase B — Structure tab merger
+### 9.2 Phase B — Molbuilder tab merger
 
 **Files touched (major):**
 - `molbuilder/web/static/modify/` — extend the existing modify
   page with the new panel infrastructure + generator panels
   migrated from Build.
-- `templates/modify.html` (renamed to `templates/structure.html`)
+- `templates/modify.html` (renamed to `templates/molbuilder.html`)
   — new panel layout.
 - `static/modify/style.css` — foldable panel styles.
 - New module `static/lib/structure/canvas-state.js` — the
   canvas-state primitive + sessionStorage mirror + dirty flag.
+  (`structure/` here is the JS namespace for canvas data, not
+  the user-facing tab name; the tab is the Molbuilder tab.)
 - New module `static/lib/structure/warning-modal.js` — the
   "unsaved modifications" modal.
 - `static/lib/structure/generators/` — one module per
   migrated generator (smiles.js, threedna.js, …).
 - `molbuilder/web/blueprints/build.py` — Build-tab generator
-  endpoints move to a new `structure.py` blueprint (or stay
-  but with the route prefix updated to `/api/structure/*`).
+  endpoints move to a new `molbuilder.py` blueprint (or stay
+  but with the route prefix updated to `/api/molbuilder/*`).
 
 **Files touched (minor):**
 - `templates/build.html` (now `structure-optimization.html`)
@@ -574,7 +571,7 @@ Cheap, safe, visible.  No functional change.
     provenance + dirty=true.
 
 **Acceptance:**
-- Every Build-tab generator works inside the Structure tab.
+- Every Build-tab generator works inside the Molbuilder tab.
 - Modify-tab editing works on a structure that came from a
   generator (no save round-trip).
 - Canvas state survives browser refresh.
@@ -632,7 +629,7 @@ A first — smallest PR, mostly mechanical, immediately visible
 in the nav.  Lets the rest of the work proceed against the
 renamed surface without churn.
 
-B before C — Structure tab merger is the biggest piece;
+B before C — Molbuilder tab merger is the biggest piece;
 shipping it second means the canvas-state primitive exists
 before the Results tab inspector work in C.
 
@@ -650,10 +647,10 @@ D last — depends on patterns from B (form-schema-driven tabs)
 | Surface | Where it's documented | What changes |
 |---|---|---|
 | Form schema | `form-schema.js` (no doc; pattern) | New TransportConfig form (Phase D) |
-| Projects sidebar | `protocols/projects-sidebar.md` | No contract change.  Selection still drives file-picker; the difference is callers (task tabs require explicit confirmation; Structure tab requires an explicit Load button). |
-| Embedded viewer | `protocols/embedded-viewer.md` | No contract change.  Structure tab uses the embed with the standard handle. |
+| Projects sidebar | `protocols/projects-sidebar.md` | No contract change.  Selection still drives file-picker; the difference is callers (task tabs require explicit confirmation; Molbuilder tab requires an explicit Load button). |
+| Embedded viewer | `protocols/embedded-viewer.md` | No contract change.  Molbuilder tab uses the embed with the standard handle. |
 | Inspector registry | `protocols/inspector-registry.md` | New inspector for `.pyscf.log` (Phase C). |
-| Web API | `protocols/web-api.md` | New `/api/transport/schema` endpoint (Phase D); existing build-API generator endpoints either move to `/api/structure/*` or get aliased (Phase B). |
+| Web API | `protocols/web-api.md` | New `/api/transport/schema` endpoint (Phase D); existing build-API generator endpoints either move to `/api/molbuilder/*` or get aliased (Phase B). |
 | Tabs index | `design.md` § 0 (UI tabs) | New per-tab specs land here as phases complete. |
 
 ---
@@ -685,7 +682,7 @@ answered before the Phase they affect ships.
    the junction workflow demands it.)
 5. **Form pre-fill from sidecar.**  When a task tab loads a file
    that has a `.molstruct.json` sidecar with engine hints (e.g.
-   the user pre-tagged "electrode" regions in Structure tab),
+   the user pre-tagged "electrode" regions in Molbuilder tab),
    should the Transport task form auto-tag the region fields?
    (Affects Phase D; can ship without; nice-to-have.)
 
@@ -701,7 +698,7 @@ answered before the Phase they affect ships.
 2. New decisions that affect multiple tabs land in § 11 first as
    open questions, then in the relevant phase section once
    answered.
-3. Per-tab specs (`docs/tabs/structure.md`,
+3. Per-tab specs (`docs/tabs/molbuilder.md`,
    `docs/tabs/structure-optimization.md`, etc.) are created when
    their respective Phase completes; they own the *internal*
    contract; this doc keeps only cross-tab content.

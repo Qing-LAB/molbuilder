@@ -954,9 +954,9 @@
         // Save Modify's own state so a back-button trip preserves
         // the source structure too.
         try { saveModifyState(); } catch (_e) { /* ok if not yet wired */ }
-        // Navigate directly to the canonical Structure-optimization
-        // URL; "/" 301-redirects to /structure (Structure tab),
-        // which is NOT where send-to-build wants to land.
+        // Navigate to the Structure-optimization tab — that's the
+        // surface that consumes a staged structure for SIESTA /
+        // PySCF input generation.
         window.location.href = "/structure-optimization";
     }
 

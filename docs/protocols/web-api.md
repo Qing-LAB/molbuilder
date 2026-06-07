@@ -89,12 +89,11 @@ the verb is unambiguous.
 ```mermaid
 flowchart LR
     subgraph "Page routes (server-rendered HTML)"
-        page_structure["GET /structure"]
+        page_molb["GET / | /molbuilder"]
         page_opt["GET /structure-optimization"]
         page_spec["GET /spectrum-calculation"]
         page_transp["GET /transport-calculation"]
         page_results["GET /results"]
-        page_legacy["GET / | /modify | /spectra<br/>(301 redirects)"]
     end
     subgraph "Partials (template fragments injected via fetch)"
         part_traj["GET /partials/trajectory-inspector"]

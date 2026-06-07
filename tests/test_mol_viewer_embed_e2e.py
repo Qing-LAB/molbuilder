@@ -170,7 +170,7 @@ class TestModifyViewerDimensions:
         """Same property as the Build test but for /modify, which
         has its own viewer card with aspect-ratio + min-height
         CSS that the bare-mode wrapper must pass through."""
-        page.goto(f"{flask_server}/structure")
+        page.goto(f"{flask_server}/molbuilder")
         page.wait_for_selector("#viewer", timeout=_BOOT_TIMEOUT_MS)
         w, h = _canvas_dimensions(page, "#viewer")
         assert w > 0, f"modify viewer canvas width is {w}; expected > 0"
@@ -178,7 +178,7 @@ class TestModifyViewerDimensions:
 
     def test_modify_viewer_renders_3dmol_canvas(
             self, page, flask_server):
-        page.goto(f"{flask_server}/structure")
+        page.goto(f"{flask_server}/molbuilder")
         page.wait_for_selector("#viewer", timeout=_BOOT_TIMEOUT_MS)
         page.wait_for_timeout(500)
         assert _has_webgl_canvas(page, "#viewer"), (
@@ -198,7 +198,7 @@ class TestModifyViewerDimensions:
         bug).  We assert it stays above 200 px tall — comfortably
         above any rounding-noise floor but well below the host's
         320 min-height, accounting for the chrome above."""
-        page.goto(f"{flask_server}/structure")
+        page.goto(f"{flask_server}/molbuilder")
         page.wait_for_selector("#viewer", timeout=_BOOT_TIMEOUT_MS)
         w, h = _canvas_dimensions(page, "#viewer")
         assert h >= 200, (

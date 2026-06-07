@@ -601,7 +601,7 @@ class TestSidebarPartialAndShim:
         assert r.status_code == 404
 
     @pytest.mark.parametrize("path", [
-        "/structure", "/structure-optimization",
+        "/molbuilder", "/structure-optimization",
         "/spectrum-calculation", "/transport-calculation",
         "/results"])
     def test_sidebar_included_in_every_tab(self, web, picker_root, path):
@@ -618,7 +618,7 @@ class TestSidebarPartialAndShim:
         assert "projects-sidebar.css" in body, path
 
     @pytest.mark.parametrize("path", [
-        "/structure", "/structure-optimization",
+        "/molbuilder", "/structure-optimization",
         "/spectrum-calculation", "/transport-calculation",
         "/results"])
     def test_body_class_server_side_for_layout(
@@ -640,16 +640,17 @@ class TestSidebarPartialAndShim:
         ).get_data(as_text=True)
         assert 'classList.add("has-projects-sidebar")' not in js
 
-    @pytest.mark.parametrize("path", ["/structure"])
+    @pytest.mark.parametrize("path", ["/molbuilder"])
     def test_subscriber_tabs_use_inquire_api(
         self, web, picker_root, path,
     ):
-        # /modify is the canonical "subscriber tab": it reacts to the
-        # Projects-sidebar selection by auto-loading the picked XYZ
-        # into the viewer + selection panel.  The wiring lives in
-        # modify/selection-bootstrap.js -- the bootstrap subscribes
-        # to ``window.molbuilder.projects.onChange`` and forwards
-        # changes to the selection store, which loads the file.
+        # /molbuilder is the canonical "subscriber tab": it reacts
+        # to the Projects-sidebar selection by auto-loading the
+        # picked XYZ into the viewer + selection panel.  The wiring
+        # lives in modify/selection-bootstrap.js -- the bootstrap
+        # subscribes to ``window.molbuilder.projects.onChange`` and
+        # forwards changes to the selection store, which loads the
+        # file.
         #
         # The legacy "Load from current selection" button (page.js)
         # was retired 2026-05-20 -- the auto-load via the store
@@ -688,7 +689,7 @@ class TestSidebarPartialAndShim:
         # every href from the app-tab class; assert every value is in
         # the served-routes set.  Adding a new tab updates the served-
         # routes set, not a magic number.
-        SERVED = {"/structure", "/structure-optimization",
+        SERVED = {"/molbuilder", "/structure-optimization",
                   "/spectrum-calculation", "/transport-calculation",
                   "/results"}
         hrefs = re.findall(

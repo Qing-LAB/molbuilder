@@ -283,7 +283,7 @@ def test_project_tagline_renders_identically_on_every_tab(web_client):
         "optimization, spectrum, and transport calculations; "
         "inspect the resulting trajectories and spectra."
     )
-    for path in ("/structure", "/structure-optimization",
+    for path in ("/molbuilder", "/structure-optimization",
                  "/spectrum-calculation", "/transport-calculation",
                  "/results"):
         r = web_client.get(path)
@@ -301,15 +301,14 @@ def test_all_pages_serve_with_shared_tab_nav(web_client):
     """The unified UI puts a shared tab nav at the top of every page so
     a user can flip between tabs without leaving the app.
 
-    Phase 7 tab reorganization (Phase A, 2026-06-06): five tabs in
-    the new order — Structure (/structure), Structure optimization
-    (/structure-optimization), Spectrum calculation
-    (/spectrum-calculation), Transport calculation
+    Five tabs in the canonical order: Molbuilder (/molbuilder),
+    Structure optimization (/structure-optimization), Spectrum
+    calculation (/spectrum-calculation), Transport calculation
     (/transport-calculation), Results (/results).  The active tab
     matches the current page; the tab links point at the canonical
     paths."""
     import re
-    all_tabs = ["/structure", "/structure-optimization",
+    all_tabs = ["/molbuilder", "/structure-optimization",
                 "/spectrum-calculation", "/transport-calculation",
                 "/results"]
     for path in all_tabs:
@@ -765,10 +764,10 @@ def test_pyscf_missing_xyz_returns_error(web_client):
 # --------------------------------------------------------------------- #
 
 
-def test_structure_page_loads(web_client):
-    """``GET /structure`` returns 200 with the page scaffolding +
+def test_molbuilder_page_loads(web_client):
+    """``GET /molbuilder`` returns 200 with the page scaffolding +
     edit-op controls the JS expects to find by id."""
-    r = web_client.get("/structure")
+    r = web_client.get("/molbuilder")
     assert r.status_code == 200
     body = r.data.decode()
     for needle in (
@@ -777,14 +776,11 @@ def test_structure_page_loads(web_client):
         # Static asset paths the template references.
         "modify/style.css",
         "modify/viewer.js",
-        # Two-pane scaffolding the JS targets by id.  The legacy
-        # left-column #atom-list-body + the right-panel
-        # #selection-readout were retired with the selection-store
-        # refactor; the selection panel above the grid
-        # (#selection-host) carries those affordances now.  The
-        # representation / atom-label knobs (#rep, #show-indices)
-        # moved into the embedded viewer's knob bar; the partial
-        # itself no longer declares them.
+        # Two-pane scaffolding the JS targets by id.  The selection
+        # panel above the grid (#selection-host) owns the per-atom
+        # list + click-to-select; the representation / atom-label
+        # knobs (#rep, #show-indices) live in the embedded viewer's
+        # knob bar, not in the page template.
         'id="viewer"',
         'id="selection-host"',
         'id="clear-selection"',
@@ -796,11 +792,11 @@ def test_structure_page_loads(web_client):
         'id="elc-apply"',
         'id="send-to-build"',
     ):
-        assert needle in body, f"missing {needle!r} in /structure HTML"
+        assert needle in body, f"missing {needle!r} in /molbuilder HTML"
     # Retired surfaces stay retired -- catch any reintroduction of
     # the legacy left-column atom-list or right-panel selection
     # readout.  The selection panel above the grid (#selection-host)
-    # owns the per-atom list + click-to-select since 2026-05-20.
+    # owns the per-atom list + click-to-select.
     for needle in (
         'id="atom-list-body"',
         'id="atom-list"',
@@ -829,35 +825,36 @@ def test_modify_static_assets_load(web_client):
     assert "selection.store" in body or "_selStore" in body
 
 
-def test_every_page_links_to_structure_tab(web_client):
-    """Every top-level page must include the Structure tab link in
+def test_every_page_links_to_molbuilder_tab(web_client):
+    """Every top-level page must include the Molbuilder tab link in
     the shared ``app-tabs`` nav.  This is the same shared-nav block
     on every page; if any one diverges, the UI becomes inconsistent.
 
-    Phase 7 tab reorganization (Phase A, 2026-06-06): the page set
-    is /structure, /structure-optimization, /spectrum-calculation,
+    The canonical 5-tab page set is /molbuilder,
+    /structure-optimization, /spectrum-calculation,
     /transport-calculation, /results."""
-    for path in ("/structure", "/structure-optimization",
+    for path in ("/molbuilder", "/structure-optimization",
                  "/spectrum-calculation", "/transport-calculation",
                  "/results"):
         body = web_client.get(path).data.decode()
-        assert 'href="/structure"' in body, (
-            f"{path!r} doesn't link to /structure in its app-tabs nav"
+        assert 'href="/molbuilder"' in body, (
+            f"{path!r} doesn't link to /molbuilder in its app-tabs nav"
         )
         assert 'href="/structure-optimization"' in body
         assert 'href="/results"' in body
 
 
-def test_structure_page_marks_itself_active_in_tabs(web_client):
-    """The Structure tab link on /structure must carry the is-active class."""
-    body = web_client.get("/structure").data.decode()
-    # The active link must be the /structure one specifically.
+def test_molbuilder_page_marks_itself_active_in_tabs(web_client):
+    """The Molbuilder tab link on /molbuilder must carry the
+    is-active class."""
+    body = web_client.get("/molbuilder").data.decode()
+    # The active link must be the /molbuilder one specifically.
     import re
     m = re.search(
-        r'<a[^>]*href="/structure"[^>]*class="[^"]*is-active[^"]*"',
+        r'<a[^>]*href="/molbuilder"[^>]*class="[^"]*is-active[^"]*"',
         body,
     )
-    assert m, "Structure tab link on /structure is missing is-active"
+    assert m, "Molbuilder tab link on /molbuilder is missing is-active"
 
 
 # --------------------------------------------------------------------- #
@@ -1064,7 +1061,7 @@ def test_modify_page_has_m3_edit_controls(web_client):
     """The Edit panel must expose the M3 op controls (delete button,
     add-atom element input, three offset sliders + live distance
     readout).  M4 / M5 placeholders remain disabled."""
-    body = web_client.get("/structure").data.decode()
+    body = web_client.get("/molbuilder").data.decode()
     for needle in (
         # Delete
         'id="delete-apply"',
@@ -1315,7 +1312,7 @@ def test_modify_page_has_m4_orient_rotate_controls(web_client):
     """The Edit panel must expose the M4 orient + rotate controls
     (anchor-pair readout, axis radios, angle slider, Apply for both
     ops).  The M5 placeholder (electrode panel) stays disabled."""
-    body = web_client.get("/structure").data.decode()
+    body = web_client.get("/molbuilder").data.decode()
     for needle in (
         # Orient
         'id="orient-apply"',

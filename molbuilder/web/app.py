@@ -2,7 +2,7 @@
 
 The UI has five tabs served by one process:
 
-  * Structure              at  ``GET /structure``
+  * Molbuilder             at  ``GET /molbuilder``
                                 renders ``modify.html``
   * Structure optimization at  ``GET /structure-optimization``
                                 renders ``index.html`` (the Build form)
@@ -15,11 +15,9 @@ The UI has five tabs served by one process:
   * Results                at  ``GET /results``
                                 (web/blueprints/results.py)
 
-Legacy URLs 301-redirect to the canonical paths so existing
-bookmarks survive: ``/`` → ``/structure``, ``/modify`` →
-``/structure``, ``/spectra`` → ``/spectrum-calculation``.  The full
-route table + the cross-tab workflow model lives in
-``docs/tabs/architecture.md``.
+The full route table + the cross-tab workflow model lives in
+``docs/tabs/architecture.md``.  Pre-1.0 cleanup: there are NO
+legacy-path redirects; renames break the old URL by design.
 
 Plus the file-picker + project mutations under
 ``web/blueprints/files.py``, the inspector partial endpoints under
@@ -46,7 +44,7 @@ both /results and a tab call into -- live under
 
 from __future__ import annotations
 
-from flask import Flask, abort, jsonify, redirect, render_template, request, send_file
+from flask import Flask, abort, jsonify, render_template, request, send_file
 
 from ..diagnostics import initialize as _initialize_diagnostics
 
@@ -251,10 +249,12 @@ def create_app(*, config=None) -> Flask:
     # label; route table is documented in
     # docs/tabs/architecture.md § 3.
 
-    @app.route("/structure")
-    def structure_page():
-        # Structure tab: build + edit + assemble (modify.html
-        # template).
+    @app.route("/")
+    @app.route("/molbuilder")
+    def molbuilder_page():
+        # Molbuilder tab: build + edit + assemble (modify.html
+        # template).  Also bound to ``/`` so the bare host lands on
+        # the interactive workspace.
         return render_template("modify.html")
 
     @app.route("/structure-optimization")
@@ -268,17 +268,6 @@ def create_app(*, config=None) -> Flask:
         # Transport-calculation tab: placeholder; form skeleton +
         # engine backends to follow.
         return render_template("transport_calculation.html")
-
-    # 301 redirects from legacy URLs so existing bookmarks survive.
-    # Canonical home is /structure (the interactive workspace).
-
-    @app.route("/")
-    def index():
-        return redirect("/structure", code=301)
-
-    @app.route("/modify")
-    def modify_page():
-        return redirect("/structure", code=301)
 
     @app.route("/api/health")
     def api_health():

@@ -119,7 +119,7 @@ def _open_results_and_select(page, base_url, file_path):
     landing on the trajectory inspector via a sidebar click."""
     from pathlib import Path as P
     parent = str(P(file_path).parent)
-    page.goto(f"{base_url}/structure")
+    page.goto(f"{base_url}/molbuilder")
     page.wait_for_function(
         "() => window.molbuilder && window.molbuilder.projects "
         "      && typeof window.molbuilder.projects.setShared "

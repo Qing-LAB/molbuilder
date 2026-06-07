@@ -420,7 +420,7 @@ class TestBuildSecondVisitExternalChange:
 
         # Navigate to /modify -- sessionStorage carries dir + file
         # over (cross-tab handoff).
-        page.goto(f"{flask_server}/structure")
+        page.goto(f"{flask_server}/molbuilder")
         page.wait_for_selector("#projects-sidebar", timeout=_BOOT_TIMEOUT_MS)
 
         # Come back to /build.  The viewer MUST reload from the
@@ -462,7 +462,7 @@ class TestBuildSecondVisitExternalChange:
             timeout=_BOOT_TIMEOUT_MS,
         )
 
-        page.goto(f"{flask_server}/structure")
+        page.goto(f"{flask_server}/molbuilder")
         page.wait_for_selector("#projects-sidebar", timeout=_BOOT_TIMEOUT_MS)
 
         # Replace the file on disk with a different structure

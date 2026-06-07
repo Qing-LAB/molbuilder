@@ -163,9 +163,9 @@ class TestSpectraPage:
         """The shared header lists Spectrum calculation among the
         canonical 5 tabs -- regression check against a future header
         refactor dropping the entry."""
-        # /structure is one of the canonical landing pages; reuse it
-        # to fetch a header-rendered body.
-        r = web_client.get("/structure")
+        # /molbuilder is one of the canonical landing pages; reuse
+        # it to fetch a header-rendered body.
+        r = web_client.get("/molbuilder")
         body = r.data.decode()
         assert 'href="/spectrum-calculation"' in body
 

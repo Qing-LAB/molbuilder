@@ -1,7 +1,7 @@
 /* molbuilder shared app-tabs nav styling.
  *
  * Every page in the app shares a top-of-page navigation strip with
- * five tabs in a fixed order: Structure (/structure), Structure
+ * five tabs in a fixed order: Molbuilder (/molbuilder), Structure
  * optimization (/structure-optimization), Spectrum calculation
  * (/spectrum-calculation), Transport calculation
  * (/transport-calculation), Results (/results).  Each page marks

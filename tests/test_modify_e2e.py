@@ -177,7 +177,7 @@ def _open_modify(page, base_url):
         errors.append(("console.error", msg.text))
         if msg.type == "error" else None
     ))
-    page.goto(f"{base_url}/structure")
+    page.goto(f"{base_url}/molbuilder")
     page.wait_for_function(
         "() => !!window.molbuilder"
         "       && typeof window.molbuilder.loadStructureText === 'function'"
@@ -348,10 +348,10 @@ def test_modify_page_loads_without_js_errors(page, flask_server):
     errors = _open_modify(page, flask_server)
     # Wait a brief moment so any deferred init fires.
     page.wait_for_timeout(200)
-    assert errors == [], f"JS errors during /structure boot: {errors}"
-    # Active-tab marker matches the tab label owned by /structure
+    assert errors == [], f"JS errors during /molbuilder boot: {errors}"
+    # Active-tab marker matches the tab label owned by /molbuilder
     # (see docs/tabs/architecture.md § 2.1 for the tab inventory).
-    assert page.locator("a.app-tab.is-active").inner_text() == "Structure"
+    assert page.locator("a.app-tab.is-active").inner_text() == "Molbuilder"
 
 
 def test_runtime_modules_registered_on_modify(page, flask_server):
@@ -364,7 +364,7 @@ def test_runtime_modules_registered_on_modify(page, flask_server):
     to register would still work for same-tick consumers (because of
     the backward-compat global) but break any consumer that
     legitimately uses ``whenReady``.  This test catches that drift."""
-    page.goto(f"{flask_server}/structure")
+    page.goto(f"{flask_server}/molbuilder")
     page.wait_for_function(
         "() => window.molbuilder && window.molbuilder.runtime "
         "      && window.molbuilder.runtime.listRegistered()"
@@ -1589,7 +1589,7 @@ def test_modify_page_resources_load_with_200(page, flask_server):
         failures.append((r.status, r.url))
         if r.status >= 400 else None
     ))
-    page.goto(f"{flask_server}/structure")
+    page.goto(f"{flask_server}/molbuilder")
     page.wait_for_load_state("networkidle")
     # Filter out the CDN host (network-flake-prone in CI); only assert
     # on locally-served paths.
@@ -1631,8 +1631,8 @@ def test_modify_structure_survives_navigation_to_watch_and_back(
     page.locator('a.app-tab[href="/results"]').click()
     page.wait_for_url(f"{flask_server}/results")
     # And back.
-    page.locator('a.app-tab[href="/structure"]').click()
-    page.wait_for_url(f"{flask_server}/structure")
+    page.locator('a.app-tab[href="/molbuilder"]').click()
+    page.wait_for_url(f"{flask_server}/molbuilder")
     # Structure restored by Phase 1 sessionStorage round-trip.
     page.wait_for_function(
         "() => window.__molbuilder_modify_test"
@@ -1658,8 +1658,8 @@ def test_modify_selection_survives_navigation(
     _set_selection(page, [1])
     page.locator('a.app-tab[href="/results"]').click()
     page.wait_for_url(f"{flask_server}/results")
-    page.locator('a.app-tab[href="/structure"]').click()
-    page.wait_for_url(f"{flask_server}/structure")
+    page.locator('a.app-tab[href="/molbuilder"]').click()
+    page.wait_for_url(f"{flask_server}/molbuilder")
     # Structure restored.
     page.wait_for_function(
         "() => window.__molbuilder_modify_test"
@@ -1687,8 +1687,8 @@ def test_modify_state_after_op_survives_navigation(
     )
     page.locator('a.app-tab[href="/results"]').click()
     page.wait_for_url(f"{flask_server}/results")
-    page.locator('a.app-tab[href="/structure"]').click()
-    page.wait_for_url(f"{flask_server}/structure")
+    page.locator('a.app-tab[href="/molbuilder"]').click()
+    page.wait_for_url(f"{flask_server}/molbuilder")
     # Post-delete state is what restores.
     page.wait_for_function(
         "() => window.__molbuilder_modify_test"
@@ -2846,7 +2846,7 @@ class TestModifySecondVisitExternalChange:
         page.goto(f"{flask_server}/structure-optimization")
         page.wait_for_selector("#build-btn", timeout=5000)
 
-        page.goto(f"{flask_server}/structure")
+        page.goto(f"{flask_server}/molbuilder")
         # The selection store MUST repopulate.  Without the refresh
         # contract, sessionStorage has the file path but the store's
         # internal "lastSourceFile" still matches -> no re-fetch.
@@ -2888,7 +2888,7 @@ class TestModifySecondVisitExternalChange:
         )
         time.sleep(0.5)
 
-        page.goto(f"{flask_server}/structure")
+        page.goto(f"{flask_server}/molbuilder")
         # The atom list MUST reflect the new structure on re-entry.
         # If the JS subscriber bails on "same source file path",
         # the user sees stale 3 atoms.  This is the same bug shape

@@ -1,7 +1,7 @@
 {#- molbuilder shared header + app-tabs nav.
 
    Included by every main tab template.  Each caller sets active_tab
-   to one of the five canonical values: "structure",
+   to one of the five canonical values: "molbuilder",
    "structure-optimization", "spectrum-calculation",
    "transport-calculation", "results".
 
@@ -20,8 +20,8 @@
    one-place change here.
 
    Tab labels and routes are documented in docs/tabs/architecture.md.
-   Legacy paths (/, /modify, /spectra) 301-redirect to the new
-   canonical URLs so existing bookmarks survive.
+   The bare ``/`` is bound to the Molbuilder page as a convenience
+   for the host root; there are no other route aliases.
 
    Watch was retired 2026-05-19 -- the /watch route + template +
    bootstrap are gone; trajectory inspection is /results-only via
@@ -35,10 +35,10 @@
 </header>
 
 <nav class="app-tabs" role="tablist" aria-label="molbuilder sections">
-  <a href="/structure"
-     class="app-tab{% if active_tab == 'structure' %} is-active{% endif %}"
+  <a href="/molbuilder"
+     class="app-tab{% if active_tab == 'molbuilder' %} is-active{% endif %}"
      role="tab"
-     {% if active_tab == 'structure' %}aria-current="page"{% endif %}>Structure</a>
+     {% if active_tab == 'molbuilder' %}aria-current="page"{% endif %}>Molbuilder</a>
   <a href="/structure-optimization"
      class="app-tab{% if active_tab == 'structure-optimization' %} is-active{% endif %}"
      role="tab"

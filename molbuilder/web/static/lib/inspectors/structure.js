@@ -47,23 +47,23 @@
             const actions = document.createElement("div");
             actions.className = "inspector-card-actions";
             const modifyLink = document.createElement("a");
-            modifyLink.href = "/structure";
-            modifyLink.textContent = "Open in Structure";
+            modifyLink.href = "/molbuilder";
+            modifyLink.textContent = "Open in Molbuilder";
             modifyLink.className = "inspector-card-link";
             modifyLink.title = (
-                "Loads the structure into the Structure tab so you can "
-                + "rotate / orient / add electrodes / etc."
+                "Loads the structure into the Molbuilder tab so you "
+                + "can rotate / orient / add electrodes / etc."
             );
-            // Hand the current file off to /structure via the
+            // Hand the current file off to /molbuilder via the
             // sessionStorage keys the Projects sidebar uses (see
             // ``lib/projects/state.js`` SS_FILE / SS_DIR).
-            // /modify's selection-bootstrap reads SS_FILE on mount
-            // via ``projects.getCurrentFile()`` and dispatches the
-            // auto-load.  Without setting these the user would land
-            // on /modify with whatever file was previously active —
-            // or an empty viewer.  Setting both keys also makes the
-            // sidebar open to the correct folder with the file
-            // highlighted.  Closes #117.
+            // The Molbuilder tab's selection-bootstrap reads SS_FILE
+            // on mount via ``projects.getCurrentFile()`` and
+            // dispatches the auto-load.  Without setting these the
+            // user would land on the tab with whatever file was
+            // previously active — or an empty viewer.  Setting both
+            // keys also makes the sidebar open to the correct folder
+            // with the file highlighted.  Closes #117.
             modifyLink.addEventListener("click", () => {
                 try {
                     root.sessionStorage.setItem(

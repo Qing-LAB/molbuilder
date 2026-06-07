@@ -79,10 +79,9 @@ _PAGE_BOOT_TIMEOUT_MS = 5000   # generous; module scripts on a cold
 _PAGES = [
     # Structure-optimization tab: SIESTA / PySCF script generator.
     ("/structure-optimization", "#build-btn"),
-    # Structure tab: interactive build + edit workspace.  Probe for
-    # the selection panel's host (the legacy left-column
-    # ``#atom-list`` was retired with the store refactor).
-    ("/structure", "#selection-host"),
+    # Molbuilder tab: interactive build + edit workspace.  Probe
+    # for the selection panel's host.
+    ("/molbuilder", "#selection-host"),
     # Spectrum-calculation tab: PySCF spectra script generator.
     ("/spectrum-calculation", "#generate-btn"),
     # Transport-calculation tab: placeholder; pin its boot too so

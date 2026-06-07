@@ -115,7 +115,7 @@ def _option_basenames(opts):
 
 
 def _setup_modify_dir(page, base_url, dir_path):
-    page.goto(f"{base_url}/structure")
+    page.goto(f"{base_url}/molbuilder")
     page.wait_for_function(
         "() => window.molbuilder && window.molbuilder.projects "
         "      && typeof window.molbuilder.projects.setShared "
@@ -161,7 +161,7 @@ class TestStaleResultsRefresh:
         assert opts1 == ["run1.out"]
 
         # Go back to /modify -- as if the user opened the generator tab.
-        page.goto(f"{flask_server}/structure")
+        page.goto(f"{flask_server}/molbuilder")
         page.wait_for_timeout(300)
 
         # A new result file appears on disk (simulating the user
@@ -275,7 +275,7 @@ class TestNoStaleScanOnRevisit:
         assert len(opts1) == 1   # only run1.out
 
         # Re-visit /results without changing anything.
-        page.goto(f"{flask_server}/structure")
+        page.goto(f"{flask_server}/molbuilder")
         page.wait_for_timeout(300)
         page.goto(f"{flask_server}/results")
         page.wait_for_selector(
