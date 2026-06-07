@@ -90,14 +90,15 @@ def _make_minimal_results() -> SpectraResults:
 class TestSpectraPage:
 
     def test_page_loads(self, web_client):
-        r = web_client.get("/spectra")
+        r = web_client.get("/spectrum-calculation")
         assert r.status_code == 200
         body = r.data.decode()
-        # Tab nav present + Spectra tab marked active.
-        assert "Spectra" in body
+        # Tab nav present + Spectrum-calculation tab marked active.
+        assert "Spectrum calculation" in body
         assert "app-tabs" in body
-        # Generate-side ids (the only surface /spectra still has after
-        # the tab-merge step 2.5 made the page generate-only).
+        # Generate-side ids (the only surface the page carries; the
+        # inspect-side surface lives in _spectra_inspector.html and
+        # is served only to /results).
         assert 'id="spectra-form-container"' in body
         assert 'id="structure-text"'                in body
         assert 'id="generate-btn"'            in body
@@ -116,18 +117,18 @@ class TestSpectraPage:
         assert body.index("lib/form-schema.js") \
                < body.index("lib/spectra/core.js")
 
-    def test_page_is_generate_only_after_step_2_5(self, web_client):
-        """Post-step-2.5 contract: /spectra is generate-only -- the
+    def test_page_is_generate_only(self, web_client):
+        """The Spectrum-calculation page is generate-only -- the
         inspect-side surface (load controls, modes table, mode viewer,
         ES panel) lives in _spectra_inspector.html and is served only
         to /results via GET /partials/spectra-inspector.
 
         Pinning the EXCLUSION here gives a clear failure mode if a
-        future commit accidentally re-includes the partial on /spectra
-        (which would also re-introduce the very UX-debt the merge
-        cleaned up).
+        future commit accidentally re-includes the partial on the
+        generator page (which would re-introduce the UX-debt the
+        generator/inspector split was made to clean up).
         """
-        body = web_client.get("/spectra").data.decode()
+        body = web_client.get("/spectrum-calculation").data.decode()
         for inspect_only_id in (
             "watch-path",              # load-by-path input
             "load-path-btn",           # one-shot load button
@@ -152,19 +153,21 @@ class TestSpectraPage:
         ):
             needle = f'id="{inspect_only_id}"'
             assert needle not in body, (
-                f"/spectra body unexpectedly carries {needle!r} -- "
-                f"step 2.5 made /spectra generate-only; inspect-side "
+                f"/spectrum-calculation body unexpectedly carries "
+                f"{needle!r} -- the page is generate-only; inspect-side "
                 f"ids belong in the _spectra_inspector.html partial "
                 f"served by GET /partials/spectra-inspector"
             )
 
-    def test_app_header_includes_spectra_tab(self, web_client):
-        """The shared header now lists Spectra alongside Build / Modify /
-        Watch -- regression check against a future header refactor
-        dropping the entry."""
-        r = web_client.get("/")
+    def test_app_header_includes_spectrum_tab(self, web_client):
+        """The shared header lists Spectrum calculation among the
+        canonical 5 tabs -- regression check against a future header
+        refactor dropping the entry."""
+        # /structure is one of the canonical landing pages; reuse it
+        # to fetch a header-rendered body.
+        r = web_client.get("/structure")
         body = r.data.decode()
-        assert 'href="/spectra"' in body
+        assert 'href="/spectrum-calculation"' in body
 
     def test_viewer_js_served_as_bootstrap_stub(self, web_client):
         """After step 2.2 of the tab-merge lift, spectra/viewer.js is
@@ -240,7 +243,7 @@ class TestSpectraPage:
             assert needle in css, f"missing {needle!r} in form-schema.css"
 
     def test_spectra_page_includes_shared_form_schema_css(self, web_client):
-        body = web_client.get("/spectra").data.decode()
+        body = web_client.get("/spectrum-calculation").data.decode()
         # The template imports the shared form-schema CSS so the
         # rendered <fieldset>s pick up the consistent layout.
         assert "lib/form-schema.css" in body
@@ -303,17 +306,18 @@ class TestSpectraPage:
         assert body["results"]["engine"] == "pyscf"
 
     def test_plotly_not_loaded_on_spectra_generator(self, web_client):
-        """/spectra is the GENERATOR tab (configure + emit script).
-        Plotly is a results-viewing library used only by the spectra
-        inspector chart; loading it on /spectra was dead weight (>1 MB
-        of unused JS per page view).  Pin that the generator template
-        does NOT pull Plotly, and that the chart id lives ONLY in the
-        inspector partial (consumed by /results)."""
-        body = web_client.get("/spectra").data.decode()
+        """/spectrum-calculation is the GENERATOR tab (configure +
+        emit script).  Plotly is a results-viewing library used only
+        by the spectra inspector chart; loading it on the generator
+        page was dead weight (>1 MB of unused JS per page view).  Pin
+        that the generator template does NOT pull Plotly, and that
+        the chart id lives ONLY in the inspector partial (consumed
+        by /results)."""
+        body = web_client.get("/spectrum-calculation").data.decode()
         assert "/vendor/plotly.min.js" not in body, (
-            "/spectra (generator tab) must NOT load Plotly; it's a "
-            "results-viewing library that belongs in the inspector "
-            "partial only."
+            "the spectrum-calculation generator tab must NOT load "
+            "Plotly; it's a results-viewing library that belongs in "
+            "the inspector partial only."
         )
         # ``spectrum-chart`` is an inspect-side id; verify it's served
         # by the partial endpoint rather than by /spectra.
@@ -532,11 +536,14 @@ class TestSpectraDisposeContract:
 
     def test_dispose_clears_every_long_lived_resource(self, web_client):
         """dispose() must tear down every long-lived resource the
-        mount allocated: watch poller, animation rAF, 3Dmol viewer,
-        Plotly chart.  Pinning each cleanup site rather than just
-        host.innerHTML="" so a future refactor that drops, say, the
-        Plotly.purge call lands with a clear failure (and not
-        silently with `host cleared therefore dispose worked`)."""
+        mount allocated: watch poller, the mode-viewer embed handle
+        (which owns its own vibration rAF + 3Dmol viewer per #231
+        Part B), and the Plotly chart.  Pinning each cleanup site
+        rather than just host.innerHTML="" so a future refactor that
+        drops, say, the Plotly.purge call lands with a clear failure
+        (and not silently with `host cleared therefore dispose
+        worked`).
+        """
         import re
         js = web_client.get("/static/lib/spectra/core.js").data.decode()
         m = re.search(
@@ -546,10 +553,9 @@ class TestSpectraDisposeContract:
         for needle, what in (
             ("clearInterval(state.watchTimer)",
                 "live-watch poller (state.watchTimer)"),
-            ("cancelAnimationFrame(state.animTimer)",
-                "mode-animation rAF (state.animTimer)"),
-            ("state.viewer.clear()",
-                "3Dmol mode-viewer (state.viewer)"),
+            ("state.handle.dispose()",
+                "mode-viewer embed handle (state.handle — owns the "
+                "vibration rAF + the 3Dmol viewer)"),
             ("Plotly.purge(els.spectrumChart)",
                 "Plotly spectrum chart"),
         ):
@@ -612,10 +618,13 @@ class TestSpectraDisposeContract:
         # Each per-resource cleanup is guarded by an `if (state.X)`
         # check or a `typeof Plotly !== "undefined"` check that
         # makes a second call a no-op.  Pin the guards explicitly.
+        # The vibration animation + 3Dmol viewer are owned by the
+        # mode-viewer embed handle (#231 Part B); their guard is
+        # ``if (state.handle)`` against the handle reference, not
+        # the legacy ``state.animTimer`` / ``state.viewer`` slots.
         for guard in (
             "if (state.watchTimer)",
-            "if (state.animTimer)",
-            "if (state.viewer)",
+            "if (state.handle)",
             'typeof Plotly !== "undefined"',
         ):
             assert guard in body, (

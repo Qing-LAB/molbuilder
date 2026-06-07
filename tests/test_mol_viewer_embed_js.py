@@ -328,9 +328,12 @@ class TestCellAndLabels:
         ''')
         assert out == {"atoms": "all", "format": "index"}
 
-    def test_labels_legacy_indices_normalises_to_split_shape(self):
-        """Legacy callers may pass {atoms: "indices"}; normaliser
-        converts to the modern split shape per § 3.6."""
+    def test_labels_unknown_atoms_string_falls_back_to_all(self):
+        """``atoms`` accepts only ``"all"`` or ``number[]``.  Any
+        other string -- including the v1 legacy sentinels
+        ``"indices"`` / ``"names"`` that were dropped in #240 --
+        falls back to ``"all"`` so downstream code only handles
+        the two documented shapes."""
         out = _run_node('''
             const r = window.molbuilder.viewer._normaliseLabels({
                 atoms: "indices",
@@ -341,18 +344,6 @@ class TestCellAndLabels:
             }));
         ''')
         assert out == {"atoms": "all", "format": "index"}
-
-    def test_labels_legacy_names_normalises_to_name_format(self):
-        out = _run_node('''
-            const r = window.molbuilder.viewer._normaliseLabels({
-                atoms: "names",
-            });
-            console.log(JSON.stringify({
-                atoms:  r.atoms,
-                format: r.format,
-            }));
-        ''')
-        assert out == {"atoms": "all", "format": "name"}
 
     def test_labels_format_element_kept(self):
         """The new ``element`` format option from the Labels knob
