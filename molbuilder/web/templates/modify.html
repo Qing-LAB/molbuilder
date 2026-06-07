@@ -36,20 +36,54 @@
 <!--             panel.  All M1-M5 ops now wired.                  -->
 <!-- ============================================================ -->
 
-<section class="loader-bar">
-  <div class="loader">
-    <span class="loader-hint">
-      Pick a structure (<code>.xyz</code> / <code>.pdb</code>) in the
-      <strong>Projects</strong> sidebar, then click
-      <strong>Load picked file</strong> to bring it into the viewer.
-    </span>
-    <button id="load-candidate-btn" class="ghost" disabled
-      title="Load the file currently picked in the Projects sidebar into the viewer. Disabled when no loadable file (.xyz / .pdb) is picked.">
-      Load picked file
-    </button>
-    <span id="load-candidate-readout" class="muted"></span>
+<!-- Sources card: every path that brings a structure INTO the
+     workspace lives here in a foldable panel.  Order matches
+     docs/tabs/architecture.md § 5.1.  Today the card carries Load-
+     from-project + Generate-from-SMILES; future generators (3DNA,
+     peptide, name, file upload) land as additional <details>
+     panels alongside these two. -->
+<section class="sources-card card">
+  <header class="card-header">
+    <h2>Sources</h2>
     <span id="status" class="status">No structure loaded.</span>
-  </div>
+  </header>
+
+  <details class="source-panel" open>
+    <summary>Load from project</summary>
+    <div class="source-panel-body">
+      <p class="source-hint">
+        Pick a structure (<code>.xyz</code> / <code>.pdb</code>) in
+        the <strong>Projects</strong> sidebar, then click
+        <strong>Load</strong> to bring it into the workspace.
+      </p>
+      <div class="source-actions">
+        <button id="load-candidate-btn" class="ghost" disabled
+          title="Load the file currently picked in the Projects sidebar into the workspace. Disabled when no loadable file (.xyz / .pdb) is picked.">
+          Load picked file
+        </button>
+        <span id="load-candidate-readout" class="muted"></span>
+      </div>
+    </div>
+  </details>
+
+  <details class="source-panel">
+    <summary>Generate from SMILES</summary>
+    <div class="source-panel-body">
+      <p class="source-hint">
+        Build a 3-D structure from a SMILES string via RDKit.
+      </p>
+      <label class="source-input-row">
+        <span>SMILES</span>
+        <input id="smiles-input" type="text"
+               placeholder="e.g. CCO  (ethanol)"
+               autocomplete="off" spellcheck="false">
+      </label>
+      <div class="source-actions">
+        <button id="smiles-generate-btn" class="ghost">Generate</button>
+        <span id="smiles-status" class="muted" role="status"></span>
+      </div>
+    </div>
+  </details>
 </section>
 
 <main class="modify-grid">
@@ -446,5 +480,13 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
 <script src="{{ url_for('static', filename='lib/selection-panel.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/selection/viewer-adapter.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/selection-bootstrap.js') }}"></script>
+{# Molbuilder-tab canvas + source-panel wiring.  Order matters:
+   canvas-state + warning-modal mount independent primitives;
+   page.js auto-binds them into the structurePage orchestrator;
+   smiles.js wires the Generate button against structurePage. #}
+<script src="{{ url_for('static', filename='lib/structure/canvas-state.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/structure/warning-modal.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/structure/page.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/structure/smiles.js') }}"></script>
 </body>
 </html>

@@ -32,27 +32,98 @@ header .tagline {
     font-size: 0.95rem;
 }
 
-/* ---- Loader bar ---- */
-.loader-bar {
-    background: var(--bg-card);
-    border-bottom: 1px solid var(--border-soft);
-    padding: 0.85rem 2rem;
+/* ---- Sources card ----
+ *
+ * Full-width card above the modify-grid.  Holds every path that
+ * brings a structure INTO the workspace, as foldable <details>
+ * panels.  Order matches docs/tabs/architecture.md § 5.1.  Each
+ * panel keeps its open/closed state across page lifetime (native
+ * <details> behaviour); after Phase B.3 we may persist that state
+ * to sessionStorage. */
+.sources-card {
+    margin: 1rem 2rem 0;
+    padding: 0.6rem 1rem 0.4rem;
 }
-.loader {
+.sources-card .card-header {
+    padding: 0 0 0.6rem;
+    border-bottom: 1px solid var(--border-soft);
+}
+.sources-card .card-header h2 {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+.source-panel {
+    border-bottom: 1px solid var(--border-soft);
+    padding: 0.4rem 0;
+}
+.source-panel:last-child {
+    border-bottom: none;
+}
+.source-panel > summary {
+    cursor: pointer;
+    padding: 0.3rem 0;
+    color: var(--text-primary);
+    font-weight: 500;
+    list-style: none;
+}
+.source-panel > summary::-webkit-details-marker { display: none; }
+.source-panel > summary::before {
+    content: "▸";
+    display: inline-block;
+    width: 1.2em;
+    color: var(--text-muted);
+    transition: transform 120ms ease;
+}
+.source-panel[open] > summary::before {
+    transform: rotate(90deg);
+}
+.source-panel-body {
+    padding: 0.4rem 0 0.6rem 1.2em;
+}
+.source-hint {
+    margin: 0 0 0.5rem;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+.source-input-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.3rem 0 0.5rem;
+}
+.source-input-row > span {
+    color: var(--text-secondary);
+    min-width: 4em;
+}
+.source-input-row > input {
+    flex: 1;
+    padding: 0.3rem 0.5rem;
+    background: var(--bg-input, var(--bg-card));
+    color: var(--text-primary);
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    font: 0.92rem/1.2 ui-monospace, "SF Mono", Menlo, monospace;
+}
+.source-actions {
     display: flex;
     align-items: center;
     gap: 0.6rem;
     flex-wrap: wrap;
 }
-.loader label {
-    color: var(--text-secondary);
-    font-weight: 500;
-}
 
+/* Status text inside the Sources card header — reused from the
+ * legacy loader-bar so modify/viewer.js's setStatus() still works
+ * without touching the JS.  Both .status and the severity
+ * variants below match the conventions in Build (style.css) and
+ * the trajectory inspector (lib/trajectory-inspector.css) so a
+ * future "add a severity" change is a single CSS edit. */
 .status {
     color: var(--text-muted);
     font-size: 0.9rem;
-    padding-left: 0.5rem;
+    margin-left: auto;
+    font-weight: normal;
 }
 /* Compound-class convention shared with Build (style.css) and the
  * trajectory inspector (lib/trajectory-inspector.css): the JS sets
@@ -118,9 +189,9 @@ header .tagline {
 }
 @media (max-width: 640px) {
     /* Phone-narrow: drop padding + gap to claw back pixels. */
-    .modify-grid { padding: 6px; gap: 6px; }
-    .loader-bar  { padding: 0.55rem 0.8rem; }
-    header       { padding: 0.9rem 1rem 0.6rem; }
+    .modify-grid  { padding: 6px; gap: 6px; }
+    .sources-card { margin: 0.5rem 0.8rem 0; padding: 0.4rem 0.8rem; }
+    header        { padding: 0.9rem 1rem 0.6rem; }
 }
 
 /* ---- Cards ---- */

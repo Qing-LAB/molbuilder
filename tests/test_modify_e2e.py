@@ -493,6 +493,62 @@ def test_load_button_disabled_when_non_structure_file_picked(
     assert page.locator("#load-candidate-readout").inner_text() == ""
 
 
+def test_smiles_generator_renders_structure_in_viewer(page, flask_server):
+    """End-to-end SMILES flow: type ``CCO`` into the SMILES input,
+    click Generate.  The RDKit backend builds ethanol; the panel
+    routes the XYZ through ``structurePage.loadIntoCanvas`` (canvas
+    is empty → no warning fires) and the 3Dmol viewer renders the
+    9 atoms (3 heavy + 6 H).  Status text reports the atom count.
+
+    Skips if rdkit isn't installed — the build endpoint surfaces
+    a clean error in that case but this test wants the happy path.
+    """
+    try:
+        import rdkit  # noqa: F401
+    except ImportError:
+        pytest.skip("rdkit not installed; cannot exercise SMILES build")
+
+    _open_modify(page, flask_server)
+    # Expand the SMILES panel + type a SMILES + click Generate.
+    page.locator(
+        ".source-panel:has(> summary:has-text('SMILES'))"
+    ).evaluate("el => el.open = true")
+    page.locator("#smiles-input").fill("CCO")
+    page.locator("#smiles-generate-btn").click()
+    # Wait for the viewer to populate.  Ethanol with H = 9 atoms
+    # via RDKit's default geometry generation.
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test"
+        "      && window.__molbuilder_modify_test.getNAtoms() === 9",
+        timeout=10_000,
+    )
+    # Status text reports the result with the SMILES echo.
+    status_text = page.locator("#smiles-status").inner_text()
+    assert "9" in status_text and "CCO" in status_text
+
+
+def test_smiles_generator_empty_input_surfaces_inline_error(
+        page, flask_server):
+    """Click Generate with an empty SMILES input → inline error,
+    NO network call (the module rejects empty input client-side)."""
+    _open_modify(page, flask_server)
+    page.locator(
+        ".source-panel:has(> summary:has-text('SMILES'))"
+    ).evaluate("el => el.open = true")
+    page.locator("#smiles-input").fill("")
+    page.locator("#smiles-generate-btn").click()
+    # Inline error appears WITHOUT a roundtrip — the message is
+    # the client-side validation string.
+    page.wait_for_function(
+        "() => document.getElementById('smiles-status').textContent"
+        "        .toLowerCase().includes('enter a smiles')"
+    )
+    # Viewer state is unchanged (still empty).
+    assert page.evaluate(
+        "() => window.__molbuilder_modify_test.getNAtoms()"
+    ) == 0
+
+
 # --------------------------------------------------------------------- #
 #  Selection-store contracts                                            #
 #                                                                       #
