@@ -595,15 +595,19 @@
             // after delete).  applyStructure() will rebuild the list
             // and call refreshSelectionUI which re-enables buttons.
             applyStructure(r);
-            // Flag the canvas dirty so a subsequent Load / Generate
-            // fires the unsaved-modifications warning.  Idempotent
-            // when already dirty; no-op when the canvas-state module
-            // hasn't been wired (e.g. early page-load races).
+            // Sync canvas-state to the new XYZ so Save writes the
+            // post-op structure (not the original loaded text) AND
+            // the dirty flag flips so a subsequent Load / Generate
+            // fires the warning modal.  Idempotent / safe no-op
+            // when canvas-state hasn't mounted yet (early-boot
+            // race; the modules load after this script on
+            // /molbuilder).
             try {
-                const sp = window.molbuilder
-                        && window.molbuilder.structurePage;
-                if (sp && typeof sp.markDirtyAfterModification === "function") {
-                    sp.markDirtyAfterModification();
+                const cs = window.molbuilder
+                        && window.molbuilder.structureCanvas;
+                if (cs && typeof cs.replaceContent === "function"
+                       && r && typeof r.xyz === "string") {
+                    cs.replaceContent(r.xyz);
                 }
             } catch (_) { /* nothing to do — UX unaffected */ }
             setEditStatus(

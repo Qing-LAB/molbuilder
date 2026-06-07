@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>molbuilder &mdash; modify a structure</title>
+<title>molbuilder &mdash; Molbuilder workspace</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tokens.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
@@ -81,6 +81,24 @@
       <div class="source-actions">
         <button id="smiles-generate-btn" class="ghost">Generate</button>
         <span id="smiles-status" class="muted" role="status"></span>
+      </div>
+    </div>
+  </details>
+
+  <details class="source-panel">
+    <summary>Save</summary>
+    <div class="source-panel-body">
+      <p class="source-hint">
+        Write the workspace structure back to its source file.
+        Save-as (pick a new directory + filename) lands in a later
+        phase.
+      </p>
+      <div class="source-actions">
+        <button id="save-to-source-btn" class="ghost" disabled>
+          Save to source
+        </button>
+        <span id="save-readout" class="muted"></span>
+        <span id="save-status" class="muted" role="status"></span>
       </div>
     </div>
   </details>
@@ -488,5 +506,6 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
 <script src="{{ url_for('static', filename='lib/structure/warning-modal.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/page.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/smiles.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/structure/save.js') }}"></script>
 </body>
 </html>

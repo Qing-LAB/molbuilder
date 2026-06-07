@@ -666,6 +666,98 @@ def test_smiles_with_dirty_canvas_cancel_keeps_edit(
     )
 
 
+def test_save_writes_to_source_and_clears_dirty(
+        page, flask_server, tmp_path, monkeypatch):
+    """Full Save round-trip: load, edit, click Save → file on disk
+    is updated AND canvas.dirty clears.  The orchestrator's
+    markSavedTo runs so any subsequent Load / Generate WILL NOT
+    fire the warning modal (until the user re-edits).
+
+    Uses a subdirectory under tmp_path because /api/files/upload
+    requires target_dir depth ≥ 1 inside the picker root (no
+    uploads directly under the root).
+    """
+    from pathlib import Path as _P
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    project_dir = tmp_path / "test_project"
+    project_dir.mkdir()
+    water_xyz_file = str(project_dir / "water.xyz")
+    _P(water_xyz_file).write_text(_H2O_XYZ)
+    _open_modify(page, flask_server)
+    _load_water_via_button(page, water_xyz_file)
+    # Edit: delete the O atom — file content will diverge from
+    # the original 3-atom water.
+    _set_selection(page, [0])
+    page.locator("#delete-apply").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 2"
+    )
+    assert page.evaluate(
+        "() => window.molbuilder.structureCanvas.isDirty()"
+    ) is True
+    # Expand the Save panel + click Save.
+    page.locator(
+        ".source-panel:has(> summary:has-text('Save'))"
+    ).evaluate("el => el.open = true")
+    page.locator("#save-to-source-btn").click()
+    # Wait until the inflight save resolves (status leaves "Saving…").
+    page.wait_for_function(
+        "() => !document.getElementById('save-status').textContent"
+        "        .toLowerCase().startsWith('saving')"
+    )
+    status_text = page.locator("#save-status").inner_text()
+    assert "saved water.xyz" in status_text.lower(), (
+        f"save-status should report success; got {status_text!r}"
+    )
+    # Dirty bit cleared via markSavedTo.
+    assert page.evaluate(
+        "() => window.molbuilder.structureCanvas.isDirty()"
+    ) is False
+    assert page.evaluate(
+        "() => window.molbuilder.structureCanvas.getLastSavedTo()"
+    ) == water_xyz_file
+    # The file on disk now reflects the 2-atom post-delete structure.
+    new_text = _P(water_xyz_file).read_text()
+    n_atoms_line = new_text.strip().splitlines()[0]
+    assert n_atoms_line.strip() == "2", (
+        f"file on disk should reflect post-delete 2 atoms; first "
+        f"line is {n_atoms_line!r}"
+    )
+
+
+def test_save_button_disabled_for_smiles_without_prior_save(
+        page, flask_server):
+    """A SMILES-generated structure has no source.file and no
+    last_save_to — Save would have nowhere to write.  The button
+    must disable + the readout explains why (Save-as comes later)."""
+    try:
+        import rdkit  # noqa: F401
+    except ImportError:
+        pytest.skip("rdkit not installed; cannot exercise SMILES build")
+
+    _open_modify(page, flask_server)
+    page.locator(
+        ".source-panel:has(> summary:has-text('SMILES'))"
+    ).evaluate("el => el.open = true")
+    page.locator("#smiles-input").fill("C")
+    page.locator("#smiles-generate-btn").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 5",
+        timeout=10_000,
+    )
+    page.locator(
+        ".source-panel:has(> summary:has-text('Save'))"
+    ).evaluate("el => el.open = true")
+    # Button stays disabled even with a SMILES-generated structure
+    # in the workspace — there's no target to write to.
+    assert page.locator("#save-to-source-btn").is_disabled()
+    # Readout explains why.
+    readout = page.locator("#save-readout").inner_text()
+    assert "Save as" in readout or "No source" in readout, (
+        f"readout should explain why Save is disabled; got {readout!r}"
+    )
+
+
 def test_smiles_generator_empty_input_surfaces_inline_error(
         page, flask_server):
     """Click Generate with an empty SMILES input → inline error,

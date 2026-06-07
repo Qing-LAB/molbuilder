@@ -207,6 +207,29 @@
     }
 
     /**
+     * Replace the canvas text in place — text only; the source
+     * provenance + last_save_to stay put.  Marks the canvas dirty
+     * (any post-load modifier op flips dirty).  Use after a
+     * modifier op that returned new XYZ/PDB bytes; the canvas
+     * still came from the same file / generator, but the bytes
+     * have diverged.
+     *
+     * No-op on an empty canvas (nothing to replace).
+     */
+    function replaceContent(text) {
+        _ensureInit();
+        if (_state.text == null) return;
+        if (typeof text !== "string" || !text) {
+            throw new TypeError(
+                "replaceContent: text must be a non-empty string");
+        }
+        _state.text  = text;
+        _state.dirty = true;
+        _persistToSession();
+        _notify();
+    }
+
+    /**
      * Mark the canvas dirty.  Call after any modifier op (delete,
      * add, orient, region-tag, etc.) that changed the on-disk bytes.
      */
@@ -291,6 +314,7 @@
 
     var api = {
         setStructure:      setStructure,
+        replaceContent:    replaceContent,
         markDirty:         markDirty,
         markSaved:         markSaved,
         clear:             clear,
