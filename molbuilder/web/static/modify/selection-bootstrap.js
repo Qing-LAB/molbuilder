@@ -187,15 +187,42 @@
             const ix = p.lastIndexOf("/");
             return ix >= 0 ? p.slice(ix + 1) : p;
         }
+        // BOMB-7 fix (2026-06-07): readout distinguishes "Picked"
+        // (candidate set but not yet committed) from "Loaded"
+        // (candidate equals what's currently in the viewer's source
+        // file).  Pre-fix the readout always said "Picked: X" even
+        // after a successful Load — the user couldn't tell whether
+        // clicking Load again would re-run a no-op or re-fire the
+        // pipeline.  Button is disabled when there's no candidate
+        // OR when the candidate already matches the loaded source.
         function _refreshLoadUI() {
-            if (_loadBtn) _loadBtn.disabled = !_candidate;
+            const loadedSrc = store.getState
+                ? (store.getState().sourceFile || "") : "";
+            const isLoaded = !!_candidate && _candidate === loadedSrc;
+            if (_loadBtn) {
+                _loadBtn.disabled = !_candidate || isLoaded;
+            }
             if (_readout) {
-                _readout.textContent = _candidate
-                    ? "Picked: " + _basename(_candidate)
-                    : "";
+                if (!_candidate) {
+                    _readout.textContent = "";
+                } else if (isLoaded) {
+                    _readout.textContent = "Loaded: "
+                        + _basename(_candidate);
+                } else {
+                    _readout.textContent = "Picked: "
+                        + _basename(_candidate);
+                }
             }
         }
         _onCandidateChange(_refreshLoadUI);
+        // Re-render when the store's sourceFile changes (after a
+        // successful Load / commit).  Without this subscription,
+        // _refreshLoadUI only fires on candidate changes, so the
+        // readout would still say "Picked" until the user re-clicks
+        // the sidebar.
+        if (store && typeof store.subscribe === "function") {
+            store.subscribe(_refreshLoadUI);
+        }
 
         // The single "commit a structure file into the workspace"
         // path.  Read the file ONCE, gate through structurePage so

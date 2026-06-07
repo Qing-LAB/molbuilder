@@ -156,10 +156,34 @@ export function publishCommit(dir, file) {
   // Update sessionStorage + onChange subscribers FIRST so a
   // subscriber that gates on getCurrentFile() inside its
   // onCommit handler sees the new pick already in place.
-  setShared(dir, file);
+  //
+  // BOMB-4 fix (2026-06-07): skip setShared when the current
+  // pick already matches.  A real-user dblclick goes through
+  // list.js as TWO click events + one dblclick: the first click
+  // calls setShared (file), the second click calls setShared
+  // (file) again (no-op against sessionStorage but it DOES
+  // re-fire onChange), then publishCommit's inner setShared
+  // would fire onChange a THIRD time.  save.js's refreshState
+  // (subscriber on onChange) ran 3× per dblclick; Spectra's
+  // schema-reload fallback (when onCommit fallback is taken)
+  // re-fetched the schema 3× per dblclick.  With the dedup,
+  // publishCommit fires onChange once via the explicit caller
+  // path (e.g. list.js's first click) — the inner setShared
+  // here is a no-op when the pick hasn't changed.
+  const dirSafe  = dir  || "";
+  const fileSafe = file || "";
+  let currentDir  = "";
+  let currentFile = "";
+  try {
+    currentDir  = sessionStorage.getItem(SS_DIR)  || "";
+    currentFile = sessionStorage.getItem(SS_FILE) || "";
+  } catch (_) { /* private-mode SecurityError; treat as mismatch */ }
+  if (currentDir !== dirSafe || currentFile !== fileSafe) {
+    setShared(dirSafe, fileSafe);
+  }
   _publishToSet(commitSubscribers, {
-    dir:  dir  || "",
-    file: file || "",
+    dir:  dirSafe,
+    file: fileSafe,
   });
 }
 

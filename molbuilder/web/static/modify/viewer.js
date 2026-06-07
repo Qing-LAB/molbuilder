@@ -1250,22 +1250,52 @@
             title:         saved.title,
             n_atoms:       saved.n_atoms,
         });
-        // Hydrate canvas-state too so Save / Load / Generate know
-        // there's something in the workspace.  Without this, a
+        // Hydrate canvas-state so Save / Load / Generate know
+        // there's something in the workspace.  Without this a
         // session-restored structure leaves canvas-state empty:
-        // Save reports "No structure to save" and a Load doesn't
+        // Save reports "No structure to save" and Load doesn't
         // fire the warning modal even after the user makes edits.
+        //
+        // BOMB-2 fix (2026-06-07): canvas-state has its OWN
+        // sessionStorage mirror that may already carry the same
+        // bytes from this session (the pageHide save persisted
+        // both modify-state AND canvas-state at the same moment,
+        // so on the matched-page restore they're in lockstep).
+        // If we always called setStructure here, the dirty bit
+        // would be reset on every bfcache restore — a user who
+        // had unsaved edits would silently see them marked clean
+        // and a subsequent Load wouldn't fire the warning modal.
+        //
+        // Decision matrix:
+        //   * canvas empty       → setStructure (no dirty bit
+        //                          to lose; full hydrate).
+        //   * canvas text matches saved.xyz → DO NOT touch.
+        //                          canvas-state already restored
+        //                          itself from its own sessionStorage
+        //                          mirror with the correct dirty +
+        //                          last_save_to.
+        //   * canvas text differs → setStructure (modify-state is
+        //                          canonical for the modify tab;
+        //                          the divergence shouldn't
+        //                          happen but if it does, treat
+        //                          modify-state as authoritative).
         try {
             const cs = window.molbuilder
                     && window.molbuilder.structureCanvas;
             if (cs && typeof cs.setStructure === "function"
                    && saved.xyz) {
-                cs.setStructure(
-                    { source_format: "xyz", text: saved.xyz },
-                    { kind: saved.source_file ? "file" : "load",
-                      file: saved.source_file || null,
-                      generator_input: null }
-                );
+                const existing = (typeof cs.getStructure === "function")
+                    ? cs.getStructure() : null;
+                const sameBytes = existing
+                    && existing.text === saved.xyz;
+                if (!sameBytes) {
+                    cs.setStructure(
+                        { source_format: "xyz", text: saved.xyz },
+                        { kind: saved.source_file ? "file" : "load",
+                          file: saved.source_file || null,
+                          generator_input: null }
+                    );
+                }
             }
         } catch (_) { /* canvas-state optional — UX unaffected */ }
         // Rehydrate the store atomically.  We can't call

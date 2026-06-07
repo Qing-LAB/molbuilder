@@ -191,6 +191,57 @@ class TestOnCommit:
         # And the global pick is updated.
         assert out["currentFile"] == "/p/x.xyz"
 
+    def test_publishCommit_skips_inner_setShared_when_pick_unchanged(self):
+        """BOMB-4 fix (2026-06-07): a real-user dblclick on the
+        sidebar fires TWO click events (each calling setShared) plus
+        one dblclick event (calling publishCommit).  If publishCommit
+        unconditionally calls setShared, ``onChange`` subscribers
+        fire THREE times per dblclick — save.js's refreshState ran
+        3×, Spectra's schema-reload ran 3× when the onChange
+        fallback was active.  Dedup: publishCommit's inner setShared
+        is a no-op when the global pick already matches.
+
+        Setup mimics the dblclick flow: setShared the file FIRST
+        (the dblclick's first click), then publishCommit.  Without
+        the dedup, onChange would fire twice (initial + inner
+        setShared); with it, only the first call fires."""
+        out = _run_node('''
+            // First click fires setShared.
+            state.setShared("/p", "/p/x.xyz");
+            // Now wire the subscriber + reset its initial fire.
+            const onChangeCalls = [];
+            state.projects.onChange(p => onChangeCalls.push(p));
+            onChangeCalls.length = 0;
+            // Second click fires publishCommit on the SAME pick.
+            state.publishCommit("/p", "/p/x.xyz");
+            console.log(JSON.stringify(onChangeCalls));
+        ''')
+        # With the dedup, onChange is silent — the inner setShared
+        # was skipped because sessionStorage already had the pick.
+        assert out == [], (
+            f"onChange should NOT fire when publishCommit's pick "
+            f"matches sessionStorage; got {out}"
+        )
+
+    def test_publishCommit_fires_setShared_when_pick_changes(self):
+        """The flip side: publishCommit with a NEW pick (different
+        from sessionStorage) DOES need to update setShared so
+        cross-tab handoff via sessionStorage works."""
+        out = _run_node('''
+            state.setShared("/p", "/p/old.xyz");
+            const onChangeCalls = [];
+            state.projects.onChange(p => onChangeCalls.push(p));
+            onChangeCalls.length = 0;
+            // Different file — must update sessionStorage.
+            state.publishCommit("/p", "/p/new.xyz");
+            console.log(JSON.stringify({
+                onChange:    onChangeCalls,
+                currentFile: state.projects.getCurrentFile(),
+            }));
+        ''')
+        assert out["onChange"] == [{"dir": "/p", "file": "/p/new.xyz"}]
+        assert out["currentFile"] == "/p/new.xyz"
+
     def test_setShared_does_NOT_fire_onCommit_subscribers(self):
         """Single-click → setShared → onChange.  publishCommit is
         separate; setShared MUST NOT also fire onCommit, or every

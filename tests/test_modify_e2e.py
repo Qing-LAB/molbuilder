@@ -2417,6 +2417,100 @@ def test_modify_structure_survives_navigation_to_watch_and_back(
     assert first_elem == "O"
 
 
+def test_load_button_readout_switches_picked_to_loaded(
+        page, flask_server, water_xyz_file):
+    """BOMB-7 fix (2026-06-07): after a successful Load, the readout
+    MUST switch from "Picked: X" to "Loaded: X" and the button
+    MUST disable so the user can't replay the entire load pipeline
+    by accident.
+
+    Pre-fix the readout always said "Picked: water.xyz" — same
+    text before and after Load, button stayed enabled, and a stray
+    click would re-fetch + re-render the SAME file.
+    """
+    import os as _os
+    _open_modify(page, flask_server)
+    # Sidebar pick → candidate set, readout says "Picked", button
+    # enabled.
+    water_dir = _os.path.dirname(water_xyz_file)
+    page.evaluate(
+        """(c) => window.molbuilder.projects.setShared(c.dir, c.file)""",
+        {"dir": water_dir, "file": water_xyz_file},
+    )
+    page.wait_for_function(
+        "() => !document.getElementById('load-candidate-btn').disabled"
+    )
+    pre = page.locator("#load-candidate-readout").inner_text()
+    assert pre.startswith("Picked:"), (
+        f"pre-load readout should say 'Picked:'; got {pre!r}"
+    )
+    # Click Load → commit + viewer renders.
+    page.locator("#load-candidate-btn").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 3"
+    )
+    # Wait for the post-load _refreshLoadUI fanout to reach the
+    # readout (subscriber call after store.adoptSession).
+    page.wait_for_function(
+        "() => document.getElementById('load-candidate-readout')"
+        "        .textContent.startsWith('Loaded:')"
+    )
+    # Button now disabled — the loaded file IS the candidate; no
+    # point in re-firing the pipeline.
+    assert page.locator("#load-candidate-btn").is_disabled()
+
+
+def test_canvas_dirty_bit_survives_navigation_to_other_tab_and_back(
+        page, flask_server, water_xyz_file):
+    """BOMB-2 fix (2026-06-07): the canvas-state ``dirty`` flag MUST
+    survive a navigation away and back.
+
+    Pre-fix, restoreModifyState always called ``cs.setStructure(...)``
+    on bfcache restore — which RESETS the dirty bit to false.  A
+    user who had unsaved edits would silently see them marked clean
+    after a round trip, and a subsequent Load wouldn't fire the
+    warning modal.  Fix: skip the setStructure call when canvas-
+    state's own sessionStorage mirror already holds the same bytes."""
+    _open_modify(page, flask_server)
+    _load_water_via_button(page, water_xyz_file)
+    # Make a modification — Delete the O.  postOp marks the canvas
+    # dirty (this is the bit we're going to verify survives the
+    # round trip).
+    _set_selection(page, [0])
+    page.locator("#delete-apply").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 2"
+    )
+    pre_nav = page.evaluate("""() => ({
+        dirty:     window.molbuilder.structureCanvas.isDirty(),
+        n_atoms:   window.__molbuilder_modify_test.getNAtoms(),
+    })""")
+    assert pre_nav == {"dirty": True, "n_atoms": 2}, (
+        f"pre-nav state should be dirty + 2 atoms; got {pre_nav!r}"
+    )
+    # Navigate to /results.
+    page.locator('a.app-tab[href="/results"]').click()
+    page.wait_for_url(f"{flask_server}/results")
+    # And back.  restoreModifyState fires on mount; the BOMB-2 fix
+    # gates the canvas-state hydrate on bytes-match.
+    page.locator('a.app-tab[href="/molbuilder"]').click()
+    page.wait_for_url(f"{flask_server}/molbuilder")
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test"
+        "      && window.__molbuilder_modify_test.getNAtoms() === 2"
+    )
+    post_nav = page.evaluate("""() => ({
+        dirty:     window.molbuilder.structureCanvas.isDirty(),
+        n_atoms:   window.__molbuilder_modify_test.getNAtoms(),
+    })""")
+    assert post_nav == {"dirty": True, "n_atoms": 2}, (
+        f"post-nav state should preserve dirty=true; got {post_nav!r}.  "
+        f"Pre-BOMB-2-fix this returned dirty=false because "
+        f"restoreModifyState unconditionally called cs.setStructure "
+        f"which resets the dirty bit."
+    )
+
+
 def test_modify_selection_survives_navigation(
         page, flask_server, water_xyz_file):
     """Select an atom on Modify, navigate away, come back.  The

@@ -143,10 +143,28 @@ class TestTransportCoreJsServed:
         js = web.get("/static/lib/transport/core.js").data.decode()
         assert 'transport-form-container' in js
 
-    def test_core_js_subscribes_to_commit_channel(self, web):
+    def test_core_js_subscribes_to_commit_channel_only(self, web):
         """Per the universal interaction model (B.5.2): sidebar
         dblclick = commit.  Pin that this tab subscribes to
-        onCommit (preferred) with onChange as the fallback."""
+        ``onCommit`` and DOES NOT fall back to ``onChange``.
+
+        BOMB-3 fix (2026-06-07): the original code fell back to
+        ``onChange`` if ``onCommit`` was absent.  ``onChange``
+        fires on every preview click + fires-on-subscribe — using
+        it for transport would clobber the status line on every
+        browse-click and (once engines wire in) re-build the
+        geometry on every browse-click.  Build + Spectra tolerate
+        the fallback because they have form-dirty + warning-modal
+        gates upstream; Transport has neither, so the fallback was
+        actively wrong."""
         js = web.get("/static/lib/transport/core.js").data.decode()
         assert "onCommit" in js
-        assert "onChange" in js  # the fallback
+        # The onChange fallback path is intentionally absent.  The
+        # comment block documenting the BOMB-3 rationale mentions
+        # ``onChange`` in prose; pin against the actual call site
+        # using a fragment that wouldn't appear in a comment.
+        assert ".onChange(" not in js, (
+            "transport/core.js must NOT call proj.onChange — "
+            "BOMB-3 fix removed the fallback"
+        )
+        assert "proj.onChange.bind" not in js

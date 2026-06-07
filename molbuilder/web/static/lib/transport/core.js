@@ -154,10 +154,16 @@
         if (!runtime || typeof runtime.whenReady !== "function") return;
         runtime.whenReady("projects").then(function (proj) {
             if (!proj) return;
-            var subscribe = (typeof proj.onCommit === "function")
-                ? proj.onCommit.bind(proj)
-                : proj.onChange.bind(proj);
-            subscribe(function (sel) {
+            // BOMB-3 fix (2026-06-07): require ``onCommit``; do NOT
+            // fall back to ``onChange``.  ``onChange`` fires on EVERY
+            // sidebar click + fires-on-subscribe — using it as a
+            // fallback would clobber the status line on every preview
+            // click and (once engines wire in) re-build the geometry
+            // on every browse-click.  Build + Spectra tolerate the
+            // fallback because they have form-dirty + warning-modal
+            // gates upstream; Transport has neither.
+            if (typeof proj.onCommit !== "function") return;
+            proj.onCommit(function (sel) {
                 var f = (sel && sel.file) ? String(sel.file) : "";
                 if (!f) return;
                 var lc = f.toLowerCase();
