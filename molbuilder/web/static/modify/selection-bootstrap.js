@@ -167,6 +167,17 @@
                 const f = (sel && sel.file) ? sel.file : "";
                 _setCandidate(f);  // empty string clears the candidate
             });
+            // Universal commit subscription: a sidebar dblclick on a
+            // file fires publishCommit, which lands here.  Same path
+            // as the Load button — _commitFile gates through the
+            // canvas-state warning modal if the canvas is dirty,
+            // then renders + adopts.
+            if (typeof projects.onCommit === "function") {
+                projects.onCommit((sel) => {
+                    const f = (sel && sel.file) ? sel.file : "";
+                    if (_isLoadableStructure(f)) _commitFile(f);
+                });
+            }
         }
 
         // ----- Wire the Load button + readout -------------------- //

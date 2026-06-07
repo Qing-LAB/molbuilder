@@ -32,6 +32,15 @@ export const SS_FILE = "molbuilder.current_file";
 // Module-private state.
 let projectsRoot = null;
 const selectionSubscribers = new Set();
+// Commit subscribers — the universal "the user double-clicked
+// (or otherwise committed) this file" signal.  Per
+// docs/tabs/architecture.md § 5.2 sidebar selection alone is a
+// preview/candidate, NOT a tab-level action; ``publishCommit``
+// fires only when the sidebar (or another deliberate publisher)
+// says "this is the file the user actually wants to use."  The
+// Molbuilder tab subscribes to drive _commitFile; future form
+// tabs gate their auto-rebuild on this event.
+const commitSubscribers = new Set();
 // list.js registers itself here at init time; state's refresh() and
 // saveToWorkspace() invoke this to ask the list module to re-list
 // the current directory + re-render.  Single handler (not a set)
@@ -121,6 +130,23 @@ function publishSelectionChange(payload) {
     };
   }
   _publishToSet(selectionSubscribers, payload);
+}
+
+// Universal "the user committed this file" publish.  Called by
+// the sidebar on dblclick; tabs subscribe via projects.onCommit
+// to run their "use this file" action (Load into the Molbuilder
+// workspace, rebuild a form's structure path, etc.).
+//
+// Single-click on a file still goes through ``setShared`` ->
+// ``publishSelectionChange`` (preview/candidate); commit is a
+// distinct event that requires deliberate user intent.  See
+// docs/tabs/architecture.md § 5.2 and the design memo at
+// memory/project_sidebar_interaction_model.md.
+export function publishCommit(dir, file) {
+  _publishToSet(commitSubscribers, {
+    dir:  dir  || "",
+    file: file || "",
+  });
 }
 
 // ----- exposed to other modules ---------------------------------- //
@@ -690,6 +716,23 @@ export const projects = {
     } catch (_) { /* swallow */ }
     return () => selectionSubscribers.delete(cb);
   },
+  // Commit-event subscription.  Fires when the user double-clicks
+  // a file in the sidebar (or another publisher calls
+  // publishCommit explicitly).  Does NOT fire-on-subscribe — a
+  // commit is a discrete event, not a state to mirror; subscribers
+  // would over-react to the initial fire if it ran on every
+  // mount.  Returns an unsubscribe function.
+  onCommit: (cb) => {
+    _registerSubscriber(commitSubscribers, cb, "onCommit");
+    return () => commitSubscribers.delete(cb);
+  },
+  // Publish a commit event directly.  Sidebar list.js calls this
+  // from its dblclick handler; programmatic callers (e.g. the
+  // file-picker dropdown on /results, future test harnesses) can
+  // also drive commits without synthesising a DOM event.  Mirrors
+  // setShared's pattern: the mutator + the subscription live in
+  // the same namespace.
+  publishCommit,
   readCurrentFile,
   relativeToProjects,
   refresh,

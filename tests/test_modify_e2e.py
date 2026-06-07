@@ -460,6 +460,68 @@ def test_sidebar_pick_is_candidate_only_not_auto_load(
     )
 
 
+def test_dblclick_in_sidebar_commits_the_file(
+        page, flask_server, water_xyz_file):
+    """Per the universal sidebar interaction model: a single click
+    sets the candidate (preview only); a DOUBLE click is the
+    commit, equivalent to clicking the Load button.  Both routes
+    land on _commitFile which gates through the canvas-state
+    warning modal."""
+    _open_modify(page, flask_server)
+    # Drive a commit via the projects.publishCommit API directly —
+    # the sidebar's dblclick handler is what calls publishCommit;
+    # this test pins the *response* (Molbuilder tab loads the
+    # committed file) regardless of which UI affordance fires it.
+    import os as _os
+    page.evaluate(
+        """(c) => window.molbuilder.projects.publishCommit
+                ? window.molbuilder.projects.publishCommit(c.dir, c.file)
+                : null""",
+        {"dir": _os.path.dirname(water_xyz_file), "file": water_xyz_file},
+    )
+    # Viewer commits the structure — _commitFile ran through the
+    # gate + viewer loader + adoptSession.
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 3"
+    )
+
+
+def test_dblclick_commit_with_dirty_canvas_fires_warning(
+        page, flask_server, water_xyz_file, tmp_path, monkeypatch):
+    """A sidebar dblclick (publishCommit) must hit the SAME warning
+    modal gate as the Load button when the canvas is dirty.  Pins
+    the load-bearing safety: editing then dblclicking a different
+    sidebar entry doesn't silently discard work."""
+    import os as _os
+    _open_modify(page, flask_server)
+    _load_water_via_button(page, water_xyz_file)
+    # Make the canvas dirty.
+    _set_selection(page, [0])
+    page.locator("#delete-apply").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 2"
+    )
+    # Now simulate a dblclick on a DIFFERENT file.  Even though the
+    # file is the SAME water.xyz here (fixture only ships one), the
+    # commit-event-fires-warning contract holds: a dirty canvas +
+    # commit = modal.
+    page.evaluate(
+        """(c) => window.molbuilder.projects.publishCommit(c.dir, c.file)""",
+        {"dir": _os.path.dirname(water_xyz_file), "file": water_xyz_file},
+    )
+    page.wait_for_selector("dialog.molbuilder-warning-modal",
+                           state="attached", timeout=2000)
+    # Cancel — viewer state stays at 2 (the post-delete edit).
+    page.locator(
+        'dialog.molbuilder-warning-modal [data-action="cancel"]'
+    ).click()
+    page.wait_for_selector("dialog.molbuilder-warning-modal",
+                           state="detached", timeout=2000)
+    assert page.evaluate(
+        "() => window.__molbuilder_modify_test.getNAtoms()"
+    ) == 2
+
+
 def test_load_button_disabled_when_non_structure_file_picked(
         page, flask_server, tmp_path, monkeypatch):
     """A pick of a non-loadable file (.log, .fdf, README.md, ...)

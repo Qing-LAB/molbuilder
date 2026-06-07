@@ -114,20 +114,109 @@ class TestSurfacePresence:
                 setShared:                  typeof p.setShared,
                 navigateTo:                 typeof p.navigateTo,
                 onProjectsRootResolved:     typeof p.onProjectsRootResolved,
+                onCommit:                   typeof p.onCommit,
                 safeSave:                   typeof p.safeSave,
                 isCancelError:              typeof p.isCancelError,
             }));
         ''')
-        # readRange was added in #189 (2026-06-02) so the source
-        # inspector (and any future range-aware viewer) goes through
-        # the uniform envelope instead of raw fetch.
-        # safeSave + isCancelError landed in the sixth Phase 6e
-        # review as the centralised Cancel-vs-error contract.
         for fn in ("readFile", "readRange", "createProject", "mkdir",
                    "deleteEntry", "rename", "upload", "setShared",
                    "navigateTo", "onProjectsRootResolved",
+                   "onCommit",
                    "safeSave", "isCancelError"):
             assert out[fn] == "function", f"missing public method: {fn}"
+
+
+# ----- onCommit + publishCommit (B.5.2) --------------------------- #
+
+
+class TestOnCommit:
+    """The universal commit-event subscription per docs/tabs/
+    architecture.md § 5.2.  Sidebar single-click = preview
+    (fires onChange).  Double-click = commit (fires onCommit
+    only).  This keeps subscribers from mistaking a casual
+    browse-click for a tab-level action."""
+
+    def test_onCommit_does_NOT_fire_on_subscribe(self):
+        """Commits are discrete events, not states.  Firing on
+        subscribe would over-react the first time a tab mounts;
+        the published payload would be the empty initial state
+        and subscribers would think the user committed nothing."""
+        out = _run_node('''
+            const calls = [];
+            state.projects.onCommit(p => calls.push(p));
+            console.log(JSON.stringify({
+                callsAfterSubscribe: calls,
+            }));
+        ''')
+        assert out["callsAfterSubscribe"] == []
+
+    def test_publishCommit_fires_subscribers(self):
+        out = _run_node('''
+            const calls = [];
+            state.projects.onCommit(p => calls.push(p));
+            state.publishCommit("/p/proj", "/p/proj/water.xyz");
+            console.log(JSON.stringify(calls));
+        ''')
+        assert out == [{"dir": "/p/proj", "file": "/p/proj/water.xyz"}]
+
+    def test_publishCommit_does_NOT_fire_onChange_subscribers(self):
+        """onCommit and onChange are distinct events — publishing a
+        commit must NOT spuriously fire onChange listeners.  The
+        flip side (setShared fires onChange but NOT onCommit) is
+        the load-bearing invariant: a single-click on a file row
+        triggers preview only, never commit."""
+        out = _run_node('''
+            const onChangeCalls = [];
+            const onCommitCalls = [];
+            state.projects.onChange(p => onChangeCalls.push(p));
+            state.projects.onCommit(p => onCommitCalls.push(p));
+            // Reset onChange's fire-once-on-subscribe payload.
+            onChangeCalls.length = 0;
+            state.publishCommit("/p", "/p/x.xyz");
+            console.log(JSON.stringify({
+                onChange: onChangeCalls,
+                onCommit: onCommitCalls,
+            }));
+        ''')
+        assert out["onChange"] == []   # commit doesn't bleed into onChange
+        assert out["onCommit"] == [{"dir": "/p", "file": "/p/x.xyz"}]
+
+    def test_setShared_does_NOT_fire_onCommit_subscribers(self):
+        """Single-click → setShared → onChange.  publishCommit is
+        separate; setShared MUST NOT also fire onCommit, or every
+        sidebar click would commit and the candidate-only model
+        collapses."""
+        out = _run_node('''
+            const onCommitCalls = [];
+            state.projects.onCommit(p => onCommitCalls.push(p));
+            state.setShared("/p", "/p/y.xyz");
+            console.log(JSON.stringify(onCommitCalls));
+        ''')
+        assert out == []
+
+    def test_unsubscribe_works(self):
+        out = _run_node('''
+            const calls = [];
+            const unsub = state.projects.onCommit(p => calls.push(p));
+            unsub();
+            state.publishCommit("/p", "/p/x.xyz");
+            console.log(JSON.stringify(calls));
+        ''')
+        assert out == []
+
+    def test_duplicate_onCommit_throws(self):
+        """Same subscriber-dedup contract every other onChange-style
+        API enforces (per design § 5.5 + § 11.5)."""
+        out = _run_node('''
+            const cb = () => {};
+            state.projects.onCommit(cb);
+            let threw = false;
+            try { state.projects.onCommit(cb); }
+            catch (e) { threw = true; }
+            console.log(JSON.stringify(threw));
+        ''')
+        assert out is True
 
 
 # ----- readFile --------------------------------------------------- #

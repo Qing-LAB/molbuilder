@@ -17,7 +17,7 @@
 
 import { apiList, apiDelete } from "./api.js";
 import {
-  setShared, getProjectsRoot, setRefreshHandler,
+  setShared, publishCommit, getProjectsRoot, setRefreshHandler,
   projects as _projectsApi,
 } from "./state.js";
 import { showPreview } from "./preview.js";
@@ -254,12 +254,36 @@ function _renderList(entries, currentPath) {
       if (e.kind === "directory") {
         openDir(fullPath);
       } else {
-        // 2026-05-31 #166: setShared fires the renderSidebar
-        // onChange subscriber synchronously, which marks the
-        // entry + renders the selection-status line.  No inline
-        // DOM mutation here.
+        // setShared fires the renderSidebar onChange subscriber
+        // synchronously, which marks the entry + renders the
+        // selection-status line.  No inline DOM mutation here.
+        // Per the sidebar interaction model (memory/
+        // project_sidebar_interaction_model.md): single-click is
+        // PREVIEW only — sets the global pick.  Commit happens
+        // on dblclick (handler below) which fires
+        // ``publishCommit`` for tabs that subscribe via
+        // ``projects.onCommit``.
         setShared(currentPath, fullPath);
       }
+    });
+    // Double-click on a file = commit.  Tabs that subscribe via
+    // ``projects.onCommit`` run their "use this file" action
+    // (the Molbuilder tab Load, future form-tab structure
+    // rebuilds, etc.).  Directories don't fire commit — a
+    // dblclick on a folder is just a fast navigation; openDir
+    // already ran from the first click.
+    li.addEventListener("dblclick", (ev) => {
+      if (e.kind !== "file") return;
+      ev.preventDefault();
+      // Selecting text on dblclick is the browser default; clear
+      // it so the user doesn't see a highlighted filename after
+      // committing.
+      if (window.getSelection) {
+        try { window.getSelection().removeAllRanges(); } catch (_) {}
+      }
+      // setShared already ran from the first click; publishCommit
+      // is the discrete commit event subscribers gate on.
+      publishCommit(currentPath, fullPath);
     });
     elList.appendChild(li);
   }
