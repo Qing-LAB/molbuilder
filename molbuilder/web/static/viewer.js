@@ -677,38 +677,85 @@
     // earlier polling hack with a structural answer.  If the runtime
     // isn't loaded (legacy / test-isolation path), fall back to a
     // simple "skip the wiring" so the rest of viewer.js still works.
+    // ----- Form-dirty tracking (B.5.3) ------------------------------
+    //
+    // Per the universal sidebar interaction model: sidebar commit
+    // (dblclick) on a structure file should rebuild this form's
+    // structure section.  But if the user has already typed
+    // SIESTA/PySCF parameters, a silent rebuild discards those.
+    // Track "the user has edited the param section since the last
+    // commit/Generate" and gate the next commit through a warning.
+    //
+    // Listens on both engine containers — the `input` event covers
+    // text inputs + textareas + sliders; `change` covers selects +
+    // checkboxes.  Each container's inputs are repopulated by
+    // form-schema rendering on engine switch, which we deliberately
+    // do NOT treat as a user edit (the events fire synchronously
+    // during the programmatic .value assignments and would set
+    // _formDirty=true spuriously); we reset _formDirty AFTER each
+    // rebuild via the same mechanism as a successful sidebar commit.
+    let _formDirty = false;
+    let _ignoreFormChanges = false;
+    function _wireFormDirtyTracking() {
+        const cIds = ["siesta-form-container", "pyscf-form-container"];
+        for (const id of cIds) {
+            const c = document.getElementById(id);
+            if (!c) continue;
+            const handler = () => { if (!_ignoreFormChanges) _formDirty = true; };
+            c.addEventListener("input",  handler);
+            c.addEventListener("change", handler);
+        }
+    }
+    document.addEventListener("DOMContentLoaded", _wireFormDirtyTracking);
+
+    function _resetFormDirty() { _formDirty = false; }
+    // Generate buttons consume the form values — clear dirty so the
+    // next sidebar commit doesn't warn for params the user already
+    // emitted into a script.
+    document.addEventListener("DOMContentLoaded", () => {
+        for (const id of ["generate-fdf", "generate-pyscf"]) {
+            const b = document.getElementById(id);
+            if (b) b.addEventListener("click", _resetFormDirty);
+        }
+    });
+
     if (window.molbuilder && window.molbuilder.runtime
         && typeof window.molbuilder.runtime.whenReady === "function") {
         window.molbuilder.runtime.whenReady("projects").then((_proj) => {
-        _proj.onChange(async (sel) => {
+        // The "use this file in Build" handler.  Defined once and
+        // wired to both the universal commit channel AND the page-
+        // mount cross-tab handoff (a structure file already in
+        // sessionStorage when /structure-optimization mounts should
+        // be treated as a commit; the user picked it on another tab
+        // and navigated here to configure SIESTA / PySCF for it).
+        async function _commitStructure(sel) {
             const f = (sel && sel.file) ? String(sel.file) : "";
             const ext = f.toLowerCase().split(".").pop();
             if (ext !== "xyz" && ext !== "pdb") {
-                // User picked a non-structure file (or no file).  The
-                // load-status line still carries whatever the last
-                // successful load said -- leaving it would lie to the
-                // user ("Loaded 3-atom XYZ from water.xyz" while
-                // they're now looking at junction.log).  Sync BOTH
-                // the status line AND the info readout so the user
-                // sees a consistent state: their pick did NOT load.
+                // Commit on a non-structure file — tell the user
+                // what they double-clicked isn't loadable into
+                // Build; leave the existing structure alone.
                 if (f) {
                     const filename = f.split("/").pop();
                     setStatus("load-status",
                         `${filename} is not a structure file `
                         + `(Build accepts .xyz / .pdb only).`,
                         "warn");
-                    // Don't clear info -- the previous valid load is
-                    // still showing in the viewer + the structure
-                    // panel; surfacing a "no structure" placeholder
-                    // would over-correct.  The status line tells the
-                    // user this pick wasn't a load attempt.
-                } else {
-                    setStatus("load-status", "");
                 }
-                _sidebarLastFile = f;
                 return;
             }
             if (f === _sidebarLastFile) return;
+            // Form-dirty gate: if the user has typed parameter
+            // edits since the last commit/Generate, ask before
+            // discarding them via the shared warning modal.
+            const modal = window.molbuilder
+                       && window.molbuilder.warningModal;
+            if (_formDirty && modal
+                && typeof modal.confirmDiscardUnsaved === "function") {
+                const proceed = await modal.confirmDiscardUnsaved();
+                if (!proceed) return;
+            }
+            _formDirty = false;
             _sidebarLastFile = f;
             const mySeq = ++_sidebarLoadSeq;
             const filename = f.split("/").pop();
@@ -761,7 +808,28 @@
                     "Network error: " + e.message, "error");
                 clearStructureInfo("load failed: " + filename);
             }
-        });
+        }   // close _commitStructure
+
+        // Universal commit subscription — dblclick on a structure
+        // file in the sidebar.  Falls back to onChange for older
+        // deployments without onCommit so the tab stays usable.
+        const subscribe = (typeof _proj.onCommit === "function")
+            ? _proj.onCommit.bind(_proj)
+            : _proj.onChange.bind(_proj);
+        subscribe(_commitStructure);
+
+        // Cross-tab handoff: if the user arrived here with a
+        // sessionStorage selection already in place (committed on
+        // another tab), treat that as a commit so they don't have
+        // to re-click in the sidebar.  Only fires once on mount;
+        // onCommit itself doesn't fire-on-subscribe.
+        const _initialFile = (typeof _proj.getCurrentFile === "function")
+            ? _proj.getCurrentFile() : "";
+        if (_initialFile) {
+            const _initialDir = (typeof _proj.getCurrentDir === "function")
+                ? _proj.getCurrentDir() : "";
+            _commitStructure({ dir: _initialDir, file: _initialFile });
+        }
         });   // close runtime.whenReady("projects").then(...)
     }
 

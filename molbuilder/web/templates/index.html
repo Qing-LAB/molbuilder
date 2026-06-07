@@ -360,6 +360,12 @@
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/path-utils.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
+{# warning-modal is shared across editor + form tabs.  Build's
+   sidebar-commit handler gates form-dirty discards through it; per
+   docs/tabs/architecture.md § 5.4 the modal's copy is the same
+   across tabs so the user sees a consistent "Unsaved
+   modifications" affordance everywhere. #}
+<script src="{{ url_for('static', filename='lib/structure/warning-modal.js') }}"></script>
 <script src="{{ url_for('static', filename='viewer.js') }}"></script>
 </body>
 </html>

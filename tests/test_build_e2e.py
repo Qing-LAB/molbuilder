@@ -337,16 +337,20 @@ class TestPeptideBuild:
 
 
 class TestSidebarPickLoad:
-    """Selecting an XYZ file in the projects sidebar (via the
-    same ``projects.setShared`` path the real sidebar drives)
-    must populate the viewer + atom-count line on /build.  This is
-    the bridge between the projects sidebar and Build's viewer."""
+    """Universal sidebar interaction model (B.5.3): sidebar
+    single-click (``setShared``) = preview only; a dblclick
+    commit (``publishCommit``) is what actually rebuilds Build's
+    structure section.  The form-dirty gate then warns if the
+    user has typed parameter edits since the last commit."""
 
-    def test_setShared_loads_water_xyz_into_viewer(
+    def test_setShared_alone_does_NOT_load_structure(
             self, page, flask_server, water_xyz_file):
+        """Pins the candidate-only contract for Build: a single
+        sidebar click sets the global pick but MUST NOT auto-
+        rebuild the structure section.  Browse-clicking through
+        the project tree no longer silently switches the
+        molecule the form is configured for."""
         _open_build(page, flask_server)
-        # Wait for the projects module to land in the runtime
-        # registry; until then ``projects.setShared`` is undefined.
         page.wait_for_function(
             "() => window.molbuilder "
             "&& window.molbuilder.projects "
@@ -354,24 +358,125 @@ class TestSidebarPickLoad:
             "       === 'function'",
             timeout=_BOOT_TIMEOUT_MS,
         )
-        # Drive the sidebar's selection state directly -- mirrors
-        # what /modify e2e tests do (see test_modify_e2e.py
-        # _load_file helper).
         from pathlib import Path
         p = str(Path(water_xyz_file).resolve())
         parent = str(Path(p).parent)
-        page.evaluate("""(ctx) => {
-            // setShared(dir, file) is the public sidebar API for
-            // "user picked file <file> in directory <dir>".
-            return window.molbuilder.projects.setShared(ctx.dir, ctx.file);
-        }""", {"dir": parent, "file": p})
-        # The Build viewer's onChange handler calls /api/files/read
-        # then loadStructureText, which updates #info-atoms.  Wait
-        # for the atom count to land at 3 (water = O + 2H).
+        page.evaluate(
+            """(ctx) => window.molbuilder.projects.setShared(
+                ctx.dir, ctx.file)""",
+            {"dir": parent, "file": p},
+        )
+        # Brief settle so an erroneous auto-load would land in
+        # #info-atoms before the assertion.
+        page.wait_for_timeout(500)
+        n = page.evaluate(
+            "() => document.querySelector('#info-atoms').textContent.trim()"
+        )
+        assert n in ("—", "", "0"), (
+            f"setShared must NOT auto-load; #info-atoms is {n!r}"
+        )
+
+    def test_publishCommit_loads_water_xyz_into_viewer(
+            self, page, flask_server, water_xyz_file):
+        """Commit (dblclick equivalent) rebuilds the structure
+        section — the canonical "use this file in this tab"
+        action."""
+        _open_build(page, flask_server)
+        page.wait_for_function(
+            "() => window.molbuilder "
+            "&& window.molbuilder.projects "
+            "&& typeof window.molbuilder.projects.publishCommit "
+            "       === 'function'",
+            timeout=_BOOT_TIMEOUT_MS,
+        )
+        from pathlib import Path
+        p = str(Path(water_xyz_file).resolve())
+        parent = str(Path(p).parent)
+        page.evaluate(
+            """(ctx) => window.molbuilder.projects.publishCommit(
+                ctx.dir, ctx.file)""",
+            {"dir": parent, "file": p},
+        )
         page.wait_for_function(
             "() => document.querySelector('#info-atoms').textContent"
             ".trim() === '3'",
             timeout=_BOOT_TIMEOUT_MS,
+        )
+
+    def test_form_edits_followed_by_commit_fires_warning(
+            self, page, flask_server, tmp_path, monkeypatch):
+        """The form-dirty gate: a user who typed a SIESTA / PySCF
+        parameter edit since the last commit must see a warning
+        before the next commit silently rebuilds the structure
+        section.  Cancel = preserve edits; Discard = proceed."""
+        _register_tmp_as_picker_root(tmp_path, monkeypatch)
+        # Two distinct structure files so the second commit isn't
+        # short-circuited by the same-file guard.
+        water = tmp_path / "water.xyz"
+        water.write_text(
+            "3\nwater\n"
+            "O 0.000  0.000 0.000\n"
+            "H 0.957  0.000 0.000\n"
+            "H -0.239 0.927 0.000\n"
+        )
+        methane = tmp_path / "methane.xyz"
+        methane.write_text(
+            "5\nmethane\n"
+            "C 0.000  0.000 0.000\n"
+            "H 0.629  0.629 0.629\n"
+            "H -0.629 -0.629 0.629\n"
+            "H -0.629  0.629 -0.629\n"
+            "H 0.629 -0.629 -0.629\n"
+        )
+        _open_build(page, flask_server)
+        page.wait_for_function(
+            "() => window.molbuilder"
+            "       && typeof window.molbuilder.warningModal"
+            "          === 'object'",
+            timeout=_BOOT_TIMEOUT_MS,
+        )
+        # Initial commit on water.
+        page.evaluate(
+            """(c) => window.molbuilder.projects.publishCommit(
+                c.dir, c.file)""",
+            {"dir": str(tmp_path), "file": str(water)},
+        )
+        page.wait_for_function(
+            "() => document.querySelector('#info-atoms').textContent"
+            ".trim() === '3'",
+            timeout=_BOOT_TIMEOUT_MS,
+        )
+        # Make the form dirty by typing into a SIESTA param input.
+        page.wait_for_selector(
+            "#siesta-form-container input", timeout=_BOOT_TIMEOUT_MS)
+        siesta_input = page.locator(
+            "#siesta-form-container input").first
+        siesta_input.focus()
+        siesta_input.press("a")
+        # Commit a DIFFERENT structure (methane).  Form-dirty gate
+        # fires the warning before discarding the parameter edits.
+        page.evaluate(
+            """(c) => window.molbuilder.projects.publishCommit(
+                c.dir, c.file)""",
+            {"dir": str(tmp_path), "file": str(methane)},
+        )
+        page.wait_for_selector(
+            "dialog.molbuilder-warning-modal",
+            state="attached", timeout=3000)
+        # Cancel → structure stays at 3 atoms (water); the rebuild
+        # didn't run.
+        page.locator(
+            'dialog.molbuilder-warning-modal [data-action="cancel"]'
+        ).click()
+        page.wait_for_selector(
+            "dialog.molbuilder-warning-modal",
+            state="detached", timeout=2000)
+        n = page.evaluate(
+            "() => document.querySelector('#info-atoms').textContent.trim()"
+        )
+        assert n == "3", (
+            f"Cancel must preserve the current structure; "
+            f"#info-atoms is {n!r} (expected 3 for water)"
         )
 
 
@@ -409,7 +514,7 @@ class TestBuildSecondVisitExternalChange:
         p = str(Path(water_xyz_file).resolve())
         parent = str(Path(p).parent)
         page.evaluate(
-            "(c) => window.molbuilder.projects.setShared(c.dir, c.file)",
+            "(c) => window.molbuilder.projects.publishCommit(c.dir, c.file)",
             {"dir": parent, "file": p},
         )
         page.wait_for_function(
@@ -453,7 +558,7 @@ class TestBuildSecondVisitExternalChange:
         )
         _open_build(page, flask_server)
         page.evaluate(
-            "(c) => window.molbuilder.projects.setShared(c.dir, c.file)",
+            "(c) => window.molbuilder.projects.publishCommit(c.dir, c.file)",
             {"dir": str(tmp_path), "file": str(xyz_path)},
         )
         page.wait_for_function(

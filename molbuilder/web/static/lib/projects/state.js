@@ -135,14 +135,28 @@ function publishSelectionChange(payload) {
 // Universal "the user committed this file" publish.  Called by
 // the sidebar on dblclick; tabs subscribe via projects.onCommit
 // to run their "use this file" action (Load into the Molbuilder
-// workspace, rebuild a form's structure path, etc.).
+// workspace, rebuild a form's structure section, etc.).
 //
 // Single-click on a file still goes through ``setShared`` ->
 // ``publishSelectionChange`` (preview/candidate); commit is a
 // distinct event that requires deliberate user intent.  See
 // docs/tabs/architecture.md § 5.2 and the design memo at
 // memory/project_sidebar_interaction_model.md.
+//
+// Also updates the global pick (``setShared``) so cross-tab
+// handoff via sessionStorage works without the publisher
+// having to call both.  This mirrors the real-user flow: a
+// dblclick fires setShared on the first click, then publishCommit
+// from the dblclick; programmatic callers shouldn't have to know
+// that detail.  setShared's own onChange fans out for
+// preview/candidate-tracking subscribers; publishCommit's
+// commitSubscribers fan out for tab-level "use this file"
+// subscribers.
 export function publishCommit(dir, file) {
+  // Update sessionStorage + onChange subscribers FIRST so a
+  // subscriber that gates on getCurrentFile() inside its
+  // onCommit handler sees the new pick already in place.
+  setShared(dir, file);
   _publishToSet(commitSubscribers, {
     dir:  dir  || "",
     file: file || "",

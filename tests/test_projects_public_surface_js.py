@@ -160,12 +160,17 @@ class TestOnCommit:
         ''')
         assert out == [{"dir": "/p/proj", "file": "/p/proj/water.xyz"}]
 
-    def test_publishCommit_does_NOT_fire_onChange_subscribers(self):
-        """onCommit and onChange are distinct events — publishing a
-        commit must NOT spuriously fire onChange listeners.  The
-        flip side (setShared fires onChange but NOT onCommit) is
-        the load-bearing invariant: a single-click on a file row
-        triggers preview only, never commit."""
+    def test_publishCommit_also_updates_global_pick_via_setShared(self):
+        """publishCommit's contract: it fires the commit subscribers
+        AND updates the global pick (via setShared) so a
+        cross-tab handoff via sessionStorage works without
+        publishers needing to call both.  Mirrors the real-user
+        flow: dblclick's first click sets setShared, the second
+        fires publishCommit; programmatic callers shouldn't have
+        to know that detail.
+
+        Practical consequence: publishCommit fires BOTH onChange
+        (preview/candidate update) AND onCommit (commit signal)."""
         out = _run_node('''
             const onChangeCalls = [];
             const onCommitCalls = [];
@@ -175,12 +180,16 @@ class TestOnCommit:
             onChangeCalls.length = 0;
             state.publishCommit("/p", "/p/x.xyz");
             console.log(JSON.stringify({
-                onChange: onChangeCalls,
-                onCommit: onCommitCalls,
+                onChange:    onChangeCalls,
+                onCommit:    onCommitCalls,
+                currentFile: state.projects.getCurrentFile(),
             }));
         ''')
-        assert out["onChange"] == []   # commit doesn't bleed into onChange
+        # Both subscriber sets fire with the same payload.
+        assert out["onChange"] == [{"dir": "/p", "file": "/p/x.xyz"}]
         assert out["onCommit"] == [{"dir": "/p", "file": "/p/x.xyz"}]
+        # And the global pick is updated.
+        assert out["currentFile"] == "/p/x.xyz"
 
     def test_setShared_does_NOT_fire_onCommit_subscribers(self):
         """Single-click → setShared → onChange.  publishCommit is
