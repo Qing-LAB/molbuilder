@@ -393,7 +393,25 @@
     // text, not a File object.  Accepts XYZ and PDB content alike --
     // the server's /api/build/load sniffs the format.)
 
-    function applyStructure(r) {
+    /**
+     * Replace the modify-page state with ``r``.  Single sync point
+     * for the in-memory ``state`` IIFE, the 3Dmol embed, and the
+     * selection store.  Two callsites with different selection
+     * semantics:
+     *
+     *   * ``opts.resetSelection: true`` — loadStructureText (every
+     *     Sources-card generator + sidebar load).  The previous
+     *     structure's selection MUST NOT carry over: index 0 in
+     *     water means a different atom than index 0 in DNA, even
+     *     though both are in-range under the naive
+     *     ``adoptAtoms`` filter.
+     *   * ``opts.resetSelection: false`` (default) — postOp.  The
+     *     user-picked selection is preserved after a Delete / Add
+     *     etc. (filtered to in-range), which is how modifier
+     *     workflows keep an anchor across multiple ops.
+     */
+    function applyStructure(r, opts) {
+        opts = opts || {};
         state.xyz           = r.xyz || "";
         state.elements      = Array.isArray(r.elements)      ? r.elements      : [];
         state.atom_names    = Array.isArray(r.atom_names)    ? r.atom_names    : [];
@@ -463,6 +481,44 @@
         // viewer-adapter (lib/selection/viewer-adapter.js), which
         // re-arms ``setClickable`` on every render so a model swap
         // here doesn't drop the handler.
+
+        // Sync the selection store's atoms list to the structure
+        // we just rendered.  applyStructure is THE single sync
+        // point — it's called from every path that puts a
+        // structure on the modify page:
+        //
+        //   * loadStructureText (= window.molbuilder.loadStructureText)
+        //     called by all 6 Sources-card generators (DNA, RNA,
+        //     SMILES, name, peptide, file upload) AFTER they POST
+        //     to /api/build/molecule.  loadStructureText itself
+        //     POSTs the resulting xyz to /api/build/load which
+        //     returns the canonical atoms list (via _ok_response).
+        //
+        //   * postOp (modifier ops Delete / Add / Orient / etc.)
+        //     where r is the /api/modify/* response carrying atoms.
+        //
+        //   * restoreModifyState (synthetic call from
+        //     sessionStorage; doesn't carry atoms — adoptSession
+        //     immediately after with saved.atoms covers that path).
+        //
+        // The "generator → store stays empty" bug the user hit
+        // 2026-06-07 was exactly this seam: generators rendered
+        // through loadStructureText but nothing pushed atoms to
+        // the store, so the selection panel stayed empty until
+        // the user clicked Save → sidebar-loaded the saved file.
+        // Centralising the sync here covers every generator at
+        // once instead of bolting adoptAtoms into each one.
+        try {
+            const s = _selStore();
+            if (s && typeof s.adoptAtoms === "function"
+                  && Array.isArray(r.atoms)) {
+                s.adoptAtoms(r.atoms);
+                if (opts.resetSelection
+                        && typeof s.clearSelection === "function") {
+                    s.clearSelection();
+                }
+            }
+        } catch (_) { /* nothing to do — UX unaffected */ }
 
         refreshSelectionUI();
         refreshUndoButton();
@@ -612,20 +668,14 @@
                     cs.replaceContent(r.xyz);
                 }
             } catch (_) { /* nothing to do — UX unaffected */ }
-            // Sync the selection store's atoms list to the post-op
-            // structure (BOMB-0 fix, 2026-06-07).  Modifier
-            // responses now carry ``r.atoms`` in the same shape
-            // ``/api/selection/atoms`` returns; without this
-            // adoptAtoms call the panel keeps showing the pre-op
-            // atoms list (the disk hasn't changed, so the disk-
-            // bound _fetchAtoms re-fetch would also return stale).
-            try {
-                const s = _selStore();
-                if (s && typeof s.adoptAtoms === "function"
-                     && r && Array.isArray(r.atoms)) {
-                    s.adoptAtoms(r.atoms);
-                }
-            } catch (_) { /* nothing to do — UX unaffected */ }
+            // Selection-store sync happens inside applyStructure(r)
+            // above (2026-06-07 consolidation): applyStructure is
+            // THE single sync point for the modify-page selection
+            // store and covers postOp + every Sources-card
+            // generator path via loadStructureText.  Removing the
+            // explicit call from here eliminates the
+            // generator-not-syncing bug where adoptAtoms was only
+            // present on the modifier-op path.
             setEditStatus(
                 r.issues && r.issues.length
                     ? `${label}: ${r.n_atoms} atoms, ${r.issues.length} issue(s).`
@@ -1167,6 +1217,25 @@
         const camera = _handle.getCamera();
         const _s = _selStore();
         const sourceFile = _s ? (_s.getState().sourceFile || null) : null;
+        // Persist atoms ONLY when canvas-state is dirty (the user did
+        // modifier ops since the last load/save) OR when there's no
+        // source file at all (generator output — in-memory IS the
+        // source of truth, no disk to read from).  Clean + sourceFile
+        // means disk == memory at save time, AND an external editor
+        // could have replaced the file while the user was away — so
+        // on restore the user wants the LATEST disk bytes, not the
+        // stale in-memory snapshot.  Test pin:
+        // TestModifySecondVisitExternalChange::test_external_xyz_
+        // replacement_reloads_atom_list_on_revisit.
+        let canvasDirty = false;
+        try {
+            const cs = window.molbuilder
+                    && window.molbuilder.structureCanvas;
+            if (cs && typeof cs.isDirty === "function") {
+                canvasDirty = !!cs.isDirty();
+            }
+        } catch (_) { /* default false */ }
+        const shouldPersistAtoms = canvasDirty || !sourceFile;
         const payload = {
             v: STATE_SCHEMA_VERSION,
             saved_at: new Date().toISOString(),
@@ -1196,7 +1265,16 @@
             // which would return the pre-op file contents (the disk
             // hasn't been re-saved after the modifier op, so the disk
             // atoms are stale relative to state.xyz).
-            atoms:         (_s ? _s.getState().atoms : []),
+            //
+            // Conditional persistence (2026-06-07 audit): only carry
+            // atoms forward when memory is more authoritative than
+            // disk.  See ``shouldPersistAtoms`` above.  When omitted,
+            // the restore path falls back to ``adoptSession``'s
+            // disk-fetch branch and picks up any external file
+            // change that happened while the user was away.
+            atoms:         shouldPersistAtoms && _s
+                              ? _s.getState().atoms
+                              : undefined,
             camera:        camera,
             // Read the current chrome state via the embed's getters
             // (D3 — added 2026-06-04).  show_axes is "axes are
@@ -1422,7 +1500,14 @@
             setStatus(msg, "error");
             throw new Error(msg);
         }
-        applyStructure(r);
+        // resetSelection: true — every loadStructureText call is a
+        // fresh-structure swap (sidebar pick, generator output, file
+        // upload).  Any selection that was sitting on the previous
+        // structure would point at unrelated atoms in the new one
+        // even when the indices are still in-range.  postOp DOESN'T
+        // pass this flag because modifier ops preserve the user's
+        // anchor across Delete / Add / Orient.
+        applyStructure(r, { resetSelection: true });
         const fmt = (r.source_format || "structure").toUpperCase();
         setStatus(
             `Loaded ${r.n_atoms}-atom ${fmt} from ${filename}.`,

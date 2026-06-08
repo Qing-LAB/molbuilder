@@ -192,28 +192,37 @@ def _load_water(page, water_xyz_file):
 
 
 def _load_file(page, xyz_path, expected_atoms):
-    """Load an XYZ fixture via the CANONICAL sidebar-pick workflow:
-    drive ``store.setSourceFile(absolute_path)``.  That:
-      1. Calls the viewer loader (``loadStructureText``) to render
-         the structure in 3Dmol.
-      2. Fetches ``/api/selection/atoms`` to populate
-         ``state.atoms`` -- the selection panel reads this to render
-         per-atom rows.
+    """Load an XYZ fixture via the CANONICAL sidebar-Load-button
+    workflow: drive ``molbuilderTab.commitFile(path)``.  That hits
+    the same code path the Load button does on a real user click:
 
-    Pre-2026-05-22 this called ``loadStructureText`` directly, which
-    bypassed step 2 -- the viewer rendered but the panel stayed empty,
-    breaking every panel test (the 11 panel tests in this file).
-    Using ``setSourceFile`` mirrors what the Projects sidebar does on
-    a real file click.
+      1. ``structurePage.loadIntoCanvas`` — gates through the
+         warning modal if the canvas is dirty, populates
+         ``canvas-state`` (sets ``dirty=false`` for a fresh load).
+      2. ``viewerLoader`` (=``loadStructureText``) — POSTs
+         /api/build/load, runs ``applyStructure`` which pushes
+         atoms into the selection store.
+      3. ``store.adoptSession({sourceFile, selection:[]})`` —
+         records the sourceFile + resets selection.
 
-    ``xyz_path`` MUST be under ``Capabilities.file_picker_roots`` for
-    /api/selection/atoms to accept it; the ``water_xyz_file`` fixture
-    pins tmp_path as a picker root.
+    Pre-2026-06-07 audit this called ``store.setSourceFile``
+    directly, which bypassed step 1 — canvas-state stayed empty,
+    so a subsequent Delete op's ``cs.replaceContent`` bailed (the
+    "empty canvas" branch), leaving the dirty flag false.  That
+    silently broke the dirty-gated atoms persistence on revisit
+    and let the test pass while the selection store went out of
+    sync with the viewer.
     """
     from pathlib import Path
     p = Path(str(xyz_path)).resolve()
     page.evaluate(
-        "(path) => window.molbuilder.selection.store.setSourceFile(path)",
+        "(path) => {"
+        " const t = window.molbuilder.molbuilderTab;"
+        " if (t && typeof t.commitFile === 'function') {"
+        "   return t.commitFile(path);"
+        " }"
+        " return window.molbuilder.selection.store.setSourceFile(path);"
+        "}",
         str(p),
     )
     page.wait_for_function(
@@ -222,8 +231,8 @@ def _load_file(page, xyz_path, expected_atoms):
         f"         === {int(expected_atoms)}"
     )
     # Also wait for the selection store to land its atoms so panel
-    # tests see populated rows; the store fetches /api/selection/atoms
-    # in parallel with the viewer load.
+    # tests see populated rows.  commitFile calls adoptSession
+    # which fetches atoms; settle before tests read state.
     page.wait_for_function(
         f"() => window.molbuilder.selection.store.getState()"
         f"             .atoms.length === {int(expected_atoms)}"
@@ -1004,6 +1013,154 @@ def test_dna_generator_renders_structure_in_viewer(page, flask_server):
     status_text = page.locator("#dna-status").inner_text()
     assert "ACGT" in status_text
     assert "B-form" in status_text
+
+
+def test_dna_generator_populates_selection_store(
+        page, flask_server):
+    """Generator → selection panel sync (2026-06-07 BOMB-0 finale).
+
+    The user-reported regression: generating DNA on the Molbuilder
+    tab put the structure in the viewer but the selection panel's
+    atom list stayed empty.  Root cause: /api/build/load (the
+    endpoint loadStructureText calls after every generator) was
+    not including the canonical ``atoms`` payload, so the
+    front-end's ``applyStructure(r) -> store.adoptAtoms(r.atoms)``
+    silently no-op'd (Array.isArray(undefined) === false).
+
+    This test pins that the selection store ACTUALLY has atoms
+    after a DNA generate — not just that the viewer has them.
+    The 3 prior reviews missed this because the existing
+    generator tests only checked viewer atom count, not the
+    selection store, and the BOMB-0 test only exercised
+    /api/modify/* which already used the atoms_list helper."""
+    try:
+        from molbuilder.backends import available_backends
+    except ImportError:
+        pytest.skip("molbuilder.backends import failed")
+    avail = available_backends()
+    if not (avail.get("threedna", False)
+            or avail.get("amber",    False)
+            or avail.get("rdkit",    False)):
+        pytest.skip("no DNA backend installed")
+
+    _open_modify(page, flask_server)
+    page.locator(
+        ".source-panel:has(> summary:has-text('Generate DNA'))"
+    ).evaluate("el => el.open = true")
+    page.locator("#dna-input").fill("ACGT")
+    page.locator("#dna-generate-btn").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test"
+        "      && window.__molbuilder_modify_test.getNAtoms() >= 50",
+        timeout=20_000,
+    )
+    # The selection store MUST have the same atoms.  Pre-fix this
+    # was 0 — viewer populated, store empty, panel blank.
+    store_atom_count = page.evaluate(
+        "() => window.molbuilder.selection.store.getState().atoms.length"
+    )
+    viewer_atom_count = page.evaluate(
+        "() => window.__molbuilder_modify_test.getNAtoms()"
+    )
+    assert store_atom_count == viewer_atom_count, (
+        f"selection store has {store_atom_count} atoms but viewer "
+        f"shows {viewer_atom_count} — generator path failed to "
+        f"push atoms through applyStructure -> adoptAtoms"
+    )
+
+
+def test_generator_resets_stale_selection(
+        page, flask_server, water_xyz_file):
+    """Pin the resetSelection=true semantic for loadStructureText.
+
+    Without it: user loads water (3 atoms) → selects atom [1] →
+    generates SMILES water → selection [1] PRESERVED (in-range
+    in the new structure) → silently pointing at the wrong atom.
+    With the new opts.resetSelection in applyStructure, every
+    structure swap via loadStructureText clears selection.
+
+    Counterexample is the modifier-op path (postOp), which passes
+    no opts and preserves selection (filtered to in-range).  That
+    contract is pinned by ``test_modify_state_after_op_survives_
+    navigation``."""
+    try:
+        from molbuilder.backends import available_backends
+    except ImportError:
+        pytest.skip("molbuilder.backends import failed")
+    if not available_backends().get("rdkit", False):
+        pytest.skip("RDKit not installed")
+
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    _set_selection(page, [1])
+    assert _get_selection(page) == [1]
+
+    # Now generate methane via SMILES.  Pick a structure with a
+    # DIFFERENT atom count from water so the wait_for_function
+    # actually waits for the generator to fire (waiting for the
+    # same atom count would succeed immediately and miss the
+    # store-sync window we're trying to assert on).  Selection
+    # MUST clear — index 1 from the previous water means something
+    # different in methane even though it's in-range.
+    page.locator(
+        ".source-panel:has(> summary:has-text('Generate from SMILES'))"
+    ).evaluate("el => el.open = true")
+    page.locator("#smiles-input").fill("C")   # methane (5 atoms)
+    page.locator("#smiles-generate-btn").click()
+    page.wait_for_function(
+        "() => window.molbuilder.selection.store.getState()"
+        ".atoms.length === 5",
+        timeout=10_000,
+    )
+    assert _get_selection(page) == [], (
+        f"selection must clear after a generator-driven structure "
+        f"swap; still got {_get_selection(page)}"
+    )
+
+
+def test_smiles_generator_populates_selection_store(
+        page, flask_server):
+    """Same contract as DNA but for SMILES — exercises the OTHER
+    generator path (RDKit instead of 3DNA/Amber) so a regression
+    that hits one but not the other is caught."""
+    try:
+        from molbuilder.backends import available_backends
+    except ImportError:
+        pytest.skip("molbuilder.backends import failed")
+    if not available_backends().get("rdkit", False):
+        pytest.skip("RDKit not installed")
+
+    _open_modify(page, flask_server)
+    page.locator(
+        ".source-panel:has(> summary:has-text('Generate from SMILES'))"
+    ).evaluate("el => el.open = true")
+    page.locator("#smiles-input").fill("O")  # water
+    page.locator("#smiles-generate-btn").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test"
+        "      && window.__molbuilder_modify_test.getNAtoms() === 3",
+        timeout=10_000,
+    )
+    store_atom_count = page.evaluate(
+        "() => window.molbuilder.selection.store.getState().atoms.length"
+    )
+    assert store_atom_count == 3, (
+        f"selection store should have 3 atoms after SMILES generate; "
+        f"got {store_atom_count}"
+    )
+
+
+def test_sidebar_load_populates_selection_store(
+        page, flask_server, water_xyz_file):
+    """The OTHER path that hits /api/build/load: sidebar pick →
+    Load button → loadStructureText → applyStructure.  Pin that
+    this also propagates atoms into the store."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    store_atom_count = page.evaluate(
+        "() => window.molbuilder.selection.store.getState().atoms.length"
+    )
+    assert store_atom_count == 3
 
 
 def test_rna_generator_renders_structure_in_viewer(page, flask_server):
@@ -3718,6 +3875,56 @@ class TestModifySecondVisitExternalChange:
         page.wait_for_function(
             "() => window.molbuilder.selection.store.getState()"
             ".atoms.length === 3",
+            timeout=5000,
+        )
+
+    def test_dirty_canvas_preserves_in_memory_atoms_on_revisit(
+            self, page, flask_server, water_xyz_file, tmp_path,
+            monkeypatch):
+        """Counterpart to the external-replacement test: when the
+        user did a modifier op (canvas dirty), the in-memory atoms
+        are MORE authoritative than disk (disk hasn't been saved
+        yet).  Restore MUST use saved.atoms, not disk-fetch.
+
+        Pin both sides of the dirty-gate:
+          * dirty=false (this is the external-replacement test):
+            restore re-fetches from disk → external changes
+            picked up.
+          * dirty=true (this test): restore uses saved.atoms →
+            user's in-memory edits survive navigation."""
+        _register_tmp_as_picker_root(tmp_path, monkeypatch)
+        xyz_path = tmp_path / "structure.xyz"
+        xyz_path.write_text(
+            "3\nwater\n"
+            "O 0.000 0.000 0.000\n"
+            "H 0.957 0.000 0.000\n"
+            "H -0.239 0.927 0.000\n"
+        )
+        _open_modify(page, flask_server)
+        _load_file(page, str(xyz_path), expected_atoms=3)
+
+        # Select the O and delete it — leaves 2 atoms in memory;
+        # disk still has the 3-atom water file.
+        _set_selection(page, [0])
+        page.locator("#delete-apply").click()
+        page.wait_for_function(
+            "() => window.__molbuilder_modify_test.getNAtoms() === 2"
+        )
+        # Canvas is now dirty.
+        assert page.evaluate(
+            "() => window.molbuilder.structureCanvas.isDirty()"
+        ) is True
+
+        page.goto(f"{flask_server}/structure-optimization")
+        page.wait_for_selector("#build-btn", timeout=5000)
+
+        page.goto(f"{flask_server}/molbuilder")
+        # Selection store MUST reflect 2 atoms (in-memory post-
+        # delete), NOT 3 atoms (disk).  Disk would override
+        # in-memory if the dirty-gate is broken.
+        page.wait_for_function(
+            "() => window.molbuilder.selection.store.getState()"
+            ".atoms.length === 2",
             timeout=5000,
         )
 

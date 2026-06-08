@@ -148,6 +148,15 @@
             getCandidate:     () => _candidate,
             commitCandidate:  _commitCandidate,
             onCandidateChange: _onCandidateChange,
+            // commitFile(path): the canonical "load this file as
+            // the workspace structure" entry point — identical to
+            // what the Load button does on a dblclick.  Goes
+            // through structurePage's gate (warning modal on
+            // dirty canvas) + canvas-state.setStructure +
+            // viewerLoader + store.adoptSession.  Exposed for
+            // tests that need to drive the canonical sidebar→
+            // canvas flow without depending on DOM clicks.
+            commitFile:       _commitFile,
         };
 
         if (projects) {

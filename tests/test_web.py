@@ -886,6 +886,63 @@ def test_build_load_response_includes_atom_metadata(web_client):
         )
 
 
+def test_build_load_response_includes_atoms_list(web_client):
+    """2026-06-07 follow-up: ``/api/build/load`` MUST carry the
+    canonical ``atoms`` array (the same per-atom shape
+    ``/api/selection/atoms`` and ``/api/modify/*`` return).  The
+    Modify tab's ``applyStructure(r)`` calls
+    ``store.adoptAtoms(r.atoms)`` to push the selection store in
+    sync with whatever just landed in the viewer; pre-fix the
+    response only carried ``elements`` + ``atom_names`` so
+    ``r.atoms`` was undefined and the adopt silently no-op'd —
+    the selection panel stayed empty on every fresh structure
+    load (sidebar pick + ALL Sources-card generators).  Pin it."""
+    xyz = "3\nh2o\nO 0 0 0\nH 0.957 0 0\nH -0.24 0.927 0\n"
+    r = web_client.post(
+        "/api/build/load",
+        data={"file": (io.BytesIO(xyz.encode()), "h2o.xyz")},
+        content_type="multipart/form-data",
+    )
+    body = r.get_json()
+    assert body["ok"] is True
+    assert "atoms" in body, (
+        "/api/build/load response is missing the atoms list; "
+        "the modify-tab selection store cannot sync without it"
+    )
+    atoms = body["atoms"]
+    assert len(atoms) == 3
+    # Every row carries the selection-store shape.
+    for row in atoms:
+        assert "index" in row
+        assert "element" in row
+        assert "regions" in row and isinstance(row["regions"], list)
+        assert "is_frozen" in row
+    elements = [row["element"] for row in atoms]
+    assert elements == ["O", "H", "H"]
+
+
+def test_build_molecule_response_includes_atoms_list(web_client):
+    """Same contract as /api/build/load: /api/build/molecule MUST
+    return the canonical atoms list so the Sources-card
+    generators (DNA, RNA, SMILES, name, peptide) push the
+    selection store via ``applyStructure``'s adoptAtoms call.
+    Pre-fix /api/build/molecule omitted ``atoms`` and the
+    selection panel stayed empty after every generate."""
+    r = web_client.post("/api/build/molecule", json={
+        "kind": "smiles", "input": "O",   # water molecule
+    })
+    body = r.get_json()
+    assert body["ok"] is True
+    assert "atoms" in body, (
+        "/api/build/molecule response is missing the atoms list; "
+        "Sources-card generators cannot sync the selection store "
+        "without it"
+    )
+    atoms = body["atoms"]
+    assert len(atoms) == body["n_atoms"]
+    assert all("element" in row for row in atoms)
+
+
 # --------------------------------------------------------------------- #
 #  Modify-tab edit-op endpoints (M3).  Body shape carries the canonical #
 #  state (xyz + atom_names / residue_ids / residue_names / chain_ids)   #

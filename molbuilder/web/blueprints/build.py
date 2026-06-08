@@ -63,6 +63,7 @@ from typing import Any, Dict
 from flask import Blueprint, jsonify, request
 
 from ._shared import (
+    atoms_list,
     config_from_params as _config_from_params,
     dataclass_to_form_schema as _dataclass_to_form_schema,
     issues_to_json as _issues_to_json,
@@ -753,6 +754,7 @@ def api_build_molecule():
         "summary": struct.summary(),
         "title": struct.title or kind,
         "elements": list(struct.elements),
+        "atoms": atoms_list(struct),
         "backend_used": backend_used,
         # Tri-state H-add decision actually used (echoes the request,
         # or "auto" when not explicitly requested).  None for non-
@@ -811,6 +813,15 @@ def api_build_load():
         return jsonify({"ok": False,
                         "error": f"could not parse {fmt}: {exc}"}), 400
 
+    # Include the canonical per-atom payload the selection store
+    # expects (regions + is_frozen + atom_name + residue_name +
+    # chain_id, per ``_shared.atoms_list``).  Without this the
+    # modify viewer's ``applyStructure(r)`` calls
+    # ``store.adoptAtoms(r.atoms)`` against an undefined ``r.atoms``
+    # — silently no-ops — and the selection panel stays empty
+    # after every fresh structure load (sidebar pick OR Sources-
+    # card generator).  The user hit this 2026-06-07; the BOMB-0
+    # fix only updated /api/modify/*, not /api/build/load.
     return jsonify({
         "ok": True,
         "xyz": struct.to_xyz(),
@@ -828,6 +839,7 @@ def api_build_load():
         "residue_ids":   list(struct.residue_ids),
         "residue_names": list(struct.residue_names),
         "chain_ids":     list(struct.chain_ids),
+        "atoms":         atoms_list(struct),
         "source_format": fmt,
     })
 
