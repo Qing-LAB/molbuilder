@@ -175,6 +175,11 @@
                 }
             }
         }
+        // Phase 8 — persistence.  Debounced write to the unified
+        // sessionStorage key on every state change.  Final flush
+        // on ``pagehide`` (wired below in the mount block) so a
+        // last-microtask change isn't lost when the user navigates.
+        _schedulePersist();
     }
 
     function _ensureSubscribed() {
@@ -562,26 +567,137 @@
         });
     }
 
+    // ─── Persistence (Phase 8) ─────────────────────────────────── //
+
+    /**
+     * Phase 8 of the workspace-state migration (2026-06-07): the
+     * dispatcher owns the unified sessionStorage mirror under
+     * ``molbuilder.workspace.v1``.  The legacy per-store mirrors
+     * (``molbuilder.structure_canvas`` and ``modify-state``) stay
+     * in place during the transition — phase 9 deletes them — so
+     * a refresh in the middle of the migration window gracefully
+     * falls back to whichever mirror has data.
+     *
+     * Schema:
+     *
+     *   {
+     *     v:        1,
+     *     saved_at: "<ISO 8601>",
+     *     state: {
+     *       structure:   <ws.getStructure() snapshot, or null>,
+     *       source:      <ws.getSource() snapshot>,
+     *       dirty:       <ws.isDirty()>,
+     *       last_save_to: <canvas-state.getLastSavedTo()>,
+     *       selection:   <ws.getSelection()>,
+     *       view:        <ws.view.getState()>,
+     *     },
+     *   }
+     *
+     * Restore policy mirrors the per-store dirty-gated heuristic
+     * landed in cd9655e: when ``dirty=true`` OR ``source.file=null``
+     * the saved snapshot is authoritative; otherwise the source
+     * file on disk is.  This protects unsaved edits while letting
+     * external file changes propagate.
+     *
+     * On the modify-tab restoreModifyState already runs at
+     * ``DOMContentLoaded``; the dispatcher's restore is layered
+     * on top: it reads ``molbuilder.workspace.v1`` first; falls
+     * back to the legacy mirrors when absent.
+     */
+    var STORAGE_KEY = "molbuilder.workspace.v1";
+    var _persistDeadline = null;
+
+    function _serialise() {
+        return {
+            v:        1,
+            saved_at: new Date().toISOString(),
+            state: {
+                structure:    getStructure(),
+                source:       getSource(),
+                dirty:        isDirty(),
+                last_save_to: _lastSavedTo(),
+                selection:    getSelection(),
+                view:         view.getState(),
+            },
+        };
+    }
+
+    function _lastSavedTo() {
+        var cs = _canvas();
+        return (cs && typeof cs.getLastSavedTo === "function")
+            ? cs.getLastSavedTo() : null;
+    }
+
+    function _persistToSession() {
+        if (!root.sessionStorage) return;
+        try {
+            root.sessionStorage.setItem(
+                STORAGE_KEY, JSON.stringify(_serialise()));
+        } catch (e) {
+            // Quota exceeded or storage disabled.  Same handling
+            // as canvas-state.js / modify-state — log + skip.
+            if (root.console && root.console.warn) {
+                root.console.warn(
+                    "workspace dispatcher: could not persist:",
+                    e && e.message);
+            }
+        }
+    }
+
+    function _schedulePersist() {
+        if (!root.sessionStorage) return;
+        if (_persistDeadline) clearTimeout(_persistDeadline);
+        _persistDeadline = setTimeout(function () {
+            _persistDeadline = null;
+            _persistToSession();
+        }, 100);
+    }
+
+    /**
+     * Returns the parsed snapshot if the unified key has one,
+     * else null.  Callers (modify-tab restoreModifyState +
+     * canvas-state init) check this before falling back to their
+     * legacy mirrors.  Public so the modify-tab + canvas-state
+     * can read it during the migration window.
+     */
+    function readPersistedSnapshot() {
+        if (!root.sessionStorage) return null;
+        var raw;
+        try { raw = root.sessionStorage.getItem(STORAGE_KEY); }
+        catch (_) { return null; }
+        if (!raw) return null;
+        try {
+            var parsed = JSON.parse(raw);
+            if (!parsed || parsed.v !== 1) return null;
+            return parsed;
+        } catch (_) {
+            return null;
+        }
+    }
+
     // ─── Mount on window.molbuilder.workspace ───────────────────── //
 
     var api = {
-        subscribe:      subscribe,
-        getState:       getState,
-        getStructure:   getStructure,
-        getSource:      getSource,
-        getSelection:   getSelection,
-        isDirty:        isDirty,
-        isEmpty:        isEmpty,
-        loadFromFile:   loadFromFile,
-        loadStructure:  loadStructure,
-        generate:       generate,
-        applyOp:        applyOp,
-        applyPayload:   _applyWorkspacePayload,
-        save:           save,
-        discard:        discard,
-        undo:           undo,
-        selection:      selection,
-        view:           view,
+        subscribe:             subscribe,
+        getState:              getState,
+        getStructure:          getStructure,
+        getSource:             getSource,
+        getSelection:          getSelection,
+        isDirty:               isDirty,
+        isEmpty:               isEmpty,
+        loadFromFile:          loadFromFile,
+        loadStructure:         loadStructure,
+        generate:              generate,
+        applyOp:               applyOp,
+        applyPayload:          _applyWorkspacePayload,
+        save:                  save,
+        discard:               discard,
+        undo:                  undo,
+        selection:             selection,
+        view:                  view,
+        // Phase 8 — persistence:
+        readPersistedSnapshot: readPersistedSnapshot,
+        STORAGE_KEY:           STORAGE_KEY,
     };
 
     // UMD-ish mount: ALWAYS mount on ``root.molbuilder.workspace``
@@ -598,6 +714,30 @@
     if (_runtime() && typeof _runtime().register === "function") {
         _runtime().register("workspace", api);
     }
+
+    // Phase 8 — eagerly subscribe to the underlying stores so the
+    // persistence pipeline fires on every state change, even when
+    // no UI consumer has subscribed to ``ws.subscribe`` yet.  The
+    // pre-Phase-8 behaviour was lazy-attach (only when someone
+    // called ``ws.subscribe``); that meant a fresh page with no
+    // panel mounted would never persist its workspace state.
+    _ensureSubscribed();
+
+    // Phase 8 — pagehide flush.  The debounced persist may have a
+    // pending timer when the user navigates; force a final write
+    // so the next page sees the latest state.  Mirrors what
+    // modify/viewer.js does for its modify-state key today (the
+    // legacy mirror co-exists during the migration window).
+    if (root.addEventListener) {
+        root.addEventListener("pagehide", function () {
+            if (_persistDeadline) {
+                clearTimeout(_persistDeadline);
+                _persistDeadline = null;
+            }
+            _persistToSession();
+        });
+    }
+
     if (typeof module !== "undefined" && module.exports) {
         module.exports = api;
     }

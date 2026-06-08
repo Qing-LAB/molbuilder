@@ -403,6 +403,76 @@ class TestPersistRoundtrip:
         )
         assert out == [0, 1]
 
+    def test_storage_key_is_v1(self):
+        out = _run_node(
+            "console.log(JSON.stringify(window.molbuilder.workspace.STORAGE_KEY));")
+        assert out == "molbuilder.workspace.v1"
+
+    def test_persist_writes_to_unified_sessionStorage_key(self):
+        """Phase 8 — on every state change the dispatcher writes
+        a debounced snapshot to ``molbuilder.workspace.v1``.  We
+        force a synchronous write via the dispatcher's pagehide
+        flush path by simulating a state change and waiting for
+        the debounce timer."""
+        out = _run_node(
+            "const ws = window.molbuilder.workspace;\n"
+            "window.molbuilder.selection.store.adoptAtoms([\n"
+            "  {index: 0, element: 'O', regions: [], is_frozen: false},\n"
+            "]);\n"
+            "// adoptAtoms fires _notify() in the store, which fans\n"
+            "// into the dispatcher's _notify → _schedulePersist.\n"
+            "// Wait for the 100ms debounce.\n"
+            "setTimeout(() => {\n"
+            "  const raw = sessionStorage.getItem(ws.STORAGE_KEY);\n"
+            "  const parsed = JSON.parse(raw);\n"
+            "  console.log(JSON.stringify({\n"
+            "    v:     parsed.v,\n"
+            "    atoms: parsed.state.selection.indices.length === 0,\n"
+            "    hasSelectionSlot: !!parsed.state.selection,\n"
+            "    hasSourceSlot:    !!parsed.state.source,\n"
+            "  }));\n"
+            "}, 150);"
+        )
+        assert out == {
+            "v": 1,
+            "atoms": True,
+            "hasSelectionSlot": True,
+            "hasSourceSlot":    True,
+        }
+
+    def test_readPersistedSnapshot_returns_null_when_no_key(self):
+        out = _run_node(
+            "console.log(JSON.stringify(\n"
+            "  window.molbuilder.workspace.readPersistedSnapshot()));"
+        )
+        assert out is None
+
+    def test_readPersistedSnapshot_returns_parsed_snapshot(self):
+        out = _run_node(
+            "const ws = window.molbuilder.workspace;\n"
+            "sessionStorage.setItem(ws.STORAGE_KEY, JSON.stringify({\n"
+            "  v: 1, saved_at: '2026-06-07T00:00:00Z',\n"
+            "  state: {source: {kind: 'smiles', file: null}},\n"
+            "}));\n"
+            "console.log(JSON.stringify(ws.readPersistedSnapshot()));"
+        )
+        assert out["v"] == 1
+        assert out["state"]["source"]["kind"] == "smiles"
+
+    def test_readPersistedSnapshot_returns_null_on_schema_mismatch(self):
+        """Future schema bumps (v=2, v=3, …) invalidate older
+        saves cleanly — same back-compat policy as modify-state's
+        STATE_SCHEMA_VERSION check.  Pins that the dispatcher
+        rejects v=99 rather than silently passing it through."""
+        out = _run_node(
+            "const ws = window.molbuilder.workspace;\n"
+            "sessionStorage.setItem(ws.STORAGE_KEY, JSON.stringify({\n"
+            "  v: 99, state: {}\n"
+            "}));\n"
+            "console.log(JSON.stringify(ws.readPersistedSnapshot()));"
+        )
+        assert out is None
+
 
 # --------------------------------------------------------------------- #
 #  TestSelectionPassthrough — selection.* mirrors the store             #
