@@ -134,65 +134,123 @@ header .tagline {
 .status.error { color: var(--error); }
 .status.warn  { color: #d8a64b; }
 
-/* ---- Three-column main grid ----
+/* ---- Vertical workflow (2026-06-08 restructure) ----
  *
- * Layout breakpoints:
- *   >= 1280px   3-column: selection (320px) | viewer (1fr) | edit (340px)
- *   1024-1280   2-column: selection (300px) | viewer (1fr); edit
- *               drops below (full-width) so the viewer keeps room
- *   < 1024px    1-column stack: selection, viewer, edit
- *
- * Updated 2026-05-20: the selection panel was lifted from a full-
- * width band above the grid into a column NEXT TO the viewer, so
- * picks + the structure render are visible at the same time.
+ * The Molbuilder tab is now a vertical scroll: Init structure
+ * (sources card) → Viewer → Modify (selection + edit side-by-
+ * side + Save footer).  The previous 3-column grid (selection |
+ * viewer | edit) was retired — visually heavy + forced the user
+ * to track three columns at once.  The new flow matches the
+ * actual workflow: pick/generate → inspect → edit → save.
  */
-.modify-grid {
-    display: grid;
-    grid-template-columns: 320px minmax(0, 1fr) 340px;
-    grid-template-areas: "selection viewer edit";
+.molbuilder-tab-main {
+    display: flex;
+    flex-direction: column;
     gap: var(--gap);
     padding: var(--gap);
-    align-items: stretch;
-    min-height: calc(100vh - 200px);
 }
-.modify-grid .selection-host { grid-area: selection; }
-.modify-grid .viewer-card    { grid-area: viewer; }
-.modify-grid .edit-card      { grid-area: edit; }
-@media (max-width: 1280px) {
-    /* 2-column: selection | viewer; edit drops below as a row. */
-    .modify-grid {
-        grid-template-columns: 300px minmax(0, 1fr);
-        grid-template-areas:
-            "selection viewer"
-            "edit      edit";
-    }
+.viewer-section {
+    /* Comfortable viewer height across desktop sizes; phone
+     * narrows below take 360 px so the viewer stays usable. */
+    display: flex;
+    flex-direction: column;
+    min-height: 480px;
 }
-@media (max-width: 1024px) {
-    .modify-grid {
-        /* ``minmax(0, 1fr)`` rather than plain ``1fr`` so the column
-         * can shrink BELOW the children's min-content size.  With
-         * plain ``1fr`` a child whose unbreakable element (button
-         * row, long word, fixed-width canvas hint) is wider than
-         * the available space pushes the grid column wider than its
-         * container, producing a horizontal scroll bar -- exactly
-         * what the phone-width overflow regression caught at the
-         * 360 px viewport (task #182).  ``minmax(0, ...)`` opts out
-         * of the implicit ``min-width: auto`` and lets ``overflow``
-         * on the child handle anything that genuinely doesn't fit. */
+.viewer-section #viewer.viewer {
+    flex: 1;
+    min-height: 360px;
+}
+
+/* Modify section: selection (left, 50%) + edit (right, 50%) on
+ * wide screens; stacked on narrow.  Footer row underneath holds
+ * Save + Send-to-Optimization. */
+.modify-section { display: flex; flex-direction: column; }
+.modify-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--gap);
+    align-items: start;
+}
+.modify-selection { min-width: 0; }   /* let it shrink in the grid */
+.modify-edit      { min-width: 0; }
+@media (max-width: 960px) {
+    .modify-body {
         grid-template-columns: minmax(0, 1fr);
-        grid-template-areas:
-            "selection"
-            "viewer"
-            "edit";
     }
-    .modify-grid .viewer-card { min-height: 360px; }
 }
+
+.modify-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--gap);
+    padding-top: 0.8rem;
+    margin-top: 0.6rem;
+    border-top: 1px solid var(--border-soft);
+    flex-wrap: wrap;
+}
+.modify-actions, .modify-handoff {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+.modify-actions  { flex: 1 1 240px; }
+.modify-handoff  { flex: 1 1 240px; justify-content: flex-end; }
+.modify-footer button.full-btn { min-width: 200px; }
+
 @media (max-width: 640px) {
-    /* Phone-narrow: drop padding + gap to claw back pixels. */
-    .modify-grid  { padding: 6px; gap: 6px; }
-    .sources-card { margin: 0.5rem 0.8rem 0; padding: 0.4rem 0.8rem; }
-    header        { padding: 0.9rem 1rem 0.6rem; }
+    .molbuilder-tab-main { padding: 6px; gap: 6px; }
+    .init-structure-card { margin: 0.5rem 0.8rem 0; padding: 0.4rem 0.8rem; }
+    header               { padding: 0.9rem 1rem 0.6rem; }
 }
+
+/* ---- Init structure card (was Sources) ---- */
+.init-structure-card {
+    margin: 1rem 2rem 0;
+    padding: 0.6rem 1rem 0.4rem;
+}
+.init-structure-card .card-header {
+    padding: 0 0 0.6rem;
+    border-bottom: 1px solid var(--border-soft);
+}
+.init-structure-card .card-header h2 {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+/* Tab bar that replaced the <details> accordion (one panel
+ * visible at a time keeps the card compact regardless of how
+ * many generators land).  Wraps onto multiple lines when the
+ * window is narrow rather than horizontally scrolling.       */
+.init-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    padding: 0.5rem 0 0.6rem;
+    border-bottom: 1px solid var(--border-soft);
+}
+.init-tab {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 1px solid var(--border-soft);
+    border-radius: 4px;
+    padding: 0.35rem 0.8rem;
+    font-size: 0.92rem;
+    cursor: pointer;
+}
+.init-tab:hover { color: var(--text-primary); border-color: var(--border); }
+.init-tab.is-active {
+    color: var(--text-primary);
+    background: var(--bg-card-emphasis, var(--bg-card));
+    border-color: var(--accent, currentColor);
+}
+
+.init-tab-panel {
+    padding: 0.5rem 0 0.6rem;
+}
+.init-tab-panel[hidden] { display: none; }
 
 /* ---- Cards ---- */
 .card {
@@ -225,11 +283,13 @@ header .tagline {
  * atoms card -- the selection panel above the grid renders the
  * per-atom list now.  See lib/selection-panel.css.) */
 
-/* ---- Viewer (left/main) ---- */
-.viewer-card { gap: 0; }
-/* Square viewer, consistent with Build + Watch (aspect-ratio 1:1,
- * 320 - 560 px clamped to 60vh).  Sits in the centre column of the
- * .modify-grid; centred horizontally when the container is wider. */
+/* ---- Viewer section ---- */
+.viewer-section { gap: 0; }
+.viewer-card    { gap: 0; }   /* legacy alias; kept for safety */
+/* Square-ish viewer, consistent with the other tabs.  Sits in
+ * the middle section of the vertical workflow; centred
+ * horizontally when the container is wider. */
+.viewer-section #viewer.viewer,
 .viewer-card #viewer.viewer {
     width: 100%;
     max-width: 560px;

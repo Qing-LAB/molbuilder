@@ -36,20 +36,50 @@
 <!--             panel.  All M1-M5 ops now wired.                  -->
 <!-- ============================================================ -->
 
-<!-- Sources card: every path that brings a structure INTO the
-     workspace lives here in a foldable panel.  Order matches
-     docs/tabs/architecture.md § 5.1.  Today the card carries Load-
-     from-project + Generate-from-SMILES; future generators (3DNA,
-     peptide, name, file upload) land as additional <details>
-     panels alongside these two. -->
-<section class="sources-card card">
+<!-- 1. Init structure — every path that brings a structure INTO
+     the workspace.  Tab-bar (instead of accordion) so only one
+     generator's form is visible at a time, eliminating the
+     accordion's vertical sprawl + keeping the workflow visually
+     compact.  Order matches docs/tabs/architecture.md § 5.1. -->
+<section class="init-structure-card card">
   <header class="card-header">
-    <h2>Sources</h2>
+    <h2>1. Init structure</h2>
     <span id="status" class="status">No structure loaded.</span>
   </header>
 
-  <details class="source-panel" open>
-    <summary>Load from project</summary>
+  <nav class="init-tabs" role="tablist" aria-label="Init structure source">
+    <button class="init-tab is-active" data-init-tab="load"
+            role="tab" type="button" aria-selected="true">
+      Load from project
+    </button>
+    <button class="init-tab" data-init-tab="upload"
+            role="tab" type="button" aria-selected="false">
+      Upload file
+    </button>
+    <button class="init-tab" data-init-tab="smiles"
+            role="tab" type="button" aria-selected="false">
+      SMILES
+    </button>
+    <button class="init-tab" data-init-tab="name"
+            role="tab" type="button" aria-selected="false">
+      Name lookup
+    </button>
+    <button class="init-tab" data-init-tab="dna"
+            role="tab" type="button" aria-selected="false">
+      DNA
+    </button>
+    <button class="init-tab" data-init-tab="rna"
+            role="tab" type="button" aria-selected="false">
+      RNA
+    </button>
+    <button class="init-tab" data-init-tab="peptide"
+            role="tab" type="button" aria-selected="false">
+      Peptide
+    </button>
+  </nav>
+
+  <div class="init-tab-panel is-active" data-init-panel="load"
+       role="tabpanel">
     <div class="source-panel-body">
       <p class="source-hint">
         Pick a structure (<code>.xyz</code> / <code>.pdb</code>) in
@@ -64,10 +94,25 @@
         <span id="load-candidate-readout" class="muted"></span>
       </div>
     </div>
-  </details>
+  </div>
 
-  <details class="source-panel">
-    <summary>Generate from SMILES</summary>
+  <div class="init-tab-panel" data-init-panel="upload" role="tabpanel" hidden>
+    <div class="source-panel-body">
+      <p class="source-hint">
+        Drop a local <code>.xyz</code> / <code>.pdb</code> file
+        into the workspace (no project sidebar pick needed —
+        useful for one-off geometries from another tool).
+      </p>
+      <div class="source-actions">
+        <input id="file-upload-input" type="file"
+               accept=".xyz,.pdb,.XYZ,.PDB"
+               class="source-file-input">
+        <span id="file-upload-status" class="muted" role="status"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="init-tab-panel" data-init-panel="smiles" role="tabpanel" hidden>
     <div class="source-panel-body">
       <p class="source-hint">
         Build a 3-D structure from a SMILES string via RDKit.
@@ -83,10 +128,9 @@
         <span id="smiles-status" class="muted" role="status"></span>
       </div>
     </div>
-  </details>
+  </div>
 
-  <details class="source-panel">
-    <summary>Generate from name</summary>
+  <div class="init-tab-panel" data-init-panel="name" role="tabpanel" hidden>
     <div class="source-panel-body">
       <p class="source-hint">
         Look up a molecule by IUPAC or common name (PubChem) and
@@ -103,10 +147,9 @@
         <span id="name-status" class="muted" role="status"></span>
       </div>
     </div>
-  </details>
+  </div>
 
-  <details class="source-panel">
-    <summary>Generate DNA</summary>
+  <div class="init-tab-panel" data-init-panel="dna" role="tabpanel" hidden>
     <div class="source-panel-body">
       <p class="source-hint">
         Build single-stranded DNA from a 1-letter sequence (ACGT)
@@ -145,10 +188,9 @@
         <span id="dna-status" class="muted" role="status"></span>
       </div>
     </div>
-  </details>
+  </div>
 
-  <details class="source-panel">
-    <summary>Generate RNA</summary>
+  <div class="init-tab-panel" data-init-panel="rna" role="tabpanel" hidden>
     <div class="source-panel-body">
       <p class="source-hint">
         Build single-stranded RNA from a 1-letter sequence (ACGU)
@@ -186,10 +228,9 @@
         <span id="rna-status" class="muted" role="status"></span>
       </div>
     </div>
-  </details>
+  </div>
 
-  <details class="source-panel">
-    <summary>Generate peptide</summary>
+  <div class="init-tab-panel" data-init-panel="peptide" role="tabpanel" hidden>
     <div class="source-panel-body">
       <p class="source-hint">
         Build a peptide from a one-letter amino-acid sequence
@@ -207,62 +248,23 @@
         <span id="peptide-status" class="muted" role="status"></span>
       </div>
     </div>
-  </details>
-
-  <details class="source-panel">
-    <summary>Load from local file</summary>
-    <div class="source-panel-body">
-      <p class="source-hint">
-        Load an XYZ or PDB file from your computer.  Use this for
-        structures that aren't in a molbuilder project yet
-        (downloads, exports from other tools).
-      </p>
-      <div class="source-actions">
-        <input id="file-upload-input" type="file"
-               accept=".xyz,.pdb,.XYZ,.PDB"
-               class="source-file-input">
-        <span id="file-upload-status" class="muted" role="status"></span>
-      </div>
-    </div>
-  </details>
-
-  <details class="source-panel">
-    <summary>Save</summary>
-    <div class="source-panel-body">
-      <p class="source-hint">
-        Write the workspace structure back to its source file.
-        Save-as (pick a new directory + filename) lands in a later
-        phase.
-      </p>
-      <div class="source-actions">
-        <button id="save-to-source-btn" class="ghost" disabled>
-          Save to source
-        </button>
-        <span id="save-readout" class="muted"></span>
-        <span id="save-status" class="muted" role="status"></span>
-      </div>
-    </div>
-  </details>
+  </div>
 </section>
 
-<main class="modify-grid">
+<main class="molbuilder-tab-main">
 
-  {# Selection-panel host -- compact vertical card next to the
-     viewer.  Filled by modify/selection-bootstrap.js after fetching
-     /partials/selection-panel. #}
-  <div id="selection-host" class="selection-host"></div>
-
-  <!-- MIDDLE: 3D viewer -->
-  <section class="card viewer-card">
+  <!-- 2. Viewer — vertical workflow puts the 3D canvas between
+       Init structure (above) and Modify (below).  /modify-
+       specific actions (Focus molecule, Clear selection) stay
+       in the row directly below the canvas; structure-level
+       handoff actions (Save, Send-to-Optimization) live at
+       the bottom of Modify, NOT here. -->
+  <section class="card viewer-section">
     <header class="card-header">
-      <h2>Viewer</h2>
+      <h2>2. Viewer</h2>
       <span id="title-readout" class="muted"></span>
     </header>
     <div id="viewer" class="viewer"></div>
-    <!-- Style / labels / axes / reset live in the embed's standard
-         knob bar above the canvas after the #203 migration.  Only
-         /modify-specific actions (Focus molecule, Clear selection)
-         stay in this row. -->
     <div class="viewer-controls">
       <button id="focus-molecule" class="ghost"
         title="Re-anchor the rotation/zoom pivot on the molecule (ignoring electrode slabs).
@@ -270,30 +272,26 @@ Use this whenever zoom/rotate feels off-centre; after adding slabs the bounding 
 is dominated by the slabs and 3Dmol's auto-pivot drifts off the molecule.">Focus molecule</button>
       <button id="clear-selection" class="ghost">Clear selection</button>
     </div>
-
-    <!-- Send-to-optimization handoff bar.  Sits directly below the
-         3D viewer + viewer-controls so it's visible regardless of
-         which edit-panel sub-tab (Atom / Pose / Geom / Junction)
-         is active.  The handoff is a structure-level action --
-         it ships the current geometry to /structure-optimization
-         for downstream SIESTA / PySCF input generation -- so
-         visually attaching it to the viewer (the structure's
-         primary surface) is the right semantic.  Style-wise: a
-         dedicated row, NOT folded into viewer-controls (which are
-         display toggles, a different verb class). -->
-    <div class="viewer-handoff">
-      <button id="send-to-build" class="full-btn" disabled>
-        Send to Structure optimization
-      </button>
-    </div>
   </section>
 
-  <!-- RIGHT: Edit panel -->
-  <aside class="card edit-card">
+  <!-- 3. Modify — selection + edit panels side-by-side (50/50)
+       on wide screens, stacking vertically on narrow.  Save +
+       Send-to-Optimization handoff at the bottom. -->
+  <section class="card modify-section">
     <header class="card-header">
-      <h2>Edit</h2>
+      <h2>3. Modify</h2>
       <span id="edit-status" class="muted"></span>
     </header>
+
+    <div class="modify-body">
+      {# Selection panel host (filled by selection-bootstrap.js). #}
+      <div id="selection-host" class="modify-selection selection-host"></div>
+
+      <!-- Edit (op-tabs) — the existing Atom / Pose / Geom /
+           Junction sub-tabs.  Mounted side-by-side with the
+           selection panel so the user can refine a selection
+           and apply an op without scrolling between cards. -->
+      <aside class="modify-edit edit-card">
     <div class="edit-panel">
       <!-- The "Selection" summary that used to sit at the top of
            this panel was retired 2026-05-20.  The selection-panel
@@ -611,6 +609,29 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
       </div><!-- /.optab-panel data-op-panel="junction" -->
     </div>
   </aside>
+
+    </div><!-- /.modify-body -->
+
+    <!-- Modify footer — structure-level actions.  Save lives on
+         the left (the always-available structure write); the
+         Send-to-Optimization handoff lives on the right (the
+         workflow-advance action — once the geometry's ready,
+         move it to the next tab for script generation). -->
+    <div class="modify-footer">
+      <div class="modify-actions">
+        <button id="save-to-source-btn" class="full-btn" disabled>
+          Save to project
+        </button>
+        <span id="save-readout" class="muted"></span>
+        <span id="save-status" class="muted" role="status"></span>
+      </div>
+      <div class="modify-handoff">
+        <button id="send-to-build" class="full-btn" disabled>
+          Send to Structure optimization →
+        </button>
+      </div>
+    </div>
+  </section>
 
 </main>
 

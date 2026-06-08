@@ -740,9 +740,7 @@ def test_smiles_generator_renders_structure_in_viewer(page, flask_server):
 
     _open_modify(page, flask_server)
     # Expand the SMILES panel + type a SMILES + click Generate.
-    page.locator(
-        ".source-panel:has(> summary:has-text('SMILES'))"
-    ).evaluate("el => el.open = true")
+    page.locator(".init-tab[data-init-tab='smiles']").click()
     page.locator("#smiles-input").fill("CCO")
     page.locator("#smiles-generate-btn").click()
     # Wait for the viewer to populate.  Ethanol with H = 9 atoms
@@ -834,9 +832,7 @@ def test_smiles_with_dirty_canvas_fires_warning_modal(
         "() => window.__molbuilder_modify_test.getNAtoms() === 2"
     )
     # Now click Generate-from-SMILES.  Warning modal must appear.
-    page.locator(
-        ".source-panel:has(> summary:has-text('SMILES'))"
-    ).evaluate("el => el.open = true")
+    page.locator(".init-tab[data-init-tab='smiles']").click()
     page.locator("#smiles-input").fill("C")
     page.locator("#smiles-generate-btn").click()
     # Wait for the modal to appear in the DOM.
@@ -873,9 +869,7 @@ def test_smiles_with_dirty_canvas_cancel_keeps_edit(
     n_before = page.evaluate(
         "() => window.__molbuilder_modify_test.getNAtoms()"
     )
-    page.locator(
-        ".source-panel:has(> summary:has-text('SMILES'))"
-    ).evaluate("el => el.open = true")
+    page.locator(".init-tab[data-init-tab='smiles']").click()
     page.locator("#smiles-input").fill("C")
     page.locator("#smiles-generate-btn").click()
     page.wait_for_selector("dialog.molbuilder-warning-modal",
@@ -926,9 +920,6 @@ def test_save_writes_to_source_and_clears_dirty(
         "() => window.molbuilder.structureCanvas.isDirty()"
     ) is True
     # Expand the Save panel + click Save.
-    page.locator(
-        ".source-panel:has(> summary:has-text('Save'))"
-    ).evaluate("el => el.open = true")
     page.locator("#save-to-source-btn").click()
     # Wait until the inflight save resolves (status leaves "Saving…").
     page.wait_for_function(
@@ -966,18 +957,13 @@ def test_save_button_disabled_for_smiles_without_prior_save(
         pytest.skip("rdkit not installed; cannot exercise SMILES build")
 
     _open_modify(page, flask_server)
-    page.locator(
-        ".source-panel:has(> summary:has-text('SMILES'))"
-    ).evaluate("el => el.open = true")
+    page.locator(".init-tab[data-init-tab='smiles']").click()
     page.locator("#smiles-input").fill("C")
     page.locator("#smiles-generate-btn").click()
     page.wait_for_function(
         "() => window.__molbuilder_modify_test.getNAtoms() === 5",
         timeout=10_000,
     )
-    page.locator(
-        ".source-panel:has(> summary:has-text('Save'))"
-    ).evaluate("el => el.open = true")
     # Button stays disabled even with a SMILES-generated structure
     # in the workspace — there's no target to write to.
     assert page.locator("#save-to-source-btn").is_disabled()
@@ -1008,9 +994,7 @@ def test_dna_generator_renders_structure_in_viewer(page, flask_server):
         pytest.skip("no DNA backend (3DNA / AmberTools / RDKit) installed")
 
     _open_modify(page, flask_server)
-    page.locator(
-        ".source-panel:has(> summary:has-text('Generate DNA'))"
-    ).evaluate("el => el.open = true")
+    page.locator(".init-tab[data-init-tab='dna']").click()
     page.locator("#dna-input").fill("ACGT")
     page.locator("#dna-generate-btn").click()
     page.wait_for_function(
@@ -1052,9 +1036,7 @@ def test_dna_generator_populates_selection_store(
         pytest.skip("no DNA backend installed")
 
     _open_modify(page, flask_server)
-    page.locator(
-        ".source-panel:has(> summary:has-text('Generate DNA'))"
-    ).evaluate("el => el.open = true")
+    page.locator(".init-tab[data-init-tab='dna']").click()
     page.locator("#dna-input").fill("ACGT")
     page.locator("#dna-generate-btn").click()
     page.wait_for_function(
@@ -1110,9 +1092,7 @@ def test_generator_resets_stale_selection(
     # store-sync window we're trying to assert on).  Selection
     # MUST clear — index 1 from the previous water means something
     # different in methane even though it's in-range.
-    page.locator(
-        ".source-panel:has(> summary:has-text('Generate from SMILES'))"
-    ).evaluate("el => el.open = true")
+    page.locator(".init-tab[data-init-tab='smiles']").click()
     page.locator("#smiles-input").fill("C")   # methane (5 atoms)
     page.locator("#smiles-generate-btn").click()
     page.wait_for_function(
@@ -1139,9 +1119,7 @@ def test_smiles_generator_populates_selection_store(
         pytest.skip("RDKit not installed")
 
     _open_modify(page, flask_server)
-    page.locator(
-        ".source-panel:has(> summary:has-text('Generate from SMILES'))"
-    ).evaluate("el => el.open = true")
+    page.locator(".init-tab[data-init-tab='smiles']").click()
     page.locator("#smiles-input").fill("O")  # water
     page.locator("#smiles-generate-btn").click()
     page.wait_for_function(
@@ -1186,9 +1164,7 @@ def test_rna_generator_renders_structure_in_viewer(page, flask_server):
         pytest.skip("no RNA backend (3DNA / AmberTools / RDKit) installed")
 
     _open_modify(page, flask_server)
-    page.locator(
-        ".source-panel:has(> summary:has-text('Generate RNA'))"
-    ).evaluate("el => el.open = true")
+    page.locator(".init-tab[data-init-tab='rna']").click()
     page.locator("#rna-input").fill("ACGU")
     page.locator("#rna-generate-btn").click()
     page.wait_for_function(
@@ -1219,9 +1195,7 @@ def test_peptide_generator_renders_structure_in_viewer(page, flask_server):
         pytest.skip("AmberTools not available; cannot exercise peptide build")
 
     _open_modify(page, flask_server)
-    page.locator(
-        ".source-panel:has(> summary:has-text('Generate peptide'))"
-    ).evaluate("el => el.open = true")
+    page.locator(".init-tab[data-init-tab='peptide']").click()
     page.locator("#peptide-input").fill("AC")
     page.locator("#peptide-generate-btn").click()
     # A dipeptide has ~30 atoms (alanine ~13 + cysteine ~14 +
@@ -1244,9 +1218,7 @@ def test_file_upload_panel_loads_local_xyz(
     the SMILES + name happy-path tests; uses the existing
     water_xyz_file fixture to avoid creating a new disk file."""
     _open_modify(page, flask_server)
-    page.locator(
-        ".source-panel:has(> summary:has-text('Load from local file'))"
-    ).evaluate("el => el.open = true")
+    page.locator(".init-tab[data-init-tab='upload']").click()
     # Playwright's set_input_files attaches the disk path as the
     # selected file — equivalent to the user picking it via the
     # browser's file dialog.
@@ -1275,9 +1247,7 @@ def test_name_generator_renders_structure_in_viewer(page, flask_server):
         pytest.skip("rdkit not installed; cannot exercise name build")
 
     _open_modify(page, flask_server)
-    page.locator(
-        ".source-panel:has(> summary:has-text('Generate from name'))"
-    ).evaluate("el => el.open = true")
+    page.locator(".init-tab[data-init-tab='name']").click()
     page.locator("#name-input").fill("water")
     page.locator("#name-generate-btn").click()
     # water has 3 atoms (O + 2H).  PubChem 3D record may add no
@@ -1298,9 +1268,7 @@ def test_smiles_generator_empty_input_surfaces_inline_error(
     """Click Generate with an empty SMILES input → inline error,
     NO network call (the module rejects empty input client-side)."""
     _open_modify(page, flask_server)
-    page.locator(
-        ".source-panel:has(> summary:has-text('SMILES'))"
-    ).evaluate("el => el.open = true")
+    page.locator(".init-tab[data-init-tab='smiles']").click()
     page.locator("#smiles-input").fill("")
     page.locator("#smiles-generate-btn").click()
     # Inline error appears WITHOUT a roundtrip — the message is
@@ -3198,23 +3166,24 @@ def test_op_subtabs_default_to_atom_and_swap_on_click(
 def test_send_to_build_visible_across_all_op_subtabs(
         page, flask_server, water_xyz_file):
     """The Send-to-Build button is the tab-level handoff action;
-    it lives in a ``.viewer-handoff`` bar UNDER the 3D viewer
-    (inside the viewer-card) so the user can ship the current
-    structure to /build regardless of which edit-panel sub-tab is
-    active.  Pinned 2026-05-21 after the move out of the Junction
-    op-panel where it used to be buried.
+    it lives in ``.modify-footer .modify-handoff`` at the bottom
+    of the Modify section so the user can ship the current
+    structure to /structure-optimization regardless of which
+    edit-panel sub-tab (Atom / Pose / Geom / Junction) is active.
 
-    Also verifies the button is hosted in the viewer column
-    (.viewer-card .viewer-handoff), NOT in the edit-card -- the
-    handoff is structure-level (attaches to the structure surface,
-    the viewer), not op-level."""
+    Post-2026-06-08 restructure: the button moved from the
+    viewer-card to the Modify section's footer, alongside the
+    Save button.  Both are structure-level workflow actions and
+    sit next to each other at the bottom of the workflow."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
 
     send_btn = page.locator("#send-to-build")
-    # Hosted under the viewer card, not the edit card.
-    assert page.locator(".viewer-card .viewer-handoff #send-to-build").count() == 1, (
-        "Send to Build button is NOT inside .viewer-card .viewer-handoff"
+    # Hosted in the Modify section's footer, not the viewer card.
+    assert page.locator(
+        ".modify-footer .modify-handoff #send-to-build"
+    ).count() == 1, (
+        "Send to Build button is NOT inside .modify-footer .modify-handoff"
     )
 
     # Atom is the default-open op-tab; the handoff button must be
@@ -3245,19 +3214,21 @@ def test_send_to_build_visible_across_all_op_subtabs(
 
 def test_modify_layout_stacks_on_narrow_viewport(
         page, flask_server, water_xyz_file):
-    """The 3-column grid collapses to a 1-column stack at viewport
-    width <= 1024px.  Use Playwright's set_viewport_size to drive
-    the responsive media query and assert the grid-template-columns
-    computed style flips to a single track.  Width 800px is the
-    "tablet portrait" range we want to support."""
+    """Post-2026-06-08 restructure: the Modify section's body
+    (selection + edit side-by-side) collapses to a 1-column
+    stack at viewport width <= 960px.  Use Playwright's
+    set_viewport_size to drive the responsive media query and
+    assert ``.modify-body``'s grid-template-columns flips to a
+    single track.  Width 800px is the "tablet portrait" range
+    we want to support."""
     page.set_viewport_size({"width": 800, "height": 900})
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
     cols = page.evaluate(
-        "() => getComputedStyle(document.querySelector('.modify-grid'))"
+        "() => getComputedStyle(document.querySelector('.modify-body'))"
         ".gridTemplateColumns"
     )
-    # 1-column stack has exactly ONE track; multi-column has 2 or 3.
+    # 1-column stack has exactly ONE track; side-by-side has TWO.
     n_tracks = len(cols.split())
     assert n_tracks == 1, (
         f"narrow viewport should give one track; got {n_tracks} ({cols!r})"

@@ -1128,6 +1128,28 @@
             });
         });
 
+        // Init-structure tabs (Sources reorganization 2026-06-08):
+        // same toggle pattern as the op-tabs above but for the
+        // Init structure card's generator/loader bar.  Each tab
+        // unhides ONE ``.init-tab-panel`` and hides the rest;
+        // ``hidden`` is the canonical "panel not active" state
+        // (matches the role="tabpanel" pattern).
+        document.querySelectorAll(".init-tab").forEach((btn) => {
+            btn.addEventListener("click", () => {
+                const target = btn.dataset.initTab;
+                document.querySelectorAll(".init-tab").forEach((b) => {
+                    const on = (b.dataset.initTab === target);
+                    b.classList.toggle("is-active", on);
+                    b.setAttribute("aria-selected", on ? "true" : "false");
+                });
+                document.querySelectorAll(".init-tab-panel").forEach((p) => {
+                    const on = (p.dataset.initPanel === target);
+                    p.classList.toggle("is-active", on);
+                    p.hidden = !on;
+                });
+            });
+        });
+
         // Phase 1: persist structure state across tab navigation.
         // Restore here (after every event handler is wired so the
         // restored UI behaves identically to a freshly-loaded one);
