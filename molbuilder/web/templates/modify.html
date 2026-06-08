@@ -653,5 +653,12 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
 <script src="{{ url_for('static', filename='lib/structure/peptide.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/file.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/save.js') }}"></script>
+{# Workspace dispatcher — Phase 4 of the workspace-state migration
+   (docs/protocols/workspace-state.md § 4.2).  Loaded LAST so every
+   legacy store it delegates to (canvas-state, selection.store,
+   modify.handle, structureSave, the generators) is already on
+   ``window.molbuilder``.  Mounts ``window.molbuilder.workspace``
+   as the single public API surface for workspace state. #}
+<script src="{{ url_for('static', filename='lib/workspace/dispatcher.js') }}"></script>
 </body>
 </html>

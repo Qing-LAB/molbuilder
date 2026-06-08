@@ -1517,6 +1517,14 @@
     // Module-init contract: register the modify handle + loader
     // with the runtime so consumers can ``whenReady("modify.handle")``
     // or ``whenReady("modify.loadStructureText")``.  See design.md.
+    //
+    // Phase 4 of the workspace-state migration (2026-06-07): also
+    // expose ``modify.postOp`` (the modifier-op HTTP path) and
+    // ``modify.applyUndo`` (the history-pop path) so the
+    // ``window.molbuilder.workspace`` dispatcher can delegate to
+    // them via ``runtime.whenReady``.  These were IIFE-private
+    // pre-Phase-4; exposing them lets the new public API surface
+    // light up without duplicating the modifier wire-up.
     if (window.molbuilder.runtime
         && typeof window.molbuilder.runtime.register === "function") {
         window.molbuilder.runtime.register(
@@ -1524,5 +1532,7 @@
         window.molbuilder.runtime.register(
             "modify.loadStructureText",
             window.molbuilder.loadStructureText);
+        window.molbuilder.runtime.register("modify.postOp", postOp);
+        window.molbuilder.runtime.register("modify.applyUndo", applyUndo);
     }
 })();
