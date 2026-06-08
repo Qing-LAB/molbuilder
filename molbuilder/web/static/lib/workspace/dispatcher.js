@@ -346,29 +346,155 @@
     };
 
     /**
+     * Apply a server-returned workspace payload to every store
+     * atomically.  Phase 5 (2026-06-07) — the single cross-store
+     * sync point.
+     *
+     * Side effects, in order:
+     *   1. canvas-state.replaceContent(text)  when ``touchCanvas``
+     *      (modifier-op flow; flips the dirty bit).  Generator + sidebar
+     *      flows pass ``touchCanvas: false`` because canvas-state was
+     *      already set via ``structurePage.loadIntoCanvas`` (dirty=false).
+     *   2. modify-tab IIFE state + 3Dmol embed via the registered
+     *      ``window.molbuilder.modify.applyStructure`` hook.  Synchronous;
+     *      after this call state.* and the embed reflect the payload.
+     *   3. ``selection_remap`` (Phase 3 wire shape) is applied to the
+     *      existing selection — surviving indices remap, removed atoms
+     *      drop, all in one ``setSelection`` call.
+     *   4. ``opts.resetSelection`` clears the selection (sidebar /
+     *      generator flow).  Mutually exclusive with ``selection_remap``.
+     *   5. Dispatcher subscribers are notified.
+     */
+    function _applyWorkspacePayload(payload, opts) {
+        opts = opts || {};
+        var touchCanvas    = opts.touchCanvas !== false;
+        var resetSelection = !!opts.resetSelection;
+        var text = payload && (payload.text || payload.xyz);
+
+        // 1. Canvas-state.
+        var cs = _canvas();
+        if (touchCanvas && cs && text
+                && typeof cs.replaceContent === "function") {
+            try { cs.replaceContent(text); } catch (_) { /* swallow */ }
+        }
+
+        // 2. modify-tab applyStructure hook (state.* + embed).  The
+        //    hook also runs the BOMB-0 store.adoptAtoms call when
+        //    payload.atoms is present, so we DON'T duplicate it here.
+        var modifyHook = root.molbuilder
+                      && root.molbuilder.modify
+                      && root.molbuilder.modify.applyStructure;
+        if (typeof modifyHook === "function") {
+            try { modifyHook(payload, opts); } catch (_) { /* swallow */ }
+        }
+
+        // 3 + 4. Selection mapping.
+        var st = _store();
+        var remap = payload && payload.extra
+                 && payload.extra.selection_remap;
+        if (Array.isArray(remap) && st
+                && typeof st.setSelection === "function") {
+            var oldSel = st.getState().selection;
+            var newSel = [];
+            for (var i = 0; i < oldSel.length; i++) {
+                var idx = oldSel[i];
+                var newIdx = (idx >= 0 && idx < remap.length)
+                    ? remap[idx] : null;
+                if (newIdx != null) newSel.push(newIdx);
+            }
+            st.setSelection(newSel);
+        } else if (resetSelection && st
+                && typeof st.clearSelection === "function") {
+            st.clearSelection();
+        }
+
+        // 5. Notify.
+        _notify();
+    }
+
+    /**
      * Apply a modifier op (delete / add_atom / orient / translate /
-     * rotate / electrode / symmetric_electrodes).  Server returns
-     * the canonical workspace payload; the modify-tab's existing
-     * postOp handles state replacement (canvas-state, selection
-     * store, 3Dmol embed all updated atomically).  Delegates to
-     * the runtime-registered ``modify.postOp`` (Phase 4 exposed it).
+     * rotate / electrode / symmetric_electrodes).  Owns the full
+     * pipeline: build the request body from the current workspace
+     * state, POST to ``/api/modify/<op>``, and route the response
+     * through ``_applyWorkspacePayload`` for atomic store update.
+     * Returns the server's workspace payload (or rejects on
+     * non-ok HTTP / non-ok envelope).
+     *
+     * Phase 5 (2026-06-07): self-sufficient — no longer delegates
+     * to the modify-tab's ``postOp``.  The reverse is now true:
+     * modify-tab's postOp is a thin wrapper around this method.
      */
     function applyOp(op, args) {
         if (typeof op !== "string" || !op) {
             return Promise.reject(new TypeError(
                 "workspace.applyOp(op, args): op must be a non-empty string"));
         }
-        var rt = _runtime();
-        if (!rt || typeof rt.whenReady !== "function") {
-            return Promise.reject(_missing(
-                "runtime registry (cannot resolve modify.postOp)"));
+        var csb = root.molbuilder
+               && root.molbuilder.modify
+               && root.molbuilder.modify.currentStateBody;
+        if (typeof csb !== "function") {
+            return Promise.reject(_missing("modify.currentStateBody"));
         }
-        return rt.whenReady("modify.postOp").then(function (postOp) {
-            if (typeof postOp !== "function") {
-                throw _missing("modify.postOp");
+        var body = Object.assign(csb(), args || {});
+        return root.fetch("/api/modify/" + op, {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify(body),
+        }).then(function (resp) {
+            return resp.json().then(function (r) {
+                return { httpOk: resp.ok, r: r };
+            });
+        }).then(function (env) {
+            if (!env.httpOk || !env.r || !env.r.ok) {
+                throw new Error(
+                    (env.r && env.r.error) || "modify/" + op + " failed");
             }
-            var label = _OP_LABELS[op] || op;
-            return postOp("/api/modify/" + op, args || {}, label);
+            _applyWorkspacePayload(env.r, { touchCanvas: true });
+            return env.r;
+        });
+    }
+
+    /**
+     * Atomically install a server-returned workspace payload —
+     * the entry point used by every "load a fresh structure" flow
+     * (sidebar Load, generator output, file upload).  Gates through
+     * ``structurePage.loadIntoCanvas`` so the warning modal fires
+     * if the canvas is dirty.  Phase 6 of the workspace-state
+     * migration (2026-06-07).
+     *
+     * On a clean / accepted load:
+     *   1. ``cs.setStructure(payload, source)`` — dirty=false.
+     *   2. ``_applyWorkspacePayload(payload, {touchCanvas: false,
+     *      resetSelection: true})`` — store atoms + selection reset
+     *      + IIFE state + embed.
+     *
+     * Returns ``{ok: true}`` on success, ``{ok: false, cancelled:
+     * true}`` when the user picks Cancel on the warning modal.
+     */
+    function loadStructure(payload, source) {
+        if (!payload) {
+            return Promise.reject(new TypeError(
+                "workspace.loadStructure(payload, source): payload required"));
+        }
+        var sp = root.molbuilder && root.molbuilder.structurePage;
+        if (!sp || typeof sp.loadIntoCanvas !== "function") {
+            return Promise.reject(_missing("structurePage"));
+        }
+        var text = payload.text || payload.xyz || "";
+        var fmt  = payload.source_format
+                || (payload.extra && payload.extra.source_format)
+                || "xyz";
+        return sp.loadIntoCanvas(
+            { source_format: fmt, text: text },
+            source || { kind: "blank", file: null, generator_input: null }
+        ).then(function (gate) {
+            if (!gate.ok) return gate;
+            _applyWorkspacePayload(payload, {
+                touchCanvas:    false,
+                resetSelection: true,
+            });
+            return { ok: true };
         });
     }
 
@@ -447,8 +573,10 @@
         isDirty:        isDirty,
         isEmpty:        isEmpty,
         loadFromFile:   loadFromFile,
+        loadStructure:  loadStructure,
         generate:       generate,
         applyOp:        applyOp,
+        applyPayload:   _applyWorkspacePayload,
         save:           save,
         discard:        discard,
         undo:           undo,

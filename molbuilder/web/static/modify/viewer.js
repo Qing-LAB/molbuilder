@@ -604,78 +604,57 @@
     }
 
     async function postOp(path, extraBody, label) {
-        // Drop the call entirely if a prior op is still in flight.
-        // Without this guard, a user double-click on Apply would fire
-        // two parallel fetches; the second is wasted work AND could
-        // race with the first (e.g. add_atom twice with stale xyz
-        // before the first response updates state).  Buttons are
-        // also disabled while in-flight so the visible UI matches.
-        // Phase 6e seventh-review LANDMINE-3: thread an
-        // AbortController so a wedged backend doesn't permanently
-        // disable the buttons.  If the user navigates away or
-        // page is bfcache-restored, the next pageshow handler
-        // (or any caller of state.abortInFlight()) can release
-        // the wedge.  A future UI affordance (Cancel button)
-        // can call abortInFlight directly.
+        // Phase 5 of the workspace-state migration (2026-06-07):
+        // ``postOp`` is now a thin wrapper around
+        // ``window.molbuilder.workspace.applyOp``.  The dispatcher
+        // owns the fetch + canvas-state.replaceContent + selection
+        // store.adoptAtoms + applyStructure-hook pipeline; this
+        // wrapper keeps the IIFE-local concerns (in-flight lock,
+        // edit-status text, AbortController for the wedge-release
+        // path) so the existing buttons keep behaving the same
+        // way.  When Phase 9 retires the legacy modify-tab IIFE
+        // entirely, this wrapper goes too — the buttons call
+        // ``ws.applyOp`` directly.
         if (state.inFlight) return null;
         const ac = (typeof AbortController !== "undefined")
             ? new AbortController() : null;
         state.inFlight = true;
         state._inFlightAbort = ac;
-        refreshSelectionUI();    // disable Delete/Add buttons during fetch
+        refreshSelectionUI();
         setEditStatus(`${label}…`);
-        const body = Object.assign(currentStateBody(), extraBody);
+        const ws = window.molbuilder && window.molbuilder.workspace;
+        if (!ws || typeof ws.applyOp !== "function") {
+            // Defensive: the dispatcher must be mounted on /molbuilder.
+            // If not, surface the error rather than silently no-op'ing.
+            setEditStatus(
+                "Internal error: workspace dispatcher unavailable.",
+                "error",
+            );
+            state.inFlight = false;
+            state._inFlightAbort = null;
+            refreshSelectionUI();
+            return null;
+        }
+        const op = path.replace(/^\/api\/modify\//, "");
         let r = null;
         try {
             try {
-                r = await fetch(path, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(body),
-                    signal: ac ? ac.signal : undefined,
-                }).then((x) => x.json());
+                r = await ws.applyOp(op, extraBody);
             } catch (e) {
                 if (e && e.name === "AbortError") {
                     setEditStatus(`${label} cancelled.`, "muted");
                     return null;
                 }
-                setEditStatus(`Network error: ${e.message}`, "error");
+                setEditStatus(
+                    `${label} failed: ${(e && e.message) || String(e)}`,
+                    "error",
+                );
                 return null;
             }
-            if (!r || !r.ok) {
-                setEditStatus(r?.error || `${label} failed.`, "error");
+            if (!r) {
+                setEditStatus(`${label} failed.`, "error");
                 return null;
             }
-            // Success: replace the state with the new structure and
-            // clear the per-op selection (atom indices have shifted
-            // after delete).  applyStructure() will rebuild the list
-            // and call refreshSelectionUI which re-enables buttons.
-            applyStructure(r);
-            // Sync canvas-state to the new XYZ so Save writes the
-            // post-op structure (not the original loaded text) AND
-            // the dirty flag flips so a subsequent Load / Generate
-            // fires the warning modal.  Idempotent / safe no-op
-            // when canvas-state hasn't mounted yet (early-boot
-            // race; the modules load after this script).
-            // Truthy ``r.xyz`` (not just typeof string) so an empty
-            // string from a buggy server response is skipped
-            // instead of throwing inside ``replaceContent``.
-            try {
-                const cs = window.molbuilder
-                        && window.molbuilder.structureCanvas;
-                if (cs && typeof cs.replaceContent === "function"
-                       && r && r.xyz) {
-                    cs.replaceContent(r.xyz);
-                }
-            } catch (_) { /* nothing to do — UX unaffected */ }
-            // Selection-store sync happens inside applyStructure(r)
-            // above (2026-06-07 consolidation): applyStructure is
-            // THE single sync point for the modify-page selection
-            // store and covers postOp + every Sources-card
-            // generator path via loadStructureText.  Removing the
-            // explicit call from here eliminates the
-            // generator-not-syncing bug where adoptAtoms was only
-            // present on the modifier-op path.
             setEditStatus(
                 r.issues && r.issues.length
                     ? `${label}: ${r.n_atoms} atoms, ${r.issues.length} issue(s).`
@@ -684,10 +663,6 @@
             );
             return r;
         } finally {
-            // Always release the lock so a transient error can't wedge
-            // the UI permanently.  The selection-UI refresh in
-            // applyStructure already ran on the success path; on the
-            // error path we run it explicitly to flip buttons back.
             state.inFlight = false;
             state._inFlightAbort = null;
             refreshSelectionUI();
@@ -1469,6 +1444,15 @@
     // handle methods short-circuit on state.disposed).
     window.molbuilder.modify = window.molbuilder.modify || {};
     window.molbuilder.modify.handle = _handle;
+    // Workspace-state Phase 5 (2026-06-07): expose
+    // ``currentStateBody`` + ``applyStructure`` on the modify
+    // namespace so the workspace dispatcher's _applyWorkspacePayload
+    // pipeline can call them synchronously.  Pre-Phase-5 these
+    // were IIFE-private and only reachable via the modifier-button
+    // wiring; exposing them lets ``ws.applyOp`` own the
+    // fetch+state-replacement pipeline end-to-end.
+    window.molbuilder.modify.currentStateBody = currentStateBody;
+    window.molbuilder.modify.applyStructure   = applyStructure;
     // Load a structure text blob (XYZ or PDB) via /api/build/load,
     // which sniffs the format from the filename + content.  The
     // function is named ``loadStructureText`` (renamed 2026-05-22
@@ -1477,6 +1461,16 @@
     // its capability and caused real bugs (see design.md decision
     // log for the rename rationale).
     window.molbuilder.loadStructureText = async function (text, filename) {
+        // Phase 6 of the workspace-state migration (2026-06-07):
+        // route the post-fetch state replacement through the
+        // dispatcher's canonical ``applyPayload`` pipeline so the
+        // selection store + canvas-state + embed updates all
+        // happen in ONE place — the same pipeline modifier ops
+        // use.  The fetch itself stays here because every caller
+        // (sidebar commitFile, every Sources-card generator) hands
+        // us text+filename rather than a pre-fetched workspace
+        // payload.  When Phase 9 retires the legacy loaders, the
+        // fetch moves into the dispatcher too.
         setStatus(`Loading ${filename}…`);
         let r;
         try {
@@ -1500,14 +1494,32 @@
             setStatus(msg, "error");
             throw new Error(msg);
         }
-        // resetSelection: true — every loadStructureText call is a
-        // fresh-structure swap (sidebar pick, generator output, file
-        // upload).  Any selection that was sitting on the previous
-        // structure would point at unrelated atoms in the new one
-        // even when the indices are still in-range.  postOp DOESN'T
-        // pass this flag because modifier ops preserve the user's
-        // anchor across Delete / Add / Orient.
-        applyStructure(r, { resetSelection: true });
+        // Phase 6 of the workspace-state migration (2026-06-07):
+        // route through the dispatcher's canonical
+        // ``applyPayload`` pipeline so the cross-store sync
+        // (selection store atoms + canvas-state) runs in ONE
+        // place — the same pipeline modifier ops use.
+        // ``touchCanvas: false`` because every loadStructureText
+        // caller (sidebar commitFile, every Sources-card
+        // generator) has already populated canvas-state via
+        // ``structurePage.loadIntoCanvas`` (dirty=false).
+        // ``resetSelection: true`` because every load is a fresh-
+        // structure swap; any selection sitting on the previous
+        // structure would point at unrelated atoms in the new
+        // one even when the indices are still in-range.
+        const _ws = window.molbuilder && window.molbuilder.workspace;
+        if (_ws && typeof _ws.applyPayload === "function") {
+            _ws.applyPayload(r, {
+                touchCanvas:    false,
+                resetSelection: true,
+            });
+        } else {
+            // Fallback for pre-Phase-4 contexts (tests / future
+            // task tabs that load this script without the
+            // dispatcher).  Behavioural equivalent of the pre-
+            // Phase-6 direct call.
+            applyStructure(r, { resetSelection: true });
+        }
         const fmt = (r.source_format || "structure").toUpperCase();
         setStatus(
             `Loaded ${r.n_atoms}-atom ${fmt} from ${filename}.`,
