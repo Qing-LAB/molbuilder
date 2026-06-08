@@ -617,13 +617,27 @@
     var _persistDeadline = null;
 
     function _serialise() {
+        var structure = getStructure();
+        var source    = getSource();
+        var dirty     = isDirty();
+        // Dirty-gated atoms (matches the cd9655e saveModifyState
+        // policy): when canvas is clean AND has a source file on
+        // disk, the disk is authoritative — an external editor
+        // could have replaced the file while the user was away.
+        // Omit atoms so the restore path re-fetches and picks up
+        // the external change.  When dirty (modifier ops since
+        // last save) OR source-less (generator output, never
+        // saved), in-memory is the only truth — include atoms.
+        if (structure && !dirty && source && source.file) {
+            structure.atoms = null;
+        }
         return {
             v:        1,
             saved_at: new Date().toISOString(),
             state: {
-                structure:    getStructure(),
-                source:       getSource(),
-                dirty:        isDirty(),
+                structure:    structure,
+                source:       source,
+                dirty:        dirty,
                 last_save_to: _lastSavedTo(),
                 selection:    getSelection(),
                 view:         view.getState(),

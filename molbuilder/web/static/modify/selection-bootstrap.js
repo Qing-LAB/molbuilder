@@ -304,9 +304,15 @@
             );
             if (!gate.ok) return;  // cancelled — leave viewer alone
             // Drive the viewer with the bytes we already have.
+            // ``viewerLoader`` (= modify-tab's loadStructureText)
+            // returns the canonical workspace payload — capture it
+            // so the adoptSession call below can install the atoms
+            // directly instead of refetching them from disk.
+            // Deferred bug 2 fix (2026-06-08).
+            let loaded = null;
             if (typeof viewerLoader === "function") {
                 try {
-                    await viewerLoader(r.text, _basename(path));
+                    loaded = await viewerLoader(r.text, _basename(path));
                 } catch (e) {
                     const s = document.getElementById("status");
                     if (s) {
@@ -318,10 +324,19 @@
                 }
             }
             // Tell the selection store the file is now the source
-            // WITHOUT re-loading the viewer (we just did).  This
-            // fetches the atoms list for the panel.
+            // WITHOUT re-loading the viewer or refetching atoms.
+            // ``loaded.atoms`` (from /api/build/load via
+            // loadStructureText) is identical in shape to what
+            // /api/selection/atoms would return, so the disk refetch
+            // was pure overhead.
             if (typeof store.adoptSession === "function") {
-                store.adoptSession({ sourceFile: path, selection: [] });
+                store.adoptSession({
+                    sourceFile: path,
+                    selection:  [],
+                    atoms:      (loaded && Array.isArray(loaded.atoms))
+                                  ? loaded.atoms
+                                  : undefined,
+                });
             } else {
                 store.setSourceFile(path);  // legacy fallback
             }

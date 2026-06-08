@@ -95,6 +95,15 @@
     var _subscribers = [];
 
     function _restoreFromSession() {
+        // Phase 8 follow-through (2026-06-08): prefer the workspace
+        // dispatcher's unified snapshot when it's mounted.  Fall
+        // back to the legacy ``molbuilder.structure_canvas`` key
+        // for users still mid-session when this rolled out, and
+        // for test contexts that drive canvas-state in isolation
+        // (no dispatcher = no unified mirror).
+        var fromDispatcher = _restoreFromDispatcherSnapshot();
+        if (fromDispatcher) { _state = fromDispatcher; return; }
+
         var raw = null;
         try {
             raw = root.sessionStorage
@@ -125,8 +134,49 @@
         }
     }
 
+    /**
+     * Map the dispatcher's canonical snapshot
+     * (``ws.readPersistedSnapshot()``) into this module's internal
+     * state shape.  Returns null when the snapshot is absent or
+     * doesn't carry a structure.  Lazy resolution: dispatcher.js
+     * loads after canvas-state.js, but _ensureInit runs on first
+     * read (post-DOMContentLoaded), by which point dispatcher's
+     * mount has run.
+     */
+    function _restoreFromDispatcherSnapshot() {
+        var ws = root.molbuilder && root.molbuilder.workspace;
+        if (!ws || typeof ws.readPersistedSnapshot !== "function") {
+            return null;
+        }
+        var snap = ws.readPersistedSnapshot();
+        if (!snap || !snap.state) return null;
+        var st = snap.state;
+        var struct = st.structure;
+        if (!struct || typeof struct.text !== "string") return null;
+        var empty = _emptyState();
+        return {
+            source_format: struct.source_format || null,
+            text:          struct.text,
+            source:        Object.assign({}, empty.source, st.source || {}),
+            dirty:         !!st.dirty,
+            last_save_to:  st.last_save_to || null,
+        };
+    }
+
     function _persistToSession() {
         if (!root.sessionStorage) return;
+        // Phase 8 follow-through (2026-06-08): when the workspace
+        // dispatcher is mounted, it owns the unified
+        // ``molbuilder.workspace.v1`` mirror — which contains every
+        // field this legacy mirror would store (text + source +
+        // dirty + last_save_to all flow through getStructure /
+        // getSource / isDirty / last_save_to in the dispatcher's
+        // serialiser).  Skipping the legacy write here retires the
+        // triple-mirror overhead the migration's "ONE key" goal
+        // forbids.  Tests that load canvas-state in isolation
+        // (without the dispatcher) keep the legacy mirror so their
+        // persistence contracts stay valid.
+        if (root.molbuilder && root.molbuilder.workspace) return;
         var serialised;
         try { serialised = JSON.stringify(_state); }
         catch (_) { return; }

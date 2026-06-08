@@ -2877,8 +2877,16 @@ def test_build_structure_state_round_trips_modify(
         page, flask_server, water_xyz_file):
     """Build/Modify are independent persistence keys -- loading on
     Modify must not pollute Build's state, and vice versa.  This
-    pins the per-tab key boundary (modify-state vs
-    builder-structure)."""
+    pins the per-tab key boundary.
+
+    Post-Phase-8 collapse (2026-06-08): Modify's persistence lives
+    in the unified ``molbuilder.workspace.v1`` key owned by the
+    workspace dispatcher; the legacy ``modify-state`` key is
+    suppressed when the dispatcher is mounted.  Build's persistence
+    (the cross-tab Send-to-Build handoff) keeps its own
+    ``builder-structure`` key.  The isolation still holds — they
+    just live under different names than the pre-collapse test
+    asserted."""
     # Modify side first.
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
@@ -2888,14 +2896,19 @@ def test_build_structure_state_round_trips_modify(
     page.wait_for_selector("#build-btn")
     # Generate buttons start disabled (no structure built).
     assert page.locator("#generate-fdf").is_disabled()
-    # The two keys are isolated.
-    has_modify_key = page.evaluate(
-        "() => sessionStorage.getItem('modify-state') !== null"
+    # The two keys are isolated: Modify writes molbuilder.workspace.v1;
+    # the cross-tab Send-to-Build handoff key (builder-structure) is
+    # NOT written by a plain Load on Modify (only by an explicit
+    # Send-to-Build click).
+    has_workspace_key = page.evaluate(
+        "() => sessionStorage.getItem('molbuilder.workspace.v1') !== null"
     )
     has_builder_key = page.evaluate(
         "() => sessionStorage.getItem('builder-structure') !== null"
     )
-    assert has_modify_key is True
+    assert has_workspace_key is True, (
+        "Modify's pagehide save should land in molbuilder.workspace.v1"
+    )
     assert has_builder_key is False, (
         "Modify's save leaked into Build's storage key"
     )
@@ -2942,17 +2955,20 @@ def test_modify_uses_sessionstorage_not_localstorage(
     on browser close) NOT ``localStorage`` (persists across browser
     restarts).  This is the spec-recorded design choice -- molecular
     structures aren't sensitive but a "session ends -> fresh start"
-    default fits a scientific-tool feel.  Verify the saved key
-    actually lives in sessionStorage."""
+    default fits a scientific-tool feel.
+
+    Post-Phase-8 collapse (2026-06-08): the canonical key is
+    ``molbuilder.workspace.v1`` owned by the workspace dispatcher.
+    Pin that THAT key lives in sessionStorage and NOT in
+    localStorage."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
     page.evaluate("() => window.dispatchEvent(new Event('pagehide'))")
-    # The Modify state must be in sessionStorage, NOT localStorage.
     in_session = page.evaluate(
-        "() => sessionStorage.getItem('modify-state') !== null"
+        "() => sessionStorage.getItem('molbuilder.workspace.v1') !== null"
     )
     in_local   = page.evaluate(
-        "() => localStorage.getItem('modify-state') !== null"
+        "() => localStorage.getItem('molbuilder.workspace.v1') !== null"
     )
     assert in_session is True, "save target should be sessionStorage"
     assert in_local   is False, "save MUST NOT leak into localStorage"

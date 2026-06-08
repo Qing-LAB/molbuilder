@@ -536,6 +536,13 @@
     // successful response so failed ops don't burn an undo slot.
     function snapshotForHistory() {
         if (!state.xyz) return null;
+        // Capture the selection store's atoms list + the user's
+        // current selection so ``applyUndo`` can fully restore the
+        // workspace — pre-fix the snapshot omitted both, so after
+        // undo the selection store kept the post-op atoms while
+        // the viewer showed the pre-op structure (deferred bug 3
+        // from the multi-pass review; fix landed 2026-06-08).
+        const _s = _selStore();
         return {
             xyz:           state.xyz,
             elements:      state.elements,
@@ -545,6 +552,8 @@
             chain_ids:     state.chain_ids,
             title:         state.title,
             n_atoms:       state.n_atoms,
+            atoms:         _s ? _s.getState().atoms.slice() : [],
+            selected:      _s ? _s.getState().selection.slice() : [],
         };
     }
 
@@ -556,13 +565,29 @@
     function applyUndo() {
         if (!state.history.length) return;
         const prev = state.history.pop();
-        applyStructure(prev);
-        // applyStructure does NOT touch state.history.  The selection
-        // store clears its own state when ``store.setSourceFile`` is
-        // called on a new path -- after an undo we stay on the same
-        // path so the store's selection persists; ops that need a
-        // selection re-check via refreshSelectionUI on the next
-        // store fire.
+        // Route through the workspace dispatcher's canonical
+        // ``applyPayload`` pipeline so the selection store's atoms
+        // revert in lockstep with state.xyz + the embed model.
+        // Pre-fix applyUndo called ``applyStructure(prev)`` directly,
+        // which after the Phase 5 cleanup only updates the IIFE
+        // state + embed — leaving the selection store with the
+        // post-op atoms.  ``touchCanvas: true`` because undo of a
+        // modifier op is itself a state-diverged-from-disk event.
+        const ws = window.molbuilder && window.molbuilder.workspace;
+        if (ws && typeof ws.applyPayload === "function") {
+            ws.applyPayload(prev, { touchCanvas: true });
+            // applyPayload does NOT restore selection from the
+            // snapshot's saved indices (its remap step is for
+            // server-emitted selection_remap, which an undo
+            // doesn't have).  Set them explicitly.
+            const _s = _selStore();
+            if (_s && typeof _s.setSelection === "function"
+                  && Array.isArray(prev.selected)) {
+                _s.setSelection(prev.selected);
+            }
+        } else {
+            applyStructure(prev);   // fallback (no dispatcher)
+        }
         refreshUndoButton();
         setEditStatus(
             `Undid op (${prev.n_atoms} atoms restored).  ${state.history.length} step(s) left.`,
@@ -1160,6 +1185,14 @@
 
     function saveModifyState() {
         if (!state.xyz) return;     // nothing to save
+        // Phase 8 follow-through (2026-06-08): when the workspace
+        // dispatcher is mounted it owns the unified
+        // ``molbuilder.workspace.v1`` mirror — which contains every
+        // field this legacy mirror would store (xyz + metadata via
+        // structure.atoms[], selected via selection.indices, camera
+        // + chrome via view.getState).  Skipping the legacy write
+        // here retires the triple-mirror overhead.
+        if (window.molbuilder && window.molbuilder.workspace) return;
         // #235 follow-up: getCamera returns the documented opaque
         // CameraState {_viewer, _version, data} per § 3.13.
         // Round-trips cleanly through sessionStorage; restoreModifyState
@@ -1250,12 +1283,68 @@
         }
     }
 
+    /**
+     * Translate the workspace dispatcher's canonical snapshot
+     * (``ws.readPersistedSnapshot()``) into the legacy modify-state
+     * shape ``restoreModifyState`` consumes.  Phase 8 follow-through:
+     * lets the dispatcher own persistence while
+     * ``restoreModifyState`` keeps its existing applyStructure +
+     * adoptSession + applyState pipeline unchanged.  Returns null
+     * if the snapshot doesn't carry enough data to restore.
+     */
+    function _modifyShapeFromDispatcherSnapshot(snap) {
+        if (!snap || !snap.state) return null;
+        const s = snap.state;
+        const struct = s.structure;
+        if (!struct || !struct.text) return null;
+        const atoms = Array.isArray(struct.atoms) ? struct.atoms : null;
+        const view  = s.view || {};
+        const src   = s.source || {};
+        const sel   = s.selection || {};
+        return {
+            v:             STATE_SCHEMA_VERSION,
+            source_file:   src.file || null,
+            xyz:           struct.text,
+            elements:      atoms ? atoms.map(a => a.element) : [],
+            atom_names:    atoms ? atoms.map(a => a.atom_name    || "") : [],
+            residue_ids:   atoms ? atoms.map(
+                a => a.residue_id != null ? a.residue_id : 0) : [],
+            residue_names: atoms ? atoms.map(a => a.residue_name || "") : [],
+            chain_ids:     atoms ? atoms.map(a => a.chain_id     || "") : [],
+            title:         struct.title || "",
+            n_atoms:       struct.n_atoms,
+            selected:      Array.isArray(sel.indices) ? sel.indices : [],
+            // ``atoms === null`` in the dispatcher snapshot signals
+            // "trust disk" (see dispatcher's dirty-gated _serialise).
+            // Pass undefined to restoreModifyState so adoptSession
+            // falls back to its disk-fetch branch.
+            atoms:         atoms || undefined,
+            camera:        view.camera || null,
+            show_axes:     !!view.axes,
+            show_indices:  !!view.labels,
+            rep:           (view.style && view.style.rep) || "stick",
+        };
+    }
+
     function restoreModifyState() {
         let saved = null;
-        try {
-            saved = JSON.parse(sessionStorage.getItem(MODIFY_STATE_KEY) || "null");
-        } catch (_e) {
-            return;
+        // Phase 8 follow-through (2026-06-08): prefer the workspace
+        // dispatcher's unified snapshot under
+        // ``molbuilder.workspace.v1``.  Fall back to the legacy
+        // modify-state key for users still mid-session when this
+        // rolled out (single session boundary; no longer-term
+        // back-compat needed once browser tabs close).
+        const ws = window.molbuilder && window.molbuilder.workspace;
+        if (ws && typeof ws.readPersistedSnapshot === "function") {
+            const snap = ws.readPersistedSnapshot();
+            saved = _modifyShapeFromDispatcherSnapshot(snap);
+        }
+        if (!saved) {
+            try {
+                saved = JSON.parse(sessionStorage.getItem(MODIFY_STATE_KEY) || "null");
+            } catch (_e) {
+                return;
+            }
         }
         if (!saved || saved.v !== STATE_SCHEMA_VERSION) return;
         if (!saved.xyz) return;
@@ -1491,6 +1580,11 @@
             `Loaded ${r.n_atoms}-atom ${fmt} from ${filename}.`,
             "ok",
         );
+        // Return the full server response so callers (e.g. the
+        // sidebar's _commitFile) can reuse ``r.atoms`` and skip a
+        // redundant /api/selection/atoms refetch.  Deferred bug 2
+        // from the multi-pass review; fix landed 2026-06-08.
+        return r;
     };
     // Module-init contract: register the modify handle with the
     // runtime so ``selection-bootstrap`` can ``whenReady("modify.handle")``
