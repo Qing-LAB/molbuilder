@@ -488,6 +488,38 @@
      * to the modify-tab's ``postOp``.  The reverse is now true:
      * modify-tab's postOp is a thin wrapper around this method.
      */
+    /**
+     * Parse structure bytes (XYZ / PDB) through ``/api/build/load``
+     * and install the result atomically.  Used by every "load
+     * existing bytes into the workspace" flow — sidebar
+     * commitFile (reads file from disk + passes text here), every
+     * Sources-card generator (the engine returned text, we want
+     * canonical metadata).  The previous IIFE-local
+     * ``window.molbuilder.loadStructureText`` is now a thin alias
+     * over this method.
+     *
+     * Returns the canonical workspace payload (text + atoms +
+     * extras) so callers can use ``r.atoms`` for follow-up store
+     * sync (e.g. selection-bootstrap's setSourceFile via
+     * adoptSession).  Throws on network error or non-ok envelope.
+     */
+    async function loadFromText(text, filename) {
+        const resp = await root.fetch("/api/build/load", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ text: text, filename: filename }),
+        });
+        const r = await resp.json();
+        if (!r.ok) {
+            throw new Error(r.error || "Load failed.");
+        }
+        _applyWorkspacePayload(r, {
+            touchCanvas:    false,
+            resetSelection: true,
+        });
+        return r;
+    }
+
     function applyOp(op, args) {
         if (typeof op !== "string" || !op) {
             return Promise.reject(new TypeError(
@@ -709,6 +741,7 @@
         isDirty:               isDirty,
         isEmpty:               isEmpty,
         loadFromFile:          loadFromFile,
+        loadFromText:          loadFromText,
         generate:              generate,
         applyOp:               applyOp,
         applyPayload:          _applyWorkspacePayload,

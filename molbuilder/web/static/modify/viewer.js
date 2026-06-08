@@ -603,19 +603,14 @@
     }
 
     async function postOp(path, extraBody, label) {
-        // Phase 5 of the workspace-state migration (2026-06-07):
-        // ``postOp`` is now a thin wrapper around
-        // ``window.molbuilder.workspace.applyOp``.  The dispatcher
-        // owns the fetch + canvas-state.replaceContent + selection
-        // store.adoptAtoms + applyStructure-hook pipeline; this
-        // wrapper keeps the IIFE-local concerns (in-flight lock,
-        // edit-status text, AbortController for the wedge-release
-        // path) so the existing buttons keep behaving the same
-        // way.  A follow-up cleanup commit will have the buttons
-        // call ``ws.applyOp`` directly and retire this wrapper —
-        // Phase 9 of the migration marked the legacy IIFE
-        // "internal" in its docstring but didn't actually delete
-        // it; the wrapper survives until that follow-up lands.
+        // Modifier-button wrapper around ``ws.applyOp``.  Owns the
+        // UI-level concerns the dispatcher deliberately stays out
+        // of: the in-flight lock (prevents double-click double-
+        // fire), the edit-status text, the AbortController for the
+        // wedge-release path, and the selection-UI refresh.  The
+        // dispatcher owns the HTTP fetch + cross-store state
+        // replacement; this wrapper composes them with the button's
+        // user-facing affordances.
         if (state.inFlight) return null;
         const ac = (typeof AbortController !== "undefined")
             ? new AbortController() : null;
@@ -623,24 +618,11 @@
         state._inFlightAbort = ac;
         refreshSelectionUI();
         setEditStatus(`${label}…`);
-        const ws = window.molbuilder && window.molbuilder.workspace;
-        if (!ws || typeof ws.applyOp !== "function") {
-            // Defensive: the dispatcher must be mounted on /molbuilder.
-            // If not, surface the error rather than silently no-op'ing.
-            setEditStatus(
-                "Internal error: workspace dispatcher unavailable.",
-                "error",
-            );
-            state.inFlight = false;
-            state._inFlightAbort = null;
-            refreshSelectionUI();
-            return null;
-        }
         const op = path.replace(/^\/api\/modify\//, "");
         let r = null;
         try {
             try {
-                r = await ws.applyOp(op, extraBody);
+                r = await window.molbuilder.workspace.applyOp(op, extraBody);
             } catch (e) {
                 if (e && e.name === "AbortError") {
                     setEditStatus(`${label} cancelled.`, "muted");
@@ -1533,65 +1515,31 @@
     // genuinely accepts both formats; the field name lied about
     // its capability and caused real bugs (see design.md decision
     // log for the rename rationale).
+    // Back-compat alias.  The actual fetch + applyPayload pipeline
+    // moved into ``ws.loadFromText`` on 2026-06-08 so the
+    // dispatcher owns every "parse text → install workspace"
+    // entry point.  This alias stays so existing consumers
+    // (selection-bootstrap, the Sources-card generators' injected
+    // ``viewerLoader``, the page-mount test hook) keep working
+    // without coordinating a rename.  The page-mount test still
+    // waits on ``typeof window.molbuilder.loadStructureText
+    // === 'function'`` — that contract holds.
     window.molbuilder.loadStructureText = async function (text, filename) {
-        // Phase 6 of the workspace-state migration (2026-06-07):
-        // route the post-fetch state replacement through the
-        // dispatcher's canonical ``applyPayload`` pipeline so the
-        // selection store + canvas-state + embed updates all
-        // happen in ONE place — the same pipeline modifier ops
-        // use.  The fetch itself stays here because every caller
-        // (sidebar commitFile, every Sources-card generator) hands
-        // us text+filename rather than a pre-fetched workspace
-        // payload.  A follow-up cleanup commit will move the fetch
-        // into the dispatcher and reduce this function to a thin
-        // shim over ``ws.loadFromFile`` / ``ws.applyPayload``.
         setStatus(`Loading ${filename}…`);
         let r;
         try {
-            const resp = await fetch("/api/build/load", {
-                method: "POST",
-                headers: {"Content-Type": "application/json"},
-                body: JSON.stringify({text: text, filename: filename}),
-            });
-            r = await resp.json();
+            r = await window.molbuilder.workspace.loadFromText(
+                text, filename);
         } catch (e) {
-            // Throwing instead of silently returning lets callers
-            // (e.g. selection.store._loadViewer) treat the load as a
-            // failure rather than mistakenly continuing to populate
-            // panels for a structure the viewer never rendered.
-            setStatus("Network error: " + e.message, "error");
-            throw new Error("Network error loading " + filename
-                          + ": " + e.message);
-        }
-        if (!r.ok) {
-            const msg = r.error || "Load failed.";
+            const msg = (e && e.message) ? e.message : String(e);
             setStatus(msg, "error");
-            throw new Error(msg);
+            throw e;
         }
-        // Route through the dispatcher's ``applyPayload`` pipeline
-        // so the cross-store sync (selection store atoms +
-        // canvas-state) runs in ONE place — the same pipeline
-        // modifier ops use.  ``touchCanvas: false`` because every
-        // caller (sidebar commitFile, every Sources-card generator)
-        // has already populated canvas-state via
-        // ``structurePage.loadIntoCanvas`` (dirty=false).
-        // ``resetSelection: true`` because every load is a fresh-
-        // structure swap; any selection sitting on the previous
-        // structure would point at unrelated atoms in the new one
-        // even when the indices are still in-range.
-        window.molbuilder.workspace.applyPayload(r, {
-            touchCanvas:    false,
-            resetSelection: true,
-        });
         const fmt = (r.source_format || "structure").toUpperCase();
         setStatus(
             `Loaded ${r.n_atoms}-atom ${fmt} from ${filename}.`,
             "ok",
         );
-        // Return the full server response so callers (e.g. the
-        // sidebar's _commitFile) can reuse ``r.atoms`` and skip a
-        // redundant /api/selection/atoms refetch.  Deferred bug 2
-        // from the multi-pass review; fix landed 2026-06-08.
         return r;
     };
     // Module-init contract: register the modify handle with the
