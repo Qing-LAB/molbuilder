@@ -1,4 +1,14 @@
-/* Atom-selection store -- singleton state + HTTP + mutators.
+/* **Internal as of Phase 9 (2026-06-08) of the workspace-state
+ * migration** (docs/protocols/workspace-state.md).  New code
+ * MUST consume ``window.molbuilder.workspace.selection`` instead
+ * of this module's globals directly.  The store + its existing
+ * HTTP surface (``/api/selection/atoms`` etc.) stay in place to
+ * keep the panel + viewer-adapter + bootstrap working during the
+ * migration window; they will be folded into the dispatcher in
+ * a follow-up.  Phase 10 (delete ``/api/selection/atoms``) is
+ * blocked on that fold.
+ *
+ * Atom-selection store -- singleton state + HTTP + mutators.
  *
  * THE state holder for the atom-selection module.  Consumers (panel,
  * viewer-adapter, page bootstrap) subscribe to the store and call its

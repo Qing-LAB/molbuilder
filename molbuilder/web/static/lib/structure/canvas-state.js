@@ -1,6 +1,16 @@
 /* Structure-tab canvas state.
  *
  * Single source of truth for "what's loaded in the Structure tab
+ * **Internal as of Phase 9 (2026-06-08) of the workspace-state
+ * migration** (docs/protocols/workspace-state.md).  New code
+ * MUST consume ``window.molbuilder.workspace`` instead of
+ * touching this module's globals directly.  The module + its
+ * legacy ``molbuilder.structure_canvas`` sessionStorage mirror
+ * stay in place to keep the existing consumers (modify-tab
+ * viewer, generators, save panel) working during the migration
+ * window; they will be folded into the dispatcher in a follow-up
+ * once every direct consumer has migrated.
+ *
  * canvas."  Survives browser refresh via sessionStorage; cleared
  * when the tab is closed.  The Structure tab's interactive
  * primitives (load-from-project, generators, modifier panels) read
