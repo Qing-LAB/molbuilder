@@ -482,9 +482,11 @@
 
     /**
      * Save the workspace structure to disk.  Delegates to the
-     * Sources-card Save panel's exported API.  Phase 5 may inline
-     * the save here; for Phase 4 the existing save module is the
-     * canonical write path.
+     * Sources-card Save panel's ``structureSave.save(opts)`` —
+     * that module owns the path-resolution + sidecar-write
+     * pipeline (Save / Save as… semantics).  This wrapper exists
+     * so consumers can stay on the unified ``ws.*`` API; the
+     * dispatcher does NOT re-implement the save path.
      */
     function save(opts) {
         opts = opts || {};
@@ -496,10 +498,12 @@
     }
 
     /**
-     * Discard the workspace structure — clears the canvas + selection.
-     * Pure local action (no HTTP).  Fires the warning modal first if
-     * the canvas is dirty (the canvas-state clear() handles its own
-     * notification; the selection store clear is direct).
+     * Wipe the workspace canvas + selection.  UNCONDITIONAL — the
+     * caller is expected to gate on dirty-state + warning modal
+     * BEFORE calling this method (the Sources-card Discard button
+     * is the canonical caller and goes through
+     * ``warningModal.confirmDiscardUnsaved`` first).  Pure local
+     * action; no HTTP.
      */
     function discard() {
         var cs = _canvas();
