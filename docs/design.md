@@ -77,6 +77,7 @@ subsystem-specific decisions land in the subsystem doc.
 | [`atom-selection.md`](protocols/atom-selection.md) | Selection store, `.molstruct.json` sidecar shape, viewer adapter |
 | [`selection.md`](protocols/selection.md) | Python selection rule grammar (`by_element`, `by_index_range`, …) |
 | [`sidecar-contract.md`](protocols/sidecar-contract.md) | Three-stage UI → config → script contract for sidecar-driven boundary conditions |
+| [`workspace-state.md`](protocols/workspace-state.md) | Unified workspace contract — single client-side dispatcher + single server-side `WorkspacePayload`.  Supersedes the current four parallel client stores + four parallel server response shapes for "the workspace structure".  **Design proposal as of 2026-06-07**; migration plan in § 6 of that doc. |
 | [`results-tab.md`](protocols/results-tab.md) | `/results` dispatch architecture |
 | [`runtime-registry.md`](protocols/runtime-registry.md) | `molbuilder-runtime.js` register/whenReady contract |
 | [`inspector-registry.md`](protocols/inspector-registry.md) | Inspector `mount(host, file, ctx) → {dispose}` contract |
@@ -428,6 +429,37 @@ declaring the same field metadata (dataclass + argparse + HTML form)
 is how silent drift happens. CLI and HTML form must be *generated*
 from the dataclass, not maintained in lockstep with it.
 
+**Extension to client + wire layer (added 2026-06-07).** The
+single-source-of-truth principle applies to the JS workspace
+state and the HTTP response shape too:
+
+- One client-side workspace dispatcher
+  (`window.molbuilder.workspace`) owns the structure + source
+  provenance + dirty flag + atom-level selection.  It supersedes
+  the historical canvas-state, modify viewer state IIFE, and
+  selection store, which each held a slice of the workspace and
+  required every code path to remember to update all of them.
+- One server-side response shape (`WorkspacePayload` from
+  `_shared.workspace_payload`) is emitted by every endpoint that
+  returns a Structure (`/api/build/load`, `/api/build/molecule`,
+  `/api/modify/*`).  It supersedes the historical four parallel
+  jsonify blobs that drifted in cosmetic and load-bearing ways
+  (the missing `atoms` key on `/api/build/load` is what made the
+  selection panel go blank on every fresh generator load
+  pre-[cd9655e]).
+- One sessionStorage key
+  (`molbuilder.workspace.v1`) supersedes the three independent
+  mirrors (`molbuilder.structure_canvas`, `modify-state`,
+  selection-store's restored-via-modify-state hack).  Schema-
+  versioned, atomic restore.
+
+The full contract + migration plan is the
+[`workspace-state`](protocols/workspace-state.md) protocol doc.
+The principle: **client and server use the same composite
+"workspace" abstraction for any operation that touches the
+structure**.  No code path may update part of the workspace and
+not other parts.
+
 ### 2. CLI scripts are small, focused, and composable
 
 Each subcommand does one job. They chain through files / stdin / stdout
@@ -549,6 +581,23 @@ These have been considered and rejected; do not reintroduce them.
 - **A separate config file format** (YAML / TOML / INI) for SIESTA or
   PySCF parameters. The user edits the generated `.fdf` / `.py`
   directly; that's the contract.
+- **Parallel client-side state stores for the workspace structure.**
+  Three flavours of this anti-pattern shipped between 2026-05 and
+  2026-06 (canvas-state for save tracking; modify viewer state
+  IIFE for history; selection store for atoms + selection) and
+  caused every consistency bug in the 2026-06-07 audit.  The
+  workspace dispatcher
+  ([`workspace-state.md`](protocols/workspace-state.md)) is the
+  one client-side store.  Adding a new "tab-local store that
+  duplicates a slice of the workspace" is forbidden — extend the
+  workspace dispatcher instead.
+- **Hand-rolled per-endpoint response shapes for Structure-returning
+  endpoints.**  Four parallel shapes shipped between 2026-05 and
+  2026-06 (build/load, build/molecule, modify/*, selection/atoms)
+  and silently drifted (the missing `atoms` key on /api/build/load
+  is the most expensive case).  Every endpoint that returns a
+  Structure uses `_shared.workspace_payload`; if a new endpoint
+  needs an extra field, extend the helper, not the endpoint.
 
 ---
 
@@ -556,6 +605,7 @@ These have been considered and rejected; do not reintroduce them.
 
 | Date | Decision | Rationale |
 |---|---|---|
+| 2026-06-07 | **Workspace state unification — design proposal landed.** The Molbuilder tab's client-side state lives in four parallel stores (canvas-state, modify viewer IIFE, selection store, 3Dmol embed) with three sessionStorage mirrors and four server response shapes for the same conceptual entity.  Each consistency bug in the 2026-06-07 selection-list audit (BOMB-0, BOMB-2, cd9655e) was a symptom of this duplication.  New protocol doc [`workspace-state.md`](protocols/workspace-state.md) writes down the unified model: ONE client-side `window.molbuilder.workspace` dispatcher, ONE server-side `WorkspacePayload` from `_shared.workspace_payload`, ONE sessionStorage key, ONE per-op selection-state rule.  Doc lands first; implementation in 10 phases (see § 6 of the protocol).  Anti-pattern table extended to forbid parallel workspace-slice stores + hand-rolled Structure-returning response shapes. | Three rounds of selection-store bugs in one day proved the "every code path remembers to update every store" model has shipped its last bug it can.  The right fix is architectural, not another patch.  Doc captures the diagnosis + proposal so the rewrite stays coherent across PRs and so the next contributor doesn't reintroduce the duplication.  Implementation deferred to a series of small PRs each gated by the regression tests enumerated in § 7. |
 | 2026-06-06 | **design.md split into a master + 8 subsystem docs.**  Removed sections from design.md and migrated to dedicated docs: Watch viewer (already archived; pointer kept), Module init contract (already in `protocols/runtime-registry.md`; duplicate removed), Sidecar-driven boundary conditions → new `protocols/sidecar-contract.md`, Package layout → new `package-layout.md`, Merge plan historical → removed (`git log` is the canonical history), Scientific correctness → new `science.md`, Backend roadmap → new `roadmap.md`, Tool limitations + H-placement → appended to `engines/builders.md`, File format spec → folded into `package-layout.md`.  Document index expanded with the new top-level `docs/` docs.  Each new doc carries goal statement + design details + example code + mermaid diagrams where structure/data/protocol benefits from one. | The pre-split design.md was 1878 lines; ~1100 lines were subsystem-specific content that should live in subsystem docs.  Master-with-pointers shape makes each subsystem's contract maintainable in one place (the dedicated doc) AND lets the master stay short enough to read in full when onboarding.  Cleanup landed BEFORE Phase A/B/C/D of the UI tab reorganization (`docs/tabs/architecture.md`) so each phase commit will touch one or two small docs instead of dancing around bloated sections. |
 | 2026-06-06 | **Tab UI reorganization planned — Phase 7.**  Five-tab navigation (Structure / Structure optimization / Spectrum calculation / Transport calculation / Results) replaces today's four-tab Build / Modify / Spectra / Results.  Build's structure-creation paths (SMILES / 3DNA / RDKit) migrate into Structure; task tabs become file-driven (no Structure-tab in-memory coupling); PySCF spectra `.out` renames to `.pyscf.log` to break the SIESTA-collision dispatch bug.  Routes match labels (`/structure-optimization` etc.) with 301 redirects from old paths.  Phases A (labels + routes), B (Structure tab merger), C (`.pyscf.log` + Results parser), D (Transport tab form skeleton).  Full spec + phasing in [`docs/tabs/architecture.md`](tabs/architecture.md). | After 5+ rounds of practical use the Build / Modify split was forcing a save-reload round-trip for every generated structure that needed editing; the rename ambiguity ("Build" generates two artifact classes; "Spectra" sounds like a viewer) was costing user attention; the planned Transport tab needed a final navigation slot reserved.  Task tabs being file-driven (rather than reading in-memory state) makes the script output deterministic from disk alone — same project dir → same script. |
 | 2026-06-07 | **Phase B.5 universal sidebar interaction model + Structure → Molbuilder rename + redirects deleted.**  (a) Tab 1 renamed Structure → **Molbuilder** so the central tab carries the brand; route `/structure` → `/molbuilder`.  (b) All legacy redirects (`/, /modify, /structure, /spectra`) DELETED — pre-1.0 cleanup, no aliases; renamed paths return 404 by design.  `/` is a 302 to `landing_path()` which reads `TABS[0]["path"]` from `molbuilder/web/tabs.py`.  (c) Universal commit channel: sidebar single-click = preview (`setShared`/`onChange`), double-click = commit (`publishCommit`/`onCommit`).  `/molbuilder` + `/structure-optimization` + `/spectrum-calculation` all subscribe to `onCommit` instead of auto-loading on `onChange`; form-dirty primitive on Build + Spectra gates schema reload through the shared `warning-modal`.  (d) Sidebar UI grows a desktop hide/show toggle (`#ps-collapse-toggle` + floating `#ps-collapsed-handle`, state in `sessionStorage`) and a file-type filter (`#ps-filter-input`, substring + leading-dot extension shortcut, folders always visible).  Memory `project_sidebar_interaction_model.md` captures the design decision. | The pre-B.5 model had Build + Spectra auto-rebuild their form on every sidebar click, silently swapping the structure the user was configuring; one stray click could lose 5 minutes of parameter editing.  Single vs double click maps onto the existing file-manager mental model (single = select, double = open) without inventing new gestures.  Form-dirty + warning-modal keeps the safety symmetric across Molbuilder canvas dirty AND Build/Spectra form dirty — one user-facing affordance for the entire "you have unsaved work" class.  Dropping the 301 redirects is consistent with [[feedback_no_backward_compat]]: renaming = deleting the old; aliases double the test surface and invite silent drift. |
