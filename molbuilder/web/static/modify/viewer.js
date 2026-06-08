@@ -1297,28 +1297,36 @@
         const s = snap.state;
         const struct = s.structure;
         if (!struct || !struct.text) return null;
-        const atoms = Array.isArray(struct.atoms) ? struct.atoms : null;
+        const atoms = Array.isArray(struct.atoms) ? struct.atoms : [];
         const view  = s.view || {};
         const src   = s.source || {};
         const sel   = s.selection || {};
+        // cd9655e dirty-gate applied at restore-time (the dispatcher
+        // snapshot itself carries atoms unconditionally; this
+        // translator decides whether the saved atoms are trustworthy
+        // or whether to refetch from disk).  When canvas is clean
+        // AND has a source file on disk, the disk is authoritative:
+        // an external editor could have replaced the file while the
+        // user was away.  Pass ``atoms === undefined`` so
+        // adoptSession falls back to its disk-fetch branch.  When
+        // dirty (modifier ops since last save) OR source-less
+        // (generator output, never saved), in-memory IS truth —
+        // install the saved atoms directly.
+        const shouldUseSavedAtoms = !!s.dirty || !src.file;
         return {
             v:             STATE_SCHEMA_VERSION,
             source_file:   src.file || null,
             xyz:           struct.text,
-            elements:      atoms ? atoms.map(a => a.element) : [],
-            atom_names:    atoms ? atoms.map(a => a.atom_name    || "") : [],
-            residue_ids:   atoms ? atoms.map(
-                a => a.residue_id != null ? a.residue_id : 0) : [],
-            residue_names: atoms ? atoms.map(a => a.residue_name || "") : [],
-            chain_ids:     atoms ? atoms.map(a => a.chain_id     || "") : [],
+            elements:      atoms.map(a => a.element),
+            atom_names:    atoms.map(a => a.atom_name || ""),
+            residue_ids:   atoms.map(
+                a => a.residue_id != null ? a.residue_id : 0),
+            residue_names: atoms.map(a => a.residue_name || ""),
+            chain_ids:     atoms.map(a => a.chain_id || ""),
             title:         struct.title || "",
             n_atoms:       struct.n_atoms,
             selected:      Array.isArray(sel.indices) ? sel.indices : [],
-            // ``atoms === null`` in the dispatcher snapshot signals
-            // "trust disk" (see dispatcher's dirty-gated _serialise).
-            // Pass undefined to restoreModifyState so adoptSession
-            // falls back to its disk-fetch branch.
-            atoms:         atoms || undefined,
+            atoms:         shouldUseSavedAtoms ? atoms : undefined,
             camera:        view.camera || null,
             show_axes:     !!view.axes,
             show_indices:  !!view.labels,

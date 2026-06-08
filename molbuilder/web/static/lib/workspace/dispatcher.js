@@ -520,19 +520,21 @@
 
     /**
      * Save the workspace structure to disk.  Delegates to the
-     * Sources-card Save panel's ``structureSave.save(opts)`` —
-     * that module owns the path-resolution + sidecar-write
-     * pipeline (Save / Save as… semantics).  This wrapper exists
-     * so consumers can stay on the unified ``ws.*`` API; the
-     * dispatcher does NOT re-implement the save path.
+     * Sources-card Save panel's ``structureSave.save()`` — that
+     * module owns the path-resolution + writeFile pipeline.  The
+     * ``opts`` parameter is reserved for future Save as… support
+     * (target path + overwrite policy); structureSave.save()
+     * today takes no arguments and writes to its resolved
+     * targetPath().  This wrapper exists so consumers can stay
+     * on the unified ``ws.*`` API; the dispatcher does NOT
+     * re-implement the save pipeline.
      */
     function save(opts) {
-        opts = opts || {};
         var saveMod = root.molbuilder && root.molbuilder.structureSave;
         if (!saveMod || typeof saveMod.save !== "function") {
             return Promise.reject(_missing("structureSave"));
         }
-        return Promise.resolve(saveMod.save(opts));
+        return Promise.resolve(saveMod.save());
     }
 
     /**
@@ -617,27 +619,25 @@
     var _persistDeadline = null;
 
     function _serialise() {
-        var structure = getStructure();
-        var source    = getSource();
-        var dirty     = isDirty();
-        // Dirty-gated atoms (matches the cd9655e saveModifyState
-        // policy): when canvas is clean AND has a source file on
-        // disk, the disk is authoritative — an external editor
-        // could have replaced the file while the user was away.
-        // Omit atoms so the restore path re-fetches and picks up
-        // the external change.  When dirty (modifier ops since
-        // last save) OR source-less (generator output, never
-        // saved), in-memory is the only truth — include atoms.
-        if (structure && !dirty && source && source.file) {
-            structure.atoms = null;
-        }
+        // The snapshot always carries the full structure (including
+        // ``structure.atoms``).  The cd9655e dirty-gate
+        // ("when canvas is clean AND has a source file, refetch
+        // from disk on restore so external changes propagate") is
+        // applied AT RESTORE TIME — the snapshot consumer reads
+        // ``state.dirty`` + ``state.source.file`` and decides
+        // whether to install the saved atoms or force a disk
+        // refetch.  Earlier this gate lived here and nulled out
+        // ``structure.atoms`` — but downstream consumers also
+        // derive ``elements`` / ``atom_names`` / etc. from
+        // ``atoms[]``, so nulling it broke the IIFE state restore
+        // (empty Anchor readouts, broken refreshSelectionUI).
         return {
             v:        1,
             saved_at: new Date().toISOString(),
             state: {
-                structure:    structure,
-                source:       source,
-                dirty:        dirty,
+                structure:    getStructure(),
+                source:       getSource(),
+                dirty:        isDirty(),
                 last_save_to: _lastSavedTo(),
                 selection:    getSelection(),
                 view:         view.getState(),

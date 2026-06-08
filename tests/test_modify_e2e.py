@@ -2788,15 +2788,20 @@ def test_modify_handles_storage_quota_exceeded_gracefully(
         page, flask_server, water_xyz_file):
     """If sessionStorage is full or disabled (private mode in some
     browsers throws on setItem), the save path must catch the error
-    and not crash the page.  Mocked by stubbing setItem to throw."""
+    and not crash the page.  Mocked by stubbing setItem to throw.
+
+    Post-Phase-8 collapse (2026-06-08): the canonical key is
+    ``molbuilder.workspace.v1`` owned by the workspace dispatcher.
+    Pin that THE dispatcher's _persistToSession catches the throw
+    and warns to console without leaking a pageerror."""
     errors = _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
 
-    # Wrap setItem so any save attempt throws.
+    # Wrap setItem so any save attempt to the workspace key throws.
     page.evaluate("""() => {
         const orig = sessionStorage.setItem.bind(sessionStorage);
         sessionStorage.setItem = (k, v) => {
-            if (k === "modify-state") {
+            if (k === "molbuilder.workspace.v1") {
                 throw new DOMException("Quota exceeded", "QuotaExceededError");
             }
             return orig(k, v);
