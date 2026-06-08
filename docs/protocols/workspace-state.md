@@ -457,18 +457,18 @@ success branch:
 
 Each step is an independently mergeable PR with regression tests.
 
-| # | Step | Scope | Risk |
-|---|---|---|---|
-| 1 | Add `_shared.workspace_payload(struct, **extra)` helper.  Replace `structure_to_dict` + `ok_structure_response` internally; keep them as 3-line shims so consumers don't break in the same PR. | server | low |
-| 2 | Migrate `/api/build/load` + `/api/build/molecule` + `/api/modify/*` to emit `WorkspacePayload`.  Existing client code keeps working — every old key it reads is still in the response. | server | low |
-| 3 | Add `selection_remap` to `WorkspacePayload` for `/api/modify/delete` + `/api/modify/add_atom`.  Server-side implementation in `molbuilder/modify.py` (the index-shift map already exists internally via `_reindex_transport_metadata`). | server + tests | medium |
-| 4 | Add `window.molbuilder.workspace` dispatcher as a thin wrapper over the existing three stores.  Public surface: § 4.2.  Initial implementation delegates to the legacy stores; the wrapper IS the new public API.  Mark the legacy globals (`structureCanvas`, `selection.store`, modify-tab IIFE) as internal in the doc. | client | medium |
-| 5 | Migrate the modify-tab page to use `ws.*` exclusively.  Delete `applyStructure`'s direct touches of canvas-state / selection-store; replace with `ws.applyOp(...)`. | client | high |
-| 6 | Migrate generators (dna/rna/smiles/name/peptide/file) from `structurePage.loadIntoCanvas` + `viewerLoader` → `ws.generate(kind, input, opts)`. | client | high |
-| 7 | Migrate selection-bootstrap / panel / viewer-adapter to consume `ws.selection.*`. | client | medium |
-| 8 | Collapse persistence: delete `sessionStorage["modify-state"]` + `sessionStorage["molbuilder.structure_canvas"]`; write only `sessionStorage["molbuilder.workspace.v1"]`. | client | medium |
-| 9 | Delete the legacy stores (canvas-state.js, modify-tab IIFE state, selection/store.js).  Their public globals become re-exports of `ws.*`. | client | low |
-| 10 | Delete `/api/selection/atoms` if no remaining caller — it's covered by `/api/build/load` once the migration completes. | server | low |
+| # | Step | Scope | Risk | Status |
+|---|---|---|---|---|
+| 1 | Add `_shared.workspace_payload(struct, **extra)` helper.  Replace `structure_to_dict` + `ok_structure_response` internally; keep them as 3-line shims so consumers don't break in the same PR. | server | low | **✅ shipped 2026-06-07.**  `workspace_payload(struct, extra=...)` is canonical.  `structure_to_dict` routes through it + emits canonical keys (`text`, `source_format`, `lattice`) alongside legacy aliases (`xyz`, `elements`, `atom_names`, …) for back-compat.  `ok_structure_response` sources `issues` from the workspace payload (single validate-pass).  23 assertions in `tests/test_shared.py`. |
+| 2 | Migrate `/api/build/load` + `/api/build/molecule` + `/api/modify/*` to emit `WorkspacePayload`.  Existing client code keeps working — every old key it reads is still in the response. | server | low | pending |
+| 3 | Add `selection_remap` to `WorkspacePayload` for `/api/modify/delete` + `/api/modify/add_atom`.  Server-side implementation in `molbuilder/modify.py` (the index-shift map already exists internally via `_reindex_transport_metadata`). | server + tests | medium | pending |
+| 4 | Add `window.molbuilder.workspace` dispatcher as a thin wrapper over the existing three stores.  Public surface: § 4.2.  Initial implementation delegates to the legacy stores; the wrapper IS the new public API.  Mark the legacy globals (`structureCanvas`, `selection.store`, modify-tab IIFE) as internal in the doc. | client | medium | pending |
+| 5 | Migrate the modify-tab page to use `ws.*` exclusively.  Delete `applyStructure`'s direct touches of canvas-state / selection-store; replace with `ws.applyOp(...)`. | client | high | pending |
+| 6 | Migrate generators (dna/rna/smiles/name/peptide/file) from `structurePage.loadIntoCanvas` + `viewerLoader` → `ws.generate(kind, input, opts)`. | client | high | pending |
+| 7 | Migrate selection-bootstrap / panel / viewer-adapter to consume `ws.selection.*`. | client | medium | pending |
+| 8 | Collapse persistence: delete `sessionStorage["modify-state"]` + `sessionStorage["molbuilder.structure_canvas"]`; write only `sessionStorage["molbuilder.workspace.v1"]`. | client | medium | pending |
+| 9 | Delete the legacy stores (canvas-state.js, modify-tab IIFE state, selection/store.js).  Their public globals become re-exports of `ws.*`. | client | low | pending |
+| 10 | Delete `/api/selection/atoms` if no remaining caller — it's covered by `/api/build/load` once the migration completes. | server | low | pending |
 
 Each step is gated on its own regression test surface; § 7
 enumerates the tests that need to land alongside each step.
