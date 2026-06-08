@@ -123,10 +123,21 @@
         <span>Form</span>
         <select id="dna-form-select"
                 class="source-select"
-                title="B = canonical right-handed, A = wide right-handed (dehydrated), Z = left-handed (alternating-purine)">
+                title="B = canonical right-handed, A = wide right-handed (dehydrated), Z = left-handed (alternating-purine only)">
           <option value="B" selected>B (canonical)</option>
           <option value="A">A (dehydrated)</option>
-          <option value="Z">Z (left-handed)</option>
+          <option value="Z">Z (left-handed, GCGC… only)</option>
+        </select>
+      </label>
+      <label class="source-input-row">
+        <span>Backend</span>
+        <select id="dna-backend-select"
+                class="source-select"
+                title="auto: pick the best installed backend (3DNA > AmberTools > RDKit).&#10;3DNA: canonical helical fiber, requires x3dna.org install.&#10;Amber: tleap extended chain (form ignored).&#10;RDKit: folded conformer (form ignored).">
+          <option value="auto" selected>auto</option>
+          <option value="threedna">3DNA (canonical helix)</option>
+          <option value="amber">AmberTools (extended chain)</option>
+          <option value="rdkit">RDKit (folded conformer)</option>
         </select>
       </label>
       <div class="source-actions">
@@ -155,10 +166,19 @@
         <span>Form</span>
         <select id="rna-form-select"
                 class="source-select"
-                title="A = canonical RNA helix (3'-endo sugar), B = canonical DNA helix (2'-endo, RNA rarely), Z = left-handed (alternating-purine)">
+                title="A = canonical RNA helix (3'-endo sugar).  3DNA's fiber only builds A-form RNA; other backends ignore form and produce an extended (Amber) or folded (RDKit) chain.">
           <option value="A" selected>A (canonical)</option>
-          <option value="B">B (uncommon for RNA)</option>
-          <option value="Z">Z (left-handed)</option>
+        </select>
+      </label>
+      <label class="source-input-row">
+        <span>Backend</span>
+        <select id="rna-backend-select"
+                class="source-select"
+                title="auto: pick the best installed backend (3DNA > AmberTools > RDKit).&#10;3DNA: canonical A-form fiber, requires x3dna.org install.&#10;Amber: tleap extended chain (form ignored).&#10;RDKit: folded conformer (form ignored).">
+          <option value="auto" selected>auto</option>
+          <option value="threedna">3DNA (canonical A-form)</option>
+          <option value="amber">AmberTools (extended chain)</option>
+          <option value="rdkit">RDKit (folded conformer)</option>
         </select>
       </label>
       <div class="source-actions">

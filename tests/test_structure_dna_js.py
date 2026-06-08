@@ -148,7 +148,8 @@ class TestHappyPath:
             await dna.generate("ACGT");
             console.log(JSON.stringify(capturedBody));
         ''')
-        assert out == {"kind": "dna", "input": "ACGT", "form": "B"}
+        assert out == {"kind": "dna", "input": "ACGT",
+                       "form": "B", "backend": "auto"}
 
     def test_explicit_form_forwarded(self):
         out = _run_node('''
@@ -168,7 +169,14 @@ class TestHappyPath:
                     loadIntoCanvas: async () => ({ok: true}),
                 },
             });
-            await dna.generate("ACGT", {form: "Z"});
+            // Use GCGC for the Z-form payload check: the client-
+            // side Z-only-poly-(GC) guard added 2026-06-07 rejects
+            // non-(GC)n sequences with form=Z + auto/threedna
+            // backend BEFORE the fetch, so ACGT would have skipped
+            // the network call this test is asserting on.  Forcing
+            // backend=rdkit also bypasses the guard, but GCGC is
+            // the most direct way to exercise the existing assertion.
+            await dna.generate("GCGC", {form: "Z"});
             console.log(JSON.stringify(capturedBody));
         ''')
         assert out["form"] == "Z"
@@ -197,6 +205,171 @@ class TestHappyPath:
         assert out["src"]["kind"] == "dna"
         assert out["src"]["generator_input"]["sequence"] == "ACGT"
         assert out["src"]["generator_input"]["form"] == "A"
+
+
+class TestBackendSelection:
+    """Backend selector for DNA generator panel (restored 2026-06-07
+    after user reported it was missing from the new Sources card
+    UI).  Legacy index.html had a #backend select inside
+    #nucleic-options offering auto/threedna/amber/rdkit; the new
+    DNA panel was migrated without it, defaulting silently to
+    auto.  The selector is back + plumbed through generate()."""
+
+    def test_default_backend_is_auto(self):
+        out = _run_node('''
+            let capturedBody = null;
+            dna.configure({
+                fetch: async (url, init) => {
+                    capturedBody = JSON.parse(init.body);
+                    return {
+                        ok: true,
+                        json: async () => ({
+                            ok: true, xyz: "20\\ndna\\nC 0 0 0\\n",
+                            n_atoms: 20, backend_used: "rdkit",
+                        }),
+                    };
+                },
+                structurePage: {
+                    loadIntoCanvas: async () => ({ok: true}),
+                },
+            });
+            await dna.generate("ACGT");
+            console.log(JSON.stringify(capturedBody.backend));
+        ''')
+        assert out == "auto"
+
+    def test_explicit_backend_forwarded(self):
+        out = _run_node('''
+            let capturedBody = null;
+            dna.configure({
+                fetch: async (url, init) => {
+                    capturedBody = JSON.parse(init.body);
+                    return {
+                        ok: true,
+                        json: async () => ({
+                            ok: true, xyz: "5\\nx\\nC 0 0 0\\n",
+                            n_atoms: 5, backend_used: "rdkit",
+                        }),
+                    };
+                },
+                structurePage: {
+                    loadIntoCanvas: async () => ({ok: true}),
+                },
+            });
+            await dna.generate("ACGT", {backend: "rdkit"});
+            console.log(JSON.stringify(capturedBody.backend));
+        ''')
+        assert out == "rdkit"
+
+    def test_unknown_backend_rejected_client_side(self):
+        out = _run_node('''
+            let fetchCalls = 0;
+            dna.configure({
+                fetch: async () => { fetchCalls++; return {}; },
+                structurePage: { loadIntoCanvas: async () => ({ok: true}) },
+            });
+            const r = await dna.generate("ACGT", {backend: "bogus"});
+            console.log(JSON.stringify({envelope: r, fetchCalls}));
+        ''')
+        assert out["envelope"]["ok"] is False
+        assert "Backend must be one of" in out["envelope"]["error"]
+        assert out["fetchCalls"] == 0
+
+    def test_backend_used_propagated_through_envelope(self):
+        """If the server resolves auto to a different name, the
+        client envelope must surface backend_used so the status
+        text can show which backend actually ran."""
+        out = _run_node('''
+            dna.configure({
+                fetch: async () => ({
+                    ok: true,
+                    json: async () => ({
+                        ok: true, xyz: "5\\nx\\nC 0 0 0\\n",
+                        n_atoms: 5, backend_used: "threedna",
+                    }),
+                }),
+                structurePage: { loadIntoCanvas: async () => ({ok: true}) },
+            });
+            const r = await dna.generate("GCGC", {backend: "auto"});
+            console.log(JSON.stringify(r));
+        ''')
+        assert out["ok"] is True
+        assert out["backend_used"] == "threedna"
+
+
+class TestZFormGuard:
+    """Bug #2 fix (2026-06-07): Z-DNA via 3DNA's ``fiber`` only
+    supports alternating poly-d(GC) sequences (GCGC, CGCGCG, ...).
+    Other sequences cause fiber to fall into an interactive
+    'Number of repeats' prompt that stalls reading from stdin
+    until the 60-second subprocess timeout — perceived as a 'hang'
+    by the user.  Catch upfront."""
+
+    def test_z_form_with_non_gc_sequence_rejected_client_side(self):
+        out = _run_node('''
+            let fetchCalls = 0;
+            dna.configure({
+                fetch: async () => { fetchCalls++; return {}; },
+                structurePage: { loadIntoCanvas: async () => ({ok: true}) },
+            });
+            const r = await dna.generate("ATGC", {form: "Z"});
+            console.log(JSON.stringify({envelope: r, fetchCalls}));
+        ''')
+        assert out["envelope"]["ok"] is False
+        assert "Z-DNA" in out["envelope"]["error"]
+        assert out["fetchCalls"] == 0, (
+            "Z + non-(GC)n must not even reach the server"
+        )
+
+    def test_z_form_with_gcgc_passes_guard(self):
+        out = _run_node('''
+            let fetchCalls = 0;
+            dna.configure({
+                fetch: async (url, init) => {
+                    fetchCalls++;
+                    return {
+                        ok: true,
+                        json: async () => ({
+                            ok: true, xyz: "5\\nx\\nC 0 0 0\\n",
+                            n_atoms: 5, backend_used: "threedna",
+                        }),
+                    };
+                },
+                structurePage: { loadIntoCanvas: async () => ({ok: true}) },
+            });
+            const r = await dna.generate("GCGCGC", {form: "Z"});
+            console.log(JSON.stringify({envelope: r, fetchCalls}));
+        ''')
+        assert out["envelope"]["ok"] is True
+        assert out["fetchCalls"] == 1
+
+    def test_z_form_with_rdkit_backend_skips_guard(self):
+        """The Z-DNA guard only kicks in for the threedna/auto
+        backends — RDKit ignores form anyway, so blocking Z would
+        force the user to pick A or B for a request that's already
+        producing a folded conformer."""
+        out = _run_node('''
+            let fetchCalls = 0;
+            dna.configure({
+                fetch: async () => {
+                    fetchCalls++;
+                    return {
+                        ok: true,
+                        json: async () => ({
+                            ok: true, xyz: "5\\nx\\nC 0 0 0\\n",
+                            n_atoms: 5, backend_used: "rdkit",
+                        }),
+                    };
+                },
+                structurePage: { loadIntoCanvas: async () => ({ok: true}) },
+            });
+            const r = await dna.generate("ATGC", {
+                form: "Z", backend: "rdkit",
+            });
+            console.log(JSON.stringify({envelope: r, fetchCalls}));
+        ''')
+        assert out["envelope"]["ok"] is True
+        assert out["fetchCalls"] == 1
 
 
 class TestErrorPaths:

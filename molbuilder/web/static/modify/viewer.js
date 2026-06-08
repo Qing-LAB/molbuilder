@@ -1188,6 +1188,15 @@
             title:         state.title,
             n_atoms:       state.n_atoms,
             selected:      selectedIndices(),
+            // BOMB-0 follow-up (2026-06-07): snapshot the selection
+            // store's atoms list — the post-op shape with regions +
+            // is_frozen + atom_name + residue_name + chain_id.  The
+            // restore path adopts this directly instead of re-fetching
+            // from disk via adoptSession's /api/selection/atoms call,
+            // which would return the pre-op file contents (the disk
+            // hasn't been re-saved after the modifier op, so the disk
+            // atoms are stale relative to state.xyz).
+            atoms:         (_s ? _s.getState().atoms : []),
             camera:        camera,
             // Read the current chrome state via the embed's getters
             // (D3 — added 2026-06-04).  show_axes is "axes are
@@ -1316,9 +1325,20 @@
                         && i < state.n_atoms
                 )
                 : [];
+            // BOMB-0 follow-up (2026-06-07): pass saved.atoms when
+            // present so adoptSession installs the in-memory post-op
+            // atoms list directly instead of going through the disk
+            // fetch.  Disk reads are stale relative to state.xyz
+            // until the user saves; without this, a Modify-tab
+            // session that did a Delete + navigated away would come
+            // back showing the PRE-delete atom list.  When atoms is
+            // absent (cross-tab handoff, pre-fix sessions still in
+            // storage), adoptSession falls back to the disk fetch.
             _s.adoptSession({
                 sourceFile: saved.source_file || null,
                 selection:  validSelection,
+                atoms:      Array.isArray(saved.atoms)
+                              ? saved.atoms : undefined,
             });
         }
         // Restore the camera AFTER applyStructure so it doesn't

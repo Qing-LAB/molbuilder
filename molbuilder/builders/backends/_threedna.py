@@ -205,6 +205,26 @@ _FIBER_FLAGS = {
 }
 
 
+def _is_alternating_gc(seq: str) -> bool:
+    """True iff ``seq`` is an EVEN-length strict alternation of G
+    and C — the only sequence shape fiber's ``-z`` Z-DNA mode can
+    build.
+
+    fiber's Z-mode takes ``-rep=N`` (number of dinucleotide GC
+    repeats), so the input length must be a positive even multiple
+    of the 2-base repeat unit (GC, CG, GCGC, CGCGCG, ...).  Odd-
+    length alternations (GCG, CGCGC) would imply a half-repeat
+    that the helix model doesn't support — reject them upfront
+    rather than silently truncating.
+    """
+    s = seq.upper()
+    if len(s) < 2 or len(s) % 2 != 0:
+        return False
+    if set(s) - {"G", "C"}:
+        return False
+    return all(s[i] != s[i + 1] for i in range(len(s) - 1))
+
+
 def build(kind: str, sequence: str, form: str, terminal: str,
           title: Optional[str] = None) -> Structure:
     if kind not in ("dna", "rna"):
@@ -239,6 +259,24 @@ def build(kind: str, sequence: str, form: str, terminal: str,
     if not seq:
         raise ValueError("Empty sequence")
 
+    # Z-DNA: fiber's `-z` only builds poly-d(GC) -- the user-supplied
+    # sequence is silently ignored and fiber falls into an interactive
+    # "Number of repeats" prompt instead.  Under capture_output=True
+    # with the Flask process's inherited stdin (typically a pipe rather
+    # than /dev/null) this can stall reading from stdin for the full
+    # 60 s subprocess timeout before the user sees an error.  Reject
+    # upfront with an actionable message so the user gets the constraint
+    # without a one-minute hang.  Bug #2 fix (2026-06-07).
+    if kind == "dna" and form == "Z" and not _is_alternating_gc(seq):
+        raise ValueError(
+            f"Z-DNA via 3DNA's fiber requires an alternating poly-d(GC) "
+            f"sequence (e.g. 'GCGCGC', 'CGCGCG'); got {sequence!r}.  "
+            f"For other sequences, use B-form (right-handed canonical) "
+            f"or A-form (dehydrated).  Z-DNA is rare biologically and "
+            f"only stable in (GC)n stretches under specific conditions; "
+            f"there is no canonical Z geometry for ATGC etc."
+        )
+
     # fiber's default output is 5'-phosphate / 3'-OH regardless of the
     # `-single` flag; we post-process below to honour the requested
     # terminal state.  We can strip the 5'-phosphate (turning fiber's
@@ -254,12 +292,28 @@ def build(kind: str, sequence: str, form: str, terminal: str,
             RuntimeWarning, stacklevel=4,
         )
 
-    cmd = [found.fiber] + _FIBER_FLAGS[flags_key] + [
-        f"-seq={seq}",
-        # Single-stranded output -- molbuilder builders are
-        # single-chain; the user can swap to duplex by post-processing.
-        "-single",
-    ]
+    # Argument shape depends on the form flag:
+    # * ``-b`` / ``-a`` / ``-rna``: take ``-seq=<sequence>`` to lay
+    #   bases along the canonical helix (one nucleotide per base in
+    #   the input).
+    # * ``-z``: pre-defined as poly d(GC); ``-seq=`` is REJECTED by
+    #   fiber and it drops into an interactive 'Number of repeats'
+    #   prompt instead.  Use ``-rep=N`` where N = len(seq)/2 (we
+    #   already validated alternating-GC upstream, so len is even).
+    if form == "Z":
+        n_repeats = len(seq) // 2  # 2 bases per GC repeat unit
+        cmd = [found.fiber] + _FIBER_FLAGS[flags_key] + [
+            f"-rep={n_repeats}",
+            "-single",
+        ]
+    else:
+        cmd = [found.fiber] + _FIBER_FLAGS[flags_key] + [
+            f"-seq={seq}",
+            # Single-stranded output -- molbuilder builders are
+            # single-chain; the user can swap to duplex by
+            # post-processing.
+            "-single",
+        ]
 
     # fiber needs $X3DNA in the env at runtime so its auxiliary scripts
     # / config look-ups resolve.  Inject ours regardless of what the
@@ -276,6 +330,13 @@ def build(kind: str, sequence: str, form: str, terminal: str,
                 cmd_full,
                 capture_output=True, text=True,
                 cwd=workdir, env=env,
+                # Pin stdin to /dev/null so an unanticipated fiber-side
+                # interactive prompt (e.g. an invalid flag combination
+                # that drops into the "Number of repeats" loop) fails
+                # FAST instead of stalling for the full timeout reading
+                # from the parent's inherited stdin.  Bug #2 hardening
+                # (2026-06-07).
+                stdin=subprocess.DEVNULL,
                 timeout=60,
             )
         except subprocess.TimeoutExpired as exc:

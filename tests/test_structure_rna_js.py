@@ -151,7 +151,8 @@ class TestHappyPath:
             await rna.generate("ACGU");
             console.log(JSON.stringify(capturedBody));
         ''')
-        assert out == {"kind": "rna", "input": "ACGU", "form": "A"}
+        assert out == {"kind": "rna", "input": "ACGU",
+                       "form": "A", "backend": "auto"}
 
     def test_explicit_form_forwarded(self):
         out = _run_node('''

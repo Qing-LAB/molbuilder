@@ -333,10 +333,19 @@
         //   2. it accepts a pre-validated selection that survives
         //      the structure swap, so the panel and adapter come
         //      back in sync without losing the user's pick.
-        // Atoms are still fetched fresh from the server so any
-        // sidecar update done since the snapshot was written is
-        // reflected.
-        function adoptSession({ sourceFile, selection }) {
+        //
+        // ``atoms``  (BOMB-0 follow-up, 2026-06-07): the canonical
+        // per-atom payload to install.  When supplied, the disk
+        // fetch is SKIPPED — saved snapshots carry the in-memory
+        // post-op atoms which are authoritative until the user
+        // saves to disk.  Without this knob a Modify-tab session
+        // that did a Delete + navigated away would come back
+        // showing the PRE-delete atom list because /api/selection/
+        // atoms reads the disk (which still has the pre-op file).
+        // Falls back to the disk fetch when ``atoms`` is absent
+        // (cross-tab handoff path where the file IS the source of
+        // truth, and pre-fix sessions still in storage).
+        function adoptSession({ sourceFile, selection, atoms }) {
             if (sourceFile && typeof sourceFile !== "string") {
                 return Promise.reject(
                     new TypeError("sourceFile must be a string or null")
@@ -345,10 +354,20 @@
             const sel = Array.isArray(selection)
                 ? selection.filter((i) => typeof i === "number")
                 : [];
+            const preFetched = Array.isArray(atoms) ? atoms : null;
             return _run(async (signal) => {
                 state.sourceFile = sourceFile || null;
-                state.atoms      = [];
+                state.atoms      = preFetched
+                    ? preFetched.map(_normaliseAtom) : [];
                 state.selection  = sel.slice().sort((a, b) => a - b);
+                if (preFetched) {
+                    // Drop selection indices that no longer exist
+                    // in the adopted atoms list (mirrors adoptAtoms).
+                    const n = state.atoms.length;
+                    state.selection = state.selection.filter(
+                        (i) => Number.isInteger(i) && i >= 0 && i < n);
+                    return;
+                }
                 if (!state.sourceFile) return;
                 await _fetchAtoms(signal);
             });

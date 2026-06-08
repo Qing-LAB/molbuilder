@@ -308,6 +308,59 @@ def test_threedna_a_form_differs_from_b_form():
     )
 
 
+def test_threedna_is_alternating_gc_helper():
+    """Bug #2 helper (2026-06-07): the alternating-poly-d(GC)
+    predicate that gates the Z-DNA path.  Pins the exact set of
+    sequences fiber's ``-z`` can build, plus rejects partial
+    matches that would silently slip through to fiber's
+    interactive 'Number of repeats' prompt."""
+    from molbuilder.backends import _threedna as _td
+    _is_alternating_gc = _td._is_alternating_gc
+    # Accepted: strict alternation, both orientations, multiple
+    # repeats.
+    assert _is_alternating_gc("GC")     is True
+    assert _is_alternating_gc("CG")     is True
+    assert _is_alternating_gc("GCGC")   is True
+    assert _is_alternating_gc("CGCGCG") is True
+    assert _is_alternating_gc("gcgc")   is True   # case-insensitive
+    # Rejected: single base, empty, non-(GC) alphabet, repeated G/C
+    # in a row, partial alternation, odd-length (no integer GC
+    # repeat count).
+    assert _is_alternating_gc("")       is False
+    assert _is_alternating_gc("G")      is False   # too short
+    assert _is_alternating_gc("GCGG")   is False   # repeats
+    assert _is_alternating_gc("ATGC")   is False   # non-(GC)
+    assert _is_alternating_gc("GCG")    is False   # odd length
+    assert _is_alternating_gc("CGCGT")  is False
+
+
+def test_threedna_z_form_with_non_gc_sequence_rejects_fast():
+    """Bug #2 fix (2026-06-07): Z + non-(GC)n must raise a
+    ValueError BEFORE any subprocess.run(fiber ...) call.  Pre-fix
+    fiber dropped into its interactive 'Number of repeats' prompt
+    and the request hung for 60 s reading from the inherited
+    stdin under capture_output=True.  Skipped when 3DNA isn't
+    reachable (the build() entry-point raises BackendUnavailable
+    earlier in that case)."""
+    from molbuilder.backends import _threedna
+    if not _threedna.is_available():
+        pytest.skip("3DNA not reachable on this machine")
+    with pytest.raises(ValueError, match=r"Z-DNA.*poly-d\(GC\)"):
+        _threedna.build("dna", "ATGC", form="Z", terminal="OH")
+
+
+def test_threedna_z_form_with_alternating_gc_succeeds():
+    """The flip side: GCGCGC + form=Z must build cleanly under
+    3DNA.  Catches the case where the new alternating-GC guard
+    accidentally rejects a sequence fiber actually accepts."""
+    from molbuilder.backends import _threedna
+    if not _threedna.is_available():
+        pytest.skip("3DNA not reachable on this machine")
+    s = _threedna.build("dna", "GCGCGC", form="Z", terminal="OH")
+    assert s.n_atoms > 0
+    assert "P" in s.elements
+
+
 def test_threedna_rna_uses_uracil_not_thymine():
     """RNA must use U (uracil), not T (thymine).  fiber's `-rna` flag
     has to be set; if we accidentally call DNA mode for RNA, residue

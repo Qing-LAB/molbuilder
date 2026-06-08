@@ -269,6 +269,92 @@ class TestAdoptAtoms:
         assert out == "TypeError"
 
 
+class TestAdoptSessionAtoms:
+    """``adoptSession({sourceFile, selection, atoms})`` —
+    BOMB-0 follow-up (2026-06-07) extension.  When ``atoms`` is
+    supplied, the disk fetch is SKIPPED and atoms are installed
+    in-memory.  This is the path /modify's restoreModifyState
+    uses after a Delete op so the panel doesn't snap back to the
+    pre-op atom list (the disk still has the original file)."""
+
+    def test_pre_fetched_atoms_install_without_disk_fetch(self):
+        """A session snapshot of the post-op atoms list (3 atoms
+        shrunk to 2 by a Delete) must reinstall cleanly without
+        going through /api/selection/atoms — there's no real
+        server here; if the store tried to fetch, the test would
+        fail."""
+        out = _run_node(
+            "const store = window.molbuilder.selection._createStore();\n"
+            "store.adoptSession({\n"
+            "  sourceFile: 'projects/x/water.xyz',\n"
+            "  selection:  [1],\n"
+            "  atoms: [\n"
+            "    {index: 0, element: 'H', regions: [], is_frozen: false},\n"
+            "    {index: 1, element: 'H', regions: [], is_frozen: false},\n"
+            "  ],\n"
+            "}).then(() => {\n"
+            "  const s = store.getState();\n"
+            "  console.log(JSON.stringify({\n"
+            "    src: s.sourceFile,\n"
+            "    n:   s.atoms.length,\n"
+            "    sel: s.selection,\n"
+            "  }));\n"
+            "});"
+        )
+        assert out == {
+            "src": "projects/x/water.xyz",
+            "n":   2,
+            "sel": [1],
+        }
+
+    def test_pre_fetched_atoms_drop_out_of_range_selection(self):
+        """If the snapshot's saved.selected has indices past the
+        adopted atoms length (delete shrank the structure), drop
+        them — same invariant as adoptAtoms."""
+        out = _run_node(
+            "const store = window.molbuilder.selection._createStore();\n"
+            "store.adoptSession({\n"
+            "  sourceFile: 'projects/x/water.xyz',\n"
+            "  selection:  [0, 2, 5],\n"
+            "  atoms: [\n"
+            "    {index: 0, element: 'H', regions: [], is_frozen: false},\n"
+            "    {index: 1, element: 'H', regions: [], is_frozen: false},\n"
+            "  ],\n"
+            "}).then(() => {\n"
+            "  console.log(JSON.stringify(store.getState().selection));\n"
+            "});"
+        )
+        assert out == [0]
+
+    def test_absent_atoms_falls_back_to_disk_fetch_path(self):
+        """When the snapshot does NOT carry atoms (cross-tab
+        handoff, pre-fix sessions), adoptSession still routes
+        through the disk fetch — preserved for back-compat.
+        We can't actually exercise the fetch under node, but we
+        can verify atoms stays empty and sourceFile is set
+        (no synchronous fill from a phantom atoms field)."""
+        out = _run_node(
+            "const store = window.molbuilder.selection._createStore({\n"
+            "  fetch: () => Promise.reject(new Error('fetch-skip')),\n"
+            "});\n"
+            "store.adoptSession({\n"
+            "  sourceFile: 'projects/x/water.xyz',\n"
+            "  selection:  [],\n"
+            "}).catch(() => {})\n"
+            ".finally(() => {\n"
+            "  const s = store.getState();\n"
+            "  console.log(JSON.stringify({\n"
+            "    src: s.sourceFile,\n"
+            "    n:   s.atoms.length,\n"
+            "  }));\n"
+            "});"
+        )
+        assert out == {
+            "src": "projects/x/water.xyz",
+            "n":   0,
+        }
+
+
 class TestToggleAtom:
 
     def test_toggle_into_empty_selection(self):

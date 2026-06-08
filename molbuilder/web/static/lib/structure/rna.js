@@ -24,6 +24,7 @@
     var BUILD_URL = "/api/build/molecule";
     var VALID_RNA = /^[ACGU]+$/i;
     var VALID_FORMS = ["A", "B", "Z"];
+    var VALID_BACKENDS = ["auto", "threedna", "amber", "rdkit"];
 
     var _fetch         = null;
     var _structurePage = null;
@@ -82,6 +83,15 @@
                      + JSON.stringify(form),
             });
         }
+        var backend = opts.backend || "auto";
+        if (VALID_BACKENDS.indexOf(backend) < 0) {
+            return Promise.resolve({
+                ok:    false,
+                error: "Backend must be one of "
+                     + VALID_BACKENDS.join(", ") + ".  Got: "
+                     + JSON.stringify(backend),
+            });
+        }
         // Lazy-resolve dependencies in case the script-load
         // order put us above page.js / lib/* (LANDMINE-2 fix).
         _lazyResolve();
@@ -97,7 +107,10 @@
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify({
-                kind: "rna", input: trimmed, form: form,
+                kind:    "rna",
+                input:   trimmed,
+                form:    form,
+                backend: backend,
             }),
         })
         .then(function (r) {
@@ -119,6 +132,7 @@
                 { kind: "rna",
                   generator_input: {
                       sequence: trimmed, form: form,
+                      backend: backend,
                   } }
             ).then(function (gate) {
                 if (!gate.ok) {
@@ -131,7 +145,8 @@
                         if (maybe && typeof maybe.then === "function") {
                             return maybe.then(function () {
                                 return { ok: true,
-                                         n_atoms: body.n_atoms };
+                                         n_atoms: body.n_atoms,
+                                         backend_used: body.backend_used };
                             });
                         }
                     } catch (e) {
@@ -143,7 +158,8 @@
                         };
                     }
                 }
-                return { ok: true, n_atoms: body.n_atoms };
+                return { ok: true, n_atoms: body.n_atoms,
+                         backend_used: body.backend_used };
             });
         })
         .catch(function (err) {
@@ -165,6 +181,7 @@
 
         var input   = doc.getElementById("rna-input");
         var formSel = doc.getElementById("rna-form-select");
+        var backendSel = doc.getElementById("rna-backend-select");
         var button  = doc.getElementById("rna-generate-btn");
         var status  = doc.getElementById("rna-status");
         if (!input || !button) return;
@@ -180,16 +197,23 @@
         button.addEventListener("click", function () {
             var echo = input.value.trim().toUpperCase().replace(/\s+/g, "");
             var formChoice = (formSel && formSel.value) || "A";
+            var backendChoice = (backendSel && backendSel.value) || "auto";
             button.disabled = true;
             setStatus("Generating RNA…", "generating");
-            generate(echo, { form: formChoice }).then(function (r) {
+            generate(echo, {
+                form: formChoice, backend: backendChoice,
+            }).then(function (r) {
                 button.disabled = false;
                 if (r.ok) {
+                    var backendNote = r.backend_used
+                        && r.backend_used !== backendChoice
+                        ? " (" + r.backend_used + ")"
+                        : "";
                     setStatus(
                         "Generated " + (r.n_atoms != null
                             ? r.n_atoms + " atoms" : "")
                         + " from " + formChoice + "-form "
-                        + echo);
+                        + echo + backendNote);
                 } else if (r.cancelled) {
                     setStatus("Kept existing workspace.");
                 } else {

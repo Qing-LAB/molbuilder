@@ -29,6 +29,7 @@
     var BUILD_URL = "/api/build/molecule";
     var VALID_DNA = /^[ACGT]+$/i;
     var VALID_FORMS = ["B", "A", "Z"];
+    var VALID_BACKENDS = ["auto", "threedna", "amber", "rdkit"];
 
     var _fetch         = null;
     var _structurePage = null;
@@ -68,6 +69,8 @@
      * @param {string} sequence  ACGT, case-insensitive
      * @param {object} [opts]
      * @param {"B"|"A"|"Z"} [opts.form="B"]  helix form
+     * @param {"auto"|"threedna"|"amber"|"rdkit"} [opts.backend="auto"]
+     *        backend selector (default auto = best installed)
      * @returns {Promise<envelope>}
      */
     function generate(sequence, opts) {
@@ -95,6 +98,36 @@
                      + JSON.stringify(form),
             });
         }
+        var backend = opts.backend || "auto";
+        if (VALID_BACKENDS.indexOf(backend) < 0) {
+            return Promise.resolve({
+                ok:    false,
+                error: "Backend must be one of "
+                     + VALID_BACKENDS.join(", ") + ".  Got: "
+                     + JSON.stringify(backend),
+            });
+        }
+        // Z-DNA via fiber requires alternating poly-d(GC).  Catch the
+        // mismatch client-side with an actionable error so the user
+        // doesn't wait for the server-side 3DNA backend to reject
+        // (and a 60 s subprocess timeout if fiber slips into its
+        // interactive "Number of repeats" prompt).  Bug #2 fix
+        // (2026-06-07).
+        // ``(GC)+`` and ``(CG)+`` cover both strand orientations;
+        // length is implicitly even because each repeat is 2 bases.
+        // Matches the server-side ``_is_alternating_gc`` predicate
+        // exactly so client-side acceptance == server-side acceptance.
+        if (form === "Z"
+                && (backend === "auto" || backend === "threedna")
+                && !/^(GC)+$/i.test(trimmed)
+                && !/^(CG)+$/i.test(trimmed)) {
+            return Promise.resolve({
+                ok:    false,
+                error: "Z-DNA via 3DNA only supports alternating "
+                     + "poly-d(GC) sequences (e.g. GCGC, CGCGCG).  "
+                     + "Use B-form or A-form for " + trimmed + ".",
+            });
+        }
         // Lazy-resolve dependencies in case the script-load
         // order put us above page.js / lib/* (LANDMINE-2 fix).
         _lazyResolve();
@@ -110,7 +143,10 @@
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify({
-                kind: "dna", input: trimmed, form: form,
+                kind:    "dna",
+                input:   trimmed,
+                form:    form,
+                backend: backend,
             }),
         })
         .then(function (r) {
@@ -132,6 +168,7 @@
                 { kind: "dna",
                   generator_input: {
                       sequence: trimmed, form: form,
+                      backend: backend,
                   } }
             ).then(function (gate) {
                 if (!gate.ok) {
@@ -144,7 +181,8 @@
                         if (maybe && typeof maybe.then === "function") {
                             return maybe.then(function () {
                                 return { ok: true,
-                                         n_atoms: body.n_atoms };
+                                         n_atoms: body.n_atoms,
+                                         backend_used: body.backend_used };
                             });
                         }
                     } catch (e) {
@@ -156,7 +194,8 @@
                         };
                     }
                 }
-                return { ok: true, n_atoms: body.n_atoms };
+                return { ok: true, n_atoms: body.n_atoms,
+                         backend_used: body.backend_used };
             });
         })
         .catch(function (err) {
@@ -178,6 +217,7 @@
 
         var input  = doc.getElementById("dna-input");
         var formSel = doc.getElementById("dna-form-select");
+        var backendSel = doc.getElementById("dna-backend-select");
         var button = doc.getElementById("dna-generate-btn");
         var status = doc.getElementById("dna-status");
         if (!input || !button) return;
@@ -193,16 +233,23 @@
         button.addEventListener("click", function () {
             var echo = input.value.trim().toUpperCase().replace(/\s+/g, "");
             var formChoice = (formSel && formSel.value) || "B";
+            var backendChoice = (backendSel && backendSel.value) || "auto";
             button.disabled = true;
             setStatus("Generating DNA…", "generating");
-            generate(echo, { form: formChoice }).then(function (r) {
+            generate(echo, {
+                form: formChoice, backend: backendChoice,
+            }).then(function (r) {
                 button.disabled = false;
                 if (r.ok) {
+                    var backendNote = r.backend_used
+                        && r.backend_used !== backendChoice
+                        ? " (" + r.backend_used + ")"
+                        : "";
                     setStatus(
                         "Generated " + (r.n_atoms != null
                             ? r.n_atoms + " atoms" : "")
                         + " from " + formChoice + "-form "
-                        + echo);
+                        + echo + backendNote);
                 } else if (r.cancelled) {
                     setStatus("Kept existing workspace.");
                 } else {
