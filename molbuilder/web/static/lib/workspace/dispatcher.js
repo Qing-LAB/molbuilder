@@ -376,6 +376,20 @@
         var resetSelection = !!opts.resetSelection;
         var text = payload && (payload.text || payload.xyz);
 
+        // Step 0 — capture the PRE-op selection BEFORE any store
+        // mutation.  We need this because ``applyStructure``'s hook
+        // calls ``store.adoptAtoms`` which naively filters
+        // ``state.selection`` to in-range indices for the new atom
+        // count — that filter destroys the data the selection_remap
+        // needs to translate (e.g. selecting atom 2 + deleting atom 0:
+        // adoptAtoms drops 2 since 2 >= 2 in the post-delete 2-atom
+        // structure; without capturing first, the remap reads from
+        // [] instead of [2] and produces [] instead of the correct
+        // [1]).  Phase 3+ correctness fix (2026-06-08).
+        var st = _store();
+        var preSelection = (st && typeof st.getState === "function")
+            ? st.getState().selection.slice() : [];
+
         // 1. Canvas-state.
         var cs = _canvas();
         if (touchCanvas && cs && text
@@ -393,16 +407,15 @@
             try { modifyHook(payload, opts); } catch (_) { /* swallow */ }
         }
 
-        // 3 + 4. Selection mapping.
-        var st = _store();
+        // 3 + 4. Selection mapping.  Read from preSelection (captured
+        // before adoptAtoms' destructive filter).
         var remap = payload && payload.extra
                  && payload.extra.selection_remap;
         if (Array.isArray(remap) && st
                 && typeof st.setSelection === "function") {
-            var oldSel = st.getState().selection;
             var newSel = [];
-            for (var i = 0; i < oldSel.length; i++) {
-                var idx = oldSel[i];
+            for (var i = 0; i < preSelection.length; i++) {
+                var idx = preSelection[i];
                 var newIdx = (idx >= 0 && idx < remap.length)
                     ? remap[idx] : null;
                 if (newIdx != null) newSel.push(newIdx);

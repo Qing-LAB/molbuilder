@@ -2695,6 +2695,59 @@ def test_modify_selection_survives_navigation(
     assert _get_selection(page) == [1]
 
 
+def test_delete_remaps_high_index_selection_via_selection_remap(
+        page, flask_server, water_xyz_file):
+    """End-to-end pin for the **selection-drift bug** the whole
+    workspace-state migration was driving toward.
+
+    Pre-fix sequence (the bug):
+      * User selects atom 2 (one of the H's) in a 3-atom water.
+      * User deletes atom 0 (the O).
+      * Server returns a 2-atom structure; client's naive
+        ``selection.filter(i < 2)`` drops the old index 2 because
+        it's out of range in the new 2-atom structure.
+      * Selection ends up EMPTY even though the user-picked atom
+        (old #2 = surviving H) is still in the workspace as new
+        index 1.
+
+    Post-fix (this test):
+      * Server emits ``extra.selection_remap = [null, 0, 1]`` per
+        Phase 3 of the migration.
+      * Client's ``_applyWorkspacePayload`` captures the PRE-op
+        selection BEFORE adoptAtoms' destructive filter, then
+        applies the remap: 2 → 1.
+      * Selection is correctly ``[1]`` in the new structure.
+
+    Without the Phase 3+ correctness fix in
+    ``_applyWorkspacePayload`` (the pre-capture of selection
+    before the hook runs), this test asserts ``[1]`` but the
+    client would produce ``[]``."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    # Select atom 2 (the second H — the HIGH index that the naive
+    # filter would silently drop after deleting atom 0).
+    _set_selection(page, [2])
+    assert _get_selection(page) == [2]
+
+    # Delete atom 0 (the O).  Surviving atoms: old [1, 2] → new [0, 1].
+    page.evaluate(
+        "() => window.molbuilder.workspace.applyOp('delete', "
+        "       {indices: [0]})"
+    )
+    # Wait for the structure to shrink AND the selection to remap.
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 2"
+    )
+    # The fix: surviving atom (old index 2) is now at new index 1.
+    selection = _get_selection(page)
+    assert selection == [1], (
+        f"selection-drift bug: expected [1] after remap (old atom 2 "
+        f"→ new atom 1), got {selection}.  This is the exact bug "
+        f"the workspace-state migration's selection_remap was "
+        f"supposed to fix end-to-end."
+    )
+
+
 def test_modify_state_after_op_survives_navigation(
         page, flask_server, water_xyz_file):
     """Apply Delete on Modify (state.xyz is now the post-delete
