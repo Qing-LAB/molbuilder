@@ -376,30 +376,31 @@
         var resetSelection = !!opts.resetSelection;
         var text = payload && (payload.text || payload.xyz);
 
-        // Step 0 — capture the PRE-op selection BEFORE any store
-        // mutation.  We need this because ``applyStructure``'s hook
-        // calls ``store.adoptAtoms`` which naively filters
-        // ``state.selection`` to in-range indices for the new atom
-        // count — that filter destroys the data the selection_remap
-        // needs to translate (e.g. selecting atom 2 + deleting atom 0:
-        // adoptAtoms drops 2 since 2 >= 2 in the post-delete 2-atom
-        // structure; without capturing first, the remap reads from
-        // [] instead of [2] and produces [] instead of the correct
-        // [1]).  Phase 3+ correctness fix (2026-06-08).
+        // Capture the PRE-op selection BEFORE any store mutation.
+        // adoptAtoms below naively filters ``state.selection`` to
+        // in-range indices for the new atom count; that filter
+        // destroys the data the selection_remap step needs to
+        // translate (selecting atom 2 + deleting atom 0: adoptAtoms
+        // drops 2 since 2 >= 2 in the 2-atom result; without
+        // capturing first, the remap reads from [] instead of [2]
+        // and produces [] instead of the correct [1]).
         var st = _store();
         var preSelection = (st && typeof st.getState === "function")
             ? st.getState().selection.slice() : [];
 
-        // 1. Canvas-state.
+        // 1. Canvas-state — text + dirty bit.
         var cs = _canvas();
         if (touchCanvas && cs && text
                 && typeof cs.replaceContent === "function") {
             try { cs.replaceContent(text); } catch (_) { /* swallow */ }
         }
 
-        // 2. modify-tab applyStructure hook (state.* + embed).  The
-        //    hook also runs the BOMB-0 store.adoptAtoms call when
-        //    payload.atoms is present, so we DON'T duplicate it here.
+        // 2. modify-tab applyStructure hook (IIFE state.* + 3Dmol
+        //    embed only).  This hook is the modify-tab's
+        //    self-update; it does NOT touch the selection store
+        //    or canvas-state (the dispatcher owns those).  When the
+        //    hook is absent (task tabs without a modify IIFE) the
+        //    call is a no-op.
         var modifyHook = root.molbuilder
                       && root.molbuilder.modify
                       && root.molbuilder.modify.applyStructure;
@@ -407,8 +408,18 @@
             try { modifyHook(payload, opts); } catch (_) { /* swallow */ }
         }
 
-        // 3 + 4. Selection mapping.  Read from preSelection (captured
-        // before adoptAtoms' destructive filter).
+        // 3. Selection store atoms — the BOMB-0 cross-store sync.
+        //    Single source of truth: this is the ONLY place the
+        //    dispatcher consults ``payload.atoms``.
+        if (st && Array.isArray(payload.atoms)
+                && typeof st.adoptAtoms === "function") {
+            st.adoptAtoms(payload.atoms);
+        }
+
+        // 4. Selection mapping.  Reads from ``preSelection`` (captured
+        //    before adoptAtoms' destructive filter) so a Delete op's
+        //    selection_remap translates the user's ORIGINAL anchor
+        //    rather than the post-filter empty set.
         var remap = payload && payload.extra
                  && payload.extra.selection_remap;
         if (Array.isArray(remap) && st
@@ -426,7 +437,7 @@
             st.clearSelection();
         }
 
-        // 5. Notify.
+        // 5. Notify dispatcher subscribers.
         _notify();
     }
 
@@ -470,49 +481,6 @@
             }
             _applyWorkspacePayload(env.r, { touchCanvas: true });
             return env.r;
-        });
-    }
-
-    /**
-     * Atomically install a server-returned workspace payload —
-     * the entry point used by every "load a fresh structure" flow
-     * (sidebar Load, generator output, file upload).  Gates through
-     * ``structurePage.loadIntoCanvas`` so the warning modal fires
-     * if the canvas is dirty.  Phase 6 of the workspace-state
-     * migration (2026-06-07).
-     *
-     * On a clean / accepted load:
-     *   1. ``cs.setStructure(payload, source)`` — dirty=false.
-     *   2. ``_applyWorkspacePayload(payload, {touchCanvas: false,
-     *      resetSelection: true})`` — store atoms + selection reset
-     *      + IIFE state + embed.
-     *
-     * Returns ``{ok: true}`` on success, ``{ok: false, cancelled:
-     * true}`` when the user picks Cancel on the warning modal.
-     */
-    function loadStructure(payload, source) {
-        if (!payload) {
-            return Promise.reject(new TypeError(
-                "workspace.loadStructure(payload, source): payload required"));
-        }
-        var sp = root.molbuilder && root.molbuilder.structurePage;
-        if (!sp || typeof sp.loadIntoCanvas !== "function") {
-            return Promise.reject(_missing("structurePage"));
-        }
-        var text = payload.text || payload.xyz || "";
-        var fmt  = payload.source_format
-                || (payload.extra && payload.extra.source_format)
-                || "xyz";
-        return sp.loadIntoCanvas(
-            { source_format: fmt, text: text },
-            source || { kind: "blank", file: null, generator_input: null }
-        ).then(function (gate) {
-            if (!gate.ok) return gate;
-            _applyWorkspacePayload(payload, {
-                touchCanvas:    false,
-                resetSelection: true,
-            });
-            return { ok: true };
         });
     }
 
@@ -699,7 +667,6 @@
         isDirty:               isDirty,
         isEmpty:               isEmpty,
         loadFromFile:          loadFromFile,
-        loadStructure:         loadStructure,
         generate:              generate,
         applyOp:               applyOp,
         applyPayload:          _applyWorkspacePayload,

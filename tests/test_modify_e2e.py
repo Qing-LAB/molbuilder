@@ -386,13 +386,21 @@ def test_runtime_modules_registered_on_modify(page, flask_server):
     # The expected set is the module-name registry from design.md;
     # adding a module requires updating BOTH the table there and
     # this assert (intentional friction so the rename gets caught).
+    #
+    # Review cleanup 2026-06-08 dropped ``modify.loadStructureText``
+    # from the required set — its registration had no whenReady
+    # consumer in the codebase, so emitting it was dead-code that
+    # the workspace-state migration audit caught.  Consumers that
+    # need the loader read the global
+    # ``window.molbuilder.loadStructureText`` directly (it's still
+    # mounted by modify/viewer.js; only the runtime-registry alias
+    # was retired).
     for required in (
         "projects",
         "selection.store",
         "selection.panel",
         "selection.viewerAdapter",
         "modify.handle",
-        "modify.loadStructureText",
     ):
         assert required in registered, (
             f"runtime is missing the {required!r} registration; "

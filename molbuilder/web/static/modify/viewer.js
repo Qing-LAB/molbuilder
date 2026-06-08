@@ -482,43 +482,19 @@
         // re-arms ``setClickable`` on every render so a model swap
         // here doesn't drop the handler.
 
-        // Sync the selection store's atoms list to the structure
-        // we just rendered.  applyStructure is THE single sync
-        // point — it's called from every path that puts a
-        // structure on the modify page:
-        //
-        //   * loadStructureText (= window.molbuilder.loadStructureText)
-        //     called by all 6 Sources-card generators (DNA, RNA,
-        //     SMILES, name, peptide, file upload) AFTER they POST
-        //     to /api/build/molecule.  loadStructureText itself
-        //     POSTs the resulting xyz to /api/build/load which
-        //     returns the canonical atoms list (via _ok_response).
-        //
-        //   * postOp (modifier ops Delete / Add / Orient / etc.)
-        //     where r is the /api/modify/* response carrying atoms.
-        //
-        //   * restoreModifyState (synthetic call from
-        //     sessionStorage; doesn't carry atoms — adoptSession
-        //     immediately after with saved.atoms covers that path).
-        //
-        // The "generator → store stays empty" bug the user hit
-        // 2026-06-07 was exactly this seam: generators rendered
-        // through loadStructureText but nothing pushed atoms to
-        // the store, so the selection panel stayed empty until
-        // the user clicked Save → sidebar-loaded the saved file.
-        // Centralising the sync here covers every generator at
-        // once instead of bolting adoptAtoms into each one.
-        try {
-            const s = _selStore();
-            if (s && typeof s.adoptAtoms === "function"
-                  && Array.isArray(r.atoms)) {
-                s.adoptAtoms(r.atoms);
-                if (opts.resetSelection
-                        && typeof s.clearSelection === "function") {
-                    s.clearSelection();
-                }
-            }
-        } catch (_) { /* nothing to do — UX unaffected */ }
+        // Cross-store sync (adoptAtoms + clearSelection + remap)
+        // lives entirely in the workspace dispatcher's
+        // ``_applyWorkspacePayload`` (Phase 5 single-sync-point
+        // refactor; review cleanup 2026-06-08 finished the move).
+        // ``applyStructure`` is the modify-tab IIFE's state + embed
+        // updater only — it has NO knowledge of the selection store
+        // or the canvas-state dirty bit.  Callers route through
+        // ``ws.applyPayload(r, opts)`` or ``ws.applyOp(op, args)``;
+        // those pipelines call this hook for the IIFE-state work
+        // and own the cross-store work themselves.  Pre-cleanup,
+        // applyStructure ALSO did adoptAtoms + clearSelection,
+        // duplicating the dispatcher's logic and causing a double
+        // ``clearSelection`` on the loadStructureText path.
 
         refreshSelectionUI();
         refreshUndoButton();
@@ -1526,25 +1502,22 @@
             "ok",
         );
     };
-    // Module-init contract: register the modify handle + loader
-    // with the runtime so consumers can ``whenReady("modify.handle")``
-    // or ``whenReady("modify.loadStructureText")``.  See design.md.
+    // Module-init contract: register the modify handle with the
+    // runtime so ``selection-bootstrap`` can ``whenReady("modify.handle")``
+    // (selection-bootstrap line ~359).  Also register
+    // ``modify.applyUndo`` for the workspace dispatcher's
+    // ``ws.undo()`` method (dispatcher.js).
     //
-    // Phase 4 of the workspace-state migration (2026-06-07): also
-    // expose ``modify.postOp`` (the modifier-op HTTP path) and
-    // ``modify.applyUndo`` (the history-pop path) so the
-    // ``window.molbuilder.workspace`` dispatcher can delegate to
-    // them via ``runtime.whenReady``.  These were IIFE-private
-    // pre-Phase-4; exposing them lets the new public API surface
-    // light up without duplicating the modifier wire-up.
+    // Review cleanup 2026-06-08: dropped two registrations that had
+    // no consumers — ``modify.postOp`` (ws.applyOp is self-sufficient
+    // since Phase 5; doesn't whenReady the postOp anymore) and
+    // ``modify.loadStructureText`` (no whenReady consumer; the global
+    // ``window.molbuilder.loadStructureText`` is still used directly
+    // by selection-bootstrap + the selection store's setLoader).
     if (window.molbuilder.runtime
         && typeof window.molbuilder.runtime.register === "function") {
         window.molbuilder.runtime.register(
             "modify.handle", window.molbuilder.modify.handle);
-        window.molbuilder.runtime.register(
-            "modify.loadStructureText",
-            window.molbuilder.loadStructureText);
-        window.molbuilder.runtime.register("modify.postOp", postOp);
         window.molbuilder.runtime.register("modify.applyUndo", applyUndo);
     }
 })();
