@@ -1391,29 +1391,29 @@
         // Save reports "No structure to save" and Load doesn't
         // fire the warning modal even after the user makes edits.
         //
-        // BOMB-2 fix (2026-06-07): canvas-state has its OWN
-        // sessionStorage mirror that may already carry the same
-        // bytes from this session (the pageHide save persisted
-        // both modify-state AND canvas-state at the same moment,
-        // so on the matched-page restore they're in lockstep).
-        // If we always called setStructure here, the dirty bit
-        // would be reset on every bfcache restore — a user who
-        // had unsaved edits would silently see them marked clean
-        // and a subsequent Load wouldn't fire the warning modal.
-        //
-        // Decision matrix:
-        //   * canvas empty       → setStructure (no dirty bit
-        //                          to lose; full hydrate).
-        //   * canvas text matches saved.xyz → DO NOT touch.
-        //                          canvas-state already restored
-        //                          itself from its own sessionStorage
-        //                          mirror with the correct dirty +
-        //                          last_save_to.
-        //   * canvas text differs → setStructure (modify-state is
-        //                          canonical for the modify tab;
-        //                          the divergence shouldn't
-        //                          happen but if it does, treat
-        //                          modify-state as authoritative).
+        // Skip the setStructure call when canvas-state's bytes
+        // already match the restored xyz (BOMB-2 invariant).
+        // Post-Phase-8 (2026-06-08), both canvas-state and this
+        // function read from the dispatcher's single
+        // ``molbuilder.workspace.v1`` snapshot — bytes always
+        // match on /molbuilder when the dispatcher is mounted,
+        // so this branch is normally a no-op.  The check is
+        // still load-bearing for:
+        //   * test isolation contexts where canvas-state restored
+        //     from its legacy structure_canvas key.
+        //   * mid-Phase-8-rollout users with stale legacy keys.
+        //   * future bfcache restore paths.
+        // Calling setStructure unconditionally would reset
+        // canvas-state's dirty bit — a user with unsaved
+        // modifier-op edits would silently see them marked
+        // clean, and the next Load wouldn't fire the warning
+        // modal.  The matrix:
+        //   * canvas empty                    → setStructure.
+        //   * canvas text matches saved.xyz   → DO NOT touch.
+        //   * canvas text differs             → setStructure
+        //     (modify-state-shaped saved is authoritative on
+        //     a divergence; this shouldn't happen with the
+        //     unified mirror but the branch is defensive).
         try {
             const cs = window.molbuilder
                     && window.molbuilder.structureCanvas;
