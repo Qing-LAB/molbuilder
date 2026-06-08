@@ -944,6 +944,133 @@ def test_build_molecule_response_includes_atoms_list(web_client):
 
 
 # --------------------------------------------------------------------- #
+#  Phase 2: every Structure-returning endpoint emits the canonical      #
+#  workspace_payload shape (text / source_format / lattice / extra)     #
+#  alongside the legacy aliases.                                        #
+# --------------------------------------------------------------------- #
+
+_CANONICAL_KEYS = {
+    "text", "source_format", "title", "n_atoms",
+    "atoms", "lattice", "issues", "extra",
+}
+_LEGACY_ALIAS_KEYS = {
+    "xyz", "elements", "atom_names", "residue_ids",
+    "residue_names", "chain_ids", "n_residues",
+}
+
+
+def _assert_canonical_workspace_shape(body, *, endpoint):
+    """Every endpoint returns the canonical + legacy keys."""
+    for k in _CANONICAL_KEYS:
+        assert k in body, (
+            f"{endpoint}: canonical key {k!r} missing — "
+            f"Phase 2 workspace_payload contract broken")
+    for k in _LEGACY_ALIAS_KEYS:
+        assert k in body, (
+            f"{endpoint}: legacy alias {k!r} missing — "
+            f"existing modify-tab front-end will break")
+    assert body["xyz"] == body["text"], (
+        f"{endpoint}: legacy xyz alias must equal canonical text"
+    )
+    assert isinstance(body["extra"], dict), (
+        f"{endpoint}: canonical extra must be a dict, not "
+        f"{type(body['extra']).__name__}"
+    )
+
+
+def test_build_load_returns_workspace_payload(web_client):
+    """Phase 2 of the workspace-state migration (§ 6 step 2):
+    /api/build/load emits the canonical workspace_payload shape
+    (text/source_format/lattice/extra) alongside the legacy aliases
+    that existing front-end code reads.  Endpoint extras
+    (pdb, summary, source_format) live BOTH at top level (back-
+    compat) AND inside the canonical extra sub-dict (Phase 4+
+    workspace-dispatcher consumers)."""
+    xyz = "3\nh2o\nO 0 0 0\nH 0.957 0 0\nH -0.24 0.927 0\n"
+    r = web_client.post(
+        "/api/build/load",
+        data={"file": (io.BytesIO(xyz.encode()), "h2o.xyz")},
+        content_type="multipart/form-data",
+    )
+    body = r.get_json()
+    assert body["ok"] is True
+    _assert_canonical_workspace_shape(body, endpoint="/api/build/load")
+    # /api/build/load's endpoint-specific extras.
+    for k in ("pdb", "summary"):
+        assert k in body, f"top-level {k!r} missing"
+        assert k in body["extra"], (
+            f"extra[{k!r}] missing — Phase 4+ consumers broken"
+        )
+    # source_format must reflect the actually-parsed shape, not
+    # the canonical default of "xyz" (in this case the file was
+    # XYZ, but the endpoint sets it explicitly via the
+    # parsed-format detection).
+    assert body["source_format"] == "xyz"
+    assert body["extra"]["source_format"] == "xyz"
+
+
+def test_build_load_pdb_overrides_canonical_source_format(web_client):
+    """When the user uploads a PDB file, source_format flips to
+    "pdb" at BOTH the top level (replaces the canonical XYZ
+    default) AND inside extra.  This is what makes the workspace
+    dispatcher know which parser to round-trip through."""
+    pdb = (
+        "ATOM      1  O   HOH A   1       0.000   0.000   0.000  "
+        "1.00  0.00           O  \n"
+        "ATOM      2  H1  HOH A   1       0.957   0.000   0.000  "
+        "1.00  0.00           H  \n"
+        "ATOM      3  H2  HOH A   1      -0.239   0.927   0.000  "
+        "1.00  0.00           H  \n"
+    )
+    r = web_client.post(
+        "/api/build/load",
+        json={"text": pdb, "filename": "water.pdb"},
+    )
+    body = r.get_json()
+    assert body["ok"] is True
+    assert body["source_format"]      == "pdb"
+    assert body["extra"]["source_format"] == "pdb"
+
+
+def test_build_molecule_returns_workspace_payload(web_client):
+    """Phase 2: /api/build/molecule emits the canonical
+    workspace_payload shape.  Endpoint extras (pdb, summary,
+    backend_used, add_hydrogens_mode) live BOTH at top level
+    AND inside ``extra``."""
+    r = web_client.post("/api/build/molecule", json={
+        "kind": "smiles", "input": "O",   # water
+    })
+    body = r.get_json()
+    assert body["ok"] is True
+    _assert_canonical_workspace_shape(
+        body, endpoint="/api/build/molecule")
+    for k in ("pdb", "summary", "backend_used",
+              "add_hydrogens_mode"):
+        assert k in body, f"top-level {k!r} missing"
+        assert k in body["extra"], (
+            f"extra[{k!r}] missing — Phase 4+ consumers broken"
+        )
+
+
+def test_modify_delete_returns_workspace_payload(web_client):
+    """Phase 2: /api/modify/* already routed through
+    ok_structure_response; pin that the canonical keys
+    (text, source_format, lattice, extra) survive the helper
+    refactor."""
+    r = web_client.post("/api/modify/delete", json={
+        "xyz": _H2O_XYZ,
+        "indices": [0],
+    })
+    body = r.get_json()
+    assert body["ok"] is True
+    _assert_canonical_workspace_shape(
+        body, endpoint="/api/modify/delete")
+    # Modify ops carry no endpoint extras yet (Phase 3 will add
+    # ``selection_remap`` for delete + add_atom).  extra is empty.
+    assert body["extra"] == {}
+
+
+# --------------------------------------------------------------------- #
 #  Modify-tab edit-op endpoints (M3).  Body shape carries the canonical #
 #  state (xyz + atom_names / residue_ids / residue_names / chain_ids)   #
 #  alongside op-specific args; response shape mirrors /api/build/load + #

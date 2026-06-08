@@ -240,6 +240,60 @@ class TestStructureToDictLegacyShim:
 
 
 # --------------------------------------------------------------------- #
+#  Phase 2: structure_to_dict accepts extra + threads it everywhere     #
+# --------------------------------------------------------------------- #
+
+
+class TestStructureToDictExtraThreading:
+    """Phase 2 (2026-06-07) — ``structure_to_dict`` accepts an
+    optional ``extra`` dict for endpoint-specific keys.  The
+    helper threads each key BOTH into the top level of the
+    returned dict (so existing JS consumers reading off the
+    response root keep working) AND into the canonical ``extra``
+    sub-dict (where the Phase 4+ workspace dispatcher reads
+    them).
+    """
+
+    def test_extras_appear_at_top_level(self):
+        d = structure_to_dict(_h2o(), extra={
+            "pdb":     "PDB\n",
+            "summary": "1 mol",
+        })
+        assert d["pdb"]     == "PDB\n"
+        assert d["summary"] == "1 mol"
+
+    def test_extras_also_appear_in_canonical_extra_subdict(self):
+        d = structure_to_dict(_h2o(), extra={
+            "backend_used":      "rdkit",
+            "add_hydrogens_mode": "auto",
+        })
+        assert d["extra"] == {
+            "backend_used":      "rdkit",
+            "add_hydrogens_mode": "auto",
+        }
+
+    def test_extra_can_override_canonical_source_format(self):
+        """The /api/build/load endpoint sets source_format=fmt from
+        the parsed shape.  The helper must let that override the
+        canonical XYZ default at both the top level and inside
+        the canonical extra dict."""
+        d = structure_to_dict(_h2o(), extra={"source_format": "pdb"})
+        assert d["source_format"]      == "pdb"
+        assert d["extra"]["source_format"] == "pdb"
+
+    def test_no_extra_yields_empty_extra_dict_not_none(self):
+        d = structure_to_dict(_h2o())
+        assert d["extra"] == {}
+
+    def test_issues_array_is_present_when_no_extra(self):
+        """structure_to_dict's issues array is sourced from
+        workspace_payload — same validate-pass, same shape."""
+        d = structure_to_dict(_h2o())
+        assert "issues" in d
+        assert isinstance(d["issues"], list)
+
+
+# --------------------------------------------------------------------- #
 #  ok_structure_response — modify endpoints + issues array              #
 # --------------------------------------------------------------------- #
 
@@ -278,6 +332,30 @@ class TestOkStructureResponse:
     def test_issues_array_present(self):
         body = self._payload(_h2o())
         assert isinstance(body["issues"], list)
+
+    def test_phase_2_extras_at_top_level_and_in_extra_subdict(self):
+        """Phase 2 contract — endpoint extras land at BOTH the
+        response root AND the canonical ``extra`` sub-dict."""
+        from flask import Flask
+        app = Flask(__name__)
+        with app.app_context():
+            resp = ok_structure_response(_h2o(), extra={
+                "pdb":               "PDB...\n",
+                "summary":           "water (1 mol)",
+                "backend_used":      "rdkit",
+                "add_hydrogens_mode": "auto",
+            })
+            body = resp.get_json()
+        for k in ("pdb", "summary", "backend_used",
+                  "add_hydrogens_mode"):
+            assert k in body, (
+                f"{k!r} missing from top level — Phase 1-3 client "
+                f"back-compat broken"
+            )
+            assert k in body["extra"], (
+                f"{k!r} missing from extra sub-dict — Phase 4+ "
+                f"workspace-dispatcher reader broken"
+            )
 
 
 # --------------------------------------------------------------------- #

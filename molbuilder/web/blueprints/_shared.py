@@ -230,32 +230,43 @@ def workspace_payload(
     }
 
 
-def structure_to_dict(struct: Structure) -> Dict[str, Any]:
-    """Legacy shape used by ``/api/build/load`` and every
-    ``/api/modify/*`` response.
+def structure_to_dict(
+    struct: Structure,
+    *,
+    extra: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """The canonical-plus-legacy serialised shape for any
+    Structure-returning endpoint.
 
-    Now a thin shim over :func:`workspace_payload` + the legacy
-    aliases the existing modify-tab front-end depends on.  Kept
-    during the Phase 1 → Phase 2 window of the workspace-state
-    migration (see :doc:`protocols/workspace-state` § 6).  Once
-    the client dispatcher reads the canonical ``text`` key
-    instead of ``xyz``, this shim can be retired.
+    Routes through :func:`workspace_payload` for the canonical
+    keys (``text``, ``source_format``, ``title``, ``n_atoms``,
+    ``atoms``, ``lattice``, ``issues``, ``extra``) and adds the
+    legacy aliases that the existing modify-tab front-end's
+    ``applyStructure(r)`` reads directly (``xyz``, ``elements``,
+    flat per-atom columns, ``n_residues``).
 
-    Legacy keys still emitted (and why):
+    The optional ``extra`` dict (Phase 2 addition, 2026-06-07)
+    threads endpoint-specific keys (``pdb``, ``summary``,
+    ``backend_used``, ``add_hydrogens_mode``, ``selection_remap``)
+    into BOTH places at once:
 
-    * ``xyz`` — alias of canonical ``text``.  Read by every
-      modify-tab caller's ``applyStructure(r)``.
-    * ``elements`` / ``atom_names`` / ``residue_ids`` /
-      ``residue_names`` / ``chain_ids`` — flat per-atom columns
-      duplicated from ``atoms[]``.  Read by ``applyStructure``'s
-      ``state.*`` field assignments.
-    * ``n_residues`` — read by the modify-tab info-panel readout.
+    * At the top level of the returned dict, for back-compat with
+      every existing JS consumer that reads them off the response
+      root (Phase 1-3 clients).
+    * In the canonical ``extra`` sub-dict, where the Phase 4+
+      workspace dispatcher will read them after the client
+      migration completes.
 
-    The canonical ``atoms`` payload is identical to what the
-    workspace payload exposes — single source of truth for the
-    per-atom shape.
+    Top-level ``extra`` keys override the canonical defaults — a
+    caller emitting ``source_format="pdb"`` from a PDB-parsing
+    endpoint replaces the canonical default of ``"xyz"`` at both
+    the root level and inside ``extra``.
+
+    One :func:`validate_geometry` pass per call (issues are read
+    from the workspace payload; not recomputed in this helper).
     """
-    base = workspace_payload(struct)
+    extras = dict(extra) if extra else {}
+    base = workspace_payload(struct, extra=extras)
     return {
         # Canonical keys (forward-compat with workspace dispatcher).
         "text":          base["text"],
@@ -264,6 +275,8 @@ def structure_to_dict(struct: Structure) -> Dict[str, Any]:
         "n_atoms":       base["n_atoms"],
         "atoms":         base["atoms"],
         "lattice":       base["lattice"],
+        "issues":        base["issues"],
+        "extra":         base["extra"],
         # Legacy aliases for existing modify-tab consumers
         # (applyStructure reads these directly).
         "xyz":           base["text"],
@@ -273,30 +286,41 @@ def structure_to_dict(struct: Structure) -> Dict[str, Any]:
         "residue_names": list(struct.residue_names),
         "chain_ids":     list(struct.chain_ids),
         "n_residues":    struct.n_residues,
+        # Endpoint-specific keys at the top level for back-compat
+        # with existing JS consumers.  Phase 4+ readers go through
+        # ``extra`` instead.
+        **extras,
     }
 
 
-def ok_structure_response(struct: Structure):
-    """Build a Flask jsonify response for an op result.
+def ok_structure_response(
+    struct: Structure,
+    *,
+    extra: Optional[Dict[str, Any]] = None,
+):
+    """Build a Flask jsonify response for any Structure-returning
+    endpoint.
 
-    Adds ``ok: True`` and a top-level ``issues`` array (sourced
-    from :func:`workspace_payload` so it stays in sync with the
-    canonical shape) on top of :func:`structure_to_dict`'s
-    legacy-+-canonical key set.  Used by every ``/api/modify/*``
-    endpoint; ``build.py``'s ``/api/build/load`` adds its own
-    ``source_format`` / ``summary`` / ``pdb`` keys on top until
-    the Phase 2 migration consolidates them into ``extra``.
+    Phase 2 of the workspace-state migration (2026-06-07) —
+    ``/api/build/load`` + ``/api/build/molecule`` + every
+    ``/api/modify/*`` route through this helper instead of
+    hand-rolling their own jsonify blob.  The optional ``extra``
+    dict carries per-endpoint add-ons:
+
+    * ``/api/build/load``: ``{"pdb", "summary", "source_format"}``
+      (``source_format`` overrides the canonical XYZ default with
+      the actually-parsed format).
+    * ``/api/build/molecule``: ``{"pdb", "summary",
+      "backend_used", "add_hydrogens_mode"}``.
+    * ``/api/modify/<op>``: empty today; Phase 3 adds
+      ``selection_remap`` for delete/add_atom.
+
+    Wraps :func:`structure_to_dict` (which routes through
+    :func:`workspace_payload`) in ``{"ok": True, ...}``.  No
+    extra validate-pass — issues come from the workspace payload
+    via structure_to_dict.
     """
-    base = structure_to_dict(struct)
-    payload = {
-        "ok": True,
-        **base,
-        # ``issues`` lives at top level for back-compat with the
-        # existing front-end; ``workspace_payload`` puts the same
-        # array under its canonical key, so the two stay locked.
-        "issues": workspace_payload(struct)["issues"],
-    }
-    return jsonify(payload)
+    return jsonify({"ok": True, **structure_to_dict(struct, extra=extra)})
 
 
 def err(msg: str, code: int = 400):

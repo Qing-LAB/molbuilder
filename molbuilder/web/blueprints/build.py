@@ -63,10 +63,10 @@ from typing import Any, Dict
 from flask import Blueprint, jsonify, request
 
 from ._shared import (
-    atoms_list,
     config_from_params as _config_from_params,
     dataclass_to_form_schema as _dataclass_to_form_schema,
     issues_to_json as _issues_to_json,
+    ok_structure_response,
 )
 
 from molbuilder import (
@@ -79,7 +79,7 @@ from molbuilder.issues import ValidationError
 from molbuilder.pyscf  import render_script
 from molbuilder.siesta import render_fdf
 from molbuilder.structure import Structure
-from molbuilder.validation import validate, validate_geometry
+from molbuilder.validation import validate
 
 
 bp = Blueprint("build", __name__)
@@ -740,28 +740,30 @@ def api_build_molecule():
     except Exception as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
-    # Geometry-only validation at build time -- no cfg yet (the user
-    # hasn't picked SIESTA vs PySCF).  Surfaces the H/heavy-ratio warn
-    # for a heavy-atom skeleton before they even click Generate.
-    issues = validate_geometry(struct)
-
-    return jsonify({
-        "ok": True,
-        "xyz": struct.to_xyz(),
-        "pdb": struct.to_pdb(),
-        "n_atoms": struct.n_atoms,
-        "n_residues": struct.n_residues,
-        "summary": struct.summary(),
-        "title": struct.title or kind,
-        "elements": list(struct.elements),
-        "atoms": atoms_list(struct),
-        "backend_used": backend_used,
-        # Tri-state H-add decision actually used (echoes the request,
-        # or "auto" when not explicitly requested).  None for non-
-        # nucleic builds (peptide/SMILES/name) where the kwarg
-        # doesn't apply.
+    # Workspace-state Phase 2 migration (2026-06-07): route through
+    # the canonical ``ok_structure_response`` helper.  Endpoint-
+    # specific keys (pdb, summary, backend_used, add_hydrogens_mode)
+    # land BOTH at the top level (back-compat with every existing
+    # JS consumer that reads them off the response root) AND in the
+    # canonical ``extra`` sub-dict (Phase 4+ workspace-dispatcher
+    # consumers read them from there).  Issues + canonical atoms
+    # come from the helper — one validate_geometry pass.
+    return ok_structure_response(struct, extra={
+        # build/molecule's legacy contract: title defaults to the
+        # build kind ("smiles" / "dna" / …) when the Structure
+        # itself carries no title (most builders don't set one).
+        # Override via extra rather than mutating struct.title so
+        # downstream code that reuses the Structure sees the
+        # canonical (empty) title.
+        "title":             struct.title or kind,
+        "pdb":               struct.to_pdb(),
+        "summary":           struct.summary(),
+        "backend_used":      backend_used,
+        # Tri-state H-add decision actually used (echoes the
+        # request, or "auto" when not explicitly requested).  None
+        # for non-nucleic builds (peptide/SMILES/name) where the
+        # kwarg doesn't apply.
         "add_hydrogens_mode": h_mode_used,
-        "issues": _issues_to_json(issues),
     })
 
 
@@ -813,33 +815,25 @@ def api_build_load():
         return jsonify({"ok": False,
                         "error": f"could not parse {fmt}: {exc}"}), 400
 
-    # Include the canonical per-atom payload the selection store
-    # expects (regions + is_frozen + atom_name + residue_name +
-    # chain_id, per ``_shared.atoms_list``).  Without this the
-    # modify viewer's ``applyStructure(r)`` calls
-    # ``store.adoptAtoms(r.atoms)`` against an undefined ``r.atoms``
-    # — silently no-ops — and the selection panel stays empty
-    # after every fresh structure load (sidebar pick OR Sources-
-    # card generator).  The user hit this 2026-06-07; the BOMB-0
-    # fix only updated /api/modify/*, not /api/build/load.
-    return jsonify({
-        "ok": True,
-        "xyz": struct.to_xyz(),
-        "pdb": struct.to_pdb(),
-        "n_atoms": struct.n_atoms,
-        "n_residues": struct.n_residues,
-        "summary": struct.summary(),
-        "title": struct.title or (filename or fmt),
-        "elements": list(struct.elements),
-        # Per-atom PDB metadata for downstream consumers (e.g. the
-        # Modify tab's atom list, M2).  The fields are always present
-        # on Structure (defaults filled in __post_init__) so JSON
-        # callers don't need null-check branches.
-        "atom_names":    list(struct.atom_names),
-        "residue_ids":   list(struct.residue_ids),
-        "residue_names": list(struct.residue_names),
-        "chain_ids":     list(struct.chain_ids),
-        "atoms":         atoms_list(struct),
+    # Workspace-state Phase 2 migration (2026-06-07): route through
+    # the canonical ``ok_structure_response`` helper.  Per-atom
+    # payload, legacy aliases, validate-pass issues, and the
+    # forward-compat ``extra`` sub-dict all come from the helper
+    # in a single call.  Endpoint extras (pdb, summary, the
+    # actual parsed format, title fallback) override the
+    # canonical defaults at both the top level and the canonical
+    # ``extra`` sub-dict — same threading rule for every key.
+    return ok_structure_response(struct, extra={
+        # /api/build/load's legacy contract: title defaults to the
+        # filename (or format name) when the input carries none.
+        # Override via extra so downstream code that reuses the
+        # Structure sees the canonical (possibly empty) title.
+        "title":         struct.title or (filename or fmt),
+        "pdb":           struct.to_pdb(),
+        "summary":       struct.summary(),
+        # Override the canonical XYZ default with the actually-
+        # parsed format; the helper threads this through to both
+        # the top level and the ``extra`` sub-dict.
         "source_format": fmt,
     })
 
