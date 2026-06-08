@@ -1,41 +1,73 @@
 /* Workspace dispatcher — single client-side entry point for the
  * Molbuilder tab's workspace state.
  *
- * Per docs/protocols/workspace-state.md § 4.2 (Phase 4 thin
- * wrapper, 2026-06-07).  Public surface:
+ * Per docs/protocols/workspace-state.md (§ 4.2 public surface,
+ * § 4.4 wire shape, § 4.5 per-op selection rule).  Public
+ * surface, current as of 2026-06-08:
  *
- *   window.molbuilder.workspace.{subscribe, getState, getStructure,
- *     getSource, isDirty, isEmpty, getSelection,
+ *   window.molbuilder.workspace.{
+ *     // Reads + subscription
+ *     subscribe, getState, getStructure, getSource, getSelection,
+ *     isDirty, isEmpty,
+ *     // Operations (server round-trip + atomic state replacement)
  *     loadFromFile, generate, applyOp, save, discard, undo,
+ *     // Internal pipeline exposed for the modify-tab loader
+ *     applyPayload,
+ *     // Persistence
+ *     readPersistedSnapshot, STORAGE_KEY,
+ *     // Sub-namespaces
  *     selection.{toggle,set,add,remove,all,invert,clear,
  *                setMode,setFilters,setCombinator,
  *                applyFilter,writeLabel},
  *     view.{applyState,getState}}
  *
- * Phase 4 is a THIN WRAPPER over the three legacy stores:
+ * Architecture (as of 2026-06-08, after migration phases 1-9):
  *
- *   - canvas-state (window.molbuilder.structureCanvas)
+ *   * Reads synthesise from canvas-state + selection store +
+ *     3Dmol embed via lazy resolvers.  Defensive copies.
+ *   * ``applyOp`` owns the modifier-op fetch + cross-store
+ *     update pipeline (phase 5 self-sufficient).  Builds the
+ *     request body via ``window.molbuilder.modify.currentStateBody``
+ *     (modify-tab IIFE exposes this hook), POSTs
+ *     ``/api/modify/<op>``, routes the response through
+ *     ``_applyWorkspacePayload``.
+ *   * ``_applyWorkspacePayload`` is THE single cross-store sync
+ *     point: canvas-state.replaceContent + modify-tab
+ *     applyStructure hook + selection store adoptAtoms +
+ *     selection_remap (phase 3 wire shape).  Every entry point
+ *     (applyOp, the modify-tab's loadStructureText) routes
+ *     through it.
+ *   * Persistence: debounced write to
+ *     ``sessionStorage["molbuilder.workspace.v1"]`` on every
+ *     state change + final flush on pagehide.  Legacy mirrors
+ *     (``molbuilder.structure_canvas`` from canvas-state and
+ *     ``modify-state`` from the modify viewer IIFE) still
+ *     write in parallel during the phase 8→9 transition window;
+ *     they're documented in the workspace-state.md migration
+ *     table as scheduled for retirement but technically active.
+ *
+ * Underlying stores (still active; phase 9 marked them
+ * "internal" without code deletion):
+ *
+ *   - canvas-state (``window.molbuilder.structureCanvas``)
  *     - owns structure text + source provenance + dirty flag.
- *   - selection store (window.molbuilder.selection.store)
+ *   - selection store (``window.molbuilder.selection.store``)
  *     - owns atoms list + selection + filters + mode.
- *   - modify-tab IIFE (exposed pieces on window.molbuilder.modify
- *     + runtime registry: modify.handle, modify.postOp,
- *     modify.applyUndo)
- *     - owns the 3Dmol embed model + history stack + per-op HTTP.
+ *   - modify-tab IIFE
+ *     (``window.molbuilder.modify.{handle, currentStateBody,
+ *       applyStructure}`` + runtime registry
+ *     ``modify.handle``, ``modify.applyUndo``)
+ *     - owns the 3Dmol embed model, the IIFE's per-state mirror
+ *       (state.xyz / state.elements / ...), and the undo history
+ *       stack.
  *
- * The dispatcher synthesises a unified ``Workspace`` snapshot
- * from these three on every read and on every subscription
- * fanout.  Phases 5-9 migrate consumers off the legacy stores;
- * Phase 8 collapses persistence onto a single sessionStorage
- * key.  Phase 9 deletes the legacy stores entirely and the
- * dispatcher becomes the only state owner.
- *
+ * Loaded ONLY on /molbuilder (modify.html includes the script).
  * On task tabs (structure-optimization / spectrum-calculation /
- * transport-calculation / results) the dispatcher mounts but is
- * effectively empty — those pages don't host the canvas or the
- * selection store, so reads return nulls and ops throw a
- * descriptive error.  ``window.molbuilder.workspace`` is still
- * present so cross-page navigation doesn't ReferenceError.
+ * transport-calculation / results) the dispatcher script is NOT
+ * loaded — ``window.molbuilder.workspace`` is undefined there.
+ * No cross-tab consumer relies on it; the cross-tab handoff is
+ * carried by a separate ``sessionStorage["builder-structure"]``
+ * payload owned by the modify viewer's Send-to-Build button.
  *
  * Tests: tests/test_workspace_dispatcher_js.py.
  */
@@ -290,7 +322,13 @@
         },
     };
 
-    // ─── Operations: delegate to existing legacy code ────────────── //
+    // ─── Operations ──────────────────────────────────────────────── //
+    //
+    // ``applyOp`` owns its pipeline end-to-end.  The other op methods
+    // (loadFromFile, generate, save, undo) delegate to the existing
+    // legacy modules — those are intentional thin wrappers that exist
+    // so consumers can stay on the unified ``ws.*`` API while the
+    // underlying implementations migrate at their own pace.
 
     /**
      * Load a project-saved file into the canvas (.xyz / .pdb).
@@ -542,10 +580,12 @@
      * Phase 8 of the workspace-state migration (2026-06-07): the
      * dispatcher owns the unified sessionStorage mirror under
      * ``molbuilder.workspace.v1``.  The legacy per-store mirrors
-     * (``molbuilder.structure_canvas`` and ``modify-state``) stay
-     * in place during the transition — phase 9 deletes them — so
-     * a refresh in the middle of the migration window gracefully
-     * falls back to whichever mirror has data.
+     * (``molbuilder.structure_canvas`` and ``modify-state``) are
+     * still actively writing in parallel — a follow-up commit
+     * will retire them once ``restoreModifyState`` is migrated to
+     * read from the unified key (workspace-state.md § 6 step 8
+     * "what did NOT land" sub-list).  Until then a refresh
+     * gracefully falls back to whichever mirror has data.
      *
      * Schema:
      *

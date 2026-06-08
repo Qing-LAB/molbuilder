@@ -586,9 +586,11 @@
         // wrapper keeps the IIFE-local concerns (in-flight lock,
         // edit-status text, AbortController for the wedge-release
         // path) so the existing buttons keep behaving the same
-        // way.  When Phase 9 retires the legacy modify-tab IIFE
-        // entirely, this wrapper goes too — the buttons call
-        // ``ws.applyOp`` directly.
+        // way.  A follow-up cleanup commit will have the buttons
+        // call ``ws.applyOp`` directly and retire this wrapper —
+        // Phase 9 of the migration marked the legacy IIFE
+        // "internal" in its docstring but didn't actually delete
+        // it; the wrapper survives until that follow-up lands.
         if (state.inFlight) return null;
         const ac = (typeof AbortController !== "undefined")
             ? new AbortController() : null;
@@ -1443,8 +1445,9 @@
         // use.  The fetch itself stays here because every caller
         // (sidebar commitFile, every Sources-card generator) hands
         // us text+filename rather than a pre-fetched workspace
-        // payload.  When Phase 9 retires the legacy loaders, the
-        // fetch moves into the dispatcher too.
+        // payload.  A follow-up cleanup commit will move the fetch
+        // into the dispatcher and reduce this function to a thin
+        // shim over ``ws.loadFromFile`` / ``ws.applyPayload``.
         setStatus(`Loading ${filename}…`);
         let r;
         try {
