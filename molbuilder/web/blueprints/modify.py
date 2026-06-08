@@ -90,6 +90,8 @@ from molbuilder.modify import (
     add_atom as _add_atom,
     add_electrode_slab as _add_electrode_slab,
     add_symmetric_electrodes as _add_symmetric_electrodes,
+    compute_selection_remap_after_add as _selection_remap_after_add,
+    compute_selection_remap_after_delete as _selection_remap_after_delete,
     delete_atoms as _delete_atoms,
     orient_along_axis as _orient_along_axis,
     rotate_around_axis as _rotate_around_axis,
@@ -173,7 +175,16 @@ def api_modify_delete():
         new_struct = _delete_atoms(struct, indices_int)
     except (ValueError, IndexError) as exc:
         return _err(f"delete_atoms failed: {exc}", 400)
-    return _ok_response(new_struct)
+    # Workspace-state Phase 3 (2026-06-07): emit selection_remap so
+    # the client dispatcher can correctly translate the user's
+    # selection across the index shift.  Pre-fix, the client's
+    # naive "filter to in-range" check silently dropped surviving
+    # high-index atoms (selecting atom 2, deleting atom 0, ended
+    # up with empty selection instead of new index 1).
+    return _ok_response(new_struct, extra={
+        "selection_remap": _selection_remap_after_delete(
+            struct, indices_int),
+    })
 
 
 # --------------------------------------------------------------------- #
@@ -240,7 +251,14 @@ def api_modify_add_atom():
         )
     except (ValueError, IndexError) as exc:
         return _err(f"add_atom failed: {exc}", 400)
-    return _ok_response(new_struct)
+    # Workspace-state Phase 3: identity remap (add appends at the
+    # next index, every pre-op index survives unchanged).  We emit
+    # it anyway so the client dispatcher can apply one uniform
+    # per-op rule (look up ``extra["selection_remap"]``) instead of
+    # growing a "no remap means preserve" special case for add ops.
+    return _ok_response(new_struct, extra={
+        "selection_remap": _selection_remap_after_add(struct),
+    })
 
 
 # --------------------------------------------------------------------- #
@@ -522,7 +540,12 @@ def api_modify_electrode():
         )
     except (ValueError, NotImplementedError) as exc:
         return _err(f"add_electrode_slab failed: {exc}", 400)
-    return _ok_response(new_struct)
+    # Phase 3: slab appends pre-op atoms keep their indices —
+    # identity remap so the client dispatcher's per-op rule stays
+    # uniform across every atom-count-changing op.
+    return _ok_response(new_struct, extra={
+        "selection_remap": _selection_remap_after_add(struct),
+    })
 
 
 # --------------------------------------------------------------------- #
@@ -607,4 +630,8 @@ def api_modify_symmetric_electrodes():
         )
     except (ValueError, NotImplementedError) as exc:
         return _err(f"add_symmetric_electrodes failed: {exc}", 400)
-    return _ok_response(new_struct)
+    # Phase 3: identity remap for the pre-op atoms (slabs appended
+    # at the end) — same rule as add_atom / electrode_slab.
+    return _ok_response(new_struct, extra={
+        "selection_remap": _selection_remap_after_add(struct),
+    })

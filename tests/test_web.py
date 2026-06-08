@@ -1065,9 +1065,75 @@ def test_modify_delete_returns_workspace_payload(web_client):
     assert body["ok"] is True
     _assert_canonical_workspace_shape(
         body, endpoint="/api/modify/delete")
-    # Modify ops carry no endpoint extras yet (Phase 3 will add
-    # ``selection_remap`` for delete + add_atom).  extra is empty.
-    assert body["extra"] == {}
+
+
+# --------------------------------------------------------------------- #
+#  Phase 3: selection_remap on delete + add_atom                        #
+#  (docs/protocols/workspace-state.md § 4.5 + § 5.1)                    #
+# --------------------------------------------------------------------- #
+
+
+def test_modify_delete_returns_selection_remap(web_client):
+    """Phase 3: ``/api/modify/delete`` carries ``selection_remap``
+    in ``extra``.  Maps every pre-delete index to its post-delete
+    index, or ``None`` if the atom was removed.
+
+    Fixes the latent bug where the client's naive ``selection.
+    filter(i < n_new)`` silently dropped surviving high-index
+    atoms (selecting atom 2, deleting atom 0, ended up with
+    empty selection instead of new index 1)."""
+    # 3-atom water: O at index 0, H at indices 1 and 2.
+    r = web_client.post("/api/modify/delete", json={
+        "xyz": _H2O_XYZ,
+        "indices": [0],   # delete the O
+    })
+    body = r.get_json()
+    assert body["ok"] is True
+    assert "selection_remap" in body["extra"], (
+        "Phase 3 contract: /api/modify/delete extras must carry "
+        "selection_remap so the workspace dispatcher can translate "
+        "the user's selection across the index shift"
+    )
+    remap = body["extra"]["selection_remap"]
+    # Old index 0 (the O) was deleted; old [1, 2] become new [0, 1].
+    assert remap == [None, 0, 1]
+
+
+def test_modify_delete_selection_remap_handles_middle_deletion(
+        web_client):
+    """Pin the middle-deletion case: surviving HIGH-index atom
+    shifts DOWN.  This is the exact case the pre-fix client-side
+    naive filter got wrong."""
+    r = web_client.post("/api/modify/delete", json={
+        "xyz": _H2O_XYZ,
+        "indices": [1],   # delete the central H
+    })
+    body = r.get_json()
+    assert body["ok"] is True
+    remap = body["extra"]["selection_remap"]
+    # Old [0, 1, 2] → new [0, deleted, 1].
+    assert remap == [0, None, 1]
+
+
+def test_modify_add_atom_returns_identity_selection_remap(web_client):
+    """Phase 3: ``/api/modify/add_atom`` emits the identity remap
+    (all pre-op atoms survive at their old indices).  Emitting it
+    even when trivial keeps the client dispatcher's per-op rule
+    table flat — one lookup per op, no special cases."""
+    r = web_client.post("/api/modify/add_atom", json={
+        "xyz": _H2O_XYZ,
+        "element": "H",
+        "anchor_index": 0,
+        "offset": [0.5, 0, 0],
+    })
+    body = r.get_json()
+    assert body["ok"] is True
+    assert "selection_remap" in body["extra"]
+    remap = body["extra"]["selection_remap"]
+    assert remap == [0, 1, 2], (
+        "add_atom remap must be identity over the PRE-op atom range; "
+        "the new atom appears at index n with no pre-op counterpart"
+    )
 
 
 # --------------------------------------------------------------------- #

@@ -396,13 +396,20 @@ ad-hoc opts threaded through `applyStructure`:
 | `save` | Preserve |
 | `undo` | Restore from snapshot |
 
-`selection_remap` is a new server-side payload addition:
+`selection_remap` is a new server-side payload addition.  Wire
+shape (Phase 3, finalised 2026-06-07): a flat list, where
+``remap[old_index] == new_index`` or ``None`` when the atom was
+removed.  Length equals the pre-op atom count.
 
-```py
-@dataclass
-class SelectionRemap:
-    old_to_new: Dict[int, Optional[int]]    # None means "atom removed"
+```json
+"selection_remap": [null, 0, 1]    // delete: O at index 0 removed
+"selection_remap": [0, 1, 2]       // add: identity (new atom at index 3)
 ```
+
+List rather than ``Dict[int, Optional[int]]``: JSON int-keys
+round-trip to strings, forcing the client to parse keys back to
+int; a flat list keeps the wire compact and gives the client an
+implicit pre-op-size check via ``len()``.
 
 Without `selection_remap`, the current code's naive "filter to
 in-range" check silently drops the wrong indices when atom IDs
@@ -461,7 +468,7 @@ Each step is an independently mergeable PR with regression tests.
 |---|---|---|---|---|
 | 1 | Add `_shared.workspace_payload(struct, **extra)` helper.  Replace `structure_to_dict` + `ok_structure_response` internally; keep them as 3-line shims so consumers don't break in the same PR. | server | low | **✅ shipped 2026-06-07.**  `workspace_payload(struct, extra=...)` is canonical.  `structure_to_dict` routes through it + emits canonical keys (`text`, `source_format`, `lattice`) alongside legacy aliases (`xyz`, `elements`, `atom_names`, …) for back-compat.  `ok_structure_response` sources `issues` from the workspace payload (single validate-pass).  23 assertions in `tests/test_shared.py`. |
 | 2 | Migrate `/api/build/load` + `/api/build/molecule` + `/api/modify/*` to emit `WorkspacePayload`.  Existing client code keeps working — every old key it reads is still in the response. | server | low | **✅ shipped 2026-06-07.**  All three Structure-returning endpoint families now route through `ok_structure_response(struct, extra=…)`.  `structure_to_dict` accepts an `extra` dict and threads each key into BOTH the top level (back-compat for every existing JS consumer reading off the root) AND the canonical `extra` sub-dict (Phase 4+ workspace-dispatcher consumers).  `/api/build/load` carries `extra={pdb, summary, source_format}` (source_format overrides canonical XYZ default with parsed format).  `/api/build/molecule` carries `extra={pdb, summary, backend_used, add_hydrogens_mode}`.  `/api/modify/*` carries `extra={}` today (Phase 3 will add `selection_remap`).  Pinned by `tests/test_shared.py::TestStructureToDictExtraThreading` + `tests/test_web.py::{test_build_load_returns_workspace_payload, test_build_load_pdb_overrides_canonical_source_format, test_build_molecule_returns_workspace_payload, test_modify_delete_returns_workspace_payload}`. |
-| 3 | Add `selection_remap` to `WorkspacePayload` for `/api/modify/delete` + `/api/modify/add_atom`.  Server-side implementation in `molbuilder/modify.py` (the index-shift map already exists internally via `_reindex_transport_metadata`). | server + tests | medium | pending |
+| 3 | Add `selection_remap` to `WorkspacePayload` for `/api/modify/delete` + `/api/modify/add_atom`.  Server-side implementation in `molbuilder/modify.py` (the index-shift map already exists internally via `_reindex_transport_metadata`). | server + tests | medium | **✅ shipped 2026-06-07.**  Two new public functions in `molbuilder/modify.py`: `compute_selection_remap_after_delete(struct, indices)` returns the flat list-shaped remap (None for removed atoms), `compute_selection_remap_after_add(struct)` returns the identity (emitted even when trivial so the Phase 4+ dispatcher's per-op rule table stays flat).  Wire shape finalised as **a list**, not the originally-proposed `Dict[int, Optional[int]]`, because JSON int-keys round-trip to strings — see § 4.5 for the rationale.  `/api/modify/delete` + `/api/modify/add_atom` emit `extra["selection_remap"]` via the Phase 2 helper.  Pinned by `tests/test_modify.py::{TestComputeSelectionRemapAfterDelete, TestComputeSelectionRemapAfterAdd}` (12 assertions covering middle-deletion shift, dedup, out-of-range tolerance, cross-check against `delete_atoms` result, identity contract for add) + `tests/test_web.py::{test_modify_delete_returns_selection_remap, test_modify_delete_selection_remap_handles_middle_deletion, test_modify_add_atom_returns_identity_selection_remap}`. |
 | 4 | Add `window.molbuilder.workspace` dispatcher as a thin wrapper over the existing three stores.  Public surface: § 4.2.  Initial implementation delegates to the legacy stores; the wrapper IS the new public API.  Mark the legacy globals (`structureCanvas`, `selection.store`, modify-tab IIFE) as internal in the doc. | client | medium | pending |
 | 5 | Migrate the modify-tab page to use `ws.*` exclusively.  Delete `applyStructure`'s direct touches of canvas-state / selection-store; replace with `ws.applyOp(...)`. | client | high | pending |
 | 6 | Migrate generators (dna/rna/smiles/name/peptide/file) from `structurePage.loadIntoCanvas` + `viewerLoader` → `ws.generate(kind, input, opts)`. | client | high | pending |
