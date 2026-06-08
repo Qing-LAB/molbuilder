@@ -64,10 +64,6 @@
         return (root.molbuilder && root.molbuilder.runtime)
             ? root.molbuilder.runtime : null;
     }
-    function _projects() {
-        return (root.molbuilder && root.molbuilder.projects)
-            ? root.molbuilder.projects : null;
-    }
     function _molbuilderTab() {
         return (root.molbuilder && root.molbuilder.molbuilderTab)
             ? root.molbuilder.molbuilderTab : null;
@@ -483,18 +479,6 @@
             return env.r;
         });
     }
-
-    // Human-readable labels for each modifier op — surfaces in the
-    // edit-status line during the in-flight window.
-    var _OP_LABELS = {
-        delete:                "Deleted",
-        add_atom:              "Added atom",
-        orient:                "Oriented",
-        rotate:                "Rotated",
-        translate:             "Translated",
-        electrode:             "Added electrode",
-        symmetric_electrodes:  "Added junction",
-    };
 
     /**
      * Save the workspace structure to disk.  Delegates to the

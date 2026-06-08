@@ -394,24 +394,22 @@
     // the server's /api/build/load sniffs the format.)
 
     /**
-     * Replace the modify-page state with ``r``.  Single sync point
-     * for the in-memory ``state`` IIFE, the 3Dmol embed, and the
-     * selection store.  Two callsites with different selection
-     * semantics:
+     * Replace the modify-page IIFE state + 3Dmol embed model
+     * from a server workspace payload.  Scope is intentionally
+     * narrow: state.* fields, position-array parsing, embed
+     * setStructure + refit, and UI refresh hooks.  No
+     * cross-store work (canvas-state, selection store) lives
+     * here — the workspace dispatcher's
+     * ``_applyWorkspacePayload`` owns that and calls this
+     * function as one of its steps (the modify hook).
      *
-     *   * ``opts.resetSelection: true`` — loadStructureText (every
-     *     Sources-card generator + sidebar load).  The previous
-     *     structure's selection MUST NOT carry over: index 0 in
-     *     water means a different atom than index 0 in DNA, even
-     *     though both are in-range under the naive
-     *     ``adoptAtoms`` filter.
-     *   * ``opts.resetSelection: false`` (default) — postOp.  The
-     *     user-picked selection is preserved after a Delete / Add
-     *     etc. (filtered to in-range), which is how modifier
-     *     workflows keep an anchor across multiple ops.
+     * Callsites (all four currently):
+     *   * dispatcher's ``_applyWorkspacePayload`` for every
+     *     applyOp / applyPayload flow.
+     *   * ``applyUndo`` — pops a history snapshot.
+     *   * ``restoreModifyState`` — bfcache/navigation restore.
      */
-    function applyStructure(r, opts) {
-        opts = opts || {};
+    function applyStructure(r) {
         state.xyz           = r.xyz || "";
         state.elements      = Array.isArray(r.elements)      ? r.elements      : [];
         state.atom_names    = Array.isArray(r.atom_names)    ? r.atom_names    : [];
@@ -1470,32 +1468,21 @@
             setStatus(msg, "error");
             throw new Error(msg);
         }
-        // Phase 6 of the workspace-state migration (2026-06-07):
-        // route through the dispatcher's canonical
-        // ``applyPayload`` pipeline so the cross-store sync
-        // (selection store atoms + canvas-state) runs in ONE
-        // place — the same pipeline modifier ops use.
-        // ``touchCanvas: false`` because every loadStructureText
-        // caller (sidebar commitFile, every Sources-card
-        // generator) has already populated canvas-state via
+        // Route through the dispatcher's ``applyPayload`` pipeline
+        // so the cross-store sync (selection store atoms +
+        // canvas-state) runs in ONE place — the same pipeline
+        // modifier ops use.  ``touchCanvas: false`` because every
+        // caller (sidebar commitFile, every Sources-card generator)
+        // has already populated canvas-state via
         // ``structurePage.loadIntoCanvas`` (dirty=false).
         // ``resetSelection: true`` because every load is a fresh-
         // structure swap; any selection sitting on the previous
-        // structure would point at unrelated atoms in the new
-        // one even when the indices are still in-range.
-        const _ws = window.molbuilder && window.molbuilder.workspace;
-        if (_ws && typeof _ws.applyPayload === "function") {
-            _ws.applyPayload(r, {
-                touchCanvas:    false,
-                resetSelection: true,
-            });
-        } else {
-            // Fallback for pre-Phase-4 contexts (tests / future
-            // task tabs that load this script without the
-            // dispatcher).  Behavioural equivalent of the pre-
-            // Phase-6 direct call.
-            applyStructure(r, { resetSelection: true });
-        }
+        // structure would point at unrelated atoms in the new one
+        // even when the indices are still in-range.
+        window.molbuilder.workspace.applyPayload(r, {
+            touchCanvas:    false,
+            resetSelection: true,
+        });
         const fmt = (r.source_format || "structure").toUpperCase();
         setStatus(
             `Loaded ${r.n_atoms}-atom ${fmt} from ${filename}.`,
