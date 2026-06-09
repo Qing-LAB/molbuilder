@@ -425,6 +425,14 @@
     overflow: hidden;
 }
 
+/* Slot the embed mounts into; the .selection-measurement-overlay
+ * chip child is absolute-positioned, so the slot needs to be a
+ * positioning context to anchor the chip at the canvas corner
+ * rather than the page body. */
+.structure-card .structure-viewer-slot {
+    position: relative;
+}
+
 .structure-card .structure-status {
     margin-top: var(--space-sm);
     color: var(--text-secondary);

@@ -3,16 +3,20 @@
  * format to the standard embedded MolViewer (lib/mol-viewer-embed.js,
  * contract: docs/protocols/embedded-viewer.md).
  *
- * No frame playback, no atom-pick, no force overlay -- that's the
- * trajectory inspector's job.  This is a static-structure peek.
+ * No frame playback, no force overlay -- that's the trajectory
+ * inspector's job.  This is a static-structure peek.  An atom-pick
+ * + measurement chip (xyz / distance / angle) was added 2026-06-09
+ * (task #300) so users reading a result file can read off bond
+ * geometry without opening it in Molbuilder; the chip uses the
+ * shared ``lib/selection/measurements.js`` math + display.
  *
- * The inspector owns its OWN card (with the "Open in Modify" link
- * the user expects on /results); the embedded viewer mounts inside
- * that card with ``card.title: ""`` so the embed doesn't render a
- * second header — the host's card-header is the title strip.  The
- * ``card.bare`` opt was retired 2026-06-03 along with the
- * .mol-viewer-bare CSS class; ``card.title: ""`` is the canonical
- * way to skip the embed's header.
+ * The inspector owns its OWN card (with the "Open in Molbuilder"
+ * link the user expects on /results); the embedded viewer mounts
+ * inside that card with ``card.title: ""`` so the embed doesn't
+ * render a second header — the host's card-header is the title
+ * strip.  The ``card.bare`` opt was retired 2026-06-03 along with
+ * the .mol-viewer-bare CSS class; ``card.title: ""`` is the
+ * canonical way to skip the embed's header.
  */
 (function (root) {
     "use strict";
@@ -92,9 +96,18 @@
             card.appendChild(status);
 
             // -- Slot the embedded viewer will mount into --------- //
+            // Wrapper anchors the absolute-positioned measurement
+            // chip to the viewer's actual canvas area (the embed's
+            // card body fills the slot at 420 px height per the
+            // ``card.height`` opt below).
             const viewerSlot = document.createElement("div");
             viewerSlot.className = "structure-viewer-slot";
             card.appendChild(viewerSlot);
+            const chip = document.createElement("div");
+            chip.id = "structure-measurement";
+            chip.className = "selection-measurement-overlay";
+            chip.hidden = true;
+            viewerSlot.appendChild(chip);
 
             host.appendChild(card);
 
@@ -121,6 +134,43 @@
                     status.classList.add("inspector-inline-error");
                     return;
                 }
+                const _meas = (root.molbuilder
+                               && root.molbuilder.selection
+                               && root.molbuilder.selection.measurements);
+                const _updateChip = (handle) => {
+                    if (!handle || disposed) return;
+                    const pa = handle.getPickedIndices();
+                    if (!_meas || pa.length === 0) {
+                        chip.hidden = true;
+                        chip.textContent = "";
+                        return;
+                    }
+                    const positions = handle.getAtomCoords();
+                    const elements  = handle.getElements();
+                    // Build a tiny atomsMeta array on the fly —
+                    // the inspector doesn't have residue context
+                    // (that lives in a .molstruct.json sidecar,
+                    // which Results doesn't fetch by design); the
+                    // element + 1-based index is the right label
+                    // for a static-structure peek.
+                    const atomsMeta = elements.map(
+                        (el, i) => ({ index: i, element: el || "?" }));
+                    // pickedIndices preserves click order in the
+                    // embed (pair / triple modes append in order);
+                    // pass it through as both selection AND
+                    // pickOrder so the angle vertex matches the
+                    // user's 2nd click.
+                    const result = _meas.compute(
+                        pa, atomsMeta, positions, pa);
+                    if (result) {
+                        chip.hidden = false;
+                        chip.dataset.kind = result.kind;
+                        chip.textContent  = result.display;
+                    } else {
+                        chip.hidden = true;
+                        chip.textContent = "";
+                    }
+                };
                 const opts = {
                     // Source data flows in through the API; the
                     // viewer doesn't fetch.
@@ -141,6 +191,19 @@
                     },
                     axes:   true,
                     export: { defaultName: r.basename || "structure" },
+                    // 3-atom pick with halos drives the measurement
+                    // chip — click 1 atom for xyz, 2 for distance,
+                    // 3 for ∠A-B-C (vertex = 2nd click).  Halo is
+                    // the same yellow sphere overlay the trajectory
+                    // inspector uses.
+                    pick: {
+                        mode:  "triple",
+                        halo:  true,
+                        label: false,
+                        onPick() {
+                            _updateChip(viewerHandle);
+                        },
+                    },
                     onReady: function (handle) {
                         if (disposed) return;
                         const n = handle.getAtomCount();

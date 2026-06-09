@@ -1990,6 +1990,16 @@
         } catch (_) { return []; }
     }
 
+    function _atomCoords(viewer) {
+        try {
+            const models = viewer.getModel();
+            const atoms = models ? models.selectedAtoms({}) : [];
+            return atoms ? atoms.map(
+                (a) => [Number(a.x) || 0, Number(a.y) || 0, Number(a.z) || 0]
+            ) : [];
+        } catch (_) { return []; }
+    }
+
     function _formula(viewer) {
         const fmt = (root.molbuilder || {}).fmt;
         if (!fmt || typeof fmt.formula !== "function") return "";
@@ -4064,6 +4074,16 @@
             if (state.disposed) return [];
             return _elements(state.viewer);
         }
+        // Per-atom Cartesian coords in atom-index order, matching
+        // getElements() / getPickedIndices().  Defensive copies so
+        // callers can mutate the returned array without poisoning
+        // the live model.  Added 2026-06-08 (task #300) so the
+        // selection-measurement chip can read coords without
+        // re-parsing the source XYZ/PDB.
+        function getAtomCoords() {
+            if (state.disposed) return [];
+            return _atomCoords(state.viewer);
+        }
         // Read accessors for declarative state.  Each returns a
         // defensive deep-clone of the current section so callers
         // can persist + restore via the matching setX without
@@ -5398,6 +5418,7 @@
 
             getAtomCount:       getAtomCount,
             getElements:        getElements,
+            getAtomCoords:      getAtomCoords,
             getPickedIndices:   getPickedIndices,
             setPickedIndices:   setPickedIndices,
             getStructureText:   getStructureText,
