@@ -66,8 +66,11 @@
  * transport-calculation / results) the dispatcher script is NOT
  * loaded — ``window.molbuilder.workspace`` is undefined there.
  * No cross-tab consumer relies on it; the cross-tab handoff is
- * carried by a separate ``sessionStorage["builder-structure"]``
- * payload owned by the modify viewer's Send-to-Build button.
+ * the Projects-sidebar pointer in ``sessionStorage[
+ * "molbuilder.current_file"]`` (task #294, save-first Send-to-
+ * Optimization).  Each receiving tab re-reads bytes from disk on
+ * mount — the previous ``sessionStorage["builder-structure"]``
+ * payload was retired in task #306 (2026-06-09).
  *
  * Tests: tests/test_workspace_dispatcher_js.py.
  */

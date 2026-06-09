@@ -505,17 +505,19 @@
     }
 
     /* ------------------------------------------------------------------ */
-    /*  Inspect tab: two-atom picking + live distance                      */
+    /*  Inspect tab: 1-/2-/3-atom picking + live xyz/distance/angle        */
     /* ------------------------------------------------------------------ */
     //
-    // The embed owns halo rendering via pick.mode = "pair" + pick.halo;
+    // The embed owns halo rendering via pick.mode = "triple" + pick.halo;
     // _postFramePositionRedraw re-renders halos every frame so they
     // track trajectory motion.  Atom-list row clicks push into the
     // embed's pick state via handle.setPickedIndices.  Single source
     // of truth: the embed's pickedIndices.  Trajectory queries it
     // live via _handle.getPickedIndices() in updateInspectPanel +
     // refreshAtomListHighlights (no host-side mirror per D3
-    // contract, fixed in #246 B3).
+    // contract, fixed in #246 B3).  Cap was raised from 2 to 3 in
+    // task #299 (2026-06-08); the readout uses the shared
+    // lib/selection/measurements.js math + display.
 
     function _picks() {
         return _handle ? _handle.getPickedIndices() : [];

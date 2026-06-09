@@ -209,9 +209,12 @@
         state.title = r.title;
         state.fdf = null;
         state.pyscf = null;
-        // Stash the full response so saveStructureState can persist
-        // a faithful re-render payload to sessionStorage; the same
-        // shape feeds back into applyStructureResult on restore.
+        // Stash the full response in case a future feature needs
+        // to replay it without re-fetching (e.g. an in-tab undo
+        // step on the Generate-input form).  Pre-task-#306 this
+        // was load-bearing for the now-retired ``builder-structure``
+        // sessionStorage round-trip; today it's an inexpensive
+        // bookkeeping slot.
         state.last_response = r;
         $("info-title").textContent     = r.title;
         $("info-atoms").textContent     = r.n_atoms;
@@ -221,11 +224,9 @@
         // auto-picked value for this structure.  Empty input still
         // means "use auto"; the placeholder just makes it visible.
         // Defensive: the schema-driven SIESTA form may not have
-        // rendered yet on the very first restoreStructureState()
+        // rendered yet on the very first applyStructureResult()
         // call after a navigation.  Skip silently; the placeholder
-        // is just a hint, not load-bearing.  initFormsFromSchema()
-        // will re-apply the structure result anyway via
-        // restoreStructureState's second invocation path.
+        // is just a hint, not load-bearing.
         const bs = $("p-block-size");
         if (bs) {
             bs.placeholder =
@@ -701,20 +702,23 @@
 
     // ----- 2. Render --------------------------------------------------
     // The standard knob bar (style picker / labels popover / axes /
-    // reset / background / export) owns all the per-viewer chrome
-    // post-migration; Build's host page only owns its tab-specific
-    // controls (Build form, Generate buttons, Download row).  The
-    // bespoke <details> Style block in index.html is gone with this
-    // migration; rep / radius / background / labels move into the
-    // knob bar where every consumer site shares the same UX.
+    // reset / background / export) owns all the per-viewer chrome;
+    // the Optimization tab's host page only owns its tab-specific
+    // controls (Load-from-sidebar button, Generate buttons,
+    // Download row).  The bespoke <details> Style block that used
+    // to live in index.html is gone; rep / radius / background /
+    // labels are reached via the knob bar so every consumer site
+    // shares the same UX.
 
     function renderStructure() {
         if (!state.xyz) {
             // No structure to mount.  setStructure with an empty
-            // xyz/pdb is a no-op in the embed; Build's empty state
-            // is rare (only at first page load before any build /
-            // load).  Leaves whatever was previously rendered
-            // until the user builds something.
+            // xyz/pdb is a no-op in the embed; the empty state is
+            // rare (only at first page load before the user
+            // clicks Load from sidebar selection, or before the
+            // cross-tab handoff auto-loads a file from
+            // sessionStorage).  Leaves whatever was previously
+            // rendered until the user loads something.
             return;
         }
         _handle.setStructure({ xyz: state.xyz });
@@ -1220,8 +1224,8 @@
         downloadAs(state.fdf, label + suffix + ".fdf");
     });
 
-    // Map the Build form's stage-preset selector value to the
-    // SiestaConfig / PySCFConfig ``stage`` integer.  Custom and
+    // Map the Generate-input form's stage-preset selector value to
+    // the SiestaConfig / PySCFConfig ``stage`` integer.  Custom and
     // single-run modes pass null so the unsuffixed ``.molwatch.log``
     // filename is used.
     function stageNumberFromPreset() {
@@ -1470,18 +1474,18 @@
         return params;
     }
 
-    // ----- Session state: persist form values across Build↔Watch navigation -----
-    // Navigating to /watch and back is a full page reload; sessionStorage
-    // survives same-tab navigations so the user's input isn't lost.
+    // ----- Session state: persist Generate-input form values across tab navigation -----
+    // Navigating to another tab and back is a full page reload;
+    // sessionStorage survives same-tab navigations so the user's
+    // typed parameter values aren't lost.
 
     // Static IDs that aren't part of the schema-driven SIESTA /
     // PySCF forms but DO need session-storage persistence.  Post
-    // task-295 the Build form's kind / sequence / backend / form /
-    // terminal / add-hydrogens / protonate-phosphates inputs are
-    // gone, so the Relaxation-stage preset selector (a UI shortcut,
-    // not a dataclass field) is the only static survivor.  All
-    // other persistent IDs are derived at save/restore time by
-    // walking the rendered schemas.
+    // task-295 the in-tab Build form is gone, so the Relaxation-
+    // stage preset selector (a UI shortcut, not a dataclass field)
+    // is the only static survivor.  All other persistent IDs are
+    // derived at save/restore time by walking the rendered
+    // schemas.
     const STATIC_FORM_IDS = [
         "p-stage-preset",
     ];
@@ -1543,77 +1547,18 @@
     // this function once the renderer has populated the DOM.
     initFormsFromSchema();
 
-    // ----- Session state: persist the BUILT / LOADED structure too ---
-    // The form-state restore above brings back what the user TYPED;
-    // this complementary pair brings back what they actually
-    // BUILT.  Without it, clicking Watch and coming back nukes the
-    // 3-D viewer's molecule -- the form fields survive but the
-    // structure does not, forcing the user to rebuild before they
-    // can keep editing.  Phase 1 of the cross-tab persistence work
-    // recorded in docs/tabs/molbuilder.md.
+    // ----- Cross-tab structure handoff (post-task-#295) --------------
     //
-    // The same key ("builder-structure") is the destination of the
-    // upcoming Modify -> Build "Send to Build" handoff (M5): the
-    // Modify tab writes the finished junction here, navigates to /,
-    // and Build's restore picks it up identically.
-
-    const STRUCTURE_KEY = "builder-structure";
-    const STRUCTURE_SCHEMA_VERSION = 1;
-
-    function saveStructureState() {
-        if (!state.xyz || !state.last_response) return;
-        // Per § 3.13: getCamera returns an opaque CameraState
-        // {_viewer, _version, data} we round-trip through
-        // setCamera at restore time.  Drops the raw viewer.getView
-        // touchpoint that #202 migration eliminated.
-        const camera = _handle.getCamera();
-        const payload = {
-            v: STRUCTURE_SCHEMA_VERSION,
-            saved_at: new Date().toISOString(),
-            response: state.last_response,
-            camera:   camera,
-        };
-        try {
-            sessionStorage.setItem(STRUCTURE_KEY, JSON.stringify(payload));
-        } catch (e) {
-            // QuotaExceededError on a structure that doesn't fit
-            // (sessionStorage cap is ~5-10 MB).  Skip without
-            // crashing -- the user just loses persistence on this
-            // particular load.
-            console.warn("builder: could not save structure state:",
-                         e && e.message);
-        }
-    }
-
-    function restoreStructureState() {
-        let saved = null;
-        try {
-            saved = JSON.parse(sessionStorage.getItem(STRUCTURE_KEY) || "null");
-        } catch (_e) {
-            return false;
-        }
-        if (!saved || saved.v !== STRUCTURE_SCHEMA_VERSION) return false;
-        const r = saved.response;
-        if (!r || !r.xyz) return false;
-        // Replay the build/load through the same path a fresh
-        // /api/build/molecule response would take.  This keeps the
-        // info panel, atom counts, and the disabled/enabled state of
-        // the Generate buttons consistent with a fresh build.
-        applyStructureResult(r);
-        // Restore the camera last so it doesn't fight the zoomTo()
-        // inside renderStructure().  Per § 3.13 setCamera no-ops
-        // on _viewer / _version mismatch (forward-compat).
-        if (saved.camera) {
-            _handle.setCamera(saved.camera);
-        }
-        return true;
-    }
-
-    // Restore AFTER the form-state restore above so the Build form
-    // fields match the structure if the user had built (e.g. a DNA
-    // sequence is in the input box AND the helix is in the viewer).
-    restoreStructureState();
-    window.addEventListener("pagehide", saveStructureState);
+    // The legacy "builder-structure" sessionStorage save/restore that
+    // used to live here was retired 2026-06-09 (task #306): post-task
+    // #295 the Optimization tab is file-driven, so the cross-tab
+    // structure handoff goes through the Projects-sidebar pointer
+    // (``sessionStorage.molbuilder.current_file``) + the mount-time
+    // auto-load in the runtime.whenReady("projects") block above.
+    // That path also re-reads bytes from disk on every restore, so
+    // the snapshot-the-XYZ-into-sessionStorage approach was both
+    // redundant and a quota-pressure liability on large structures.
+    // No saveStructureState / pagehide listener is needed any more.
 
     // ----- Staged-relaxation presets ----------------------------- //
     // The Watch tab carries the full workflow guide; the Build tab's

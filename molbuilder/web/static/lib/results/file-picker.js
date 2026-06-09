@@ -16,11 +16,17 @@
  * acknowledgement; it stays hidden only when the directory has
  * zero result files (the inspector then renders its fallback).
  *
- * Picking a different entry from the <select> fires
- * ``projects.setShared(dir, newFile)`` -- the sidebar's onChange
- * subscriber then triggers viewer.js to dispose + remount the
- * matching inspector for the new file.  Single source of truth for
- * current-file state stays on the projects sidebar (design § 7).
+ * Picking a different entry from the <select> mirrors the choice
+ * to the sidebar via ``projects.setShared(dir, newFile)`` (so the
+ * sidebar's "current file" highlight matches) AND dispatches a
+ * ``molbuilder:results:fileSelected`` custom event on ``document``.
+ * results/viewer.js listens for that event and disposes + remounts
+ * the matching inspector.  Pre-task-#301 (2026-06-09) the dispatch
+ * was implicit via the sidebar's ``onChange`` subscriber; that
+ * subscription was retired so a stray sidebar single-click on
+ * /results no longer hijacks the inspector mid-read.  The single
+ * source of truth for "which file is mounted" is the dropdown's
+ * selectedOption + the most-recent fileSelected event.
  *
  * Auto-pick: when the directory contains result files AND no file is
  * currently selected, the picker auto-selects the most recent one.
@@ -37,11 +43,15 @@
  * Visible API on ``window.molbuilder.resultsFilePicker``:
  *
  *   ``mount(root)``    -- one-shot init: attaches the <select>
- *                         handler, subscribes to projects.onChange
- *                         + ``molbuilder:inspector:ready``, and
- *                         triggers the first scan.  Returns a
- *                         disposer that aborts any in-flight fetch
- *                         and detaches subscriptions.
+ *                         handler + Refresh-button click handler,
+ *                         subscribes to ``molbuilder:inspector:ready``
+ *                         + pageshow / visibilitychange (for tab
+ *                         re-entry auto-refresh), and triggers the
+ *                         first scan.  Returns a disposer that
+ *                         aborts any in-flight fetch and detaches
+ *                         subscriptions.  Does NOT subscribe to
+ *                         the sidebar's onChange any more
+ *                         (retired in task #301).
  *   ``parseDir(file)``            -- pure helper (exported for testing).
  *   ``formatRelativeTime(epoch)`` -- pure helper (testing).
  *   ``filterToResultFiles(entries, dir, pickResult)`` -- pure helper.

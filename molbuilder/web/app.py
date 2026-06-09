@@ -5,7 +5,12 @@ The UI has five tabs served by one process:
   * Molbuilder             at  ``GET /molbuilder``
                                 renders ``modify.html``
   * Structure optimization at  ``GET /structure-optimization``
-                                renders ``index.html`` (the Build form)
+                                renders ``index.html``: a viewer +
+                                "Load from sidebar selection" entry
+                                point + the SIESTA / PySCF Generate
+                                forms.  (The legacy Build form was
+                                retired in task #295; the tab is
+                                file-driven now.)
   * Spectrum calculation   at  ``GET /spectrum-calculation``
                                 (web/blueprints/spectra.py)
   * Transport calculation  at  ``GET /transport-calculation``

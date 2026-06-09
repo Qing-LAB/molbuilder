@@ -23,7 +23,15 @@
  *     sourceFile: null | string         // current structure path (.xyz / .pdb)
  *     atoms:      Atom[]                // current structure's atoms
  *     selection:  number[]              // THE selection set;
- *                                       // shared across modes
+ *                                       // shared across modes;
+ *                                       // kept sorted ascending
+ *     pickOrder:  number[]              // same atom-indices as
+ *                                       // ``selection`` but in
+ *                                       // click order (vertex for
+ *                                       // the 3-atom angle readout
+ *                                       // = pickOrder[1]).  Always
+ *                                       // a permutation of
+ *                                       // ``selection``.
  *     mode:       "click" | "filter"    // which editor is visible
  *     filters:    Filter[]              // filter drafts (not
  *                                       // materialised until
