@@ -191,12 +191,26 @@
       </button>
     </header>
     <p class="ps-preview-meta" id="ps-preview-meta"></p>
+    {# Two bodies: <pre> for read-only view (default), <textarea> for
+       edit mode.  initPreview() / showPreview() / startEdit() in
+       preview.js swap which one is hidden.  The textarea inherits
+       the same font + padding so the swap is visually quiet. #}
     <pre id="ps-preview-body" class="ps-preview-body"
          aria-label="File content"></pre>
+    <textarea id="ps-preview-edit"
+              class="ps-preview-edit"
+              aria-label="File content (editable)"
+              spellcheck="false"
+              hidden></textarea>
     <p id="ps-preview-error" class="ps-preview-error" role="alert"></p>
+    <p id="ps-preview-status" class="ps-preview-status"></p>
     <footer class="ps-preview-footer">
+      <button id="ps-preview-edit-btn" type="button"
+              title="Switch to edit mode.&#10;Disabled when the file isn't editable (binary / too large / read-only).">
+        Edit
+      </button>
       <button id="ps-preview-save-btn" type="button" disabled
-              title="Save is not implemented yet (task: edit + save endpoint).">
+              title="Save the current edits back to the file.&#10;Enabled only when the textarea has unsaved changes.">
         Save
       </button>
       <button type="button" class="ps-preview-close-footer">Close</button>

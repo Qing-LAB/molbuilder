@@ -617,6 +617,33 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
   white-space: pre;
 }
 
+/* Editable mirror of .ps-preview-body — same font + sizing so the
+ * View ↔ Edit swap is visually quiet.  ``resize: none`` because
+ * the modal sizes itself; letting the user drag-resize the
+ * textarea pushes it past the footer. */
+.ps-preview-edit {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  overflow: auto;
+  font-family: monospace;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--ps-fg);
+  background: #111;
+  border: none;
+  border-radius: 0;
+  white-space: pre;
+  resize: none;
+  outline: none;
+}
+.ps-preview-edit:focus {
+  background: #161616;
+  box-shadow: inset 0 0 0 1px var(--ps-accent, #4a9eff);
+}
+.ps-preview-edit[hidden] { display: none; }
+
 .ps-preview-error {
   flex: 0 0 auto;
   margin: 0;
@@ -626,6 +653,21 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
   font-size: 0.85rem;
 }
 .ps-preview-error:empty { display: none; }
+
+/* Status line: "Saved at 14:23:05" / "Unsaved changes" / "Read
+ * failed".  Visually softer than the error block so a success
+ * message doesn't read as a warning. */
+.ps-preview-status {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0.3rem 0.8rem;
+  color: var(--ps-fg-muted, #aaa);
+  font-size: 0.82rem;
+  font-style: italic;
+}
+.ps-preview-status:empty { display: none; }
+.ps-preview-status.is-dirty { color: #d8a64b; }
+.ps-preview-status.is-ok    { color: #7ec78a; }
 
 .ps-preview-footer {
   flex: 0 0 auto;

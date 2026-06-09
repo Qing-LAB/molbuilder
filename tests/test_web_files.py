@@ -1815,20 +1815,31 @@ class TestSidebarStubsUI:
     def test_preview_modal_markup_full(self, web, picker_root):
         body = web.get("/spectrum-calculation").get_data(as_text=True)
         # Modal scaffolding: backdrop, window, header (title + close),
-        # body (pre for text), error slot, footer (Save + Close).
+        # both bodies (pre for read-only view, textarea for edit),
+        # error + status slots, footer (Edit + Save + Close).  Task
+        # #302 (2026-06-09) added the edit pane + the Edit button +
+        # the status line; Save was unwired-but-visible before, now
+        # functional via /api/files/write with expected_mtime.
         assert 'id="ps-preview-modal"' in body
         assert 'class="ps-preview-backdrop"' in body
         assert 'id="ps-preview-title"' in body
         assert 'id="ps-preview-meta"' in body
         assert 'id="ps-preview-body"' in body
+        assert 'id="ps-preview-edit"' in body
         assert 'id="ps-preview-error"' in body
-        # Save is visible but disabled in v1 (write endpoint stubbed).
+        assert 'id="ps-preview-status"' in body
+        # Edit toggle + Save button both present.  Save starts
+        # disabled (no dirty edits on first open) but is no longer
+        # the "coming soon" stub from v1.
+        assert 'id="ps-preview-edit-btn"' in body
         assert 'id="ps-preview-save-btn"' in body
-        between = body.split(
+        save_attrs = body.split(
             'id="ps-preview-save-btn"', 1,
         )[1].split(">", 1)[0]
-        assert "disabled" in between
-        assert "coming soon" in between or "not implemented" in between
+        assert "disabled" in save_attrs, (
+            "Save button must start disabled — it enables when the "
+            "textarea has unsaved changes"
+        )
 
     def test_preview_modal_starts_hidden(self, web, picker_root):
         # The hidden attribute ensures it doesn't flash on first paint
