@@ -1629,4 +1629,18 @@
             "modify.handle", window.molbuilder.modify.handle);
         window.molbuilder.runtime.register("modify.applyUndo", applyUndo);
     }
+
+    // Selection-driven measurement readout: the panel calls this
+    // provider on every render to compute xyz / distance / angle
+    // for the current selection.  ``state.positions`` is parsed
+    // from the canonical XYZ payload above (cleared to [] on parse
+    // anomaly); returning an empty array signals "positions not
+    // available yet" and the panel hides the readout.  See
+    // ``lib/selection/measurements.js`` for the shape and
+    // ``lib/selection-panel.js`` ``renderMeasurement`` for the
+    // consumer.
+    window.molbuilder.selection = window.molbuilder.selection || {};
+    window.molbuilder.selection.positionsProvider = function () {
+        return state.positions || [];
+    };
 })();

@@ -46,6 +46,28 @@
     font-style: italic;
 }
 
+/* ---------- Measurement readout ---------------------------------- */
+
+/* Shown when 1-3 atoms are selected: xyz / distance / angle.  Sits
+ * directly below the header.  Monospace-flavoured because the
+ * content is mostly numbers + atom labels, and tabular-nums keeps
+ * the decimals from jumping around when the value changes.  The
+ * leading marker is the data-kind attribute; CSS picks the glyph
+ * so the markup stays innerHTML-free (XSS-safe). */
+.selection-measurement {
+    margin: 0.35rem 0 0;
+    padding: 0.35rem 0.55rem;
+    border-left: 3px solid var(--accent, #4a9eff);
+    background: var(--bg-input, rgba(255, 255, 255, 0.03));
+    color: var(--text-primary, #ddd);
+    font: 13px/1.45 ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    border-radius: 3px;
+}
+.selection-measurement[data-kind="xyz"]      { border-left-color: #94a3b8; }
+.selection-measurement[data-kind="distance"] { border-left-color: #4a9eff; }
+.selection-measurement[data-kind="angle"]    { border-left-color: #fb923c; }
+
 /* ---------- Click-mode body -------------------------------------- */
 
 .selection-click-section {

@@ -86,6 +86,7 @@
             addBtn:          $("selection-add-btn"),
             removeBtn:       $("selection-remove-btn"),
             errorEl:         $("selection-error"),
+            measurement:     $("selection-measurement"),
         };
         const missing = Object.keys(els).filter((k) => !els[k]);
         if (missing.length) {
@@ -192,6 +193,41 @@
                     els.errorEl.hidden = true;
                 }
             }
+        }
+
+        // Render the selection-driven measurement (xyz / distance /
+        // angle).  Positions come from the page's positions
+        // provider (Modify viewer registers one against the parsed
+        // XYZ; Results trajectory/structure inspectors register
+        // their own).  Hidden when:
+        //   * no positions provider registered (e.g. page mounted
+        //     panel without atoms loaded);
+        //   * selection has 0 or 4+ atoms;
+        //   * any selected index sits outside the positions array
+        //     (caller hasn't synced positions to a fresh atom count
+        //     yet — keep the readout silent rather than guessing).
+        // The shared math lives in lib/selection/measurements.js
+        // and is unit-tested in tests/test_selection_measurements_js.py.
+        function renderMeasurement(s) {
+            if (!els.measurement) return;
+            const ns = root.molbuilder && root.molbuilder.selection;
+            const meas = ns && ns.measurements;
+            const provider = ns && ns.positionsProvider;
+            if (!meas || typeof provider !== "function") {
+                els.measurement.hidden = true;
+                els.measurement.textContent = "";
+                return;
+            }
+            const positions = provider();
+            const result = meas.compute(s.selection, s.atoms, positions);
+            if (!result) {
+                els.measurement.hidden = true;
+                els.measurement.textContent = "";
+                return;
+            }
+            els.measurement.hidden = false;
+            els.measurement.dataset.kind = result.kind;
+            els.measurement.textContent = result.display;
         }
 
         function renderMode(s) {
@@ -731,6 +767,7 @@
 
         const unsubscribe = store.subscribe((s) => {
             renderStatus(s);
+            renderMeasurement(s);
             renderMode(s);
             renderFilters(s);
             renderAtomList(s);

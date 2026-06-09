@@ -2872,6 +2872,75 @@ def test_build_structure_state_round_trips_modify(
     )
 
 
+def test_measurement_readout_shows_xyz_distance_angle(
+        page, flask_server, water_xyz_file):
+    """Selection-driven measurement readout (task #298): the
+    Selection panel renders a one-line readout that follows the
+    current selection — xyz for 1 atom, distance for 2, angle for
+    3 (with the middle atom as vertex), hidden for 0 or 4+ atoms.
+
+    Pin the contract end-to-end on water (3 atoms, geometry
+    chosen by the fixture so the math has nice round numbers)."""
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    meas_visible = lambda: page.evaluate(
+        "() => !document.getElementById('selection-measurement').hidden"
+    )
+    meas_text = lambda: page.locator("#selection-measurement").inner_text()
+
+    # 0 atoms — hidden.
+    assert meas_visible() is False
+
+    # 1 atom — xyz of the O.
+    _set_selection(page, [0])
+    page.wait_for_function(
+        "() => !document.getElementById('selection-measurement').hidden"
+    )
+    text = meas_text()
+    # Atom label uses 1-based indexing per the design.
+    assert "O #1" in text, f"expected 'O #1' in {text!r}"
+    assert "(0.000, 0.000, 0.000)" in text, (
+        f"expected xyz coords in {text!r}"
+    )
+
+    # 2 atoms — O–H distance.  Fixture is the standard water with
+    # 0.957 Å O–H bond; round-trips through the math to 4 decimals.
+    _set_selection(page, [0, 1])
+    page.wait_for_function(
+        "() => /distance/.test("
+        "  document.getElementById('selection-measurement').dataset.kind"
+        ")"
+    )
+    text = meas_text()
+    assert "|O #1" in text and "H #2|" in text, (
+        f"expected '|O #1 – H #2|' in {text!r}"
+    )
+    assert "0.9570" in text, f"expected 0.9570 Å in {text!r}"
+
+    # 3 atoms — H–O–H angle.  The selection store sorts the set, so
+    # the panel can't infer vertex from pick order; the measurements
+    # module picks the vertex geometrically (the atom closest to the
+    # other two, which for water is O).
+    _set_selection(page, [0, 1, 2])
+    page.wait_for_function(
+        "() => document.getElementById('selection-measurement')"
+        "      .dataset.kind === 'angle'"
+    )
+    text = meas_text()
+    # Vertex (O) is the middle of the display; the H's bracket it.
+    assert "O #1" in text and text.count("H #") == 2, (
+        f"expected 'H – O – H' shape in {text!r}"
+    )
+    # Allow some slack on the exact angle — the fixture's coords
+    # give ~104.5°, which the math reproduces.
+    import re
+    m = re.search(r"=\s*([0-9.]+)°", text)
+    assert m, f"expected 'X.X°' in {text!r}"
+    assert 100.0 <= float(m.group(1)) <= 110.0, (
+        f"H–O–H angle should be ~104.5°, got {m.group(1)}° in {text!r}"
+    )
+
+
 def test_modify_chain_ids_round_trip_through_op(
         page, flask_server, water_xyz_file):
     """Regression: ``state.chain_ids`` was previously never declared
