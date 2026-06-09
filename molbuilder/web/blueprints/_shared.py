@@ -821,6 +821,53 @@ def apply_sidecar_if_possible(struct, structure_path):
     return None
 
 
+def regions_pattern_b_notice(struct, engine_label: str):
+    """Three-stage Pattern B (sidecar-contract.md § 6 B): every
+    engine that DOESN'T consume the structure's region labels MUST
+    explicitly notice them so the user can re-direct to Transport
+    when a junction structure was meant.  Pre-task-#308 this block
+    was inlined verbatim in /api/build/fdf and /api/build/pyscf;
+    each new engine that joins the cohort (Spectra, future
+    transport-but-not-NEGF) would re-implement it or — worse —
+    silently absorb the labels.
+
+    Returns
+    -------
+    None
+      ``struct.regions`` is empty; nothing to notice.
+    Issue
+      ``info``-severity, ``where='config.regions'``, message
+      enumerates the labels + names the engine + points at the
+      Transport tab.  Caller appends to its issues list and
+      returns alongside the rendered script / fdf.
+
+    ``engine_label`` is what the user sees in the message — e.g.
+    ``"the .fdf"``, ``"the PySCF script"``, ``"the spectra deck"``.
+    Keep the phrasing engine-specific so the notice reads
+    naturally.
+
+    Added 2026-06-09 (task #308) as the dedupe of the two
+    copy-pasted blocks in build.py.  Test coverage:
+    tests/test_web.py::test_{fdf,pyscf}_surfaces_info_when_structure
+    _carries_regions.
+    """
+    from molbuilder.issues import Issue
+    if not struct.regions:
+        return None
+    region_labels = sorted(struct.regions.keys())
+    return Issue(
+        "info",
+        ("Structure carries region labels ("
+         + ", ".join(region_labels)
+         + ") but a Structure-Optimization run does not consume "
+         "them — they are reserved for Transport.  Generating "
+         + engine_label + " here is OK if you only want "
+         "SCF / relaxation / spectroscopy; for a transport "
+         "calculation, switch to the Transport tab."),
+        "config.regions",
+    )
+
+
 __all__ = [
     "atoms_list",
     "issues_to_json",
@@ -833,4 +880,5 @@ __all__ = [
     "coerce_to_field_type",
     "config_from_params",
     "apply_sidecar_if_possible",
+    "regions_pattern_b_notice",
 ]

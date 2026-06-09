@@ -117,6 +117,8 @@ class TestResultsRegistryScripts:
         "lib/xyz-io.js",
         "lib/path-utils.js",
         "lib/inspectors/registry.js",
+        # Shared scaffolding for partial-fetch inspectors (task #308).
+        "lib/inspectors/_partial_inspector_factory.js",
         "lib/inspectors/source.js",
         "lib/inspectors/structure.js",
         "lib/inspectors/trajectory.js",
@@ -181,13 +183,29 @@ class TestInspectorModulesServed:
     def test_inspector_module_declares_canonical_interface(self, web, name):
         """Every inspector module declares the four required
         interface fields (name, displayName, match, mount) and
-        self-registers via window.molbuilder.inspectors.register."""
+        self-registers via window.molbuilder.inspectors.register.
+
+        Two acceptable shapes after task #308:
+          * direct: an inspector literal with ``mount(...)`` and the
+            other fields inline (source, structure).
+          * factory-built: ``makePartialInspector({...})`` with
+            ``mount`` provided by the factory (trajectory, spectra).
+            The factory itself MUST live in the partial-inspector-
+            factory module the load-order test below pins.
+        """
         body = web.get(f"/static/lib/inspectors/{name}.js").get_data(as_text=True)
-        # Required interface keys appear in the literal.
-        for key in ("name:", "displayName:", "match:", "mount("):
+        for key in ("name:", "displayName:", "match:"):
             assert key in body, (
                 f"inspector {name!r} module is missing interface key {key!r}"
             )
+        # Mount comes either as a method literal or via the factory.
+        has_mount = ("mount(" in body
+                     or "makePartialInspector(" in body)
+        assert has_mount, (
+            f"inspector {name!r} module is missing mount() — neither "
+            f"an inline mount(...) literal nor a "
+            f"makePartialInspector({{...}}) call was found"
+        )
         # Self-registration call.
         assert "inspectors.register(inspector)" in body, (
             f"inspector {name!r} module does not self-register"
@@ -343,71 +361,72 @@ class TestInspectorErrorRendering:
     """Pin the error-card UX wiring in each adapter.  Source-level
     pins because the runtime path needs Playwright to exercise."""
 
-    ADAPTERS = ("trajectory", "spectra")
+    # ``trajectory`` + ``spectra`` are factory-derived inspectors
+    # (task #308) — the error-rendering code lives in
+    # _partial_inspector_factory.js, not in the per-engine wrapper.
+    # Pin the contract on the factory instead.  ``structure`` and
+    # ``source`` aren't factory-derived; their error paths are
+    # exercised elsewhere (test_source_inspector_e2e.py renders the
+    # source viewer's error path; structure's empty-error path is
+    # covered by Playwright's test_inspector_registry_e2e.py).
+    PARTIAL_INSPECTOR_FACTORY = "_partial_inspector_factory"
 
-    @pytest.mark.parametrize("name", ADAPTERS)
-    def test_adapter_renders_error_card_on_fetch_failure(self, web, name):
-        """Both adapters MUST call _renderError() inside their .catch()
-        handler when the partial fetch fails.  Without this, a 404
-        from GET /partials/<name>-inspector would leave the user
-        staring at a blank inspector host with no signal that the
-        mount failed.
+    def test_factory_renders_error_card_on_fetch_failure(self, web):
+        """The partial-inspector factory MUST call _renderError()
+        inside its .catch() handler when the partial fetch fails.
+        Without this, a 404 from GET /partials/<name>-inspector
+        would leave the user staring at a blank inspector host with
+        no signal that the mount failed.
 
-        Pin SHAPE not exact-text -- ``.catch(`` somewhere in the file,
-        ``_renderError(host, file,`` somewhere AFTER it.  Anything
-        more precise (e.g., requiring _renderError inside the exact
-        ``.catch(arrow => { ... })`` body) breaks on every refactor
-        of the multi-line chain.
+        Pin SHAPE not exact-text -- ``.catch(`` somewhere in the
+        file, ``_renderError(`` somewhere AFTER it.  Anything more
+        precise (e.g., requiring _renderError inside the exact
+        ``.catch(arrow => { ... })`` body) breaks on every
+        refactor of the multi-line chain.
         """
         body = web.get(
-            f"/static/lib/inspectors/{name}.js").get_data(as_text=True)
+            f"/static/lib/inspectors/"
+            f"{self.PARTIAL_INSPECTOR_FACTORY}.js").get_data(as_text=True)
         catch_pos = body.find(".catch(")
-        # _renderError appears multiple times: once as a function
-        # definition near the top of the file, once or more as call
-        # sites.  We want the FIRST call site that comes AFTER the
-        # .catch() so the path is "fetch fails -> catch -> render".
-        render_after_catch = body.find(
-            "_renderError(host, file,", catch_pos)
+        render_after_catch = body.find("_renderError(", catch_pos)
         assert catch_pos > 0, (
-            f"lib/inspectors/{name}.js doesn't have a .catch() handler "
-            f"on the partial-fetch promise chain -- partial-fetch "
-            f"failures fall through unhandled"
+            "lib/inspectors/_partial_inspector_factory.js doesn't "
+            "have a .catch() handler on the partial-fetch promise "
+            "chain -- partial-fetch failures fall through unhandled"
         )
         assert render_after_catch > catch_pos, (
-            f"lib/inspectors/{name}.js doesn't call _renderError(host, "
-            f"file, ...) AFTER the .catch() handler -- the user sees a "
-            f"blank host when the partial fetch fails"
+            "_partial_inspector_factory doesn't call _renderError(...) "
+            "AFTER the .catch() handler -- the user sees a blank host "
+            "when the partial fetch fails"
         )
         # The error card itself must use the .inspector-card.error-card
         # class hook (CSS in results/style.css renders this with a
         # red-tinted border + clear failure styling).
         assert "inspector-card error-card" in body, (
-            f"lib/inspectors/{name}.js doesn't use the "
-            f".inspector-card.error-card class for failed mounts -- "
-            f"the CSS in results/style.css would lose its hook"
+            "_partial_inspector_factory doesn't use the "
+            ".inspector-card.error-card class for failed mounts -- "
+            "the CSS in results/style.css would lose its hook"
         )
         # XSS-safe DOM construction (no innerHTML string-concat in
         # _renderError; pinned in the global XSS audit too).
         assert "createElement" in body
 
-    @pytest.mark.parametrize("name", ADAPTERS)
-    def test_adapter_ignores_aborterror_in_catch(self, web, name):
+    def test_factory_ignores_aborterror_in_catch(self, web):
         """A user picking another file mid-fetch triggers the
         AbortController's AbortError.  That's NOT an error to
         surface to the user -- it's the expected superseding
-        action.  Both adapters check ``err.name === "AbortError"``
-        and bail before _renderError.  Pinned so a future refactor
+        action.  The factory guards via ``err.name === "AbortError"``
+        and bails before _renderError.  Pinned so a future refactor
         that drops the abort guard surfaces with a clear failure
-        (else: every rapid file switch shows a spurious error card
-        in the previous file's place).
+        (else: every rapid file switch shows a spurious error card).
         """
         body = web.get(
-            f"/static/lib/inspectors/{name}.js").get_data(as_text=True)
+            f"/static/lib/inspectors/"
+            f"{self.PARTIAL_INSPECTOR_FACTORY}.js").get_data(as_text=True)
         assert 'err.name === "AbortError"' in body, (
-            f"lib/inspectors/{name}.js doesn't guard against "
-            f"AbortError in its .catch() -- rapid file-switching "
-            f"will show a spurious 'mount failed' card after each "
-            f"swap"
+            "_partial_inspector_factory doesn't guard against "
+            "AbortError in its .catch() -- rapid file-switching "
+            "will show a spurious 'mount failed' card after each swap"
         )
 
     def test_inspector_error_css_classes_are_styled(self, web):

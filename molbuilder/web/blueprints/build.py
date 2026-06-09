@@ -893,26 +893,14 @@ def api_build_fdf():
     issues = validate(struct, cfg, dest_dir=dest_dir)
     if sidecar_notice:
         issues.append(Issue("warn", sidecar_notice, "config.frozen_atoms"))
-    # Three-stage Pattern B (sidecar-contract.md § 6 B): the SIESTA
-    # SCF/relaxation deck does NOT consume electrode regions
-    # (L-electrode / R-electrode / bridge) — those drive the
-    # Transport tab.  When the user has labelled a junction in
-    # Modify and clicks Generate here, the labels would otherwise
-    # vanish silently into the .fdf write.  Surface an INFO issue
-    # so the user can re-direct to /transport-calculation if that
-    # was the intent.
-    if struct.regions:
-        region_labels = sorted(struct.regions.keys())
-        issues.append(Issue(
-            "info",
-            ("Structure carries region labels (" + ", ".join(region_labels)
-             + ") but a Structure-Optimization run does not consume "
-             "them — they are reserved for Transport.  Generating "
-             "the .fdf here is OK if you only want SCF/relaxation; "
-             "for a transport calculation, switch to the Transport "
-             "tab."),
-            "config.regions",
-        ))
+    # Three-stage Pattern B: the SIESTA SCF/relaxation deck does
+    # NOT consume electrode regions (L-electrode / R-electrode /
+    # bridge) — those drive the Transport tab.  See
+    # _shared.regions_pattern_b_notice for the canonical issue.
+    from ._shared import regions_pattern_b_notice
+    regions_notice = regions_pattern_b_notice(struct, "the .fdf")
+    if regions_notice is not None:
+        issues.append(regions_notice)
     try:
         fdf = render_fdf(struct, cfg)
     except ValidationError as exc:
@@ -982,22 +970,11 @@ def api_build_pyscf():
     issues = validate(struct, cfg)
     if sidecar_notice:
         issues.append(Issue("warn", sidecar_notice, "config.frozen_atoms"))
-    # Three-stage Pattern B (mirrors /api/build/fdf above): PySCF's
-    # SCF/relaxation/optimisation deck doesn't consume electrode
-    # regions either.  Same INFO issue so the user can re-direct
-    # to Transport if they meant a junction calculation.
-    if struct.regions:
-        region_labels = sorted(struct.regions.keys())
-        issues.append(Issue(
-            "info",
-            ("Structure carries region labels (" + ", ".join(region_labels)
-             + ") but a Structure-Optimization run does not consume "
-             "them — they are reserved for Transport.  Generating "
-             "the PySCF script here is OK if you only want SCF / "
-             "geometry / spectroscopy; for a transport calculation, "
-             "switch to the Transport tab."),
-            "config.regions",
-        ))
+    # Three-stage Pattern B (mirrors /api/build/fdf above).
+    from ._shared import regions_pattern_b_notice
+    regions_notice = regions_pattern_b_notice(struct, "the PySCF script")
+    if regions_notice is not None:
+        issues.append(regions_notice)
     try:
         script = render_script(struct, cfg)
     except ValidationError as exc:

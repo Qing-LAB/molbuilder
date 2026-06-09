@@ -160,6 +160,11 @@
 <script src="{{ url_for('static', filename='lib/trajectory/core.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/spectra/core.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/inspectors/registry.js') }}"></script>
+{# Partial-inspector factory: shared scaffold for any adapter that
+   fetches a Jinja partial + delegates to a per-engine core module
+   (trajectory + spectra below).  MUST load before the adapters that
+   call ``makePartialInspector`` from it. #}
+<script src="{{ url_for('static', filename='lib/inspectors/_partial_inspector_factory.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/results/file-picker.js') }}"></script>
 {# Specific (compound-extension) inspectors register first... #}
 <script src="{{ url_for('static', filename='lib/inspectors/trajectory.js') }}"></script>
