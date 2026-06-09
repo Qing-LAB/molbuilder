@@ -83,6 +83,9 @@ sidecar-saved expressions.
   sourceFile:  null | string       // absolute structure path (.xyz / .pdb)
   atoms:       Atom[]              // current structure's atom list
   selection:   number[]            // THE selection set; shared across modes
+  pickOrder:   number[]            // same atoms as `selection`, in click
+                                   //   order (vertex = pickOrder[1] for
+                                   //   the 3-atom angle readout)
   mode:        "click" | "filter"  // which editor is visible (UI only)
   filters:     Filter[]            // filter drafts (NOT applied until
                                    //   the user clicks Apply filter)
@@ -99,6 +102,37 @@ materialises into `selection` (replacing whatever was there).
 Switching modes does NOT touch `selection` — switching from
 Filter back to Click after Apply keeps the filtered atoms
 selected, ready to refine atom-by-atom.
+
+**`pickOrder` is the click-order shadow.**  Same atom-indices as
+`selection`, but in the order the user clicked them.  `selection`
+is kept sorted ascending (set semantics — every consumer that
+doesn't care about click history can read it directly); the
+shadow exists so the 3-atom angle readout in
+`lib/selection/measurements.js` can use the user's *second* click
+as the vertex (chemist's convention: pick A → B → C means ∠A-B-C
+with B at the vertex).  Every mutator keeps the two in lock-step:
+
+  * `toggleAtom(i)` — adds: append `i`; removes: filter `i` out.
+  * `setSelection(xs)` — `pickOrder` is the input array deduped
+    in input order; `selection` is that same array sorted.
+  * `addToSelection(xs)` — appends only the *new* atoms in input
+    order (mirrors a series of toggleAtom calls).
+  * `removeFromSelection(xs)` — filters dropped atoms out;
+    surviving order preserved.
+  * `clearSelection()`, `setSourceFile(...)`, `adoptSession(...)`
+    — both arrays reset together.
+  * `applyFilter()` — `pickOrder` mirrors the filtered selection
+    in ascending order (no user clicks happened); the
+    measurement module's geometric vertex heuristic kicks in
+    instead.
+
+Consumers that don't care about click order (atom list, label
+writes, filter eval, the selection panel's count) keep reading
+`selection`.  Consumers that DO care (the measurement readout)
+pass `pickOrder` to `measurements.compute(...)`; it falls back to
+the geometric heuristic when `pickOrder` doesn't match the
+selection set (filter eval, session restore, batch setSelection
+from a non-click source).
 
 ## 3. Store API
 
@@ -554,8 +588,56 @@ exported only for tests.
   * `tests/test_results_blueprint.py::TestPartialSelectionPanelEndpoint`
     -- partial-id contract (unchanged after the refactor; the
     panel still queries the same ids).
+  * `tests/test_selection_measurements_js.py` -- pure-math unit
+    tests for `lib/selection/measurements.js` (xyz / distance /
+    angle, pickOrder vs geometric fallback, 4+ atoms → null).
+  * `tests/test_modify_e2e.py::test_measurement_readout_shows_xyz_distance_angle`
+    -- end-to-end pin for the chip overlay on the Modify tab.
   * JS unit tests (future): see `tests/test_atom_selection_js.py`
     once the Playwright harness covers the panel.
+
+## 9b. Selection-driven measurement readout
+
+A tiny module at `lib/selection/measurements.js` reads from the
+store + a per-page **positions provider** and emits a one-line
+display string for the user:
+
+  * 1 atom selected → `Au #3 — (0.000, 0.000, 0.000) Å`
+  * 2 atoms selected → `|H #5 – O #0| = 0.957 Å`
+  * 3 atoms selected → `∠H #5 – O #0 – H #6 = 104.5°`
+  * 0 or 4+ atoms → `null` (consumer hides the readout)
+
+The vertex for 3 atoms is the user's SECOND click (read off
+`state.pickOrder`); if `pickOrder` doesn't match the current
+selection set (filter eval, session restore, batch
+`setSelection` from a non-click source), the module falls back
+to a geometric heuristic — vertex = atom with smallest
+sum-of-distances to the other two.  Labels prefer
+`atom.atom_name` over `${element} #${index+1}` so a PDB residue
+shows residue-aware names like `OE1` instead of `O #142`.
+
+Display conventions (load-bearing — drift between consumers is
+the original sin that prompted the module):
+
+  * 1-based indexing in the label (matches viewer overlays).
+  * 3-decimal coordinates.
+  * 4-decimal distances.
+  * 1-decimal angles.
+  * `tabular-nums` font feature on the chip so decimals don't
+    jitter as the value changes.
+
+**Positions provider** — the page wires
+`window.molbuilder.selection.positionsProvider = () =>
+number[][]` returning the current xyz array.  The Modify tab's
+viewer returns its parsed `state.positions`; future trajectory
+and structure inspectors (tasks #299, #300) will return their
+own per-frame coords.
+
+**Where the chip lives** — `#selection-measurement-overlay` is
+positioned absolutely inside `.viewer-wrap` (which mirrors the
+canvas dimensions, including its centred `max-width: 560px`
+cap).  Bottom-right of the actual canvas; floats above 3Dmol's
+rendering, `pointer-events: none` so it doesn't block clicks.
 
 ## 10. Versioning
 

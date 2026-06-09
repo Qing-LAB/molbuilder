@@ -226,7 +226,8 @@
                 return;
             }
             const positions = provider();
-            const result = meas.compute(s.selection, s.atoms, positions);
+            const result = meas.compute(
+                s.selection, s.atoms, positions, s.pickOrder);
             if (!result) {
                 els.measurement.hidden = true;
                 els.measurement.textContent = "";

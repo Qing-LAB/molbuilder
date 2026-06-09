@@ -2917,11 +2917,11 @@ def test_measurement_readout_shows_xyz_distance_angle(
     )
     assert "0.9570" in text, f"expected 0.9570 Å in {text!r}"
 
-    # 3 atoms — H–O–H angle.  The selection store sorts the set, so
-    # the panel can't infer vertex from pick order; the measurements
-    # module picks the vertex geometrically (the atom closest to the
-    # other two, which for water is O).
-    _set_selection(page, [0, 1, 2])
+    # 3 atoms — H–O–H angle.  The store carries a click-order
+    # shadow (``pickOrder``) so the measurement module knows which
+    # atom was the SECOND click — that's the vertex.  Set click
+    # order [1, 0, 2] = "H, then O (vertex), then H".
+    _set_selection(page, [1, 0, 2])
     page.wait_for_function(
         "() => document.getElementById('selection-measurement-overlay')"
         "      .dataset.kind === 'angle'"
@@ -2930,6 +2930,18 @@ def test_measurement_readout_shows_xyz_distance_angle(
     # Vertex (O) is the middle of the display; the H's bracket it.
     assert "O #1" in text and text.count("H #") == 2, (
         f"expected 'H – O – H' shape in {text!r}"
+    )
+    # And the vertex really is the middle click.
+    vertex = page.evaluate(
+        "() => window.molbuilder.selection.measurements.compute("
+        "  window.molbuilder.selection.store.getState().selection,"
+        "  window.molbuilder.selection.store.getState().atoms,"
+        "  window.molbuilder.selection.positionsProvider(),"
+        "  window.molbuilder.selection.store.getState().pickOrder"
+        ").vertexIndex"
+    )
+    assert vertex == 0, (
+        f"vertex should be O (index 0, middle of pickOrder), got {vertex}"
     )
     # Allow some slack on the exact angle — the fixture's coords
     # give ~104.5°, which the math reproduces.

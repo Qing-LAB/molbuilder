@@ -96,48 +96,132 @@ def test_distance_two_atoms():
     assert r["display"]   == "|O #1 – H #2| = 0.9570 Å"
 
 
-def test_angle_three_atoms_picks_vertex_geometrically():
-    """Three atoms → angle.  The selection store sorts the selection
-    set ascending, so we can't infer vertex from pick order.  The
-    measurements module picks the vertex geometrically as the atom
-    minimising sum-of-distances to the other two — for water, O is
-    closer to BOTH H's than the H's are to each other, so the
-    H–O–H angle is what comes out regardless of selection order."""
+def test_angle_with_pickorder_uses_middle_click_as_vertex():
+    """When pickOrder is supplied (the user's click sequence), the
+    SECOND click is the vertex — the chemist's convention "pick A,
+    then B (vertex), then C" so the angle is ∠A-B-C."""
+    # Right-angle geometry: atoms at +x, origin, +y.  Pick order
+    # [0, 1, 2] (clicked +x first, origin second, +y third) → the
+    # vertex is the origin at index 1; 90° is the answer.
+    pos = [
+        [1.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+    ]
+    meta = [{"element": "X"}] * 3
+    r = _run_node(
+        f"console.log(JSON.stringify("
+        f" m.compute([0,1,2], {json.dumps(meta)}, {json.dumps(pos)},"
+        f"           [0,1,2])"
+        f"));"
+    )
+    assert r["vertexIndex"] == 1
+    assert abs(r["valueDeg"] - 90.0) < 1e-9
+
+    # Same atoms, but the user clicked them as [+y, origin, +x] →
+    # pickOrder=[2, 1, 0].  Vertex is still index 1 (the middle
+    # click); angle is still 90°.
+    r = _run_node(
+        f"console.log(JSON.stringify("
+        f" m.compute([0,1,2], {json.dumps(meta)}, {json.dumps(pos)},"
+        f"           [2,1,0])"
+        f"));"
+    )
+    assert r["vertexIndex"] == 1
+    assert abs(r["valueDeg"] - 90.0) < 1e-9
+
+    # User picked the +x atom in the middle — vertex is index 0
+    # now, angle 45° (between origin→+x and +y→+x).
+    r = _run_node(
+        f"console.log(JSON.stringify("
+        f" m.compute([0,1,2], {json.dumps(meta)}, {json.dumps(pos)},"
+        f"           [1,0,2])"
+        f"));"
+    )
+    assert r["vertexIndex"] == 0
+    assert abs(r["valueDeg"] - 45.0) < 1e-9
+
+
+def test_angle_falls_back_to_geometric_vertex_without_pickorder():
+    """When pickOrder is missing or stale (filter eval, session
+    restore), fall back to the geometric heuristic — vertex = atom
+    minimising sum-of-distances to the other two.  For water this
+    picks O regardless of selection order."""
     r = _run_node(
         f"console.log(JSON.stringify("
         f" m.compute([0, 1, 2], {json.dumps(WATER_META)}, {json.dumps(WATER)})"
         f"));"
     )
     assert r["kind"] == "angle"
-    # Vertex is O (index 0) — closest to both H's.
     assert r["vertexIndex"] == 0
-    # Angle ~104.5° (standard water).
     assert abs(r["valueDeg"] - 104.5) < 0.5
-    # Display labels the two H's as the outside and O as the
-    # vertex (middle of the display).
-    assert "O #1" in r["display"]
-    assert r["display"].count("H #") == 2
-    assert " = " in r["display"] and r["display"].endswith("°")
 
 
-def test_angle_vertex_picked_geometrically_for_right_triangle():
-    """Right-angle geometry: atoms at +x, origin, +y.  The origin
-    is the vertex (closest to both endpoints); the angle is 90°.
-    Pin that the geometric vertex picker gives the right answer
-    regardless of the order the user selected the atoms in."""
+def test_angle_uses_geometric_fallback_when_pickorder_has_duplicates():
+    """A pickOrder that repeats an atom (corrupt or post-merge
+    leftover) would, without the dedup guard, feed two identical
+    vectors to angleDeg and emit NaN.  Pin that the helper falls
+    back to the geometric vertex instead so the readout stays
+    sane."""
     pos = [
-        [1.0, 0.0, 0.0],  # +x
-        [0.0, 0.0, 0.0],  # origin (vertex)
-        [0.0, 1.0, 0.0],  # +y
+        [1.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
     ]
     meta = [{"element": "X"}] * 3
     r = _run_node(
         f"console.log(JSON.stringify("
-        f" m.compute([0, 1, 2], {json.dumps(meta)}, {json.dumps(pos)})"
+        f" m.compute([0,1,2], {json.dumps(meta)}, {json.dumps(pos)},"
+        f"           [0,0,1])"
+        f"));"
+    )
+    # Geometric fallback → vertex at the origin (index 1) → 90°.
+    assert r["vertexIndex"] == 1
+    assert abs(r["valueDeg"] - 90.0) < 1e-9
+
+
+def test_angle_uses_geometric_fallback_when_pickorder_is_stale():
+    """A pickOrder that doesn't match the selection set (different
+    atoms, different length, or junk) is treated as missing — the
+    geometric heuristic kicks in.  Pin that path so a future
+    refactor doesn't silently honour a corrupt pickOrder."""
+    pos = [
+        [1.0, 0.0, 0.0],
+        [0.0, 0.0, 0.0],
+        [0.0, 1.0, 0.0],
+    ]
+    meta = [{"element": "X"}] * 3
+    # pickOrder length mismatch.
+    r = _run_node(
+        f"console.log(JSON.stringify("
+        f" m.compute([0,1,2], {json.dumps(meta)}, {json.dumps(pos)},"
+        f"           [0,1])"
+        f"));"
+    )
+    assert r["vertexIndex"] == 1  # geometric fallback
+
+    # pickOrder names atoms not in the selection.
+    r = _run_node(
+        f"console.log(JSON.stringify("
+        f" m.compute([0,1,2], {json.dumps(meta)}, {json.dumps(pos)},"
+        f"           [0,1,99])"
         f"));"
     )
     assert r["vertexIndex"] == 1
-    assert abs(r["valueDeg"] - 90.0) < 1e-9
+
+
+def test_distance_uses_pickorder_for_label_direction():
+    """Even though distance is symmetric, the label "A – B" reads
+    naturally as the user's click direction.  pickOrder=[1, 0]
+    should label H first, O second; selection=[0, 1] (sorted)
+    alone would give the reverse."""
+    r = _run_node(
+        f"console.log(JSON.stringify("
+        f" m.compute([0, 1], {json.dumps(WATER_META)}, {json.dumps(WATER)},"
+        f"           [1, 0])"
+        f"));"
+    )
+    assert r["display"] == "|H #2 – O #1| = 0.9570 Å"
 
 
 def test_angle_collinear_atoms_returns_180():

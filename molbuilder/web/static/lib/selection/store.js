@@ -59,6 +59,19 @@
             sourceFile: null,
             atoms:      [],
             selection:  [],
+            // Pick-order shadow: the same atom-indices as
+            // ``selection`` but kept in the order the user picked
+            // them.  ``selection`` is sorted ascending (set
+            // semantics, used by every consumer that doesn't care
+            // about click history); ``pickOrder`` preserves the
+            // click sequence so the 3-atom angle readout can use
+            // the middle pick as the vertex.  Always a subset of
+            // ``selection`` modulo permutation; mutators keep the
+            // two in lock-step.  Reset to [] on every source-file
+            // change, adoptAtoms, clearSelection, setSelection
+            // (input order is the new pick order), selectAll, and
+            // invertSelection (no user picks ⇒ atom-index order).
+            pickOrder:  [],
             mode:       "click",
             filters:    [],
             combinator: "or",
@@ -308,6 +321,7 @@
                 state.sourceFile = next;
                 state.atoms      = [];
                 state.selection  = [];   // a fresh file starts empty
+                state.pickOrder  = [];
                 if (next === null) return;
                 // If the viewer failed to load, don't pull atoms --
                 // showing rows for a structure the user can't see in
@@ -370,12 +384,21 @@
                 state.atoms      = preFetched
                     ? preFetched.map(_normaliseAtom) : [];
                 state.selection  = sel.slice().sort((a, b) => a - b);
+                // adoptSession carries no click history (it's a
+                // session snapshot from disk); pickOrder mirrors
+                // selection in ascending order so consumers don't
+                // see a stale 3-atom angle vertex from before
+                // the restore.
+                state.pickOrder  = state.selection.slice();
                 if (preFetched) {
                     // Drop selection indices that no longer exist
                     // in the adopted atoms list (mirrors adoptAtoms).
                     const n = state.atoms.length;
                     state.selection = state.selection.filter(
                         (i) => Number.isInteger(i) && i >= 0 && i < n);
+                    const valid = new Set(state.selection);
+                    state.pickOrder = state.pickOrder.filter(
+                        (i) => valid.has(i));
                     return;
                 }
                 if (!state.sourceFile) return;
@@ -413,10 +436,15 @@
             // Drop selection indices that no longer exist (the
             // op may have removed atoms; the array length is now
             // the upper bound).  Sorted-ascending invariant
-            // preserved.
+            // preserved.  pickOrder is filtered against the same
+            // surviving set so the click-order shadow stays in
+            // lockstep with selection.
             const n = state.atoms.length;
             state.selection = state.selection.filter(
                 (i) => Number.isInteger(i) && i >= 0 && i < n);
+            const surviving = new Set(state.selection);
+            state.pickOrder = state.pickOrder.filter(
+                (i) => surviving.has(i));
             state.error = null;
             _notify();
         }
@@ -455,10 +483,17 @@
                 if (insertAt === -1) next.push(index);
                 else                 next.splice(insertAt, 0, index);
                 state.selection = next;
+                // pickOrder is append-only on toggle-in so the
+                // most-recently-clicked atom lands at the end —
+                // that's the user's pick sequence the angle
+                // readout reads.
+                state.pickOrder = state.pickOrder.concat([index]);
             } else {
                 const next = state.selection.slice();
                 next.splice(i, 1);
                 state.selection = next;
+                state.pickOrder = state.pickOrder.filter(
+                    (j) => j !== index);
             }
             _notify();
             return Promise.resolve();
@@ -468,10 +503,25 @@
             if (!Array.isArray(indices)) {
                 return Promise.reject(new TypeError("indices must be array"));
             }
-            const sorted = Array.from(new Set(indices))
-                .filter((x) => typeof x === "number")
-                .sort((a, b) => a - b);
-            state.selection = sorted;
+            // Two-pass dedup that preserves INPUT order for
+            // pickOrder while keeping the sorted-ascending
+            // invariant for ``selection``.  Test-set / batch
+            // callers that pass [1, 0, 2] get
+            // selection=[0,1,2] (set semantics) and
+            // pickOrder=[1,0,2] (vertex = middle = 0).
+            const seen = new Set();
+            const orderedIn = [];
+            indices.forEach((x) => {
+                if (typeof x !== "number") return;
+                if (seen.has(x)) return;
+                seen.add(x);
+                orderedIn.push(x);
+            });
+            state.selection = orderedIn.slice().sort((a, b) => a - b);
+            // Defensive copy so a caller mutating ``orderedIn``
+            // post-return (or chaining off ``state``) can't bleed
+            // into the store.  Symmetric with every other mutator.
+            state.pickOrder = orderedIn.slice();
             _notify();
             return Promise.resolve();
         }
@@ -483,20 +533,37 @@
             if (!Array.isArray(indices)) {
                 return Promise.reject(new TypeError("indices must be array"));
             }
+            // pickOrder gets the NEW atoms appended in input order
+            // — same semantic as a series of toggleAtom calls.
             const merged = new Set(state.selection);
+            const additions = [];
             indices.forEach((i) => {
-                if (typeof i === "number") merged.add(i);
+                if (typeof i !== "number") return;
+                if (!merged.has(i) && additions.indexOf(i) === -1) {
+                    additions.push(i);
+                }
+                merged.add(i);
             });
-            return setSelection(Array.from(merged));
+            state.selection = Array.from(merged).sort((a, b) => a - b);
+            state.pickOrder = state.pickOrder.concat(additions);
+            _notify();
+            return Promise.resolve();
         }
 
         // Subtract the given indices from the current selection.
+        // Preserves pickOrder of the SURVIVING atoms (the user's
+        // sequence is "stable minus the removed ones").
         function removeFromSelection(indices) {
             if (!Array.isArray(indices)) {
                 return Promise.reject(new TypeError("indices must be array"));
             }
             const drop = new Set(indices.filter((i) => typeof i === "number"));
-            return setSelection(state.selection.filter((i) => !drop.has(i)));
+            const survivingPickOrder = state.pickOrder.filter(
+                (i) => !drop.has(i));
+            state.selection = state.selection.filter((i) => !drop.has(i));
+            state.pickOrder = survivingPickOrder;
+            _notify();
+            return Promise.resolve();
         }
 
         // Select every atom in the loaded structure.
@@ -587,6 +654,7 @@
                 if (rule === null) {
                     // No filters -- treat as "select nothing".
                     state.selection = [];
+                    state.pickOrder = [];
                     state.error     = null;
                     return;
                 }
@@ -610,6 +678,13 @@
                 state.selection = raw
                     .filter((i) => Number.isInteger(i))
                     .sort((a, b) => a - b);
+                // Filter-eval results have no user pick history;
+                // mirror selection so the angle readout sees a
+                // sensible deterministic order (ascending atom
+                // index).  A filter-applied selection of 3 atoms
+                // falls back to the geometric vertex via the
+                // ordered-isnt-meaningful path.
+                state.pickOrder = state.selection.slice();
                 state.error     = null;
                 // Race safety net.  applyFilter shares the _run
                 // abort signal with setSourceFile, so a sequence
@@ -671,8 +746,12 @@
         // ----------------------------------------------------------- //
 
         function clearSelection() {
-            if (state.selection.length === 0) return Promise.resolve();
+            if (state.selection.length === 0
+                && state.pickOrder.length === 0) {
+                return Promise.resolve();
+            }
             state.selection = [];
+            state.pickOrder = [];
             _notify();
             return Promise.resolve();
         }

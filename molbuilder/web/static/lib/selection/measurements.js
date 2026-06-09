@@ -125,8 +125,16 @@
      * for ``positions`` — caller should treat that as "no
      * measurement yet" (positions array hasn't caught up with a
      * recent atom-count-changing op).
+     *
+     * ``pickOrder`` (optional) is the user's click sequence.
+     * When supplied with three atoms, the second click is taken
+     * as the angle vertex (the chemist's convention: pick the
+     * two ends + the middle atom in the middle of the sequence).
+     * Falls back to the geometric heuristic (vertex = atom with
+     * smallest sum-of-distances to the other two) when pickOrder
+     * is missing or doesn't match the selection set.
      */
-    function compute(selection, atomsMeta, positions) {
+    function compute(selection, atomsMeta, positions, pickOrder) {
         if (!Array.isArray(selection)) return null;
         const n = selection.length;
         if (n === 0 || n > 3) return null;
@@ -156,55 +164,99 @@
         }
 
         if (n === 2) {
-            const [iA, iB] = selection;
+            // Use pick order when available so the readout reflects
+            // the user's "from → to" intent — even though distance
+            // is symmetric, the label A-B reads naturally as "the
+            // bond I just drew."
+            const order = _pickOrderMatches(pickOrder, selection)
+                ? pickOrder : selection;
+            const [iA, iB] = order;
             const d = distance(positions[iA], positions[iB]);
+            const labA = labelOf(iA, atomsMeta);
+            const labB = labelOf(iB, atomsMeta);
             return {
                 kind:     "distance",
                 indices:  [iA, iB],
-                labels:   [labels[0], labels[1]],
+                labels:   [labA, labB],
                 valueAng: d,
-                display:  "|" + labels[0] + " – " + labels[1] + "| = "
+                display:  "|" + labA + " – " + labB + "| = "
                           + d.toFixed(4) + " Å",
             };
         }
 
-        // n === 3: angle.  The selection store sorts atom indices,
-        // so we can't infer "vertex = middle of pick order".
-        // Instead, the vertex is chosen geometrically as the atom
-        // that minimises the sum of distances to the other two —
-        // for a bonded chain A-B-C this is B (the centre atom is
-        // closer to BOTH ends than the ends are to each other),
-        // which matches the chemist's intent.  Tie-broken by
-        // smallest index for determinism.
+        // n === 3: angle.  Pick-order semantics win when the
+        // user clicked the atoms in sequence (chemist's
+        // convention: middle click = vertex), so the readout
+        // reflects 1-2 + 2-3 bonds meeting at atom 2.  When
+        // pickOrder is missing or stale (filter eval, session
+        // restore, batch setSelection from a non-click source),
+        // fall back to the geometric heuristic — vertex = atom
+        // with smallest sum-of-distances to the other two, which
+        // for a typical bonded triple still gives the centre
+        // atom.
+        let triplet;
+        if (_pickOrderMatches(pickOrder, selection)) {
+            triplet = pickOrder.slice();
+        } else {
+            triplet = _geometricVertexOrder(selection, positions);
+        }
+        const [iA, iV, iB] = triplet;
+        const deg = angleDeg(
+            positions[iA], positions[iV], positions[iB]);
+        const labA = labelOf(iA, atomsMeta);
+        const labV = labelOf(iV, atomsMeta);
+        const labB = labelOf(iB, atomsMeta);
+        return {
+            kind:        "angle",
+            indices:     [iA, iV, iB],
+            labels:      [labA, labV, labB],
+            vertexIndex: iV,
+            valueDeg:    deg,
+            display:     "∠" + labA + " – " + labV + " – " + labB
+                         + " = " + deg.toFixed(1) + "°",
+        };
+    }
+
+    // True iff ``pickOrder`` is the same SET as ``selection`` —
+    // i.e. the click trail is in sync with the sorted selection.
+    // A mismatch (length, missing atoms, repeats) usually means
+    // the source wasn't a click (filter eval, batch setSelection,
+    // corrupt pickOrder) and the angle vertex must be chosen
+    // geometrically.  Repeat detection is what saves the
+    // angle math from feeding two identical vectors to angleDeg
+    // and emitting "NaN°" — the helper is the last gate before
+    // pickOrder[1] becomes the vertex.
+    function _pickOrderMatches(pickOrder, selection) {
+        if (!Array.isArray(pickOrder)) return false;
+        if (pickOrder.length !== selection.length) return false;
+        const set = new Set(selection);
+        const seen = new Set();
+        for (let i = 0; i < pickOrder.length; i++) {
+            const idx = pickOrder[i];
+            if (!set.has(idx) || seen.has(idx)) return false;
+            seen.add(idx);
+        }
+        return true;
+    }
+
+    // Reorder a 3-atom selection so the geometric centre atom
+    // (smallest sum-of-distances to the other two) is in the
+    // middle.  Used when pickOrder is unavailable.
+    function _geometricVertexOrder(selection, positions) {
         const [i0, i1, i2] = selection;
         const p0 = positions[i0], p1 = positions[i1], p2 = positions[i2];
         const s0 = distance(p0, p1) + distance(p0, p2);
         const s1 = distance(p1, p0) + distance(p1, p2);
         const s2 = distance(p2, p0) + distance(p2, p1);
-        // Pick the vertex (smallest sum-of-distances; ties go to
-        // the lowest-index atom — already the case here since the
-        // selection arrived in ascending order).
         let vertexLocal = 0;
         if (s1 < s0) vertexLocal = 1;
         if (s2 < (vertexLocal === 0 ? s0 : s1)) vertexLocal = 2;
         const others = [0, 1, 2].filter((k) => k !== vertexLocal);
-        const idxV  = selection[vertexLocal];
-        const idxA  = selection[others[0]];
-        const idxB  = selection[others[1]];
-        const deg = angleDeg(
-            positions[idxA], positions[idxV], positions[idxB]);
-        const labV = labelOf(idxV, atomsMeta);
-        const labA = labelOf(idxA, atomsMeta);
-        const labB = labelOf(idxB, atomsMeta);
-        return {
-            kind:        "angle",
-            indices:     [idxA, idxV, idxB],
-            labels:      [labA, labV, labB],
-            vertexIndex: idxV,
-            valueDeg:    deg,
-            display:     "∠" + labA + " – " + labV + " – " + labB
-                         + " = " + deg.toFixed(1) + "°",
-        };
+        return [
+            selection[others[0]],
+            selection[vertexLocal],
+            selection[others[1]],
+        ];
     }
 
     const api = {
