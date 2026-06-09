@@ -170,14 +170,24 @@ class TestSpectraPage:
         assert 'href="/spectrum-calculation"' in body
 
     def test_viewer_js_served_as_bootstrap_stub(self, web_client):
-        """After step 2.2 of the tab-merge lift, spectra/viewer.js is
-        a thin bootstrap that calls
-        ``window.molbuilder.spectraInspector.mount(document)``.  The
-        actual inspector logic moved to lib/spectra/core.js (shared
-        with the /results tab's spectra inspector).
+        """Post-task-#296 (2026-06-09) spectra/viewer.js carries
+        TWO responsibilities, both /spectra-specific:
 
-        Pin the bootstrap contract: viewer.js is short, mounts
-        against ``document``, and depends on the core module.
+          1. Mount the shared spectra-inspector core against
+             ``document`` so the schema form + Generate / Methods
+             / Issues / script-preview / Save handlers wire up.
+             (Unchanged pre-#296 behaviour.)
+
+          2. Bootstrap the Inspect-structure card: mount a 3Dmol
+             embed in ``#viewer-wrap`` + wire the
+             ``#load-from-sidebar-btn`` so the user can pick a
+             structure in the Projects sidebar and load it into
+             the viewer.  Mirrors the Optimization tab pattern.
+
+        The file is still small (no per-feature business logic;
+        that lives in lib/spectra/core.js), but it's no longer
+        the ~1.5 KB stub it was post-step-2.2.  Cap at 16 KB so
+        the legacy 1700-line controller can't slip back in.
         """
         r = web_client.get("/static/spectra/viewer.js")
         assert r.status_code == 200
@@ -185,12 +195,21 @@ class TestSpectraPage:
         # The bootstrap calls into the shared core.
         assert "spectraInspector" in js
         assert "mount(document)"  in js
-        # And it's small -- a quick guard against the file growing
-        # back into the legacy 1700-line controller.
-        assert len(js) < 4_000, (
+        # And it wires the Inspect-structure card (task #296).
+        assert "load-from-sidebar-btn" in js, (
+            "spectra/viewer.js must wire the Load-from-sidebar "
+            "button — that's the sole structure entry point post-#296"
+        )
+        assert "viewer-wrap" in js or "#viewer" in js, (
+            "spectra/viewer.js must mount the 3Dmol embed in the "
+            "Inspect-structure card's #viewer / #viewer-wrap slot"
+        )
+        # Cap to catch the legacy 1700-line controller creeping
+        # back; well above the bootstrap's natural size.
+        assert len(js) < 16_000, (
             f"spectra/viewer.js grew to {len(js)} bytes -- it should "
-            f"be the bootstrap stub only; per-feature logic belongs "
-            f"in lib/spectra/core.js"
+            f"stay as bootstrap-only wiring; per-feature logic "
+            f"belongs in lib/spectra/core.js"
         )
 
     def test_core_js_served(self, web_client):
@@ -216,12 +235,29 @@ class TestSpectraPage:
 
     def test_style_css_served(self, web_client):
         """The CSS imports the shared tokens so theming stays in
-        lock-step with Build / Modify / Watch."""
+        lock-step with Build / Modify / Watch.
+
+        Pre-task-#296 ``.spectra-grid`` was the bespoke two-column
+        layout; that class is gone and the page now inherits the
+        shared ``.app-grid`` vertical workflow from style.css.
+        We still pin two load-bearing rules so a regression that
+        empties the file fails here: ``.issues-panel`` (renders
+        the engine validation Issues) and ``.script-preview``
+        (the Generated-script block).  Both are
+        spectra-specific — the shared sheet doesn't own them. """
         r = web_client.get("/static/spectra/style.css")
         assert r.status_code == 200
         css = r.data.decode()
         assert "tokens.css" in css
-        assert ".spectra-grid" in css
+        assert ".issues-panel" in css, (
+            "spectra/style.css is missing .issues-panel — the "
+            "Issues block on /spectra would render unstyled"
+        )
+        assert ".script-preview" in css, (
+            "spectra/style.css is missing .script-preview — the "
+            "Generated-script preview on /spectra would render "
+            "unstyled"
+        )
 
     def test_shared_form_schema_css_served(self, web_client):
         """The schema-driven form's layout (fieldset / label /

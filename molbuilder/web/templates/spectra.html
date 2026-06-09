@@ -7,18 +7,16 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/page-shell.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-schema.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/mol-viewer-embed.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/projects-sidebar.css') }}">
+{# Shared style.css — the Optimization tab's vertical-workflow rules
+   (card layout + viewer chrome + form chrome) live here.  Task #296
+   landed the Spectrum tab on the same surface so the bespoke
+   spectra/style.css from task #189 could shrink to just the
+   spectra-specific issues panel / script preview / methods modal
+   rules. #}
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='spectra/style.css') }}">
-{# /spectra is the generator-only tab.  3Dmol's heavy vendor bundle
-   + Plotly are intentionally NOT loaded here -- the per-mode
-   eigenvector animation + bode plots belong to /results' spectra
-   inspector and load via _spectra_inspector.html.  spectra/core.js
-   ships some helper modules (mol-style for the embed handle's
-   style normaliser, mol-viewer for the embed mount target lookup)
-   because the same core.js file IS shared with /results.  On the
-   generator page these helpers cost ~10 KB each and never run
-   anything that needs the full embed stack.  Phase 5e B4
-   (2026-06-04) confirmed this asymmetry is intentional. #}
 {# molbuilder-runtime.js MUST load before any other molbuilder script.
    Defines window.molbuilder.runtime (register/whenReady).  See
    design.md "Module init contract". #}
@@ -30,157 +28,157 @@
 {% include "_app_header.html" %}
 {% include "_projects_sidebar.html" %}
 
-<main class="spectra-grid">
+<!-- ============================================================
+     Spectrum-calculation tab — three-card vertical workflow:
+       1. Inspect structure (viewer + Load-from-sidebar)
+       2. Parameters (schema-driven form)
+       3. Generate (action + Issues + script preview)
 
-  <!-- ================================================================
-       LEFT column: INPUT  (structure + parameters + generate)
-       ================================================================ -->
-  <section class="card card-input">
+     Mirrors the Structure-Optimization tab (templates/index.html)
+     post-task-#295: same .app-grid container, .card-viewer chrome,
+     vertical flow.  Pre-task-#296 the page lived in a bespoke
+     two-column .spectra-grid with ~600 LoC of spectra-specific
+     CSS tokens redefining what page-shell + form-schema already
+     provide; that came back as the source of the "cramped" feel
+     the user flagged.  The new layout reuses shared chrome.
+============================================================ -->
+<main class="app-grid">
 
-    <!-- ── 1. Structure ──────────────────────────── -->
-    <div class="card-section">
-      <header class="section-header">
-        <h2 class="step-num"><span class="step-dot">1</span> Structure</h2>
-      </header>
-      <label class="field-block" for="structure-text">
-        <span class="field-label">Structure coordinates (XYZ or PDB)</span>
-        <textarea id="structure-text" rows="6"
-                  placeholder="Paste an XYZ or PDB block, or pick a .xyz/.pdb file in the Projects sidebar."></textarea>
-      </label>
-      <span id="xyz-status" class="status"></span>
-    </div>
-
-    <!-- ── 2. Parameters ─────────────────────────── -->
-    <div class="card-section">
-      <header class="section-header">
-        <h2 class="step-num"><span class="step-dot">2</span> Parameters</h2>
-        <p class="section-hint">
-          Defaults work for most cases.  Hover any label for the
-          per-field help.  When done, click <strong>Generate</strong>
-          in the right column.
-        </p>
-      </header>
-      <!-- Schema-rendered fieldsets land inside .param-grid so the
-           auto-fit grid lays them out responsively (same pattern
-           the Build tab uses for SIESTA / PySCF panels). -->
-      <div id="spectra-form-container" class="param-grid">
-        <p class="status">Loading form schema&hellip;</p>
-      </div>
-    </div>
-  </section><!-- /.card-input -->
-
-  <!-- ================================================================
-       RIGHT column: OUTPUT  (issues, script, results)
-       ================================================================ -->
-  <section class="card card-output">
-
-    <!-- ── Generate (action + Methods preview) ──────
-         Lives in the OUTPUT column on purpose: the action sits
-         right next to the artifacts it produces (Issues panel +
-         Generated-script preview below).  In two-column mode the
-         Generate button is at the top of the right column, paired
-         with the Issues window; in single-column mode it lands in
-         the natural flow between Parameters and Issues. -->
-    <div class="card-section">
-      <header class="section-header">
-        <h2>Generate</h2>
-        <p class="section-hint">
-          Outputs:
-          frequencies in <strong>cm⁻¹</strong>,
-          Raman activities in <strong>Å⁴ / amu</strong>
-          (Placzek 45 a² + 7 γ²),
-          MO energies in <strong>Hartree</strong>.
-          Two normal-mode forms are stored per mode:
-          <code>eigenvector_canonical</code> (mass-weighted,
-          Σ&nbsp;m·|L|²&nbsp;=&nbsp;1; for post-hoc Raman / IR
-          re-computation) and <code>eigenvector_display</code>
-          (max(|L|)&nbsp;=&nbsp;1; for 3D animation).
-        </p>
-      </header>
-      <div class="inline-row primary-actions">
-        <button id="generate-btn" class="primary" type="button">
-          Generate <code>spectra.py</code>
-        </button>
-        <button id="methods-preview-btn" type="button">
-          Show Methods text
-        </button>
-        <span id="generate-status" class="status"></span>
-      </div>
-      <details class="prior-row">
-        <summary>Resume from a prior run (optional)</summary>
-        <p class="hint">
-          Point at an existing <code>&lt;job&gt;.spectra.json</code>
-          to enable the top-N / threshold mode selectors (they need
-          Raman activities that the prior run computed) and to skip
-          already-completed modes when resuming.  Leave empty for a
-          fresh job.
-        </p>
-        <input id="prior-path" type="text"
-               placeholder="/path/to/prev.spectra.json">
-      </details>
-    </div>
-
-    <!-- ── Issues (sits right below Generate so blocking errors
-            from configuration checks surface immediately after the
-            click) ── -->
-    <div class="card-section">
-      <header class="section-header">
-        <h2>Issues</h2>
-      </header>
-      <div id="issues-panel" class="issues-panel">
-        <p class="status muted">
-          No issues yet.  Click "Generate" to see configuration
-          checks.
-        </p>
-      </div>
-    </div>
-
-    <!-- ── Generated script ─────────────────────── -->
-    <div class="card-section">
-      <header class="section-header">
-        <h2>Generated script</h2>
-        <span id="script-summary" class="status muted"></span>
-      </header>
-      <div class="inline-row">
-        <button id="download-script-btn" type="button" disabled>
-          Download <code>spectra.py</code>
-        </button>
-        <button id="copy-script-btn" type="button" disabled>
-          Copy to clipboard
-        </button>
-        <!-- Span wrapper so title= surfaces on hover even when the
-             button is disabled (browsers don't dispatch hover on
-             disabled buttons).  See templates/index.html. -->
-        <span class="disabled-tip"
-              title="Saves spectra.py + .run.sh into the Projects sidebar's selected directory.  Requires both Generate to have run AND a project subdir to be selected (the button enables once both conditions hold).">
-          <button id="save-spectra-btn" type="button" disabled>
-            Save to current dir
-          </button>
+  <!-- ===================== 1. Inspect ===================== -->
+  <section class="card card-viewer">
+    <div class="viewer-header">
+      <h2>1. Inspect structure</h2>
+      <div class="viewer-info">
+        <span class="title" id="info-title">no structure loaded</span>
+        <span class="meta">
+          <b id="info-atoms">&mdash;</b> atoms
+          <span class="sep">&middot;</span>
+          <code id="info-formula">&mdash;</code>
         </span>
-        <span id="save-status" class="status"></span>
       </div>
-      <pre id="script-preview" class="script-preview"
-           aria-label="Generated spectra.py preview"></pre>
     </div>
+
+    {# Sole structure entry: pick a .xyz / .pdb in the Projects
+       sidebar and click Load.  Dblclick on the sidebar also
+       commits the same path (universal interaction model from
+       projects-sidebar.md § 6).  Matches the entry-point on
+       /structure-optimization verbatim. #}
+    <div class="viewer-load-bar">
+      <button id="load-from-sidebar-btn" disabled
+        title="Load the file currently picked in the Projects sidebar (.xyz / .pdb).  Disabled when no loadable file is picked.">
+        Load from sidebar selection
+      </button>
+      <span id="load-source-readout" class="muted"></span>
+      <span id="load-status" class="status"></span>
+    </div>
+
+    <div class="viewer-wrap" id="viewer-wrap">
+      <div id="viewer"></div>
+    </div>
+
+    {# Hidden textarea: legacy DOM contract preserved for
+       lib/spectra/core.js's ``getStructureText`` lookup, which
+       still reads ``#structure-text.value`` on Generate.  The
+       Load-from-sidebar handler populates this textarea with the
+       fetched bytes so the existing core.js code path keeps
+       working unchanged.  Retiring the lookup is a follow-up
+       cleanup; the visible UI is the viewer / load button. #}
+    <textarea id="structure-text" hidden></textarea>
+  </section>
+
+  <!-- ===================== 2. Parameters ===================== -->
+  <section class="card" id="parameters-card">
+    <h2>2. Parameters</h2>
+    <p class="hint">
+      Defaults work for most cases.  Hover any label for the
+      per-field help.  When done, click <strong>Generate</strong>
+      in the panel below.
+    </p>
+    {# Schema-rendered fieldsets land inside .param-grid so the
+       auto-fit grid lays them out responsively (same pattern the
+       Optimization tab uses for SIESTA / PySCF panels). #}
+    <div id="spectra-form-container" class="param-grid">
+      <p class="status">Loading form schema&hellip;</p>
+    </div>
+  </section>
+
+  <!-- ===================== 3. Generate ===================== -->
+  <section class="card" id="generate-card">
+    <h2>3. Generate</h2>
+    <p class="hint">
+      Outputs:
+      frequencies in <strong>cm⁻¹</strong>,
+      Raman activities in <strong>Å⁴ / amu</strong>
+      (Placzek 45&nbsp;a²&nbsp;+&nbsp;7&nbsp;γ²),
+      MO energies in <strong>Hartree</strong>.
+      Two normal-mode forms are stored per mode:
+      <code>eigenvector_canonical</code> (mass-weighted,
+      Σ&nbsp;m·|L|²&nbsp;=&nbsp;1; for post-hoc Raman / IR
+      re-computation) and <code>eigenvector_display</code>
+      (max(|L|)&nbsp;=&nbsp;1; for 3D animation).
+    </p>
+
+    <div class="inline-row primary-actions">
+      <button id="generate-btn" class="primary" type="button">
+        Generate <code>spectra.py</code>
+      </button>
+      <button id="methods-preview-btn" type="button">
+        Show Methods text
+      </button>
+      <span id="generate-status" class="status"></span>
+    </div>
+
+    <details class="prior-row">
+      <summary>Resume from a prior run (optional)</summary>
+      <p class="hint">
+        Point at an existing <code>&lt;job&gt;.spectra.json</code>
+        to enable the top-N / threshold mode selectors (they need
+        Raman activities that the prior run computed) and to skip
+        already-completed modes when resuming.  Leave empty for a
+        fresh job.
+      </p>
+      <input id="prior-path" type="text"
+             placeholder="/path/to/prev.spectra.json">
+    </details>
+
+    <h3>Issues</h3>
+    <div id="issues-panel" class="issues-panel">
+      <p class="status muted">
+        No issues yet.  Click "Generate" to see configuration
+        checks.
+      </p>
+    </div>
+
+    <h3>Generated script</h3>
+    <div class="inline-row">
+      <span id="script-summary" class="status muted"></span>
+    </div>
+    <div class="inline-row">
+      <button id="download-script-btn" type="button" disabled>
+        Download <code>spectra.py</code>
+      </button>
+      <button id="copy-script-btn" type="button" disabled>
+        Copy to clipboard
+      </button>
+      {# Span wrapper so title= surfaces on hover even when the
+         button is disabled (browsers don't dispatch hover on
+         disabled buttons). #}
+      <span class="disabled-tip"
+            title="Saves spectra.py + .run.sh into the Projects sidebar's selected directory.  Requires both Generate to have run AND a project subdir to be selected (the button enables once both conditions hold).">
+        <button id="save-spectra-btn" type="button" disabled>
+          Save to current dir
+        </button>
+      </span>
+      <span id="save-status" class="status"></span>
+    </div>
+    <pre id="script-preview" class="script-preview"
+         aria-label="Generated spectra.py preview"></pre>
 
     {#- Inspect-side intentionally absent from /spectra (step 2.5
-        of the tab-merge lift, completed 2026-05-18).  The same
-        controls (load-results banner, results summary + chart,
-        modes table, mode-eigenvector viewer, ES bar diagram) now
-        live exclusively in ``_spectra_inspector.html`` and are
-        served by GET /partials/spectra-inspector to the /results
-        tab's inspector registry.
-
-        Why generate-only:  /spectra is the "I want to design a
-        spectra calculation" surface; /results is the "I want to
-        look at the output of a calculation" surface.  Conflating
-        both on /spectra meant we shipped two ways to inspect the
-        same file, with the same code path -- pure UX debt.
-
-        How to inspect a ``.spectra.json``: pick it in the Projects
-        sidebar; /results auto-dispatches to the spectra inspector.
-    -#}
-  </section><!-- /.card-output -->
+        of the tab-merge lift, completed 2026-05-18).  Pick a
+        ``.spectra.json`` in the Projects sidebar; /results
+        auto-dispatches to the spectra inspector. -#}
+  </section>
 </main>
 
 <!-- ================================================================
@@ -197,8 +195,18 @@
   <article id="methods-modal-body" class="methods-modal-body"></article>
 </dialog>
 
+{# Vendor + viewer stack — pulled in so the Inspect-structure card
+   can mount the same embedded 3Dmol viewer the Optimization tab
+   uses.  Same scripts the Optimization tab loads (templates/
+   index.html); 3Dmol's ~600 KB is heavier than the Spectra page
+   used to carry, but the visual parity the user asked for
+   requires the viewer. #}
+<script src="{{ url_for('static', filename='vendor/3Dmol-min.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-style.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/mol-viewer.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/mol-format.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/mol-axes.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/mol-viewer-embed.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/form-schema.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/xyz-io.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>

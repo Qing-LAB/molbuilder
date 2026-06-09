@@ -35,18 +35,17 @@ header .tagline {
     font-size: 0.95rem;
 }
 
-/* ---- Two-column layout ---- */
-
-.spectra-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
-    gap: 1.5rem;
-    padding: 1.25rem 1.5rem 2rem;
-    align-items: start;
-}
-@media (max-width: 1100px) {
-    .spectra-grid { grid-template-columns: 1fr; }
-}
+/* ---- Layout ---------------------------------------------------
+ * The /spectra page's bespoke ``.spectra-grid`` two-column layout
+ * was retired 2026-06-09 (task #296).  The page now uses the
+ * shared ``.app-grid`` vertical-flow container from
+ * static/style.css so the visual rhythm matches the
+ * /structure-optimization tab (the user's reference design).
+ * The rules below stay because the spectra inspector partial
+ * (_spectra_inspector.html, mounted on /results) reuses
+ * .card-section / .section-header / .field-block / etc. and we
+ * don't want the inspector's chrome to regress when /spectra's
+ * layout changes. */
 
 /* ---- Card / section model ----
  *
