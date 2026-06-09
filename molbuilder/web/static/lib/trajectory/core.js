@@ -148,13 +148,17 @@
     // addModelsAsFrames / per-frame redraw loop.
     const _handle = window.molbuilder.viewer.embed($("viewer"), {
         style: { rep: "stick", radiusScale: 1.0 },
-        // 2-atom distance pick for the Inspect panel.  ``halo: true``
-        // draws the yellow sphere overlay; ``label: false`` keeps the
+        // Up-to-3 pick for the Inspect panel (task #299): 1 atom →
+        // xyz, 2 atoms → distance, 3 atoms → bond angle with the
+        // 2nd click as the vertex (the shared
+        // lib/selection/measurements.js computes all three from the
+        // current frame's coords).  ``halo: true`` draws the
+        // yellow sphere overlay; ``label: false`` keeps the
         // viewer uncluttered (the Inspect panel shows the readout).
         // Atom-list row clicks share the embed's pick state via
         // handle.setPickedIndices (no separate halo path).
         pick:  {
-            mode:  "pair",
+            mode:  "triple",
             halo:  true,    // accepts boolean per § 3.8 after #246 B7
             label: false,
             onPick() {
@@ -517,55 +521,72 @@
         return _handle ? _handle.getPickedIndices() : [];
     }
 
+    // The frame coords are stored as ``[element, x, y, z]`` quads;
+    // the shared measurements module wants ``[[x,y,z], …]`` and an
+    // optional atomsMeta array with element labels.  Cheap to build
+    // per-frame — n_atoms is small (single-digit hundreds for
+    // typical inputs) and updateInspectPanel runs at most once per
+    // displayed frame.
+    function _framePositions(frame) {
+        const out = new Array(frame.length);
+        for (let i = 0; i < frame.length; i++) {
+            const r = frame[i];
+            out[i] = r ? [r[1], r[2], r[3]] : null;
+        }
+        return out;
+    }
+    function _frameAtomsMeta(frame) {
+        const out = new Array(frame.length);
+        for (let i = 0; i < frame.length; i++) {
+            const r = frame[i];
+            out[i] = { index: i, element: r ? (r[0] || "?") : "?" };
+        }
+        return out;
+    }
+
     function updateInspectPanel() {
         const pa = _picks();
         const frame = (state.data && state.data.frames[state.currentFrame])
                     || [];
-        const fmt = (idx) => {
-            const r = frame[idx];
-            if (!r) return "—";
-            // Display 1-based to match the Overlays tab's index labels
-            // and the atom-list table; internal idx stays 0-based.
-            return "#" + (idx + 1) + " " + r[0]
-                + "  (" + r[1].toFixed(3)
-                + ", " + r[2].toFixed(3)
-                + ", " + r[3].toFixed(3) + ") Å";
-        };
-        const aCell = $("inspect-a");
-        const bCell = $("inspect-b");
-        const dCell = $("inspect-d");
-        if (!aCell || !bCell || !dCell) return;
-        aCell.textContent = pa[0] != null ? fmt(pa[0]) : "—";
-        bCell.textContent = pa[1] != null ? fmt(pa[1]) : "—";
-        if (pa.length === 2) {
-            const a = frame[pa[0]];
-            const b = frame[pa[1]];
-            if (a && b) {
-                const dx = a[1] - b[1];
-                const dy = a[2] - b[2];
-                const dz = a[3] - b[3];
-                const d = Math.sqrt(dx*dx + dy*dy + dz*dz);
-                dCell.textContent = d.toFixed(4) + " Å";
-            } else {
-                dCell.textContent = "—";
-            }
+        const readout = $("inspect-measurement");
+        if (!readout) return;
+        const meas = window.molbuilder
+                  && window.molbuilder.selection
+                  && window.molbuilder.selection.measurements;
+        let display = null;
+        if (meas && pa.length > 0) {
+            const positions = _framePositions(frame);
+            const atomsMeta = _frameAtomsMeta(frame);
+            // The embed's pickedIndices array is already in click
+            // order — same semantics as the Modify-tab store's
+            // pickOrder.  Pass it through both as the selection
+            // (the module dedups + bails on 4+) AND as the
+            // pickOrder so the angle vertex is the 2nd click.
+            const result = meas.compute(pa, atomsMeta, positions, pa);
+            if (result) display = result;
+        }
+        if (display) {
+            readout.hidden = false;
+            readout.dataset.kind = display.kind;
+            readout.textContent = display.display;
         } else {
-            dCell.textContent = "—";
+            readout.hidden = true;
+            readout.textContent = "";
         }
         const hint  = $("inspect-hint");
-        const table = $("inspect-table");
         const btn   = $("inspect-clear");
         if (hint)  hint.hidden  = pa.length > 0;
-        if (table) table.hidden = pa.length === 0;
         if (btn)   btn.disabled = pa.length === 0;
     }
 
     // Toggle pick state for ``idx`` (0-based atom index): drop if
-    // already picked, append if new; cap at 2 picks total (a third
-    // pick drops the oldest).  Drives the atom-list row click path;
-    // the embed handles the viewer-click path natively via its
-    // pick.mode = "pair" wiring.  Pushes the new state into the
-    // embed via setPickedIndices so halos stay in sync.
+    // already picked, append if new; cap at 3 picks total (a fourth
+    // pick drops the oldest, sliding the FIFO window forward).
+    // Drives the atom-list row click path; the embed handles the
+    // viewer-click path natively via its pick.mode = "triple"
+    // wiring (same cap, same FIFO semantics — kept in lock-step).
+    // Pushes the new state into the embed via setPickedIndices so
+    // halos stay in sync.
     function togglePickFromRow(idx) {
         if (!_handle) return;
         const pa = _handle.getPickedIndices();
@@ -573,7 +594,7 @@
         if (existing !== -1) {
             pa.splice(existing, 1);
         } else {
-            if (pa.length >= 2) pa.shift();
+            if (pa.length >= 3) pa.shift();
             pa.push(idx);
         }
         _handle.setPickedIndices(pa);

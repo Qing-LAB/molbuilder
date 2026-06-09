@@ -53,7 +53,7 @@
         "stick", "ball-and-stick", "sphere", "line",
     ];
     const VALID_AXES_MODES   = ["auto", "cartesian", "cell"];
-    const VALID_PICK_MODES   = ["none", "single", "pair", "multi"];
+    const VALID_PICK_MODES   = ["none", "single", "pair", "triple", "multi"];
     const VALID_LABEL_FORMS  = ["index", "name", "element"];
 
     /* ------------------------------------------------------------ */
@@ -2305,6 +2305,14 @@
             next = state.pickedIndices.length < 2
                 ? state.pickedIndices.concat([idx])
                 : [state.pickedIndices[1], idx];
+        } else if (mode === "triple") {
+            // Click 1, 2, 3 → all kept (drives the 1-2 / 2-3 bond
+            // angle readout, vertex = 2nd click).  Click 4 drops
+            // the oldest, sliding the window forward — same FIFO
+            // shape as "pair".
+            next = state.pickedIndices.length < 3
+                ? state.pickedIndices.concat([idx])
+                : state.pickedIndices.slice(1).concat([idx]);
         } else {
             // multi
             next = state.pickedIndices.concat([idx]);

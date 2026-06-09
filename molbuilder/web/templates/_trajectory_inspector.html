@@ -125,9 +125,11 @@
 
     <div class="ctab-panel" data-panel="inspect" role="tabpanel">
       <p class="hint" id="inspect-hint">
-        Click two atoms — in the viewer or in the list below — to
-        measure their distance.  Updates per frame as the
-        trajectory plays.
+        Click 1, 2, or 3 atoms — in the viewer or in the list
+        below — to read xyz, distance, or bond angle.  Three
+        atoms in click order: ∠A–B–C with B (the second click)
+        at the vertex.  Updates per frame as the trajectory
+        plays.
       </p>
       <div class="inspect-list-wrap">
         <table class="inspect-list" aria-label="Atom list">
@@ -143,13 +145,14 @@
           <tbody id="inspect-atom-list-body"></tbody>
         </table>
       </div>
-      <table id="inspect-table" class="inspect-table" hidden>
-        <tbody>
-          <tr><th>A</th>     <td id="inspect-a">—</td></tr>
-          <tr><th>B</th>     <td id="inspect-b">—</td></tr>
-          <tr><th>|A&minus;B|</th><td id="inspect-d" class="inspect-distance">—</td></tr>
-        </tbody>
-      </table>
+      {# One-line measurement readout — xyz / distance / angle.
+         Filled by trajectory/core.js's updateInspectPanel via the
+         shared lib/selection/measurements.js (task #299, 2026-06-08
+         — replaces the legacy two-row A/B/|A-B| table when the
+         pick cap rose from 2 to 3). #}
+      <div id="inspect-measurement"
+           class="inspect-measurement selection-measurement-overlay"
+           hidden></div>
       <button id="inspect-clear" class="full-btn" disabled
         title="Drop the current atom picks.&#10;Loading a new file or trajectory also resets the selection.">
         Clear selection

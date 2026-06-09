@@ -18,6 +18,7 @@
    the cost is small + the alternative (lazy-loading the CSS on
    inspector mount) introduces a FOUC. -#}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/trajectory-inspector.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/selection/measurement-chip.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/mol-viewer-embed.css') }}">
 {# Spectra inspector styles.  When the spectra-inspector lift lands
    (#58 step 2.4), lib/inspectors/spectra.js fetches
@@ -147,6 +148,9 @@
 <script src="{{ url_for('static', filename='lib/mol-viewer-embed.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/xyz-io.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/path-utils.js') }}"></script>
+{# Shared xyz / distance / angle math — read by trajectory + structure
+   inspectors below (and by /molbuilder; same pure module). #}
+<script src="{{ url_for('static', filename='lib/selection/measurements.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/trajectory/core.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/spectra/core.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/inspectors/registry.js') }}"></script>
