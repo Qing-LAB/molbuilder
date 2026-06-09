@@ -3571,43 +3571,48 @@ def test_watch_inspect_atom_list_populates(page, flask_server, watch_log_file):
 def test_watch_inspect_row_click_picks_atom(page, flask_server, watch_log_file):
     """Clicking a row in the Inspect atom list adds the atom to the
     pick list (visible via the row's .is-selected class) and the
-    distance row shows '—' until a second atom is picked."""
+    chip shows the atom's xyz readout (task #299: 1-atom picks
+    surface xyz before the user adds a second click)."""
     _load_watch_log(page, flask_server, watch_log_file)
     page.locator(".ctab[data-tab='inspect']").click()
     page.locator("#inspect-atom-list-body tr").nth(0).click()
     page.wait_for_selector("#inspect-atom-list-body tr.is-selected")
-    # The hint goes away; the table becomes visible.
+    # The hint goes away; the measurement chip becomes visible.
     page.wait_for_function(
-        "() => !document.getElementById('inspect-table').hidden"
+        "() => !document.getElementById('inspect-measurement').hidden"
     )
-    a_cell = page.locator("#inspect-a").inner_text()
-    assert a_cell.startswith("#1 O"), a_cell
-    # No distance yet (only one pick).
-    assert page.locator("#inspect-d").inner_text() == "—"
+    text = page.locator("#inspect-measurement").inner_text()
+    # 1-atom readout: "O #1 — (x, y, z) Å".  Kind is "xyz".
+    assert text.startswith("O #1"), text
+    assert "Å" in text
+    assert page.evaluate(
+        "() => document.getElementById('inspect-measurement').dataset.kind"
+    ) == "xyz"
 
 
 def test_watch_inspect_distance_renders_with_two_picks(
         page, flask_server, watch_log_file):
     """Picking two atoms computes |A-B| and renders it in the
-    distance row.  Water's O and first H sit (0,0,0) and (0.957,0,0)
-    so the distance is 0.957 A."""
+    chip.  Water's O and first H sit (0,0,0) and (0.957,0,0) so
+    the distance is 0.957 A."""
     _load_watch_log(page, flask_server, watch_log_file)
     page.locator(".ctab[data-tab='inspect']").click()
     page.locator("#inspect-atom-list-body tr").nth(0).click()  # O
     page.locator("#inspect-atom-list-body tr").nth(1).click()  # H1
     page.wait_for_function(
-        "() => document.getElementById('inspect-d').textContent !== '—'"
+        "() => document.getElementById('inspect-measurement')"
+        "      .dataset.kind === 'distance'"
     )
-    d_text = page.locator("#inspect-d").inner_text()
-    # Format: "0.9570 Å"
-    assert d_text.startswith("0.957"), d_text
-    assert "Å" in d_text
+    text = page.locator("#inspect-measurement").inner_text()
+    # Format: "|O #1 – H #2| = 0.9570 Å"
+    assert "O #1" in text and "H #2" in text, text
+    assert "0.957" in text and "Å" in text, text
 
 
 def test_watch_inspect_clear_button_drops_picks(
         page, flask_server, watch_log_file):
-    """Clear-selection drops both picks; the hint reappears, the
-    table hides, and the Clear button disables again."""
+    """Clear-selection drops every pick; the hint reappears, the
+    chip hides, and the Clear button disables again."""
     _load_watch_log(page, flask_server, watch_log_file)
     page.locator(".ctab[data-tab='inspect']").click()
     page.locator("#inspect-atom-list-body tr").nth(0).click()
@@ -3617,9 +3622,36 @@ def test_watch_inspect_clear_button_drops_picks(
     btn.click()
     page.wait_for_function(
         "() => !document.getElementById('inspect-hint').hidden"
-        " && document.getElementById('inspect-table').hidden"
+        " && document.getElementById('inspect-measurement').hidden"
     )
     assert btn.is_disabled()
+
+
+def test_watch_inspect_three_atoms_shows_angle_with_middle_click_as_vertex(
+        page, flask_server, watch_log_file):
+    """Task #299: bumping the pick cap from 2 to 3 lets the user
+    read a bond angle directly.  Click order [O, H1, H2] (the
+    H is the second click) would have O at the vertex — water's
+    H–O–H angle is ~104.5°.  Pin both the angle kind and the
+    'H – O – H' shape."""
+    _load_watch_log(page, flask_server, watch_log_file)
+    page.locator(".ctab[data-tab='inspect']").click()
+    page.locator("#inspect-atom-list-body tr").nth(1).click()  # H1
+    page.locator("#inspect-atom-list-body tr").nth(0).click()  # O (vertex)
+    page.locator("#inspect-atom-list-body tr").nth(2).click()  # H2
+    page.wait_for_function(
+        "() => document.getElementById('inspect-measurement')"
+        "      .dataset.kind === 'angle'"
+    )
+    text = page.locator("#inspect-measurement").inner_text()
+    # The vertex (O) sits between the two H labels in the display.
+    assert "O #1" in text and text.count("H #") == 2, text
+    import re
+    m = re.search(r"=\s*([0-9.]+)°", text)
+    assert m, f"expected an angle value in {text!r}"
+    assert 100.0 <= float(m.group(1)) <= 110.0, (
+        f"H-O-H angle should be ~104.5°, got {m.group(1)}° in {text!r}"
+    )
 
 
 # --------------------------------------------------------------------- #
