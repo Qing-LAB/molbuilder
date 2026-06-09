@@ -144,9 +144,8 @@ header code {
 
 /* ``.card { ... }`` removed 2026-05-19; the rules were byte-for-byte
  * identical to lib/page-shell.css's .card.  Per-card overrides below
- * (.col .card, .card h2, .card h2 small, etc.) stay -- they layer
- * page-specific behaviour on top of the shared base. */
-.col .card { margin: 0; }    /* card inside col-viewer */
+ * (.card h2, .card h2 small, etc.) stay -- they layer page-specific
+ * behaviour on top of the shared base. */
 
 .card h2 {
     margin: 0 0 10px;
@@ -230,7 +229,6 @@ button:disabled {
     opacity: 0.6;
 }
 button.primary,
-.build-row button,
 #generate-fdf,
 #generate-pyscf {
     background: var(--accent-strong);
@@ -239,7 +237,6 @@ button.primary,
     font-weight: 500;
 }
 button.primary:hover:not(:disabled),
-.build-row button:hover:not(:disabled),
 #generate-fdf:hover:not(:disabled),
 #generate-pyscf:hover:not(:disabled) {
     background: var(--accent);
@@ -252,84 +249,6 @@ button.primary:disabled,
     border-color: var(--border-strong);
     color: var(--text-muted);
 }
-
-/* ---- Build row ---- */
-
-.build-row {
-    display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
-}
-.build-row label {
-    display: inline-flex; gap: 6px; align-items: center;
-    font-size: 0.92rem;
-    color: var(--text-secondary);
-}
-.build-row input[type="text"] { min-width: 220px; flex: 1; }
-
-.nucleic-row {
-    display: flex; gap: 12px; flex-wrap: wrap; align-items: center;
-    margin-top: 10px; padding-top: 10px;
-    border-top: 1px dashed var(--border-dashed);
-    font-size: 0.88rem;
-    color: var(--text-secondary);
-}
-/* 2026-05-28 [hidden]-attribute audit: #nucleic-options carries the
- * ``hidden`` attribute (revealed only when DNA/RNA is the picked
- * source), but ``display: flex`` above ties with the UA ``[hidden]``
- * rule and wins.  Without this guard the row was visible at page
- * load for every source mode. */
-.nucleic-row[hidden] { display: none; }
-.nucleic-row label { display: inline-flex; gap: 6px; align-items: center; }
-
-/* ---- Build/Load source-mode toggle ----
-   Two radio "tabs" at the top of the Build card; the two underlying
-   panels (#build-panel and #load-panel) are mutually exclusive. */
-.source-mode-row {
-    display: flex;
-    gap: 6px;
-    margin-bottom: 14px;
-    padding: 4px;
-    background: var(--bg-input);
-    border: 1px solid var(--border-strong);
-    border-radius: 8px;
-}
-.source-mode-opt {
-    flex: 1;
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    color: var(--text-secondary);
-    user-select: none;
-    transition: background 0.12s ease, color 0.12s ease;
-}
-.source-mode-opt:hover { background: var(--bg-input-focus); }
-.source-mode-opt:has(input:checked) {
-    background: var(--bg-card);
-    color: var(--text-primary);
-    border: 1px solid var(--accent);
-    /* Cancel out the new 1px border so the row stays the same height. */
-    padding: 5px 11px;
-}
-.source-mode-opt input[type="radio"] { margin: 0; }
-.source-mode-opt code {
-    background: transparent;
-    padding: 0;
-    font-size: 0.85em;
-}
-
-/* The two panels swap via the [hidden] attribute -- no animation
-   (snappy is more important than fancy for this kind of input
-   gate). */
-.source-panel { display: block; }
-.source-panel[hidden] { display: none; }
-
-.load-controls {
-    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
-}
-#load-panel .hint { margin: 6px 0; color: var(--text-secondary); }
 
 /* ---- Status messages ---- */
 
@@ -457,12 +376,17 @@ button.primary:disabled,
  * range (never tiny, never dominates the viewport).  We deliberately
  * render the canvas with a neutral background so the dark UI doesn't
  * shine through (chemistry viewers read better against white).  */
+/* Post-295 the Optimization tab is single-column, so the 560 px
+ * viewer cap that worked inside the old 2-column grid leaves the
+ * canvas floating in whitespace inside the card.  The cap stretches
+ * to the full content width (clamped to a comfortable 56vh tall
+ * square) so the viewer fills the Inspect card on wide screens
+ * without growing taller than half the viewport. */
 .viewer-wrap {
     width: 100%;
-    max-width: 560px;
     aspect-ratio: 1 / 1;
     min-height: 320px;
-    max-height: min(60vh, 560px);
+    max-height: 56vh;
     margin: 0 auto;
     overflow: hidden;
     border: 1px solid var(--border-strong);
@@ -473,46 +397,10 @@ button.primary:disabled,
 }
 #viewer { width: 100%; height: 100%; position: relative; }
 
-.viewer-controls {
-    display: flex; flex-direction: column;
-    gap: 2px;
-    font-size: 0.88rem;
-}
-.viewer-controls details summary {
-    cursor: pointer;
-    color: var(--accent);
-    padding: 4px 0;
-    user-select: none;
-    list-style: revert;
-}
-.viewer-controls details summary:hover { color: var(--accent-hover); }
-.viewer-controls .control-row {
-    display: flex; flex-wrap: wrap; gap: 12px; align-items: center;
-    padding: 8px 0 4px;
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-}
-.viewer-controls .control-row label {
-    display: inline-flex; align-items: center; gap: 5px;
-}
-.viewer-controls .control-row input[type="range"] {
-    width: 100px; vertical-align: middle;
-}
-.viewer-controls .download-row {
-    border-top: 1px dashed var(--border-dashed);
-    padding-top: 8px;
-}
-.viewer-controls .dl-label {
-    color: var(--text-muted);
-    margin-right: 4px;
-}
-.viewer-controls .download-row button {
-    padding: 4px 14px; font-size: 0.85rem;
-}
-
-@media (max-width: 1100px) {
-    .viewer-wrap { height: 420px; }
-}
+/* ``.viewer-controls`` block (the bespoke style/labels/axes details
+ * controls under the canvas) was retired 2026-06-02 in favour of the
+ * shared mol-viewer-embed knob bar; the CSS lived on here until
+ * task #297 removed it as part of the optimization-tab cleanup. */
 
 /* ---- Compatibility-locked fields ----
  *

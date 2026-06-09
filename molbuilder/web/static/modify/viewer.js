@@ -1017,10 +1017,15 @@
             // the right folder; projects-sidebar's ``state.js``
             // also reads ``molbuilder.current_dir``.
             const slash = targetPath.lastIndexOf("/");
-            if (slash > 0) {
+            if (slash >= 0) {
+                // Root-level paths (``/foo.xyz``) collapse to ``/``;
+                // anything deeper keeps its parent.  ``slash > 0``
+                // (the previous guard) silently dropped the dir for
+                // root-level files, leaving the sidebar pinned at
+                // the previous folder.
                 sessionStorage.setItem(
                     "molbuilder.current_dir",
-                    targetPath.slice(0, slash));
+                    targetPath.slice(0, slash) || "/");
             }
         } catch (e) {
             setEditStatus(

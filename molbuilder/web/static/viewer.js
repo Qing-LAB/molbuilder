@@ -153,202 +153,19 @@
         pyscf:  debounce(() => refreshPreflight("pyscf"),  250),
     };
 
-    function placeholderFor(kind) {
-        switch (kind) {
-            case "peptide": return "ARNDC  or  AR[SEP]C";
-            // Sequences are read 5'->3' by default; explicit
-            // 5'-...-3' or 3'-...-5' labels are accepted.
-            case "dna":     return "ATGCATGCAT  or  5'-ATGC-3'";
-            case "rna":     return "AUGCAUGCAU  or  5'-AUGC-3'";
-            case "smiles":  return "c1ccccc1   or  Sc1ccc(S)cc1";
-            case "name":    return "benzene   or  1,4-benzenedithiol";
-            default:        return "";
-        }
-    }
+    // The Build form (kind / input-text / backend / form / terminal /
+    // add-hydrogens / source-mode toggle) was retired on 2026-06-08
+    // with task #295 — the Optimization tab is file-driven now, and
+    // structures arrive via the Projects sidebar (the "Load from
+    // sidebar selection" button + mount-time sessionStorage handoff
+    // wired further below).  The placeholderFor / toggleNucleicOptions
+    // / applySourceMode / BACKEND_LABEL / build click / load-file
+    // upload helpers that lived in this block were deleted in the
+    // same pass; the Molbuilder tab carries the equivalent generators
+    // (see molbuilder/web/static/modify/viewer.js).
 
-    // The Build form (kind/input-text/backend/form/terminal/etc.) was
-    // retired 2026-06-08 (task #295) — the optimization tab is now
-    // file-driven; structures come from the project sidebar.  The
-    // helpers below stay so a test/embed that mounts the legacy form
-    // markup gets the same behaviour, but they no-op in production
-    // because the elements don't exist.
-    function toggleNucleicOptions() {
-        const kindEl = $("kind");
-        if (!kindEl) return;
-        const k = kindEl.value;
-        const opts = $("nucleic-options");
-        if (opts) opts.hidden = !(k === "dna" || k === "rna");
-        const formEl = $("form");
-        if (formEl) {
-            if (k === "rna" && formEl.value === "B") formEl.value = "A";
-            if (k === "dna" && formEl.value === "A") formEl.value = "B";
-        }
-    }
-    if ($("kind")) {
-        $("kind").addEventListener("change", (e) => {
-            const it = $("input-text");
-            if (it) it.placeholder = placeholderFor(e.target.value);
-            toggleNucleicOptions();
-        });
-        if ($("input-text"))
-            $("input-text").placeholder = placeholderFor($("kind").value);
-        toggleNucleicOptions();
-    }
-
-    // ----- Source-mode toggle (Build vs Load) -----
-    //
-    // The two input paths are mutually exclusive: the user is
-    // EITHER entering a sequence/SMILES/name to build a structure,
-    // OR loading an external .xyz / .pdb file.  Both panels can't
-    // be visible at the same time -- having two competing inputs
-    // (sequence vs file) on screen confuses the "did the wrong one
-    // just fire?" diagnosis when something fails.
-    //
-    // Switching modes does NOT clear state.xyz: a structure built
-    // moments ago stays in the viewer even after the user flips to
-    // load mode to compare it with a saved file.  Switching just
-    // changes what the next "produce a structure" action does.
-    function applySourceMode(mode) {
-        const bp = $("build-panel"); if (!bp) return;
-        const buildOn = (mode === "build");
-        bp.hidden = !buildOn;
-        const lp = $("load-panel");
-        if (lp) lp.hidden = buildOn;
-        if (buildOn) { setStatus("load-status",  ""); }
-        else         { setStatus("build-status", ""); }
-    }
-    document.querySelectorAll('input[name="source-mode"]').forEach(r => {
-        r.addEventListener("change", (e) => applySourceMode(e.target.value));
-    });
-    if ($("build-panel")) {
-        applySourceMode(
-            (document.querySelector('input[name="source-mode"]:checked') || {}).value
-            || "build"
-        );
-    }
-    if ($("input-text")) {
-        $("input-text").addEventListener("keydown", (e) => {
-            if (e.key === "Enter") $("build-btn").click();
-        });
-    }
-
-    // Map the canonical (lowercase) backend identifier returned by
-    // /api/backends to the user-facing label.  X3DNA is the product
-    // name from x3dna.org -- not "3DNA" or "threedna".  Used for the
-    // dropdown's "auto" relabel, the hint line, and the post-build
-    // "via <name>" message.
-    const BACKEND_LABEL = {
-        threedna: "X3DNA",
-        amber:    "Amber",
-        rdkit:    "RDKit",
-    };
-    const labelFor = (name) => BACKEND_LABEL[name] || name;
-
-    // Detect installed backends, grey out unavailable ones in the
-    // dropdown, label the "auto" option with the resolved backend
-    // name so the user sees what would actually run, and surface a
-    // visible warning in #backend-hint when X3DNA (the highest-
-    // quality backend) isn't installed.  One-shot fetch on page load.
-    fetch("/api/backends").then(r => r.json()).then(r => {
-        if (!r || !r.ok) return;
-        const sel = $("backend");
-        for (const opt of sel.options) {
-            const name = opt.value;
-            if (name === "auto") {
-                if (r.auto_name) {
-                    opt.text = `auto  (→ ${labelFor(r.auto_name)})`;
-                } else {
-                    opt.text = "auto  (no backend installed)";
-                    opt.disabled = true;
-                }
-                continue;
-            }
-            opt.disabled = !r.available[name];
-            if (!r.available[name]) {
-                opt.text = opt.text + "  (not installed)";
-            }
-        }
-        // Hint line below the dropdown -- always present so the user
-        // can read what's installed without expanding the dropdown.
-        const hint = $("backend-hint");
-        if (hint) {
-            const parts = [];
-            if (r.auto_name) {
-                parts.push(`auto → <b>${labelFor(r.auto_name)}</b>`);
-            } else {
-                parts.push("no nucleic-acid backend is installed");
-            }
-            if (!r.available.threedna) {
-                parts.push(
-                    "X3DNA not detected (canonical B/A/Z helices unavailable; " +
-                    'install from <a href="http://x3dna.org/" target="_blank" rel="noopener">x3dna.org</a> ' +
-                    "to enable)"
-                );
-            }
-            hint.innerHTML = parts.join(" &middot; ");
-            hint.className = r.auto_name && r.available.threedna
-                ? "status ok"
-                : "status warn";
-        }
-    }).catch(() => { /* /api/backends optional */ });
-
-    // ----- 1. Build ---------------------------------------------------
-    if ($("build-btn")) $("build-btn").addEventListener("click", async () => {
-        const kind = $("kind").value;
-        const input = $("input-text").value.trim();
-        if (!input) { setStatus("build-status", "Enter a sequence first.", "error"); return; }
-        setStatus("build-status", "Building…");
-
-        const body = { kind, input };
-        if (kind === "dna" || kind === "rna") {
-            body.backend  = $("backend").value;
-            body.form     = $("form").value;
-            body.terminal = $("terminal").value;
-            // Tri-state add_hydrogens select: "auto" / "on" / "off".
-            // Sent as a string; the build endpoint also accepts bool
-            // for legacy callers but the form posts the string form.
-            body.add_hydrogens        = $("add-hydrogens").value;
-            body.protonate_phosphates = $("protonate-phosphates").checked;
-        }
-        try {
-            const r = await fetch("/api/build/molecule", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body),
-            }).then(x => x.json());
-            if (!r.ok) {
-                setStatus("build-status", r.error || "Build failed.", "error");
-                return;
-            }
-            applyStructureResult(r);
-            // Include the backend that ran -- users picking "auto"
-            // need to know whether they got X3DNA, Amber, or RDKit
-            // because the geometry differs substantially (canonical
-            // helix vs extended chain vs folded conformer).
-            const via = r.backend_used
-                ? ` via ${labelFor(r.backend_used)}`
-                : "";
-            const built = `Built ${r.n_atoms}-atom structure${via}.`;
-            // Surface validation warnings from build-time geometry
-            // checks (most importantly H/heavy ratio when the user
-            // opted out of add_hydrogens for an X3DNA build).  Errors
-            // would have come back as r.ok === false above; here we
-            // only see warnings.
-            const warns = (r.issues || []).filter(i => i.severity === "warn");
-            if (warns.length) {
-                const tail = warns.map(i => i.message).join(" • ");
-                setStatus("build-status",
-                    `${built}  ⚠ ${tail}`, "warn");
-            } else {
-                setStatus("build-status", built, "ok");
-            }
-        } catch (e) {
-            setStatus("build-status", "Network error: " + e.message, "error");
-        }
-    });
-
-    // Take a structure response (either /api/build/molecule or /api/build/load) and
-    // populate the viewer + info panel + enable the FDF section.
+    // Take a structure response from /api/build/load and populate
+    // the viewer + info panel + enable the FDF section.
     // A new structure invalidates any previously-generated FDF / PySCF
     // outputs -- we clear those and disable their download buttons so
     // the user can't accidentally download stale text from the prior
@@ -626,38 +443,6 @@
         applyCompatibility();
     }
 
-    // ----- Load existing .xyz / .pdb ----------------------------------
-    if ($("load-file")) $("load-file").addEventListener("change", () => {
-        $("load-btn").disabled = !$("load-file").files.length;
-        setStatus("load-status", "");
-    });
-    if ($("load-btn")) $("load-btn").addEventListener("click", async () => {
-        const files = $("load-file").files;
-        if (!files.length) {
-            setStatus("load-status", "Pick a file first.", "error"); return;
-        }
-        const file = files[0];
-        setStatus("load-status", `Loading ${file.name}…`);
-        const fd = new FormData();
-        fd.append("file", file);
-        try {
-            const r = await fetch("/api/build/load", { method: "POST", body: fd })
-                            .then(x => x.json());
-            if (!r.ok) {
-                setStatus("load-status", r.error || "Load failed.", "error");
-                clearStructureInfo("load failed");
-                return;
-            }
-            applyStructureResult(r);
-            setStatus("load-status",
-                `Loaded ${r.n_atoms}-atom ${r.source_format.toUpperCase()} from ${file.name}.`,
-                "ok");
-        } catch (e) {
-            setStatus("load-status", "Network error: " + e.message, "error");
-            clearStructureInfo("load failed");
-        }
-    });
-
     // ----- Sidebar-driven loading (Projects sidebar -> Build) ------- //
     //
     // The Projects sidebar publishes its current pick via
@@ -814,6 +599,13 @@
                 setStatus("load-status",
                     `Loaded ${r.n_atoms}-atom ${ext.toUpperCase()} `
                     + `from ${filename}.`, "ok");
+                // Flip the load-bar readout to "Loaded: <name>" so
+                // the user sees the pick is in the viewer (not just
+                // selected in the sidebar).  Defined further below in
+                // the same scope; reachable via function hoisting.
+                if (typeof _refreshLoadButton === "function") {
+                    _refreshLoadButton();
+                }
             } catch (e) {
                 if (mySeq !== _sidebarLoadSeq) return;
                 setStatus("load-status",
@@ -870,11 +662,15 @@
             const loadable = _isLoadable(_candidatePath);
             btn.disabled = !loadable;
             if (readout) {
-                readout.textContent = loadable
-                    ? `Pick: ${_basename(_candidatePath)}`
-                    : (_candidatePath
-                        ? `Picked: ${_basename(_candidatePath)} (not loadable)`
-                        : "Pick a .xyz / .pdb in the Projects sidebar.");
+                const isLoaded = loadable
+                    && _sidebarLastFile === _candidatePath;
+                readout.textContent = isLoaded
+                    ? `Loaded: ${_basename(_candidatePath)}`
+                    : loadable
+                        ? `Selected: ${_basename(_candidatePath)}`
+                        : (_candidatePath
+                            ? `Selected: ${_basename(_candidatePath)} (not loadable)`
+                            : "Pick a .xyz / .pdb in the Projects sidebar.");
             }
         }
         _candidatePath = _initialFile;
@@ -1679,14 +1475,14 @@
     // survives same-tab navigations so the user's input isn't lost.
 
     // Static IDs that aren't part of the schema-driven SIESTA /
-    // PySCF forms but DO need session-storage persistence: the
-    // build-section inputs (kind, sequence, backend, etc.) and the
-    // Relaxation-stage preset selector (a UI shortcut, not a
-    // dataclass field).  All other persistent IDs are derived at
-    // save/restore time by walking the rendered schemas.
+    // PySCF forms but DO need session-storage persistence.  Post
+    // task-295 the Build form's kind / sequence / backend / form /
+    // terminal / add-hydrogens / protonate-phosphates inputs are
+    // gone, so the Relaxation-stage preset selector (a UI shortcut,
+    // not a dataclass field) is the only static survivor.  All
+    // other persistent IDs are derived at save/restore time by
+    // walking the rendered schemas.
     const STATIC_FORM_IDS = [
-        "kind", "input-text", "backend", "form", "terminal",
-        "add-hydrogens", "protonate-phosphates",
         "p-stage-preset",
     ];
 
@@ -1732,16 +1528,12 @@
             if (el.type === "checkbox") el.checked = saved[id];
             else el.value = saved[id];
         });
-        // Re-run nucleic toggle so the nucleic-options row reflects
-        // the restored kind value.
-        toggleNucleicOptions();
-        $("input-text").placeholder = placeholderFor($("kind").value);
     }
 
-    // Build-section restore can run synchronously since those fields
-    // are static HTML; the schema-driven SIESTA / PySCF fields get
-    // restored a second time inside initFormsFromSchema() after the
-    // renderer fills the containers.
+    // The Relaxation-stage preset selector is static HTML, so the
+    // first restore pass can run synchronously; the schema-driven
+    // SIESTA / PySCF fields get restored a second time inside
+    // initFormsFromSchema() after the renderer fills the containers.
     restoreFormState();
     window.addEventListener("pagehide", saveFormState);
 

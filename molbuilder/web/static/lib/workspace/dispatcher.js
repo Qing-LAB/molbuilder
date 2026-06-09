@@ -501,7 +501,18 @@
      * Returns the canonical workspace payload (text + atoms +
      * extras) so callers can use ``r.atoms`` for follow-up store
      * sync (e.g. selection-bootstrap's setSourceFile via
-     * adoptSession).  Throws on network error or non-ok envelope.
+     * adoptSession).  Throws on network error or non-ok envelope —
+     * symmetric with ``applyOp``.
+     *
+     * Caller-owned canvas-state: the apply call uses
+     * ``touchCanvas: false`` because every documented call site
+     * (sidebar commitFile via ``structurePage.loadIntoCanvas``,
+     * the Sources-card generators that pre-set canvas-state before
+     * invoking ``viewerLoader``) already drove the
+     * canvas-state side-effect.  Forcing a second canvas write
+     * here would clobber the dirty-bit handshake the caller
+     * already negotiated.  See ``_applyWorkspacePayload`` for the
+     * full canvas-state contract.
      */
     async function loadFromText(text, filename) {
         const resp = await root.fetch("/api/build/load", {

@@ -32,53 +32,15 @@ header .tagline {
     font-size: 0.95rem;
 }
 
-/* ---- Sources card ----
+/* ---- Init-structure card body ----
  *
- * Full-width card above the modify-grid.  Holds every path that
- * brings a structure INTO the workspace, as foldable <details>
- * panels.  Order matches docs/tabs/architecture.md § 5.1.  Each
- * panel keeps its open/closed state across page lifetime via the
- * native <details> behaviour; not persisted to sessionStorage
- * today. */
-.sources-card {
-    margin: 1rem 2rem 0;
-    padding: 0.6rem 1rem 0.4rem;
-}
-.sources-card .card-header {
-    padding: 0 0 0.6rem;
-    border-bottom: 1px solid var(--border-soft);
-}
-.sources-card .card-header h2 {
-    margin: 0;
-    font-size: 1rem;
-    color: var(--text-primary);
-}
-
-.source-panel {
-    border-bottom: 1px solid var(--border-soft);
-    padding: 0.4rem 0;
-}
-.source-panel:last-child {
-    border-bottom: none;
-}
-.source-panel > summary {
-    cursor: pointer;
-    padding: 0.3rem 0;
-    color: var(--text-primary);
-    font-weight: 500;
-    list-style: none;
-}
-.source-panel > summary::-webkit-details-marker { display: none; }
-.source-panel > summary::before {
-    content: "▸";
-    display: inline-block;
-    width: 1.2em;
-    color: var(--text-muted);
-    transition: transform 120ms ease;
-}
-.source-panel[open] > summary::before {
-    transform: rotate(90deg);
-}
+ * Each ``.init-tab-panel`` (one per generator/loader: Load, Upload,
+ * SMILES, Name, DNA, RNA, Peptide) wraps its inputs in
+ * ``.source-panel-body``; the spacing rules below shape that body.
+ * The Init-tab bar above the panels is themed by ``.init-tabs`` /
+ * ``.init-tab`` further down.  The pre-task-293 design used a
+ * ``<details>`` accordion for the same UI; those marker / panel
+ * rules were removed as orphan CSS in task #297 (2026-06-08). */
 .source-panel-body {
     padding: 0.4rem 0 0.6rem 1.2em;
 }
@@ -285,12 +247,10 @@ header .tagline {
 
 /* ---- Viewer section ---- */
 .viewer-section { gap: 0; }
-.viewer-card    { gap: 0; }   /* legacy alias; kept for safety */
 /* Square-ish viewer, consistent with the other tabs.  Sits in
  * the middle section of the vertical workflow; centred
  * horizontally when the container is wider. */
-.viewer-section #viewer.viewer,
-.viewer-card #viewer.viewer {
+.viewer-section #viewer.viewer {
     width: 100%;
     max-width: 560px;
     aspect-ratio: 1 / 1;
@@ -545,24 +505,6 @@ header .tagline {
     background: var(--border-soft);
     color: var(--text-muted);
     cursor: not-allowed;
-}
-
-/* ---- Send-to-Build handoff bar (under the 3D viewer) --------------- //
- * Lives directly below ``.viewer-controls`` inside ``.viewer-card`` so
- * the button is visible regardless of which edit-panel sub-tab is
- * active.  Full-width primary action; tight padding so it doesn't
- * eat viewer real estate.
- */
-.viewer-card .viewer-handoff {
-    padding: 0.5rem 0.85rem 0.7rem;
-    border-top: 1px solid var(--border-soft);
-}
-.viewer-card .viewer-handoff .full-btn {
-    /* full-btn already sets width:100%; keep that, just tighten
-     * vertical padding so the bar reads as compact toolbar, not a
-     * primary form action. */
-    padding: 0.55rem 0;
-    font-size: 0.95rem;
 }
 
 /* ---- Junction subtab: legibility ----
