@@ -127,10 +127,11 @@ def _open_build(page, base_url):
         if msg.type == "error" else None
     ))
     page.goto(f"{base_url}/structure-optimization")
-    # #build-btn is rendered by the server-side template; its presence
-    # proves the HTML reached the browser.  The form-container fields
-    # are added by JS after the schema fetch lands.
-    page.wait_for_selector("#build-btn", timeout=_BOOT_TIMEOUT_MS)
+    # The "Load from sidebar selection" button is server-rendered;
+    # waiting for it proves the HTML reached the browser.  The form-
+    # container fields are added by JS after the schema fetch lands.
+    # (Was ``#build-btn`` before the 2026-06-08 Build-form retirement.)
+    page.wait_for_selector("#load-from-sidebar-btn", timeout=_BOOT_TIMEOUT_MS)
     return errors
 
 
@@ -272,22 +273,29 @@ class TestPeptideBuild:
     typo) shipped silently because no test loaded the JS.
     """
 
-    def test_build_peptide_updates_info_atoms(
-            self, page, flask_server):
-        """After Build the #info-atoms span goes from the em-dash
-        placeholder to a numeric atom count -- proves the
-        /api/build/molecule round-trip + the viewer-mount hook
-        ran to completion."""
+    def test_sidebar_load_updates_info_atoms(
+            self, page, flask_server, water_xyz_file):
+        """Post-2026-06-08 (task #295): the Build/Load form is
+        retired; structures come from the project sidebar.  A
+        commit on a sidebar pick rebuilds the structure section
+        and the #info-atoms span flips from the em-dash
+        placeholder to a numeric atom count."""
         _open_build(page, flask_server)
-        # The "kind" select defaults to peptide on first render,
-        # but pin it explicitly so a future default change doesn't
-        # silently route this test through a different build path.
-        page.locator("#kind").select_option("peptide")
-        page.locator("#input-text").fill("ARNDC")
-        page.locator("#build-btn").click()
-        # The info bar updates synchronously after the structure
-        # mounts in the viewer.  Wait for the placeholder em-dash
-        # to disappear from #info-atoms.
+        page.wait_for_function(
+            "() => window.molbuilder "
+            "&& window.molbuilder.projects "
+            "&& typeof window.molbuilder.projects.publishCommit "
+            "       === 'function'",
+            timeout=_BOOT_TIMEOUT_MS,
+        )
+        from pathlib import Path
+        p = str(Path(water_xyz_file).resolve())
+        parent = str(Path(p).parent)
+        page.evaluate(
+            """(ctx) => window.molbuilder.projects.publishCommit(
+                ctx.dir, ctx.file)""",
+            {"dir": parent, "file": p},
+        )
         page.wait_for_function(
             "() => /^\\d+$/.test("
             "document.querySelector('#info-atoms').textContent.trim())",
@@ -296,25 +304,33 @@ class TestPeptideBuild:
         atom_count = int(
             page.locator("#info-atoms").inner_text().strip()
         )
-        # ARNDC has 5 residues = ~80-90 atoms with default
-        # protonation.  Pin lower bound at the test_web.py
-        # threshold (38) so a default-change to heavy-only doesn't
-        # silently regress the e2e.
-        assert atom_count >= 38
+        assert atom_count == 3   # water.xyz
 
-    def test_generate_buttons_enable_after_build(
-            self, page, flask_server):
-        """Pre-build, Generate.fdf + Generate.py are disabled
-        (no structure to emit).  Post-build they must enable so
-        the user can hand off to /api/build/{fdf,pyscf}."""
+    def test_generate_buttons_enable_after_sidebar_load(
+            self, page, flask_server, water_xyz_file):
+        """Pre-load, Generate.fdf + Generate.py are disabled
+        (no structure to emit).  Post sidebar commit they must
+        enable so the user can hand off to /api/build/{fdf,pyscf}."""
         _open_build(page, flask_server)
-        # Pre-build sanity: both buttons disabled.
+        # Pre-load sanity: both buttons disabled.
         assert page.locator("#generate-fdf").is_disabled()
         assert page.locator("#generate-pyscf").is_disabled()
 
-        page.locator("#kind").select_option("peptide")
-        page.locator("#input-text").fill("ARNDC")
-        page.locator("#build-btn").click()
+        page.wait_for_function(
+            "() => window.molbuilder "
+            "&& window.molbuilder.projects "
+            "&& typeof window.molbuilder.projects.publishCommit "
+            "       === 'function'",
+            timeout=_BOOT_TIMEOUT_MS,
+        )
+        from pathlib import Path
+        p = str(Path(water_xyz_file).resolve())
+        parent = str(Path(p).parent)
+        page.evaluate(
+            """(ctx) => window.molbuilder.projects.publishCommit(
+                ctx.dir, ctx.file)""",
+            {"dir": parent, "file": p},
+        )
         # Wait for the structure to mount.
         page.wait_for_function(
             "() => /^\\d+$/.test("

@@ -49,59 +49,95 @@ header code {
 
 /* ---- App grid ---- */
 
-/* Three direct children: .card-build (top-left), .col-viewer (right,
-   spanning both rows), #generate-card (bottom-left).  This ordering
-   ensures that at narrow widths (single column) the 3-D viewer sits
-   between the Build card and the Generate card, matching the visual
-   hierarchy: build → inspect → configure output. */
+/* Vertical workflow (2026-06-08 cleanup, task #295):
+ *   1. card-viewer — Inspect structure + Load from sidebar
+ *   2. #generate-card — SIESTA / PySCF script form
+ *
+ * The legacy 2-column layout (Build/Load on the left, viewer on
+ * the right) is retired; structure data now comes from the
+ * project sidebar (Molbuilder tab → Save → sidebar pick).
+ */
 .app-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(380px, 660px);
-    grid-template-rows: auto auto;
+    display: flex;
+    flex-direction: column;
     gap: var(--gap);
     margin: var(--gap) 24px;
-    align-items: start;
 }
-
-/* Explicit placements on wide screens */
-.card-build   { grid-column: 1; grid-row: 1; }
-.col-viewer   { grid-column: 2; grid-row: 1 / span 2; }
-#generate-card { grid-column: 1; grid-row: 2; }
-
-.col {
-    display: flex; flex-direction: column;
-    gap: var(--gap);
-    min-width: 0;
-}
-
-.col-viewer {
-    position: sticky;
-    top: var(--gap);
-    align-self: start;
-    max-height: calc(100vh - 2 * var(--gap));
-    overflow-y: auto;
-    /* Subtle scrollbar in dark theme */
-    scrollbar-color: var(--border-strong) transparent;
-    scrollbar-width: thin;
-}
-
-/* .app-grid direct children that are plain .card (not col-viewer) */
 .app-grid > .card { margin: 0; }
 
-@media (max-width: 1100px) {
-    .app-grid {
-        grid-template-columns: 1fr;
-        grid-template-rows: auto;
-    }
-    /* Explicit rows: build → viewer → generate */
-    .card-build    { grid-column: 1; grid-row: 1; }
-    .col-viewer    { grid-column: 1; grid-row: 2; position: static; max-height: none; overflow: visible; }
-    #generate-card { grid-column: 1; grid-row: 3; }
+/* Generate card readability (task #295): vertical scroll
+ * workflow with comfortable spacing between conceptual steps.
+ * The form is dense by nature (SIESTA/PySCF have many knobs);
+ * the goal is to make the SEPARATION between steps obvious
+ * without changing the field set. */
+#generate-card {
+    padding: 1.4rem 1.6rem;
+}
+#generate-card > h2 {
+    font-size: 1.1rem;
+    margin-bottom: 1rem;
+}
+#generate-card .tabs {
+    margin-bottom: 0.8rem;
+}
+#generate-card fieldset {
+    /* More vertical separation between fieldsets; each fieldset
+     * corresponds to a conceptual step (Job, Basis, SCF, etc.). */
+    margin: 1.2rem 0;
+    padding: 0.8rem 1rem 0.9rem;
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+}
+#generate-card fieldset:first-of-type { margin-top: 0.4rem; }
+#generate-card legend {
+    padding: 0 0.5rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+}
+#generate-card label {
+    display: block;
+    margin: 0.55rem 0;
+    line-height: 1.4;
+    font-size: 0.93rem;
+}
+#generate-card label > span:first-child {
+    display: inline-block;
+    min-width: 8em;
+    color: var(--text-secondary);
+}
+#generate-card .hint,
+#generate-card p.hint {
+    margin: 0.5rem 0 0.8rem;
+    color: var(--text-secondary);
+    font-size: 0.88rem;
+    line-height: 1.5;
 }
 
 @media (max-width: 640px) {
     .app-grid { margin: 10px; gap: 10px; }
     header { padding: 14px 16px 10px; }
+    #generate-card { padding: 0.9rem 1rem; }
+}
+
+/* Load-from-sidebar bar inside the viewer card (task #295). */
+.viewer-load-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    margin: 0.5rem 0 0.8rem;
+    padding: 0.6rem 0.8rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    flex-wrap: wrap;
+}
+.viewer-load-bar #load-from-sidebar-btn {
+    flex: 0 0 auto;
+}
+.viewer-load-bar #load-source-readout {
+    color: var(--text-secondary);
+    font-size: 0.92rem;
 }
 
 /* ---- Cards ---- */

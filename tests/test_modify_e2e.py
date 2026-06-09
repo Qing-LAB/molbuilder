@@ -2798,40 +2798,43 @@ def test_modify_handles_storage_quota_exceeded_gracefully(
 # --------------------------------------------------------------------- #
 
 
-def test_build_structure_survives_navigation(page, flask_server):
-    """Build a peptide on /, navigate to /watch, then back to /.
-    The 3D viewer must still show the molecule, the info panel
-    must still show n_atoms, and the Generate buttons must still
-    be enabled -- without Phase 1 the user lost everything and
-    had to click Build again."""
+def test_build_structure_survives_navigation(
+        page, flask_server, water_xyz_file):
+    """Load a structure on the Optimization tab, navigate away,
+    come back.  The 3D viewer must still show the molecule, the
+    info panel must still show n_atoms, and the Generate buttons
+    must still be enabled — without the sessionStorage handoff
+    the user lost everything and had to re-pick the file.
+
+    Post-task-295 (2026-06-08): the Build form is gone; the
+    handoff is the shared Projects-sidebar pointer
+    (sessionStorage.molbuilder.current_file).  Auto-load on
+    mount picks it up on re-entry, restoring viewer + info +
+    Generate-enabled."""
+    # Prime the cross-tab handoff via add_init_script so the
+    # sidebar pointer is in sessionStorage BEFORE any page script
+    # runs; mount-time auto-load then commits the structure.
+    import os as _os
+    page.add_init_script(
+        "sessionStorage.setItem('molbuilder.current_file',"
+        f" {repr(water_xyz_file)});"
+        "sessionStorage.setItem('molbuilder.current_dir',"
+        f" {repr(_os.path.dirname(water_xyz_file))});"
+    )
     page.goto(f"{flask_server}/structure-optimization")
-    page.wait_for_selector("#build-btn")
-    # Build a tiny peptide.  AmberTools/RDKit/3DNA -- whichever the
-    # ``auto`` backend resolves to is fine for this test.
-    page.locator("#kind").select_option("peptide")
-    page.locator("#input-text").fill("AC")
-    page.locator("#build-btn").click()
-    # Wait for the build response: #generate-fdf becomes enabled
-    # (signals build success — was #dl-xyz pre-Phase-6 when the
-    # bespoke download buttons existed below the viewer; now it's
-    # the next sibling in the same enable-all batch).
+    page.wait_for_selector("#load-from-sidebar-btn")
     page.wait_for_function(
-        "() => !document.getElementById('generate-fdf').disabled"
+        "() => !document.getElementById('generate-fdf').disabled",
+        timeout=8000,
     )
     n_atoms_before = page.locator("#info-atoms").inner_text()
     assert n_atoms_before and n_atoms_before != "—"
-    # Click Watch (full navigation).
-    # Navigate to /results (the previous test pinned /watch; the
-    # contract here is "navigate ELSEWHERE and back"; /results is
-    # equally valid as the away page).  /watch was retired
-    # 2026-05-19; /results is now the canonical "other tab" for
-    # session-storage round-trip tests.
+    # Navigate away to /results then back.  The handoff pointer
+    # plus auto-load is what restores state across the round-trip.
     page.locator('a.app-tab[href="/results"]').click()
     page.wait_for_url(f"{flask_server}/results")
-    # And back.
     page.locator('a.app-tab[href="/structure-optimization"]').click()
     page.wait_for_url(f"{flask_server}/structure-optimization")
-    # The structure was restored from sessionStorage.
     page.wait_for_function(
         "() => !document.getElementById('generate-fdf').disabled",
         timeout=5000,
@@ -2841,49 +2844,31 @@ def test_build_structure_survives_navigation(page, flask_server):
         f"atom count not restored: was {n_atoms_before!r}, "
         f"now {n_atoms_after!r}"
     )
-    # Generate buttons re-enabled too.
     assert page.locator("#generate-fdf").is_enabled()
     assert page.locator("#generate-pyscf").is_enabled()
 
 
 def test_build_structure_state_round_trips_modify(
         page, flask_server, water_xyz_file):
-    """Build/Modify are independent persistence keys -- loading on
-    Modify must not pollute Build's state, and vice versa.  This
-    pins the per-tab key boundary.
+    """Modify's pagehide save persists into the workspace
+    dispatcher's own key (molbuilder.workspace.v1).  Pin the key
+    name so a future rename / accidental collapse trips here.
 
-    Post-Phase-8 collapse (2026-06-08): Modify's persistence lives
-    in the unified ``molbuilder.workspace.v1`` key owned by the
-    workspace dispatcher; the legacy ``modify-state`` key is
-    suppressed when the dispatcher is mounted.  Build's persistence
-    (the cross-tab Send-to-Build handoff) keeps its own
-    ``builder-structure`` key.  The isolation still holds — they
-    just live under different names than the pre-collapse test
-    asserted."""
-    # Modify side first.
+    Post-task-295 (2026-06-08): the Build form is gone; the
+    Optimization tab consumes the shared Projects-sidebar pointer
+    (molbuilder.current_file) as its sole structure entrance.
+    That pointer is owned by the sidebar — any file selection,
+    on either tab, writes it.  So this test no longer asserts
+    cross-tab key isolation (the sidebar pointer is intentionally
+    shared); it only pins Modify's own workspace key."""
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
     page.evaluate("() => window.dispatchEvent(new Event('pagehide'))")
-    # Now visit Build.  No prior Build save -> empty viewer.
-    page.goto(f"{flask_server}/structure-optimization")
-    page.wait_for_selector("#build-btn")
-    # Generate buttons start disabled (no structure built).
-    assert page.locator("#generate-fdf").is_disabled()
-    # The two keys are isolated: Modify writes molbuilder.workspace.v1;
-    # the cross-tab Send-to-Build handoff key (builder-structure) is
-    # NOT written by a plain Load on Modify (only by an explicit
-    # Send-to-Build click).
     has_workspace_key = page.evaluate(
         "() => sessionStorage.getItem('molbuilder.workspace.v1') !== null"
     )
-    has_builder_key = page.evaluate(
-        "() => sessionStorage.getItem('builder-structure') !== null"
-    )
     assert has_workspace_key is True, (
         "Modify's pagehide save should land in molbuilder.workspace.v1"
-    )
-    assert has_builder_key is False, (
-        "Modify's save leaked into Build's storage key"
     )
 
 
@@ -3666,8 +3651,8 @@ def test_build_page_loads_without_js_errors(page, flask_server):
 
 
 def test_build_form_live_preflight_fires_on_field_edit(
-        page, flask_server):
-    """After building a structure, editing a SIESTA field with a
+        page, flask_server, water_xyz_file):
+    """After loading a structure, editing a SIESTA field with a
     range-violating value must fire /api/build/preflight via the
     debounced listener and surface a warn-severity issue in the
     #fdf-issues panel WITHOUT re-clicking Generate.
@@ -3675,13 +3660,26 @@ def test_build_form_live_preflight_fires_on_field_edit(
     Regression test for the FORM_IDS / wirePreflightListeners
     cutover: before the fix, the JS halt on FORM_IDS prevented
     these listeners from being attached.
-    """
+
+    Post-task-295 (2026-06-08): the Build form is gone; the sole
+    structure entry on the Optimization tab is the sidebar handoff
+    (sessionStorage[molbuilder.current_file] auto-load on mount).
+    Prime the handoff before navigating; the auto-load triggers
+    the same _commitStructure path that the retired Build button
+    used to drive."""
+    # Prime the cross-tab handoff so the Optimization tab's
+    # mount-time auto-load picks up the water fixture.  The
+    # auto-load is what triggers preflight-listener wiring.
+    # Use add_init_script so the pointer is in sessionStorage
+    # BEFORE any page script runs.
+    import os as _os
+    page.add_init_script(
+        "sessionStorage.setItem('molbuilder.current_file',"
+        f" {repr(water_xyz_file)});"
+        "sessionStorage.setItem('molbuilder.current_dir',"
+        f" {repr(_os.path.dirname(water_xyz_file))});"
+    )
     _open_build(page, flask_server)
-    # Build any structure so the preflight loop has state.xyz to
-    # send.  A 2-residue peptide is cheapest.
-    page.locator("#kind").select_option("peptide")
-    page.locator("#input-text").fill("AC")
-    page.locator("#build-btn").click()
     page.wait_for_function(
         "() => !document.getElementById('generate-fdf').disabled",
         timeout=8000,
@@ -3924,7 +3922,7 @@ class TestModifySecondVisitExternalChange:
         ) == 3
 
         page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#build-btn", timeout=5000)
+        page.wait_for_selector("#load-from-sidebar-btn", timeout=5000)
 
         page.goto(f"{flask_server}/molbuilder")
         # The selection store MUST repopulate.  Without the refresh
@@ -3974,7 +3972,7 @@ class TestModifySecondVisitExternalChange:
         ) is True
 
         page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#build-btn", timeout=5000)
+        page.wait_for_selector("#load-from-sidebar-btn", timeout=5000)
 
         page.goto(f"{flask_server}/molbuilder")
         # Selection store MUST reflect 2 atoms (in-memory post-
@@ -4003,7 +4001,7 @@ class TestModifySecondVisitExternalChange:
         _load_file(page, str(xyz_path), expected_atoms=3)
 
         page.goto(f"{flask_server}/structure-optimization")
-        page.wait_for_selector("#build-btn", timeout=5000)
+        page.wait_for_selector("#load-from-sidebar-btn", timeout=5000)
 
         # Replace the file with a different structure (5 atoms,
         # methane).

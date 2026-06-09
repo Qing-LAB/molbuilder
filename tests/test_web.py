@@ -21,8 +21,12 @@ def test_index_page_loads(web_client):
     r = web_client.get("/structure-optimization")
     assert r.status_code == 200
     body = r.data.decode()
+    # Post-2026-06-08 (task #295): the Build/Load form is retired;
+    # the optimization tab is file-driven via the project sidebar.
+    # The "Load from sidebar selection" button is the canonical
+    # structure entry point now (was ``input-text`` + ``build-btn``).
     for needle in (
-        "molbuilder", "input-text", "build-btn",
+        "molbuilder", "load-from-sidebar-btn",
         "viewer.js", "style.css", "3Dmol-min.js",
     ):
         assert needle in body, needle
@@ -42,41 +46,11 @@ def test_index_page_has_tab_markup(web_client):
         assert needle in body, f"missing {needle!r} in index.html"
 
 
-def test_build_load_source_mode_toggle_present(web_client):
-    """The Build / Load mode toggle is a radio group with two
-    panels (#build-panel, #load-panel) controlled by it.  Pins the
-    contract the JS depends on so a future template refactor that
-    drops one of the IDs trips this test instead of a UX bug."""
-    body = web_client.get("/structure-optimization").data.decode()
-    # Radio group + the two panels JS toggles between.
-    for needle in (
-        'name="source-mode"',
-        'value="build"',
-        'value="load"',
-        'id="build-panel"',
-        'id="load-panel"',
-        # The build form sits inside #build-panel; the kind selector
-        # is the most-tested element of that form.
-        'id="kind"',
-        # The file picker is the canonical element of #load-panel.
-        'id="load-file"',
-    ):
-        assert needle in body, f"missing {needle!r} in index.html"
-
-
-def test_viewer_js_applies_source_mode(web_client):
-    """viewer.js must wire the radio toggle so flipping it actually
-    swaps panel visibility (otherwise the radio is decorative)."""
-    js = web_client.get("/static/viewer.js").data.decode()
-    for needle in (
-        'applySourceMode',
-        '#build-panel',     # the function references this id
-        '#load-panel',
-        'source-mode',
-    ):
-        # Allow the JS to use the id with or without the # selector;
-        # the only thing we need is that the symbol appears.
-        assert needle.lstrip("#") in js, f"missing {needle!r} in viewer.js"
+# test_build_load_source_mode_toggle_present + test_viewer_js_applies_source_mode
+# retired 2026-06-08 (task #295) with the Build/Load form.  The new
+# load surface is ``#load-from-sidebar-btn`` — pinned by
+# ``test_index_page_loads`` above and the page-boot smoke test in
+# tests/test_pages_no_js_errors.py.
 
 
 def test_siesta_schema_exposes_spin_fields(web_client):
@@ -153,15 +127,11 @@ def test_backends_endpoint_exposes_auto_resolution(web_client):
     assert body["auto_name"] in (None, "threedna", "amber", "rdkit")
 
 
-def test_index_page_lists_threedna_in_backend_dropdown(web_client):
-    """3DNA is the highest-quality DNA / RNA backend (canonical B/A/Z
-    helix).  It must appear as an explicit choice in the dropdown so
-    users with x3dna installed can pick it -- and so users without it
-    get the (not installed) suffix the JS adds at page load."""
-    body = web_client.get("/structure-optimization").data.decode()
-    assert 'value="threedna"' in body, (
-        "Backend dropdown should list threedna explicitly"
-    )
+# test_index_page_lists_threedna_in_backend_dropdown retired
+# 2026-06-08 (task #295) — the backend dropdown lived inside the
+# retired Build form on the optimization tab.  The DNA backend
+# selector still lives on the Molbuilder tab's "Init structure"
+# DNA panel; see tests/test_modify_e2e.py for that coverage.
 
 
 def test_build_dna_response_includes_backend_used(web_client):
@@ -176,28 +146,11 @@ def test_build_dna_response_includes_backend_used(web_client):
     assert body["backend_used"] in ("threedna", "amber", "rdkit"), body
 
 
-def test_index_page_lists_add_hydrogens_select(web_client):
-    """The add_hydrogens control is a tri-state select (auto/on/off)
-    in the nucleic-options block, NOT a bool checkbox -- the H/heavy
-    threshold heuristic is size-dependent and explicit on/off control
-    is the user's escape hatch when auto misclassifies."""
-    body = web_client.get("/structure-optimization").data.decode()
-    assert 'id="add-hydrogens"' in body
-    import re
-    m = re.search(r'<select[^>]*id="add-hydrogens"[^>]*>(.*?)</select>',
-                  body, re.S)
-    assert m, "add-hydrogens should be a <select> (tri-state), not a checkbox"
-    options = m.group(1)
-    for value in ("auto", "on", "off"):
-        assert f'value="{value}"' in options, (
-            f"add-hydrogens select missing option {value!r}"
-        )
-    # auto must be the default-selected option (the "I don't want to
-    # think about it" path stays unchanged from the bool-True default).
-    auto_opt = re.search(r'<option[^>]*value="auto"[^>]*>', options)
-    assert auto_opt and "selected" in auto_opt.group(0), (
-        f"auto should be default-selected: {auto_opt.group(0) if auto_opt else None}"
-    )
+# test_index_page_lists_add_hydrogens_select retired 2026-06-08
+# (task #295) — the add_hydrogens select lived inside the retired
+# Build form's nucleic-options block.  The DNA generator on the
+# Molbuilder tab carries the same control; pinned by
+# tests/test_modify_e2e.py.
 
 
 def test_build_response_carries_validation_issues(web_client):
@@ -811,7 +764,7 @@ def test_modify_static_assets_load(web_client):
     """The ``modify/`` static dir must serve the CSS + JS files."""
     css = web_client.get("/static/modify/style.css")
     assert css.status_code == 200
-    assert b".modify-grid" in css.data
+    assert b".molbuilder-tab-main" in css.data
     js = web_client.get("/static/modify/viewer.js")
     assert js.status_code == 200
     body = js.data.decode()

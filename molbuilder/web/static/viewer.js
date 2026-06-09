@@ -166,19 +166,34 @@
         }
     }
 
+    // The Build form (kind/input-text/backend/form/terminal/etc.) was
+    // retired 2026-06-08 (task #295) — the optimization tab is now
+    // file-driven; structures come from the project sidebar.  The
+    // helpers below stay so a test/embed that mounts the legacy form
+    // markup gets the same behaviour, but they no-op in production
+    // because the elements don't exist.
     function toggleNucleicOptions() {
-        const k = $("kind").value;
-        $("nucleic-options").hidden = !(k === "dna" || k === "rna");
-        // RNA's natural form is A; flip the default when switching
-        if (k === "rna" && $("form").value === "B") $("form").value = "A";
-        if (k === "dna" && $("form").value === "A") $("form").value = "B";
+        const kindEl = $("kind");
+        if (!kindEl) return;
+        const k = kindEl.value;
+        const opts = $("nucleic-options");
+        if (opts) opts.hidden = !(k === "dna" || k === "rna");
+        const formEl = $("form");
+        if (formEl) {
+            if (k === "rna" && formEl.value === "B") formEl.value = "A";
+            if (k === "dna" && formEl.value === "A") formEl.value = "B";
+        }
     }
-    $("kind").addEventListener("change", (e) => {
-        $("input-text").placeholder = placeholderFor(e.target.value);
+    if ($("kind")) {
+        $("kind").addEventListener("change", (e) => {
+            const it = $("input-text");
+            if (it) it.placeholder = placeholderFor(e.target.value);
+            toggleNucleicOptions();
+        });
+        if ($("input-text"))
+            $("input-text").placeholder = placeholderFor($("kind").value);
         toggleNucleicOptions();
-    });
-    $("input-text").placeholder = placeholderFor($("kind").value);
-    toggleNucleicOptions();
+    }
 
     // ----- Source-mode toggle (Build vs Load) -----
     //
@@ -194,31 +209,28 @@
     // load mode to compare it with a saved file.  Switching just
     // changes what the next "produce a structure" action does.
     function applySourceMode(mode) {
+        const bp = $("build-panel"); if (!bp) return;
         const buildOn = (mode === "build");
-        $("build-panel").hidden = !buildOn;
-        $("load-panel").hidden  =  buildOn;
-        // Status messages from the OTHER panel are stale once we
-        // switch -- clear them so a "Loaded foo.xyz" message doesn't
-        // hang around while the user is mid-build.
-        if (buildOn) {
-            setStatus("load-status",  "");
-        } else {
-            setStatus("build-status", "");
-        }
+        bp.hidden = !buildOn;
+        const lp = $("load-panel");
+        if (lp) lp.hidden = buildOn;
+        if (buildOn) { setStatus("load-status",  ""); }
+        else         { setStatus("build-status", ""); }
     }
     document.querySelectorAll('input[name="source-mode"]').forEach(r => {
         r.addEventListener("change", (e) => applySourceMode(e.target.value));
     });
-    // Initial state mirrors the HTML `checked` attribute on the
-    // build radio; this call is for tests / restored sessions where
-    // the radio state may have been set programmatically.
-    applySourceMode(
-        (document.querySelector('input[name="source-mode"]:checked') || {}).value
-        || "build"
-    );
-    $("input-text").addEventListener("keydown", (e) => {
-        if (e.key === "Enter") $("build-btn").click();
-    });
+    if ($("build-panel")) {
+        applySourceMode(
+            (document.querySelector('input[name="source-mode"]:checked') || {}).value
+            || "build"
+        );
+    }
+    if ($("input-text")) {
+        $("input-text").addEventListener("keydown", (e) => {
+            if (e.key === "Enter") $("build-btn").click();
+        });
+    }
 
     // Map the canonical (lowercase) backend identifier returned by
     // /api/backends to the user-facing label.  X3DNA is the product
@@ -281,7 +293,7 @@
     }).catch(() => { /* /api/backends optional */ });
 
     // ----- 1. Build ---------------------------------------------------
-    $("build-btn").addEventListener("click", async () => {
+    if ($("build-btn")) $("build-btn").addEventListener("click", async () => {
         const kind = $("kind").value;
         const input = $("input-text").value.trim();
         if (!input) { setStatus("build-status", "Enter a sequence first.", "error"); return; }
@@ -615,11 +627,11 @@
     }
 
     // ----- Load existing .xyz / .pdb ----------------------------------
-    $("load-file").addEventListener("change", () => {
+    if ($("load-file")) $("load-file").addEventListener("change", () => {
         $("load-btn").disabled = !$("load-file").files.length;
         setStatus("load-status", "");
     });
-    $("load-btn").addEventListener("click", async () => {
+    if ($("load-btn")) $("load-btn").addEventListener("click", async () => {
         const files = $("load-file").files;
         if (!files.length) {
             setStatus("load-status", "Pick a file first.", "error"); return;
@@ -819,16 +831,68 @@
         subscribe(_commitStructure);
 
         // Cross-tab handoff: if the user arrived here with a
-        // sessionStorage selection already in place (committed on
-        // another tab), treat that as a commit so they don't have
-        // to re-click in the sidebar.  Only fires once on mount;
-        // onCommit itself doesn't fire-on-subscribe.
+        // sessionStorage selection already in place (the Molbuilder
+        // tab's save-first Send button, task #294, or the user
+        // having picked a file in the sidebar before navigating),
+        // commit it once on mount so the viewer + Generate buttons
+        // come up populated.  The "Load from sidebar selection"
+        // button below is the EXPLICIT entry point for subsequent
+        // re-loads after a sidebar pick; the mount-time commit is
+        // the cross-tab handoff path.
         const _initialFile = (typeof _proj.getCurrentFile === "function")
             ? _proj.getCurrentFile() : "";
         if (_initialFile) {
             const _initialDir = (typeof _proj.getCurrentDir === "function")
                 ? _proj.getCurrentDir() : "";
             _commitStructure({ dir: _initialDir, file: _initialFile });
+        }
+
+        // ----- Load-from-sidebar button (task #295, 2026-06-08) ---- //
+        //
+        // The structure-optimization tab's sole structure entry
+        // point.  Reads the current Projects-sidebar pick and
+        // commits it through ``_commitStructure``.  Click is the
+        // explicit user gesture; the button surfaces the current
+        // pick + enables only when it's a loadable .xyz/.pdb.
+        const _isLoadable = (name) => {
+            const n = String(name || "").toLowerCase();
+            return n.endsWith(".xyz") || n.endsWith(".pdb");
+        };
+        const _basename = (p) => {
+            const ix = String(p || "").lastIndexOf("/");
+            return ix >= 0 ? p.slice(ix + 1) : p;
+        };
+        let _candidatePath = "";
+        function _refreshLoadButton() {
+            const btn = $("load-from-sidebar-btn");
+            const readout = $("load-source-readout");
+            if (!btn) return;
+            const loadable = _isLoadable(_candidatePath);
+            btn.disabled = !loadable;
+            if (readout) {
+                readout.textContent = loadable
+                    ? `Pick: ${_basename(_candidatePath)}`
+                    : (_candidatePath
+                        ? `Picked: ${_basename(_candidatePath)} (not loadable)`
+                        : "Pick a .xyz / .pdb in the Projects sidebar.");
+            }
+        }
+        _candidatePath = _initialFile;
+        _refreshLoadButton();
+        if (typeof _proj.onChange === "function") {
+            _proj.onChange((sel) => {
+                _candidatePath = (sel && sel.file) ? sel.file : "";
+                _refreshLoadButton();
+            });
+        }
+        const _loadBtn = $("load-from-sidebar-btn");
+        if (_loadBtn) {
+            _loadBtn.addEventListener("click", () => {
+                if (!_isLoadable(_candidatePath)) return;
+                const _dir = (typeof _proj.getCurrentDir === "function")
+                    ? _proj.getCurrentDir() : "";
+                _commitStructure({ dir: _dir, file: _candidatePath });
+            });
         }
         });   // close runtime.whenReady("projects").then(...)
     }

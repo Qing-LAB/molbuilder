@@ -78,7 +78,9 @@ _PAGE_BOOT_TIMEOUT_MS = 5000   # generous; module scripts on a cold
 
 _PAGES = [
     # Structure-optimization tab: SIESTA / PySCF script generator.
-    ("/structure-optimization", "#build-btn"),
+    # Probe for the "Load from sidebar selection" button — sole
+    # structure entry after the 2026-06-08 Build-form retirement.
+    ("/structure-optimization", "#load-from-sidebar-btn"),
     # Molbuilder tab: interactive build + edit workspace.  Probe
     # for the selection panel's host.
     ("/molbuilder", "#selection-host"),

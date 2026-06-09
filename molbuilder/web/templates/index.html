@@ -41,135 +41,48 @@
 {% include "_projects_sidebar.html" %}
 
 <!-- ============================================================ -->
-<!--  Two-column layout:                                           -->
-<!--    LEFT  (col-controls): build/load + generate-input forms    -->
-<!--    RIGHT (col-viewer):   sticky 3-D viewer + style/download   -->
+<!--  Vertical workflow (2026-06-08 cleanup):                      -->
+<!--    1. Inspect — viewer + "Load from sidebar selection"        -->
+<!--    2. Generate input — SIESTA/PySCF form                      -->
+<!--  The legacy Build/Load card (sequence/SMILES build form +     -->
+<!--  local file upload) was retired; the Molbuilder tab is now    -->
+<!--  the canonical structure-creation surface, and the project    -->
+<!--  sidebar is the canonical handoff.                            -->
 <!-- ============================================================ -->
 <main class="app-grid">
 
-    <!-- ---------- 1. Build / Load ---------- -->
-    <section class="card card-build">
-      <h2>1. Build / Load</h2>
-
-      <!-- Mode toggle: pick ONE of the two input paths.  The two
-           panels are mutually exclusive in the UI; whichever is
-           hidden does not contribute to the produced structure. -->
-      <div class="source-mode-row" role="radiogroup"
-           aria-label="Structure source">
-        <label class="source-mode-opt">
-          <input type="radio" name="source-mode" value="build" checked>
-          <span>Build from sequence / SMILES / name</span>
-        </label>
-        <label class="source-mode-opt">
-          <input type="radio" name="source-mode" value="load">
-          <span>Load existing <code>.xyz</code> / <code>.pdb</code></span>
-        </label>
+  <!-- ===================== 1. Inspect ===================== -->
+  <section class="card card-viewer">
+    <div class="viewer-header">
+      <h2>1. Inspect structure</h2>
+      <div class="viewer-info">
+        <span class="title" id="info-title">no structure loaded</span>
+        <span class="meta">
+          <b id="info-atoms">&mdash;</b> atoms
+          <span class="sep">&middot;</span>
+          <b id="info-residues">&mdash;</b> residues
+          <span class="sep">&middot;</span>
+          <code id="info-formula">&mdash;</code>
+        </span>
       </div>
+    </div>
 
-      <!-- BUILD panel: hidden when load mode is active. -->
-      <div id="build-panel" class="source-panel">
-      <div class="build-row">
-        <label>Input type:
-          <select id="kind">
-            <option value="peptide">Peptide (1-letter, e.g. ARNDC)</option>
-            <option value="dna">DNA (1-letter, e.g. ATGCATGC)</option>
-            <option value="rna">RNA (1-letter, e.g. AUGCAUGC)</option>
-            <option value="smiles">SMILES (e.g. c1ccccc1)</option>
-            <option value="name">Name (e.g. benzene, caffeine)</option>
-          </select>
-        </label>
-        <input id="input-text" type="text" placeholder="ARNDC"
-               autocomplete="off" autofocus>
-        <button id="build-btn">Build</button>
-      </div>
+    <!-- Sole structure entry: pick a file in the Projects sidebar,
+         then click Load.  Dblclick on the sidebar also commits
+         (the universal interaction model from B.5.2). -->
+    <div class="viewer-load-bar">
+      <button id="load-from-sidebar-btn" disabled
+        title="Load the file currently picked in the Projects sidebar (.xyz / .pdb).  Disabled when no loadable file is picked.">
+        Load from sidebar selection
+      </button>
+      <span id="load-source-readout" class="muted"></span>
+      <span id="load-status" class="status"></span>
+    </div>
 
-      <!-- Extra knobs that only apply to DNA / RNA -->
-      <div id="nucleic-options" class="nucleic-row" hidden>
-        <label>Backend
-          <select id="backend">
-            <option value="auto" selected>auto</option>
-            <option value="threedna">X3DNA  (canonical B/A/Z helix; from x3dna.org)</option>
-            <option value="amber">Amber  (AmberTools tleap, extended chain)</option>
-            <option value="rdkit">RDKit  (always works, not helical)</option>
-          </select>
-        </label>
-        <label>Helix form
-          <select id="form">
-            <option value="B" selected>B</option>
-            <option value="A">A</option>
-            <option value="Z">Z (3DNA only)</option>
-          </select>
-        </label>
-        <label>Termini
-          <select id="terminal">
-            <option value="OH" selected>5'-OH / 3'-OH</option>
-            <option value="5P">5'-phosphate</option>
-            <option value="3P">3'-phosphate</option>
-            <option value="PP">both phosphates</option>
-          </select>
-        </label>
-        <label title="Tri-state hydrogen-addition control.&#10;auto: heuristic -- skip if H/heavy >= 0.5, else add (works for canonical backends but the threshold is size-dependent; see docs).&#10;on:   force add via OpenBabel/RDKit regardless of current H count.&#10;off:  don't add -- useful for inspecting X3DNA's heavy skeleton or feeding an external protonator.">
-          Add hydrogens
-          <select id="add-hydrogens">
-            <option value="auto" selected>auto (heuristic)</option>
-            <option value="on">on (force add)</option>
-            <option value="off">off (skeleton)</option>
-          </select>
-        </label>
-        <label title="Add an H to each deprotonated non-bridging phosphate oxygen so the molecule is neutral.&#10;Default ON for DFT convenience (no NetCharge needed, smaller vacuum cell sufficient).&#10;Uncheck to keep tleap's deprotonated state -- the FDF generator will then auto-set NetCharge accordingly.">
-          <input id="protonate-phosphates" type="checkbox" checked>
-          Neutralise phosphates (add H)
-        </label>
-        <span id="backend-hint" class="status"></span>
-      </div>
-
-      <div id="build-status" class="status"></div>
-      </div><!-- /#build-panel -->
-
-      <!-- LOAD panel: hidden when build mode is active. -->
-      <div id="load-panel" class="source-panel" hidden>
-        <p class="hint">
-          Start from a structure you already have (e.g. one written
-          out by a previous SIESTA / VMD / PyMOL session).  The
-          loaded geometry feeds the viewer and the input generator
-          below.
-        </p>
-        <div class="load-controls">
-          <input id="load-file" type="file" accept=".xyz,.pdb,chemical/x-xyz,chemical/x-pdb">
-          <button id="load-btn" disabled>Load file</button>
-          <span id="load-status" class="status"></span>
-        </div>
-      </div><!-- /#load-panel -->
-    </section><!-- /.card-build -->
-
-    <!-- Viewer aside is injected here in the DOM order so it lands
-         between Build and Generate at narrow widths. -->
-
-  <!-- ===================== Viewer column (sticky on wide; between cards on narrow) ===================== -->
-  <aside class="col col-viewer">
-    <section class="card card-viewer">
-      <div class="viewer-header">
-        <h2>Inspect</h2>
-        <div class="viewer-info">
-          <span class="title" id="info-title">no structure built</span>
-          <span class="meta">
-            <b id="info-atoms">&mdash;</b> atoms
-            <span class="sep">&middot;</span>
-            <b id="info-residues">&mdash;</b> residues
-            <span class="sep">&middot;</span>
-            <code id="info-formula">&mdash;</code>
-          </span>
-        </div>
-      </div>
-
-      <div class="viewer-wrap" id="viewer-wrap">
-        <div id="viewer"></div>
-      </div>
-      <!-- Phase 6: dedicated #dl-xyz / #dl-pdb buttons retired;
-           structure download lives in the embed's Export menu
-           (View / Export → Download → .xyz | .pdb). -->
-    </section>
-  </aside>
+    <div class="viewer-wrap" id="viewer-wrap">
+      <div id="viewer"></div>
+    </div>
+  </section>
 
   <section class="card" id="generate-card">
       <h2>2. Generate input <small>(optional)</small></h2>
