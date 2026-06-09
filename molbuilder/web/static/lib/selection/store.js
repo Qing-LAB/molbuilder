@@ -191,6 +191,17 @@
                 sourceFile: state.sourceFile,
                 atoms:      state.atoms.slice(),
                 selection:  state.selection.slice(),
+                // pickOrder is the click-order shadow consumed by
+                // the selection panel's measurement readout
+                // (vertex = pickOrder[1] for the 3-atom angle).
+                // Pre-task-#304 the snapshot dropped it, so the
+                // panel always read ``undefined`` and silently fell
+                // back to the geometric-vertex heuristic — the
+                // entire chemist's-pick semantic was dead end-to-
+                // end despite being correctly maintained inside the
+                // store.  Slice for the same defensive-copy reason
+                // selection has.
+                pickOrder:  state.pickOrder.slice(),
                 mode:       state.mode,
                 filters:    state.filters.slice(),
                 combinator: state.combinator,

@@ -247,6 +247,7 @@ button > code {
 }
 .issue.error  { border-color: #80262f; background: #2d1518; }
 .issue.warn   { border-color: #7a652c; background: #2a2515; }
+.issue.info   { border-color: #2c5a7a; background: #15212a; }
 .issue .badge {
     display: inline-block;
     font-size: 0.72rem;
@@ -259,6 +260,7 @@ button > code {
 }
 .issue.error .badge { background: #80262f; color: #fff; }
 .issue.warn  .badge { background: #7a652c; color: #fff; }
+.issue.info  .badge { background: #2c5a7a; color: #fff; }
 .issue .where {
     margin-left: 0.4rem;
     font-size: 0.78rem;

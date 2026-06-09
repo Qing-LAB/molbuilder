@@ -2953,6 +2953,71 @@ def test_measurement_readout_shows_xyz_distance_angle(
     )
 
 
+def test_measurement_chip_vertex_follows_pickOrder_end_to_end(
+        page, flask_server, tmp_path, monkeypatch):
+    """Task #304 regression: the existing
+    test_measurement_readout_shows_xyz_distance_angle passes water
+    in, which happens to have O as BOTH the geometric vertex AND the
+    user's middle click — so the geometric-fallback path gave the
+    right answer even when the snapshot dropped pickOrder.
+
+    Use a structure where the two diverge: three atoms at +x, origin,
+    +y forming a right angle.  The geometric heuristic would always
+    pick the ORIGIN as vertex (smallest sum-of-distances) → 90°.
+    But if we click [+y, +x, origin] the user's intent is "vertex =
+    +x" → angle ~45°.  This test fails ONLY when the chip's
+    displayed angle comes from the geometric fallback, i.e., the
+    snapshot dropped pickOrder en route to the panel renderer.
+    """
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    xyz_path = tmp_path / "right_triangle.xyz"
+    xyz_path.write_text(
+        "3\nright-triangle\n"
+        "C 1.000 0.000 0.000\n"   # 0 — +x  (the user-picked vertex)
+        "N 0.000 0.000 0.000\n"   # 1 — origin (the geometric vertex)
+        "O 0.000 1.000 0.000\n"   # 2 — +y
+    )
+    _open_modify(page, flask_server)
+    _load_file(page, str(xyz_path), expected_atoms=3)
+
+    # Click order [2, 0, 1]: O first, +x second (vertex), origin
+    # third.  setSelection takes input order verbatim into
+    # pickOrder; selection itself sorts to [0, 1, 2].
+    _set_selection(page, [2, 0, 1])
+    page.wait_for_function(
+        "() => document.getElementById('selection-measurement-overlay')"
+        "      .dataset.kind === 'angle'"
+    )
+    text = page.locator("#selection-measurement-overlay").inner_text()
+
+    # The chip's display must include the user's 2nd-click atom (+x,
+    # element 'C', index 0) as the centre of the "A – B – C" string.
+    # If pickOrder leaked out of the snapshot, the geometric
+    # fallback would have put 'N' (origin) in the middle instead.
+    import re
+    m = re.match(r"∠\s*(\S+\s*#\d+)\s*–\s*(\S+\s*#\d+)\s*–\s*(\S+\s*#\d+)",
+                 text)
+    assert m, f"expected '∠A – B – C =' shape; got {text!r}"
+    vertex_label = m.group(2)
+    assert vertex_label.startswith("C "), (
+        f"chip's vertex label should start with 'C ' (the user's "
+        f"2nd-click atom, +x), got {vertex_label!r} from chip "
+        f"text {text!r}.  If this fails, the selection store's "
+        f"snapshot is dropping pickOrder again — see task #304."
+    )
+
+    # And the angle value matches +x at the vertex (~45°), not
+    # the origin at the vertex (~90°).
+    deg_match = re.search(r"=\s*([0-9.]+)°", text)
+    assert deg_match, f"expected 'X.X°' in {text!r}"
+    deg = float(deg_match.group(1))
+    assert 40.0 <= deg <= 50.0, (
+        f"angle should be ~45° (vertex at +x), got {deg}° in {text!r}.  "
+        f"If 90° appears, the geometric-vertex fallback is firing — "
+        f"i.e., pickOrder is being dropped before the panel reads it."
+    )
+
+
 def test_modify_chain_ids_round_trip_through_op(
         page, flask_server, water_xyz_file):
     """Regression: ``state.chain_ids`` was previously never declared

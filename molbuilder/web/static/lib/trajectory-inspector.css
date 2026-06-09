@@ -346,28 +346,12 @@
 .inspect-list .col-el    { width: 3em; color: var(--text-primary); font-weight: 600; }
 .inspect-list .col-coord { text-align: right; color: var(--accent); }
 
-.inspect-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin: 8px 0;
-    font-size: 0.88rem;
-}
-.inspect-table th, .inspect-table td {
-    padding: 5px 8px;
-    text-align: left;
-    border-bottom: 1px solid var(--border-soft);
-    vertical-align: top;
-    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
-}
-.inspect-table th {
-    color: var(--accent);
-    font-weight: 600;
-    width: 4em;
-}
-.inspect-distance {
-    color: var(--accent);
-    font-weight: 600;
-}
+/* ``.inspect-table`` + ``.inspect-distance`` rules retired
+ * 2026-06-09 (task #304): the static A / B / |A-B| table was
+ * replaced by the single ``#inspect-measurement`` chip in
+ * task #299.  The chip's styling lives in
+ * lib/selection/measurement-chip.css; nothing in templates or
+ * JS references the old class names. */
 
 /* ``.workflow-*`` rules (staged-relaxation guide on /watch) were
  * removed 2026-05-19 along with /watch.  The guide was a /watch.html-

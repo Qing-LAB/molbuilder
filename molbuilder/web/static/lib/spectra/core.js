@@ -704,6 +704,13 @@
     }
 
     // ----- Issues panel ----------------------------------------
+    //
+    // Show error → warn → info, in that order, so the user reads
+    // blockers first and advisory notices last.  Pre-task-#304 the
+    // renderer concatenated only ``errs + warns`` and dropped
+    // ``info`` silently — the Pattern-B regions notice that
+    // /api/build/{fdf,pyscf} emits as INFO would never reach the
+    // user on the Spectra panel even though the API delivered it.
     function renderIssues(issues) {
         const panel = els.issuesPanel;
         if (!issues || issues.length === 0) {
@@ -711,13 +718,14 @@
                 '<p class="status muted">No issues.</p>';
             return;
         }
-        // Sort errors first so the user reads the blockers up top.
         const errs  = issues.filter(i => i.severity === "error");
         const warns = issues.filter(i => i.severity === "warn");
+        const infos = issues.filter(i => i.severity === "info");
         const html = [];
-        for (const i of errs.concat(warns)) {
+        for (const i of errs.concat(warns).concat(infos)) {
             const cls = (i.severity === "error" ? "issue error"
-                                                : "issue warn");
+                : i.severity === "warn"  ? "issue warn"
+                                         : "issue info");
             html.push(
                 '<div class="' + cls + '">'
                 + '<span class="badge">' + escapeHtml(i.severity) + '</span> '

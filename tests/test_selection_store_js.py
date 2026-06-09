@@ -159,6 +159,13 @@ class TestInitialState:
             "sourceFile": None,
             "atoms":      [],
             "selection":  [],
+            # ``pickOrder`` was added to the snapshot in task #304
+            # (2026-06-09) — the click-order shadow for the
+            # measurement-readout angle vertex.  Empty on fresh
+            # store; updated in lock-step with selection by every
+            # mutator.  See atom-selection.md § 2 + TestPickOrderSnapshot
+            # below.
+            "pickOrder":  [],
             "mode":       "click",
             "filters":    [],
             "combinator": "or",
@@ -673,6 +680,75 @@ class TestFilterDrafts:
 # --------------------------------------------------------------------
 # Subscribe contract
 # --------------------------------------------------------------------
+
+
+class TestPickOrderSnapshot:
+    """Task #304 regression: the click-order shadow ``pickOrder`` MUST
+    appear in ``getState()`` and in subscriber snapshots — pre-fix
+    ``_snapshot()`` silently dropped it, so the only consumer
+    (selection-panel.js's measurement readout) always saw
+    ``undefined`` and fell back to the geometric vertex heuristic.
+    The whole "vertex = user's 2nd click" semantic shipped dead
+    end-to-end despite the store maintaining it correctly
+    internally."""
+
+    def test_pickOrder_present_in_getState(self):
+        out = _run_node(
+            "const store = window.molbuilder.selection._createStore();\n"
+            "Promise.all([\n"
+            "  store.toggleAtom(5),\n"
+            "  store.toggleAtom(0),\n"
+            "  store.toggleAtom(2),\n"
+            "]).then(() => {\n"
+            "  const s = store.getState();\n"
+            "  console.log(JSON.stringify({\n"
+            "    selection: s.selection,\n"
+            "    pickOrder: s.pickOrder,\n"
+            "  }));\n"
+            "});"
+        )
+        # selection is sorted (set semantics); pickOrder preserves
+        # click order so the angle-vertex consumer sees the user's
+        # 2nd click as the middle atom.
+        assert out == {
+            "selection": [0, 2, 5],
+            "pickOrder": [5, 0, 2],
+        }
+
+    def test_pickOrder_is_a_defensive_copy(self):
+        """Mutating the returned ``pickOrder`` array must not poison
+        the store — same contract as ``selection``."""
+        out = _run_node(
+            "const store = window.molbuilder.selection._createStore();\n"
+            "store.setSelection([1, 0, 2]).then(() => {\n"
+            "  const snap = store.getState();\n"
+            "  snap.pickOrder.push(999);\n"
+            "  const fresh = store.getState();\n"
+            "  console.log(JSON.stringify(fresh.pickOrder));\n"
+            "});"
+        )
+        assert out == [1, 0, 2]
+
+    def test_subscribe_snapshot_carries_pickOrder(self):
+        """Subscribers (the panel renderer) see ``pickOrder`` on
+        every notification, not just on a separate getState() call."""
+        out = _run_node(
+            "const store = window.molbuilder.selection._createStore();\n"
+            "let last = null;\n"
+            "store.subscribe((s) => { last = s; });\n"
+            "store.setSelection([3, 7, 1]).then(() => {\n"
+            "  console.log(JSON.stringify({\n"
+            "    selection: last.selection,\n"
+            "    pickOrder: last.pickOrder,\n"
+            "  }));\n"
+            "});"
+        )
+        # selection sorted ascending; pickOrder preserves input
+        # order from setSelection.
+        assert out == {
+            "selection": [1, 3, 7],
+            "pickOrder": [3, 7, 1],
+        }
 
 
 class TestSubscribe:

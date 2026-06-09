@@ -925,3 +925,51 @@ class TestPartialSelectionPanelEndpoint:
             f"selection partial is missing {element_id!r}; "
             f"lib/selection-panel.js will fail on $() lookup."
         )
+
+
+class TestSpectraIssuesPanelSeverityCoverage:
+    """Task #304 regression: ``lib/spectra/core.js`` previously
+    filtered the issues array into ``errs + warns`` and silently
+    dropped ``info`` severity, so the Pattern-B regions notice
+    (and any future info-level message) would be invisible on the
+    Spectra results panel even though the API delivered it.
+
+    Static asserts on the source so a regression would surface in
+    code review rather than waiting for the right-shaped fixture
+    to flow through an e2e."""
+
+    def test_spectra_renderIssues_includes_info_severity(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parents[1] \
+            / "molbuilder/web/static/lib/spectra/core.js"
+        text = src.read_text()
+        # The function must filter info alongside error + warn.
+        assert 'i.severity === "info"' in text, (
+            "spectra/core.js renderIssues must filter info-severity "
+            "issues into the rendered list; pre-#304 it dropped them "
+            "silently.  See docs/protocols/three-stage-contract.md."
+        )
+        # ...and must concatenate info into the rendered list (the
+        # iteration step, not just the filter expression).  Catches a
+        # regression where someone filters info-severity issues but
+        # forgets to include them in errs.concat(warns).concat(infos).
+        assert ".concat(infos)" in text or "concat(infos)" in text, (
+            "spectra/core.js renderIssues filters info but never "
+            "concatenates them into the rendered list."
+        )
+
+    def test_spectra_style_has_info_severity_rules(self):
+        from pathlib import Path
+        src = Path(__file__).resolve().parents[1] \
+            / "molbuilder/web/static/spectra/style.css"
+        text = src.read_text()
+        assert ".issue.info" in text, (
+            "spectra/style.css is missing .issue.info colour rules; "
+            "the renderer emits class 'issue info' but the panel "
+            "would render unstyled blocks without these rules."
+        )
+        assert ".issue.info  .badge" in text \
+               or ".issue.info .badge" in text, (
+            "spectra/style.css needs a badge colour for the info "
+            "severity, matching error + warn."
+        )
