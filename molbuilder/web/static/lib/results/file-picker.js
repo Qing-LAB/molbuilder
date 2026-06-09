@@ -459,6 +459,12 @@
                 .then(body => {
                     if (disposed || signal.aborted) return;
                     if (!body || body.ok !== true) {
+                        // Bar-hide path: drop the transient busy
+                        // status so the Refresh button's
+                        // MutationObserver re-enables it.  Without
+                        // this the button stays disabled until
+                        // remount.
+                        if (metaEl) metaEl.classList.remove("is-busy");
                         barEl.hidden = true;
                         cachedResults = [];
                         cachedGroups  = [];
@@ -471,7 +477,9 @@
                     );
                     cachedResults = results;
                     if (results.length === 0) {
-                        // Empty result set: no point showing the bar.
+                        // Empty result set: no point showing the
+                        // bar.  Same is-busy clear as above.
+                        if (metaEl) metaEl.classList.remove("is-busy");
                         cachedGroups = [];
                         barEl.hidden = true;
                         return;
@@ -509,6 +517,7 @@
                         "[results-file-picker] scan failed; hiding bar",
                         err
                     );
+                    if (metaEl) metaEl.classList.remove("is-busy");
                     barEl.hidden = true;
                     cachedResults = [];
                     cachedGroups  = [];
@@ -774,14 +783,16 @@
         // require touching _scan's internals (and survives the
         // edge case where the scan resolves to an empty dir, which
         // hides the bar entirely).
-        let _metaObserver = null;
-        if (metaEl && typeof MutationObserver === "function") {
-            _metaObserver = new MutationObserver(() => {
-                if (!refreshBtn) return;
-                if (!metaEl.classList.contains("is-busy")) {
-                    _setRefreshBusy(false);
-                }
-            });
+        const _metaObserver =
+            (metaEl && typeof MutationObserver === "function")
+                ? new MutationObserver(() => {
+                    if (!refreshBtn) return;
+                    if (!metaEl.classList.contains("is-busy")) {
+                        _setRefreshBusy(false);
+                    }
+                })
+                : null;
+        if (_metaObserver) {
             _metaObserver.observe(metaEl, {
                 attributes: true,
                 attributeFilter: ["class"],

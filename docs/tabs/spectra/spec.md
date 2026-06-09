@@ -537,7 +537,7 @@ L2 begins:    phase_frequencies="running"
 L2 done:      phase_frequencies="complete"
 L3 begins:    phase_raman="running"           (only if compute_raman=True)
 L3 done:      phase_raman="complete"
-L4 begins:    phase_es="running"              (only if es selector ≠ "none")
+L4 begins:    phase_es="running"              (only if es selector ≠ "skip")
 L4 in flight: phase_es="running",  per-mode ES populated incrementally
                                    (selected modes get electronic_structure
                                    populated one at a time; partial state

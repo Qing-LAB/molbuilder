@@ -75,7 +75,7 @@ from molbuilder import (
 )
 from molbuilder.config.pyscf  import PySCFConfig
 from molbuilder.config.siesta import SiestaConfig
-from molbuilder.issues import ValidationError
+from molbuilder.issues import Issue, ValidationError
 from molbuilder.pyscf  import render_script
 from molbuilder.siesta import render_fdf
 from molbuilder.structure import Structure
@@ -892,7 +892,6 @@ def api_build_fdf():
     # callers; here we want the issues as JSON for the UI.
     issues = validate(struct, cfg, dest_dir=dest_dir)
     if sidecar_notice:
-        from molbuilder.issues import Issue
         issues.append(Issue("warn", sidecar_notice, "config.frozen_atoms"))
     # Three-stage Pattern B (sidecar-contract.md § 6 B): the SIESTA
     # SCF/relaxation deck does NOT consume electrode regions
@@ -903,7 +902,6 @@ def api_build_fdf():
     # so the user can re-direct to /transport-calculation if that
     # was the intent.
     if struct.regions:
-        from molbuilder.issues import Issue
         region_labels = sorted(struct.regions.keys())
         issues.append(Issue(
             "info",
@@ -983,14 +981,12 @@ def api_build_pyscf():
 
     issues = validate(struct, cfg)
     if sidecar_notice:
-        from molbuilder.issues import Issue
         issues.append(Issue("warn", sidecar_notice, "config.frozen_atoms"))
     # Three-stage Pattern B (mirrors /api/build/fdf above): PySCF's
     # SCF/relaxation/optimisation deck doesn't consume electrode
     # regions either.  Same INFO issue so the user can re-direct
     # to Transport if they meant a junction calculation.
     if struct.regions:
-        from molbuilder.issues import Issue
         region_labels = sorted(struct.regions.keys())
         issues.append(Issue(
             "info",

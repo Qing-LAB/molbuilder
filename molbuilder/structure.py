@@ -22,10 +22,14 @@ docs/design.md):
       and by the Build SIESTA / PySCF emitters (warn-only today
       pending the design.md "fully respected" rollout).
 
-  regions : List[List[int]]
+  regions : Dict[str, List[int]]
       Named groups of atom indices for transport-style partition
-      (e.g. left lead / channel / right lead).  Validated as
-      pairwise-disjoint at __post_init__.
+      (keys are user-facing labels like ``"L-electrode"`` /
+      ``"R-electrode"`` / ``"bridge"``; values are 0-based atom
+      indices).  Validated as pairwise-disjoint at __post_init__.
+      (Docstring used to say List[List[int]]; corrected 2026-06-09
+      after siesta/input.py rebuilt regions as a list comprehension,
+      crashed on any non-empty dict — fixed in commit 7d9cd54.)
 
 These two attributes are the load-bearing carriers for the
 boundary-conditions axis of the three-stage contract.  Any emitter
