@@ -236,6 +236,26 @@
                 };
                 try {
                     viewerHandle = embedApi(viewerSlot, opts);
+                    // Test hooks (no production reader): stash the
+                    // embed handle + chip-update closure on the
+                    // viewer slot DOM node so Playwright e2e can
+                    // drive setPickedIndices + refresh the chip
+                    // without simulating canvas-pixel clicks.  The
+                    // embed deliberately suppresses ``onPick`` on
+                    // ``setPickedIndices`` (avoids feedback loops),
+                    // so test code that drives picks externally
+                    // must trigger the chip update directly via
+                    // ``__molbuilder_test_refreshChip()``.  The
+                    // double-underscore prefix marks "test only";
+                    // properties hang off the slot rather than
+                    // ``window`` to avoid global collisions when
+                    // multiple inspectors mount in the same run.
+                    // Disposed implicitly when the inspector tears
+                    // the host down.
+                    viewerSlot.__molbuilder_test_handle = viewerHandle;
+                    viewerSlot.__molbuilder_test_chip   = chip;
+                    viewerSlot.__molbuilder_test_refreshChip =
+                        () => _updateChip(viewerHandle);
                 } catch (e) {
                     status.textContent = "Viewer failed: "
                                        + (e && e.message ? e.message : String(e));

@@ -371,3 +371,152 @@ class TestResultsDecoupledFromSidebar:
             "() => document.querySelectorAll("
             "    '#results-file-picker-select option').length === 2"
         )
+
+    def test_refresh_button_disables_during_rescan(
+            self, page, flask_server, project_with_one_out):
+        """Task #303 added a MutationObserver-driven disabled state
+        on the Refresh button while a scan is in flight; the
+        observer watches the meta line's ``is-busy`` class.  Pin
+        that the button (a) goes disabled when clicked and
+        (b) comes back enabled once the scan settles.  Catches a
+        regression where the observer is dropped or the
+        is-busy lifecycle leaks past a bar-hide branch (the
+        review found three such paths that leaked pre-task-#304;
+        keep the regression net up)."""
+        proj, dir_path = project_with_one_out
+        _setup_modify_dir(page, flask_server, dir_path)
+        page.goto(f"{flask_server}/results")
+        page.wait_for_function(
+            "() => document.querySelectorAll("
+            "    '#results-file-picker-select option').length === 1"
+        )
+        # Settled state: button is enabled.
+        assert page.locator("#results-file-picker-refresh").is_enabled()
+
+        # Click → button goes disabled while the scan runs.  The
+        # _scan path on a small project finishes in well under
+        # 100 ms; instead of racing against that, observe the
+        # disabled→enabled transition via wait_for_function on
+        # the class.  The button MUST end up enabled again.
+        page.locator("#results-file-picker-refresh").click()
+        page.wait_for_function(
+            "() => !document.getElementById('results-file-picker-refresh')"
+            ".disabled",
+            timeout=10000,
+        )
+
+    def test_refresh_button_double_click_does_not_stack_scans(
+            self, page, flask_server, project_with_one_out):
+        """A rapid double-click on the Refresh button must not
+        spawn two concurrent scans (the second one would race the
+        first's AbortController + leave the meta line flickering).
+        The disabled-during-rescan guard makes the second click a
+        no-op."""
+        proj, dir_path = project_with_one_out
+        _setup_modify_dir(page, flask_server, dir_path)
+        page.goto(f"{flask_server}/results")
+        page.wait_for_function(
+            "() => document.querySelectorAll("
+            "    '#results-file-picker-select option').length === 1"
+        )
+
+        # Spy on /api/files/list calls to confirm we see exactly
+        # ONE additional request from the double-click (the first
+        # click; the second is dropped by the disabled guard).
+        # Initial mount already issued one scan; we baseline that.
+        baseline = page.evaluate(
+            "() => performance.getEntriesByType('resource')"
+            "  .filter(e => e.name.includes('/api/files/list')).length"
+        )
+
+        btn = page.locator("#results-file-picker-refresh")
+        btn.click()
+        # Don't wait — fire again immediately to test the guard.
+        # Playwright's click() honours actionability (disabled =
+        # blocked); use evaluate-style dispatch to bypass that
+        # check and confirm the JS guard, not Playwright's, is
+        # what blocks the second scan.
+        page.evaluate(
+            "() => document.getElementById('results-file-picker-refresh')"
+            "  .click()"
+        )
+        page.wait_for_function(
+            "() => !document.getElementById('results-file-picker-refresh')"
+            ".disabled",
+            timeout=10000,
+        )
+
+        after = page.evaluate(
+            "() => performance.getEntriesByType('resource')"
+            "  .filter(e => e.name.includes('/api/files/list')).length"
+        )
+        new_scans = after - baseline
+        assert new_scans == 1, (
+            f"a double-click on Refresh should fire exactly one extra "
+            f"scan (the second click is a no-op while disabled); "
+            f"got {new_scans} extra scans"
+        )
+
+    def test_fileSelected_event_detail_carries_picked_file_path(
+            self, page, flask_server, project_with_one_out):
+        """Pin the ``molbuilder:results:fileSelected`` event's detail
+        shape: ``{file: <full path>}``.  results/viewer.js reads
+        ``evt.detail.file``; a future picker refactor that drops the
+        ``detail`` wrapper or renames the key would silently break
+        the dispatcher.  Catches that here."""
+        proj, dir_path = project_with_one_out
+        # Add a second file so we can fire a deliberate change
+        # event from the dropdown.
+        (proj / "run2.out").write_text(">> End of run: 2026-02-02\n")
+        _setup_modify_dir(page, flask_server, dir_path)
+        page.goto(f"{flask_server}/results")
+        page.wait_for_function(
+            "() => document.querySelectorAll("
+            "    '#results-file-picker-select option').length === 2"
+        )
+
+        # Spy on the event AFTER the auto-pick has fired (the first
+        # event is for the newest file; we want to observe the
+        # event emitted by an explicit dropdown change).
+        page.evaluate(
+            "() => { window.__events = [];"
+            "  document.addEventListener("
+            "    'molbuilder:results:fileSelected',"
+            "    (e) => window.__events.push(e.detail));"
+            "}"
+        )
+
+        # Pick the OTHER file (whichever one wasn't auto-selected).
+        page.evaluate(
+            "() => {"
+            "  const sel = document.getElementById('results-file-picker-select');"
+            "  const auto = sel.value;"
+            "  const other = Array.from(sel.options)"
+            "    .find(o => o.value && o.value !== auto);"
+            "  if (other) {"
+            "    sel.value = other.value;"
+            "    sel.dispatchEvent(new Event('change', { bubbles: true }));"
+            "  }"
+            "}"
+        )
+        page.wait_for_function(
+            "() => (window.__events || []).length >= 1"
+        )
+
+        events = page.evaluate("() => window.__events")
+        assert events, "no fileSelected events captured after dropdown change"
+        # Detail shape: {file: <full path>}.  Path must start
+        # with the project dir so consumers can derive parents.
+        for ev in events:
+            assert "file" in ev, (
+                f"fileSelected event detail must carry 'file' key; "
+                f"got keys {sorted(ev.keys())}"
+            )
+            assert isinstance(ev["file"], str), (
+                f"fileSelected.detail.file must be a string; "
+                f"got {type(ev['file']).__name__}"
+            )
+            assert ev["file"].startswith(dir_path), (
+                f"fileSelected.detail.file should be an absolute path "
+                f"inside the project dir {dir_path}; got {ev['file']!r}"
+            )
