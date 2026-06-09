@@ -516,9 +516,12 @@
         }
 
         /**
-         * Auto-select ``entry`` as the current file.  Calls
-         * projects.setShared which fires onChange so viewer.js mounts
-         * the matching inspector.  No-op if the sidebar is locked
+         * Auto-select ``entry`` as the current file.  Mirrors the
+         * pick to the sidebar via ``projects.setShared`` AND
+         * dispatches ``molbuilder:results:fileSelected`` so the
+         * /results dispatcher mounts the matching inspector
+         * (task #301 — the onChange subscription that used to do
+         * that work was retired).  No-op if the sidebar is locked
          * (setShared returns ok:false; we log + don't retry).
          */
         function _autoSelect(entry) {
@@ -530,7 +533,9 @@
                     "[results-file-picker] auto-select refused:",
                     r.error
                 );
+                return;
             }
+            _emitFileSelected(entry.path);
         }
 
         // -- selection-change subscriber ------------------------- //
@@ -577,11 +582,44 @@
             }
         }
 
-        const unsubscribeSelection = proj.onChange(_onSelectionChange);
+        // Sidebar onChange subscription RETIRED 2026-06-09 (task
+        // #301).  Pre-task-301 the picker re-scanned on every
+        // sidebar pick — single-clicking around the sidebar would
+        // hijack the Results inspector mid-read.  Post-301, the
+        // picker treats its <select> as the single source of truth
+        // for the active result file; the sidebar's role on
+        // /results is "set the project directory" only.  Re-scans
+        // happen on pageshow / visibilitychange (tab re-entry,
+        // bfcache restore) and on the explicit Refresh button.
+        const unsubscribeSelection = null;
         document.addEventListener("molbuilder:inspector:ready",
                                   _onInspectorReady);
 
         // -- dropdown change handler ----------------------------- //
+        //
+        // Two side-effects per pick:
+        //
+        //   1. setShared(dir, file) mirrors the sidebar's current
+        //      pointer so the sidebar UI highlights the active
+        //      file (cosmetic; the sidebar no longer steers the
+        //      inspector on /results — task #301).
+        //
+        //   2. dispatch ``molbuilder:results:fileSelected`` so the
+        //      /results dispatcher mounts the matching inspector.
+        //      A custom event (vs. a method call) keeps the picker
+        //      decoupled from the dispatcher's module identity.
+        function _emitFileSelected(file) {
+            try {
+                document.dispatchEvent(new CustomEvent(
+                    "molbuilder:results:fileSelected",
+                    { detail: { file: file || "" } }));
+            } catch (_) {
+                // CustomEvent should always be available in supported
+                // browsers; the try/catch is belt + braces for older
+                // headless test runners.
+            }
+            _startParseStatus(file);
+        }
         function _onSelectChange() {
             const newPath = selEl.value;
             if (!newPath) return;
@@ -593,7 +631,9 @@
                     r.error
                 );
                 _revertSelectTo(/*last-known good*/ null);
+                return;
             }
+            _emitFileSelected(newPath);
         }
 
         function _revertSelectTo(path) {
@@ -688,6 +728,28 @@
                 "visibilitychange", _onVisibilityChange);
         }
 
+        // Initial bootstrap: with the sidebar onChange subscription
+        // retired (task #301), the picker no longer gets a "current
+        // selection" callback on mount.  Trigger one rescan
+        // explicitly so the dropdown populates on first load.
+        // pageshow also fires once on fresh navigation but only
+        // AFTER mount returns; this call covers the early window so
+        // the dropdown is visible by the time the user looks.
+        _forceRescan();
+
+        // -- Refresh button: explicit user-driven rescan -------- //
+        const refreshBtn = rootEl.querySelector("#results-file-picker-refresh");
+        function _onRefreshClick() {
+            if (disposed) return;
+            // Brief visual ack so the click feels responsive even
+            // when the listing is already up-to-date.
+            _showTransientStatus("Refreshing…");
+            _forceRescan();
+        }
+        if (refreshBtn) {
+            refreshBtn.addEventListener("click", _onRefreshClick);
+        }
+
         // -- lock-state subscriber (disable while Save in flight) //
         let unsubscribeLock = null;
         if (typeof proj.onLockChange === "function") {
@@ -710,6 +772,10 @@
                         "molbuilder:inspector:ready", _onInspectorReady);
                 } catch (_) { /* ignore */ }
                 try { selEl.removeEventListener("change", _onSelectChange); }
+                catch (_) { /* ignore */ }
+                try { if (refreshBtn) {
+                    refreshBtn.removeEventListener("click", _onRefreshClick);
+                } }
                 catch (_) { /* ignore */ }
                 try { if (unsubscribeSelection) unsubscribeSelection(); }
                 catch (_) { /* ignore */ }

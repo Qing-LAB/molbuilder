@@ -587,6 +587,31 @@
     flex-shrink:  0;
 }
 
+/* Refresh button — sits between the dropdown and the meta line.
+ * Task #301 (2026-06-09): explicit user-driven rescan, since the
+ * picker no longer auto-rescans on sidebar onChange.  Visual
+ * weight low (ghost-style) so the dropdown stays the primary
+ * affordance. */
+.result-list-refresh {
+    flex-shrink:     0;
+    padding:         var(--space-xs) var(--space-md);
+    font-size:       var(--text-sm);
+    background:      transparent;
+    color:           var(--text-primary);
+    border:          1px solid var(--border-strong);
+    border-radius:   var(--radius-sm);
+    cursor:          pointer;
+    transition:      background 120ms, border-color 120ms;
+}
+.result-list-refresh:hover {
+    background:      var(--bg-card-hover, var(--bg-input));
+    border-color:    var(--accent);
+}
+.result-list-refresh:disabled {
+    opacity:    0.5;
+    cursor:     not-allowed;
+}
+
 .result-list-select {
     flex:           1 1 auto;
     min-width:      0;             /* allow shrink in flex container */

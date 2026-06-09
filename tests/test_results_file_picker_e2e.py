@@ -285,3 +285,89 @@ class TestNoStaleScanOnRevisit:
         # Still exactly one entry; bar didn't double-up or disappear.
         assert len(opts2) == 1
         assert "run1.out" in opts2[0]
+
+
+class TestResultsDecoupledFromSidebar:
+    """Task #301 (2026-06-09): the Results tab dispatches inspectors
+    via the dropdown picker only.  Sidebar single-click → setShared →
+    onChange is NOT a Results trigger anymore — the user gets back
+    control of what's mounted in the inspector host."""
+
+    def test_sidebar_setShared_does_not_remount_inspector(
+            self, page, flask_server, project_with_one_out):
+        """Pre-task-301 the /results dispatcher subscribed to
+        projects.onChange; every sidebar pick fired _onSelectionChange
+        and dispose-then-mount-ed an inspector.  Post-301 the
+        dispatcher listens only for ``molbuilder:results:fileSelected``
+        (dispatched by the dropdown picker), so a raw setShared call
+        must NOT remount the inspector."""
+        proj, dir_path = project_with_one_out
+        (proj / "second.out").write_text(">> End of run: 2026-01-02\n")
+
+        _setup_modify_dir(page, flask_server, dir_path)
+        page.goto(f"{flask_server}/results")
+        page.wait_for_function(
+            "() => document.querySelectorAll("
+            "    '#results-file-picker-select option').length === 2"
+        )
+        # Auto-pick fires fileSelected for the newest file; capture
+        # whatever it dispatched as the baseline.
+        baseline = page.locator("#results-current-file").inner_text()
+
+        # Spy on subsequent fileSelected events.
+        page.evaluate(
+            "() => { window.__followup_selects = [];"
+            "  document.addEventListener("
+            "    'molbuilder:results:fileSelected',"
+            "    (e) => window.__followup_selects.push("
+            "        e.detail && e.detail.file || ''));"
+            "}"
+        )
+
+        # Sidebar setShared to the OTHER file — pre-301 this would
+        # fire onChange → dispatcher remount.  Post-301 it's a no-op
+        # for /results.
+        other = str(proj / "run1.out")
+        page.evaluate(
+            "(f) => window.molbuilder.projects.setShared("
+            "  f.substring(0, f.lastIndexOf('/')), f)",
+            other,
+        )
+        page.wait_for_timeout(300)
+
+        events = page.evaluate("() => window.__followup_selects")
+        assert events == [], (
+            f"sidebar setShared leaked into Results: got events {events}"
+        )
+        # The inspector header still shows the baseline file — the
+        # sidebar pick did NOT remount.
+        assert page.locator("#results-current-file").inner_text() == baseline
+
+    def test_refresh_button_rescans_directory(
+            self, page, flask_server, project_with_one_out):
+        """Explicit user-driven rescan: an external write that lands
+        AFTER the initial scan should not appear until the user clicks
+        Refresh (or the tab is re-focused / re-shown — covered by the
+        other tests in this file).  Pin the button's wiring."""
+        proj, dir_path = project_with_one_out
+        _setup_modify_dir(page, flask_server, dir_path)
+        page.goto(f"{flask_server}/results")
+        page.wait_for_function(
+            "() => document.querySelectorAll("
+            "    '#results-file-picker-select option').length === 1"
+        )
+
+        # New file lands in the same dir while user is sitting on
+        # /results.  Without the sidebar onChange subscription, the
+        # picker won't see it until a refresh.
+        (proj / "later.out").write_text(">> End of run: 2026-01-03\n")
+        page.wait_for_timeout(100)
+        assert len(_picker_options(page)) == 1, (
+            "picker should not auto-detect new files without a refresh"
+        )
+
+        page.locator("#results-file-picker-refresh").click()
+        page.wait_for_function(
+            "() => document.querySelectorAll("
+            "    '#results-file-picker-select option').length === 2"
+        )

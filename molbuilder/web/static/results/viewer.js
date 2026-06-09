@@ -151,21 +151,50 @@
             _showFallback("");
             return;
         }
-        // onChange fires immediately with the current selection
-        // (per projects/state.js contract), so initial render
-        // happens here without an extra call.
-        proj.onChange(_onSelectionChange);
+
+        // SIDEBAR-DRIVEN dispatch RETIRED 2026-06-09 (task #301).
+        // Pre-301: every sidebar pick fired _onSelectionChange on
+        // /results, dispose-then-mount-ing an inspector — single-
+        // clicking around the sidebar was hijacking the Results
+        // tab mid-read.  Post-301, /results listens for an
+        // explicit ``molbuilder:results:fileSelected`` event that
+        // the dropdown picker dispatches when the user picks a
+        // file from #results-file-picker-select (or when the
+        // picker auto-picks on first rescan).  Sidebar single-
+        // clicks no longer steer the inspector; the user gets
+        // back full control of what's mounted.
+        document.addEventListener(
+            "molbuilder:results:fileSelected",
+            (evt) => _onSelectionChange({
+                file: (evt && evt.detail && evt.detail.file) || "",
+            })
+        );
 
         // Tab-level result-file picker (2026-06-01).  Owns its own
-        // selection-change subscription so it scans the new dir
-        // and auto-picks a result when the user enters a project
-        // dir.  The picker calls projects.setShared(dir, newFile)
-        // which fires the same onChange this viewer is subscribed
-        // to, so file-switches via the dropdown trigger the same
-        // dispatch path as sidebar clicks.
+        // directory rescan + dropdown population.  Dispatches
+        // ``molbuilder:results:fileSelected`` when the user picks
+        // (or the auto-pick fires on a fresh dir); the event
+        // listener above mounts the right inspector.
         const picker = (window.molbuilder || {}).resultsFilePicker;
         if (picker && typeof picker.mount === "function") {
             picker.mount(document);
+        }
+
+        // Initial bootstrap: with the onChange subscription
+        // retired, the inspector needs a manual first render so
+        // returning users with a sessionStorage-saved current
+        // file see their content without first having to click
+        // through the dropdown.  The picker's _forceRescan in
+        // its mount call ALSO emits a fileSelected event when it
+        // auto-picks; that path covers the "fresh dir with no
+        // sessionStorage pick" case.  This direct call covers the
+        // complementary "sessionStorage has a file already".
+        const initialFile = (typeof proj.getCurrentFile === "function")
+            ? proj.getCurrentFile() : "";
+        if (initialFile) {
+            _onSelectionChange({ file: initialFile });
+        } else {
+            _showFallback("");
         }
     }
 
