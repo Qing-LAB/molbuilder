@@ -65,7 +65,11 @@ class PySCFConfig:
         "label":   "Net charge",
         "engine_key":  'gto.M(charge=...)',
         "null_label": "(auto)",
-        "help": "net charge (default: auto-detect from phosphates)",
+        "help": ("net charge.  Default (auto) only deduces a value "
+                 "for DNA / RNA — one negative charge per backbone "
+                 "phosphate.  For everything else (peptide, SMILES, "
+                 "PDB load) auto resolves to 0; set this explicitly "
+                 "when working with a charged species."),
     })
     spin: int = field(default=0, metadata={
         "section": "System",

@@ -738,9 +738,26 @@
         _forceRescan();
 
         // -- Refresh button: explicit user-driven rescan -------- //
+        //
+        // Click-stacking guard: a double-click would otherwise fire
+        // two _forceRescan calls, each spawning its own fetch +
+        // resolver — the later resolver wins, but the wasted scan
+        // can leave the meta line flickering through two transient
+        // statuses.  Disable the button while a scan is in flight;
+        // re-enable when ``cachedResults`` lands or the picker
+        // hides itself.  ``aborter`` is the picker's per-scan
+        // AbortController; we tie the button state to its
+        // presence.  The CSS rule on .result-list-refresh:disabled
+        // shifts cursor to ``wait`` so the disabled state reads as
+        // "doing it" rather than "not allowed".
         const refreshBtn = rootEl.querySelector("#results-file-picker-refresh");
+        function _setRefreshBusy(busy) {
+            if (refreshBtn) refreshBtn.disabled = !!busy;
+        }
         function _onRefreshClick() {
             if (disposed) return;
+            if (refreshBtn && refreshBtn.disabled) return;
+            _setRefreshBusy(true);
             // Brief visual ack so the click feels responsive even
             // when the listing is already up-to-date.
             _showTransientStatus("Refreshing…");
@@ -748,6 +765,27 @@
         }
         if (refreshBtn) {
             refreshBtn.addEventListener("click", _onRefreshClick);
+        }
+        // Hook the button's busy state to the picker's scan
+        // lifecycle without re-plumbing _scan.  Watch the meta
+        // line's ``is-busy`` class — true during scan + parse —
+        // and clear the busy flag when it goes back to idle.
+        // MutationObserver is the cleanest signal that doesn't
+        // require touching _scan's internals (and survives the
+        // edge case where the scan resolves to an empty dir, which
+        // hides the bar entirely).
+        let _metaObserver = null;
+        if (metaEl && typeof MutationObserver === "function") {
+            _metaObserver = new MutationObserver(() => {
+                if (!refreshBtn) return;
+                if (!metaEl.classList.contains("is-busy")) {
+                    _setRefreshBusy(false);
+                }
+            });
+            _metaObserver.observe(metaEl, {
+                attributes: true,
+                attributeFilter: ["class"],
+            });
         }
 
         // -- lock-state subscriber (disable while Save in flight) //
@@ -776,6 +814,8 @@
                 try { if (refreshBtn) {
                     refreshBtn.removeEventListener("click", _onRefreshClick);
                 } }
+                catch (_) { /* ignore */ }
+                try { if (_metaObserver) _metaObserver.disconnect(); }
                 catch (_) { /* ignore */ }
                 try { if (unsubscribeSelection) unsubscribeSelection(); }
                 catch (_) { /* ignore */ }

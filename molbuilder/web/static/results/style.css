@@ -439,3 +439,128 @@
     font-size: var(--text-sm);
     line-height: var(--line-snug);
 }
+
+/* ============================================================
+ * Result-list bar (moved here 2026-06-09, task #303 — was in
+ * lib/trajectory-inspector.css since 2026-05-30).  The dropdown
+ * is the /results page-level "Result file" picker; rules
+ * co-located with results-specific styling so a future
+ * trajectory CSS cleanup can't silently break the bar.
+ *
+ * The picker became the SOLE inspector dispatcher on /results
+ * with task #301 (2026-06-09): sidebar onChange retired, the
+ * dropdown + Refresh button + tab-focus auto-refresh are the
+ * only triggers for inspector mount.
+ * ============================================================ */
+
+.result-list-bar {
+    display:         flex;
+    flex-wrap:       wrap;
+    align-items:     center;
+    gap:             var(--space-sm);
+    margin:          var(--space-sm) 0 var(--space-md);
+    padding:         var(--space-sm) var(--space-md);
+    background:      var(--bg-card);
+    border:          1px solid var(--border-soft);
+    border-radius:   var(--radius);
+    font-size:       var(--text-sm);
+}
+
+.result-list-bar[hidden] {
+    /* The bar is gated on >= 1 results in the dir; an explicit
+     * display:none guarantees no flex-layout reservation lingers. */
+    display: none !important;
+}
+
+.result-list-label {
+    color:        var(--text-secondary);
+    font-weight:  600;
+    margin:       0;
+    flex-shrink:  0;
+}
+
+/* Refresh button — sits between the dropdown and the meta line.
+ * Task #301 (2026-06-09): explicit user-driven rescan, since the
+ * picker no longer auto-rescans on sidebar onChange.  Visual
+ * weight low (ghost-style) so the dropdown stays the primary
+ * affordance.  Border bumped to ``--accent`` 2026-06-09 (task
+ * #303) for better discoverability against the dark card. */
+.result-list-refresh {
+    flex-shrink:     0;
+    padding:         var(--space-xs) var(--space-md);
+    font-size:       var(--text-sm);
+    background:      transparent;
+    color:           var(--text-primary);
+    border:          1px solid var(--accent);
+    border-radius:   var(--radius-sm);
+    cursor:          pointer;
+    transition:      background 120ms, border-color 120ms;
+}
+.result-list-refresh:hover {
+    background:      var(--bg-card-hover, var(--bg-input));
+    border-color:    var(--accent-strong);
+}
+.result-list-refresh:disabled {
+    opacity:    0.5;
+    cursor:     wait;
+    border-color: var(--border-strong);
+}
+
+.result-list-select {
+    flex:           1 1 auto;
+    min-width:      0;             /* allow shrink in flex container */
+    max-width:      100%;
+    padding:        var(--space-xs) var(--space-sm);
+    border:         1px solid var(--border-strong);
+    border-radius:  var(--radius-sm);
+    background:     var(--bg-input);
+    font-family:    var(--font-mono);
+    font-size:      var(--text-sm);
+    color:          var(--text-primary);
+    text-overflow:  ellipsis;
+}
+
+.result-list-select:hover {
+    background:    var(--bg-input-focus);
+    border-color:  var(--accent-strong);
+}
+
+.result-list-select:focus {
+    outline:        none;
+    border-color:   var(--accent);
+    background:     var(--bg-input-focus);
+    box-shadow:     var(--shadow-input);
+}
+
+.result-list-select option {
+    background:    var(--bg-card);
+    color:         var(--text-primary);
+}
+
+.result-list-select optgroup {
+    background:    var(--bg-card);
+    color:         var(--text-secondary);
+    font-weight:   600;
+    font-style:    normal;
+}
+
+.result-list-meta {
+    color:         var(--text-muted);
+    font-size:     var(--text-xs);
+    flex-basis:    100%;
+    margin-top:    var(--space-xs);
+}
+
+.result-list-meta.is-busy {
+    color:        var(--text-primary);
+    font-size:    var(--text-sm);
+    font-weight:  500;
+    font-style:   normal;
+}
+
+/* Hide the redundant top-of-page filename readout when the
+ * dropdown is shown (the selected option carries the same
+ * filename). */
+body:has(#results-file-picker-bar:not([hidden])) .results-status {
+    display: none;
+}

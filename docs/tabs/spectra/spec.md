@@ -72,7 +72,7 @@ moves up the chain incrementally as they want more detail.
 | **L1** | **Setup** | none (config only) | method / basis / dispersion / atom-fixing chosen; structure loaded | the user editing any L1 config field |
 | **L2** | **Frequencies** | ~1-N SCF-equivalents (analytic Hessian) | equilibrium MO spectrum; wavenumbers ω_i + eigenvectors for every mode; 3D mode-animation data | always runs after L1 is set; required for any spectrum work |
 | **L3** | **Raman activities** | ~5N SCF-equivalents | per-mode Raman activities (analytic dα/dR projected onto each mode) | `compute_raman = True` |
-| **L4** | **Per-mode electronic structure** | 2 SCFs × M selected modes | HOMO/LUMO shift, ΔGap, g_HOMO / g_LUMO per selected mode | `es_mode_selection ≠ "none"` |
+| **L4** | **Per-mode electronic structure** | 2 SCFs × M selected modes | HOMO/LUMO shift, ΔGap, g_HOMO / g_LUMO per selected mode | `es_mode_selection ≠ "skip"` |
 
 ### 2.5.1 Dependency graph
 
@@ -307,7 +307,7 @@ the schema-driven Build-form pipeline (see
 | `compute_raman` | bool | `True` | Spectrum | `False` runs only the Hessian (faster; for diagnostic use) |
 | `compute_ir` | bool | `False` | Spectrum | reserved, disabled in v1 UI |
 | `displacement_amplitude_ang` | float | `0.02` | Spectrum | range (0.02, 0.30); 0.02 Å keeps the ES probe in the linear-response regime (ΔE_orbital ∝ displacement); see §11.4 |
-| `es_mode_selection` | str | `"none"` | Electronic structure | Model 2 selector: `choices=("none","all","top_n","threshold","explicit")`; `top_n` + `threshold` soft-require L3 (§ 2.5.3) |
+| `es_mode_selection` | str | `"skip"` | Electronic structure | Model 2 selector: `choices=("skip","all","top_n","threshold","explicit")`; `top_n` + `threshold` soft-require L3 (§ 2.5.3) |
 | `es_top_n` | int | `10` | Electronic structure | active when selector=`top_n` |
 | `es_threshold` | float | `1.0` | Electronic structure | Å⁴/amu; active when selector=`threshold` |
 | `es_explicit_indices` | List[int] | `[]` | Electronic structure | 1-based mode indices |
@@ -618,7 +618,7 @@ displaced-geometry SCFs:
 | `explicit` | `cfg.es_explicit_indices` (1-based) | Validated: indices out of range raise a preflight error.  Cost: 2·len(list) SCFs. |
 
 **Two-stage workflow** (cheapest scientifically): first run with
-`es_mode_selection="none"` → see the spectrum + animations →
+`es_mode_selection="skip"` → see the spectrum + animations →
 identify modes of interest → re-run with `es_mode_selection="explicit"`
 and the chosen indices.  This is a natural usage pattern of the
 single-script design; no special UI flow is needed.
@@ -775,7 +775,7 @@ sessionStorage.
   CSV with the visible columns.  Useful for plotting elsewhere
   or pasting into a manuscript table.
 * **Empty-row hint**: when ES isn't populated for any mode (the
-  user picked `es_mode_selection="none"`), the ES-derived
+  user picked `es_mode_selection="skip"`), the ES-derived
   columns are hidden entirely (not just blanked).  When ES is
   populated for *some* modes, those columns are shown and
   un-selected modes display "—".
@@ -991,7 +991,7 @@ implementation (per [`../../README.md`](../../README.md)).
   two / union of all three).
 * Mode-selection: given a list of `(idx_1based, raman_activity)`
   tuples, the selector returns the expected subset for each of
-  `none` / `all` / `top_n` / `threshold` / `explicit`.
+  `skip` / `all` / `top_n` / `threshold` / `explicit`.
 * `SpectraResults` JSON round-trip: parser reads back a
   hand-written `.spectra.json` byte-identical to what the parser
   produced.

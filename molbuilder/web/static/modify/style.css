@@ -122,12 +122,15 @@ header .tagline {
     flex: 1;
     min-height: 360px;
 }
-/* The wrap mirrors #viewer's size constraints (max-width 560 px,
- * square aspect, centred) so the absolute-positioned measurement
- * chip anchors to the actual canvas area — not the card's
- * full-width column.  The canvas-sizing rule below this one
- * stays a no-op for the wrap path because the wrap already
- * pins the bounds; #viewer just fills the wrap 100%. */
+/* The wrap mirrors the canvas dimensions (centred, capped at
+ * 560 px) so the absolute-positioned measurement chip anchors to
+ * the actual canvas corner and not the card's full-width column.
+ * Pre-task-303 we tried lifting the cap to let the viewer breathe
+ * on 1440 px+ screens — that triggered an e2e timing regression
+ * where the bigger canvas's redraw work slowed JS state
+ * propagation past the 5 s test timeout on the dirty-canvas
+ * navigation tests.  Keep the cap; if a future user complaint
+ * justifies a bigger viewer, do it WITH a perf budget. */
 .viewer-section .viewer-wrap {
     position: relative;
     width: 100%;
@@ -137,11 +140,17 @@ header .tagline {
     max-height: min(60vh, 560px);
     margin: 0 auto;
 }
+/* Match the dark UI: 3Dmol renders into the inner canvas with a
+ * configurable background (set by the viewer init), so the
+ * outer #viewer slot can stay transparent and inherit the card's
+ * surface colour — the jarring white frame around the canvas
+ * on the Molbuilder tab came from this rule, not from 3Dmol
+ * itself. */
 .viewer-section .viewer-wrap > #viewer {
     width: 100%;
     height: 100%;
     position: relative;
-    background: white;
+    background: transparent;
 }
 
 /* Modify section: selection (left, 50%) + edit (right, 50%) on
@@ -184,13 +193,19 @@ header .tagline {
 
 @media (max-width: 640px) {
     .molbuilder-tab-main { padding: 6px; gap: 6px; }
-    .init-structure-card { margin: 0.5rem 0.8rem 0; padding: 0.4rem 0.8rem; }
+    .init-structure-card { margin: 0; padding: 0.4rem 0.8rem; }
     header               { padding: 0.9rem 1rem 0.6rem; }
 }
 
-/* ---- Init structure card (was Sources) ---- */
+/* ---- Init structure card (was Sources) ----
+ * Sits at the top of ``.molbuilder-tab-main`` flex column.  Pre-
+ * task-303 the card carried its own ``margin: 1rem 2rem 0`` that
+ * floated it above the main padding-driven rhythm; now it
+ * inherits the parent's ``gap: var(--gap)`` + ``padding:
+ * var(--gap)`` so it aligns flush with the Viewer + Modify cards
+ * below it. */
 .init-structure-card {
-    margin: 1rem 2rem 0;
+    margin: 0;
     padding: 0.6rem 1rem 0.4rem;
 }
 .init-structure-card .card-header {

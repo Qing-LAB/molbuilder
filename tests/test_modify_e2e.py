@@ -3512,14 +3512,24 @@ def _load_watch_log(page, base_url, log_path):
         "&& window.molbuilder.inspectors.list().length >= 4",
         timeout=5000,
     )
-    # Publish the file via the canonical sidebar API.  viewer.js's
-    # onChange subscriber then disposes any previously-mounted
-    # inspector and mounts the trajectory inspector for ``log_path``.
+    # Publish the file to the sidebar AND dispatch the picker's
+    # ``molbuilder:results:fileSelected`` channel — post-task-#301
+    # the /results dispatcher no longer subscribes to sidebar
+    # onChange; the picker's custom event is the sole mount
+    # trigger.  Direct dispatch here mirrors what the picker's
+    # auto-pick / dropdown-change path does in production
+    # (file-picker.js _emitFileSelected) without the test
+    # depending on the dropdown actually rendering an option for
+    # the trajectory log.
     import os as _os
     log_dir = _os.path.dirname(log_path)
     page.evaluate(
-        """(args) => window.molbuilder.projects.setShared(
-            args.dir, args.file)""",
+        """(args) => {
+            window.molbuilder.projects.setShared(args.dir, args.file);
+            document.dispatchEvent(new CustomEvent(
+                "molbuilder:results:fileSelected",
+                { detail: { file: args.file } }));
+        }""",
         {"dir": log_dir, "file": log_path},
     )
     # The trajectory adapter fetches /partials/trajectory-inspector

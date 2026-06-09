@@ -372,7 +372,14 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         chain_ids     = list(struct.chain_ids),
         title         = struct.title,
         frozen_atoms  = list(getattr(struct, "frozen_atoms", []) or []),
-        regions       = [list(g) for g in (getattr(struct, "regions", []) or [])],
+        # struct.regions is Dict[str, List[int]] per Structure's
+        # declaration; the previous list-comprehension assumed an
+        # iterable of lists and crashed at __post_init__ when the
+        # dict was non-empty (caught by task #303's Pattern-B test).
+        regions       = {
+            k: list(v)
+            for k, v in (getattr(struct, "regions", {}) or {}).items()
+        },
     )
     report(validate(validation_struct, cfg, cell=cell))
 

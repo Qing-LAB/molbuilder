@@ -349,6 +349,117 @@ def test_fdf_default_params(web_client, peptide_xyz):
 
 
 # --------------------------------------------------------------------- #
+#  Pattern-B: regions reach Optimization Generate but aren't            #
+#  consumed by SIESTA / PySCF — surface as an INFO so the user can      #
+#  re-direct to Transport if that was the intent.  Task #303.           #
+# --------------------------------------------------------------------- #
+
+
+def _xyz_with_region_sidecar(tmp_path, peptide_xyz):
+    """Write an XYZ + a sibling .molstruct.json carrying a
+    ``L-electrode`` region label so /api/build/fdf's sidecar-apply
+    pass picks it up.  Returns (xyz_path, xyz_text)."""
+    import hashlib
+    import json
+    xyz = tmp_path / "with_region.xyz"
+    xyz.write_text(peptide_xyz)
+    # n_atoms from the xyz header line.
+    n_atoms = int(peptide_xyz.splitlines()[0])
+    # The molstruct_json loader pins schema_version 3 + verifies
+    # structure_hash against the XYZ contents; build both so the
+    # apply pass doesn't reject the sidecar with a "stale" warning.
+    structure_hash = hashlib.sha256(peptide_xyz.encode("utf-8")).hexdigest()
+    sidecar = tmp_path / "with_region.molstruct.json"
+    sidecar.write_text(json.dumps({
+        "schema_version": 3,
+        "n_atoms_total":  n_atoms,
+        "structure_hash": structure_hash,
+        "frozen_atoms":   [],
+        "regions":        {"L-electrode": [0, 1, 2]},
+        "created_by":     "test",
+        "created_at":     "2026-06-09T00:00:00Z",
+    }))
+    return str(xyz), peptide_xyz
+
+
+def test_fdf_surfaces_info_when_structure_carries_regions(
+        web_client, peptide_xyz, tmp_path, monkeypatch):
+    """Three-stage Pattern B (sidecar-contract.md § 6 B): the
+    SCF/relaxation deck does NOT consume transport region labels.
+    Generating the .fdf for a structure that carries L-electrode /
+    R-electrode / bridge regions used to absorb them silently;
+    task #303 wires an INFO issue so the user can re-direct to
+    the Transport tab.  Pin both the FDF still renders OK and the
+    notice lands in the issues array."""
+    # tmp_path needs to be an allowed picker root so the sidecar
+    # apply pass can resolve the structure_path.
+    from molbuilder import diagnostics
+    caps = diagnostics.Capabilities(
+        runtime_config={}, conda_binary=None, conda_envs=frozenset(),
+    )
+    cls = type(caps)
+    monkeypatch.setattr(
+        cls, "file_picker_roots",
+        lambda self: ((tmp_path.resolve(), "projects"),),
+    )
+    diagnostics.set_capabilities(caps)
+
+    xyz_path, xyz_text = _xyz_with_region_sidecar(tmp_path, peptide_xyz)
+    r = web_client.post("/api/build/fdf", json={
+        "xyz":            xyz_text,
+        "params":         {},
+        "structure_path": xyz_path,
+    })
+    body = r.get_json()
+    assert body["ok"] is True, body
+    region_notices = [
+        i for i in body["issues"]
+        if i["severity"] == "info"
+        and i.get("where") == "config.regions"
+    ]
+    assert region_notices, (
+        f"expected an INFO issue with where='config.regions'; "
+        f"got {body['issues']}"
+    )
+    msg = region_notices[0]["message"]
+    assert "L-electrode" in msg, msg
+    assert "Transport" in msg, msg
+
+
+def test_pyscf_surfaces_info_when_structure_carries_regions(
+        web_client, peptide_xyz, tmp_path, monkeypatch):
+    """Symmetric Pattern-B coverage on the PySCF generate endpoint."""
+    from molbuilder import diagnostics
+    caps = diagnostics.Capabilities(
+        runtime_config={}, conda_binary=None, conda_envs=frozenset(),
+    )
+    cls = type(caps)
+    monkeypatch.setattr(
+        cls, "file_picker_roots",
+        lambda self: ((tmp_path.resolve(), "projects"),),
+    )
+    diagnostics.set_capabilities(caps)
+
+    xyz_path, xyz_text = _xyz_with_region_sidecar(tmp_path, peptide_xyz)
+    r = web_client.post("/api/build/pyscf", json={
+        "xyz":            xyz_text,
+        "params":         {},
+        "structure_path": xyz_path,
+    })
+    body = r.get_json()
+    assert body["ok"] is True, body
+    region_notices = [
+        i for i in body["issues"]
+        if i["severity"] == "info"
+        and i.get("where") == "config.regions"
+    ]
+    assert region_notices, (
+        f"expected an INFO issue with where='config.regions'; "
+        f"got {body['issues']}"
+    )
+
+
+# --------------------------------------------------------------------- #
 #  /api/build/preflight (live validation hint endpoint)                 #
 # --------------------------------------------------------------------- #
 
