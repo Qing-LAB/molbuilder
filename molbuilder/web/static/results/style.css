@@ -168,6 +168,30 @@
     margin-right: var(--space-xs);
 }
 
+/* Source-files hint — secondary block in the fallback explaining
+ * that source listings live on the sidebar's View button (task
+ * #309, 2026-06-09).  Visually softer than the main supported-list
+ * so the user reads it as "alternate path" rather than "primary
+ * action." */
+.results-fallback-source-hint {
+    margin-top:    var(--space-md);
+    padding-top:   var(--space-md);
+    border-top:    1px solid var(--border-soft);
+    font-size:     var(--text-xs);
+    color:         var(--text-muted);
+    line-height:   var(--line-snug);
+}
+.results-fallback-source-hint code {
+    background:     var(--bg-code);
+    color:          var(--text-mono);
+    padding:        1px 5px;
+    border-radius:  var(--radius-sm);
+    font-family:    var(--font-mono);
+    font-size:      0.88em;
+    border:         1px solid var(--border-soft);
+    margin-right:   var(--space-xs);
+}
+
 /* ===========================================================
    Inspector card hierarchy.
 

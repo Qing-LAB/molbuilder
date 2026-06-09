@@ -102,10 +102,12 @@
     <div id="results-fallback" class="results-fallback">
       <h2 class="inspector-card-title">Pick a file to inspect</h2>
       <p class="inspector-card-note">
-        Select a file in the <strong>Projects</strong> sidebar on the
-        left.  /results auto-mounts the matching inspector based on
-        the file&rsquo;s extension &mdash; no &ldquo;load&rdquo;
-        button needed.
+        Navigate the <strong>Projects</strong> sidebar on the left to
+        a directory that contains result files.  The
+        <strong>Result file</strong> dropdown above lists every
+        result-class file in the current directory; selecting one
+        mounts the matching inspector.  If the dropdown is hidden,
+        the directory has no result files yet.
       </p>
       <ul class="results-supported-list">
         <li>
@@ -121,12 +123,16 @@
           <code>*.xyz</code> <code>*.pdb</code>
           &mdash; structure preview (3D viewer + atom info)
         </li>
-        <li>
-          <code>*.fdf</code> <code>*.py</code> <code>*.json</code>
-          <code>*.log</code> <code>*.txt</code> <code>*.md</code>
-          &mdash; source listing (text view)
-        </li>
       </ul>
+      <p class="inspector-card-note results-fallback-source-hint">
+        For source files (<code>*.fdf</code> <code>*.py</code>
+        <code>*.log</code> <code>*.json</code> <code>*.txt</code>
+        <code>*.md</code>), use the <strong>View</strong> button
+        next to each file in the Projects sidebar &mdash; it opens
+        a text viewer scoped to that file.  Results / inspector
+        flows on this tab are reserved for files that carry
+        structured data the engines produce.
+      </p>
     </div>
   </section>
 
