@@ -3063,69 +3063,74 @@ def test_apply_electrode_pair_mode_builds_au_junction(
     assert errors == [], f"JS errors during electrode apply: {errors}"
 
 
-def test_send_to_build_writes_handoff_payload(
+def test_send_to_build_writes_sidebar_pointer(
         page, flask_server, ss_pair_xyz_file):
-    """The Send-to-Build button writes the structure to the same
-    sessionStorage key (``builder-structure``) Phase 1 uses for tab-
-    navigation persistence, then navigates to /.  The Build tab's
-    restoreStructureState picks it up identically to a fresh build.
+    """Task #294 (2026-06-08): the Send-to-Build button is now a
+    "save-first" handoff.  Clicking it sets
+    ``sessionStorage["molbuilder.current_file"]`` to the project-
+    saved path + navigates to /structure-optimization.  No more
+    ``builder-structure`` payload — the optimization tab loads
+    the structure from the project file on disk via its sidebar-
+    driven Load button (task #295).
 
-    We let the navigation happen (sessionStorage survives same-tab
-    navigation in Chromium) and read the saved key from the
-    destination page."""
+    The button is only enabled when the workspace is clean +
+    backed by a file path.  ``_load_file`` populates canvas-state
+    via the sidebar Load workflow, so ``source.file`` is set and
+    ``isDirty()=false`` immediately after a fresh load — the
+    Send button is enabled without an explicit Save click."""
     _open_modify(page, flask_server)
     _load_file(page, ss_pair_xyz_file, expected_atoms=2)
-    _open_op_tab(page, "junction")
-    # Click and wait for the URL to flip to the canonical
-    # Structure-optimization tab where the Build form lives.
+    # Send button should be enabled — fresh load = clean + has source.file.
+    page.wait_for_function(
+        "() => !document.getElementById('send-to-build').disabled",
+        timeout=5000,
+    )
     with page.expect_navigation():
         page.locator("#send-to-build").click()
     expected = flask_server.rstrip("/") + "/structure-optimization"
     assert page.url.rstrip("/") == expected, (
         f"expected redirect to {expected}, got {page.url}"
     )
-    # Read the handoff payload from sessionStorage on the destination.
-    saved = page.evaluate(
+    # Sidebar pointer is set; the legacy builder-structure payload is NOT.
+    current_file = page.evaluate(
+        "() => sessionStorage.getItem('molbuilder.current_file')"
+    )
+    assert current_file == ss_pair_xyz_file, (
+        f"send-to-build did not point the sidebar at the saved file; "
+        f"got {current_file!r}"
+    )
+    legacy = page.evaluate(
         "() => sessionStorage.getItem('builder-structure')"
     )
-    assert saved is not None, (
-        "send-to-build did not write to sessionStorage"
+    assert legacy is None, (
+        f"legacy builder-structure key should not be written by the "
+        f"save-first handoff; got {legacy!r}"
     )
-    import json as _json
-    parsed = _json.loads(saved)
-    assert parsed["v"] == 1
-    r = parsed["response"]
-    assert r["n_atoms"]  == 2
-    assert r["elements"] == ["S", "S"]
-    assert r["title"]
-    # The Build-side restoreStructureState path expects this exact
-    # response shape (mirrors what /api/build/molecule returns).
-    for k in ("xyz", "pdb", "title", "n_atoms", "elements",
-              "atom_names", "residue_ids", "residue_names",
-              "chain_ids", "source_format"):
-        assert k in r, f"handoff response missing {k!r}"
 
 
-def test_send_to_build_handoff_renders_structure_in_build(
-        page, flask_server, ss_pair_xyz_file):
-    """Closes the loop: after Send-to-Build navigates to /, the
-    Build tab's atom info panel shows the molecule and the Generate
-    buttons are enabled.  This is the user-visible test that
-    ``builder-structure`` round-trips end-to-end."""
+def test_send_to_build_disabled_when_workspace_is_dirty(
+        page, flask_server, water_xyz_file):
+    """The save-first rule (task #294, 2026-06-08): Send is disabled
+    while the canvas is dirty (modifier ops since the last
+    save/load) — even though the workspace IS associated with a
+    file.  User must Save first."""
     _open_modify(page, flask_server)
-    _load_file(page, ss_pair_xyz_file, expected_atoms=2)
-    _open_op_tab(page, "junction")
-    with page.expect_navigation():
-        page.locator("#send-to-build").click()
-    # On the Build tab now: restoreStructureState fires during JS
-    # init and applyStructureResult enables the Generate buttons.
+    _load_water(page, water_xyz_file)
+    # Fresh load: Send enabled.
     page.wait_for_function(
-        "() => !document.getElementById('generate-fdf').disabled",
+        "() => !document.getElementById('send-to-build').disabled",
         timeout=5000,
     )
-    assert page.locator("#info-atoms").inner_text() == "2"
-    assert page.locator("#generate-fdf").is_enabled()
-    assert page.locator("#generate-pyscf").is_enabled()
+    # Run a modifier op → canvas dirty → Send re-disables.
+    _set_selection(page, [0])
+    page.locator("#delete-apply").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 2"
+    )
+    page.wait_for_function(
+        "() => document.getElementById('send-to-build').disabled === true",
+        timeout=5000,
+    )
 
 
 def test_op_subtabs_default_to_atom_and_swap_on_click(

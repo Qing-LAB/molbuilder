@@ -367,7 +367,34 @@
         }
 
         const sendBtn = $("send-to-build");
-        if (sendBtn) sendBtn.disabled = locked || state.n_atoms === 0;
+        if (sendBtn) {
+            // Save-first enable rule (task #294, 2026-06-08): the
+            // Send button is only enabled when the workspace has a
+            // clean structure backed by a project file — either
+            // freshly loaded from the sidebar (source.kind=file)
+            // OR explicitly saved (last_save_to set).  Both expose
+            // an on-disk target via ``structureSave.targetPath()``.
+            // Forces the workflow (Save → Send) and eliminates the
+            // sessionStorage-vs-disk conflict class.
+            const cs = window.molbuilder
+                    && window.molbuilder.structureCanvas;
+            const save = window.molbuilder
+                    && window.molbuilder.structureSave;
+            const targetPath = (save && typeof save.targetPath === "function")
+                ? save.targetPath() : null;
+            const savedAndClean = !!cs
+                && typeof cs.isDirty === "function"
+                && !cs.isDirty()
+                && !!targetPath;
+            sendBtn.disabled = locked
+                || state.n_atoms === 0
+                || !savedAndClean;
+            sendBtn.title = savedAndClean
+                ? "Send the saved structure to /structure-optimization."
+                : "Save the workspace to a project file first; the "
+                + "optimization tab loads structures from the project "
+                + "sidebar.";
+        }
     }
 
     // --------------------------------------------------------------- //
@@ -951,51 +978,55 @@
     }
 
     function sendToBuild() {
-        // Persist the current structure under the same key Phase 1
-        // uses for cross-tab navigation, then navigate to the Build
-        // tab.  Build's restoreStructureState() picks it up
-        // identically to a fresh build.  We bundle the response
-        // shape applyStructureResult() expects so the Build tab
-        // doesn't need a separate code path.
-        if (!state.xyz || !state.n_atoms) {
-            setEditStatus("Nothing to send -- load a structure first.", "error");
+        // Save-first handoff (task #294, 2026-06-08): the Send
+        // button only proceeds when the workspace structure is
+        // already saved to a project file (canvas-state has a
+        // ``last_save_to`` path AND ``isDirty()`` is false).  The
+        // button's enable logic enforces this; ``sendToBuild`` is
+        // a defensive re-check in case the dirty bit flipped
+        // between subscriber-fire and click.
+        //
+        // The handoff itself is now a simple sidebar-selection
+        // forwarding: we set
+        // ``sessionStorage["molbuilder.current_file"]`` to the
+        // saved path (the projects sidebar's persistence key) +
+        // navigate to /structure-optimization, where the new
+        // "Load from sidebar selection" button (task #295)
+        // becomes the sole structure-data entry point.  No more
+        // ``builder-structure`` payload — the persistence comes
+        // from the project file on disk, eliminating the
+        // sessionStorage-vs-disk conflict class.
+        const cs = window.molbuilder
+                && window.molbuilder.structureCanvas;
+        const save = window.molbuilder
+                && window.molbuilder.structureSave;
+        const targetPath = (save && typeof save.targetPath === "function")
+            ? save.targetPath() : null;
+        if (!cs || !targetPath || cs.isDirty()) {
+            setEditStatus(
+                "Save to project first — Send-to-Optimization "
+              + "needs a project file as input.",
+                "error",
+            );
             return;
         }
-        const payload = {
-            v: 1,
-            saved_at: new Date().toISOString(),
-            response: {
-                xyz:           state.xyz,
-                pdb:           "",                  // Build computes if needed
-                title:         state.title || "modify-handoff",
-                n_atoms:       state.n_atoms,
-                n_residues:    null,                // unknown here; harmless
-                summary:       `${state.n_atoms} atoms (from Modify tab)`,
-                elements:      state.elements,
-                atom_names:    state.atom_names,
-                residue_ids:   state.residue_ids,
-                residue_names: state.residue_names,
-                chain_ids:     state.chain_ids,
-                source_format: "xyz",
-            },
-            camera: null,        // Build owns its own camera
-        };
         try {
             sessionStorage.setItem(
-                "builder-structure",
-                JSON.stringify(payload),
-            );
+                "molbuilder.current_file", targetPath);
+            // Track the directory too so the sidebar opens at
+            // the right folder; projects-sidebar's ``state.js``
+            // also reads ``molbuilder.current_dir``.
+            const slash = targetPath.lastIndexOf("/");
+            if (slash > 0) {
+                sessionStorage.setItem(
+                    "molbuilder.current_dir",
+                    targetPath.slice(0, slash));
+            }
         } catch (e) {
             setEditStatus(
                 `Could not stage handoff: ${e && e.message}`, "error");
             return;
         }
-        // Save Modify's own state so a back-button trip preserves
-        // the source structure too.
-        try { saveModifyState(); } catch (_e) { /* ok if not yet wired */ }
-        // Navigate to the Structure-optimization tab — that's the
-        // surface that consumes a staged structure for SIESTA /
-        // PySCF input generation.
         window.location.href = "/structure-optimization";
     }
 
@@ -1011,6 +1042,17 @@
         const _store = _selStore();
         if (_store) {
             _store.subscribe(() => refreshSelectionUI());
+        }
+        // Canvas-state subscriber — the Send-to-Optimization button's
+        // enable rule depends on canvas-state.isDirty() + getLastSavedTo(),
+        // neither of which fires through the selection store.  Without
+        // this subscription the Send button wouldn't re-enable after
+        // a successful Save (or re-disable after a modifier op flipped
+        // the dirty bit).  Task #294, 2026-06-08.
+        const _cs = window.molbuilder
+                 && window.molbuilder.structureCanvas;
+        if (_cs && typeof _cs.onChange === "function") {
+            _cs.onChange(() => refreshSelectionUI());
         }
 
         // (Legacy load-btn + file-picker dead-code block removed
