@@ -122,6 +122,27 @@ header .tagline {
     flex: 1;
     min-height: 360px;
 }
+/* The wrap mirrors #viewer's size constraints (max-width 560 px,
+ * square aspect, centred) so the absolute-positioned measurement
+ * chip anchors to the actual canvas area — not the card's
+ * full-width column.  The canvas-sizing rule below this one
+ * stays a no-op for the wrap path because the wrap already
+ * pins the bounds; #viewer just fills the wrap 100%. */
+.viewer-section .viewer-wrap {
+    position: relative;
+    width: 100%;
+    max-width: 560px;
+    aspect-ratio: 1 / 1;
+    min-height: 320px;
+    max-height: min(60vh, 560px);
+    margin: 0 auto;
+}
+.viewer-section .viewer-wrap > #viewer {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    background: white;
+}
 
 /* Modify section: selection (left, 50%) + edit (right, 50%) on
  * wide screens; stacked on narrow.  Footer row underneath holds
@@ -249,17 +270,13 @@ header .tagline {
 .viewer-section { gap: 0; }
 /* Square-ish viewer, consistent with the other tabs.  Sits in
  * the middle section of the vertical workflow; centred
- * horizontally when the container is wider. */
-.viewer-section #viewer.viewer {
-    width: 100%;
-    max-width: 560px;
-    aspect-ratio: 1 / 1;
-    min-height: 320px;
-    max-height: min(60vh, 560px);
-    margin: 0 auto;
-    position: relative;
-    background: white;
-}
+ * horizontally when the container is wider.  Size constraints
+ * live on the .viewer-wrap rule above; this entry is only kept
+ * because it pins the canvas background — 3Dmol renders into a
+ * transparent canvas otherwise and the dark card shows through.
+ * (Pre-task-298 #viewer carried its own width/max-width/aspect
+ * but those moved up to the wrap so the measurement chip can
+ * anchor to the actual canvas corner.) */
 .viewer-controls {
     display: flex;
     flex-wrap: wrap;

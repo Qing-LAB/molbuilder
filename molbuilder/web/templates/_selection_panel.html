@@ -32,7 +32,6 @@
       * #selection-atom-list  (the <tbody>)
       * #selection-select-all
       * #selection-count, #selection-loading, #selection-error
-      * #selection-measurement
       * #selection-assign-target / #selection-assign-new-label /
         #selection-assign-btn / #selection-add-btn /
         #selection-remove-btn
@@ -49,13 +48,6 @@
       </span>
     </div>
   </header>
-
-  {# Measurement readout (xyz / distance / angle).  Hidden until the
-     user has 1-3 atoms selected and coordinates are available.
-     Computed live from the shared lib/selection/measurements.js. #}
-  <div id="selection-measurement"
-       class="selection-measurement"
-       hidden></div>
 
   <!-- Mode toggle: compact segmented control.  Radio inputs give us
        mutual-exclusion for free; the CSS styles them as side-by-side

@@ -264,7 +264,17 @@
       <h2>2. Viewer</h2>
       <span id="title-readout" class="muted"></span>
     </header>
-    <div id="viewer" class="viewer"></div>
+    <div class="viewer-wrap">
+      <div id="viewer" class="viewer"></div>
+      {# Selection-driven measurement chip — xyz / distance / angle.
+         Floats over the 3Dmol canvas (top-right) so the readout sits
+         next to the structure it describes.  Filled live by
+         lib/selection-panel.js's renderMeasurement; hidden when
+         the selection is empty or 4+ atoms. #}
+      <div id="selection-measurement-overlay"
+           class="selection-measurement-overlay"
+           hidden></div>
+    </div>
     <div class="viewer-controls">
       <button id="focus-molecule" class="ghost"
         title="Re-anchor the rotation/zoom pivot on the molecule (ignoring electrode slabs).

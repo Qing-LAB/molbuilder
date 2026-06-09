@@ -2884,9 +2884,9 @@ def test_measurement_readout_shows_xyz_distance_angle(
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
     meas_visible = lambda: page.evaluate(
-        "() => !document.getElementById('selection-measurement').hidden"
+        "() => !document.getElementById('selection-measurement-overlay').hidden"
     )
-    meas_text = lambda: page.locator("#selection-measurement").inner_text()
+    meas_text = lambda: page.locator("#selection-measurement-overlay").inner_text()
 
     # 0 atoms — hidden.
     assert meas_visible() is False
@@ -2894,7 +2894,7 @@ def test_measurement_readout_shows_xyz_distance_angle(
     # 1 atom — xyz of the O.
     _set_selection(page, [0])
     page.wait_for_function(
-        "() => !document.getElementById('selection-measurement').hidden"
+        "() => !document.getElementById('selection-measurement-overlay').hidden"
     )
     text = meas_text()
     # Atom label uses 1-based indexing per the design.
@@ -2908,7 +2908,7 @@ def test_measurement_readout_shows_xyz_distance_angle(
     _set_selection(page, [0, 1])
     page.wait_for_function(
         "() => /distance/.test("
-        "  document.getElementById('selection-measurement').dataset.kind"
+        "  document.getElementById('selection-measurement-overlay').dataset.kind"
         ")"
     )
     text = meas_text()
@@ -2923,7 +2923,7 @@ def test_measurement_readout_shows_xyz_distance_angle(
     # other two, which for water is O).
     _set_selection(page, [0, 1, 2])
     page.wait_for_function(
-        "() => document.getElementById('selection-measurement')"
+        "() => document.getElementById('selection-measurement-overlay')"
         "      .dataset.kind === 'angle'"
     )
     text = meas_text()

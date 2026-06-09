@@ -86,7 +86,14 @@
             addBtn:          $("selection-add-btn"),
             removeBtn:       $("selection-remove-btn"),
             errorEl:         $("selection-error"),
-            measurement:     $("selection-measurement"),
+            // Measurement readout lives OUTSIDE the panel partial —
+            // it's a chip overlay on the 3D viewer canvas (placed
+            // in the page template, not the partial).  Page-wide
+            // lookup so the panel doesn't care which tab mounted
+            // it; both /molbuilder and /results-side inspectors
+            // register the same id, viewer.
+            measurement:     document.getElementById(
+                "selection-measurement-overlay"),
         };
         const missing = Object.keys(els).filter((k) => !els[k]);
         if (missing.length) {

@@ -46,27 +46,43 @@
     font-style: italic;
 }
 
-/* ---------- Measurement readout ---------------------------------- */
+/* ---------- Measurement chip (viewer overlay) -------------------- */
 
-/* Shown when 1-3 atoms are selected: xyz / distance / angle.  Sits
- * directly below the header.  Monospace-flavoured because the
- * content is mostly numbers + atom labels, and tabular-nums keeps
- * the decimals from jumping around when the value changes.  The
- * leading marker is the data-kind attribute; CSS picks the glyph
- * so the markup stays innerHTML-free (XSS-safe). */
-.selection-measurement {
-    margin: 0.35rem 0 0;
-    padding: 0.35rem 0.55rem;
-    border-left: 3px solid var(--accent, #4a9eff);
-    background: var(--bg-input, rgba(255, 255, 255, 0.03));
-    color: var(--text-primary, #ddd);
-    font: 13px/1.45 ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+/* Floats over the 3Dmol canvas — the user reads the measurement
+ * RIGHT NEXT TO the structure it describes, not in a panel they have
+ * to glance away to find.  The host page is expected to position a
+ * relative-positioned wrapper around the canvas; this rule absolutely
+ * positions the chip in the top-right of that wrapper.  ``hidden``
+ * (the HTML attribute) is what the JS toggles on/off; the
+ * specificity here ties with the UA ``[hidden] { display: none }``
+ * rule so the chip stays invisible when the JS sets the attribute.
+ *
+ * Monospace + tabular-nums so coords / distances / angles don't
+ * jitter as their decimals change.  Border-left + data-kind sets a
+ * subtle category colour: grey for xyz, blue for distance, orange
+ * for angle (matches the historical Watch-tab pick highlight).  */
+.selection-measurement-overlay {
+    position: absolute;
+    bottom: 0.6rem;
+    right: 0.6rem;
+    z-index: 5;
+    max-width: calc(100% - 1.2rem);
+    padding: 0.35rem 0.6rem;
+    background: rgba(15, 17, 21, 0.78);
+    color: #f3f4f6;
+    border: 1px solid rgba(74, 158, 255, 0.45);
+    border-left-width: 3px;
+    border-radius: 4px;
+    font: 13px/1.4 ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
     font-variant-numeric: tabular-nums;
-    border-radius: 3px;
+    pointer-events: none;
+    user-select: text;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
 }
-.selection-measurement[data-kind="xyz"]      { border-left-color: #94a3b8; }
-.selection-measurement[data-kind="distance"] { border-left-color: #4a9eff; }
-.selection-measurement[data-kind="angle"]    { border-left-color: #fb923c; }
+.selection-measurement-overlay[hidden] { display: none; }
+.selection-measurement-overlay[data-kind="xyz"]      { border-left-color: #94a3b8; }
+.selection-measurement-overlay[data-kind="distance"] { border-left-color: #4a9eff; }
+.selection-measurement-overlay[data-kind="angle"]    { border-left-color: #fb923c; }
 
 /* ---------- Click-mode body -------------------------------------- */
 
