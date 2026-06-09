@@ -50,6 +50,17 @@
      * /spectra's bootstrap holds the handle for completeness but
      * never disposes (the tab lives for the lifetime of the page).
      */
+    // Module-level holder for the structure bytes the user loaded
+    // via the Inspect-structure card's "Load from sidebar selection"
+    // button (task #309, 2026-06-09 follow-up to #296).  Pre-#309
+    // the bytes were stored in a hidden ``<textarea id="structure-
+    // text">``; the textarea was the only carrier and double-served
+    // as the only DOM contract.  Task #309 retires the textarea —
+    // ``setStructureText`` writes here, ``getStructureText`` reads
+    // from here first and falls back to the textarea ONLY in test
+    // contexts that still mount the DOM with the old shape.
+    let _loadedStructureText = "";
+
     function mountInspector(rootEl, opts) {
     rootEl = rootEl || document;
     opts = opts || {};
@@ -440,19 +451,23 @@
     }
 
     function getStructureText() {
-        // Reads the page's structure textarea (XYZ or PDB content
-        // both accepted -- the server sniffs the format).  Was
-        // ``getXyz()`` pre-rename; the legacy name lied about
-        // PDB acceptance.
-        return (els.structureText.value || "").trim();
+        // Source of truth: the module-level ``_loadedStructureText``
+        // populated by the Inspect-structure card's Load handler
+        // (spectra/viewer.js _commitStructure → setStructureText).
+        // The legacy ``<textarea id="structure-text">`` was retired
+        // 2026-06-09 (task #309).  Fall through to it ONLY when
+        // ``_loadedStructureText`` is empty AND the DOM still
+        // carries the textarea — covers test contexts that mount
+        // the pre-#296 DOM shape.  XYZ or PDB content both
+        // accepted; the server sniffs the format.
+        if (_loadedStructureText) {
+            return _loadedStructureText.trim();
+        }
+        if (els.structureText && els.structureText.value) {
+            return els.structureText.value.trim();
+        }
+        return "";
     }
-
-    // (the legacy file-input load path was removed 2026-05-18: the
-    // pre-sidebar <input type="file"> + load-button elements were
-    // dropped from spectra.html when the projects sidebar took
-    // over file selection.  Structure text is now entered into
-    // els.structureText directly OR pasted from a sidebar-loaded
-    // file via the Build->Spectra handoff in spectra/page.js.)
 
     // ----- Render button: POST /api/spectra/render -------------
     async function generateScript() {
@@ -1623,8 +1638,12 @@
                 positions: r.equilibrium.positions_ang.map(row => row.slice()),
             };
         }
-        // Fallback: parse the XYZ in the input form.
-        const structureText = (els.structureText && els.structureText.value || "").trim();
+        // Fallback: parse the XYZ the user loaded via the
+        // Inspect-structure card (module-level
+        // ``_loadedStructureText``; the legacy textarea fallback
+        // continues to work for test contexts that still mount
+        // the pre-#296 DOM shape).
+        const structureText = getStructureText();
         if (!structureText) return null;
         try {
             return window.molbuilder.xyz.parse(structureText);
@@ -2411,6 +2430,18 @@
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.spectraInspector = {
         mount: mountInspector,
+        /**
+         * Push raw structure bytes into the module's in-memory
+         * holder so Generate / Methods read them via
+         * ``getStructureText`` without depending on the legacy
+         * hidden ``<textarea id="structure-text">``.  Called by
+         * spectra/viewer.js's Load-from-sidebar handler after a
+         * successful ``/api/files/read``.  Pass an empty string
+         * to clear (e.g. on dispose or before a fresh load).
+         */
+        setStructureText(text) {
+            _loadedStructureText = typeof text === "string" ? text : "";
+        },
     };
 
 })(typeof window !== "undefined" ? window : this);

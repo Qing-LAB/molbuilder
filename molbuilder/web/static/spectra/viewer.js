@@ -136,7 +136,6 @@
             axes: true,
         });
 
-        const textarea  = _$("structure-text");
         let _sidebarLastFile = "";
         let _loadSeq         = 0;
 
@@ -207,16 +206,15 @@
             }
             if (mySeq !== _loadSeq) return;  // superseded by a newer load
             _sidebarLastFile = f;
-            // Populate the hidden textarea so lib/spectra/core.js's
-            // legacy ``getStructureText`` lookup keeps working.
-            if (textarea) {
-                textarea.value = text;
-                // Fire ``input`` so any future listener that watches
-                // the textarea picks up the new bytes (core.js
-                // doesn't today, but the parity with a real edit
-                // surface is the right shape).
-                try { textarea.dispatchEvent(new Event("input",
-                    { bubbles: true })); } catch (_) {}
+            // Push the bytes into spectra/core.js's in-memory
+            // holder (task #309, 2026-06-09 follow-up to #296).
+            // Pre-#309 we wrote to a hidden ``<textarea id="
+            // structure-text">``; that textarea is gone now and
+            // the inspector exposes a setter directly on its
+            // public API.
+            const spec = (window.molbuilder || {}).spectraInspector;
+            if (spec && typeof spec.setStructureText === "function") {
+                spec.setStructureText(text);
             }
             // Drop into the viewer.
             try {

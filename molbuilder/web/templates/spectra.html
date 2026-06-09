@@ -76,14 +76,13 @@
       <div id="viewer"></div>
     </div>
 
-    {# Hidden textarea: legacy DOM contract preserved for
-       lib/spectra/core.js's ``getStructureText`` lookup, which
-       still reads ``#structure-text.value`` on Generate.  The
-       Load-from-sidebar handler populates this textarea with the
-       fetched bytes so the existing core.js code path keeps
-       working unchanged.  Retiring the lookup is a follow-up
-       cleanup; the visible UI is the viewer / load button. #}
-    <textarea id="structure-text" hidden></textarea>
+    {# Pre-task-#309 (2026-06-09) this card held a hidden
+       ``<textarea id="structure-text">`` that the Load-from-
+       sidebar handler populated so lib/spectra/core.js's
+       ``getStructureText`` lookup kept working.  The textarea
+       is gone — the inspector exposes a public
+       ``setStructureText(text)`` method and the bytes live in
+       an in-memory holder on the inspector itself. #}
   </section>
 
   <!-- ===================== 2. Parameters ===================== -->

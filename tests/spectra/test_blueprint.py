@@ -100,8 +100,15 @@ class TestSpectraPage:
         # inspect-side surface lives in _spectra_inspector.html and
         # is served only to /results).
         assert 'id="spectra-form-container"' in body
-        assert 'id="structure-text"'                in body
-        assert 'id="generate-btn"'            in body
+        # The Inspect-structure card (task #296) is the sole
+        # entry point for the structure; the hidden
+        # ``<textarea id="structure-text">`` that pre-#309 backed
+        # the schema's structure_text was retired in favour of
+        # spectraInspector.setStructureText() + an in-memory
+        # holder.  Pin the new entry-point ids instead.
+        assert 'id="viewer"'                    in body
+        assert 'id="load-from-sidebar-btn"'     in body
+        assert 'id="generate-btn"'              in body
         # Methods-preview modal present (dialog element + handles).
         assert 'id="methods-modal"'           in body
         # Static assets pinned in the template.
