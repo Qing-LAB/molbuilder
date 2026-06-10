@@ -848,11 +848,58 @@ basename convention + `runwrap.py` for the bash logic.
 
 | Route | Method | Body | Success |
 |---|---|---|---|
-| `/api/structure/analyze` | POST | `{xyz}` | `{ok, total_electrons, charge_suggestion, spin_suggestion, method_suggestion, open_shell_metals, notes}` |
+| `/api/structure/analyze` | POST | `{structure_path}` OR `{structure_text}` | see shape below |
 
-Returns suggested defaults for charge / spin / method based on
-the structure's elements. Powers the "auto-fill SCF method"
-button in the SIESTA + PySCF forms.
+Engine-agnostic chemistry analysis of a structure.  Returns the
+electron count, the list of open-shell transition metals present,
+common spin-state hints per metal, plus a `suggested` block with
+each supported engine's translation of the chemistry conclusions
+into its parameter shape.
+
+Request body (one of):
+- `structure_path`: absolute path inside an allowed picker root
+- `structure_text`: inline XYZ or PDB text (format sniffed)
+
+Success response:
+
+```json
+{
+  "ok":                  true,
+  "n_atoms":             123,
+  "elements":            ["C", "Fe", "H", "N", "O", "S"],
+  "n_electrons_neutral": 256,
+  "metals":              ["Fe"],
+  "metal_hints": [
+    {"element": "Fe", "common_spins": [
+      {"spin": 0, "label": "Fe(II), low-spin (CO/CN, axial strong-field)"},
+      {"spin": 2, "label": "Fe(II), intermediate (4-coordinate porphyrin)"},
+      {"spin": 4, "label": "Fe(II), high-spin (5-coord one weak axial)"}
+    ]}
+  ],
+  "suggested": {
+    "pyscf":  {"charge": 0, "spin": 2, "method": "UKS",
+               "rationale": "Detected open-shell metal Fe..."},
+    "siesta": {"net_charge": 0, "spin_polarized": true,
+               "spin_total": 2.0,
+               "rationale": "Detected open-shell metal Fe..."}
+  },
+  "warnings": ["Adjusted suggested spin from default to 2 to..."]
+}
+```
+
+The `suggested.<engine>` keys come from each engine's parameter
+adapter (see [`scientific-validation.md`](scientific-validation.md) § 4
+for the adapter Protocol + registry).  Engines self-register; the
+endpoint iterates the registry, so a future Transport engine
+(transiesta, pyscf-negf) adds its own `suggested.transiesta` entry
+without endpoint changes.
+
+Same chemistry analysis backs the pre-emission validation pass
+(`molbuilder.validation._check_open_shell_metal`) — UI auto-detect
+and CLI validation read identical conclusions, per the
+cross-engine consistency rule ([`science.md`](../science.md) § 2.4).
+The full runtime call graph + dataclass shapes are documented in
+[`scientific-validation.md`](scientific-validation.md).
 
 ---
 

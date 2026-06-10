@@ -1,10 +1,18 @@
 # Scientific correctness
 
 > **This document is the sole source of truth for molbuilder's
-> scientific-correctness contract**: the validation pass, the
-> spin/charge handling, the cross-engine consistency rule, and
-> the generated-output style requirements.  Pointer in `design.md`
-> § 0.
+> scientific-correctness contract — the PRINCIPLES**: what
+> molbuilder promises about the calculations it emits.  The
+> validation pass exists, spin/charge handling is consistent,
+> cross-engine conclusions agree, generated-output style is
+> defensible.  Pointer in `design.md` § 0.
+>
+> The **runtime machinery** that delivers this contract — the
+> chemistry analyzer, the per-engine adapter registry, the
+> validation-pass call graph, the Pattern-B sidecar handling —
+> lives in [`protocols/scientific-validation.md`](protocols/scientific-validation.md).
+> Cross-references between the two docs flag which section here
+> maps to which surface there.
 >
 > Per-engine emitter details live in `docs/engines/{siesta,pyscf}.md`.
 > This doc covers the cross-engine invariants those emitters must
@@ -138,19 +146,62 @@ physical facts, same warning.
 Don't duplicate the check inline in one validator and forget the
 other; add a helper.
 
+Realised at runtime by the engine-agnostic
+**`ChemistryAnalysis`** dataclass + the per-engine **adapter
+registry** — see
+[`protocols/scientific-validation.md`](protocols/scientific-validation.md)
+§ 3-4 for the dataclass shapes + adapter Protocol + the rule that
+adapters MUST NOT re-do chemistry detection.  The cross-engine
+consistency rule is structural, not aspirational: every
+science-aware surface (UI auto-detect, validators, future
+engines) consumes the same `ChemistryAnalysis` instance and
+cannot disagree by construction.
+
 ```mermaid
 flowchart LR
     A[Chemistry rule<br/>e.g. open-shell metal] --> H[Shared helper<br/>chemistry.py]
     H --> VP[_validate_pyscf]
     H --> VS[_validate_siesta]
     H --> EP[Engine preflights]
+    H --> AD[UI auto-detect<br/>/api/structure/analyze]
     VP --> R[Same issue object]
     VS --> R
     EP --> R
+    AD --> R2[Same suggested<br/>defaults]
     style A fill:#fce4ec
     style H fill:#e8f5e9
     style R fill:#fff4e1
+    style R2 fill:#fff4e1
 ```
+
+### 2.5 Auto-detect as a scientific guard
+
+The middle layer is more than a defaults-suggestion convenience.
+By consuming the same `ChemistryAnalysis` as the validator, the
+Auto-detect button (`/structure-optimization` Optimization tab)
+**surfaces the same warnings the validator would emit at Generate
+time — but at structure-load time, when the user can still act on
+them cheaply**.
+
+The 2026-05-22 hemeC-dithiol incident (§ 2.3) was a chain of
+"silent default + no input surface + no surfaced advisory."  Each
+link is now broken:
+- the silent default is replaced by an explicit pre-fill carrying
+  rationale,
+- the input surface (charge / spin / method on both engine
+  sub-forms) accepts it,
+- the surfaced advisory is the analyzer's `rationale` +
+  `warnings`, shown next to the button.
+
+A user with hemeC-dithiol now sees "Detected open-shell metal Fe.
+Suggesting spin=2 (Fe(II), intermediate). Verify against your
+experimental data — the right spin depends on axial coordination,
+not just element identity" *before* generating the script.  The
+same warning would also fire at validate-time if they overrode
+the suggestion — but they shouldn't reach that path without
+seeing it twice.
+
+Full machinery in [`protocols/scientific-validation.md`](protocols/scientific-validation.md).
 
 ---
 

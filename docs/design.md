@@ -77,6 +77,7 @@ subsystem-specific decisions land in the subsystem doc.
 | [`atom-selection.md`](protocols/atom-selection.md) | Selection store, `.molstruct.json` sidecar shape, viewer adapter |
 | [`selection.md`](protocols/selection.md) | Python selection rule grammar (`by_element`, `by_index_range`, …) |
 | [`sidecar-contract.md`](protocols/sidecar-contract.md) | Three-stage UI → config → script contract for sidecar-driven boundary conditions |
+| [`scientific-validation.md`](protocols/scientific-validation.md) | Runtime machinery for scientific validation: `ChemistryAnalysis` analyzer + per-engine `EngineParameterAdapter` registry + validation-pass call graph + Pattern-B handling.  Implements the principles in [`science.md`](science.md). |
 | [`workspace-state.md`](protocols/workspace-state.md) | Unified workspace contract — single client-side dispatcher + single server-side `WorkspacePayload`.  Supersedes the current four parallel client stores + four parallel server response shapes for "the workspace structure".  **Design proposal as of 2026-06-07**; migration plan in § 6 of that doc. |
 | [`results-tab.md`](protocols/results-tab.md) | `/results` dispatch architecture |
 | [`runtime-registry.md`](protocols/runtime-registry.md) | `molbuilder-runtime.js` register/whenReady contract |
