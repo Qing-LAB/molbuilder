@@ -282,6 +282,148 @@
                 _commitStructure({ file: _candidatePath });
             });
         }
+
+        // -------- Auto-detect chemistry (Card 2 of the post-2026-06-10
+        // vertical workflow on /spectrum-calculation; matching the
+        // Optimization tab pattern from static/viewer.js).
+        //
+        // POST /api/structure/analyze with the currently-loaded
+        // structure path, then apply the PySCF adapter's
+        // (charge, spin, method) translation onto the spectra form
+        // (SpectraConfig has the same three field names as
+        // PySCFConfig, so the wire shape matches 1:1).
+        //
+        // Why a separate handler from /structure-optimization's:
+        // single form to fill (not SIESTA + PySCF), no SIESTA
+        // adapter needed.  Concurrency safety mirrors the
+        // _loadSeq pattern used by _commitStructure above.
+        function _refreshAutoDetectButton() {
+            const btn = _$("auto-detect-btn");
+            if (!btn) return;
+            btn.disabled = !_sidebarLastFile;
+        }
+        let _autoDetectSeq = 0;
+        const _autoBtn = _$("auto-detect-btn");
+        if (_autoBtn) {
+            _autoBtn.addEventListener("click", async () => {
+                if (!_sidebarLastFile) return;
+                const mySeq     = ++_autoDetectSeq;
+                const myLoadSeq = _loadSeq;
+                const myPath    = _sidebarLastFile;
+                _autoBtn.disabled = true;
+                setStatus("auto-detect-status", "Analyzing…", null);
+                let body;
+                try {
+                    const r = await fetch("/api/structure/analyze", {
+                        method:  "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body:    JSON.stringify({ structure_path: myPath }),
+                    });
+                    body = await r.json();
+                    if (mySeq !== _autoDetectSeq
+                        || myLoadSeq !== _loadSeq) return;
+                    if (!r.ok || !body.ok) {
+                        setStatus("auto-detect-status",
+                            body && body.error
+                                ? body.error
+                                : `Analyze failed (HTTP ${r.status}).`,
+                            "error");
+                        return;
+                    }
+                } catch (e) {
+                    if (mySeq !== _autoDetectSeq
+                        || myLoadSeq !== _loadSeq) return;
+                    setStatus("auto-detect-status",
+                        "Network error: "
+                        + (e && e.message ? e.message : String(e)),
+                        "error");
+                    return;
+                } finally {
+                    if (mySeq === _autoDetectSeq
+                        && myLoadSeq === _loadSeq) {
+                        _refreshAutoDetectButton();
+                    }
+                }
+                await _applyAutoDetectToSpectraForm(body);
+                _renderAutoDetectPanel(body);
+                setStatus("auto-detect-status",
+                    "Applied to the parameter form.  Review rationale below.",
+                    "ok");
+            });
+        }
+
+        /**
+         * Fetch the spectra schema (so we don't have to reach
+         * into the inspector's private state) and call
+         * formSchema.setValues with the PySCF adapter's output.
+         * SpectraConfig has charge / spin / method matching the
+         * PySCF adapter output 1:1.
+         */
+        async function _applyAutoDetectToSpectraForm(resp) {
+            const fs = (window.molbuilder || {}).formSchema;
+            if (!fs || typeof fs.setValues !== "function") return;
+            const container = _$("spectra-form-container");
+            if (!container) return;
+            const sug = (resp.suggested || {}).pyscf;
+            if (!sug) return;
+            let schema;
+            try {
+                schema = await fs.fetchSchema("spectra");
+            } catch (e) {
+                console.warn("[spectra] auto-detect: schema fetch failed:",
+                              e);
+                return;
+            }
+            fs.setValues(container, schema, sug);
+        }
+
+        function _renderAutoDetectPanel(resp) {
+            const panel = _$("auto-detect-panel");
+            if (!panel) return;
+            panel.hidden = false;
+            panel.open = true;
+            const ratEl  = _$("auto-detect-rationale");
+            const warnEl = _$("auto-detect-warnings");
+            const metEl  = _$("auto-detect-metals");
+            if (ratEl) {
+                const sug = (resp.suggested || {}).pyscf || {};
+                ratEl.textContent = sug.rationale || "";
+            }
+            if (warnEl) {
+                warnEl.textContent = "";
+                for (const w of (resp.warnings || [])) {
+                    const li = document.createElement("li");
+                    li.textContent = w;
+                    warnEl.appendChild(li);
+                }
+                warnEl.hidden = (resp.warnings || []).length === 0;
+            }
+            if (metEl) {
+                metEl.textContent = "";
+                for (const h of (resp.metal_hints || [])) {
+                    const dt = document.createElement("dt");
+                    dt.textContent = h.element;
+                    metEl.appendChild(dt);
+                    for (const c of (h.common_spins || [])) {
+                        const dd = document.createElement("dd");
+                        dd.textContent =
+                            `spin=${c.spin} — ${c.label}`;
+                        metEl.appendChild(dd);
+                    }
+                }
+                metEl.hidden = (resp.metal_hints || []).length === 0;
+            }
+        }
+
+        // Refresh the Auto-detect button state every time the
+        // load handler finishes (success or failure path) by
+        // wrapping _refreshLoadButton with a sibling call.
+        const _origRefreshLoad = _refreshLoadButton;
+        _refreshLoadButton = function () {   // eslint-disable-line no-func-assign
+            _origRefreshLoad();
+            _refreshAutoDetectButton();
+        };
+        _refreshAutoDetectButton();
     }
 
     function bootstrapSpectraPage() {

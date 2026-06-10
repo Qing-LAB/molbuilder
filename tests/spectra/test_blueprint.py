@@ -197,10 +197,24 @@ class TestSpectraPage:
              structure in the Projects sidebar and load it into
              the viewer.  Mirrors the Optimization tab pattern.
 
-        The file is still small (no per-feature business logic;
-        that lives in lib/spectra/core.js), but it's no longer
-        the ~1.5 KB stub it was post-step-2.2.  Cap at 16 KB so
-        the legacy 1700-line controller can't slip back in.
+        The file is still small (no per-feature business logic
+        for the shared spectra inspector; that lives in
+        lib/spectra/core.js + is reused on /results), but it
+        carries the page-specific bootstrap for the
+        /spectrum-calculation workflow: 3Dmol embed mount, Load-
+        from-sidebar wiring, and (post-2026-06-10) the
+        Auto-detect chemistry handler that pre-fills the form
+        from /api/structure/analyze.
+
+        Cap at 22 KB so the legacy 1700-line controller can't
+        slip back in; the cap was 16 KB before the Auto-detect
+        handler landed and is bumped here to keep room for the
+        ~3 KB it adds plus a little future headroom.  The Auto-
+        detect handler is intentionally NOT in core.js — it's
+        /spectrum-calculation-specific page wiring (the same
+        handler would not make sense for the inspector partial
+        consumed on /results, where there's no parameter form
+        to pre-fill).
         """
         r = web_client.get("/static/spectra/viewer.js")
         assert r.status_code == 200
@@ -217,9 +231,17 @@ class TestSpectraPage:
             "spectra/viewer.js must mount the 3Dmol embed in the "
             "Inspect-structure card's #viewer / #viewer-wrap slot"
         )
+        # Auto-detect handler — page-specific wiring post-2026-06-10.
+        assert "auto-detect-btn" in js, (
+            "spectra/viewer.js must wire the Auto-detect button "
+            "(the scientific-guard step from "
+            "scientific-validation.md § 2.5).  Same chemistry that "
+            "drove the hemeC-dithiol incident lives here too — "
+            "auto-detect surfaces it before Generate."
+        )
         # Cap to catch the legacy 1700-line controller creeping
         # back; well above the bootstrap's natural size.
-        assert len(js) < 16_000, (
+        assert len(js) < 22_000, (
             f"spectra/viewer.js grew to {len(js)} bytes -- it should "
             f"stay as bootstrap-only wiring; per-feature logic "
             f"belongs in lib/spectra/core.js"

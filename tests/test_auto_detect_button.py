@@ -273,3 +273,125 @@ def test_auto_detect_button_disabled_without_loaded_structure(
         timeout=5000,
     )
     assert page.locator("#auto-detect-btn").is_disabled()
+
+
+# --------------------------------------------------------------------- #
+#  /spectrum-calculation — Auto-detect on the Spectrum tab              #
+# --------------------------------------------------------------------- #
+
+
+def test_spectrum_auto_detect_markup_present():
+    """Spectrum tab (/spectrum-calculation) carries the same
+    Auto-detect scaffolding as /structure-optimization.  Pin the
+    new card-2 IDs + that the card numbering shifted Parameters
+    to 3 and Generate to 4.
+
+    Rationale: the hemeC-dithiol incident was on this page;
+    Auto-detect is the scientific-guard step that prevents the
+    silent-defaults class of bugs (science.md § 2.3 + § 2.5).
+    """
+    pytest.importorskip("flask")
+    from molbuilder.web.app import create_app
+    c = create_app(config={}).test_client()
+    r = c.get("/spectrum-calculation")
+    assert r.status_code == 200
+    body = r.get_data(as_text=True)
+    for needle in (
+        'id="analyze-card"',
+        'id="auto-detect-btn"',
+        'id="auto-detect-status"',
+        'id="auto-detect-panel"',
+        'id="auto-detect-rationale"',
+        '2. Analyze chemistry',
+        '3. Parameters',
+        '4. Generate',
+    ):
+        assert needle in body, (
+            f"Spectrum page missing {needle!r} — Auto-detect or "
+            f"the card-renumbering hasn't landed"
+        )
+    # Card 2 sits between Inspect (card 1) and Parameters (card 3).
+    ix_inspect  = body.index('card-viewer')
+    ix_analyze  = body.index('analyze-card')
+    ix_params   = body.index('parameters-card')
+    assert ix_inspect < ix_analyze < ix_params, (
+        "analyze-card not placed between Inspect and Parameters"
+    )
+
+
+def test_spectrum_auto_detect_button_populates_form(
+        page, flask_server, tmp_path, monkeypatch):
+    """E2E: Fe.xyz on /spectrum-calculation → Load → click Auto-
+    detect → assert the spectra form's (charge, spin, method)
+    fields get filled with the PySCF adapter's output.
+
+    Spectra emits PySCF; SpectraConfig has the same charge / spin
+    / method field names as PySCFConfig.  The PySCF adapter's
+    output therefore lands 1:1.
+    """
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    proj = tmp_path / "spec_auto_detect"
+    proj.mkdir()
+    target = proj / "fe.xyz"
+    target.write_text("1\nFe atom for spectrum auto-detect\nFe 0 0 0\n")
+
+    base = flask_server
+    page.goto(f"{base}/spectrum-calculation",
+              wait_until="domcontentloaded")
+    page.wait_for_function(
+        "() => window.molbuilder && window.molbuilder.projects "
+        "      && typeof window.molbuilder.projects.setShared "
+        "             === 'function'",
+        timeout=10000,
+    )
+    page.evaluate(
+        "(p) => window.molbuilder.projects.setShared("
+        "  p.substring(0, p.lastIndexOf('/')), p)",
+        str(target),
+    )
+    page.wait_for_function(
+        "() => !document.getElementById('load-from-sidebar-btn').disabled",
+        timeout=5000,
+    )
+    page.locator("#load-from-sidebar-btn").click()
+    # Wait for load completion + the spectra form to be rendered.
+    page.wait_for_function(
+        "() => /Loaded /.test("
+        "  document.getElementById('load-status').textContent)",
+        timeout=15000,
+    )
+    page.wait_for_function(
+        "() => document.querySelector("
+        "  '#spectra-form-container input, "
+        "   #spectra-form-container select') !== null",
+        timeout=15000,
+    )
+    # Auto-detect enables after load.
+    page.wait_for_function(
+        "() => !document.getElementById('auto-detect-btn').disabled",
+        timeout=10000,
+    )
+    page.locator("#auto-detect-btn").click()
+    page.wait_for_function(
+        "() => /Applied to the parameter form/.test("
+        "  document.getElementById('auto-detect-status').textContent)",
+        timeout=10000,
+    )
+
+    # Spectra form's (charge, spin, method) — collect via the
+    # same formSchema.collectForm API the Generate path uses.
+    vals = page.evaluate(
+        "async () => {"
+        "  const fs = (window.molbuilder || {}).formSchema;"
+        "  const sch = await fs.fetchSchema('spectra');"
+        "  const c = document.getElementById('spectra-form-container');"
+        "  return fs.collectForm(c, sch);"
+        "}"
+    )
+    assert vals.get("charge") == 0
+    assert vals.get("spin")   == 2
+    assert vals.get("method") == "UKS"
+    # Rationale panel visible + carries Fe + open-shell language.
+    rationale = page.locator("#auto-detect-rationale").inner_text()
+    assert "Fe" in rationale
+    assert "open-shell" in rationale.lower()

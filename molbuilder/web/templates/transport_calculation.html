@@ -36,6 +36,23 @@
       endpoint <code>/api/transport/schema</code>.
     </p>
 
+    <p class="hint" style="margin: 0 0 1.2rem;">
+      <strong>Where chemistry comes from on Transport.</strong>
+      <code>TransportConfig</code> intentionally has no
+      <code>(charge, spin, method)</code> fields — those travel
+      from the upstream relaxed geometry via its
+      <code>.molstruct.json</code> sidecar.  Set them once on
+      <a href="/structure-optimization">Optimization</a> or
+      <a href="/spectrum-calculation">Spectrum calculation</a>
+      (the Auto-detect button on either page surfaces the chemistry
+      rationale before you generate), commit the result, then load
+      the relaxed structure here.  When the TranSIESTA / PySCF-NEGF
+      engines land (Phase B.3), the form will also gain an
+      Auto-detect step that consumes the same
+      <code>ChemistryAnalysis</code> middle layer (see
+      <code>docs/protocols/scientific-validation.md</code> § 2.5).
+    </p>
+
     <div id="transport-form-container" class="param-grid">
       <p class="muted">Loading form schema&hellip;</p>
     </div>

@@ -86,9 +86,42 @@
        an in-memory holder on the inspector itself. #}
   </section>
 
-  <!-- ===================== 2. Parameters ===================== -->
+  {#- ===================== 2. Analyze chemistry ===================== -#}
+  {#- Same scientific-guard step as on /structure-optimization.  The
+      hemeC-dithiol incident (2026-05-22) was on THIS page — a
+      SpectraConfig missing charge/spin fields silently used PySCF
+      defaults and converged to a fictitious state.  The defaults
+      are now exposed AND auto-detect surfaces the rationale before
+      the user hits Generate.  See scientific-validation.md § 2.5. -#}
+  <section class="card" id="analyze-card">
+    <h2>2. Analyze chemistry</h2>
+    <p class="hint">
+      Engine-agnostic chemistry check: detects open-shell
+      transition metals, picks a sensible <code>(charge, spin,
+      method)</code> for the typical coordination context, and
+      pre-fills the parameter form below.  Click after loading a
+      structure in step 1; review the rationale panel before
+      generating.
+    </p>
+    <div class="auto-detect-bar">
+      <button id="auto-detect-btn" type="button" disabled
+        title="Analyse the loaded structure (open-shell metals, electron count) and pre-fill (charge, spin, method).  Disabled until a structure is loaded.">
+        Auto-detect defaults
+      </button>
+      <span id="auto-detect-status" class="status" role="status"
+            aria-live="polite"></span>
+    </div>
+    <details id="auto-detect-panel" class="auto-detect-panel" hidden>
+      <summary>Chemistry analysis</summary>
+      <p class="auto-detect-rationale" id="auto-detect-rationale"></p>
+      <ul class="auto-detect-warnings" id="auto-detect-warnings"></ul>
+      <dl class="auto-detect-metals" id="auto-detect-metals"></dl>
+    </details>
+  </section>
+
+  <!-- ===================== 3. Parameters ===================== -->
   <section class="card" id="parameters-card">
-    <h2>2. Parameters</h2>
+    <h2>3. Parameters</h2>
     <p class="hint">
       Defaults work for most cases.  Hover any label for the
       per-field help.  When done, click <strong>Generate</strong>
@@ -102,9 +135,9 @@
     </div>
   </section>
 
-  <!-- ===================== 3. Generate ===================== -->
+  <!-- ===================== 4. Generate ===================== -->
   <section class="card" id="generate-card">
-    <h2>3. Generate</h2>
+    <h2>4. Generate</h2>
     <p class="hint">
       Outputs:
       frequencies in <strong>cm⁻¹</strong>,
