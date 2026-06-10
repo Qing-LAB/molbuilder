@@ -607,6 +607,9 @@
                 if (typeof _refreshLoadButton === "function") {
                     _refreshLoadButton();
                 }
+                if (typeof _refreshAutoDetectButton === "function") {
+                    _refreshAutoDetectButton();
+                }
             } catch (e) {
                 if (mySeq !== _sidebarLoadSeq) return;
                 setStatus("load-status",
@@ -690,6 +693,131 @@
                     ? _proj.getCurrentDir() : "";
                 _commitStructure({ dir: _dir, file: _candidatePath });
             });
+        }
+
+        // -------- Auto-detect button (Phase 2 of the chemistry
+        // middle-layer work; see
+        // docs/protocols/scientific-validation.md § 2.5).
+        //
+        // Posts the currently-loaded structure to
+        // /api/structure/analyze, then applies the engine-agnostic
+        // ChemistryAnalysis's per-engine translation onto BOTH the
+        // SIESTA + PySCF sub-forms in a single click.  Rationale +
+        // warnings are surfaced in the auto-detect-panel <details>
+        // so the user can see what was decided before generating.
+        //
+        // Disabled when no structure is loaded.  The endpoint
+        // accepts the same file path used by /api/build/load above,
+        // so we read it from _sidebarLastFile (the path the user
+        // most-recently committed via the Load button or sidebar
+        // double-click).
+        function _refreshAutoDetectButton() {
+            const btn = $("auto-detect-btn");
+            if (!btn) return;
+            btn.disabled = !_sidebarLastFile;
+        }
+        _refreshAutoDetectButton();
+
+        const _autoBtn = $("auto-detect-btn");
+        if (_autoBtn) {
+            _autoBtn.addEventListener("click", async () => {
+                if (!_sidebarLastFile) return;
+                _autoBtn.disabled = true;
+                setStatus("auto-detect-status", "Analyzing…");
+                let body;
+                try {
+                    const r = await fetch("/api/structure/analyze", {
+                        method:  "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body:    JSON.stringify({
+                            structure_path: _sidebarLastFile,
+                        }),
+                    });
+                    body = await r.json();
+                    if (!r.ok || !body.ok) {
+                        setStatus("auto-detect-status",
+                            body && body.error
+                                ? body.error
+                                : `Analyze failed (HTTP ${r.status}).`,
+                            "error");
+                        return;
+                    }
+                } catch (e) {
+                    setStatus("auto-detect-status",
+                        "Network error: "
+                        + (e && e.message ? e.message : String(e)),
+                        "error");
+                    return;
+                } finally {
+                    _refreshAutoDetectButton();
+                }
+                _applyAutoDetectToForms(body);
+                _renderAutoDetectPanel(body);
+                setStatus("auto-detect-status",
+                    "Applied to both forms.  Review rationale below.",
+                    "ok");
+            });
+        }
+
+        /**
+         * Spread the analyze response's suggested.<engine> blocks
+         * onto both engine sub-forms via formSchema.setValues.  The
+         * setter dispatches input/change events so the form-dirty
+         * tracker sees the programmatic edit.
+         */
+        function _applyAutoDetectToForms(resp) {
+            const fs = (window.molbuilder || {}).formSchema;
+            if (!fs || typeof fs.setValues !== "function") return;
+            const sug = (resp && resp.suggested) || {};
+            const siestaEl = $("siesta-form-container");
+            const pyscfEl  = $("pyscf-form-container");
+            if (siestaEl && formSchemas.siesta && sug.siesta) {
+                fs.setValues(siestaEl, formSchemas.siesta, sug.siesta);
+            }
+            if (pyscfEl && formSchemas.pyscf && sug.pyscf) {
+                fs.setValues(pyscfEl, formSchemas.pyscf, sug.pyscf);
+            }
+        }
+
+        function _renderAutoDetectPanel(resp) {
+            const panel = $("auto-detect-panel");
+            if (!panel) return;
+            panel.hidden = false;
+            panel.open = true;
+            const ratEl  = $("auto-detect-rationale");
+            const warnEl = $("auto-detect-warnings");
+            const metEl  = $("auto-detect-metals");
+            if (ratEl) {
+                // The engine-agnostic rationale lives on each
+                // adapter's response (echoed from the analyzer).
+                // Either engine's value is the same; pick PySCF.
+                const sug = (resp.suggested || {}).pyscf || {};
+                ratEl.textContent = sug.rationale || "";
+            }
+            if (warnEl) {
+                warnEl.textContent = "";
+                for (const w of (resp.warnings || [])) {
+                    const li = document.createElement("li");
+                    li.textContent = w;
+                    warnEl.appendChild(li);
+                }
+                warnEl.hidden = (resp.warnings || []).length === 0;
+            }
+            if (metEl) {
+                metEl.textContent = "";
+                for (const h of (resp.metal_hints || [])) {
+                    const dt = document.createElement("dt");
+                    dt.textContent = h.element;
+                    metEl.appendChild(dt);
+                    for (const c of (h.common_spins || [])) {
+                        const dd = document.createElement("dd");
+                        dd.textContent =
+                            `spin=${c.spin} — ${c.label}`;
+                        metEl.appendChild(dd);
+                    }
+                }
+                metEl.hidden = (resp.metal_hints || []).length === 0;
+            }
         }
         });   // close runtime.whenReady("projects").then(...)
     }

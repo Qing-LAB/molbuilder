@@ -140,6 +140,65 @@ header code {
     font-size: 0.92rem;
 }
 
+/* Auto-detect bar (Phase 2 of the chemistry middle-layer work;
+ * docs/protocols/scientific-validation.md § 2.5).  Visually
+ * tighter than the load bar — secondary affordance triggered
+ * after the structure loads. */
+.auto-detect-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    margin: 0 0 0.6rem;
+    padding: 0.4rem 0.8rem;
+}
+.auto-detect-bar #auto-detect-btn {
+    flex: 0 0 auto;
+}
+.auto-detect-bar #auto-detect-status {
+    color: var(--text-secondary);
+    font-size: 0.92rem;
+}
+
+/* Rationale + warnings + per-metal hints surfaced after the user
+ * clicks Auto-detect.  Collapsed by default until the handler
+ * sets ``open=true``. */
+.auto-detect-panel {
+    margin: 0 0 0.8rem;
+    padding: 0.5rem 0.8rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-soft);
+    border-radius: 6px;
+    font-size: 0.92rem;
+}
+.auto-detect-panel summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+.auto-detect-panel .auto-detect-rationale {
+    margin: 0.5rem 0;
+    color: var(--text-primary);
+}
+.auto-detect-panel .auto-detect-warnings {
+    margin: 0.3rem 0;
+    padding-left: 1.2rem;
+    color: var(--text-secondary);
+}
+.auto-detect-panel .auto-detect-warnings:empty,
+.auto-detect-panel .auto-detect-metals:empty {
+    display: none;
+}
+.auto-detect-panel .auto-detect-metals {
+    margin: 0.3rem 0;
+}
+.auto-detect-panel .auto-detect-metals dt {
+    font-weight: 600;
+    margin-top: 0.3rem;
+}
+.auto-detect-panel .auto-detect-metals dd {
+    margin: 0 0 0 1.2em;
+    color: var(--text-secondary);
+}
+
 /* ---- Cards ---- */
 
 /* ``.card { ... }`` removed 2026-05-19; the rules were byte-for-byte

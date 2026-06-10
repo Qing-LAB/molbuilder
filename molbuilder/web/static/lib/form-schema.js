@@ -491,10 +491,60 @@
         return String(s).replace(/[^a-zA-Z0-9_-]/g, (c) => "\\" + c);
     }
 
+    /**
+     * Apply a values object to the rendered form.  Keys in
+     * ``values`` match schema field ``name``s; missing keys leave
+     * existing values alone.  Fires an ``input`` event on each
+     * changed control so dirty-tracking listeners observe the
+     * programmatic change.
+     *
+     * Used by the Auto-detect button (Optimization tab) to populate
+     * (charge, spin, method, ...) from
+     * ``/api/structure/analyze``'s ``suggested.<engine>`` block in
+     * one call.  See docs/protocols/scientific-validation.md § 5.1.
+     */
+    function setValues(container, schema, values) {
+        if (!container || !schema || !Array.isArray(schema.sections)) {
+            throw new Error("form-schema.setValues: bad container/schema");
+        }
+        if (!values || typeof values !== "object") return;
+        for (const sect of schema.sections) {
+            for (const f of sect.fields) {
+                if (!(f.name in values)) continue;
+                const v = values[f.name];
+                const elx = container.querySelector("#" + cssEsc(f.id));
+                if (!elx) continue;
+                if (f.kind === "checkbox") {
+                    elx.checked = Boolean(v);
+                } else if (f.kind === "int-triple") {
+                    // [a, b, c] → fill the three sub-inputs.
+                    if (!Array.isArray(v) || v.length !== 3) continue;
+                    const labs = ["x", "y", "z"];
+                    for (let i = 0; i < 3; i++) {
+                        const sub = container.querySelector(
+                            "#" + cssEsc(f.id + "-" + labs[i]));
+                        if (sub) sub.value = String(v[i]);
+                    }
+                } else {
+                    // Numbers, selects, tri-selects, text — all
+                    // accept .value as the canonical writer.
+                    elx.value = v === null || v === undefined
+                        ? "" : String(v);
+                }
+                // Notify dirty-trackers / live-preview consumers.
+                try {
+                    elx.dispatchEvent(new Event("input", { bubbles: true }));
+                    elx.dispatchEvent(new Event("change", { bubbles: true }));
+                } catch (_) { /* old browsers without Event ctor */ }
+            }
+        }
+    }
+
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.formSchema = {
         renderForm:  renderForm,
         collectForm: collectForm,
         fetchSchema: fetchSchema,
+        setValues:   setValues,
     };
 })(typeof window !== "undefined" ? window : this);

@@ -80,6 +80,31 @@
       <span id="load-status" class="status"></span>
     </div>
 
+    {#- Auto-detect: POST the loaded structure to
+        /api/structure/analyze and pre-fill (charge, spin, method)
+        on BOTH the SIESTA and PySCF sub-forms from one click.
+        The endpoint runs the engine-agnostic
+        ``ChemistryAnalysis`` and translates via the registered
+        adapters; the panel below the button surfaces the
+        rationale + warnings so the user sees what was decided
+        and why.  See
+        docs/protocols/scientific-validation.md § 2.5 for the
+        scientific-guard role. -#}
+    <div class="auto-detect-bar">
+      <button id="auto-detect-btn" type="button" disabled
+        title="Analyse the loaded structure (open-shell metals, electron count) and pre-fill (charge, spin, method) on both engine sub-forms.  Disabled until a structure is loaded.">
+        Auto-detect defaults
+      </button>
+      <span id="auto-detect-status" class="status" role="status"
+            aria-live="polite"></span>
+    </div>
+    <details id="auto-detect-panel" class="auto-detect-panel" hidden>
+      <summary>Chemistry analysis</summary>
+      <p class="auto-detect-rationale" id="auto-detect-rationale"></p>
+      <ul class="auto-detect-warnings" id="auto-detect-warnings"></ul>
+      <dl class="auto-detect-metals" id="auto-detect-metals"></dl>
+    </details>
+
     <div class="viewer-wrap" id="viewer-wrap">
       <div id="viewer"></div>
     </div>
