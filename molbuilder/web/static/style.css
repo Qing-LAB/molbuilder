@@ -61,7 +61,16 @@ header code {
     display: flex;
     flex-direction: column;
     gap: var(--gap);
-    margin: var(--gap) 24px;
+    margin: var(--gap) auto;
+    /* Cap the overall workflow width so on ultrawide monitors the
+     * forms + viewer don't stretch into "two-thirds of a 27-inch
+     * screen per field" territory.  1400px gives 4 columns of the
+     * 320px param-grid + comfortable padding; auto margins centre
+     * it horizontally.  The viewport-side margin minimum keeps the
+     * inside breathing room on smaller windows where 1400px would
+     * touch the edges. */
+    max-width: 1400px;
+    width: calc(100% - 48px);
 }
 .app-grid > .card { margin: 0; }
 
@@ -591,11 +600,12 @@ fieldset label:has(> input[type="checkbox"]) {
     line-height: 1.55;
 }
 
-.param-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-    gap: 10px;
-}
+/* ``.param-grid`` rule retired from style.css 2026-06-10 in favour
+ * of the single source of truth in ``lib/form-schema.css``.  The
+ * 190px minmax was visually cramped (label + input wanted ~300px)
+ * and disagreed with form-schema.css's 220px copy, so any future
+ * tweak had to be applied in two places.  See form-schema.css's
+ * ``.param-grid`` for the live rule + responsive breakpoints. */
 
 /* The k-grid fieldset has 3 tiny inputs that look better stacked
    vertically -- already the default with our new label rule. */

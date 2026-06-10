@@ -478,16 +478,30 @@ class MetalHint:
 # chemistry; the user MUST verify against experimental data.  See
 # docs/protocols/scientific-validation.md § 3.2.
 _ANALYZER_DEFAULT_SPIN: Dict[str, int] = {
-    "Fe": 2,    # Fe(II), intermediate (4-coord porphyrin); HS is 4
-    "Mn": 5,    # Mn(II), high-spin S=5/2 (overwhelmingly common in bio)
-    "Co": 1,    # Co(II), LS as a safe pick
-    "Ni": 0,    # Ni(II), square-planar LS; user overrides for octahedral
-    "Cu": 1,    # Cu(II), d⁹ — one unpaired electron
-    "Cr": 3,    # Cr(III), d³ S=3/2
-    "V":  3,    # V(II), d³ S=3/2
-    "Ti": 2,    # Ti(II), d² S=1
-    "Sc": 1,    # Sc(II), d¹ S=1/2
+    "Fe": 2,    # Fe(II), intermediate-spin (S=1, 4-coord porphyrin —
+                # the molbuilder hemeC use case).  HS Fe(II) is 4;
+                # user can override.
+    "Mn": 5,    # Mn(II), high-spin S=5/2 — overwhelming default in
+                # bio/aqueous; LS Mn(II) is exceedingly rare.
+    "Co": 3,    # Co(II), HIGH-spin S=3/2 — the COMMON octahedral /
+                # aqueous / weak-field ligand case.  LS Co(II) (S=1/2)
+                # requires strong-field ligands (CN⁻, phen, bipy);
+                # user overrides to spin=1 for those.  Picking LS as
+                # default biases toward textbook ideal at the cost of
+                # the more common bio/coordination-chem reality.
+    "Ni": 0,    # Ni(II), square-planar LS d⁸ S=0 — the common case
+                # in metalloproteins + coordination chem.  Octahedral
+                # HS (S=1) is less common; user overrides if needed.
+    "Cu": 1,    # Cu(II), d⁹ S=1/2 — one unpaired electron, period.
+                # No realistic alternative.
+    "Cr": 3,    # Cr(III), d³ S=3/2 — the dominant oxidation state.
+    "V":  3,    # V(II), d³ S=3/2 — common low-V oxidation state.
+    "Ti": 2,    # Ti(II), d² S=1.
+    "Sc": 1,    # Sc(II), d¹ S=1/2 — rare; Sc(III) (d⁰) is closed-shell
+                # and wouldn't trigger this path.
     # Second-row + third-row + f-block fall through to a safe 2.
+    # See ``_metal_hint`` for the full set of spin candidates a
+    # user can pick via the Auto-detect panel's per-metal hints.
 }
 
 

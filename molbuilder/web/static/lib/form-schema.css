@@ -105,12 +105,49 @@ fieldset select:disabled {
 }
 .lock-reason[hidden] { display: none; }
 
-/* ---- Param grid (the big block of schema-rendered fieldsets) ---- */
-
+/* ---- Param grid (the big block of schema-rendered fieldsets) ----
+ *
+ * Single source of truth for the responsive form grid used by
+ * #generate-card on /structure-optimization, the spectra form on
+ * /spectrum-calculation, and the transport form on
+ * /transport-calculation.  The earlier 190px / 220px values were
+ * cramped — each field carries a label (``min-width: 8em`` → ~128px)
+ * + the input + a per-field engine_key badge, so anything below
+ * ~300px squeezed the input down to icon size.
+ *
+ * Cell-min selection: 320px gives ~128px label + ~170px input + 22px
+ * breathing room, comfortable for "spin = [   2 ]" + the badge.
+ * auto-fit + 1fr lets columns grow on wide screens; the
+ * ``#generate-card`` max-width below caps the overall card so a
+ * 27" monitor doesn't stretch each field to two-thirds of a screen
+ * (which hurts scannability more than it helps).
+ *
+ * Responsive breakpoints below kick in at common laptop / tablet
+ * widths so the layout shifts predictably from 3-col → 2-col → 1-col
+ * instead of jumping unpredictably.
+ */
 .param-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 10px;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 12px;
+}
+
+@media (max-width: 1100px) {
+    .param-grid {
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: 10px;
+    }
+}
+
+@media (max-width: 720px) {
+    /* On phones / narrow tablets, force single column so labels +
+     * inputs don't share rows.  Below this width the 280px min
+     * would only fit one column anyway, but the explicit
+     * ``1fr`` rule makes the intent obvious to a maintainer. */
+    .param-grid {
+        grid-template-columns: 1fr;
+        gap: 8px;
+    }
 }
 
 .param-grid-pre {
