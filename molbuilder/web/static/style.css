@@ -49,9 +49,13 @@ header code {
 
 /* ---- App grid ---- */
 
-/* Vertical workflow (2026-06-08 cleanup, task #295):
+/* Vertical workflow (2026-06-08 cleanup, expanded 2026-06-10):
  *   1. card-viewer — Inspect structure + Load from sidebar
- *   2. #generate-card — SIESTA / PySCF script form
+ *   2. #analyze-card — Auto-detect chemistry + rationale panel
+ *      (scientific-guard step; promoted from a sub-affordance of
+ *      card 1 because logically it sits BETWEEN inspect and
+ *      generate — see scientific-validation.md § 2.5)
+ *   3. #generate-card — SIESTA / PySCF script form
  *
  * The legacy 2-column layout (Build/Load on the left, viewer on
  * the right) is retired; structure data now comes from the
@@ -79,13 +83,26 @@ header code {
  * The form is dense by nature (SIESTA/PySCF have many knobs);
  * the goal is to make the SEPARATION between steps obvious
  * without changing the field set. */
-#generate-card {
+#generate-card,
+#analyze-card {
     padding: 1.4rem 1.6rem;
 }
-#generate-card > h2 {
+#generate-card > h2,
+#analyze-card > h2 {
     font-size: 1.1rem;
     margin-bottom: 1rem;
 }
+#analyze-card > .hint {
+    margin: 0 0 1rem;
+    color: var(--text-secondary);
+    font-size: 0.92rem;
+    line-height: 1.5;
+}
+/* Card 2 (Analyze) doesn't need the wide bottom margin on its
+ * inner bar — the card padding already provides that.  Trim the
+ * .auto-detect-bar / .auto-detect-panel block margins to match. */
+#analyze-card .auto-detect-bar { padding: 0; margin: 0 0 0.6rem; }
+#analyze-card .auto-detect-panel { margin: 0; }
 #generate-card .tabs {
     margin-bottom: 0.8rem;
 }

@@ -42,9 +42,13 @@
 {% include "_projects_sidebar.html" %}
 
 <!-- ============================================================ -->
-<!--  Vertical workflow (2026-06-08 cleanup):                      -->
+<!--  Vertical workflow (2026-06-08 cleanup, expanded 2026-06-10): -->
 <!--    1. Inspect — viewer + "Load from sidebar selection"        -->
-<!--    2. Generate input — SIESTA/PySCF form                      -->
+<!--    2. Analyze chemistry — Auto-detect + rationale panel       -->
+<!--       (the scientific-guard step; promoted from sub-affordance -->
+<!--       of card 1 because logically it sits BETWEEN inspect and  -->
+<!--       generate — see scientific-validation.md § 2.5)           -->
+<!--    3. Generate input — SIESTA/PySCF form                      -->
 <!--  The legacy Build/Load card (sequence/SMILES build form +     -->
 <!--  local file upload) was retired; the Molbuilder tab is now    -->
 <!--  the canonical structure-creation surface, and the project    -->
@@ -80,16 +84,34 @@
       <span id="load-status" class="status"></span>
     </div>
 
-    {#- Auto-detect: POST the loaded structure to
-        /api/structure/analyze and pre-fill (charge, spin, method)
-        on BOTH the SIESTA and PySCF sub-forms from one click.
-        The endpoint runs the engine-agnostic
-        ``ChemistryAnalysis`` and translates via the registered
-        adapters; the panel below the button surfaces the
-        rationale + warnings so the user sees what was decided
-        and why.  See
-        docs/protocols/scientific-validation.md § 2.5 for the
-        scientific-guard role. -#}
+    <div class="viewer-wrap" id="viewer-wrap">
+      <div id="viewer"></div>
+    </div>
+  </section>
+
+  {#- Card 2 — Analyze chemistry.  Promoted from sub-affordance
+      of card 1 (Inspect structure) to its own workflow step
+      2026-06-10, since logically it sits BETWEEN inspect and
+      generate: the analyzer reads the loaded structure (output
+      of card 1) and pre-fills the form (input of card 3).
+
+      Button POSTs to /api/structure/analyze; the endpoint runs
+      the engine-agnostic ``ChemistryAnalysis`` + iterates the
+      adapter registry to translate per-engine.  The <details>
+      panel surfaces the rationale + warnings + per-metal hints
+      so the user sees what was decided AND why — see
+      docs/protocols/scientific-validation.md § 2.5 for the
+      scientific-guard role. -#}
+  <section class="card" id="analyze-card">
+    <h2>2. Analyze chemistry</h2>
+    <p class="hint">
+      Engine-agnostic chemistry check: detects open-shell
+      transition metals, picks a sensible <code>(charge, spin,
+      method)</code> triplet for the typical coordination
+      context, and pre-fills BOTH engine sub-forms below.  Click
+      after loading a structure in step 1; review the rationale
+      panel before generating the script.
+    </p>
     <div class="auto-detect-bar">
       <button id="auto-detect-btn" type="button" disabled
         title="Analyse the loaded structure (open-shell metals, electron count) and pre-fill (charge, spin, method) on both engine sub-forms.  Disabled until a structure is loaded.">
@@ -104,14 +126,10 @@
       <ul class="auto-detect-warnings" id="auto-detect-warnings"></ul>
       <dl class="auto-detect-metals" id="auto-detect-metals"></dl>
     </details>
-
-    <div class="viewer-wrap" id="viewer-wrap">
-      <div id="viewer"></div>
-    </div>
   </section>
 
   <section class="card" id="generate-card">
-      <h2>2. Generate input</h2>
+      <h2>3. Generate input</h2>
 
       <div class="tabs" role="tablist" aria-label="Generate-input engine">
         <button class="tab-btn active" role="tab"
