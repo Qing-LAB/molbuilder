@@ -4,7 +4,7 @@ Task #191 (audit follow-up, 2026-06-02).  The runtime registry
 (``window.molbuilder.runtime.register / whenReady / get /
 listRegistered / listPending``) is the load-bearing init contract
 every other module relies on -- but until this commit it had NO
-direct unit tests.  Consumers (test_modify_e2e.py and friends)
+direct unit tests.  Consumers (test_molbuilder_e2e.py and friends)
 exercised it indirectly by virtue of the tab's other modules
 self-registering, which means:
 

@@ -8,7 +8,7 @@ Uses fake projects + structurePage + canvas surfaces so the
 target-resolution + writeFile + markSavedTo flow can be exercised
 without HTTP or sessionStorage.  The DOM wiring (``wirePanel``
 against the actual button + readout) is exercised by an e2e test
-in test_modify_e2e.py.
+in test_molbuilder_e2e.py.
 """
 from __future__ import annotations
 

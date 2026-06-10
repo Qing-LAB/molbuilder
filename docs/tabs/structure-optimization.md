@@ -160,7 +160,7 @@ structure landed.
 |---|---|---|
 | `test_web.py` | Flask test_client | Every `/api/build/*` endpoint — happy + bad-input + engine_key metadata |
 | `test_build_e2e.py` | Playwright | Page boot + form-schema renders + tab switching + sidebar-load round-trip + **second-visit + external-change** |
-| `test_modify_e2e.py` | Playwright | Cross-tab handoff via `sessionStorage.molbuilder.current_file` + preflight listener wiring on the loaded structure |
+| `test_molbuilder_e2e.py` | Playwright | Cross-tab handoff via `sessionStorage.molbuilder.current_file` + preflight listener wiring on the loaded structure |
 
 ---
 

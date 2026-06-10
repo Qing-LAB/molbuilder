@@ -7,7 +7,7 @@ Why this file exists
 The 2026-06-02 stage-5 migration of the Build + Modify viewers to
 the embed contract shipped a CSS bug that left both tabs' viewer
 canvases visibly BLANK in the browser.  The pre-existing
-``test_build_e2e.py`` + ``test_modify_e2e.py`` suites passed 227 /
+``test_build_e2e.py`` + ``test_molbuilder_e2e.py`` suites passed 227 /
 227 because they asserted on program state (atom counts via
 ``handle.getAtomCount()``, info-line text, JS-error-free boot) --
 NONE asserted on what the user actually sees: a non-zero-sized

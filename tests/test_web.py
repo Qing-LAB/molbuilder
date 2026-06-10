@@ -131,7 +131,7 @@ def test_backends_endpoint_exposes_auto_resolution(web_client):
 # 2026-06-08 (task #295) — the backend dropdown lived inside the
 # retired Build form on the optimization tab.  The DNA backend
 # selector still lives on the Molbuilder tab's "Init structure"
-# DNA panel; see tests/test_modify_e2e.py for that coverage.
+# DNA panel; see tests/test_molbuilder_e2e.py for that coverage.
 
 
 def test_build_dna_response_includes_backend_used(web_client):
@@ -150,7 +150,7 @@ def test_build_dna_response_includes_backend_used(web_client):
 # (task #295) — the add_hydrogens select lived inside the retired
 # Build form's nucleic-options block.  The DNA generator on the
 # Molbuilder tab carries the same control; pinned by
-# tests/test_modify_e2e.py.
+# tests/test_molbuilder_e2e.py.
 
 
 def test_build_response_carries_validation_issues(web_client):

@@ -15,7 +15,7 @@ tests under `tests/test_*_e2e.py` and `tests/test_pages_*.py`.
 **Audience**: anyone adding or rewriting a Playwright test in this repo.
 
 **Why this exists**: the 2026-06-01 flake-cluster audit (task #178)
-found 24 failing `test_modify_e2e.py` tests across three distinct
+found 24 failing `test_molbuilder_e2e.py` tests across three distinct
 failure modes — and almost all of them were caused by NOT applying the
 patterns codified here. A future change to the selection panel CSS,
 the inspector registry, or the modify HTML must not re-introduce them.
@@ -61,7 +61,7 @@ a Playwright contract test that opens `/results` and calls
   Playwright but contract-only via `page.evaluate(...)`. No UI clicks.
   Verifies `isResult` / `pickResult` / `resultCategory` against the
   LIVE registered inspectors. ~30 s for 16 tests.
-- ✅ `tests/test_modify_e2e.py::test_panel_mode_swap_preserves_selection`
+- ✅ `tests/test_molbuilder_e2e.py::test_panel_mode_swap_preserves_selection`
   — Playwright UX flow: real clicks on real elements, then asserts on
   observable state. ~5-10 s per test.
 - ❌ A Playwright test that just calls `page.evaluate("() => 1+1")` —
@@ -209,7 +209,7 @@ Notes:
   listens for, without needing a hit-testable position.
 * This repo's canonical helpers `_set_selection_mode(page, mode)`
   (radio) and `_set_checkbox(page, sel, value)` (checkbox) in
-  `tests/test_modify_e2e.py` implement Pattern A.
+  `tests/test_molbuilder_e2e.py` implement Pattern A.
 
 **Pattern B — click the visible interactive parent**:
 
@@ -544,8 +544,8 @@ page.evaluate("""(sel) => {
 ```
 
 See § 2 "Locator strategy" for the full discussion, and
-`tests/test_modify_e2e.py::_set_selection_mode` /
-`tests/test_modify_e2e.py::_set_checkbox` for the canonical helpers
+`tests/test_molbuilder_e2e.py::_set_selection_mode` /
+`tests/test_molbuilder_e2e.py::_set_checkbox` for the canonical helpers
 this repo uses.
 
 ### A2. Reading text without retry
@@ -864,7 +864,7 @@ will see those, auto-pick the most recent, and replace the
 inspector the test just mounted.
 
 The canonical fix is `_load_watch_log` in
-`tests/test_modify_e2e.py`:
+`tests/test_molbuilder_e2e.py`:
 
 ```python
 def _load_watch_log(page, base_url, log_path):
@@ -978,7 +978,7 @@ panel's atoms list never populates, and any
 `wait_for getNAtoms()` will time out.
 
 The reusable helper at
-`tests/test_modify_e2e.py::_register_tmp_as_picker_root` does this
+`tests/test_molbuilder_e2e.py::_register_tmp_as_picker_root` does this
 via `monkeypatch.setattr` so the registration auto-reverses on
 test teardown:
 
@@ -1019,7 +1019,7 @@ When adding or modifying a Playwright test, run through:
 
 ## 11. Historical reference: the 2026-06-01 cluster
 
-The 24 failures in `test_modify_e2e.py` audited on 2026-06-01 broke
+The 24 failures in `test_molbuilder_e2e.py` audited on 2026-06-01 broke
 down by root cause:
 
 | Cause | # tests | Pattern violated | Fix |

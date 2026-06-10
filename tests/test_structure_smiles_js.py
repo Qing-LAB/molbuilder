@@ -8,7 +8,7 @@ canvas-state gate.
 These tests use a fake fetch + structurePage + viewer-loader so
 the state machine can be exercised without a real DOM or HTTP
 roundtrip.  The DOM wiring (``wirePanel`` against actual buttons +
-inputs) is exercised by an e2e test in test_modify_e2e.py.
+inputs) is exercised by an e2e test in test_molbuilder_e2e.py.
 """
 from __future__ import annotations
 

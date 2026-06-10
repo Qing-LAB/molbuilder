@@ -179,7 +179,7 @@ tests/
   test_molwatch_preview.py  test_molwatch_emitter.py
   test_pubchem.py           test_backends.py
   test_cli.py
-  test_modify.py            test_modify_e2e.py
+  test_modify.py            test_molbuilder_e2e.py
   test_build_e2e.py
   test_mol_viewer_embed_e2e.py
   test_projects_public_surface_js.py

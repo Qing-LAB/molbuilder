@@ -73,7 +73,7 @@ def flask_server():
 def _register_tmp_as_picker_root(tmp_path, monkeypatch):
     """Pin ``tmp_path`` as the only Capabilities picker root so the
     files blueprint accepts files written under it.  Mirrors the
-    helper in ``test_modify_e2e.py`` / ``test_source_inspector_e2e.py``.
+    helper in ``test_molbuilder_e2e.py`` / ``test_source_inspector_e2e.py``.
     """
     from molbuilder import diagnostics
     _orig = diagnostics.get_capabilities()

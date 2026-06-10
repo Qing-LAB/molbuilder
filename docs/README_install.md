@@ -361,7 +361,7 @@ python -c "from molbuilder.builders.backends import available_backends; print(av
 
 # 2. Unit + integration tests (~5 min)
 python -m pytest tests/ --ignore=tests/spectra/test_smoke.py \
-                        --ignore=tests/test_modify_e2e.py -q
+                        --ignore=tests/test_molbuilder_e2e.py -q
 #   Expect: ~1300 passed, 7 skipped (amber-gated; unskip automatically
 #   when molbuilder-MDtools dispatch ships).
 
@@ -370,7 +370,7 @@ conda run -n molbuilder-pySCF python -m pytest tests/spectra/test_smoke.py -m sm
 #   Expect: 6 passed.  Runs PySCF on water + HCl with a small basis set.
 
 # 4. Playwright E2E (only if molbuilder-tests is installed)
-conda run -n molbuilder-tests python -m pytest tests/test_modify_e2e.py -q
+conda run -n molbuilder-tests python -m pytest tests/test_molbuilder_e2e.py -q
 #   Expect: all pass.
 ```
 

@@ -56,7 +56,7 @@ def _register_tmp_as_picker_root(tmp_path, monkeypatch):
     """Pin ``tmp_path`` as the only Capabilities picker root so
     ``/api/files/read_range`` accepts files written under it.
 
-    Same shape as the helper in ``test_modify_e2e.py`` -- kept local
+    Same shape as the helper in ``test_molbuilder_e2e.py`` -- kept local
     so this test module stays self-contained (no cross-file fixture
     import).
     """

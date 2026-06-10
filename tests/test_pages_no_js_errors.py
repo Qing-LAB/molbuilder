@@ -13,7 +13,7 @@ form was stuck at the ``Loading from schema...`` placeholder.
 No existing test caught it because:
 
   * the unit / HTTP layers don't load the JS at all,
-  * ``test_modify_e2e.py`` only loads ``/modify`` in a browser, and
+  * ``test_molbuilder_e2e.py`` only loads ``/modify`` in a browser, and
   * the static-asset string-pin tests grep the JS *source* for
     expected names -- a syntactically-broken file still contains the
     names, so the pins all passed.
@@ -34,7 +34,7 @@ import pytest
 
 
 # Skip cleanly when Playwright / pytest-playwright / chromium aren't
-# installed.  Mirrors the test_modify_e2e.py pattern.
+# installed.  Mirrors the test_molbuilder_e2e.py pattern.
 pytest.importorskip("playwright.sync_api")
 pytest.importorskip("flask")
 

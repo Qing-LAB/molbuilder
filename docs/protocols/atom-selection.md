@@ -591,7 +591,7 @@ exported only for tests.
   * `tests/test_selection_measurements_js.py` -- pure-math unit
     tests for `lib/selection/measurements.js` (xyz / distance /
     angle, pickOrder vs geometric fallback, 4+ atoms → null).
-  * `tests/test_modify_e2e.py::test_measurement_readout_shows_xyz_distance_angle`
+  * `tests/test_molbuilder_e2e.py::test_measurement_readout_shows_xyz_distance_angle`
     -- end-to-end pin for the chip overlay on the Modify tab.
   * JS unit tests (future): see `tests/test_atom_selection_js.py`
     once the Playwright harness covers the panel.

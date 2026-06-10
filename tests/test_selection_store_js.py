@@ -4,7 +4,7 @@ Task #146 — Phase B.1.15.  The selection store is the canonical
 state holder for the /modify selection panel (see
 ``docs/protocols/atom-selection.md`` for the full spec).  Until
 this commit it was covered ONLY by the Playwright e2e tests in
-``test_modify_e2e.py``, which exercise the store via the panel
+``test_molbuilder_e2e.py``, which exercise the store via the panel
 DOM -- expensive (~5-10 s per test) and they can't isolate the
 store's pure helpers from the DOM/network layers.
 

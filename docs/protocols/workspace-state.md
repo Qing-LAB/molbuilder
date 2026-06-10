@@ -501,10 +501,10 @@ enumerates the tests that need to land alongside each step.
 | 2 | `tests/test_web.py::test_load_returns_workspace_payload`, `tests/test_web.py::test_molecule_returns_workspace_payload`, `tests/test_web.py::test_modify_returns_workspace_payload` (one per op) |
 | 3 | `tests/test_web.py::test_delete_returns_selection_remap`, `tests/test_modify.py::test_reindex_after_delete_returns_remap` |
 | 4 | `tests/test_workspace_dispatcher_js.py::TestPublicSurface`, `::TestSubscribe`, `::TestPersistRoundtrip` |
-| 5 | `tests/test_modify_e2e.py::test_applyop_atomically_updates_workspace` (one assertion: after Delete, `getStructure()`, `getSelection()`, `isDirty()`, `getSource()` all reflect post-op state in the same tick) |
+| 5 | `tests/test_molbuilder_e2e.py::test_applyop_atomically_updates_workspace` (one assertion: after Delete, `getStructure()`, `getSelection()`, `isDirty()`, `getSource()` all reflect post-op state in the same tick) |
 | 6 | One e2e per generator: `test_dna_generator_updates_workspace_via_dispatcher` etc. |
 | 7 | `tests/test_selection_store_js.py` re-pointed at the wrapper; assertions unchanged |
-| 8 | `tests/test_modify_e2e.py::test_workspace_persists_atomically_across_navigation`, `test_dirty_gate_*` already pinned |
+| 8 | `tests/test_molbuilder_e2e.py::test_workspace_persists_atomically_across_navigation`, `test_dirty_gate_*` already pinned |
 | 9 | Removal of legacy stores doesn't break any e2e test |
 | 10 | `/api/selection/atoms` deprecation: add `Deprecation` header; remove after all callers migrated |
 

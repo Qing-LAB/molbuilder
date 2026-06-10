@@ -1078,7 +1078,7 @@ The Flask app must NOT:
 |---|---|---|
 | `/api/files/*` | `test_web_files.py` | 116 |
 | `/api/build/*` | `test_web.py` | ~105 |
-| `/api/modify/*` | `test_web.py` (`/api/modify/op` etc.) + `test_modify_e2e.py` (Playwright) | ~50 |
+| `/api/modify/*` | `test_web.py` (`/api/modify/op` etc.) + `test_molbuilder_e2e.py` (Playwright) | ~50 |
 | `/api/selection/*` | `test_selection_blueprint.py` | 73 |
 | `/api/spectra/*` | `tests/spectra/test_blueprint.py` | 60+ |
 | `/api/watch/*` | `tests/watch/test_api_load.py` + trajectory inspector e2e | ~20 |

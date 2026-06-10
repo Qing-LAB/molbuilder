@@ -417,9 +417,22 @@ class TestSpectraPage:
     def test_inspector_partial_has_mode_viewer(self, web_client):
         """3Dmol viewer + controls live below the modes table in the
         inspector partial.  Pins the IDs the core JS depends on.
-        The 3Dmol script tag is NOT on /spectra (generator-only,
-        no animation surface there); it loads on whatever page
-        consumes the inspector partial (i.e. /results)."""
+
+        Historical note: a prior assertion pinned "3Dmol must NOT be
+        on /spectra (the generator)".  That guard was correct
+        pre-task #296 (2026-06-09) when the spectra generator page
+        had no viewer surface.  Task #296 reorganised
+        /spectrum-calculation into the same vertical-workflow shape
+        as /structure-optimization, mounting the structure-inspector
+        embed in the "Inspect structure" card so users can preview
+        what's about to be calculated.  3Dmol is now legitimately
+        loaded on /spectrum-calculation for that purpose; the
+        assertion was retired with #296.
+
+        The CDN-fallback guard (no cdnjs.cloudflare.com) is kept
+        as a separate ``test_no_cdn_fallback_in_spectrum_page``
+        below — the rationale (vendored 3Dmol, no CDN) survives the
+        workflow change."""
         partial = web_client.get("/partials/spectra-inspector").data.decode()
         # Viewer wrap + canvas div.
         assert 'id="mode-viewer-wrap"'   in partial
@@ -428,15 +441,27 @@ class TestSpectraPage:
         assert 'id="anim-amplitude"'     in partial
         assert 'id="anim-speed"'         in partial
         assert 'id="anim-toggle"'        in partial
-        # 3Dmol is NOT on /spectra (generator-only contract).
-        body = web_client.get("/spectra").data.decode()
-        assert "vendor/3Dmol-min.js" not in body, (
-            "/spectra (generator) must NOT load 3Dmol; it's a "
-            "viewer library used only by the mode-eigenvector "
-            "animation in the inspector partial (consumed by /results)."
+
+    def test_no_cdn_fallback_in_spectrum_page(self, web_client):
+        """The 3Dmol script tag on /spectrum-calculation must point
+        at the vendored copy (``/static/vendor/3Dmol-min.js``) —
+        never a CDN.  Pre-task #296 the generator carried no 3Dmol
+        at all; #296 added the inspect-structure card and pulled in
+        the same vendored stack as /structure-optimization.  Pin so
+        a future refactor that "just adds a CDN fallback" silently
+        introducing a third-party load surfaces."""
+        body = web_client.get("/spectrum-calculation").data.decode()
+        assert "cdnjs.cloudflare.com" not in body, (
+            "/spectrum-calculation must not load 3Dmol from a CDN; "
+            "use the vendored copy at /static/vendor/3Dmol-min.js"
         )
-        # No CDN fallback should sneak back in.
-        assert "cdnjs.cloudflare.com" not in body
+        # And the vendored path IS present (positive assertion so
+        # the test fails clearly if the script tag is removed
+        # entirely rather than swapped for a CDN).
+        assert "/static/vendor/3Dmol-min.js" in body, (
+            "/spectrum-calculation should ship the vendored 3Dmol "
+            "for the inspect-structure card (task #296)"
+        )
 
     def test_core_js_has_mode_animation(self, web_client):
         """The inspector core exposes the viewer setup + animation

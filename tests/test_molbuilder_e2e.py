@@ -1,9 +1,18 @@
-"""End-to-end browser tests for the Modify tab.
+"""End-to-end browser tests for the Molbuilder tab (route
+``/molbuilder``).
+
+Phase B.5 (2026-06-07) renamed the tab Structure → **Molbuilder**
+so the central tab carries the brand; the legacy ``/modify`` and
+``/structure`` routes were retired with no backward-compat
+redirect.  This file was named ``test_modify_e2e.py`` from when
+the route was ``/modify``; renamed 2026-06-10 to match the
+post-B.5 route.
 
 Covers M2 (UI skeleton: file load, 3Dmol axis overlay) through M4
 (orient + rotate, anchor-pair selection) plus Phase 1 cross-tab
-persistence (the structure + selection + camera survive Build ↔
-Watch ↔ Modify navigation via sessionStorage).
+persistence (the structure + selection + camera survive Molbuilder
+↔ Optimization ↔ Spectrum-calculation navigation via
+sessionStorage).
 
 .. note:: 2026-05-20
 
@@ -24,7 +33,7 @@ What pytest can't reach
 =======================
 
 The existing ``tests/test_web.py`` smoke-tests verify that the
-``/modify`` HTML carries the expected element ids and that the
+``/molbuilder`` HTML carries the expected element ids and that the
 ``/api/modify/*`` endpoints respond correctly to JSON.  Neither layer
 exercises the actual JS click-sync between the atom list and the
 3Dmol viewer, the live ``|offset|`` slider readout, or the JS

@@ -705,26 +705,16 @@ class TestSidebarPartialAndShim:
             )
 
 
-class TestNoLocalFileInputs:
-    """After the sidebar pivot, the browser-local <input type=file>
-    pickers were dropped from Spectra / Watch / Modify -- a script
-    running on the server can't read a laptop file anyway."""
-
-    @pytest.mark.parametrize("path,absent_id", [
-        ("/spectra", 'id="xyz-file"'),
-        ("/spectra", 'id="results-file"'),
-        ("/modify",  'id="file-picker"'),
-        # /watch dropped 2026-05-19; trajectory inspector lives at
-        # /results via the registry now (no <input type=file>
-        # there either).
-    ])
-    def test_file_input_not_emitted(self, web, picker_root, path, absent_id):
-        r = web.get(path)
-        body = r.get_data(as_text=True)
-        assert absent_id not in body, (
-            f"{absent_id} unexpectedly present in {path}; "
-            f"the sidebar should be the only file-loading path."
-        )
+# TestNoLocalFileInputs retired 2026-06-10: the class parametrized
+# over /spectra (now /spectrum-calculation, but routed via tabs.py)
+# and /modify (renamed to /molbuilder in Phase B.5).  After B.5
+# the legacy paths /spectra and /modify return 404 by design — the
+# tests' ``assert <id> not in body`` checks were silently passing
+# against the Flask 404 error page, pinning nothing.  The sidebar-
+# is-the-only-file-loader contract still holds at the page level
+# (no tab currently emits an <input type=file>); a future tab that
+# regressed would be caught by the per-tab Playwright assertions
+# in test_molbuilder_e2e / test_build_e2e instead.
 
 
 class TestFilesMkdir:
