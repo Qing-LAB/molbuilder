@@ -661,7 +661,13 @@
      * on top: it reads ``molbuilder.workspace.v1`` first; falls
      * back to the legacy mirrors when absent.
      */
-    var STORAGE_KEY = "molbuilder.workspace.v1";
+    // Shared classic-script constants — see lib/constants.js.
+    // Fallback string keeps the dispatcher functional in test
+    // contexts that don't load constants.js (e.g. the JS-unit
+    // tests that boot a minimal window stub).
+    var STORAGE_KEY = ((root.molbuilder || {}).constants || {})
+        .SS_WORKSPACE
+        || "molbuilder.workspace.v1";
     var _persistDeadline = null;
 
     function _serialise() {

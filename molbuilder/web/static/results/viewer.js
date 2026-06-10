@@ -164,7 +164,7 @@
         // clicks no longer steer the inspector; the user gets
         // back full control of what's mounted.
         document.addEventListener(
-            "molbuilder:results:fileSelected",
+            window.molbuilder.constants.EVENT_FILE_SELECTED,
             (evt) => _onSelectionChange({
                 file: (evt && evt.detail && evt.detail.file) || "",
             })

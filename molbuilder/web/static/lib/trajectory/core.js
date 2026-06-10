@@ -1394,7 +1394,7 @@
         // status; ``parsingFor`` is null on poll-triggered fires).
         try {
             const dispatch = () => document.dispatchEvent(new CustomEvent(
-                "molbuilder:inspector:ready",
+                window.molbuilder.constants.EVENT_INSPECTOR_READY,
                 { detail: { inspector: "trajectory", frames: n } }
             ));
             if (typeof requestAnimationFrame === "function") {

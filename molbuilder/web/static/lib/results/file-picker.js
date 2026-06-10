@@ -309,6 +309,10 @@
 
         const proj      = (root.molbuilder || {}).projects;
         const inspReg   = (root.molbuilder || {}).inspectors;
+        // Shared string-constant namespace.  Centralised in
+        // lib/constants.js so the picker's event + storage key
+        // strings can't drift from the dispatcher's.
+        const C         = (root.molbuilder || {}).constants;
         if (!proj || typeof proj.onChange !== "function"
             || !inspReg || typeof inspReg.pickResult !== "function") {
             // The picker depends on both the sidebar AND the inspector
@@ -611,7 +615,7 @@
         // happen on pageshow / visibilitychange (tab re-entry,
         // bfcache restore) and on the explicit Refresh button.
         const unsubscribeSelection = null;
-        document.addEventListener("molbuilder:inspector:ready",
+        document.addEventListener(C.EVENT_INSPECTOR_READY,
                                   _onInspectorReady);
 
         // -- dropdown change handler ----------------------------- //
@@ -630,7 +634,7 @@
         function _emitFileSelected(file) {
             try {
                 document.dispatchEvent(new CustomEvent(
-                    "molbuilder:results:fileSelected",
+                    C.EVENT_FILE_SELECTED,
                     { detail: { file: file || "" } }));
             } catch (_) {
                 // CustomEvent should always be available in supported
@@ -707,12 +711,12 @@
             const cur = (typeof proj.getCurrentDir === "function")
                 ? proj.getCurrentDir()
                 : (root.sessionStorage
-                    ? root.sessionStorage.getItem("molbuilder.current_dir")
+                    ? root.sessionStorage.getItem(C.SS_DIR)
                     : "");
             const curFile = (typeof proj.getCurrentFile === "function")
                 ? proj.getCurrentFile()
                 : (root.sessionStorage
-                    ? root.sessionStorage.getItem("molbuilder.current_file")
+                    ? root.sessionStorage.getItem(C.SS_FILE)
                     : "");
             if (!cur) return;
             // Force the dir-change branch to re-fire even when the
@@ -828,7 +832,7 @@
                 _clearParseTimer();
                 try {
                     document.removeEventListener(
-                        "molbuilder:inspector:ready", _onInspectorReady);
+                        C.EVENT_INSPECTOR_READY, _onInspectorReady);
                 } catch (_) { /* ignore */ }
                 try { selEl.removeEventListener("change", _onSelectChange); }
                 catch (_) { /* ignore */ }

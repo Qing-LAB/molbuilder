@@ -893,7 +893,7 @@
         // double-tick wait.
         try {
             const dispatch = () => document.dispatchEvent(new CustomEvent(
-                "molbuilder:inspector:ready",
+                window.molbuilder.constants.EVENT_INSPECTOR_READY,
                 { detail: { inspector: "spectra" } }
             ));
             if (typeof requestAnimationFrame === "function") {

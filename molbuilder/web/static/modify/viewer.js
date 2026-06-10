@@ -1011,11 +1011,13 @@
             return;
         }
         try {
+            const C = (window.molbuilder || {}).constants || {};
             sessionStorage.setItem(
-                "molbuilder.current_file", targetPath);
+                C.SS_FILE || "molbuilder.current_file", targetPath);
             // Track the directory too so the sidebar opens at
             // the right folder; projects-sidebar's ``state.js``
-            // also reads ``molbuilder.current_dir``.
+            // also reads the same key (mirrored via
+            // lib/constants.js).
             const slash = targetPath.lastIndexOf("/");
             if (slash >= 0) {
                 // Root-level paths (``/foo.xyz``) collapse to ``/``;
@@ -1024,7 +1026,7 @@
                 // root-level files, leaving the sidebar pinned at
                 // the previous folder.
                 sessionStorage.setItem(
-                    "molbuilder.current_dir",
+                    C.SS_DIR || "molbuilder.current_dir",
                     targetPath.slice(0, slash) || "/");
             }
         } catch (e) {

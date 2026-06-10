@@ -70,14 +70,15 @@
             // with the file highlighted.  Closes #117.
             modifyLink.addEventListener("click", () => {
                 try {
+                    const C = (root.molbuilder || {}).constants || {};
                     root.sessionStorage.setItem(
-                        "molbuilder.current_file", file);
+                        C.SS_FILE || "molbuilder.current_file", file);
                     // Derive the parent dir from the file path so
                     // the sidebar lands on the right folder.
                     const i = file.lastIndexOf("/");
                     if (i >= 0) {
                         root.sessionStorage.setItem(
-                            "molbuilder.current_dir",
+                            C.SS_DIR || "molbuilder.current_dir",
                             file.slice(0, i));
                     }
                 } catch (_) {
@@ -221,7 +222,9 @@
                         try {
                             const dispatch = () => document.dispatchEvent(
                                 new CustomEvent(
-                                    "molbuilder:inspector:ready",
+                                    ((root.molbuilder || {}).constants || {})
+                                        .EVENT_INSPECTOR_READY
+                                    || "molbuilder:inspector:ready",
                                     { detail: { inspector: "structure" } }
                                 )
                             );

@@ -36,22 +36,47 @@ let elEditBtn, elSaveBtn;
 // Per-session state for the currently-open file.
 let _state = _emptyState();
 
-// Server-side hard ceiling per /api/files/read; matches
-// _MAX_READ_BYTES in molbuilder/web/blueprints/files.py.  Requesting
-// less would cap us below the server's actual limit; requesting
-// more rejects with 400.  Future tweaks to the server's ceiling
-// should mirror here.
-const READ_MAX_BYTES = 16 * 1024 * 1024;
+// Edit budget — files this size or smaller load wholesale via
+// /api/files/read into the <textarea> and are editable.  Files
+// LARGER than this are loaded in paginated chunks via
+// /api/files/read_range (matching the source viewer on /results)
+// and Edit is disabled with a "use external editor" hint —
+// textareas degrade past ~30-50 MB and a 100 MB save would block
+// the UI for seconds on encode + transfer.
+//
+// Server's hard ceiling is _MAX_READ_BYTES = 16 MB on
+// /api/files/read.  We raise the in-modal edit cap to 32 MB so
+// the post-#302 cap is more generous, but bulk-read still has
+// to hit the server's ceiling; we chunk above that.
+const EDIT_MAX_BYTES = 32 * 1024 * 1024;
+
+// Bulk-read uses the server's hard ceiling so single-shot
+// requests carry as much as the API permits.
+const BULK_READ_MAX_BYTES = 16 * 1024 * 1024;
+
+// Per-chunk window when streaming in paginated mode.  256 KB is
+// the source viewer's default; mirror it so the source viewer
+// and the modal feel identical when reading the same file.
+const PAGE_BYTES = 256 * 1024;
 
 function _emptyState() {
     return {
-        path:         null,
-        originalText: "",
-        mtime:        null,
-        size:         null,
-        editable:     false,
-        editing:      false,
-        readError:    null,
+        path:          null,
+        originalText:  "",
+        mtime:         null,
+        size:          null,
+        editable:      false,
+        editing:       false,
+        readError:     null,
+        // Paginated-view bookkeeping for files larger than
+        // ``EDIT_MAX_BYTES``.  ``mode`` distinguishes bulk vs.
+        // range; ``loadedBytes`` tracks how much of the file is
+        // currently in the <pre>; ``loadingMore`` blocks
+        // overlapping fetches when the user scrolls fast.
+        mode:          "bulk",
+        loadedBytes:   0,
+        loadingMore:   false,
+        eof:           true,
     };
 }
 
@@ -69,6 +94,7 @@ export function closePreviewModal() {
     if (!elModal) return;
     elModal.hidden = true;
     document.removeEventListener("keydown", _onKeydown);
+    if (elBody) elBody.removeEventListener("scroll", _onBodyScroll);
     _state = _emptyState();
     _renderUiFromState();
 }
@@ -232,8 +258,14 @@ async function saveEdit() {
  * Open the preview modal showing the contents of the currently-
  * selected file (sessionStorage.molbuilder.current_file).
  *
- * Reads with the server's max budget so multi-MB result files
- * (SIESTA .out, large .json) don't trip a 413 by default.
+ * Two read paths:
+ *   * Size ≤ EDIT_MAX_BYTES → bulk /api/files/read into the
+ *     <textarea>; full edit + save round-trip available.
+ *   * Size  > EDIT_MAX_BYTES → paginated /api/files/read_range
+ *     into the <pre> only; Edit is disabled with a clear "use
+ *     external editor" hint.  Scroll-driven append fetches the
+ *     next chunk; explicit "Load more" not provided yet (rare;
+ *     the source viewer's UX is the model).
  */
 export async function showPreview() {
     if (!elModal) return;
@@ -250,15 +282,58 @@ export async function showPreview() {
     _renderUiFromState();
     openPreviewModal();
 
-    // Fetch with the server's max_bytes upfront so we don't trip
-    // the default 1 MB cap on mid-sized files (typical SIESTA
-    // .out is 2-8 MB).
+    // Step 1: cheap stat to find the file size before deciding
+    // bulk vs. paginated.  ``/api/files/stat`` returns the size
+    // without reading any bytes; for files past the bulk cap the
+    // stat call is the only way to avoid wasting a /read request
+    // that'll 413.
+    let size = null;
+    let mtime = null;
+    try {
+        const r = await fetch(
+            "/api/files/stat?path=" + encodeURIComponent(path)
+        );
+        const body = await r.json();
+        if (!r.ok || !body.ok) {
+            elBody.textContent  = "";
+            elError.textContent = (body && body.error)
+                || `Could not stat file (HTTP ${r.status}).`;
+            _state.readError = "stat";
+            _renderUiFromState();
+            return;
+        }
+        size  = body.size;
+        mtime = body.mtime;
+    } catch (e) {
+        elBody.textContent  = "";
+        elError.textContent = "Network error: "
+            + (e && e.message ? e.message : String(e));
+        _state.readError = "network";
+        _renderUiFromState();
+        return;
+    }
+    _state.size  = size;
+    _state.mtime = mtime;
+
+    if (size <= EDIT_MAX_BYTES) {
+        await _loadBulk(path);
+    } else {
+        await _loadPaginated(path, size);
+    }
+}
+
+/**
+ * Bulk-read path: ``/api/files/read`` with the server's max
+ * budget.  Editable round-trip available afterwards.
+ */
+async function _loadBulk(path) {
+    _state.mode = "bulk";
     let body = null;
     let httpStatus = 0;
     try {
         const r = await fetch(
             "/api/files/read?path=" + encodeURIComponent(path)
-            + "&max_bytes=" + READ_MAX_BYTES
+            + "&max_bytes=" + BULK_READ_MAX_BYTES
         );
         httpStatus = r.status;
         body = await r.json();
@@ -274,20 +349,7 @@ export async function showPreview() {
         elBody.textContent = "";
         const reason = (body && body.error) || `HTTP ${httpStatus}`;
         elError.textContent = reason;
-        // Editability hint when we know the failure mode:
-        //   * 413 / "exceeds max_bytes" → file too big to edit
-        //     in-browser; suggest external editor.
-        //   * 400 / "not valid UTF-8"   → binary content; v1 is
-        //     text-only.
-        if (httpStatus === 413 || /exceeds max_bytes/.test(reason)) {
-            _setStatus(
-                "File exceeds the in-browser edit budget "
-                + `(${(READ_MAX_BYTES / (1024*1024)) | 0} MB).  Use an `
-                + "external editor to modify this file.",
-                null
-            );
-            _state.readError = "too_large";
-        } else if (/not valid UTF-8/.test(reason)) {
+        if (/not valid UTF-8/.test(reason)) {
             _setStatus("Binary content; this modal edits text only.",
                        null);
             _state.readError = "binary";
@@ -297,12 +359,93 @@ export async function showPreview() {
         _renderUiFromState();
         return;
     }
-    // Success.  Stash mtime + size for the edit-save contract.
+    // Success.  Stash mtime + size for the edit-save contract;
+    // refresh mtime because the file may have changed between
+    // stat and read (the safe-overwrite check uses the read
+    // mtime).
     _state.originalText = body.text;
     _state.mtime        = body.mtime;
     _state.size         = body.size;
     _state.editable     = true;
+    _state.loadedBytes  = body.size;
+    _state.eof          = true;
     elBody.textContent  = body.text;
+    _renderUiFromState();
+}
+
+/**
+ * Paginated path for files past ``EDIT_MAX_BYTES``: fetch the
+ * first ``PAGE_BYTES`` window via /api/files/read_range, append
+ * more chunks as the user scrolls near the bottom of the <pre>.
+ * Edit is disabled because textareas degrade past ~30 MB and a
+ * full-content POST is hostile UX on a 100 MB file.
+ */
+async function _loadPaginated(path, totalSize) {
+    _state.mode        = "paginated";
+    _state.editable    = false;
+    _state.eof         = false;  // override the _emptyState default
+    _state.loadedBytes = 0;
+    elBody.textContent = "";     // clear the "Loading…" placeholder
+    const sizeMB    = (totalSize / (1024 * 1024)).toFixed(1);
+    const capMB     = (EDIT_MAX_BYTES / (1024 * 1024)) | 0;
+    _setStatus(
+        `Large file (${sizeMB} MB > ${capMB} MB edit cap) — `
+        + "viewing only.  Use an external editor to modify.",
+        null
+    );
+    await _fetchNextRangeChunk(path);
+    // Wire the scroll listener for "near-bottom → load more".
+    // Only attached in paginated mode; bulk mode has the whole
+    // file already and doesn't need this.
+    elBody.addEventListener("scroll", _onBodyScroll);
+}
+
+function _onBodyScroll() {
+    if (_state.mode !== "paginated" || _state.eof
+        || _state.loadingMore) {
+        return;
+    }
+    // Trigger 200 px before the bottom — same threshold the
+    // source viewer uses (lib/inspectors/source.js).
+    const near = elBody.scrollTop + elBody.clientHeight
+        >= elBody.scrollHeight - 200;
+    if (near && _state.path) {
+        _fetchNextRangeChunk(_state.path);
+    }
+}
+
+async function _fetchNextRangeChunk(path) {
+    if (_state.loadingMore || _state.eof) return;
+    _state.loadingMore = true;
+    let body = null;
+    try {
+        const r = await fetch(
+            "/api/files/read_range?path=" + encodeURIComponent(path)
+            + "&offset="    + _state.loadedBytes
+            + "&max_bytes=" + PAGE_BYTES
+        );
+        body = await r.json();
+        if (!r.ok || !body.ok) {
+            elError.textContent = (body && body.error)
+                || `Range read failed (HTTP ${r.status}).`;
+            _state.readError = "range";
+            _renderUiFromState();
+            return;
+        }
+    } catch (e) {
+        elError.textContent = "Network error: "
+            + (e && e.message ? e.message : String(e));
+        _state.readError = "network";
+        _renderUiFromState();
+        return;
+    } finally {
+        _state.loadingMore = false;
+    }
+    // Append the chunk text to whatever's already rendered.
+    elBody.textContent += body.text;
+    _state.loadedBytes += body.length;
+    _state.eof          = !!body.eof;
+    _state.mtime        = body.mtime;
     _renderUiFromState();
 }
 

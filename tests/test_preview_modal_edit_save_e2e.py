@@ -203,6 +203,61 @@ def test_preview_modal_save_handles_mtime_conflict(
     assert target.read_text() == "someone else's edit\n"
 
 
+def test_preview_modal_disables_edit_for_large_files(
+        page, flask_server, tmp_path, monkeypatch):
+    """Files past the EDIT_MAX_BYTES cap (32 MB) load in
+    paginated VIEW mode — bytes stream in 256 KB chunks via
+    /api/files/read_range and Edit is disabled with a "use
+    external editor" hint.  Pin both halves so a future refactor
+    that drops the size check (or silently re-enables Edit on a
+    too-big file) surfaces.
+
+    The cap is in the JS — the test exercises a file built just
+    over the cap so the paginated path fires.  The fixture writes
+    33 MB of 'A' so the file's UTF-8 size matches the byte size
+    exactly + the chunked load completes quickly."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    proj = tmp_path / "myproj"
+    proj.mkdir()
+    big = proj / "large.txt"
+    # 33 MB > 32 MB cap.  Write in a single shot; trivially
+    # compressible at the filesystem layer but the modal sees the
+    # full size on stat.
+    big.write_text("A" * (33 * 1024 * 1024))
+
+    _setup(page, flask_server, str(big))
+
+    # Edit button must be DISABLED — file is past the cap.
+    page.wait_for_function(
+        "() => document.getElementById('ps-preview-edit-btn').disabled",
+        timeout=10000,
+    )
+
+    # Status line explains why.
+    status = page.locator("#ps-preview-status").inner_text()
+    assert "Large file" in status or "edit cap" in status, status
+    assert "external editor" in status, status
+
+    # Wait for the first chunk to land in the body.  The
+    # paginated path fires the first range read asynchronously
+    # after setting the Edit-disabled state.
+    page.wait_for_function(
+        "() => document.getElementById('ps-preview-body')"
+        "        .textContent.length > 0",
+        timeout=5000,
+    )
+    body = page.evaluate(
+        "() => document.getElementById('ps-preview-body').textContent.length"
+    )
+    assert body > 0, "first chunk did not render"
+    # And it's nowhere near the full 33 MB — the modal loaded a
+    # range chunk, not the whole file.
+    assert body < 1024 * 1024, (
+        f"paginated load should render in chunks; got {body} bytes "
+        f"in first paint — looks like the bulk-read path ran"
+    )
+
+
 def test_preview_modal_close_prompts_when_dirty(
         page, flask_server, tmp_path, monkeypatch):
     """Closing the modal with unsaved edits must prompt the user.
