@@ -47,7 +47,8 @@ are NOT counted.
 from __future__ import annotations
 
 import math
-from typing import List, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Dict, List, Literal, Optional, Tuple
 
 import numpy as np
 
@@ -408,6 +409,175 @@ def detect_open_shell_metals(struct: Structure) -> List[str]:
             seen.append(key)
             seen_set.add(key)
     return seen
+
+
+# --------------------------------------------------------------------- #
+#  L2 — engine-agnostic chemistry analyzer                              #
+#                                                                       #
+#  See docs/protocols/scientific-validation.md § 3 for the full         #
+#  contract.  The analyzer wraps the L1 primitives above into a typed   #
+#  ChemistryAnalysis the validators + the /api/structure/analyze        #
+#  endpoint both consume — single source of truth for the chemistry-    #
+#  driven (charge, spin, treatment) triplet plus open-shell-metal       #
+#  hints.                                                               #
+# --------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class SpinChoice:
+    """One ranked spin candidate for an open-shell transition metal.
+
+    ``spin`` is 2S (= number of unpaired electrons), matching PySCF's
+    convention.  SIESTA's ``SpinTotal`` in μB equals ``float(spin)``.
+    """
+    spin:  int
+    label: str   # e.g. "Fe(II), intermediate (4-coord porphyrin)"
+
+
+@dataclass(frozen=True)
+class MetalHint:
+    """Per-element common-spin hints for an open-shell transition metal.
+
+    ``common_spins`` are ordered low-spin → high-spin so a UI can show
+    a sweep from "most-paired" to "most-unpaired" without sorting.
+    """
+    element:      str
+    common_spins: List[SpinChoice]
+
+
+# Per-element default 2S for open-shell transition metals.  Restated
+# in 2S units from ``_SPIN_TOTAL_DEFAULTS`` (which stores SIESTA-style
+# μB values) so the analyzer can hand integers to PySCF without a
+# round-trip via float.  Conservative choices — favour the most
+# common coordination chemistry; the user MUST verify against
+# experimental data.  See docs/protocols/scientific-validation.md § 3.2.
+_ANALYZER_DEFAULT_SPIN: Dict[str, int] = {
+    "Fe": 2,    # Fe(II), intermediate (4-coord porphyrin); HS is 4
+    "Mn": 5,    # Mn(II), high-spin S=5/2 (overwhelmingly common in bio)
+    "Co": 1,    # Co(II), LS as a safe pick
+    "Ni": 0,    # Ni(II), square-planar LS; user overrides for octahedral
+    "Cu": 1,    # Cu(II), d⁹ — one unpaired electron
+    "Cr": 3,    # Cr(III), d³ S=3/2
+    "V":  3,    # V(II), d³ S=3/2
+    "Ti": 2,    # Ti(II), d² S=1
+    "Sc": 1,    # Sc(II), d¹ S=1/2
+    # Second-row + third-row + f-block fall through to a safe 2.
+}
+
+
+@dataclass(frozen=True)
+class ChemistryAnalysis:
+    """Engine-agnostic chemistry conclusions about a Structure.
+
+    Single source of truth for every science-aware surface in the
+    system: UI auto-detect (``/api/structure/analyze``), pre-emission
+    validation (``validation._check_open_shell_metal``), future
+    Transport-tab Auto-detect, CLI ``molbuilder analyze``.  Two
+    surfaces consuming this dataclass cannot disagree about the
+    chemistry by construction.
+
+    All fields engine-agnostic.  Engine-specific translation lives
+    in per-engine adapter classes (see protocols/scientific-validation.md
+    § 4); adapters consume an instance of this class and emit a
+    typed ``<Engine>SuggestedParams`` dataclass.
+    """
+    # Composition
+    n_atoms:              int
+    elements:             List[str]      # unique, sorted
+    n_electrons_neutral:  int            # sum(Z) for neutral system
+
+    # Open-shell transition metals
+    metals:               List[str]      # ["Fe"], or [] for organics
+    metal_hints:          List[MetalHint]
+
+    # Engine-agnostic suggested defaults
+    suggested_charge:     int
+    suggested_spin:       int            # 2S = n_unpaired
+    suggested_treatment:  Literal["closed", "open"]
+
+    # Human-readable
+    rationale:            str
+    warnings:             List[str]
+
+
+def _metal_hint(element: str) -> MetalHint:
+    """Build a MetalHint by walking spin = 0..6 and collecting every
+    spin for which ``explain_metal_spin`` registers a label."""
+    spins: List[SpinChoice] = []
+    for s in range(0, 7):
+        label = explain_metal_spin(element, s)
+        if label:
+            spins.append(SpinChoice(spin=s, label=label))
+    return MetalHint(element=element, common_spins=spins)
+
+
+def analyze_structure(struct: Structure) -> ChemistryAnalysis:
+    """Run the chemistry analysis on ``struct``.  Pure function — no
+    I/O, no engine dependence, no global state.
+
+    Returns a ``ChemistryAnalysis`` whose ``suggested_*`` fields
+    carry chemistry-driven defaults; the rationale + warnings
+    explain the choice.  Adapters translate these conclusions into
+    each engine's parameter shape (see
+    ``protocols/scientific-validation.md`` § 4).
+
+    Spin policy:
+      * No open-shell metals → ``treatment="closed"``, spin set by
+        electron-count parity (0 if even, 1 if odd).
+      * Open-shell metal present → pick the first metal's default 2S
+        from ``_ANALYZER_DEFAULT_SPIN`` (Fe→2, Cu→1, Mn→5, …); fall
+        through to 2 for metals without a registered default.  Parity
+        is enforced once at this layer: if (n_electrons − charge)
+        parity doesn't match the picked spin, the analyzer bumps the
+        spin and records the adjustment in ``warnings``.
+    """
+    n_e = total_electrons(struct, 0)
+    metals = detect_open_shell_metals(struct)
+    metal_hints = [_metal_hint(m) for m in metals]
+    elements_sorted = sorted({el.capitalize() for el in struct.elements})
+
+    warnings: List[str] = []
+    suggested_charge = 0   # always 0 for v1 — overridable by user
+    if metals:
+        spin = _ANALYZER_DEFAULT_SPIN.get(metals[0], 2)
+        # Parity check: (n_e − charge) must have the same parity as spin.
+        if (n_e % 2) != (spin % 2):
+            old = spin
+            spin = spin + 1 if spin == 0 else spin - 1
+            warnings.append(
+                f"Adjusted suggested spin from {old} to {spin} to match "
+                f"electron-count parity (sum(Z)={n_e}, charge={suggested_charge})."
+            )
+        treatment: Literal["closed", "open"] = "open"
+        first_label = explain_metal_spin(metals[0], spin) or "?"
+        rationale = (
+            f"Detected open-shell metal {', '.join(metals)}.  "
+            f"Suggesting spin={spin} ({first_label}) with open-shell "
+            f"treatment.  Verify against your experimental data "
+            f"(Mössbauer / UV-Vis / EPR) — the right spin depends on "
+            f"axial coordination, not just element identity."
+        )
+    else:
+        spin = 0 if (n_e % 2 == 0) else 1
+        treatment = "open" if spin > 0 else "closed"
+        rationale = (
+            f"No open-shell metals detected; suggesting closed-shell "
+            f"{'singlet' if spin == 0 else 'doublet'} "
+            f"(spin={spin}, treatment={treatment})."
+        )
+
+    return ChemistryAnalysis(
+        n_atoms             = struct.n_atoms,
+        elements            = elements_sorted,
+        n_electrons_neutral = n_e,
+        metals              = metals,
+        metal_hints         = metal_hints,
+        suggested_charge    = suggested_charge,
+        suggested_spin      = spin,
+        suggested_treatment = treatment,
+        rationale           = rationale,
+        warnings            = warnings,
+    )
 
 
 def expected_pH7_peptide_charge(struct: Structure) -> Optional[int]:
