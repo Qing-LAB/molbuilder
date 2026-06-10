@@ -2,8 +2,13 @@
 
 Routes (spec § 10):
 
-    GET  /spectra                       the page (rendered template)
-    GET  /api/build/schema/spectra      form-rendering schema (SpectraConfig)
+    GET  /spectrum-calculation          the page (rendered template).  Renamed
+                                        from /spectra in Phase B.5 (2026-06-07);
+                                        legacy redirect deleted.
+    GET  /api/build/schema/spectra      form-rendering schema (SpectraConfig).
+                                        The ``spectra`` token in the schema URL
+                                        is the engine name (alongside siesta,
+                                        pyscf), unchanged by the page rename.
     POST /api/spectra/render            render the runnable spectra.py script
     POST /api/spectra/load              parse an uploaded <job>.spectra.json
                                         (or read JSON body) into the typed

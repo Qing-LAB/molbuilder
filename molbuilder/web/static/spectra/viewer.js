@@ -13,10 +13,12 @@
  *      mount a 3Dmol embed in ``#viewer-wrap`` and hook the
  *      ``#load-from-sidebar-btn`` so the user can pick a
  *      structure file in the Projects sidebar and click Load to
- *      see it in the viewer.  Loading also populates the hidden
- *      ``#structure-text`` textarea so lib/spectra/core.js's
- *      legacy ``getStructureText`` lookup keeps working without
- *      changes — the contract migrates incrementally.
+ *      see it in the viewer.  Loading also pushes the raw bytes
+ *      into the spectra inspector via
+ *      ``window.molbuilder.spectraInspector.setStructureText(text)``
+ *      — the in-memory holder that backs ``getStructureText()``
+ *      (task #309, 2026-06-09).  The pre-#309 path through a
+ *      hidden ``<textarea id="structure-text">`` is gone.
  *
  * Mirrors the Optimization tab's pattern in static/viewer.js
  * (the Load button, the info readout, the sidebar onCommit
@@ -224,8 +226,9 @@
                 handle.refit();
             } catch (e) {
                 // Viewer render error shouldn't block the load —
-                // surface but keep the textarea populated so
-                // Generate still works.
+                // surface but keep the in-memory holder populated
+                // (setStructureText already ran above) so Generate
+                // still has the bytes it needs.
                 console.warn("[spectra] viewer render failed:", e);
             }
             _updateInfo(_basename(f), text);

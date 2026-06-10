@@ -70,7 +70,12 @@
     // ----- DOM refs (resolved once at startup) -----------------
     const els = {
         spectrumChart:  null,
-        structureText:        null,
+        // ``structureText`` slot removed 2026-06-10 along with the
+        // ``$("structure-text")`` lookup in init() — the underlying
+        // ``<textarea id="structure-text">`` was retired in task #309
+        // (2026-06-09); structure bytes now live in the module-level
+        // ``_loadedStructureText`` populated via the public
+        // ``setStructureText`` setter.
         // xyzFile / xyzLoadBtn / xyzStatus removed 2026-05-18: the
         // in-template <input type="file" id="xyz-file"> + sibling
         // load-button were dropped when the projects sidebar took
@@ -451,22 +456,15 @@
     }
 
     function getStructureText() {
-        // Source of truth: the module-level ``_loadedStructureText``
-        // populated by the Inspect-structure card's Load handler
+        // The module-level ``_loadedStructureText`` is populated by
+        // the Inspect-structure card's Load handler
         // (spectra/viewer.js _commitStructure → setStructureText).
-        // The legacy ``<textarea id="structure-text">`` was retired
-        // 2026-06-09 (task #309).  Fall through to it ONLY when
-        // ``_loadedStructureText`` is empty AND the DOM still
-        // carries the textarea — covers test contexts that mount
-        // the pre-#296 DOM shape.  XYZ or PDB content both
-        // accepted; the server sniffs the format.
-        if (_loadedStructureText) {
-            return _loadedStructureText.trim();
-        }
-        if (els.structureText && els.structureText.value) {
-            return els.structureText.value.trim();
-        }
-        return "";
+        // XYZ or PDB content both accepted; the server sniffs the
+        // format.  The pre-#309 fallback to a hidden
+        // ``<textarea id="structure-text">`` was retired 2026-06-10
+        // along with the ``els.structureText`` slot — no in-tree
+        // test or template still mounts that DOM shape.
+        return _loadedStructureText ? _loadedStructureText.trim() : "";
     }
 
     // ----- Render button: POST /api/spectra/render -------------
@@ -1609,9 +1607,9 @@
     // Geometry source priority:
     //   1. results.equilibrium.elements + positions_ang
     //      (preferred; works after page reload).
-    //   2. Parsed from els.structureText.value
-    //      (fallback; only works while the user keeps the XYZ in
-    //      the input form).
+    //   2. Parsed from getStructureText() (the in-memory holder
+    //      populated by the Inspect-structure card's Load handler
+    //      — see setStructureText / _loadedStructureText).
     //
     // The mode shape is faithful (eigenvector_display carries the
     // direction + relative amplitudes correctly, with max(|L|)=1 per
@@ -2162,7 +2160,6 @@
 
     // ----- Bootstrap -------------------------------------------
     function init() {
-        els.structureText        = $("structure-text");
         // ``xyz-file`` / ``xyz-load-btn`` / ``xyz-status`` lookups
         // dropped 2026-05-18: those template ids no longer exist
         // (sidebar took over file selection).  loadXyzFile() is also

@@ -18,6 +18,7 @@
 import { apiList, apiDelete } from "./api.js";
 import {
   setShared, publishCommit, getProjectsRoot, setRefreshHandler,
+  SS_FILE, SS_DIR,
   projects as _projectsApi,
 } from "./state.js";
 import { showPreview } from "./preview.js";
@@ -177,8 +178,7 @@ async function _confirmAndDelete(fullPath, entry) {
     window.alert(j.error || "Delete failed.");
     return;
   }
-  const dir = sessionStorage.getItem("molbuilder.current_dir")
-              || getProjectsRoot();
+  const dir = sessionStorage.getItem(SS_DIR) || getProjectsRoot();
   if (dir) await openDir(dir);
 }
 
@@ -186,7 +186,7 @@ function _renderList(entries, currentPath) {
   elList.innerHTML = "";
   elList.classList.toggle("is-empty", entries.length === 0);
   if (entries.length === 0) return;
-  const selectedFile = sessionStorage.getItem("molbuilder.current_file") || "";
+  const selectedFile = sessionStorage.getItem(SS_FILE) || "";
   for (const e of entries) {
     const fullPath = currentPath.replace(/\/$/, "") + "/" + e.name;
     const li = document.createElement("li");
@@ -324,7 +324,7 @@ export async function openDir(absPath) {
   // selected.  Otherwise blank.  Comparison is by exact full-path match,
   // not by basename, so file rename / replace correctly drops the stale
   // selection.
-  const prevFile = sessionStorage.getItem("molbuilder.current_file") || "";
+  const prevFile = sessionStorage.getItem(SS_FILE) || "";
 
   const resp = await apiList(absPath);
   if (!resp.ok) {
@@ -384,8 +384,8 @@ export async function openDir(absPath) {
  */
 export function restoreSelection() {
   const projectsRoot = getProjectsRoot();
-  const file = sessionStorage.getItem("molbuilder.current_file") || "";
-  const dir  = sessionStorage.getItem("molbuilder.current_dir")  || "";
+  const file = sessionStorage.getItem(SS_FILE) || "";
+  const dir  = sessionStorage.getItem(SS_DIR)  || "";
   if (!file || !projectsRoot || !file.startsWith(projectsRoot)) return;
   // 2026-05-31 #166: render via the shared subscriber so the
   // entry-marker + status-line code lives in exactly one place.
