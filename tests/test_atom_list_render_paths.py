@@ -121,31 +121,42 @@ def large_pdb_n_atoms(large_pdb):
     return len(Structure.from_pdb(large_pdb.read_text()).elements)
 
 
-@pytest.fixture(scope="module")
-def picker_root_setter(monkeypatch_module):
-    """Repoint Capabilities.file_picker_roots() to a parent dir that
-    contains both small_pdb and large_pdb so the selection endpoints
-    accept them."""
-    # The repoint happens per-test below; this fixture just imports
-    # diagnostics so we don't redo it every test.
+@pytest.fixture(autouse=True)
+def _restore_capabilities_class_method():
+    """Snapshot ``Capabilities.file_picker_roots`` on entry, restore
+    on exit.
+
+    ``_setup_picker_root_for`` below mutates the CLASS attribute
+    directly (the closure needs to capture the per-test
+    ``structure_path`` and pytest's ``monkeypatch`` is function-
+    scoped + saves to instance, not class).  Without this fixture
+    the last test's lambda leaked into subsequent test files and
+    caused intermittent failures on any later test that called
+    ``Capabilities(...).file_picker_roots()`` directly — concretely
+    ``tests/test_web_files.py::test_capabilities_returns_only_projects_root``
+    bisected to this file as the upstream offender on 2026-06-10.
+
+    The conftest's autouse ``_reset_diagnostics_singleton`` only
+    handles the GLOBAL ``_snapshot``; it does NOT restore class-level
+    mutations, so we need this file-local fixture.
+    """
     from molbuilder import diagnostics
-    return diagnostics
-
-
-@pytest.fixture
-def monkeypatch_module():
-    """Module-scope monkeypatch helper.  pytest's built-in is
-    function-scope; we need module-scope to keep file_picker_roots
-    repointed across tests in this module."""
-    from _pytest.monkeypatch import MonkeyPatch
-    mp = MonkeyPatch()
-    yield mp
-    mp.undo()
+    cls = diagnostics.Capabilities
+    original = cls.file_picker_roots
+    try:
+        yield
+    finally:
+        cls.file_picker_roots = original
 
 
 def _setup_picker_root_for(structure_path):
-    """Repoint Capabilities to include the structure's parent dir.
-    Returns the diagnostics module so the caller can reset."""
+    """Repoint Capabilities.file_picker_roots() to the structure's
+    parent dir so the selection / files endpoints accept it.
+
+    Restoration is handled by the module-local autouse fixture
+    ``_restore_capabilities_class_method`` above — every call to
+    this helper is wrapped by a save/restore on the class method.
+    """
     from molbuilder import diagnostics
     parent = Path(structure_path).resolve().parent
     caps = diagnostics.Capabilities(
