@@ -1314,3 +1314,98 @@ class TestSuggestSpinTotal:
         from molbuilder.chemistry import suggest_spin_total
         preferred, _ = suggest_spin_total(["Cu", "Fe"])
         assert preferred == 4.0
+
+
+# --------------------------------------------------------------------- #
+#  Phase 1d: validator + analyzer single-source-of-truth invariant      #
+# --------------------------------------------------------------------- #
+
+
+class TestCheckOpenShellMetalUsesAnalyzer:
+    """Pins the contract added in Phase 1d: ``_check_open_shell_metal``
+    reads its conclusions from ``ChemistryAnalysis``, not from a
+    separately-imported ``detect_open_shell_metals``.  Single source
+    of truth for the chemistry — validator and ``/api/structure/analyze``
+    cannot disagree by construction.  See
+    ``docs/protocols/scientific-validation.md`` § 5.3.
+    """
+
+    def _hemeC_like(self):
+        """Minimal Fe-bearing fixture.  Geometry doesn't matter; the
+        check fires on element identity."""
+        import numpy as np
+        from molbuilder.structure import Structure
+        return Structure(
+            elements      = ["Fe", "N", "N", "N", "N"],
+            positions     = np.zeros((5, 3)),
+            atom_names    = ["FE", "N1", "N2", "N3", "N4"],
+            residue_ids   = [1] * 5,
+            residue_names = ["HEM"] * 5,
+            chain_ids     = ["A"] * 5,
+        )
+
+    def test_validator_reads_metals_from_analyze_structure(self, monkeypatch):
+        """Monkey-patch ``analyze_structure`` to return a fake
+        ``ChemistryAnalysis`` with ``metals=[]`` even though the real
+        chemistry would say ``["Fe"]``.  If the validator reads from
+        the analyzer (Phase 1d), the warn DOES NOT fire.  Pre-Phase-1d
+        it would have fired because the validator called
+        ``detect_open_shell_metals`` directly.
+        """
+        from molbuilder import chemistry as ch
+        from molbuilder.validation import _check_open_shell_metal
+
+        def _fake_analysis(struct):
+            # Force empty metals — pretend it's pure organic.
+            return ch.ChemistryAnalysis(
+                n_atoms             = struct.n_atoms,
+                elements            = sorted(set(e.capitalize() for e in struct.elements)),
+                n_electrons_neutral = 0,
+                metals              = [],   # ← the lie
+                metal_hints         = [],
+                suggested_charge    = 0,
+                suggested_spin      = 0,
+                suggested_treatment = "closed",
+                rationale           = "(stub for the test)",
+                warnings            = [],
+            )
+        monkeypatch.setattr(ch, "analyze_structure", _fake_analysis)
+        # Also patch the binding inside molbuilder.validation if the
+        # function was imported by name there.
+        from molbuilder import validation as val_mod
+        if hasattr(val_mod, "analyze_structure"):
+            monkeypatch.setattr(val_mod, "analyze_structure", _fake_analysis)
+
+        issues = _check_open_shell_metal(
+            self._hemeC_like(),
+            is_closed_shell=True,
+            engine_label="PySCF",
+        )
+        assert issues == [], (
+            "Validator fired the open-shell-metal WARN even though "
+            "the analyzer reported metals=[].  Phase 1d contract "
+            "broken: validator must read from ChemistryAnalysis, "
+            "not call detect_open_shell_metals directly."
+        )
+
+    def test_validator_includes_analyzer_rationale_in_message(self):
+        """When the warn fires, its message must include the
+        analyzer's rationale text — concrete proof that the validator
+        is consuming ChemistryAnalysis output, not assembling its own
+        rationale inline.
+        """
+        from molbuilder.validation import _check_open_shell_metal
+        issues = _check_open_shell_metal(
+            self._hemeC_like(),
+            is_closed_shell=True,
+            engine_label="PySCF",
+        )
+        assert len(issues) == 1
+        msg = issues[0].message
+        # The analyzer's rationale carries the engine-agnostic phrase
+        # "open-shell treatment".  If the validator built its own
+        # message inline, this assertion wouldn't hold.
+        assert "open-shell treatment" in msg, (
+            "Validator message does not include the analyzer rationale "
+            "— evidence it isn't reading from ChemistryAnalysis."
+        )

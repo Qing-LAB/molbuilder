@@ -819,14 +819,22 @@ def _check_open_shell_metal(struct: Structure, *,
     2026-05-22 incident).  Called from BOTH _validate_pyscf and
     _validate_siesta so the rule is enforced uniformly: same physical
     facts -> same warning, regardless of which engine the user picks.
+
+    Reads the metal list from ``ChemistryAnalysis`` — the SAME
+    analyzer that backs ``/api/structure/analyze`` (UI auto-detect).
+    By construction the validator and the auto-detect surface cannot
+    disagree about the chemistry; whatever the user sees on the
+    Auto-detect button at load time is the same conclusion that
+    fires here if they override and click Generate.  See
+    ``docs/protocols/scientific-validation.md`` § 5.3.
     """
-    from .chemistry import detect_open_shell_metals
-    metals = detect_open_shell_metals(struct)
-    if metals and is_closed_shell:
+    from .chemistry import analyze_structure
+    analysis = analyze_structure(struct)
+    if analysis.metals and is_closed_shell:
         return [Issue(
             "warn",
             (f"Structure contains open-shell transition metal(s) "
-             f"{', '.join(metals)} but {engine_label} requests a "
+             f"{', '.join(analysis.metals)} but {engine_label} requests a "
              f"closed-shell SCF.  Most ground-state first-row "
              f"transition-metal complexes are open-shell, e.g. "
              f"Fe(II)-porphyrin is intermediate-spin S=1 (2 unpaired) "
@@ -834,7 +842,8 @@ def _check_open_shell_metal(struct: Structure, *,
              f"true open-shell complex converges to a fictitious state "
              f"with unphysical forces.  Switch to open-shell SCF and "
              f"set a sensible spin (see config-field help for the "
-             f"spin / spin_polarized field)."),
+             f"spin / spin_polarized field).  "
+             f"{analysis.rationale}"),
             "config.spin",
         )]
     return []
