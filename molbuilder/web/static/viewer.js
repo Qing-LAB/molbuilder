@@ -711,17 +711,31 @@
         // so we read it from _sidebarLastFile (the path the user
         // most-recently committed via the Load button or sidebar
         // double-click).
+        //
+        // Concurrency safety: _autoDetectSeq mirrors _sidebarLoadSeq.
+        // If the user clicks Auto-detect, then loads a different
+        // structure while the request is in flight, the in-flight
+        // response would otherwise apply to the new structure's
+        // form.  We snapshot the seq at request time and discard
+        // the response if a newer load (or another auto-detect) has
+        // happened since.
         function _refreshAutoDetectButton() {
             const btn = $("auto-detect-btn");
             if (!btn) return;
             btn.disabled = !_sidebarLastFile;
         }
         _refreshAutoDetectButton();
+        let _autoDetectSeq = 0;
 
         const _autoBtn = $("auto-detect-btn");
         if (_autoBtn) {
             _autoBtn.addEventListener("click", async () => {
                 if (!_sidebarLastFile) return;
+                // Snapshot BOTH the path AND the load-seq so a
+                // mid-flight structure swap is detectable.
+                const mySeq      = ++_autoDetectSeq;
+                const myLoadSeq  = _sidebarLoadSeq;
+                const myPath     = _sidebarLastFile;
                 _autoBtn.disabled = true;
                 setStatus("auto-detect-status", "Analyzing…");
                 let body;
@@ -730,10 +744,18 @@
                         method:  "POST",
                         headers: { "Content-Type": "application/json" },
                         body:    JSON.stringify({
-                            structure_path: _sidebarLastFile,
+                            structure_path: myPath,
                         }),
                     });
                     body = await r.json();
+                    if (mySeq !== _autoDetectSeq
+                        || myLoadSeq !== _sidebarLoadSeq) {
+                        // Superseded — a newer click or load happened
+                        // while this request was in flight.  Drop the
+                        // response silently; the newer request owns
+                        // the UI now.
+                        return;
+                    }
                     if (!r.ok || !body.ok) {
                         setStatus("auto-detect-status",
                             body && body.error
@@ -743,13 +765,21 @@
                         return;
                     }
                 } catch (e) {
+                    if (mySeq !== _autoDetectSeq
+                        || myLoadSeq !== _sidebarLoadSeq) return;
                     setStatus("auto-detect-status",
                         "Network error: "
                         + (e && e.message ? e.message : String(e)),
                         "error");
                     return;
                 } finally {
-                    _refreshAutoDetectButton();
+                    // Re-enable only if this is still the latest
+                    // click — otherwise the newer one owns the
+                    // button state.
+                    if (mySeq === _autoDetectSeq
+                        && myLoadSeq === _sidebarLoadSeq) {
+                        _refreshAutoDetectButton();
+                    }
                 }
                 _applyAutoDetectToForms(body);
                 _renderAutoDetectPanel(body);

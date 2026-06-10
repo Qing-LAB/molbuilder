@@ -507,24 +507,42 @@
         if (!container || !schema || !Array.isArray(schema.sections)) {
             throw new Error("form-schema.setValues: bad container/schema");
         }
-        if (!values || typeof values !== "object") return;
+        if (!values || typeof values !== "object"
+            || Array.isArray(values)) return;
         for (const sect of schema.sections) {
             for (const f of sect.fields) {
                 if (!(f.name in values)) continue;
                 const v = values[f.name];
+                // int-triple uses sub-ids ``<f.id>-<label>`` — there
+                // is no parent element with ``f.id`` (makeIntTriple
+                // wraps the three sub-inputs in an unidentified
+                // <span>), so the standard ``#f.id`` lookup below
+                // would return null and silently skip the field.
+                // Handle int-triple via its own sub-id loop.
+                if (f.kind === "int-triple") {
+                    if (!Array.isArray(v) || v.length !== 3) continue;
+                    const labs = (Array.isArray(f.labels)
+                        && f.labels.length === 3)
+                        ? f.labels
+                        : ["x", "y", "z"];
+                    for (let i = 0; i < 3; i++) {
+                        const sub = container.querySelector(
+                            "#" + cssEsc(f.id + "-" + labs[i]));
+                        if (!sub) continue;
+                        sub.value = String(v[i]);
+                        try {
+                            sub.dispatchEvent(new Event("input",
+                                { bubbles: true }));
+                            sub.dispatchEvent(new Event("change",
+                                { bubbles: true }));
+                        } catch (_) { /* legacy browser */ }
+                    }
+                    continue;
+                }
                 const elx = container.querySelector("#" + cssEsc(f.id));
                 if (!elx) continue;
                 if (f.kind === "checkbox") {
                     elx.checked = Boolean(v);
-                } else if (f.kind === "int-triple") {
-                    // [a, b, c] → fill the three sub-inputs.
-                    if (!Array.isArray(v) || v.length !== 3) continue;
-                    const labs = ["x", "y", "z"];
-                    for (let i = 0; i < 3; i++) {
-                        const sub = container.querySelector(
-                            "#" + cssEsc(f.id + "-" + labs[i]));
-                        if (sub) sub.value = String(v[i]);
-                    }
                 } else {
                     // Numbers, selects, tri-selects, text — all
                     // accept .value as the canonical writer.

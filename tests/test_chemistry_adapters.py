@@ -317,15 +317,18 @@ def test_adapter_modules_do_not_import_analyzer():
     would trip on the "do not use these" warning in the adapter
     docstring).
 
+    Walks the **registry** rather than a hardcoded list so a
+    future engine's adapter (e.g. transiesta, pyscf-negf) is
+    automatically scanned without editing this test.
+
     A failure here means an adapter started re-doing chemistry
     detection inline.  Move the logic into ``chemistry.py`` and
     have the adapter consume the existing ``ChemistryAnalysis``
     fields instead.
     """
     import ast
+    import importlib
     import inspect
-    from molbuilder.siesta import auto_defaults as siesta_mod
-    from molbuilder.pyscf  import auto_defaults as pyscf_mod
 
     FORBIDDEN = {
         "analyze_structure",
@@ -334,8 +337,16 @@ def test_adapter_modules_do_not_import_analyzer():
         "total_electrons",
     }
 
-    for mod, mod_name in [(siesta_mod, "siesta"), (pyscf_mod, "pyscf")]:
-        tree = ast.parse(inspect.getsource(mod))
+    reg = registered_adapters()
+    assert reg, "registry is empty — at least siesta + pyscf must be registered"
+    for engine_name, adapter_cls in reg.items():
+        module_name = adapter_cls.__module__
+        mod = importlib.import_module(module_name)
+        try:
+            src = inspect.getsource(mod)
+        except OSError:
+            continue   # synthetic test adapters defined inline have no source file
+        tree = ast.parse(src)
         imported_names: set = set()
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom):
@@ -346,8 +357,8 @@ def test_adapter_modules_do_not_import_analyzer():
                     imported_names.add(alias.name)
         bad = FORBIDDEN & imported_names
         assert not bad, (
-            f"{mod_name}/auto_defaults.py imports forbidden chemistry "
-            f"primitives {sorted(bad)} — chemistry logic must live "
-            f"in the analyzer, not the adapter (see "
+            f"{module_name} (engine {engine_name!r}) imports forbidden "
+            f"chemistry primitives {sorted(bad)} — chemistry logic must "
+            f"live in the analyzer, not the adapter (see "
             f"docs/protocols/scientific-validation.md § 4.4)"
         )

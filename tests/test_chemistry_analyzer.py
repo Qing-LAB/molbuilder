@@ -175,11 +175,34 @@ def test_parity_bumps_spin_and_records_warning():
 
 def test_parity_zero_default_bumps_up_not_down():
     """A zero-spin default that contradicts odd electron count
-    bumps UP (to 1), not down (which would underflow to -1)."""
+    bumps UP (to 1), not down (which would underflow to -1).
+
+    Pins the ``spin + 1 if spin == 0 else spin - 1`` branch of the
+    parity rule.  Without this test the +1 (up-bump) path is dead
+    code as far as the suite is concerned.
+    """
     # Ni Z=28 (even), default 2S=0 (even, matches) + H (Z=1) → Z=29 odd
     # → bump from 0 to 1 (UP)
     a = analyze_structure(_mk(["Ni", "H"]))
     assert a.suggested_spin == 1
+    assert a.warnings, "Parity bump should record a warning"
+    assert "parity" in a.warnings[0].lower()
+
+
+def test_unknown_metal_falls_through_to_default_spin_2():
+    """A metal not in ``_ANALYZER_DEFAULT_SPIN`` falls through to
+    spin=2 (the heavier-d-block default).  Pin so a future
+    refactor that changes the fallthrough value (or removes the
+    ``.get(metal, 2)`` default) surfaces.
+
+    Mo is open-shell (in OPEN_SHELL_METALS) but not in the
+    first-row-d table; it's the classic fallthrough case.
+    Mo Z=42 (even); default 2 (even) → matches → no parity bump.
+    """
+    a = analyze_structure(_mk(["Mo"]))
+    assert a.metals == ["Mo"]
+    assert a.suggested_spin == 2
+    assert a.warnings == []   # no parity bump
 
 
 # --------------------------------------------------------------------- #

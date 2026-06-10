@@ -445,12 +445,38 @@ class MetalHint:
     common_spins: List[SpinChoice]
 
 
-# Per-element default 2S for open-shell transition metals.  Restated
-# in 2S units from ``_SPIN_TOTAL_DEFAULTS`` (which stores SIESTA-style
-# μB values) so the analyzer can hand integers to PySCF without a
-# round-trip via float.  Conservative choices — favour the most
-# common coordination chemistry; the user MUST verify against
-# experimental data.  See docs/protocols/scientific-validation.md § 3.2.
+# Per-element default 2S for open-shell transition metals — the
+# analyzer's suggested defaults for ``/api/structure/analyze``'s
+# Auto-detect button.
+#
+# Distinct (intentionally) from ``_SPIN_TOTAL_DEFAULTS`` above.  The
+# two tables have different design goals and may carry different
+# values for the same element:
+#
+#   * ``_SPIN_TOTAL_DEFAULTS`` is the SIESTA propor STARTING-VALUE
+#     table.  When the user enables spin_polarized without setting
+#     spin_total, propor needs a non-zero guess to split d/f shells.
+#     Picks HIGH-SPIN-leaning values so the optimizer can ramp DOWN
+#     to a lower-spin state if that's the true ground state —
+#     ramping UP from zero is what triggered the "propor: ERROR:
+#     IMAX = 0" abort.  Fe→4 (HS), Co→3 (HS), Ni→2 (HS) etc.
+#
+#   * ``_ANALYZER_DEFAULT_SPIN`` (this table) is the chemistry-
+#     conservative default for the Auto-detect UI.  Picks the most
+#     COMMON-OXIDATION-STATE spin — what a coordination chemist
+#     would expect for "Fe in a porphyrin" or "Cu(II) in solution".
+#     Fe→2 (intermediate, the hemeC use case), Co→1 (LS as a safe
+#     pick), Ni→0 (square-planar LS) etc.  The user can always
+#     override via the form; the suggestion is meant to MATCH what
+#     they probably want, not what SIESTA can converge from.
+#
+# When the two tables AGREE (Mn=5, Cu=1), great — single chemistry
+# fact, two purposes.  When they DISAGREE (Fe 4 vs 2, Co 3 vs 1),
+# both are correct for their own purpose.  Don't unify; document.
+#
+# Conservative choices — favour the most common coordination
+# chemistry; the user MUST verify against experimental data.  See
+# docs/protocols/scientific-validation.md § 3.2.
 _ANALYZER_DEFAULT_SPIN: Dict[str, int] = {
     "Fe": 2,    # Fe(II), intermediate (4-coord porphyrin); HS is 4
     "Mn": 5,    # Mn(II), high-spin S=5/2 (overwhelmingly common in bio)

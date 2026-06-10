@@ -451,35 +451,51 @@ parameters fail loudly when wrong.
 ### 9.1 Cross-engine consistency
 
 `tests/test_chemistry_adapters.py::test_all_adapters_agree_on_treatment`:
-for any structure, **all** registered adapters' `to_params(analysis)`
-results carry the same `treatment`-equivalent decision.  Spelled
-differently per engine (SIESTA `spin_polarized=True`, PySCF
-`method="UKS"`), but the conclusion is the same.
+parametrised over CH4 / Fe / Cu / Mn.  For any structure, **all**
+registered adapters' `to_params(analysis)` results carry the same
+`treatment`-equivalent decision.  Spelled differently per engine
+(SIESTA `spin_polarized=True`, PySCF `method="UKS"`), but the
+conclusion is the same.
 
 ### 9.2 Endpoint shape stability
 
-`tests/test_web.py::test_analyze_endpoint_response_shape`:
-the `/api/structure/analyze` response carries every key documented
-in [`web-api.md`](web-api.md) § 10.  Each `suggested.<engine>`
-sub-shape pinned per-adapter.
+`tests/test_structure_analyze_endpoint.py::test_response_shape_carries_every_documented_key`
++ `::test_suggested_siesta_shape` + `::test_suggested_pyscf_shape`:
+the `/api/structure/analyze` response carries every top-level key
+documented in [`web-api.md`](web-api.md) § 10, AND each
+`suggested.<engine>` sub-shape exactly matches the corresponding
+`<Engine>SuggestedParams` dataclass field names.
 
 ### 9.3 Validator + analyzer agreement
 
-`tests/test_validation.py::test_check_open_shell_metal_uses_analyzer`:
-`_check_open_shell_metal` reads its conclusions from
-`analyze_structure(struct).metals` (not a separately-imported
-`detect_open_shell_metals`).  Single source of truth.
+`tests/test_validation.py::TestCheckOpenShellMetalUsesAnalyzer::test_validator_reads_metals_from_analyze_structure`
++ `::test_validator_includes_analyzer_rationale_in_message`:
+the validator's `_check_open_shell_metal` reads its conclusions
+from `analyze_structure(struct)` (proved by monkeypatching the
+analyzer to return `metals=[]` and asserting no warn fires
+despite real-chemistry having metals), and the warn message
+contains the analyzer's rationale verbatim.
 
 ### 9.4 New-engine on-ramp
 
-`tests/test_chemistry_adapters.py::test_registration_works_with_synthetic_adapter`:
-register a fake `"synthetic"` adapter, hit the endpoint, verify
-`suggested.synthetic` appears.  Catches a regression where the
-endpoint hardcodes the engine list.
+`tests/test_chemistry_adapters.py::test_registration_works_with_synthetic_adapter`
++ `tests/test_structure_analyze_endpoint.py::test_freshly_registered_adapter_appears_in_endpoint_response`:
+register a fake `"synthetic"` / `"stub_engine"` adapter, hit the
+endpoint, verify the new engine appears in `suggested.<name>`.
+Catches a regression where the endpoint hardcodes the engine list.
 
-### 9.5 Pattern-B coverage
+### 9.5 Adapter purity
 
-`tests/test_web.py::test_{fdf,pyscf}_surfaces_info_when_structure_carries_regions`:
+`tests/test_chemistry_adapters.py::test_adapter_modules_do_not_import_analyzer`:
+AST-based check that no adapter module imports
+`analyze_structure`, `detect_open_shell_metals`,
+`check_spin_charge_parity`, or `total_electrons` — chemistry logic
+must stay in the analyzer.
+
+### 9.6 Pattern-B coverage
+
+`tests/test_web.py::test_fdf_surfaces_info_when_structure_carries_regions`
++ `::test_pyscf_surfaces_info_when_structure_carries_regions`:
 both build endpoints emit the Pattern-B INFO when `struct.regions`
 is populated.  Shared helper enforced.
 
