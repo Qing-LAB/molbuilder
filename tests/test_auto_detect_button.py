@@ -276,6 +276,93 @@ def test_auto_detect_button_disabled_without_loaded_structure(
 
 
 # --------------------------------------------------------------------- #
+#  Phase 3: auto-analyze on load (background fire, no form-fill)        #
+# --------------------------------------------------------------------- #
+
+
+def test_auto_analyze_runs_on_load_without_filling_forms(
+        page, flask_server, tmp_path, monkeypatch):
+    """Phase 3 (2026-06-10): after a successful structure load, the
+    analyzer runs automatically + the rationale panel becomes
+    visible — BUT the SIESTA / PySCF sub-forms are NOT pre-filled
+    until the user clicks the Auto-detect button.
+
+    Pins the "earlier surfacing" contract documented in
+    scientific-validation.md § 2.5: chemistry conclusions are
+    always visible after load, but form-fill stays gated behind
+    explicit user action so we never silently mutate the user's
+    params.
+    """
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    proj = tmp_path / "auto_analyze_proj"
+    proj.mkdir()
+    target = proj / "fe.xyz"
+    target.write_text("1\nFe atom for auto-analyze test\nFe 0 0 0\n")
+
+    base = flask_server
+    page.goto(f"{base}/structure-optimization",
+              wait_until="domcontentloaded")
+    page.wait_for_function(
+        "() => window.molbuilder && window.molbuilder.projects "
+        "      && typeof window.molbuilder.projects.setShared "
+        "             === 'function'",
+        timeout=10000,
+    )
+    page.evaluate(
+        "(p) => window.molbuilder.projects.setShared("
+        "  p.substring(0, p.lastIndexOf('/')), p)",
+        str(target),
+    )
+    page.wait_for_function(
+        "() => !document.getElementById('load-from-sidebar-btn').disabled",
+        timeout=5000,
+    )
+    page.locator("#load-from-sidebar-btn").click()
+    # Wait for load completion.
+    page.wait_for_function(
+        "() => /Loaded \\d+-atom/.test("
+        "  document.getElementById('load-status').textContent)",
+        timeout=15000,
+    )
+
+    # Phase 3 contract: rationale panel becomes visible without
+    # any further click (auto-analyze fired in the background).
+    page.wait_for_function(
+        "() => !document.getElementById('auto-detect-panel').hidden",
+        timeout=10000,
+    )
+    rationale = page.locator("#auto-detect-rationale").inner_text()
+    assert "Fe" in rationale, (
+        "auto-analyze did not render the Fe rationale even though "
+        "load succeeded"
+    )
+
+    # Status line acknowledges the analysis happened AND points
+    # the user at the button as the next action.  Pin "click" to
+    # make sure we're not silently filling the form.
+    status = page.locator("#auto-detect-status").inner_text()
+    assert "Chemistry analyzed" in status, status
+    assert "click" in status.lower(), status
+
+    # The SIESTA / PySCF sub-forms are STILL at their defaults —
+    # no form-fill happened.  Pin charge=0 + spin=0 (the schema
+    # defaults) as proof the auto-analyze didn't apply Fe(II)
+    # high-spin (which would be charge=0 + spin=2 instead).
+    pyscf_vals = page.evaluate(
+        "async () => {"
+        "  const fs = (window.molbuilder || {}).formSchema;"
+        "  const sch = await fs.fetchSchema('pyscf');"
+        "  const c = document.getElementById('pyscf-form-container');"
+        "  return fs.collectForm(c, sch);"
+        "}"
+    )
+    assert pyscf_vals.get("spin") == 0, (
+        f"auto-analyze appears to have filled PySCF spin={pyscf_vals.get('spin')} "
+        f"— that's the BUTTON's job, not the background fire's"
+    )
+
+
+# --------------------------------------------------------------------- #
 #  /spectrum-calculation — Auto-detect on the Spectrum tab              #
 # --------------------------------------------------------------------- #
 

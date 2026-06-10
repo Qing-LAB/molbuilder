@@ -235,6 +235,15 @@
             setStatus("load-status",
                 `Loaded ${_basename(f)}.`, "ok");
             _refreshLoadButton();
+            // Phase 3 (2026-06-10): auto-fire the analyzer so the
+            // chemistry rationale is visible by default, not gated
+            // behind the Auto-detect button.  Forms are NOT pre-
+            // filled — the button still owns that explicit step.
+            // See scientific-validation.md § 2.5; same hook on
+            // /structure-optimization in static/viewer.js.
+            if (typeof _autoAnalyzeOnLoad === "function") {
+                _autoAnalyzeOnLoad(f);
+            }
         }
 
         // Sidebar onChange / onCommit subscription + initial
@@ -350,6 +359,38 @@
                     "Applied to the parameter form.  Review rationale below.",
                     "ok");
             });
+        }
+
+        /**
+         * Phase 3 auto-analyze (fired from _commitStructure on
+         * every successful load).  Same shape as the Optimization
+         * tab's helper in static/viewer.js: hits the analyzer,
+         * renders the rationale panel, does NOT touch the
+         * parameter form (the explicit button click still owns
+         * the form-fill).
+         */
+        async function _autoAnalyzeOnLoad(path) {
+            if (!path) return;
+            const mySeq     = ++_autoDetectSeq;
+            const myLoadSeq = _loadSeq;
+            try {
+                const r = await fetch("/api/structure/analyze", {
+                    method:  "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body:    JSON.stringify({ structure_path: path }),
+                });
+                const body = await r.json();
+                if (mySeq !== _autoDetectSeq
+                    || myLoadSeq !== _loadSeq) return;
+                if (!r.ok || !body.ok) return;  // silent — see Optimization helper
+                _renderAutoDetectPanel(body);
+                setStatus("auto-detect-status",
+                    "Chemistry analyzed — click Auto-detect to "
+                    + "apply suggested defaults to the form.",
+                    null);
+            } catch (_) {
+                // Silent — background fire.
+            }
         }
 
         /**

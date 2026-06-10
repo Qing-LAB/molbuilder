@@ -610,6 +610,17 @@
                 if (typeof _refreshAutoDetectButton === "function") {
                     _refreshAutoDetectButton();
                 }
+                // Phase 3 (2026-06-10): auto-fire the analyzer so
+                // the chemistry rationale is visible by default,
+                // not gated behind a button click.  Forms are NOT
+                // pre-filled — the user must click Auto-detect to
+                // apply suggestions.  This closes the gap where a
+                // user who ignored the button saw no chemistry
+                // analysis until Generate-time (when the validator
+                // fired).  See scientific-validation.md § 2.5.
+                if (typeof _autoAnalyzeOnLoad === "function") {
+                    _autoAnalyzeOnLoad(_sidebarLastFile);
+                }
             } catch (e) {
                 if (mySeq !== _sidebarLoadSeq) return;
                 setStatus("load-status",
@@ -787,6 +798,48 @@
                     "Applied to both forms.  Review rationale below.",
                     "ok");
             });
+        }
+
+        /**
+         * Phase 3 auto-analyze (fired automatically from
+         * _commitStructure on every successful load).  Hits the
+         * same /api/structure/analyze endpoint as the button, but
+         * does NOT apply the result to the forms — only renders
+         * the rationale panel + warnings so the user sees the
+         * chemistry conclusions without lifting a finger.
+         *
+         * Form-fill stays gated behind the explicit button click
+         * so we never silently mutate the user's params; we just
+         * surface the science.
+         */
+        async function _autoAnalyzeOnLoad(path) {
+            if (!path) return;
+            const mySeq      = ++_autoDetectSeq;
+            const myLoadSeq  = _sidebarLoadSeq;
+            try {
+                const r = await fetch("/api/structure/analyze", {
+                    method:  "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body:    JSON.stringify({ structure_path: path }),
+                });
+                const body = await r.json();
+                if (mySeq !== _autoDetectSeq
+                    || myLoadSeq !== _sidebarLoadSeq) return;
+                if (!r.ok || !body.ok) {
+                    // Silent failure — the user can still click
+                    // the button to retry; we don't want to
+                    // flash an error for a background analyze
+                    // they didn't ask for.
+                    return;
+                }
+                _renderAutoDetectPanel(body);
+                setStatus("auto-detect-status",
+                    "Chemistry analyzed — click Auto-detect to "
+                    + "apply suggested defaults to the forms.",
+                    null);
+            } catch (_) {
+                // Same silent-failure rationale — background fire.
+            }
         }
 
         /**
