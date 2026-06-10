@@ -588,7 +588,13 @@ class TestPseudosEndpoint:
         assert sug["spin"]   == 2
         assert sug["method"] == "UKS"
         assert "Fe" in sug["rationale"]
-        assert "UKS" in sug["rationale"]
+        # The rationale is engine-AGNOSTIC after the Phase-1c refactor
+        # (scientific-validation.md § 3) — it says "open-shell
+        # treatment", not "UKS" / "RKS" (those are PySCF strings that
+        # belong in the adapter output, not the analyzer's rationale).
+        # The UKS / RKS choice is pinned by the assert on
+        # ``sug["method"]`` two lines up.
+        assert "open-shell" in sug["rationale"]
         # SIESTA equivalent: spin_polarized=True + spin_total=2.0
         ssug = body["suggested"]["siesta"]
         assert ssug["spin_polarized"]   is True

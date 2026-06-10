@@ -520,8 +520,7 @@ def api_siesta_check_pseudos():
 
 @bp.route("/api/structure/analyze", methods=["POST"])
 def api_structure_analyze():
-    """Analyse a structure and return suggested defaults for charge /
-    spin / method, plus detected open-shell metals.
+    """Engine-agnostic chemistry analysis of a structure.
 
     Body (JSON)::
 
@@ -530,33 +529,29 @@ def api_structure_analyze():
         "structure_text":  "<XYZ or PDB text>"
       }
 
-    Returns::
+    Returns the ``ChemistryAnalysis`` dataclass serialised plus a
+    ``suggested.<engine>`` block built by iterating every registered
+    parameter adapter.  See ``docs/protocols/scientific-validation.md``
+    § 5.1 for the response-shape contract and § 4 for the adapter
+    Protocol.
 
-      {
-        "ok":           True,
-        "n_atoms":      <int>,
-        "elements":     ["C", "Fe", ...]   # unique, sorted
-        "metals":       ["Fe"]              # open-shell only; empty for organics
-        "metal_hints":  [{"element": "Fe",
-                          "common_oxidation_states": [...],
-                          "common_spins": [{"spin": 0, "label": "Fe(II) low-spin (CO/CN)"},
-                                           {"spin": 2, "label": "Fe(II) intermediate"},
-                                           {"spin": 4, "label": "Fe(II) high-spin"}, ...]}],
-        "suggested": {
-          "pyscf":  {"charge": 0, "spin": 2, "method": "UKS",
-                     "rationale": "..."},
-          "siesta": {"net_charge": 0, "spin_polarized": True,
-                     "spin_total": 2.0,
-                     "rationale": "..."}
-        },
-        "warnings":  ["...", ...]   # always-applicable advisories
-      }
+    The endpoint is deliberately thin (~20 LoC of logic) — the
+    chemistry analyzer (``molbuilder.chemistry.analyze_structure``)
+    holds every chemistry rule; the per-engine adapters
+    (``molbuilder.<engine>.auto_defaults``) hold every engine
+    translation.  Adding a new engine = drop an adapter file +
+    import it in ``web/blueprints/__init__.py``; this endpoint
+    needs no change.
 
-    The UI uses this for an "Auto-detect" button that pre-fills the
-    form with sensible (not necessarily correct -- always echoes the
-    rationale so the user sanity-checks).
+    The same ``ChemistryAnalysis`` instance backs the pre-emission
+    validation pass (``validation._check_open_shell_metal``) —
+    auto-detect and validate cannot disagree by construction.
     """
+    from dataclasses import asdict
     from .files import _PickerError
+    from molbuilder.chemistry import analyze_structure, registered_adapters
+    from molbuilder.structure import Structure
+
     body = request.get_json(silent=True) or {}
     text_in = body.get("structure_text")
     path_in = body.get("structure_path")
@@ -573,7 +568,6 @@ def api_structure_analyze():
         return jsonify({"ok": False,
                         "error": "structure_path or structure_text is required"}), 400
 
-    from molbuilder.structure import Structure
     try:
         if ext == ".pdb":
             struct = Structure.from_pdb(text_in)
@@ -583,99 +577,27 @@ def api_structure_analyze():
         return jsonify({"ok": False,
                         "error": f"could not parse structure: {exc}"}), 400
 
-    from molbuilder.chemistry import (detect_open_shell_metals,
-                                       explain_metal_spin,
-                                       total_electrons)
-    # total_electrons raises KeyError on an unknown element symbol
-    # (typos, bad PDB column fallback).  Catch -> 400 with the
-    # parser's clear message; the previous behaviour propagated to
-    # a 500 Internal Server Error with a stack trace, which leaked
-    # internals to the client.
-    metals = detect_open_shell_metals(struct)
+    # analyze_structure raises KeyError on an unknown element symbol
+    # (typos, bad PDB column fallback) via total_electrons.  Catch -> 400
+    # with the parser's clear message; without this it would surface
+    # as a 500 Internal Server Error.
     try:
-        n_e = total_electrons(struct, 0)
+        analysis = analyze_structure(struct)
     except KeyError as exc:
-        return jsonify({"ok": False, "error": str(exc)}), 400
-
-    # Build per-metal hints: enumerate the common spin values from
-    # explain_metal_spin's mapping (we walk 0..6 and collect those
-    # that have a hint registered).
-    metal_hints = []
-    for m in metals:
-        candidates = []
-        for s in range(0, 7):
-            hint = explain_metal_spin(m, s)
-            if hint:
-                candidates.append({"spin": s, "label": hint})
-        metal_hints.append({"element": m, "common_spins": candidates})
-
-    # Suggested defaults.  Strategy:
-    #   * Organic / no open-shell metal -> charge=0, spin=0, RKS.
-    #   * Open-shell metal present -> pick the FIRST metal's most
-    #     common spin state (intermediate for Fe, doublet for Cu, etc.)
-    #     as the suggested default.  User can override.
-    warnings: list = []
-    if metals:
-        # Pick a reasonable spin per metal: Fe -> 2 (intermediate, FeTPP-style);
-        # Mn -> 5 (Mn(II) HS); Co -> 1 (Co(II) LS as a safe pick);
-        # Cu -> 1 (Cu(II)); Ni -> 0 (Ni(II) square-planar LS); Cr -> 3
-        # (Cr(III)).  Conservative -- the user MUST verify against
-        # experimental data; the rationale text says so.
-        DEFAULT_SPIN = {"Fe": 2, "Mn": 5, "Co": 1, "Ni": 0, "Cu": 1, "Cr": 3,
-                        "V": 3, "Ti": 2, "Sc": 1}
-        sug_spin = DEFAULT_SPIN.get(metals[0], 2)
-        # Parity fix: if (n_e - charge) parity doesn't match sug_spin, bump.
-        if (n_e % 2) != (sug_spin % 2):
-            sug_spin = sug_spin + 1 if sug_spin == 0 else sug_spin - 1
-            warnings.append(
-                f"Adjusted suggested spin from default to {sug_spin} "
-                f"to match electron-count parity (sum(Z)={n_e}, charge=0)."
-            )
-        sug_method = "UKS"
-        rationale_py = (
-            f"Detected open-shell metal {', '.join(metals)}.  "
-            f"Suggesting spin={sug_spin} ({explain_metal_spin(metals[0], sug_spin) or '?'}) "
-            f"with method=UKS.  Verify against your experimental data "
-            f"(Mössbauer / UV-Vis / EPR) -- the right spin depends on "
-            f"axial coordination, not just element identity."
-        )
-        rationale_si = rationale_py
-        siesta_spin_total = float(sug_spin)
-        siesta_polarized = True
-    else:
-        sug_spin = 0 if (n_e % 2 == 0) else 1
-        sug_method = "RKS" if sug_spin == 0 else "UKS"
-        rationale_py = (
-            f"No open-shell metals detected; suggesting closed-shell "
-            f"{'singlet' if sug_spin == 0 else 'doublet'} "
-            f"(spin={sug_spin}, {sug_method})."
-        )
-        rationale_si = rationale_py
-        siesta_spin_total = float(sug_spin)
-        siesta_polarized = (sug_spin > 0)
+        return jsonify({"ok": False, "error": str(exc).strip("'")}), 400
 
     return jsonify({
-        "ok":           True,
-        "n_atoms":      struct.n_atoms,
-        "elements":     sorted(set(e.capitalize() for e in struct.elements)),
-        "metals":       metals,
-        "metal_hints":  metal_hints,
-        "n_electrons_neutral": n_e,
-        "suggested":    {
-            "pyscf":  {
-                "charge":   0,
-                "spin":     sug_spin,
-                "method":   sug_method,
-                "rationale": rationale_py,
-            },
-            "siesta": {
-                "net_charge":     0,
-                "spin_polarized": siesta_polarized,
-                "spin_total":     siesta_spin_total,
-                "rationale":      rationale_si,
-            },
+        "ok":                  True,
+        "n_atoms":             analysis.n_atoms,
+        "elements":            analysis.elements,
+        "n_electrons_neutral": analysis.n_electrons_neutral,
+        "metals":              analysis.metals,
+        "metal_hints":         [asdict(h) for h in analysis.metal_hints],
+        "suggested":           {
+            name: asdict(cls.to_params(analysis))
+            for name, cls in registered_adapters().items()
         },
-        "warnings":     warnings,
+        "warnings":            list(analysis.warnings),
     })
 
 
