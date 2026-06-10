@@ -24,4 +24,12 @@ All blueprints are registered into a single Flask app by
 
 from . import watch as watch  # re-export for `from .blueprints import watch`
 
+# Adapter modules — imported for their @register_adapter side
+# effects so the registry is populated before any HTTP request
+# hits /api/structure/analyze.  See
+# docs/protocols/scientific-validation.md § 4.3 for the import-site
+# convention.
+from molbuilder.siesta import auto_defaults as _siesta_auto_defaults  # noqa: F401
+from molbuilder.pyscf  import auto_defaults as _pyscf_auto_defaults   # noqa: F401
+
 __all__ = ["watch"]

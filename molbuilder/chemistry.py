@@ -48,7 +48,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import Dict, List, Literal, Optional, Tuple
+from typing import Any, Dict, List, Literal, Optional, Protocol, Tuple, Type
 
 import numpy as np
 
@@ -578,6 +578,94 @@ def analyze_structure(struct: Structure) -> ChemistryAnalysis:
         rationale           = rationale,
         warnings            = warnings,
     )
+
+
+# --------------------------------------------------------------------- #
+#  L3 — engine parameter adapter Protocol + registry                    #
+#                                                                       #
+#  See docs/protocols/scientific-validation.md § 4 for the full         #
+#  contract.  Each engine module under molbuilder/<engine>/ exports an  #
+#  adapter class that translates a ChemistryAnalysis into a typed,      #
+#  engine-specific frozen dataclass.  Adapters register themselves on   #
+#  import via the @register_adapter decorator; the /api/structure/     #
+#  analyze endpoint iterates registered_adapters() to build the         #
+#  ``suggested.<engine>`` block — new engines need no endpoint change.  #
+# --------------------------------------------------------------------- #
+
+
+class EngineParameterAdapter(Protocol):
+    """Translate engine-agnostic ChemistryAnalysis conclusions into a
+    typed, engine-specific parameter dataclass.
+
+    Adapters live per-engine under ``molbuilder/<engine>/auto_defaults.py``
+    and register themselves at import time via ``@register_adapter``.
+
+    Design rules (see scientific-validation.md § 4.4):
+
+    * PURE translator.  An adapter MUST NOT re-do chemistry detection,
+      parity checks, or any other analysis.  All chemistry logic lives
+      in ``analyze_structure``; adapters only translate.
+    * TYPED dataclass output.  Returns a frozen dataclass (e.g.
+      ``SiestaSuggestedParams``), not a dict.  The HTTP boundary
+      serialises via ``dataclasses.asdict``.
+    * Field names match the engine's web-form / Config dataclass.
+      The UI's "apply suggestion" path just spreads the dataclass
+      into form values.
+    """
+
+    name: str   # registry key, e.g. "siesta", "pyscf"
+
+    @classmethod
+    def to_params(cls, analysis: "ChemistryAnalysis") -> Any:
+        """Return an engine-specific frozen dataclass carrying the
+        suggested defaults for this engine.  Always includes a
+        ``rationale`` field; MAY include engine-specific notes.
+        """
+        ...
+
+
+_ADAPTERS: Dict[str, Type[EngineParameterAdapter]] = {}
+
+
+def register_adapter(name: str):
+    """Decorator: register an adapter class under the given engine name.
+
+    Usage::
+
+        @register_adapter("siesta")
+        class SiestaAdapter:
+            name = "siesta"
+            @classmethod
+            def to_params(cls, analysis):
+                return SiestaSuggestedParams(...)
+
+    Imports of decorated classes have a side effect (registry
+    mutation).  The canonical place to ensure adapters get imported
+    at web-app startup is ``molbuilder/web/blueprints/__init__.py``;
+    direct callers (CLI, tests) import the adapter module explicitly.
+    """
+    def deco(cls: Type[EngineParameterAdapter]) -> Type[EngineParameterAdapter]:
+        _ADAPTERS[name] = cls
+        return cls
+    return deco
+
+
+def registered_adapters() -> Dict[str, Type[EngineParameterAdapter]]:
+    """Return a defensive copy of the current adapter registry.
+
+    Callers (notably ``/api/structure/analyze``) iterate the returned
+    dict.  Copying prevents a stray ``del`` or ``.clear()`` at a
+    consumer from poisoning the registry for the rest of the process.
+    """
+    return dict(_ADAPTERS)
+
+
+def _clear_adapters_for_test() -> None:
+    """Test-only: empty the registry.  Used by tests that want a
+    clean slate to verify the new-engine on-ramp; production code
+    must never call this.
+    """
+    _ADAPTERS.clear()
 
 
 def expected_pH7_peptide_charge(struct: Structure) -> Optional[int]:
