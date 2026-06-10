@@ -221,7 +221,9 @@ class TestInspectorModulesServed:
         multi-MB outputs).  See
         ``test_trajectory_inspector_claims_dot_out`` below.
         """
-        body = web.get("/static/lib/inspectors/source.js").get_data(as_text=True)
+        r = web.get("/static/lib/inspectors/source.js")
+        assert r.status_code == 200
+        body = r.get_data(as_text=True)
         for ext in (".fdf", ".py", ".log", ".json", ".txt", ".md"):
             assert ext in body, (
                 f"source inspector dispatch missing extension {ext!r}"
@@ -637,7 +639,9 @@ class TestPartialTrajectoryInspectorEndpoint:
         attributes) -- both legal forms of the forbidden top-level
         wrappers."""
         import re
-        body = web.get("/partials/trajectory-inspector").get_data(as_text=True)
+        r = web.get("/partials/trajectory-inspector")
+        assert r.status_code == 200
+        body = r.get_data(as_text=True)
         for forbidden_tag in ("html", "head", "body"):
             pat = re.compile(rf"<{forbidden_tag}[\s>/]", re.IGNORECASE)
             assert not pat.search(body), (
@@ -846,7 +850,9 @@ class TestPartialSpectraInspectorEndpoint:
         prefix of the legitimate HTML5 ``<header>`` element used
         for section headers within the partial)."""
         import re
-        body = web.get("/partials/spectra-inspector").get_data(as_text=True)
+        r = web.get("/partials/spectra-inspector")
+        assert r.status_code == 200
+        body = r.get_data(as_text=True)
         for forbidden_tag in ("html", "head", "body"):
             pat = re.compile(rf"<{forbidden_tag}[\s>/]", re.IGNORECASE)
             assert not pat.search(body), (
@@ -865,7 +871,9 @@ class TestPartialSpectraInspectorEndpoint:
         in this partial.  A regression that pulls a generate-side
         id in here would mean /results renders a non-functional
         generate UI on every trajectory click."""
-        body = web.get("/partials/spectra-inspector").get_data(as_text=True)
+        r = web.get("/partials/spectra-inspector")
+        assert r.status_code == 200
+        body = r.get_data(as_text=True)
         for generate_side_id in (
             "spectra-form-container",   # the form itself
             "generate-btn",             # script generation button

@@ -682,7 +682,9 @@ class TestSidebarPartialAndShim:
         # serve.  Counting tabs would make this test break every
         # time we add or remove a tab, which is the wrong sensitivity.
         import re
-        body = web.get("/structure-optimization").get_data(as_text=True)
+        r = web.get("/structure-optimization")
+        assert r.status_code == 200
+        body = r.get_data(as_text=True)
         # No href="/projects" anywhere -- the sidebar replaced the tab.
         assert 'href="/projects"' not in body
         # Each app-tab link points at one of the served routes.  Pull
@@ -1803,7 +1805,9 @@ class TestSidebarStubsUI:
         assert '+ Upload file</summary>' in body
 
     def test_preview_modal_markup_full(self, web, picker_root):
-        body = web.get("/spectrum-calculation").get_data(as_text=True)
+        r = web.get("/spectrum-calculation")
+        assert r.status_code == 200
+        body = r.get_data(as_text=True)
         # Modal scaffolding: backdrop, window, header (title + close),
         # CodeMirror mount point (#ps-preview-cmview replaces the
         # earlier <pre>+<textarea> pair — single editor for both view

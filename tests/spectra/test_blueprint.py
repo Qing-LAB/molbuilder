@@ -135,7 +135,13 @@ class TestSpectraPage:
         generator page (which would re-introduce the UX-debt the
         generator/inspector split was made to clean up).
         """
-        body = web_client.get("/spectrum-calculation").data.decode()
+        r = web_client.get("/spectrum-calculation")
+        assert r.status_code == 200, (
+            f"/spectrum-calculation returned {r.status_code}; this "
+            f"test's negative-body assertions would pass trivially "
+            f"against an error page"
+        )
+        body = r.data.decode()
         for inspect_only_id in (
             "watch-path",              # load-by-path input
             "load-path-btn",           # one-shot load button
@@ -356,7 +362,9 @@ class TestSpectraPage:
         that the generator template does NOT pull Plotly, and that
         the chart id lives ONLY in the inspector partial (consumed
         by /results)."""
-        body = web_client.get("/spectrum-calculation").data.decode()
+        r = web_client.get("/spectrum-calculation")
+        assert r.status_code == 200
+        body = r.data.decode()
         assert "/vendor/plotly.min.js" not in body, (
             "the spectrum-calculation generator tab must NOT load "
             "Plotly; it's a results-viewing library that belongs in "
@@ -450,7 +458,9 @@ class TestSpectraPage:
         the same vendored stack as /structure-optimization.  Pin so
         a future refactor that "just adds a CDN fallback" silently
         introducing a third-party load surfaces."""
-        body = web_client.get("/spectrum-calculation").data.decode()
+        r = web_client.get("/spectrum-calculation")
+        assert r.status_code == 200
+        body = r.data.decode()
         assert "cdnjs.cloudflare.com" not in body, (
             "/spectrum-calculation must not load 3Dmol from a CDN; "
             "use the vendored copy at /static/vendor/3Dmol-min.js"
@@ -1073,6 +1083,7 @@ class TestSchemaEndpointFrozenSeed:
         r = web_client.get(
             "/api/build/schema/spectra?structure_path=" + str(xyz),
         )
+        assert r.status_code == 200
         body = r.get_json()
         assert "notice" not in body
         default = self._find_frozen_indices_default(body)
