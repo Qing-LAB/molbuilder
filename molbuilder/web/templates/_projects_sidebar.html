@@ -191,17 +191,14 @@
       </button>
     </header>
     <p class="ps-preview-meta" id="ps-preview-meta"></p>
-    {# Two bodies: <pre> for read-only view (default), <textarea> for
-       edit mode.  initPreview() / showPreview() / startEdit() in
-       preview.js swap which one is hidden.  The textarea inherits
-       the same font + padding so the swap is visually quiet. #}
-    <pre id="ps-preview-body" class="ps-preview-body"
-         aria-label="File content"></pre>
-    <textarea id="ps-preview-edit"
-              class="ps-preview-edit"
-              aria-label="File content (editable)"
-              spellcheck="false"
-              hidden></textarea>
+    {# CodeMirror 5 mount point.  preview.js lazy-loads the
+       vendored CM bundle from /static/vendor/codemirror/ on first
+       open, then mounts a single editor instance here.  Read-only
+       by default; preview.js toggles ``readOnly`` off when the
+       Edit button is clicked.  CSS owns the height (.ps-preview-cmview
+       + .ps-preview-cmview .CodeMirror). #}
+    <div id="ps-preview-cmview" class="ps-preview-cmview"
+         aria-label="File content"></div>
     <p id="ps-preview-error" class="ps-preview-error" role="alert"></p>
     <p id="ps-preview-status" class="ps-preview-status"></p>
     <footer class="ps-preview-footer">

@@ -404,6 +404,13 @@ type ViewerHandle = {
   // ---- Read accessors ------------------------------------------ //
   getAtomCount():     number,
   getElements():      string[],
+  getAtomCoords():    number[3][],
+  // Per-atom Cartesian coords in atom-index order, matching
+  // getElements() / getPickedIndices().  Returns a defensive
+  // deep-copy so callers can mutate without poisoning the live
+  // model.  Used by the selection-measurement chip (task #300)
+  // so distance / angle readouts don't need to re-parse the
+  // source XYZ/PDB.
   getPickedIndices(): number[],
   setPickedIndices(indices: number[] | null): void,
   // Push the pick state from an external source (host atom list,

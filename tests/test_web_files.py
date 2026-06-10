@@ -1815,19 +1815,32 @@ class TestSidebarStubsUI:
     def test_preview_modal_markup_full(self, web, picker_root):
         body = web.get("/spectrum-calculation").get_data(as_text=True)
         # Modal scaffolding: backdrop, window, header (title + close),
-        # both bodies (pre for read-only view, textarea for edit),
-        # error + status slots, footer (Edit + Save + Close).  Task
-        # #302 (2026-06-09) added the edit pane + the Edit button +
-        # the status line; Save was unwired-but-visible before, now
-        # functional via /api/files/write with expected_mtime.
+        # CodeMirror mount point (#ps-preview-cmview replaces the
+        # earlier <pre>+<textarea> pair — single editor for both view
+        # and edit, virtual scroll caps DOM memory for large files,
+        # search + jump-to-line addons handle find/Go-to-line).  Task
+        # #310 (2026-06-09) ripped out the <pre>/textarea pair; #302
+        # (2026-06-09) wired Edit + Save via /api/files/write +
+        # expected_mtime.
         assert 'id="ps-preview-modal"' in body
         assert 'class="ps-preview-backdrop"' in body
         assert 'id="ps-preview-title"' in body
         assert 'id="ps-preview-meta"' in body
-        assert 'id="ps-preview-body"' in body
-        assert 'id="ps-preview-edit"' in body
+        assert 'id="ps-preview-cmview"' in body
         assert 'id="ps-preview-error"' in body
         assert 'id="ps-preview-status"' in body
+        # The retired pair must NOT come back — guard against a
+        # future refactor that accidentally re-introduces a duplicate
+        # body / edit element alongside the CodeMirror mount.
+        assert 'id="ps-preview-body"' not in body, (
+            "ps-preview-body was retired in task #310 — CodeMirror "
+            "owns the view; re-introducing the <pre> means two "
+            "elements receive content for the same modal"
+        )
+        assert 'id="ps-preview-edit"' not in body, (
+            "ps-preview-edit textarea was retired in task #310 — "
+            "CodeMirror handles edit mode by toggling readOnly off"
+        )
         # Edit toggle + Save button both present.  Save starts
         # disabled (no dirty edits on first open) but is no longer
         # the "coming soon" stub from v1.
@@ -1838,7 +1851,7 @@ class TestSidebarStubsUI:
         )[1].split(">", 1)[0]
         assert "disabled" in save_attrs, (
             "Save button must start disabled — it enables when the "
-            "textarea has unsaved changes"
+            "editor has unsaved changes"
         )
 
     def test_preview_modal_starts_hidden(self, web, picker_root):

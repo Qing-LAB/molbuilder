@@ -712,8 +712,9 @@ class TestHandleSurface:
         "setAnimation", "playAnimation", "pauseAnimation",
         "isAnimationPlaying", "setAnimationFrame", "getAnimationFrame",
         # Read accessors
-        "getAtomCount", "getElements", "getPickedIndices",
-        "setPickedIndices", "getStructureText",
+        "getAtomCount", "getElements", "getAtomCoords",
+        "getPickedIndices", "setPickedIndices",
+        "getStructureText",
         # Declarative-state getters (D3 symmetry — round-trip with setX)
         "getStyle", "getAxes", "getCell", "getLabels",
         "getOverlays", "getPick", "getKnobs", "getArrows",
@@ -3321,54 +3322,16 @@ class TestHandleSurface:
         )
         assert "invalid_input" in out["errs"]
 
-    def test_chrome_consistency_across_build_and_modify(
-            self, page, flask_server):
-        """The standard knob bar's DOM structure is identical on
-        Build (/) and Modify (/modify) — same 7 knobs in the same
-        order: Style / Labels / Axes / Reset / Screenshot /
-        Background / Export.
-
-        Pins the chrome-consistency contract for #207: a future
-        edit that adds / removes / reorders a knob on one site
-        fails this test, forcing the change to either land on
-        every site or update the contract."""
-        def _knob_signature(path):
-            page.goto(f"{flask_server}{path}")
-            page.wait_for_selector("#viewer .mol-viewer-knobs",
-                                   timeout=_BOOT_TIMEOUT_MS)
-            page.wait_for_timeout(200)
-            # Phase 6: bar has exactly two <details> children — the
-            # View menu and the Export menu (in that order).  The
-            # signature captures their menu-class so a swap/reorder
-            # is caught.
-            return page.evaluate("""() => {
-                const bar = document.querySelector(
-                    '#viewer .mol-viewer-knobs');
-                if (!bar) return null;
-                return Array.from(bar.children).map((el) => {
-                    if (el.tagName === 'DETAILS') {
-                        const cls = Array.from(el.classList)
-                            .find((c) => c.startsWith(
-                                'mol-viewer-menu-'));
-                        return 'details:' + (cls || '?');
-                    }
-                    return el.tagName.toLowerCase();
-                });
-            }""")
-        build_sig  = _knob_signature("/")
-        modify_sig = _knob_signature("/modify")
-        assert build_sig == modify_sig, (
-            f"Knob bar drifted between Build and Modify:\n"
-            f"  Build:  {build_sig}\n  Modify: {modify_sig}"
-        )
-        EXPECTED = [
-            "details:mol-viewer-menu-view",
-            "details:mol-viewer-menu-export",
-        ]
-        assert build_sig == EXPECTED, (
-            f"Knob bar order drifted from § 6.2 spec (Phase 6):\n"
-            f"  Expected: {EXPECTED}\n  Got:      {build_sig}"
-        )
+    # Retired 2026-06-09: ``test_chrome_consistency_across_build_and_modify``
+    # compared knob-bar signatures on ``/`` (Build) and ``/modify``
+    # (Modify), both of which were deleted in Phase B.5 (2026-06-07):
+    # ``/`` is now a 302 to ``landing_path()`` and ``/modify``
+    # returns 404 by design (no backward-compat redirects).  The
+    # next test in this class
+    # (``test_chrome_consistency_across_three_inspectors``) covers
+    # chrome consistency across the three /results inspectors and
+    # the structure-optimization viewer, which is the post-B.5
+    # equivalent of what this one used to pin.
 
     def test_chrome_consistency_across_three_inspectors(
             self, page, flask_server):

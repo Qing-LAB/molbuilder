@@ -104,9 +104,15 @@ class TestPartialIntegrity:
         "show-forces", "forces-status",
         "force-scale", "force-scale-val", "force-min",
         "highlight-max",
-        # Inspect panel (atom list + distance pick readout).
+        # Inspect panel (atom list + measurement chip).  The static
+        # A / B / |A-B| three-row table (inspect-table, inspect-a,
+        # inspect-b, inspect-d) was retired 2026-06-08 (task #299)
+        # and replaced by ``#inspect-measurement`` — a single chip
+        # that handles 1-atom xyz, 2-atom distance, and 3-atom angle
+        # via the shared ``lib/selection/measurements.js`` module.
+        # The chip is positioned by ``lib/selection/measurement-chip.css``.
         "inspect-hint", "inspect-atom-list-body",
-        "inspect-table", "inspect-a", "inspect-b", "inspect-d",
+        "inspect-measurement",
         "inspect-clear",
         # Trajectory playback knobs.
         "speed", "loop", "save-frame",

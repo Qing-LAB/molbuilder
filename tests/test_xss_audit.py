@@ -239,6 +239,16 @@ class TestNoUnsafeInnerHTML:
             # render of ``_spectra_inspector.html``) to host.innerHTML.
             # Same trust boundary; same justification.
             ("lib/inspectors/spectra.js", "host.innerHTML = partialHtml"),
+            # Shared partial-inspector factory (task #308 dedupe):
+            # the ``host.innerHTML = partialHtml`` assignment moved
+            # out of the trajectory + spectra wrappers and into the
+            # factory itself.  Same trust boundary as the two
+            # allowlisted wrappers above — partialHtml is the
+            # response body of a same-origin GET to one of the
+            # ``/partials/*-inspector`` endpoints, all of which
+            # render Jinja-autoescaped templates with no user input.
+            ("lib/inspectors/_partial_inspector_factory.js",
+             "host.innerHTML = partialHtml"),
             # Selection-panel bootstrap: identical pattern.  Assigns
             # the response body of GET /partials/selection-panel
             # (Jinja-autoescaped render of ``_selection_panel.html``)

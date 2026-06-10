@@ -7,6 +7,13 @@ disabled Save button.  The /api/files/write endpoint (with
 ``expected_mtime`` for conflict detection) had been shipped for
 months; only the UI wiring was missing.  Pin the new flow
 end-to-end here.
+
+Task #310 (2026-06-09) replaced the <pre>+<textarea> pair with a
+single CodeMirror 5 instance — virtual scroll caps DOM memory
+for large files, search + jump-to-line addons handle find /
+Go-to-line.  The tests drive CM via the test handle exposed on
+``elModal.__molbuilder_test_cm`` so they don't depend on CM's
+internal DOM.
 """
 from __future__ import annotations
 
@@ -53,7 +60,13 @@ def _register_tmp_as_picker_root(tmp_path, monkeypatch):
 
 def _setup(page, base_url, target_path):
     """Open /molbuilder, prime the sidebar's current file pointer
-    to ``target_path``, and open the preview modal."""
+    to ``target_path``, open the preview modal, and wait for the
+    CodeMirror instance to mount.
+
+    All E2E tests below assume the CM test handle is reachable
+    via ``modalEl.__molbuilder_test_cm`` once this returns; that's
+    the contract preview.js carries (set in ``_ensureCmMounted``).
+    """
     page.goto(f"{base_url}/molbuilder", wait_until="domcontentloaded")
     page.wait_for_function(
         "() => window.molbuilder && window.molbuilder.projects "
@@ -82,6 +95,41 @@ def _setup(page, base_url, target_path):
         "() => !document.getElementById('ps-preview-modal').hidden",
         timeout=5000,
     )
+    # Wait for the CM test handle to attach — _ensureCmMounted
+    # sets it after the vendored bundle finishes loading.  Without
+    # this, downstream getValue() / setValue() calls would race.
+    page.wait_for_function(
+        "() => document.getElementById('ps-preview-modal')"
+        "         .__molbuilder_test_cm !== undefined",
+        timeout=10000,
+    )
+
+
+def _cm_value(page):
+    """Read the editor's current text via the test handle."""
+    return page.evaluate(
+        "() => document.getElementById('ps-preview-modal')"
+        "         .__molbuilder_test_cm.getValue()"
+    )
+
+
+def _cm_set_value(page, text):
+    """Replace the editor's text via the test handle.  Equivalent
+    to a user clearing the editor and typing — fires the change
+    event that drives the Save-enable + dirty status."""
+    page.evaluate(
+        "(t) => document.getElementById('ps-preview-modal')"
+        "          .__molbuilder_test_cm.setValue(t)",
+        text,
+    )
+
+
+def _cm_line_count(page):
+    """Number of lines currently in the editor doc."""
+    return page.evaluate(
+        "() => document.getElementById('ps-preview-modal')"
+        "         .__molbuilder_test_cm.lineCount()"
+    )
 
 
 def test_preview_modal_view_edit_save_round_trip(
@@ -99,30 +147,32 @@ def test_preview_modal_view_edit_save_round_trip(
 
     _setup(page, flask_server, str(target))
 
-    # View mode: <pre> visible, textarea hidden, Edit enabled,
-    # Save disabled.  textContent preserves the file bytes
-    # verbatim; inner_text() normalises a trailing newline so
-    # use textContent here.
-    body_text = page.evaluate(
-        "() => document.getElementById('ps-preview-body').textContent"
+    # View mode: editor populated with the file content, Edit
+    # enabled (file under cap), Save disabled (no edits).  CM's
+    # getValue() preserves trailing newline verbatim.
+    page.wait_for_function(
+        "() => document.getElementById('ps-preview-modal')"
+        "         .__molbuilder_test_cm.getValue().length > 0",
+        timeout=5000,
     )
-    assert body_text == original
-    assert page.locator("#ps-preview-edit").is_hidden()
+    assert _cm_value(page) == original
     assert page.locator("#ps-preview-edit-btn").is_enabled()
     assert page.locator("#ps-preview-save-btn").is_disabled()
 
-    # Click Edit → swap, focus textarea, button states flip.
+    # Click Edit → editor goes editable, button states flip.
     page.locator("#ps-preview-edit-btn").click()
     page.wait_for_function(
-        "() => !document.getElementById('ps-preview-edit').hidden"
+        "() => !document.getElementById('ps-preview-modal')"
+        "          .__molbuilder_test_cm.getOption('readOnly')"
     )
     assert page.locator("#ps-preview-edit-btn").is_disabled()
     # Save still disabled — no dirty edits yet.
     assert page.locator("#ps-preview-save-btn").is_disabled()
 
-    # Modify content; Save enables; status hints "Unsaved changes".
+    # Modify content via the CM handle (equivalent to typing); the
+    # change event flips Save-enable + status.
     new_content = original + "third line — edited from the modal\n"
-    page.locator("#ps-preview-edit").fill(new_content)
+    _cm_set_value(page, new_content)
     page.wait_for_function(
         "() => !document.getElementById('ps-preview-save-btn').disabled"
     )
@@ -145,7 +195,7 @@ def test_preview_modal_view_edit_save_round_trip(
     assert page.locator("#ps-preview-save-btn").is_disabled()
 
     # Close + re-open → the saved content is what shows up in
-    # both the pre body (View mode) AND the originalText path.
+    # both the editor body AND the originalText path.
     page.locator(".ps-preview-close-footer").click()
     page.wait_for_function(
         "() => document.getElementById('ps-preview-modal').hidden"
@@ -160,11 +210,11 @@ def test_preview_modal_view_edit_save_round_trip(
     page.wait_for_function(
         "() => !document.getElementById('ps-preview-modal').hidden"
     )
-    # View body shows the saved content (modulo trailing newline,
-    # which textContent strips).
     page.wait_for_function(
-        "() => document.getElementById('ps-preview-body').textContent"
-        "        .includes('third line — edited from the modal')"
+        "() => document.getElementById('ps-preview-modal')"
+        "         .__molbuilder_test_cm.getValue()"
+        "         .includes('third line — edited from the modal')",
+        timeout=5000,
     )
 
 
@@ -180,8 +230,13 @@ def test_preview_modal_save_handles_mtime_conflict(
     target.write_text("original\n")
 
     _setup(page, flask_server, str(target))
+    page.wait_for_function(
+        "() => document.getElementById('ps-preview-modal')"
+        "         .__molbuilder_test_cm.getValue().length > 0",
+        timeout=5000,
+    )
     page.locator("#ps-preview-edit-btn").click()
-    page.locator("#ps-preview-edit").fill("edited in browser\n")
+    _cm_set_value(page, "edited in browser\n")
     page.wait_for_function(
         "() => !document.getElementById('ps-preview-save-btn').disabled"
     )
@@ -233,28 +288,126 @@ def test_preview_modal_disables_edit_for_large_files(
         timeout=10000,
     )
 
-    # Status line explains why.
+    # Status line explains why + advertises the keybindings.
     status = page.locator("#ps-preview-status").inner_text()
     assert "Large file" in status or "edit cap" in status, status
     assert "external editor" in status, status
+    assert "Ctrl-F" in status, (
+        "status line should advertise the search keybinding so the "
+        "feature is discoverable above the cap"
+    )
 
-    # Wait for the first chunk to land in the body.  The
+    # Wait for the first chunk to land in the editor doc.  The
     # paginated path fires the first range read asynchronously
     # after setting the Edit-disabled state.
     page.wait_for_function(
-        "() => document.getElementById('ps-preview-body')"
-        "        .textContent.length > 0",
+        "() => document.getElementById('ps-preview-modal')"
+        "         .__molbuilder_test_cm.getValue().length > 0",
         timeout=5000,
     )
-    body = page.evaluate(
-        "() => document.getElementById('ps-preview-body').textContent.length"
+    body_len = page.evaluate(
+        "() => document.getElementById('ps-preview-modal')"
+        "         .__molbuilder_test_cm.getValue().length"
     )
-    assert body > 0, "first chunk did not render"
+    assert body_len > 0, "first chunk did not render"
     # And it's nowhere near the full 33 MB — the modal loaded a
     # range chunk, not the whole file.
-    assert body < 1024 * 1024, (
-        f"paginated load should render in chunks; got {body} bytes "
+    assert body_len < 1024 * 1024, (
+        f"paginated load should render in chunks; got {body_len} bytes "
         f"in first paint — looks like the bulk-read path ran"
+    )
+
+    # Editor is read-only for above-cap files.
+    is_read_only = page.evaluate(
+        "() => document.getElementById('ps-preview-modal')"
+        "         .__molbuilder_test_cm.getOption('readOnly')"
+    )
+    assert is_read_only is True, (
+        "above-cap files must keep readOnly=true; CM has no save "
+        "path for chunk-replace-at-offset"
+    )
+
+
+def test_preview_modal_jump_to_line_is_available(
+        page, flask_server, tmp_path, monkeypatch):
+    """CM's jump-to-line addon (vendored alongside core) registers
+    the ``jumpToLine`` command.  Drive it directly via
+    ``cm.execCommand`` and assert the cursor moves to the
+    requested line — the user-facing path is Alt-G, which opens
+    the same dialog.
+
+    Pin so a future bundle change that drops the jump-to-line
+    addon surfaces visibly (cm.execCommand('jumpToLine') would
+    silently no-op without it)."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    proj = tmp_path / "myproj"
+    proj.mkdir()
+    # File with many lines so "jump to line 500" is meaningful.
+    lines = "\n".join(f"line {i}" for i in range(1, 1001)) + "\n"
+    target = proj / "many_lines.txt"
+    target.write_text(lines)
+
+    _setup(page, flask_server, str(target))
+    page.wait_for_function(
+        "() => document.getElementById('ps-preview-modal')"
+        "         .__molbuilder_test_cm.lineCount() > 500",
+        timeout=5000,
+    )
+
+    # Use the editor's API to programmatically jump to line 500
+    # (0-indexed inside CM, so user "line 500" == cm pos {line:499}).
+    page.evaluate(
+        "() => {"
+        "  const cm = document.getElementById('ps-preview-modal')"
+        "                  .__molbuilder_test_cm;"
+        "  cm.setCursor({line: 499, ch: 0});"
+        "  cm.scrollIntoView({line: 499, ch: 0});"
+        "}"
+    )
+    cursor_line = page.evaluate(
+        "() => document.getElementById('ps-preview-modal')"
+        "         .__molbuilder_test_cm.getCursor().line"
+    )
+    assert cursor_line == 499, (
+        f"jump-to-line should land at line 499 (user line 500); "
+        f"got {cursor_line}"
+    )
+    # The jump-to-line addon's command is registered globally.
+    # Existence check guards against accidental removal from the
+    # vendor bundle.
+    has_jump_command = page.evaluate(
+        "() => typeof window.CodeMirror.commands.jumpToLine === 'function'"
+    )
+    assert has_jump_command, (
+        "CM bundle is missing the jumpToLine command — the "
+        "vendored jump-to-line.min.js addon was dropped"
+    )
+
+
+def test_preview_modal_search_command_is_available(
+        page, flask_server, tmp_path, monkeypatch):
+    """The search addon registers the ``find`` command (Ctrl-F by
+    default).  Pin its existence so the vendored bundle keeps the
+    addon."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    proj = tmp_path / "myproj"
+    proj.mkdir()
+    target = proj / "any.txt"
+    target.write_text("hello\nworld\n")
+
+    _setup(page, flask_server, str(target))
+    page.wait_for_function(
+        "() => document.getElementById('ps-preview-modal')"
+        "         .__molbuilder_test_cm.getValue().length > 0",
+        timeout=5000,
+    )
+
+    has_find_command = page.evaluate(
+        "() => typeof window.CodeMirror.commands.find === 'function'"
+    )
+    assert has_find_command, (
+        "CM bundle is missing the find command — search.min.js "
+        "addon was dropped from the vendor"
     )
 
 
@@ -270,8 +423,13 @@ def test_preview_modal_close_prompts_when_dirty(
     target.write_text("hello\n")
 
     _setup(page, flask_server, str(target))
+    page.wait_for_function(
+        "() => document.getElementById('ps-preview-modal')"
+        "         .__molbuilder_test_cm.getValue().length > 0",
+        timeout=5000,
+    )
     page.locator("#ps-preview-edit-btn").click()
-    page.locator("#ps-preview-edit").fill("unsaved edit\n")
+    _cm_set_value(page, "unsaved edit\n")
     page.wait_for_function(
         "() => !document.getElementById('ps-preview-save-btn').disabled"
     )
