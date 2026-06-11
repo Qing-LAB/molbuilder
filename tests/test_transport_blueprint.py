@@ -25,6 +25,32 @@ class TestTransportSchemaEndpoint:
         assert body["ok"] is True
         assert "schema" in body
 
+    def test_every_field_carries_engine_key_metadata(self):
+        """Per the 2026-05-26 decision (web-api.md § 4.7) + the
+        2026-06-10 post-ship review: every form field MUST declare
+        an ``engine_key`` in its metadata so users see exactly
+        which keyword the field writes into the generated script.
+        SiestaConfig, PySCFConfig, and SpectraConfig already pin
+        this; TransportConfig was the post-review gap.
+
+        Pin so a future field addition that forgets ``engine_key``
+        surfaces at test time instead of as a silent UX hole.
+        """
+        from dataclasses import fields
+        from molbuilder.config.transport import TransportConfig
+        missing = [
+            f.name for f in fields(TransportConfig)
+            if "engine_key" not in f.metadata
+        ]
+        assert not missing, (
+            f"TransportConfig fields missing engine_key metadata: "
+            f"{missing}.  Add engine_key to the field declaration "
+            f"in molbuilder/config/transport.py — see the existing "
+            f"fields for the convention "
+            f"('(molbuilder: ...)' for selector/path fields, "
+            f"the actual engine keyword string otherwise)."
+        )
+
     def test_schema_carries_TransportConfig_sections(self, web):
         """Section order MUST come from
         ``TransportConfig._form_section_order`` so the workflow-

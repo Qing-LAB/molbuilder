@@ -152,6 +152,7 @@ class TransportConfig:
         # Both backends will register as TransportEngine via
         # :mod:`molbuilder.transport` in Phase B.3.
         "choices": ("transiesta", "pyscf-negf"),
+        "engine_key": '(molbuilder: backend selector)',
         "help":    "NEGF transport engine.  TranSIESTA: larger systems "
                    "with pseudopotentials, GGA/LDA only.  PySCF-NEGF: "
                    "smaller systems, all-electron with hybrid XC.",
@@ -161,6 +162,7 @@ class TransportConfig:
         "label":     "Job name",
         "id_suffix": "job-name",
         "pattern":   r"^[A-Za-z0-9_\-]+$",
+        "engine_key": '(transiesta) SystemLabel / (molbuilder) filename basename',
         "help":      "filesystem-safe basename for emitted files "
                      "(transport.py + transport.json + transmission.dat).  "
                      "Same rule as SIESTA SystemLabel / PySCF job_name "
@@ -173,6 +175,7 @@ class TransportConfig:
     structure_xyz_path: str = field(default="", metadata={
         "section": "Geometry",
         "label":   "Relaxed structure (XYZ)",
+        "engine_key": '(molbuilder: input file path)',
         "help":    "path to the relaxed-geometry XYZ from /modify.  "
                    "Atom ordering must match the indices stored in "
                    "the .molstruct.json sidecar (the transport "
@@ -181,6 +184,7 @@ class TransportConfig:
     molstruct_json_path: str = field(default="", metadata={
         "section": "Geometry",
         "label":   "Region-label sidecar (.molstruct.json)",
+        "engine_key": '(molbuilder: sidecar path)',
         "help":    "path to the sidecar carrying L-electrode / "
                    "R-electrode / bridge labels.  Generated in /modify "
                    "when the user marks regions; carries a hash of "
@@ -193,17 +197,21 @@ class TransportConfig:
                                           metadata={
         "section": "Electrodes",
         "label":   "Bias voltages (V)",
+        "engine_key": 'TS.Voltage  (transiesta — single value per .fdf today)',
         "help":    "comma-separated list of bias values V_L - V_R at "
                    "which to compute transmission.  Default [0.0] is "
                    "the zero-bias linear-response calculation (Landauer "
                    "conductance).  Each non-zero bias requires its own "
                    "NEGF density iteration so cost is roughly linear "
-                   "in the list length.",
+                   "in the list length.  |V| > 2 V surfaces a "
+                   "linear-response-regime WARN in preflight "
+                   "(di Ventra 2008).",
     })
     k_mesh_transverse: List[int] = field(default_factory=lambda: [1, 1, 1],
                                           metadata={
         "section": "Electrodes",
         "label":   "Transverse k-mesh",
+        "engine_key": '%block kgrid_Monkhorst_Pack  (transiesta)',
         "help":    "Monkhorst-Pack grid (Nx, Ny, Nz) summed over the "
                    "directions perpendicular to transport.  For a "
                    "finite molecule between leads use (1, 1, 1).  For "
@@ -217,6 +225,7 @@ class TransportConfig:
         "unit":    "K",
         "range":   (10.0, 2000.0),
         "tier":    "advanced",
+        "engine_key": 'ElectronicTemperature  (transiesta)',
         "help":    "Fermi-Dirac smearing on the lead occupations.  "
                    "Room-T (300 K) is the standard for experimentally-"
                    "comparable transmission curves; lower T sharpens "
@@ -231,6 +240,7 @@ class TransportConfig:
         "label":   "Energy window min",
         "unit":    "eV",
         "range":   (-10.0, 0.0),
+        "engine_key": 'TS.TBT.Emin  (transiesta)',
         "help":    "lower edge of the T(E) energy window.  Relative "
                    "to E_F when ``transmission_relative_to_ef`` is on "
                    "(the default).  ±2 eV is the standard window for "
@@ -243,6 +253,7 @@ class TransportConfig:
         "label":   "Energy window max",
         "unit":    "eV",
         "range":   (0.0, 10.0),
+        "engine_key": 'TS.TBT.Emax  (transiesta)',
         "help":    "upper edge of the T(E) energy window.  See "
                    "``transmission_emin_ev`` for sign conventions.",
     })
@@ -250,6 +261,7 @@ class TransportConfig:
         "section": "Transmission",
         "label":   "Energy grid points",
         "range":   (51, 4001),
+        "engine_key": 'TS.TBT.NumE  (transiesta)',
         "help":    "number of evenly-spaced energies at which T(E) is "
                    "computed.  Resolution = (emax - emin) / (N - 1); "
                    "default 401 over a 4 eV window = 10 meV/point, "
@@ -260,6 +272,7 @@ class TransportConfig:
     transmission_relative_to_ef: bool = field(default=True, metadata={
         "section": "Transmission",
         "label":   "Energy is relative to E_F",
+        "engine_key": 'TS.TBT.Erange.RelToEF  (transiesta)',
         "help":    "if on (default), energies are written as E - E_F; "
                    "off writes absolute energies (Hartree-tree, eV).  "
                    "Relative is the clean way to compare junctions "
@@ -273,6 +286,7 @@ class TransportConfig:
         "label":   "Contour points (imaginary axis)",
         "range":   (8, 128),
         "tier":    "advanced",
+        "engine_key": 'TS.ComplexContour.NumCircle  (transiesta)',
         "help":    "number of Gauss-Legendre nodes on the imaginary-"
                    "axis semicircle that integrates the NEGF density "
                    "matrix below E_F.  Standard prescription "
@@ -286,10 +300,14 @@ class TransportConfig:
         "label":   "Contour points (real axis)",
         "range":   (4, 64),
         "tier":    "advanced",
+        "engine_key": 'TS.ComplexContour.NumLine  (transiesta)',
         "help":    "number of energy points on the real-axis bias-"
                    "window segment of the NEGF contour.  Only "
                    "relevant at non-zero bias; at V = 0 this segment "
-                   "vanishes and the count is ignored.",
+                   "vanishes and the count is ignored.  Empirically "
+                   "stable at 8 for bias windows ≤ 1 V; scale "
+                   "proportionally for larger biases (Stokbro 2003 "
+                   "Table I uses 10-12 for 1-2 V).",
     })
     contour_e_bottom_ev: float = field(default=-40.0, metadata={
         "section": "NEGF",
@@ -297,6 +315,7 @@ class TransportConfig:
         "unit":    "eV",
         "range":   (-100.0, -10.0),
         "tier":    "advanced",
+        "engine_key": 'TS.ComplexContour.Emin  (transiesta)',
         # Help-text rewrite 2026-06-10 post-review: the prior
         # "Au 5d ~-7 eV is well above this" was confusing because
         # -7 is numerically greater than -40 but in transport
@@ -325,6 +344,7 @@ class TransportConfig:
         "section": "NEGF",
         "label":   "PySCF: XC functional",
         "tier":    "advanced",
+        "engine_key": 'mf.xc = ...  (pyscf-negf)',
         "help":    "(engine=pyscf-negf only) XC functional name "
                    "(libxc string).  Use the SAME functional as the "
                    "geometry relaxation -- transmission is sensitive "
@@ -335,6 +355,7 @@ class TransportConfig:
         "section": "NEGF",
         "label":   "PySCF: basis set",
         "tier":    "advanced",
+        "engine_key": 'gto.M(basis=...)  (pyscf-negf)',
         "help":    "(engine=pyscf-negf only) Gaussian basis set.  "
                    "def2-SVP is the production minimum; def2-TZVP "
                    "is recommended when transmission features are "
@@ -350,6 +371,7 @@ class TransportConfig:
         "unit":    "Ry",
         "range":   (100, 1000),
         "tier":    "advanced",
+        "engine_key": 'MeshCutoff  (transiesta)',
         # Default tightened from 200 -> 300 Ry on 2026-06-10 post-
         # review: transport calculations almost always involve a
         # transition-metal electrode (Au, Pt, Pd), and the Au 5d
@@ -373,6 +395,7 @@ class TransportConfig:
         "label":   "Memory budget",
         "unit":    "MB",
         "range":   (1000, 256000),
+        "engine_key": '(runner) ulimit -v / (pyscf) mol.max_memory',
         "help":    "soft memory ceiling for the engine.  PySCF "
                    "respects this via its own max_memory parameter; "
                    "SIESTA-MPI splits the budget across MPI ranks.",
@@ -381,6 +404,7 @@ class TransportConfig:
         "section": "Runtime",
         "label":   "CPU threads",
         "range":   (1, 256),
+        "engine_key": 'OMP_NUM_THREADS  (runner shell wrapper)',
         "help":    "OMP_NUM_THREADS for the engine process.  For "
                    "SIESTA-MPI use 1 here and provide MPI ranks via "
                    "the runwrap.py SIESTA-MPI branch (one thread per "
@@ -391,6 +415,7 @@ class TransportConfig:
         "section": "Runtime",
         "label":   "Log verbosity",
         "choices": ("warning", "info", "debug"),
+        "engine_key": '(transiesta) WriteVerbosity / (pyscf) mol.verbose',
         "help":    "engine log verbosity.  debug emits per-iteration "
                    "NEGF residuals + density-matrix norms; useful "
                    "when investigating convergence problems.",
