@@ -348,7 +348,10 @@ class TestConfigurationErrors:
             console.log(JSON.stringify({rejected, msg}));
         ''')
         assert out["rejected"] is True
-        assert "canvas" in out["msg"]
+        # Phase 10 (workspace-contract.md §1): renamed from
+        # "canvas" to "workspace" — the legacy structureCanvas
+        # store is no longer the save panel's dependency.
+        assert "workspace" in out["msg"]
 
     def test_save_rejects_when_projects_unconfigured(self):
         out = _run_node('''

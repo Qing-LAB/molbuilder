@@ -40,13 +40,24 @@
 
     var _projects      = null;
     var _structurePage = null;
-    var _canvas        = null;
+    // Phase 10 (workspace-contract.md §8): the canvas reference is
+    // now the unified ws.* surface, not the legacy structureCanvas
+    // store.  Same getter set (getLastSavedTo / getSource / isEmpty
+    // / getStructure / isDirty / subscribe) so the rest of this file
+    // is unchanged in shape.  Old ``canvas`` opt is still accepted
+    // by configure() for test contexts that pass a fake — the test
+    // fake just needs the ws.* method names.
+    var _workspace     = null;
 
     function configure(opts) {
         opts = opts || {};
         if (opts.projects)      _projects      = opts.projects;
         if (opts.structurePage) _structurePage = opts.structurePage;
-        if (opts.canvas)        _canvas        = opts.canvas;
+        // Accept either ``workspace`` (canonical, Phase 10+) or
+        // ``canvas`` (legacy alias kept for tests still passing the
+        // old fake).  Both name the same object.
+        if (opts.workspace)     _workspace     = opts.workspace;
+        else if (opts.canvas)   _workspace     = opts.canvas;
     }
 
     /**
@@ -63,8 +74,8 @@
             _projects      = root.molbuilder.projects;
         if (!_structurePage && root.molbuilder.structurePage)
             _structurePage = root.molbuilder.structurePage;
-        if (!_canvas        && root.molbuilder.structureCanvas)
-            _canvas        = root.molbuilder.structureCanvas;
+        if (!_workspace     && root.molbuilder.workspace)
+            _workspace     = root.molbuilder.workspace;
     }
 
     /**
@@ -75,19 +86,19 @@
      */
     function targetPath() {
         _lazyResolve();
-        if (!_canvas) return null;
-        var lastSaved = _canvas.getLastSavedTo();
+        if (!_workspace) return null;
+        var lastSaved = _workspace.getLastSavedTo();
         if (lastSaved) return lastSaved;
-        var src = _canvas.getSource();
+        var src = _workspace.getSource();
         if (src && src.kind === "file" && src.file) return src.file;
         return null;
     }
 
     function save() {
         _lazyResolve();
-        if (!_canvas) {
+        if (!_workspace) {
             return Promise.reject(new Error(
-                "save: canvas not configured"));
+                "save: workspace not configured"));
         }
         if (!_projects
             || typeof _projects.writeFile !== "function") {
@@ -98,7 +109,7 @@
             return Promise.reject(new Error(
                 "save: structurePage not configured"));
         }
-        if (_canvas.isEmpty()) {
+        if (_workspace.isEmpty()) {
             return Promise.resolve({
                 ok: false, error: "No structure to save." });
         }
@@ -111,7 +122,7 @@
                      + "yet — Save as… will be available soon.",
             });
         }
-        var struct = _canvas.getStructure();
+        var struct = _workspace.getStructure();
         // overwrite:true — the user explicitly asked to Save to
         // this path; the default 409-on-existing would be wrong UX
         // (Save to source IS overwriting the source).
@@ -161,13 +172,13 @@
         function refreshState() {
             _lazyResolve();
             var path = targetPath();
-            var dirty = _canvas && _canvas.isDirty();
-            button.disabled = !_canvas || !path || _canvas.isEmpty();
+            var dirty = _workspace && _workspace.isDirty();
+            button.disabled = !_workspace || !path || _workspace.isEmpty();
             if (readout) {
                 if (path) {
                     readout.textContent = (dirty ? "Unsaved — " : "")
                                         + "Target: " + _basename(path);
-                } else if (_canvas && !_canvas.isEmpty()) {
+                } else if (_workspace && !_workspace.isEmpty()) {
                     readout.textContent = "No source file (Save as… later).";
                 } else {
                     readout.textContent = "";
@@ -181,12 +192,16 @@
                 + (kind === "error" ? " is-error" : "");
         }
 
-        // Initial paint + live updates from the canvas.
+        // Initial paint + live updates from the workspace.
+        // workspace-contract.md §2.1: ``ws.subscribe(fn)`` fires once
+        // on subscribe AND on every notify() tick — same contract
+        // the old ``canvas.onChange`` had.  No additional initial-
+        // paint call is needed (subscribe fires synchronously).
         refreshState();
-        if (_canvas && typeof _canvas.onChange === "function") {
+        if (_workspace && typeof _workspace.subscribe === "function") {
             // Replace any prior subscription on re-wire.
             if (typeof _unsubCanvas === "function") _unsubCanvas();
-            _unsubCanvas = _canvas.onChange(function () {
+            _unsubCanvas = _workspace.subscribe(function () {
                 refreshState();
             });
         }
@@ -232,7 +247,12 @@
         configure({
             projects:      root.molbuilder.projects,
             structurePage: root.molbuilder.structurePage,
-            canvas:        root.molbuilder.structureCanvas,
+            // workspace-contract.md §1: the dispatcher is the unified
+            // surface; this module no longer reads structureCanvas
+            // directly.  Lazy-resolve in ``_lazyResolve`` also picks
+            // up window.molbuilder.workspace at call time so a late-
+            // arriving dispatcher mount still works.
+            workspace:     root.molbuilder.workspace,
         });
         if (root.document) {
             if (root.document.readyState === "loading") {

@@ -195,6 +195,22 @@
     }
 
     /**
+     * Last-saved-to accessor (workspace-contract.md §1.2 +
+     * structure-save migration target).  Returns the disk path the
+     * workspace was last successfully saved to this session, or
+     * ``null`` if it hasn't been saved yet.
+     *
+     * Used by ``structure-save.targetPath()`` and the modify-tab's
+     * Send-to-Optimization gate, which previously read
+     * ``structureCanvas.getLastSavedTo()`` directly.
+     */
+    function getLastSavedTo() {
+        var cs = _canvas();
+        return (cs && typeof cs.getLastSavedTo === "function")
+            ? (cs.getLastSavedTo() || null) : null;
+    }
+
+    /**
      * Composite snapshot — every read at one entry point.  Defensive
      * copies via the inner getters; mutating the returned object does
      * not leak into the underlying stores.
@@ -823,6 +839,7 @@
         getStructure:          getStructure,
         getSource:             getSource,
         getSourceFile:         getSourceFile,
+        getLastSavedTo:        getLastSavedTo,
         getSelection:          getSelection,
         getAtoms:              getAtoms,
         isDirty:               isDirty,
