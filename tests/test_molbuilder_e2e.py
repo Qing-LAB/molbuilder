@@ -1667,6 +1667,58 @@ def test_panel_assign_target_new_option_reveals_label_input(
     assert new_input.is_visible()
 
 
+def test_panel_assign_gated_when_workspace_dirty(
+        page, flask_server, water_xyz_file):
+    """Regression for the 2026-06-09 user-reported BLOCKER:
+    after a modifier op (electrode add) the workspace has more
+    atoms in memory than the disk file.  Clicking Assign with
+    out-of-range indices used to either be rejected by the server
+    (confusing error) OR succeed and trigger ``writeLabel``'s
+    atom-refetch, which silently rolled the workspace back to
+    the stale disk atoms.
+
+    Fix: gate the Assign / Add-to / Remove-from buttons on
+    ``ws.isDirty()``.  When dirty, the buttons are disabled and
+    clicking surfaces a user-facing error explaining the Save-
+    first workflow.  Once the user Saves, the buttons re-enable
+    and the gate-error clears.
+    """
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    _wait_panel_ready(page)
+    # Trigger a modifier op so the workspace is dirty.
+    _open_op_tab(page, "junction")
+    for input_id, val in [("elc-m", "2"), ("elc-n", "2"), ("elc-layers", "1")]:
+        page.evaluate(
+            "(args) => {"
+            "  const el = document.getElementById(args.id);"
+            "  el.value = args.val;"
+            "  el.dispatchEvent(new Event('input', {bubbles: true}));"
+            "}",
+            {"id": input_id, "val": val},
+        )
+    page.locator("#elc-apply").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 11"
+    )
+    # Switch back to the selection panel (it's a sibling tab pane).
+    # Confirm: workspace.isDirty() is true.
+    assert page.evaluate(
+        "() => !!window.molbuilder.workspace.isDirty()"
+    ), "electrode op should have flipped dirty bit"
+    # Select an electrode atom + confirm the label button is disabled.
+    _set_selection(page, [5])
+    assign_btn = page.locator("#selection-assign-btn")
+    assert assign_btn.is_disabled(), (
+        "Assign button must disable when workspace is dirty so "
+        "the user doesn't accidentally roll back the workspace via "
+        "writeLabel's post-write atom refetch"
+    )
+    # The Add-to-target + Remove-from-target buttons must also disable.
+    assert page.locator("#selection-add-btn").is_disabled()
+    assert page.locator("#selection-remove-btn").is_disabled()
+
+
 def test_panel_assign_writes_label_to_atoms(
         page, flask_server, water_xyz_file):
     """End-to-end Assign flow: pick atoms via the store, pick a
