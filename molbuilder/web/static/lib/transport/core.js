@@ -56,6 +56,10 @@
                 formSchema.renderForm(formContainer, schema);
                 _restoreFormValues(formContainer, schema, formSchema);
                 _wirePersistence(formContainer, schema, formSchema);
+                // Phase B.3 step 2: cache the schema for the
+                // Generate handler so it doesn't have to re-fetch
+                // on every click.
+                _cachedSchema = schema;
                 _setStatus("Form loaded ("
                     + schema.sections.reduce(function (n, s) {
                         return n + (s.fields ? s.fields.length : 0);
@@ -139,15 +143,25 @@
         container.addEventListener("change", persist);
     }
 
+    // Current structure file (committed via sidebar dblclick).
+    // Drives the Generate button's enable state and the
+    // ``structure_path`` field on the /api/transport/render POST.
+    var _currentStructureFile = "";
+
+    function _refreshGenerateButton() {
+        var btn = _$("transport-generate-btn");
+        if (!btn) return;
+        btn.disabled = !_currentStructureFile;
+    }
+
     /**
      * Subscribe to the universal commit channel so a sidebar
      * dblclick on a structure file updates the visible "current
      * structure" context.  Single-click stays preview only.
      *
-     * Today the only effect is a status-line nudge naming the
-     * file; once the engine backends land, this is where the
-     * Geometry section's structure_xyz_path + molstruct_json_path
-     * fields will be auto-populated.
+     * Phase B.3 step 2 (2026-06-10): committing a structure also
+     * enables the Generate button so the user can render the
+     * transiesta device .fdf.
      */
     function _wireCommitChannel() {
         var runtime = root.molbuilder && root.molbuilder.runtime;
@@ -158,22 +172,174 @@
             // fall back to ``onChange``.  ``onChange`` fires on EVERY
             // sidebar click + fires-on-subscribe — using it as a
             // fallback would clobber the status line on every preview
-            // click and (once engines wire in) re-build the geometry
-            // on every browse-click.  Build + Spectra tolerate the
-            // fallback because they have form-dirty + warning-modal
-            // gates upstream; Transport has neither.
+            // click and re-build the geometry on every browse-click.
+            // Build + Spectra tolerate the fallback because they have
+            // form-dirty + warning-modal gates upstream; Transport
+            // has neither.
             if (typeof proj.onCommit !== "function") return;
             proj.onCommit(function (sel) {
                 var f = (sel && sel.file) ? String(sel.file) : "";
                 if (!f) return;
                 var lc = f.toLowerCase();
                 if (!lc.endsWith(".xyz") && !lc.endsWith(".pdb")) return;
+                _currentStructureFile = f;
+                _refreshGenerateButton();
                 var name = f.split("/").pop();
-                _setStatus("Picked structure: " + name
-                    + " (Generate stays disabled until engines land).");
+                _setStatus("Structure: " + name
+                    + " — Generate enabled.");
             });
         });
     }
+
+    // ---------- Generate handler (Phase B.3 step 2) ---------- //
+
+    /**
+     * Render the issues list returned by /api/transport/render.
+     * Severity-colored bullets matching the SIESTA + spectra
+     * panels.  textContent on every node so unsanitised server
+     * strings don't leak as HTML (XSS guard).
+     */
+    function _renderIssues(issues) {
+        var panel = _$("transport-issues");
+        var list  = _$("transport-issues-list");
+        if (!panel || !list) return;
+        while (list.firstChild) list.removeChild(list.firstChild);
+        if (!issues || !issues.length) {
+            panel.hidden = true;
+            return;
+        }
+        for (var i = 0; i < issues.length; i++) {
+            var issue = issues[i];
+            var li = document.createElement("li");
+            li.className = "issue-" + (issue.severity || "info");
+            var tag = document.createElement("strong");
+            tag.textContent = (issue.severity || "info").toUpperCase();
+            li.appendChild(tag);
+            li.appendChild(document.createTextNode(" — "));
+            var msg = document.createElement("span");
+            msg.textContent = issue.message || "";
+            li.appendChild(msg);
+            if (issue.where) {
+                var where = document.createElement("code");
+                where.style.marginLeft = "0.6em";
+                where.style.fontSize   = "0.85em";
+                where.textContent = "[" + issue.where + "]";
+                li.appendChild(where);
+            }
+            list.appendChild(li);
+        }
+        panel.hidden = false;
+    }
+
+    /**
+     * Show the generated script in a <pre> with copy + download
+     * affordances.  Single-file preview today (transiesta is
+     * one .fdf per click); multi-file output (electrode wizard,
+     * bias-scan driver) will need a different layout.
+     */
+    function _showScriptPreview(filename, scriptText) {
+        var details = _$("transport-script-preview");
+        var name    = _$("transport-script-filename");
+        var body    = _$("transport-script-body");
+        var dl      = _$("transport-download-link");
+        if (!details || !name || !body || !dl) return;
+        name.textContent = filename;
+        body.textContent = scriptText;
+        var blob = new Blob([scriptText], { type: "text/plain" });
+        var url  = URL.createObjectURL(blob);
+        // Revoke any previous URL we created for the download link.
+        if (dl.dataset.objectUrl) {
+            try { URL.revokeObjectURL(dl.dataset.objectUrl); }
+            catch (_) {}
+        }
+        dl.href = url;
+        dl.download = filename;
+        dl.dataset.objectUrl = url;
+        details.hidden = false;
+        details.open = true;
+    }
+
+    function _wireCopyButton() {
+        var btn = _$("transport-copy-btn");
+        if (!btn) return;
+        btn.addEventListener("click", function () {
+            var body = _$("transport-script-body");
+            if (!body) return;
+            var text = body.textContent;
+            if (!text) return;
+            if (root.navigator && root.navigator.clipboard
+                && root.navigator.clipboard.writeText) {
+                root.navigator.clipboard.writeText(text)
+                    .then(function () { _setStatus("Copied to clipboard."); })
+                    .catch(function () {
+                        _setStatus("Copy failed — select the text manually.");
+                    });
+            } else {
+                _setStatus("Clipboard API unavailable; "
+                           + "select the text manually.");
+            }
+        });
+    }
+
+    function _wireGenerateButton(formContainer) {
+        var btn = _$("transport-generate-btn");
+        if (!btn) return;
+        btn.addEventListener("click", function () {
+            if (!_currentStructureFile) return;
+            var fs = root.molbuilder && root.molbuilder.formSchema;
+            if (!fs || typeof fs.collectForm !== "function") return;
+            var schema = root.__transport_schema_for_test
+                || _cachedSchema;
+            if (!schema) return;
+            var params;
+            try { params = fs.collectForm(formContainer, schema); }
+            catch (e) {
+                _setStatus("Form has invalid values — fix them and retry.");
+                return;
+            }
+            btn.disabled = true;
+            _setStatus("Generating…");
+            root.fetch("/api/transport/render", {
+                method:  "POST",
+                headers: { "Content-Type": "application/json" },
+                body:    JSON.stringify({
+                    params:         params,
+                    structure_path: _currentStructureFile,
+                }),
+            })
+                .then(function (r) {
+                    return r.json().then(function (body) {
+                        return { status: r.status, body: body };
+                    });
+                })
+                .then(function (resp) {
+                    var b = resp.body;
+                    _renderIssues(b && b.issues);
+                    if (!b || !b.ok) {
+                        _setStatus(b && b.error
+                            ? b.error
+                            : "Generate failed (HTTP " + resp.status + ").");
+                        // Re-enable if the structure is still loaded;
+                        // the user can fix params + retry.
+                        _refreshGenerateButton();
+                        return;
+                    }
+                    _showScriptPreview(b.filename, b.script);
+                    _setStatus("Generated " + b.filename + ".");
+                    _refreshGenerateButton();
+                })
+                .catch(function (e) {
+                    _setStatus("Network error: "
+                        + (e && e.message ? e.message : String(e)));
+                    _refreshGenerateButton();
+                });
+        });
+    }
+
+    // Cache the schema so the Generate handler doesn't have to
+    // re-fetch on every click; populated by _fetchAndRender on
+    // first load.
+    var _cachedSchema = null;
 
     function _init() {
         var formContainer = _$("transport-form-container");
@@ -191,6 +357,9 @@
         }
         _fetchAndRender(formContainer, formSchema);
         _wireCommitChannel();
+        _wireGenerateButton(formContainer);
+        _wireCopyButton();
+        _refreshGenerateButton();
     }
 
     if (root.document) {

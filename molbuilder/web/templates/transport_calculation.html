@@ -61,16 +61,42 @@
          style="display: flex; align-items: center; gap: 1rem;
                 margin-top: 1.5rem;">
       <button id="transport-generate-btn" class="full-btn" disabled
-              title="Engine implementations land in a follow-up phase; until then this button is disabled by design.">
+              title="Generate the device .fdf.  Disabled until a structure file is committed via the Projects sidebar (double-click on a .xyz / .pdb).">
         Generate transport script
       </button>
-      <span id="transport-generate-hint" class="muted">
-        Engine backends (TranSIESTA, PySCF-NEGF) are not yet wired;
-        Generate is disabled until they land.  Form values still
-        round-trip through the dataclass and persist across page
-        reloads — useful for prototyping configurations now.
-      </span>
+      <span id="transport-generate-status" class="muted"
+            role="status" aria-live="polite"></span>
     </div>
+
+    {#- Issues panel — preflight results + script-render warnings.
+        Populated by transport/core.js after a successful POST to
+        /api/transport/render.  Hidden until first generate. -#}
+    <div id="transport-issues" class="issues-panel" hidden
+         role="region" aria-label="Transport preflight issues">
+      <ul id="transport-issues-list"></ul>
+    </div>
+
+    {#- Generated script preview + download.  Shown after Generate
+        succeeds; the user can copy the .fdf text or download as a
+        file to drop into their run directory next to the electrode
+        .TSHS files. -#}
+    <details id="transport-script-preview" class="script-preview-card"
+             hidden>
+      <summary>Generated script (<code id="transport-script-filename"></code>)</summary>
+      <div class="script-preview-actions"
+           style="display: flex; gap: 0.6rem; margin: 0.6rem 0;">
+        <button id="transport-copy-btn" type="button">Copy</button>
+        <a id="transport-download-link" download
+           class="btn-like" role="button"
+           style="text-decoration: none;">Download</a>
+      </div>
+      <pre id="transport-script-body"
+           style="max-height: 400px; overflow: auto;
+                  background: var(--bg-code, #0e0e0e);
+                  padding: 0.75rem; font-size: 0.85rem;
+                  font-family: ui-monospace, monospace;
+                  border-radius: 4px;"></pre>
+    </details>
   </section>
 </main>
 
