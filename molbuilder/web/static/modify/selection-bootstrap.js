@@ -329,8 +329,23 @@
             // loadStructureText) is identical in shape to what
             // /api/selection/atoms would return, so the disk refetch
             // was pure overhead.
+            //
+            // 2026-06-11: MUST await — adoptSession returns a Promise
+            // that resolves once the store's atoms + selection are
+            // installed.  Without await, _commitFile returns while
+            // the store still holds the PREVIOUS file's state.  If
+            // the user clicks "assign label" before the Promise
+            // resolves, stale indices from the prior structure go
+            // to the server.  The user saw this as the
+            // "selector keeps tracking the old file" symptom.
+            //
+            // The setSourceFile fallback below is also async; same
+            // reasoning applies.  Both promises swallow internal
+            // errors silently (per _run() in store.js), so awaiting
+            // them just sequences atom-install completion against
+            // _commitFile's return.
             if (typeof store.adoptSession === "function") {
-                store.adoptSession({
+                await store.adoptSession({
                     sourceFile: path,
                     selection:  [],
                     atoms:      (loaded && Array.isArray(loaded.atoms))
@@ -338,7 +353,7 @@
                                   : undefined,
                 });
             } else {
-                store.setSourceFile(path);  // legacy fallback
+                await store.setSourceFile(path);  // legacy fallback
             }
         }
         if (_loadBtn) {
