@@ -31,6 +31,10 @@ MODULE = ROOT / "molbuilder/web/static/lib/structure/page.js"
 # orchestrator pokes.  Kept inline in the bootstrap so each test
 # starts from a fresh state.
 _FAKES = r"""
+// Phase 10 (workspace-contract.md §1): fake the ws.* dispatcher,
+// not the legacy canvas-state.  Method names match the contract:
+// installStructure (was setStructure), subscribe (was onChange).
+// Helper preserved as _mkFakeCanvas for test-name continuity.
 function _mkFakeCanvas(initial) {
     initial = initial || {};
     let state = {
@@ -43,17 +47,20 @@ function _mkFakeCanvas(initial) {
     };
     const calls = [];
     return {
-        // Public surface page.js uses.
+        // Public surface page.js uses (ws.* names).
         isEmpty:        () => state.empty,
         isDirty:        () => state.dirty,
         getStructure:   () => state.structure,
         getSource:      () => state.source,
         getLastSavedTo: () => state.lastSaveTo,
-        setStructure: (s, src) => {
+        installStructure: (s, src) => {
             state.empty     = false;
             state.dirty     = false;
             state.structure = s;
             state.source    = src;
+            // Keep "setStructure" in the call log so existing
+            // test assertions reading calls[0].fn keep working
+            // through the rename window.
             calls.push({fn: "setStructure", structure: s, source: src});
         },
         markDirty: () => {
@@ -65,7 +72,7 @@ function _mkFakeCanvas(initial) {
             state.lastSaveTo = p;
             calls.push({fn: "markSaved", path: p});
         },
-        onChange: (cb) => {
+        subscribe: (cb) => {
             calls.push({fn: "onChange"});
             return () => {};
         },

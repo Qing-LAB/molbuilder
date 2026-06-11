@@ -382,6 +382,71 @@
         },
     };
 
+    // ─── Canvas write helpers (workspace-contract.md §3) ─────────── //
+    //
+    // These wrap the legacy canvas-state methods so consumers can
+    // stop reaching into ``window.molbuilder.structureCanvas`` for
+    // wholesale-replace writes.  Each delegates to canvas-state in
+    // the current implementation; once Phase 10 finishes the
+    // delegation becomes the dispatcher's internal write.
+
+    /**
+     * Install a freshly-loaded structure into the canvas WHOLESALE
+     * (text + source + dirty=false in one atomic write).  Used by
+     * the warning-modal gate (``structurePage.loadIntoCanvas``) to
+     * actually perform the swap once the user has confirmed.
+     *
+     * ``structure`` shape per workspace-contract.md §1.2:
+     *   {source_format: "xyz"|"pdb", text: string}
+     * ``source`` shape:
+     *   {kind: string, file: string|null, generator_input: object|null}
+     *
+     * Today this delegates to ``canvas.setStructure(structure, source)``.
+     * Atoms are NOT installed here — the warning-modal gate path is
+     * text+source only; the post-modal load follow-up (sidebar
+     * commitFile → adoptSession; generator → ws.loadFromText) is
+     * what brings atoms in.  Once Phase 10 collapses the canvas
+     * store into the dispatcher, this method becomes the sync
+     * point.
+     */
+    function installStructure(structure, source) {
+        var cs = _canvas();
+        if (!cs) throw _missing("canvas store");
+        if (typeof cs.setStructure !== "function") {
+            throw _missing("canvas.setStructure");
+        }
+        return cs.setStructure(structure, source);
+    }
+
+    /**
+     * Mark the workspace dirty.  Modifier panels call this after a
+     * successful op so a subsequent Load / Generate triggers the
+     * warning-modal gate.  Idempotent: re-marking dirty is a no-op
+     * if already dirty.
+     */
+    function markDirty() {
+        var cs = _canvas();
+        if (!cs) throw _missing("canvas store");
+        if (typeof cs.markDirty !== "function") {
+            throw _missing("canvas.markDirty");
+        }
+        return cs.markDirty();
+    }
+
+    /**
+     * Record a successful save: clears dirty + sets
+     * last_save_to=path.  ``save.js`` calls this after a successful
+     * project write.
+     */
+    function markSaved(path) {
+        var cs = _canvas();
+        if (!cs) throw _missing("canvas store");
+        if (typeof cs.markSaved !== "function") {
+            throw _missing("canvas.markSaved");
+        }
+        return cs.markSaved(path);
+    }
+
     // ─── View sub-namespace: passthrough to the 3Dmol embed ──────── //
 
     var view = {
@@ -844,6 +909,9 @@
         getAtoms:              getAtoms,
         isDirty:               isDirty,
         isEmpty:               isEmpty,
+        installStructure:      installStructure,
+        markDirty:             markDirty,
+        markSaved:             markSaved,
         loadFromFile:          loadFromFile,
         loadFromText:          loadFromText,
         generate:              generate,

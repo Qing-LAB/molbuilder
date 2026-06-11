@@ -58,20 +58,28 @@
 (function (root) {
     "use strict";
 
-    var _canvas = null;
-    var _modal  = null;
+    // Phase 10 (workspace-contract.md §3): the orchestrator now
+    // binds against the unified ws.* surface, not the legacy
+    // structureCanvas store.  Public methods unchanged so existing
+    // consumers see no API drift; internals use ws.installStructure
+    // / ws.markDirty / ws.markSaved / ws.isEmpty / ws.isDirty /
+    // ws.getStructure / ws.getSource / ws.getLastSavedTo / ws.subscribe.
+    var _workspace = null;
+    var _modal     = null;
 
-    function _bind(canvasApi, modalApi) {
-        if (!canvasApi || typeof canvasApi.setStructure !== "function") {
+    function _bind(workspaceApi, modalApi) {
+        if (!workspaceApi
+                || typeof workspaceApi.installStructure !== "function") {
             throw new Error(
-                "structure-page: canvas-state API missing");
+                "structure-page: ws.* API missing (installStructure)");
         }
-        if (!modalApi || typeof modalApi.confirmDiscardUnsaved !== "function") {
+        if (!modalApi
+                || typeof modalApi.confirmDiscardUnsaved !== "function") {
             throw new Error(
                 "structure-page: warning-modal API missing");
         }
-        _canvas = canvasApi;
-        _modal  = modalApi;
+        _workspace = workspaceApi;
+        _modal     = modalApi;
     }
 
     /**
@@ -81,20 +89,20 @@
      * @returns {Promise<{ok: bool, cancelled?: bool}>}
      */
     function loadIntoCanvas(structure, source) {
-        if (!_canvas || !_modal) {
+        if (!_workspace || !_modal) {
             return Promise.reject(new Error(
                 "structure-page: not bound — call _bind() first"));
         }
         // Empty canvas — set directly; no warning.
-        if (_canvas.isEmpty()) {
-            _canvas.setStructure(structure, source);
+        if (_workspace.isEmpty()) {
+            _workspace.installStructure(structure, source);
             return Promise.resolve({ ok: true });
         }
         // Clean canvas — set directly; no warning.  The user has
         // saved (or just loaded) the current canvas; overwriting it
         // does not lose modifications.
-        if (!_canvas.isDirty()) {
-            _canvas.setStructure(structure, source);
+        if (!_workspace.isDirty()) {
+            _workspace.installStructure(structure, source);
             return Promise.resolve({ ok: true });
         }
         // Dirty canvas — ask before overwriting.
@@ -102,43 +110,43 @@
             if (!proceed) {
                 return { ok: false, cancelled: true };
             }
-            _canvas.setStructure(structure, source);
+            _workspace.installStructure(structure, source);
             return { ok: true };
         });
     }
 
     function markDirtyAfterModification() {
-        if (!_canvas) {
+        if (!_workspace) {
             throw new Error("structure-page: not bound");
         }
-        _canvas.markDirty();
+        _workspace.markDirty();
     }
 
     function markSavedTo(path) {
-        if (!_canvas) {
+        if (!_workspace) {
             throw new Error("structure-page: not bound");
         }
-        _canvas.markSaved(path);
+        _workspace.markSaved(path);
     }
 
     function getCanvasSnapshot() {
-        if (!_canvas) {
+        if (!_workspace) {
             throw new Error("structure-page: not bound");
         }
         return {
-            isEmpty:      _canvas.isEmpty(),
-            isDirty:      _canvas.isDirty(),
-            structure:    _canvas.getStructure(),
-            source:       _canvas.getSource(),
-            lastSaveTo:   _canvas.getLastSavedTo(),
+            isEmpty:      _workspace.isEmpty(),
+            isDirty:      _workspace.isDirty(),
+            structure:    _workspace.getStructure(),
+            source:       _workspace.getSource(),
+            lastSaveTo:   _workspace.getLastSavedTo(),
         };
     }
 
     function onCanvasChange(cb) {
-        if (!_canvas) {
+        if (!_workspace) {
             throw new Error("structure-page: not bound");
         }
-        return _canvas.onChange(cb);
+        return _workspace.subscribe(cb);
     }
 
     var api = {
@@ -155,14 +163,16 @@
     } else {
         root.molbuilder = root.molbuilder || {};
         root.molbuilder.structurePage = api;
-        // Auto-bind to the production canvas + modal modules when
-        // they're both present.  The page template loads
-        // canvas-state.js + warning-modal.js BEFORE page.js so both
-        // are mounted at this point; the bind is a single
-        // wiring step the template doesn't have to repeat.
-        if (root.molbuilder.structureCanvas
+        // Auto-bind to the production workspace dispatcher + modal
+        // when both are present.  Phase 10 (workspace-contract.md
+        // §1): the page template loads canvas-state.js +
+        // warning-modal.js + dispatcher.js (in that order) BEFORE
+        // page.js so all three are mounted at this point.  The
+        // dispatcher is what page.js binds against; canvas-state is
+        // now the dispatcher's internal implementation.
+        if (root.molbuilder.workspace
             && root.molbuilder.warningModal) {
-            _bind(root.molbuilder.structureCanvas,
+            _bind(root.molbuilder.workspace,
                   root.molbuilder.warningModal);
         }
         if (root.molbuilder.runtime
