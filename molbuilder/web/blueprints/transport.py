@@ -25,7 +25,6 @@ dispatches all engine-specific logic through the registry.
 
 from __future__ import annotations
 
-from dataclasses import fields as _dataclass_fields
 from typing import Any, Dict
 
 from flask import Blueprint, jsonify, request
