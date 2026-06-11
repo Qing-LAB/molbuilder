@@ -29,11 +29,54 @@
     </header>
 
     <p>
-      Generates TranSIESTA (NEGF) and PySCF-NEGF input scripts for
-      a relaxed device geometry.  Pick the relaxed structure in the
-      Projects sidebar (double-click to commit); the form below is
-      populated from <code>TransportConfig</code> via the schema
-      endpoint <code>/api/transport/schema</code>.
+      Generates TranSIESTA (NEGF) input scripts for a relaxed
+      device geometry.  Pick the relaxed structure in the Projects
+      sidebar (double-click to commit); the form below is populated
+      from <code>TransportConfig</code> via the schema endpoint
+      <code>/api/transport/schema</code>.
+      <strong>TranSIESTA zero-bias is shipped 2026-06-10;</strong>
+      PySCF-NEGF and several follow-ups (electrode wizard,
+      bias-scan driver, <code>/results</code> inspector) land in
+      subsequent commits — see <code>docs/roadmap.md</code> § 2.2.
+    </p>
+
+    <p class="hint" style="margin: 0 0 1.2rem;">
+      <strong>Today's runnable workflow (transiesta, zero-bias):</strong>
+    </p>
+    <ol class="hint" style="margin: 0 0 1.2rem 1.2em;">
+      <li>Pick a relaxed device <code>.xyz</code> in the sidebar
+          (double-click to commit).  A matching
+          <code>.molstruct.json</code> sidecar must carry the
+          <code>L-electrode</code> / <code>R-electrode</code> /
+          <code>bridge</code> region labels (assign them on the
+          Molbuilder tab).</li>
+      <li>Configure the form below.  Generate enables once the
+          structure is committed.</li>
+      <li>Click Generate.  The rendered <code>.fdf</code> appears
+          inline with Copy + Download.</li>
+      <li>Generate electrode <code>.TSHS</code> files separately
+          (manual today; "electrode wizard" planned).  Build the
+          lead geometry on the Molbuilder tab, emit a SIESTA
+          <code>.fdf</code> from
+          <a href="/structure-optimization">Optimization</a>,
+          add <code>TS.HSFileEnable = T</code>, run SIESTA, copy
+          the resulting <code>.TSHS</code> file into the device
+          run directory as
+          <code>&lt;jobname&gt;_L_electrode.TSHS</code> (and
+          similarly for the right electrode).</li>
+      <li>Run the device <code>.fdf</code> via the standard
+          <code>bash &lt;jobname&gt;.run.sh</code> wrapper
+          (generated alongside the <code>.fdf</code>; activates
+          the <code>molbuilder-siesta</code> conda env + launches
+          <code>mpirun siesta</code>).</li>
+    </ol>
+
+    <p class="hint" style="margin: 0 0 1.2rem;">
+      <strong>Multi-bias scan:</strong> set
+      <code>bias_voltages_v</code> to a list and the preflight
+      will warn that today's engine emits only the first value.
+      Multi-bias requires multiple <code>.fdf</code>s and a
+      driver script — planned as a follow-up.
     </p>
 
     <p class="hint" style="margin: 0 0 1.2rem;">
@@ -44,13 +87,14 @@
       <code>.molstruct.json</code> sidecar.  Set them once on
       <a href="/structure-optimization">Optimization</a> or
       <a href="/spectrum-calculation">Spectrum calculation</a>
-      (the Auto-detect button on either page surfaces the chemistry
-      rationale before you generate), commit the result, then load
-      the relaxed structure here.  When the TranSIESTA / PySCF-NEGF
-      engines land (Phase B.3), the form will also gain an
-      Auto-detect step that consumes the same
-      <code>ChemistryAnalysis</code> middle layer (see
-      <code>docs/protocols/scientific-validation.md</code> § 2.5).
+      (the Auto-detect button on either page surfaces the
+      chemistry rationale before you generate), commit the
+      result, then load the relaxed structure here.  Transport's
+      preflight reuses the same shared open-shell-metal check
+      from
+      <code>molbuilder.validation._check_open_shell_metal</code>
+      so a Fe-bearing device surfaces the warn in the issues
+      panel below.
     </p>
 
     <div id="transport-form-container" class="param-grid">

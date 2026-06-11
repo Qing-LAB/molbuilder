@@ -280,30 +280,89 @@ so they know exactly what to fix.
 Phase B.2 landed the engine abstraction
 (`molbuilder/transport/engine_base.py` Protocol + registry +
 `TransportResults` dataclass + `TransportConfig` field-metadata
-dataclass).  Phase B.3 implements the first concrete engines:
+dataclass).  Phase B.3 implements the first concrete engines.
+
+### 2.1 Status
 
 - **transiesta** — TranSIESTA from the SIESTA suite, NEGF +
   LDA/GGA pseudopotentials.  Handles realistic electrode + bridge
   sizes (≤ ~few hundred atoms in the device region).
+  **Status: ZERO-BIAS DEVICE `.fdf` SHIPPED 2026-06-10**
+  (commits 78547c4 + efb01cd).  See § 2.2 below for what's still
+  deferred.
 - **pyscf-negf** — PySCF + a custom NEGF self-energy driver,
   Gaussian-basis with hybrid functionals available.  Smaller
   systems (~ tens of atoms in the device region) but
-  higher-level XC.
+  higher-level XC.  **Status: planned.**  The registry pattern
+  proved on transiesta means this is mechanical to add — drop
+  `molbuilder/transport/pyscf_negf.py` mirroring transiesta's
+  shape, decorate with `@register_engine`, import in
+  `transport/__init__.py`.  Endpoint code stays unchanged.
 
-Both consume the SAME relaxed geometry + the SAME
+Both engines consume the SAME relaxed geometry + the SAME
 `.molstruct.json` sidecar (region labels assigned in the
-Molbuilder tab — see `molbuilder/parsers/molstruct_json.py`).  The two engines'
-`render_script` methods emit different inputs from the same
-TransportConfig + Structure pair.
+Molbuilder tab — see `molbuilder/parsers/molstruct_json.py`).
+The two engines' `render_script` methods emit different inputs
+from the same TransportConfig + Structure pair.
 
 Future: inelastica integration (electron-phonon-resolved
 transmission, IETS).  That's a SEPARATE engine that consumes a
 TransportConfig + the `.spectra.json` from the Spectra tab; not
 in scope for B.3.
 
-The Transport tab UI lands in Phase D of the tab reorganization
-(see `docs/tabs/architecture.md`) as a form skeleton with the
-Generate button disabled; B.3 enables it.
+### 2.2 What's deferred for transiesta (after the 2026-06-10 ship)
+
+Documented in-tree at
+`molbuilder/transport/transiesta.py` module docstring +
+memories `project_transport_electrode_bias_workflow.md` and
+`project_transport_results_tab_framework.md`:
+
+1. **Electrode `.fdf` generation.**  TranSIESTA needs separate
+   `.TSHS` Hamiltonian files per electrode.  Today users
+   generate them manually (build the lead geometry on
+   `/molbuilder`, emit a SIESTA `.fdf` from
+   `/structure-optimization` with `TS.HSFileEnable = T` added by
+   hand, run SIESTA, copy the resulting `.TSHS` files into the
+   device run dir).  Planned: "electrode wizard" that extracts
+   the `L-electrode` / `R-electrode` regions from the labeled
+   device structure + emits the matching SIESTA `.fdf`
+   automatically.
+2. **Bias-scan loop.**  `TransportConfig.bias_voltages_v` is a
+   `List[float]` but today's engine emits only the first value
+   (with a preflight WARN if `len > 1`).  Planned: for `len > 1`,
+   emit one `.fdf` per bias point + a driver shell script that
+   loops over them.
+3. **`parse_output` + the `<job>.transport.json` schema.**
+   `TransportEngine.parse_output` raises `NotImplementedError`
+   on transiesta today.  Needs a JSON schema designed first
+   (mirror of `.spectra.json`).
+4. **`/results` Transport inspector.**  No way to view the
+   transmission data in molbuilder today — users open the
+   `.TBT.AVTRANS_*` files in an external plotter.  Planned: new
+   `lib/inspectors/transport.js` + `_transport_inspector.html`
+   partial + Plotly T(E) chart + IV chart (when multi-bias
+   data lands).  Tracked in memory
+   `project_transport_results_tab_framework.md`.
+5. **Full Methods-paragraph generator.**  Today's
+   `methods_fragment` is a placeholder; full version lands with
+   `parse_output` so it can interpolate actual run parameters.
+
+### 2.3 Wire shape (post-2026-06-10)
+
+The web blueprint adds `POST /api/transport/render` dispatching
+via the registry:
+
+```text
+POST /api/transport/render
+body:   { params: {<TransportConfig field values>},
+          structure_path: "/abs/path/to/relaxed.xyz" }
+=>      { ok, engine, script, filename, issues, errors }
+```
+
+The Transport tab's Generate button reads the structure file
+from the sidebar commit channel, POSTs the rendered script back,
+and shows it inline with copy + download affordances + a
+preflight issues panel.
 
 ---
 
@@ -319,6 +378,10 @@ log when it shipped:
 - argparse → click conversion (Phase 5).
 - Embed module ship + 5 site migrations (Phase 5a–5g).
 - Transport engine abstraction (Phase B.2, 2026-06-05).
+- Transport B.3 step 1+2: transiesta engine (zero-bias) + web
+  blueprint render endpoint + Generate UI wiring (2026-06-10,
+  commits 78547c4 + efb01cd).  Deferred items tracked in § 2.2
+  above.
 - Makov-Payne charge-correction emit (2026-06-05).
 - Structure-inspector hand-off to /molbuilder (2026-06-05; route was /modify).
 - Animation/snapshot save-to-project fix + export modal (Phase
