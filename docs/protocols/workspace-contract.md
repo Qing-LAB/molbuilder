@@ -447,7 +447,13 @@ The following surfaces existed pre-Phase-10 but are now **deleted**:
 | `sessionStorage["modify-state"]` | `sessionStorage["molbuilder.workspace.v1"]` |
 | `sessionStorage["molbuilder.panelMode"]` | `sessionStorage["molbuilder.workspace.v1"].selection.mode` |
 
-A `grep -rn 'structureCanvas\|selection\.store\|window.molbuilder.modify.state' molbuilder/web/static/` from a non-`lib/workspace/` directory MUST return zero matches.  This is enforced by `tests/test_no_legacy_store_consumers.py`.
+A `grep -rn 'structureCanvas\|selection\.store\|window.molbuilder.modify.state' molbuilder/web/static/` from a non-`lib/workspace/` directory MUST return zero matches.  This is enforced by `tests/test_no_legacy_store_consumers.py` (shipped 2026-06-09 with Phase 10 Fix 4).
+
+**Implementation status (Phase 10, 2026-06-09):** the legacy modules `lib/structure/canvas-state.js`, `lib/selection/store.js` still exist as the dispatcher's internal implementation, but they are no longer consumed externally.  Migration paths:
+
+* Every consumer goes through `ws.*` — enforced by `tests/test_no_legacy_store_consumers.py`.
+* `window.molbuilder.structureCanvas` + `window.molbuilder.selection.store` remain mounted (the dispatcher delegates to them internally).  They are marked DEPRECATED in `lib/molbuilder-runtime.js`'s registry docstring.
+* Physical deletion of the legacy files is a follow-up cleanup PR — the dispatcher's internal delegation needs to absorb their bodies first.  Today's contract enforcement (no external consumers) is the architectural win; deletion is a refactor with no behavior change.
 
 ---
 
@@ -468,7 +474,7 @@ A `grep -rn 'structureCanvas\|selection\.store\|window.molbuilder.modify.state' 
 | §6 view sub-API | `tests/test_workspace_view_subapi_js.py` |
 | §7.1 wire shape | `tests/test_shared.py::TestWorkspacePayload` |
 | §7.3 selection_remap shape | `tests/test_modify.py::TestComputeSelectionRemap*` |
-| §8 zero legacy-store consumers | `tests/test_no_legacy_store_consumers.py` |
+| §8 zero legacy-store consumers | `tests/test_no_legacy_store_consumers.py` ✅ shipped 2026-06-09 |
 
 A new test ID appears in this column iff a new clause is added.  A clause without a pinning test ID is a contract gap.
 
