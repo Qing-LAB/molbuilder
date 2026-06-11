@@ -297,6 +297,10 @@ def _emit_transiesta_block(struct: Structure,
     return [
         "# --- TranSIESTA NEGF ---",
         "",
+        "# Both SolutionMethod and TS.SolutionMethod are required by",
+        "# the SIESTA parser: the generic SolutionMethod switches to",
+        "# the TranSIESTA module; the TS.* form is the engine-local",
+        "# confirmation.  Per TranSIESTA manual.",
         "SolutionMethod         transiesta",
         "TS.SolutionMethod      transiesta",
         "",
@@ -420,6 +424,87 @@ class TransiestaEngine:
                 ),
                 where=f"struct.regions.{REGION_BRIDGE}",
             ))
+
+        # CRITICAL — atom ordering for TS.NumUsedAtomsLeft / Right.
+        #
+        # TranSIESTA reads ``TS.NumUsedAtomsLeft = N`` as "the FIRST
+        # N atoms in the AtomicCoordinatesAndAtomicSpecies block are
+        # the left electrode."  Same for Right (last M atoms).  If
+        # the user's input XYZ has atoms in any order other than
+        # [L-electrode][bridge][R-electrode], the .fdf SILENTLY
+        # misidentifies which atoms go into which electrode self-
+        # energy — producing chemically wrong transmission curves
+        # with no run-time error.
+        #
+        # Reference: Brandbyge et al., Phys. Rev. B 65, 165401
+        # (2002) § III; TranSIESTA manual ``TS.NumUsedAtomsLeft``
+        # description.
+        #
+        # Block emission with an error so the user re-exports a
+        # contiguous-ordered structure from the Molbuilder tab
+        # (a "reorder for transport" affordance is a planned
+        # follow-up).
+        left_idx   = sorted(regions.get(REGION_LEFT_ELECTRODE, []))
+        bridge_idx = sorted(regions.get(REGION_BRIDGE, []))
+        right_idx  = sorted(regions.get(REGION_RIGHT_ELECTRODE, []))
+        if left_idx and bridge_idx and right_idx:
+            ordering_ok = (
+                left_idx[-1]  < bridge_idx[0] and
+                bridge_idx[-1] < right_idx[0] and
+                # Each region must be contiguous (no gaps); a non-
+                # contiguous L-electrode would also break the
+                # "first N atoms" assumption.
+                left_idx   == list(range(left_idx[0],
+                                          left_idx[-1] + 1)) and
+                bridge_idx == list(range(bridge_idx[0],
+                                          bridge_idx[-1] + 1)) and
+                right_idx  == list(range(right_idx[0],
+                                          right_idx[-1] + 1))
+            )
+            if not ordering_ok:
+                issues.append(Issue(
+                    severity="error",
+                    message=(
+                        "TranSIESTA preflight: atoms must be ordered "
+                        "as [L-electrode][bridge][R-electrode] in the "
+                        "AtomicCoordinates block, with each region "
+                        "contiguous (no gaps).  TranSIESTA reads "
+                        "TS.NumUsedAtomsLeft as 'first N atoms = "
+                        "left electrode'; out-of-order labels "
+                        "produce SILENTLY WRONG transmission with "
+                        "no run-time error.  Got: "
+                        f"L-electrode={left_idx[0]}..{left_idx[-1]}, "
+                        f"bridge={bridge_idx[0]}..{bridge_idx[-1]}, "
+                        f"R-electrode={right_idx[0]}..{right_idx[-1]}.  "
+                        "Re-export the structure from the Molbuilder "
+                        "tab with atoms in contiguous L→bridge→R "
+                        "order before re-running."
+                    ),
+                    where="struct.regions",
+                ))
+
+        # High-bias INFO: Landauer linear-response regime breaks
+        # down above ~2 V for typical molecular junctions (di Ventra,
+        # Electrical Transport in Nanoscale Systems, 2008).  Surface
+        # so users interpret high-bias results as snapshots of a
+        # nonlinear I-V, NOT linearized conductance.
+        if cfg.bias_voltages_v:
+            max_v = max(abs(v) for v in cfg.bias_voltages_v)
+            if max_v > 2.0:
+                issues.append(Issue(
+                    severity="warn",
+                    message=(
+                        f"Bias voltage |V| = {max_v:.2f} V is above the "
+                        f"~2 V linear-response limit for typical "
+                        f"molecular junctions.  TranSIESTA will still "
+                        f"converge but the result should be interpreted "
+                        f"as a single point on a nonlinear I-V curve, "
+                        f"NOT a linearized Landauer conductance.  "
+                        f"Consult Reed et al. 2006 / di Ventra 2008 "
+                        f"for nonlinear-regime interpretation guidance."
+                    ),
+                    where="config.bias_voltages_v",
+                ))
 
         # Multi-bias warning (today's scope is zero-bias only).
         if len(cfg.bias_voltages_v) > 1:

@@ -280,6 +280,107 @@ def test_preflight_multi_bias_warns_deferred_scope(labeled_device):
     )
 
 
+def test_preflight_blocks_out_of_order_atoms(default_cfg):
+    """BLOCKER guard from the 2026-06-10 post-ship review:
+    TranSIESTA reads TS.NumUsedAtomsLeft = N as "the FIRST N atoms
+    in AtomicCoordinates are the left electrode."  If the user's
+    XYZ has atoms in any order other than [L][bridge][R], the .fdf
+    SILENTLY produces wrong physics — no run-time error.
+
+    Pin so a future refactor that drops the check resurrects the
+    silent-science risk.  Reference: Brandbyge 2002 § III.
+    """
+    # L-electrode at indices [0, 2], bridge at [1], R-electrode at
+    # [3, 4] — L atoms are not contiguous (gap at index 1) and
+    # bridge atom 1 sits IN THE MIDDLE of the L-electrode range.
+    bad_order = Structure(
+        elements=["Au", "C", "Au", "Au", "Au"],
+        positions=np.array(
+            [[0, 0, 0], [2, 0, 0], [4, 0, 0], [6, 0, 0], [8, 0, 0]],
+            dtype=float,
+        ),
+        regions={
+            REGION_LEFT_ELECTRODE:  [0, 2],   # NON-CONTIGUOUS — bug seed
+            REGION_BRIDGE:          [1],
+            REGION_RIGHT_ELECTRODE: [3, 4],
+        },
+    )
+    issues = get_engine("transiesta").preflight(bad_order, default_cfg)
+    errs = [i for i in issues if i.severity == "error"]
+    assert errs, (
+        "out-of-order atoms must surface a preflight error — "
+        "silent acceptance would produce chemically wrong "
+        "transmission curves"
+    )
+    assert any(
+        "[L-electrode][bridge][R-electrode]" in e.message
+        or "ordered" in e.message
+        for e in errs
+    )
+
+
+def test_preflight_accepts_correctly_ordered_atoms(default_cfg):
+    """Contiguous L→bridge→R ordering = OK.  Pin so the check
+    doesn't over-fire and block legitimate structures."""
+    good_order = Structure(
+        elements=["Au", "Au", "S", "C", "Au", "Au"],
+        positions=np.array(
+            [[0, 0, 0], [2, 0, 0], [4, 0, 0], [6, 0, 0],
+             [8, 0, 0], [10, 0, 0]],
+            dtype=float,
+        ),
+        regions={
+            REGION_LEFT_ELECTRODE:  [0, 1],   # contiguous, first
+            REGION_BRIDGE:          [2, 3],   # contiguous, middle
+            REGION_RIGHT_ELECTRODE: [4, 5],   # contiguous, last
+        },
+    )
+    issues = get_engine("transiesta").preflight(good_order, default_cfg)
+    errs = [i for i in issues if i.severity == "error"]
+    assert not errs, (
+        f"correctly-ordered atoms triggered preflight errors: "
+        f"{[e.message[:80] for e in errs]}"
+    )
+
+
+def test_preflight_warns_on_high_bias_outside_linear_response(
+        labeled_device):
+    """|V| > 2 V is outside the Landauer linear-response regime
+    (di Ventra 2008).  Surface a WARN so the user interprets the
+    result as a nonlinear-I-V snapshot, not linearized
+    conductance.
+
+    Pin so a future change that silently accepts arbitrary bias
+    values without surfacing the regime caveat is caught.
+    """
+    cfg = TransportConfig(job_name="hi_v", bias_voltages_v=[3.5])
+    issues = get_engine("transiesta").preflight(labeled_device, cfg)
+    warns = [i for i in issues if i.severity == "warn"]
+    assert any(
+        "linear-response" in w.message.lower()
+        or "nonlinear" in w.message.lower()
+        for w in warns
+    ), (
+        "|V| > 2 V did not surface the linear-response-regime "
+        "warning — user may misinterpret nonlinear-I-V snapshot "
+        "as conductance"
+    )
+
+
+def test_preflight_does_not_fire_high_bias_warning_at_low_v(
+        labeled_device):
+    """V <= 2 V is in the linear-response regime — no warn.  Pin
+    the boundary so the warn doesn't over-fire on legitimate
+    low-bias setups."""
+    cfg = TransportConfig(job_name="lo_v", bias_voltages_v=[1.5])
+    issues = get_engine("transiesta").preflight(labeled_device, cfg)
+    warns = [i for i in issues
+             if i.severity == "warn" and "linear-response" in i.message.lower()]
+    assert not warns, (
+        "V = 1.5 V is within linear response; warn should not fire"
+    )
+
+
 def test_preflight_open_shell_metal_routes_through_shared_check(
         labeled_device):
     """Phase 1d single-source contract: the open-shell-metal check

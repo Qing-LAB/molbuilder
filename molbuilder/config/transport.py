@@ -297,13 +297,20 @@ class TransportConfig:
         "unit":    "eV",
         "range":   (-100.0, -10.0),
         "tier":    "advanced",
+        # Help-text rewrite 2026-06-10 post-review: the prior
+        # "Au 5d ~-7 eV is well above this" was confusing because
+        # -7 is numerically greater than -40 but in transport
+        # context users expect "shallow vs deep" framing.  Restated
+        # in terms of binding depth below E_F.
         "help":    "deepest energy on the NEGF complex contour, "
-                   "relative to E_F.  Must be below the lowest "
-                   "occupied state in the device region.  Default "
-                   "-40 eV is safe for organic + light metals; "
-                   "lower for heavy-element electrodes (Au 5d at "
-                   "~-7 eV is well above this, but Pt 5p / Pd 4p "
-                   "go deeper).",
+                   "relative to E_F (E_F = 0).  Must be BELOW the "
+                   "lowest occupied state in the device region.  "
+                   "Default -40 eV is safe for first-row + Au / "
+                   "second-row leads (Au 5d binds at ~7 eV below "
+                   "E_F; -40 eV gives ~33 eV margin).  Lower to "
+                   "-50 / -60 eV for heavy-element electrodes "
+                   "(Pt 5p, Pd 4p go ~20-25 eV below E_F).  "
+                   "Brandbyge et al. 2002 § IV.",
     })
 
     # ----------------- Engine-specific (Method) -----------------
@@ -337,16 +344,26 @@ class TransportConfig:
     # TranSIESTA-specific method knobs.  Default values follow the
     # SIESTA Method-tab defaults in the Build workflow.
 
-    siesta_mesh_cutoff_ry: int = field(default=200, metadata={
+    siesta_mesh_cutoff_ry: int = field(default=300, metadata={
         "section": "NEGF",
         "label":   "TranSIESTA: mesh cutoff",
         "unit":    "Ry",
         "range":   (100, 1000),
         "tier":    "advanced",
+        # Default tightened from 200 -> 300 Ry on 2026-06-10 post-
+        # review: transport calculations almost always involve a
+        # transition-metal electrode (Au, Pt, Pd), and the Au 5d
+        # band requires >= 250-300 Ry per published TranSIESTA
+        # work (Stokbro 2003, Brandbyge 2002).  200 Ry was suitable
+        # only for first/second-row-only systems, a niche case for
+        # transport.  Loosen back to 200 Ry for screening on
+        # organic-only test cases.
         "help":    "(engine=transiesta only) real-space mesh cutoff "
-                   "in Ry.  Default 200 Ry is reasonable for first-"
-                   "and second-row systems; raise for transition-"
-                   "metal electrodes (300-400 Ry typical for Au).",
+                   "in Ry.  Default 300 Ry covers transition-metal "
+                   "electrodes (Au / Pt / Pd 5d bands need >= 250-300 Ry "
+                   "per Stokbro 2003).  Loosen to 200 Ry for organic-"
+                   "only screening; raise to 400 Ry for heavy actinide "
+                   "leads.",
     })
 
     # ----------------- Runtime -----------------

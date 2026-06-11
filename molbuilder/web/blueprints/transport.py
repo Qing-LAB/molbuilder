@@ -120,7 +120,12 @@ def api_transport_render() -> Any:
     change.
     """
     from .files import _PickerError
-    from ._shared import regions_pattern_b_notice  # noqa: F401  (future use)
+    # Pattern-B notice (regions_pattern_b_notice from _shared) is
+    # NOT imported here: it fires when an engine doesn't consume
+    # struct.regions (Build/Spectra are the consumers).  Transport
+    # IS the consumer of region labels — they drive the entire
+    # device/electrode separation — so the Pattern-B path doesn't
+    # apply.  Documented for clarity (2026-06-10 post-review).
 
     body = request.get_json(silent=True) or {}
     params: Dict[str, Any] = body.get("params") or {}
@@ -182,10 +187,13 @@ def api_transport_render() -> Any:
 
     errors = [i for i in issues if i.severity == "error"]
     if errors:
+        # Match Build / Spectra: omit ``script`` key entirely on
+        # preflight errors instead of returning ``script: None`` —
+        # the JS detects absence to drive the script-preview card
+        # visibility.
         return jsonify({
             "ok":      False,
             "engine":  cfg.engine,
-            "script":  None,
             "errors":  _issues_to_json(errors),
             "issues":  _issues_to_json(issues),
         }), 400
