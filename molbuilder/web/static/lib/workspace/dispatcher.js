@@ -471,6 +471,20 @@
             }
             return s.setLoader(loader);
         },
+        // Per workspace-contract.md §5 — refetch atoms from
+        // ``/api/selection/atoms`` for the current sourceFile.  The
+        // endpoint applies the ``.molstruct.json`` sidecar so this
+        // overlays the workspace atoms with frozen_atoms + regions
+        // data — needed after ``adoptSession({atoms})`` installs
+        // build-load atoms (which lack sidecar enrichment because
+        // /api/build/load doesn't apply sidecars).
+        refreshAtoms:    function () {
+            var s = _store(); if (!s) throw _missing("selection store");
+            if (typeof s.refreshAtoms !== "function") {
+                throw _missing("selection.store.refreshAtoms");
+            }
+            return s.refreshAtoms();
+        },
     };
 
     // ─── Canvas write helpers (workspace-contract.md §3) ─────────── //

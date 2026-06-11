@@ -47,13 +47,17 @@ ALLOW_LIST = {
     "lib/molbuilder-runtime.js",
 }
 
-# Matches direct reads — ``window.molbuilder.structureCanvas`` or
-# ``window.molbuilder.selection.store`` or the ``root.``/``mb.`` variants.
-# Comments and the docstring "Internal as of Phase 9" banners are
-# stripped before pattern matching.
+# Matches direct reads of the three deprecated globals listed in
+# workspace-contract.md §8:
+#   * ``window.molbuilder.structureCanvas``
+#   * ``window.molbuilder.selection.store``
+#   * ``window.molbuilder.modify.state`` (the modify-tab IIFE state)
+# Also matches the ``root.``/``mb.``/``globalThis.`` variants.
+# Comments and "Internal as of Phase 9" banner lines are stripped
+# before pattern matching.
 LEGACY_PATTERN = re.compile(
     r"""\b(window|root|mb|globalThis)\.molbuilder\.
-        (structureCanvas|selection\.store)\b""",
+        (structureCanvas|selection\.store|modify\.state)\b""",
     re.VERBOSE,
 )
 

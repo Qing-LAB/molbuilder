@@ -361,6 +361,26 @@
                                   ? loaded.atoms
                                   : undefined,
                 });
+                // 2026-06-09 audit BLOCKER: /api/build/load does NOT
+                // apply the ``.molstruct.json`` sidecar, so the atoms
+                // we just adopted from ``loaded`` have no frozen_atoms
+                // / regions data.  Overlay sidecar data via
+                // /api/selection/atoms (which DOES apply the sidecar)
+                // so the panel's frozen badges + the viewer-adapter's
+                // region tints render correctly on sidebar load.
+                //
+                // Awaited so it sequences against ``_commitFile``'s
+                // return — same anti-race argument as the adoptSession
+                // await (no chance of a user click landing between
+                // build-load atoms and sidecar-enriched atoms with
+                // wrong-state UI mid-flight).
+                if (typeof store.refreshAtoms === "function") {
+                    try { await store.refreshAtoms(); }
+                    catch (_) { /* non-fatal — leave plain atoms in
+                                   place; the user gets the structure
+                                   without sidecar enrichment.  Better
+                                   than reverting the whole load. */ }
+                }
             } else {
                 await store.setSourceFile(path);  // legacy fallback
             }

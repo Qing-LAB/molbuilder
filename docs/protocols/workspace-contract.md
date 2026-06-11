@@ -152,6 +152,7 @@ represented as `null` or empty.
 | `ws.isEmpty()` | `boolean` | True iff there is no structure loaded.  Equivalent to `getStructure() === null`. |
 | `ws.getAtoms()` | `Atom[]` (slice) | Direct atom-array accessor for hot paths (filter/picker).  Returns `[]` when empty.  Always reflects current state — never stale relative to `getStructure().atoms`. |
 | `ws.getSourceFile()` | `string \| null` | Convenience: equivalent to `getSource().file`.  Used by selection-panel + viewer-adapter (current code reads `selection.store.getState().sourceFile`). |
+| `ws.getLastSavedTo()` | `string \| null` | The disk path the workspace was last successfully saved to this session.  Returns `null` until the first `save()` call lands.  Used by `structureSave.targetPath()` to resolve the natural save destination and by modify-viewer's Send-to-Optimization gate to require a saved-and-clean state. |
 
 ### 2.1 Subscriptions
 
@@ -345,6 +346,7 @@ Each mutator fires `notify()` exactly once.
 |---|---|---|---|
 | `ws.selection.applyFilter()` | POST `/api/selection/eval` | `Promise<number[]>` | Sends current filters + combinator to server; replaces selection with result; preserves mode. |
 | `ws.selection.writeLabel(target, indices)` | POST `/api/selection/save` | `Promise<void>` | Writes a sidecar label.  `target` is `"frozen_atoms"` or one of the region names. |
+| `ws.selection.refreshAtoms()` | POST `/api/selection/atoms` | `Promise<void>` | Refetch atoms for the current `sourceFile`.  Overlays the `.molstruct.json` sidecar (frozen_atoms + regions) — needed after `adoptSession({atoms})` installs build-load atoms which lack sidecar enrichment.  No-op when `sourceFile` is null. |
 
 ### 5.3 Atoms accessor
 
@@ -484,11 +486,10 @@ A `grep -rn 'structureCanvas\|selection\.store\|window.molbuilder.modify.state' 
 * No dedicated test for §3.2 payload-pipeline ORDER (the order is
   observable via the selection_remap pre-capture but not directly
   pinned).
-* No dedicated test for the §5 ``ws.selection.getState()`` shape +
-  the subscribe-vs-getState identity invariant (the bug that the
-  2026-06-09 audit found — subscriber received ``selection`` field
-  while ``getState`` returned ``indices``).  See
-  ``tests/test_workspace_selection_shape_js.py`` (next PR).
+* ✅ §5 ``ws.selection.getState()`` shape + subscribe-vs-getState
+  identity invariant — pinned 2026-06-09 by
+  ``tests/test_workspace_dispatcher_js.py::TestSelectionPassthrough::test_getState_returns_contract_shape_with_indices_not_selection``
+  and ``::test_subscribe_callback_receives_contract_shape_not_legacy``.
 
 A new test ID appears in this column iff a new clause is added.  A clause without a pinning test ID is a contract gap.
 

@@ -596,3 +596,27 @@ class TestSelectionPassthrough:
         # contract normalisation.  ``undefined`` is dropped by
         # JSON.stringify so the key is absent or null.
         assert out.get("legacy_field") is None
+
+    def test_refreshAtoms_is_exposed_and_delegates(self):
+        """Regression for the 2026-06-09 fresh-eyes audit BLOCKER:
+        ``ws.selection.refreshAtoms`` must be on the public surface +
+        delegate to the underlying store's refreshAtoms.  Used by
+        ``selection-bootstrap._commitFile`` after ``adoptSession`` to
+        overlay the ``.molstruct.json`` sidecar (frozen_atoms +
+        regions) — without it, sidebar loads silently dropped sidecar
+        data because /api/build/load doesn't apply it.
+        """
+        out = _run_node(
+            "const ws = window.molbuilder.workspace;\n"
+            "let calls = 0;\n"
+            "window.molbuilder.selection.store.refreshAtoms = "
+            "  () => { calls++; return Promise.resolve(); };\n"
+            "Promise.resolve()\n"
+            "  .then(() => ws.selection.refreshAtoms())\n"
+            "  .then(() => console.log(JSON.stringify({\n"
+            "    exposed:   typeof ws.selection.refreshAtoms === 'function',\n"
+            "    delegated: calls,\n"
+            "  })));"
+        )
+        assert out["exposed"] is True
+        assert out["delegated"] == 1
