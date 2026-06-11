@@ -9,7 +9,7 @@
  *   * selection halo on the current pick set
  *
  * Click handling: routes through the embed's PickOpts.onPick so
- * clicks reach the store via store.toggleAtom.  The embed's own
+ * clicks reach the store via store.toggle.  The embed's own
  * halo/label rendering is DISABLED (we paint everything via
  * setOverlays so the store stays the single source of truth).
  *
@@ -73,13 +73,17 @@
               + "(window.molbuilder.viewer.embed return value), got "
               + (handle && typeof handle));
         }
+        // Phase 10 (workspace-contract.md §5): bind against ws.selection,
+        // not the legacy selection.store global.  ws.selection
+        // exposes the full toggle/subscribe/getState surface used
+        // by this adapter.
         const store = (root.molbuilder
-                       && root.molbuilder.selection
-                       && root.molbuilder.selection.store);
+                       && root.molbuilder.workspace
+                       && root.molbuilder.workspace.selection);
         if (!store) {
             throw new Error(
-                "viewer-adapter.attach: store missing; "
-                + "load lib/selection/store.js first"
+                "viewer-adapter.attach: ws.selection missing; "
+                + "load lib/workspace/dispatcher.js first"
             );
         }
 
@@ -101,12 +105,12 @@
             if (curr.length === 0) {
                 // Single-mode deselect: same atom clicked twice.
                 if (prevClicked !== null) {
-                    store.toggleAtom(prevClicked);
+                    store.toggle(prevClicked);
                     prevClicked = null;
                 }
             } else {
                 const idx = curr[curr.length - 1];
-                store.toggleAtom(idx);
+                store.toggle(idx);
                 prevClicked = idx;
             }
         }
