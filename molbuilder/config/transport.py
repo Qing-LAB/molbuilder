@@ -207,10 +207,12 @@ class TransportConfig:
                    "linear-response-regime WARN in preflight "
                    "(di Ventra 2008).",
     })
-    k_mesh_transverse: List[int] = field(default_factory=lambda: [1, 1, 1],
+    k_mesh_transverse: Tuple[int, int, int] = field(default=(1, 1, 1),
                                           metadata={
         "section": "Electrodes",
         "label":   "Transverse k-mesh",
+        "id_suffix": "k",
+        "triple_labels": ("x", "y", "z"),
         "engine_key": '%block kgrid_Monkhorst_Pack  (transiesta)',
         "help":    "Monkhorst-Pack grid (Nx, Ny, Nz) summed over the "
                    "directions perpendicular to transport.  For a "

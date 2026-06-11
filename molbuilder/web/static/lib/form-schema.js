@@ -285,6 +285,17 @@
             case "select":     input = makeSelect(f);    break;
             case "tri-select": input = makeTriSelect(f); break;
             case "int-triple": input = makeIntTriple(f); break;
+            case "comma-floats":
+                // Variable-length List[float] field (Transport's
+                // bias_voltages_v).  Render as a plain text input with
+                // a placeholder hinting the comma-separated format;
+                // the server-side coercer (``coerce_to_field_type``'s
+                // ``Sequence[float]`` branch in _shared.py) parses the
+                // string back into a list before the dataclass sees it.
+                input = makeText(f);
+                input.setAttribute("placeholder", "0.0, 0.5, 1.0");
+                input.classList.add("schema-input-comma-floats");
+                break;
             default:
                 // Unknown kind: log + fallback to text so the form
                 // still renders and the missing case is visible.
@@ -392,6 +403,11 @@
                 return Number.isFinite(n) ? n : null;
             }
             case "text":
+                return String(elx.value).trim();
+            case "comma-floats":
+                // Send the raw string; the server-side coercer
+                // (_shared.py Sequence[float] branch) parses it into
+                // List[float] before the dataclass sees it.
                 return String(elx.value).trim();
             case "select": {
                 const v = elx.value;

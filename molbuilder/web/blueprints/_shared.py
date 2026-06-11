@@ -504,7 +504,7 @@ def _field_to_schema(f: dataclasses.Field,
         "id":       f"{id_prefix}-{id_suffix}",
         "label":    md.get("label", f.name.replace("_", " ").capitalize()),
         "help":     md.get("help", ""),
-        "default":  _serialize_default(f),
+        "default":  _serialize_default(f, ann),
         "optional": is_optional,
         "tier":     md.get("tier", "basic"),
     }
@@ -557,12 +557,18 @@ def _field_to_schema(f: dataclasses.Field,
             out["null_option"] = True
             out["null_label"] = md.get("null_label", "(auto)")
     elif origin is tuple and args:
-        # Tuple[int, int, int] -- only kgrid today.  Renderer emits
-        # three side-by-side number inputs with sub-ids
+        # Tuple[int, int, int] -- kgrid + Transport's k_mesh_transverse.
+        # Renderer emits three side-by-side number inputs with sub-ids
         # f"{id}-{labels[i]}".  We pass the labels through so the
         # k-grid UI's "kx / ky / kz" stays declaration-driven.
         out["kind"] = "int-triple"
         out["labels"] = list(md.get("triple_labels", ("x", "y", "z")))
+    elif origin in (list, tuple) and args and args[0] is float:
+        # Variable-length List[float] -- Transport's bias_voltages_v.
+        # No fixed-arity widget makes sense; render as text and let
+        # the user enter a comma-separated list.  ``coerce_to_field_type``
+        # parses it back into List[float] before the dataclass sees it.
+        out["kind"] = "comma-floats"
     elif ann is str:
         out["kind"] = "text"
     else:
@@ -577,18 +583,40 @@ def _field_to_schema(f: dataclasses.Field,
     return out
 
 
-def _serialize_default(f: dataclasses.Field) -> Any:
+def _serialize_default(f: dataclasses.Field, ann: Any = None) -> Any:
     """JSON-friendly default for the schema.
 
-    dataclasses use MISSING when the field uses ``default_factory``;
-    we don't expose those (no form field uses one today) but if a
-    future one does, ``None`` is a safe placeholder.  Tuples become
-    lists for JSON compatibility.
+    Tuples become lists for JSON compatibility.  When the field uses
+    ``default_factory`` (Transport's ``bias_voltages_v: List[float]``
+    is the first such case), call the factory so the form shows the
+    actual default — without this, the form opens with a blank input
+    and the user can't see what the production-tuned default is.
+    ``ann`` is the already-resolved type hint (per ``hints`` in
+    ``_field_to_schema``); used to decide whether a list default
+    should serialize as a comma-string (``List[float]`` for the
+    comma-floats text input) or stay a list (``List[int]`` for the
+    int-triple renderer).
     """
-    if f.default is dataclasses.MISSING:
+    if f.default is not dataclasses.MISSING:
+        v = f.default
+    elif f.default_factory is not dataclasses.MISSING:    # type: ignore[misc]
+        try:
+            v = f.default_factory()                       # type: ignore[misc]
+        except Exception:
+            return None
+    else:
         return None
-    v = f.default
     if isinstance(v, tuple):
+        return list(v)
+    if isinstance(v, list):
+        args = typing.get_args(ann) if ann is not None else ()
+        origin = typing.get_origin(ann) if ann is not None else None
+        # List[float] -> comma-string (comma-floats text input
+        # pre-populates from this).  List[int] -> keep as list (no
+        # variable-length int field exposed in the form today, but
+        # the contract stays JSON-friendly).
+        if origin in (list, tuple) and args and args[0] is float:
+            return ", ".join(repr(x) for x in v)
         return list(v)
     return v
 
@@ -666,6 +694,17 @@ def coerce_to_field_type(field: dataclasses.Field, value: Any,
             # element-wise rather than silently truncating floats so
             # bad input surfaces.
             return [int(v) for v in value]
+        return value
+    # Sequence[float] (Transport's bias_voltages_v) -- accept a comma-
+    # separated string ("0.0, 0.5, 1.0") or an already-list value.
+    # Without this branch the form layer's text-input string passes
+    # through unchanged and the dataclass stores it as a str, which
+    # then fails downstream when the engine slices ``bias[0]``.
+    if origin in (list, tuple) and args and args[0] is float:
+        if isinstance(value, str):
+            return [float(s.strip()) for s in value.split(",") if s.strip()]
+        if isinstance(value, (list, tuple)):
+            return [float(v) for v in value]
         return value
     # Anything else: pass through.
     return value

@@ -36,7 +36,7 @@ class TestDefaults:
         assert cfg.engine == "transiesta"
         assert cfg.job_name == "transport"
         assert cfg.bias_voltages_v == [0.0]
-        assert cfg.k_mesh_transverse == [1, 1, 1]
+        assert cfg.k_mesh_transverse == (1, 1, 1)
 
     def test_transmission_window_default_is_symmetric(self):
         cfg = TransportConfig()

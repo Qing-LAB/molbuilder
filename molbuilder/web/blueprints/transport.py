@@ -31,6 +31,7 @@ from typing import Any, Dict
 from flask import Blueprint, jsonify, request
 
 from ._shared import (
+    config_from_params,
     dataclass_to_form_schema as _dataclass_to_form_schema,
     issues_to_json as _issues_to_json,
     apply_sidecar_if_possible,
@@ -75,15 +76,20 @@ def api_transport_schema() -> Any:
 def _transport_config_from_params(params: Dict[str, Any]) -> TransportConfig:
     """Build a :class:`TransportConfig` from a JSON form-values dict.
 
-    Drops unknown keys (forward-compat with a UI that sends extras)
-    and coerces None / missing values to the dataclass default.
+    Routes through ``config_from_params`` so per-field type coercion
+    (``Sequence[float]`` for ``bias_voltages_v``, ``Tuple[int,int,int]``
+    for ``k_mesh_transverse``, the standard numeric coercers) fires
+    BEFORE the dataclass constructor sees the raw form values.
+
     Field-name lock-step with TransportConfig is the contract; if
     the form ever renames a field the JSON shape must follow.
+    Unknown keys are silently dropped by ``config_from_params``
+    (forward-compat with a UI that sends extras).
     """
-    known = {f.name for f in _dataclass_fields(TransportConfig)}
-    clean = {k: v for k, v in (params or {}).items()
-             if k in known and v is not None}
-    return TransportConfig(**clean)
+    import typing as _typing
+    hints = _typing.get_type_hints(TransportConfig)
+    clean = {k: v for k, v in (params or {}).items() if v is not None}
+    return config_from_params(TransportConfig, clean, hints)
 
 
 @bp.route("/api/transport/render", methods=["POST"])
@@ -183,17 +189,26 @@ def api_transport_render() -> Any:
     issues = engine.preflight(struct, cfg)
     if sidecar_notice:
         from molbuilder.issues import Issue
-        issues.append(Issue("warn", sidecar_notice, "config.frozen_atoms"))
+        # ``where="structure_path"`` matches Spectra's sidecar-load
+        # notice (spectra.py:400) so the wire contract is consistent
+        # across engines — the UI shows a single "[structure_path]"
+        # tag for sidecar problems regardless of which engine flagged
+        # them.  The notice text already explains the frozen-atoms
+        # consequence in human-readable form.
+        issues.append(Issue("warn", sidecar_notice, "structure_path"))
 
     errors = [i for i in issues if i.severity == "error"]
     if errors:
         # Match Build / Spectra: omit ``script`` key entirely on
         # preflight errors instead of returning ``script: None`` —
         # the JS detects absence to drive the script-preview card
-        # visibility.
+        # visibility.  The top-level ``error`` field mirrors Spectra
+        # (spectra.py:407) so a generic envelope handler that gates
+        # on ``error`` (not ``errors``) surfaces a sensible message.
         return jsonify({
             "ok":      False,
             "engine":  cfg.engine,
+            "error":   "preflight failed; see issues",
             "errors":  _issues_to_json(errors),
             "issues":  _issues_to_json(issues),
         }), 400

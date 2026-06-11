@@ -238,3 +238,69 @@ def test_render_response_has_documented_shape(web):
     body = r.get_json()
     for key in ("ok", "engine", "script", "filename", "issues", "errors"):
         assert key in body, f"response missing documented key {key!r}"
+
+
+def test_render_coerces_bias_voltages_v_from_comma_string(web):
+    """Regression for the 2026-06-11 review: ``bias_voltages_v`` is
+    ``List[float]``.  The form renders it as a comma-floats text
+    input that sends the value as a string ("0.0, 0.5, 1.0").  The
+    server-side coercer MUST parse that into ``List[float]`` before
+    the dataclass sees it — without coercion the dataclass stored
+    the raw string and the engine then crashed slicing ``bias[0]``.
+    """
+    client, tmp = web
+    proj = tmp / "bias_coerce"
+    proj.mkdir()
+    xyz = _write_xyz(proj, "j.xyz", [
+        ("Au", (0, 0, 0)), ("Au", (2, 0, 0)),
+        ("S",  (4, 0, 0)), ("C",  (6, 0, 0)),
+        ("Au", (8, 0, 0)), ("Au", (10, 0, 0)),
+    ])
+    _write_sidecar(xyz, {
+        "L-electrode":  [0, 1],
+        "bridge":       [2, 3],
+        "R-electrode":  [4, 5],
+    })
+    r = client.post("/api/transport/render", json={
+        "structure_path": str(xyz),
+        "params": {
+            "engine":          "transiesta",
+            "job_name":        "biasc",
+            # Comma-floats text input shape — the bug was that this
+            # string used to reach the dataclass unchanged.
+            "bias_voltages_v": "0.0, 0.5",
+        },
+    })
+    assert r.status_code == 200, r.get_data(as_text=True)
+    body = r.get_json()
+    assert body["ok"] is True
+    # Engine emits only the first bias today (single-V .fdf per
+    # render).  The 0.0 value lands on the TS.Voltage line.
+    assert "TS.Voltage" in body["script"]
+
+
+def test_render_preflight_error_envelope_carries_top_level_error(web):
+    """Regression for the 2026-06-11 review: Spectra's preflight
+    error envelope carries a top-level ``error`` field
+    (``"preflight failed; see issues"``) but Transport's previously
+    omitted it.  An envelope-handler that gates on ``error`` (not
+    ``errors``) had no message to surface.  Pin parity with Spectra.
+    """
+    client, tmp = web
+    proj = tmp / "envelope"
+    proj.mkdir()
+    xyz = _write_xyz(proj, "raw.xyz", [
+        ("C", (0, 0, 0)), ("H", (1, 0, 0)),
+    ])
+    # No sidecar → struct.regions empty → preflight raises error
+    r = client.post("/api/transport/render", json={
+        "structure_path": str(xyz),
+        "params": {"engine": "transiesta", "job_name": "envelope"},
+    })
+    assert r.status_code == 400
+    body = r.get_json()
+    assert body["ok"] is False
+    assert isinstance(body.get("error"), str) and body["error"], (
+        "Transport preflight-error envelope MUST carry a top-level "
+        "``error`` field (string) to match Spectra's contract."
+    )

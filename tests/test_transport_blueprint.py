@@ -103,6 +103,62 @@ class TestTransportSchemaEndpoint:
             f"fields missing render metadata: {missing}"
         )
 
+    def test_bias_voltages_schema_kind_and_default(self, web):
+        """``bias_voltages_v`` is ``List[float]`` — must render as the
+        new ``comma-floats`` text input, NOT fall through to plain
+        ``text`` (which would lose the placeholder hint).  The
+        default MUST be the factory-produced ``[0.0]`` serialized as
+        a comma-string so the form opens pre-populated.
+
+        Regression for the 2026-06-11 review: the schema builder
+        previously had no branch for ``Sequence[float]`` so the field
+        fell through to ``kind: "text"`` AND ``_serialize_default``
+        returned ``None`` for ``default_factory`` fields (the form
+        opened with a blank input)."""
+        body = web.get("/api/transport/schema").get_json()
+        field = None
+        for s in body["schema"]["sections"]:
+            for f in s.get("fields", []):
+                if f.get("name") == "bias_voltages_v":
+                    field = f
+                    break
+            if field:
+                break
+        assert field is not None, "schema missing bias_voltages_v"
+        assert field["kind"] == "comma-floats", (
+            f"expected kind='comma-floats', got {field['kind']!r}.  "
+            f"Sequence[float] must use the comma-floats kind so the "
+            f"placeholder + class hooks render correctly."
+        )
+        assert field["default"] == "0.0", (
+            f"expected default='0.0' (single zero-bias entry), got "
+            f"{field['default']!r}.  The factory-default [0.0] must "
+            f"serialize as a comma-string for the text input."
+        )
+
+    def test_k_mesh_transverse_schema_kind_and_default(self, web):
+        """``k_mesh_transverse`` is ``Tuple[int, int, int]`` (fixed
+        arity-3) — must render as ``int-triple`` so the user gets
+        three side-by-side spinners (kx/ky/kz) rather than a single
+        free-text field where any malformed entry breaks the engine.
+
+        Regression for the 2026-06-11 review: the field was
+        previously ``List[int]`` which fell through to ``kind:
+        "text"``."""
+        body = web.get("/api/transport/schema").get_json()
+        field = None
+        for s in body["schema"]["sections"]:
+            for f in s.get("fields", []):
+                if f.get("name") == "k_mesh_transverse":
+                    field = f
+                    break
+            if field:
+                break
+        assert field is not None, "schema missing k_mesh_transverse"
+        assert field["kind"] == "int-triple"
+        assert field["default"] == [1, 1, 1]
+        assert field["labels"] == ["x", "y", "z"]
+
 
 class TestTransportPageRendering:
 
