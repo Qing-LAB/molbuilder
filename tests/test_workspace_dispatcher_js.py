@@ -520,3 +520,79 @@ class TestSelectionPassthrough:
             "});"
         )
         assert out == [1]
+
+    def test_getState_returns_contract_shape_with_indices_not_selection(self):
+        """Regression for 2026-06-09 audit BLOCKER:
+        ``ws.selection.getState()`` MUST return ``indices`` (contract
+        shape, workspace-contract.md §5) — NOT ``selection`` (legacy
+        store's internal field name).
+
+        Without this contract, the panel's click handlers (which
+        call ``store.getState().indices``) silently broke when the
+        legacy store passes ``selection`` to its subscribers.
+        """
+        out = _run_node(
+            "const ws = window.molbuilder.workspace;\n"
+            "window.molbuilder.selection.store.adoptAtoms([\n"
+            "  {index: 0, element: 'O', regions: [], is_frozen: false},\n"
+            "  {index: 1, element: 'H', regions: [], is_frozen: false},\n"
+            "]);\n"
+            "Promise.resolve().then(() => ws.selection.set([0, 1]))\n"
+            ".then(() => {\n"
+            "  const s = ws.selection.getState();\n"
+            "  console.log(JSON.stringify({\n"
+            "    has_indices:      Array.isArray(s.indices),\n"
+            "    indices_value:    s.indices,\n"
+            "    selection_field:  s.selection,\n"
+            "    has_mode:         typeof s.mode === 'string',\n"
+            "    has_atoms:        Array.isArray(s.atoms),\n"
+            "    has_pickOrder:    Array.isArray(s.pickOrder),\n"
+            "    has_sourceFile:   s.sourceFile === null\n"
+            "                          || typeof s.sourceFile === 'string',\n"
+            "  }));\n"
+            "});"
+        )
+        assert out["has_indices"] is True
+        assert out["indices_value"] == [0, 1]
+        # Legacy field name MUST NOT leak through.  ``undefined``
+        # values are dropped by JSON.stringify, so the contract is
+        # satisfied iff the key is absent OR null in the output.
+        assert out.get("selection_field") is None
+        # Contract shape includes mode/atoms/pickOrder/sourceFile.
+        assert out["has_mode"] is True
+        assert out["has_atoms"] is True
+        assert out["has_pickOrder"] is True
+        assert out["has_sourceFile"] is True
+
+    def test_subscribe_callback_receives_contract_shape_not_legacy(self):
+        """Regression for the same audit BLOCKER:
+        ``ws.selection.subscribe(fn)`` MUST translate the legacy
+        store's state shape to the contract shape before passing it
+        to ``fn`` — without this wrapper, panel renderers (which
+        subscribe + read ``state.indices``) saw ``undefined`` and the
+        UI rendered "undefined / 3 atoms" in the count readout.
+        """
+        out = _run_node(
+            "const ws = window.molbuilder.workspace;\n"
+            "window.molbuilder.selection.store.adoptAtoms([\n"
+            "  {index: 0, element: 'O', regions: [], is_frozen: false},\n"
+            "  {index: 1, element: 'H', regions: [], is_frozen: false},\n"
+            "]);\n"
+            "let received = null;\n"
+            "ws.selection.subscribe((s) => { received = s; });\n"
+            "Promise.resolve().then(() => ws.selection.set([1]))\n"
+            ".then(() => {\n"
+            "  console.log(JSON.stringify({\n"
+            "    has_indices:    Array.isArray(received && received.indices),\n"
+            "    indices_value:  received && received.indices,\n"
+            "    legacy_field:   received && received.selection,\n"
+            "  }));\n"
+            "});"
+        )
+        assert out["has_indices"] is True
+        assert out["indices_value"] == [1]
+        # Legacy ``state.selection`` field must NOT appear on the
+        # subscriber-delivered shape — that's the whole point of the
+        # contract normalisation.  ``undefined`` is dropped by
+        # JSON.stringify so the key is absent or null.
+        assert out.get("legacy_field") is None

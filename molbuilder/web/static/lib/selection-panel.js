@@ -160,7 +160,7 @@
         function onAssign() {
             const t = resolveTarget();
             if (!t) return;
-            store.writeLabel(t, store.getState().selection);
+            store.writeLabel(t, store.getState().indices);
         }
         function onAddToTarget() {
             const t = resolveTarget();
@@ -169,14 +169,14 @@
             // Union of existing members + selection.  Sort handled
             // inside writeLabel via the server's canonical form.
             const merged = new Set(currentMembers(t, s.atoms));
-            s.selection.forEach((i) => merged.add(i));
+            s.indices.forEach((i) => merged.add(i));
             store.writeLabel(t, Array.from(merged));
         }
         function onRemoveFromTarget() {
             const t = resolveTarget();
             if (!t) return;
             const s = store.getState();
-            const sel = new Set(s.selection);
+            const sel = new Set(s.indices);
             store.writeLabel(t,
                 currentMembers(t, s.atoms).filter((i) => !sel.has(i)));
         }
@@ -198,7 +198,7 @@
                 els.count.textContent = "0 atoms";
             } else {
                 els.count.textContent =
-                    s.selection.length + " / " + s.atoms.length + " atoms";
+                    s.indices.length + " / " + s.atoms.length + " atoms";
             }
             if (els.loading) els.loading.hidden = !s.loading;
             if (els.errorEl) {
@@ -237,7 +237,7 @@
             }
             const positions = provider();
             const result = meas.compute(
-                s.selection, s.atoms, positions, s.pickOrder);
+                s.indices, s.atoms, positions, s.pickOrder);
             if (!result) {
                 els.measurement.hidden = true;
                 els.measurement.textContent = "";
@@ -452,7 +452,7 @@
                 return;
             }
             if (els.listEmpty) els.listEmpty.hidden = true;
-            const selected = new Set(s.selection);
+            const selected = new Set(s.indices);
             if (els.selectAll) {
                 const all  = (selected.size === s.atoms.length);
                 const none = (selected.size === 0);

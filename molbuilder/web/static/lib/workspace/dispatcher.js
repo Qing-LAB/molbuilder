@@ -1,9 +1,11 @@
 /* Workspace dispatcher — single client-side entry point for the
  * Molbuilder tab's workspace state.
  *
- * Per docs/protocols/workspace-state.md (§ 4.2 public surface,
- * § 4.4 wire shape, § 4.5 per-op selection rule).  Public
- * surface, current as of 2026-06-08:
+ * Per docs/protocols/workspace-contract.md (the sole source of
+ * truth for the read/write API — §1 architecture, §2 reads, §3
+ * writes, §4 persistence, §5 selection, §6 view, §7 wire shape).
+ * docs/protocols/workspace-state.md is the historical audit + the
+ * design rationale.  Public surface, current as of 2026-06-09:
  *
  *   window.molbuilder.workspace.{
  *     // Reads + subscription
@@ -295,6 +297,50 @@
     }
 
     // ─── Selection sub-namespace: passthrough to selection.store ── //
+    //
+    // workspace-contract.md §5 — the public selection surface.  The
+    // dispatcher OWNS the shape contract: getState() and the value
+    // passed to subscribe(fn) callbacks both return the SAME
+    // ``_selectionSnapshot``-shaped object, regardless of what the
+    // underlying legacy store happens to call its fields.  Without
+    // this single rewrite, the panel's render path (gets shape via
+    // subscribe → reads ``.selection``) and click handlers (call
+    // getState() directly → read ``.indices``) would see different
+    // field names; one would always be broken.
+
+    /**
+     * Normalise a legacy-store state object to the contract shape.
+     * Used by BOTH ``ws.selection.getState()`` and the wrapper
+     * around ``ws.selection.subscribe(fn)`` so subscribers + direct
+     * readers see identical objects.
+     *
+     * Returns a fresh defensive copy; mutating the returned object
+     * does not leak back into the store.
+     */
+    function _selectionSnapshot(st) {
+        if (!st) {
+            return {
+                indices: [], mode: "click", filters: [],
+                combinator: "or", loading: false, error: null,
+                atoms: [], sourceFile: null, pickOrder: [],
+            };
+        }
+        return {
+            indices:    Array.isArray(st.selection)
+                            ? st.selection.slice() : [],
+            mode:       st.mode || "click",
+            filters:    (st.filters || []).map(function (f) {
+                return Object.assign({}, f);
+            }),
+            combinator: st.combinator || "or",
+            loading:    !!st.loading,
+            error:      st.error || null,
+            atoms:      Array.isArray(st.atoms) ? st.atoms.slice() : [],
+            sourceFile: st.sourceFile || null,
+            pickOrder:  Array.isArray(st.pickOrder)
+                            ? st.pickOrder.slice() : [],
+        };
+    }
 
     var selection = {
         toggle:          function (i) {
@@ -366,36 +412,26 @@
         // call sites that read ``selection.store.getState().atoms``
         // have a 1:1 migration target.
         getAtoms:        function () { return getAtoms(); },
-        // Per §5 — getState() defensive snapshot of the selection slice.
-        // Migration target for ``selection.store.getState()`` callers
-        // that read mode/filters/combinator/loading together.
+        // Per workspace-contract.md §5 — defensive snapshot of the
+        // selection slice in the CONTRACT shape (``indices``, NOT
+        // legacy ``selection``).  Identical shape to what
+        // ``subscribe(fn)`` passes its callback — see
+        // ``_selectionSnapshot`` above for the rationale.
         getState:        function () {
             var s = _store();
-            if (!s) {
-                return {
-                    indices: [], mode: "click", filters: [],
-                    combinator: "or", loading: false, atoms: [],
-                    sourceFile: null,
-                };
-            }
-            var st = s.getState();
-            return {
-                indices:    st.selection.slice(),
-                mode:       st.mode,
-                filters:    st.filters.map(function (f) {
-                    return Object.assign({}, f);
-                }),
-                combinator: st.combinator,
-                loading:    !!st.loading,
-                atoms:      Array.isArray(st.atoms) ? st.atoms.slice() : [],
-                sourceFile: st.sourceFile || null,
-            };
+            return _selectionSnapshot(s ? s.getState() : null);
         },
-        // Per §5 — subscribe to selection-only changes.  Convenience
-        // for callers that don't need the full ws.subscribe firehose.
+        // Per §5 — selection-only subscribe.  Wraps the legacy
+        // store's subscribe so the callback receives the contract-
+        // shaped object (``indices`` not ``selection``, plus every
+        // field consumers read).  Without this wrapper, the panel's
+        // render path (subscribe-delivered state) and click handlers
+        // (getState() direct) would see different field names.
         subscribe:       function (fn) {
             var s = _store(); if (!s) throw _missing("selection store");
-            return s.subscribe(fn);
+            return s.subscribe(function (legacyState) {
+                fn(_selectionSnapshot(legacyState));
+            });
         },
         // Per workspace-contract.md §5 — atomically install path +
         // atoms + selection in one promise.  Used by the modify-tab

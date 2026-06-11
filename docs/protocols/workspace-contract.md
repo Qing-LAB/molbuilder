@@ -275,13 +275,14 @@ atom.
 sessionStorage["molbuilder.workspace.v1"] = JSON.stringify({
   v:        1,                              // schema version
   saved_at: "2026-06-09T20:30:00.000Z",     // ISO 8601, UTC
-  workspace: {
-    structure: { ... } | null,
-    source:    { ... },
-    dirty:     boolean,
+  state: {                                  // NB: key is "state",
+                                            //     pinned by tests.
+    structure:    { ... } | null,
+    source:       { ... },
+    dirty:        boolean,
     last_save_to: string | null,
-    selection: { ... },
-    view:      { ... } | null,
+    selection:    { ... },
+    view:         { ... } | null,
   },
 })
 ```
@@ -461,20 +462,33 @@ A `grep -rn 'structureCanvas\|selection\.store\|window.molbuilder.modify.state' 
 
 | Contract clause | Pinning test |
 |---|---|
-| §1.2 single state | `tests/test_workspace_state_singleton_js.py` |
+| §1.2 single state | `tests/test_workspace_dispatcher_js.py::TestPublicSurface` (the dispatcher IS the single state) |
 | §2 each `ws.*` getter exists + returns documented shape | `tests/test_workspace_dispatcher_js.py::TestPublicSurface`, `::TestReads` |
 | §2.1 subscribe contract | `tests/test_workspace_dispatcher_js.py::TestSubscribe` |
-| §2.2 atomicity | `tests/test_workspace_atomic_reads_js.py` |
-| §2.4 empty workspace shape | `tests/test_workspace_dispatcher_js.py::TestEmptyWorkspace` |
-| §3 each `ws.*` mutator routes through `applyPayload` | `tests/test_workspace_dispatcher_js.py::TestWritePipeline` |
-| §3.2 payload-pipeline order | `tests/test_workspace_dispatcher_js.py::TestPayloadPipelineOrder` |
-| §3.4 per-op selection rule | `tests/test_workspace_dispatcher_js.py::TestSelectionRemap` |
+| §2.2 atomicity | `tests/test_workspace_dispatcher_js.py::TestReads` (each read returns one tick's snapshot) |
+| §2.4 empty workspace shape | `tests/test_workspace_dispatcher_js.py::TestReads` (empty-mount cases) |
+| §3 each `ws.*` mutator routes through `applyPayload` | `tests/test_workspace_dispatcher_js.py` + downstream modify/build/spectra blueprint tests that exercise the mutator + assert workspace state |
+| §3.2 payload-pipeline order | `tests/test_workspace_dispatcher_js.py::TestSelectionPassthrough` (the `preSelection` capture order is observable via selection_remap on Delete) |
+| §3.4 per-op selection rule | `tests/test_modify.py::TestComputeSelectionRemapAfterDelete`, `::TestComputeSelectionRemapAfterAdd` + `tests/test_web.py::test_modify_delete_returns_selection_remap` |
 | §4 persistence contract | `tests/test_workspace_dispatcher_js.py::TestPersistRoundtrip` |
-| §5 selection sub-API | `tests/test_workspace_selection_subapi_js.py` |
-| §6 view sub-API | `tests/test_workspace_view_subapi_js.py` |
-| §7.1 wire shape | `tests/test_shared.py::TestWorkspacePayload` |
-| §7.3 selection_remap shape | `tests/test_modify.py::TestComputeSelectionRemap*` |
+| §5 selection sub-API | `tests/test_workspace_dispatcher_js.py::TestSelectionPassthrough` |
+| §6 view sub-API | `tests/test_workspace_dispatcher_js.py::TestPublicSurface` (view passthrough) |
+| §7.1 wire shape | `tests/test_shared.py::TestStructureToDictExtraThreading` + `tests/test_web.py::test_build_load_returns_workspace_payload` |
+| §7.3 selection_remap shape | `tests/test_modify.py::TestComputeSelectionRemapAfterDelete`, `::TestComputeSelectionRemapAfterAdd` |
 | §8 zero legacy-store consumers | `tests/test_no_legacy_store_consumers.py` ✅ shipped 2026-06-09 |
+
+**Coverage gaps (future PRs should close these):**
+
+* No dedicated test for §1.2 (single in-memory state — currently
+  implicit in the dispatcher's interface tests).
+* No dedicated test for §3.2 payload-pipeline ORDER (the order is
+  observable via the selection_remap pre-capture but not directly
+  pinned).
+* No dedicated test for the §5 ``ws.selection.getState()`` shape +
+  the subscribe-vs-getState identity invariant (the bug that the
+  2026-06-09 audit found — subscriber received ``selection`` field
+  while ``getState`` returned ``indices``).  See
+  ``tests/test_workspace_selection_shape_js.py`` (next PR).
 
 A new test ID appears in this column iff a new clause is added.  A clause without a pinning test ID is a contract gap.
 

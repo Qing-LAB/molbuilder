@@ -259,7 +259,7 @@
     //  ``onAtomListRowClick`` / ``onViewerAtomClick`` handlers were    //
     //  retired 2026-05-20.  The viewer-adapter (auto-mounted by        //
     //  modify/selection-bootstrap.js) routes viewer clicks straight    //
-    //  to ``store.toggleAtom`` and draws the halo overlay; the panel   //
+    //  to ``ws.selection.toggle`` and draws the halo overlay; the panel //
     //  renders the per-atom list with checkboxes.                      //
     // --------------------------------------------------------------- //
 

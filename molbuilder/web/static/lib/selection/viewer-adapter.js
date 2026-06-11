@@ -190,7 +190,10 @@
 
             // 3. Selection halo -- largest ball + brightest, so it
             //    reads as the "live" set above region tints.
-            const sel = Array.isArray(s.selection) ? s.selection : [];
+            // Phase 10 (workspace-contract.md §5): subscriber state
+            // shape is the contract object — selection lives on
+            // ``indices``, not ``selection``.
+            const sel = Array.isArray(s.indices) ? s.indices : [];
             if (sel.length) {
                 atoms.push({
                     indices: sel.slice(),

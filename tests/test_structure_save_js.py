@@ -45,7 +45,9 @@ def _run_node(snippet: str) -> object:
                 getStructure:   () => state.structure,
                 getSource:      () => state.source,
                 getLastSavedTo: () => state.lastSaveTo,
-                onChange:       () => () => {{}},
+                // Phase 10 — workspace-contract.md §2.1 — fake the
+                // ws.* surface, not the legacy canvas.onChange.
+                subscribe:      () => () => {{}},
                 _calls:         () => calls.slice(),
             }};
         }}
