@@ -575,7 +575,15 @@
         // undo the selection store kept the post-op atoms while
         // the viewer showed the pre-op structure (deferred bug 3
         // from the multi-pass review; fix landed 2026-06-08).
+        // Phase 10 (workspace-contract.md §5): ws.selection.getState()
+        // returns the CONTRACT shape with ``.indices`` (NOT the
+        // legacy ``.selection`` field name).  Pre-2026-06-09 this
+        // read ``.selection`` and silently crashed every electrode
+        // op with TypeError (.slice() on undefined) — the click did
+        // nothing because the exception bubbled out of applyElectrode
+        // before postOp ran.
         const _s = _selStore();
+        const st = _s ? _s.getState() : null;
         return {
             xyz:           state.xyz,
             elements:      state.elements,
@@ -585,8 +593,10 @@
             chain_ids:     state.chain_ids,
             title:         state.title,
             n_atoms:       state.n_atoms,
-            atoms:         _s ? _s.getState().atoms.slice() : [],
-            selected:      _s ? _s.getState().selection.slice() : [],
+            atoms:         st && Array.isArray(st.atoms)
+                              ? st.atoms.slice() : [],
+            selected:      st && Array.isArray(st.indices)
+                              ? st.indices.slice() : [],
         };
     }
 
@@ -613,10 +623,16 @@
             // snapshot's saved indices (its remap step is for
             // server-emitted selection_remap, which an undo
             // doesn't have).  Set them explicitly.
+            // Phase 10 (workspace-contract.md §5): ``_selStore()``
+            // returns ``ws.selection`` which exposes ``set(indices)``
+            // (NOT the legacy ``setSelection``).  Pre-2026-06-09 this
+            // checked for ``setSelection`` — always-false — so the
+            // selection wasn't restored on undo (the user saw the
+            // pre-op structure with cleared selection).
             const _s = _selStore();
-            if (_s && typeof _s.setSelection === "function"
+            if (_s && typeof _s.set === "function"
                   && Array.isArray(prev.selected)) {
-                _s.setSelection(prev.selected);
+                _s.set(prev.selected);
             }
         } else {
             applyStructure(prev);   // fallback (no dispatcher)

@@ -74,6 +74,12 @@
             );
         }
 
+        // Anchor index for shift-click range selection (2026-06-09).
+        // Updated on every plain-click toggle; preserved across
+        // renders so a shift-click after a re-render still sees the
+        // prior anchor.
+        let _anchorIndex = null;
+
         const $ = (id) => rootEl.querySelector("#" + id);
         const els = {
             modeClick:       $("selection-mode-click"),
@@ -665,10 +671,34 @@
             onTransient(check, "change", (e) => {
                 e.stopPropagation();
                 store.toggle(atom.index);
+                _anchorIndex = atom.index;
             });
             onTransient(tr, "click", (e) => {
                 if (e.target === check) return;
+                // Shift-click range selection (2026-06-09): select
+                // every atom between the previous click (anchor) and
+                // the just-clicked atom, inclusive — added to the
+                // current selection rather than replacing.  Standard
+                // selection-list semantics; lets the user group +
+                // assign region labels (electrode slabs, bridge
+                // residues) without clicking each atom individually.
+                //
+                // Shift held WITHOUT an anchor falls back to plain
+                // toggle so the first click in a fresh session is
+                // never "do nothing".
+                if (e.shiftKey && _anchorIndex !== null
+                        && _anchorIndex !== atom.index) {
+                    const lo = Math.min(_anchorIndex, atom.index);
+                    const hi = Math.max(_anchorIndex, atom.index);
+                    const range = [];
+                    for (let i = lo; i <= hi; i++) range.push(i);
+                    store.add(range);
+                    // Anchor stays put — successive shift-clicks
+                    // extend the range from the same origin.
+                    return;
+                }
                 store.toggle(atom.index);
+                _anchorIndex = atom.index;
             });
             return tr;
         }
