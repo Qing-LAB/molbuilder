@@ -84,7 +84,7 @@ the verb is unambiguous.
 
 ---
 
-## 2. Endpoint index — all 45 routes
+## 2. Endpoint index — all 47 routes
 
 ```mermaid
 flowchart LR
@@ -142,6 +142,10 @@ flowchart LR
         sp_schema["GET /api/build/schema/spectra"]
         sp_render["POST /api/spectra/render"]
         sp_load["POST /api/spectra/load"]
+    end
+    subgraph "Transport (NEGF)"
+        tp_schema["GET /api/transport/schema"]
+        tp_render["POST /api/transport/render"]
     end
     subgraph "Watch (trajectory inspector backing)"
         w_fmt["GET /api/watch/formats"]
@@ -903,7 +907,124 @@ The full runtime call graph + dataclass shapes are documented in
 
 ---
 
-## 11. Shared + page routes
+## 11. Transport calculation — `/api/transport/*`
+
+Phase B.3 (2026-06-10) wires the Transport tab to a real engine
+dispatcher.  The schema endpoint backs the form on the page; the
+render endpoint dispatches via the registry in
+`molbuilder.transport` so new engines (transiesta today, pyscf-negf
+planned) drop in without endpoint code changes.
+
+### 11.1 Endpoint table
+
+| Route | Method | Body | Success |
+|---|---|---|---|
+| `/api/transport/schema` | GET | — | `{ok, schema}` — the rendered form schema for `TransportConfig` |
+| `/api/transport/render` | POST | `{params, structure_path}` | `{ok, engine, script, filename, issues, errors}` |
+
+### 11.2 `/api/transport/schema`
+
+Mirrors `/api/build/schema/<engine>` and `/api/build/schema/spectra`
+(see § 4.7 for the per-field `engine_key` metadata contract).
+Returns the section-ordered form schema derived from
+`TransportConfig._form_section_order`
+(System → Geometry → Electrodes → Transmission → NEGF → Runtime).
+
+All 20 fields carry `engine_key` metadata pinning the keyword the
+field writes into the generated script — pinned by
+`test_transport_blueprint.py::test_every_field_carries_engine_key_metadata`.
+
+### 11.3 `/api/transport/render`
+
+Dispatches via the engine registry (`molbuilder.transport.get_engine`).
+Adding a new engine = drop `molbuilder/transport/<engine>.py` with
+an `@register_engine` decorator + import it in
+`molbuilder/transport/__init__.py`.  This endpoint code stays
+unchanged.
+
+Request body:
+
+```json
+{
+  "params":          {<TransportConfig field values>},
+  "structure_path":  "/abs/path/to/relaxed.xyz"
+}
+```
+
+`structure_path` MUST be inside an allowed picker root (validated
+via `_resolve_path_within_roots`).  The matching `.molstruct.json`
+sidecar carries the `L-electrode` / `R-electrode` / `bridge` region
+labels — the transport engine reads them from `struct.regions`
+after `apply_sidecar_if_possible`.
+
+Success response:
+
+```json
+{
+  "ok":       true,
+  "engine":   "transiesta",
+  "script":   "<...the .fdf text...>",
+  "filename": "transport.fdf",
+  "issues":   [{"severity": "warn", "message": "...", "where": "..."}],
+  "errors":   []
+}
+```
+
+Preflight-error response (matches Build § 4.5 + Spectra § 7
+pattern — `script` key omitted, NOT `script: null`):
+
+```json
+{
+  "ok":     false,
+  "engine": "transiesta",
+  "errors": [{"severity": "error", "message": "...", "where": "..."}],
+  "issues": [{"severity": "error", "message": "...", "where": "..."}]
+}
+```
+
+Error responses:
+
+| Condition | Status | Body |
+|---|---|---|
+| Missing `structure_path` | 400 | `{ok: false, error: "structure_path is required..."}` |
+| `structure_path` outside picker roots | 4xx (picker error code) | `{ok: false, error: "..."}` |
+| Unparseable XYZ | 400 | `{ok: false, error: "could not parse structure file: ..."}` |
+| Bad `params` (TypeError from TransportConfig) | 400 | `{ok: false, error: "bad parameters: ..."}` |
+| Unknown engine name | 400 | `{ok: false, error: "unknown Transport engine 'foo'; registered engines: ['transiesta']"}` |
+| `engine.parse_output` raises `NotImplementedError` | 501 | `{ok: false, engine, error: "..."}` |
+| Engine render raises arbitrary exception | 500 | `{ok: false, engine, error: "render failed: ..."}` |
+
+### 11.4 Preflight checks the engine runs
+
+`TransiestaEngine.preflight` returns `Issue` records for:
+
+- **Errors** (block emission):
+  - Missing region labels (`L-electrode` / `R-electrode` / `bridge`)
+  - Empty electrode or bridge regions
+  - Out-of-order atom indices (electrode atoms must be contiguous
+    and ordered as `[L-electrode][bridge][R-electrode]` —
+    TranSIESTA reads `TS.NumUsedAtomsLeft` as "first N atoms";
+    out-of-order labels produce silently-wrong transmission).
+    Reference: Brandbyge et al. 2002 § III.
+- **Warnings**:
+  - `|V| > 2 V` outside linear-response regime (di Ventra 2008)
+  - Multi-bias request (today emits only `bias_voltages_v[0]`)
+  - Open-shell-metal device run as closed-shell (shared
+    `_check_open_shell_metal` from `validation.py`, same as
+    Build/Spectra — the cross-engine consistency rule from
+    [`science.md`](../science.md) § 2.4 holds on Transport too)
+
+### 11.5 Deferred (in-tree, see roadmap.md § 2.2)
+
+- Electrode `.TSHS` generation workflow (manual today)
+- Bias-scan driver (multi-`.fdf` + shell loop)
+- `parse_output` + `<job>.transport.json` schema
+- `/results` Transport inspector (Plotly T(E) + IV charts)
+- pyscf-negf engine (the registry pattern makes it mechanical)
+
+---
+
+## 12. Shared + page routes
 
 | Route | Method | Body | Success |
 |---|---|---|---|
