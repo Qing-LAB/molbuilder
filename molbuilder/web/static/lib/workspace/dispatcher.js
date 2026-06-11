@@ -165,6 +165,36 @@
     }
 
     /**
+     * Atoms accessor (workspace-contract.md §2).  Returns a slice of
+     * the underlying atom array so callers can iterate without
+     * leaking mutations back into state.  Always reflects the
+     * current state — never stale relative to ``getStructure().atoms``
+     * because both read from the same selection store on each call.
+     *
+     * Returns ``[]`` (not ``null``) when the workspace is empty so
+     * callers can ``.length`` / ``.forEach`` without a null guard.
+     */
+    function getAtoms() {
+        var st = _store();
+        if (!st) return [];
+        var s = st.getState();
+        return Array.isArray(s.atoms) ? s.atoms.slice() : [];
+    }
+
+    /**
+     * Source-file accessor (workspace-contract.md §2).  Convenience
+     * over ``getSource().file`` — used by selection-panel +
+     * viewer-adapter + bootstrap which previously read
+     * ``selection.store.getState().sourceFile`` directly.
+     *
+     * Returns ``null`` when the workspace has no file source
+     * (kind="blank" or kind="smiles"/"name"/etc.).
+     */
+    function getSourceFile() {
+        return getSource().file;
+    }
+
+    /**
      * Composite snapshot — every read at one entry point.  Defensive
      * copies via the inner getters; mutating the returned object does
      * not leak into the underlying stores.
@@ -298,6 +328,41 @@
         writeLabel:      function (target, indices) {
             var s = _store(); if (!s) throw _missing("selection store");
             return s.writeLabel(target, indices);
+        },
+        // workspace-contract.md §5.3 — alias for ws.getAtoms() so
+        // call sites that read ``selection.store.getState().atoms``
+        // have a 1:1 migration target.
+        getAtoms:        function () { return getAtoms(); },
+        // Per §5 — getState() defensive snapshot of the selection slice.
+        // Migration target for ``selection.store.getState()`` callers
+        // that read mode/filters/combinator/loading together.
+        getState:        function () {
+            var s = _store();
+            if (!s) {
+                return {
+                    indices: [], mode: "click", filters: [],
+                    combinator: "or", loading: false, atoms: [],
+                    sourceFile: null,
+                };
+            }
+            var st = s.getState();
+            return {
+                indices:    st.selection.slice(),
+                mode:       st.mode,
+                filters:    st.filters.map(function (f) {
+                    return Object.assign({}, f);
+                }),
+                combinator: st.combinator,
+                loading:    !!st.loading,
+                atoms:      Array.isArray(st.atoms) ? st.atoms.slice() : [],
+                sourceFile: st.sourceFile || null,
+            };
+        },
+        // Per §5 — subscribe to selection-only changes.  Convenience
+        // for callers that don't need the full ws.subscribe firehose.
+        subscribe:       function (fn) {
+            var s = _store(); if (!s) throw _missing("selection store");
+            return s.subscribe(fn);
         },
     };
 
@@ -757,7 +822,9 @@
         getState:              getState,
         getStructure:          getStructure,
         getSource:             getSource,
+        getSourceFile:         getSourceFile,
         getSelection:          getSelection,
+        getAtoms:              getAtoms,
         isDirty:               isDirty,
         isEmpty:               isEmpty,
         loadFromFile:          loadFromFile,
