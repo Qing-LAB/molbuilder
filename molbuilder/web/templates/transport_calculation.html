@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/tabs.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/projects-sidebar.css') }}">
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/form-schema.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 {# molbuilder-runtime.js MUST load before any other molbuilder script.
    Defines window.molbuilder.runtime (register/whenReady).  See
    protocols/runtime-registry.md. #}
@@ -20,90 +21,99 @@
 {% include "_app_header.html" %}
 {% include "_projects_sidebar.html" %}
 
-<main class="page-shell">
-  <section class="card" style="max-width: 880px; margin: 2rem auto;">
-    <header class="card-header">
-      <h2>Transport calculation</h2>
-      <span id="transport-status" class="muted"
-            role="status" aria-live="polite"></span>
-    </header>
+<!-- ============================================================ -->
+<!--  Vertical workflow (2026-06-10 post-review refactor):           -->
+<!--    1. Inspect structure — sidebar pick + commit                 -->
+<!--    2. Analyze chemistry — open-shell-metal + region surface     -->
+<!--    3. Parameters — TransportConfig form                          -->
+<!--    4. Generate — device .fdf + copy/download + issues panel     -->
+<!--  Matches the Optimization (3-card) + Spectrum (4-card) layouts. -->
+<!--  See transport_review_findings memory for the BLOCKER-2 history. -->
+<!-- ============================================================ -->
+<main class="app-grid">
 
-    <p>
-      Generates TranSIESTA (NEGF) input scripts for a relaxed
-      device geometry.  Pick the relaxed structure in the Projects
-      sidebar (double-click to commit); the form below is populated
-      from <code>TransportConfig</code> via the schema endpoint
-      <code>/api/transport/schema</code>.
-      <strong>TranSIESTA zero-bias is shipped 2026-06-10;</strong>
-      PySCF-NEGF and several follow-ups (electrode wizard,
-      bias-scan driver, <code>/results</code> inspector) land in
-      subsequent commits — see <code>docs/roadmap.md</code> § 2.2.
+  {#- ===================== 1. Inspect ===================== -#}
+  <section class="card" id="inspect-card">
+    <h2>1. Inspect structure</h2>
+    <p class="hint">
+      Pick a relaxed device <code>.xyz</code> in the Projects
+      sidebar — double-click to commit.  The structure must
+      carry a matching <code>.molstruct.json</code> sidecar with
+      <code>L-electrode</code> / <code>R-electrode</code> /
+      <code>bridge</code> region labels.  Assign them on the
+      <a href="/molbuilder">Molbuilder</a> tab if your structure
+      doesn't have them yet.
     </p>
+    <div class="viewer-load-bar">
+      <span id="transport-current-structure" class="muted">
+        No structure committed yet.
+      </span>
+      <span id="transport-status" class="status" role="status"
+            aria-live="polite"></span>
+    </div>
+  </section>
 
-    <p class="hint" style="margin: 0 0 1.2rem;">
-      <strong>Today's runnable workflow (transiesta, zero-bias):</strong>
+  {#- ===================== 2. Analyze chemistry ===================== -#}
+  <section class="card" id="analyze-card">
+    <h2>2. Analyze chemistry</h2>
+    <p class="hint">
+      Surfaces the open-shell-metal check (same as on
+      <a href="/structure-optimization">Optimization</a> and
+      <a href="/spectrum-calculation">Spectrum</a>) plus a region-
+      label summary.  Auto-fires when you commit a structure;
+      you can also re-run it from the button below.  No form
+      fields are mutated — TransportConfig has no
+      <code>(charge, spin, method)</code> triplet, so this step
+      is informational only.
     </p>
-    <ol class="hint" style="margin: 0 0 1.2rem 1.2em;">
-      <li>Pick a relaxed device <code>.xyz</code> in the sidebar
-          (double-click to commit).  A matching
-          <code>.molstruct.json</code> sidecar must carry the
-          <code>L-electrode</code> / <code>R-electrode</code> /
-          <code>bridge</code> region labels (assign them on the
-          Molbuilder tab).</li>
-      <li>Configure the form below.  Generate enables once the
-          structure is committed.</li>
-      <li>Click Generate.  The rendered <code>.fdf</code> appears
-          inline with Copy + Download.</li>
-      <li>Generate electrode <code>.TSHS</code> files separately
-          (manual today; "electrode wizard" planned).  Build the
-          lead geometry on the Molbuilder tab, emit a SIESTA
-          <code>.fdf</code> from
-          <a href="/structure-optimization">Optimization</a>,
-          add <code>TS.HSFileEnable = T</code>, run SIESTA, copy
-          the resulting <code>.TSHS</code> file into the device
-          run directory as
-          <code>&lt;jobname&gt;_L_electrode.TSHS</code> (and
-          similarly for the right electrode).</li>
-      <li>Run the device <code>.fdf</code> via the standard
-          <code>bash &lt;jobname&gt;.run.sh</code> wrapper
-          (generated alongside the <code>.fdf</code>; activates
-          the <code>molbuilder-siesta</code> conda env + launches
-          <code>mpirun siesta</code>).</li>
-    </ol>
+    <div class="auto-detect-bar">
+      <button id="auto-detect-btn" type="button" disabled
+        title="Re-run the chemistry analysis on the loaded structure.  Disabled until a structure is committed.">
+        Re-analyze chemistry
+      </button>
+      <span id="auto-detect-status" class="status" role="status"
+            aria-live="polite"></span>
+    </div>
+    <details id="auto-detect-panel" class="auto-detect-panel" hidden>
+      <summary>Chemistry analysis</summary>
+      <p class="auto-detect-rationale" id="auto-detect-rationale"></p>
+      <ul class="auto-detect-warnings" id="auto-detect-warnings"></ul>
+      <dl class="auto-detect-metals" id="auto-detect-metals"></dl>
+    </details>
+  </section>
 
-    <p class="hint" style="margin: 0 0 1.2rem;">
-      <strong>Multi-bias scan:</strong> set
-      <code>bias_voltages_v</code> to a list and the preflight
-      will warn that today's engine emits only the first value.
-      Multi-bias requires multiple <code>.fdf</code>s and a
-      driver script — planned as a follow-up.
+  {#- ===================== 3. Parameters ===================== -#}
+  <section class="card" id="parameters-card">
+    <h2>3. Parameters</h2>
+    <p class="hint">
+      TransportConfig fields rendered from the schema.  Hover any
+      label to see what TranSIESTA / PySCF-NEGF keyword it writes
+      (the per-field <code>engine_key</code> badge).  Defaults are
+      production-tuned for Au-thiol junctions; the
+      <strong>NEGF</strong> section has tier=advanced fields that
+      stay collapsed unless you need to touch contour parameters.
     </p>
-
-    <p class="hint" style="margin: 0 0 1.2rem;">
-      <strong>Where chemistry comes from on Transport.</strong>
-      <code>TransportConfig</code> intentionally has no
-      <code>(charge, spin, method)</code> fields — those travel
-      from the upstream relaxed geometry via its
-      <code>.molstruct.json</code> sidecar.  Set them once on
-      <a href="/structure-optimization">Optimization</a> or
-      <a href="/spectrum-calculation">Spectrum calculation</a>
-      (the Auto-detect button on either page surfaces the
-      chemistry rationale before you generate), commit the
-      result, then load the relaxed structure here.  Transport's
-      preflight reuses the same shared open-shell-metal check
-      from
-      <code>molbuilder.validation._check_open_shell_metal</code>
-      so a Fe-bearing device surfaces the warn in the issues
-      panel below.
-    </p>
-
     <div id="transport-form-container" class="param-grid">
       <p class="muted">Loading form schema&hellip;</p>
     </div>
+  </section>
 
+  {#- ===================== 4. Generate ===================== -#}
+  <section class="card" id="generate-card">
+    <h2>4. Generate</h2>
+    <p class="hint">
+      Emits the device <code>.fdf</code>.  Assumes the electrode
+      <code>.TSHS</code> files already exist in the run directory
+      (named <code>&lt;jobname&gt;_L_electrode.TSHS</code> and
+      <code>&lt;jobname&gt;_R_electrode.TSHS</code>).  The
+      automated electrode wizard ships in a follow-up release;
+      until then see the manual workflow in
+      <code>molbuilder/transport/transiesta.py</code> module
+      docstring.
+    </p>
     <div class="generate-row"
          style="display: flex; align-items: center; gap: 1rem;
-                margin-top: 1.5rem;">
+                margin-top: 1rem;">
       <button id="transport-generate-btn" class="full-btn" disabled
               title="Generate the device .fdf.  Disabled until a structure file is committed via the Projects sidebar (double-click on a .xyz / .pdb).">
         Generate transport script
@@ -140,6 +150,51 @@
                   padding: 0.75rem; font-size: 0.85rem;
                   font-family: ui-monospace, monospace;
                   border-radius: 4px;"></pre>
+    </details>
+
+    {#- Post-generate workflow footer.  Cards 1-4 cover what
+        happens IN molbuilder.  This is what users do AFTER they
+        click Generate — captures the electrode .TSHS workflow
+        + the bias-scan path that are deferred-scope today. -#}
+    <details class="hint" style="margin: 1.5rem 0 0;">
+      <summary>After generating: electrode <code>.TSHS</code> +
+        runner workflow</summary>
+      <ol style="margin: 0.8rem 0 0 1.2em; line-height: 1.6;">
+        <li><strong>Electrode <code>.TSHS</code> generation
+            (manual today; "electrode wizard" planned).</strong>
+            Build the lead geometry on
+            <a href="/molbuilder">Molbuilder</a>, emit a SIESTA
+            <code>.fdf</code> from
+            <a href="/structure-optimization">Optimization</a>,
+            add <code>TS.HSFileEnable = T</code> to the emitted
+            <code>.fdf</code>, run SIESTA, copy the resulting
+            <code>.TSHS</code> file into the device run
+            directory as
+            <code>&lt;jobname&gt;_L_electrode.TSHS</code> (and
+            similarly for the right electrode).  Repeat per
+            unique lead geometry; the same <code>.TSHS</code>
+            files can be reused across bias points.</li>
+        <li><strong>Run the device <code>.fdf</code>.</strong>
+            Use the standard
+            <code>bash &lt;jobname&gt;.run.sh</code> wrapper
+            (generated alongside the <code>.fdf</code>);
+            activates the <code>molbuilder-siesta</code> conda
+            env per the four-env model + launches
+            <code>mpirun siesta</code>.</li>
+        <li><strong>Multi-bias scan</strong> (deferred):
+            <code>bias_voltages_v</code> with multiple values
+            surfaces a preflight WARN today.  Multi-bias
+            requires multiple <code>.fdf</code>s and a driver
+            script — planned as a follow-up
+            (<a href="/static/docs/roadmap.md">roadmap.md</a>
+            § 2.2).</li>
+        <li><strong>View results</strong> (deferred): the
+            <code>/results</code> Transport inspector + Plotly
+            T(E) charts ship alongside <code>parse_output</code>
+            in a follow-up release.  Today, inspect the
+            <code>.TBT.AVTRANS_*</code> files in an external
+            plotter.</li>
+      </ol>
     </details>
   </section>
 </main>

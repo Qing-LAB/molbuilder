@@ -154,6 +154,23 @@
         btn.disabled = !_currentStructureFile;
     }
 
+    function _refreshAutoDetectButton() {
+        var btn = _$("auto-detect-btn");
+        if (!btn) return;
+        btn.disabled = !_currentStructureFile;
+    }
+
+    function _setCurrentStructureReadout(path) {
+        var el = _$("transport-current-structure");
+        if (!el) return;
+        if (!path) {
+            el.textContent = "No structure committed yet.";
+            return;
+        }
+        var name = path.split("/").pop();
+        el.textContent = "Committed: " + name;
+    }
+
     /**
      * Subscribe to the universal commit channel so a sidebar
      * dblclick on a structure file updates the visible "current
@@ -183,11 +200,131 @@
                 var lc = f.toLowerCase();
                 if (!lc.endsWith(".xyz") && !lc.endsWith(".pdb")) return;
                 _currentStructureFile = f;
+                _setCurrentStructureReadout(f);
                 _refreshGenerateButton();
+                _refreshAutoDetectButton();
                 var name = f.split("/").pop();
                 _setStatus("Structure: " + name
                     + " — Generate enabled.");
+                // Phase 3-style auto-analyze: surface chemistry
+                // conclusions on commit so users see the open-
+                // shell-metal warn BEFORE clicking Generate.
+                // Forms are NOT mutated (TransportConfig has no
+                // charge/spin/method fields); analysis is
+                // informational only.
+                _autoAnalyzeOnCommit(f);
             });
+        });
+    }
+
+    // ---------- Auto-detect chemistry handler (Card 2) ---------- //
+
+    var _autoDetectSeq = 0;
+
+    function _autoAnalyzeOnCommit(path) {
+        if (!path) return;
+        var mySeq = ++_autoDetectSeq;
+        var btn = _$("auto-detect-btn");
+        if (btn) btn.disabled = true;
+        _autoDetectSetStatus("Analyzing chemistry…", null);
+        root.fetch("/api/structure/analyze", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({ structure_path: path }),
+        })
+            .then(function (r) {
+                return r.json().then(function (body) {
+                    return { status: r.status, body: body };
+                });
+            })
+            .then(function (resp) {
+                if (mySeq !== _autoDetectSeq) return;
+                var b = resp.body;
+                if (!b || !b.ok) {
+                    _autoDetectSetStatus(
+                        b && b.error ? b.error
+                            : "Analyze failed (HTTP " + resp.status + ").",
+                        "error");
+                    _refreshAutoDetectButton();
+                    return;
+                }
+                _renderAutoDetectPanel(b);
+                _autoDetectSetStatus(
+                    "Chemistry analyzed — review the rationale "
+                    + "panel before generating.",
+                    null);
+                _refreshAutoDetectButton();
+            })
+            .catch(function (e) {
+                if (mySeq !== _autoDetectSeq) return;
+                _autoDetectSetStatus(
+                    "Network error: "
+                    + (e && e.message ? e.message : String(e)),
+                    "error");
+                _refreshAutoDetectButton();
+            });
+    }
+
+    function _autoDetectSetStatus(msg, kind) {
+        var el = _$("auto-detect-status");
+        if (!el) return;
+        el.textContent = msg || "";
+        el.className = "status"
+            + (kind === "error" ? " error" : "")
+            + (kind === "ok"    ? " ok"    : "");
+    }
+
+    function _renderAutoDetectPanel(resp) {
+        var panel = _$("auto-detect-panel");
+        if (!panel) return;
+        panel.hidden = false;
+        panel.open = true;
+        var ratEl  = _$("auto-detect-rationale");
+        var warnEl = _$("auto-detect-warnings");
+        var metEl  = _$("auto-detect-metals");
+        if (ratEl) {
+            var sug = (resp.suggested || {}).pyscf
+                || (resp.suggested || {}).siesta
+                || {};
+            ratEl.textContent = sug.rationale || "";
+        }
+        if (warnEl) {
+            warnEl.textContent = "";
+            var ws = resp.warnings || [];
+            for (var i = 0; i < ws.length; i++) {
+                var li = document.createElement("li");
+                li.textContent = ws[i];
+                warnEl.appendChild(li);
+            }
+            warnEl.hidden = ws.length === 0;
+        }
+        if (metEl) {
+            metEl.textContent = "";
+            var hs = resp.metal_hints || [];
+            for (var j = 0; j < hs.length; j++) {
+                var h = hs[j];
+                var dt = document.createElement("dt");
+                dt.textContent = h.element;
+                metEl.appendChild(dt);
+                var cs = h.common_spins || [];
+                for (var k = 0; k < cs.length; k++) {
+                    var c = cs[k];
+                    var dd = document.createElement("dd");
+                    dd.textContent =
+                        "spin=" + c.spin + " — " + c.label;
+                    metEl.appendChild(dd);
+                }
+            }
+            metEl.hidden = hs.length === 0;
+        }
+    }
+
+    function _wireAutoDetectButton() {
+        var btn = _$("auto-detect-btn");
+        if (!btn) return;
+        btn.addEventListener("click", function () {
+            if (!_currentStructureFile) return;
+            _autoAnalyzeOnCommit(_currentStructureFile);
         });
     }
 
@@ -359,7 +496,10 @@
         _wireCommitChannel();
         _wireGenerateButton(formContainer);
         _wireCopyButton();
+        _wireAutoDetectButton();
         _refreshGenerateButton();
+        _refreshAutoDetectButton();
+        _setCurrentStructureReadout("");
     }
 
     if (root.document) {
