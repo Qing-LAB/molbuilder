@@ -338,9 +338,29 @@ def save(
     sidecar_path.parent.mkdir(parents=True, exist_ok=True)
     tmp = sidecar_path.with_suffix(sidecar_path.suffix + ".tmp")
     try:
-        with open(tmp, "w") as fh:
-            _json.dump(payload, fh, indent=2, sort_keys=False)
+        # ``encoding="utf-8"`` is REQUIRED: without it Python defaults
+        # to the platform locale's encoding, which corrupts non-ASCII
+        # region labels (e.g. "α-helix") on cp1252 / latin-1 systems.
+        # ``allow_nan=False`` prevents the writer from emitting NaN/Inf
+        # tokens (a divergent SCF could write one) — same safety net
+        # as spectra_json + transport_json.
+        with open(tmp, "w", encoding="utf-8") as fh:
+            _json.dump(payload, fh, indent=2, sort_keys=False,
+                       ensure_ascii=False, allow_nan=False)
             fh.write("\n")
+            fh.flush()
+            # fsync before os.replace so a crash between fclose() and
+            # the rename can't leave the OS write buffer holding the
+            # only copy of the new bytes (orphan .tmp would also block
+            # the next save).  Matches spectra_json + transport_json.
+            try:
+                os.fsync(fh.fileno())
+            except OSError:
+                # Some filesystems (tmpfs on certain kernels) reject
+                # fsync — the data is still in the OS buffer + will
+                # land before the replace.  Don't let a quirky FS
+                # block the write.
+                pass
         os.replace(tmp, sidecar_path)
     finally:
         if tmp.exists():
@@ -374,7 +394,11 @@ def load(sidecar_path: Union[str, Path]) -> Dict[str, Any]:
     """
     sidecar_path = Path(sidecar_path)
     try:
-        text = sidecar_path.read_text()
+        # ``encoding="utf-8-sig"`` accepts an optional BOM (some
+        # Windows editors insert one) and decodes as UTF-8 — without
+        # the explicit encoding, Python defaults to the platform
+        # locale's encoding, which mojibakes non-ASCII region labels.
+        text = sidecar_path.read_text(encoding="utf-8-sig")
     except OSError as exc:
         raise MolstructJsonError(
             f"failed to read sidecar {sidecar_path}: {exc}"

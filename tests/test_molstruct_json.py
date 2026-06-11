@@ -165,6 +165,54 @@ class TestSaveLoadRoundTrip:
         leftover = list(tmp_path.glob("*.tmp"))
         assert leftover == [], f"left behind: {leftover}"
 
+    def test_save_emits_utf8_bytes_for_unicode_region_label(self, tmp_path):
+        """Regression for 2026-06-09 audit BLOCKER: ``save`` previously
+        called ``open(tmp, "w")`` without ``encoding="utf-8"``, so a
+        region label with non-ASCII characters mojibaked on systems with
+        a non-UTF-8 platform locale (cp1252, latin-1).  Pin that the
+        bytes on disk decode as UTF-8 regardless of the runner's locale.
+        """
+        xyz = _write_xyz(tmp_path, n=4)
+        payload = msj.to_dict(
+            n_atoms_total=4,
+            structure_hash=msj.sha256_of_file(xyz),
+            regions={"α-helix": [0, 1], "β-sheet": [2, 3]},
+        )
+        side = msj.sidecar_path_for(xyz)
+        msj.save(side, payload)
+        # Read the raw bytes and decode as UTF-8 — must succeed and
+        # round-trip the non-ASCII labels verbatim.
+        raw = side.read_bytes()
+        text = raw.decode("utf-8")
+        assert "α-helix" in text
+        assert "β-sheet" in text
+        # And the load() path must also see them.
+        loaded = msj.load(side)
+        assert "α-helix" in loaded["regions"]
+        assert "β-sheet" in loaded["regions"]
+
+    def test_load_accepts_utf8_bom(self, tmp_path):
+        """Regression for the same audit: ``load`` used to call
+        ``read_text()`` without ``encoding="utf-8-sig"``, so a file
+        with a BOM (some Windows editors inject one) read its first
+        bytes as garbage characters.  Pin BOM tolerance.
+        """
+        xyz = _write_xyz(tmp_path, n=4)
+        side = msj.sidecar_path_for(xyz)
+        payload = msj.to_dict(
+            n_atoms_total=4,
+            structure_hash=msj.sha256_of_file(xyz),
+            regions={"L-electrode": [0, 1]},
+        )
+        # Write the payload with a UTF-8 BOM prepended — simulates a
+        # sidecar that was hand-edited in an editor that always emits
+        # a BOM.
+        import json as _json
+        bom = "﻿"
+        side.write_text(bom + _json.dumps(payload), encoding="utf-8")
+        loaded = msj.load(side)
+        assert loaded["regions"] == {"L-electrode": [0, 1]}
+
 
 # --------------------------------------------------------------------- #
 #  with_lock(): serialises concurrent read-modify-write cycles          #

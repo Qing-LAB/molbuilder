@@ -137,11 +137,26 @@
             }
         }
         container.addEventListener("input", function () {
+            // Mark the form dirty so the sidebar-commit handler can
+            // surface the unsaved-modifications modal before
+            // overwriting parameter edits.  Cleared after Generate.
+            _formDirty = true;
             if (debounceHandle) clearTimeout(debounceHandle);
             debounceHandle = setTimeout(persist, 250);
         });
-        container.addEventListener("change", persist);
+        container.addEventListener("change", function () {
+            _formDirty = true;
+            persist();
+        });
     }
+
+    // 2026-06-09 audit fix: form-dirty tracking parallel to Spectra's
+    // pattern.  Without this, a sidebar dblclick on a different
+    // structure would silently discard the user's parameter edits;
+    // the BOMB-3 comment in ``_wireCommitChannel`` explicitly named
+    // this gap.  Cleared on successful Generate (the form values
+    // landed in the .fdf — discarding the structure swap is OK).
+    var _formDirty = false;
 
     // Current structure file (committed via sidebar dblclick).
     // Drives the Generate button's enable state and the
@@ -190,15 +205,32 @@
             // sidebar click + fires-on-subscribe — using it as a
             // fallback would clobber the status line on every preview
             // click and re-build the geometry on every browse-click.
-            // Build + Spectra tolerate the fallback because they have
-            // form-dirty + warning-modal gates upstream; Transport
-            // has neither.
+            //
+            // 2026-06-09 audit fix: Transport now has form-dirty
+            // tracking (``_formDirty`` above) + the warning-modal
+            // gate (parallel to Spectra's _commitStructureForSpectra)
+            // so a sidebar swap no longer silently discards parameter
+            // edits.  The original BOMB-3 comment named this gap.
             if (typeof proj.onCommit !== "function") return;
-            proj.onCommit(function (sel) {
+            async function _commit(sel) {
                 var f = (sel && sel.file) ? String(sel.file) : "";
                 if (!f) return;
                 var lc = f.toLowerCase();
                 if (!lc.endsWith(".xyz") && !lc.endsWith(".pdb")) return;
+                // Form-dirty gate: ask the user before discarding
+                // unsaved parameter edits.  No-op when the form
+                // hasn't been touched (fresh mount, just after
+                // Generate, ...).
+                var modal = root.molbuilder
+                         && root.molbuilder.warningModal;
+                if (_formDirty && modal
+                        && typeof modal.confirmDiscardUnsaved === "function") {
+                    try {
+                        var proceed = await modal.confirmDiscardUnsaved();
+                        if (!proceed) return;
+                    } catch (_) { /* modal unavailable — proceed */ }
+                }
+                _formDirty = false;
                 _currentStructureFile = f;
                 _setCurrentStructureReadout(f);
                 _refreshGenerateButton();
@@ -213,7 +245,23 @@
                 // charge/spin/method fields); analysis is
                 // informational only.
                 _autoAnalyzeOnCommit(f);
-            });
+            }
+            proj.onCommit(_commit);
+            // 2026-06-09 audit fix: mount-time getCurrentFile
+            // pickup.  Parallel to Spectra's pattern — if the user
+            // navigated here from another tab where a structure
+            // was already picked, surface it as a committed
+            // structure on this tab too (otherwise the readout sits
+            // at "No structure committed yet." even though the
+            // sidebar shows the file as the current pick).
+            if (typeof proj.getCurrentFile === "function") {
+                var initFile = proj.getCurrentFile();
+                if (initFile) {
+                    var initDir = (typeof proj.getCurrentDir === "function")
+                        ? proj.getCurrentDir() : "";
+                    _commit({ dir: initDir, file: initFile });
+                }
+            }
         });
     }
 
@@ -464,6 +512,11 @@
                     _showScriptPreview(b.filename, b.script);
                     _setStatus("Generated " + b.filename + ".");
                     _refreshGenerateButton();
+                    // Form-dirty cleared: the parameter edits made
+                    // it into the rendered .fdf, so a subsequent
+                    // sidebar swap no longer needs to gate on the
+                    // unsaved-modifications modal.
+                    _formDirty = false;
                 })
                 .catch(function (e) {
                     _setStatus("Network error: "
