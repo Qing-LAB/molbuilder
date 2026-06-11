@@ -1,0 +1,350 @@
+"""Tests for the TranSIESTA engine (Transport Phase B.3 zero-bias).
+
+Pins the contract documented in
+``molbuilder/transport/transiesta.py`` module docstring:
+
+* Engine self-registers as ``"transiesta"`` on import of
+  :mod:`molbuilder.transport`.
+* ``render_script`` emits a device ``.fdf`` carrying every
+  TranSIESTA-required keyword for a zero-bias NEGF run.
+* ``preflight`` catches missing / empty region labels + warns on
+  multi-bias attempts (deferred scope).
+* ``parse_output`` raises ``NotImplementedError`` with a clear
+  deferred-scope message (NOT a stack trace).
+* ``methods_fragment`` returns prose (placeholder today; the
+  full version lands with parse_output).
+
+Sequencing of deferred items + the electrode-generation workflow
+are documented in memories
+``project_transport_electrode_bias_workflow.md`` and
+``project_transport_results_tab_framework.md``.
+"""
+from __future__ import annotations
+
+import numpy as np
+import pytest
+
+from molbuilder.config.transport import (
+    REGION_BRIDGE,
+    REGION_LEFT_ELECTRODE,
+    REGION_RIGHT_ELECTRODE,
+    TransportConfig,
+)
+from molbuilder.structure import Structure
+from molbuilder.transport import get_engine, registered_engines
+
+
+# --------------------------------------------------------------------- #
+#  Fixtures                                                             #
+# --------------------------------------------------------------------- #
+
+
+@pytest.fixture
+def labeled_device():
+    """A toy Au-S-C-Au junction with the required region labels.
+
+    Geometry is meaningless (atoms on a line); the engine only
+    cares about composition + region labels for the .fdf shape.
+    """
+    return Structure(
+        elements=["Au", "Au", "S", "C", "Au", "Au"],
+        positions=np.array(
+            [[0, 0, 0], [2, 0, 0], [4, 0, 0], [6, 0, 0],
+             [8, 0, 0], [10, 0, 0]],
+            dtype=float,
+        ),
+        regions={
+            REGION_LEFT_ELECTRODE:  [0, 1],
+            REGION_BRIDGE:          [2, 3],
+            REGION_RIGHT_ELECTRODE: [4, 5],
+        },
+    )
+
+
+@pytest.fixture
+def default_cfg():
+    return TransportConfig(job_name="testjunc")
+
+
+# --------------------------------------------------------------------- #
+#  Registry                                                             #
+# --------------------------------------------------------------------- #
+
+
+def test_transiesta_registered_on_import():
+    """Importing ``molbuilder.transport`` is sufficient to populate
+    the engine registry — the package ``__init__`` does the import
+    that triggers ``@register_engine``.  Pin so a future cleanup
+    that drops the import line silently breaks the dispatch path.
+    """
+    assert "transiesta" in registered_engines()
+    engine = get_engine("transiesta")
+    assert engine.name == "transiesta"
+    assert "TranSIESTA" in engine.label
+
+
+# --------------------------------------------------------------------- #
+#  render_script — .fdf shape                                           #
+# --------------------------------------------------------------------- #
+
+
+def test_render_script_emits_required_transiesta_keywords(
+        labeled_device, default_cfg):
+    """The device ``.fdf`` MUST carry every keyword TranSIESTA
+    needs to run a zero-bias NEGF calculation.  This test pins the
+    minimum set so a refactor that drops one surfaces immediately.
+    """
+    script = get_engine("transiesta").render_script(
+        labeled_device, default_cfg)
+    required = [
+        "SystemLabel",
+        "NumberOfAtoms",
+        "NumberOfSpecies",
+        "%block ChemicalSpeciesLabel",
+        "%block AtomicCoordinatesAndAtomicSpecies",
+        "%block LatticeVectors",
+        "%block kgrid_Monkhorst_Pack",
+        "SolutionMethod",
+        "TS.SolutionMethod",
+        "TS.HSFileLeft",
+        "TS.HSFileRight",
+        "TS.NumUsedAtomsLeft",
+        "TS.NumUsedAtomsRight",
+        "TS.Voltage",
+        "TS.ComplexContour.Emin",
+        "TS.ComplexContour.NumCircle",
+        "TS.TBT.NumE",
+        "TS.TBT.Emin",
+        "TS.TBT.Emax",
+    ]
+    for k in required:
+        assert k in script, (
+            f"missing required TranSIESTA keyword {k!r} in the "
+            f".fdf — engine cannot produce a runnable script"
+        )
+
+
+def test_render_script_systemlabel_matches_job_name(
+        labeled_device, default_cfg):
+    """SystemLabel drives the basename for .TSHS / .TBT.* output
+    files — must equal cfg.job_name exactly so the user can
+    discover outputs by name."""
+    script = get_engine("transiesta").render_script(
+        labeled_device, default_cfg)
+    assert f"SystemLabel            {default_cfg.job_name}" in script
+
+
+def test_render_script_uses_region_atom_counts(labeled_device,
+                                                default_cfg):
+    """TS.NumUsedAtomsLeft / Right come from struct.regions atom
+    counts.  Pin so a future refactor that hard-codes them or
+    reads from a wrong source surfaces."""
+    script = get_engine("transiesta").render_script(
+        labeled_device, default_cfg)
+    # Our fixture has 2 + 2 electrode atoms.
+    assert "TS.NumUsedAtomsLeft    2" in script
+    assert "TS.NumUsedAtomsRight   2" in script
+
+
+def test_render_script_emits_only_first_bias_voltage(labeled_device):
+    """B.3 zero-bias scope: only bias_voltages_v[0] is emitted.
+    Multi-bias requires multiple .fdfs (deferred scope).  Pin so
+    a future change that silently emits a list (which TranSIESTA
+    would reject at parse time) is caught."""
+    cfg = TransportConfig(
+        job_name="biased",
+        bias_voltages_v=[0.5, 1.0, 1.5],
+    )
+    script = get_engine("transiesta").render_script(labeled_device, cfg)
+    # Exactly one TS.Voltage line, at the first value.
+    voltage_lines = [
+        ln for ln in script.split("\n")
+        if ln.lstrip().startswith("TS.Voltage")
+    ]
+    assert len(voltage_lines) == 1
+    assert "0.5000 eV" in voltage_lines[0]
+    # The other values must NOT appear as TS.Voltage entries.
+    assert "1.0000 eV" not in script
+    assert "1.5000 eV" not in script
+
+
+def test_render_script_carries_chemical_species_block(labeled_device,
+                                                       default_cfg):
+    """The ChemicalSpeciesLabel block must list every unique
+    element with its atomic number.  Pin Au=79 + S=16 + C=6 for
+    the fixture junction."""
+    script = get_engine("transiesta").render_script(
+        labeled_device, default_cfg)
+    # All three species, with their atomic numbers, in the block.
+    block_start = script.index("%block ChemicalSpeciesLabel")
+    block_end   = script.index("%endblock ChemicalSpeciesLabel")
+    block = script[block_start:block_end]
+    for sp, z in [("Au", 79), ("S", 16), ("C", 6)]:
+        assert f"  {z}  {sp}" in block or f"{z}  {sp}" in block, (
+            f"ChemicalSpeciesLabel missing {sp} (Z={z}); block:\n{block}"
+        )
+
+
+def test_render_script_documents_electrode_file_assumption(
+        labeled_device, default_cfg):
+    """The banner at the top of the .fdf MUST mention that
+    electrode .TSHS files are assumed to exist.  Pin so a future
+    refactor that drops the documentation leaves the user lost
+    when their first run fails."""
+    script = get_engine("transiesta").render_script(
+        labeled_device, default_cfg)
+    assert ".TSHS" in script.split("# ===")[1], (
+        "header banner does not mention .TSHS — users will not "
+        "know they need to generate electrode files separately"
+    )
+
+
+# --------------------------------------------------------------------- #
+#  preflight                                                            #
+# --------------------------------------------------------------------- #
+
+
+def test_preflight_clean_structure_no_errors(labeled_device, default_cfg):
+    """Happy path: labeled junction + default config → no errors."""
+    issues = get_engine("transiesta").preflight(labeled_device, default_cfg)
+    errs = [i for i in issues if i.severity == "error"]
+    assert errs == []
+
+
+def test_preflight_missing_regions_blocks_generation(default_cfg):
+    """No region labels at all → error.  The user must label the
+    structure on the Molbuilder tab first."""
+    struct = Structure(
+        elements=["C", "H"],
+        positions=np.array([[0, 0, 0], [1, 0, 0]], dtype=float),
+    )
+    issues = get_engine("transiesta").preflight(struct, default_cfg)
+    errs = [i for i in issues if i.severity == "error"]
+    assert errs, "missing-region structure must surface at least one error"
+    assert any("region" in e.message.lower() for e in errs)
+
+
+def test_preflight_empty_electrode_region_blocks_generation(default_cfg):
+    """Region labels present but L-electrode is empty → error.
+    The TS.NumUsedAtomsLeft would be 0, breaking the calculation."""
+    struct = Structure(
+        elements=["C", "H"],
+        positions=np.array([[0, 0, 0], [1, 0, 0]], dtype=float),
+        regions={
+            REGION_LEFT_ELECTRODE:  [],   # empty
+            REGION_BRIDGE:          [0],
+            REGION_RIGHT_ELECTRODE: [1],
+        },
+    )
+    issues = get_engine("transiesta").preflight(struct, default_cfg)
+    errs = [i for i in issues if i.severity == "error"]
+    assert any("L-electrode" in e.message for e in errs), (
+        "empty left-electrode region must surface a clear error"
+    )
+
+
+def test_preflight_empty_bridge_blocks_generation(default_cfg):
+    """Empty bridge = no device region = nothing to compute T(E)
+    through.  Must error."""
+    struct = Structure(
+        elements=["C", "H"],
+        positions=np.array([[0, 0, 0], [1, 0, 0]], dtype=float),
+        regions={
+            REGION_LEFT_ELECTRODE:  [0],
+            REGION_BRIDGE:          [],   # empty
+            REGION_RIGHT_ELECTRODE: [1],
+        },
+    )
+    issues = get_engine("transiesta").preflight(struct, default_cfg)
+    errs = [i for i in issues if i.severity == "error"]
+    assert any("bridge" in e.message for e in errs)
+
+
+def test_preflight_multi_bias_warns_deferred_scope(labeled_device):
+    """Today's engine emits only bias_voltages_v[0]; multi-bias is
+    a follow-up release.  Pin the WARN so the deferred scope
+    surfaces to the user instead of silently dropping bias points.
+    """
+    cfg = TransportConfig(
+        job_name="biased",
+        bias_voltages_v=[0.0, 0.5, 1.0],
+    )
+    issues = get_engine("transiesta").preflight(labeled_device, cfg)
+    warns = [i for i in issues if i.severity == "warn"]
+    assert any(
+        "deferred" in w.message.lower() or "bias-scan" in w.message.lower()
+        for w in warns
+    ), (
+        "multi-bias call did not surface the deferred-scope WARN; "
+        "user will not know the extra bias points were ignored"
+    )
+
+
+def test_preflight_open_shell_metal_routes_through_shared_check(
+        labeled_device):
+    """Phase 1d single-source contract: the open-shell-metal check
+    runs here too via the SHARED ``_check_open_shell_metal`` from
+    validation.py.  Pin so a future refactor that re-inlines the
+    chemistry detection in this engine doesn't break the cross-
+    engine consistency rule.
+
+    Add Fe to the fixture (Au→Fe substitution); transport is a
+    closed-shell run by default today, so an open-shell metal
+    should fire the warn.
+    """
+    fe_struct = Structure(
+        elements=["Fe", "Au", "S", "C", "Au", "Au"],
+        positions=np.array(
+            [[0, 0, 0], [2, 0, 0], [4, 0, 0], [6, 0, 0],
+             [8, 0, 0], [10, 0, 0]],
+            dtype=float,
+        ),
+        regions={
+            REGION_LEFT_ELECTRODE:  [0, 1],
+            REGION_BRIDGE:          [2, 3],
+            REGION_RIGHT_ELECTRODE: [4, 5],
+        },
+    )
+    issues = get_engine("transiesta").preflight(
+        fe_struct, TransportConfig(job_name="fe_junc"))
+    warns = [i for i in issues if i.severity == "warn"]
+    assert any(
+        "open-shell" in w.message.lower() and "Fe" in w.message
+        for w in warns
+    ), (
+        "shared open-shell-metal check did not fire on a Fe-bearing "
+        "device — Phase 1d single-source contract broken"
+    )
+
+
+# --------------------------------------------------------------------- #
+#  Stub methods                                                         #
+# --------------------------------------------------------------------- #
+
+
+def test_parse_output_raises_clear_deferred_message():
+    """parse_output is deferred to a follow-up release; raising
+    NotImplementedError with a clear message is BETTER than
+    returning empty results or crashing on a missing key.
+    """
+    with pytest.raises(NotImplementedError) as ei:
+        get_engine("transiesta").parse_output("nonexistent.json")
+    msg = str(ei.value).lower()
+    assert "defer" in msg or "follow-up" in msg, (
+        f"NotImplementedError message should explain why; got: {ei.value}"
+    )
+
+
+def test_methods_fragment_returns_placeholder_prose(labeled_device,
+                                                     default_cfg):
+    """The Methods fragment is a placeholder today; full version
+    lands with parse_output.  Pin the placeholder includes a
+    citation marker AND mentions the deferred status so a reader
+    isn't surprised."""
+    from molbuilder.transport.results import TransportResults
+    # Today's stub doesn't use ``results`` — pass an empty one.
+    txt = get_engine("transiesta").methods_fragment(
+        default_cfg, TransportResults())
+    assert "TranSIESTA" in txt
+    assert "[CITE:" in txt or "Brandbyge" in txt
+    assert "deferred" in txt.lower()

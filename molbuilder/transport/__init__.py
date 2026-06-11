@@ -27,6 +27,14 @@ from .engine_base import (
 )
 from .results import TransportResults
 
+# Concrete engines self-register on import via the
+# ``@register_engine`` decorator.  Importing the module here at
+# package-load time guarantees the registry is populated whenever
+# anything reaches into :mod:`molbuilder.transport` (web blueprint,
+# CLI, tests).  Mirrors the per-engine ``auto_defaults`` pattern
+# from the chemistry middle layer.
+from . import transiesta as _transiesta  # noqa: F401
+
 __all__ = [
     "TransportEngine",
     "UnknownEngineError",
