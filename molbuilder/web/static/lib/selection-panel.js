@@ -55,12 +55,22 @@
 
     function mount(rootEl) {
         rootEl = rootEl || document;
+        // Phase 10 (workspace-contract.md §5): the panel drives the
+        // unified ws.selection namespace, not the legacy
+        // selection.store global.  Variable kept as ``store`` to
+        // minimize churn — the surface is the same (toggle, set,
+        // getState, subscribe, addFilter, ...) but every call now
+        // routes through ws.selection.  Method names that drifted
+        // from store→ws (toggleAtom→toggle, selectAll→all,
+        // clearSelection→clear) are renamed at the call sites
+        // below.
         const store = (root.molbuilder
-                       && root.molbuilder.selection
-                       && root.molbuilder.selection.store);
+                       && root.molbuilder.workspace
+                       && root.molbuilder.workspace.selection);
         if (!store) {
             throw new Error(
-                "selection-panel: store missing; load lib/selection/store.js first"
+                "selection-panel: ws.selection missing; "
+              + "load lib/workspace/dispatcher.js first"
             );
         }
 
@@ -654,11 +664,11 @@
 
             onTransient(check, "change", (e) => {
                 e.stopPropagation();
-                store.toggleAtom(atom.index);
+                store.toggle(atom.index);
             });
             onTransient(tr, "click", (e) => {
                 if (e.target === check) return;
-                store.toggleAtom(atom.index);
+                store.toggle(atom.index);
             });
             return tr;
         }
@@ -752,14 +762,14 @@
             if (store.getState().mode !== "filter") store.setMode("filter");
         });
         on(els.applyFilterBtn,  "click",  () => store.applyFilter());
-        on(els.clearBtn,        "click",  () => store.clearSelection());
+        on(els.clearBtn,        "click",  () => store.clear());
         on(els.assignTgt,       "change", renderAssignVisibility);
         on(els.assignBtn,       "click",  onAssign);
         on(els.addBtn,          "click",  onAddToTarget);
         on(els.removeBtn,       "click",  onRemoveFromTarget);
         on(els.selectAll,       "change", (e) => {
-            if (e.target.checked) store.selectAll();
-            else                  store.clearSelection();
+            if (e.target.checked) store.all();
+            else                  store.clear();
         });
 
         // Seed the Assign-target <select> from BUILTIN_TARGETS before

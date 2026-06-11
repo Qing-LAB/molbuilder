@@ -333,6 +333,23 @@
             var s = _store(); if (!s) throw _missing("selection store");
             return s.setFilters(filters);
         },
+        // workspace-contract.md §5 — per-filter mutators used by
+        // selection-panel's filter-row UI.  These wrap the
+        // selection store's same-named methods; consumers should
+        // call them through ws.selection so the legacy store stays
+        // private.
+        addFilter:       function (filter) {
+            var s = _store(); if (!s) throw _missing("selection store");
+            return s.addFilter(filter);
+        },
+        removeFilter:    function (index) {
+            var s = _store(); if (!s) throw _missing("selection store");
+            return s.removeFilter(index);
+        },
+        updateFilter:    function (index, patch) {
+            var s = _store(); if (!s) throw _missing("selection store");
+            return s.updateFilter(index, patch);
+        },
         setCombinator:   function (c) {
             var s = _store(); if (!s) throw _missing("selection store");
             return s.setCombinator(c);

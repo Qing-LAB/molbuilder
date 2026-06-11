@@ -662,23 +662,32 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
 <script src="{{ url_for('static', filename='lib/mol-viewer-embed.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='lib/projects-sidebar.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/viewer.js') }}"></script>
-{# Selection panel (atom-selection card).  Loads its state core +
-   panel JS, then the modify-side bootstrap that fetches the
-   partial, mounts it, and connects to the page's structure
-   loader + 3Dmol viewer.  See lib/selection-panel.js for the
-   public surface and molbuilder/web/blueprints/selection.py for
-   the L2 API + bookkeeping semantics. #}
+{# Selection store + canvas-state — internal implementation
+   modules behind the workspace dispatcher.  Loaded FIRST so the
+   dispatcher (loaded immediately after) has them to delegate to.
+   Per workspace-contract.md §8 these are deprecated public
+   surfaces; consumers go through ``window.molbuilder.workspace.*``
+   instead. #}
 <script src="{{ url_for('static', filename='lib/selection/store.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/structure/canvas-state.js') }}"></script>
+{# Workspace dispatcher (workspace-contract.md §1) — mounts
+   ``window.molbuilder.workspace`` as the SINGLE public API surface
+   for workspace state.  Loaded AFTER its internal stores
+   (canvas-state, selection.store) and BEFORE every consumer
+   (page.js, save.js, selection-panel.js, viewer-adapter.js,
+   selection-bootstrap.js) so each consumer's IIFE can bind
+   against ws.* immediately. #}
+<script src="{{ url_for('static', filename='lib/workspace/dispatcher.js') }}"></script>
+{# Warning modal — independent primitive used by page.js's gate. #}
+<script src="{{ url_for('static', filename='lib/structure/warning-modal.js') }}"></script>
+{# Selection panel + helpers.  Bind ws.selection (Phase 10). #}
 <script src="{{ url_for('static', filename='lib/selection/measurements.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/selection-panel.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/selection/viewer-adapter.js') }}"></script>
 <script src="{{ url_for('static', filename='modify/selection-bootstrap.js') }}"></script>
-{# Molbuilder-tab canvas + source-panel wiring.  Order matters:
-   canvas-state + warning-modal mount independent primitives;
-   page.js auto-binds them into the structurePage orchestrator;
-   smiles.js wires the Generate button against structurePage. #}
-<script src="{{ url_for('static', filename='lib/structure/canvas-state.js') }}"></script>
-<script src="{{ url_for('static', filename='lib/structure/warning-modal.js') }}"></script>
+{# Molbuilder-tab Sources panel + generators.  page.js binds ws.*
+   + the warning modal; the generators (smiles/name/dna/rna/...)
+   wire their Generate buttons against structurePage. #}
 <script src="{{ url_for('static', filename='lib/structure/page.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/smiles.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/name.js') }}"></script>
@@ -687,12 +696,5 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
 <script src="{{ url_for('static', filename='lib/structure/peptide.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/file.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/save.js') }}"></script>
-{# Workspace dispatcher — Phase 4 of the workspace-state migration
-   (docs/protocols/workspace-state.md § 4.2).  Loaded LAST so every
-   legacy store it delegates to (canvas-state, selection.store,
-   modify.handle, structureSave, the generators) is already on
-   ``window.molbuilder``.  Mounts ``window.molbuilder.workspace``
-   as the single public API surface for workspace state. #}
-<script src="{{ url_for('static', filename='lib/workspace/dispatcher.js') }}"></script>
 </body>
 </html>

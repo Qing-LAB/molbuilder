@@ -33,7 +33,7 @@
     //  Module state.  Single canonical structure (xyz string + parsed  //
     //  atom metadata).  Selection state is NOT owned here -- it       //
     //  lives in the singleton selection store at                      //
-    //  ``window.molbuilder.selection.store`` and is read on demand    //
+    //  ``window.molbuilder.workspace.selection`` and is read on demand //
     //  through ``selectedIndices()`` below.                           //
     // --------------------------------------------------------------- //
     const state = {
@@ -63,19 +63,23 @@
     // without keeping a local mirror.  ``selectedIndices()`` returns
     // a sorted-ascending number[].
 
+    // Phase 10 (workspace-contract.md §5): selection helpers read
+    // through ws.selection, not the legacy selection.store global.
+    // Same semantics — read-live so ops see current selection
+    // without a local mirror — but the surface is unified.
     function _selStore() {
         return (window.molbuilder
-                && window.molbuilder.selection
-                && window.molbuilder.selection.store)
-               ? window.molbuilder.selection.store : null;
+                && window.molbuilder.workspace
+                && window.molbuilder.workspace.selection)
+               ? window.molbuilder.workspace.selection : null;
     }
     function selectedIndices() {
         const s = _selStore();
-        return s ? s.getState().selection.slice() : [];
+        return s ? s.getState().indices.slice() : [];
     }
     function clearStoreSelection() {
         const s = _selStore();
-        if (s) s.clearSelection();
+        if (s) s.clear();
     }
 
     // --------------------------------------------------------------- //
@@ -376,8 +380,10 @@
             // an on-disk target via ``structureSave.targetPath()``.
             // Forces the workflow (Save → Send) and eliminates the
             // sessionStorage-vs-disk conflict class.
+            // Phase 10 (workspace-contract.md §2): read dirty bit
+            // off ws, not the legacy structureCanvas global.
             const cs = window.molbuilder
-                    && window.molbuilder.structureCanvas;
+                    && window.molbuilder.workspace;
             const save = window.molbuilder
                     && window.molbuilder.structureSave;
             const targetPath = (save && typeof save.targetPath === "function")
@@ -996,8 +1002,9 @@
         // ``builder-structure`` payload — the persistence comes
         // from the project file on disk, eliminating the
         // sessionStorage-vs-disk conflict class.
+        // Phase 10 — read dirty bit through ws.* (workspace-contract.md §2).
         const cs = window.molbuilder
-                && window.molbuilder.structureCanvas;
+                && window.molbuilder.workspace;
         const save = window.molbuilder
                 && window.molbuilder.structureSave;
         const targetPath = (save && typeof save.targetPath === "function")
@@ -1056,10 +1063,14 @@
         // this subscription the Send button wouldn't re-enable after
         // a successful Save (or re-disable after a modifier op flipped
         // the dirty bit).  Task #294, 2026-06-08.
+        // Phase 10 — subscribe to ws.* notifications (contract §2.1).
+        // ws.subscribe fires on EVERY workspace-state change (canvas
+        // + selection both), so the Send button stays in lockstep
+        // with both Save and modifier ops.
         const _cs = window.molbuilder
-                 && window.molbuilder.structureCanvas;
-        if (_cs && typeof _cs.onChange === "function") {
-            _cs.onChange(() => refreshSelectionUI());
+                 && window.molbuilder.workspace;
+        if (_cs && typeof _cs.subscribe === "function") {
+            _cs.subscribe(() => refreshSelectionUI());
         }
 
         // (Legacy load-btn + file-picker dead-code block removed
@@ -1266,8 +1277,9 @@
         // replacement_reloads_atom_list_on_revisit.
         let canvasDirty = false;
         try {
+            // Phase 10 — dirty bit via ws.* (contract §2).
             const cs = window.molbuilder
-                    && window.molbuilder.structureCanvas;
+                    && window.molbuilder.workspace;
             if (cs && typeof cs.isDirty === "function") {
                 canvasDirty = !!cs.isDirty();
             }
@@ -1468,16 +1480,19 @@
         //     a divergence; this shouldn't happen with the
         //     unified mirror but the branch is defensive).
         try {
+            // Phase 10 — install via ws.* (contract §3).  Routes
+            // through the same canvas-state internally; consumer
+            // surface is now unified.
             const cs = window.molbuilder
-                    && window.molbuilder.structureCanvas;
-            if (cs && typeof cs.setStructure === "function"
+                    && window.molbuilder.workspace;
+            if (cs && typeof cs.installStructure === "function"
                    && saved.xyz) {
                 const existing = (typeof cs.getStructure === "function")
                     ? cs.getStructure() : null;
                 const sameBytes = existing
                     && existing.text === saved.xyz;
                 if (!sameBytes) {
-                    cs.setStructure(
+                    cs.installStructure(
                         { source_format: "xyz", text: saved.xyz },
                         { kind: saved.source_file ? "file" : "load",
                           file: saved.source_file || null,
