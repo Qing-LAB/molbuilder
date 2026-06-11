@@ -380,6 +380,44 @@
             var s = _store(); if (!s) throw _missing("selection store");
             return s.subscribe(fn);
         },
+        // Per workspace-contract.md §5 — atomically install path +
+        // atoms + selection in one promise.  Used by the modify-tab
+        // selection-bootstrap on file commit so the store's atoms
+        // come from the just-loaded payload (no second /api/selection/
+        // atoms refetch).  Awaitable; resolves once the store has
+        // settled.
+        adoptSession:    function (opts) {
+            var s = _store(); if (!s) throw _missing("selection store");
+            if (typeof s.adoptSession !== "function") {
+                throw _missing("selection.store.adoptSession");
+            }
+            return s.adoptSession(opts);
+        },
+        // Per workspace-contract.md §5 — set the path that the
+        // selection store regards as its source-of-truth for sidecar
+        // labels (frozen_atoms, regions).  Fallback path when
+        // ``adoptSession`` isn't available; the store internally
+        // refetches atoms from /api/selection/atoms.
+        setSourceFile:   function (path) {
+            var s = _store(); if (!s) throw _missing("selection store");
+            if (typeof s.setSourceFile !== "function") {
+                throw _missing("selection.store.setSourceFile");
+            }
+            return s.setSourceFile(path);
+        },
+        // Per workspace-contract.md §5 — set the async atom-loader
+        // the store uses for ``setSourceFile`` / ``refreshAtoms``.
+        // Wired once on page mount by selection-bootstrap so the
+        // store's lazy-fetch path goes through the modify-tab's
+        // loadStructureText (which is itself a ws.loadFromText
+        // alias).
+        setLoader:       function (loader) {
+            var s = _store(); if (!s) throw _missing("selection store");
+            if (typeof s.setLoader !== "function") {
+                throw _missing("selection.store.setLoader");
+            }
+            return s.setLoader(loader);
+        },
     };
 
     // ─── Canvas write helpers (workspace-contract.md §3) ─────────── //

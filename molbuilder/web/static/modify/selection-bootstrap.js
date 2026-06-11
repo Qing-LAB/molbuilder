@@ -74,11 +74,15 @@
         // DOMContentLoaded runs; if missing, the store falls back
         // to atom-list-only mode -- still functional, just no
         // viewer.
-        const _store0 = window.molbuilder.selection
-                      && window.molbuilder.selection.store;
-        if (_store0 && typeof _store0.setLoader === "function"
-                    && window.molbuilder.loadStructureText) {
-            _store0.setLoader(window.molbuilder.loadStructureText);
+        // Phase 10 (workspace-contract.md §5): bind through the
+        // ws.selection namespace, not the legacy selection.store
+        // global.  ws.selection.setLoader passes through to the
+        // store's same method but stays on the unified surface.
+        const _ws0 = window.molbuilder.workspace;
+        if (_ws0 && _ws0.selection
+                 && typeof _ws0.selection.setLoader === "function"
+                 && window.molbuilder.loadStructureText) {
+            _ws0.selection.setLoader(window.molbuilder.loadStructureText);
         }
 
         // 3. Sidebar selection sets a CANDIDATE — does NOT commit
@@ -97,7 +101,12 @@
         // mount — the user arrived with intent ("send my structure
         // to the Molbuilder tab"), not with a stray click.
         const projects = window.molbuilder && window.molbuilder.projects;
-        const store    = window.molbuilder.selection.store;
+        // Phase 10 (workspace-contract.md §5): the bootstrap drives
+        // ws.selection (set source file, adopt session, subscribe to
+        // selection changes).  Per the contract this is the only
+        // surface; the legacy ``selection.store`` global is private
+        // implementation detail.
+        const store    = window.molbuilder.workspace.selection;
         // Both .xyz and .pdb are loadable into /molbuilder -- the
         // server's selection blueprint dispatches by extension
         // (see web/blueprints/selection.py
