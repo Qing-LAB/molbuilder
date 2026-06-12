@@ -124,7 +124,21 @@
     display: flex;
     align-items: center;
     gap: 0.4rem;
-    margin-bottom: 0.4rem;
+    /* No bottom margin: combinator + Apply filter are tightly
+     * grouped in a flex column .selection-filter-footer (2026-06-12).
+     * Each direct child gets default gap from the parent's gap rule
+     * — overriding margin here would double-space the footer. */
+    margin-bottom: 0;
+}
+
+/* 2026-06-12: Combine + Apply filter footer.  Vertical stack with
+ * a small gap so the two read as a single "combine ... and apply"
+ * unit attached to the bottom of the filter rows. */
+.selection-filter-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-top: 0.5rem;
 }
 
 /* Used by both Combine and Target labels: small, muted, fixed-width
@@ -157,10 +171,37 @@
     margin-top: 0.4rem;
 }
 
-.selection-add-filter-btn {
-    flex: 1;
-    padding: 0.3rem 0.6rem;
-    font-size: 12px;
+/* 2026-06-12 v3 (revised): + Add filter is the panel's headline
+ * action — visible regardless of mode, full width across the
+ * panel, larger + accent-coloured so the user spots it
+ * immediately as "this is how I start a filter".  Compare with
+ * the muted ``.selection-add-btn`` used elsewhere. */
+.selection-add-filter-row {
+    margin: 0.5rem 0;
+}
+.selection-add-btn-primary {
+    display: block;
+    width: 100%;
+    padding: 0.55rem 0.8rem;
+    background: #2a5a78;
+    color: #fff;
+    border: 1px solid #3a7aa0;
+    border-radius: 4px;
+    font: 600 13px/1.2 system-ui, sans-serif;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, transform 0.08s;
+}
+.selection-add-btn-primary:hover {
+    background: #356f93;
+    border-color: #4b95c2;
+}
+.selection-add-btn-primary:active {
+    transform: translateY(1px);
+}
+.selection-add-btn-primary:focus-visible {
+    outline: 2px solid #4b95c2;
+    outline-offset: 1px;
 }
 
 .selection-apply-filter-btn {

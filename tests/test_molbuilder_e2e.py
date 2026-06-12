@@ -2308,39 +2308,82 @@ def test_mutation_bar_buttons_open_their_dialogs(
     )
 
 
-def test_panel_filter_mode_pill_reveals_add_filter_at_top(
+def test_panel_filter_mode_layout_v3(
         page, flask_server, water_xyz_file):
-    """2026-06-12 layout v3: ``+ Add filter`` lives at the TOP of
-    the Filter-mode section (not as an always-visible button as in
-    v2).  Click-mode entry → Filter-tab pill click reveals the
-    section AND its Add filter button; clicking the button adds a
-    row.
+    """2026-06-12 layout v3 (revised twice):
 
-    The auto-flip-mode-on-Add-filter-click behaviour stays in the
-    handler as defense-in-depth (so programmatic callers from a
-    future "make filter from selection" flow don't need to switch
-    modes first), but the UI no longer EXPOSES Add filter from
-    click mode — the mode pill is the entry point.
+      * ``+ Add filter`` lives ONLY in the Filter panel — never in
+        Click mode — and sits at the TOP of that section as the
+        prominent (accent-coloured, full-width) headline action.
+      * Filter rows appear BELOW the Add-filter button.
+      * The footer pairs ``Combine: <select>`` ABOVE ``Apply filter``
+        in a single tight group (selection-filter-footer) so the
+        relation reads top-to-bottom as
+        ``Add filter ... rows ... Combine [op] Apply filter``.
+
+    Click mode shows NONE of the filter-section anchors — users in
+    click mode pick atoms directly from the table / 3D viewer.
     """
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
     _wait_panel_ready(page)
-    # Confirm click mode is the default.
+    # Click mode is the default — Add filter must NOT be visible
+    # from this mode.
     assert page.locator("#selection-mode-click").is_checked()
-    # Filter section + its Add filter button hidden in click mode.
-    assert not page.locator("#selection-filter-section").is_visible()
     assert not page.locator("#selection-add-filter").is_visible()
-    # Click the Filter mode pill → section + Add filter become
-    # visible.  The radio is styled-hidden inside a <label class="
-    # selection-mode-option"> pill; click the wrapping label that
-    # contains "Filter" text.
+    assert not page.locator("#selection-filter-section").is_visible()
+    # Pivot to filter mode via the mode pill.  The radio is styled-
+    # hidden inside its wrapping <label class="selection-mode-
+    # option">; click the label that contains "Filter".
     page.locator(".selection-mode-option", has_text="Filter").click()
     page.wait_for_function(
         "() => document.getElementById('selection-mode-filter').checked"
     )
+    # Filter section + Add filter visible.
     assert page.locator("#selection-filter-section").is_visible()
     assert page.locator("#selection-add-filter").is_visible()
-    # Click Add filter — exactly one row appears.
+    # Primary-modifier styling pinned.
+    klass = page.evaluate(
+        "() => document.getElementById('selection-add-filter').className"
+    )
+    assert "selection-add-btn-primary" in klass, (
+        f"Add filter must carry the -primary modifier; got class={klass!r}"
+    )
+    # DOM order inside the filter section:
+    #   1. selection-add-filter-row
+    #   2. selection-filter-rows
+    #   3. selection-filter-footer
+    order = page.evaluate(
+        "() => {"
+        "  const sec = document.getElementById('selection-filter-section');"
+        "  const kids = Array.from(sec.children);"
+        "  return {"
+        "    add:    kids.findIndex(k => k.classList.contains('selection-add-filter-row')),"
+        "    rows:   kids.findIndex(k => k.id === 'selection-filter-rows'),"
+        "    footer: kids.findIndex(k => k.classList.contains('selection-filter-footer')),"
+        "  };"
+        "}"
+    )
+    assert order["add"] >= 0 and order["rows"] >= 0 and order["footer"] >= 0
+    assert order["add"] < order["rows"] < order["footer"], (
+        f"expected Add → rows → footer order; got {order!r}"
+    )
+    # Combine sits BEFORE Apply filter inside the footer.
+    footer_order = page.evaluate(
+        "() => {"
+        "  const footer = document.querySelector('.selection-filter-footer');"
+        "  const kids = Array.from(footer.children);"
+        "  return {"
+        "    comb:  kids.findIndex(k => k.classList.contains('selection-combinator-row')),"
+        "    apply: kids.findIndex(k => k.id === 'selection-apply-filter'),"
+        "  };"
+        "}"
+    )
+    assert footer_order["comb"] >= 0 and footer_order["apply"] >= 0 \
+        and footer_order["comb"] < footer_order["apply"], (
+        f"combinator must precede Apply inside footer; got {footer_order!r}"
+    )
+    # Add filter click adds a row.
     page.locator("#selection-add-filter").click()
     page.wait_for_function(
         "() => document.querySelectorAll('.selection-filter-row').length === 1"

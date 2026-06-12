@@ -67,6 +67,11 @@
     </label>
   </fieldset>
 
+  {#- The ``+ Add filter`` button lives INSIDE the filter section
+      at its top (further down).  Click mode shows no Add-filter
+      affordance — pick atoms directly in the list / 3D viewer.
+      The mode pills above are the way IN and OUT of filter mode. -#}
+
   <!-- Click-mode body: scrollable atom list with per-row checkbox +
        label tags.  Master select-all in the header.  Shown only when
        mode === "click". -->
@@ -98,53 +103,39 @@
     </div>
   </div>
 
-  {#- 2026-06-12 layout v3 — filter section reorder.
+  {#- Filter section: ``+ Add filter`` at the TOP (prominent,
+      accent-coloured, full width — the panel's headline action
+      in this mode), filter rows in the middle, then a tight
+      footer pairing ``Combine: <select>`` with ``Apply filter``
+      so the relation reads as "combine these rows in <this> way
+      and apply".
 
-      Old order (deprecated):
-        1. ``+ Add filter`` lived OUTSIDE the filter section, between
-           Apply-filter and the actions row, dimly visible and easy
-           to miss.
-        2. ``Combine`` sat ABOVE the filter rows even though the
-           combinator is logically derived FROM the rows (so it
-           reads as a property of the row list, not a knob you turn
-           before adding rows).
-
-      New order:
-        1. ``+ Add filter`` at the TOP of the filter section — the
-           obvious entry point to building a filter expression.
-        2. Filter rows (the list itself).
-        3. ``Combine`` BETWEEN the rows and Apply, so the relation
-           reads as "combine these rows ... and apply".
-        4. ``Apply filter`` button at the bottom — the explicit
-           commit step.
-
-      The Add-filter handler in selection-panel.js still flips the
-      panel into filter mode automatically, so a user in click mode
-      sees the section, the button is enabled, and one click both
-      flips mode AND adds an empty row. -#}
+      Click mode shows none of this; the user pivots to filter
+      mode via the mode pill above and lands on the Add filter
+      button. -#}
   <div id="selection-filter-section"
        class="selection-filter-section" hidden>
     <div class="selection-add-filter-row">
       <button type="button" id="selection-add-filter"
-              class="selection-add-btn selection-add-filter-btn"
-              title="Add a filter row (flips into Filter mode if you're in click mode).">
+              class="selection-add-btn-primary selection-add-filter-btn"
+              title="Add a filter row.">
         + Add filter
       </button>
     </div>
     <div id="selection-filter-rows" class="selection-filter-rows"
          aria-label="Selection filters"></div>
-    <div class="selection-combinator-row">
-      <label for="selection-combinator"
-             class="selection-mini-label">
-        Combine:
-      </label>
-      <select id="selection-combinator"
-              class="selection-combinator-select">
-        <option value="or">Any (OR — union)</option>
-        <option value="and">All (AND — intersection)</option>
-      </select>
-    </div>
-    <div class="selection-filter-actions">
+    <div class="selection-filter-footer">
+      <div class="selection-combinator-row">
+        <label for="selection-combinator"
+               class="selection-mini-label">
+          Combine:
+        </label>
+        <select id="selection-combinator"
+                class="selection-combinator-select">
+          <option value="or">Any (OR — union)</option>
+          <option value="and">All (AND — intersection)</option>
+        </select>
+      </div>
       <button type="button" id="selection-apply-filter"
               class="selection-apply-filter-btn"
               title="Run the current filter against the structure and

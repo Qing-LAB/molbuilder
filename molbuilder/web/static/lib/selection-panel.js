@@ -811,13 +811,15 @@
         on(els.modeClick,       "change", () => store.setMode("click"));
         on(els.modeFilter,      "change", () => store.setMode("filter"));
         on(els.combinator,      "change", () => store.setCombinator(els.combinator.value));
-        // 2026-06-12 layout v3: ``+ Add filter`` now lives at the top
-        // of the Filter mode's section (selection-filter-section),
-        // visible only when the user is in filter mode.  Click-mode
-        // entry is via the mode pill at the top of the panel.  We
-        // KEEP the auto-flip below as defense-in-depth — programmatic
-        // callers (test seams, future "make a filter from here" flows)
-        // can invoke this handler without first switching modes.
+        // 2026-06-12 layout v3 (revised): ``+ Add filter`` is the
+        // headline action of the Filter section — accent-coloured,
+        // full width, visible ONLY when the user is in filter mode.
+        // Click-mode entry is via the mode pill at the top of the
+        // panel; Add filter never appears in click mode.  The
+        // auto-flip-on-click below stays as a defense-in-depth no-op
+        // (the button is hidden in click mode so users can't trigger
+        // it, but programmatic callers like a future "make filter
+        // from this selection" flow still benefit).
         on(els.addFilterBtn,    "click",  () => {
             store.addFilter({ kind: "by_element", value: "" });
             if (store.getState().mode !== "filter") store.setMode("filter");
