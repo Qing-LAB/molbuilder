@@ -220,13 +220,54 @@ def _load_structure(structure_path: str) -> Structure:
     if sidecar.exists():
         try:
             data = molstruct_json.load(sidecar)
-            molstruct_json.apply_to_structure(struct, data)
         except molstruct_json.MolstructJsonError:
-            # Silently ignore -- a stale sidecar shouldn't block the
-            # user from using element-/index-based selection rules
-            # against the underlying XYZ.  The /modify save-side
-            # validates and rewrites the sidecar.
+            # A corrupt sidecar shouldn't block the user from using
+            # element-/index-based selection rules against the
+            # underlying XYZ.  The save-side validates and rewrites
+            # the sidecar.
             pass
+        else:
+            # 2026-06-12 (sidecar/XYZ desync fix): tolerantly filter
+            # out-of-range indices instead of calling
+            # ``apply_to_structure`` (which raises on
+            # ``sidecar.n_atoms_total != len(struct.elements)``).
+            #
+            # The desync happens when ``writeLabel`` (Assign click)
+            # commits the sidecar with the workspace's IN-MEMORY
+            # atom count BEFORE the user clicks Save — and then the
+            # Save fails (disk full, permissions, network drop) or
+            # the user closes the browser without ever saving.  The
+            # sidecar then references atoms that never made it to
+            # disk.
+            #
+            # Old behaviour: ``apply_to_structure`` raised on the
+            # mismatch, the ``except`` block above silently swallowed
+            # it, and ALL labels disappeared from the UI — including
+            # the ones whose indices were still in range for the
+            # XYZ on disk.  The user had no signal anything was
+            # wrong.
+            #
+            # New behaviour: drop indices ≥ ``len(struct.elements)``
+            # (the orphaned ones that reference atoms that never
+            # persisted), keep the rest.  Empty regions after the
+            # filter are dropped.  Engines that need a strict-
+            # validity check (transport script generator, etc.)
+            # call ``apply_to_structure`` directly and keep the
+            # fail-fast semantics; only the interactive web load
+            # is forgiving.
+            struct_n = len(struct.elements)
+            filtered_regions = {}
+            for name, idxs in (data.get("regions") or {}).items():
+                kept = [i for i in (idxs or [])
+                        if isinstance(i, int) and 0 <= i < struct_n]
+                if kept:
+                    filtered_regions[name] = sorted(set(kept))
+            filtered_frozen = sorted({
+                i for i in (data.get("frozen_atoms") or [])
+                if isinstance(i, int) and 0 <= i < struct_n
+            })
+            struct.regions      = filtered_regions
+            struct.frozen_atoms = filtered_frozen
     return struct
 
 

@@ -429,6 +429,89 @@ class TestAtomsEndpoint:
         r = web.post("/api/selection/atoms", json={})
         assert r.status_code == 400
 
+    def test_sidecar_ahead_of_xyz_loads_surviving_labels(
+            self, web, selection_root):
+        """2026-06-12 regression: sidecar/XYZ desync after a
+        ``writeLabel`` succeeded but the subsequent Save failed
+        (or the user closed the browser without saving).
+
+        The sidecar's ``n_atoms_total`` is ahead of the XYZ's
+        actual atom count; some region/frozen indices reference
+        atoms that never persisted.  Before the fix,
+        ``apply_to_structure``'s strict mismatch check raised,
+        ``_load_structure`` silently swallowed it, and ALL labels
+        disappeared — including the ones still in range for the
+        XYZ.  After the fix, in-range indices apply normally;
+        out-of-range indices are dropped silently (the orphan
+        atoms they reference don't exist on disk).
+        """
+        import hashlib
+        import json as _json
+        xyz_bytes = (selection_root / "junction.xyz").read_bytes()
+        struct_hash = hashlib.sha256(xyz_bytes).hexdigest()
+        sidecar = selection_root / "junction.molstruct.json"
+        # Sidecar claims 20 atoms but the on-disk XYZ has 11.
+        # Index 5 + 10 are in-range, 12 + 19 are orphaned.
+        sidecar.write_text(_json.dumps({
+            "schema_version": 3,
+            "n_atoms_total":  20,
+            "structure_hash": struct_hash,
+            "regions": {
+                "bridge":      [5, 12],     # 12 orphaned
+                "L-electrode": [0, 1, 19],  # 19 orphaned
+                "ghosts":      [15, 19],    # all orphaned → drop region
+            },
+            "frozen_atoms":   [0, 10, 18],  # 18 orphaned
+            "selection_rules": {},
+        }))
+        r = web.post("/api/selection/atoms", json={
+            "structure_path": _path(selection_root),
+        })
+        assert r.status_code == 200, r.data
+        body = r.get_json()
+        assert body["n_atoms"] == 11   # XYZ's actual count
+        atoms = body["atoms"]
+        # In-range labels apply.
+        assert atoms[0]["regions"] == ["L-electrode"]
+        assert atoms[1]["regions"] == ["L-electrode"]
+        assert atoms[5]["regions"] == ["bridge"]
+        # Empty regions after filter ("ghosts" — all indices orphaned)
+        # are dropped entirely: no atom carries it.
+        for a in atoms:
+            assert "ghosts" not in a["regions"]
+        # In-range frozen flags apply, orphans dropped.
+        assert atoms[0]["is_frozen"] is True
+        assert atoms[10]["is_frozen"] is True
+        assert atoms[5]["is_frozen"] is False  # not in frozen list
+
+    def test_sidecar_with_all_orphan_indices_loads_clean(
+            self, web, selection_root):
+        """Edge case of the desync-tolerance: every region index is
+        orphaned by an XYZ shrink.  Expectation: atoms load cleanly
+        with no labels (instead of silent total failure).
+        """
+        import hashlib
+        import json as _json
+        xyz_bytes = (selection_root / "junction.xyz").read_bytes()
+        struct_hash = hashlib.sha256(xyz_bytes).hexdigest()
+        sidecar = selection_root / "junction.molstruct.json"
+        sidecar.write_text(_json.dumps({
+            "schema_version": 3,
+            "n_atoms_total":  20,
+            "structure_hash": struct_hash,
+            "regions":        {"ghost": [11, 12, 13]},
+            "frozen_atoms":   [15, 16],
+            "selection_rules": {},
+        }))
+        r = web.post("/api/selection/atoms", json={
+            "structure_path": _path(selection_root),
+        })
+        assert r.status_code == 200
+        atoms = r.get_json()["atoms"]
+        for a in atoms:
+            assert a["regions"] == []
+            assert a["is_frozen"] is False
+
 
 class TestSaveEndpoint:
     """Pin /api/selection/save: writes the materialised selection
