@@ -584,6 +584,16 @@
         // before postOp ran.
         const _s = _selStore();
         const st = _s ? _s.getState() : null;
+        // 2026-06-09: capture the dirty-bit at snapshot time.  ``applyUndo``
+        // restores it after applyPayload so a snapshot taken from a
+        // CLEAN workspace (typical case: Load -> Save -> Modify -> Undo)
+        // doesn't end up dirty=true purely because cs.replaceContent
+        // unconditionally marks dirty.  Without this hint, the user
+        // sees the Save button enabled after undo even though the
+        // workspace text matches the file on disk.
+        const _ws = window.molbuilder && window.molbuilder.workspace;
+        const _wasDirty = _ws && typeof _ws.isDirty === "function"
+                              ? _ws.isDirty() : true;
         return {
             xyz:           state.xyz,
             elements:      state.elements,
@@ -597,6 +607,7 @@
                               ? st.atoms.slice() : [],
             selected:      st && Array.isArray(st.indices)
                               ? st.indices.slice() : [],
+            dirty:         _wasDirty,
         };
     }
 
@@ -633,6 +644,18 @@
             if (_s && typeof _s.set === "function"
                   && Array.isArray(prev.selected)) {
                 _s.set(prev.selected);
+            }
+            // 2026-06-09: applyPayload's touchCanvas:true ALWAYS marks
+            // dirty (via cs.replaceContent), but the snapshot may have
+            // been taken from a CLEAN workspace (Load -> Save -> Modify
+            // -> Undo).  When the captured ``prev.dirty`` is false AND
+            // we have a last_save_to path, restore the clean bit so the
+            // Save button correctly reflects "workspace matches disk".
+            const _lastPath = (typeof ws.getLastSavedTo === "function")
+                ? ws.getLastSavedTo() : null;
+            if (prev.dirty === false && _lastPath
+                    && typeof ws.markSaved === "function") {
+                ws.markSaved(_lastPath);
             }
         } else {
             applyStructure(prev);   // fallback (no dispatcher)

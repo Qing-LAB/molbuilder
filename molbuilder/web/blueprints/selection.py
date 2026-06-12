@@ -428,13 +428,28 @@ def selection_save():
         # sidecar can be written for the workspace state directly;
         # on Save the XYZ + sidecar persist together.
         client_n_atoms = payload.get("n_atoms")
-        if (client_n_atoms is not None
-                and not (isinstance(client_n_atoms, int)
-                         and not isinstance(client_n_atoms, bool))):
-            return _bad_request(
-                "'n_atoms' must be an integer when provided; "
-                f"got {type(client_n_atoms).__name__}={client_n_atoms!r}"
-            )
+        if client_n_atoms is not None:
+            # Strict type check first — bool slips past ``isinstance(x, int)``
+            # in Python because True == 1, so guard explicitly.
+            if (not isinstance(client_n_atoms, int)
+                    or isinstance(client_n_atoms, bool)):
+                return _bad_request(
+                    "'n_atoms' must be an integer when provided; "
+                    f"got {type(client_n_atoms).__name__}={client_n_atoms!r}"
+                )
+            # Reject negatives + cap at a generous-but-defensible maximum
+            # so a hostile / buggy client can't poison the sidecar with
+            # ``n_atoms_total = 999_999_999``, which would (a) bloat the
+            # JSON, (b) fail every future apply_to_structure n_atoms check,
+            # and (c) brick the file until manual sidecar cleanup.
+            # 1,000,000 atoms is well above any realistic chemistry use
+            # case (Au-BDT-Au junctions are ~10²-10³ atoms; the largest
+            # systems molbuilder is intended for are ~10⁴-10⁵ atoms).
+            if not 0 <= client_n_atoms <= 1_000_000:
+                return _bad_request(
+                    f"'n_atoms' out of range [0, 1_000_000]: "
+                    f"got {client_n_atoms}"
+                )
 
         resolved = _resolve_within_roots(path)
         if not resolved.exists():

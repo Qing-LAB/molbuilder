@@ -859,6 +859,57 @@ class TestSaveErrorPaths:
     """Error branches in ``api_selection_save`` beyond the happy
     path + the existing missing_target / out_of_range tests."""
 
+    def test_n_atoms_rejected_when_huge(self, web, selection_root):
+        """Regression for 2026-06-09 audit: the client_n_atoms parameter
+        (used to validate indices against in-memory workspace state
+        instead of disk) must be capped.  Without the cap, a malicious
+        client could send ``n_atoms: 999_999_999`` and poison the sidecar
+        with that value as ``n_atoms_total`` — bricking the file until
+        manual cleanup (every future apply_to_structure fails the
+        n_atoms_total != struct.n_atoms check).
+        """
+        r = web.post("/api/selection/save", json={
+            "structure_path": _path(selection_root),
+            "target":         "L-electrode",
+            "indices":        [0],
+            "n_atoms":        999_999_999,
+        })
+        assert r.status_code == 400
+        body = r.get_json()
+        assert "n_atoms" in body["error"].lower()
+
+    def test_n_atoms_rejected_when_negative(self, web, selection_root):
+        r = web.post("/api/selection/save", json={
+            "structure_path": _path(selection_root),
+            "target":         "L-electrode",
+            "indices":        [0],
+            "n_atoms":        -1,
+        })
+        assert r.status_code == 400
+
+    def test_n_atoms_rejected_when_bool(self, web, selection_root):
+        """Python's ``True == 1`` would slip past a naive int check."""
+        r = web.post("/api/selection/save", json={
+            "structure_path": _path(selection_root),
+            "target":         "L-electrode",
+            "indices":        [0],
+            "n_atoms":        True,
+        })
+        assert r.status_code == 400
+
+    def test_n_atoms_accepted_at_cap(self, web, selection_root):
+        """The cap (1_000_000) is INCLUSIVE — exactly the cap is fine,
+        only over-cap is rejected.  Use a small indices list so the
+        index validation doesn't pin against an unrealistic n_atoms."""
+        r = web.post("/api/selection/save", json={
+            "structure_path": _path(selection_root),
+            "target":         "L-electrode",
+            "indices":        [0],
+            "n_atoms":        1_000_000,
+        })
+        # Should accept the n_atoms; succeed (200) since idx=0 is in range.
+        assert r.status_code == 200
+
     def test_path_traversal_rejected(self, web):
         r = web.post("/api/selection/save", json={
             "structure_path": "/etc/passwd",
