@@ -94,6 +94,92 @@
         return null;
     }
 
+    function _basename(p) {
+        if (!p) return "";
+        var ix = p.lastIndexOf("/");
+        return ix >= 0 ? p.slice(ix + 1) : p;
+    }
+
+    function _dirname(p) {
+        if (!p) return "";
+        var ix = p.lastIndexOf("/");
+        return ix > 0 ? p.slice(0, ix) : "";
+    }
+
+    /**
+     * Common post-write success path.  Clears dirty + fires the
+     * sidecar refresh-hash housekeeping.  Returns the user-facing
+     * ok envelope.
+     */
+    function _postWriteSuccess(path) {
+        _structurePage.markSavedTo(path);
+        // 2026-06-09: refresh the sidecar's structure_hash against
+        // the just-written XYZ bytes.  Fire-and-forget; a sidecar-
+        // missing path is a no-op server-side.
+        if (root.fetch) {
+            root.fetch("/api/selection/refresh-hash", {
+                method:  "POST",
+                headers: { "Content-Type": "application/json" },
+                body:    JSON.stringify({ structure_path: path }),
+            }).catch(function () { /* non-fatal */ });
+        }
+        return { ok: true, path: path };
+    }
+
+    /**
+     * Inner write loop: POST writeFile with ``overwrite=false``;
+     * on 409 (file-exists), show the confirm-overwrite dialog and
+     * retry with ``overwrite=true`` if the user confirms.
+     *
+     * Used by both ``save()`` (current target) and any future
+     * Save-as path (user-typed name).  Returns the user-facing ok
+     * envelope.
+     */
+    function _writeWithOverwriteGate(path, text, opts) {
+        opts = opts || {};
+        var alreadyConfirmed = !!opts.overwriteAlreadyConfirmed;
+        var dialog = root.molbuilder
+                  && root.molbuilder.structureSaveDialog;
+        return _projects.writeFile(path, text, {
+            overwrite: alreadyConfirmed,
+        }).then(function (r) {
+            if (r && r.ok) return _postWriteSuccess(path);
+            // 409 (file exists, overwrite was false).  Re-prompt.
+            if (r && (r.status === 409
+                    || /already exists/i.test(r.error || ""))
+                    && !alreadyConfirmed
+                    && dialog
+                    && typeof dialog.confirmOverwrite === "function") {
+                return dialog.confirmOverwrite(_basename(path))
+                    .then(function (proceed) {
+                        if (!proceed) {
+                            return { ok: false, cancelled: true,
+                                     error: "Save cancelled." };
+                        }
+                        return _projects.writeFile(path, text, {
+                            overwrite: true,
+                        }).then(function (r2) {
+                            if (r2 && r2.ok) return _postWriteSuccess(path);
+                            return {
+                                ok:    false,
+                                error: (r2 && r2.error) || "Save failed.",
+                            };
+                        });
+                    });
+            }
+            return {
+                ok:    false,
+                error: (r && r.error) || "Save failed.",
+            };
+        }, function (err) {
+            return {
+                ok:    false,
+                error: "Save failed: "
+                     + (err && err.message ? err.message : String(err)),
+            };
+        });
+    }
+
     function save() {
         _lazyResolve();
         if (!_workspace) {
@@ -123,49 +209,44 @@
             });
         }
         var struct = _workspace.getStructure();
-        // overwrite:true — the user explicitly asked to Save to
-        // this path; the default 409-on-existing would be wrong UX
-        // (Save to source IS overwriting the source).
-        return _projects.writeFile(
-            path, struct.text, { overwrite: true }
-        ).then(
-            function (r) {
-                if (!r || !r.ok) {
-                    return {
-                        ok:    false,
-                        error: (r && r.error) || "Save failed.",
-                    };
-                }
-                // Tell the orchestrator the save landed — clears
-                // dirty + records last_save_to.
-                _structurePage.markSavedTo(path);
-                // 2026-06-09: refresh the sidecar's structure_hash
-                // against the just-written XYZ bytes.  Without this
-                // a workflow like "modify -> label -> save" leaves
-                // the sidecar's hash field pointing at the old
-                // pre-Save XYZ (the regions + frozen_atoms ARE
-                // correct against the new XYZ — only the hash drifts).
-                // Fire-and-forget: a sidecar-missing path is a no-op
-                // server-side, and a failure here doesn't unwind the
-                // successful XYZ write.
-                if (root.fetch) {
-                    root.fetch("/api/selection/refresh-hash", {
-                        method:  "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body:    JSON.stringify({ structure_path: path }),
-                    }).catch(function () { /* non-fatal */ });
-                }
-                return { ok: true, path: path };
-            },
-            function (err) {
-                return {
-                    ok:    false,
-                    error: "Save failed: "
-                         + (err && err.message ? err.message
-                                                : String(err)),
-                };
+        var dialog = root.molbuilder
+                  && root.molbuilder.structureSaveDialog;
+
+        // 2026-06-09: route the Save click through the confirm-name
+        // dialog so the user can edit the filename + see what they're
+        // about to overwrite.  If the user keeps the current name AND
+        // the file at the resolved path already exists (the common
+        // case for "save back to source"), ``_writeWithOverwriteGate``
+        // pre-confirms because the user already saw the name they're
+        // saving to.  Renaming triggers a fresh overwrite-check
+        // against the new name.
+        var initial = _basename(path);
+        if (!dialog || typeof dialog.chooseSaveName !== "function") {
+            // No dialog mounted (tests / legacy contexts).  Fall back
+            // to the legacy "always overwrite source" behaviour so
+            // tests + headless callers don't deadlock waiting for a
+            // modal that will never appear.
+            return _writeWithOverwriteGate(path, struct.text,
+                { overwriteAlreadyConfirmed: true });
+        }
+        return dialog.chooseSaveName(initial).then(function (chosen) {
+            if (chosen === null || chosen === undefined) {
+                return { ok: false, cancelled: true,
+                         error: "Save cancelled." };
             }
-        );
+            var dir = _dirname(path);
+            var finalPath = dir ? (dir + "/" + chosen) : chosen;
+            // If the user kept the original name, this IS the
+            // source file the workspace was loaded from — silently
+            // overwrite without a second confirm (clicking Save on
+            // the workspace's source is unambiguous).  If the name
+            // changed, route through the overwrite-gate so a clash
+            // with an unrelated existing file gets the warning.
+            var nameUnchanged = chosen === initial;
+            return _writeWithOverwriteGate(finalPath, struct.text, {
+                overwriteAlreadyConfirmed: nameUnchanged,
+            });
+        });
     }
 
     var _wired = false;

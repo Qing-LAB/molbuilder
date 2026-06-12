@@ -930,6 +930,16 @@ def test_save_writes_to_source_and_clears_dirty(
     ) is True
     # Expand the Save panel + click Save.
     page.locator("#save-to-source-btn").click()
+    # 2026-06-09: Save now opens a confirm-name dialog.  Accept the
+    # pre-filled name (the file's basename) to proceed — no overwrite
+    # confirm fires because the name is unchanged from the source.
+    page.wait_for_function(
+        "() => document.querySelector('.molbuilder-save-name-modal')"
+        "        !== null"
+    )
+    page.locator(
+        '.molbuilder-save-name-modal [data-action="save"]'
+    ).click()
     # Wait until the inflight save resolves (status leaves "Saving…").
     page.wait_for_function(
         "() => !document.getElementById('save-status').textContent"
@@ -953,6 +963,117 @@ def test_save_writes_to_source_and_clears_dirty(
         f"file on disk should reflect post-delete 2 atoms; first "
         f"line is {n_atoms_line!r}"
     )
+
+
+def test_save_dialog_rename_to_existing_file_prompts_overwrite(
+        page, flask_server, tmp_path, monkeypatch):
+    """Save dialog flow: user renames to a name that already exists
+    in the directory.  Server returns 409; the overwrite-confirm
+    dialog must fire before the second writeFile (overwrite=true)
+    lands the bytes.
+    """
+    from pathlib import Path as _P
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    project_dir = tmp_path / "test_project"
+    project_dir.mkdir()
+    water_xyz = str(project_dir / "water.xyz")
+    other_xyz = str(project_dir / "other.xyz")
+    _P(water_xyz).write_text(_H2O_XYZ)
+    _P(other_xyz).write_text(
+        "1\nother — will be overwritten\nC 0 0 0\n")
+    _open_modify(page, flask_server)
+    _load_water_via_button(page, water_xyz)
+    # Modify so dirty=true and the file content diverges from disk.
+    _set_selection(page, [0])
+    page.locator("#delete-apply").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 2"
+    )
+    # Click Save → dialog opens → rename to "other.xyz" → click Save.
+    page.locator("#save-to-source-btn").click()
+    page.wait_for_function(
+        "() => document.querySelector('.molbuilder-save-name-modal')"
+        "        !== null"
+    )
+    page.locator(
+        '.molbuilder-save-name-modal [data-role="name-input"]'
+    ).fill("other.xyz")
+    page.locator(
+        '.molbuilder-save-name-modal [data-action="save"]'
+    ).click()
+    # Overwrite confirm fires.  Click Overwrite.
+    page.wait_for_function(
+        "() => document.querySelector("
+        "  '.molbuilder-save-overwrite-modal'"
+        ") !== null",
+        timeout=5000,
+    )
+    page.locator(
+        '.molbuilder-save-overwrite-modal [data-action="overwrite"]'
+    ).click()
+    page.wait_for_function(
+        "() => !document.getElementById('save-status').textContent"
+        "        .toLowerCase().startsWith('saving')"
+    )
+    # File on disk is the post-delete 2-atom structure.
+    new_text = _P(other_xyz).read_text()
+    assert new_text.strip().splitlines()[0].strip() == "2", (
+        f"other.xyz should now hold the 2-atom workspace; got "
+        f"{new_text!r}"
+    )
+    # water.xyz untouched.
+    assert _P(water_xyz).read_text() == _H2O_XYZ
+
+
+def test_save_dialog_overwrite_cancel_aborts(
+        page, flask_server, tmp_path, monkeypatch):
+    """Cancel on the overwrite-confirm dialog must abort the save
+    without touching the file on disk + leave the workspace dirty."""
+    from pathlib import Path as _P
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    project_dir = tmp_path / "test_project"
+    project_dir.mkdir()
+    water_xyz = str(project_dir / "water.xyz")
+    other_xyz = str(project_dir / "other.xyz")
+    _P(water_xyz).write_text(_H2O_XYZ)
+    _P(other_xyz).write_text("1\nuntouched\nC 0 0 0\n")
+    _open_modify(page, flask_server)
+    _load_water_via_button(page, water_xyz)
+    _set_selection(page, [0])
+    page.locator("#delete-apply").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 2"
+    )
+    page.locator("#save-to-source-btn").click()
+    page.wait_for_function(
+        "() => document.querySelector('.molbuilder-save-name-modal')"
+        "        !== null"
+    )
+    page.locator(
+        '.molbuilder-save-name-modal [data-role="name-input"]'
+    ).fill("other.xyz")
+    page.locator(
+        '.molbuilder-save-name-modal [data-action="save"]'
+    ).click()
+    page.wait_for_function(
+        "() => document.querySelector("
+        "  '.molbuilder-save-overwrite-modal'"
+        ") !== null",
+        timeout=5000,
+    )
+    # Cancel the overwrite.
+    page.locator(
+        '.molbuilder-save-overwrite-modal [data-action="cancel"]'
+    ).click()
+    page.wait_for_function(
+        "() => !document.getElementById('save-status').textContent"
+        "        .toLowerCase().startsWith('saving')"
+    )
+    # File on disk untouched; workspace still dirty.
+    assert _P(other_xyz).read_text() == "1\nuntouched\nC 0 0 0\n"
+    assert page.evaluate(
+        "() => window.molbuilder.workspace.isDirty()"
+    ) is True
 
 
 def test_save_button_disabled_for_smiles_without_prior_save(
