@@ -398,9 +398,18 @@ async function saveEdit() {
  *     memory bounded regardless of how much of the file is loaded.
  */
 export async function showPreview() {
-    if (!elModal) return;
+    if (!elModal) {
+        console.warn("[preview] showPreview bailed: elModal missing — "
+            + "initPreview() wasn't called.  Is the sidebar partial "
+            + "included in this template?");
+        return;
+    }
     const path = projects.getCurrentFile();
-    if (!path) return;
+    if (!path) {
+        console.warn("[preview] showPreview bailed: no file selected "
+            + "(projects.getCurrentFile() returned empty).");
+        return;
+    }
     _state = _emptyState();
     _state.path = path;
     elTitle.textContent = path.split("/").pop();
@@ -414,8 +423,17 @@ export async function showPreview() {
     try {
         await _ensureCmMounted();
     } catch (e) {
+        console.error("[preview] _ensureCmMounted threw:", e);
         elError.textContent = "Could not load viewer: "
             + (e && e.message ? e.message : String(e));
+        return;
+    }
+    if (!_cm) {
+        // Defensive: should never happen post-await, but if the CM
+        // global mounted-but-returned-null we'd otherwise crash later
+        // at setValue.  Surface what happened to the user instead.
+        console.error("[preview] _ensureCmMounted returned but _cm is null");
+        elError.textContent = "Viewer did not mount.  Check console.";
         return;
     }
     _cm.setValue("");
@@ -438,8 +456,10 @@ export async function showPreview() {
         );
         const body = await r.json();
         if (!r.ok || !body.ok) {
-            elError.textContent = (body && body.error)
+            const msg = (body && body.error)
                 || `Could not stat file (HTTP ${r.status}).`;
+            console.error("[preview] stat failed:", msg);
+            elError.textContent = msg;
             _state.readError = "stat";
             _renderUiFromState();
             return;
@@ -447,6 +467,7 @@ export async function showPreview() {
         size  = body.size;
         mtime = body.mtime;
     } catch (e) {
+        console.error("[preview] stat threw:", e);
         elError.textContent = "Network error: "
             + (e && e.message ? e.message : String(e));
         _state.readError = "network";
@@ -456,10 +477,22 @@ export async function showPreview() {
     _state.size  = size;
     _state.mtime = mtime;
 
-    if (size <= EDIT_MAX_BYTES) {
-        await _loadBulk(path);
-    } else {
-        await _loadPaginated(path, size);
+    try {
+        if (size <= EDIT_MAX_BYTES) {
+            await _loadBulk(path);
+        } else {
+            await _loadPaginated(path, size);
+        }
+    } catch (e) {
+        // Bulk/paginated handle their own elError today, but a
+        // throw past their try/catch (e.g. setValue on a torn-down
+        // _cm) would otherwise propagate silently to the kebab
+        // handler.  Make sure the user sees the failure.
+        console.error("[preview] load threw:", e);
+        elError.textContent = "Load failed: "
+            + (e && e.message ? e.message : String(e));
+        _state.readError = "load";
+        _renderUiFromState();
     }
 }
 
@@ -487,6 +520,7 @@ async function _loadBulk(path) {
     }
     if (!body || !body.ok) {
         const reason = (body && body.error) || `HTTP ${httpStatus}`;
+        console.error("[preview] /api/files/read failed:", reason);
         elError.textContent = reason;
         if (/not valid UTF-8/.test(reason)) {
             _setStatus("Binary content; this modal edits text only.",
@@ -508,7 +542,21 @@ async function _loadBulk(path) {
     _state.editable     = true;
     _state.loadedBytes  = body.size;
     _state.eof          = true;
-    _cm.setValue(body.text);
+    if (!_cm) {
+        console.error(
+            "[preview] _loadBulk: _cm is null when about to setValue. "
+            + "The modal was likely closed during the read.");
+        return;
+    }
+    try {
+        _cm.setValue(body.text);
+    } catch (e) {
+        console.error("[preview] _cm.setValue threw:", e,
+                      "text length:", body.text && body.text.length);
+        elError.textContent = "Could not display content: "
+            + (e && e.message ? e.message : String(e));
+        return;
+    }
     _setStatus("", null);
     _renderUiFromState();
 }
