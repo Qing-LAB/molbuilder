@@ -241,6 +241,52 @@ async function _loadCodeMirror() {
  * so Playwright E2E tests can drive setValue / execCommand
  * without scraping CM-internal DOM.
  */
+// 2026-06-12: cap the selection length so a long mouse-drag (or any
+// programmatic selection) on a multi-MB document can't trigger the
+// CodeMirror render perf cliff (Ctrl-A measured 225 s on a 2 MB doc
+// in headless Chromium; click-drag through the same region has the
+// same O(selection-length) repaint cost).  The cap fires regardless
+// of editable mode so no path can reach the cliff.
+//
+// Line-based instead of byte-based on purpose: ``indexFromPos`` is
+// O(line) and ``beforeSelectionChange`` fires on every drag tick.
+// Counting lines is O(1) — checks ``head.line - anchor.line``
+// against ``MAX_SELECTION_LINES``.  At a typical ~70 chars/line this
+// is roughly 100 KB, plenty for copy/paste of a region.
+const MAX_SELECTION_LINES = 1500;
+
+function _capSelectionLines(cm, obj) {
+    if (!obj || !obj.ranges || typeof obj.update !== "function") return;
+    let modified = false;
+    const newRanges = obj.ranges.map(function (r) {
+        const dl = Math.abs(r.head.line - r.anchor.line);
+        if (dl <= MAX_SELECTION_LINES) return r;
+        modified = true;
+        const dir = r.head.line > r.anchor.line ? 1 : -1;
+        const newHeadLine = r.anchor.line + dir * MAX_SELECTION_LINES;
+        // Clamp the column too — for downward drags we want the
+        // tail of the selection at end-of-line; for upward drags
+        // at start-of-line.  Either way it lands on a clean line
+        // boundary so the user can shift-extend if they need more.
+        const newHeadCh = dir > 0
+            ? cm.getLine(newHeadLine).length
+            : 0;
+        return {
+            anchor: r.anchor,
+            head:   { line: newHeadLine, ch: newHeadCh },
+        };
+    });
+    if (modified) {
+        obj.update(newRanges);
+        _setStatus(
+            "Selection capped at " + MAX_SELECTION_LINES + " lines "
+            + "(~100 KB) — drag further is ignored.  Use the kebab "
+            + "menu's Download to grab the whole file.",
+            null,
+        );
+    }
+}
+
 // 2026-06-12: Ctrl-A / Cmd-A inside the preview editor is disabled.
 //
 // Background: a real-keystroke selectAll on a multi-MB document froze
@@ -299,6 +345,7 @@ async function _ensureCmMounted() {
     });
     _cm.on("change", _onCmChange);
     _cm.on("scroll", _onCmScroll);
+    _cm.on("beforeSelectionChange", _capSelectionLines);
     elModal.__molbuilder_test_cm = _cm;
     return _cm;
 }

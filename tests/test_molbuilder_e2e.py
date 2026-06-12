@@ -737,6 +737,88 @@ def test_kebab_view_renders_file_content_visibly(
     )
 
 
+def test_kebab_view_selection_capped_at_max_lines(
+        page, flask_server, tmp_path, monkeypatch):
+    """2026-06-12: a long mouse-drag (or any selection) on a multi-MB
+    document must NOT trigger the CodeMirror selection-render perf
+    cliff.  Both Edit-disabled view-only mode AND editable mode go
+    through the same ``beforeSelectionChange`` cap at
+    ``MAX_SELECTION_LINES`` (1500 lines, ~100 KB).
+
+    The previous attempt to gate selection via ``user-select: none``
+    in CSS only blocked NATIVE browser selection — CodeMirror tracks
+    its own selection state via mouse events independent of CSS.
+    The cap fires at the CM event boundary so the protection is
+    real.
+
+    Pin: programmatically setting a selection past the cap should
+    clamp the result to ``MAX_SELECTION_LINES`` lines, regardless
+    of which mode the file's in.
+    """
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    proj = tmp_path / "proj" / "structure"
+    proj.mkdir(parents=True)
+    # ~2 MB content past the 1 MB view-only threshold.
+    big = proj / "big.fdf"
+    big.write_text("\n".join(
+        f"line {i:05d} content with coords {i*0.1:.6f}"
+        for i in range(40000)
+    ) + "\n")
+
+    _open_modify(page, flask_server)
+    page.evaluate(
+        "(p) => window.molbuilder.projects.navigateTo(p)", str(proj)
+    )
+    page.wait_for_selector('.ps-entry[data-path$="big.fdf"]',
+                           timeout=5000)
+    entry = page.locator('.ps-entry[data-path$="big.fdf"]').first
+    entry.hover()
+    entry.locator('.ps-entry-kebab').first.click(force=True)
+    page.locator('.ps-entry-menu .ps-entry-menu-item',
+                 has_text="View").first.click()
+    page.wait_for_selector('#ps-preview-modal:not([hidden])',
+                           timeout=3000)
+    page.wait_for_function(
+        "() => {"
+        "  const cm = document.getElementById('ps-preview-modal')"
+        "                .__molbuilder_test_cm;"
+        "  return cm && cm.getValue().length > 1500000;"
+        "}",
+        timeout=15000,
+    )
+
+    # Try to programmatically select the WHOLE document.  The
+    # beforeSelectionChange hook should clamp it.
+    result = page.evaluate("""() => {
+        const cm = document.getElementById('ps-preview-modal')
+                       .__molbuilder_test_cm;
+        const last = cm.lastLine();
+        const lastCh = cm.getLine(last).length;
+        cm.setSelection(
+            { line: 0, ch: 0 },
+            { line: last, ch: lastCh },
+            { scroll: false }
+        );
+        const sel = cm.listSelections()[0];
+        return {
+            from_line: Math.min(sel.anchor.line, sel.head.line),
+            to_line:   Math.max(sel.anchor.line, sel.head.line),
+            total_lines: cm.lastLine() + 1,
+        };
+    }""")
+    span = result["to_line"] - result["from_line"]
+    assert span <= 1500, (
+        f"selection should clamp at 1500 lines; got {span}-line "
+        f"span out of {result['total_lines']} total"
+    )
+    # Sanity: the doc IS much bigger than 1500 lines — otherwise
+    # the cap wouldn't have anything to clamp.
+    assert result["total_lines"] > 10000, (
+        "doc must be much larger than the cap for the test to "
+        "actually exercise it"
+    )
+
+
 def test_kebab_view_ctrl_a_is_disabled(
         page, flask_server, tmp_path, monkeypatch):
     """2026-06-12: Ctrl-A / Cmd-A inside the preview editor is

@@ -1024,22 +1024,15 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
   box-shadow: inset 0 0 0 1px var(--ps-accent, #4a9eff);
 }
 
-/* View-only mode (file > 1 MB OR paginated).  Disable text
- * selection entirely to avoid the CodeMirror selection-render
- * perf cliff on multi-MB documents.  Edit is also disabled in
- * this mode (see preview.js's ``_state.editable``).  Users who
- * need the whole file should hit the kebab menu's Download
- * instead. */
-.ps-preview-cmview.is-view-only .CodeMirror,
-.ps-preview-cmview.is-view-only .CodeMirror * {
-  user-select: none !important;
-  -webkit-user-select: none !important;
-}
-.ps-preview-cmview.is-view-only .CodeMirror-cursor {
-  /* The blinking cursor still appears on focus but selection drag
-   * is dead — hide the cursor so the user isn't misled. */
-  display: none !important;
-}
+/* View-only mode (file > 1 MB OR paginated).  Edit disabled (see
+ * preview.js's ``_state.editable``).  Selection is NOT disabled
+ * here — CodeMirror tracks its own selection state via mouse
+ * events independent of the CSS user-select property, so the
+ * earlier ``user-select: none`` rule had no effect on the perf
+ * cliff.  Instead, ``beforeSelectionChange`` in preview.js caps
+ * the selection length to MAX_SELECTION_LINES; the cap fires
+ * regardless of which mode we're in so the perf cliff stays
+ * unreachable across all paths. */
 /* CM5 search + jump-to-line dialogs (vendored addon/dialog.css).
  * The defaults stack a tiny input at the top of the editor; widen
  * + dark-mode it so the prompt actually shows up against the
