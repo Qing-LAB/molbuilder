@@ -1145,6 +1145,78 @@ def test_save_as_propagates_labels_to_new_sidecar(
         )
 
 
+def test_save_as_reanchors_selection_store_sourceFile(
+        page, flask_server, tmp_path, monkeypatch):
+    """Save-as must update the selection store's ``sourceFile`` to
+    the new path so subsequent panel label writes target the NEW
+    location's sidecar — not the original load location.
+
+    Without this re-anchor, a user who Save-as's to /B/renamed.xyz
+    and then adds a label via the panel would have the label
+    written to /A/water.molstruct.json (the original source) —
+    silently surprising.
+    """
+    from pathlib import Path as _P
+    import json as _json
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    project_dir = tmp_path / "test_project"
+    project_dir.mkdir()
+    water_xyz = str(project_dir / "water.xyz")
+    _P(water_xyz).write_text(_H2O_XYZ)
+    _open_modify(page, flask_server)
+    _load_water_via_button(page, water_xyz)
+    _wait_panel_ready(page)
+    # Save-as to renamed.xyz (same dir, different basename).
+    page.locator("#save-to-source-btn").click()
+    page.wait_for_function(
+        "() => document.querySelector('.molbuilder-save-name-modal')"
+        "        !== null"
+    )
+    page.locator(
+        '.molbuilder-save-name-modal [data-role="name-input"]'
+    ).fill("renamed.xyz")
+    page.locator(
+        '.molbuilder-save-name-modal [data-action="save"]'
+    ).click()
+    page.wait_for_function(
+        "() => !document.getElementById('save-status').textContent"
+        "        .toLowerCase().startsWith('saving')"
+    )
+    # Verify the selection store's sourceFile points at the new
+    # path.  Wait briefly because the re-anchor happens after the
+    # status update.
+    page.wait_for_function(
+        f'() => window.molbuilder.workspace.selection'
+        f'        .getState().sourceFile === '
+        f'        {_json.dumps(str(project_dir / "renamed.xyz"))}',
+        timeout=2000,
+    )
+    # Now add a label via the panel — it should land at the NEW
+    # location's sidecar, not the original.
+    _set_selection(page, [0])
+    page.locator("#selection-assign-target").select_option("L-electrode")
+    page.locator("#selection-assign-btn").click()
+    # Wait for the label tag to render.
+    page.wait_for_function(
+        '() => {'
+        '  const r = document.querySelector('
+        '    \'#selection-atom-list tr[data-atom-index="0"] .col-labels\');'
+        '  return r && r.textContent.includes("L-electrode");'
+        '}'
+    )
+    # Read the sidecar at the NEW location: it must carry the label.
+    renamed_sidecar = project_dir / "renamed.molstruct.json"
+    assert renamed_sidecar.exists(), (
+        "renamed.molstruct.json should exist after the panel label "
+        "write targets the re-anchored path"
+    )
+    data = _json.loads(renamed_sidecar.read_text())
+    assert data["regions"].get("L-electrode") == [0], (
+        f"label should land at the renamed file's sidecar; got "
+        f"{data['regions']!r}"
+    )
+
+
 def test_save_button_disabled_for_smiles_without_prior_save(
         page, flask_server):
     """A SMILES-generated structure has no source.file and no

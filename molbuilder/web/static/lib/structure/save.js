@@ -184,6 +184,33 @@
 
         _structurePage.markSavedTo(path);
 
+        // 2026-06-09: re-anchor the selection store's ``sourceFile`` to
+        // the just-written path so subsequent panel label writes
+        // (writeLabel) target the NEW location's sidecar.  Without
+        // this, ``state.sourceFile`` keeps pointing at the original
+        // load path (/A/water.xyz) even after Save-as to /B — and any
+        // label added afterwards lands at /A's sidecar, surprising
+        // the user who thinks they're editing /B.
+        //
+        // ``adoptSession`` with the workspace's CURRENT atoms +
+        // selection preserves the in-memory state (no _fetchAtoms
+        // disk re-read that would clobber unsaved modifier ops).
+        if (_workspace
+                && _workspace.selection
+                && typeof _workspace.selection.adoptSession === "function") {
+            var currentSel = (_workspace.getSelection
+                              && _workspace.getSelection().indices) || [];
+            var currentAtoms = (_workspace.getAtoms
+                                && _workspace.getAtoms()) || [];
+            try {
+                _workspace.selection.adoptSession({
+                    sourceFile: path,
+                    selection:  currentSel,
+                    atoms:      currentAtoms,
+                });
+            } catch (_) { /* non-fatal — selection re-anchor is housekeeping */ }
+        }
+
         if (!root.fetch) return { ok: true, path: path };
 
         var labelsPromise;

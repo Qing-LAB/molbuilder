@@ -137,15 +137,32 @@
     // --------------------------------------------------------------- //
 
     function _normaliseAtom(raw) {
+        // 2026-06-09: idempotent normaliser — accepts EITHER the
+        // server wire shape (raw.regions, raw.is_frozen, snake_case
+        // metadata) OR an already-normalised atom object (labels,
+        // isFrozen, camelCase).  The save flow's Save-as re-anchor
+        // passes ws.getAtoms() output back through adoptSession;
+        // pre-fix that silently wiped labels because the wire-shape
+        // reads (raw.regions, raw.is_frozen) returned undefined on
+        // already-normalised input.
         const out = {
             index:   raw.index,
             element: raw.element,
-            labels:  Array.isArray(raw.regions) ? raw.regions.slice() : [],
-            isFrozen: !!raw.is_frozen,
+            labels:  Array.isArray(raw.labels)
+                         ? raw.labels.slice()
+                         : (Array.isArray(raw.regions)
+                                ? raw.regions.slice() : []),
+            isFrozen: raw.is_frozen !== undefined ? !!raw.is_frozen
+                      : !!raw.isFrozen,
         };
+        // Accept both snake_case (wire) and camelCase (in-memory)
+        // metadata fields — same idempotence reasoning.
         if (raw.atom_name)    out.atomName    = raw.atom_name;
+        else if (raw.atomName) out.atomName   = raw.atomName;
         if (raw.residue_name) out.residueName = raw.residue_name;
+        else if (raw.residueName) out.residueName = raw.residueName;
         if (raw.chain_id)     out.chainId     = raw.chain_id;
+        else if (raw.chainId) out.chainId     = raw.chainId;
         return out;
     }
 
