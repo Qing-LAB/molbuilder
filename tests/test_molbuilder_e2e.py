@@ -2500,6 +2500,71 @@ def test_undo_after_electrode_op_restores_pre_slab_structure(
     assert undo.is_disabled()
 
 
+def test_undo_history_clears_on_save(
+        page, flask_server, water_xyz_file):
+    """Regression for 2026-06-09 audit BLOCKER: workspace-state.md
+    § 4.3 specifies "history is dropped at save time", but the
+    history was never actually cleared on Save.  A user who did:
+
+        load water (3 atoms)
+        → apply electrode (history depth = 1)
+        → Save (XYZ on disk now has 11 atoms)
+        → click Undo
+
+    used to get workspace=3 atoms back in memory while the file on
+    disk had 11 atoms — silent disk/memory divergence + any sidecar
+    regions written to disk became orphaned (referencing atoms 5,6
+    of the 11-atom XYZ that the workspace no longer knows about).
+
+    Fix: when dirty transitions to clean WITHOUT a source-file
+    change, the modify-tab clears the history.  Undo is no longer
+    able to cross a Save boundary.
+    """
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    _open_op_tab(page, "junction")
+    for input_id, val in [("elc-m", "2"), ("elc-n", "2"), ("elc-layers", "1")]:
+        page.evaluate(
+            "(args) => {"
+            "  const el = document.getElementById(args.id);"
+            "  el.value = args.val;"
+            "  el.dispatchEvent(new Event('input', {bubbles: true}));"
+            "}",
+            {"id": input_id, "val": val},
+        )
+    page.locator("#elc-apply").click()
+    page.wait_for_function(
+        "() => window.__molbuilder_modify_test.getNAtoms() === 11"
+    )
+    # History has 1 entry (the pre-electrode snapshot).
+    undo = page.locator("#undo-op")
+    assert undo.is_enabled(), (
+        "Undo should be available after a successful electrode op"
+    )
+    # Simulate the save by directly invoking markSaved on
+    # canvas-state — the save panel's HTTP write requires picker-
+    # root + project-dir setup that's overkill for this test.
+    # The subscriber in modify/viewer.js only cares about the
+    # dirty=true -> dirty=false transition (source unchanged), so
+    # markSaved is sufficient to exercise the history-clear path.
+    page.evaluate(
+        "(p) => window.molbuilder.workspace.markSaved(p)",
+        water_xyz_file,
+    )
+    page.wait_for_function(
+        "() => !window.molbuilder.workspace.isDirty()",
+        timeout=2000,
+    )
+    # The undo button MUST disable now — undoing past a save would
+    # roll the workspace back to 3 atoms while the file on disk has
+    # 11, leaving a disk/memory mismatch.
+    assert undo.is_disabled(), (
+        "After Save, undo history must clear so a subsequent click "
+        "can't roll the workspace back across the disk-write "
+        "boundary (workspace-state.md § 4.3)."
+    )
+
+
 def test_geom_translate_then_center_returns_centroid_to_origin(
         page, flask_server, water_xyz_file):
     """End-to-end Geom subtab: translate the structure by (5, 0, 0),

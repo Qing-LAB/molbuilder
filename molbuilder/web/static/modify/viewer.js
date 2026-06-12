@@ -1089,6 +1089,44 @@
             _cs.subscribe(() => refreshSelectionUI());
         }
 
+        // 2026-06-09: clear the undo history when the workspace
+        // transitions to a state where in-memory + disk are about
+        // to diverge after a fresh action:
+        //   * Save (dirty -> clean, source unchanged): post-save
+        //     undo would roll the in-memory state BACK past the
+        //     just-written disk file, creating disk/memory
+        //     mismatch + leaving any sidecar regions orphaned.
+        //   * Load (source.file changed): the prior structure's
+        //     history is meaningless against the new structure.
+        //   * Discard (workspace became empty): no structure to
+        //     undo into.
+        // Without this clear, a user who does:
+        //   load -> add electrode -> save -> undo
+        // ends up with workspace=3 atoms + disk=11 atoms + sidecar
+        // referencing 11-atom indices.  Per workspace-state.md
+        // § 4.3 ("History is dropped at save time").
+        if (_cs && typeof _cs.subscribe === "function") {
+            let _prevSource = null;
+            let _prevDirty  = false;
+            _cs.subscribe(function (snap) {
+                const src   = (snap && snap.source && snap.source.file)
+                                  || null;
+                const dirty = !!(snap && snap.dirty);
+                const empty = !!(snap && (snap.loading === false)
+                                  && !(snap.structure));
+                const sourceChanged = src !== _prevSource;
+                const savedTransition = _prevDirty && !dirty
+                                        && src === _prevSource;
+                if ((sourceChanged || savedTransition || empty)
+                        && state.history.length) {
+                    state.history.length = 0;
+                    refreshUndoButton();
+                }
+                _prevSource = src;
+                _prevDirty  = dirty;
+            });
+        }
+
         // (Legacy load-btn + file-picker dead-code block removed
         // 2026-05-18.  The browser-local file dialog was dropped
         // when the Projects sidebar took over.  The "Load from
