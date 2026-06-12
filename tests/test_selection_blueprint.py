@@ -198,6 +198,62 @@ class TestEval:
         assert r.status_code == 200, r.get_json()
         assert r.get_json()["selected_indices"] == [0, 1, 2, 3]
 
+    def test_by_region_frozen_atoms_resolves_via_synthetic(
+            self, web, selection_root):
+        """2026-06-12: the ``By label`` filter dropdown shows the
+        ``frozen`` tag (from atoms' ``is_frozen`` flag) as an option.
+        Picking it should resolve to the frozen-atoms set even though
+        ``frozen_atoms`` is stored as a separate sidecar field, not
+        as a region.
+
+        The fix exposes ``struct.frozen_atoms`` as a synthetic region
+        named ``frozen_atoms`` ONLY during rule resolution (eval +
+        toggle endpoints).  The synthetic does NOT leak into
+        ``/api/selection/atoms`` (no duplicate ``frozen_atoms`` tag
+        on the per-atom regions list) and does NOT leak into the
+        sidecar on save (the on-disk file's ``regions`` block stays
+        user-defined).
+        """
+        # Save frozen_atoms via the dedicated target.
+        save = web.post("/api/selection/save", json={
+            "structure_path": _path(selection_root),
+            "target":         "frozen_atoms",
+            "indices":        [5, 6, 7],
+        })
+        assert save.status_code == 200
+        # Eval ``frozen_atoms`` via the standard by_region rule.
+        r = web.post("/api/selection/eval", json={
+            "structure_path": _path(selection_root),
+            "rule": {"op": "by_region", "name": "frozen_atoms"},
+        })
+        assert r.status_code == 200, r.get_json()
+        assert r.get_json()["selected_indices"] == [5, 6, 7]
+
+    def test_by_region_frozen_does_not_leak_into_atoms_list(
+            self, web, selection_root):
+        """Companion of the test above: the synthetic ``frozen_atoms``
+        region must NOT appear in ``/api/selection/atoms``'s per-atom
+        ``regions`` field — otherwise frozen atoms would carry BOTH
+        the (correct) ``is_frozen`` flag AND a (duplicate)
+        ``frozen_atoms`` tag in the panel's atom rows.
+        """
+        web.post("/api/selection/save", json={
+            "structure_path": _path(selection_root),
+            "target":         "frozen_atoms",
+            "indices":        [5, 6, 7],
+        })
+        r = web.post("/api/selection/atoms", json={
+            "structure_path": _path(selection_root),
+        })
+        atoms = r.get_json()["atoms"]
+        assert atoms[5]["is_frozen"] is True
+        assert atoms[6]["is_frozen"] is True
+        assert "frozen_atoms" not in atoms[5]["regions"], (
+            "synthetic frozen_atoms region must not appear in per-atom "
+            "regions; got " + repr(atoms[5]["regions"])
+        )
+        assert "frozen_atoms" not in atoms[6]["regions"]
+
 
 # --------------------------------------------------------------------- #
 #  /api/selection/toggle -- bookkeeping semantics                        #

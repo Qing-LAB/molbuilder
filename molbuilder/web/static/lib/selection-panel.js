@@ -267,12 +267,20 @@
         }
 
         // Labels currently on at least one atom -- drives the
-        // "By label" filter dropdown.
+        // "By label" filter dropdown.  Includes ``FROZEN_TAG_LABEL``
+        // when any atom carries ``isFrozen``, matching the visible
+        // tag rendered in the atom rows.  The dropdown's option
+        // value still maps to the canonical server-side target
+        // (``frozen_atoms``) — see ``renderFilters`` for the
+        // value/display split.
         function knownLabels(s) {
             const out = new Set();
+            let anyFrozen = false;
             (s.atoms || []).forEach((a) => {
                 (a.labels || []).forEach((label) => out.add(label));
+                if (a.isFrozen) anyFrozen = true;
             });
+            if (anyFrozen) out.add(FROZEN_TAG_LABEL);
             return Array.from(out).sort();
         }
 
@@ -321,9 +329,23 @@
                 valueEl.appendChild(placeholder);
                 labels.forEach((label) => {
                     const o = document.createElement("option");
-                    o.value = label;
-                    o.textContent = label;
-                    if (filter.value === label) o.selected = true;
+                    // 2026-06-12: ``frozen`` is a display alias for
+                    // the server-side ``frozen_atoms`` target
+                    // (the atom-row tag uses the short form; the
+                    // canonical sidecar key + the server's
+                    // ``ByRegion`` resolution use the long form).
+                    // Map the dropdown so the user picks the
+                    // familiar tag but the rule lands on the
+                    // synthetic ``frozen_atoms`` region wired in
+                    // ``selection.py::_load_structure``.
+                    if (label === FROZEN_TAG_LABEL) {
+                        o.value = FROZEN_TARGET;
+                        o.textContent = label;
+                    } else {
+                        o.value = label;
+                        o.textContent = label;
+                    }
+                    if (filter.value === o.value) o.selected = true;
                     valueEl.appendChild(o);
                 });
             } else {

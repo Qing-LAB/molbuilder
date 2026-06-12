@@ -271,6 +271,34 @@ def _load_structure(structure_path: str) -> Structure:
     return struct
 
 
+def _expose_frozen_as_region(struct) -> None:
+    """Expose ``struct.frozen_atoms`` as a synthetic region named
+    ``frozen_atoms`` on the IN-MEMORY struct so the ``By label``
+    filter in the selection panel can resolve "frozen" to the
+    frozen-atom set via the standard ``ByRegion`` rule.
+
+    2026-06-12: split out of ``_load_structure`` because the
+    synthetic region would otherwise leak into ``/api/selection/
+    atoms``'s response (every frozen atom would carry a
+    ``"frozen_atoms"`` label tag in addition to the ``is_frozen``
+    flag, double-rendering in the panel).  Only ``/api/selection/
+    eval`` + ``/api/selection/toggle`` (the rule-resolution paths)
+    need the synthetic — call this just before ``evaluate``.
+
+    Mutates ``struct.regions`` in place.  ``frozen_atoms`` is
+    reserved as a sidecar target name (``selection_save`` treats
+    it specially), so a user-defined region with that name can't
+    exist — ``setdefault`` is enough.
+    """
+    frozen = list(getattr(struct, "frozen_atoms", []) or [])
+    if frozen:
+        regions = getattr(struct, "regions", None)
+        if regions is None:
+            struct.regions = {"frozen_atoms": frozen}
+        else:
+            regions.setdefault("frozen_atoms", frozen)
+
+
 # --------------------------------------------------------------------- #
 #  Toggle bookkeeping (pure function over rule trees)                    #
 # --------------------------------------------------------------------- #
@@ -947,6 +975,7 @@ def selection_eval():
         if not isinstance(path, str) or not path:
             return _bad_request("missing 'structure_path'")
         struct = _load_structure(path)
+        _expose_frozen_as_region(struct)
         rule = _load_rule_from_payload(payload)
         try:
             indices = evaluate(rule, struct)
@@ -973,6 +1002,7 @@ def selection_toggle():
         if not isinstance(path, str) or not path:
             return _bad_request("missing 'structure_path'")
         struct = _load_structure(path)
+        _expose_frozen_as_region(struct)
         rule = _load_rule_from_payload(payload)
         idx = payload.get("index")
         # ``isinstance(True, int)`` is True in Python; reject bool
