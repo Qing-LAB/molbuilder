@@ -195,6 +195,19 @@
   </div>
 </section>
 
+<!-- 2026-06-12: plot-row toolbar — single Export All button at the
+     header so users can grab every plotted column (step, energy,
+     max force, max force constrained, SCF cycle / energy / gnorm)
+     in one CSV.  Header carries source-file metadata as ``#``
+     comments so the file is self-describing. -->
+<div class="plots-toolbar">
+  <button type="button" id="trajectory-export-csv-btn"
+          class="plots-toolbar-btn"
+          title="Download a CSV with every column from the four plots, plus a header recording source file + parser + timestamp.">
+    ↓ Export all plot data (CSV)
+  </button>
+</div>
+
 <!-- Plots row: 4 plots when there's space, 2 when narrower, 1 on
      phones.  ``auto-fit`` with a minimum 280px reflows
      automatically.  Individual SCF plots are ``hidden`` when no

@@ -232,6 +232,35 @@
  * and automatically collapses hidden cells (when SCF data is
  * absent, those two cells carry ``hidden`` and ``display: none``,
  * so the remaining 2 plots take half the width each). */
+/* 2026-06-12: Toolbar above the plots row — single Export All
+ * button.  Right-aligned with subtle background so it doesn't
+ * compete with the section heading above. */
+.plots-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 6px;
+}
+.plots-toolbar-btn {
+    appearance: none;
+    background: var(--bg-card);
+    color: var(--fg);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius, 4px);
+    padding: 4px 10px;
+    font: 12px/1.3 system-ui, sans-serif;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.plots-toolbar-btn:hover {
+    background: var(--accent, #4a9eff);
+    border-color: var(--accent, #4a9eff);
+    color: #fff;
+}
+.plots-toolbar-btn:focus-visible {
+    outline: 2px solid var(--accent, #4a9eff);
+    outline-offset: 1px;
+}
+
 .plots-row {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));

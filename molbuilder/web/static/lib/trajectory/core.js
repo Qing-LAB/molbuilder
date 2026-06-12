@@ -246,6 +246,114 @@
     /*  3Dmol rendering                                                    */
     /* ------------------------------------------------------------------ */
 
+    /**
+     * 2026-06-12: Build a CSV bundling every column drawn across the
+     * 4 trajectory plots.  Self-describing header (``#``-comments)
+     * carries source file, parser, mtime, and the generation
+     * timestamp so the file can be re-traced later without external
+     * notes.
+     *
+     * Layout
+     * ------
+     * Header block (lines starting with ``#``):
+     *   * generation context (timestamp, source path, parser,
+     *     source mtime, n_frames)
+     *   * column legend pointing at unit + meaning
+     *   * a one-line schema reminder for whoever opens the file in
+     *     Excel a year later
+     *
+     * Data block:
+     *   step, energy_eV, max_force_eVperA, max_force_constrained_eVperA,
+     *   scf_cycle, scf_cycle_energy_eV, scf_cycle_gnorm_eVperA
+     *
+     * The trailing SCF columns repeat the per-step value for the
+     * cycle that's currently shown in the SCF plots (last cycle of
+     * that step's SCF run) — same value the SCF gnorm/energy plots
+     * graph for that point.  Empty when no SCF history.
+     *
+     * Numbers use repr-precision (Number.toString()) so the round-
+     * trip through CSV is lossless.  Empty cells for missing values
+     * (Plotly's connectgaps: false skips them visually).
+     */
+    function _buildPlotCsv(ctx) {
+        var data       = ctx.data || {};
+        var sourcePath = ctx.sourcePath || "(unknown)";
+        var format     = ctx.format     || "(unknown)";
+        var label      = ctx.label      || format;
+        var mtime      = (typeof ctx.mtime === "number")
+            ? new Date(ctx.mtime * 1000).toISOString()
+            : "(unknown)";
+        var generated  = new Date().toISOString();
+
+        var iterations   = data.iterations    || [];
+        var energies     = data.energies      || [];
+        var maxForces    = data.max_forces    || [];
+        var maxForcesC   = data.max_forces_constrained || [];
+        var scfHistory   = data.scf_history   || [];
+        var nFrames      = (data.frames || []).length;
+
+        function _esc(v) {
+            // Empty string for missing (Plotly's skipped-gap value
+            // is null).  Numbers via toString() keep IEEE precision.
+            if (v === null || v === undefined) return "";
+            if (typeof v === "number") {
+                if (!isFinite(v)) return "";
+                return v.toString();
+            }
+            // Quote any text containing commas / quotes / newlines.
+            var s = String(v);
+            if (/[",\n]/.test(s)) {
+                s = '"' + s.replace(/"/g, '""') + '"';
+            }
+            return s;
+        }
+
+        var lines = [];
+        lines.push("# molbuilder — trajectory plot data export");
+        lines.push("# generated:    " + generated);
+        lines.push("# source path:  " + sourcePath);
+        lines.push("# parser:       " + format);
+        lines.push("# label:        " + label);
+        lines.push("# source mtime: " + mtime);
+        lines.push("# n_frames:     " + nFrames);
+        lines.push("#");
+        lines.push("# Column legend:");
+        lines.push("#   step                          — CG / opt step index (engine numbering)");
+        lines.push("#   energy_eV                     — total energy in eV");
+        lines.push("#   max_force_eVperA              — Max |F| across ALL atoms (eV/Å); informational");
+        lines.push("#   max_force_constrained_eVperA  — Max |F| EXCLUDING frozen atoms (eV/Å); convergence-gating");
+        lines.push("#                                   when constraints exist, otherwise empty.");
+        lines.push("#   scf_cycle                     — last SCF iteration index for this step");
+        lines.push("#   scf_cycle_energy_eV           — energy at that SCF cycle (eV)");
+        lines.push("#   scf_cycle_gnorm_eVperA        — SCF gradient norm at that cycle (eV/Å);");
+        lines.push("#                                   PySCF only; SIESTA emits dHmax instead.");
+        lines.push("#");
+        lines.push("# Empty cells mean the engine didn't emit that value at that step.");
+        lines.push("#");
+        lines.push([
+            "step", "energy_eV",
+            "max_force_eVperA", "max_force_constrained_eVperA",
+            "scf_cycle", "scf_cycle_energy_eV", "scf_cycle_gnorm_eVperA",
+        ].join(","));
+
+        for (var i = 0; i < nFrames; i++) {
+            var step = iterations[i];
+            if (step === undefined) step = i;
+            var scfRun = scfHistory[i] || [];
+            var lastCycle = scfRun[scfRun.length - 1] || {};
+            lines.push([
+                _esc(step),
+                _esc(energies[i]),
+                _esc(maxForces[i]),
+                _esc(maxForcesC[i]),
+                _esc(lastCycle.cycle),
+                _esc(lastCycle.energy),
+                _esc(lastCycle.gnorm),
+            ].join(","));
+        }
+        return lines.join("\n") + "\n";
+    }
+
     function framesToMultiXyz(frames) {
         const out = [];
         for (const frame of frames) {
@@ -918,8 +1026,10 @@
                             ? "dash" : "solid" },
             marker: { size: (constrained && constrained.length) ? 4 : 6 },
             name: (constrained && constrained.length)
-                    ? "Max |F| (all atoms)"
+                    ? "all atoms"
                     : "Max |F|",
+            hovertemplate: "step %{x}<br>Max |F| (all atoms): "
+                         + "%{y:.4r} eV/A<extra></extra>",
             connectgaps: false,
         }];
         if (constrained && constrained.length) {
@@ -931,13 +1041,19 @@
                 // gating series reads as the primary signal.
                 line: { color: "#1f9d55", width: 2 },
                 marker: { size: 6 },
-                name: "Max |F| (free atoms, → convergence)",
+                name: "free atoms",
+                hovertemplate: "step %{x}<br>Max |F| (free atoms): "
+                             + "%{y:.4r} eV/A"
+                             + "<extra>convergence-gating</extra>",
                 connectgaps: false,
             });
         }
+        // ``hasBothTraces`` is used twice — extract for readability.
+        var hasBothTraces = !!(constrained && constrained.length);
         Plotly.react("force-plot", forceTraces, {
             title: { text: "Max force", font: { size: 13 } },
-            margin: { l: 8, r: 12, t: 32, b: 32 },
+            margin: { l: 8, r: 12, t: 32,
+                      b: hasBothTraces ? 58 : 32 },
             xaxis: { title: { text: "CG step", standoff: 4 },
                      zeroline: false, automargin: true,
                      nticks: 6 },
@@ -946,6 +1062,14 @@
                      rangemode: "tozero", zeroline: false,
                      automargin: true, nticks: 5 },
             font: { family: "system-ui, sans-serif", size: 10 },
+            showlegend: hasBothTraces,
+            legend: {
+                orientation: "h",
+                x: 0.5, xanchor: "center",
+                y: -0.22, yanchor: "top",
+                font: { size: 9 },
+                bgcolor: "rgba(0,0,0,0)",
+            },
             shapes:      stageMx.shapes,
             annotations: stageMx.annotations,
         }, { displayModeBar: false, responsive: true });
@@ -1354,6 +1478,12 @@
         state.data   = r.data;
         state.format = r.format || (r.data && r.data.source_format) || "?";
         state.label  = r.label  || state.format;
+        // 2026-06-12: remember the source path so the Export-CSV
+        // button can record it in the file's ``# source =`` header.
+        // ``r.path`` is the server-resolved absolute path (the input
+        // may have been a directory; r.path is the file actually
+        // loaded — same value the live-poll URL uses).
+        if (r.path !== undefined) state.path = r.path;
         _renderRuntimeInfo(state.data && state.data.runtime_info);
         _renderParseWarnings(state.data && state.data.parse_warnings);
 
@@ -1608,6 +1738,7 @@
                 data:   r.data,
                 format: r.format,
                 label:  r.label,
+                path:   r.path,
             });
             // Directory mode: show the user which file the loader
             // picked, and update the input with the resolved path so
@@ -1752,6 +1883,44 @@
 
         setStatus("Saved " + filename + " (" + frame.length
             + " atoms).", "ok");
+    });
+
+    /* ---- Export all plot data as CSV ---------------------------- */
+    /* Bundles every column displayed across the 4 trajectory plots
+       (energy + max forces + SCF cycle / energy / gnorm) into one
+       CSV.  Header carries source attribution + parser + timestamp
+       so the file is self-describing — the user can re-trace what
+       it came from months later without external bookkeeping.
+       Format pinned in lib/trajectory/csv-export.js; this handler
+       just gathers state + triggers the browser download. */
+    _on($("trajectory-export-csv-btn"), "click", function () {
+        if (!state.data || !state.data.frames
+                || state.data.frames.length === 0) {
+            setStatus("No trajectory loaded — nothing to export.",
+                      "error");
+            return;
+        }
+        var fileStem = (state.label
+                && state.label.replace(/[^A-Za-z0-9._-]+/g, "_"))
+            || state.format
+            || "trajectory";
+        var csv = _buildPlotCsv({
+            data:      state.data,
+            sourcePath: state.path || "",
+            format:    state.format || "",
+            label:     state.label || "",
+            mtime:     state.mtime || null,
+        });
+        var blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+        var url  = URL.createObjectURL(blob);
+        var a    = document.createElement("a");
+        a.href     = url;
+        a.download = fileStem + "_plots.csv";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        setStatus("Exported " + a.download + ".", "ok");
     });
 
     /* ---- Tabs (Style / Overlays / Playback) ---------------------- */
