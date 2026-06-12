@@ -175,6 +175,15 @@
     <p id="ps-preview-error" class="ps-preview-error" role="alert"></p>
     <p id="ps-preview-status" class="ps-preview-status"></p>
     <footer class="ps-preview-footer">
+      {#- Find button (2026-06-12).  Opens CodeMirror's vendored
+          search dialog (Ctrl-F / Cmd-F when the editor is focused;
+          this button is the discoverable entry point so users
+          don't have to know the keybinding).  Hotkey reminders
+          appear in the title tooltip + the modal's status line. -#}
+      <button id="ps-preview-find-btn" type="button"
+              title="Find text in this file.&#10;Ctrl-F (Cmd-F on Mac) inside the editor, F3 / Shift-F3 for next / previous.">
+        Find…
+      </button>
       <button id="ps-preview-edit-btn" type="button"
               title="Switch to edit mode.&#10;Disabled when the file isn't editable (binary / too large / read-only).">
         Edit

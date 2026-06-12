@@ -43,7 +43,7 @@
 import { projects } from "./state.js";
 
 // Modal DOM handles, populated by initPreview().
-let elModal, elTitle, elMeta, elCmView, elError, elStatus;
+let elModal, elTitle, elMeta, elCmView, elError, elStatus, elFindBtn;
 let elEditBtn, elSaveBtn;
 
 // CodeMirror instance, created lazily on first showPreview() via
@@ -632,6 +632,7 @@ export function initPreview() {
     elStatus  = document.getElementById("ps-preview-status");
     elEditBtn = document.getElementById("ps-preview-edit-btn");
     elSaveBtn = document.getElementById("ps-preview-save-btn");
+    elFindBtn = document.getElementById("ps-preview-find-btn");
 
     // Close handlers: backdrop click, header × button, footer Close.
     elModal.querySelectorAll(
@@ -640,4 +641,32 @@ export function initPreview() {
 
     if (elEditBtn) elEditBtn.addEventListener("click", startEdit);
     if (elSaveBtn) elSaveBtn.addEventListener("click", saveEdit);
+    if (elFindBtn) elFindBtn.addEventListener("click", openFind);
+}
+
+/**
+ * Open CodeMirror's vendored search dialog.  The ``search.js`` +
+ * ``searchcursor.js`` + ``dialog.js`` addons (loaded by
+ * ``_loadCodeMirror``) register the ``find`` / ``findNext`` /
+ * ``findPrev`` commands; this just dispatches the user-facing button
+ * to the same command Ctrl-F binds to.
+ *
+ * Hotkeys (active when the editor has focus):
+ *   * Ctrl-F  / Cmd-F   — open find dialog
+ *   * F3 / Shift-F3     — next / previous match
+ *   * Esc                — close the find dialog
+ *
+ * No-op when CodeMirror isn't mounted (modal not opened yet, or
+ * the vendored bundle failed to load — in both cases the user
+ * would already see an error elsewhere).
+ */
+function openFind() {
+    if (!_cm) return;
+    try {
+        _cm.focus();
+        _cm.execCommand("find");
+    } catch (e) {
+        if (window.console) window.console.error(
+            "[preview] openFind threw:", e);
+    }
 }

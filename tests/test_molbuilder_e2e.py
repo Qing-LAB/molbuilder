@@ -737,6 +737,82 @@ def test_kebab_view_renders_file_content_visibly(
     )
 
 
+def test_kebab_view_find_button_opens_search_dialog(
+        page, flask_server, tmp_path, monkeypatch):
+    """2026-06-12: clicking the Find… button in the preview modal
+    footer must open CodeMirror's vendored search dialog (the same
+    one Ctrl-F binds to).  Pins the button → ``_cm.execCommand
+    ('find')`` wiring so a future regression where the button
+    silently no-ops is caught.
+
+    Backstory: the search.js / searchcursor.js / dialog.js addons
+    have been loaded since 9c7ebb2, but the search command was only
+    reachable via Ctrl-F when the editor was focused — undiscoverable
+    for users who don't know the keybinding.  The Find… button
+    surfaces it explicitly.
+    """
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    proj = tmp_path / "proj" / "structure"
+    proj.mkdir(parents=True)
+    target = proj / "input.fdf"
+    target.write_text("alpha beta gamma delta\nfindable substring here\n")
+
+    _open_modify(page, flask_server)
+    page.evaluate(
+        "(p) => window.molbuilder.projects.navigateTo(p)", str(proj)
+    )
+    page.wait_for_selector('.ps-entry[data-path$="input.fdf"]',
+                           timeout=5000)
+    entry = page.locator('.ps-entry[data-path$="input.fdf"]').first
+    entry.hover()
+    entry.locator('.ps-entry-kebab').first.click(force=True)
+    page.wait_for_selector('.ps-entry-menu .ps-entry-menu-item',
+                           timeout=2000)
+    page.locator('.ps-entry-menu .ps-entry-menu-item',
+                 has_text="View").first.click()
+    page.wait_for_selector('#ps-preview-modal:not([hidden])',
+                           timeout=3000)
+    # Wait for content to load before opening Find — the search
+    # addon registers its dialog on the current editor instance.
+    page.wait_for_function(
+        "() => {"
+        "  const cm = document.getElementById('ps-preview-modal')"
+        "                .__molbuilder_test_cm;"
+        "  return cm && cm.getValue().includes('findable');"
+        "}",
+        timeout=10000,
+    )
+
+    # No find dialog visible yet.
+    assert page.locator(
+        '#ps-preview-cmview .CodeMirror-dialog input').count() == 0
+
+    # Click Find — the CM dialog appears at the top of the editor.
+    page.locator("#ps-preview-find-btn").click()
+    page.wait_for_selector(
+        '#ps-preview-cmview .CodeMirror-dialog input',
+        timeout=2000)
+    dialog_input = page.locator(
+        '#ps-preview-cmview .CodeMirror-dialog input').first
+    assert dialog_input.is_visible(), \
+        "search input should be visible after clicking Find"
+
+    # Type a search term + Enter; the editor should jump to the
+    # match and the CM ``getSearchCursor`` machinery records it.
+    dialog_input.fill("findable")
+    dialog_input.press("Enter")
+    page.wait_for_function(
+        "() => {"
+        "  const cm = document.getElementById('ps-preview-modal')"
+        "                .__molbuilder_test_cm;"
+        "  if (!cm) return false;"
+        "  const sel = cm.getSelection();"
+        "  return sel && sel.toLowerCase().includes('findable');"
+        "}",
+        timeout=2000,
+    )
+
+
 def test_dblclick_in_sidebar_commits_the_file(
         page, flask_server, water_xyz_file):
     """Per the universal sidebar interaction model: a single click
