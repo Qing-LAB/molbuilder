@@ -604,8 +604,27 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
  * wrapper just provides the flex slot.  ``.is-editing`` class is
  * toggled by preview.js when the editor enters edit mode so the
  * background subtly differs (cue to the user that typing now
- * mutates the buffer). */
+ * mutates the buffer).
+ *
+ * 2026-06-09: switched to position: absolute for the .CodeMirror
+ * child so the CM5+flex layout works reliably.  The previous
+ * ``height: 100%`` recipe failed in three ways:
+ *   (1) bottom of long files overflowed the modal window (CM
+ *       miscomputed height on resize),
+ *   (2) the vertical scrollbar wasn't visible on macOS because
+ *       CM's default overflow:scroll auto-hides — we now force
+ *       a visible thumb via ::-webkit-scrollbar styling,
+ *   (3) the 1px cursor was nearly invisible against the dark
+ *       theme — bumped to 2px and added caret-color so block-
+ *       level rendering hints stay legible too.
+ */
 .ps-preview-cmview {
+  /* ``position: relative`` is the anchor for the absolutely-
+   * positioned .CodeMirror child below.  Without this the CM
+   * editor escapes to the nearest positioned ancestor (typically
+   * the modal window) and the bottom of the buffer renders past
+   * the footer. */
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
   margin: 0;
@@ -613,7 +632,17 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
   background: #0e0e0e;
 }
 .ps-preview-cmview .CodeMirror {
-  height: 100%;
+  /* CM5 + flex recipe (see CodeMirror manual § "Fill the screen"):
+   * size via absolute positioning so the editor matches its slot
+   * exactly + recomputes correctly on every modal resize.  Using
+   * height:100% inside a flex child is fragile — works in some
+   * browsers, leaks past the boundary in others. */
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: auto;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.85rem;
   line-height: 1.45;
@@ -627,9 +656,63 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
 .ps-preview-cmview .CodeMirror-linenumber {
   color: #555;
 }
+
+/* Cursor: bump the caret to 2px so it's clearly visible against the
+ * #0e0e0e background.  CM5 draws the cursor as ``border-left`` on a
+ * .CodeMirror-cursor span; the default 1px solid black is invisible
+ * here.  Also style the JS-rendered ``CodeMirror-line-highlight``
+ * (focused line) so the user can see which row their caret lives on. */
 .ps-preview-cmview .CodeMirror-cursor {
+  border-left-width: 2px;
   border-left-color: var(--ps-accent, #4a9eff);
 }
+.ps-preview-cmview .CodeMirror-focused .CodeMirror-cursor {
+  /* Brighter when focused so the user can pick the caret out of
+   * the line-numbers gutter at a glance. */
+  border-left-color: #8ec5ff;
+}
+.ps-preview-cmview .CodeMirror-activeline-background {
+  background: rgba(74, 158, 255, 0.06);
+}
+.ps-preview-cmview .CodeMirror-selected {
+  /* Default selection on dark themes is hard to see — boost the
+   * contrast.  Forced via background-color rather than CM's
+   * ``background`` so the gutter highlight doesn't bleed across. */
+  background: rgba(74, 158, 255, 0.22);
+}
+
+/* Visible scrollbars — CM5's default overflow:scroll renders
+ * narrow scrollbars on macOS that vanish when idle.  Force a 12px
+ * track + a visible thumb so the user can always see they're
+ * inside a scrollable buffer. */
+.ps-preview-cmview .CodeMirror-vscrollbar,
+.ps-preview-cmview .CodeMirror-hscrollbar {
+  /* Render the scrollbar even on non-scrolling momentum (macOS). */
+  -webkit-overflow-scrolling: auto;
+}
+.ps-preview-cmview .CodeMirror-vscrollbar::-webkit-scrollbar,
+.ps-preview-cmview .CodeMirror-hscrollbar::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+  background: #161616;
+}
+.ps-preview-cmview .CodeMirror-vscrollbar::-webkit-scrollbar-thumb,
+.ps-preview-cmview .CodeMirror-hscrollbar::-webkit-scrollbar-thumb {
+  background: #3a3a3a;
+  border-radius: 6px;
+  border: 2px solid #161616;
+}
+.ps-preview-cmview .CodeMirror-vscrollbar::-webkit-scrollbar-thumb:hover,
+.ps-preview-cmview .CodeMirror-hscrollbar::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+/* Firefox scrollbars (no ::-webkit pseudo-element). */
+.ps-preview-cmview .CodeMirror-vscrollbar,
+.ps-preview-cmview .CodeMirror-hscrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #3a3a3a #161616;
+}
+
 .ps-preview-cmview.is-editing .CodeMirror {
   background: #161616;
   box-shadow: inset 0 0 0 1px var(--ps-accent, #4a9eff);
