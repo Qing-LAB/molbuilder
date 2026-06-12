@@ -195,6 +195,21 @@
         // ``adoptSession`` with the workspace's CURRENT atoms +
         // selection preserves the in-memory state (no _fetchAtoms
         // disk re-read that would clobber unsaved modifier ops).
+        //
+        // IMPORTANT: adoptSession's internal ``_run`` calls
+        // ``_newSignal`` which ABORTS any in-flight operation in the
+        // selection store.  Capture labels BEFORE calling it so a
+        // user who clicked Assign + Save in rapid succession doesn't
+        // lose the just-assigned label to the abort — the labels
+        // gathered from ws.getAtoms() before adoptSession reflect
+        // whatever writeLabel had already applied in-place.
+        var labels = (_workspace
+                      && typeof _workspace.getAtoms === "function")
+            ? _gatherLabelsFromWorkspace() : { regions: {}, frozen: [] };
+        var nAtoms = (_workspace
+                      && typeof _workspace.getAtoms === "function")
+            ? (_workspace.getAtoms() || []).length : 0;
+
         if (_workspace
                 && _workspace.selection
                 && typeof _workspace.selection.adoptSession === "function") {
@@ -216,15 +231,9 @@
         var labelsPromise;
         if (isSaveAs) {
             // Propagate workspace labels to the destination.  See
-            // save-flow.md §4.3.  Awaiting via the fire-and-forget
-            // pattern below means refresh-hash kicks in after; the
-            // user-facing envelope returns immediately so the
-            // status panel shows "Saved" without waiting for the
-            // multi-call sidecar propagation.
-            var labels = _gatherLabelsFromWorkspace();
-            var nAtoms = (_workspace
-                          && typeof _workspace.getAtoms === "function")
-                ? (_workspace.getAtoms() || []).length : 0;
+            // save-flow.md §4.3.  ``labels`` + ``nAtoms`` were
+            // captured BEFORE the adoptSession abort (see the
+            // IMPORTANT note above).
             // Always send the bulk-replace call on Save-as, even when
             // the workspace has no labels — this WIPES any stale
             // sidecar that happened to exist at the destination so
