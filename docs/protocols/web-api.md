@@ -110,6 +110,9 @@ flowchart LR
         f_upload["POST /api/files/upload"]
         f_write["POST /api/files/write"]
         f_rename["POST /api/files/rename"]
+        f_move["POST /api/files/move"]
+        f_copy["POST /api/files/copy"]
+        f_dl["GET /api/files/download"]
         f_delete["DELETE /api/files/delete"]
         p_create["POST /api/projects/create"]
     end
@@ -189,8 +192,44 @@ public `projects.*` JS API on top of these endpoints lives in
 | `/api/projects/create` | POST | `{name}` | `{ok, path, project}` | 400 · 409 |
 | `/api/files/upload` | POST | multipart `file=`, form `path=` | `{ok, path}` | 400 · 409 · 413 |
 | `/api/files/write` | POST | `{path, text, overwrite?, expected_mtime?}` | `{ok, path, relPath, size, mtime}` | 400 · 409 (mtime conflict) |
-| `/api/files/rename` | POST | `{path, new_name}` | `{ok, path, old_path}` | 400 · 404 · 409 |
+| `/api/files/rename` | POST | `{path, new_name}` | `{ok, path, old_path}` | 400 · 404 · 409 · 500 |
+| `/api/files/move` | POST | `{path, dest_dir, new_name?}` | `{ok, path}` | 400 · 404 · 409 · 500 |
+| `/api/files/copy` | POST | `{path, dest_dir, new_name?}` | `{ok, path}` | 400 · 404 · 409 · 500 |
+| `/api/files/download` | GET | `?path=` | streamed bytes with `Content-Disposition: attachment` | 400 · 404 |
 | `/api/files/delete` | DELETE | `{path, recursive?}` | `{ok}` | 400 · 404 · 409 |
+
+#### 3.1.1 Sidecar pairing on rename / move / copy (2026-06-12)
+
+When `path` is a structure file (`.xyz` or `.pdb`), `rename`,
+`move`, and `copy` ALSO move/copy a paired `<stem>.molstruct.json`
+sidecar in lockstep:
+
+* The destination sidecar slot must be empty (atomic-no-overwrite
+  policy extends across the pair); else the whole operation
+  refuses with 409.
+* `rename` + `move` use `os.replace` for both legs.  If the
+  sidecar leg fails, the structure leg is rolled back via a
+  second `os.replace`.  Rollback failure surfaces as a 500 with
+  a "manual cleanup needed" message.
+* `copy` uses `shutil.copy2`.  If the sidecar copy fails, the
+  half-copied structure is unlinked so the user doesn't get a
+  partial pair.
+* Sidecar pairing is OFF for non-`.xyz`/`.pdb` source files
+  (a raw `.molstruct.json` rename is single-file).
+* Directory sources are refused in v1 (`move`/`copy` only operate
+  on files; `rename` keeps its existing directory contract).
+
+See [`sidecar-contract.md`](sidecar-contract.md) for the full
+sidecar-pair semantics + which engines consume the sidecar.
+
+#### 3.1.2 `/api/files/download` (2026-06-12)
+
+Streams the file with Flask's `send_file(as_attachment=True)`.
+Used by the sidebar kebab's "Download" item to grab the whole
+file regardless of size / encoding (text + binary).  Same
+`_resolve_within_roots` path validation as the rest of `/api/
+files/*`.  Empties on 404 / 400.  `etag=False` + `max_age=0`
+so a re-download always pulls the fresh bytes.
 
 ### 3.2 Picker roots — single, fixed (v1)
 
@@ -766,6 +805,7 @@ by `parsers/__init__.py::trajectory_to_legacy_dict`:
   "frames":        [ [[el, x, y, z], ...], ... ],
   "energies":      [<float|null>, ...],
   "max_forces":    [<float|null>, ...],
+  "max_forces_constrained": [<float|null>, ...] | [],
   "forces":        [ [[fx, fy, fz], ...] | [], ...],
   "iterations":    [<int>, ...],
   "step_indices":  [<int>, ...],
@@ -784,6 +824,24 @@ Multi-stage runs (job-layout v1: multiple
 `<basename>-stage<N>.molwatch.log` files in the same directory)
 get one stage entry per file in `stages`; the frontend uses
 those to draw stage-boundary markers on plots.
+
+#### `max_forces_constrained` (2026-06-12)
+
+Max per-atom force magnitude excluding constrained / frozen atoms,
+in eV/Å.  Empty list when no frame in the run had a constrained
+value (the typical "no frozen atoms in this run" case) — the
+frontend gates dual-trace rendering on `arr.length > 0`.
+
+| Engine | Source |
+|---|---|
+| SIESTA | Second `Max <val>` line in the relaxation output (the `constrained` suffix form).  Captured by `parsers/siesta.py::_max_force_constrained_match` |
+| PySCF | qdata.txt `GRADIENT` block with frozen indices masked out before taking the per-atom max.  Indices come from the `<base>.molstruct.json` sidecar via `parsers/pyscf.py::_read_sidecar_frozen_atoms` |
+
+When constraints exist this is the value the engine actually
+compares against `MD.MaxForceTol` (SIESTA) / geomeTRIC's
+gradient-norm criterion (PySCF) for relaxation convergence.  The
+plain `max_forces` series stays in the response as informational
+"all atoms" data.
 
 Per-field semantics + per-engine carry rules live in
 [`docs/types/parsers.md`](../types/parsers.md).

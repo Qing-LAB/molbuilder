@@ -293,6 +293,66 @@ inspectors still work via legacy `/watch` and `/spectra`.
 
 ---
 
+## 4.5 Trajectory inspector plots (2026-06-12 polish)
+
+The trajectory inspector renders four plots in a `.plots-row`
+grid (`auto-fit, minmax(280px, 1fr)`): energy, max force, SCF
+energy, SCF gnorm.  Two adjustments landed on 2026-06-12:
+
+### Dual-trace max-force plot
+
+When the loaded run has frozen atoms — meaning either the
+SIESTA parser captured `Max <val> constrained` lines or the
+PySCF parser found `frozen_atoms` in the sidecar to mask the
+qdata gradient — the force plot renders **two** traces:
+
+| Trace | Series | Style | Meaning |
+|---|---|---|---|
+| `all atoms` | `data.max_forces` | red, dashed, thin | Max \|F\| including frozen atoms.  Informational. |
+| `free atoms` | `data.max_forces_constrained` | green, solid, thick | Max \|F\| excluding frozen atoms.  Engine's actual convergence-gating signal. |
+
+When `max_forces_constrained` is `[]` (runs without frozen
+atoms; the JSON layer collapses an all-`None` list to `[]`), the
+plot falls back to the single solid-red `Max |F|` trace it
+rendered before this change.
+
+The legend is horizontal, centered, anchored BELOW the plot area
+so it doesn't compete with the y-axis label for lateral space.
+Single-trace renders skip the legend entirely.
+
+### Export-all-plot-data CSV button
+
+A `↓ Export all plot data (CSV)` button in a small
+`.plots-toolbar` above the plots row generates a self-describing
+CSV bundling every column drawn across the four plots.  Header
+block (lines starting with `#`):
+
+* `# generated:` — ISO-8601 generation timestamp (browser local)
+* `# source path:` — server-resolved absolute path of the file
+  loaded (the value `applyNewData` stores on `state.path` from
+  the `/api/watch/load` response)
+* `# parser:` — `state.format` (`siesta`, `pyscf`, `molwatch`, …)
+* `# label:` — display label, often the same as `parser`
+* `# source mtime:` — ISO-8601 of the source file's mtime
+* `# n_frames:` — frame count
+* `# Column legend:` — per-column unit + meaning + a one-line
+  schema reminder for whoever opens the file later
+
+Data columns (one row per frame):
+
+```
+step, energy_eV,
+max_force_eVperA, max_force_constrained_eVperA,
+scf_cycle, scf_cycle_energy_eV, scf_cycle_gnorm_eVperA
+```
+
+Empty cells where the engine didn't emit the value (matches
+Plotly's `connectgaps: false` skipped-marker visuals).  Numbers
+use `Number.toString()` to preserve IEEE precision (lossless
+round-trip).  Filename is `<sanitised-label>_plots.csv`.
+
+---
+
 ## 5. What this design does NOT include
 
 * No multi-file comparison ("diff two runs"). Bigger feature; later.

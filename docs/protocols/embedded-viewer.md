@@ -992,6 +992,23 @@ type AtomOverlaySpec = {
     radiusScale?: number,
     color?:       string,
     opacity?:     number,        // 0..1; default 1
+
+    // 2026-06-12: Hide the entire per-atom rep AND the bonds
+    // connecting these atoms to others.  Short-circuits the
+    // overlay redraw to ``setStyle(sel.spec, {})`` — 3Dmol's
+    // empty stylespec disables every rep AND the bond geometry.
+    //
+    // Why this is separate from ``opacity: 0``: opacity zero
+    // blanks the per-atom rep (sphere + stick) but leaves the
+    // bond geometry connecting them to visible atoms drawn at
+    // full opacity, so a partial-isolate paint shows the
+    // visible atoms PLUS ghost lines into the hidden ones.
+    // Used by the selection panel's "Show selected only"
+    // toggle (lib/selection/viewer-adapter.js).
+    //
+    // When ``hidden: true``, ``opacity`` / ``color`` / ``rep`` /
+    // ``radiusScale`` on the same entry are ignored.
+    hidden?:      boolean,
   },
 
   // Halo overlay (drawn on top of the per-atom style):

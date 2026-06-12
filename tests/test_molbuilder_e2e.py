@@ -819,6 +819,73 @@ def test_kebab_view_selection_capped_at_max_lines(
     )
 
 
+def test_show_selected_only_visually_hides_non_selected_atoms(
+        page, flask_server, water_xyz_file):
+    """2026-06-12: isolate mode must reach all the way down to the
+    3Dmol model — non-selected atoms get an empty stylespec
+    (``{}``) so their spheres + sticks + bonds disappear, not just
+    blanked rep opacity (which leaves bond geometry behind as ghost
+    lines).
+
+    Earlier prototype used ``style: {opacity: 0}``; the user
+    reported "does not work" because the bonds connecting the
+    visible selection to the hidden atoms still drew at full
+    opacity.  Fix wires ``style: {hidden: true}`` through the
+    overlay system to ``setStyle(sel, {})`` in mol-viewer-embed.
+
+    Pin: after enabling isolate with atom 0 selected on a 3-atom
+    water, the 3Dmol model reports the selected atom with its
+    normal stick+sphere style and the non-selected atoms with
+    ``style: {}`` (no rep at all).
+    """
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    page.wait_for_function(
+        "() => window.molbuilder.selection"
+        "      && window.molbuilder.selection.viewerAdapterHandle"
+    )
+    page.evaluate("() => window.molbuilder.workspace.selection.set([0])")
+    page.wait_for_function(
+        "() => window.molbuilder.workspace.selection.getState().indices.length === 1"
+    )
+    page.evaluate(
+        "() => window.molbuilder.selection.viewerAdapterHandle"
+        "        .setIsolateMode(true)"
+    )
+    # Settle the redraw + setStyle pipeline.
+    page.wait_for_timeout(300)
+    styles = page.evaluate(
+        "() => {"
+        "  const h = window.molbuilder.modify && window.molbuilder.modify.handle;"
+        "  if (!h || typeof h._viewer3dmol !== 'function') return null;"
+        "  const v = h._viewer3dmol();"
+        "  const model = v.getModel();"
+        "  if (!model) return null;"
+        "  return model.selectedAtoms({}).map((a) => ({"
+        "    serial: a.serial, style: a.style,"
+        "  }));"
+        "}"
+    )
+    assert styles is not None, (
+        "could not read atom styles from 3Dmol — viewer not mounted?"
+    )
+    selected = [s for s in styles if s["serial"] == 0]
+    hidden   = [s for s in styles if s["serial"] != 0]
+    assert selected, "atom 0 missing from model"
+    assert hidden, "non-selected atoms missing — model only has 1 atom?"
+    # Selected atom has a non-empty rep (any of stick/sphere/line).
+    sel_style = selected[0]["style"] or {}
+    assert any(k in sel_style for k in ("stick", "sphere", "line")), (
+        f"selected atom should have a visible rep; got {sel_style!r}"
+    )
+    # Hidden atoms have the empty stylespec {} — no rep, no bonds.
+    for h in hidden:
+        assert h["style"] == {} or h["style"] is None, (
+            f"non-selected atom should be hidden via empty rep; "
+            f"got {h['style']!r}"
+        )
+
+
 def test_show_selected_only_toggle_wires_isolate_mode(
         page, flask_server, water_xyz_file):
     """2026-06-12: the "Show selected only" checkbox in the

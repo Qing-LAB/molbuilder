@@ -337,7 +337,7 @@ async function _ensureCmMounted() {
         // contrast cue instead (see the CSS in projects-sidebar.css).
         // Override Ctrl-A / Cmd-A to set the selection without the
         // expensive scroll-into-view that froze the browser on
-        // multi-MB documents.  See ``_safeSelectAll`` for details.
+        // multi-MB documents.  See ``_ignoreSelectAll`` for details.
         extraKeys: {
             "Ctrl-A": _ignoreSelectAll,
             "Cmd-A":  _ignoreSelectAll,

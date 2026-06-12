@@ -829,15 +829,41 @@
         // 2026-06-12: "Show selected only" toggle.  Routes through
         // the viewer-adapter handle that selection-bootstrap exposes
         // on window.molbuilder.selection.viewerAdapterHandle.  The
-        // adapter does the actual setOverlays with opacity:0 for
+        // adapter does the actual setOverlays-with-hidden=true for
         // non-selected atoms; the checkbox just flips the mode flag
         // and triggers a re-render.
-        on(els.isolateChk, "change", (e) => {
-            const adapter = root.molbuilder
+        function _isolateAdapter() {
+            return root.molbuilder
                 && root.molbuilder.selection
                 && root.molbuilder.selection.viewerAdapterHandle;
+        }
+        on(els.isolateChk, "change", (e) => {
+            const adapter = _isolateAdapter();
             if (adapter && typeof adapter.setIsolateMode === "function") {
                 adapter.setIsolateMode(!!e.target.checked);
+            }
+        });
+        // Auto-uncheck the "Show selected only" toggle when the
+        // selection becomes empty.  Without this, the adapter
+        // correctly disables isolate at the overlay level (it
+        // requires a non-empty selection set), but the checkbox
+        // stays visually checked — so the next time the user picks
+        // a single atom, the viewer snaps into isolate-mode with no
+        // input from them.  The template's tooltip says the toggle
+        // "auto-disables when the selection becomes empty"; this
+        // wires up that contract.
+        const _isolateSubscribed = { last: false };
+        store.subscribe((s) => {
+            const empty = !s.indices || s.indices.length === 0;
+            if (!els.isolateChk) return;
+            const adapter = _isolateAdapter();
+            if (empty && els.isolateChk.checked) {
+                els.isolateChk.checked = false;
+                if (adapter
+                    && typeof adapter.setIsolateMode === "function") {
+                    adapter.setIsolateMode(false);
+                }
+                _isolateSubscribed.last = false;
             }
         });
         on(els.assignTgt,       "change", renderAssignVisibility);

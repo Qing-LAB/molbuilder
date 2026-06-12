@@ -350,3 +350,45 @@ absorbs a label, or silently drops one, must fail loudly.
 |---|---|---|
 | 2026-05-21 | Adopt the three-stage contract (UI → config → script + engine preflight) for sidecar-driven boundary conditions; pin frozen_atoms as the first instance. | User-supplied founding directives (§ 2); silent absorption was producing scripts that froze a different set than the form showed; the fix is structural, not per-bug. |
 | 2026-06-05 | Pattern B added when transport engine abstraction landed (#135). Engines now must explicitly notice EVERY sidecar field they don't consume. | Without pattern B, the transport-reserved `regions` field would silently be ignored by `/spectra`; the user would not realise their region tags were spectra-irrelevant. |
+| 2026-06-12 | File-tree operations (`rename`, `move`, `copy`) MUST pair the sidecar with its structure file atomically.  See § 11. | Without pairing, renaming `water.xyz` to `bridge.xyz` orphaned `water.molstruct.json` — the sidecar's stem stopped matching any structure on disk, sidecar-aware loads couldn't find it from the new stem, and the user's labels silently disappeared. |
+| 2026-06-12 | The PySCF parser is the second sidecar CONSUMER (after the SIESTA scripts).  Reads `frozen_atoms` to mask out atoms from the qdata.txt gradient when computing the constrained max-force series.  See § 12. | The user can't tell from the max-force plot when a relaxation has actually converged if the plot tracks a forever-pinned frozen atom's huge force.  Same problem SIESTA solves by emitting `Max <val> constrained`; PySCF + geomeTRIC needs the sidecar to do the equivalent computation. |
+
+---
+
+## 11. File-tree ops: rename / move / copy must pair the sidecar (2026-06-12)
+
+`POST /api/files/rename`, `POST /api/files/move`, and `POST /api/
+files/copy` (see [`web-api.md` § 3.1.1](web-api.md)) detect a
+paired `<stem>.molstruct.json` next to a `.xyz` / `.pdb` source
+and move/copy both files in lockstep.
+
+| Concern | Behavior |
+|---|---|
+| Detection | Source suffix must be `.xyz` or `.pdb`; sidecar at `<dir>/<stem>.molstruct.json` if it exists.  No pairing for other suffixes (a raw `.molstruct.json` rename is single-file) |
+| Atomicity | Rename + move use `os.replace` for both legs.  Sidecar leg failure → rollback the structure leg.  Copy uses `shutil.copy2`; sidecar leg failure → unlink the half-copy. |
+| No-overwrite | Destination sidecar slot must be empty; else the whole operation refuses with 409 BEFORE touching either file. |
+| Directory sources | `move` / `copy` refuse directory sources in v1.  `rename` keeps its existing directory contract (no sidecar pairing applies — directories have no sidecars). |
+
+The pairing rule is implementation in `web/blueprints/files.py`
+via `_existing_paired_sidecar` + `_paired_sidecar_path` helpers.
+Engine generators (SIESTA / PySCF / transport / spectra) load
+the sidecar via `parsers/molstruct_json::apply_to_structure` —
+not via these file-ops endpoints — so the engine contract for
+sidecar-as-source-of-truth is unaffected.
+
+---
+
+## 12. Sidecar consumers (snapshot 2026-06-12)
+
+| Consumer | Field(s) read | When |
+|---|---|---|
+| SIESTA fdf generator (`siesta/input.py`) | `regions`, `frozen_atoms` | Stage 2 emit — see § 5 |
+| Spectra (PySCF mode-selection generators) | `regions` | Stage 2 emit — see § 5 |
+| Transport (TranSIESTA generator) | `regions` (L/R electrodes + bridge), `frozen_atoms` | Stage 2 emit + preflight |
+| `/api/selection/eval`, `/api/selection/toggle` (web blueprint) | `regions`, `frozen_atoms` (via `_expose_frozen_as_region` synthetic) | Selection panel filter resolution |
+| `/api/selection/atoms` (web blueprint) | `regions`, `frozen_atoms` (separate per-atom `is_frozen` flag) | Atom-list rendering in the panel |
+| **PySCF trajectory parser** (`parsers/pyscf.py::_read_sidecar_frozen_atoms`) | `frozen_atoms` | Mask out frozen indices from qdata.txt gradient → compute `Frame.max_force_constrained` |
+
+When you add another consumer, append a row + add a regression
+test that exercises the read path against the canonical fixture
+sidecar.
