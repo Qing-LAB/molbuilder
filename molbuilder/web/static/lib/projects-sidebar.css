@@ -814,6 +814,24 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
 .ps-preview-window {
   position: relative;
   width: min(900px, 92vw);
+  /* 2026-06-12: use ``height: 80vh`` instead of ``max-height: 80vh``
+   * so the modal ALWAYS fills 80% of the viewport, giving
+   * ``.ps-preview-cmview`` (flex: 1 1 auto, min-height: 0) a real
+   * slot to expand into.  Without a definite parent height the
+   * flex child collapses to 0 — the CodeMirror editor is mounted
+   * with the content set, but ``inset:0`` resolves to a 0-height
+   * box and the editor is invisible.  Symptom: modal opens
+   * showing only the title + filename; the editor area is empty
+   * and the user has no signal anything's wrong.
+   *
+   * Pre-f118818 the editor used ``height: 100%`` and contributed
+   * its own intrinsic height to the parent, so the modal could
+   * size itself from content + ``max-height`` was enough.  The
+   * f118818 fix switched CM to ``position: absolute`` (CodeMirror
+   * manual § "Fill the screen" recipe), which decouples it from
+   * the parent's intrinsic sizing — at which point the parent
+   * needs an explicit height for everything to flow correctly. */
+  height: 80vh;
   max-height: 80vh;
   background: #1e1e1e;
   color: var(--ps-fg);
