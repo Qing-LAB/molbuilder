@@ -441,6 +441,17 @@
         if (typeof s.opacity === "number" && Number.isFinite(s.opacity)) {
             out.opacity = Math.max(0, Math.min(1, s.opacity)); any = true;
         }
+        // 2026-06-12: ``hidden: true`` makes the rep disappear ENTIRELY
+        // (sphere + stick + bonds connecting these atoms to others).
+        // Setting ``opacity: 0`` only blanks the per-atom rep but
+        // leaves bonds drawn at full opacity — so a partially-isolated
+        // set still shows ghost lines emanating from visible atoms
+        // into the hidden ones.  ``hidden`` instead sends an empty
+        // stylespec ``{}`` to 3Dmol, which disables ALL drawing
+        // (atom + connected bonds) for the matched set.
+        if (s.hidden === true) {
+            out.hidden = true; any = true;
+        }
         return any ? out : null;
     }
 
@@ -2555,6 +2566,18 @@
             if (!entry.style) continue;
             const sel = _resolveOverlaySelector(entry, atoms);
             if (sel.indices.length === 0) continue;
+
+            // 2026-06-12: ``hidden: true`` short-circuits to an empty
+            // stylespec.  3Dmol's setStyle(sel, {}) disables every
+            // rep (sphere + stick) for the matched set AND drops the
+            // bonds connecting them to other atoms — opacity 0 alone
+            // leaves the bond geometry behind, which manifests as
+            // ghost lines in isolate-mode renders.
+            if (entry.style.hidden) {
+                try { state.viewer.setStyle(sel.spec, {}); }
+                catch (_) {}
+                continue;
+            }
 
             // Build a 3Dmol stylespec from the overlay's style block.
             // We start from the base stylespec so partial overrides

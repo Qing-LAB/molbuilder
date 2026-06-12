@@ -194,15 +194,14 @@
                 if (hidden.length) {
                     atoms.push({
                         indices: hidden,
-                        // Set the rep explicitly so molstyle.spec()
-                        // builds the right baseSpec — without ``rep``
-                        // the overlay reader uses the current global
-                        // rep, but a future change to molstyle's
-                        // default chain could leave the opacity bound
-                        // to a rep key that doesn't exist for these
-                        // atoms.  Pin ``stick`` (the default rep) so
-                        // the opacity-0 override is unambiguous.
-                        style:   { opacity: 0 },
+                        // ``hidden: true`` makes 3Dmol drop ALL drawing
+                        // (sphere + stick + bonds) for these atoms.
+                        // ``opacity: 0`` was insufficient — it blanks
+                        // the per-atom rep but leaves bonds connecting
+                        // hidden atoms to visible ones drawn at full
+                        // opacity, so the user saw ghost lines
+                        // radiating out from the visible selection.
+                        style:   { hidden: true },
                     });
                 }
             }
