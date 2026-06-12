@@ -240,6 +240,43 @@ class TestChooseSaveName:
         assert out["whitespaceDisabled"] is True
         assert out["namedDisabled"] is False
 
+    def test_rejects_path_separators(self):
+        """Path separators in the filename input MUST disable Save
+        and surface an inline error.  Without this, a user typing
+        ``../escape.xyz`` would smuggle a path through the dialog
+        (server-side picker-root check would block it but the UX
+        is clearer if we reject up front)."""
+        out = _run_node('''
+            dialog.chooseSaveName("water.xyz");
+            const d = _body._children[_body._children.length - 1];
+            const input = d.querySelector('[data-role="name-input"]');
+            const save  = d.querySelector('[data-action="save"]');
+            const err   = d.querySelector('[data-role="name-error"]');
+            const results = [];
+            for (const bad of ["../escape.xyz", "sub/file.xyz",
+                                "back\\\\slash.xyz", ".", ".."]) {
+                input.value = bad;
+                input.dispatchEvent({type:"input"});
+                results.push({bad, disabled: save.disabled,
+                              hasErr: !err.hidden});
+            }
+            input.value = "ok.xyz";
+            input.dispatchEvent({type:"input"});
+            const okState = {disabled: save.disabled,
+                             hasErr: !err.hidden};
+            console.log(JSON.stringify({results, okState}));
+            dialog._reset();
+        ''')
+        for entry in out["results"]:
+            assert entry["disabled"] is True, (
+                f"filename {entry['bad']!r} should disable Save"
+            )
+            assert entry["hasErr"] is True, (
+                f"filename {entry['bad']!r} should show inline error"
+            )
+        assert out["okState"]["disabled"] is False
+        assert out["okState"]["hasErr"] is False
+
     def test_esc_resolves_null(self):
         out = _run_node('''
             const p = dialog.chooseSaveName("water.xyz");

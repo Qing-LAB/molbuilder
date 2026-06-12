@@ -199,33 +199,62 @@
             return Promise.resolve({
                 ok: false, error: "No structure to save." });
         }
-        var path = targetPath();
-        if (!path) {
-            return Promise.resolve({
-                ok: false,
-                error: "This structure was built in the workspace "
-                     + "and hasn't been written to a project file "
-                     + "yet — Save as… will be available soon.",
-            });
-        }
         var struct = _workspace.getStructure();
         var dialog = root.molbuilder
                   && root.molbuilder.structureSaveDialog;
+        var path = targetPath();
 
-        // 2026-06-09: route the Save click through the confirm-name
-        // dialog so the user can edit the filename + see what they're
-        // about to overwrite.  If the user keeps the current name AND
-        // the file at the resolved path already exists (the common
-        // case for "save back to source"), ``_writeWithOverwriteGate``
-        // pre-confirms because the user already saw the name they're
-        // saving to.  Renaming triggers a fresh overwrite-check
-        // against the new name.
-        var initial = _basename(path);
+        // 2026-06-09: Save-as for generator-sourced workspaces.
+        // ``targetPath()`` returns null when the structure has no
+        // backing file (SMILES / DNA / RNA / peptide / name).  In
+        // that case, fall back to the sidebar's current directory
+        // as the save destination and suggest a default filename
+        // from the source kind (e.g. ``smiles.xyz``) — the dialog
+        // lets the user override.
+        var initial = "";
+        var dir = "";
+        if (path) {
+            initial = _basename(path);
+            dir = _dirname(path);
+        } else {
+            // Generator workspace.  Need a directory + a sensible
+            // default name.
+            dir = (_projects && typeof _projects.getCurrentDir === "function")
+                ? (_projects.getCurrentDir() || "")
+                : "";
+            if (!dir) {
+                return Promise.resolve({
+                    ok: false,
+                    error: "Pick a project directory in the sidebar "
+                         + "before saving a generated structure.",
+                });
+            }
+            var src = (_workspace && typeof _workspace.getSource === "function")
+                ? _workspace.getSource() : null;
+            var kind = (src && src.kind) || "structure";
+            // Use the source kind as a default basename — user can
+            // type a more meaningful name in the dialog.
+            initial = kind + ".xyz";
+        }
+
+        // Route the Save click through the confirm-name dialog so
+        // the user can edit the filename + see what they're about
+        // to overwrite.  If the user keeps the current name AND the
+        // workspace had a backing file (the common "save back to
+        // source" case), ``_writeWithOverwriteGate`` pre-confirms
+        // because the user already saw the name they're saving to.
+        // Renaming OR saving a generator structure always triggers
+        // a fresh overwrite-check against the chosen name.
         if (!dialog || typeof dialog.chooseSaveName !== "function") {
-            // No dialog mounted (tests / legacy contexts).  Fall back
-            // to the legacy "always overwrite source" behaviour so
-            // tests + headless callers don't deadlock waiting for a
-            // modal that will never appear.
+            // No dialog mounted (tests / legacy contexts) AND a
+            // backing file path is required.
+            if (!path) {
+                return Promise.resolve({
+                    ok: false,
+                    error: "save-dialog module not mounted; cannot "
+                         + "Save-as without a target path.",
+                });
+            }
             return _writeWithOverwriteGate(path, struct.text,
                 { overwriteAlreadyConfirmed: true });
         }
@@ -234,15 +263,14 @@
                 return { ok: false, cancelled: true,
                          error: "Save cancelled." };
             }
-            var dir = _dirname(path);
             var finalPath = dir ? (dir + "/" + chosen) : chosen;
-            // If the user kept the original name, this IS the
-            // source file the workspace was loaded from — silently
-            // overwrite without a second confirm (clicking Save on
-            // the workspace's source is unambiguous).  If the name
-            // changed, route through the overwrite-gate so a clash
-            // with an unrelated existing file gets the warning.
-            var nameUnchanged = chosen === initial;
+            // Pre-confirm overwrite ONLY when the user kept the
+            // original name AND the workspace had a backing file —
+            // clicking Save on the workspace's source is unambiguous.
+            // For Save-as (no backing file), any chosen name needs
+            // the overwrite-gate so the user is warned if it clashes
+            // with an existing project file.
+            var nameUnchanged = !!path && chosen === initial;
             return _writeWithOverwriteGate(finalPath, struct.text, {
                 overwriteAlreadyConfirmed: nameUnchanged,
             });
@@ -270,13 +298,32 @@
             _lazyResolve();
             var path = targetPath();
             var dirty = _workspace && _workspace.isDirty();
-            button.disabled = !_workspace || !path || _workspace.isEmpty();
+            // 2026-06-09: Save-as for generator-sourced workspaces.
+            // When ``path`` is null (no backing file), allow Save
+            // iff the workspace has content AND the sidebar has a
+            // current directory to save into.  The Save() function
+            // surfaces a clear error if either is missing at click
+            // time; this just keeps the button visibly enabled when
+            // a Save-as is actually possible.
+            var hasContent = _workspace && !_workspace.isEmpty();
+            var sidebarDir = (_projects
+                              && typeof _projects.getCurrentDir
+                                 === "function")
+                ? (_projects.getCurrentDir() || "")
+                : "";
+            button.disabled = !hasContent
+                              || (!path && !sidebarDir);
             if (readout) {
                 if (path) {
                     readout.textContent = (dirty ? "Unsaved — " : "")
                                         + "Target: " + _basename(path);
-                } else if (_workspace && !_workspace.isEmpty()) {
-                    readout.textContent = "No source file (Save as… later).";
+                } else if (hasContent && sidebarDir) {
+                    readout.textContent =
+                        "Save as… into " + _basename(sidebarDir) + "/";
+                } else if (hasContent) {
+                    readout.textContent =
+                        "Pick a project directory in the sidebar to "
+                        + "Save as…";
                 } else {
                     readout.textContent = "";
                 }

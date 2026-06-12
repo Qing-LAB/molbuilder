@@ -73,17 +73,49 @@
             resolve(value);
         }
 
-        var input = dialog.querySelector('[data-role="name-input"]');
+        var input  = dialog.querySelector('[data-role="name-input"]');
+        var errEl  = dialog.querySelector('[data-role="name-error"]');
         var saveBtn = dialog.querySelector('[data-action="save"]');
+
+        // Validation: empty / whitespace-only → disabled.  Path-
+        // separators (``/`` or ``\``) are rejected because the
+        // Save panel resolves the chosen name within the current
+        // project directory; a user typing ``foo/bar.xyz`` would
+        // either escape the project root (caught server-side) or
+        // create files in a sibling subdir without realising it.
+        // Forces the user to pick a different directory via the
+        // sidebar rather than smuggle a path through the input.
+        function _validate(raw) {
+            var s = (raw || "").trim();
+            if (!s) return { ok: false, reason: "" };
+            if (s.indexOf("/") !== -1 || s.indexOf("\\") !== -1) {
+                return {
+                    ok: false,
+                    reason: "Filename can't contain '/' or '\\\\'."
+                            + "  Pick a different directory via the"
+                            + " sidebar instead.",
+                };
+            }
+            if (s === "." || s === "..") {
+                return { ok: false, reason: "Reserved filename." };
+            }
+            return { ok: true, value: s };
+        }
         function refreshSaveDisabled() {
-            saveBtn.disabled = !(input.value || "").trim();
+            var v = _validate(input.value);
+            saveBtn.disabled = !v.ok;
+            if (errEl) {
+                errEl.textContent = v.ok ? "" : v.reason;
+                errEl.hidden = v.ok;
+            }
         }
         if (input) {
             input.addEventListener("input", refreshSaveDisabled);
             input.addEventListener("keydown", function (e) {
                 if (e.key === "Enter") {
                     e.preventDefault();
-                    if (!saveBtn.disabled) _settle((input.value || "").trim());
+                    var v = _validate(input.value);
+                    if (v.ok) _settle(v.value);
                 }
             });
         }
@@ -92,7 +124,8 @@
         dialog.querySelector('[data-action="cancel"]')
             .addEventListener("click", function () { _settle(null); });
         saveBtn.addEventListener("click", function () {
-            _settle((input.value || "").trim());
+            var v = _validate(input.value);
+            if (v.ok) _settle(v.value);
         });
         dialog.addEventListener("cancel", function () { _settle(null); });
         dialog.addEventListener("close",  function () { _settle(null); });
@@ -144,6 +177,15 @@
             "Saved to the same project directory.  Existing files "
             + "will prompt for overwrite confirmation.";
         dialog.appendChild(hint);
+
+        // Inline error slot for validation messages — hidden when
+        // the input is valid, shown when the user types something
+        // that would be rejected (e.g. a path separator).
+        var err = doc.createElement("p");
+        err.className = "molbuilder-save-name-error";
+        err.setAttribute("data-role", "name-error");
+        err.hidden = true;
+        dialog.appendChild(err);
 
         var actions = doc.createElement("div");
         actions.className = "molbuilder-save-name-actions";

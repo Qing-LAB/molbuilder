@@ -281,7 +281,15 @@ class TestRefusals:
             console.log(JSON.stringify({envelope: r, writeCalls}));
         ''')
         assert out["envelope"]["ok"] is False
-        assert "Save as" in out["envelope"]["error"]
+        # 2026-06-09: generator workspaces now get a Save-as path if
+        # the sidebar has a current directory.  The fake projects in
+        # this test doesn't implement getCurrentDir, so save() falls
+        # through to the "pick a project directory" refusal.
+        msg = out["envelope"]["error"].lower()
+        assert ("save as" in msg
+                or "pick a project directory" in msg), (
+            f"expected Save-as or pick-dir refusal; got {msg!r}"
+        )
         assert out["writeCalls"] == 0
 
 
