@@ -422,6 +422,21 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
             "# Watch the run live: open the Watch tab and point it "
             "at this directory")
         out.append(f"# (the loader resolves it to {_mw_name}).")
+        # 2026-06-12: SIESTA 5.x emits an unconditional WARNING about
+        # ``BASIS_ENTHALPY`` / ``BASIS_HARRIS_ENTHALPY`` being
+        # deprecated.  The warning is INFORMATIONAL — the data is
+        # also written to ``<SystemLabel>.BASIS_ENTHALPY`` (the new,
+        # supported filename), which post-processing scripts should
+        # consume.  There's no fdf flag to suppress the warning in
+        # SIESTA 5.4.2; future versions will simply drop the legacy
+        # unprefixed file.  Recording the note here so users who see
+        # the warning don't worry their run is broken.
+        out.append(
+            "# Note: SIESTA's 'BASIS_ENTHALPY ... deprecated' WARNING "
+            "in the output is harmless")
+        out.append(
+            f"# — read {cfg.system_label}{_stage_suffix}.BASIS_ENTHALPY "
+            "in any post-processing.")
         out.append("")
 
     # Runtime-hint header.  Same shape as molwatch logs use
