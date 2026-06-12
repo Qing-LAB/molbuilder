@@ -128,6 +128,106 @@ function _restoreCollapsedState() {
   }
 }
 
+/**
+ * Sidebar width resize (2026-06-12).
+ *
+ * Drag the .ps-resize-handle to change --ps-w live.  Width persists
+ * to localStorage so it survives reloads + new tabs from the same
+ * origin (matches the typical browser-state contract for layout
+ * preferences -- the user picks a width once, then it stays).
+ *
+ * Bounds:
+ *   min 14rem  (entries stay readable; below this the
+ *               two-column breadcrumb breaks)
+ *   max 40rem  (sidebar doesn't dominate a 1080p viewport)
+ *
+ * Restoration runs in ``_restoreWidth`` BEFORE the layout-sensitive
+ * widgets (Plotly, 3Dmol) paint -- same reasoning as the
+ * collapsed-state restore.  Without that, those widgets measure the
+ * default 18rem geometry and then mis-layout when the saved width
+ * gets applied later.
+ */
+const WIDTH_KEY = "molbuilder.projects_sidebar_width";
+const WIDTH_MIN_PX = 14 * 16;   // 14rem at the 16px default font
+const WIDTH_MAX_PX = 40 * 16;   // 40rem
+
+function _clampWidth(px) {
+  if (!Number.isFinite(px)) return null;
+  return Math.max(WIDTH_MIN_PX, Math.min(WIDTH_MAX_PX, Math.round(px)));
+}
+
+function _setWidth(px) {
+  const clamped = _clampWidth(px);
+  if (clamped === null) return;
+  document.documentElement.style.setProperty(
+    "--ps-w", clamped + "px");
+}
+
+function _restoreWidth() {
+  let saved = null;
+  try { saved = parseFloat(localStorage.getItem(WIDTH_KEY)); }
+  catch (_) { /* localStorage may throw in private mode */ }
+  if (Number.isFinite(saved)) _setWidth(saved);
+}
+
+function initWidthResize() {
+  const handle = document.getElementById("ps-resize-handle");
+  if (!handle) return;
+
+  let dragging = false;
+  let startX = 0;
+  let startW = 0;
+
+  function onDown(e) {
+    // Only handle primary button (mouse / touch primary).
+    if (e.button !== undefined && e.button !== 0) return;
+    dragging = true;
+    startX = e.clientX;
+    // Read current width from the CSS var (resolved px) rather than
+    // re-deriving from the sidebar element so a mid-drag click on
+    // the handle without movement doesn't snap to a different value.
+    const computed = getComputedStyle(document.documentElement)
+      .getPropertyValue("--ps-w").trim();
+    if (computed.endsWith("px")) {
+      startW = parseFloat(computed);
+    } else if (computed.endsWith("rem")) {
+      startW = parseFloat(computed) * 16;
+    } else {
+      const sidebar = document.getElementById("projects-sidebar");
+      startW = sidebar ? sidebar.getBoundingClientRect().width : 18 * 16;
+    }
+    document.body.classList.add("is-projects-sidebar-resizing");
+    e.preventDefault();
+  }
+  function onMove(e) {
+    if (!dragging) return;
+    const delta = e.clientX - startX;
+    _setWidth(startW + delta);
+  }
+  function onUp() {
+    if (!dragging) return;
+    dragging = false;
+    document.body.classList.remove("is-projects-sidebar-resizing");
+    // Persist the new width.  Read from the CSS var so the saved
+    // value matches what's actually applied (post-clamp).
+    const computed = getComputedStyle(document.documentElement)
+      .getPropertyValue("--ps-w").trim();
+    try { localStorage.setItem(WIDTH_KEY, computed); }
+    catch (_) { /* swallow */ }
+  }
+
+  handle.addEventListener("mousedown", onDown);
+  window.addEventListener("mousemove", onMove);
+  window.addEventListener("mouseup",   onUp);
+  // Double-click resets to the default 18rem.  Quick out for users
+  // who dragged too far + can't find the handle's intended size.
+  handle.addEventListener("dblclick", () => {
+    try { localStorage.removeItem(WIDTH_KEY); }
+    catch (_) { /* swallow */ }
+    document.documentElement.style.removeProperty("--ps-w");
+  });
+}
+
 function initMobileDrawer() {
   const toggle   = document.getElementById("ps-mobile-toggle");
   const backdrop = document.getElementById("ps-mobile-backdrop");
@@ -165,11 +265,13 @@ async function init() {
   const sidebar = document.getElementById("projects-sidebar");
   if (!sidebar) return;                  // page didn't include the partial
 
-  // Restore the desktop-collapse state from sessionStorage BEFORE
-  // any further wiring so layout-sensitive widgets (Plotly, 3Dmol,
-  // CSS-grid) measure the correct geometry on their first paint.
-  // The body class controls padding-left + sidebar visibility.
+  // Restore the desktop-collapse state from sessionStorage AND the
+  // persisted width from localStorage BEFORE any further wiring so
+  // layout-sensitive widgets (Plotly, 3Dmol, CSS-grid) measure the
+  // correct geometry on their first paint.  The body class controls
+  // padding-left + sidebar visibility; --ps-w controls width.
   _restoreCollapsedState();
+  _restoreWidth();
 
   // Wire the narrow-viewport drawer toggle + the desktop collapse
   // toggle.  Independent of project-root resolution; runs first so
@@ -179,6 +281,7 @@ async function init() {
   // page).
   initMobileDrawer();
   initDesktopCollapse();
+  initWidthResize();
 
   // Wire the lock UI FIRST -- before any await that could throw or
   // bail.  The lock UI needs to work regardless of project-root

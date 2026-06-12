@@ -16,9 +16,11 @@
  */
 
 import {
+  apiCopy,
   apiCreateProject,
   apiDelete,
   apiMkdir,
+  apiMove,
   apiRead,
   apiReadRange,
   apiRename,
@@ -601,6 +603,43 @@ async function rename(path, newName, opts) {
   return r;
 }
 
+/** Move ``path`` (a file; not a directory in v1) into ``destDir``.
+ *  Sidecar-aware: on .xyz/.pdb files, the paired .molstruct.json
+ *  moves atomically.  Optional ``opts.newName`` renames during the
+ *  move.  Refreshes BOTH the source parent dir AND the destination
+ *  dir on success so the entry appears in its new location without
+ *  a manual reload.  ``opts.signal`` honoured. */
+async function move(path, destDir, opts) {
+  const r = await apiMove(path, destDir, opts);
+  if (r && r.ok && refreshHandler) {
+    const parent = path.indexOf("/") >= 0
+      ? path.replace(/\/[^/]+$/, "")
+      : projectsRoot;
+    // Refresh the destination first so the new entry is visible
+    // immediately even if the source parent refresh fails.
+    try { await refreshHandler(destDir); }
+    catch (_) { /* swallow */ }
+    if (parent && parent !== destDir) {
+      try { await refreshHandler(parent); }
+      catch (_) { /* swallow */ }
+    }
+  }
+  return r;
+}
+
+/** Copy ``path`` to ``destDir``.  Sidecar-aware on .xyz/.pdb.  Optional
+ *  ``opts.newName`` renames the copy; required when destDir is the
+ *  source's parent.  Refreshes destDir on success.  ``opts.signal``
+ *  honoured. */
+async function copy(path, destDir, opts) {
+  const r = await apiCopy(path, destDir, opts);
+  if (r && r.ok && refreshHandler) {
+    try { await refreshHandler(destDir); }
+    catch (_) { /* swallow */ }
+  }
+  return r;
+}
+
 /** Upload a file into ``targetDir``.  ``opts.signal`` honoured.
  *  Refreshes ``targetDir`` on success.  Adds ``relPath`` to the
  *  success envelope per design § C6 (UploadOk = WriteOk shape;
@@ -792,6 +831,8 @@ export const projects = {
   mkdir,
   deleteEntry,
   rename,
+  move,
+  copy,
   upload,
   setShared,
   navigateTo,

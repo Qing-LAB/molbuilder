@@ -217,6 +217,37 @@ export async function apiRename(path, newName, opts) {
   });
 }
 
+/** Move ``path`` into ``destDir``.  Sidecar-aware on .xyz/.pdb (the
+ *  paired .molstruct.json moves atomically).  Optional ``opts.newName``
+ *  renames during the move.  See /api/files/move docstring + the
+ *  projects-sidebar.md spec.  Backend rejects directory sources in v1. */
+export async function apiMove(path, destDir, opts) {
+  opts = opts || {};
+  const body = {path: path, dest_dir: destDir};
+  if (opts.newName) body.new_name = opts.newName;
+  return await _fetchEnvelope("/api/files/move", {
+    method:  "POST",
+    headers: {"Content-Type": "application/json"},
+    body:    JSON.stringify(body),
+    signal:  opts.signal,
+  });
+}
+
+/** Copy ``path`` to ``destDir``.  Sidecar-aware on .xyz/.pdb.  Optional
+ *  ``opts.newName`` (required when destDir == source's parent).
+ *  Same v1 directory-source refusal as move. */
+export async function apiCopy(path, destDir, opts) {
+  opts = opts || {};
+  const body = {path: path, dest_dir: destDir};
+  if (opts.newName) body.new_name = opts.newName;
+  return await _fetchEnvelope("/api/files/copy", {
+    method:  "POST",
+    headers: {"Content-Type": "application/json"},
+    body:    JSON.stringify(body),
+    signal:  opts.signal,
+  });
+}
+
 export async function apiWrite(path, text, opts) {
   opts = opts || {};
   const body = {path: path, text: text};

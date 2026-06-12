@@ -149,7 +149,8 @@ unit; if it doesn't fit, the unit list is wrong, not the feature.
 | **State** (`state.js`) | All three state pieces (§ 4) + the public API surface.  Owns subscriber sets + the publish loop.  Owns sessionStorage IO. | The `projects` object (public API surface, § 5); module-internal mutators for the bootstrap unit (`setProjectsRoot`, `setRefreshHandler`, `setNavigateToImpl`) and for the List unit (`setShared`).  `setNavigateToImpl(fn)` is how the bootstrap unit hands `list.js::openDir` to `state.js` so the public `projects.navigateTo` can delegate. |
 | **HTTP** (`api.js`) | One-to-one wrappers over `/api/files/*` and `/api/projects/*`.  Owns request shape + envelope-wrapping discipline (Principle 6). | A function per backend endpoint.  Sole module that calls `fetch`. |
 | **List** (`list.js`) | DOM rendering of breadcrumb + entry list; per-entry click handlers; navigation; lock-UI subscription + Cancel delegation. | `initList`, `initLockUI`, `openDir`, `restoreSelection` for the bootstrap unit.  `showPreview` is delegated to the Preview unit. |
-| **Forms** (`forms.js`) | Create-project + mkdir + upload forms.  Subscribes to `onChange` to drive depth-aware visibility. | `initForms` for the bootstrap unit. |
+| **Forms** (`forms.js`) | "+" create-menu wiring (new project / new folder / upload).  Subscribes to `onChange` to drive depth-aware menu-item enablement.  Dialogs live in `dialogs.js`. | `initForms` for the bootstrap unit. |
+| **Dialogs** (`dialogs.js`) | Modal `<dialog>` factory: `chooseName`, `chooseUploadFile`, `chooseDestinationDir`, `confirmDestructive`.  Single-instance + ESC-as-cancel.  No HTTP. | `chooseName`, `chooseUploadFile`, `chooseDestinationDir`, `confirmDestructive` (exports). |
 | **Preview** (`preview.js`) | File-preview modal; ESC / backdrop close. | `initPreview`, `showPreview` for sidebar + List unit. |
 
 **Module-boundary rule**: the only way one unit reads state owned by
@@ -477,7 +478,33 @@ deleteEntry(path: string, recursive?: boolean, opts?: AsyncOpts):
     Promise<LayoutOk | LayoutErr>
 // In-place basename change.  Backend: POST /api/files/rename with
 // atomic-no-overwrite + canonical-topic protection mirroring delete.
+//
+// Sidecar pairing (2026-06-12): when ``path`` is a structure file
+// (.xyz or .pdb), the backend ALSO renames any paired
+// ``<stem>.molstruct.json`` sidecar atomically.  Rollback on partial
+// failure — the structure rename is undone if the sidecar rename
+// fails.  See ``docs/protocols/sidecar-contract.md`` for the
+// ``.molstruct.json`` schema.
 rename(path: string, newName: string, opts?: AsyncOpts):
+    Promise<LayoutOk | LayoutErr>
+
+// Move a FILE to a different directory inside the picker roots.
+// Same sidecar-pairing + atomic-no-overwrite + canonical-topic
+// protection as rename.  ``opts.newName`` (optional) renames during
+// the move.  Backend rejects directory sources in v1.
+// 2026-06-12.
+move(path: string, destDir: string,
+     opts?: AsyncOpts & {newName?: string}):
+    Promise<LayoutOk | LayoutErr>
+
+// Copy a FILE inside the picker roots, optionally to a different
+// directory and/or under a new name.  ``shutil.copy2`` preserves
+// stat metadata (mtime, permissions).  Cross-device copies are
+// fine.  Sidecar pairing on .xyz/.pdb mirrors rename + move.
+// Same-dir copies require ``opts.newName``.  Backend rejects
+// directory sources in v1.  2026-06-12.
+copy(path: string, destDir: string,
+     opts?: AsyncOpts & {newName?: string}):
     Promise<LayoutOk | LayoutErr>
 ```
 
@@ -860,8 +887,8 @@ sequenceDiagram
 > data belongs in Phase 2.**
 
 Phase 1 wiring: lock UI, future cross-tab listener, future
-diagnostics.  Phase 2 wiring: entry list, breadcrumb, create-forms,
-preview modal.
+diagnostics.  Phase 2 wiring: entry list, breadcrumb, the "+"
+create menu, kebab per-entry menu, preview modal, dialogs.
 
 **When in doubt, default to Phase 1.**  The cost of wiring
 unconditionally is one extra DOM lookup per page load.  The cost of
@@ -1165,8 +1192,91 @@ be reachable from a known state mutation; no state may appear
 | **Locked** | A pipeline holds the lock | Sidebar contents faded + non-interactive; banner with reason + Cancel |
 | **No project root** | Init's `apiRoots` returned empty | List replaced with a "no roots configured" message; lock UI still functional |
 | **Preview open** | User clicked preview on a file | Modal over the page; closes on ESC / backdrop / button |
-| **Form open** | User expanded a creation section | Form visible with context label; submits navigate the sidebar |
-| **Form error** | Backend rejected the form submit | Inline error verbatim; form keeps its current value for retry |
+| **Create menu open** | User clicked "+" in the header | Dropdown menu floats below the button; one of three actions opens a modal dialog |
+| **Kebab menu open** | User clicked ⋯ on an entry row | Per-entry action menu (View / Rename / Move / Copy / Delete); auto-dismisses on outside click + ESC + scroll |
+| **Dialog open** | Any mutation modal active | <dialog> overlays page; primary input focused; ESC / Cancel resolve as null; only one dialog at a time |
+| **Dialog error** | Validation or backend rejection | Inline error in dialog; form keeps current value for retry |
+| **Resizing** | User dragging the right-edge handle | `--ps-w` updates live; body cursor:ew-resize; release persists to localStorage |
+
+---
+
+## 10.1 Mutation UX (2026-06-12)
+
+The sidebar's mutation surface is **buttons + modal dialogs**, not
+inline forms.  Two trigger points:
+
+* **Header "+" button** — single anchor at the top of the sidebar
+  (replaces the three pre-2026-06-12 foldable `<details>` sections).
+  Drops a vertical menu with three actions:
+
+  | Item | Action | Disabled when |
+  |---|---|---|
+  | New project | Modal for project name; backend bootstraps the canonical-topic tree | never |
+  | New folder | Modal for folder name in current dir | at the `projects/` root |
+  | Upload file | Modal with `<input type="file">` + Upload button | at the `projects/` root |
+
+* **Per-entry "⋯" kebab** — a button on the right edge of each
+  entry row.  Drops a contextual menu whose items are
+  eligibility-gated (ineligible items are omitted, not shown
+  greyed):
+
+  | Item | Available for | Result |
+  |---|---|---|
+  | View | files only | Sets `setShared(dir, file)` + opens the preview modal |
+  | Rename… | anything `_isDeletableEntry` allows | Modal for new name; sidecar-pair on .xyz/.pdb |
+  | Move to… | files only | Tree-picker for destination dir; sidecar-paired |
+  | Copy to… | files only | Tree-picker; same-dir copy prompts for a new name |
+  | Delete | anything `_isDeletableEntry` allows | Destructive confirm modal; then `apiDelete` + refresh |
+
+  Eligibility check `_isDeletableEntry` is the source of truth for
+  "can the user mutate this": refuses the `projects/` root itself
+  and refuses canonical-topic dirs at depth 1 (would orphan the
+  project layout).
+
+**Dialogs** live in `lib/projects/dialogs.js` and follow the
+single-instance + ESC-as-Cancel pattern from
+`lib/structure/save-dialog.js`:
+
+* opening dialog A while A is already open returns the existing
+  pending promise (no stacking);
+* opening dialog A while a different dialog B is open silently
+  cancels B (resolves it to `null`) so the user's focus moves
+  cleanly to A.
+
+Destructive flows (overwrite confirm, delete) default-focus on
+Cancel — the user has to deliberately travel to the destructive
+button.
+
+---
+
+## 10.2 Width resize (2026-06-12)
+
+The right edge of `.projects-sidebar` carries a 4px-wide drag
+handle (`#ps-resize-handle`).  Drag horizontally → `--ps-w`
+updates live; release → width persists to
+`localStorage.molbuilder.projects_sidebar_width` (px).  Restored
+BEFORE layout-sensitive widgets (Plotly, 3Dmol) paint, same
+reasoning as the collapsed-state restore.
+
+Bounds (JS-clamped):
+
+| Min | Max |
+|---|---|
+| 14rem (224px) | 40rem (640px) |
+
+Double-clicking the handle clears the persisted value (reverts to
+the default 18rem).  Handle is CSS-hidden when the sidebar is
+collapsed or running in narrow-viewport drawer mode.
+
+---
+
+## 10.3 Breadcrumb (2026-06-12 pill upgrade)
+
+Each path segment renders as a pill-shaped chip with a `›`
+separator between segments.  The root chip carries a small ⌂
+glyph; the current (last) chip uses an accent fill so the user
+can tell where they are at a glance.  Non-current chips are
+keyboard-focusable (`role=link`, Enter/Space to navigate).
 
 ---
 

@@ -41,6 +41,14 @@
         aria-expanded="false">Projects</button>
 
 <aside class="projects-sidebar" id="projects-sidebar" aria-label="Projects file explorer">
+  {#- Width-resize handle (2026-06-12).  Thin strip on the right edge;
+      drag to resize the sidebar.  Width persists to localStorage so
+      it survives reloads.  CSS-hidden when the sidebar is collapsed
+      or on narrow viewports (drawer mode). -#}
+  <div id="ps-resize-handle" class="ps-resize-handle"
+       role="separator" aria-orientation="vertical"
+       aria-label="Resize projects sidebar"
+       title="Drag to resize"></div>
   <header class="ps-header">
     <h2 class="ps-title">Projects</h2>
     {#- Desktop collapse toggle (B.5.4).  Visible only on viewports
@@ -72,73 +80,38 @@
     </button>
   </div>
 
-  <!-- Foldable create-project section.  Bootstraps a full project
-       skeleton (structure/, pseudopotential/, plus every run-topic)
-       via POST /api/projects/create.  Strict conflict: 409 if the
-       name is taken; inline error below the input. -->
-  <details class="ps-create-section">
-    <summary class="ps-create-summary">+ New project</summary>
-    <form id="ps-newproject-form" class="ps-create-form">
-      <label class="ps-field-label" for="ps-newproject-input">
-        Project name
-      </label>
-      <input id="ps-newproject-input" type="text" autocomplete="off"
-             placeholder="letters / digits / _ / -">
-      <p class="ps-create-note">
-        Creates <code>projects/&lt;name&gt;/</code> with these subdirs:
-        <span id="ps-newproject-subdirs"></span>
-      </p>
-      <div class="ps-create-actions">
-        <button type="submit">Create project</button>
-        <button id="ps-newproject-cancel" type="button">Reset</button>
-      </div>
-      <p id="ps-newproject-error" class="ps-mkdir-error" role="alert"></p>
-    </form>
-  </details>
+  {#- 2026-06-12 Mutation menu (replaces 3 foldable <details>).
+      A single "+" button drops a 3-item menu: New project / New
+      folder / Upload file.  Each item opens a modal dialog
+      (see lib/projects/dialogs.js); no inline forms.  Saves the
+      ~9 lines of vertical space the collapsed details used.
 
-  <!-- Single-dir creation at the current sidebar location (works at
-       every depth).  Distinct from "+ New project" above, which
-       always lands at projects/ root + bootstraps the full tree. -->
-  <details class="ps-create-section">
-    <summary class="ps-create-summary">+ New subdir</summary>
-    <form id="ps-mkdir-form" class="ps-create-form">
-      <label class="ps-field-label" for="ps-mkdir-input">
-        Name
-        <small class="ps-field-hint">
-          (in <span class="ps-mkdir-context">current directory</span>)
-        </small>
-      </label>
-      <input id="ps-mkdir-input" type="text" autocomplete="off"
-             placeholder="letters / digits / _ / -">
-      <div class="ps-create-actions">
-        <button type="submit">Create</button>
-        <button id="ps-mkdir-cancel" type="button">Reset</button>
-      </div>
-      <p id="ps-mkdir-error" class="ps-mkdir-error" role="alert"></p>
-    </form>
-  </details>
-
-  <!-- Upload file: laptop -> server transfer.  Stub in v1 (backend
-       returns 501; frontend renders the message inline).  Same depth-
-       aware visibility as + New subdir; same naming + location rules
-       (target = current_dir; filename has its own regex). -->
-  <details class="ps-create-section">
-    <summary class="ps-create-summary">+ Upload file</summary>
-    <form id="ps-upload-form" class="ps-create-form" enctype="multipart/form-data">
-      <label class="ps-field-label" for="ps-upload-input">
-        Pick a file
-        <small class="ps-field-hint">
-          (lands in <span class="ps-upload-context">current directory</span>)
-        </small>
-      </label>
-      <input id="ps-upload-input" type="file">
-      <div class="ps-create-actions">
-        <button type="submit">Upload</button>
-        <button id="ps-upload-cancel" type="button">Reset</button>
-      </div>
-      <p id="ps-upload-error" class="ps-mkdir-error" role="alert"></p>
-    </form>
-  </details>
+      Depth-aware items disable themselves at projects/ root.  See
+      lib/projects/menu.js for the wiring + docs/protocols/
+      projects-sidebar.md § Mutation UX. -#}
+  <div class="ps-create-bar">
+    <button type="button" id="ps-create-btn" class="ps-create-btn"
+            aria-label="Create or upload"
+            aria-haspopup="menu" aria-expanded="false"
+            title="Create / upload">+</button>
+    <div id="ps-create-menu" class="ps-create-menu" role="menu" hidden>
+      <button type="button" class="ps-create-menu-item"
+              data-action="new-project" role="menuitem">
+        <span class="ps-create-menu-icon" aria-hidden="true">📁＋</span>
+        <span class="ps-create-menu-label">New project…</span>
+      </button>
+      <button type="button" class="ps-create-menu-item"
+              data-action="new-folder" role="menuitem">
+        <span class="ps-create-menu-icon" aria-hidden="true">📁</span>
+        <span class="ps-create-menu-label">New folder…</span>
+      </button>
+      <button type="button" class="ps-create-menu-item"
+              data-action="upload" role="menuitem">
+        <span class="ps-create-menu-icon" aria-hidden="true">↑</span>
+        <span class="ps-create-menu-label">Upload file…</span>
+      </button>
+    </div>
+  </div>
 
   <nav class="ps-breadcrumb" id="ps-breadcrumb" aria-label="Path">
     <!-- Crumbs inserted by projects-sidebar.js. -->

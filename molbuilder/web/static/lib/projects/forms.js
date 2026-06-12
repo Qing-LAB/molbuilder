@@ -1,197 +1,176 @@
-/* projects/forms.js -- + New project / + New subdir / + Upload file forms.
+/* projects/forms.js -- mutation menu wiring.
  *
- * Three foldable <details> sections at the top of the sidebar.  Each
- * is self-contained: HTML in _projects_sidebar.html, behaviour here.
- * Backend calls go through projects/api.js; post-success navigation
- * uses list.openDir.
+ * 2026-06-12: replaced the foldable <details> create-form sections
+ * with a single "+" button + dropdown menu.  Each menu item opens a
+ * modal dialog from projects/dialogs.js.  Backend calls go through
+ * projects.* (state.js), which dispatches to projects/api.js + fires
+ * a directory refresh on success.
  *
- * Depth-aware visibility (driven by selection changes via
- * projects.onChange):
- *   * + New project    -- always visible
- *   * + New subdir     -- hidden at projects/ root
- *   * + Upload file    -- hidden at projects/ root (stub backend)
+ * Depth-aware item disable (driven by projects.onChange):
+ *   * New project    -- always enabled
+ *   * New folder     -- disabled at projects/ root (no useful parent)
+ *   * Upload file    -- disabled at projects/ root
  *
- * Spec: docs/protocols/selection.md § Sidebar interaction rules.
+ * Spec: docs/protocols/projects-sidebar.md § Mutation UX.
+ *
+ * The file is still named ``forms.js`` to keep its import path
+ * (``./forms.js``) stable for ``projects-sidebar.js``; the inline-
+ * form era ended in this commit.
  */
 
 import {
-  apiMkdir, apiCreateProject, apiUpload,
-} from "./api.js";
+  chooseName, chooseUploadFile,
+} from "./dialogs.js";
 import {
   projects, getProjectsRoot, SS_DIR, atProjectsRoot,
 } from "./state.js";
 import { openDir } from "./list.js";
 
-// Mkdir form (single-dir creation at current location).
-let elMkdirForm, elMkdirInput, elMkdirError, elMkdirContext;
-// Upload form (stub backend; UX wired).
-let elUploadForm, elUploadInput, elUploadError, elUploadContext;
-// New-project form (always visible; bootstraps full skeleton).
-let elNewProjForm, elNewProjInput, elNewProjError, elNewProjSubdirs;
+let elBtn, elMenu;
 
-// ----- "(in <current-dir>)" hints + depth-aware visibility ------- //
-//
-// Two forms (+ New subdir, + Upload file) share the depth-0 hide
-// rule -- they're meaningless at the projects/ root because no
-// useful filename / dirname can land there.  The atProjectsRoot
-// predicate is centralised in state.js so every caller agrees on
-// what "at the root" means (handles trailing-slash edge cases).
-
-function _setSectionHiddenIfRoot(formEl, hidden) {
-  const section = formEl ? formEl.closest("details") : null;
-  if (!section) return;
-  section.hidden = hidden;
-  if (hidden) section.open = false;
+function _closeMenu() {
+  if (!elMenu) return;
+  elMenu.hidden = true;
+  if (elBtn) elBtn.setAttribute("aria-expanded", "false");
 }
 
-function _updateMkdirContext() {
-  if (!elMkdirContext) return;
+function _openMenu() {
+  if (!elMenu) return;
+  elMenu.hidden = false;
+  if (elBtn) elBtn.setAttribute("aria-expanded", "true");
+  _updateItemEnablement();
+  // Focus the first enabled item so keyboard nav works.
+  const firstEnabled = elMenu.querySelector(
+    ".ps-create-menu-item:not([disabled])");
+  if (firstEnabled) {
+    try { firstEnabled.focus(); } catch (_) {}
+  }
+}
+
+function _toggleMenu() {
+  if (!elMenu) return;
+  if (elMenu.hidden) _openMenu(); else _closeMenu();
+}
+
+function _updateItemEnablement() {
+  if (!elMenu) return;
   const dir = sessionStorage.getItem(SS_DIR) || getProjectsRoot() || "";
-  elMkdirContext.textContent = dir
-    ? (projects.relativeToProjects(dir) || "projects/")
-    : "current directory";
-  elMkdirContext.title = dir || "";
-  _setSectionHiddenIfRoot(elMkdirForm, atProjectsRoot(dir));
+  const root = atProjectsRoot(dir);
+  // "New project" always enabled (it lands at root regardless).
+  // "New folder" + "Upload" require a project context.
+  elMenu.querySelectorAll(".ps-create-menu-item").forEach((item) => {
+    const action = item.dataset.action;
+    const needsDir = action === "new-folder" || action === "upload";
+    item.disabled = needsDir && root;
+    item.title = item.disabled
+      ? "Pick a project folder in the sidebar first."
+      : "";
+  });
 }
 
-function _updateUploadContext() {
-  if (!elUploadContext) return;
-  const dir = sessionStorage.getItem(SS_DIR) || getProjectsRoot() || "";
-  elUploadContext.textContent = dir
-    ? (projects.relativeToProjects(dir) || "projects/")
-    : "current directory";
-  elUploadContext.title = dir || "";
-  _setSectionHiddenIfRoot(elUploadForm, atProjectsRoot(dir));
+async function _doNewProject() {
+  const name = await chooseName({
+    title:        "New project",
+    label:        "Project name",
+    hint:         "Creates projects/<name>/ with the canonical "
+                  + "subdirs (structure, optimization, spectrum, …).",
+    placeholder:  "letters / digits / _ / -",
+    confirmLabel: "Create",
+  });
+  if (!name) return;
+  const r = await projects.createProject(name);
+  if (r && r.ok && r.path) {
+    await openDir(r.path);
+  } else {
+    window.alert((r && r.error) || "Project creation failed.");
+  }
 }
 
-// ----- Mkdir form ------------------------------------------------ //
-
-function _resetMkdirForm() {
-  elMkdirInput.value = "";
-  elMkdirError.textContent = "";
-}
-
-async function _submitMkdir(ev) {
-  ev.preventDefault();
-  elMkdirError.textContent = "";
-  const name = elMkdirInput.value.trim();
-  if (!name) {
-    elMkdirError.textContent = "Name cannot be empty.";
+async function _doNewFolder() {
+  const currentDir = sessionStorage.getItem(SS_DIR) || getProjectsRoot();
+  if (!currentDir || atProjectsRoot(currentDir)) {
+    window.alert(
+      "Cannot create a folder at the projects root.  "
+      + "Pick a project in the sidebar first.",
+    );
     return;
   }
-  const parent = sessionStorage.getItem(SS_DIR) || getProjectsRoot();
-  const j = await apiMkdir(parent, name);
-  // Phase 6e fifth-review LANDMINE-A: filter aborted before
-  // surfacing as error.  No Cancel widget today; defensive for
-  // future callers per the public projects.mkdir contract.
-  if (j && j.aborted) return;
-  if (!j.ok) {
-    // Backend's 409 / 400 / 403 message verbatim -- already says
-    // what to do (rename, pick a different parent, etc.).
-    elMkdirError.textContent = j.error || "mkdir failed.";
-    return;
+  const ctx = projects.relativeToProjects(currentDir) || "projects/";
+  const name = await chooseName({
+    title:        "New folder",
+    label:        "Folder name",
+    hint:         `Created inside ${ctx}.`,
+    placeholder:  "letters / digits / _ / -",
+    confirmLabel: "Create",
+  });
+  if (!name) return;
+  const r = await projects.mkdir(currentDir, name);
+  if (r && r.aborted) return;
+  if (r && r.ok && r.path) {
+    await openDir(r.path);
+  } else {
+    window.alert((r && r.error) || "Folder creation failed.");
   }
-  _resetMkdirForm();
-  await openDir(j.path);
 }
 
-// ----- New-project form ----------------------------------------- //
-
-function _resetNewProjectForm() {
-  elNewProjInput.value = "";
-  elNewProjError.textContent = "";
-}
-
-async function _submitNewProject(ev) {
-  ev.preventDefault();
-  elNewProjError.textContent = "";
-  const name = elNewProjInput.value.trim();
-  if (!name) {
-    elNewProjError.textContent = "Name cannot be empty.";
+async function _doUpload() {
+  const currentDir = sessionStorage.getItem(SS_DIR) || getProjectsRoot();
+  if (!currentDir || atProjectsRoot(currentDir)) {
+    window.alert(
+      "Cannot upload to the projects root.  Pick a project in the "
+      + "sidebar first.",
+    );
     return;
   }
-  const j = await apiCreateProject(name);
-  if (j && j.aborted) return;
-  if (!j.ok) {
-    elNewProjError.textContent = j.error || "create failed.";
-    return;
+  const ctx = projects.relativeToProjects(currentDir) || "projects/";
+  const file = await chooseUploadFile({ contextDir: ctx });
+  if (!file) return;
+  const r = await projects.upload(currentDir, file);
+  if (r && r.aborted) return;
+  if (!r || !r.ok) {
+    window.alert((r && r.error) || "Upload failed.");
   }
-  _resetNewProjectForm();
-  await openDir(j.path);
 }
-
-// ----- Upload form (stub backend; UX wired) --------------------- //
-
-function _resetUploadForm() {
-  if (elUploadInput) elUploadInput.value = "";
-  if (elUploadError) elUploadError.textContent = "";
-}
-
-async function _submitUpload(ev) {
-  ev.preventDefault();
-  elUploadError.textContent = "";
-  if (!elUploadInput.files || elUploadInput.files.length === 0) {
-    elUploadError.textContent = "Pick a file to upload first.";
-    return;
-  }
-  const file = elUploadInput.files[0];
-  const target = sessionStorage.getItem(SS_DIR) || getProjectsRoot();
-  const j = await apiUpload(target, file);
-  if (j && j.aborted) return;
-  if (!j.ok) {
-    // Today the 501 message lands here.  Tomorrow the real backend's
-    // 409 / 400 / 403 land via the same path -- no caller changes.
-    elUploadError.textContent = j.error || "upload failed.";
-    return;
-  }
-  _resetUploadForm();
-  await openDir(target);
-}
-
-// ----- Init ------------------------------------------------------ //
 
 export function initForms() {
-  // Mkdir.
-  elMkdirForm    = document.getElementById("ps-mkdir-form");
-  elMkdirInput   = document.getElementById("ps-mkdir-input");
-  elMkdirError   = document.getElementById("ps-mkdir-error");
-  elMkdirContext = document.querySelector(".ps-mkdir-context");
-  if (elMkdirForm) elMkdirForm.addEventListener("submit", _submitMkdir);
-  const mkdirCancel = document.getElementById("ps-mkdir-cancel");
-  if (mkdirCancel) mkdirCancel.addEventListener("click", _resetMkdirForm);
+  elBtn  = document.getElementById("ps-create-btn");
+  elMenu = document.getElementById("ps-create-menu");
+  if (!elBtn || !elMenu) return;
 
-  // New project.
-  elNewProjForm    = document.getElementById("ps-newproject-form");
-  elNewProjInput   = document.getElementById("ps-newproject-input");
-  elNewProjError   = document.getElementById("ps-newproject-error");
-  elNewProjSubdirs = document.getElementById("ps-newproject-subdirs");
-  if (elNewProjForm) elNewProjForm.addEventListener("submit", _submitNewProject);
-  const newProjCancel = document.getElementById("ps-newproject-cancel");
-  if (newProjCancel) newProjCancel.addEventListener("click", _resetNewProjectForm);
-  // Subdir list hint (hard-coded; matches CANONICAL_TOPICS).
-  if (elNewProjSubdirs) {
-    const CANONICAL_TOPICS_DISPLAY = [
-      "structure", "pseudopotential",
-      "optimization", "frequency", "spectrum",
-      "transport", "single-point", "scan", "user",
-    ];
-    elNewProjSubdirs.innerHTML = CANONICAL_TOPICS_DISPLAY
-      .map((t) => `<code>${t}/</code>`).join(", ");
-  }
-
-  // Upload.
-  elUploadForm    = document.getElementById("ps-upload-form");
-  elUploadInput   = document.getElementById("ps-upload-input");
-  elUploadError   = document.getElementById("ps-upload-error");
-  elUploadContext = document.querySelector(".ps-upload-context");
-  if (elUploadForm) elUploadForm.addEventListener("submit", _submitUpload);
-  const uploadCancel = document.getElementById("ps-upload-cancel");
-  if (uploadCancel) uploadCancel.addEventListener("click", _resetUploadForm);
-
-  // Update context labels + depth-aware visibility on every
-  // selection change.
-  projects.onChange(() => {
-    _updateMkdirContext();
-    _updateUploadContext();
+  elBtn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    _toggleMenu();
   });
+
+  // Close on outside click + ESC.
+  document.addEventListener("click", (ev) => {
+    if (elMenu.hidden) return;
+    if (elBtn.contains(ev.target) || elMenu.contains(ev.target)) return;
+    _closeMenu();
+  });
+  document.addEventListener("keydown", (ev) => {
+    if (!elMenu.hidden && ev.key === "Escape") {
+      _closeMenu();
+      try { elBtn.focus(); } catch (_) {}
+    }
+  });
+
+  // Item dispatch.  Close the menu BEFORE awaiting the dialog so the
+  // user's focus moves cleanly from menu to dialog.
+  elMenu.querySelectorAll(".ps-create-menu-item").forEach((item) => {
+    item.addEventListener("click", async () => {
+      const action = item.dataset.action;
+      _closeMenu();
+      if (action === "new-project") await _doNewProject();
+      else if (action === "new-folder") await _doNewFolder();
+      else if (action === "upload")     await _doUpload();
+    });
+  });
+
+  // Re-evaluate enablement on selection change (the user navigates
+  // away from root, items become enabled; navigate back, they re-
+  // disable).  Also refresh once the projects root resolves so the
+  // initial paint shows the right state.
+  projects.onChange(_updateItemEnablement);
+  _updateItemEnablement();
 }

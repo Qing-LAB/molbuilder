@@ -54,6 +54,56 @@ body.has-projects-sidebar {
   overflow: hidden;
 }
 
+/* ---- Width-resize handle (2026-06-12) ------------------------------
+ *
+ * Thin draggable strip on the right edge.  4px hit area widened to
+ * 8px via a transparent ::before so the cursor catches without
+ * having to pixel-aim.  Hovering shows a faint accent line so the
+ * affordance is discoverable.  Dragging persists the new width to
+ * localStorage under ``molbuilder.projects_sidebar_width`` (px).
+ *
+ * Width bounds enforced in JS: 14rem min (entries stay readable),
+ * 40rem max (sidebar doesn't dominate the viewport).
+ *
+ * The handle is HIDDEN when the sidebar is collapsed (you can't
+ * resize what's not visible) and on narrow viewports where the
+ * sidebar acts as an overlay drawer.
+ */
+.ps-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 4px;
+  cursor: ew-resize;
+  background: transparent;
+  z-index: 10;
+  transition: background 0.12s;
+}
+.ps-resize-handle::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: -2px;
+  bottom: 0;
+  width: 8px;          /* generous hit area so mouse catches easily */
+}
+.ps-resize-handle:hover,
+body.is-projects-sidebar-resizing .ps-resize-handle {
+  background: var(--accent, #4f7ab8);
+}
+body.is-projects-sidebar-resizing {
+  cursor: ew-resize;
+  user-select: none;   /* dragging shouldn't accidentally select text */
+}
+body.is-projects-sidebar-collapsed .ps-resize-handle,
+body.has-mobile-sidebar-open .ps-resize-handle {
+  display: none;
+}
+@media (max-width: 640px) {
+  .ps-resize-handle { display: none; }
+}
+
 /* ---- Header --------------------------------------------------- */
 
 .ps-header {
@@ -176,104 +226,92 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
  *   "+ New project" -- bootstrap full skeleton at projects/ root
  *   "+ New subdir"  -- single dir at the user's current location */
 
-.ps-create-section {
+/* ---- Create bar + dropdown menu (2026-06-12) -------------------
+ *
+ * Replaces the three foldable <details> create-sections with a
+ * single "+" button + popover menu.  Saves vertical space; the
+ * three actions (new project / new folder / upload) open modal
+ * dialogs instead of expanding inline forms.
+ */
+.ps-create-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 0.3rem 0.7rem;
   border-bottom: 1px solid var(--ps-border);
   background: #141414;
 }
-
-.ps-create-summary {
-  padding: 0.35rem 0.7rem;
-  font-size: 0.85rem;
+.ps-create-btn {
+  appearance: none;
+  background: transparent;
   color: var(--ps-fg);
+  border: 1px solid var(--ps-border);
+  border-radius: 4px;
   cursor: pointer;
-  user-select: none;
-  list-style: none;          /* drop default disclosure triangle */
+  font-size: 1.05rem;
+  line-height: 1;
+  width: 1.8rem;
+  height: 1.8rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
-.ps-create-summary::-webkit-details-marker { display: none; }
-.ps-create-summary::before {
-  content: "›";
-  display: inline-block;
-  width: 0.9em;
-  color: var(--ps-fg-muted);
-  transition: transform 0.12s ease;
-}
-.ps-create-section[open] .ps-create-summary::before {
-  transform: rotate(90deg);
-}
-.ps-create-summary:hover { color: var(--ps-selected-fg); background: var(--ps-hover); }
-
-.ps-create-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  padding: 0.4rem 0.7rem 0.6rem;
-  background: #101010;
-}
-
-.ps-field-label {
-  font-size: 0.78rem;
-  color: var(--ps-fg-muted);
-}
-
-.ps-field-hint {
-  font-size: 0.7rem;
-  color: var(--ps-fg-muted);
-  font-family: monospace;
-}
-
-.ps-mkdir-context {
-  background: #0d0d0d;
-  border: 1px solid var(--ps-border);
-  padding: 0 0.3em;
-  border-radius: 2px;
-  color: var(--ps-fg);
-}
-
-.ps-create-form input[type="text"] {
-  font-size: 0.85rem;
-  padding: 0.25rem 0.45rem;
-  background: #0d0d0d;
-  color: var(--ps-fg);
-  border: 1px solid var(--ps-border);
-  border-radius: 3px;
-}
-
-.ps-create-note {
-  margin: 0;
-  font-size: 0.72rem;
-  color: var(--ps-fg-muted);
-  line-height: 1.45;
-}
-
-.ps-create-note code {
-  background: #0d0d0d;
-  border: 1px solid var(--ps-border);
-  padding: 0 0.2em;
-  border-radius: 2px;
-  font-size: 0.92em;
-}
-
-.ps-create-actions {
-  display: flex;
-  gap: 0.35rem;
-}
-
-.ps-create-actions button {
-  font-size: 0.78rem;
-  padding: 0.2rem 0.55rem;
-  cursor: pointer;
-  background: var(--ps-hover);
-  color: var(--ps-fg);
-  border: 1px solid var(--ps-border);
-  border-radius: 3px;
-}
-
-.ps-create-actions button[type="submit"]:hover {
+.ps-create-btn:hover,
+.ps-create-btn[aria-expanded="true"] {
   background: var(--ps-selected);
-  color: var(--ps-selected-fg);
   border-color: var(--ps-selected);
+  color: var(--ps-selected-fg);
 }
+.ps-create-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0.7rem;
+  z-index: 20;
+  min-width: 12rem;
+  background: #1c1c1c;
+  border: 1px solid var(--ps-border);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  padding: 0.2rem 0;
+}
+.ps-create-menu[hidden] { display: none; }
+.ps-create-menu-item {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: 100%;
+  padding: 0.4rem 0.7rem;
+  background: transparent;
+  color: var(--ps-fg);
+  border: none;
+  text-align: left;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.ps-create-menu-item:hover:not([disabled]),
+.ps-create-menu-item:focus:not([disabled]) {
+  background: var(--ps-hover);
+  color: var(--ps-selected-fg);
+  outline: none;
+}
+.ps-create-menu-item[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ps-create-menu-icon {
+  flex: 0 0 auto;
+  font-size: 0.9rem;
+  width: 1.4em;
+  text-align: center;
+  color: var(--ps-fg-muted);
+}
+.ps-create-menu-label { flex: 1 1 auto; }
 
+/* Inline error slot kept for the rare legacy form usage; reused
+ * also by the dialog component above for inline validation. */
 .ps-mkdir-error {
   margin: 0;
   font-size: 0.78rem;
@@ -281,12 +319,237 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
   min-height: 1em;
 }
 
-/* ---- Breadcrumb ----------------------------------------------- */
+/* ---- Modal dialogs (2026-06-12) --------------------------------
+ *
+ * Used by projects/dialogs.js for: new project, new folder, upload,
+ * rename, choose-destination-dir, confirm-destructive.  Styled
+ * darker than the page to match the sidebar palette; readable on
+ * any backdrop (no transparent fill).
+ */
+.molbuilder-projects-dialog {
+  background: #1c1c1c;
+  color: var(--ps-fg, #ddd);
+  border: 1px solid var(--ps-border, #2a2a2a);
+  border-radius: 6px;
+  padding: 1rem 1.1rem;
+  min-width: 22rem;
+  max-width: 90vw;
+  font: 13px/1.45 system-ui, sans-serif;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.55);
+}
+.molbuilder-projects-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+.molbuilder-projects-dialog h2 {
+  margin: 0 0 0.7rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+}
+.molbuilder-projects-dialog-hint {
+  margin: 0 0 0.6rem;
+  font-size: 0.8rem;
+  color: var(--ps-fg-muted, #999);
+  line-height: 1.45;
+}
+.molbuilder-projects-dialog-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0 0 0.6rem;
+}
+.molbuilder-projects-dialog-field > span {
+  font-size: 0.78rem;
+  color: var(--ps-fg-muted, #999);
+}
+.molbuilder-projects-dialog-field input[type="text"],
+.molbuilder-projects-dialog-field input[type="file"] {
+  font: inherit;
+  padding: 0.35rem 0.55rem;
+  background: #0d0d0d;
+  color: var(--ps-fg, #ddd);
+  border: 1px solid var(--ps-border, #2a2a2a);
+  border-radius: 3px;
+}
+.molbuilder-projects-dialog-field input[type="text"]:focus {
+  outline: 1px solid var(--accent, #4f7ab8);
+  outline-offset: -1px;
+}
+.molbuilder-projects-dialog-error {
+  margin: 0.2rem 0 0.5rem;
+  font-size: 0.78rem;
+  color: #e07a7a;
+  min-height: 1em;
+}
+.molbuilder-projects-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+}
+.molbuilder-projects-dialog-actions button {
+  appearance: none;
+  font: inherit;
+  padding: 0.35rem 0.85rem;
+  background: var(--ps-hover, #2a2a2a);
+  color: var(--ps-fg, #ddd);
+  border: 1px solid var(--ps-border, #2a2a2a);
+  border-radius: 3px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.molbuilder-projects-dialog-actions button:hover {
+  background: #3a3a3a;
+}
+.molbuilder-projects-dialog-actions button.is-primary {
+  background: var(--ps-selected, #2d4a6e);
+  color: var(--ps-selected-fg, #fff);
+  border-color: var(--ps-selected, #2d4a6e);
+}
+.molbuilder-projects-dialog-actions button.is-primary:hover:not([disabled]) {
+  background: #355a90;
+}
+.molbuilder-projects-dialog-actions button.is-destructive {
+  background: #5a1f1f;
+  color: #fff;
+  border-color: #6e2929;
+}
+.molbuilder-projects-dialog-actions button.is-destructive:hover {
+  background: #7a2929;
+}
+.molbuilder-projects-dialog-actions button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Destination-dir tree (move/copy) */
+.molbuilder-projects-dest-tree {
+  max-height: 30vh;
+  overflow-y: auto;
+  background: #0d0d0d;
+  border: 1px solid var(--ps-border, #2a2a2a);
+  border-radius: 3px;
+  padding: 0.3rem 0;
+}
+.molbuilder-projects-dest-tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.molbuilder-projects-dest-children {
+  padding-left: 1.2rem;
+}
+.molbuilder-projects-dest-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.2rem 0.5rem;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: background 0.1s;
+}
+.molbuilder-projects-dest-row:hover {
+  background: var(--ps-hover, #2a2a2a);
+}
+.molbuilder-projects-dest-node.is-selected > .molbuilder-projects-dest-row {
+  background: var(--ps-selected, #2d4a6e);
+  color: var(--ps-selected-fg, #fff);
+}
+.molbuilder-projects-dest-twisty {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: var(--ps-fg-muted, #999);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0;
+  width: 1em;
+}
+.molbuilder-projects-dest-label {
+  flex: 1 1 auto;
+  font-size: 0.85rem;
+}
+.molbuilder-projects-dest-empty,
+.molbuilder-projects-dest-error {
+  padding: 0.2rem 0.5rem 0.2rem 1.6rem;
+  font-size: 0.78rem;
+  color: var(--ps-fg-muted, #999);
+  font-style: italic;
+}
+
+/* ---- Per-entry kebab menu (2026-06-12) -------------------------
+ *
+ * Single ⋯ trigger per row that drops the action menu.  Replaces
+ * the inline pair of view + × buttons.  The menu floats fixed so
+ * it can extend past the sidebar's overflow:hidden.
+ */
+.ps-entry-kebab {
+  font-size: 1.1rem;        /* ⋯ glyph reads better slightly larger */
+  line-height: 1;
+  padding: 0 0.35rem;
+  font-weight: 700;
+}
+.ps-entry-kebab:hover,
+.ps-entry-kebab[aria-expanded="true"] {
+  background: var(--ps-hover, #2a2a2a);
+  color: var(--ps-selected-fg, #fff);
+  border-color: var(--ps-border, #2a2a2a);
+}
+.ps-entry-menu {
+  z-index: 50;
+  min-width: 10rem;
+  background: #1c1c1c;
+  border: 1px solid var(--ps-border, #2a2a2a);
+  border-radius: 4px;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5);
+  padding: 0.2rem 0;
+}
+.ps-entry-menu-item {
+  appearance: none;
+  display: block;
+  width: 100%;
+  padding: 0.35rem 0.8rem;
+  background: transparent;
+  color: var(--ps-fg, #ddd);
+  border: none;
+  text-align: left;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.ps-entry-menu-item:hover,
+.ps-entry-menu-item:focus {
+  background: var(--ps-hover, #2a2a2a);
+  color: var(--ps-selected-fg, #fff);
+  outline: none;
+}
+.ps-entry-menu-item.is-destructive {
+  color: #d68080;
+}
+.ps-entry-menu-item.is-destructive:hover,
+.ps-entry-menu-item.is-destructive:focus {
+  background: #5a1f1f;
+  color: #fff;
+}
+
+/* ---- Breadcrumb (2026-06-12 pill upgrade) -----------------------
+ *
+ * Each path segment is a pill-shaped clickable chip; the › separator
+ * sits between them.  The current (last) segment uses an accent
+ * color + non-clickable cursor so the user can tell at a glance
+ * "this is where I am" without confusing the eye into thinking it's
+ * disabled.  The root "projects" chip gets a small home glyph from
+ * the JS so it reads as the tree's anchor.
+ */
 
 .ps-breadcrumb {
-  padding: 0.35rem 0.7rem;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+  padding: 0.4rem 0.7rem;
   border-bottom: 1px solid var(--ps-border);
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   color: var(--ps-fg-muted);
   overflow-x: auto;
   white-space: nowrap;
@@ -295,26 +558,39 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
 .ps-crumb {
   cursor: pointer;
   color: var(--ps-fg);
-  padding: 0 0.2em;
-  border-radius: 2px;
+  padding: 0.12rem 0.45rem;
+  border: 1px solid transparent;
+  border-radius: 999px;     /* full pill */
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  user-select: none;
+  line-height: 1.3;
 }
 
 .ps-crumb:hover {
   background: var(--ps-hover);
+  border-color: var(--ps-border);
+  color: var(--ps-selected-fg, #fff);
 }
 
 .ps-crumb-sep {
   color: var(--ps-fg-muted);
-  margin: 0 0.1em;
+  margin: 0 0.05rem;
+  font-size: 0.85rem;
+  user-select: none;
 }
 
 .ps-crumb.is-current {
-  color: var(--ps-fg-muted);
   cursor: default;
+  background: rgba(79, 122, 184, 0.22);    /* matches accent at low alpha */
+  border-color: rgba(79, 122, 184, 0.55);
+  color: #cfe0fb;                          /* bright on dark sidebar bg */
+  font-weight: 600;
 }
 
 .ps-crumb.is-current:hover {
-  background: transparent;
+  background: rgba(79, 122, 184, 0.22);    /* no hover lift on current */
+  border-color: rgba(79, 122, 184, 0.55);
+  color: #cfe0fb;
 }
 
 /* ---- Filter bar (B.5.5) --------------------------------------

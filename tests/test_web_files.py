@@ -556,6 +556,9 @@ class TestSidebarPartialAndShim:
         preview = flat(imports_from_projects(
             web.get("/static/lib/projects/preview.js").get_data(as_text=True)
         ))
+        dialogs = flat(imports_from_projects(
+            web.get("/static/lib/projects/dialogs.js").get_data(as_text=True)
+        ))
         list_  = flat(imports_from_projects(
             web.get("/static/lib/projects/list.js").get_data(as_text=True)
         ))
@@ -576,23 +579,33 @@ class TestSidebarPartialAndShim:
             f"preview.js may import from state, api only, found {preview}"
         )
 
-        # list depends on state, api, preview (but NOT forms).
-        assert list_ <= {"state", "api", "preview"}, (
-            f"list.js may import from state/api/preview only, found {list_}"
+        # dialogs (2026-06-12) is a leaf-ish module: presents modal
+        # <dialog>s + handles user input.  May read from api (for the
+        # tree-picker's directory listing) + state (for the projects
+        # root anchor); never the other way.
+        assert dialogs <= {"state", "api"}, (
+            f"dialogs.js may import from state, api only, found {dialogs}"
+        )
+
+        # list depends on state, api, preview, dialogs (but NOT forms).
+        assert list_ <= {"state", "api", "preview", "dialogs"}, (
+            f"list.js may import from state/api/preview/dialogs only, "
+            f"found {list_}"
         )
 
         # forms is the top of the per-module stack (besides the entry).
-        # It can depend on state, api, list, preview.
-        assert forms <= {"state", "api", "list", "preview"}, (
-            f"forms.js may import from state/api/list/preview only, "
+        # It can depend on state, api, list, preview, dialogs.
+        assert forms <= {"state", "api", "list", "preview", "dialogs"}, (
+            f"forms.js may import from state/api/list/preview/dialogs only, "
             f"found {forms}"
         )
 
         # The crucial negative: state must NOT import from list, forms,
-        # or preview (the cycle-breaking discipline).
+        # preview, or dialogs (the cycle-breaking discipline).
         assert "list"    not in state, "state.js cannot import from list.js (cycle)"
         assert "forms"   not in state, "state.js cannot import from forms.js"
         assert "preview" not in state, "state.js cannot import from preview.js"
+        assert "dialogs" not in state, "state.js cannot import from dialogs.js"
 
     def test_projects_selection_shim_removed(self, web, picker_root):
         # The per-tab projects-selection shim was retired -- the sidebar
@@ -930,36 +943,35 @@ class TestProjectsCreate:
 
 
 class TestSidebarCreateUI:
-    """The foldable + New project / + New subdir sections live in the
-    partial; the JS wires them to the backend."""
+    """2026-06-12: the three foldable <details> create-sections
+    (+ New project / + New subdir / + Upload file) were replaced
+    with a single "+" button + dropdown menu.  Each menu item
+    opens a modal dialog from lib/projects/dialogs.js — no inline
+    forms in the sidebar markup any more.  See projects-sidebar.md
+    § Mutation UX."""
 
-    def test_create_project_form_in_partial(self, web, picker_root):
+    def test_create_bar_in_partial(self, web, picker_root):
         body = web.get("/spectrum-calculation").get_data(as_text=True)
-        # + New project section (foldable details + form + error slot)
-        assert 'class="ps-create-section"' in body
-        assert 'class="ps-create-summary">+ New project</summary>' in body
-        assert 'id="ps-newproject-form"' in body
-        assert 'id="ps-newproject-input"' in body
-        assert 'id="ps-newproject-error"' in body
-        assert 'id="ps-newproject-cancel"' in body
-        # Subdir-list note (populated by JS at startup)
-        assert 'id="ps-newproject-subdirs"' in body
+        assert 'class="ps-create-bar"' in body
+        assert 'id="ps-create-btn"' in body
+        assert 'id="ps-create-menu"' in body
+
+    def test_create_menu_has_three_items(self, web, picker_root):
+        body = web.get("/spectrum-calculation").get_data(as_text=True)
+        assert 'data-action="new-project"' in body
+        assert 'data-action="new-folder"' in body
+        assert 'data-action="upload"' in body
+        # User-facing labels (verify the wording renders).
+        assert "New project" in body
+        assert "New folder" in body
+        assert "Upload file" in body
+
 
 class TestSidebarMkdirUI:
-    """The "+ New subdir" button + inline form is in the partial,
-    not the JS."""
-
-    def test_mkdir_form_in_sidebar_partial(self, web, picker_root):
-        # Any tab that includes the sidebar partial carries the markup.
-        # The form is now inside a <details class="ps-create-section">,
-        # so visibility is HTML-controlled (no `hidden` attr).
-        body = web.get("/spectrum-calculation").get_data(as_text=True)
-        assert 'id="ps-mkdir-form"' in body
-        assert 'id="ps-mkdir-input"' in body
-        assert 'id="ps-mkdir-error"' in body
-        assert 'id="ps-mkdir-cancel"' in body
-        # The + New subdir summary heading lives inside its details.
-        assert '+ New subdir</summary>' in body
+    """Retired class kept as a marker so future readers can find
+    the 2026-06-12 retirement history.  The mkdir form's role
+    moved to the + dropdown menu — see TestSidebarCreateUI."""
+    pass
 
 class TestFilesWrite:
     """POST /api/files/write covers two distinct workflows:
@@ -2074,14 +2086,13 @@ class TestSidebarStubsUI:
     is reviewable.  Markup checks here; behaviour is exercised at the
     E2E layer (deferred Playwright suite)."""
 
-    def test_upload_section_in_partial(self, web, picker_root):
+    def test_upload_menu_item_in_partial(self, web, picker_root):
+        """2026-06-12: the upload + new-folder + new-project trio
+        moved from inline foldable forms into a single + dropdown
+        menu (see TestSidebarCreateUI for the bar's anchors)."""
         body = web.get("/spectrum-calculation").get_data(as_text=True)
-        assert 'id="ps-upload-form"' in body
-        assert 'id="ps-upload-input"' in body
-        assert 'id="ps-upload-error"' in body
-        assert 'class="ps-upload-context"' in body
-        # The summary heading is the user-facing label.
-        assert '+ Upload file</summary>' in body
+        assert 'data-action="upload"' in body
+        assert "Upload file" in body
 
     def test_preview_modal_markup_full(self, web, picker_root):
         r = web.get("/spectrum-calculation")

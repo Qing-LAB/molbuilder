@@ -22,6 +22,9 @@ import {
   projects as _projectsApi,
 } from "./state.js";
 import { showPreview } from "./preview.js";
+import {
+  chooseName, chooseDestinationDir, confirmDestructive,
+} from "./dialogs.js";
 
 let elCrumb, elList, elSidebar, elLockBanner, elLockMsg, elLockCancel;
 
@@ -73,30 +76,59 @@ function _renderBreadcrumb(currentPath) {
   const projectsRoot = getProjectsRoot();
   elCrumb.innerHTML = "";
   if (!projectsRoot) return;
-  const hops = [{label: "projects", path: projectsRoot}];
+  // 2026-06-12 (breadcrumb pill upgrade):
+  //   * root chip gets a small home glyph so it reads as the tree's
+  //     anchor instead of an arbitrary path segment
+  //   * separator changes from "/" (looks like a literal path) to
+  //     "›" (reads as navigation, not a path delimiter)
+  //   * current segment is styled by CSS (.is-current) with an
+  //     accent fill so the user can find it at a glance — see the
+  //     pill-block in projects-sidebar.css.
+  const hops = [{label: "projects", path: projectsRoot, isRoot: true}];
   if (currentPath && currentPath !== projectsRoot) {
     const rel = currentPath.slice(projectsRoot.length).replace(/^\/+/, "");
     const parts = rel.split("/").filter(Boolean);
     let accum = projectsRoot;
     for (const part of parts) {
       accum = accum.replace(/\/$/, "") + "/" + part;
-      hops.push({label: part, path: accum});
+      hops.push({label: part, path: accum, isRoot: false});
     }
   }
   hops.forEach((hop, idx) => {
     if (idx > 0) {
       const sep = document.createElement("span");
       sep.className = "ps-crumb-sep";
-      sep.textContent = "/";
+      sep.textContent = "›";
+      sep.setAttribute("aria-hidden", "true");
       elCrumb.appendChild(sep);
     }
     const crumb = document.createElement("span");
-    crumb.className = "ps-crumb"
-      + (idx === hops.length - 1 ? " is-current" : "");
-    crumb.textContent = hop.label;
+    const isCurrent = idx === hops.length - 1;
+    crumb.className = "ps-crumb" + (isCurrent ? " is-current" : "");
+    if (hop.isRoot) {
+      // Tiny home glyph; aria-hidden so screen readers just hear
+      // "projects" via the textContent that follows.
+      const glyph = document.createElement("span");
+      glyph.textContent = "⌂ ";
+      glyph.setAttribute("aria-hidden", "true");
+      crumb.appendChild(glyph);
+      crumb.appendChild(document.createTextNode(hop.label));
+    } else {
+      crumb.textContent = hop.label;
+    }
     crumb.title = hop.path;
-    if (idx < hops.length - 1) {
+    if (!isCurrent) {
       crumb.addEventListener("click", () => openDir(hop.path));
+      crumb.setAttribute("role", "link");
+      crumb.setAttribute("tabindex", "0");
+      crumb.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openDir(hop.path);
+        }
+      });
+    } else {
+      crumb.setAttribute("aria-current", "location");
     }
     elCrumb.appendChild(crumb);
   });
@@ -160,6 +192,218 @@ function _renderSelectionStatus(filename, fullPath) {
   }
 }
 
+// ─── Per-entry kebab menu (2026-06-12) ─────────────────────────────── //
+//
+// Replaces the prior pair of inline ``view`` + ``×`` buttons with a
+// single ⋯ trigger that drops a small per-entry context menu.  The
+// menu is built lazily on first click to keep the entry-list render
+// cheap; menus auto-dismiss on outside click + ESC + scroll.  Only
+// one menu is open at a time (the global ``_kebabActive`` reference
+// tears down a prior menu before showing a new one).
+
+let _kebabActive = null;
+
+function _dismissKebab() {
+  if (!_kebabActive) return;
+  const { menu, trigger } = _kebabActive;
+  _kebabActive = null;
+  try { menu.remove(); } catch (_) {}
+  if (trigger) trigger.setAttribute("aria-expanded", "false");
+}
+
+document.addEventListener("click", (ev) => {
+  if (!_kebabActive) return;
+  if (_kebabActive.menu.contains(ev.target)) return;
+  if (_kebabActive.trigger.contains(ev.target)) return;
+  _dismissKebab();
+}, true);
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && _kebabActive) {
+    const t = _kebabActive.trigger;
+    _dismissKebab();
+    try { t.focus(); } catch (_) {}
+  }
+});
+window.addEventListener("scroll", _dismissKebab, true);
+
+function _buildEntryKebab(entry, fullPath, currentPath) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "ps-entry-action ps-entry-kebab";
+  btn.textContent = "⋯";
+  btn.title = "Actions for " + entry.name;
+  btn.setAttribute("aria-haspopup", "menu");
+  btn.setAttribute("aria-expanded", "false");
+  btn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    if (_kebabActive && _kebabActive.trigger === btn) {
+      _dismissKebab();
+      return;
+    }
+    _dismissKebab();
+    _openKebab(btn, entry, fullPath, currentPath);
+  });
+  return btn;
+}
+
+function _openKebab(trigger, entry, fullPath, currentPath) {
+  const menu = document.createElement("div");
+  menu.className = "ps-entry-menu";
+  menu.setAttribute("role", "menu");
+
+  function _addItem(label, onClick, opts) {
+    opts = opts || {};
+    const it = document.createElement("button");
+    it.type = "button";
+    it.className = "ps-entry-menu-item"
+                 + (opts.destructive ? " is-destructive" : "");
+    it.setAttribute("role", "menuitem");
+    it.textContent = label;
+    it.addEventListener("click", async (ev) => {
+      ev.stopPropagation();
+      _dismissKebab();
+      try { await onClick(); }
+      catch (e) {
+        // Don't let an action throw kill the whole sidebar.
+        if (window.console) window.console.error(
+          "[sidebar kebab] action threw:", e);
+        window.alert(
+          "Action failed: "
+          + (e && e.message ? e.message : String(e)));
+      }
+    });
+    menu.appendChild(it);
+  }
+
+  // View: file-only.
+  if (entry.kind === "file") {
+    _addItem("View", () => {
+      setShared(currentPath, fullPath);
+      showPreview();
+    });
+  }
+  // Rename: any entry that isn't a canonical-topic dir at depth 1
+  // or projects/ itself (mirrors _isDeletableEntry's protection).
+  if (_isDeletableEntry(entry, currentPath)) {
+    _addItem("Rename…", async () => {
+      const newName = await chooseName({
+        title:        "Rename " + entry.name,
+        label:        "New name",
+        initial:      entry.name,
+        hint:         entry.kind === "file" && /\.(xyz|pdb)$/i.test(entry.name)
+                       ? "If a paired .molstruct.json sidecar exists, "
+                         + "it will rename together."
+                       : "",
+        confirmLabel: "Rename",
+      });
+      if (!newName || newName === entry.name) return;
+      const r = await _projectsApi.rename(fullPath, newName);
+      if (r && r.aborted) return;
+      if (!r || !r.ok) {
+        window.alert((r && r.error) || "Rename failed.");
+      }
+    });
+  }
+  // Move + Copy: files only in v1 (matches the backend's directory
+  // refusal).  Move uses the same deletable-eligibility check as
+  // rename (canonical-topic dirs stay put).
+  if (entry.kind === "file") {
+    _addItem("Move to…", async () => {
+      const dest = await chooseDestinationDir({
+        title:        "Move " + entry.name + " to…",
+        srcPath:      fullPath,
+        confirmLabel: "Move",
+      });
+      if (!dest) return;
+      const r = await _projectsApi.move(fullPath, dest);
+      if (r && r.aborted) return;
+      if (!r || !r.ok) {
+        window.alert((r && r.error) || "Move failed.");
+      }
+    });
+    _addItem("Copy to…", async () => {
+      const dest = await chooseDestinationDir({
+        title:        "Copy " + entry.name + " to…",
+        srcPath:      fullPath,
+        confirmLabel: "Copy",
+      });
+      if (!dest) return;
+      // Same-dir copy needs a new name.  Ask if user picked the
+      // file's own parent.
+      const parent = fullPath.replace(/\/[^/]+$/, "");
+      let newName = null;
+      if (dest === parent) {
+        newName = await chooseName({
+          title:        "Copy " + entry.name,
+          label:        "Name for the copy",
+          initial:      _suggestCopyName(entry.name),
+          hint:         "Same directory: pick a different name.",
+          confirmLabel: "Copy",
+        });
+        if (!newName) return;
+      }
+      const r = await _projectsApi.copy(fullPath, dest,
+        newName ? { newName } : undefined);
+      if (r && r.aborted) return;
+      if (!r || !r.ok) {
+        window.alert((r && r.error) || "Copy failed.");
+      }
+    });
+  }
+  // Delete: eligibility-gated as before.
+  if (_isDeletableEntry(entry, currentPath)) {
+    _addItem("Delete", async () => {
+      const ok = await confirmDestructive({
+        title:         "Delete " + (entry.kind === "directory"
+                                    ? "directory" : "file"),
+        body:          `Delete '${entry.name}'?  This cannot be `
+                       + "undone.",
+        confirmLabel:  "Delete",
+      });
+      if (!ok) return;
+      const r = await apiDelete(fullPath,
+        entry.kind === "directory");
+      if (r && r.aborted) return;
+      if (!r || !r.ok) {
+        window.alert((r && r.error) || "Delete failed.");
+      } else if (elList) {
+        // Reuse the openDir refresh path so the entry list re-paints.
+        await openDir(currentPath);
+      }
+    }, { destructive: true });
+  }
+
+  // Position the menu next to the trigger.  Default to anchor below;
+  // flip above when there's no room.
+  document.body.appendChild(menu);
+  const tRect = trigger.getBoundingClientRect();
+  const mRect = menu.getBoundingClientRect();
+  let top = tRect.bottom + 4;
+  if (top + mRect.height > window.innerHeight - 8) {
+    top = Math.max(8, tRect.top - mRect.height - 4);
+  }
+  let left = tRect.right - mRect.width;
+  if (left < 8) left = tRect.left;
+  menu.style.position = "fixed";
+  menu.style.top  = top + "px";
+  menu.style.left = left + "px";
+
+  trigger.setAttribute("aria-expanded", "true");
+  _kebabActive = { menu, trigger };
+
+  // Focus the first item for keyboard nav.
+  const first = menu.querySelector(".ps-entry-menu-item");
+  if (first) try { first.focus(); } catch (_) {}
+}
+
+function _suggestCopyName(name) {
+  // Insert " copy" before the extension.  ``water.xyz`` ->
+  // ``water copy.xyz``; bare names get a trailing ``" copy"``.
+  const dot = name.lastIndexOf(".");
+  if (dot <= 0) return name + " copy";
+  return name.slice(0, dot) + " copy" + name.slice(dot);
+}
+
 async function _confirmAndDelete(fullPath, entry) {
   const what = entry.kind === "directory" ? "directory" : "file";
   if (!window.confirm(
@@ -217,38 +461,15 @@ function _renderList(entries, currentPath) {
       li.appendChild(meta);
     }
 
-    // Per-entry hover buttons: preview (file-only) + delete (eligibility-gated).
-    // Order: preview-first / delete-last so destructive lives on the far right.
-    if (e.kind === "file") {
-      const view = document.createElement("button");
-      view.type = "button";
-      view.className = "ps-entry-action ps-entry-preview";
-      view.textContent = "view";
-      view.title = "Preview " + e.name;
-      view.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        // 2026-05-31 #166: setShared fires the renderSidebar
-        // onChange subscriber synchronously, which marks the
-        // entry + renders the selection-status line.  No inline
-        // DOM mutation here.
-        setShared(currentPath, fullPath);
-        showPreview();
-      });
-      li.appendChild(view);
-    }
-
-    if (_isDeletableEntry(e, currentPath)) {
-      const del = document.createElement("button");
-      del.type = "button";
-      del.className = "ps-entry-action ps-entry-delete";
-      del.textContent = "×";
-      del.title = "Delete " + e.name;
-      del.addEventListener("click", (ev) => {
-        ev.stopPropagation();
-        _confirmAndDelete(fullPath, e);
-      });
-      li.appendChild(del);
-    }
+    // 2026-06-12: per-entry kebab menu.  Replaces the prior pair of
+    // inline "view" + "×" buttons with a single ⋯ trigger that
+    // drops a context menu (View / Rename / Move / Copy / Delete).
+    // Each item runs the same eligibility checks the inline buttons
+    // had; ineligible items are omitted from the menu rather than
+    // shown disabled (avoids confusing the user with greyed-out
+    // options that wouldn't work).
+    const kebab = _buildEntryKebab(e, fullPath, currentPath);
+    li.appendChild(kebab);
 
     li.addEventListener("click", () => {
       if (e.kind === "directory") {
