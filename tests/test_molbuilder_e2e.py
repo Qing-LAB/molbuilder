@@ -637,6 +637,106 @@ def test_sidebar_collapse_state_survives_reload(page, flask_server):
     ), "collapsed state should restore from sessionStorage on reload"
 
 
+def test_kebab_view_renders_file_content_visibly(
+        page, flask_server, tmp_path, monkeypatch):
+    """2026-06-12 regression: clicking a file entry's ⋯ kebab → View
+    must mount CodeMirror INSIDE a non-zero-height slot so the file
+    content is visible.
+
+    Background: after the f118818 CodeMirror sizing fix, the editor
+    uses ``position: absolute; inset: 0`` ("Fill the screen" recipe
+    from the CodeMirror manual).  That decouples the editor from
+    its parent's intrinsic content sizing.  Combined with the
+    ``.ps-preview-window`` having ``max-height: 80vh`` but no
+    explicit ``height``, the modal collapsed to the sum of its
+    non-flexing children (~123px); ``.ps-preview-cmview`` (``flex:
+    1 1 auto; min-height: 0``) then shrank to 0px and the editor's
+    ``inset: 0`` resolved to a zero-area box.  Symptom: modal opens
+    showing only the title + filename; the editor area is empty
+    and the user has no signal anything is wrong.
+
+    The fix sets ``height: 80vh`` on ``.ps-preview-window`` so the
+    modal always fills 80vh of the viewport.
+
+    Why prior e2e tests for the kebab + View flow missed it: they
+    asserted ``cm.getValue().includes(...)`` — the editor's DATA
+    model — instead of ``getBoundingClientRect`` on the rendered
+    slot.  A 0px viewport happily passes the data check.  This
+    test pins the rendered-slot height so any future CSS regression
+    on the modal layout fails loudly.
+    """
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    proj = tmp_path / "proj" / "structure"
+    proj.mkdir(parents=True)
+    # Use a moderately-sized file that resembles real fdf/log
+    # content so a future "small-files-only-pass" regression
+    # doesn't silently slip past.
+    content = "\n".join(
+        f"line {i:04d} some scientific content here"
+        for i in range(200)
+    ) + "\n"
+    target = proj / "input.fdf"
+    target.write_text(content)
+
+    _open_modify(page, flask_server)
+    page.evaluate(
+        "(p) => window.molbuilder.projects.navigateTo(p)", str(proj)
+    )
+    page.wait_for_selector('.ps-entry[data-path$="input.fdf"]',
+                           timeout=5000)
+
+    # Open kebab + click View.
+    entry = page.locator('.ps-entry[data-path$="input.fdf"]').first
+    entry.hover()
+    entry.locator('.ps-entry-kebab').first.click(force=True)
+    page.wait_for_selector('.ps-entry-menu .ps-entry-menu-item',
+                           timeout=2000)
+    page.locator('.ps-entry-menu .ps-entry-menu-item',
+                 has_text="View").first.click()
+    page.wait_for_selector('#ps-preview-modal:not([hidden])',
+                           timeout=3000)
+
+    # Wait for content to land in CodeMirror (the data check).
+    page.wait_for_function(
+        "() => {"
+        "  const m = document.getElementById('ps-preview-modal');"
+        "  const cm = m && m.__molbuilder_test_cm;"
+        "  return cm && cm.getValue && cm.getValue().includes('line 0100');"
+        "}",
+        timeout=10000,
+    )
+
+    # The REGRESSION assertion: editor's slot must be visibly tall.
+    # Pre-fix this was 0px; post-fix it should be most of the modal
+    # window (80vh minus the header / meta / footer chrome).
+    cmview_rect = page.evaluate(
+        "() => document.getElementById('ps-preview-cmview')"
+        "        .getBoundingClientRect()"
+    )
+    assert cmview_rect["height"] > 200, (
+        f"editor area collapsed to {cmview_rect['height']:.1f}px; "
+        f"content is in CodeMirror's data model but the viewport is "
+        f"empty — see the docstring for the f118818-era root cause."
+    )
+    assert cmview_rect["width"] > 200, (
+        f"editor area width collapsed to {cmview_rect['width']:.1f}px"
+    )
+
+    # Belt + braces: the on-screen ``.CodeMirror`` element itself
+    # (the actual painted editor) must also have non-zero area.
+    # cmview having height doesn't help if the .CodeMirror child's
+    # ``inset: 0`` somehow still resolves to 0 (a future regression
+    # could break the position:relative/absolute pair).
+    cm_rect = page.evaluate(
+        "() => document.querySelector("
+        "  '#ps-preview-cmview .CodeMirror'"
+        ").getBoundingClientRect()"
+    )
+    assert cm_rect["height"] > 200, (
+        f"CodeMirror element collapsed to {cm_rect['height']:.1f}px"
+    )
+
+
 def test_dblclick_in_sidebar_commits_the_file(
         page, flask_server, water_xyz_file):
     """Per the universal sidebar interaction model: a single click
