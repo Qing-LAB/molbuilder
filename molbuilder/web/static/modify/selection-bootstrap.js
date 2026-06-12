@@ -416,7 +416,19 @@
             return;
         }
         runtime.whenReady("modify.handle").then((h) => {
-            adapterModule.attach(h);
+            const adapterHandle = adapterModule.attach(h);
+            // 2026-06-12: expose the attached adapter so the
+            // selection panel's "Show selected only" checkbox can
+            // toggle isolate mode without reaching into the
+            // bootstrap's local scope.  Module-init contract:
+            // register so panel code can ``whenReady("selection
+            // .viewerAdapter.handle")``.
+            window.molbuilder.selection = window.molbuilder.selection || {};
+            window.molbuilder.selection.viewerAdapterHandle = adapterHandle;
+            if (runtime && typeof runtime.register === "function") {
+                runtime.register(
+                    "selection.viewerAdapter.handle", adapterHandle);
+            }
         });
     }
 

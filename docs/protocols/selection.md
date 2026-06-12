@@ -14,9 +14,10 @@
   * `static/lib/projects-sidebar.js`     -- entry point (imports + bootstrap)
   * `static/lib/projects/api.js`         -- HTTP wrappers (no DOM, no state)
   * `static/lib/projects/state.js`       -- sessionStorage + Inquire API + writeFile/saveToWorkspace
-  * `static/lib/projects/list.js`        -- breadcrumb + entry list + per-entry buttons + openDir
-  * `static/lib/projects/forms.js`       -- + New project / + New subdir / + Upload file
-  * `static/lib/projects/preview.js`     -- file-preview modal
+  * `static/lib/projects/list.js`        -- breadcrumb + entry list + per-entry ⋯ kebab menu + openDir
+  * `static/lib/projects/forms.js`       -- header action bar (New project / New folder / Upload buttons)
+  * `static/lib/projects/dialogs.js`     -- modal dialogs (rename, move/copy dest picker, upload, confirm)
+  * `static/lib/projects/preview.js`     -- file-preview modal (CodeMirror 5; Find + Download; view-only above 1 MB)
 
 Loaded via `<script type="module">` -- no bundler.  Template:
 `molbuilder/web/templates/_projects_sidebar.html`.  Backend:
@@ -135,7 +136,7 @@ Reference implementations in:
 | Click a directory entry | Drills in: displays that dir's children | `current_dir` = new dir; `current_file` = "" |
 | Click a file entry | Marks it selected (visual highlight) | `current_dir` = file's parent; `current_file` = file's abs path |
 | Click a breadcrumb segment | Jumps to that ancestor dir | Same as "click a directory" |
-| Click `+ New subdir`, submit form with valid name | Creates the dir via `POST /api/files/mkdir` and navigates into it | `current_dir` = new subdir; `current_file` = "" |
+| Click `New folder`, submit form with valid name | Creates the dir via `POST /api/files/mkdir` and navigates into it | `current_dir` = new subdir; `current_file` = "" |
 
 The sidebar never:
 
@@ -190,7 +191,7 @@ regex is the only constraint -- arbitrary subdir names are accepted.
 The sidebar exposes two foldable creation sections.  The order is
 fixed (project first, subdir second) and visibility is depth-aware:
 
-| User is at | `+ New project` | `+ New subdir` |
+| User is at | `New project` | `New folder` |
 |---|---|---|
 | `projects/` (depth 0) | visible | **hidden** -- keeps the root clean; only project dirs live there |
 | depth 1+ | visible (always; you can start a new project from anywhere) | visible |
@@ -200,7 +201,7 @@ The visibility toggle is driven by `projects-sidebar.js`'s
 
 ### Project bootstrap output
 
-`POST /api/projects/create` (the `+ New project` flow) writes:
+`POST /api/projects/create` (the `New project` flow) writes:
 
 ```
 projects/<name>/
@@ -231,7 +232,7 @@ partial-failure rolls the project dir back via ``shutil.rmtree``.
 
 Strict conflict semantics: the project dir must NOT already exist.
 409 is returned with a clear message ("project 'foo' already exists
-at /.../projects/foo.  Pick a different name; use '+ New subdir'
+at /.../projects/foo.  Pick a different name; use 'New folder'
 from inside the existing project to add to it.")
 
 ## 7. Why this design
@@ -240,7 +241,7 @@ from inside the existing project to add to it.")
 |---|---|
 | Pull (Inquire) not push | Sidebar stays content-agnostic. Adding a new tab doesn't touch the sidebar. Each tab independently testable. Mirrors JupyterLab / VS Code where the file tree is pure navigation; actions live in the editors. |
 | One cursor pair | Covers every v1 use case (load existing, set workspace, browse, derive-from). Multi-slot (`input_structure`, `compare_file`, ...) is a future extension if a multi-input workflow earns it. |
-| File-manipulation buttons in sidebar | These operate **on the projects tree itself**, not on tab state.  `+ New subdir` belongs with the file browser; "Load this Spectra file" doesn't. |
+| File-manipulation buttons in sidebar | These operate **on the projects tree itself**, not on tab state.  `New folder` belongs with the file browser; "Load this Spectra file" doesn't. |
 | Single `projects/` root | `projects/` is molbuilder's source of truth for run state. Files outside (laptop downloads) must be moved/copied in; the explorer scope mirrors molbuilder's scope. |
 | No auto-load on tab arrival | An auto-load races the user's clicks (they might be about to paste, or open a different file).  Explicit "Load from current selection" is one click; the user owns when it fires. |
 

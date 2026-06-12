@@ -1192,28 +1192,32 @@ be reachable from a known state mutation; no state may appear
 | **Locked** | A pipeline holds the lock | Sidebar contents faded + non-interactive; banner with reason + Cancel |
 | **No project root** | Init's `apiRoots` returned empty | List replaced with a "no roots configured" message; lock UI still functional |
 | **Preview open** | User clicked preview on a file | Modal over the page; closes on ESC / backdrop / button |
-| **Create menu open** | User clicked "+" in the header | Dropdown menu floats below the button; one of three actions opens a modal dialog |
-| **Kebab menu open** | User clicked ⋯ on an entry row | Per-entry action menu (View / Rename / Move / Copy / Delete); auto-dismisses on outside click + ESC + scroll |
+| **Kebab menu open** | User clicked ⋯ on an entry row | Per-entry action menu (View / Download / Rename / Move / Copy / Delete); auto-dismisses on outside click + ESC + scroll |
 | **Dialog open** | Any mutation modal active | <dialog> overlays page; primary input focused; ESC / Cancel resolve as null; only one dialog at a time |
 | **Dialog error** | Validation or backend rejection | Inline error in dialog; form keeps current value for retry |
 | **Resizing** | User dragging the right-edge handle | `--ps-w` updates live; body cursor:ew-resize; release persists to localStorage |
 
 ---
 
-## 10.1 Mutation UX (2026-06-12)
+## 10.1 Mutation UX (2026-06-12, v2)
 
 The sidebar's mutation surface is **buttons + modal dialogs**, not
 inline forms.  Two trigger points:
 
-* **Header "+" button** — single anchor at the top of the sidebar
-  (replaces the three pre-2026-06-12 foldable `<details>` sections).
-  Drops a vertical menu with three actions:
+* **Header action bar** — three SEPARATE buttons at the top of the
+  sidebar (revised 2026-06-12; the earlier v1 single "+" dropdown
+  was replaced because users couldn't see at a glance what actions
+  were available).  Each click opens its modal dialog directly:
 
-  | Item | Action | Disabled when |
+  | Button | Action | Disabled when |
   |---|---|---|
-  | New project | Modal for project name; backend bootstraps the canonical-topic tree | never |
-  | New folder | Modal for folder name in current dir | at the `projects/` root |
-  | Upload file | Modal with `<input type="file">` + Upload button | at the `projects/` root |
+  | 🗂 New project | Modal for project name; backend bootstraps the canonical-topic tree | never |
+  | 📁 New folder | Modal for folder name in current dir | at the `projects/` root |
+  | ⬆ Upload | Modal with `<input type="file">` + Upload button | at the `projects/` root |
+
+  Icons sit above stacked text labels so the row stays compact at
+  narrow widths.  Stable anchor ids: `#ps-create-project-btn`,
+  `#ps-create-folder-btn`, `#ps-create-upload-btn`.
 
 * **Per-entry "⋯" kebab** — a button on the right edge of each
   entry row.  Drops a contextual menu whose items are
@@ -1223,6 +1227,7 @@ inline forms.  Two trigger points:
   | Item | Available for | Result |
   |---|---|---|
   | View | files only | Sets `setShared(dir, file)` + opens the preview modal |
+  | Download | files only | Streams the file via `GET /api/files/download` (`Content-Disposition: attachment`); works for any kind (text, binary, multi-MB) |
   | Rename… | anything `_isDeletableEntry` allows | Modal for new name; sidecar-pair on .xyz/.pdb |
   | Move to… | files only | Tree-picker for destination dir; sidecar-paired |
   | Copy to… | files only | Tree-picker; same-dir copy prompts for a new name |
@@ -1270,7 +1275,27 @@ collapsed or running in narrow-viewport drawer mode.
 
 ---
 
-## 10.3 Breadcrumb (2026-06-12 pill upgrade)
+## 10.3 Preview modal (2026-06-12 polish)
+
+The kebab "View" action opens a CodeMirror 5 modal anchored to
+`#ps-preview-modal`.  Footer carries five buttons in this order:
+**Find… · Edit · Save · Close** (Find sits leftmost — discoverable
+entry point for the vendored CM search addons that were always
+loaded but previously only reachable via Ctrl-F).
+
+| Concern | Behavior | Implementation |
+|---|---|---|
+| Modal size | Fills 80 vh (always); `height: 80vh` on `.ps-preview-window` so the flex column has a definite slot for the absolutely-positioned CM editor to fill | CSS in `projects-sidebar.css`; pinned by `test_kebab_view_renders_file_content_visibly` |
+| Find | "Find…" button in footer → `_cm.execCommand("find")`.  Same command Ctrl-F binds to; tooltip lists the hotkey set | `preview.js::openFind` |
+| Ctrl-A / Cmd-A | Disabled (no-op) via `extraKeys` | Avoids a 225 s freeze on multi-MB docs in CM5's keymap-triggered selectAll path |
+| Selection cap | Any selection (mouse-drag, programmatic, shift-arrow) is clamped to `MAX_SELECTION_LINES = 1500` (~100 KB at typical line widths) via `beforeSelectionChange` | Line-based for O(1) cost per drag tick |
+| Selection contrast | `.CodeMirror-selected` background bumped to rgba(74,158,255,0.55) / 0.65 focused so the highlight reads against the dark canvas | CSS |
+| View-only threshold | Files > 1 MB load view-only — Edit button disabled.  The `is-view-only` class is reserved for future view-only CSS cues (no rule today) | `preview.js::_loadBulk` + `_loadPaginated` set `_state.editable = body.size <= VIEW_ONLY_BYTES` |
+| Whole-file capture | Kebab menu's **Download** item bypasses the editor entirely; streams via `GET /api/files/download` | No size cap, no UTF-8 cap |
+
+---
+
+## 10.4 Breadcrumb (2026-06-12 pill upgrade)
 
 Each path segment renders as a pill-shaped chip with a `›`
 separator between segments.  The root chip carries a small ⌂

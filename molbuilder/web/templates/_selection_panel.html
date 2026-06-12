@@ -145,11 +145,31 @@
   <hr class="selection-divider">
 
   <div class="selection-actions selection-actions-row">
-    <button type="button" id="selection-clear-btn"
-            class="selection-clear-btn"
-            title="Clear the current selection.">
-      Clear selection
-    </button>
+    <div class="selection-actions-left">
+      <button type="button" id="selection-clear-btn"
+              class="selection-clear-btn"
+              title="Clear the current selection.">
+        Clear
+      </button>
+      {#- 2026-06-12: invert the selection — selected ↔ unselected.
+          Uses the store's ``invertSelection`` mutator (same as
+          Ctrl-I in many editors). -#}
+      <button type="button" id="selection-invert-btn"
+              class="selection-clear-btn"
+              title="Invert the selection: every currently-selected atom becomes unselected, every unselected atom becomes selected.">
+        Invert
+      </button>
+    </div>
+    {#- 2026-06-12: hide non-selected atoms in the 3D viewer so the
+        currently-selected atoms are visible without obstruction.
+        Auto-disables when the selection becomes empty (no point
+        isolating nothing).  See lib/selection/viewer-adapter.js for
+        the overlay-side wiring. -#}
+    <label class="selection-isolate-toggle"
+           title="Hide unselected atoms in the viewer so the current selection is clearly visible.">
+      <input type="checkbox" id="selection-isolate-checkbox">
+      <span>Show selected only</span>
+    </label>
   </div>
 
   <!-- Bulk label operations on the current selection.  Three verbs

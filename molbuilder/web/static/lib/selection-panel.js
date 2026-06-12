@@ -91,6 +91,8 @@
             addFilterBtn:    $("selection-add-filter"),
             applyFilterBtn:  $("selection-apply-filter"),
             clearBtn:        $("selection-clear-btn"),
+            invertBtn:       $("selection-invert-btn"),
+            isolateChk:      $("selection-isolate-checkbox"),
             count:           $("selection-count"),
             loading:         $("selection-loading"),
             atomList:        $("selection-atom-list"),
@@ -815,6 +817,29 @@
         });
         on(els.applyFilterBtn,  "click",  () => store.applyFilter());
         on(els.clearBtn,        "click",  () => store.clear());
+        // 2026-06-12: Invert flips selected ↔ unselected.  The
+        // store exposes ``invert`` (via ws.selection) which calls
+        // the underlying ``invertSelection`` mutator.
+        on(els.invertBtn, "click", () => {
+            if (typeof store.invert === "function") store.invert();
+            else if (typeof store.invertSelection === "function") {
+                store.invertSelection();
+            }
+        });
+        // 2026-06-12: "Show selected only" toggle.  Routes through
+        // the viewer-adapter handle that selection-bootstrap exposes
+        // on window.molbuilder.selection.viewerAdapterHandle.  The
+        // adapter does the actual setOverlays with opacity:0 for
+        // non-selected atoms; the checkbox just flips the mode flag
+        // and triggers a re-render.
+        on(els.isolateChk, "change", (e) => {
+            const adapter = root.molbuilder
+                && root.molbuilder.selection
+                && root.molbuilder.selection.viewerAdapterHandle;
+            if (adapter && typeof adapter.setIsolateMode === "function") {
+                adapter.setIsolateMode(!!e.target.checked);
+            }
+        });
         on(els.assignTgt,       "change", renderAssignVisibility);
         on(els.assignBtn,       "click",  onAssign);
         on(els.addBtn,          "click",  onAddToTarget);

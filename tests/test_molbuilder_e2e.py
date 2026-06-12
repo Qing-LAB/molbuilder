@@ -819,6 +819,43 @@ def test_kebab_view_selection_capped_at_max_lines(
     )
 
 
+def test_show_selected_only_toggle_wires_isolate_mode(
+        page, flask_server, water_xyz_file):
+    """2026-06-12: the "Show selected only" checkbox in the
+    selection panel must call into the viewer-adapter's isolate
+    mode so non-selected atoms render with opacity 0 and the
+    selected atoms read clearly.
+
+    The actual setOverlays + 3Dmol setStyle is exercised end-to-
+    end by the viewer-adapter unit tests; this e2e pins the panel
+    checkbox → adapter handle path so a future rename / re-export
+    fails loudly here.
+    """
+    _open_modify(page, flask_server)
+    _load_water(page, water_xyz_file)
+    page.wait_for_function(
+        "() => window.molbuilder.selection"
+        "     && window.molbuilder.selection.viewerAdapterHandle"
+    )
+    # Initially off.
+    assert page.evaluate(
+        "() => window.molbuilder.selection"
+        "       .viewerAdapterHandle.getIsolateMode()"
+    ) is False
+    # Toggle on.
+    page.locator("#selection-isolate-checkbox").check()
+    page.wait_for_function(
+        "() => window.molbuilder.selection"
+        "       .viewerAdapterHandle.getIsolateMode() === true"
+    )
+    # Toggle off.
+    page.locator("#selection-isolate-checkbox").uncheck()
+    page.wait_for_function(
+        "() => window.molbuilder.selection"
+        "       .viewerAdapterHandle.getIsolateMode() === false"
+    )
+
+
 def test_kebab_view_ctrl_a_is_disabled(
         page, flask_server, tmp_path, monkeypatch):
     """2026-06-12: Ctrl-A / Cmd-A inside the preview editor is

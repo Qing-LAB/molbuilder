@@ -384,7 +384,36 @@
 }
 
 .selection-actions-row {
-    justify-content: flex-end;
+    justify-content: space-between;   /* left group, isolate-toggle on right */
+    align-items: center;
+    flex-wrap: wrap;
+    row-gap: 0.4rem;
+}
+.selection-actions-left {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+/* 2026-06-12: "Show selected only" toggle — hides non-selected
+ * atoms in the 3D viewer via opacity:0 overlays.  Aligned to the
+ * Clear button's baseline; the inline checkbox + label form a
+ * single click target. */
+.selection-isolate-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font: 12px/1.2 system-ui, sans-serif;
+    color: #bbb;
+    cursor: pointer;
+    user-select: none;
+}
+.selection-isolate-toggle input[type="checkbox"] {
+    accent-color: #ffd54a;
+    cursor: pointer;
+}
+.selection-isolate-toggle:hover {
+    color: #fff;
 }
 
 /* Shared base for every action button (Clear, Assign, Add, Remove,

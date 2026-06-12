@@ -20,7 +20,7 @@ file-selection model).  This doc covers **atom selection**.
 |---|---|---|---|
 | `lib/selection/store.js` | L1 | Singleton state + HTTP wiring + rule translation | `subscribe`, `getState`, mutators |
 | `lib/selection-panel.js` | L2 | DOM only — subscribes to store, renders, calls mutators on user input | `mount(rootEl) → {dispose}` |
-| `lib/selection/viewer-adapter.js` | L2 | 3Dmol overlay only — subscribes to store, paints region tints + halo, forwards viewer clicks to `store.toggleAtom` | `attach(viewer) → {dispose}` |
+| `lib/selection/viewer-adapter.js` | L2 | 3Dmol overlay only — subscribes to store, paints region tints + halo, forwards viewer clicks to `store.toggleAtom`, optionally hides non-selected atoms (isolate mode) | `attach(viewer) → {dispose, setIsolateMode(bool), getIsolateMode()}` |
 | `<page>/selection-bootstrap.js` | L3 | Page glue — fetches partial, mounts panel + adapter, wires sidebar `onChange → store.setSourceFile` | (none; runs on DOMContentLoaded) |
 
 **Cross-module talk happens ONLY through the store.**  The panel and
@@ -75,6 +75,26 @@ grammar (`Or` / `And` of `ByElement` / `ByIndexRange` / `ByRegion`)
 at HTTP time.  Filters in the UI never expose `Not` / `Minus` /
 `FirstN` — those rule kinds are reserved for programmatic /
 sidecar-saved expressions.
+
+#### `by_label` and the "frozen" tag (2026-06-12)
+
+The "By label" dropdown is sourced from `knownLabels(state)`, which
+collects every label currently on at least one atom AND adds the
+`FROZEN_TAG_LABEL` (`"frozen"`) when any atom carries `isFrozen`.
+The "frozen" tag is rendered separately in atom rows (from the
+`isFrozen` flag, not from `atom.labels[]`) so it would otherwise be
+invisible to the filter UI.
+
+When the user picks "frozen", the dropdown's `<option value>` is
+the canonical server-side target name `frozen_atoms`, not the
+display string.  Server-side, `selection.py::_expose_frozen_as_
+region(struct)` adds a synthetic `frozen_atoms` entry to
+`struct.regions` so the standard `ByRegion` rule resolves to the
+frozen-atom set.  The synthetic region is added ONLY in
+`/api/selection/eval` + `/api/selection/toggle` (the rule-
+resolution paths) — it does NOT appear in `/api/selection/atoms`'s
+per-atom regions response (which would double-render frozen atoms)
+and does NOT get written to the sidecar on save.
 
 ### `State` (the whole store)
 
@@ -378,6 +398,29 @@ Mutators don't throw user-facing errors — they catch HTTP failures
 and set `state.error` to the message.  Subscribers render the error
 inline.  The promise returned by a mutator resolves on completion
 regardless of success (check `state.error` to detect failure).
+
+### Show-selected-only / isolate mode (2026-06-12)
+
+The viewer-adapter exposes `setIsolateMode(bool)` /
+`getIsolateMode()` on its `attach(viewer)` return.  The selection
+panel's `Show selected only` checkbox (`#selection-isolate-checkbox`)
+toggles it.  When ON AND the selection is non-empty, the adapter
+prepends a style overlay that targets non-selected atoms with
+`opacity: 0` so the surviving selected atoms read clearly against
+an empty background.  When OFF (or the selection is empty), the
+overlay set is the normal region-tint + frozen-marker + selection-
+halo stack.
+
+The selection-bootstrap exposes the attached adapter handle as
+`window.molbuilder.selection.viewerAdapterHandle` (also registered
+in the runtime as `selection.viewerAdapter.handle`) so panel code
+can drive it without a circular dependency on the bootstrap's
+local scope.
+
+The mode is *visual only* — `store.atoms` and selection state are
+unchanged.  Picking, measurement readouts, and Assign / +Add /
+−Remove operations still target the full atom list; isolate mode
+just hides the irrelevant atoms in 3D.
 
 ## 5. Dependency diagram
 

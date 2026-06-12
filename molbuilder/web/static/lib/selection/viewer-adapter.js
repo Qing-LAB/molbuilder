@@ -135,8 +135,77 @@
         // largest radius -> the "live" set reads above the frozen +
         // region halos at every overlap).
 
+        // 2026-06-12: "Show selected only" mode.  When true AND the
+        // selection is non-empty, the overlay set prepends an entry
+        // that styles non-selected atoms with ``opacity: 0`` (3Dmol
+        // has no native ``hidden`` flag, but a zero-opacity stylespec
+        // visually hides them while keeping the model coherent for
+        // picking + measurements).  Selection halos draw on top in
+        // the existing order so the surviving atoms are obvious.
+        let isolateMode = false;
+        function setIsolateMode(on) {
+            const next = !!on;
+            if (next === isolateMode) return;
+            isolateMode = next;
+            // Re-render against the current store snapshot — the
+            // overlay set depends on isolateMode.
+            try { render(store.getState()); } catch (_) {}
+        }
+        function getIsolateMode() { return isolateMode; }
+
         function render(s) {
             const atoms = [];
+
+            // 2026-06-12: isolate mode setup.
+            //
+            // When isolating, two things have to happen together:
+            //   (a) non-selected atoms become invisible — ``style:
+            //       {opacity: 0}`` overlay applied to the rep style
+            //       so the underlying spheres + sticks paint
+            //       transparent.
+            //   (b) halo entries (region tints, frozen markers,
+            //       selection halo) skip non-selected atoms — halos
+            //       draw as separate 3Dmol shapes that are NOT gated
+            //       by the rep-style opacity, so without this filter
+            //       a hidden atom would still show its region halo
+            //       and the user wouldn't actually see "only the
+            //       selected" — they'd see "only the selected
+            //       solid atoms plus a forest of halo ghosts".
+            const selSet = new Set(
+                Array.isArray(s.indices) ? s.indices : []);
+            const isolating = isolateMode && selSet.size > 0;
+
+            function maybeFilter(indices) {
+                if (!isolating) return indices;
+                return indices.filter((i) => selSet.has(i));
+            }
+
+            // 0. Isolate mode: hide non-selected atoms.  Pushed FIRST
+            //    so subsequent overlay entries (region tints, frozen
+            //    markers, selection halo) override its opacity:0 for
+            //    the atoms that should be visible.  3Dmol's setStyle
+            //    is last-write-wins; the iteration order in
+            //    ``_redrawOverlayStyles`` matches array order here.
+            if (isolating) {
+                const hidden = [];
+                for (const a of (s.atoms || [])) {
+                    if (!selSet.has(a.index)) hidden.push(a.index);
+                }
+                if (hidden.length) {
+                    atoms.push({
+                        indices: hidden,
+                        // Set the rep explicitly so molstyle.spec()
+                        // builds the right baseSpec — without ``rep``
+                        // the overlay reader uses the current global
+                        // rep, but a future change to molstyle's
+                        // default chain could leave the opacity bound
+                        // to a rep key that doesn't exist for these
+                        // atoms.  Pin ``stick`` (the default rep) so
+                        // the opacity-0 override is unambiguous.
+                        style:   { opacity: 0 },
+                    });
+                }
+            }
 
             // 1. Region tints -- group by first label so each atom
             //    gets exactly one tint.  (An atom can carry multiple
@@ -165,8 +234,10 @@
                 bucket.push(a.index);
             });
             byRegion.forEach((indices, label) => {
+                const filtered = maybeFilter(indices);
+                if (!filtered.length) return;
                 atoms.push({
-                    indices: indices,
+                    indices: filtered,
                     halo: {
                         color:   _colorFor(label),
                         radius:  HALO_REGION.radius,
@@ -179,9 +250,10 @@
             const frozenIdx = (s.atoms || [])
                 .filter((a) => a.isFrozen)
                 .map((a) => a.index);
-            if (frozenIdx.length) {
+            const frozenFiltered = maybeFilter(frozenIdx);
+            if (frozenFiltered.length) {
                 atoms.push({
-                    indices: frozenIdx,
+                    indices: frozenFiltered,
                     halo:    { color:   HALO_FROZEN.color,
                                radius:  HALO_FROZEN.radius,
                                opacity: HALO_FROZEN.opacity },
@@ -189,7 +261,9 @@
             }
 
             // 3. Selection halo -- largest ball + brightest, so it
-            //    reads as the "live" set above region tints.
+            //    reads as the "live" set above region tints.  In
+            //    isolate mode the selection IS the visible set, so
+            //    no filter is needed here.
             // Phase 10 (workspace-contract.md §5): subscriber state
             // shape is the contract object — selection lives on
             // ``indices``, not ``selection``.
@@ -234,7 +308,11 @@
             catch (e) { /* ignore */ }
         }
 
-        return { dispose: dispose };
+        return {
+            dispose:         dispose,
+            setIsolateMode:  setIsolateMode,
+            getIsolateMode:  getIsolateMode,
+        };
     }
 
     root.molbuilder = root.molbuilder || {};
