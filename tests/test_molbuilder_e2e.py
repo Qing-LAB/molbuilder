@@ -1667,26 +1667,24 @@ def test_panel_assign_target_new_option_reveals_label_input(
     assert new_input.is_visible()
 
 
-def test_panel_assign_gated_when_workspace_dirty(
+def test_panel_assign_works_on_dirty_workspace_after_electrode(
         page, flask_server, water_xyz_file):
     """Regression for the 2026-06-09 user-reported BLOCKER:
-    after a modifier op (electrode add) the workspace has more
-    atoms in memory than the disk file.  Clicking Assign with
-    out-of-range indices used to either be rejected by the server
-    (confusing error) OR succeed and trigger ``writeLabel``'s
-    atom-refetch, which silently rolled the workspace back to
-    the stale disk atoms.
+    after a modifier op (electrode add) the workspace has MORE
+    atoms in memory than the disk file.  The user wants to label
+    the newly-added atoms (e.g., mark electrode slabs as
+    "L-electrode") BEFORE saving — that's the whole point of the
+    modify-then-label workflow.
 
-    Fix: gate the Assign / Add-to / Remove-from buttons on
-    ``ws.isDirty()``.  When dirty, the buttons are disabled and
-    clicking surfaces a user-facing error explaining the Save-
-    first workflow.  Once the user Saves, the buttons re-enable
-    and the gate-error clears.
+    Fix (this commit): server-side /api/selection/save accepts
+    ``n_atoms`` from the client; client-side ``writeLabel`` passes
+    it + updates labels in-place from the server response (no more
+    disk-refetch that silently rolls back the workspace).
     """
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
     _wait_panel_ready(page)
-    # Trigger a modifier op so the workspace is dirty.
+    # Add electrodes: water (3 atoms) -> 3 + 8 = 11 atoms.
     _open_op_tab(page, "junction")
     for input_id, val in [("elc-m", "2"), ("elc-n", "2"), ("elc-layers", "1")]:
         page.evaluate(
@@ -1701,22 +1699,36 @@ def test_panel_assign_gated_when_workspace_dirty(
     page.wait_for_function(
         "() => window.__molbuilder_modify_test.getNAtoms() === 11"
     )
-    # Switch back to the selection panel (it's a sibling tab pane).
-    # Confirm: workspace.isDirty() is true.
+    # Workspace is dirty AND has 11 atoms in memory while the
+    # disk file still has 3.  Pick electrode-region atoms (5 + 6)
+    # and confirm the labels land WITHOUT the workspace rolling
+    # back to the disk file's 3 atoms.
     assert page.evaluate(
         "() => !!window.molbuilder.workspace.isDirty()"
-    ), "electrode op should have flipped dirty bit"
-    # Select an electrode atom + confirm the label button is disabled.
-    _set_selection(page, [5])
-    assign_btn = page.locator("#selection-assign-btn")
-    assert assign_btn.is_disabled(), (
-        "Assign button must disable when workspace is dirty so "
-        "the user doesn't accidentally roll back the workspace via "
-        "writeLabel's post-write atom refetch"
     )
-    # The Add-to-target + Remove-from-target buttons must also disable.
-    assert page.locator("#selection-add-btn").is_disabled()
-    assert page.locator("#selection-remove-btn").is_disabled()
+    _set_selection(page, [5, 6])
+    page.locator("#selection-assign-target").select_option("L-electrode")
+    page.locator("#selection-assign-btn").click()
+    page.wait_for_function(
+        '() => {'
+        '  const row = document.querySelector('
+        '    \'#selection-atom-list tr[data-atom-index="5"] .col-labels\');'
+        '  return row && row.textContent.includes("L-electrode");'
+        '}',
+        timeout=5000,
+    )
+    # Critically: the workspace MUST still have 11 atoms.  Pre-fix,
+    # writeLabel's success path called _fetchAtoms which re-read
+    # the 3-atom disk file and silently destroyed the electrode op.
+    n_atoms_after = page.evaluate(
+        "() => window.__molbuilder_modify_test.getNAtoms()"
+    )
+    assert n_atoms_after == 11, (
+        f"workspace lost the electrode atoms after writeLabel: "
+        f"expected 11, got {n_atoms_after}.  The /api/selection/save "
+        f"success path must NOT trigger a disk-refetch when the "
+        f"workspace is dirty."
+    )
 
 
 def test_panel_assign_writes_label_to_atoms(

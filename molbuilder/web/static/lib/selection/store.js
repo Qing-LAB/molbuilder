@@ -744,20 +744,77 @@
                     state.error = "no source file";
                     return;
                 }
+                // 2026-06-09 (modify-then-label fix): pass the
+                // workspace's IN-MEMORY atom count so the server
+                // validates against the workspace state, not the
+                // disk file.  Without this, a user who added
+                // electrodes (workspace n=11) then labelled an
+                // electrode atom (idx=5) got rejected because the
+                // disk file still had n=3 — forcing Save-first.
                 const { ok, body } = await _postJson(SAVE_URL, {
                     structure_path: state.sourceFile,
                     target:         target,
                     indices:        indices,
+                    n_atoms:        Array.isArray(state.atoms)
+                                        ? state.atoms.length : 0,
                 }, signal);
                 if (!ok) {
                     state.error = (body && body.error) || "save failed";
                     return;
                 }
-                // Refresh atoms so the new labels surface in the
-                // per-atom rows.  Selection is NOT touched -- the
-                // user may want to continue editing it.
-                await _fetchAtoms(signal);
+                // 2026-06-09: previously we re-fetched the WHOLE
+                // atom list from /api/selection/atoms here, which
+                // reads from disk + adopts the disk atoms — that
+                // silently rolled back the workspace from the in-
+                // memory state (e.g. 11 atoms after an electrode
+                // op) to the stale disk state (3 atoms).
+                //
+                // Instead: the response carries the canonical
+                // ``regions`` + ``frozen_atoms`` after the write,
+                // which is everything we need to update the per-
+                // atom labels in-place.  No HTTP round-trip, no
+                // disk read, no destruction of in-memory work.
+                state.error = null;
+                _applyLabelsFromSidecar(
+                    body && body.regions,
+                    body && body.frozen_atoms,
+                );
             });
+        }
+
+        /**
+         * Refresh each atom's ``labels`` + ``isFrozen`` from a
+         * server-returned sidecar payload — without re-reading
+         * atoms from disk.  Used by ``writeLabel`` to update the
+         * workspace's in-memory state after a successful sidecar
+         * write, so the panel re-renders with the new tag column
+         * without clobbering modifier-op atom additions.
+         */
+        function _applyLabelsFromSidecar(regions, frozenAtoms) {
+            const byIndex = new Map();
+            if (regions && typeof regions === "object") {
+                Object.keys(regions).forEach((label) => {
+                    const idxs = regions[label];
+                    if (!Array.isArray(idxs)) return;
+                    idxs.forEach((i) => {
+                        if (!Number.isInteger(i)) return;
+                        if (!byIndex.has(i)) byIndex.set(i, []);
+                        byIndex.get(i).push(label);
+                    });
+                });
+            }
+            const frozenSet = new Set();
+            if (Array.isArray(frozenAtoms)) {
+                frozenAtoms.forEach((i) => {
+                    if (Number.isInteger(i)) frozenSet.add(i);
+                });
+            }
+            for (let i = 0; i < state.atoms.length; i++) {
+                const a = state.atoms[i];
+                a.labels   = byIndex.get(i) ? byIndex.get(i).slice() : [];
+                a.isFrozen = frozenSet.has(i);
+            }
+            _notify();
         }
 
         // ----------------------------------------------------------- //

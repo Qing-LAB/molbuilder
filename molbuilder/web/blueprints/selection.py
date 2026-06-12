@@ -417,6 +417,25 @@ def selection_save():
 
         rule_payload = payload.get("rule")  # optional
 
+        # 2026-06-09 (modify-then-label fix): the client MAY pass
+        # ``n_atoms`` (the workspace's in-memory atom count).  When
+        # provided, the server validates indices against THAT instead
+        # of the on-disk file.  Before this change, a user who added
+        # electrodes (workspace n=11) then labelled an electrode atom
+        # (idx=5) got a 400 because the disk file still had n=3 —
+        # forcing a Save-first workflow that defeats the point of
+        # in-memory edits.  With the client-provided n_atoms the
+        # sidecar can be written for the workspace state directly;
+        # on Save the XYZ + sidecar persist together.
+        client_n_atoms = payload.get("n_atoms")
+        if (client_n_atoms is not None
+                and not (isinstance(client_n_atoms, int)
+                         and not isinstance(client_n_atoms, bool))):
+            return _bad_request(
+                "'n_atoms' must be an integer when provided; "
+                f"got {type(client_n_atoms).__name__}={client_n_atoms!r}"
+            )
+
         resolved = _resolve_within_roots(path)
         if not resolved.exists():
             return _bad_request(f"file not found: {resolved}", 404)
@@ -427,14 +446,23 @@ def selection_save():
                 f"{list(_SUPPORTED_STRUCTURE_SUFFIXES)}"
             )
 
-        # Read the structure once to learn n_atoms + structure_hash.
-        # Dispatch by extension via the same helper as the load path
-        # so XYZ vs PDB stays consistent across endpoints.
-        try:
-            struct = _parse_structure_text(resolved, resolved.read_text())
-        except _PickerError as exc:
-            return _bad_request(exc.message, exc.status)
-        n_atoms = len(struct.elements)
+        if client_n_atoms is not None:
+            # Trust the client's atom count — the workspace is the
+            # source of truth for the in-memory state.  Hash will be
+            # recomputed from disk for the sidecar's stored hash
+            # (matches whatever is on disk now; will be re-stored on
+            # the next save if the user persists the modified XYZ).
+            n_atoms = client_n_atoms
+        else:
+            # Legacy path: validate against the file on disk.  Kept
+            # for callers (CLI, tests) that don't know n_atoms ahead
+            # of time.
+            try:
+                struct = _parse_structure_text(
+                    resolved, resolved.read_text())
+            except _PickerError as exc:
+                return _bad_request(exc.message, exc.status)
+            n_atoms = len(struct.elements)
 
         for idx in indices:
             if not 0 <= idx < n_atoms:

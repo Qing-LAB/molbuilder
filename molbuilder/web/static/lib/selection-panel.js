@@ -163,43 +163,12 @@
             return out;
         };
 
-        // 2026-06-09: gate the label-mutating handlers on canvas-
-        // clean.  Region labels (frozen_atoms + regions) are
-        // persisted into the .molstruct.json sidecar indexed against
-        // the file on DISK; when the workspace has unsaved modifier
-        // ops (electrode add / delete / etc.), the in-memory atom
-        // count diverges from the disk file's, and
-        // /api/selection/save either rejects the indices as
-        // out-of-range OR succeeds against the stale disk atoms and
-        // then writeLabel's _fetchAtoms refresh silently rolls the
-        // workspace back to the disk atoms — both cases are
-        // user-hostile.  The user MUST Save the structural edits
-        // before labelling atoms.
-        //
-        // Reports the gate via the panel's existing error slot
-        // (#selection-error) which is rendered by renderStatus().
-        function _isDirty() {
-            const ws = root.molbuilder && root.molbuilder.workspace;
-            return !!(ws && typeof ws.isDirty === "function" && ws.isDirty());
-        }
-        const _DIRTY_LABEL_MSG =
-            "Save your structural changes (Save panel below) "
-            + "before assigning region labels — the labels are "
-            + "indexed against the file on disk.";
-        function _flashLabelGateError() {
-            if (els.errorEl) {
-                els.errorEl.textContent = _DIRTY_LABEL_MSG;
-                els.errorEl.hidden = false;
-            }
-        }
         function onAssign() {
-            if (_isDirty()) { _flashLabelGateError(); return; }
             const t = resolveTarget();
             if (!t) return;
             store.writeLabel(t, store.getState().indices);
         }
         function onAddToTarget() {
-            if (_isDirty()) { _flashLabelGateError(); return; }
             const t = resolveTarget();
             if (!t) return;
             const s = store.getState();
@@ -210,7 +179,6 @@
             store.writeLabel(t, Array.from(merged));
         }
         function onRemoveFromTarget() {
-            if (_isDirty()) { _flashLabelGateError(); return; }
             const t = resolveTarget();
             if (!t) return;
             const s = store.getState();
@@ -219,7 +187,6 @@
                 currentMembers(t, s.atoms).filter((i) => !sel.has(i)));
         }
         function onRemoveSingleLabel(label, atomIndex) {
-            if (_isDirty()) { _flashLabelGateError(); return; }
             const target = (label === FROZEN_TAG_LABEL) ? FROZEN_TARGET : label;
             const s = store.getState();
             const newMembers = currentMembers(target, s.atoms)
@@ -855,34 +822,8 @@
             renderAssignTarget(s);
         });
 
-        // 2026-06-09: subscribe to ws.* so the assign/add/remove
-        // button enablement + the dirty-gate error message react
-        // to dirty-bit changes (Save panel toggling).  Without this
-        // a Save that clears dirty wouldn't auto-clear the gate
-        // error message + buttons stay greyed.
-        let _unsubWs = () => {};
-        const _ws = root.molbuilder && root.molbuilder.workspace;
-        function _refreshLabelGate() {
-            const dirty = _isDirty();
-            if (els.assignBtn) els.assignBtn.disabled = dirty;
-            if (els.addBtn)    els.addBtn.disabled    = dirty;
-            if (els.removeBtn) els.removeBtn.disabled = dirty;
-            // Clear the inline dirty-gate error when the canvas
-            // becomes clean (the user saved); leave the existing
-            // selection-store error untouched.
-            if (!dirty && els.errorEl
-                    && els.errorEl.textContent === _DIRTY_LABEL_MSG) {
-                els.errorEl.textContent = "";
-                els.errorEl.hidden = true;
-            }
-        }
-        if (_ws && typeof _ws.subscribe === "function") {
-            _unsubWs = _ws.subscribe(_refreshLabelGate);
-        }
-
         function dispose() {
             try { unsubscribe(); } catch (e) { /* ignore */ }
-            try { _unsubWs(); } catch (e) { /* ignore */ }
             cleanups.slice().reverse().forEach((fn) => {
                 try { fn(); } catch (e) { /* ignore */ }
             });
