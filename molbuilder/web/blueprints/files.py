@@ -50,6 +50,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import tempfile
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -394,7 +395,12 @@ def api_files_read():
         }), 413
 
     try:
-        text = resolved.read_text(encoding="utf-8")
+        # ``utf-8-sig`` accepts an optional BOM (some Windows editors
+        # inject one) — without this, a BOM-prefixed XYZ rendered the
+        # first line as garbage and Structure.from_xyz rejected the
+        # file at parse time.  Matches the read pattern in
+        # molstruct_json + spectra_json + transport_json + structure.py.
+        text = resolved.read_text(encoding="utf-8-sig")
     except UnicodeDecodeError:
         return jsonify({
             "ok":   False,
@@ -1217,8 +1223,39 @@ def api_files_write():
     except OSError as exc:
         return jsonify({"ok": False,
                         "error": f"is_symlink check failed: {exc}"}), 500
+    # 2026-06-09: atomic write — temp-file in the same directory
+    # (so ``os.replace`` is a same-filesystem rename), fsync the data
+    # before replace so a crash between write() and replace() can't
+    # leave the OS write buffer holding the only copy of the new
+    # bytes (orphan .tmp file would also block the next save until
+    # manual cleanup).  Matches spectra_json + transport_json +
+    # molstruct_json's atomic-write contract.
     try:
-        resolved.write_text(text, encoding="utf-8")
+        parent = resolved.parent
+        fd, tmp = tempfile.mkstemp(
+            prefix=resolved.name + ".",
+            suffix=".tmp",
+            dir=str(parent),
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(text)
+                fh.flush()
+                try:
+                    os.fsync(fh.fileno())
+                except OSError:
+                    # Some filesystems (tmpfs on certain kernels) reject
+                    # fsync — the data is in the OS write buffer and
+                    # will land before the replace.  Don't let a quirky
+                    # FS block the write.
+                    pass
+            os.replace(tmp, str(resolved))
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
     except PermissionError as exc:
         return jsonify({
             "ok": False,

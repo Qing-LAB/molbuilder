@@ -67,13 +67,20 @@ def _resolve_source(source: Union[str, Path]) -> str:
     they pulled out of an HTTP request body or a blob storage object.
     """
     if isinstance(source, Path):
-        return source.read_text()
+        # ``utf-8-sig`` accepts an optional UTF-8 BOM (some Windows
+        # editors emit one) — without an explicit encoding Python
+        # falls back to the platform locale (cp1252 / latin-1 on
+        # some Windows / older Linux installs), which mojibakes any
+        # non-ASCII in the XYZ comment line or PDB residue names.
+        # Same hardening molstruct_json / spectra_json / transport_json
+        # carry.
+        return source.read_text(encoding="utf-8-sig")
     if isinstance(source, str):
         # A real file path won't contain newlines and will exist on disk.
         # Anything else is text.  We deliberately don't accept paths
         # with newlines -- ambiguous and not a real filesystem path.
         if "\n" not in source and os.path.isfile(source):
-            with open(source, "r") as fh:
+            with open(source, "r", encoding="utf-8-sig") as fh:
                 return fh.read()
         return source
     raise TypeError(
@@ -529,7 +536,12 @@ class Structure:
             buf.write(f"{el:<3s} {x: 12.6f} {y: 12.6f} {z: 12.6f}\n")
         text = buf.getvalue()
         if path:
-            with open(path, "w") as fh:
+            # ``encoding="utf-8"`` is REQUIRED: without it Python falls
+            # back to the platform locale, which silently corrupts non-
+            # ASCII residue names / title comments on cp1252 / latin-1
+            # systems (and disagrees with the encoding-utf-8-sig read
+            # path in ``_resolve_source``).
+            with open(path, "w", encoding="utf-8") as fh:
                 fh.write(text)
         return text
 
@@ -566,7 +578,9 @@ class Structure:
         buf.write("END\n")
         text = buf.getvalue()
         if path:
-            with open(path, "w") as fh:
+            # ``encoding="utf-8"`` parity with ``to_xyz`` + the
+            # encoding-utf-8-sig read path in ``_resolve_source``.
+            with open(path, "w", encoding="utf-8") as fh:
                 fh.write(text)
         return text
 
