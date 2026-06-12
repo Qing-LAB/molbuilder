@@ -943,28 +943,30 @@ class TestProjectsCreate:
 
 
 class TestSidebarCreateUI:
-    """2026-06-12: the three foldable <details> create-sections
-    (+ New project / + New subdir / + Upload file) were replaced
-    with a single "+" button + dropdown menu.  Each menu item
-    opens a modal dialog from lib/projects/dialogs.js — no inline
-    forms in the sidebar markup any more.  See projects-sidebar.md
-    § Mutation UX."""
+    """2026-06-12 (v2): three SEPARATE buttons (New project / New
+    folder / Upload) in the sidebar header.  Replaces the earlier
+    v1 single "+" dropdown which hid the actions behind an extra
+    click.  Each button opens its modal dialog directly.  See
+    projects-sidebar.md § Mutation UX."""
 
     def test_create_bar_in_partial(self, web, picker_root):
         body = web.get("/spectrum-calculation").get_data(as_text=True)
         assert 'class="ps-create-bar"' in body
-        assert 'id="ps-create-btn"' in body
-        assert 'id="ps-create-menu"' in body
 
-    def test_create_menu_has_three_items(self, web, picker_root):
+    def test_three_action_buttons_visible(self, web, picker_root):
         body = web.get("/spectrum-calculation").get_data(as_text=True)
+        # Three distinct buttons with stable ids for the JS to wire.
+        assert 'id="ps-create-project-btn"' in body
+        assert 'id="ps-create-folder-btn"' in body
+        assert 'id="ps-create-upload-btn"' in body
+        # data-action attributes (used by tests + accessibility tools).
         assert 'data-action="new-project"' in body
         assert 'data-action="new-folder"' in body
         assert 'data-action="upload"' in body
         # User-facing labels (verify the wording renders).
         assert "New project" in body
         assert "New folder" in body
-        assert "Upload file" in body
+        assert "Upload" in body
 
 
 class TestSidebarMkdirUI:
@@ -2086,13 +2088,14 @@ class TestSidebarStubsUI:
     is reviewable.  Markup checks here; behaviour is exercised at the
     E2E layer (deferred Playwright suite)."""
 
-    def test_upload_menu_item_in_partial(self, web, picker_root):
-        """2026-06-12: the upload + new-folder + new-project trio
-        moved from inline foldable forms into a single + dropdown
-        menu (see TestSidebarCreateUI for the bar's anchors)."""
+    def test_upload_action_in_partial(self, web, picker_root):
+        """2026-06-12: the upload action lives in its own dedicated
+        button alongside New project + New folder (see
+        TestSidebarCreateUI for the bar's full anchor set)."""
         body = web.get("/spectrum-calculation").get_data(as_text=True)
         assert 'data-action="upload"' in body
-        assert "Upload file" in body
+        assert 'id="ps-create-upload-btn"' in body
+        assert "Upload" in body
 
     def test_preview_modal_markup_full(self, web, picker_root):
         r = web.get("/spectrum-calculation")

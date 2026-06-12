@@ -75,6 +75,15 @@ let _cmLoaderPromise = null;
 // to hit the server's ceiling; we chunk above that.
 const EDIT_MAX_BYTES = 32 * 1024 * 1024;
 
+// 2026-06-12: ``VIEW_ONLY_BYTES`` is the soft threshold above which
+// the modal becomes view-only — no Edit button + no text selection.
+// Selection is gated alongside Edit because keystroke-triggered
+// CodeMirror operations on multi-MB documents are pathologically
+// slow (Ctrl-A selectAll measured 225 s in headless Chromium on a
+// 2 MB doc; click-drag selection past a few MB is similarly heavy).
+// Files within 1 MB keep the full edit + select + Ctrl-A path.
+const VIEW_ONLY_BYTES = 1 * 1024 * 1024;
+
 // Bulk-read uses the server's hard ceiling so single-shot
 // requests carry as much as the API permits.
 const BULK_READ_MAX_BYTES = 16 * 1024 * 1024;
@@ -456,6 +465,9 @@ export async function showPreview() {
     elTitle.textContent = path.split("/").pop();
     elMeta.textContent  = path;
     elError.textContent = "";
+    // Clear any prior file's view-only class so the new load decides
+    // it fresh based on its own size.
+    if (elCmView) elCmView.classList.remove("is-view-only");
     _setStatus("Loading…", null);
     openPreviewModal();
 
@@ -580,7 +592,15 @@ async function _loadBulk(path) {
     _state.originalText = body.text;
     _state.mtime        = body.mtime;
     _state.size         = body.size;
-    _state.editable     = true;
+    // 2026-06-12: view-only above 1 MB.  Edit + selection are
+    // both gated by this flag — see ``VIEW_ONLY_BYTES`` for the
+    // perf rationale.  ``is-view-only`` on the cmview wrapper
+    // disables click-drag selection via CSS user-select.
+    _state.editable     = body.size <= VIEW_ONLY_BYTES;
+    if (elCmView) {
+        elCmView.classList.toggle(
+            "is-view-only", !_state.editable);
+    }
     _state.loadedBytes  = body.size;
     _state.eof          = true;
     if (!_cm) {
@@ -615,6 +635,9 @@ async function _loadPaginated(path, totalSize) {
     _state.editable    = false;
     _state.eof         = false;
     _state.loadedBytes = 0;
+    // Paginated is always view-only (large files); pair with the
+    // is-view-only class so selection is disabled too.
+    if (elCmView) elCmView.classList.add("is-view-only");
     _cm.setValue("");
     const sizeMB    = (totalSize / (1024 * 1024)).toFixed(1);
     const capMB     = (EDIT_MAX_BYTES / (1024 * 1024)) | 0;

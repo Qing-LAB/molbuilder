@@ -226,89 +226,84 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
  *   "+ New project" -- bootstrap full skeleton at projects/ root
  *   "+ New subdir"  -- single dir at the user's current location */
 
-/* ---- Create bar + dropdown menu (2026-06-12) -------------------
+/* ---- Create bar: three buttons (2026-06-12, v2) -------------------
  *
- * Replaces the three foldable <details> create-sections with a
- * single "+" button + popover menu.  Saves vertical space; the
- * three actions (new project / new folder / upload) open modal
- * dialogs instead of expanding inline forms.
+ * Three visible action buttons (New project / New folder / Upload).
+ * Each is a direct entry point — click opens its modal dialog.  The
+ * earlier v1 single "+" dropdown was replaced because users couldn't
+ * see at a glance what actions were available.
+ *
+ * Layout: equal-width flex row.  Each button is icon-above-label
+ * so it stays compact at narrow sidebar widths while keeping the
+ * label readable.  Hover gives a clear "this is a button" cue
+ * (accent border + accent background).
  */
 .ps-create-bar {
-  position: relative;
   display: flex;
-  align-items: center;
-  padding: 0.3rem 0.7rem;
+  align-items: stretch;
+  gap: 0.4rem;
+  padding: 0.4rem 0.6rem 0.5rem;
   border-bottom: 1px solid var(--ps-border);
   background: #141414;
 }
-.ps-create-btn {
+.ps-create-action {
   appearance: none;
-  background: transparent;
+  flex: 1 1 0;
+  min-width: 0;            /* let flex shrink labels when sidebar narrows */
+  background: #0f0f0f;
   color: var(--ps-fg);
   border: 1px solid var(--ps-border);
   border-radius: 4px;
   cursor: pointer;
-  font-size: 1.05rem;
-  line-height: 1;
-  width: 1.8rem;
-  height: 1.8rem;
-  display: inline-flex;
+  display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  gap: 0.15rem;
+  padding: 0.4rem 0.3rem;
+  font: inherit;
+  line-height: 1.1;
+  transition:
+    background 0.12s,
+    border-color 0.12s,
+    color 0.12s,
+    transform 0.06s;
 }
-.ps-create-btn:hover,
-.ps-create-btn[aria-expanded="true"] {
+.ps-create-action:hover:not([disabled]) {
   background: var(--ps-selected);
   border-color: var(--ps-selected);
   color: var(--ps-selected-fg);
 }
-.ps-create-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0.7rem;
-  z-index: 20;
-  min-width: 12rem;
-  background: #1c1c1c;
-  border: 1px solid var(--ps-border);
-  border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
-  padding: 0.2rem 0;
+.ps-create-action:active:not([disabled]) {
+  transform: translateY(1px);
 }
-.ps-create-menu[hidden] { display: none; }
-.ps-create-menu-item {
-  appearance: none;
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  width: 100%;
-  padding: 0.4rem 0.7rem;
-  background: transparent;
-  color: var(--ps-fg);
-  border: none;
-  text-align: left;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: background 0.1s;
+.ps-create-action:focus-visible {
+  outline: 1px solid var(--accent, #4f7ab8);
+  outline-offset: 1px;
 }
-.ps-create-menu-item:hover:not([disabled]),
-.ps-create-menu-item:focus:not([disabled]) {
-  background: var(--ps-hover);
-  color: var(--ps-selected-fg);
-  outline: none;
-}
-.ps-create-menu-item[disabled] {
+.ps-create-action[disabled] {
   opacity: 0.45;
   cursor: not-allowed;
+  /* No hover lift when disabled. */
 }
-.ps-create-menu-icon {
+.ps-create-action-icon {
   flex: 0 0 auto;
-  font-size: 0.9rem;
-  width: 1.4em;
-  text-align: center;
-  color: var(--ps-fg-muted);
+  font-size: 1.2rem;
+  line-height: 1;
+  color: var(--ps-fg);
 }
-.ps-create-menu-label { flex: 1 1 auto; }
+.ps-create-action:hover:not([disabled]) .ps-create-action-icon {
+  color: var(--ps-selected-fg);
+}
+.ps-create-action-label {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
 
 /* Inline error slot kept for the rare legacy form usage; reused
  * also by the dialog component above for inline validation. */
@@ -1027,6 +1022,23 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
 .ps-preview-cmview.is-editing .CodeMirror {
   background: #161616;
   box-shadow: inset 0 0 0 1px var(--ps-accent, #4a9eff);
+}
+
+/* View-only mode (file > 1 MB OR paginated).  Disable text
+ * selection entirely to avoid the CodeMirror selection-render
+ * perf cliff on multi-MB documents.  Edit is also disabled in
+ * this mode (see preview.js's ``_state.editable``).  Users who
+ * need the whole file should hit the kebab menu's Download
+ * instead. */
+.ps-preview-cmview.is-view-only .CodeMirror,
+.ps-preview-cmview.is-view-only .CodeMirror * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+.ps-preview-cmview.is-view-only .CodeMirror-cursor {
+  /* The blinking cursor still appears on focus but selection drag
+   * is dead — hide the cursor so the user isn't misled. */
+  display: none !important;
 }
 /* CM5 search + jump-to-line dialogs (vendored addon/dialog.css).
  * The defaults stack a tiny input at the top of the editor; widen

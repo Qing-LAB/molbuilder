@@ -1,12 +1,12 @@
-/* projects/forms.js -- mutation menu wiring.
+/* projects/forms.js -- mutation-bar wiring.
  *
- * 2026-06-12: replaced the foldable <details> create-form sections
- * with a single "+" button + dropdown menu.  Each menu item opens a
- * modal dialog from projects/dialogs.js.  Backend calls go through
- * projects.* (state.js), which dispatches to projects/api.js + fires
- * a directory refresh on success.
+ * 2026-06-12: three SEPARATE buttons in the sidebar header
+ * (New project / New folder / Upload).  No dropdown — each click
+ * opens its modal dialog directly (from projects/dialogs.js).
+ * Backend calls go through projects.* (state.js), which dispatches
+ * to projects/api.js + fires a directory refresh on success.
  *
- * Depth-aware item disable (driven by projects.onChange):
+ * Depth-aware enable/disable (driven by projects.onChange):
  *   * New project    -- always enabled
  *   * New folder     -- disabled at projects/ root (no useful parent)
  *   * Upload file    -- disabled at projects/ root
@@ -26,46 +26,25 @@ import {
 } from "./state.js";
 import { openDir } from "./list.js";
 
-let elBtn, elMenu;
+let elProjBtn, elFolderBtn, elUploadBtn;
 
-function _closeMenu() {
-  if (!elMenu) return;
-  elMenu.hidden = true;
-  if (elBtn) elBtn.setAttribute("aria-expanded", "false");
-}
-
-function _openMenu() {
-  if (!elMenu) return;
-  elMenu.hidden = false;
-  if (elBtn) elBtn.setAttribute("aria-expanded", "true");
-  _updateItemEnablement();
-  // Focus the first enabled item so keyboard nav works.
-  const firstEnabled = elMenu.querySelector(
-    ".ps-create-menu-item:not([disabled])");
-  if (firstEnabled) {
-    try { firstEnabled.focus(); } catch (_) {}
-  }
-}
-
-function _toggleMenu() {
-  if (!elMenu) return;
-  if (elMenu.hidden) _openMenu(); else _closeMenu();
-}
-
-function _updateItemEnablement() {
-  if (!elMenu) return;
+function _updateButtonEnablement() {
   const dir = sessionStorage.getItem(SS_DIR) || getProjectsRoot() || "";
   const root = atProjectsRoot(dir);
-  // "New project" always enabled (it lands at root regardless).
+  // "New project" always enabled (it lands at projects/ root).
   // "New folder" + "Upload" require a project context.
-  elMenu.querySelectorAll(".ps-create-menu-item").forEach((item) => {
-    const action = item.dataset.action;
-    const needsDir = action === "new-folder" || action === "upload";
-    item.disabled = needsDir && root;
-    item.title = item.disabled
+  if (elFolderBtn) {
+    elFolderBtn.disabled = root;
+    elFolderBtn.title = root
       ? "Pick a project folder in the sidebar first."
-      : "";
-  });
+      : "Create a new folder inside the current directory";
+  }
+  if (elUploadBtn) {
+    elUploadBtn.disabled = root;
+    elUploadBtn.title = root
+      ? "Pick a project folder in the sidebar first."
+      : "Upload a file into the current directory";
+  }
 }
 
 async function _doNewProject() {
@@ -133,44 +112,27 @@ async function _doUpload() {
 }
 
 export function initForms() {
-  elBtn  = document.getElementById("ps-create-btn");
-  elMenu = document.getElementById("ps-create-menu");
-  if (!elBtn || !elMenu) return;
+  elProjBtn   = document.getElementById("ps-create-project-btn");
+  elFolderBtn = document.getElementById("ps-create-folder-btn");
+  elUploadBtn = document.getElementById("ps-create-upload-btn");
+  if (!elProjBtn && !elFolderBtn && !elUploadBtn) return;
 
-  elBtn.addEventListener("click", (ev) => {
-    ev.stopPropagation();
-    _toggleMenu();
-  });
-
-  // Close on outside click + ESC.
-  document.addEventListener("click", (ev) => {
-    if (elMenu.hidden) return;
-    if (elBtn.contains(ev.target) || elMenu.contains(ev.target)) return;
-    _closeMenu();
-  });
-  document.addEventListener("keydown", (ev) => {
-    if (!elMenu.hidden && ev.key === "Escape") {
-      _closeMenu();
-      try { elBtn.focus(); } catch (_) {}
-    }
-  });
-
-  // Item dispatch.  Close the menu BEFORE awaiting the dialog so the
-  // user's focus moves cleanly from menu to dialog.
-  elMenu.querySelectorAll(".ps-create-menu-item").forEach((item) => {
-    item.addEventListener("click", async () => {
-      const action = item.dataset.action;
-      _closeMenu();
-      if (action === "new-project") await _doNewProject();
-      else if (action === "new-folder") await _doNewFolder();
-      else if (action === "upload")     await _doUpload();
-    });
-  });
+  // Each button is a direct entry point — no dropdown, no extra
+  // click between intent and dialog.
+  if (elProjBtn) {
+    elProjBtn.addEventListener("click", () => { _doNewProject(); });
+  }
+  if (elFolderBtn) {
+    elFolderBtn.addEventListener("click", () => { _doNewFolder(); });
+  }
+  if (elUploadBtn) {
+    elUploadBtn.addEventListener("click", () => { _doUpload(); });
+  }
 
   // Re-evaluate enablement on selection change (the user navigates
-  // away from root, items become enabled; navigate back, they re-
-  // disable).  Also refresh once the projects root resolves so the
-  // initial paint shows the right state.
-  projects.onChange(_updateItemEnablement);
-  _updateItemEnablement();
+  // away from root → folder/upload become enabled; navigate back →
+  // they disable).  Also refresh once the projects root resolves so
+  // the initial paint shows the right state.
+  projects.onChange(_updateButtonEnablement);
+  _updateButtonEnablement();
 }

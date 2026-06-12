@@ -80,37 +80,34 @@
     </button>
   </div>
 
-  {#- 2026-06-12 Mutation menu (replaces 3 foldable <details>).
-      A single "+" button drops a 3-item menu: New project / New
-      folder / Upload file.  Each item opens a modal dialog
-      (see lib/projects/dialogs.js); no inline forms.  Saves the
-      ~9 lines of vertical space the collapsed details used.
-
-      Depth-aware items disable themselves at projects/ root.  See
-      lib/projects/menu.js for the wiring + docs/protocols/
-      projects-sidebar.md § Mutation UX. -#}
+  {#- 2026-06-12 Mutation bar: three SEPARATE buttons (replaces the
+      earlier "+" dropdown menu).  Each button opens a modal dialog
+      directly — no dropdown, no extra click.  Depth-aware: New
+      folder + Upload disable themselves at the projects/ root.
+      See lib/projects/forms.js for the wiring + projects-sidebar.md
+      § Mutation UX. -#}
   <div class="ps-create-bar">
-    <button type="button" id="ps-create-btn" class="ps-create-btn"
-            aria-label="Create or upload"
-            aria-haspopup="menu" aria-expanded="false"
-            title="Create / upload">+</button>
-    <div id="ps-create-menu" class="ps-create-menu" role="menu" hidden>
-      <button type="button" class="ps-create-menu-item"
-              data-action="new-project" role="menuitem">
-        <span class="ps-create-menu-icon" aria-hidden="true">📁＋</span>
-        <span class="ps-create-menu-label">New project…</span>
-      </button>
-      <button type="button" class="ps-create-menu-item"
-              data-action="new-folder" role="menuitem">
-        <span class="ps-create-menu-icon" aria-hidden="true">📁</span>
-        <span class="ps-create-menu-label">New folder…</span>
-      </button>
-      <button type="button" class="ps-create-menu-item"
-              data-action="upload" role="menuitem">
-        <span class="ps-create-menu-icon" aria-hidden="true">↑</span>
-        <span class="ps-create-menu-label">Upload file…</span>
-      </button>
-    </div>
+    <button type="button" id="ps-create-project-btn"
+            class="ps-create-action"
+            data-action="new-project"
+            title="Create a new project (bootstraps the canonical subdir tree)">
+      <span class="ps-create-action-icon" aria-hidden="true">🗂</span>
+      <span class="ps-create-action-label">New project</span>
+    </button>
+    <button type="button" id="ps-create-folder-btn"
+            class="ps-create-action"
+            data-action="new-folder"
+            title="Create a new folder inside the current directory">
+      <span class="ps-create-action-icon" aria-hidden="true">📁</span>
+      <span class="ps-create-action-label">New folder</span>
+    </button>
+    <button type="button" id="ps-create-upload-btn"
+            class="ps-create-action"
+            data-action="upload"
+            title="Upload a file into the current directory">
+      <span class="ps-create-action-icon" aria-hidden="true">⬆</span>
+      <span class="ps-create-action-label">Upload</span>
+    </button>
   </div>
 
   <nav class="ps-breadcrumb" id="ps-breadcrumb" aria-label="Path">
