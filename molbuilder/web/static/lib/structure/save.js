@@ -107,22 +107,134 @@
     }
 
     /**
-     * Common post-write success path.  Clears dirty + fires the
-     * sidecar refresh-hash housekeeping.  Returns the user-facing
-     * ok envelope.
+     * Gather regions + frozen_atoms from the workspace's current
+     * atom list.  Used by ``_postWriteSuccess`` to propagate
+     * workspace labels into the destination sidecar on Save-as
+     * (different path from the source).
+     *
+     * Returns ``{regions: {label: [indices]}, frozen: [indices]}``.
+     * Skips atoms without labels + non-frozen atoms; the result
+     * is empty when the workspace has no label data.
      */
-    function _postWriteSuccess(path) {
+    function _gatherLabelsFromWorkspace() {
+        if (!_workspace || typeof _workspace.getAtoms !== "function") {
+            return { regions: {}, frozen: [] };
+        }
+        var atoms  = _workspace.getAtoms() || [];
+        var regions = {};
+        var frozen  = [];
+        for (var i = 0; i < atoms.length; i++) {
+            var a = atoms[i];
+            if (!a) continue;
+            var labels = a.labels || [];
+            for (var j = 0; j < labels.length; j++) {
+                var L = labels[j];
+                if (!regions[L]) regions[L] = [];
+                regions[L].push(i);
+            }
+            if (a.isFrozen) frozen.push(i);
+        }
+        return { regions: regions, frozen: frozen };
+    }
+
+    /**
+     * Post the workspace's labels to the destination sidecar.
+     * Used on Save-as (when the destination differs from the
+     * workspace's source).  Fire-and-forget; a partial failure
+     * doesn't unwind the successful XYZ write — the user can
+     * always re-Save to retry.
+     *
+     * Issues one POST per region label + one for frozen_atoms.
+     * The server's ``n_atoms`` parameter (per save-flow.md §4.1)
+     * is the workspace's current atom count so indices validate
+     * against memory, not the just-written disk file (which would
+     * still pass — they match — but pinning the workspace count
+     * here documents intent).
+     */
+    function _persistLabelsToDestination(path, labels, nAtoms) {
+        if (!root.fetch) return Promise.resolve();
+        var calls = [];
+        Object.keys(labels.regions).forEach(function (label) {
+            calls.push(root.fetch("/api/selection/save", {
+                method:  "POST",
+                headers: { "Content-Type": "application/json" },
+                body:    JSON.stringify({
+                    structure_path: path,
+                    target:         label,
+                    indices:        labels.regions[label],
+                    n_atoms:        nAtoms,
+                }),
+            }));
+        });
+        if (labels.frozen.length) {
+            calls.push(root.fetch("/api/selection/save", {
+                method:  "POST",
+                headers: { "Content-Type": "application/json" },
+                body:    JSON.stringify({
+                    structure_path: path,
+                    target:         "frozen_atoms",
+                    indices:        labels.frozen,
+                    n_atoms:        nAtoms,
+                }),
+            }));
+        }
+        return Promise.all(calls).catch(function () { /* non-fatal */ });
+    }
+
+    /**
+     * Common post-write success path.  Clears dirty + fires the
+     * sidecar housekeeping.  Returns the user-facing ok envelope.
+     *
+     * Sidecar handling per save-flow.md §4:
+     *   * Save back to source (final == source) — refresh-hash on
+     *     the existing sidecar.
+     *   * Save-as (final != source) — propagate workspace labels
+     *     to a new sidecar at the destination, THEN refresh-hash
+     *     so the hash field matches the just-written XYZ.
+     */
+    function _postWriteSuccess(path, opts) {
+        opts = opts || {};
+        var sourcePath = opts.sourcePath || null;
+        var isSaveAs = !!sourcePath && path !== sourcePath;
+
         _structurePage.markSavedTo(path);
-        // 2026-06-09: refresh the sidecar's structure_hash against
-        // the just-written XYZ bytes.  Fire-and-forget; a sidecar-
-        // missing path is a no-op server-side.
-        if (root.fetch) {
-            root.fetch("/api/selection/refresh-hash", {
+
+        if (!root.fetch) return { ok: true, path: path };
+
+        var labelsPromise;
+        if (isSaveAs) {
+            // Propagate workspace labels to the destination.  See
+            // save-flow.md §4.3.  Awaiting via the fire-and-forget
+            // pattern below means refresh-hash kicks in after; the
+            // user-facing envelope returns immediately so the
+            // status panel shows "Saved" without waiting for the
+            // multi-call sidecar propagation.
+            var labels = _gatherLabelsFromWorkspace();
+            var nAtoms = (_workspace
+                          && typeof _workspace.getAtoms === "function")
+                ? (_workspace.getAtoms() || []).length : 0;
+            if (Object.keys(labels.regions).length || labels.frozen.length) {
+                labelsPromise = _persistLabelsToDestination(
+                    path, labels, nAtoms);
+            }
+        }
+
+        function _fireRefreshHash() {
+            return root.fetch("/api/selection/refresh-hash", {
                 method:  "POST",
                 headers: { "Content-Type": "application/json" },
                 body:    JSON.stringify({ structure_path: path }),
             }).catch(function () { /* non-fatal */ });
         }
+
+        if (labelsPromise) {
+            // refresh-hash AFTER labels land so the sidecar's
+            // structure_hash matches the just-written XYZ.
+            labelsPromise.then(_fireRefreshHash);
+        } else {
+            _fireRefreshHash();
+        }
+
         return { ok: true, path: path };
     }
 
@@ -138,12 +250,14 @@
     function _writeWithOverwriteGate(path, text, opts) {
         opts = opts || {};
         var alreadyConfirmed = !!opts.overwriteAlreadyConfirmed;
+        var sourcePath = opts.sourcePath || null;
+        var postOpts = { sourcePath: sourcePath };
         var dialog = root.molbuilder
                   && root.molbuilder.structureSaveDialog;
         return _projects.writeFile(path, text, {
             overwrite: alreadyConfirmed,
         }).then(function (r) {
-            if (r && r.ok) return _postWriteSuccess(path);
+            if (r && r.ok) return _postWriteSuccess(path, postOpts);
             // 409 (file exists, overwrite was false).  Re-prompt.
             if (r && (r.status === 409
                     || /already exists/i.test(r.error || ""))
@@ -159,7 +273,7 @@
                         return _projects.writeFile(path, text, {
                             overwrite: true,
                         }).then(function (r2) {
-                            if (r2 && r2.ok) return _postWriteSuccess(path);
+                            if (r2 && r2.ok) return _postWriteSuccess(path, postOpts);
                             return {
                                 ok:    false,
                                 error: (r2 && r2.error) || "Save failed.",
@@ -202,77 +316,77 @@
         var struct = _workspace.getStructure();
         var dialog = root.molbuilder
                   && root.molbuilder.structureSaveDialog;
-        var path = targetPath();
 
-        // 2026-06-09: Save-as for generator-sourced workspaces.
-        // ``targetPath()`` returns null when the structure has no
-        // backing file (SMILES / DNA / RNA / peptide / name).  In
-        // that case, fall back to the sidebar's current directory
-        // as the save destination and suggest a default filename
-        // from the source kind (e.g. ``smiles.xyz``) — the dialog
-        // lets the user override.
+        // 2026-06-09: the dialog only confirms the FILENAME.  The
+        // directory is ALWAYS the sidebar's current project dir,
+        // regardless of whether the workspace was loaded from a
+        // file (in which case the original file's dir is ignored)
+        // or generated (SMILES / DNA / RNA / peptide / name).  This
+        // keeps the save semantics simple: "save the current
+        // workspace into the project I'm looking at."
+        var dir = (_projects
+                   && typeof _projects.getCurrentDir === "function")
+            ? (_projects.getCurrentDir() || "")
+            : "";
+        if (!dir) {
+            return Promise.resolve({
+                ok: false,
+                error: "Pick a project directory in the sidebar "
+                     + "before saving.",
+            });
+        }
+
+        // Default filename: basename of the workspace's existing
+        // target path (if any) so "save back to source" stays a
+        // one-click flow.  For generator workspaces, derive a
+        // sensible default from the source kind.  The user can
+        // always override in the dialog.
+        var path = targetPath();
         var initial = "";
-        var dir = "";
         if (path) {
             initial = _basename(path);
-            dir = _dirname(path);
         } else {
-            // Generator workspace.  Need a directory + a sensible
-            // default name.
-            dir = (_projects && typeof _projects.getCurrentDir === "function")
-                ? (_projects.getCurrentDir() || "")
-                : "";
-            if (!dir) {
-                return Promise.resolve({
-                    ok: false,
-                    error: "Pick a project directory in the sidebar "
-                         + "before saving a generated structure.",
-                });
-            }
-            var src = (_workspace && typeof _workspace.getSource === "function")
+            var src = (_workspace
+                       && typeof _workspace.getSource === "function")
                 ? _workspace.getSource() : null;
             var kind = (src && src.kind) || "structure";
-            // Use the source kind as a default basename — user can
-            // type a more meaningful name in the dialog.
             initial = kind + ".xyz";
         }
 
         // Route the Save click through the confirm-name dialog so
         // the user can edit the filename + see what they're about
-        // to overwrite.  If the user keeps the current name AND the
-        // workspace had a backing file (the common "save back to
-        // source" case), ``_writeWithOverwriteGate`` pre-confirms
-        // because the user already saw the name they're saving to.
-        // Renaming OR saving a generator structure always triggers
-        // a fresh overwrite-check against the chosen name.
+        // to overwrite.  Renaming OR saving into a different
+        // sidebar dir triggers the overwrite-gate; pre-confirm only
+        // when the chosen final path matches the workspace's
+        // existing source (= clicking Save back to the file we
+        // loaded from, in the same directory).
         if (!dialog || typeof dialog.chooseSaveName !== "function") {
-            // No dialog mounted (tests / legacy contexts) AND a
-            // backing file path is required.
-            if (!path) {
-                return Promise.resolve({
-                    ok: false,
-                    error: "save-dialog module not mounted; cannot "
-                         + "Save-as without a target path.",
-                });
-            }
-            return _writeWithOverwriteGate(path, struct.text,
-                { overwriteAlreadyConfirmed: true });
+            // No dialog mounted (tests / legacy contexts).  Use the
+            // default name + sidebar dir.
+            var fallbackFinal = dir + "/" + initial;
+            return _writeWithOverwriteGate(fallbackFinal, struct.text, {
+                overwriteAlreadyConfirmed: fallbackFinal === path,
+                sourcePath:                path,
+            });
         }
         return dialog.chooseSaveName(initial).then(function (chosen) {
             if (chosen === null || chosen === undefined) {
                 return { ok: false, cancelled: true,
                          error: "Save cancelled." };
             }
-            var finalPath = dir ? (dir + "/" + chosen) : chosen;
-            // Pre-confirm overwrite ONLY when the user kept the
-            // original name AND the workspace had a backing file —
-            // clicking Save on the workspace's source is unambiguous.
-            // For Save-as (no backing file), any chosen name needs
-            // the overwrite-gate so the user is warned if it clashes
-            // with an existing project file.
-            var nameUnchanged = !!path && chosen === initial;
+            var finalPath = dir + "/" + chosen;
+            // Pre-confirm overwrite ONLY when the chosen final path
+            // exactly matches the workspace's existing source file
+            // — clicking Save back to the file we loaded from (same
+            // dir + same name) is unambiguous.  Any other path
+            // (renamed, different sidebar dir, generator save-as)
+            // routes through the overwrite-gate.  ``sourcePath`` is
+            // threaded into _postWriteSuccess so the sidecar-
+            // propagation logic (save-flow.md §4.3) knows whether
+            // this is a Save-as or save-back-to-source.
             return _writeWithOverwriteGate(finalPath, struct.text, {
-                overwriteAlreadyConfirmed: nameUnchanged,
+                overwriteAlreadyConfirmed: finalPath === path,
+                sourcePath:                path,
             });
         });
     }

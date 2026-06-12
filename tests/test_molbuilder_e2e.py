@@ -1076,6 +1076,75 @@ def test_save_dialog_overwrite_cancel_aborts(
     ) is True
 
 
+def test_save_as_propagates_labels_to_new_sidecar(
+        page, flask_server, tmp_path, monkeypatch):
+    """Save-as flow (save-flow.md §4.3): when the user saves the
+    workspace to a NEW path (rename or different dir), the workspace's
+    region labels + frozen_atoms must be propagated to a sidecar at
+    the destination — otherwise the labels are silently lost on the
+    next Load.
+    """
+    from pathlib import Path as _P
+    import json as _json
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    project_dir = tmp_path / "test_project"
+    project_dir.mkdir()
+    water_xyz = str(project_dir / "water.xyz")
+    _P(water_xyz).write_text(_H2O_XYZ)
+    _open_modify(page, flask_server)
+    _load_water_via_button(page, water_xyz)
+    _wait_panel_ready(page)
+    # Assign atoms 0 + 1 the "L-electrode" label so the workspace has
+    # in-memory labels to propagate.
+    _set_selection(page, [0, 1])
+    page.locator("#selection-assign-target").select_option("L-electrode")
+    page.locator("#selection-assign-btn").click()
+    page.wait_for_function(
+        '() => {'
+        '  const r = document.querySelector('
+        '    \'#selection-atom-list tr[data-atom-index="0"] .col-labels\');'
+        '  return r && r.textContent.includes("L-electrode");'
+        '}'
+    )
+    # Save-as: rename to renamed.xyz (same dir; different basename).
+    page.locator("#save-to-source-btn").click()
+    page.wait_for_function(
+        "() => document.querySelector('.molbuilder-save-name-modal')"
+        "        !== null"
+    )
+    page.locator(
+        '.molbuilder-save-name-modal [data-role="name-input"]'
+    ).fill("renamed.xyz")
+    page.locator(
+        '.molbuilder-save-name-modal [data-action="save"]'
+    ).click()
+    page.wait_for_function(
+        "() => !document.getElementById('save-status').textContent"
+        "        .toLowerCase().startsWith('saving')"
+    )
+    renamed_xyz = project_dir / "renamed.xyz"
+    renamed_sidecar = project_dir / "renamed.molstruct.json"
+    # The XYZ landed.
+    assert renamed_xyz.exists(), "renamed.xyz should exist after Save-as"
+    # The sidecar landed (label propagation per §4.3).  Wait briefly
+    # for the fire-and-forget label POSTs to complete.
+    import time as _t
+    for _ in range(20):
+        if renamed_sidecar.exists():
+            data = _json.loads(renamed_sidecar.read_text())
+            if data.get("regions", {}).get("L-electrode") == [0, 1]:
+                break
+        _t.sleep(0.1)
+    else:
+        pytest.fail(
+            "renamed.molstruct.json should carry the workspace's "
+            "L-electrode region after Save-as; got "
+            + (_json.dumps(_json.loads(renamed_sidecar.read_text()),
+                          indent=2)
+               if renamed_sidecar.exists() else "no sidecar at all")
+        )
+
+
 def test_save_button_disabled_for_smiles_without_prior_save(
         page, flask_server):
     """A SMILES-generated structure has no source.file and no

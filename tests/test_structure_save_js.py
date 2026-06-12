@@ -58,6 +58,13 @@ def _run_node(snippet: str) -> object:
                     calls.push({{path, text}});
                     return Promise.resolve(writeImpl(path, text));
                 }},
+                // 2026-06-09 (save dialog): save.js reads the current
+                // sidebar dir as the destination root.  Mirrors
+                // the workspace fixtures' ``/projects/p`` source dir
+                // so the saved path round-trips to the original
+                // location when the chosen filename matches the
+                // source basename.
+                getCurrentDir: () => "/projects/p",
                 _calls: () => calls.slice(),
             }};
         }}
@@ -140,7 +147,7 @@ class TestTargetPath:
                 source: {kind: "file", file: "/p/loaded.xyz"},
                 lastSaveTo: "/p/saved.xyz",
             });
-            save.configure({canvas: c, projects: {writeFile: () => {}},
+            save.configure({canvas: c, projects: {writeFile: () => {}, getCurrentDir: () => "/projects/p"},
                             structurePage: _mkFakeStructurePage()});
             console.log(JSON.stringify(save.targetPath()));
         ''')
@@ -153,7 +160,7 @@ class TestTargetPath:
                 source: {kind: "file", file: "/p/loaded.xyz"},
                 lastSaveTo: null,
             });
-            save.configure({canvas: c, projects: {writeFile: () => {}},
+            save.configure({canvas: c, projects: {writeFile: () => {}, getCurrentDir: () => "/projects/p"},
                             structurePage: _mkFakeStructurePage()});
             console.log(JSON.stringify(save.targetPath()));
         ''')
@@ -169,7 +176,7 @@ class TestTargetPath:
                          generator_input: {smiles: "CCO"}},
                 lastSaveTo: null,
             });
-            save.configure({canvas: c, projects: {writeFile: () => {}},
+            save.configure({canvas: c, projects: {writeFile: () => {}, getCurrentDir: () => "/projects/p"},
                             structurePage: _mkFakeStructurePage()});
             console.log(JSON.stringify(save.targetPath()));
         ''')
@@ -178,7 +185,7 @@ class TestTargetPath:
     def test_null_on_empty_canvas(self):
         out = _run_node('''
             const c = _mkFakeCanvas();
-            save.configure({canvas: c, projects: {writeFile: () => {}},
+            save.configure({canvas: c, projects: {writeFile: () => {}, getCurrentDir: () => "/projects/p"},
                             structurePage: _mkFakeStructurePage()});
             console.log(JSON.stringify(save.targetPath()));
         ''')
@@ -221,15 +228,18 @@ class TestSaveFlow:
         # Orchestrator was told the save landed.
         assert out["markSavedCalls"] == ["/projects/p/water.xyz"]
 
-    def test_uses_last_save_to_when_set(self):
+    def test_uses_last_save_to_basename_when_set(self):
         """A prior Save sets last_save_to; subsequent Save writes
-        to the LATEST save path, not the original source.file."""
+        to the SIDEBAR'S current dir with the BASENAME of the
+        last-saved path (per the 2026-06-09 design — sidebar dir
+        always wins, basename roundtrips from last_save_to when
+        present)."""
         out = _run_node('''
             const c = _mkFakeCanvas({
                 empty: false,
                 structure: {source_format: "xyz", text: "x"},
-                source: {kind: "file", file: "/p/orig.xyz"},
-                lastSaveTo: "/p/renamed.xyz",
+                source: {kind: "file", file: "/projects/p/orig.xyz"},
+                lastSaveTo: "/projects/p/renamed.xyz",
             });
             const p = _mkFakeProjects(
                 (path, text) => ({ok: true, path}));
@@ -242,9 +252,11 @@ class TestSaveFlow:
                 markSavedPath:  sp._calls()[0],
             }));
         ''')
-        assert out["envelopePath"] == "/p/renamed.xyz"
-        assert out["writePath"] == "/p/renamed.xyz"
-        assert out["markSavedPath"] == "/p/renamed.xyz"
+        # Sidebar dir (/projects/p from the fake's getCurrentDir) +
+        # basename of last_save_to (renamed.xyz).
+        assert out["envelopePath"] == "/projects/p/renamed.xyz"
+        assert out["writePath"] == "/projects/p/renamed.xyz"
+        assert out["markSavedPath"] == "/projects/p/renamed.xyz"
 
 
 # ----- Refusal paths --------------------------------------------- #
@@ -255,7 +267,7 @@ class TestRefusals:
     def test_empty_canvas_refused(self):
         out = _run_node('''
             const c = _mkFakeCanvas({empty: true});
-            save.configure({canvas: c, projects: {writeFile: () => {}},
+            save.configure({canvas: c, projects: {writeFile: () => {}, getCurrentDir: () => "/projects/p"},
                             structurePage: _mkFakeStructurePage()});
             const r = await save.save();
             console.log(JSON.stringify(r));
@@ -274,7 +286,8 @@ class TestRefusals:
             });
             let writeCalls = 0;
             const p = {writeFile: () => { writeCalls++;
-                                          return Promise.resolve({ok:true});}};
+                                          return Promise.resolve({ok:true});},
+                       getCurrentDir: () => null};
             save.configure({canvas: c, projects: p,
                             structurePage: _mkFakeStructurePage()});
             const r = await save.save();
@@ -330,6 +343,7 @@ class TestErrorPaths:
             const p = {
                 writeFile: () => Promise.reject(
                     new TypeError("Failed to fetch")),
+                getCurrentDir: () => "/projects/p",
             };
             const sp = _mkFakeStructurePage();
             save.configure({canvas: c, projects: p, structurePage: sp});
