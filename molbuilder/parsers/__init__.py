@@ -163,6 +163,7 @@ def trajectory_to_legacy_dict(traj: Trajectory) -> Dict[str, Any]:
     out_frames:     List[List[List[Any]]] = []
     out_energies:   List[Any] = []
     out_max_forces: List[Any] = []
+    out_max_forces_constrained: List[Any] = []
     out_forces:     List[List[List[float]]] = []
     out_iterations: List[int] = []
     out_scf:        List[List[Dict[str, Any]]] = []
@@ -176,6 +177,8 @@ def trajectory_to_legacy_dict(traj: Trajectory) -> Dict[str, Any]:
 
         out_energies.append(f.energy)
         out_max_forces.append(f.max_force)
+        out_max_forces_constrained.append(
+            getattr(f, "max_force_constrained", None))
         if f.forces is not None:
             out_forces.append([[float(v) for v in row] for row in f.forces])
         else:
@@ -200,12 +203,26 @@ def trajectory_to_legacy_dict(traj: Trajectory) -> Dict[str, Any]:
     else:
         lattice_out = None
 
+    # 2026-06-12: ``max_forces_constrained`` collapses to a single
+    # top-level empty list when NO frame had a constrained value
+    # (the typical case: no frozen atoms anywhere in the run).  Saves
+    # a few KB on big trajectories AND signals "no constraints in
+    # this run" to consumers without them having to scan the array
+    # for non-null entries.  A frame WITH a constrained value
+    # stretches the array to full length, with None for any frame
+    # that lacks one (the parser only sees the constrained line
+    # after the unconstrained one in the same step, so missing
+    # entries usually mean a partial parse).
+    if all(v is None for v in out_max_forces_constrained):
+        out_max_forces_constrained = []
+
     return {
         "frames":        out_frames,
         "lattice":       lattice_out,
         "iterations":    out_iterations,
         "energies":      out_energies,
         "max_forces":    out_max_forces,
+        "max_forces_constrained": out_max_forces_constrained,
         "forces":        out_forces,
         "scf_history":   out_scf,
         "wall_times":    out_wall_times,

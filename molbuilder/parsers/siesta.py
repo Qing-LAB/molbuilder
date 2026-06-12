@@ -367,15 +367,25 @@ class SiestaParser(TrajectoryParser):
         step_frame: Optional[List[List[Any]]] = None
         step_energy: Optional[float] = None
         step_max_force: Optional[float] = None
+        # 2026-06-12: SIESTA also emits a "Max <val> constrained" line
+        # right after the unconstrained "Max <val>" when at least one
+        # atom is constrained.  This second value is what SIESTA
+        # compares against ``MD.MaxForceTol`` for relaxation
+        # convergence — meaning when constraints exist the
+        # unconstrained max is informational and the constrained max
+        # is the real "did we converge?" signal.  Parse + propagate.
+        step_max_force_constrained: Optional[float] = None
         step_forces: List[List[float]] = []
 
         def commit() -> None:
             nonlocal step_frame, step_energy, step_max_force, step_forces
+            nonlocal step_max_force_constrained
             nonlocal current_scf, prev_E_KS
             if not step_frame:
                 step_frame = None
                 step_energy = None
                 step_max_force = None
+                step_max_force_constrained = None
                 step_forces = []
                 # Don't reset current_scf here -- a torn frame at EOF
                 # has no Frame to attach to, but otherwise current_scf
@@ -396,11 +406,13 @@ class SiestaParser(TrajectoryParser):
                 energy      = step_energy,
                 forces      = forces_arr,
                 max_force   = step_max_force,
+                max_force_constrained = step_max_force_constrained,
                 scf_history = list(current_scf) if current_scf else None,
             ))
             step_frame = None
             step_energy = None
             step_max_force = None
+            step_max_force_constrained = None
             step_forces = []
             current_scf = []
             prev_E_KS = None
@@ -644,19 +656,34 @@ class SiestaParser(TrajectoryParser):
             current_scf.append(cycle_dict)
             prev_E_KS = e_ks
 
-        # Max-force line: single-line.  Gated by a closure-captured
-        # check on ``step_forces`` -- only valid after a Forces
-        # section closed.  Without the gate a stray "Max <num>" line
-        # in the preamble would mis-attribute to the first frame.
+        # Max-force lines: single-line, both variants.  Gated by a
+        # closure-captured check on ``step_forces`` -- only valid
+        # after a Forces section closed.  Without the gate a stray
+        # "Max <num>" line in the preamble would mis-attribute to
+        # the first frame.
+        #
+        # SIESTA emits TWO forms here:
+        #   * ``Max    0.789``                  → 2 tokens, all atoms
+        #   * ``Max    0.456    constrained``   → 3 tokens, excludes
+        #                                          constrained atoms
+        # The constrained form only appears when at least one atom
+        # is constrained (frozen).  Both forms route to separate
+        # frame fields so the plot can show both traces — the
+        # constrained one is what SIESTA actually compares against
+        # ``MD.MaxForceTol`` for convergence.
         def _max_force_match(line: str) -> bool:
             if not step_forces:
                 return False
             parts = line.strip().split()
-            # parts[0] case-insensitive: a hypothetical SIESTA build
-            # that emits "MAX" / "max" still hits the rule.  The
-            # gating on len(parts) == 2 keeps the constrained
-            # duplicate (3 tokens) from misfiring.
             return (len(parts) == 2 and parts[0].lower() == "max")
+
+        def _max_force_constrained_match(line: str) -> bool:
+            if not step_forces:
+                return False
+            parts = line.strip().split()
+            return (len(parts) == 3
+                    and parts[0].lower() == "max"
+                    and parts[2].lower() == "constrained")
 
         def _on_max_force(line: str, line_no: int) -> None:
             nonlocal step_max_force
@@ -666,6 +693,16 @@ class SiestaParser(TrajectoryParser):
                 _warn(line_no, line,
                       f"Max-force line: malformed value: {exc}",
                       category="forces")
+
+        def _on_max_force_constrained(line: str, line_no: int) -> None:
+            nonlocal step_max_force_constrained
+            try:
+                step_max_force_constrained = float(
+                    line.strip().split()[1])
+            except (ValueError, IndexError) as exc:
+                _warn(line_no, line,
+                      "Max-force-constrained line: malformed value: "
+                      f"{exc}", category="forces")
 
         rules: List[SectionRule] = [
             # Fatal-error markers fire FIRST so they win over any
@@ -800,6 +837,21 @@ class SiestaParser(TrajectoryParser):
                 aliases=["Max <value>"],
                 start=_max_force_match,
                 on_start=_on_max_force,
+            ),
+            # 2026-06-12: ``Max <value> constrained`` — SIESTA emits
+            # this RIGHT AFTER the unconstrained max-force line when
+            # at least one atom is constrained.  Excludes the
+            # constrained atoms from the max — the value SIESTA
+            # actually compares against MD.MaxForceTol.  Registered
+            # AFTER ``max_force`` so the 2-token form's matcher gets
+            # the first crack (gating on ``len(parts) == 2`` keeps
+            # them mutually exclusive at the matcher level, but the
+            # registration order is the explicit policy.
+            SectionRule(
+                name="max_force_constrained",
+                aliases=["Max <value> constrained"],
+                start=_max_force_constrained_match,
+                on_start=_on_max_force_constrained,
             ),
         ]
 

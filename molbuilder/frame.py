@@ -76,9 +76,22 @@ class Frame:
       forces       -- per-atom force array, shape (N, 3), eV/A;
                       None when the parser couldn't extract forces
                       (e.g. geomeTRIC trajectories carry no forces).
-      max_force    -- max per-atom force magnitude in eV/A, or None.
-                      Spec convention: max_i |F_i| (NOT
+      max_force    -- max per-atom force magnitude in eV/A across
+                      ALL atoms (including any frozen ones), or
+                      None.  Spec convention: max_i |F_i| (NOT
                       max(|F_component|)).
+      max_force_constrained
+                   -- max per-atom force magnitude in eV/A EXCLUDING
+                      atoms that are constrained / frozen.  None
+                      when the run has no constraints (SIESTA only
+                      emits the line when at least one atom is
+                      constrained) OR the parser couldn't extract
+                      it.  This is the value SIESTA compares
+                      against ``MD.MaxForceTol`` for relaxation
+                      convergence — when constraints exist, this
+                      is the meaningful "did we converge?" signal,
+                      not ``max_force`` (which can stay high on a
+                      frozen atom forever).
       lattice      -- (3, 3) Ang lattice vectors *for this frame*, or
                       None.  Today every parser sets None here and
                       puts the (constant) cell on Trajectory.lattice
@@ -106,6 +119,7 @@ class Frame:
     energy:       Optional[float]                 = None
     forces:       Optional[np.ndarray]            = None
     max_force:    Optional[float]                 = None
+    max_force_constrained: Optional[float]        = None
     lattice:      Optional[np.ndarray]            = None
     scf_history:  Optional[List[Dict[str, float]]] = None
     wall_time:    Optional[float]                 = None

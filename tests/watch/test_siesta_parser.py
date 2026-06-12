@@ -163,10 +163,54 @@ def test_energies(siesta_path):
     assert math.isclose(result["energies"][1], -101.5678)
 
 
-def test_max_forces_skip_constrained_line(siesta_path):
+def test_max_forces_captures_both_unconstrained_and_constrained(siesta_path):
+    """2026-06-12: SIESTA emits TWO ``Max <val>`` lines per relax step
+    when at least one atom is constrained — the second carries the
+    ``constrained`` suffix and is what SIESTA actually compares
+    against ``MD.MaxForceTol`` for convergence.  Capture both so the
+    Results plot can show both traces (and the user can see which one
+    is the meaningful "did we converge?" signal).
+    """
     result = trajectory_to_legacy_dict(SiestaParser.parse(siesta_path))
+    # Unconstrained (over ALL atoms).
     assert math.isclose(result["max_forces"][0], 1.234567)
     assert math.isclose(result["max_forces"][1], 0.987654)
+    # Constrained (excludes frozen atoms) — fixture has the same
+    # values in both forms (the max-force atom isn't frozen) but the
+    # parser must still surface BOTH fields.
+    assert math.isclose(result["max_forces_constrained"][0], 1.234567)
+    assert math.isclose(result["max_forces_constrained"][1], 0.987654)
+
+
+def test_max_forces_constrained_empty_when_no_constrained_line(tmp_path):
+    """Negative path: a run with NO constrained-line entries (no
+    frozen atoms) collapses ``max_forces_constrained`` to a top-level
+    empty list — saves JSON bytes AND signals "no constraints in
+    this run" to downstream consumers without scanning for null
+    entries.
+    """
+    # Hand-rolled minimal output: 1 frame, NO constrained line.
+    path = tmp_path / "norest.out"
+    path.write_text(
+        "Siesta Version: 5.4.2\n"
+        "outcoor: Atomic coordinates (Ang):\n"
+        "    0.0000    0.0000    0.0000   1\n"
+        "    0.7400    0.0000    0.0000   1\n"
+        "%block ChemicalSpeciesLabel\n1 1 H\n%endblock\n"
+        "siesta: Atomic forces (eV/Ang):\n"
+        "siesta:    1    0.1234    0.0000    0.0000\n"
+        "siesta:    2   -0.1234    0.0000    0.0000\n"
+        "   Max    0.1234\n"
+        "   Res    0.1234    sqrt( Sum f_i^2 / 3N )\n"
+        "siesta: E_KS(eV) = -1.0\n"
+        "siesta: program end\n"
+    )
+    result = trajectory_to_legacy_dict(SiestaParser.parse(str(path)))
+    # JSON collapse: no constrained values anywhere → []
+    assert result["max_forces_constrained"] == [], (
+        f"expected empty list (no constraints), got "
+        f"{result['max_forces_constrained']!r}"
+    )
 
 
 def test_per_atom_forces(siesta_path):

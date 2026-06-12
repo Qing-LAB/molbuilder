@@ -104,7 +104,7 @@
 
     const state = {
         mtime: null,
-        data: null,            // {frames, lattice, iterations, energies, max_forces, forces}
+        data: null,            // {frames, lattice, iterations, energies, max_forces, max_forces_constrained, forces}
         currentFrame: 0,
         pollTimer: null,
         // playTimer removed by #246 A1: the embed owns playback now;
@@ -893,15 +893,49 @@
             annotations: stageMx.annotations,
         }, { displayModeBar: false, responsive: true });
 
-        Plotly.react("force-plot", [{
+        // 2026-06-12: two traces when the engine reports both.
+        //
+        //   * ``max_forces``             — across ALL atoms,
+        //                                  including frozen ones.
+        //                                  Informational.
+        //   * ``max_forces_constrained`` — excluding frozen atoms.
+        //                                  When the run has frozen
+        //                                  atoms, this is what
+        //                                  SIESTA actually compares
+        //                                  against MD.MaxForceTol
+        //                                  for convergence.
+        //
+        // ``max_forces_constrained`` is an empty list when no frame
+        // in the run carried a constrained value (no frozen atoms);
+        // in that case we render the single trace as before.
+        const constrained = state.data.max_forces_constrained;
+        const forceTraces = [{
             x: x,
             y: state.data.max_forces,
             mode: "lines+markers",
-            line: { color: "#d62728", width: 1.5 },
-            marker: { size: 6 },
-            name: "Max |F|",
+            line: { color: "#d62728", width: 1.5,
+                    dash: (constrained && constrained.length)
+                            ? "dash" : "solid" },
+            marker: { size: (constrained && constrained.length) ? 4 : 6 },
+            name: (constrained && constrained.length)
+                    ? "Max |F| (all atoms)"
+                    : "Max |F|",
             connectgaps: false,
-        }], {
+        }];
+        if (constrained && constrained.length) {
+            forceTraces.push({
+                x: x,
+                y: constrained,
+                mode: "lines+markers",
+                // Brighter color + thicker line so the convergence-
+                // gating series reads as the primary signal.
+                line: { color: "#1f9d55", width: 2 },
+                marker: { size: 6 },
+                name: "Max |F| (free atoms, → convergence)",
+                connectgaps: false,
+            });
+        }
+        Plotly.react("force-plot", forceTraces, {
             title: { text: "Max force", font: { size: 13 } },
             margin: { l: 8, r: 12, t: 32, b: 32 },
             xaxis: { title: { text: "CG step", standoff: 4 },
