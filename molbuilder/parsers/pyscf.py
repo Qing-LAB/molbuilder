@@ -24,7 +24,7 @@ from __future__ import annotations
 import math
 import os
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -192,7 +192,19 @@ class PySCFParser(TrajectoryParser):
         # Optional: pull max-force per step from the companion .qdata.
         # geomeTRIC writes `<prefix>.qdata`, where this file is named
         # `<prefix>_optim.xyz`.  Same prefix, so derive it:
-        max_forces = cls._read_qdata_forces(path, len(frames_raw))
+        # 2026-06-12: now returns a 2-tuple — (max_over_all_atoms,
+        # max_excluding_frozen_atoms).  The second component is the
+        # PySCF analog of SIESTA's "Max <val> constrained" line.
+        # Computed by masking out the indices listed in the sidecar's
+        # ``frozen_atoms`` field when building the per-atom magnitudes
+        # from qdata's GRADIENT block.  When no sidecar is present or
+        # ``frozen_atoms`` is empty, the constrained list is filled
+        # with None — same trivial-case signal SIESTA's parser
+        # surfaces (and the ``trajectory_to_legacy_dict`` collapse
+        # rule below converts to ``[]`` so the plot stays single-
+        # trace).
+        max_forces, max_forces_constrained = cls._read_qdata_forces(
+            path, len(frames_raw))
 
         # PySCF's main .log has the SCF iteration tables (one block per
         # geom-opt step's electronic problem).  Surface this as
@@ -219,6 +231,9 @@ class PySCFParser(TrajectoryParser):
                 energy      = energies[i],
                 forces      = None,
                 max_force   = max_forces[i] if i < len(max_forces) else None,
+                max_force_constrained = (
+                    max_forces_constrained[i]
+                    if i < len(max_forces_constrained) else None),
                 scf_history = scf_for_step,
             ))
 
@@ -232,12 +247,37 @@ class PySCFParser(TrajectoryParser):
     #  qdata-companion helper                                        #
     # ------------------------------------------------------------- #
     @classmethod
-    def _read_qdata_forces(cls, traj_path: str,
-                           n_frames: int) -> List[Optional[float]]:
+    def _read_qdata_forces(
+        cls, traj_path: str, n_frames: int,
+    ) -> "Tuple[List[Optional[float]], List[Optional[float]]]":
         """Try `<prefix>.qdata` next to the trajectory.  Returns a
-        list of max-force values (eV/Ang) of length ``n_frames``;
-        each entry is ``None`` if the file isn't there or the entry
-        is missing for that step."""
+        2-tuple of length-``n_frames`` lists (eV/Ang):
+
+          ``(max_forces, max_forces_constrained)``
+
+        where ``max_forces[i]`` is the max per-atom force magnitude
+        across ALL atoms (including any constrained ones) and
+        ``max_forces_constrained[i]`` is the same statistic EXCLUDING
+        the indices listed in the sidecar's ``frozen_atoms`` field.
+
+        2026-06-12: the constrained variant exists because
+        ``MD.MaxForceTol``-style convergence thresholds apply to the
+        FREE atoms only — a forever-pinned frozen atom keeps the
+        unconstrained max above the threshold and the user can't
+        tell from the plot when their run actually converged.  See
+        SIESTA's ``Max <val> constrained`` line for the engine's
+        own version of the same idea.
+
+        ``max_forces_constrained[i]`` falls back to ``None`` when
+        the sidecar isn't present, has an empty ``frozen_atoms``,
+        or the qdata entry for that step is missing — the JSON
+        layer collapses an all-``None`` list to ``[]`` so consumers
+        can detect "no constraints in this run" via
+        ``arr.length === 0``.
+
+        Each list entry is ``None`` if the qdata file isn't there
+        or the entry is missing for that step.
+        """
         base, fname = os.path.split(traj_path)
         # geomeTRIC's pair: <prefix>_optim.xyz <-> <prefix>.qdata.txt
         # But qdata extension varies across versions; try a couple.
@@ -250,50 +290,111 @@ class PySCFParser(TrajectoryParser):
         ]
         qpath = next((p for p in candidates if os.path.isfile(p)), None)
         if qpath is None:
-            return [None] * n_frames
+            return [None] * n_frames, [None] * n_frames
+
+        frozen_set = cls._read_sidecar_frozen_atoms(traj_path)
 
         # Per-step: ENERGY starts a frame, GRADIENT (for THAT frame)
         # follows.  We flush the current frame's max only on the NEXT
         # ENERGY line (or at EOF), so the gradient is bound to the
         # right frame.
-        max_forces: List[Optional[float]] = []
+        max_forces:             List[Optional[float]] = []
+        max_forces_constrained: List[Optional[float]] = []
         try:
             with open(qpath, "r", errors="replace") as fh:
-                step_max: Optional[float] = None
+                step_max:         Optional[float] = None
+                step_max_constr:  Optional[float] = None
                 in_frame = False
                 for raw in fh:
                     s = raw.strip()
                     if s.startswith("ENERGY"):
                         if in_frame:
-                            max_forces.append(step_max)   # close previous
+                            max_forces.append(step_max)
+                            max_forces_constrained.append(step_max_constr)
                         in_frame = True
                         step_max = None
+                        step_max_constr = None
                     elif s.startswith("GRADIENT"):
                         # GRADIENT line lists 3N gradient components in
-                        # Hartree/Bohr.  Convention compatibility: SIESTA's
-                        # "Max" is the largest per-atom force MAGNITUDE
-                        # (sqrt(fx^2+fy^2+fz^2)), not the largest scalar
-                        # component.  Match it here so the energy/force
-                        # plots overlay sensibly across formats.
+                        # Hartree/Bohr.  Convention compatibility:
+                        # SIESTA's "Max" is the largest per-atom force
+                        # MAGNITUDE (sqrt(fx^2+fy^2+fz^2)), not the
+                        # largest scalar component.  Match it here so
+                        # the energy/force plots overlay sensibly
+                        # across formats.
                         try:
                             comps = [float(x) for x in s.split()[1:]]
                         except ValueError:
                             continue
                         if len(comps) >= 3:
-                            per_atom = (
-                                math.sqrt(comps[i]**2 + comps[i+1]**2 + comps[i+2]**2)
-                                for i in range(0, len(comps) - 2, 3)
-                            )
-                            step_max = max(per_atom) * _HA_BOHR_TO_EV_ANG
+                            per_atom = []
+                            for atom_idx, i in enumerate(
+                                    range(0, len(comps) - 2, 3)):
+                                mag = math.sqrt(
+                                    comps[i]**2 + comps[i+1]**2
+                                    + comps[i+2]**2)
+                                per_atom.append((atom_idx, mag))
+                            if per_atom:
+                                step_max = max(
+                                    m for _, m in per_atom
+                                ) * _HA_BOHR_TO_EV_ANG
+                                if frozen_set:
+                                    free = [m for ai, m in per_atom
+                                            if ai not in frozen_set]
+                                    if free:
+                                        step_max_constr = (
+                                            max(free) * _HA_BOHR_TO_EV_ANG)
                 if in_frame:
                     max_forces.append(step_max)
+                    max_forces_constrained.append(step_max_constr)
         except OSError:
-            return [None] * n_frames
+            return [None] * n_frames, [None] * n_frames
 
         # Pad / truncate to align with frames.
         if len(max_forces) < n_frames:
             max_forces.extend([None] * (n_frames - len(max_forces)))
-        return max_forces[:n_frames]
+        if len(max_forces_constrained) < n_frames:
+            max_forces_constrained.extend(
+                [None] * (n_frames - len(max_forces_constrained)))
+        return max_forces[:n_frames], max_forces_constrained[:n_frames]
+
+    @classmethod
+    def _read_sidecar_frozen_atoms(cls, traj_path: str) -> "set[int]":
+        """Look for ``<base>.molstruct.json`` next to ``<base>_optim
+        .xyz`` and return the ``frozen_atoms`` set (0-based ints).
+
+        Empty set when:
+          * no sidecar is present
+          * sidecar has no ``frozen_atoms`` field
+          * sidecar fails to parse (the constrained-max field stays
+            ``None`` for the run; no error surfaces to the user)
+        """
+        base, fname = os.path.split(traj_path)
+        stem = fname
+        if stem.endswith("_optim.xyz"):
+            stem = stem[: -len("_optim.xyz")]
+        # Try a couple of conventions: the geomeTRIC pair often
+        # has a stripped ``_geom`` suffix on the sidecar too.
+        candidates = [
+            os.path.join(base, f"{stem}.molstruct.json"),
+        ]
+        if stem.endswith("_geom"):
+            candidates.append(
+                os.path.join(base, stem[:-5] + ".molstruct.json"))
+        sidecar_path = next(
+            (p for p in candidates if os.path.isfile(p)), None)
+        if sidecar_path is None:
+            return set()
+        try:
+            import json as _json
+            with open(sidecar_path, "r", errors="replace") as fh:
+                data = _json.load(fh)
+        except (OSError, ValueError):
+            return set()
+        frozen = data.get("frozen_atoms")
+        if not isinstance(frozen, list):
+            return set()
+        return {int(i) for i in frozen if isinstance(i, int)}
 
     # ------------------------------------------------------------- #
     #  PySCF-log SCF-iteration helper                                #

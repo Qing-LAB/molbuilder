@@ -181,6 +181,81 @@ def test_qdata_provides_max_forces(tmp_path):
     assert math.isclose(result["max_forces"][0], expected, rel_tol=1e-6)
 
 
+def test_qdata_max_forces_constrained_empty_without_sidecar(tmp_path):
+    """2026-06-12: when no sidecar is next to the trajectory (no
+    frozen-atoms info), the constrained-max list collapses to ``[]``
+    in the JSON — same shape SIESTA emits for runs without
+    constraints.
+    """
+    traj = tmp_path / "myjob_geom_optim.xyz"
+    traj.write_text(SAMPLE)
+    qdata = tmp_path / "myjob_geom.qdata.txt"
+    qdata.write_text(
+        "ENERGY -76.4267520\n"
+        "GRADIENT 0.001 0.002 0.003 0.004 0.005 0.006 0.007 0.008 0.009\n"
+    )
+    result = trajectory_to_legacy_dict(PySCFParser.parse(str(traj)))
+    assert result["max_forces_constrained"] == [], (
+        f"expected [] when no sidecar; got "
+        f"{result['max_forces_constrained']!r}"
+    )
+
+
+def test_qdata_max_forces_constrained_masks_frozen_atoms(tmp_path):
+    """2026-06-12: when the sidecar lists frozen atoms, the
+    constrained max excludes them from the per-atom magnitude
+    pool.  This is the PySCF analog of SIESTA's "Max <val>
+    constrained" line — the convergence-meaningful series the
+    Results plot renders alongside the unconstrained "Max |F|"
+    trace.
+
+    Setup: 2-atom system, atom 0 has a huge gradient (frozen so
+    it never moves), atom 1 has a small gradient (the free atom
+    converging toward zero).  Constrained max should reflect
+    atom 1 only.
+    """
+    traj = tmp_path / "myjob_geom_optim.xyz"
+    traj.write_text(
+        "2\nIteration 0 Energy -1.0\nH 0.0 0.0 0.0\nH 1.0 0.0 0.0\n"
+        "2\nIteration 1 Energy -1.5\nH 0.0 0.0 0.0\nH 0.95 0.0 0.0\n"
+    )
+    qdata = tmp_path / "myjob_geom.qdata.txt"
+    qdata.write_text(
+        "ENERGY -1.0\n"
+        # atom 0 gradient = (0.50, 0, 0) → magnitude 0.50 Ha/Bohr
+        # atom 1 gradient = (0.01, 0, 0) → magnitude 0.01 Ha/Bohr
+        "GRADIENT 0.50 0.0 0.0 0.01 0.0 0.0\n"
+        "ENERGY -1.5\n"
+        # atom 0 gradient = (0.30, 0, 0) → magnitude 0.30
+        # atom 1 gradient = (0.005, 0, 0) → magnitude 0.005
+        "GRADIENT 0.30 0.0 0.0 0.005 0.0 0.0\n"
+    )
+    side = tmp_path / "myjob.molstruct.json"
+    side.write_text(json.dumps({
+        "schema_version": 3, "n_atoms_total": 2,
+        "structure_hash": "a" * 64,
+        "regions": {}, "frozen_atoms": [0], "selection_rules": {},
+    }))
+
+    result = trajectory_to_legacy_dict(PySCFParser.parse(str(traj)))
+    # Unconstrained tracks atom 0 (the frozen one with huge force).
+    HA_BOHR_TO_EV_ANG = 27.211386245988 / 0.5291772108
+    assert math.isclose(
+        result["max_forces"][0], 0.50 * HA_BOHR_TO_EV_ANG, rel_tol=1e-6)
+    assert math.isclose(
+        result["max_forces"][1], 0.30 * HA_BOHR_TO_EV_ANG, rel_tol=1e-6)
+    # Constrained masks atom 0 → reflects atom 1 (the free atom).
+    assert math.isclose(
+        result["max_forces_constrained"][0],
+        0.01 * HA_BOHR_TO_EV_ANG, rel_tol=1e-6)
+    assert math.isclose(
+        result["max_forces_constrained"][1],
+        0.005 * HA_BOHR_TO_EV_ANG, rel_tol=1e-6)
+    # And the JSON gets the full populated list (NOT the empty-
+    # collapse path) because at least one entry is non-None.
+    assert len(result["max_forces_constrained"]) == 2
+
+
 def test_json_safe(pyscf_traj_path):
     result = trajectory_to_legacy_dict(PySCFParser.parse(pyscf_traj_path))
     json.dumps(result, allow_nan=False)
