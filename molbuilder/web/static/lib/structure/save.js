@@ -419,6 +419,18 @@
 
     var _wired = false;
     var _unsubCanvas = null;
+    // 2026-06-12: while a Save click is in flight, the workspace's
+    // subscriber callback fires DURING ``_postWriteSuccess`` (because
+    // ``markSavedTo`` + ``adoptSession`` both call ws.notify()).  The
+    // subscriber re-runs ``refreshState`` mid-save, which would re-
+    // enable the button on a successful write — letting the user
+    // click Save AGAIN before the first save's label propagation +
+    // refresh-hash had finished and triggering a second dialog/POST
+    // for the same workspace.  Track the in-flight state at module
+    // scope and OR it into the disabled computation so the button
+    // stays disabled until the click handler's .then() clears the
+    // flag.  Cleared on both success and failure paths.
+    var _saveInFlight = false;
     function wirePanel(opts) {
         opts = opts || {};
         var doc = opts.doc || root.document;
@@ -451,7 +463,8 @@
                                  === "function")
                 ? (_projects.getCurrentDir() || "")
                 : "";
-            button.disabled = !hasContent
+            button.disabled = _saveInFlight
+                              || !hasContent
                               || (!path && !sidebarDir);
             if (readout) {
                 if (path) {
@@ -491,9 +504,11 @@
         }
 
         button.addEventListener("click", function () {
+            _saveInFlight = true;
             button.disabled = true;
             setStatus("Saving…");
             save().then(function (r) {
+                _saveInFlight = false;
                 if (r.ok) {
                     setStatus("Saved " + _basename(r.path) + ".");
                 } else {
@@ -507,6 +522,7 @@
                 // throws synchronously inside the Promise chain.
                 // Catch so the button reenables and the user
                 // sees what's wrong instead of a hung "Saving…".
+                _saveInFlight = false;
                 setStatus(
                     "Save failed: " + (err && err.message
                                        ? err.message : String(err)),

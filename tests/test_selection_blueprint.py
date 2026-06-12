@@ -1073,6 +1073,90 @@ class TestRefreshHash:
         })
         assert r.status_code == 404
 
+    def test_updates_n_atoms_total_when_xyz_grew(
+            self, web, selection_root):
+        """2026-06-12 regression: refresh-hash must keep
+        ``n_atoms_total`` in sync with the on-disk XYZ.
+
+        Before the fix, a Save after a modifier op (3 atoms -> 11)
+        without a prior Assign left the sidecar claiming the OLD
+        atom count.  Next load's ``apply_to_structure`` then raised
+        on mismatch and ``_load_structure`` silently swallowed —
+        the user's labels disappeared.  Refresh-hash must re-read
+        the XYZ and update ``n_atoms_total`` so the sidecar stays
+        coherent with the file it lives next to.
+        """
+        from molbuilder.parsers import molstruct_json as msj
+        xyz_path = Path(_path(selection_root))
+        side = msj.sidecar_path_for(xyz_path)
+        # Hand-craft a sidecar that claims 11 atoms (the original
+        # junction.xyz's count) with regions referencing low indices
+        # that survive a shrink to 3 atoms.
+        msj.save(side, msj.to_dict(
+            n_atoms_total  = 11,
+            structure_hash = msj.sha256_of_file(xyz_path),
+            regions        = {"L-electrode": [0, 1]},
+            frozen_atoms   = [0],
+            created_by     = "test setup",
+        ))
+        # Shrink the XYZ to 3 atoms (simulating an inverse modifier
+        # op).  Sidecar's n_atoms_total=11 is now stale vs 3 on disk.
+        xyz_path.write_text(
+            "3\nshrunk\n"
+            "Au 0 0 0\n" "Au 1 0 0\n" "Au 2 0 0\n"
+        )
+        r = web.post("/api/selection/refresh-hash", json={
+            "structure_path": _path(selection_root),
+        })
+        assert r.status_code == 200, r.data
+        body = r.get_json()
+        assert body["ok"] is True
+        assert body["refreshed"] is True
+        # n_atoms_total now matches the new XYZ's atom count, not
+        # the sidecar's stale claim.
+        after = msj.load(side)
+        assert after["n_atoms_total"] == 3
+        # The surviving in-range labels carry through; indices ≥ 3
+        # would have been dropped (none here — [0, 1] all in range).
+        assert after["regions"] == {"L-electrode": [0, 1]}
+        assert after["frozen_atoms"] == [0]
+
+    def test_drops_out_of_range_indices_on_shrink(
+            self, web, selection_root):
+        """When the new XYZ has fewer atoms than the sidecar
+        references, drop the indices that no longer exist rather
+        than failing the rebuild.  The user's modifier op shrunk
+        the structure; orphan labels can't reference atoms that
+        aren't there."""
+        from molbuilder.parsers import molstruct_json as msj
+        xyz_path = Path(_path(selection_root))
+        side = msj.sidecar_path_for(xyz_path)
+        msj.save(side, msj.to_dict(
+            n_atoms_total  = 11,
+            structure_hash = msj.sha256_of_file(xyz_path),
+            # Mix of in-range (0, 1) and out-of-range-after-shrink
+            # (7, 10) indices.
+            regions        = {"L-electrode": [0, 1], "R-electrode": [7, 10]},
+            frozen_atoms   = [0, 10],
+            created_by     = "test setup",
+        ))
+        xyz_path.write_text(
+            "3\nshrunk\n"
+            "Au 0 0 0\n" "Au 1 0 0\n" "Au 2 0 0\n"
+        )
+        r = web.post("/api/selection/refresh-hash", json={
+            "structure_path": _path(selection_root),
+        })
+        assert r.status_code == 200, r.data
+        after = msj.load(side)
+        assert after["n_atoms_total"] == 3
+        # L-electrode survives entirely (indices 0, 1).
+        # R-electrode's indices 7, 10 are both out of range and
+        # would empty the region — empty regions are dropped.
+        assert after["regions"] == {"L-electrode": [0, 1]}
+        # Frozen drops out-of-range 10 but keeps 0.
+        assert after["frozen_atoms"] == [0]
+
 
 class TestSaveSidecar:
     """``/api/selection/save-sidecar`` — atomic REPLACE of the entire

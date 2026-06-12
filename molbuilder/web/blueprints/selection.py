@@ -643,6 +643,24 @@ def selection_refresh_hash():
 
         new_hash = molstruct_json.sha256_of_file(resolved)
 
+        # 2026-06-12 (n_atoms_total stale fix): re-parse the XYZ to
+        # get the current atom count.  Before this, refresh-hash
+        # preserved the sidecar's OLD ``n_atoms_total`` unconditionally
+        # — but a Save after a modifier op (e.g. add electrode brings
+        # 3 atoms -> 11) without a prior Assign would leave the
+        # sidecar claiming 3 atoms while the XYZ on disk had 11.
+        # Next load's ``apply_to_structure`` then raised
+        # MolstructJsonError (mismatch), which ``_load_structure``
+        # swallows silently — and the user's labels disappeared with
+        # no visible error.  Both ``structure_hash`` and
+        # ``n_atoms_total`` track the file bytes; refresh BOTH.
+        try:
+            new_struct = _parse_structure_text(
+                resolved, resolved.read_text())
+        except _PickerError as exc:
+            return _bad_request(exc.message, exc.status)
+        new_n_atoms = len(new_struct.elements)
+
         # Serialise the read-modify-write cycle against concurrent
         # /api/selection/save writers — same lock as selection_save.
         with molstruct_json.with_lock(sidecar_path):
@@ -664,17 +682,38 @@ def selection_refresh_hash():
                     "structure_hash": None,
                 }), 409
 
-            # Preserve everything in the sidecar EXCEPT the hash.
-            # Region / frozen_atoms / rules / n_atoms_total are
-            # what the user explicitly placed; only the hash field
-            # needs to track the new XYZ bytes.
+            # If the new XYZ has fewer atoms than the sidecar's
+            # existing region/frozen indices reference, ``to_dict``
+            # will reject the rebuild (out-of-range indices vs
+            # n_atoms_total).  Drop the now-invalid entries rather
+            # than let the whole refresh fail: the user just shrunk
+            # the structure and the dropped labels can't reference
+            # atoms that no longer exist.  Mirrors the silent
+            # filter ``adoptAtoms`` does in the JS store.
+            existing_regions = {}
+            for name, idxs in (existing.get("regions") or {}).items():
+                filt = [i for i in (idxs or []) if 0 <= i < new_n_atoms]
+                if filt:
+                    existing_regions[name] = filt
+            existing_frozen = [
+                i for i in (existing.get("frozen_atoms") or [])
+                if 0 <= i < new_n_atoms
+            ]
+            # Drop selection_rules whose target was just dropped —
+            # the rule names a region that no longer exists.  Rules
+            # for surviving regions + ``frozen_atoms`` pass through.
+            existing_rules = {
+                t: r for t, r in (existing.get("selection_rules") or {}).items()
+                if t in existing_regions or t == "frozen_atoms"
+            }
+
             try:
                 new_payload = molstruct_json.to_dict(
-                    n_atoms_total   = existing.get("n_atoms_total", 0),
+                    n_atoms_total   = new_n_atoms,
                     structure_hash  = new_hash,
-                    regions         = existing.get("regions") or {},
-                    frozen_atoms    = existing.get("frozen_atoms") or [],
-                    selection_rules = existing.get("selection_rules") or {},
+                    regions         = existing_regions,
+                    frozen_atoms    = existing_frozen,
+                    selection_rules = existing_rules,
                     created_by      = "molbuilder save (hash refresh)",
                 )
             except molstruct_json.MolstructJsonError as exc:
