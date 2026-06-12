@@ -153,23 +153,61 @@ header .tagline {
     background: transparent;
 }
 
-/* Modify section: selection (left, 50%) + edit (right, 50%) on
- * wide screens; stacked on narrow.  Footer row underneath holds
- * Save + Send-to-Optimization. */
-.modify-section { display: flex; flex-direction: column; }
-.modify-body {
+/* 2026-06-12 layout v3 — Workspace grid: three independent
+ * cards (viewer, selection, modify) laid out side-by-side on wide
+ * viewports.  Each carries its own min-width so the grid track
+ * collapses to the next breakpoint cleanly rather than letting
+ * any panel get unusably narrow.
+ *
+ * Breakpoints (driven by min-width sums, not media queries — the
+ * grid's ``auto-fit`` ensures the row reflows automatically):
+ *
+ *   wide   (≥ ~1340 px workspace width): 3 columns
+ *                viewer (~480) + selection (~360) + modify (~400)
+ *   medium (≥ ~860 px):                  2 columns, modify wraps
+ *                                         to its own row below
+ *   narrow (< ~860 px):                  1 column, all stacked
+ *
+ * The reflow uses ``grid-template-columns: repeat(auto-fit,
+ * minmax(MIN, 1fr))`` so the browser decides between 1, 2, and 3
+ * columns based on available room and the MIN we declare.
+ */
+.workspace-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
     gap: var(--gap);
     align-items: start;
 }
-.modify-selection { min-width: 0; }   /* let it shrink in the grid */
-.modify-edit      { min-width: 0; }
-@media (max-width: 960px) {
-    .modify-body {
-        grid-template-columns: minmax(0, 1fr);
-    }
+.workspace-viewer    { min-width: 360px; }
+.workspace-selection { min-width: 320px; }
+.workspace-modify    { min-width: 360px; }
+/* Viewer needs a max so its canvas doesn't dwarf the other
+ * panels when the row reflows to a single 1200-px column.  The
+ * 560-px cap matches the prior viewer-wrap max-width. */
+.workspace-viewer { max-width: 600px; }
+
+/* When a single column reflow happens, drop max + min to let
+ * everything fill cleanly. */
+@media (max-width: 768px) {
+    .workspace-viewer,
+    .workspace-selection,
+    .workspace-modify { min-width: 0; max-width: none; }
 }
+
+/* Modify section: now hosts ONLY the op-tabs (the selection
+ * panel moved to its own workspace card in layout v3, 2026-
+ * 06-12).  Footer row at the bottom holds Save +
+ * Send-to-Optimization. */
+.modify-section { display: flex; flex-direction: column; }
+.modify-body {
+    display: block;       /* single column: op-tabs only */
+    align-items: start;
+}
+.modify-edit      { min-width: 0; }
+/* Legacy class kept for selection-panel CSS that may target it
+ * via descendant selectors during the migration window.  Empty
+ * rule today; safe to delete once the grep comes back clean. */
+.modify-selection { }
 
 .modify-footer {
     display: flex;

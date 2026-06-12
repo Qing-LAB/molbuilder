@@ -528,20 +528,25 @@ class TestSidebarPartialAndShim:
         work in ES modules but causes init-order subtleties.  Pin
         the allowed direction:
 
-            api.js     -> (nothing in projects/)
-            state.js   -> api.js only
-            preview.js -> state.js, api.js
-            list.js    -> state.js, api.js, preview.js
-            forms.js   -> state.js, api.js, list.js
+            api.js          -> (nothing in projects/)
+            state.js        -> api.js only
+            preview.js      -> state.js, api.js
+            dialogs.js      -> state.js, api.js
+            list.js         -> state.js, api.js, preview.js, dialogs.js
+            mutation-bar.js -> state.js, api.js, list.js, dialogs.js
 
-        ``projects-sidebar.js`` (entry) imports all 5 modules and
-        is the only file allowed to.
+        ``projects-sidebar.js`` (entry) imports the modules and is
+        the only file allowed to.
+
+        2026-06-12: ``forms.js`` was renamed to ``mutation-bar.js``
+        after the v2 buttons-not-inline-forms refactor.
         """
         def imports_from_projects(body):
             import re
+            # Match ./projects/<name>.js or ./<name>.js (hyphen + dot OK).
             return set(re.findall(
-                r'from\s+"\.\/projects\/([a-z]+)\.js"|'
-                r'from\s+"\.\/([a-z]+)\.js"',
+                r'from\s+"\.\/projects\/([a-z][a-z0-9_-]*)\.js"|'
+                r'from\s+"\.\/([a-z][a-z0-9_-]*)\.js"',
                 body,
             ))
         def flat(matches):
@@ -562,8 +567,8 @@ class TestSidebarPartialAndShim:
         list_  = flat(imports_from_projects(
             web.get("/static/lib/projects/list.js").get_data(as_text=True)
         ))
-        forms  = flat(imports_from_projects(
-            web.get("/static/lib/projects/forms.js").get_data(as_text=True)
+        mutation_bar = flat(imports_from_projects(
+            web.get("/static/lib/projects/mutation-bar.js").get_data(as_text=True)
         ))
 
         # api is a leaf -- depends on nothing else in projects/.
@@ -587,25 +592,27 @@ class TestSidebarPartialAndShim:
             f"dialogs.js may import from state, api only, found {dialogs}"
         )
 
-        # list depends on state, api, preview, dialogs (but NOT forms).
+        # list depends on state, api, preview, dialogs (but NOT
+        # mutation-bar).
         assert list_ <= {"state", "api", "preview", "dialogs"}, (
             f"list.js may import from state/api/preview/dialogs only, "
             f"found {list_}"
         )
 
-        # forms is the top of the per-module stack (besides the entry).
-        # It can depend on state, api, list, preview, dialogs.
-        assert forms <= {"state", "api", "list", "preview", "dialogs"}, (
-            f"forms.js may import from state/api/list/preview/dialogs only, "
-            f"found {forms}"
+        # mutation-bar (renamed from forms 2026-06-12) is the top of
+        # the per-module stack (besides the entry).  Can depend on
+        # state, api, list, preview, dialogs.
+        assert mutation_bar <= {"state", "api", "list", "preview", "dialogs"}, (
+            f"mutation-bar.js may import from state/api/list/preview/"
+            f"dialogs only, found {mutation_bar}"
         )
 
-        # The crucial negative: state must NOT import from list, forms,
-        # preview, or dialogs (the cycle-breaking discipline).
-        assert "list"    not in state, "state.js cannot import from list.js (cycle)"
-        assert "forms"   not in state, "state.js cannot import from forms.js"
-        assert "preview" not in state, "state.js cannot import from preview.js"
-        assert "dialogs" not in state, "state.js cannot import from dialogs.js"
+        # The crucial negative: state must NOT import from any
+        # downstream module (the cycle-breaking discipline).
+        assert "list"         not in state, "state.js cannot import from list.js (cycle)"
+        assert "mutation-bar" not in state, "state.js cannot import from mutation-bar.js"
+        assert "preview"      not in state, "state.js cannot import from preview.js"
+        assert "dialogs"      not in state, "state.js cannot import from dialogs.js"
 
     def test_projects_selection_shim_removed(self, web, picker_root):
         # The per-tab projects-selection shim was retired -- the sidebar
@@ -1326,6 +1333,54 @@ class TestFilesMove:
         # directory-refusal does (400).  Both are correct rejections.
         assert r.status_code == 400
 
+    def test_move_sidecar_failure_rolls_back_structure(
+            self, web, picker_root, monkeypatch):
+        """2026-06-12 audit follow-up: when the structure leg of a
+        sidecar-paired move succeeds but the sidecar leg fails, the
+        backend must roll the structure back to its original path so
+        the user doesn't end up with an orphaned half-moved pair.
+
+        Setup: real water.xyz + water.molstruct.json in a project
+        dir.  Patch ``os.replace`` to throw IOError on the SECOND
+        call (the sidecar leg) — first call (structure leg)
+        succeeds normally.  Endpoint should return 500 with a
+        "rolled back" message and the source files must still exist
+        in their original location.
+        """
+        import os
+        struct, sidecar = _seed_paired(picker_root, stem="water")
+        dst_dir = picker_root / "structures"
+        dst_dir.mkdir()
+
+        real_replace = os.replace
+        calls = {"n": 0}
+        def _fake_replace(a, b):
+            calls["n"] += 1
+            # First call = structure leg.  Let it succeed.
+            # Second call = sidecar leg.  Throw.
+            # Third call (rollback) = structure leg back.  Let it
+            # succeed via the real call.
+            if calls["n"] == 2:
+                raise OSError(28, "no space left on device (simulated)")
+            return real_replace(a, b)
+        monkeypatch.setattr(os, "replace", _fake_replace)
+
+        r = web.post("/api/files/move", json={
+            "path":     str(struct), "dest_dir": str(dst_dir),
+        })
+        assert r.status_code == 500
+        body = r.get_json()
+        assert "rolled back" in body["error"].lower(), (
+            f"expected rollback message; got {body['error']!r}"
+        )
+        # Source pair still where it started.
+        assert struct.exists()
+        assert sidecar.exists()
+        # Destination pair NOT present (rollback undid the
+        # structure leg; sidecar leg never landed).
+        assert not (dst_dir / "water.xyz").exists()
+        assert not (dst_dir / "water.molstruct.json").exists()
+
 
 # --------------------------------------------------------------------- #
 #  POST /api/files/copy                                                 #
@@ -1397,6 +1452,51 @@ class TestFilesCopy:
         other.mkdir()
         r = self._copy(web, src_dir, other)
         assert r.status_code == 400
+
+    def test_copy_sidecar_failure_unlinks_half_copy(
+            self, web, picker_root, monkeypatch):
+        """2026-06-12 audit follow-up: when the structure leg of a
+        sidecar-paired copy succeeds but the sidecar leg fails, the
+        backend must unlink the half-copied structure file so the
+        user doesn't end up with an orphaned structure-without-its-
+        sidecar at the destination.
+
+        Setup: real water.xyz + water.molstruct.json.  Patch
+        ``shutil.copy2`` to throw on the SECOND call (the sidecar
+        leg) — first call (structure leg) copies normally.
+        Endpoint should return 500 mentioning the half-copy
+        cleanup AND the destination structure must NOT exist
+        afterwards (we ate our own dog food).
+        """
+        import shutil
+        struct, sidecar = _seed_paired(picker_root, stem="water")
+        dst_dir = picker_root / "structures"
+        dst_dir.mkdir()
+
+        real_copy2 = shutil.copy2
+        calls = {"n": 0}
+        def _fake_copy2(a, b):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                raise OSError(28, "no space left on device (simulated)")
+            return real_copy2(a, b)
+        monkeypatch.setattr(shutil, "copy2", _fake_copy2)
+
+        r = web.post("/api/files/copy", json={
+            "path":     str(struct), "dest_dir": str(dst_dir),
+        })
+        assert r.status_code == 500
+        body = r.get_json()
+        assert "half-paired" in body["error"].lower() \
+            or "removed" in body["error"].lower(), (
+            f"expected cleanup message; got {body['error']!r}"
+        )
+        # Source pair preserved.
+        assert struct.exists()
+        assert sidecar.exists()
+        # Destination structure unlinked + sidecar never landed.
+        assert not (dst_dir / "water.xyz").exists()
+        assert not (dst_dir / "water.molstruct.json").exists()
 
 
 # --------------------------------------------------------------------- #

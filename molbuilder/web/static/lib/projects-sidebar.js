@@ -26,7 +26,7 @@ import {
 import {
   initList, initLockUI, openDir, restoreSelection,
 } from "./projects/list.js";
-import { initForms } from "./projects/forms.js";
+import { initForms } from "./projects/mutation-bar.js";
 import { initPreview } from "./projects/preview.js";
 
 window.molbuilder = window.molbuilder || {};

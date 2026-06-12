@@ -2234,25 +2234,117 @@ def test_panel_mode_swap_preserves_selection(
     )
 
 
-def test_panel_add_filter_button_flips_mode_to_filter(
+def test_mutation_bar_buttons_open_their_dialogs(
+        page, flask_server, tmp_path, monkeypatch):
+    """2026-06-12 audit follow-up: smoke test the mutation-bar
+    button → dialog wiring.  Each of the three sidebar header
+    buttons (New project / New folder / Upload) must open its
+    matching modal dialog from lib/projects/dialogs.js.
+
+    Doesn't validate the dialog's full form behavior — that's a
+    separate concern — just that the wiring chain (button → dialog
+    open) is intact end-to-end.  Catches regressions where a
+    rename of the dialogs module or a missed import in
+    mutation-bar.js leaves the buttons inert.
+    """
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    # Set up a project so New folder + Upload buttons are enabled
+    # (they disable at the projects/ root).
+    proj = tmp_path / "proj-a" / "user"
+    proj.mkdir(parents=True)
+
+    _open_modify(page, flask_server)
+    # Navigate sidebar into the user/ subdir so New folder + Upload
+    # are not depth-0-gated.
+    page.evaluate(
+        "(p) => window.molbuilder.projects.navigateTo(p)", str(proj)
+    )
+
+    # New project — never depth-gated; click → name dialog opens.
+    page.locator("#ps-create-project-btn").click()
+    page.wait_for_selector(
+        ".molbuilder-projects-name-dialog[open]", timeout=2000
+    )
+    # Cancel to close before the next button.
+    page.locator(
+        ".molbuilder-projects-name-dialog [data-action='cancel']"
+    ).click()
+    page.wait_for_function(
+        "() => !document.querySelector("
+        "  '.molbuilder-projects-name-dialog[open]')"
+    )
+
+    # New folder — same name dialog kind, but a different title.
+    page.locator("#ps-create-folder-btn").click()
+    page.wait_for_selector(
+        ".molbuilder-projects-name-dialog[open]", timeout=2000
+    )
+    title = page.evaluate(
+        "() => document.querySelector("
+        "  '.molbuilder-projects-name-dialog h2').textContent"
+    )
+    assert "New folder" in title, (
+        f"expected 'New folder' dialog; got title {title!r}"
+    )
+    page.locator(
+        ".molbuilder-projects-name-dialog [data-action='cancel']"
+    ).click()
+    page.wait_for_function(
+        "() => !document.querySelector("
+        "  '.molbuilder-projects-name-dialog[open]')"
+    )
+
+    # Upload — different dialog class.
+    page.locator("#ps-create-upload-btn").click()
+    page.wait_for_selector(
+        ".molbuilder-projects-upload-dialog[open]", timeout=2000
+    )
+    page.locator(
+        ".molbuilder-projects-upload-dialog [data-action='cancel']"
+    ).click()
+    page.wait_for_function(
+        "() => !document.querySelector("
+        "  '.molbuilder-projects-upload-dialog[open]')"
+    )
+
+
+def test_panel_filter_mode_pill_reveals_add_filter_at_top(
         page, flask_server, water_xyz_file):
-    """The + Add filter button must flip mode to filter even if the
-    user was in click mode -- otherwise the newly-added filter row
-    would be hidden and the user wouldn't see it.  (panel.js:
-    addFilterBtn handler.)"""
+    """2026-06-12 layout v3: ``+ Add filter`` lives at the TOP of
+    the Filter-mode section (not as an always-visible button as in
+    v2).  Click-mode entry → Filter-tab pill click reveals the
+    section AND its Add filter button; clicking the button adds a
+    row.
+
+    The auto-flip-mode-on-Add-filter-click behaviour stays in the
+    handler as defense-in-depth (so programmatic callers from a
+    future "make filter from selection" flow don't need to switch
+    modes first), but the UI no longer EXPOSES Add filter from
+    click mode — the mode pill is the entry point.
+    """
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
     _wait_panel_ready(page)
     # Confirm click mode is the default.
     assert page.locator("#selection-mode-click").is_checked()
-    page.locator("#selection-add-filter").click()
+    # Filter section + its Add filter button hidden in click mode.
+    assert not page.locator("#selection-filter-section").is_visible()
+    assert not page.locator("#selection-add-filter").is_visible()
+    # Click the Filter mode pill → section + Add filter become
+    # visible.  The radio is styled-hidden inside a <label class="
+    # selection-mode-option"> pill; click the wrapping label that
+    # contains "Filter" text.
+    page.locator(".selection-mode-option", has_text="Filter").click()
     page.wait_for_function(
         "() => document.getElementById('selection-mode-filter').checked"
     )
-    # The filter editor section is visible now.
     assert page.locator("#selection-filter-section").is_visible()
-    # And exactly one filter row was added.
-    assert page.locator(".selection-filter-row").count() == 1
+    assert page.locator("#selection-add-filter").is_visible()
+    # Click Add filter — exactly one row appears.
+    page.locator("#selection-add-filter").click()
+    page.wait_for_function(
+        "() => document.querySelectorAll('.selection-filter-row').length === 1"
+    )
 
 
 def test_panel_apply_filter_with_no_filters_clears_selection(

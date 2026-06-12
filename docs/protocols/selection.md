@@ -15,7 +15,7 @@
   * `static/lib/projects/api.js`         -- HTTP wrappers (no DOM, no state)
   * `static/lib/projects/state.js`       -- sessionStorage + Inquire API + writeFile/saveToWorkspace
   * `static/lib/projects/list.js`        -- breadcrumb + entry list + per-entry ⋯ kebab menu + openDir
-  * `static/lib/projects/forms.js`       -- header action bar (New project / New folder / Upload buttons)
+  * `static/lib/projects/mutation-bar.js` -- header action bar (New project / New folder / Upload buttons)
   * `static/lib/projects/dialogs.js`     -- modal dialogs (rename, move/copy dest picker, upload, confirm)
   * `static/lib/projects/preview.js`     -- file-preview modal (CodeMirror 5; Find + Download; view-only above 1 MB)
 

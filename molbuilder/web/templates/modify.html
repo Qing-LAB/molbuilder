@@ -261,7 +261,17 @@
        in the row directly below the canvas; structure-level
        handoff actions (Save, Send-to-Optimization) live at
        the bottom of Modify, NOT here. -->
-  <section class="card viewer-section">
+  {#- 2026-06-12 layout v3: three panels — viewer, selection,
+      modify — each in its own card.  Wide viewports stack them
+      side-by-side via .workspace-grid (3 columns); medium drops
+      modify below (2 + 1); narrow stacks everything vertically.
+      The previous v2 layout glued selection into modify-section
+      which forced "tweak filter then apply op" to alternate
+      between two physically adjacent panels — clean separation
+      lets the user keep the viewer steady while editing
+      filters or applying ops. -#}
+  <div class="workspace-grid">
+  <section class="card viewer-section workspace-viewer">
     <header class="card-header">
       <h2>2. Viewer</h2>
       <span id="title-readout" class="muted"></span>
@@ -286,23 +296,31 @@ is dominated by the slabs and 3Dmol's auto-pivot drifts off the molecule.">Focus
     </div>
   </section>
 
-  <!-- 3. Modify — selection + edit panels side-by-side (50/50)
-       on wide screens, stacking vertically on narrow.  Save +
-       Send-to-Optimization handoff at the bottom. -->
-  <section class="card modify-section">
+  <!-- 3. Selection — atom list + filter + assign verbs.  Hosts
+       the partial mounted by selection-bootstrap.js. -->
+  <section class="card workspace-selection">
     <header class="card-header">
-      <h2>3. Modify</h2>
+      <h2>3. Selection</h2>
+      <span class="muted">pick atoms by click or filter</span>
+    </header>
+    {# Selection panel host (filled by selection-bootstrap.js). #}
+    <div id="selection-host" class="selection-host"></div>
+  </section>
+
+  <!-- 4. Modify — atom/pose/geom/junction op-tabs.  Now its own
+       card so the user can keep the viewer + selection panels
+       fixed while applying ops.  Save + Send-to-Optimization
+       handoff at the bottom. -->
+  <section class="card modify-section workspace-modify">
+    <header class="card-header">
+      <h2>4. Modify</h2>
       <span id="edit-status" class="muted"></span>
     </header>
 
     <div class="modify-body">
-      {# Selection panel host (filled by selection-bootstrap.js). #}
-      <div id="selection-host" class="modify-selection selection-host"></div>
-
       <!-- Edit (op-tabs) — the existing Atom / Pose / Geom /
-           Junction sub-tabs.  Mounted side-by-side with the
-           selection panel so the user can refine a selection
-           and apply an op without scrolling between cards. -->
+           Junction sub-tabs.  Selection is now in its own
+           panel above so this column gets the full width. -->
       <aside class="modify-edit edit-card">
     <div class="edit-panel">
       <!-- The "Selection" summary that used to sit at the top of
@@ -644,6 +662,7 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
       </div>
     </div>
   </section>
+  </div><!-- /.workspace-grid -->
 
 </main>
 

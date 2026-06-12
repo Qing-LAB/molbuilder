@@ -219,8 +219,11 @@ class TestNoUnsafeInnerHTML:
             ("lib/spectra/core.js", "spectrumChart.innerHTML"),
             # Sidebar empty-state message (static literal).
             ("lib/projects-sidebar.js", "list.innerHTML"),
-            # CANONICAL_TOPICS preview (constant from module import).
-            ("lib/projects/forms.js", "elNewProjSubdirs.innerHTML"),
+            # 2026-06-12: forms.js renamed to mutation-bar.js after the
+            # v2 buttons-not-inline-forms refactor; the New-project
+            # subdir-list innerHTML was deleted with the inline form
+            # (the hint now lives in the modal dialog as plain text).
+            # Allowlist entry retired.
             # 'Selected: <strong></strong>' then textContent on the
             # strong child -- safe by inspection.
             ("lib/projects/list.js", "sel.innerHTML"),

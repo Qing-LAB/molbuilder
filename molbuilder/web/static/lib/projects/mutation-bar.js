@@ -1,10 +1,10 @@
-/* projects/forms.js -- mutation-bar wiring.
+/* projects/mutation-bar.js -- header-bar wiring.
  *
- * 2026-06-12: three SEPARATE buttons in the sidebar header
- * (New project / New folder / Upload).  No dropdown — each click
- * opens its modal dialog directly (from projects/dialogs.js).
- * Backend calls go through projects.* (state.js), which dispatches
- * to projects/api.js + fires a directory refresh on success.
+ * Three SEPARATE buttons in the sidebar header (New project /
+ * New folder / Upload).  No dropdown — each click opens its
+ * modal dialog directly (from projects/dialogs.js).  Backend
+ * calls go through projects.* (state.js), which dispatches to
+ * projects/api.js + fires a directory refresh on success.
  *
  * Depth-aware enable/disable (driven by projects.onChange):
  *   * New project    -- always enabled
@@ -13,9 +13,11 @@
  *
  * Spec: docs/protocols/projects-sidebar.md § Mutation UX.
  *
- * The file is still named ``forms.js`` to keep its import path
- * (``./forms.js``) stable for ``projects-sidebar.js``; the inline-
- * form era ended in this commit.
+ * 2026-06-12: renamed from ``forms.js`` after the v2 buttons-not-
+ * inline-forms refactor (commit c929a28).  The historical name no
+ * longer reflected the content; the file's only role now is the
+ * mutation bar wiring.  Pre-1.0 repo policy [[no_backward_compat]]
+ * — no module-name redirect kept around.
  */
 
 import {
