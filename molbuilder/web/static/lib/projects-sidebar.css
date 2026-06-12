@@ -969,11 +969,28 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
   background: rgba(74, 158, 255, 0.06);
 }
 .ps-preview-cmview .CodeMirror-selected {
-  /* Default selection on dark themes is hard to see — boost the
-   * contrast.  Forced via background-color rather than CM's
-   * ``background`` so the gutter highlight doesn't bleed across. */
-  background: rgba(74, 158, 255, 0.22);
+  /* 2026-06-12 contrast fix: the prior 22% accent-blue background
+   * had nearly the same luminance as the ``--ps-fg`` (#ddd) text
+   * on a dark canvas — selected ranges literally vanished.  Bump
+   * to ~55% so the selection reads as a clear block + keep the
+   * accent hue so it's obvious "this is the selected region".
+   *
+   * Forced via background-color rather than CM's ``background``
+   * so the gutter highlight doesn't bleed across. */
+  background: rgba(74, 158, 255, 0.55);
 }
+/* Focused-editor selection is the user's primary attention target;
+ * give it an even stronger contrast.  Without this, an out-of-focus
+ * (e.g. find-dialog open) selection looks identical to a focused
+ * one and the user can't tell which area their next keypress
+ * affects. */
+.ps-preview-cmview .CodeMirror-focused .CodeMirror-selected {
+  background: rgba(74, 158, 255, 0.65);
+}
+/* (The .CodeMirror-selectedtext per-character class isn't enabled
+ * — see preview.js's ``styleSelectedText`` note about the
+ * keystroke-selectAll perf cliff.  Contrast is carried entirely by
+ * the high-opacity blue background above.) */
 
 /* Visible scrollbars — CM5's default overflow:scroll renders
  * narrow scrollbars on macOS that vanish when idle.  Force a 12px

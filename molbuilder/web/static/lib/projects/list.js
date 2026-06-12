@@ -310,6 +310,24 @@ function _openKebab(trigger, entry, fullPath, currentPath) {
       return showPreview();
     });
   }
+  // Download: file-only.  Triggers a browser-level file save via
+  // ``<a download>`` pointing at the new ``/api/files/download``
+  // endpoint.  Works for any file kind (text, binary, multi-MB).
+  // No size cap — the server streams the file via send_file.
+  if (entry.kind === "file") {
+    _addItem("Download", () => {
+      const a = document.createElement("a");
+      a.href = "/api/files/download?path="
+             + encodeURIComponent(fullPath);
+      a.download = entry.name;
+      // Anchor needs to be in the DOM for some browsers to honor
+      // the download attribute.  Detach immediately so we don't
+      // accumulate stale anchors.
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    });
+  }
   // Rename: any entry that isn't a canonical-topic dir at depth 1
   // or projects/ itself (mirrors _isDeletableEntry's protection).
   if (_isDeletableEntry(entry, currentPath)) {

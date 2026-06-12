@@ -476,6 +476,54 @@ def api_files_read():
     })
 
 
+@bp.route("/api/files/download", methods=["GET"])
+def api_files_download():
+    """Stream a file from the picker roots to the browser with
+    ``Content-Disposition: attachment`` so it triggers a download
+    rather than rendering in-tab.
+
+    Unlike ``/api/files/read`` this endpoint:
+      * works for ANY file kind (binary, multi-MB logs, .nc /
+        .ion files) — no UTF-8 decode, no size cap
+      * streams the file via ``send_file`` rather than buffering
+        the full bytes in JSON
+      * adds the download header keyed off the file's basename
+
+    Same path-validation contract as the other file endpoints
+    (must resolve inside an allowed picker root, must exist, must
+    be a regular file).
+    """
+    from flask import send_file as _send_file
+
+    raw_path = request.args.get("path", "")
+    try:
+        resolved = _resolve_within_roots(raw_path)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+    if not resolved.exists():
+        return jsonify({
+            "ok": False,
+            "error": f"path does not exist: {str(resolved)!r}",
+        }), 404
+    if not resolved.is_file():
+        return jsonify({
+            "ok": False,
+            "error": f"path is not a regular file: {str(resolved)!r}",
+        }), 400
+    # ``as_attachment=True`` -> ``Content-Disposition: attachment;
+    # filename="<basename>"``.  ``etag=False`` so a re-download
+    # always hits the fresh bytes (the file may have changed
+    # between the user's last view and the download click).
+    return _send_file(
+        str(resolved),
+        as_attachment=True,
+        download_name=resolved.name,
+        etag=False,
+        last_modified=None,
+        max_age=0,
+    )
+
+
 # Default per-call window for the range-read endpoint -- 256 KB is
 # large enough to feel snappy + render multiple "pages" of text
 # without round-tripping for each scroll, small enough that the

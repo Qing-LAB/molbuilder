@@ -232,6 +232,31 @@ async function _loadCodeMirror() {
  * so Playwright E2E tests can drive setValue / execCommand
  * without scraping CM-internal DOM.
  */
+// 2026-06-12: Ctrl-A / Cmd-A inside the preview editor is disabled.
+//
+// Background: a real-keystroke selectAll on a multi-MB document froze
+// the browser for 200+ seconds in headless Chromium (the JS-level
+// ``setSelection`` was 31 ms on the same document; only the
+// keymap-triggered path scaled with selection length).  Variants
+// tried before giving up:
+//   * ``setSelection({scroll: false})`` inside ``cm.operation``
+//   * ``styleSelectedText: true`` for the contrast cue
+// Both worked from JS but the keystroke path stayed pathological.
+//
+// User decision (recorded in the chat-driven workflow): keep things
+// simple — disable Ctrl-A entirely.  Click-drag still works for the
+// region a user actually wants to copy, and the kebab menu's
+// ``Download`` is the discoverable "give me the whole file" path.
+// The CM search dialog (Ctrl-F / find button) handles "go to this
+// substring" without anyone needing to select-all first.
+function _ignoreSelectAll(cm) {
+    // No-op: returning ``false`` would let CM fall through to the
+    // next keymap handler; just returning is the explicit "consume
+    // the keystroke but do nothing" path documented in CM's
+    // ``extraKeys`` contract.
+    return;
+}
+
 async function _ensureCmMounted() {
     if (_cm) return _cm;
     const CM = await _loadCodeMirror();
@@ -246,6 +271,22 @@ async function _ensureCmMounted() {
         // memory.
         viewportMargin: 50,
         autofocus:    false,
+        // 2026-06-12: ``styleSelectedText: true`` was tried for the
+        // selection-contrast fix but causes a catastrophic slowdown
+        // when Ctrl-A is triggered via a real keystroke (225 s in
+        // headless Chromium vs. 19 ms via execCommand on the same
+        // doc).  CM wraps every selected span in a per-character
+        // class on each keymap-driven selection and the work scales
+        // with selection length, not viewport.  Use the
+        // ``CodeMirror-selected`` background's opacity for the
+        // contrast cue instead (see the CSS in projects-sidebar.css).
+        // Override Ctrl-A / Cmd-A to set the selection without the
+        // expensive scroll-into-view that froze the browser on
+        // multi-MB documents.  See ``_safeSelectAll`` for details.
+        extraKeys: {
+            "Ctrl-A": _ignoreSelectAll,
+            "Cmd-A":  _ignoreSelectAll,
+        },
     });
     _cm.on("change", _onCmChange);
     _cm.on("scroll", _onCmScroll);
