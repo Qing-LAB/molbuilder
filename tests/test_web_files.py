@@ -1107,6 +1107,285 @@ class TestFileOperationStubs:
 
 
 # --------------------------------------------------------------------- #
+#  Sidecar-pairing helpers                                              #
+# --------------------------------------------------------------------- #
+
+
+def _seed_paired(picker_root: Path, dirname: str = "", stem: str = "water",
+                 ext: str = ".xyz") -> tuple[Path, Path]:
+    """Drop a structure file + paired .molstruct.json on disk.  Returns
+    (structure_path, sidecar_path).  Used by the rename / move / copy
+    sidecar-pairing tests."""
+    import hashlib
+    import json
+    parent = picker_root / dirname if dirname else picker_root
+    parent.mkdir(parents=True, exist_ok=True)
+    struct = parent / f"{stem}{ext}"
+    xyz_text = (
+        "3\nwater\n"
+        "O 0 0 0\n" "H 0.96 0 0\n" "H -0.24 0.93 0\n"
+    )
+    struct.write_text(xyz_text)
+    sidecar = parent / f"{stem}.molstruct.json"
+    sidecar.write_text(json.dumps({
+        "schema_version": 3,
+        "n_atoms_total":  3,
+        "structure_hash": hashlib.sha256(xyz_text.encode()).hexdigest(),
+        "regions":        {"L-electrode": [0]},
+        "frozen_atoms":   [],
+        "selection_rules": {},
+    }))
+    return struct, sidecar
+
+
+# --------------------------------------------------------------------- #
+#  POST /api/files/rename  (sidecar pairing)                            #
+# --------------------------------------------------------------------- #
+
+
+class TestFilesRenameSidecarPairing:
+    """2026-06-12: rename of a .xyz/.pdb file MUST move its paired
+    .molstruct.json sidecar to match the new stem -- otherwise the
+    sidecar orphans (load can't find it; user's labels silently
+    disappear).  See projects-sidebar.md § Rename + the
+    file-tree-ops contract there."""
+
+    def _rename(self, web, path: Path, new_name: str):
+        return web.post(
+            "/api/files/rename",
+            json={"path": str(path), "new_name": new_name},
+        )
+
+    def test_xyz_rename_takes_sidecar(self, web, picker_root):
+        struct, sidecar = _seed_paired(picker_root, stem="water")
+        r = self._rename(web, struct, "bridge.xyz")
+        assert r.status_code == 200, r.get_data(as_text=True)
+        assert r.get_json()["ok"] is True
+        # Source pair gone; destination pair exists with same payload.
+        assert not struct.exists()
+        assert not sidecar.exists()
+        new_struct  = picker_root / "bridge.xyz"
+        new_sidecar = picker_root / "bridge.molstruct.json"
+        assert new_struct.exists()
+        assert new_sidecar.exists()
+        import json
+        assert json.loads(new_sidecar.read_text())["n_atoms_total"] == 3
+
+    def test_pdb_rename_takes_sidecar(self, web, picker_root):
+        struct, sidecar = _seed_paired(picker_root, stem="prot", ext=".pdb")
+        r = self._rename(web, struct, "protein.pdb")
+        assert r.status_code == 200
+        assert not struct.exists()
+        assert not sidecar.exists()
+        assert (picker_root / "protein.pdb").exists()
+        assert (picker_root / "protein.molstruct.json").exists()
+
+    def test_rename_without_sidecar_still_works(self, web, picker_root):
+        """A .xyz with NO paired sidecar renames cleanly (no spurious
+        404 from the sidecar branch)."""
+        struct = picker_root / "lone.xyz"
+        struct.write_text("1\nx\nH 0 0 0\n")
+        assert not (picker_root / "lone.molstruct.json").exists()
+        r = self._rename(web, struct, "renamed.xyz")
+        assert r.status_code == 200
+        assert (picker_root / "renamed.xyz").exists()
+
+    def test_rename_refuses_when_dst_sidecar_exists(
+            self, web, picker_root):
+        """If a sidecar already lives at the destination stem, the
+        rename refuses BEFORE touching either file.  Without this
+        guard, the structure rename would succeed and then the
+        sidecar rename would fail mid-way."""
+        struct, _ = _seed_paired(picker_root, stem="water")
+        # Pre-existing sidecar at the destination stem (no matching
+        # structure yet -- a stale orphan).
+        (picker_root / "bridge.molstruct.json").write_text("{}")
+        r = self._rename(web, struct, "bridge.xyz")
+        assert r.status_code == 409
+        assert "sidecar already exists" in r.get_json()["error"]
+        # Source pair untouched.
+        assert struct.exists()
+        assert (picker_root / "water.molstruct.json").exists()
+
+    def test_rename_json_sidecar_directly_no_pairing(
+            self, web, picker_root):
+        """Renaming a .molstruct.json directly is a single-file
+        op (pairing only triggers on structure files).  The user
+        is on their own for sidecar orphans."""
+        _, sidecar = _seed_paired(picker_root, stem="water")
+        r = self._rename(web, sidecar, "other.molstruct.json")
+        assert r.status_code == 200
+        assert not sidecar.exists()
+        assert (picker_root / "other.molstruct.json").exists()
+        # Structure file untouched (correctly orphaned by the
+        # direct rename -- user's choice).
+        assert (picker_root / "water.xyz").exists()
+
+
+# --------------------------------------------------------------------- #
+#  POST /api/files/move                                                 #
+# --------------------------------------------------------------------- #
+
+
+class TestFilesMove:
+    """Move a file from one allowed-root directory to another.  Same
+    sidecar-pairing + atomic-no-overwrite contract as rename."""
+
+    def _move(self, web, path: Path, dest_dir: Path, new_name=None):
+        body = {"path": str(path), "dest_dir": str(dest_dir)}
+        if new_name is not None:
+            body["new_name"] = new_name
+        return web.post("/api/files/move", json=body)
+
+    def test_move_file_to_new_dir(self, web, picker_root):
+        src = picker_root / "config.json"   # seeded by fixture
+        dst_dir = picker_root / "spectrum"  # seeded by fixture
+        r = self._move(web, src, dst_dir)
+        assert r.status_code == 200, r.get_data(as_text=True)
+        assert r.get_json()["ok"] is True
+        assert not src.exists()
+        assert (dst_dir / "config.json").exists()
+
+    def test_move_with_rename(self, web, picker_root):
+        src = picker_root / "config.json"
+        dst_dir = picker_root / "spectrum"
+        r = self._move(web, src, dst_dir, new_name="renamed.json")
+        assert r.status_code == 200
+        assert (dst_dir / "renamed.json").exists()
+
+    def test_move_xyz_takes_sidecar(self, web, picker_root):
+        struct, sidecar = _seed_paired(picker_root, stem="water")
+        dst_dir = picker_root / "structures"
+        dst_dir.mkdir()
+        r = self._move(web, struct, dst_dir)
+        assert r.status_code == 200
+        assert not struct.exists()
+        assert not sidecar.exists()
+        assert (dst_dir / "water.xyz").exists()
+        assert (dst_dir / "water.molstruct.json").exists()
+
+    def test_move_xyz_with_rename_takes_sidecar(self, web, picker_root):
+        """Move-and-rename pairs the sidecar to the NEW stem at the
+        new directory."""
+        struct, sidecar = _seed_paired(picker_root, stem="water")
+        dst_dir = picker_root / "structures"
+        dst_dir.mkdir()
+        r = self._move(web, struct, dst_dir, new_name="renamed.xyz")
+        assert r.status_code == 200
+        assert (dst_dir / "renamed.xyz").exists()
+        assert (dst_dir / "renamed.molstruct.json").exists()
+        # Sidecar's original-stem path no longer exists in either dir.
+        assert not sidecar.exists()
+        assert not (dst_dir / "water.molstruct.json").exists()
+
+    def test_move_refuses_directory(self, web, picker_root):
+        src_dir = picker_root / "spectrum"
+        other = picker_root / "other"
+        other.mkdir()
+        r = self._move(web, src_dir, other)
+        assert r.status_code == 400
+        assert "directories" in r.get_json()["error"]
+
+    def test_move_refuses_when_dest_missing(self, web, picker_root):
+        src = picker_root / "config.json"
+        r = self._move(web, src, picker_root / "does-not-exist")
+        assert r.status_code in (400, 404)
+
+    def test_move_refuses_overwrite(self, web, picker_root):
+        src = picker_root / "config.json"
+        dst_dir = picker_root / "spectrum"
+        # Pre-existing file at dst with same name.
+        (dst_dir / "config.json").write_text("existing\n")
+        r = self._move(web, src, dst_dir)
+        assert r.status_code == 409
+
+    def test_move_refuses_canonical_topic_dir(self, web, picker_root):
+        """Moving a canonical-topic dir would orphan the project
+        layout — same protection as rename + delete."""
+        proj = picker_root / "proj"
+        proj.mkdir()
+        (proj / "spectrum").mkdir()
+        other_proj = picker_root / "other"
+        other_proj.mkdir()
+        r = self._move(web, proj / "spectrum", other_proj)
+        # Either the canonical-topic guard catches it (400) or the
+        # directory-refusal does (400).  Both are correct rejections.
+        assert r.status_code == 400
+
+
+# --------------------------------------------------------------------- #
+#  POST /api/files/copy                                                 #
+# --------------------------------------------------------------------- #
+
+
+class TestFilesCopy:
+    """Copy a file inside the picker roots.  Source remains in place;
+    sidecar pairs with the copy.  Cross-dir + same-dir-different-name
+    are both supported."""
+
+    def _copy(self, web, path: Path, dest_dir: Path, new_name=None):
+        body = {"path": str(path), "dest_dir": str(dest_dir)}
+        if new_name is not None:
+            body["new_name"] = new_name
+        return web.post("/api/files/copy", json=body)
+
+    def test_copy_file_to_new_dir(self, web, picker_root):
+        src = picker_root / "config.json"
+        original = src.read_text()
+        dst_dir = picker_root / "spectrum"
+        r = self._copy(web, src, dst_dir)
+        assert r.status_code == 200, r.get_data(as_text=True)
+        assert src.exists()           # source preserved
+        assert (dst_dir / "config.json").read_text() == original
+
+    def test_copy_with_rename(self, web, picker_root):
+        src = picker_root / "config.json"
+        dst_dir = picker_root / "spectrum"
+        r = self._copy(web, src, dst_dir, new_name="backup.json")
+        assert r.status_code == 200
+        assert (dst_dir / "backup.json").exists()
+        assert src.exists()
+
+    def test_copy_same_dir_requires_new_name(self, web, picker_root):
+        src = picker_root / "config.json"
+        r = self._copy(web, src, picker_root)
+        # Same path = source.  Refused.
+        assert r.status_code == 400
+
+    def test_copy_xyz_takes_sidecar(self, web, picker_root):
+        struct, sidecar = _seed_paired(picker_root, stem="water")
+        dst_dir = picker_root / "structures"
+        dst_dir.mkdir()
+        r = self._copy(web, struct, dst_dir, new_name="backup.xyz")
+        assert r.status_code == 200
+        # Source pair preserved.
+        assert struct.exists()
+        assert sidecar.exists()
+        # Destination pair present.
+        assert (dst_dir / "backup.xyz").exists()
+        assert (dst_dir / "backup.molstruct.json").exists()
+        # Sidecar payload preserved verbatim.
+        assert (
+            (dst_dir / "backup.molstruct.json").read_text()
+            == sidecar.read_text()
+        )
+
+    def test_copy_refuses_overwrite(self, web, picker_root):
+        src = picker_root / "config.json"
+        dst_dir = picker_root / "spectrum"
+        (dst_dir / "config.json").write_text("existing\n")
+        r = self._copy(web, src, dst_dir)
+        assert r.status_code == 409
+
+    def test_copy_refuses_directory(self, web, picker_root):
+        src_dir = picker_root / "spectrum"
+        other = picker_root / "other"
+        other.mkdir()
+        r = self._copy(web, src_dir, other)
+        assert r.status_code == 400
+
+
+# --------------------------------------------------------------------- #
 #  DELETE /api/files/delete                                             #
 # --------------------------------------------------------------------- #
 

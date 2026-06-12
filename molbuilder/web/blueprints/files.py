@@ -171,6 +171,59 @@ def _resolve_within_roots(raw_path: str) -> Path:
     )
 
 
+# --------------------------------------------------------------------- #
+#  Sidecar pairing (2026-06-12)                                         #
+# --------------------------------------------------------------------- #
+#
+# Structure files (.xyz / .pdb) may carry a paired ``.molstruct.json``
+# sidecar holding region labels + frozen-atom indices (see
+# ``molbuilder/parsers/molstruct_json.py``).  All file-tree operations
+# that touch a structure file -- rename / move / copy -- must keep the
+# sidecar in lockstep.  Without pairing, renaming ``water.xyz`` to
+# ``bridge.xyz`` orphans ``water.molstruct.json`` (sidecar's stem no
+# longer matches a structure on disk; sidecar-aware loads can't find
+# it; user's labels silently disappear).
+#
+# This is the single source of truth for which suffixes have paired
+# sidecars + what the sidecar's path looks like.  Code that handles
+# structure files in other contexts (the modify-tab Save flow, the
+# transport script generator, ...) reads the sidecar directly via
+# ``molstruct_json.sidecar_path_for``; this helper exists to give the
+# files blueprint a layered, file-tree-shaped view (the blueprint
+# doesn't import from parsers/molstruct_json directly to keep its
+# dependency graph narrow).
+
+_STRUCTURE_SUFFIXES = (".xyz", ".pdb")
+_SIDECAR_SUFFIX     = ".molstruct.json"
+
+
+def _paired_sidecar_path(structure_path: Path) -> Path:
+    """Return the canonical sidecar path next to ``structure_path``
+    REGARDLESS of whether the sidecar exists.
+
+    Used both to find existing sidecars to move AND to compute
+    destination sidecar paths.  Strips the LAST suffix and appends
+    ``.molstruct.json``; e.g. ``water.xyz`` -> ``water.molstruct.json``.
+    """
+    return structure_path.with_name(structure_path.stem + _SIDECAR_SUFFIX)
+
+
+def _existing_paired_sidecar(structure_path: Path) -> Optional[Path]:
+    """Return the ``.molstruct.json`` paired with ``structure_path``,
+    or ``None`` when the path isn't a structure file or no sidecar
+    exists.
+
+    Pairing rule: only ``.xyz`` / ``.pdb`` files can have paired
+    sidecars; other extensions (``.json``, ``.fdf``, ``.log``, ...)
+    are never pair-tracked.  Renaming a sidecar directly is allowed
+    but treated as a single-file operation.
+    """
+    if structure_path.suffix.lower() not in _STRUCTURE_SUFFIXES:
+        return None
+    sidecar = _paired_sidecar_path(structure_path)
+    return sidecar if sidecar.exists() else None
+
+
 def _entry_dict(p: Path) -> dict:
     """One entry in a /api/files/list response.
 
@@ -1420,6 +1473,24 @@ def api_files_rename():
                       f"different name or delete the existing entry first."),
         }), 409
 
+    # 2026-06-12: sidecar pairing.  If the source is a structure file
+    # with a paired .molstruct.json sidecar, the rename MUST take both
+    # atomically (or both rollback).  Otherwise renaming water.xyz to
+    # bridge.xyz orphans water.molstruct.json -- next load can't find
+    # the sidecar from the new stem; the user's labels silently
+    # disappear.  See projects-sidebar.md § Rename.
+    src_sidecar = _existing_paired_sidecar(resolved)
+    dst_sidecar = _paired_sidecar_path(dst) if src_sidecar else None
+    if dst_sidecar is not None and dst_sidecar.exists():
+        return jsonify({
+            "ok":    False,
+            "error": (
+                f"destination sidecar already exists: "
+                f"{dst_sidecar.name!r}.  Delete it or pick a different "
+                f"name before renaming the structure file."
+            ),
+        }), 409
+
     try:
         os.replace(str(resolved), str(dst))
     except OSError as exc:
@@ -1430,10 +1501,435 @@ def api_files_rename():
             "error": f"rename failed: {exc.strerror or str(exc)}",
         }), 500
 
+    if src_sidecar is not None and dst_sidecar is not None:
+        try:
+            os.replace(str(src_sidecar), str(dst_sidecar))
+        except OSError as exc:
+            # Best-effort rollback of the structure rename so the user
+            # ends up where they started -- not in a half-renamed
+            # state where structure is at the new name + sidecar is
+            # at the old name.  If rollback ALSO fails (extremely
+            # rare; same dir, same FS) the user gets a clear pointer
+            # at the inconsistency.
+            try:
+                os.replace(str(dst), str(resolved))
+            except OSError:
+                return jsonify({
+                    "ok":    False,
+                    "error": (
+                        f"rename partially failed: structure renamed to "
+                        f"{dst.name!r} but sidecar rename failed "
+                        f"({exc.strerror or str(exc)}) AND rollback also "
+                        f"failed.  Structure is at the new name; sidecar "
+                        f"is at the old name -- manual cleanup needed."
+                    ),
+                }), 500
+            return jsonify({
+                "ok":    False,
+                "error": (
+                    f"rename failed: sidecar rename failed "
+                    f"({exc.strerror or str(exc)}); structure rename "
+                    f"rolled back."
+                ),
+            }), 500
+
     return jsonify({
         "ok":   True,
         "path": str(dst),
     })
+
+
+# --------------------------------------------------------------------- #
+#  /api/files/move + /api/files/copy   (2026-06-12)                      #
+# --------------------------------------------------------------------- #
+#
+# Same shape + validation as /api/files/rename, but the destination
+# is a different directory (always inside an allowed picker root).
+# Move uses ``os.replace`` (atomic on same FS; cross-device rejected
+# with a clean error); copy uses ``shutil.copy2`` (metadata preserved;
+# cross-device fine).  Both pair the .molstruct.json sidecar when the
+# source is a structure file -- same atomic-or-rollback contract as
+# rename so the file pair never ends up split across two directories.
+#
+# Both endpoints REFUSE directory sources in v1.  Recursive copy /
+# move of a directory is a bigger ask (interactions with project
+# layout + canonical-topic protection + sidecar-pairing-per-file)
+# that deserves its own design pass.  Users who need it run their
+# shell.
+
+
+def _validate_op_target(
+    resolved: Path, op: str,
+) -> Optional["Tuple[dict, int]"]:
+    """Shared validation for rename / move / copy / delete on the
+    SOURCE path: depth-0 + canonical-topic protection.  Returns
+    ``None`` on OK; otherwise ``(error_envelope, http_status)``.
+
+    Centralises the "would orphan a canonical project layout" check
+    so move / copy stay in lockstep with rename + delete.
+    """
+    rel_parts: Optional[Tuple[str, ...]] = None
+    for root_path, _label in _allowed_roots():
+        try:
+            rel = resolved.relative_to(root_path)
+        except ValueError:
+            continue
+        rel_parts = rel.parts
+        break
+    if rel_parts is None:
+        return ({
+            "ok":    False,
+            "error": f"path {str(resolved)!r} not inside any picker root",
+        }, 400)
+    depth = len(rel_parts)
+    if depth == 0:
+        return ({
+            "ok":    False,
+            "error": f"refusing to {op} the picker root itself",
+        }, 400)
+    if (depth == 2
+            and resolved.is_dir()
+            and rel_parts[1] in CANONICAL_TOPICS):
+        return ({
+            "ok":    False,
+            "error": (
+                f"refusing to {op} canonical-topic directory "
+                f"{rel_parts[1]!r} via the UI (would orphan the "
+                f"project layout).  Use your shell if you really "
+                f"need to."
+            ),
+        }, 400)
+    return None
+
+
+def _resolve_dst_dir(raw_dest: str, op: str) -> Tuple[Optional[Path], Optional["Tuple[dict, int]"]]:
+    """Resolve ``raw_dest`` to a path inside an allowed root + verify
+    it's an existing directory.  Returns ``(resolved, None)`` on OK
+    or ``(None, (error_envelope, status))`` on failure.
+
+    The destination MUST already exist (move/copy don't auto-mkdir;
+    use /api/files/mkdir first if needed).  Refusing this on the
+    server side means typos in the dest_dir name don't accidentally
+    create a sibling directory.
+    """
+    if not isinstance(raw_dest, str) or not raw_dest.strip():
+        return None, ({
+            "ok":    False,
+            "error": "missing 'dest_dir' in request body",
+        }, 400)
+    try:
+        dst_dir = _resolve_within_roots(raw_dest)
+    except _PickerError as exc:
+        return None, ({"ok": False, "error": exc.message}, exc.status)
+    if not dst_dir.exists():
+        return None, ({
+            "ok":    False,
+            "error": f"destination directory does not exist: {str(dst_dir)!r}",
+        }, 404)
+    if not dst_dir.is_dir():
+        return None, ({
+            "ok":    False,
+            "error": f"destination is not a directory: {str(dst_dir)!r}",
+        }, 400)
+    return dst_dir, None
+
+
+def _resolve_new_name(
+    raw_new_name: object, src_name: str,
+) -> Tuple[Optional[str], Optional["Tuple[dict, int]"]]:
+    """``new_name`` is optional on move/copy (defaults to the source's
+    basename = "same name, different dir").  When provided, runs the
+    same basename-only validation as rename.
+    """
+    if raw_new_name in (None, ""):
+        return src_name, None
+    if not isinstance(raw_new_name, str) or not raw_new_name.strip():
+        return None, ({
+            "ok":    False,
+            "error": "'new_name' must be a non-empty string when provided",
+        }, 400)
+    new_name = raw_new_name.strip()
+    if ("/" in new_name
+            or "\\" in new_name
+            or new_name in (".", "..")):
+        return None, ({
+            "ok":    False,
+            "error": (
+                "invalid 'new_name': must be a basename only "
+                "(no '/', no '..', no '.')"
+            ),
+        }, 400)
+    return new_name, None
+
+
+@bp.route("/api/files/move", methods=["POST"])
+def api_files_move():
+    """Move a FILE from one directory to another inside the picker
+    roots.  Sidecar-aware: a paired ``.molstruct.json`` moves with
+    its structure file atomically.
+
+    JSON body: ``{path, dest_dir, new_name?}``
+
+    Behaviour:
+      * ``path`` must resolve inside an allowed picker root + must
+        exist + must NOT be a directory (v1 scope; directory move
+        is a separate feature).
+      * Same source-protection rules as rename: refuse to move
+        the picker root itself or a canonical-topic dir at depth 2.
+      * ``dest_dir`` must resolve inside an allowed picker root +
+        must be an existing directory.
+      * ``new_name`` (optional) renames during the move.  Same
+        basename validation as rename.  Defaults to the source's
+        basename.
+      * ``os.replace`` is used; cross-device moves are rejected
+        with a clean error rather than silently falling back to
+        copy + delete.
+      * Refuses to overwrite an existing entry at the destination
+        (atomic-no-overwrite).
+      * If the source is a structure file (.xyz / .pdb) with a
+        paired ``.molstruct.json``, both files move together --
+        atomic-or-rollback identical to rename.
+
+    Returns ``{ok, path}`` on success where ``path`` is the new
+    absolute path of the structure file.
+    """
+    body = request.get_json(silent=True) or {}
+    raw_path     = body.get("path", "")
+    raw_dest_dir = body.get("dest_dir", "")
+    raw_new_name = body.get("new_name")
+
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        return jsonify({
+            "ok":    False,
+            "error": "missing 'path' in request body",
+        }), 400
+
+    try:
+        src = _resolve_within_roots(raw_path)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+
+    if not src.exists():
+        return jsonify({
+            "ok":    False,
+            "error": f"path does not exist: {str(src)!r}",
+        }), 404
+
+    if src.is_dir():
+        return jsonify({
+            "ok":    False,
+            "error": (
+                "moving directories is not supported in v1; move files "
+                "individually."
+            ),
+        }), 400
+
+    err = _validate_op_target(src, "move")
+    if err is not None:
+        body_, status = err
+        return jsonify(body_), status
+
+    dst_dir, derr = _resolve_dst_dir(raw_dest_dir, "move")
+    if derr is not None:
+        body_, status = derr
+        return jsonify(body_), status
+
+    new_name, nerr = _resolve_new_name(raw_new_name, src.name)
+    if nerr is not None:
+        body_, status = nerr
+        return jsonify(body_), status
+
+    dst = dst_dir / new_name
+
+    # No-op move: same path -> short-circuit (matches rename's no-op).
+    if dst.resolve() == src.resolve():
+        return jsonify({"ok": True, "path": str(src)})
+
+    if dst.exists():
+        return jsonify({
+            "ok":    False,
+            "error": (
+                f"destination already exists: {str(dst)!r}.  Pick a "
+                f"different name or delete the existing entry first."
+            ),
+        }), 409
+
+    # Sidecar pairing (see rename).
+    src_sidecar = _existing_paired_sidecar(src)
+    dst_sidecar = _paired_sidecar_path(dst) if src_sidecar else None
+    if dst_sidecar is not None and dst_sidecar.exists():
+        return jsonify({
+            "ok":    False,
+            "error": (
+                f"destination sidecar already exists: "
+                f"{dst_sidecar.name!r}.  Delete it or pick a different "
+                f"destination before moving the structure file."
+            ),
+        }), 409
+
+    try:
+        os.replace(str(src), str(dst))
+    except OSError as exc:
+        return jsonify({
+            "ok":    False,
+            "error": f"move failed: {exc.strerror or str(exc)}",
+        }), 500
+
+    if src_sidecar is not None and dst_sidecar is not None:
+        try:
+            os.replace(str(src_sidecar), str(dst_sidecar))
+        except OSError as exc:
+            try:
+                os.replace(str(dst), str(src))
+            except OSError:
+                return jsonify({
+                    "ok":    False,
+                    "error": (
+                        f"move partially failed: structure moved to "
+                        f"{str(dst)!r} but sidecar move failed "
+                        f"({exc.strerror or str(exc)}) AND rollback also "
+                        f"failed.  Manual cleanup needed."
+                    ),
+                }), 500
+            return jsonify({
+                "ok":    False,
+                "error": (
+                    f"move failed: sidecar move failed "
+                    f"({exc.strerror or str(exc)}); structure move "
+                    f"rolled back."
+                ),
+            }), 500
+
+    return jsonify({"ok": True, "path": str(dst)})
+
+
+@bp.route("/api/files/copy", methods=["POST"])
+def api_files_copy():
+    """Copy a FILE inside the picker roots, optionally to a different
+    directory and/or under a new name.  Sidecar-aware: a paired
+    ``.molstruct.json`` copies with its structure file.
+
+    JSON body: ``{path, dest_dir, new_name?}``
+
+    Behaviour mirrors ``/api/files/move`` except the source remains
+    in place.  ``shutil.copy2`` preserves stat metadata (mtime,
+    permissions).  Cross-device copies are FINE (unlike move /
+    rename).  Refuses directory sources in v1.
+
+    If the structure copy succeeds but the sidecar copy fails, the
+    structure copy is removed so the user doesn't end up with a
+    half-copied pair.
+
+    Returns ``{ok, path}`` on success.
+    """
+    body = request.get_json(silent=True) or {}
+    raw_path     = body.get("path", "")
+    raw_dest_dir = body.get("dest_dir", "")
+    raw_new_name = body.get("new_name")
+
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        return jsonify({
+            "ok":    False,
+            "error": "missing 'path' in request body",
+        }), 400
+
+    try:
+        src = _resolve_within_roots(raw_path)
+    except _PickerError as exc:
+        return jsonify({"ok": False, "error": exc.message}), exc.status
+
+    if not src.exists():
+        return jsonify({
+            "ok":    False,
+            "error": f"path does not exist: {str(src)!r}",
+        }), 404
+
+    if src.is_dir():
+        return jsonify({
+            "ok":    False,
+            "error": (
+                "copying directories is not supported in v1; copy files "
+                "individually."
+            ),
+        }), 400
+
+    # No canonical-topic protection on COPY of files: copying a file
+    # out of canonical-topic dirs doesn't orphan anything (the
+    # original stays put).  Only the depth-0 root-itself check
+    # matters, which we get by virtue of src being a file (the root
+    # is a directory).
+
+    dst_dir, derr = _resolve_dst_dir(raw_dest_dir, "copy")
+    if derr is not None:
+        body_, status = derr
+        return jsonify(body_), status
+
+    new_name, nerr = _resolve_new_name(raw_new_name, src.name)
+    if nerr is not None:
+        body_, status = nerr
+        return jsonify(body_), status
+
+    dst = dst_dir / new_name
+
+    if dst.resolve() == src.resolve():
+        return jsonify({
+            "ok":    False,
+            "error": (
+                "source and destination resolve to the same path; "
+                "use 'new_name' to choose a different filename or "
+                "pick a different 'dest_dir'."
+            ),
+        }), 400
+
+    if dst.exists():
+        return jsonify({
+            "ok":    False,
+            "error": (
+                f"destination already exists: {str(dst)!r}.  Pick a "
+                f"different name or delete the existing entry first."
+            ),
+        }), 409
+
+    src_sidecar = _existing_paired_sidecar(src)
+    dst_sidecar = _paired_sidecar_path(dst) if src_sidecar else None
+    if dst_sidecar is not None and dst_sidecar.exists():
+        return jsonify({
+            "ok":    False,
+            "error": (
+                f"destination sidecar already exists: "
+                f"{dst_sidecar.name!r}.  Delete it or pick a different "
+                f"destination before copying the structure file."
+            ),
+        }), 409
+
+    try:
+        shutil.copy2(str(src), str(dst))
+    except OSError as exc:
+        return jsonify({
+            "ok":    False,
+            "error": f"copy failed: {exc.strerror or str(exc)}",
+        }), 500
+
+    if src_sidecar is not None and dst_sidecar is not None:
+        try:
+            shutil.copy2(str(src_sidecar), str(dst_sidecar))
+        except OSError as exc:
+            # Remove the half-copy so the user doesn't have a
+            # structure without its sidecar at the destination.
+            try:
+                dst.unlink()
+            except OSError:
+                pass
+            return jsonify({
+                "ok":    False,
+                "error": (
+                    f"copy failed: sidecar copy failed "
+                    f"({exc.strerror or str(exc)}); structure copy "
+                    f"removed to avoid a half-paired result."
+                ),
+            }), 500
+
+    return jsonify({"ok": True, "path": str(dst)})
 
 
 @bp.route("/api/files/delete", methods=["DELETE"])
