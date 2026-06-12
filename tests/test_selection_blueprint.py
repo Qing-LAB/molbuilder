@@ -947,6 +947,82 @@ class TestSaveErrorPaths:
         assert saved["structure_hash"] == expected_hash
 
 
+class TestRefreshHash:
+    """``/api/selection/refresh-hash`` keeps the sidecar's
+    ``structure_hash`` in sync with the XYZ bytes after a Save
+    rewrites the XYZ.  Used by structureSave.save() to close the
+    modify-then-label-then-save hash drift.
+    """
+
+    def test_no_op_when_sidecar_missing(self, web, selection_root):
+        """No sidecar on disk -> ok=true, refreshed=false (so the
+        client can fire-and-forget without a preflight check)."""
+        from molbuilder.parsers import molstruct_json as msj
+        side = msj.sidecar_path_for(Path(_path(selection_root)))
+        assert not side.exists()
+        r = web.post("/api/selection/refresh-hash", json={
+            "structure_path": _path(selection_root),
+        })
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body["ok"] is True
+        assert body["refreshed"] is False
+        assert body["structure_hash"] is None
+
+    def test_rewrites_hash_preserving_regions_and_frozen(
+            self, web, selection_root):
+        """After Save, the XYZ on disk has new bytes (new hash).
+        refresh-hash must update the sidecar's hash + leave
+        regions/frozen_atoms/rules unchanged."""
+        from molbuilder.parsers import molstruct_json as msj
+        # Seed a sidecar with regions + frozen + a rule via the
+        # selection_save path (so we test the integration, not a
+        # hand-rolled sidecar).
+        web.post("/api/selection/save", json={
+            "structure_path": _path(selection_root),
+            "target":         "L-electrode",
+            "indices":        [0, 1],
+            "rule":           {"op": "by_element", "elements": ["Au"]},
+        })
+        web.post("/api/selection/save", json={
+            "structure_path": _path(selection_root),
+            "target":         "frozen_atoms",
+            "indices":        [10],
+        })
+        side = msj.sidecar_path_for(Path(_path(selection_root)))
+        before = msj.load(side)
+        # Mutate the XYZ on disk (simulating a Save with new atoms).
+        xyz_path = Path(_path(selection_root))
+        original = xyz_path.read_text()
+        xyz_path.write_text(original + "\n")    # bytewise different
+        new_hash = msj.sha256_of_file(xyz_path)
+        assert new_hash != before["structure_hash"], (
+            "test setup: post-modification XYZ should differ"
+        )
+        r = web.post("/api/selection/refresh-hash", json={
+            "structure_path": _path(selection_root),
+        })
+        assert r.status_code == 200
+        body = r.get_json()
+        assert body["ok"] is True
+        assert body["refreshed"] is True
+        assert body["structure_hash"] == new_hash
+        # Verify the sidecar on disk matches.
+        after = msj.load(side)
+        assert after["structure_hash"] == new_hash
+        # And the user data is intact verbatim.
+        assert after["regions"] == before["regions"]
+        assert after["frozen_atoms"] == before["frozen_atoms"]
+        assert after["selection_rules"] == before["selection_rules"]
+        assert after["n_atoms_total"] == before["n_atoms_total"]
+
+    def test_missing_structure_returns_404(self, web, selection_root):
+        r = web.post("/api/selection/refresh-hash", json={
+            "structure_path": str(selection_root / "no-such.xyz"),
+        })
+        assert r.status_code == 404
+
+
 class TestEvalErrorPaths:
     """Eval branches not covered by ``TestEval``."""
 

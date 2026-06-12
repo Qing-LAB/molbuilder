@@ -139,6 +139,22 @@
                 // Tell the orchestrator the save landed — clears
                 // dirty + records last_save_to.
                 _structurePage.markSavedTo(path);
+                // 2026-06-09: refresh the sidecar's structure_hash
+                // against the just-written XYZ bytes.  Without this
+                // a workflow like "modify -> label -> save" leaves
+                // the sidecar's hash field pointing at the old
+                // pre-Save XYZ (the regions + frozen_atoms ARE
+                // correct against the new XYZ — only the hash drifts).
+                // Fire-and-forget: a sidecar-missing path is a no-op
+                // server-side, and a failure here doesn't unwind the
+                // successful XYZ write.
+                if (root.fetch) {
+                    root.fetch("/api/selection/refresh-hash", {
+                        method:  "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body:    JSON.stringify({ structure_path: path }),
+                    }).catch(function () { /* non-fatal */ });
+                }
                 return { ok: true, path: path };
             },
             function (err) {

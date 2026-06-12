@@ -576,6 +576,111 @@ def selection_save():
         return _bad_request(exc.message, exc.status)
 
 
+@bp.route("/api/selection/refresh-hash", methods=["POST"])
+def selection_refresh_hash():
+    """Recompute the sidecar's ``structure_hash`` against the
+    CURRENT bytes of the on-disk XYZ + rewrite the sidecar.  Used
+    by ``structureSave.save()`` to keep the sidecar's hash in
+    sync after a Save persists modifier-op atoms to disk.
+
+    Body (JSON)::
+
+      { "structure_path": "/abs/path/to/file.xyz" }
+
+    Behaviour:
+
+    * No sidecar on disk -> no-op (``ok=true, refreshed=false``)
+      so callers can fire-and-forget without branching on a
+      sidecar-presence preflight.
+    * Sidecar exists -> hash recomputed, regions / frozen_atoms /
+      selection_rules / n_atoms_total preserved verbatim, file
+      rewritten atomically.
+
+    Returns::
+
+      { "ok": True, "refreshed": bool,
+        "structure_hash": "<new sha256>" | null }
+    """
+    try:
+        payload = _parse_request_payload(request)
+        path = payload.get("structure_path")
+        if not isinstance(path, str) or not path:
+            return _bad_request("missing 'structure_path'")
+
+        resolved = _resolve_within_roots(path)
+        if not resolved.exists():
+            return _bad_request(f"file not found: {resolved}", 404)
+        if resolved.suffix.lower() not in _SUPPORTED_STRUCTURE_SUFFIXES:
+            return _bad_request(
+                f"unsupported structure extension {resolved.suffix!r}; "
+                f"selection/refresh-hash accepts "
+                f"{list(_SUPPORTED_STRUCTURE_SUFFIXES)}"
+            )
+
+        sidecar_path = molstruct_json.sidecar_path_for(resolved)
+        if not sidecar_path.exists():
+            # No sidecar to refresh — fire-and-forget no-op.
+            return jsonify({
+                "ok":             True,
+                "refreshed":      False,
+                "structure_hash": None,
+            })
+
+        new_hash = molstruct_json.sha256_of_file(resolved)
+
+        # Serialise the read-modify-write cycle against concurrent
+        # /api/selection/save writers — same lock as selection_save.
+        with molstruct_json.with_lock(sidecar_path):
+            try:
+                existing = molstruct_json.load(sidecar_path)
+            except molstruct_json.MolstructJsonError as exc:
+                # A corrupt sidecar shouldn't block Save itself;
+                # surface the error but let the caller decide
+                # whether to ignore it (the XYZ landed correctly,
+                # the sidecar drift is a separate problem).
+                return jsonify({
+                    "ok":             False,
+                    "error":          (
+                        f"sidecar at {sidecar_path.name} is unreadable "
+                        f"({exc}); the XYZ saved correctly but the "
+                        f"sidecar hash could not be refreshed"
+                    ),
+                    "refreshed":      False,
+                    "structure_hash": None,
+                }), 409
+
+            # Preserve everything in the sidecar EXCEPT the hash.
+            # Region / frozen_atoms / rules / n_atoms_total are
+            # what the user explicitly placed; only the hash field
+            # needs to track the new XYZ bytes.
+            try:
+                new_payload = molstruct_json.to_dict(
+                    n_atoms_total   = existing.get("n_atoms_total", 0),
+                    structure_hash  = new_hash,
+                    regions         = existing.get("regions") or {},
+                    frozen_atoms    = existing.get("frozen_atoms") or [],
+                    selection_rules = existing.get("selection_rules") or {},
+                    created_by      = "molbuilder save (hash refresh)",
+                )
+            except molstruct_json.MolstructJsonError as exc:
+                return _bad_request(
+                    f"sidecar rebuild failed: {exc}", 500)
+
+            try:
+                molstruct_json.save(sidecar_path, new_payload)
+            except OSError as exc:
+                return _bad_request(
+                    f"sidecar write failed: {exc}", 500)
+
+        return jsonify({
+            "ok":             True,
+            "refreshed":      True,
+            "structure_hash": new_hash,
+        })
+    except _PickerError as exc:
+        return _bad_request(exc.message, exc.status)
+
+
 @bp.route("/api/selection/eval", methods=["POST"])
 def selection_eval():
     """Evaluate a rule against a structure; return the selected
