@@ -1472,6 +1472,46 @@
             && _latticeEqual(oldData && oldData.lattice,
                              r.data    && r.data.lattice);
 
+        // 2026-06-12: live-refresh no-new-frames short-circuit.
+        //
+        // The /api/watch/data poll fires every N seconds and frequently
+        // returns the same trajectory it returned last time (no new
+        // frames yet).  Before this guard the ``else`` branch below
+        // (which handles the "can't append, do a full rebuild" case)
+        // would fire on every same-data poll and the rebuild would:
+        //   1. reset the 3Dmol camera (refit + applyCell rebuild),
+        //   2. tear down the animation loop and rearm it from frame 0,
+        //   3. clobber the user's scroll position on the inspect list.
+        // User-visible: the viewer "snaps back" to the default angle
+        // every few seconds AND the playback that was running stops.
+        //
+        // The fix: if the new data carries no new frames AND has the
+        // same atom count + lattice (= same file, same parse state),
+        // just refresh the per-frame metadata derived from runtime
+        // info / parse warnings / runtime state markers — DON'T touch
+        // the embed at all.  Anything that needs new data has nothing
+        // to consume.
+        const sameLength      = oldLen > 0 && newLen === oldLen;
+        const sameLatticeNow  = _latticeEqual(
+            oldData && oldData.lattice, r.data && r.data.lattice);
+        const noNewContent    = sameAtomCount && sameLength && sameLatticeNow;
+        if (noNewContent) {
+            // Update mtime + run-state markers + parse-warnings list
+            // (these can flip from "ongoing" → "finished" /
+            // "errored" on a follow-up poll even with no new frames),
+            // then bail before touching the model / animation /
+            // plots.  Plots rebuilt only if the run-state changed.
+            state.mtime = r.mtime;
+            const runStateChanged =
+                oldData.run_state !== r.data.run_state
+             || oldData.error_message !== r.data.error_message;
+            state.data = r.data;
+            _renderRuntimeInfo(state.data.runtime_info);
+            _renderParseWarnings(state.data.parse_warnings);
+            if (runStateChanged) makePlots();
+            return;
+        }
+
         const wasAtEnd = !oldData || state.currentFrame >= oldLen - 1;
 
         state.mtime  = r.mtime;

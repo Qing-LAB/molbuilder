@@ -4534,10 +4534,14 @@ def test_watch_show_forces_renders_arrows(
     drawForces() console.info "drew N" log.
     """
     _load_watch_log(page, flask_server, watch_log_file_with_forces)
-    # The Show-force-vectors checkbox lives inside the "Overlays"
-    # sub-tab panel of the Watch viewer controls (default-active
-    # tab is "Style", so we click into Overlays first).
-    page.locator('.ctab[data-tab="overlays"]').click()
+    # 2026-06-12 layout v3: the four prior tabs (Style / Overlays /
+    # Inspect / Playback) condensed to TWO (Display / Inspect).
+    # Show-force-vectors lives in the Display tab now and that's the
+    # default-active tab, so no click is needed to reveal the
+    # checkbox — but keep an explicit click anyway as a tab-state
+    # assertion (a regression that broke the default-active tab
+    # would otherwise pass silently here).
+    page.locator('.ctab[data-tab="display"]').click()
     chk = page.locator("#show-forces")
     assert not chk.is_checked()
     chk.check()

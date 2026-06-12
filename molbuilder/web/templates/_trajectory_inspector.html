@@ -79,36 +79,45 @@
          cadence.  The Inspect tab still owns the playback config
          (speed / loop) and the data-export knob (save-frame). -->
 
-    <!-- Three tab panels condense the previous stacked fieldsets;
-         only one is visible at a time so the controls aside never
-         outgrows the viewer height. -->
+    {#- 2026-06-12 layout v3: tabs condensed from FOUR (Style /
+        Overlays / Inspect / Playback) to TWO (Display / Inspect):
+
+          * Display merges the prior Style + Overlays + Playback —
+            everything that affects what the viewer renders or how it
+            plays.  Speed + Loop folded inline at the bottom so they
+            sit a click away from the embed's play button rather
+            than behind their own tab.
+          * Inspect keeps its atom list + measurement readout + Clear,
+            and gains the Save-current-frame action that lived in the
+            prior Playback tab.
+
+        The two-tab split tracks the actual question the user asks
+        when they switch tabs: "tweak rendering?" or "explore the
+        coordinates?". -#}
     <nav class="control-tabs" role="tablist" aria-label="Viewer controls">
-      <button class="ctab is-active" data-tab="style"    role="tab" aria-selected="true">Style</button>
-      <button class="ctab"           data-tab="overlays" role="tab" aria-selected="false">Overlays</button>
-      <button class="ctab"           data-tab="inspect"  role="tab" aria-selected="false">Inspect</button>
-      <button class="ctab"           data-tab="playback" role="tab" aria-selected="false">Playback</button>
+      <button class="ctab is-active" data-tab="display" role="tab" aria-selected="true">Display</button>
+      <button class="ctab"           data-tab="inspect" role="tab" aria-selected="false">Inspect</button>
     </nav>
 
-    <div class="ctab-panel is-active" data-panel="style" role="tabpanel">
-      <!-- Representation / Atom radius / Background / Color scheme
-           are owned by the embed's standard knob bar (above the
-           canvas) after the #205 migration.  Show unit cell stays
-           here as a trajectory-specific overlay. -->
+    <div class="ctab-panel is-active" data-panel="display" role="tabpanel">
+      {#- Style group: from the prior "Style" tab.  Representation /
+          Atom radius / Background / Color scheme are owned by the
+          embed's standard knob bar (above the canvas) after the
+          #205 migration; Show unit cell stays here as a trajectory-
+          specific overlay. -#}
       <label class="check"><input type="checkbox" id="show-cell" checked>
         Show unit cell</label>
-    </div>
 
-    <div class="ctab-panel" data-panel="overlays" role="tabpanel">
+      <hr class="panel-sep">
+
+      {#- Overlays group: from the prior "Overlays" tab.  Index
+          labels + force-vector arrows + the diagnostic readout. -#}
       <label class="check"><input type="checkbox" id="show-indices">
         Show atom indices</label>
       <label class="check"
         title="Renders a coloured arrow at each atom whose force magnitude exceeds the threshold below.&#10;The longest arrow gets a 'highlight' gold tint when 'Highlight largest force' is ticked.&#10;Forces are only available when the parser captured them (molwatch logs and SIESTA .out always do; geomeTRIC trajectory .xyz does NOT).">
         <input type="checkbox" id="show-forces">
         Show force vectors</label>
-      <!-- Diagnostic readout so the user can tell the difference
-           between "toggle is off", "no forces in the data", and
-           "forces present but all below the threshold".  Updated
-           by drawForces() on every invocation. -->
       <span id="forces-status" class="readout" aria-live="polite"></span>
       <label>Arrow length scale (&Aring; per eV/&Aring;)
         <span class="row-with-readout">
@@ -121,6 +130,17 @@
       </label>
       <label class="check"><input type="checkbox" id="highlight-max" checked>
         Highlight largest force</label>
+
+      <hr class="panel-sep">
+
+      {#- Playback group: from the prior "Playback" tab.  Speed +
+          Loop are placed at the bottom of Display so they sit a
+          single tab-click away from the embed's own play button. -#}
+      <label>Playback speed (ms / frame)
+        <input id="speed" type="number" min="20" max="3000" step="20" value="150">
+      </label>
+      <label class="check"><input type="checkbox" id="loop" checked>
+        Loop playback</label>
     </div>
 
     <div class="ctab-panel" data-panel="inspect" role="tabpanel">
@@ -157,26 +177,21 @@
         title="Drop the current atom picks.&#10;Loading a new file or trajectory also resets the selection.">
         Clear selection
       </button>
-    </div>
-
-    <div class="ctab-panel" data-panel="playback" role="tabpanel">
-      <label>Speed (ms / frame)
-        <input id="speed" type="number" min="20" max="3000" step="20" value="150">
-      </label>
-      <label class="check"><input type="checkbox" id="loop" checked>
-        Loop playback</label>
-      <p class="hint">Use the buttons and slider above to scrub frames.</p>
 
       <hr class="panel-sep">
 
+      {#- 2026-06-12: Save-frame moved here from the prior Playback
+          tab.  Single-frame export is a data-handoff action that
+          composes naturally with the Inspect-tab atom list (look
+          at the frame's coordinates, then grab the file). -#}
       <button id="save-frame" class="full-btn"
         title="Download the currently displayed frame as a standard .xyz file (Angstrom).&#10;Useful for handing the relaxed structure to the next step (tunneling-gap construction, transport calc, etc.)."
         disabled>
         Save current frame as XYZ
       </button>
-      <p class="hint">Exports frame N's coordinates so you can use the
-        relaxed structure as input to the next step (e.g., dropping the
-        molecule into a tunneling gap as a bridge).</p>
+      <p class="hint">Exports the currently-displayed frame so you can
+        use the relaxed structure as input to the next step (e.g.,
+        dropping the molecule into a tunneling gap as a bridge).</p>
     </div>
   </aside>
 </section><!-- /.viewer-row -->
