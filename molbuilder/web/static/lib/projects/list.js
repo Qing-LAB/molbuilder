@@ -202,6 +202,7 @@ function _renderSelectionStatus(filename, fullPath) {
 // tears down a prior menu before showing a new one).
 
 let _kebabActive = null;
+let _kebabGlobalsWired = false;
 
 function _dismissKebab() {
   if (!_kebabActive) return;
@@ -211,20 +212,38 @@ function _dismissKebab() {
   if (trigger) trigger.setAttribute("aria-expanded", "false");
 }
 
-document.addEventListener("click", (ev) => {
-  if (!_kebabActive) return;
-  if (_kebabActive.menu.contains(ev.target)) return;
-  if (_kebabActive.trigger.contains(ev.target)) return;
-  _dismissKebab();
-}, true);
-document.addEventListener("keydown", (ev) => {
-  if (ev.key === "Escape" && _kebabActive) {
-    const t = _kebabActive.trigger;
-    _dismissKebab();
-    try { t.focus(); } catch (_) {}
+/**
+ * Wire the global outside-click / ESC / scroll dismissers ONCE,
+ * lazily, on first kebab open.  Module-level wiring crashes Node-
+ * based tests where ``window`` is a partial stub (sessionStorage
+ * stubbed but addEventListener absent).  More importantly, lazy
+ * wiring means the listeners only exist after a real kebab has
+ * opened — no global side effects on import.
+ */
+function _ensureKebabGlobalsWired() {
+  if (_kebabGlobalsWired) return;
+  _kebabGlobalsWired = true;
+  if (typeof document !== "undefined"
+      && typeof document.addEventListener === "function") {
+    document.addEventListener("click", (ev) => {
+      if (!_kebabActive) return;
+      if (_kebabActive.menu.contains(ev.target)) return;
+      if (_kebabActive.trigger.contains(ev.target)) return;
+      _dismissKebab();
+    }, true);
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && _kebabActive) {
+        const t = _kebabActive.trigger;
+        _dismissKebab();
+        try { t.focus(); } catch (_) {}
+      }
+    });
   }
-});
-window.addEventListener("scroll", _dismissKebab, true);
+  if (typeof window !== "undefined"
+      && typeof window.addEventListener === "function") {
+    window.addEventListener("scroll", _dismissKebab, true);
+  }
+}
 
 function _buildEntryKebab(entry, fullPath, currentPath) {
   const btn = document.createElement("button");
@@ -247,6 +266,7 @@ function _buildEntryKebab(entry, fullPath, currentPath) {
 }
 
 function _openKebab(trigger, entry, fullPath, currentPath) {
+  _ensureKebabGlobalsWired();
   const menu = document.createElement("div");
   menu.className = "ps-entry-menu";
   menu.setAttribute("role", "menu");
@@ -275,11 +295,19 @@ function _openKebab(trigger, entry, fullPath, currentPath) {
     menu.appendChild(it);
   }
 
-  // View: file-only.
+  // View: file-only.  Returns the showPreview promise so the
+  // kebab's await onClick() chain catches any thrown error from
+  // the preview pipeline (CodeMirror load failure, stat error,
+  // network failure) instead of dropping it as an unhandled
+  // rejection.
   if (entry.kind === "file") {
     _addItem("View", () => {
-      setShared(currentPath, fullPath);
-      showPreview();
+      const r = setShared(currentPath, fullPath);
+      if (r && r.ok === false) {
+        return Promise.reject(new Error(
+          r.error || "Could not select file."));
+      }
+      return showPreview();
     });
   }
   // Rename: any entry that isn't a canonical-topic dir at depth 1
