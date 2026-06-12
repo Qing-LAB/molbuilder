@@ -138,47 +138,32 @@
     }
 
     /**
-     * Post the workspace's labels to the destination sidecar.
-     * Used on Save-as (when the destination differs from the
-     * workspace's source).  Fire-and-forget; a partial failure
-     * doesn't unwind the successful XYZ write — the user can
-     * always re-Save to retry.
+     * Atomically REPLACE the destination sidecar with the
+     * workspace's labels.  Single HTTP call via
+     * ``/api/selection/save-sidecar`` — replaces the prior
+     * N+1-POST loop (one per region + one for frozen_atoms)
+     * that merged with any stale sidecar at the destination.
      *
-     * Issues one POST per region label + one for frozen_atoms.
-     * The server's ``n_atoms`` parameter (per save-flow.md §4.1)
-     * is the workspace's current atom count so indices validate
-     * against memory, not the just-written disk file (which would
-     * still pass — they match — but pinning the workspace count
-     * here documents intent).
+     * Save-as semantics: workspace state is authoritative; any
+     * pre-existing sidecar at the destination is wiped before
+     * the workspace labels are written.  Without this, a user
+     * who Save-as's to a previously-labelled file would get a
+     * silent MERGE (per /api/selection/save's REPLACE-per-
+     * target semantics) instead of the expected REPLACE-all.
      */
     function _persistLabelsToDestination(path, labels, nAtoms) {
         if (!root.fetch) return Promise.resolve();
-        var calls = [];
-        Object.keys(labels.regions).forEach(function (label) {
-            calls.push(root.fetch("/api/selection/save", {
-                method:  "POST",
-                headers: { "Content-Type": "application/json" },
-                body:    JSON.stringify({
-                    structure_path: path,
-                    target:         label,
-                    indices:        labels.regions[label],
-                    n_atoms:        nAtoms,
-                }),
-            }));
-        });
-        if (labels.frozen.length) {
-            calls.push(root.fetch("/api/selection/save", {
-                method:  "POST",
-                headers: { "Content-Type": "application/json" },
-                body:    JSON.stringify({
-                    structure_path: path,
-                    target:         "frozen_atoms",
-                    indices:        labels.frozen,
-                    n_atoms:        nAtoms,
-                }),
-            }));
-        }
-        return Promise.all(calls).catch(function () { /* non-fatal */ });
+        return root.fetch("/api/selection/save-sidecar", {
+            method:  "POST",
+            headers: { "Content-Type": "application/json" },
+            body:    JSON.stringify({
+                structure_path: path,
+                n_atoms:        nAtoms,
+                regions:        labels.regions,
+                frozen_atoms:   labels.frozen,
+            }),
+        }).then(function (r) { return r.json(); })
+          .catch(function () { /* non-fatal */ });
     }
 
     /**
@@ -213,10 +198,15 @@
             var nAtoms = (_workspace
                           && typeof _workspace.getAtoms === "function")
                 ? (_workspace.getAtoms() || []).length : 0;
-            if (Object.keys(labels.regions).length || labels.frozen.length) {
-                labelsPromise = _persistLabelsToDestination(
-                    path, labels, nAtoms);
-            }
+            // Always send the bulk-replace call on Save-as, even when
+            // the workspace has no labels — this WIPES any stale
+            // sidecar that happened to exist at the destination so
+            // the user's authoritative state (no labels) is reflected.
+            // Without this, an empty workspace saved to a previously-
+            // labelled file would keep showing the old labels on next
+            // Load.
+            labelsPromise = _persistLabelsToDestination(
+                path, labels, nAtoms);
         }
 
         function _fireRefreshHash() {

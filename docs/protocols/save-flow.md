@@ -183,18 +183,34 @@ end up fully coherent.
 
 When `final_path != workspace.source.file` (any rename or different
 sidebar dir), `_postWriteSuccess` propagates the workspace's
-in-memory labels to a brand-new sidecar at the destination:
+in-memory labels to the destination's sidecar atomically via the
+bulk-replace endpoint `/api/selection/save-sidecar`:
 
 1. Traverse `ws.getAtoms()` to gather:
    * `regions: {label: [indices]}` — one entry per atom's `labels[]`
    * `frozen:  [indices]` — atoms with `isFrozen=true`
-2. If the workspace has any labels, POST one `/api/selection/save`
-   per region + one for `frozen_atoms` at the destination path.
-   Each POST carries the workspace's `n_atoms` so the server
-   validates against memory, not disk (per §4.1).
+2. POST `/api/selection/save-sidecar` with `{structure_path,
+   n_atoms, regions, frozen_atoms}` — server **REPLACES** the
+   entire sidecar atomically (no merge with prior contents).
+   The workspace is the authoritative source; any stale labels
+   that pre-existed at the destination's sidecar are wiped.
 3. THEN fire `/api/selection/refresh-hash` so the destination
    sidecar's `structure_hash` matches the just-written XYZ.  The
-   refresh sequences AFTER the label writes via Promise chaining.
+   refresh sequences AFTER the label write via Promise chaining.
+
+The bulk-replace call ALWAYS fires on Save-as, even when the
+workspace has no labels — this wipes any stale sidecar at the
+destination so the user's authoritative state is reflected.
+Without this, saving an unlabelled workspace to a previously-
+labelled file would silently preserve the old labels.
+
+**Why bulk-replace instead of N+1 per-target calls:**
+`/api/selection/save` has REPLACE-per-target semantics (only the
+named region/frozen_atoms is replaced; other regions are
+preserved).  Per-target writes from a Save-as would MERGE the
+workspace's labels with whatever was already at the destination
+— silently wrong.  The bulk endpoint takes the full sidecar
+payload and writes it atomically.
 
 The label propagation is fire-and-forget; a partial failure
 doesn't unwind the successful XYZ write — the status panel reports

@@ -696,6 +696,167 @@ def selection_refresh_hash():
         return _bad_request(exc.message, exc.status)
 
 
+@bp.route("/api/selection/save-sidecar", methods=["POST"])
+def selection_save_sidecar():
+    """Atomically REPLACE the entire .molstruct.json sidecar with a
+    client-provided payload.  Used by Save-as to propagate the
+    workspace's labels to a new destination without merging with
+    any stale sidecar that happened to exist at the new path.
+
+    Body (JSON)::
+
+      {
+        "structure_path": "/abs/path/to/file.xyz",
+        "n_atoms":        <int>,
+        "regions":        {"L-electrode": [0, 1], ...} or null,
+        "frozen_atoms":   [5, 6, ...] or null,
+      }
+
+    Behaviour:
+
+    * Existing sidecar at the path -> REPLACED entirely (no merge
+      with prior regions / frozen_atoms / selection_rules).
+    * Missing sidecar -> created from scratch.
+    * ``structure_hash`` is recomputed from the on-disk XYZ bytes
+      so the new sidecar matches whatever XYZ the client just
+      wrote.
+    * ``selection_rules`` is reset to {} — Save-as carries no
+      assumption that prior rules still apply against the new XYZ
+      bytes.
+
+    Returns::
+
+      { "ok": True,
+        "sidecar_path": "...",
+        "n_atoms_total": <int>,
+        "regions": {...},
+        "frozen_atoms": [...] }
+
+    See ``docs/protocols/save-flow.md`` §4.3 for the Save-as label-
+    propagation contract.
+    """
+    try:
+        payload = _parse_request_payload(request)
+        path = payload.get("structure_path")
+        if not isinstance(path, str) or not path:
+            return _bad_request("missing 'structure_path'")
+
+        # n_atoms validation mirrors /api/selection/save's gate.
+        n_atoms = payload.get("n_atoms")
+        if (not isinstance(n_atoms, int)
+                or isinstance(n_atoms, bool)):
+            return _bad_request(
+                "'n_atoms' must be an integer; "
+                f"got {type(n_atoms).__name__}={n_atoms!r}"
+            )
+        if not 0 <= n_atoms <= 1_000_000:
+            return _bad_request(
+                f"'n_atoms' out of range [0, 1_000_000]: got {n_atoms}"
+            )
+
+        regions = payload.get("regions") or {}
+        if not isinstance(regions, dict):
+            return _bad_request(
+                "'regions' must be a dict of {label: [indices]} "
+                f"when provided; got {type(regions).__name__}"
+            )
+        # Validate each region: name is non-empty string, indices
+        # is list of in-range ints.
+        validated_regions: Dict[str, list] = {}
+        for label, idxs in regions.items():
+            if not isinstance(label, str) or not label.strip():
+                return _bad_request(
+                    "every region key must be a non-empty string; "
+                    f"got {label!r}"
+                )
+            if not isinstance(idxs, list):
+                return _bad_request(
+                    f"regions[{label!r}] must be a list of ints; "
+                    f"got {type(idxs).__name__}"
+                )
+            for idx in idxs:
+                if (not isinstance(idx, int)
+                        or isinstance(idx, bool)):
+                    return _bad_request(
+                        f"regions[{label!r}] indices must be ints; "
+                        f"got {type(idx).__name__}={idx!r}"
+                    )
+                if not 0 <= idx < n_atoms:
+                    return _bad_request(
+                        f"regions[{label!r}] index {idx} out of "
+                        f"range [0, {n_atoms})"
+                    )
+            validated_regions[label.strip()] = sorted(set(idxs))
+
+        frozen = payload.get("frozen_atoms") or []
+        if not isinstance(frozen, list):
+            return _bad_request(
+                "'frozen_atoms' must be a list of ints when provided; "
+                f"got {type(frozen).__name__}"
+            )
+        validated_frozen: list = []
+        for idx in frozen:
+            if not isinstance(idx, int) or isinstance(idx, bool):
+                return _bad_request(
+                    "'frozen_atoms' must contain ints only; "
+                    f"got {type(idx).__name__}={idx!r}"
+                )
+            if not 0 <= idx < n_atoms:
+                return _bad_request(
+                    f"'frozen_atoms' index {idx} out of range "
+                    f"[0, {n_atoms})"
+                )
+            validated_frozen.append(idx)
+        validated_frozen = sorted(set(validated_frozen))
+
+        resolved = _resolve_within_roots(path)
+        if not resolved.exists():
+            return _bad_request(f"file not found: {resolved}", 404)
+        if resolved.suffix.lower() not in _SUPPORTED_STRUCTURE_SUFFIXES:
+            return _bad_request(
+                f"unsupported structure extension {resolved.suffix!r}; "
+                f"selection/save-sidecar accepts "
+                f"{list(_SUPPORTED_STRUCTURE_SUFFIXES)}"
+            )
+
+        sidecar_path = molstruct_json.sidecar_path_for(resolved)
+        new_hash = molstruct_json.sha256_of_file(resolved)
+
+        # Serialise under the same with_lock that /api/selection/save
+        # uses so concurrent writers don't race.
+        with molstruct_json.with_lock(sidecar_path):
+            try:
+                new_payload = molstruct_json.to_dict(
+                    n_atoms_total   = n_atoms,
+                    structure_hash  = new_hash,
+                    regions         = validated_regions,
+                    frozen_atoms    = validated_frozen,
+                    # Save-as starts fresh — no rule carries over,
+                    # since the user's intent is "snapshot the
+                    # current workspace labels into a new sidecar".
+                    selection_rules = {},
+                    created_by      = "molbuilder save panel (save-as)",
+                )
+            except molstruct_json.MolstructJsonError as exc:
+                return _bad_request(f"sidecar build failed: {exc}")
+
+            try:
+                molstruct_json.save(sidecar_path, new_payload)
+            except OSError as exc:
+                return _bad_request(
+                    f"sidecar write failed: {exc}", 500)
+
+        return jsonify({
+            "ok":              True,
+            "sidecar_path":    str(sidecar_path),
+            "n_atoms_total":   n_atoms,
+            "regions":         new_payload["regions"],
+            "frozen_atoms":    new_payload["frozen_atoms"],
+        })
+    except _PickerError as exc:
+        return _bad_request(exc.message, exc.status)
+
+
 @bp.route("/api/selection/eval", methods=["POST"])
 def selection_eval():
     """Evaluate a rule against a structure; return the selected

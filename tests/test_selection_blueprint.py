@@ -1074,6 +1074,133 @@ class TestRefreshHash:
         assert r.status_code == 404
 
 
+class TestSaveSidecar:
+    """``/api/selection/save-sidecar`` — atomic REPLACE of the entire
+    sidecar from a client-provided payload.  Used by the Save-as flow
+    (save-flow.md §4.3) to propagate workspace labels to a new
+    destination without merging with whatever stale sidecar was
+    already there.
+    """
+
+    def test_creates_sidecar_when_absent(self, web, selection_root):
+        from molbuilder.parsers import molstruct_json as msj
+        side = msj.sidecar_path_for(Path(_path(selection_root)))
+        assert not side.exists()
+        r = web.post("/api/selection/save-sidecar", json={
+            "structure_path": _path(selection_root),
+            "n_atoms":        11,
+            "regions":        {"L-electrode": [0, 1]},
+            "frozen_atoms":   [10],
+        })
+        assert r.status_code == 200, r.data
+        body = r.get_json()
+        assert body["ok"] is True
+        assert body["n_atoms_total"] == 11
+        assert body["regions"] == {"L-electrode": [0, 1]}
+        assert body["frozen_atoms"] == [10]
+        on_disk = msj.load(side)
+        assert on_disk["regions"] == {"L-electrode": [0, 1]}
+        assert on_disk["frozen_atoms"] == [10]
+
+    def test_replaces_existing_sidecar_does_not_merge(
+            self, web, selection_root):
+        """Core contract: prior regions/frozen_atoms in the existing
+        sidecar are WIPED, not merged with the new payload.  This is
+        the difference from /api/selection/save which has REPLACE-
+        per-target semantics.
+        """
+        from molbuilder.parsers import molstruct_json as msj
+        # Seed an existing sidecar with stale labels via the
+        # per-target endpoint.
+        web.post("/api/selection/save", json={
+            "structure_path": _path(selection_root),
+            "target":         "stale-region",
+            "indices":        [0, 1, 2],
+        })
+        web.post("/api/selection/save", json={
+            "structure_path": _path(selection_root),
+            "target":         "frozen_atoms",
+            "indices":        [9, 10],
+        })
+        # Bulk-replace with the workspace's "authoritative" state.
+        r = web.post("/api/selection/save-sidecar", json={
+            "structure_path": _path(selection_root),
+            "n_atoms":        11,
+            "regions":        {"L-electrode": [0, 1]},
+            "frozen_atoms":   [],
+        })
+        assert r.status_code == 200, r.data
+        body = r.get_json()
+        # stale-region must be gone (REPLACE-all semantics).
+        assert body["regions"] == {"L-electrode": [0, 1]}
+        assert body["frozen_atoms"] == []
+        # Verify on disk matches.
+        side = msj.sidecar_path_for(Path(_path(selection_root)))
+        on_disk = msj.load(side)
+        assert "stale-region" not in on_disk["regions"]
+        assert on_disk["frozen_atoms"] == []
+        # selection_rules is reset to {} per the contract.
+        assert on_disk["selection_rules"] == {}
+
+    def test_rejects_unbounded_n_atoms(self, web, selection_root):
+        r = web.post("/api/selection/save-sidecar", json={
+            "structure_path": _path(selection_root),
+            "n_atoms":        999_999_999,
+            "regions":        {"L-electrode": [0]},
+            "frozen_atoms":   [],
+        })
+        assert r.status_code == 400
+        assert "n_atoms" in r.get_json()["error"].lower()
+
+    def test_rejects_negative_n_atoms(self, web, selection_root):
+        r = web.post("/api/selection/save-sidecar", json={
+            "structure_path": _path(selection_root),
+            "n_atoms":        -1,
+            "regions":        {},
+            "frozen_atoms":   [],
+        })
+        assert r.status_code == 400
+
+    def test_rejects_out_of_range_region_index(
+            self, web, selection_root):
+        r = web.post("/api/selection/save-sidecar", json={
+            "structure_path": _path(selection_root),
+            "n_atoms":        11,
+            "regions":        {"L-electrode": [0, 99]},
+            "frozen_atoms":   [],
+        })
+        assert r.status_code == 400
+        assert "out of range" in r.get_json()["error"].lower()
+
+    def test_rejects_out_of_range_frozen_index(
+            self, web, selection_root):
+        r = web.post("/api/selection/save-sidecar", json={
+            "structure_path": _path(selection_root),
+            "n_atoms":        11,
+            "regions":        {},
+            "frozen_atoms":   [-1],
+        })
+        assert r.status_code == 400
+
+    def test_rejects_non_string_region_key(self, web, selection_root):
+        r = web.post("/api/selection/save-sidecar", json={
+            "structure_path": _path(selection_root),
+            "n_atoms":        11,
+            "regions":        {"": [0]},
+            "frozen_atoms":   [],
+        })
+        assert r.status_code == 400
+
+    def test_missing_structure_returns_404(self, web, selection_root):
+        r = web.post("/api/selection/save-sidecar", json={
+            "structure_path": str(selection_root / "no-such.xyz"),
+            "n_atoms":        3,
+            "regions":        {},
+            "frozen_atoms":   [],
+        })
+        assert r.status_code == 404
+
+
 class TestEvalErrorPaths:
     """Eval branches not covered by ``TestEval``."""
 
