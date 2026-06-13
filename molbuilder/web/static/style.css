@@ -679,10 +679,14 @@ fieldset label:has(> input[type="checkbox"]) {
  * Tier is set via metadata["tier"] = "advanced" on the dataclass
  * field; the renderer adds .is-advanced to the wrapping <label>. */
 .schema-field.is-advanced {
-    opacity: 0.92;
+    opacity: 0.85;
 }
-.schema-field.is-advanced::before {
-    /* tiny "•" marker, just enough to flag without screaming */
+.schema-field.is-advanced:not(.schema-field-checkbox)::before {
+    /* tiny "•" marker, just enough to flag without screaming.
+     * Excluded for checkbox rows because the bullet otherwise lands
+     * INSIDE the flex layout immediately left of the native checkbox,
+     * which the user reads as "the checkbox" — the 2026-06-12 user
+     * report.  Dim alone conveys "advanced" for checkbox rows. */
     content: "•";
     color: var(--accent);
     margin-right: 4px;

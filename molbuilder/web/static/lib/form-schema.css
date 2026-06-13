@@ -21,15 +21,15 @@
 fieldset {
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-sm, 6px);
-    padding: 8px 12px 10px;
+    padding: 12px 16px 14px;
     margin: 0;
     background: var(--bg-fieldset);
     min-width: 0;     /* allow grid items to shrink below content width */
 }
 fieldset legend {
     font-weight: 600;
-    padding: 0 6px;
-    font-size: 0.85rem;
+    padding: 0 8px;
+    font-size: 0.92rem;
     color: var(--accent);
     letter-spacing: 0.01em;
 }
@@ -52,10 +52,11 @@ fieldset .schema-section-desc {
 fieldset label {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    margin: 6px 0;
-    font-size: 0.85rem;
-    color: var(--text-secondary);
+    gap: 4px;
+    margin: 10px 0;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    color: var(--text-primary);
     min-width: 0;
 }
 fieldset label > input,
@@ -65,15 +66,32 @@ fieldset label > select {
     max-width: none;
     min-width: 0;
 }
-/* Inline checkboxes -- keep their existing horizontal layout */
+/* Checkboxes: native rendering at a comfortable 16px so the
+ * affordance reads unambiguously as "you can click this".  Without
+ * explicit sizing browsers fall back to the system default (~13 px
+ * in Chromium) which on a dark theme reads as a small dot and gets
+ * confused with a bullet — the 2026-06-12 user report.  The
+ * accent-color in page-shell.css drives the checked-state fill. */
 fieldset label > input[type="checkbox"] {
-    width: auto;
-    align-self: flex-start;
+    width: 16px;
+    height: 16px;
+    flex: 0 0 16px;
+    align-self: center;
+    cursor: pointer;
 }
 fieldset label:has(> input[type="checkbox"]) {
     flex-direction: row;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
+    cursor: pointer;
+    /* Checkbox-style labels get padding so the whole row is a
+     * comfortable click target, not just the 16 px box. */
+    padding: 4px 2px;
+    border-radius: 4px;
+    transition: background 100ms ease;
+}
+fieldset label:has(> input[type="checkbox"]):hover {
+    background: var(--bg-input-focus, rgba(255, 255, 255, 0.04));
 }
 
 /* ---- Locked fields ----
@@ -128,14 +146,14 @@ fieldset select:disabled {
  */
 .param-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 18px;
 }
 
 @media (max-width: 1100px) {
     .param-grid {
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-        gap: 10px;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 14px;
     }
 }
 
@@ -189,11 +207,18 @@ fieldset select:disabled {
 }
 
 /* Advanced-tier fields: keep visible but slightly dimmed so the
- * "advanced knob" status reads without hiding the control. */
+ * "advanced knob" status reads without hiding the control.  The
+ * leading bullet conveys "advanced" for text/select/number inputs.
+ * Checkboxes get the dim only — adding ::before to a checkbox row
+ * inserts the bullet INTO the flex layout right next to the
+ * checkbox box, making the box look like just another bullet.
+ * (2026-06-12 user report: "the 'Raman' and 'IR' option does not
+ * look like a check box and i am not sure what i can/should do
+ * with them. it seems like a bullet point …".) */
 .schema-field.is-advanced {
-    opacity: 0.92;
+    opacity: 0.85;
 }
-.schema-field.is-advanced::before {
+.schema-field.is-advanced:not(.schema-field-checkbox)::before {
     content: "•";
     color: var(--accent);
     margin-right: 4px;
