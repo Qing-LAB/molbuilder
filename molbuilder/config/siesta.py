@@ -116,6 +116,12 @@ class SiestaConfig:
     # per project "no backwards compatibility" mandate.
     system_label: str = field(default="siesta", metadata={
         "section":  "System",
+        # Run-profile identity — what the run IS named.  Lives in the
+        # Run profile workflow-group card alongside the system-character
+        # knobs (mixing weight, electronic temperature, spin) because
+        # the user sets these together at the start of a run and
+        # rarely revisits.
+        "workflow_group": "profile",
         "label":    "SystemLabel",
         "engine_key":  'SystemLabel',
         "id_suffix": "system-label",
@@ -253,7 +259,7 @@ class SiestaConfig:
         # System characteristic — depends on what the system IS
         # (metallic / organic / open-shell), NOT on the stage.
         # Switching stages MUST NOT rewrite this.
-        "workflow_group": "system",
+        "workflow_group": "profile",
         "label": "DM.MixingWeight",
         "engine_key":  'DM.MixingWeight',
         "range": (0.001, 0.5),
@@ -308,7 +314,7 @@ class SiestaConfig:
         # System characteristic — high for metallic surfaces (Fermi
         # smearing helps), low for insulators / organics.  Not stage-
         # dependent.
-        "workflow_group": "system",
+        "workflow_group": "profile",
         "label": "ElectronicTemperature", "unit": "K",
         "engine_key":  'ElectronicTemperature',
         "id_suffix": "temperature",
@@ -664,6 +670,10 @@ class SiestaConfig:
     # the CLI side, also hand-rolled.
     psml_lib: Optional[str] = field(default=None, metadata={
         "section":    "System",
+        # Run-profile identity — which pseudopotential library this
+        # run uses is fixed per-project, set alongside SystemLabel
+        # and the spin/charge knobs.
+        "workflow_group": "profile",
         "label":      "Pseudopotential directory (.psml)",
         "engine_key":  '(molbuilder: stages .psml files next to .fdf; SIESTA reads them by element basename)',
         "null_label": "(none)",
@@ -718,6 +728,9 @@ class SiestaConfig:
     # phosphate protonation state via formal_charge_from_phosphates.
     net_charge: Optional[int] = field(default=None, metadata={
         "section": "System",
+        # Run-profile identity — molecule's charge state is a
+        # fundamental property of WHAT you're computing.
+        "workflow_group": "profile",
         "label": "Net charge",
         "engine_key":  'NetCharge',
         "null_label": "(auto-detect from phosphates)",
@@ -737,7 +750,7 @@ class SiestaConfig:
         "section":     "Spin",
         # System characteristic — depends on chemistry (open-shell
         # metals / radicals require it), not on stage.
-        "workflow_group": "system",
+        "workflow_group": "profile",
         "label":       "Spin polarized",
         # Emits ``SpinPolarized .true.`` (v4 form) NOT the v5 single-
         # line ``Spin polarized``: SIESTA 5.4.2's v5 parser path does
@@ -751,7 +764,7 @@ class SiestaConfig:
     })
     spin_total: Optional[float] = field(default=None, metadata={
         "section":     "Spin",
-        "workflow_group": "system",
+        "workflow_group": "profile",
         "label":       "Target spin moment",
         "null_label":  "(default)",
         # Emits TWO keys: Spin.Fix .true. + Spin.Total <v>.  Either

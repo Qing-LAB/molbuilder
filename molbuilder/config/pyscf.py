@@ -62,6 +62,8 @@ class PySCFConfig:
     })
     charge: Optional[int] = field(default=None, metadata={
         "section": "System",
+        # Run-profile identity — molecule's charge state.
+        "workflow_group": "profile",
         "label":   "Net charge",
         "engine_key":  'gto.M(charge=...)',
         "null_label": "(auto)",
@@ -74,7 +76,7 @@ class PySCFConfig:
     spin: int = field(default=0, metadata={
         "section": "System",
         # System characteristic — open-shell chemistry, not stage.
-        "workflow_group": "system",
+        "workflow_group": "profile",
         "label":   "Spin (2S)",
         "engine_key":  'gto.M(spin=...)  # 2S, # of unpaired electrons',
         "range":   (0, 10),

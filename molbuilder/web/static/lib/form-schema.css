@@ -350,7 +350,7 @@ fieldset select:disabled {
  * user reads "what changes when I switch stages?" from the visual
  * hierarchy alone:
  *
- *   .workflow-group--system  identity, set once per system
+ *   .workflow-group--profile run identity + character, set once per run
  *   .workflow-group--stage   the convergence target — switching the
  *                            stage selector mutates ONLY this card
  *   .workflow-group--budget  patience caps, set-and-forget
@@ -454,6 +454,6 @@ fieldset select:disabled {
 /* Per-group accent: scoped variable set on the parent.  Descendants
  * inherit it via the var() fallback chain so chip + title + button
  * all pick up the role color from one place. */
-.workflow-group--system { --workflow-group-accent: var(--group-system-accent); }
-.workflow-group--stage  { --workflow-group-accent: var(--group-stage-accent); }
-.workflow-group--budget { --workflow-group-accent: var(--group-budget-accent); }
+.workflow-group--profile { --workflow-group-accent: var(--group-profile-accent); }
+.workflow-group--stage   { --workflow-group-accent: var(--group-stage-accent); }
+.workflow-group--budget  { --workflow-group-accent: var(--group-budget-accent); }

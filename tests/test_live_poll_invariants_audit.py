@@ -569,13 +569,18 @@ class TestWorkflowGroupSchemaConsistency:
             f"preset: {extra_in_allowlist}.  Either remove from the "
             f"allowlist or add to the presets.")
 
-    def test_no_budget_or_system_field_tagged_stage(self):
+    def test_only_canonical_workflow_group_values(self):
         """Smoke check: no SIESTA field ever ends up tagged with
         a contradictory or unknown workflow_group.  Only the three
-        documented values (system/stage/budget) are valid."""
+        documented values (profile/stage/budget) are valid.  The
+        old "system" value was renamed to "profile" on 2026-06-13
+        to avoid the collision with the existing "System" schema
+        section name + the OS/file-system + physics-system
+        meanings; a stale "system" tag is a sign the rename was
+        half-applied."""
         import dataclasses
         from molbuilder.config.siesta import SiestaConfig
-        valid = {"system", "stage", "budget"}
+        valid = {"profile", "stage", "budget"}
         bad = []
         for f in dataclasses.fields(SiestaConfig):
             tag = f.metadata.get("workflow_group")

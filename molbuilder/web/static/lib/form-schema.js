@@ -333,10 +333,12 @@
     // section contains only UNTAGGED fields render bare (no workflow-
     // group wrapper).
     const WORKFLOW_GROUP_META = {
-        "system": {
-            title:    "System characteristics",
-            subtitle: "Reflect WHAT you're computing — set once per "
-                    + "system, doesn't change between stages.",
+        "profile": {
+            title:    "Run profile",
+            subtitle: "WHAT you're computing — identity (label, "
+                    + "pseudopotentials, charge) and physical character "
+                    + "(metallic vs organic, open-shell, smearing).  "
+                    + "Set once per run; doesn't change between stages.",
         },
         "stage": {
             title:    "Stage convergence target",
@@ -350,12 +352,16 @@
         },
     };
 
-    // Render-order of the three workflow-group cards.  Stage first
-    // (the "what changes when I switch stage?" question), then
-    // budget (the patience caps), then system (set-once knobs).
-    // Untagged sections render in their original schema order AFTER
-    // the three cards.
-    const WORKFLOW_GROUP_ORDER = ["stage", "budget", "system"];
+    // Render-order of the three workflow-group cards (2026-06-13
+    // reorder, after user feedback):
+    //   1. Run profile — "what is this run?" identity + character
+    //   2. Stage       — "what am I converging to right now?"
+    //   3. Budget      — "how much patience?"
+    // Reads naturally top-to-bottom on first encounter; profile is
+    // the foundation that the other two iterate against.  Untagged
+    // sections render in their original schema order AFTER the
+    // three cards.
+    const WORKFLOW_GROUP_ORDER = ["profile", "stage", "budget"];
 
     function renderForm(container, schema) {
         if (!container || !schema || !Array.isArray(schema.sections)) {

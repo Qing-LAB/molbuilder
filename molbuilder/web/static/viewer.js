@@ -902,7 +902,7 @@
                 metEl.hidden = (resp.metal_hints || []).length === 0;
             }
             // Inject / refresh the .workflow-detection-chip in every
-            // .workflow-group--system + .workflow-group--budget card
+            // .workflow-group--profile + .workflow-group--budget card
             // header so the user sees the analyzer's key conclusion
             // attached to the panel where they'll act on it.  Stage-
             // tagged fields don't get a chip — the staged-relaxation
@@ -914,7 +914,7 @@
         /**
          * Build a short, action-oriented detection chip string from
          * the /api/structure/analyze response.  Returns
-         * {system: str, budget: str} — each card gets its own line.
+         * {profile: str, budget: str} — each card gets its own line.
          * Pure: no DOM, no I/O.  Exported on window.molbuilder.viewer
          * for the source-text invariant test.
          */
@@ -989,12 +989,12 @@
                 }
             }
 
-            return { system: sysLine, budget: budgetLine };
+            return { profile: sysLine, budget: budgetLine };
         }
 
         /**
          * Inject (or refresh) the .workflow-detection-chip element
-         * inside every .workflow-group--system and
+         * inside every .workflow-group--profile and
          * .workflow-group--budget header in both engine forms.
          *
          * Idempotent: re-running on the same form replaces the chip
@@ -1005,12 +1005,12 @@
         function _renderWorkflowGroupChips(resp) {
             const chips = _buildDetectionChipText(resp);
             const targets = document.querySelectorAll(
-                ".workflow-group--system .workflow-group-header, "
+                ".workflow-group--profile .workflow-group-header, "
                 + ".workflow-group--budget .workflow-group-header");
             for (const header of targets) {
                 const card = header.closest(".workflow-group");
                 const role = card && card.classList.contains(
-                    "workflow-group--system") ? "system" : "budget";
+                    "workflow-group--profile") ? "profile" : "budget";
                 const text = chips[role];
                 if (!text) continue;
                 let chip = header.querySelector(

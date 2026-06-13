@@ -163,14 +163,20 @@
      * the value is an alias of an existing palette token so a
      * theme retune touches one line, not the form.
      *
-     *   --group-system-accent  identity, set once per system
-     *   --group-stage-accent   what changes 1→2→3 ("review me")
-     *   --group-budget-accent  patience caps, set-and-forget
+     *   --group-profile-accent  WHAT is this run? — identity +
+     *                           physical character, set once per run
+     *   --group-stage-accent    what changes 1→2→3 ("review me")
+     *   --group-budget-accent   patience caps, set-and-forget
+     *
+     * "profile" replaces the prior "system" name (2026-06-13) so
+     * the workflow-group role doesn't collide with the "System"
+     * schema section, the OS/file-system meaning, or the generic
+     * physics term "the system being computed."
      *
      * Authors should reach for the role tokens, NOT the underlying
      * --accent / --warn-soft / --success aliases, so the
      * workflow-group semantics stay readable from the CSS. */
-    --group-system-accent:  var(--accent);
+    --group-profile-accent: var(--accent);
     --group-stage-accent:   var(--warn-soft);
     --group-budget-accent:  var(--success);
 }
