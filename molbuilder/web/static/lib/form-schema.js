@@ -346,9 +346,11 @@
                     + "the stage selector mutates ONLY this card.",
         },
         "budget": {
-            title:    "Resource budget",
-            subtitle: "Caps on patience — does NOT change what counts "
-                    + "as converged.  Scale with system size.",
+            title:    "Compute & budget",
+            subtitle: "How much compute am I willing to spend?  "
+                    + "Iteration caps + parallel layout (MPI ranks, "
+                    + "OMP threads, memory).  Scales with system size; "
+                    + "does NOT change what counts as converged.",
         },
     };
 

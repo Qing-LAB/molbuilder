@@ -328,7 +328,12 @@ class SiestaConfig:
     # In the schema-driven form this renders as three side-by-side int
     # inputs (kx / ky / kz) under id sub-suffixes "x", "y", "z".
     kgrid: Tuple[int, int, int] = field(default=(1, 1, 1), metadata={
-        "section": "k-grid (Monkhorst-Pack)",
+        # 2026-06-13 fold: k-grid (Monkhorst-Pack) is reciprocal-space
+        # sampling; basis_size / mesh_cutoff / pao_energy_shift are
+        # real-space sampling.  Same conceptual family — all are
+        # "how finely we sample the calculation."  Folding into
+        # "Basis & grid" so the form stops having a one-field section.
+        "section": "Basis & grid",
         "label": "kgrid_Monkhorst_Pack",
         "engine_key":  '%block kgrid_Monkhorst_Pack',
         "id_suffix": "k",
@@ -473,14 +478,22 @@ class SiestaConfig:
     #                     centre (default).  Disable to keep raw input
     #                     coordinates (useful when several runs share a
     #                     reference frame).
+    # Output + positioning flags (2026-06-13): all of these are set
+    # once per project and don't change between stages — tag them as
+    # workflow_group="profile" so they fold into the Run profile card
+    # alongside SystemLabel / pseudo / spin.  Kills the "Output &
+    # positioning" section as a separate untagged surface (the user
+    # was hunting for these knobs at the bottom of the form).
     wrap_into_cell: bool = field(default=True, metadata={
         "section": "Output & positioning",
+        "workflow_group": "profile",
         "label": "Wrap atoms into cell",
         "engine_key":  '(molbuilder: pre-emission positioning)',
         "help": "fold atoms with fractional coords outside [0,1) back into the cell",
     })
     center_in_vacuum: bool = field(default=True, metadata={
         "section": "Output & positioning",
+        "workflow_group": "profile",
         "label": "Center in vacuum cell",
         "engine_key":  '(molbuilder: pre-emission positioning)',
         "help": "centre the molecule in the auto-vacuum cell (auto-cell case)",
@@ -491,6 +504,7 @@ class SiestaConfig:
     # etc.) plus a "Troubleshooting" block at the end.
     verbose_comments: bool = field(default=True, metadata={
         "section": "Output & positioning",
+        "workflow_group": "profile",
         "label": "Verbose inline comments",
         "engine_key":  '(molbuilder: .fdf comment-block control)',
         "help": "emit inline tuning hints and a Troubleshooting block in the FDF",
@@ -524,18 +538,21 @@ class SiestaConfig:
     })
     write_coor_xmol: bool = field(default=True, metadata={
         "section": "Output & positioning",
+        "workflow_group": "profile",
         "label": "Write XMOL .xyz per step",
         "engine_key":  'WriteCoorXmol',
         "help": "write .xyz of every relaxation step (movie viewer)",
     })
     write_md_history: bool = field(default=True, metadata={
         "section": "Output & positioning",
+        "workflow_group": "profile",
         "label": "Write .ANI trajectory",
         "engine_key":  'WriteMDhistory',
         "help": "write the .ANI trajectory file (xcrysden / vmd / OVITO)",
     })
     write_hs: bool = field(default=False, metadata={
         "section": "Output & positioning",
+        "workflow_group": "profile",
         "label": "Write H+S matrices",
         "engine_key":  'SaveHS / WriteHS',
         "help": "write H + S matrices (TranSIESTA / DOS / transport)",
@@ -563,8 +580,15 @@ class SiestaConfig:
     # the form params.  None / 0 / 1 -> single-process (no mpirun).
     # Don't confuse with parallel_block_size (BlockSize for ScaLAPACK
     # within a rank); rank count is the OUTER parallelism.
+    # All five Parallel-execution fields tagged workflow_group="budget"
+    # (2026-06-13).  Compute layout (MPI ranks, OMP threads, BlockSize,
+    # parallel-over-k, memory cap) is "how much compute am I willing
+    # to spend on this run" — same category as MaxSCFIterations and
+    # MD.NumCGsteps.  Folds the Parallel-execution section into the
+    # Compute & budget workflow-group card.
     mpi_np: Optional[int] = field(default=None, metadata={
         "section":    "Parallel execution",
+        "workflow_group": "budget",
         "label":      "MPI ranks (np)",
         "engine_key":  '(molbuilder: .run.sh ``mpirun -np N`` only; not in .fdf)',
         "null_label": "(single-process)",
@@ -595,6 +619,7 @@ class SiestaConfig:
 
     parallel_block_size: Optional[int] = field(default=None, metadata={
         "section": "Parallel execution",
+        "workflow_group": "budget",
         "label": "BlockSize",
         "engine_key":  'BlockSize',
         "id_suffix": "block-size",
@@ -616,6 +641,7 @@ class SiestaConfig:
     })
     parallel_over_k: Optional[bool] = field(default=None, metadata={
         "section": "Parallel execution",
+        "workflow_group": "budget",
         "label": "ParallelOverK",
         "engine_key":  'Diag.ParallelOverK',
         "help": "MPI parallelise over k-points; None=auto from kgrid",
@@ -630,6 +656,7 @@ class SiestaConfig:
     # with the PySCF / spectra scripts.
     omp_threads: Optional[int] = field(default=None, metadata={
         "section":    "Parallel execution",
+        "workflow_group": "budget",
         "label":      "OMP threads per rank",
         # Not a SIESTA fdf keyword.  Emits ``export OMP_NUM_THREADS=N``
         # into .run.sh AND ``# runtime.omp_threads_requested: N`` comment
@@ -651,6 +678,7 @@ class SiestaConfig:
     # records it so the /results trajectory inspector shows the cap.
     max_memory_mb: Optional[int] = field(default=None, metadata={
         "section":    "Parallel execution",
+        "workflow_group": "budget",
         "label":      "Max memory (per rank)",
         # Not a SIESTA fdf keyword.  Emits ``ulimit -v`` into .run.sh
         # AND ``# runtime.max_memory_mb: N`` into the .fdf so the .out
