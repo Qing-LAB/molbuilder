@@ -140,6 +140,8 @@ flowchart LR
         s_save["POST /api/selection/save"]
         s_eval["POST /api/selection/eval"]
         s_tog["POST /api/selection/toggle"]
+        s_rhash["POST /api/selection/refresh-hash"]
+        s_ssc["POST /api/selection/save-sidecar"]
     end
     subgraph "Spectra"
         sp_schema["GET /api/build/schema/spectra"]
@@ -192,7 +194,7 @@ public `projects.*` JS API on top of these endpoints lives in
 | `/api/projects/create` | POST | `{name}` | `{ok, path, project}` | 400 · 409 |
 | `/api/files/upload` | POST | multipart `file=`, form `path=` | `{ok, path}` | 400 · 409 · 413 |
 | `/api/files/write` | POST | `{path, text, overwrite?, expected_mtime?}` | `{ok, path, relPath, size, mtime}` | 400 · 409 (mtime conflict) |
-| `/api/files/rename` | POST | `{path, new_name}` | `{ok, path, old_path}` | 400 · 404 · 409 · 500 |
+| `/api/files/rename` | POST | `{path, new_name}` | `{ok, path}` | 400 · 404 · 409 · 500 |
 | `/api/files/move` | POST | `{path, dest_dir, new_name?}` | `{ok, path}` | 400 · 404 · 409 · 500 |
 | `/api/files/copy` | POST | `{path, dest_dir, new_name?}` | `{ok, path}` | 400 · 404 · 409 · 500 |
 | `/api/files/download` | GET | `?path=` | streamed bytes with `Content-Disposition: attachment` | 400 · 404 |
@@ -623,6 +625,24 @@ lives in [`atom-selection.md`](atom-selection.md).
 | `/api/selection/eval` | POST | `{structure_path, rule}` | `{ok, selected_indices, count, n_atoms_total}` |
 | `/api/selection/save` | POST | `{structure_path, rule, target}` | `{ok, sidecar_path, schema_version}` |
 | `/api/selection/toggle` | POST | `{structure_path, rule, index}` | `{ok, rule, selected_indices, count, n_atoms_total}` |
+| `/api/selection/refresh-hash` | POST | `{structure_path}` | `{ok, refreshed, structure_hash}` |
+| `/api/selection/save-sidecar` | POST | `{structure_path, n_atoms, regions?, frozen_atoms?}` | `{ok, sidecar_path, n_atoms_total, regions, frozen_atoms}` |
+
+`refresh-hash` rewrites the sidecar's `structure_hash` against the
+current on-disk XYZ bytes; `regions` / `frozen_atoms` /
+`selection_rules` are preserved verbatim.  Returns
+`refreshed: false, structure_hash: null` when no sidecar exists
+(no-op, so callers can fire-and-forget without a preflight). Used
+by `structureSave.save()` to keep the sidecar's hash in sync after
+a modifier-op save persists fresh XYZ bytes.
+
+`save-sidecar` REPLACES the entire sidecar with the supplied
+payload (no merge with any prior sidecar at that path);
+`selection_rules` is reset to `{}` and `structure_hash` is
+recomputed against the on-disk bytes. Used by Save-as to
+propagate the workspace's labels to a new destination cleanly.
+See [`save-flow.md`](save-flow.md) § 4.2 / § 4.3 for the
+Save vs. Save-as label-propagation contracts.
 
 ### 6.2 Atom row shape (`/api/selection/atoms`)
 

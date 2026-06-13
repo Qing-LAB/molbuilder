@@ -1,19 +1,32 @@
-# Workspace state — unified design (2026-06-07 audit + proposal)
+# Workspace state — unified design (2026-06-07 audit + 2026-06-09 implementation)
 
-> **Status: design proposal.** This document writes down the audit
-> the user demanded after three rounds of selection-list bugs
-> ([cd9655e], [bebc73d], the in-flight follow-ups).  Each bug was
-> a symptom; the root cause is **architectural** — the client has
-> four parallel stores for one conceptual entity, the server
-> returns the same entity in four different wire shapes, and
-> persistence is scattered across three sessionStorage keys.
-> Until this is fixed, the next consistency bug is a matter of
-> when, not if.
+> **Status: Phases 1–8 SHIPPED; Phase 9 (physical deletion of
+> legacy stores) DEFERRED.** This document originally landed as
+> a design proposal after three rounds of selection-list bugs
+> ([cd9655e], [bebc73d], follow-ups).  Each bug was a symptom;
+> the root cause was **architectural** — the client had four
+> parallel stores for one conceptual entity, the server returned
+> the same entity in four different wire shapes, and persistence
+> was scattered across three sessionStorage keys.
 >
-> This doc captures the diagnosis, the proposed unified design,
-> and the migration plan.  It does NOT yet describe shipped code;
-> implementation will land in a series of small PRs each
-> referenced from the migration table in § 6.
+> Phases 1–8 of the migration table in § 6 have shipped:
+> server-side `WorkspacePayload` (`molbuilder/web/blueprints/_shared.py::workspace_payload`),
+> client-side `window.molbuilder.workspace` dispatcher
+> (`lib/workspace/dispatcher.js`), the `ws.*` public API surface,
+> and consumer migration of all 6 known call sites.  The
+> contract is now sole-source-of-truth in
+> [`workspace-contract.md`](workspace-contract.md); a
+> contract-compliance test enforces zero legacy consumers.
+>
+> Phase 9 (deletion of `lib/structure/canvas-state.js` and
+> `lib/selection/store.js`) was deferred because the migration
+> contract is complete (those files are internal-only; no
+> external consumer reaches into them).  Deletion requires
+> simultaneous rewrites of `selection-panel.js` (~840 LoC),
+> `selection/viewer-adapter.js`, and `selection-bootstrap.js`
+> and is out of scope for the Phase 10 consolidation that
+> delivered the architectural goal.  Track via task #354 if a
+> follow-up cleanup PR is opened.
 
 ---
 

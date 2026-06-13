@@ -39,9 +39,17 @@ build_rna(sequence: str, *, backend="auto", form="A", terminal="OH",
 ```
 
 * `backend`:
-  * `"auto"`: prefer `amber` (AmberTools `tleap`) if installed, else
-    `rdkit`.  No silent skip — if neither is available, raise
-    `BackendUnavailable` with install instructions.
+  * `"auto"`: prefer `threedna` (X3DNA fiber, canonical helix) if
+    installed, else `amber` (AmberTools `tleap`, extended chain), else
+    `rdkit` (folded conformer).  No silent skip — if none is
+    available, raise `BackendUnavailable` with install instructions.
+    See `molbuilder/builders/backends/__init__.py::_AUTO_ORDER` —
+    that constant is the source of truth.
+  * `"threedna"`: X3DNA `fiber` tool with canonical B / A / Z
+    helices; heavy-only (no protons), always 5'-OH (ignores
+    `terminal=`).  Restricted-license dependency (non-commercial
+    only); molbuilder errors with an install-instructions hint
+    pointing at x3dna.org when missing — no auto-download.
   * `"rdkit"`: always works, returns folded conformer (not helical).
   * `"amber"`: AmberTools' `tleap` with `leaprc.DNA.OL15` /
     `leaprc.RNA.OL3`; produces extended chain with correct
@@ -94,7 +102,11 @@ This is the S3 fix; the original logic ran UFF when MMFF returned 1
 molbuilder.backends.dispatch(kind, sequence, *, backend, form, terminal, title)
 ```
 
-* Auto-mode order: `amber` → `rdkit` (helical-aware first, then chemistry-only).
+* Auto-mode order: `threedna` → `amber` → `rdkit` (best geometry first:
+  canonical helix → extended chain → folded conformer).  Encoded as
+  `_AUTO_ORDER` in `molbuilder/builders/backends/__init__.py` —
+  that constant is the single source of truth; keep this doc in
+  sync if it changes.
 * `BackendUnavailable` is raised explicitly when no installed backend
   can satisfy the request; the user sees install instructions, not
   a cryptic ImportError.
