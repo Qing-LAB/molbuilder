@@ -901,6 +901,127 @@
                 }
                 metEl.hidden = (resp.metal_hints || []).length === 0;
             }
+            // Inject / refresh the .workflow-detection-chip in every
+            // .workflow-group--system + .workflow-group--budget card
+            // header so the user sees the analyzer's key conclusion
+            // attached to the panel where they'll act on it.  Stage-
+            // tagged fields don't get a chip — the staged-relaxation
+            // recipe is system-agnostic and the user doesn't override
+            // those values based on chemistry.
+            _renderWorkflowGroupChips(resp);
+        }
+
+        /**
+         * Build a short, action-oriented detection chip string from
+         * the /api/structure/analyze response.  Returns
+         * {system: str, budget: str} — each card gets its own line.
+         * Pure: no DOM, no I/O.  Exported on window.molbuilder.viewer
+         * for the source-text invariant test.
+         */
+        function _buildDetectionChipText(resp) {
+            const n_atoms = (resp && typeof resp.n_atoms === "number")
+                ? resp.n_atoms : null;
+            const metals = (resp && Array.isArray(resp.metals))
+                ? resp.metals : [];
+            // Per-engine suggested params carry the treatment label
+            // (closed / open) verbatim from the analyzer.  Both engines
+            // agree; PySCF's block is the canonical pick.
+            const sugPyscf = (resp && resp.suggested && resp.suggested.pyscf)
+                ? resp.suggested.pyscf : {};
+            const treatment = sugPyscf.suggested_treatment
+                            || sugPyscf.treatment
+                            || (typeof sugPyscf.spin === "number"
+                                && sugPyscf.spin > 0 ? "open" : "closed");
+            const spinNum = (typeof sugPyscf.spin === "number")
+                ? sugPyscf.spin : null;
+
+            // --- System chip ---------------------------------------
+            // Headline format: "<N> atoms · <chemistry conclusion>"
+            // Chemistry conclusion priorities (highest first):
+            //   open-d metal present     → "<Metals> · open-shell suggested (2S=<n>)"
+            //   noble-metal cluster      → "<Metal> cluster · closed-shell singlet"
+            //   pure organic / main group→ "closed-shell singlet"
+            let sysLine = "";
+            if (n_atoms != null) sysLine = `${n_atoms} atoms`;
+            if (metals.length > 0) {
+                const list = metals.join(", ");
+                if (treatment === "open") {
+                    const spinHint = (spinNum != null)
+                        ? ` (2S=${spinNum})` : "";
+                    sysLine = sysLine
+                        ? `${sysLine} · ${list} · open-shell${spinHint}`
+                        : `${list} · open-shell${spinHint}`;
+                } else {
+                    sysLine = sysLine
+                        ? `${sysLine} · ${list} cluster · closed-shell singlet`
+                        : `${list} · closed-shell singlet`;
+                }
+            } else {
+                const closed = (treatment === "closed");
+                const tag = closed
+                    ? "closed-shell"
+                          + (spinNum === 0 ? " singlet" : "")
+                    : "open-shell"
+                          + (spinNum != null ? ` (2S=${spinNum})` : "");
+                sysLine = sysLine ? `${sysLine} · ${tag}` : tag;
+            }
+
+            // --- Budget chip ---------------------------------------
+            // Size-aware hint.  Au-BDT-Au-class systems (>= 150
+            // metallic atoms) get an explicit "bump the caps" nudge
+            // because the cluster-context closed-shell argument
+            // doesn't help convergence speed.  Smaller metallic
+            // systems get a milder hint.  Pure organics under 100
+            // atoms get a "defaults are fine" nudge so the user
+            // doesn't second-guess.
+            let budgetLine = (n_atoms != null) ? `${n_atoms} atoms` : "";
+            if (n_atoms != null) {
+                if (n_atoms >= 150 && metals.length > 0) {
+                    budgetLine += " · bump relax_steps + max_scf_iter "
+                                + "for large metallic systems";
+                } else if (n_atoms >= 100) {
+                    budgetLine += " · consider higher caps for large systems";
+                } else if (n_atoms >= 50 && metals.length > 0) {
+                    budgetLine += " · metallic system — watch SCF "
+                                + "convergence; bump caps if needed";
+                } else {
+                    budgetLine += " · defaults are fine";
+                }
+            }
+
+            return { system: sysLine, budget: budgetLine };
+        }
+
+        /**
+         * Inject (or refresh) the .workflow-detection-chip element
+         * inside every .workflow-group--system and
+         * .workflow-group--budget header in both engine forms.
+         *
+         * Idempotent: re-running on the same form replaces the chip
+         * text in place.  The chip color is auto-derived from the
+         * group's --workflow-group-accent CSS variable; this code
+         * only writes textContent.
+         */
+        function _renderWorkflowGroupChips(resp) {
+            const chips = _buildDetectionChipText(resp);
+            const targets = document.querySelectorAll(
+                ".workflow-group--system .workflow-group-header, "
+                + ".workflow-group--budget .workflow-group-header");
+            for (const header of targets) {
+                const card = header.closest(".workflow-group");
+                const role = card && card.classList.contains(
+                    "workflow-group--system") ? "system" : "budget";
+                const text = chips[role];
+                if (!text) continue;
+                let chip = header.querySelector(
+                    ".workflow-detection-chip");
+                if (!chip) {
+                    chip = document.createElement("span");
+                    chip.className = "workflow-detection-chip";
+                    header.appendChild(chip);
+                }
+                chip.textContent = text;
+            }
         }
         });   // close runtime.whenReady("projects").then(...)
     }

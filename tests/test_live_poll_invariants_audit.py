@@ -586,6 +586,54 @@ class TestWorkflowGroupSchemaConsistency:
             f"workflow_group values: {bad}.  Allowed values: "
             f"{sorted(valid)}.")
 
+    def test_detection_chip_renderer_present(self):
+        """The .workflow-detection-chip in the System + Budget
+        workflow-group headers is populated by
+        _renderWorkflowGroupChips(resp), called from
+        _renderAutoDetectPanel.  Pin the wiring: the chip helper
+        exists, the panel calls it, and the chip-text builder uses
+        the response fields (n_atoms, metals, suggested treatment)
+        rather than hardcoding."""
+        import re
+        viewer = (_LIB / ".." / "viewer.js").resolve().read_text()
+        assert "function _renderWorkflowGroupChips" in viewer, (
+            "viewer.js lost _renderWorkflowGroupChips — the detection "
+            "chip wiring is broken.")
+        assert "function _buildDetectionChipText" in viewer, (
+            "viewer.js lost _buildDetectionChipText — the chip text "
+            "builder is gone.")
+        # The render helper must be invoked from the auto-detect
+        # panel renderer so the chip refreshes whenever the analyzer
+        # runs (including the silent auto-fire on structure load).
+        assert re.search(
+            r"function\s+_renderAutoDetectPanel\b(.+?)\n\s{8}\}",
+            viewer, re.DOTALL,
+        ), "viewer.js: _renderAutoDetectPanel function shape changed; "\
+           "update this test."
+        panel_body = re.search(
+            r"function\s+_renderAutoDetectPanel\b(.+?)\n\s{8}\}",
+            viewer, re.DOTALL,
+        ).group(1)
+        assert "_renderWorkflowGroupChips" in panel_body, (
+            "_renderAutoDetectPanel no longer calls "
+            "_renderWorkflowGroupChips — the detection chip stops "
+            "updating after a structure load.")
+        # The chip text must reflect resp.n_atoms and resp.metals; a
+        # refactor that hardcodes "232 atoms" instead of pulling from
+        # the analyzer response is exactly the bug class this tests.
+        builder = re.search(
+            r"function\s+_buildDetectionChipText\b(.+?)\n\s{8}\}",
+            viewer, re.DOTALL,
+        )
+        assert builder is not None
+        builder_body = builder.group(1)
+        assert "resp.n_atoms" in builder_body, (
+            "Chip builder no longer reads resp.n_atoms — must be "
+            "data-driven, not hardcoded.")
+        assert "resp.metals" in builder_body, (
+            "Chip builder no longer reads resp.metals — must be "
+            "data-driven, not hardcoded.")
+
 
 class TestTrajectoryInspectorClaimsOptimXyz:
     """PySCF's geom-opt wrapper (and bare geomeTRIC runs) write the
