@@ -173,8 +173,10 @@ button {
 }
 button:hover { background: var(--bg-input-focus); }
 button:disabled { opacity: 0.45; cursor: not-allowed; }
-button.primary  { background: #2b5f9e; border-color: #3577b9; color: #fff; }
-button.primary:hover { background: #336dab; }
+/* `button.primary` styling lives in style.css (token-based + has
+ * hover + disabled states + groups with #generate-fdf etc.).  The
+ * old per-page hex literals here lost to style.css in load order
+ * but went stale anyway as the theme tokens evolved. */
 button > code {
     background: transparent;
     padding: 0;
@@ -408,13 +410,7 @@ button > code {
 }
 .modes-table tbody tr.mode-imag td:nth-child(2) { color: #e07070; }
 
-.sr-only {
-    position: absolute;
-    width: 1px; height: 1px;
-    padding: 0; margin: -1px;
-    overflow: hidden; clip: rect(0,0,0,0);
-    border: 0;
-}
+/* .sr-only lives in lib/page-shell.css. */
 
 /* ---- Mode-animation viewer (§ 9.2.3) ----
  *

@@ -487,37 +487,15 @@ button.primary:disabled,
  * shared mol-viewer-embed knob bar; the CSS lived on here until
  * task #297 removed it as part of the optimization-tab cleanup. */
 
-/* ---- Compatibility-locked fields ----
- *
- * When one form field's value makes another field meaningless or
- * forbidden (e.g. method=RKS forces spin=0), the dependent field
- * gets `disabled` plus a `.lock-reason` hint span explaining why.
- */
-fieldset label.is-locked {
-    opacity: 0.55;
-    transition: opacity 120ms;
-}
+/* Compatibility-locked fields (.is-locked) + their .lock-reason
+ * hints live in lib/form-schema.css.  Disabled inputs/selects below
+ * are page-wide so they stay here. */
 fieldset input:disabled,
 fieldset select:disabled {
     cursor: not-allowed;
     background: var(--bg-fieldset);
     color: var(--text-muted);
 }
-.lock-reason {
-    display: block;
-    margin-top: 2px;
-    font-size: 0.78rem;
-    color: var(--accent);
-    font-style: italic;
-    line-height: 1.35;
-}
-.lock-reason::before {
-    content: "↳ ";
-    color: var(--text-muted);
-    font-style: normal;
-}
-.lock-reason[hidden] { display: none; }
-
 /* ---- Tabs (SIESTA / PySCF) ---- */
 
 .tabs {
@@ -627,72 +605,14 @@ fieldset label:has(> input[type="checkbox"]) {
 /* The k-grid fieldset has 3 tiny inputs that look better stacked
    vertically -- already the default with our new label rule. */
 
-/* ---- Schema-driven form (form-schema.js renderForm output) ----
- *
- * The schema renderer emits <fieldset class="schema-section">
- * containing <label class="schema-field schema-field-<kind>">,
- * so most rules apply automatically via the generic `fieldset`
- * and `fieldset label` selectors above.  Below are the small
- * additions for the kinds that need custom layout. */
-
-.param-grid-pre {
-    /* Pre-form fieldsets (the Run-directory & restart prose, the
-       Relaxation-stage preset selector) shouldn't sit in the
-       responsive grid columns -- they read better as full-width
-       blocks above the schema-driven .param-grid below them. */
-    margin: 0 0 10px;
-}
-.param-grid-pre + .param-grid-pre {
-    margin-top: 6px;
-}
-
-/* int-triple kind (kgrid: Tuple[int, int, int]).  Three small
- * inline cells with sub-labels so the user reads "x 1  y 1  z 1"
- * instead of three anonymous boxes. */
-.schema-int-triple {
-    display: inline-flex;
-    flex-direction: row;
-    gap: 8px;
-    align-items: center;
-    flex-wrap: wrap;
-    margin-top: 1px;
-}
-.schema-int-triple-cell {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 4px;
-}
-.schema-int-triple-label {
-    color: var(--text-secondary);
-    font-size: 0.8rem;
-    font-family: ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
-    min-width: 1.2em;
-    text-align: right;
-}
-.schema-int-triple-cell > input {
-    width: 4em;
-    min-width: 3em;
-}
-
-/* Advanced-tier fields: keep them visible but slightly dimmed so
- * the "advanced knob" status reads without hiding the control.
- * Tier is set via metadata["tier"] = "advanced" on the dataclass
- * field; the renderer adds .is-advanced to the wrapping <label>. */
-.schema-field.is-advanced {
-    opacity: 0.85;
-}
-.schema-field.is-advanced:not(.schema-field-checkbox)::before {
-    /* tiny "•" marker, just enough to flag without screaming.
-     * Excluded for checkbox rows because the bullet otherwise lands
-     * INSIDE the flex layout immediately left of the native checkbox,
-     * which the user reads as "the checkbox" — the 2026-06-12 user
-     * report.  Dim alone conveys "advanced" for checkbox rows. */
-    content: "•";
-    color: var(--accent);
-    margin-right: 4px;
-    font-weight: 700;
-    opacity: 0.6;
-}
+/* ---- Schema-driven form ---- */
+/* All `.schema-*` and `.param-grid-pre` rules live in
+ * ``lib/form-schema.css`` — the component-file home for the
+ * schema renderer's DOM.  Duplicates here were silently
+ * overriding form-schema.css because of load order
+ * (form-schema → style.css) and produced the 2026-06-12
+ * checkbox-as-bullet bug.  See CSS Phase 1 dedupe + the
+ * tests/test_css_no_duplicate_selectors.py invariant. */
 
 /* ---- FDF / PySCF action row + output ---- */
 

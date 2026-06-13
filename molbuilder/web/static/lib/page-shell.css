@@ -176,6 +176,24 @@ button:disabled {
 .status.error { color: var(--error); }
 .status.ok    { color: var(--success); }
 
+/* ---- Accessibility utility ----------------------------------- */
+
+/* Visually-hidden but still announced by screen readers.  Standard
+ * "sr-only" recipe.  Single home in this file so every page that
+ * loads page-shell.css gets it; previously duplicated across
+ * lib/selection-panel.css and spectra/style.css. */
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+    white-space: nowrap;
+}
+
 /* ---- Custom scrollbars (WebKit only; Firefox uses its own) ------ */
 
 ::-webkit-scrollbar { width: 10px; height: 10px; }
