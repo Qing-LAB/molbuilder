@@ -269,38 +269,27 @@ class PySCFSpectraEngine:
             ))
 
         # ---- Open-shell metal sanity check ----
-        # Closed-shell singlet (spin=0 + RKS/RHF) on a structure
-        # containing Fe / Mn / Co / Ni / Cu / any other open-shell
-        # transition metal converges to a fictitious state with garbage
-        # forces / energies (hemeC-dithiol 2026-05-22 incident: charge=0,
-        # spin=0, RKS produced ~10 eV/Å forces on a near-equilibrium
-        # geometry; the molecule is high-spin Fe(II), spin=4, UKS).
-        # We warn -- not error -- because some weak-field cases (e.g.
-        # CO-bound heme) ARE closed-shell low-spin and the user might
-        # genuinely want spin=0.
-        metals = detect_open_shell_metals(struct)
+        # Delegated to the shared validator so the Spectra preflight,
+        # the SIESTA/PySCF Build-tab preflights, and the form's
+        # detection chip all read from the same source of truth
+        # (``ChemistryAnalysis.suggested_treatment``).  The pre-2026-06-13
+        # Au-BDT-Au incident was caused by a parallel ``metals``-only
+        # check in this very block — see docs/protocols/web-ui-coherence.md
+        # Rule 1.  ``metals`` (the flat detection list) is still computed
+        # so the supplemental ``explain_metal_spin`` info-line below
+        # can echo (element, spin) → (likely oxidation state) for
+        # non-spin=0 cases.
+        from ..validation import _check_open_shell_metal
         method_upper = cfg.method.upper()
-        if metals and cfg.spin == 0 and method_upper in ("RKS", "RHF"):
-            issues.append(Issue(
-                severity="warn",
-                message=(
-                    f"Structure contains open-shell transition metal(s) "
-                    f"{', '.join(metals)} but the config requests "
-                    f"closed-shell singlet (spin=0, method={cfg.method}).  "
-                    f"This is almost always wrong: most ground-state "
-                    f"first-row transition-metal complexes are high-spin, "
-                    f"e.g. Fe(II) heme = high-spin S=2 (spin=4) unless "
-                    f"the axial ligand is strong-field (CO, CN⁻).  A "
-                    f"closed-shell singlet SCF on a true open-shell "
-                    f"complex converges to a fictitious electronic state "
-                    f"with unphysical forces.  Set spin to a sensible "
-                    f"value (e.g. 4 for high-spin Fe(II)) AND switch "
-                    f"method to UKS (or ROKS) -- RKS cannot represent "
-                    f"open-shell states."
-                ),
-                where="config.spin",
-            ))
-        elif metals:
+        is_closed_shell = (cfg.spin == 0
+                           and method_upper in ("RKS", "RHF"))
+        issues.extend(_check_open_shell_metal(
+            struct,
+            is_closed_shell=is_closed_shell,
+            engine_label=f"PySCF spectra ({cfg.method})",
+        ))
+        metals = detect_open_shell_metals(struct)
+        if metals and not is_closed_shell:
             # Metal present + the user DID pick a non-default spin.
             # Echo back what their (element, spin) implies so they can
             # sanity-check the oxidation state.  Severity=info so it

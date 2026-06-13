@@ -146,6 +146,7 @@ class TransportConfig:
 
     engine: str = field(default="transiesta", metadata={
         "section": "System",
+        "workflow_group": "profile",
         "label":   "Engine",
         # PySCF-NEGF requires the PySCF + scipy stack; TranSIESTA
         # requires a working SIESTA-MPI build with TranSIESTA enabled.
@@ -159,6 +160,7 @@ class TransportConfig:
     })
     job_name: str = field(default="transport", metadata={
         "section":   "System",
+        "workflow_group": "profile",
         "label":     "Job name",
         "id_suffix": "job-name",
         "pattern":   r"^[A-Za-z0-9_\-]+$",
@@ -174,6 +176,7 @@ class TransportConfig:
 
     structure_xyz_path: str = field(default="", metadata={
         "section": "Geometry",
+        "workflow_group": "profile",
         "label":   "Relaxed structure (XYZ)",
         "engine_key": '(molbuilder: input file path)',
         "help":    "path to the relaxed-geometry XYZ from /modify.  "
@@ -183,6 +186,7 @@ class TransportConfig:
     })
     molstruct_json_path: str = field(default="", metadata={
         "section": "Geometry",
+        "workflow_group": "profile",
         "label":   "Region-label sidecar (.molstruct.json)",
         "engine_key": '(molbuilder: sidecar path)',
         "help":    "path to the sidecar carrying L-electrode / "
@@ -196,6 +200,7 @@ class TransportConfig:
     bias_voltages_v: List[float] = field(default_factory=lambda: [0.0],
                                           metadata={
         "section": "Electrodes",
+        "workflow_group": "profile",
         "label":   "Bias voltages (V)",
         "engine_key": 'TS.Voltage  (transiesta — single value per .fdf today)',
         "help":    "comma-separated list of bias values V_L - V_R at "
@@ -210,6 +215,7 @@ class TransportConfig:
     k_mesh_transverse: Tuple[int, int, int] = field(default=(1, 1, 1),
                                           metadata={
         "section": "Electrodes",
+        "workflow_group": "stage",
         "label":   "Transverse k-mesh",
         "id_suffix": "k",
         "triple_labels": ("x", "y", "z"),
@@ -223,6 +229,7 @@ class TransportConfig:
     })
     electronic_temperature_k: float = field(default=300.0, metadata={
         "section": "Electrodes",
+        "workflow_group": "profile",
         "label":   "Electronic temperature",
         "unit":    "K",
         "range":   (10.0, 2000.0),
@@ -239,6 +246,7 @@ class TransportConfig:
 
     transmission_emin_ev: float = field(default=-2.0, metadata={
         "section": "Transmission",
+        "workflow_group": "stage",
         "label":   "Energy window min",
         "unit":    "eV",
         "range":   (-10.0, 0.0),
@@ -252,6 +260,7 @@ class TransportConfig:
     })
     transmission_emax_ev: float = field(default=2.0, metadata={
         "section": "Transmission",
+        "workflow_group": "stage",
         "label":   "Energy window max",
         "unit":    "eV",
         "range":   (0.0, 10.0),
@@ -261,6 +270,7 @@ class TransportConfig:
     })
     transmission_n_points: int = field(default=401, metadata={
         "section": "Transmission",
+        "workflow_group": "stage",
         "label":   "Energy grid points",
         "range":   (51, 4001),
         "engine_key": 'TS.TBT.NumE  (transiesta)',
@@ -273,6 +283,7 @@ class TransportConfig:
     })
     transmission_relative_to_ef: bool = field(default=True, metadata={
         "section": "Transmission",
+        "workflow_group": "profile",
         "label":   "Energy is relative to E_F",
         "engine_key": 'TS.TBT.Erange.RelToEF  (transiesta)',
         "help":    "if on (default), energies are written as E - E_F; "
@@ -285,6 +296,7 @@ class TransportConfig:
 
     contour_n_circle: int = field(default=32, metadata={
         "section": "NEGF",
+        "workflow_group": "stage",
         "label":   "Contour points (imaginary axis)",
         "range":   (8, 128),
         "tier":    "advanced",
@@ -299,6 +311,7 @@ class TransportConfig:
     })
     contour_n_real: int = field(default=8, metadata={
         "section": "NEGF",
+        "workflow_group": "stage",
         "label":   "Contour points (real axis)",
         "range":   (4, 64),
         "tier":    "advanced",
@@ -313,6 +326,7 @@ class TransportConfig:
     })
     contour_e_bottom_ev: float = field(default=-40.0, metadata={
         "section": "NEGF",
+        "workflow_group": "stage",
         "label":   "Contour bottom",
         "unit":    "eV",
         "range":   (-100.0, -10.0),
@@ -344,6 +358,7 @@ class TransportConfig:
 
     pyscf_functional: str = field(default="B3LYP", metadata={
         "section": "NEGF",
+        "workflow_group": "profile",
         "label":   "PySCF: XC functional",
         "tier":    "advanced",
         "engine_key": 'mf.xc = ...  (pyscf-negf)',
@@ -355,6 +370,7 @@ class TransportConfig:
     })
     pyscf_basis: str = field(default="def2-SVP", metadata={
         "section": "NEGF",
+        "workflow_group": "profile",
         "label":   "PySCF: basis set",
         "tier":    "advanced",
         "engine_key": 'gto.M(basis=...)  (pyscf-negf)',
@@ -369,6 +385,7 @@ class TransportConfig:
 
     siesta_mesh_cutoff_ry: int = field(default=300, metadata={
         "section": "NEGF",
+        "workflow_group": "stage",
         "label":   "TranSIESTA: mesh cutoff",
         "unit":    "Ry",
         "range":   (100, 1000),
@@ -394,6 +411,7 @@ class TransportConfig:
 
     max_memory_mb: int = field(default=8000, metadata={
         "section": "Runtime",
+        "workflow_group": "budget",
         "label":   "Memory budget",
         "unit":    "MB",
         "range":   (1000, 256000),
@@ -404,6 +422,7 @@ class TransportConfig:
     })
     num_threads: int = field(default=4, metadata={
         "section": "Runtime",
+        "workflow_group": "budget",
         "label":   "CPU threads",
         "range":   (1, 256),
         "engine_key": 'OMP_NUM_THREADS  (runner shell wrapper)',
@@ -415,6 +434,7 @@ class TransportConfig:
     })
     log_level: str = field(default="info", metadata={
         "section": "Runtime",
+        "workflow_group": "profile",
         "label":   "Log verbosity",
         "choices": ("warning", "info", "debug"),
         "engine_key": '(transiesta) WriteVerbosity / (pyscf) mol.verbose',

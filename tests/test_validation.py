@@ -1409,3 +1409,71 @@ class TestCheckOpenShellMetalUsesAnalyzer:
             "Validator message does not include the analyzer rationale "
             "— evidence it isn't reading from ChemistryAnalysis."
         )
+
+    def test_au_bdt_au_closed_shell_does_NOT_warn(self):
+        """The 2026-06-13 noble-metal cluster-context fix: an Au-BDT-
+        Au junction (4 Au atoms + benzene-1,4-dithiol) with closed-
+        shell SCF (the published-literature standard for Au transport
+        calculations) MUST NOT fire the open-shell-mismatch warning.
+
+        Pre-fix the validator checked ``analysis.metals`` (non-empty
+        → warn) and contradicted the detection chip that ALSO read
+        from analyze_structure but correctly displayed "closed-shell
+        singlet" — same form, two surfaces, two contradictory verdicts.
+
+        Post-fix the validator reads ``analysis.suggested_treatment``
+        which is "closed" for Au_4 + ligand systems; warning silenced."""
+        import numpy as np
+        from molbuilder.structure import Structure
+        from molbuilder.validation import _check_open_shell_metal
+        # 4 Au + 2 S + 6 C + 4 H — 16 atoms, even electron count.
+        elements = ["Au"]*4 + ["S"]*2 + ["C"]*6 + ["H"]*4
+        struct = Structure(
+            elements      = elements,
+            positions     = np.zeros((len(elements), 3)),
+            atom_names    = [f"A{i}" for i in range(len(elements))],
+            residue_ids   = [1] * len(elements),
+            residue_names = ["JCT"] * len(elements),
+            chain_ids     = ["A"] * len(elements),
+        )
+        issues = _check_open_shell_metal(
+            struct,
+            is_closed_shell=True,
+            engine_label="SIESTA",
+        )
+        assert issues == [], (
+            "Validator fires the open-shell-mismatch warning for an "
+            "Au-BDT-Au junction with closed-shell SCF.  The analyzer "
+            "correctly suggests closed-shell singlet for noble-metal "
+            "clusters ≥ 4 atoms (Stoner criterion fails, s-band "
+            "delocalises); the validator must respect that decision "
+            "rather than checking analysis.metals being non-empty. "
+            f"Got: {[i.message[:200] for i in issues]}")
+
+    def test_single_au_atom_still_warns_open_shell(self):
+        """Single Au atom (no extended-metallic-bonding context) IS
+        open-shell per the atomic ground state 5d¹⁰ 6s¹.  Validator
+        MUST still warn if user picks closed-shell for it — the noble-
+        metal cluster-context override only applies at cluster size
+        ≥ 4 atoms."""
+        import numpy as np
+        from molbuilder.structure import Structure
+        from molbuilder.validation import _check_open_shell_metal
+        struct = Structure(
+            elements      = ["Au"],
+            positions     = np.zeros((1, 3)),
+            atom_names    = ["AU1"],
+            residue_ids   = [1],
+            residue_names = ["AU"],
+            chain_ids     = ["A"],
+        )
+        issues = _check_open_shell_metal(
+            struct,
+            is_closed_shell=True,
+            engine_label="PySCF",
+        )
+        assert len(issues) == 1, (
+            "Validator should warn for a single Au atom in closed-shell "
+            "config (atomic ground state IS open-shell doublet; cluster-"
+            "context override needs ≥ 4 atoms).  "
+            f"Got {len(issues)} issue(s).")

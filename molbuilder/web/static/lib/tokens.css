@@ -155,6 +155,21 @@
     /* Hover-state remove / delete affordances (lighter than --error
      * for legibility on a dark panel background) */
     --sp-danger-fg:       #ff7070;
+    /* Danger hover + soft-bg used by tag-remove hover state and the
+     * selection-bootstrap-error banner.  Promoted from raw rgba
+     * literals 2026-06-13 — Phase 3 had registered --sp-danger-fg
+     * but left the surrounding hover/banner literals raw in
+     * selection-panel.css.  Per docs/protocols/web-ui-coherence.md
+     * Rule 4, all selection-panel palette values live here. */
+    --sp-danger-bg-hover:     rgba(255, 80, 80, 0.22);
+    --sp-danger-border-hover: rgba(255, 120, 120, 0.45);
+    --sp-danger-bg-soft:      rgba(255, 112, 112, 0.08);
+    /* Tag-remove button (the little × inside region tags) — neutral
+     * subtle-hover before the danger colour takes over on actual
+     * hover.  Semi-transparent white reads on every region-tag
+     * background colour without per-region overrides. */
+    --sp-tag-remove-bg:       rgba(255, 255, 255, 0.08);
+    --sp-tag-remove-border:   rgba(255, 255, 255, 0.15);
 
     /* --- Workflow-group accents (lib/form-schema.css) ---
      * Three roles used by stage-shaped multi-card forms (the

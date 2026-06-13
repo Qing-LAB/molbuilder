@@ -670,6 +670,15 @@
             return ix >= 0 ? p.slice(ix + 1) : p;
         };
         let _candidatePath = "";
+        // Workspace dirty state — surfaced in the readout so the user
+        // sees "Loaded: X · unsaved changes" after they modify the
+        // structure but before saving.  Read lazily so this code
+        // works during early init when ws may not be wired yet.
+        const _wsDirty = () => {
+            const w = (window.molbuilder || {}).workspace;
+            try { return !!(w && w.getState && w.getState().dirty); }
+            catch (_e) { return false; }
+        };
         function _refreshLoadButton() {
             const btn = $("load-from-sidebar-btn");
             const readout = $("load-source-readout");
@@ -679,13 +688,20 @@
             if (readout) {
                 const isLoaded = loadable
                     && _sidebarLastFile === _candidatePath;
-                readout.textContent = isLoaded
-                    ? `Loaded: ${_basename(_candidatePath)}`
-                    : loadable
-                        ? `Selected: ${_basename(_candidatePath)}`
-                        : (_candidatePath
-                            ? `Selected: ${_basename(_candidatePath)} (not loadable)`
-                            : "Pick a .xyz / .pdb in the Projects sidebar.");
+                if (isLoaded) {
+                    readout.textContent = _wsDirty()
+                        ? `Loaded: ${_basename(_candidatePath)} · unsaved changes`
+                        : `Loaded: ${_basename(_candidatePath)}`;
+                } else if (loadable) {
+                    readout.textContent =
+                        `Selected: ${_basename(_candidatePath)}`;
+                } else if (_candidatePath) {
+                    readout.textContent =
+                        `Selected: ${_basename(_candidatePath)} (not loadable)`;
+                } else {
+                    readout.textContent =
+                        "Pick a .xyz / .pdb in the Projects sidebar.";
+                }
             }
         }
         _candidatePath = _initialFile;
@@ -696,6 +712,15 @@
                 _refreshLoadButton();
             });
         }
+        // Re-render the readout whenever workspace dirty state flips.
+        // Subscribe defensively — ws may not exist on pages that don't
+        // mount the canvas (e.g. spectra-only views).
+        (function _subscribeWsDirty() {
+            const w = (window.molbuilder || {}).workspace;
+            if (w && typeof w.subscribe === "function") {
+                w.subscribe(_refreshLoadButton);
+            }
+        })();
         const _loadBtn = $("load-from-sidebar-btn");
         if (_loadBtn) {
             _loadBtn.addEventListener("click", () => {
@@ -911,118 +936,18 @@
             _renderWorkflowGroupChips(resp);
         }
 
-        /**
-         * Build a short, action-oriented detection chip string from
-         * the /api/structure/analyze response.  Returns
-         * {profile: str, budget: str} — each card gets its own line.
-         * Pure: no DOM, no I/O.  Exported on window.molbuilder.viewer
-         * for the source-text invariant test.
-         */
-        function _buildDetectionChipText(resp) {
-            const n_atoms = (resp && typeof resp.n_atoms === "number")
-                ? resp.n_atoms : null;
-            const metals = (resp && Array.isArray(resp.metals))
-                ? resp.metals : [];
-            // Per-engine suggested params carry the treatment label
-            // (closed / open) verbatim from the analyzer.  Both engines
-            // agree; PySCF's block is the canonical pick.
-            const sugPyscf = (resp && resp.suggested && resp.suggested.pyscf)
-                ? resp.suggested.pyscf : {};
-            const treatment = sugPyscf.suggested_treatment
-                            || sugPyscf.treatment
-                            || (typeof sugPyscf.spin === "number"
-                                && sugPyscf.spin > 0 ? "open" : "closed");
-            const spinNum = (typeof sugPyscf.spin === "number")
-                ? sugPyscf.spin : null;
-
-            // --- System chip ---------------------------------------
-            // Headline format: "<N> atoms · <chemistry conclusion>"
-            // Chemistry conclusion priorities (highest first):
-            //   open-d metal present     → "<Metals> · open-shell suggested (2S=<n>)"
-            //   noble-metal cluster      → "<Metal> cluster · closed-shell singlet"
-            //   pure organic / main group→ "closed-shell singlet"
-            let sysLine = "";
-            if (n_atoms != null) sysLine = `${n_atoms} atoms`;
-            if (metals.length > 0) {
-                const list = metals.join(", ");
-                if (treatment === "open") {
-                    const spinHint = (spinNum != null)
-                        ? ` (2S=${spinNum})` : "";
-                    sysLine = sysLine
-                        ? `${sysLine} · ${list} · open-shell${spinHint}`
-                        : `${list} · open-shell${spinHint}`;
-                } else {
-                    sysLine = sysLine
-                        ? `${sysLine} · ${list} cluster · closed-shell singlet`
-                        : `${list} · closed-shell singlet`;
-                }
-            } else {
-                const closed = (treatment === "closed");
-                const tag = closed
-                    ? "closed-shell"
-                          + (spinNum === 0 ? " singlet" : "")
-                    : "open-shell"
-                          + (spinNum != null ? ` (2S=${spinNum})` : "");
-                sysLine = sysLine ? `${sysLine} · ${tag}` : tag;
-            }
-
-            // --- Budget chip ---------------------------------------
-            // Size-aware hint.  Au-BDT-Au-class systems (>= 150
-            // metallic atoms) get an explicit "bump the caps" nudge
-            // because the cluster-context closed-shell argument
-            // doesn't help convergence speed.  Smaller metallic
-            // systems get a milder hint.  Pure organics under 100
-            // atoms get a "defaults are fine" nudge so the user
-            // doesn't second-guess.
-            let budgetLine = (n_atoms != null) ? `${n_atoms} atoms` : "";
-            if (n_atoms != null) {
-                if (n_atoms >= 150 && metals.length > 0) {
-                    budgetLine += " · bump relax_steps + max_scf_iter "
-                                + "for large metallic systems";
-                } else if (n_atoms >= 100) {
-                    budgetLine += " · consider higher caps for large systems";
-                } else if (n_atoms >= 50 && metals.length > 0) {
-                    budgetLine += " · metallic system — watch SCF "
-                                + "convergence; bump caps if needed";
-                } else {
-                    budgetLine += " · defaults are fine";
-                }
-            }
-
-            return { profile: sysLine, budget: budgetLine };
-        }
-
-        /**
-         * Inject (or refresh) the .workflow-detection-chip element
-         * inside every .workflow-group--profile and
-         * .workflow-group--budget header in both engine forms.
-         *
-         * Idempotent: re-running on the same form replaces the chip
-         * text in place.  The chip color is auto-derived from the
-         * group's --workflow-group-accent CSS variable; this code
-         * only writes textContent.
-         */
-        function _renderWorkflowGroupChips(resp) {
-            const chips = _buildDetectionChipText(resp);
-            const targets = document.querySelectorAll(
-                ".workflow-group--profile .workflow-group-header, "
-                + ".workflow-group--budget .workflow-group-header");
-            for (const header of targets) {
-                const card = header.closest(".workflow-group");
-                const role = card && card.classList.contains(
-                    "workflow-group--profile") ? "profile" : "budget";
-                const text = chips[role];
-                if (!text) continue;
-                let chip = header.querySelector(
-                    ".workflow-detection-chip");
-                if (!chip) {
-                    chip = document.createElement("span");
-                    chip.className = "workflow-detection-chip";
-                    header.appendChild(chip);
-                }
-                chip.textContent = text;
-            }
-        }
+        // Detection-chip helpers live in lib/detection-chip.js so
+        // every engine tab that wants chips (SIESTA, PySCF, Transport,
+        // …) reads from one implementation.  Pre-2026-06-13 these
+        // helpers were closure-private here, which silently denied
+        // Transport (Au-junction users!) any chip surface.  See
+        // docs/protocols/web-ui-coherence.md Rule 1.
+        const _detectionChip = (window.molbuilder
+                                && window.molbuilder.detectionChip)
+            || { buildText: () => ({ profile: "", budget: "" }),
+                 render: () => 0 };
+        const _buildDetectionChipText = _detectionChip.buildText;
+        const _renderWorkflowGroupChips = _detectionChip.render;
         });   // close runtime.whenReady("projects").then(...)
     }
 

@@ -297,6 +297,14 @@
                     return;
                 }
                 _renderAutoDetectPanel(b);
+                // Inject the same workflow-group detection chip the
+                // SIESTA + PySCF tabs show — single source of truth
+                // (lib/detection-chip.js) per web-ui-coherence.md
+                // Rule 1.  Au junctions are the canonical use case;
+                // pre-2026-06-13 Transport silently rendered no chip.
+                var chipApi = (root.molbuilder
+                               && root.molbuilder.detectionChip);
+                if (chipApi && chipApi.render) chipApi.render(b);
                 _autoDetectSetStatus(
                     "Chemistry analyzed — review the rationale "
                     + "panel before generating.",

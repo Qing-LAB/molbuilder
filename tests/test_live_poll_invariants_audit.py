@@ -592,45 +592,47 @@ class TestWorkflowGroupSchemaConsistency:
             f"{sorted(valid)}.")
 
     def test_detection_chip_renderer_present(self):
-        """The .workflow-detection-chip in the System + Budget
+        """The .workflow-detection-chip in the Profile + Budget
         workflow-group headers is populated by
-        _renderWorkflowGroupChips(resp), called from
-        _renderAutoDetectPanel.  Pin the wiring: the chip helper
-        exists, the panel calls it, and the chip-text builder uses
-        the response fields (n_atoms, metals, suggested treatment)
-        rather than hardcoding."""
+        ``window.molbuilder.detectionChip.render(resp)``, called from
+        _renderAutoDetectPanel (viewer.js) and the Transport tab's
+        auto-analyze handler (transport/core.js).  Pin the wiring:
+
+          * The shared helper lives in lib/detection-chip.js (one
+            implementation, not a per-tab duplicate — web-ui-coherence
+            Rule 1).
+          * The text builder reads resp.n_atoms / resp.metals
+            (data-driven, not hardcoded).
+          * SIESTA viewer.js calls render() from inside the auto-
+            detect panel renderer so the chip refreshes whenever the
+            analyzer fires (including the silent auto-fire on load).
+          * Transport core.js calls render() from its auto-analyze
+            handler — extending coverage to the highest-value chip
+            use case (Au-thiol junctions).
+        """
         import re
+        chip = (_LIB / "detection-chip.js").resolve().read_text()
         viewer = (_LIB / ".." / "viewer.js").resolve().read_text()
-        assert "function _renderWorkflowGroupChips" in viewer, (
-            "viewer.js lost _renderWorkflowGroupChips — the detection "
-            "chip wiring is broken.")
-        assert "function _buildDetectionChipText" in viewer, (
-            "viewer.js lost _buildDetectionChipText — the chip text "
+        transport = (_LIB / "transport" / "core.js").resolve().read_text()
+
+        # The lib defines BOTH helpers.
+        assert "function buildText(resp)" in chip, (
+            "lib/detection-chip.js lost buildText — the chip text "
             "builder is gone.")
-        # The render helper must be invoked from the auto-detect
-        # panel renderer so the chip refreshes whenever the analyzer
-        # runs (including the silent auto-fire on structure load).
-        assert re.search(
-            r"function\s+_renderAutoDetectPanel\b(.+?)\n\s{8}\}",
-            viewer, re.DOTALL,
-        ), "viewer.js: _renderAutoDetectPanel function shape changed; "\
-           "update this test."
-        panel_body = re.search(
-            r"function\s+_renderAutoDetectPanel\b(.+?)\n\s{8}\}",
-            viewer, re.DOTALL,
-        ).group(1)
-        assert "_renderWorkflowGroupChips" in panel_body, (
-            "_renderAutoDetectPanel no longer calls "
-            "_renderWorkflowGroupChips — the detection chip stops "
-            "updating after a structure load.")
+        assert "function render(resp" in chip, (
+            "lib/detection-chip.js lost render — the chip injector "
+            "is gone.")
+
         # The chip text must reflect resp.n_atoms and resp.metals; a
         # refactor that hardcodes "232 atoms" instead of pulling from
         # the analyzer response is exactly the bug class this tests.
         builder = re.search(
-            r"function\s+_buildDetectionChipText\b(.+?)\n\s{8}\}",
-            viewer, re.DOTALL,
+            r"function\s+buildText\(resp\)(.+?)\n\s{4}\}",
+            chip, re.DOTALL,
         )
-        assert builder is not None
+        assert builder is not None, (
+            "lib/detection-chip.js: buildText function shape changed; "
+            "update this test.")
         builder_body = builder.group(1)
         assert "resp.n_atoms" in builder_body, (
             "Chip builder no longer reads resp.n_atoms — must be "
@@ -638,6 +640,32 @@ class TestWorkflowGroupSchemaConsistency:
         assert "resp.metals" in builder_body, (
             "Chip builder no longer reads resp.metals — must be "
             "data-driven, not hardcoded.")
+
+        # SIESTA viewer must delegate to the shared lib AND invoke
+        # it from the auto-detect panel render path.
+        assert "molbuilder.detectionChip" in viewer, (
+            "viewer.js stopped delegating to lib/detection-chip.js — "
+            "the chip helpers are at risk of drifting back into a "
+            "per-tab duplicate.")
+        panel_match = re.search(
+            r"function\s+_renderAutoDetectPanel\b(.+?)\n\s{8}\}",
+            viewer, re.DOTALL,
+        )
+        assert panel_match is not None, (
+            "viewer.js: _renderAutoDetectPanel function shape changed; "
+            "update this test.")
+        panel_body = panel_match.group(1)
+        assert "_renderWorkflowGroupChips" in panel_body, (
+            "_renderAutoDetectPanel no longer calls "
+            "_renderWorkflowGroupChips — the detection chip stops "
+            "updating after a structure load.")
+
+        # Transport tab must also delegate — this is the Au-junction
+        # chip drift the 2026-06-13 audit caught.
+        assert "molbuilder.detectionChip" in transport, (
+            "transport/core.js does not call the shared chip helper "
+            "— Au junctions silently skip the chip again "
+            "(see web-ui-coherence.md Rule 1).")
 
 
 class TestTrajectoryInspectorClaimsOptimXyz:

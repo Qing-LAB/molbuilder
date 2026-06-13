@@ -811,38 +811,51 @@ def _check_siesta_spin_polarized_needs_spin_total(struct: Structure,
 def _check_open_shell_metal(struct: Structure, *,
                               is_closed_shell: bool,
                               engine_label: str) -> List[Issue]:
-    """Shared chemistry rule: structure containing an open-shell
-    transition metal (Fe, Mn, Co, Ni, Cu, ...) requires an open-shell
-    SCF (PySCF UKS/UHF + spin>0; SIESTA spin_polarized=True).  A
-    closed-shell SCF on an open-shell complex converges to a
-    fictitious electronic state with garbage forces (hemeC-dithiol
-    2026-05-22 incident).  Called from BOTH _validate_pyscf and
-    _validate_siesta so the rule is enforced uniformly: same physical
-    facts -> same warning, regardless of which engine the user picks.
+    """Shared chemistry rule: structure whose ANALYZER recommends
+    open-shell DFT requires an open-shell SCF (PySCF UKS/UHF + spin>0;
+    SIESTA spin_polarized=True).  A closed-shell SCF on a true
+    open-shell complex converges to a fictitious electronic state
+    with garbage forces (hemeC-dithiol 2026-05-22 incident).
 
-    Reads the metal list from ``ChemistryAnalysis`` — the SAME
-    analyzer that backs ``/api/structure/analyze`` (UI auto-detect).
+    Single source of truth: ``ChemistryAnalysis.suggested_treatment``.
+    Pre-2026-06-13 this function checked ``analysis.metals`` (non-
+    empty → warn) which incorrectly fired for Au-BDT-Au — Au IS a
+    transition metal but in a metallic cluster context the analyzer
+    correctly suggests closed-shell singlet (Stoner criterion fails
+    for noble metals; published Au transport DFT is RKS by
+    convention).  The validator was warning the user to "switch to
+    open-shell" while the detection chip on the SAME form said
+    "closed-shell singlet" — direct contradiction.  The fix:
+    delegate the closed-vs-open decision to the analyzer, which
+    already encodes the noble-metal cluster-context logic, and
+    only fire when the analyzer's recommendation truly disagrees
+    with the user's chosen treatment.
+
     By construction the validator and the auto-detect surface cannot
-    disagree about the chemistry; whatever the user sees on the
-    Auto-detect button at load time is the same conclusion that
-    fires here if they override and click Generate.  See
-    ``docs/protocols/scientific-validation.md`` § 5.3.
+    disagree about the chemistry now; whatever the user sees on the
+    Auto-detect chip at load time is the same conclusion that gates
+    this warning at Generate time.  See
+    ``docs/protocols/scientific-validation.md`` § 5.3 and § 3.4
+    (noble-metal cluster-context rule).
     """
     from .chemistry import analyze_structure
     analysis = analyze_structure(struct)
-    if analysis.metals and is_closed_shell:
+    # Only warn when the analyzer's recommendation is OPEN-SHELL but
+    # the user picked a closed-shell SCF.  When the analyzer says
+    # closed-shell (Au cluster, organic, closed-d10), no warning —
+    # the chip's "closed-shell singlet" matches the validator's
+    # silence.
+    analyzer_says_open = (analysis.suggested_treatment == "open")
+    if analyzer_says_open and is_closed_shell:
         return [Issue(
             "warn",
-            (f"Structure contains open-shell transition metal(s) "
-             f"{', '.join(analysis.metals)} but {engine_label} requests a "
-             f"closed-shell SCF.  Most ground-state first-row "
-             f"transition-metal complexes are open-shell, e.g. "
-             f"Fe(II)-porphyrin is intermediate-spin S=1 (2 unpaired) "
-             f"or high-spin S=2 (4 unpaired).  Closed-shell SCF on a "
-             f"true open-shell complex converges to a fictitious state "
-             f"with unphysical forces.  Switch to open-shell SCF and "
-             f"set a sensible spin (see config-field help for the "
-             f"spin / spin_polarized field).  "
+            (f"Analyzer recommends OPEN-SHELL DFT for this structure "
+             f"({', '.join(analysis.metals)}) but {engine_label} "
+             f"requests a closed-shell SCF.  Closed-shell SCF on a "
+             f"true open-shell complex converges to a fictitious "
+             f"state with unphysical forces.  Switch to open-shell "
+             f"SCF and set a sensible spin (see config-field help "
+             f"for the spin / spin_polarized field).  "
              f"{analysis.rationale}"),
             "config.spin",
         )]

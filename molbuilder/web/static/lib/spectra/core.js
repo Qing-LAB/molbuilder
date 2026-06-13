@@ -1213,8 +1213,16 @@
         if (!state.results) return;
         const modes = _modesForTable();
         const anyES = (state.results.modes || []).some(m => !!m.electronic_structure);
-        const rows = modes.map(m => _renderModeRow(m, anyES));
-        els.modesTbody.innerHTML = rows.join("");
+        // Build rows via createElement instead of innerHTML+string concat
+        // (audit #354 follow-up).  The data values are server-supplied
+        // numerics + booleans run through Number(...).toFixed() which is
+        // safe today, but the pattern violated the XSS audit's "prefer
+        // createElement" rule and a future schema change (e.g. a free-
+        // text "notes" column on a mode) would silently re-introduce
+        // an interpolation hazard.  textContent / appendChild keeps the
+        // surface trustworthy by construction.
+        els.modesTbody.replaceChildren(
+            ...modes.map(m => _renderModeRow(m, anyES)));
 
         // Update filter-result count.
         const total = (state.results.modes || []).length;
@@ -1327,29 +1335,38 @@
     }
 
     function _renderModeRow(m, anyES) {
+        // Returns an HTMLTableRowElement; caller appends to tbody.
+        // Pre-2026-06-13 this returned an interpolated <tr>...</tr>
+        // string that callers concatenated into ``innerHTML`` —
+        // worked because the values are numerics + booleans run
+        // through Number(...).toFixed(), but it violated the project-
+        // wide "prefer createElement" rule and would silently allow a
+        // future free-text column to bypass escaping.
+        const fmt = (v, dp) => v == null ? "—" : Number(v).toFixed(dp);
         const raman = (m.raman_activity_a4_amu == null)
             ? "—"
             : Number(m.raman_activity_a4_amu).toFixed(2);
-        const fmt = (v, dp) => v == null ? "—" : Number(v).toFixed(dp);
-        const hev = anyES ? fmt(_homoEq(m), 3) : "";
-        const lev = anyES ? fmt(_lumoEq(m), 3) : "";
-        const gev = anyES ? fmt(_gapEq(m),  3) : "";
-        const dgmev = anyES ? fmt(_dgapMax(m), 1) : "";
-        const esCols = anyES
-            ? `<td class="es-col">${hev}</td>`
-              + `<td class="es-col">${lev}</td>`
-              + `<td class="es-col">${gev}</td>`
-              + `<td class="es-col">${dgmev}</td>`
-            : "";
-        const imagClass = m.has_imag ? ' class="mode-imag"' : "";
-        return `<tr data-mode="${m.index_1based}"${imagClass}>`
-            + `<td>${m.index_1based}</td>`
-            + `<td>${Number(m.frequency_cm1).toFixed(1)}</td>`
-            + `<td>${raman}</td>`
-            + `<td>${m.has_imag ? "✓" : ""}</td>`
-            + `<td>${m.electronic_structure ? "✓" : ""}</td>`
-            + esCols
-            + `</tr>`;
+        const tr = document.createElement("tr");
+        tr.dataset.mode = String(m.index_1based);
+        if (m.has_imag) tr.className = "mode-imag";
+        const addCell = (text, cls) => {
+            const td = document.createElement("td");
+            td.textContent = text;
+            if (cls) td.className = cls;
+            tr.appendChild(td);
+        };
+        addCell(String(m.index_1based));
+        addCell(Number(m.frequency_cm1).toFixed(1));
+        addCell(raman);
+        addCell(m.has_imag ? "✓" : "");
+        addCell(m.electronic_structure ? "✓" : "");
+        if (anyES) {
+            addCell(fmt(_homoEq(m), 3),  "es-col");
+            addCell(fmt(_lumoEq(m), 3),  "es-col");
+            addCell(fmt(_gapEq(m),  3),  "es-col");
+            addCell(fmt(_dgapMax(m), 1), "es-col");
+        }
+        return tr;
     }
 
     function _highlightActiveRow() {
