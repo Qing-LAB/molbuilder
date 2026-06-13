@@ -49,6 +49,7 @@ class PySCFConfig:
 
     # ---------------- System ----------------
     job_name: str = field(default="pyscf_relax", metadata={
+        "workflow_group": "profile",
         "section":  "System",
         "label":    "Job name",
         "engine_key":  '(molbuilder: filename + log-name basename)',
@@ -83,6 +84,7 @@ class PySCFConfig:
         "help": "2S (NOT 2S+1); 0=closed shell, 1=doublet, 2=triplet, ...",
     })
     symmetry: bool = field(default=False, metadata={
+        "workflow_group": "profile",
         "section": "System",
         "label":   "Use point-group symmetry",
         "engine_key":  'gto.M(symmetry=...)',
@@ -323,6 +325,7 @@ class PySCFConfig:
 
     # ---------------- Solvent (optional) ----------------
     solvent: Optional[str] = field(default=None, metadata={
+        "workflow_group": "profile",
         "section": "Solvent (optional)",
         "label":   "Solvent",
         "engine_key":  'mf = mf.PCM() / mf.SMD()',
@@ -330,6 +333,7 @@ class PySCFConfig:
         "help": "solvent (water / methanol / dmso / chloroform / ...)",
     })
     solvent_method: str = field(default="IEF-PCM", metadata={
+        "workflow_group": "profile",
         "section": "Solvent (optional)",
         "label":   "PCM model",
         "engine_key":  'pcm.method',
@@ -339,6 +343,7 @@ class PySCFConfig:
 
     # ---------------- Runtime ----------------
     max_memory_mb: int = field(default=4000, metadata={
+        "workflow_group": "budget",
         "section": "Runtime & output",
         "label": "max_memory", "unit": "MB",
         "engine_key":  'mol.max_memory',
@@ -348,6 +353,7 @@ class PySCFConfig:
         "help":  "MB hint for PySCF's max_memory",
     })
     threads: Optional[int] = field(default=None, metadata={
+        "workflow_group": "budget",
         "section":    "Runtime & output",
         "label":      "CPU threads",
         "engine_key":  "lib.num_threads(N) + os.environ['OMP_NUM_THREADS']",
@@ -364,6 +370,7 @@ class PySCFConfig:
                       "to bench, or to leave cores free for other jobs.",
     })
     use_gpu: bool = field(default=False, metadata={
+        "workflow_group": "budget",
         "section":   "Runtime & output",
         "label":     "Use GPU (NVIDIA, via gpu4pyscf)",
         "engine_key":  'gpu4pyscf: mf = mf.to_gpu()',
@@ -377,6 +384,7 @@ class PySCFConfig:
                      "is missing / too old (compute capability < 7.0).",
     })
     verbose: int = field(default=4, metadata={
+        "workflow_group": "profile",
         "section": "Runtime & output",
         "label": "PySCF verbose",
         "engine_key":  'mol.verbose',
@@ -385,12 +393,14 @@ class PySCFConfig:
         "help":  "PySCF verbosity: 0 silent, 4 info, 5 debug",
     })
     chkfile: bool = field(default=True, metadata={
+        "workflow_group": "profile",
         "section": "Runtime & output",
         "label":   "Write checkpoint (.chk)",
         "engine_key":  "mf.chkfile = '<path>'",
         "help": "write <job>.chk (DM, mol, energies for restart)",
     })
     log_file: bool = field(default=True, metadata={
+        "workflow_group": "profile",
         "section": "Runtime & output",
         "label":   "Write PySCF log",
         "engine_key":  "mol.stdout = open('<path>','w')",
@@ -441,6 +451,7 @@ class PySCFConfig:
     # script does not auto-perturb; the user decides whether to
     # restart the optimization along the imaginary coordinate.
     compute_frequencies: bool = field(default=False, metadata={
+        "workflow_group": "profile",
         "section": "Frequencies / thermochemistry",
         "label": "Post-relax frequencies + thermochemistry",
         "engine_key":  'pyscf.hessian + thermo.thermo()',
@@ -458,6 +469,7 @@ class PySCFConfig:
         "help":  "RRHO temperature for thermo.thermo() (standard: 298.15 K)",
     })
     pressure_atm: float = field(default=1.0, metadata={
+        "workflow_group": "profile",
         "section": "Frequencies / thermochemistry",
         "label": "Thermochemistry pressure", "unit": "atm",
         "engine_key":  'thermo.thermo(pressure=...)',
@@ -469,6 +481,7 @@ class PySCFConfig:
 
     # ---------------- Comments ----------------
     verbose_comments: bool = field(default=True, metadata={
+        "workflow_group": "profile",
         "section": "Runtime & output",
         "label":   "Verbose comments in script",
         "engine_key":  '(molbuilder: script comment-block control)',
