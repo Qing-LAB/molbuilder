@@ -318,7 +318,7 @@ button.primary,
 #generate-pyscf {
     background: var(--accent-strong);
     border-color: var(--accent-strong);
-    color: #ffffff;
+    color: var(--text-on-accent);
     font-weight: 500;
 }
 button.primary:hover:not(:disabled),
@@ -345,7 +345,7 @@ button.primary:disabled,
 }
 .status.error { color: var(--error); }
 .status.ok    { color: var(--success); }
-.status.warn  { color: #d8a64b; }
+.status.warn  { color: var(--warn-soft); }
 
 /* ---- Validation issues panel ----
  * Replaces the older one-line "⚠ msg1 • msg2" status concatenation
@@ -387,28 +387,28 @@ button.primary:disabled,
     content: "•";
 }
 .issues-panel .issue-item[data-severity="warn"] {
-    border-left-color: #d8a64b;
-    color: #e8c98c;
+    border-left-color: var(--warn-soft);
+    color: #e8c98c; /* exempt: lightened warn-amber for text-on-dark */
 }
 .issues-panel .issue-item[data-severity="warn"]::before {
     content: "⚠";
-    color: #d8a64b;
+    color: var(--warn-soft);
 }
 .issues-panel .issue-item[data-severity="error"] {
     border-left-color: var(--error);
-    color: #ffb1b1;
+    color: #ffb1b1; /* exempt: lightened error tint for text-on-dark */
 }
 .issues-panel .issue-item[data-severity="error"]::before {
     content: "✗";
     color: var(--error);
 }
 .issues-panel .issue-item[data-severity="info"] {
-    border-left-color: #4a9eff;
+    border-left-color: var(--accent);
     color: var(--text-secondary);
 }
 .issues-panel .issue-item[data-severity="info"]::before {
     content: "i";
-    color: #4a9eff;
+    color: var(--accent);
 }
 .issues-panel .issue-where {
     flex: 0 0 auto;
@@ -476,7 +476,7 @@ button.primary:disabled,
     overflow: hidden;
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-sm);
-    background: #ffffff;
+    background: #ffffff; /* exempt: matches 3Dmol's canvas */
     position: relative;
     box-shadow: var(--shadow-card);
 }
@@ -676,7 +676,7 @@ footer a:hover {
     border-radius: 5px;
     border: 2px solid var(--bg-page);
 }
-::-webkit-scrollbar-thumb:hover { background: #4a5160; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
 
 /* ---- Tooltips (use the native title= attribute, but soften with
  *      a default cursor when inputs have one) ---- */

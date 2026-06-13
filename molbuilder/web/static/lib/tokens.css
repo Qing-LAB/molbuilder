@@ -42,8 +42,17 @@
     --accent-glow:   rgba(107, 166, 255, 0.25);
     --success:       #4ade80;
     --error:         #f87171;
-    --warning:       #fbbf24;
+    --warning:       #fbbf24;       /* strong warning (vivid) */
     --warning-bg:    rgba(251, 191, 36, 0.18);
+    /* Soft amber used by .issues-panel warn rows + .ps-preview-status
+     * is-dirty hint + .status.warn — a less aggressive "needs
+     * attention" tone than --warning.  Both tokens coexist by design:
+     * --warning = call-to-action, --warn-soft = passive flag. */
+    --warn-soft:     #d8a64b;
+    /* Dark text-on-accent foreground for primary buttons + the
+     * modify-tab's accent-fill chips.  --bg-page works for this on
+     * the existing palette; the explicit alias documents intent. */
+    --text-on-accent: var(--bg-page);
 
     /* ---- Shadows ---- */
     --shadow-card:   0 1px 0 rgba(255, 255, 255, 0.02) inset,

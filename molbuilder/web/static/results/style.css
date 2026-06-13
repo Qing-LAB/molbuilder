@@ -443,8 +443,9 @@
     border-radius: var(--radius-sm);
     /* 3Dmol uses a near-white background internally; matching it
      * here avoids the dark page bleeding through during canvas
-     * resize ticks. */
-    background: #fff;
+     * resize ticks.  Literal #fff is intentional — this matches
+     * 3Dmol's hardcoded canvas background, not a theme color. */
+    background: #ffffff; /* exempt: matches 3Dmol's canvas */
     position: relative;
     overflow: hidden;
 }

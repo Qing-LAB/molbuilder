@@ -203,4 +203,4 @@ button:disabled {
     border-radius: 5px;
     border: 2px solid var(--bg-page);
 }
-::-webkit-scrollbar-thumb:hover { background: #4a5160; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }

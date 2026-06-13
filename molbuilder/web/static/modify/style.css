@@ -94,7 +94,7 @@ header .tagline {
  * single CSS edit. */
 .status.ok    { color: var(--success); }
 .status.error { color: var(--error); }
-.status.warn  { color: #d8a64b; }
+.status.warn  { color: var(--warn-soft); }
 
 /* ---- Vertical workflow (2026-06-08 restructure) ----
  *
@@ -564,7 +564,7 @@ header .tagline {
 .full-btn {
     width: 100%;
     background: var(--accent);
-    color: #0d1117;
+    color: var(--text-on-accent);
     border: none;
     border-radius: var(--radius-sm);
     padding: 0.4rem 0;
