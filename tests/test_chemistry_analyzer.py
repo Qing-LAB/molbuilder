@@ -257,6 +257,132 @@ def test_elements_unique_sorted():
     assert a.elements == ["C", "Fe", "H", "N"]
 
 
+# --------------------------------------------------------------------- #
+#  Noble-metal context awareness (2026-06-13)                           #
+#                                                                       #
+#  Cu / Ag / Au are open-shell as ATOMS (nd¹⁰ (n+1)s¹) but closed-shell #
+#  singlet in any extended metallic context (cluster ≥ 4 atoms, surface,#
+#  junction).  Stoner criterion fails for noble metals; the s-band      #
+#  delocalises.  Pre-2026-06-13 the analyzer treated Au-BDT-Au as       #
+#  open-shell and silently suggested spin=2, which is wrong for         #
+#  every published Au transport calculation.                            #
+#                                                                       #
+#  Refs: Taylor/Brandbyge/Stokbro PRB 63 (2001) 245407 — the original   #
+#  TranSIESTA Au-BDT-Au benchmark, spin-restricted DFT;                 #
+#  Marder Ch. 17 — Stoner criterion derivation; Cu/Ag/Au explicitly     #
+#  non-magnetic in bulk.                                                #
+# --------------------------------------------------------------------- #
+
+
+def test_au_cluster_4_atoms_closed_shell_singlet():
+    """Au_4 (or larger): metallic bonding, even electron count.
+    Closed-shell singlet — the standard treatment for Au junctions
+    + Au surfaces in published transport / catalysis work."""
+    a = analyze_structure(_mk(["Au"] * 4))
+    assert a.suggested_spin == 0
+    assert a.suggested_treatment == "closed"
+    # Rationale must cite the metallic-bonding argument (not just
+    # parity) so the user knows WHY we override the per-atom default.
+    assert "metallic" in a.rationale.lower()
+    assert "noble" in a.rationale.lower() or "Au" in a.rationale
+    assert a.warnings == []
+
+
+def test_au_bdt_au_junction_closed_shell_singlet():
+    """The user-reported Au-BDT-Au case: 4 Au atoms + BDT ligand.
+    Even total electron count, ≥ 4 Au → closed-shell singlet, NOT
+    the pre-fix open-shell spin=2."""
+    # 4 Au + benzene-1,4-dithiol (C6H4S2): Au_Z=79*4=316,
+    # C_Z=6*6=36, H_Z=1*4=4, S_Z=16*2=32; total=388 (even).
+    elements = ["Au"] * 4 + ["S"] * 2 + ["C"] * 6 + ["H"] * 4
+    a = analyze_structure(_mk(elements))
+    assert a.suggested_spin == 0
+    assert a.suggested_treatment == "closed"
+
+
+def test_single_au_atom_keeps_open_shell_doublet():
+    """A SINGLE Au atom with odd electron count: respect the atomic
+    open-shell ground state (5d¹⁰ 6s¹, S=½).  The metallic-bonding
+    argument needs at least 4 atoms; below that, atomic physics wins."""
+    a = analyze_structure(_mk(["Au"]))
+    assert a.suggested_spin == 1
+    assert a.suggested_treatment == "open"
+
+
+def test_au_dimer_falls_through_to_parity():
+    """Au_2 (sub-threshold cluster, even electron count): doesn't
+    qualify for the closed-shell metallic-bonding argument (n < 4)
+    but parity gives spin=0 anyway.  Rationale should flag that we're
+    in the small-cluster regime, not the cluster-context argument."""
+    a = analyze_structure(_mk(["Au"] * 2))
+    assert a.suggested_spin == 0
+    # Note in rationale that this is the small-cluster ambiguous case.
+    assert "small" in a.rationale.lower() or "cluster" in a.rationale.lower()
+
+
+def test_cu_cluster_4_atoms_closed_shell():
+    """Cu obeys the same Stoner-fails / s-band-delocalises argument
+    as Au.  Cu_4 → closed-shell singlet (4 × Cu_Z=29 = 116, even)."""
+    a = analyze_structure(_mk(["Cu"] * 4))
+    assert a.suggested_spin == 0
+    assert a.suggested_treatment == "closed"
+
+
+def test_pd_molecule_is_closed_shell():
+    """Pd ground state is 4d¹⁰ 5s⁰ — a closed-shell atom (NIST
+    spectra database).  The prior flat OPEN_SHELL_METALS incorrectly
+    flagged Pd as open-shell; this test pins the correction."""
+    a = analyze_structure(_mk(["Pd"] * 2))
+    # Pd_Z=46, 2 × 46 = 92 (even), no open-d transition metal
+    # present, no noble metal → falls through to parity → closed
+    # singlet.  Pd ends up NOT in a.metals (it's CLOSED_D10).
+    assert a.suggested_spin == 0
+    assert a.suggested_treatment == "closed"
+    assert "Pd" not in a.metals
+
+
+def test_au_with_fe_coadsorbate_keeps_open_shell():
+    """When an open-d transition metal IS present (Fe-Au alloy, or
+    Au junction with an Fe co-adsorbate), the open-d metal's
+    open-shell requirement overrides the noble-metal cluster logic.
+    The system needs spin-polarised DFT for the Fe regardless of
+    how many Au atoms surround it."""
+    a = analyze_structure(_mk(["Au"] * 4 + ["Fe"]))
+    assert a.suggested_treatment == "open"
+    # Rationale notes that an open-d metal was detected.
+    assert "Fe" in a.rationale
+
+
+def test_open_d_transition_metal_subsets_have_no_overlap():
+    """Defensive check: the three categorized sets are pairwise
+    disjoint.  An element in two categories would produce
+    contradictory spin suggestions depending on which membership
+    test ran first."""
+    from molbuilder.chemistry import (
+        OPEN_D_TRANSITION_METALS,
+        NOBLE_METALS_S1,
+        CLOSED_D10_METALS,
+    )
+    assert not (OPEN_D_TRANSITION_METALS & NOBLE_METALS_S1)
+    assert not (OPEN_D_TRANSITION_METALS & CLOSED_D10_METALS)
+    assert not (NOBLE_METALS_S1 & CLOSED_D10_METALS)
+
+
+def test_pd_pt_excluded_from_open_d_transition_set():
+    """Pin the specific correction: Pd + Pt are NOT in
+    OPEN_D_TRANSITION_METALS.  Pd is 4d¹⁰ 5s⁰ atomic ground state;
+    Pt is 5d⁹ 6s¹ but metallic Pt is conventionally closed-shell in
+    surface DFT.  Both belong in CLOSED_D10_METALS."""
+    from molbuilder.chemistry import (
+        OPEN_D_TRANSITION_METALS,
+        CLOSED_D10_METALS,
+    )
+    assert "Pd" not in OPEN_D_TRANSITION_METALS
+    assert "Pt" not in OPEN_D_TRANSITION_METALS
+    assert "Pd" in CLOSED_D10_METALS
+    assert "Pt" in CLOSED_D10_METALS
+
+
 def test_unknown_element_raises_keyerror():
     """An unknown element symbol propagates as KeyError from
     ``total_electrons`` — the endpoint catches it for a clean 400."""

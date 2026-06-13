@@ -187,6 +187,69 @@ depending on electron-count parity.  No advisory needed; pure
 organics with even electron count are reliably closed-shell
 singlets.
 
+### 3.4 Noble-metal vs open-d-shell distinction (2026-06-13)
+
+Metals are categorised into three physical groups (the flat
+`OPEN_SHELL_METALS` set predating this split incorrectly treated
+Au junctions as open-shell):
+
+1. **`OPEN_D_TRANSITION_METALS`** — Sc, Ti, V, Cr, Mn, Fe, Co, Ni
+   (3d) + Y, Zr, Nb, Mo, Tc, Ru, Rh (4d, NOT Pd) + Hf, Ta, W, Re,
+   Os, Ir (5d, NOT Pt, NOT Au) + lanthanides + common actinides.
+   Incomplete d-shell in the atomic ground state AND extended
+   phases.  Stoner criterion satisfied for the 3d ferromagnets;
+   itinerant moments for the 4d/5d analogues.  These force
+   open-shell DFT.
+
+2. **`NOBLE_METALS_S1`** — Cu, Ag, Au.  Atomic ground state is
+   nd¹⁰ (n+1)s¹ (single unpaired s electron).  In ANY extended
+   metallic context (cluster ≥ 4 atoms, surface, junction, bulk)
+   the s-band delocalises and the system is **closed-shell
+   singlet** for even total electron count.  Standard treatment
+   in published Au transport / surface DFT.  Refs: Taylor,
+   Brandbyge, Stokbro, *PRB* 63 (2001) 245407 (the original
+   TranSIESTA Au-BDT-Au paper); Ke, Baranger, Yang, *JCP* 122
+   (2005) 074704 (Au-BDT-Au NEGF); Verzijl, Thijssen, *JPCC* 116
+   (2012) 24811 (DFT+Σ Au-alkanedithiol-Au benchmark); Marder,
+   *Condensed Matter Physics* Ch. 17 (Stoner criterion derivation
+   — Cu/Ag/Au explicitly non-magnetic in bulk).
+
+3. **`CLOSED_D10_METALS`** — Zn, Cd, Hg + **Pd** (4d¹⁰ 5s⁰ atomic
+   ground state per NIST — the prior flat set incorrectly classified
+   this as open-shell) + **Pt** (5d⁹ 6s¹ atom; metallic Pt is
+   conventionally closed-shell in surface DFT).
+
+**Analyzer decision tree** (`chemistry.analyze_structure`):
+
+| Condition | Suggested treatment / spin | Path |
+|---|---|---|
+| `OPEN_D_TRANSITION_METALS` present | `open`, spin from `_ANALYZER_DEFAULT_SPIN[first_metal]` | open-d wins regardless of noble-metal presence |
+| Noble metal only, ≥ 4 atoms of that metal, even electron count | `closed`, spin=0 | cluster-context override |
+| Single noble-metal atom, odd electron count | `open`, spin=1 | respect atomic ground state |
+| Other noble-metal cases (2–3 atom cluster, etc.) | electron-count parity | small-cluster ambiguous regime |
+| No transition metals | electron-count parity (closed singlet for even, doublet for odd) | pure organic / main-group / closed-d¹⁰ |
+
+The 4-atom cutoff (`_NOBLE_METAL_CLUSTER_THRESHOLD = 4`) is the
+conservative choice: overwhelmingly what published Au transport /
+surface DFT does.  Specialists studying Au₂ / Au₃ clusters
+(catalysis literature, magic-number cluster physics) will override
+via the form; the analyzer's job is to make the dominant case
+correct without forcing every user to know the override exists.
+
+**When the noble-metal closed-shell default is wrong**, the
+rationale string explicitly lists the override scenarios so the
+user knows the boundary:
+
+* sub-4-atom Au cluster (shell-closing incomplete)
+* single noble-metal adatom on insulator (Au/CeO₂, Au/MgO catalysis)
+* noble metal with magnetic 3d co-adsorbate (Au-Co, Au-Fe alloys)
+* explicit Kondo / spin-orbit physics
+
+Pinned by `tests/test_chemistry_analyzer.py` — Au_4 / Au-BDT-Au /
+single Au atom / Au_2 / Cu_4 / Pd₂ / Au+Fe co-adsorbate; the
+category sets pairwise disjoint; Pd + Pt explicitly excluded from
+`OPEN_D_TRANSITION_METALS`.
+
 ---
 
 ## 4. The adapter layer (L3)

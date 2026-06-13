@@ -91,21 +91,76 @@ _AMINO_ACID_RESIDUE_NAMES = frozenset({
 # structure containing one of these.
 #
 # Source: ground-state electron configurations from NIST atomic
-# spectra database.  Closed-shell d¹⁰ metals (Zn, Cd, Hg) are
-# excluded -- they're stable as closed-shell Zn²⁺ etc.
-OPEN_SHELL_METALS = frozenset({
-    # First-row transition metals (3d incomplete)
-    "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni", "Cu",
-    # Second-row
-    "Y", "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag",
-    # Third-row
-    "Hf", "Ta", "W", "Re", "Os", "Ir", "Pt", "Au",
+# spectra database.
+#
+# 2026-06-13 split (replaces the prior flat ``OPEN_SHELL_METALS``).
+# The unified set treated Au-BDT-Au junctions as open-shell and
+# silently produced wrong spin suggestions.  Three physical categories:
+#
+#   1. OPEN_D_TRANSITION_METALS — incomplete d-shell in the atomic
+#      ground state AND extended phases.  Stoner criterion satisfied
+#      for the 3d ferromagnets; itinerant moments for the 4d / 5d
+#      analogues.  Open-shell DFT is the default expectation.
+#
+#   2. NOBLE_METALS_S1 — Cu, Ag, Au.  Atomic ground state is
+#      nd¹⁰ (n+1)s¹ — single unpaired s electron — but in any
+#      extended metallic context (cluster ≥ 4 atoms, surface, bulk,
+#      junction) the s-band delocalizes and the system is closed-
+#      shell singlet for even total electron count.  Stoner criterion
+#      fails for noble metals: I·N(E_F) < 1, no spontaneous magnetism
+#      in bulk.  Standard treatment for Au transport junctions is
+#      spin-restricted DFT.
+#      Refs:
+#        * Taylor, Brandbyge, Stokbro, PRB 63 (2001) 245407 — the
+#          original TranSIESTA Au-BDT-Au paper, spin-restricted.
+#        * Ke, Baranger, Yang, JCP 122 (2005) 074704 — Au-BDT-Au NEGF.
+#        * Verzijl, Thijssen, JPCC 116 (2012) 24811 — DFT+Σ Au-
+#          alkanedithiol-Au benchmark, spin-restricted.
+#        * Marder, "Condensed Matter Physics" Ch. 17 — Stoner
+#          criterion derivation; Cu/Ag/Au listed as non-magnetic.
+#      When open-shell IS the right call for noble-metal systems:
+#      sub-4-atom clusters (shell-closing incomplete; Au_2 / Au_4),
+#      single Au atom on insulator (Au/CeO2, Au/MgO catalysis lit.),
+#      Au with magnetic 3d co-adsorbate (Au-Co, Au-Fe alloys), or
+#      explicit Kondo / spin-orbit studies.  Users in those regimes
+#      override via the form.
+#
+#   3. CLOSED_D10_METALS — Zn, Cd, Hg (always nd¹⁰ (n+1)s² in
+#      common oxidation states) PLUS Pd (4d¹⁰ 5s⁰ atomic ground state
+#      per NIST — the prior flat set incorrectly classified Pd as
+#      open-shell) AND Pt (5d⁹ 6s¹ atom but 5d¹⁰-like in metallic
+#      bonding; same logic as the noble metals but conventionally
+#      treated as closed-shell in catalysis surface DFT).
+OPEN_D_TRANSITION_METALS = frozenset({
+    # First-row 3d (incomplete d-shell)
+    "Sc", "Ti", "V", "Cr", "Mn", "Fe", "Co", "Ni",
+    # Second-row 4d (Pd excluded — closed-shell atomic ground state)
+    "Y",  "Zr", "Nb", "Mo", "Tc", "Ru", "Rh",
+    # Third-row 5d (Pt + Au excluded — handled below)
+    "Hf", "Ta", "W",  "Re", "Os", "Ir",
     # Lanthanides (4f incomplete)
     "La", "Ce", "Pr", "Nd", "Pm", "Sm", "Eu", "Gd", "Tb",
     "Dy", "Ho", "Er", "Tm", "Yb", "Lu",
     # Common actinides
     "Ac", "Th", "Pa", "U", "Np", "Pu",
 })
+
+NOBLE_METALS_S1 = frozenset({"Cu", "Ag", "Au"})
+
+CLOSED_D10_METALS = frozenset({
+    "Zn", "Cd", "Hg",          # ns² nd¹⁰ — always closed-shell
+    "Pd",                       # 4d¹⁰ 5s⁰ atomic ground state (NIST)
+    "Pt",                       # 5d⁹ 6s¹ atom; metallic Pt is
+                                # conventionally closed-shell in surface
+                                # DFT.  Catalysis lit. treats Pt(111)
+                                # as RKS unless studying magnetism.
+})
+
+# Backward-compat alias.  Old callers that imported the flat set get
+# the union; new code reaches for the categorized sets above.  Keep
+# this alias for the deprecation window — and document the new
+# distinction so callers can migrate.
+OPEN_SHELL_METALS = OPEN_D_TRANSITION_METALS | NOBLE_METALS_S1
 
 
 def total_electrons(struct: Structure, charge: int = 0) -> int:
@@ -551,6 +606,23 @@ def _metal_hint(element: str) -> MetalHint:
     return MetalHint(element=element, common_spins=spins)
 
 
+def _count_element(struct: Structure, symbol: str) -> int:
+    """Number of atoms of ``symbol`` (case-insensitive) in struct."""
+    sym = symbol.capitalize()
+    return sum(1 for el in struct.elements if el.capitalize() == sym)
+
+
+# Noble-metal cluster size at which the metallic-bonding closed-shell
+# argument kicks in.  Below this size the per-atom open-shell state
+# can still survive — small Au_n clusters (n=2..4) have magic-number
+# physics where shell-closing is incomplete.  Above this size the
+# 6s band delocalizes and the system is closed-shell singlet for
+# even total electron count.  4 atoms is the conservative cutoff:
+# overwhelmingly what published Au transport / surface DFT does;
+# specialists working on Au_2 / Au_3 will override via the form.
+_NOBLE_METAL_CLUSTER_THRESHOLD = 4
+
+
 def analyze_structure(struct: Structure) -> ChemistryAnalysis:
     """Run the chemistry analysis on ``struct``.  Pure function — no
     I/O, no engine dependence, no global state.
@@ -561,26 +633,44 @@ def analyze_structure(struct: Structure) -> ChemistryAnalysis:
     each engine's parameter shape (see
     ``protocols/scientific-validation.md`` § 4).
 
-    Spin policy:
-      * No open-shell metals → ``treatment="closed"``, spin set by
-        electron-count parity (0 if even, 1 if odd).
-      * Open-shell metal present → pick the first metal's default 2S
-        from ``_ANALYZER_DEFAULT_SPIN`` (Fe→2, Cu→1, Mn→5, …); fall
-        through to 2 for metals without a registered default.  Parity
-        is enforced once at this layer: if (n_electrons − charge)
-        parity doesn't match the picked spin, the analyzer bumps the
-        spin and records the adjustment in ``warnings``.
+    Spin policy (2026-06-13 — noble-metal-aware):
+
+      1. **Open-d transition metal present** (Fe, Co, Ni, Mn, Cr, Ru,
+         Rh, ...) → open-shell.  Spin from ``_ANALYZER_DEFAULT_SPIN``
+         (Fe→2, Cu→1, ...), parity-corrected.
+
+      2. **Noble metal only** (Cu / Ag / Au present, NO open-d metal):
+         the metallic-bonding argument decides.  ≥ 4 atoms of the
+         metal AND even electron count → closed-shell singlet
+         (standard Au transport treatment per Taylor/Brandbyge/Stokbro
+         PRB 63 (2001) 245407 + the Stoner-criterion-fails argument
+         in Marder Ch. 17).  Single noble-metal atom with odd electron
+         count → respect atomic open-shell state.  Other cases fall
+         through to parity.
+
+      3. **No open-shell metals** → ``treatment="closed"``, spin set
+         by electron-count parity (0 if even, 1 if odd).
     """
     n_e = total_electrons(struct, 0)
-    metals = detect_open_shell_metals(struct)
-    metal_hints = [_metal_hint(m) for m in metals]
     elements_sorted = sorted({el.capitalize() for el in struct.elements})
+    metal_set = set(elements_sorted)
+
+    # Categorize present metals.
+    open_d  = [m for m in OPEN_D_TRANSITION_METALS if m in metal_set]
+    nobles  = [m for m in NOBLE_METALS_S1 if m in metal_set]
+
+    # Build metal_hints for the UI Auto-detect panel.  Includes both
+    # categories — users still want to see hints for noble metals
+    # ("if this IS a small cluster, here's the open-shell spin
+    # you'd use").
+    metal_hints = [_metal_hint(m) for m in (open_d + nobles)]
 
     warnings: List[str] = []
     suggested_charge = 0   # always 0 for v1 — overridable by user
-    if metals:
-        spin = _ANALYZER_DEFAULT_SPIN.get(metals[0], 2)
-        # Parity check: (n_e − charge) must have the same parity as spin.
+
+    if open_d:
+        # Path 1: open-d metal forces open-shell consideration.
+        spin = _ANALYZER_DEFAULT_SPIN.get(open_d[0], 2)
         if (n_e % 2) != (spin % 2):
             old = spin
             spin = spin + 1 if spin == 0 else spin - 1
@@ -589,15 +679,83 @@ def analyze_structure(struct: Structure) -> ChemistryAnalysis:
                 f"electron-count parity (sum(Z)={n_e}, charge={suggested_charge})."
             )
         treatment: Literal["closed", "open"] = "open"
-        first_label = explain_metal_spin(metals[0], spin) or "?"
+        first_label = explain_metal_spin(open_d[0], spin) or "?"
+        # The list reported to the user includes any noble metals
+        # too, so the rationale doesn't omit them.
+        listed = ", ".join(open_d + nobles)
         rationale = (
-            f"Detected open-shell metal {', '.join(metals)}.  "
+            f"Detected open-shell d-block metal {listed}.  "
             f"Suggesting spin={spin} ({first_label}) with open-shell "
             f"treatment.  Verify against your experimental data "
             f"(Mössbauer / UV-Vis / EPR) — the right spin depends on "
             f"axial coordination, not just element identity."
         )
+        metals_for_dataclass = open_d + nobles
+    elif nobles:
+        # Path 2: noble-metal-only system — cluster context decides.
+        # Total atoms of all noble metal species combined; usually
+        # a single species but a hypothetical Au/Ag alloy would still
+        # be metallic at any reasonable size.
+        n_noble_atoms = sum(_count_element(struct, m) for m in nobles)
+        even_electrons = (n_e % 2 == 0)
+        cluster_qualifies = n_noble_atoms >= _NOBLE_METAL_CLUSTER_THRESHOLD
+        if cluster_qualifies and even_electrons:
+            # Closed-shell singlet — the dominant case in published
+            # Au junction / surface work.
+            spin = 0
+            treatment = "closed"
+            rationale = (
+                f"Detected metallic {', '.join(nobles)} system "
+                f"({n_noble_atoms} atoms, even electron count). "
+                f"Noble-metal clusters / surfaces / junctions are "
+                f"conventionally treated as closed-shell singlet "
+                f"(spin-restricted DFT) — the s-band delocalizes "
+                f"and the Stoner criterion fails for Cu / Ag / Au, "
+                f"so no spontaneous magnetism develops in bulk.  "
+                f"Refs: Taylor, Brandbyge, Stokbro, PRB 63 (2001) "
+                f"245407 (Au-BDT-Au TranSIESTA benchmark); Marder, "
+                f"Condensed Matter Physics Ch. 17.  Override (set "
+                f"spin > 0, switch to UKS/ROKS) if you're modelling "
+                f"a sub-{_NOBLE_METAL_CLUSTER_THRESHOLD}-atom cluster, "
+                f"a single noble-metal adatom on an insulator, a noble "
+                f"metal with magnetic 3d co-adsorbate, or explicit "
+                f"Kondo / spin-orbit physics."
+            )
+        elif n_noble_atoms == 1 and not even_electrons:
+            # Single isolated noble-metal atom: respect the atomic
+            # open-shell ground state (5d¹⁰ 6s¹ for Au, S=½).
+            spin = 1
+            treatment = "open"
+            rationale = (
+                f"Detected single {nobles[0]} atom in an "
+                f"odd-electron system.  Noble-metal atomic ground "
+                f"state is nd¹⁰ (n+1)s¹ — open-shell doublet.  "
+                f"Suggesting spin=1 with open-shell treatment.  "
+                f"(Cluster-context override does NOT apply at n=1; "
+                f"that argument needs n ≥ "
+                f"{_NOBLE_METAL_CLUSTER_THRESHOLD} for the s-band "
+                f"to form.)"
+            )
+        else:
+            # Ambiguous (2–3 atom cluster, or odd-electron count
+            # with a multi-atom cluster).  Fall through to parity
+            # but include a note pointing at the closed-shell default
+            # if the user is in a junction context.
+            spin = 0 if even_electrons else 1
+            treatment = "open" if spin > 0 else "closed"
+            rationale = (
+                f"Detected small {nobles[0]} cluster "
+                f"({n_noble_atoms} atom{'s' if n_noble_atoms != 1 else ''}). "
+                f"At this size the noble-metal cluster-context closed-"
+                f"shell argument doesn't cleanly apply (needs n ≥ "
+                f"{_NOBLE_METAL_CLUSTER_THRESHOLD}).  Suggesting "
+                f"electron-count parity: spin={spin}, treatment={treatment}."
+            )
+        metals_for_dataclass = nobles
     else:
+        # Path 3: no transition metals at all — pure organic, light
+        # main-group, or closed-d¹⁰ (Zn/Cd/Hg/Pd/Pt) systems.
+        # Closed-shell singlet for even electron count.
         spin = 0 if (n_e % 2 == 0) else 1
         treatment = "open" if spin > 0 else "closed"
         rationale = (
@@ -605,12 +763,19 @@ def analyze_structure(struct: Structure) -> ChemistryAnalysis:
             f"{'singlet' if spin == 0 else 'doublet'} "
             f"(spin={spin}, treatment={treatment})."
         )
+        metals_for_dataclass = []
+
+    # Preserve the legacy ``metals`` field shape: a flat list of
+    # transition-metal symbols present in the structure.  Callers
+    # downstream (validators, the UI's per-metal hint panel) iterate
+    # this list; semantics unchanged for open-d metals, and now
+    # includes noble metals when they're physically relevant.
 
     return ChemistryAnalysis(
         n_atoms             = struct.n_atoms,
         elements            = elements_sorted,
         n_electrons_neutral = n_e,
-        metals              = metals,
+        metals              = metals_for_dataclass,
         metal_hints         = metal_hints,
         suggested_charge    = suggested_charge,
         suggested_spin      = spin,
