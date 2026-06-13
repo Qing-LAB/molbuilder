@@ -73,6 +73,8 @@ class PySCFConfig:
     })
     spin: int = field(default=0, metadata={
         "section": "System",
+        # System characteristic — open-shell chemistry, not stage.
+        "workflow_group": "system",
         "label":   "Spin (2S)",
         "engine_key":  'gto.M(spin=...)  # 2S, # of unpaired electrons',
         "range":   (0, 10),
@@ -152,6 +154,8 @@ class PySCFConfig:
     # ---------------- SCF ----------------
     scf_conv_tol: float = field(default=1e-9, metadata={
         "section": "SCF",
+        # Convergence target — tightens stage-to-stage.
+        "workflow_group": "stage",
         "label": "scf.conv_tol", "unit": "Hartree",
         "engine_key":  'mf.conv_tol',
         "range": (1e-12, 1e-4),
@@ -160,6 +164,8 @@ class PySCFConfig:
     })
     scf_max_cycle: int = field(default=100, metadata={
         "section": "SCF",
+        # Resource-budget cap — patience, not convergence definition.
+        "workflow_group": "budget",
         "label": "scf.max_cycle",
         "engine_key":  'mf.max_cycle',
         "range": (10, 1000),
@@ -256,6 +262,7 @@ class PySCFConfig:
     })
     preopt_grms: float = field(default=1.0e-3, metadata={
         "section": "Pre-optimization (optional)",
+        "workflow_group": "stage",
         "label":   "Pre-opt grms", "unit": "Ha/Bohr",
         "engine_key":  'geomeTRIC convergence_grms  (in pre-opt stage)',
         "tier":    "advanced",
@@ -278,6 +285,9 @@ class PySCFConfig:
     })
     geom_max_steps: int = field(default=200, metadata={
         "section": "Optimization",
+        # Resource-budget cap — same logic as SIESTA's relax_steps.
+        # Scale with system size, not stage.
+        "workflow_group": "budget",
         "label": "geom max steps",
         "engine_key":  'optimizer.max_steps',
         "range": (1, 10000),
@@ -286,6 +296,7 @@ class PySCFConfig:
     })
     geom_conv_energy: float = field(default=1.0e-6, metadata={
         "section": "Optimization",
+        "workflow_group": "stage",
         "label":   "geom_conv_energy", "unit": "Hartree",
         "engine_key":  'geomeTRIC convergence_energy',
         "tier":    "advanced",
@@ -293,6 +304,7 @@ class PySCFConfig:
     })
     geom_conv_grms: float = field(default=3.0e-4, metadata={
         "section": "Optimization",
+        "workflow_group": "stage",
         "label":   "geom_conv_grms", "unit": "Ha/Bohr",
         "engine_key":  'geomeTRIC convergence_grms',
         "tier":    "advanced",
@@ -300,6 +312,7 @@ class PySCFConfig:
     })
     geom_conv_gmax: float = field(default=4.5e-4, metadata={
         "section": "Optimization",
+        "workflow_group": "stage",
         "label":   "geom_conv_gmax", "unit": "Ha/Bohr",
         "engine_key":  'geomeTRIC convergence_gmax',
         "tier":    "advanced",

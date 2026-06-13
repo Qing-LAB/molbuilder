@@ -201,15 +201,22 @@
         </details>
       </fieldset>
 
-      <!-- Relaxation-stage preset selector (UI shortcut, not a
-           SiestaConfig field).  When non-Custom, the JS bulk-fills
-           the matching relax_* / SCF fields in the schema-driven
-           form below.  The selected stage also flows through as
-           SiestaConfig.stage so the resulting FDF writes a
-           stage-suffixed .molwatch.log filename. -->
+      <!-- Relaxation-stage preset selector — a UI shortcut, NOT a
+           SiestaConfig field.  Lives in the same band as the
+           generate-card actions so the user reads "switch stage →
+           it mutates the Stage convergence target workflow-group
+           card below" linearly.  2026-06-13 restructure: the
+           selector ONLY writes to fields tagged
+           ``workflow_group: "stage"`` in molbuilder/config/siesta.py
+           (mesh-cutoff, pao-energy-shift, dm-tolerance,
+           dm-energy-tolerance, force-tol, max-displ).  Switching the
+           stage never touches the Resource budget card (max-scf-iter,
+           relax-steps) or the System characteristics card (mixing-
+           weight, electronic-temperature, spin-*) — those are the
+           user's call, not the stage's call. -->
       <fieldset class="param-grid-pre">
         <legend>Relaxation stage preset</legend>
-        <label title="Bulk-fill the convergence parameters for a coarse-to-fine staged relaxation.&#10;Coarse: get into the basin fast (loose tols, big steps).&#10;Medium: refine to publication tolerance.&#10;Tight: final production geometry.&#10;Run all three stages in sequence with the SAME SystemLabel in the SAME directory; SIESTA reuses .XV (coords) and .DM (density matrix) automatically.&#10;Custom keeps your current values untouched.">
+        <label title="Bulk-fill the CONVERGENCE TARGET fields for a coarse-to-fine staged relaxation.&#10;Coarse: get into the basin fast (loose tols, big steps).&#10;Medium: refine to publication tolerance.&#10;Tight: final production geometry.&#10;Run all three stages in sequence with the SAME SystemLabel in the SAME directory; SIESTA reuses .XV (coords) and .DM (density matrix) automatically.&#10;Switching stages ONLY rewrites the Stage convergence target card below — your Resource budget (max-scf-iter, relax-steps) and System characteristics (mixing-weight, electronic-temperature, spin) stay as you set them.&#10;Custom keeps every value untouched.">
           <strong>Stage</strong>
           <select id="p-stage-preset">
             <option value="custom" selected>Custom (no auto-fill)</option>

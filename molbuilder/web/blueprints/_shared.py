@@ -518,6 +518,15 @@ def _field_to_schema(f: dataclasses.Field,
     # leave it unset and the UI shows no tag.
     if "engine_key" in md:
         out["engine_key"] = md["engine_key"]
+    # Workflow-group tag (2026-06-13): one of "system" / "stage" /
+    # "budget".  Drives the .workflow-group--<kind> card wrappers
+    # in form-schema.js + STAGE_PRESETS' restricted write surface
+    # in viewer.js.  Fields without this tag render bare (outside
+    # any workflow-group wrapper) and STAGE_PRESETS never touches
+    # them.  See docs/protocols/results-tab.md § 4.6 + the
+    # .workflow-group framework in lib/form-schema.css.
+    if "workflow_group" in md:
+        out["workflow_group"] = md["workflow_group"]
 
     choices = md.get("choices")
     if choices is not None:

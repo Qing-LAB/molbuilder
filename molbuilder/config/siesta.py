@@ -146,6 +146,7 @@ class SiestaConfig:
     })
     pao_energy_shift: float = field(default=0.01, metadata={
         "section": "Basis & grid",
+        "workflow_group": "stage",
         "label": "PAO.EnergyShift", "unit": "Ry",
         "engine_key":  'PAO.EnergyShift',
         # Upper bound tightened to 0.05 (SP4): 0.1 Ry contracts PAO
@@ -171,6 +172,13 @@ class SiestaConfig:
     # together when sizing their run.
     mesh_cutoff: float = field(default=300.0, metadata={
         "section": "Basis & grid",
+        # Workflow-group tag (2026-06-13): "stage" means switching the
+        # relaxation-stage preset MAY rewrite this field.  Three
+        # tag values exist (system / stage / budget) — see docs/protocols/
+        # results-tab.md § 4.6 and viewer.js STAGE_PRESETS for the
+        # design rationale.  Untagged fields render bare (outside any
+        # workflow-group card) and STAGE_PRESETS never touches them.
+        "workflow_group": "stage",
         "label": "MeshCutoff", "unit": "Ry",
         "engine_key":  'MeshCutoff',
         # 2026-05-28 tightening: slider lower bound raised from 50
@@ -242,6 +250,10 @@ class SiestaConfig:
     })
     mixing_weight: float = field(default=0.02, metadata={
         "section": "SCF",
+        # System characteristic — depends on what the system IS
+        # (metallic / organic / open-shell), NOT on the stage.
+        # Switching stages MUST NOT rewrite this.
+        "workflow_group": "system",
         "label": "DM.MixingWeight",
         "engine_key":  'DM.MixingWeight',
         "range": (0.001, 0.5),
@@ -258,6 +270,7 @@ class SiestaConfig:
     })
     dm_tolerance: float = field(default=1e-5, metadata={
         "section": "SCF",
+        "workflow_group": "stage",
         "label": "DM.Tolerance",
         "engine_key":  'DM.Tolerance',
         "range": (1e-8, 1e-3),
@@ -266,6 +279,7 @@ class SiestaConfig:
     })
     dm_energy_tolerance: float = field(default=1e-4, metadata={
         "section": "SCF",
+        "workflow_group": "stage",
         "label": "DM.Energy.Tolerance", "unit": "eV",
         "engine_key":  'DM.Energy.Tolerance',
         "range": (1e-8, 1e-1),
@@ -274,6 +288,10 @@ class SiestaConfig:
     })
     max_scf_iter: int = field(default=500, metadata={
         "section": "SCF",
+        # Resource-budget cap — "how long am I willing to wait" — NOT
+        # part of the convergence-target staging.  Switching stages
+        # MUST NOT halve / double this value silently.
+        "workflow_group": "budget",
         "label": "MaxSCFIterations (SCF cycles per geometry step)",
         "engine_key":  'MaxSCFIterations',
         "range": (10, 5000),
@@ -287,6 +305,10 @@ class SiestaConfig:
     })
     electronic_temperature: float = field(default=300.0, metadata={
         "section": "SCF",
+        # System characteristic — high for metallic surfaces (Fermi
+        # smearing helps), low for insulators / organics.  Not stage-
+        # dependent.
+        "workflow_group": "system",
         "label": "ElectronicTemperature", "unit": "K",
         "engine_key":  'ElectronicTemperature',
         "id_suffix": "temperature",
@@ -328,6 +350,12 @@ class SiestaConfig:
     })
     relax_steps: int = field(default=200, metadata={
         "section": "Relaxation",
+        # Resource-budget cap — same as max_scf_iter, this is "how
+        # many outer steps am I willing to wait for", not a
+        # convergence target.  Scales with system size, not stage.
+        # For ~230-atom Au junctions bump to 500+; the cluster-context
+        # closed-shell argument doesn't help convergence speed.
+        "workflow_group": "budget",
         "label": "MD.Num*Steps (max geometry-optimisation steps)",
         "engine_key":  'MD.NumCGsteps / MD.NumBroydenSteps / MD.NumFIRESteps (per relax_type)',
         "range": (1, 10000),
@@ -344,6 +372,7 @@ class SiestaConfig:
     })
     relax_force_tol: float = field(default=0.02, metadata={
         "section": "Relaxation",
+        "workflow_group": "stage",
         "label": "MD.MaxForceTol", "unit": "eV/Å",
         "engine_key":  'MD.MaxForceTol',
         "id_suffix": "force-tol",
@@ -353,6 +382,7 @@ class SiestaConfig:
     })
     relax_max_displ: float = field(default=0.05, metadata={
         "section": "Relaxation",
+        "workflow_group": "stage",
         "label": "MD max-displ", "unit": "Å",
         "engine_key":  'MD.MaxCGDispl / MD.MaxDispl (per relax_type)',
         "id_suffix": "max-displ",
@@ -705,6 +735,9 @@ class SiestaConfig:
     # Spin polarisation.  Default off (closed-shell DFT).
     spin_polarized: bool = field(default=False, metadata={
         "section":     "Spin",
+        # System characteristic — depends on chemistry (open-shell
+        # metals / radicals require it), not on stage.
+        "workflow_group": "system",
         "label":       "Spin polarized",
         # Emits ``SpinPolarized .true.`` (v4 form) NOT the v5 single-
         # line ``Spin polarized``: SIESTA 5.4.2's v5 parser path does
@@ -718,6 +751,7 @@ class SiestaConfig:
     })
     spin_total: Optional[float] = field(default=None, metadata={
         "section":     "Spin",
+        "workflow_group": "system",
         "label":       "Target spin moment",
         "null_label":  "(default)",
         # Emits TWO keys: Spin.Fix .true. + Spin.Total <v>.  Either

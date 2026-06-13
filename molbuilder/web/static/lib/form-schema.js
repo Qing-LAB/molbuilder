@@ -326,6 +326,37 @@
 
     /* ---------- public API ---------- */
 
+    // Workflow-group metadata (2026-06-13).  Each .workflow-group--<role>
+    // card gets a label + a subtitle explaining "what changes when".
+    // The roles come from the field-level ``workflow_group`` metadata
+    // emitted by ``_shared.dataclass_to_form_schema``.  Fields whose
+    // section contains only UNTAGGED fields render bare (no workflow-
+    // group wrapper).
+    const WORKFLOW_GROUP_META = {
+        "system": {
+            title:    "System characteristics",
+            subtitle: "Reflect WHAT you're computing — set once per "
+                    + "system, doesn't change between stages.",
+        },
+        "stage": {
+            title:    "Stage convergence target",
+            subtitle: "These TIGHTEN as you go 1 → 2 → 3.  Switching "
+                    + "the stage selector mutates ONLY this card.",
+        },
+        "budget": {
+            title:    "Resource budget",
+            subtitle: "Caps on patience — does NOT change what counts "
+                    + "as converged.  Scale with system size.",
+        },
+    };
+
+    // Render-order of the three workflow-group cards.  Stage first
+    // (the "what changes when I switch stage?" question), then
+    // budget (the patience caps), then system (set-once knobs).
+    // Untagged sections render in their original schema order AFTER
+    // the three cards.
+    const WORKFLOW_GROUP_ORDER = ["stage", "budget", "system"];
+
     function renderForm(container, schema) {
         if (!container || !schema || !Array.isArray(schema.sections)) {
             throw new Error("form-schema.renderForm: bad container/schema");
@@ -335,19 +366,99 @@
         // the next collectForm will re-warn.
         _staleWarnings.clear();
         container.innerHTML = "";
+
+        // Two-pass strategy (2026-06-13 restructure):
+        //
+        //   PASS 1: walk every field once, bucketing into
+        //     - tagged fields → one of three role buckets, keyed by
+        //       (role, original_section_name) so we can render with
+        //       a legend like "SCF" inside the "Stage convergence
+        //       target" card.
+        //     - untagged fields → original section, rendered bare
+        //       AFTER the three workflow-group cards.
+        //
+        //   PASS 2: render in fixed order (stage → budget → system →
+        //     untagged sections) so the visual hierarchy makes the
+        //     "switching the stage selector touches the stage card
+        //     only" claim self-evident at a glance.
+        //
+        // Pre-2026-06-13 the form mixed stage / budget / system
+        // fields inside the same SCF + Relaxation fieldsets, so
+        // switching the stage preset silently rewrote budget +
+        // system fields too.  That was the bug class the user
+        // reported on Au-BDT-Au.
+        const tagged = {};
+        for (const role of WORKFLOW_GROUP_ORDER) {
+            tagged[role] = new Map();
+        }
+        const untagged = [];
+
         for (const sect of schema.sections) {
+            const remainingFields = [];
+            for (const f of sect.fields) {
+                const role = f.workflow_group;
+                if (role && WORKFLOW_GROUP_META[role]) {
+                    if (!tagged[role].has(sect.name)) {
+                        tagged[role].set(sect.name, []);
+                    }
+                    tagged[role].get(sect.name).push(f);
+                } else {
+                    remainingFields.push(f);
+                }
+            }
+            if (remainingFields.length > 0) {
+                // Carry the section metadata + the leftover untagged
+                // fields so we can render the section bare with its
+                // original description.
+                untagged.push({
+                    name:        sect.name,
+                    description: sect.description,
+                    fields:      remainingFields,
+                });
+            }
+        }
+
+        // PASS 2 — Render workflow-group cards in fixed order.
+        for (const role of WORKFLOW_GROUP_ORDER) {
+            const sectMap = tagged[role];
+            if (sectMap.size === 0) continue;
+            const meta = WORKFLOW_GROUP_META[role];
+            const card = el("section",
+                { class: "workflow-group workflow-group--" + role });
+            const header = el("header", { class: "workflow-group-header" });
+            header.appendChild(el("h3",
+                { class: "workflow-group-title" }, meta.title));
+            card.appendChild(header);
+            card.appendChild(el(
+                "p",
+                { class: "workflow-group-subtitle" },
+                meta.subtitle,
+            ));
+            // Render each original section's tagged-field subset as
+            // a mini-fieldset inside the card.  The legend keeps the
+            // user's mental map ("the DM.Tolerance field belongs to
+            // SCF") while moving it into the workflow-group context.
+            for (const [sectName, fields] of sectMap.entries()) {
+                const fs = el("fieldset", { class: "schema-section" });
+                fs.appendChild(el("legend", null, sectName));
+                for (const f of fields) {
+                    fs.appendChild(renderField(f));
+                }
+                card.appendChild(fs);
+            }
+            container.appendChild(card);
+        }
+
+        // PASS 2 (cont.) — Render untagged sections in their
+        // original schema order, bare (no workflow-group wrapper).
+        for (const sect of untagged) {
             const fs = el("fieldset", { class: "schema-section" });
             fs.appendChild(el("legend", null, sect.name));
-            // Optional per-section description.  Appears as a small
-            // paragraph directly below the legend so the user reads
-            // "what is this group of knobs for?" before digging into
-            // the individual fields.  Schemas without a description
-            // for a section simply skip this paragraph.
             if (sect.description) {
                 fs.appendChild(el(
                     "p",
                     { class: "schema-section-desc" },
-                    sect.description
+                    sect.description,
                 ));
             }
             for (const f of sect.fields) {

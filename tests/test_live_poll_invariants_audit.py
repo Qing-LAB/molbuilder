@@ -457,6 +457,136 @@ class TestConvergenceTargetsAndPlotColors:
             "textContent + createElement to keep the XSS audit clean.")
 
 
+class TestWorkflowGroupSchemaConsistency:
+    """The 2026-06-13 form restructure tags each schema field with
+    ``workflow_group``: one of ``"system"`` / ``"stage"`` / ``"budget"``.
+    Three invariants that protect the user-visible contract
+    (switching the stage selector mutates ONLY stage-tagged fields):
+
+    1. Every field ID in viewer.js's STAGE_PRESETS dict must have a
+       matching SIESTA dataclass field tagged
+       ``workflow_group: "stage"``.  A field that's in the preset
+       but NOT stage-tagged would write to it AND trigger the
+       allowlist's defensive warn() — half-done state.
+
+    2. viewer.js's ``_STAGE_PRESET_KEYS_SIESTA`` allowlist must
+       contain EXACTLY the keys in STAGE_PRESETS' three stage dicts
+       — otherwise a stage write gets silently refused.
+
+    3. No stage-preset key may reach a SIESTA field tagged
+       ``workflow_group: "budget"`` or ``"system"``.  This is the
+       bug class that bit the user on Au-BDT-Au (relax-steps was
+       in the preset but is a budget cap; mixing-weight was in the
+       preset but is a system characteristic)."""
+
+    def test_stage_preset_keys_match_stage_tagged_fields(self):
+        """For every ``p-<id>`` in STAGE_PRESETS, the matching
+        SiestaConfig field MUST carry
+        ``metadata['workflow_group'] == 'stage'``.  This catches
+        the half-done case where a stage field gets dropped from
+        the preset (or vice versa)."""
+        import re
+        import dataclasses
+        from molbuilder.config.siesta import SiestaConfig
+
+        viewer = (_LIB / ".." / "viewer.js").resolve().read_text()
+        # Extract the union of all stage-preset keys across the
+        # three sub-presets (coarse / medium / tight).
+        block = re.search(
+            r"const\s+STAGE_PRESETS\s*=\s*\{(.+?)\n\s*\};",
+            viewer, re.DOTALL,
+        )
+        assert block is not None, (
+            "viewer.js: STAGE_PRESETS dict not found.  If the symbol "
+            "was renamed, update this test to match.")
+        keys = set(re.findall(r'"(p-[a-z0-9-]+)"', block.group(1)))
+        assert keys, "no stage-preset keys extracted; regex too strict"
+
+        # Map p-<id> back to the SiestaConfig field name.  IDs use
+        # the dataclass field name with ``_`` → ``-``, OR an
+        # explicit ``id_suffix`` metadata override.
+        siesta_id_to_field = {}
+        for f in dataclasses.fields(SiestaConfig):
+            id_suffix = f.metadata.get("id_suffix",
+                                       f.name.replace("_", "-"))
+            siesta_id_to_field["p-" + id_suffix] = f
+        unmatched = [k for k in keys if k not in siesta_id_to_field]
+        assert not unmatched, (
+            f"STAGE_PRESETS contains keys with no matching "
+            f"SiestaConfig field: {unmatched}.  If the field was "
+            f"renamed, update the preset.  If the field was "
+            f"deleted, drop it from the preset too.")
+
+        wrong_tag = []
+        for k in keys:
+            f = siesta_id_to_field[k]
+            tag = f.metadata.get("workflow_group")
+            if tag != "stage":
+                wrong_tag.append((k, f.name, tag))
+        assert not wrong_tag, (
+            "STAGE_PRESETS writes to fields NOT tagged "
+            "workflow_group='stage'.  This is the 2026-06-13 bug "
+            "class — switching the stage selector silently mutates "
+            "a budget / system / untagged field.  Either tag the "
+            "field 'stage' in molbuilder/config/siesta.py or drop "
+            f"it from STAGE_PRESETS: {wrong_tag}")
+
+    def test_stage_preset_allowlist_matches_dict_keys(self):
+        """The defensive allowlist (``_STAGE_PRESET_KEYS_SIESTA``)
+        in viewer.js MUST match the union of stage-preset dict
+        keys exactly.  An ID in the dict but missing from the
+        allowlist is a silent no-op; an ID in the allowlist but
+        not in any preset is dead config."""
+        import re
+        viewer = (_LIB / ".." / "viewer.js").resolve().read_text()
+
+        dict_block = re.search(
+            r"const\s+STAGE_PRESETS\s*=\s*\{(.+?)\n\s*\};",
+            viewer, re.DOTALL,
+        )
+        dict_keys = set(re.findall(r'"(p-[a-z0-9-]+)"',
+                                   dict_block.group(1)))
+
+        allowlist_block = re.search(
+            r"_STAGE_PRESET_KEYS_SIESTA\s*=\s*new\s+Set\(\[(.+?)\]\)",
+            viewer, re.DOTALL,
+        )
+        assert allowlist_block is not None, (
+            "viewer.js: _STAGE_PRESET_KEYS_SIESTA Set literal not "
+            "found; the defensive allowlist was the load-bearing "
+            "part of the 2026-06-13 restructure.")
+        allowlist = set(re.findall(r'"(p-[a-z0-9-]+)"',
+                                   allowlist_block.group(1)))
+
+        extra_in_dict     = dict_keys - allowlist
+        extra_in_allowlist = allowlist - dict_keys
+        assert not extra_in_dict, (
+            f"STAGE_PRESETS keys missing from _STAGE_PRESET_KEYS_"
+            f"SIESTA allowlist: {extra_in_dict}.  Those preset "
+            f"writes will be silently rejected at runtime.")
+        assert not extra_in_allowlist, (
+            f"_STAGE_PRESET_KEYS_SIESTA allows IDs not used by any "
+            f"preset: {extra_in_allowlist}.  Either remove from the "
+            f"allowlist or add to the presets.")
+
+    def test_no_budget_or_system_field_tagged_stage(self):
+        """Smoke check: no SIESTA field ever ends up tagged with
+        a contradictory or unknown workflow_group.  Only the three
+        documented values (system/stage/budget) are valid."""
+        import dataclasses
+        from molbuilder.config.siesta import SiestaConfig
+        valid = {"system", "stage", "budget"}
+        bad = []
+        for f in dataclasses.fields(SiestaConfig):
+            tag = f.metadata.get("workflow_group")
+            if tag is not None and tag not in valid:
+                bad.append((f.name, tag))
+        assert not bad, (
+            f"SiestaConfig fields tagged with non-canonical "
+            f"workflow_group values: {bad}.  Allowed values: "
+            f"{sorted(valid)}.")
+
+
 class TestTrajectoryInspectorClaimsOptimXyz:
     """PySCF's geom-opt wrapper (and bare geomeTRIC runs) write the
     multi-frame trajectory to ``<job>_geom_optim.xyz`` (or older

@@ -1780,50 +1780,89 @@
     // Values are the ones documented in the Watch tab's recipe table.
     // The ``custom`` option does NOT reset anything -- it just stops
     // auto-filling so the user can fine-tune individual fields.
+    // STAGE_PRESETS restructured 2026-06-13.  PRE-FIX the preset
+    // wrote to mixing-weight (a SYSTEM characteristic — depends on
+    // metallic / organic chemistry, not stage) and to relax-steps
+    // (a BUDGET cap — depends on system size, not stage).  Switching
+    // stages silently mutated those values away from the user's
+    // intent — the Au-BDT-Au bug class.
+    //
+    // After 2026-06-13: only fields tagged ``workflow_group:
+    // "stage"`` in the schema are written.  Budget (max_scf_iter,
+    // relax_steps) and system characteristics (mixing_weight,
+    // electronic_temperature, spin_*) are NEVER touched by a stage
+    // switch; the user manages those via the dedicated Resource
+    // budget + System characteristics workflow-group cards.
+    //
+    // The presets are the same convergence-target values that
+    // appear in the published staged-relaxation literature:
+    // coarse = fast descent (loose tols, big steps), medium =
+    // refine, tight = production-grade.  Each successive stage
+    // tightens; none of them touches "how much patience I'm
+    // willing to spend on this run."
     const STAGE_PRESETS = {
         coarse: {
             "p-mesh-cutoff":         200,
             "p-pao-energy-shift":    0.02,
-            "p-mixing-weight":       0.05,
             "p-dm-tolerance":        1e-3,
             "p-dm-energy-tolerance": 1e-3,
-            "p-relax-steps":         80,
             "p-force-tol":           0.04,
             "p-max-displ":           0.20,
         },
         medium: {
             "p-mesh-cutoff":         300,
             "p-pao-energy-shift":    0.01,
-            "p-mixing-weight":       0.02,
             "p-dm-tolerance":        1e-4,
             "p-dm-energy-tolerance": 1e-4,
-            "p-relax-steps":         40,
             "p-force-tol":           0.02,
             "p-max-displ":           0.10,
         },
         tight: {
             "p-mesh-cutoff":         400,
             "p-pao-energy-shift":    0.005,
-            "p-mixing-weight":       0.01,
             "p-dm-tolerance":        1e-5,
             "p-dm-energy-tolerance": 1e-5,
-            // 150 outer geometry steps for the final tight stage.
-            // Earlier value (30) was BACKWARDS for a tight stage:
-            // tight = small displacement cap (0.05 Å) + strict
-            // force tolerance (0.01 eV/Å) means each step covers
-            // ~4× less ground AND we're chasing a 4× smaller
-            // residual force.  30 steps would converge only if
-            // the previous stage already left us very close.
-            "p-relax-steps":         150,
             "p-force-tol":           0.01,
             "p-max-displ":           0.05,
         },
     };
 
+    // Document the IDs we KNOW are stage-tagged on the SIESTA side.
+    // viewer.js doesn't have direct access to the schema metadata
+    // (the form-schema renderer holds it), so we maintain an
+    // explicit list here AND a test in
+    // tests/test_live_poll_invariants_audit.py pins that every ID
+    // in this list corresponds to a field tagged
+    // ``workflow_group: "stage"`` in molbuilder/config/siesta.py.
+    // Add a new stage field → tag in siesta.py AND add the ID here;
+    // the test catches the half-done case.
+    const _STAGE_PRESET_KEYS_SIESTA = new Set([
+        "p-mesh-cutoff", "p-pao-energy-shift",
+        "p-dm-tolerance", "p-dm-energy-tolerance",
+        "p-force-tol",   "p-max-displ",
+    ]);
+
     function applyStagePreset(stage) {
         const preset = STAGE_PRESETS[stage];
         if (!preset) return;
         Object.entries(preset).forEach(([id, value]) => {
+            // Defense in depth: only write to IDs that the
+            // _STAGE_PRESET_KEYS_SIESTA allowlist confirms are
+            // stage-tagged.  A typo / drift between the preset dict
+            // and the schema metadata gets caught here at runtime
+            // rather than silently mutating a budget / system field.
+            if (!_STAGE_PRESET_KEYS_SIESTA.has(id)) {
+                if (console && console.warn) {
+                    console.warn(
+                        "[stage-preset] refusing to write " + id
+                        + " — not in stage-key allowlist.  Update "
+                        + "_STAGE_PRESET_KEYS_SIESTA in viewer.js AND "
+                        + "tag the field workflow_group: \"stage\" in "
+                        + "molbuilder/config/siesta.py."
+                    );
+                }
+                return;
+            }
             const el = $(id);
             if (!el) return;
             el.value = String(value);
