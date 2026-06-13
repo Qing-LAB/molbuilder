@@ -208,6 +208,7 @@ class SiestaConfig:
     # XC
     xc_functional: str = field(default="GGA", metadata={
         "section": "Exchange-correlation",
+        "workflow_group": "profile",
         "label":   "XC.Functional",
         "engine_key":  'XC.functional',
         "choices": ("LDA", "GGA", "VDW"),
@@ -225,6 +226,7 @@ class SiestaConfig:
     })
     xc_authors: str = field(default="PBE", metadata={
         "section": "Exchange-correlation",
+        "workflow_group": "profile",
         "label":   "XC.Authors",
         "engine_key":  'XC.authors',
         # Choices match what /api/siesta/check-pseudos accepts when

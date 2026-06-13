@@ -143,6 +143,79 @@ def test_load_by_multipart_persists_path_for_data_polls(client):
 
 
 # --------------------------------------------------------------------- #
+#  runtime_info.convergence_targets contract                            #
+#                                                                       #
+#  Pin the END-TO-END API contract: parser → Trajectory.runtime_info →  #
+#  HTTP /api/watch/data response → frontend.  Each link individually    #
+#  has a test (parser → traj: test_live_poll_invariants_audit.py;       #
+#  traj → frontend partial: test_trajectory_inspector_partial.py).      #
+#  This test pins the HTTP-layer link, which was the missing piece     #
+#  caught by the 2026-06-13 contract audit.                            #
+# --------------------------------------------------------------------- #
+
+
+_SIESTA_WITH_REDATA = (
+    "Welcome to SIESTA -- v4.1\n"
+    "redata: Force tolerance              =        0.0400 eV/Ang\n"
+    "redata: DM tolerance for SCF          =     0.000100\n"
+    "redata: Max. number of SCF Iter        =          500\n"
+    "redata: Max atomic displ per move      =        0.1000 Ang\n"
+    "outcoor: Atomic coordinates (Ang):\n"
+    "   1.00000000    2.00000000    3.00000000   1       1  C\n"
+    "\n"
+    "siesta: E_KS(eV) =          -50.0000\n"
+)
+
+
+def test_watch_data_surfaces_runtime_info_convergence_targets(client):
+    """``/api/watch/data`` MUST carry ``data.runtime_info.convergence_targets``
+    when the SIESTA parser extracted it from the input echo.
+
+    Documented contract: docs/protocols/web-api.md § 8.4
+    ("runtime_info: per-stage CPU/MPI/GPU report — see types/parsers.md")
+    + docs/protocols/results-tab.md § 4.6 (the convergence_targets
+    sub-shape with per-key units and parser sources).
+
+    Frontend consumer: lib/trajectory/core.js::_renderConvergenceSummary
+    reads ``data.runtime_info.convergence_targets`` to render the
+    threshold lines on the force plot + the "Convergence targets"
+    summary band in the trajectory inspector.
+
+    Pre-2026-06-13 the parser → traj link had a test, and the
+    traj → partial link had a test, but the HTTP-layer link
+    (parser → traj → HTTP /api/watch/data → frontend) was unpinned.
+    A silent removal of the field at the serializer layer would
+    have silently disabled the threshold lines.
+    """
+    fd = {"file": (io.BytesIO(_SIESTA_WITH_REDATA.encode()),
+                   "with_redata.out")}
+    client.post("/api/watch/load",
+                data=fd,
+                content_type="multipart/form-data")
+    r = client.get("/api/watch/data")
+    body = r.get_json()
+    assert body["ok"] is True
+    data = body["data"]
+    assert "runtime_info" in data, (
+        "data.runtime_info missing from /api/watch/data response — "
+        "web-api.md § 8.4 documents it as part of the contract")
+    runtime_info = data["runtime_info"]
+    assert "convergence_targets" in runtime_info, (
+        "runtime_info.convergence_targets missing — the SIESTA parser "
+        "captured the redata: lines but the serializer dropped the "
+        "field on the way to the HTTP response.  Threshold lines on "
+        "the trajectory inspector force plot will be missing.")
+    ct = runtime_info["convergence_targets"]
+    # Every documented key from results-tab.md § 4.6 + the source tag.
+    for key in ("max_force_tol_eV_per_A", "dm_tolerance",
+                "max_scf_iter", "max_displ_ang", "source"):
+        assert key in ct, (
+            f"convergence_targets missing documented key {key!r}: "
+            f"{sorted(ct)}")
+    assert ct["source"] == "siesta_input_echo"
+
+
+# --------------------------------------------------------------------- #
 #  Directory mode (job-layout v1)                                       #
 #                                                                       #
 #  Per docs/protocols/job-layout.md the loader resolves a directory path     #

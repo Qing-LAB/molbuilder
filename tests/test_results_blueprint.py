@@ -787,26 +787,36 @@ class TestPartialSpectraInspectorEndpoint:
         "watch-path",
         "load-path-btn",
         "watch-btn",
+        "watch-stop-btn",
+        "watch-status",
         "phase-indicator",
         # Results summary + chart
         "results-summary",
+        "results-summary-list",
         "spectrum-chart",
         "broadening-fwhm",
         # Modes table
         "modes-table",
         "modes-tbody",
+        "modes-thead-row",
         "modes-filter",
+        "modes-filter-count",
         "modes-csv-btn",
         # Mode viewer (3D animation)
         "mode-viewer-wrap",
         "mode-viewer",
+        "viewer-status",
         "anim-amplitude",
+        "anim-amplitude-val",
         "anim-speed",
+        "anim-speed-val",
         "anim-toggle",
         # ES bar diagram
         "es-panel",
         "es-bar-diagram",
         "es-mode-idx",
+        "es-mode-freq",
+        "es-summary",
     )
 
     def test_endpoint_returns_html_200(self, web):
@@ -907,6 +917,8 @@ class TestPartialSelectionPanelEndpoint:
     """
 
     REQUIRED_IDS = (
+        # Outer wrapper (load-bearing for selection-panel.css layout).
+        "selection-card",
         "selection-mode-click",
         "selection-mode-filter",
         "selection-click-section",
@@ -927,6 +939,10 @@ class TestPartialSelectionPanelEndpoint:
         "selection-add-btn",
         "selection-remove-btn",
         "selection-error",
+        # Isolate-mode toggle + Invert button (2026-06-12 selection
+        # panel v3; lib/selection-panel.js queries both by id).
+        "selection-invert-btn",
+        "selection-isolate-checkbox",
     )
 
     def test_endpoint_returns_html_200(self, web):
