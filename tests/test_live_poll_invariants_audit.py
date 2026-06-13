@@ -345,6 +345,118 @@ class TestSelectionPanelIsolateUnsubscribeCleanup:
 # --------------------------------------------------------------------- #
 
 
+class TestConvergenceTargetsAndPlotColors:
+    """Two invariants for the 2026-06-13 convergence-summary work:
+
+    1. SIESTA parser populates ``runtime_info["convergence_targets"]``
+       with the values from the input echo block.  Without this, the
+       Results-tab summary block + threshold line have nothing to
+       render and silently fall back to the "targets unknown" hint.
+
+    2. ``trajectory/core.js::makePlots`` reads its trace colours via
+       a ``_themeColors()`` helper rather than hardcoded hex.  This
+       protects the recolor (free-atoms trace blue, SCF gnorm orange,
+       threshold line green) from a future "simplification" that
+       pastes literal hex back into the trace specs and silently
+       reintroduces the green-on-green threshold-vs-trace conflict
+       that motivated the 2026-06-13 recolor."""
+
+    def test_siesta_parser_extracts_convergence_targets(self):
+        """The hemeC stage-2 fixture's input echo carries
+        MD.MaxForceTol=0.02 eV/Å (tightened from the default 0.04 for
+        a stage-2 run).  Pin that the parser actually reads it."""
+        from molbuilder.parsers.siesta import SiestaParser
+        path = (Path(__file__).resolve().parent
+                / "watch" / "fixtures" / "siesta_frozen"
+                / "hemeC-stage2-run3-finished-42fr.out")
+        traj = SiestaParser.parse(str(path))
+        ct = traj.runtime_info.get("convergence_targets")
+        assert ct is not None, (
+            "SIESTA parser dropped its convergence_targets extraction. "
+            "The Results-tab threshold line + summary block now have "
+            "nothing to render.  Check that _SIESTA_FORCE_TOL_RE et al. "
+            "are still matching 'redata: Force tolerance = ...'.")
+        assert ct.get("source") == "siesta_input_echo"
+        assert ct.get("max_force_tol_eV_per_A") == 0.02
+        assert ct.get("dm_tolerance") == 1e-4
+        assert ct.get("max_scf_iter") == 500
+
+    def test_themeColors_helper_present(self):
+        """``_themeColors()`` reads CSS tokens via getComputedStyle
+        instead of hardcoded hex.  This is what lets the plot colours
+        track a future theme retune.  If a refactor inlines the
+        accent/success colours, this test fails and points at the
+        regression."""
+        core = (_LIB / "trajectory" / "core.js").read_text()
+        assert "function _themeColors" in core, (
+            "trajectory/core.js lost its _themeColors() helper.  Trace "
+            "colours can no longer follow lib/tokens.css; the 2026-06-13 "
+            "recolor (free atoms blue, SCF gnorm orange, threshold "
+            "lines green) is at risk of silent regression.")
+        # The function must actually read at least --accent + --success
+        # — those drive the convergence-signal trace colour + the
+        # threshold-line colour.
+        body_match = re.search(
+            r"function\s+_themeColors\s*\(\s*\)\s*\{(.+?)\n\s*\}",
+            core, re.DOTALL,
+        )
+        assert body_match is not None, (
+            "_themeColors() body shape changed; refactor needs to "
+            "update this test alongside.")
+        body = body_match.group(1)
+        assert "--accent" in body, (
+            "_themeColors no longer reads --accent.  The convergence-"
+            "signal force trace falls back to hardcoded hex.")
+        assert "--success" in body, (
+            "_themeColors no longer reads --success.  The threshold "
+            "line falls back to hardcoded hex.")
+
+    def test_force_trace_uses_themed_accent_not_green(self):
+        """The 'free atoms' convergence-gating trace MUST use the
+        theme accent (blue), not literal green (#1f9d55), or the
+        green threshold line collides with it.  Pin the absence of
+        the pre-recolor literal so a copy-paste regression is
+        caught at the regex level."""
+        core = (_LIB / "trajectory" / "core.js").read_text()
+        # The free-atoms branch should reference theme.accent for
+        # its line color.
+        assert re.search(
+            r"name:\s*\"free atoms\"|line:\s*\{[^}]*theme\.accent",
+            core, re.DOTALL,
+        ), ("free-atoms force trace is no longer wired to theme.accent. "
+            "If you've changed how the line colour is set, update this "
+            "regex; if you've reintroduced the old green hex, the "
+            "threshold-line-vs-trace collision is back.")
+        # The pre-recolor green literal must NOT reappear in the
+        # force-plot trace spec (it can still legitimately appear
+        # in a comment).  Carve out comments by stripping them
+        # before the search.
+        body_no_comments = re.sub(r"/\*.*?\*/|//[^\n]*", "", core, flags=re.S)
+        assert "#1f9d55" not in body_no_comments, (
+            "Hardcoded green #1f9d55 reintroduced into trajectory/"
+            "core.js outside comments.  This was the pre-2026-06-13 "
+            "free-atoms force trace colour; using it again puts a "
+            "green trace under the green threshold line.")
+
+    def test_convergence_summary_rendered_via_textContent(self):
+        """The new convergence-summary block uses textContent +
+        createElement everywhere — no innerHTML interpolation.  Per
+        the XSS audit's no-unsafe-innerHTML rule + the data values
+        flow through float.toFixed / .toExponential before reaching
+        the DOM, but pinning textContent here is the safer guard."""
+        core = (_LIB / "trajectory" / "core.js").read_text()
+        m = re.search(
+            r"function\s+_renderConvergenceSummary\s*\([^)]*\)\s*\{(.+?)\n\s{4}\}",
+            core, re.DOTALL,
+        )
+        assert m is not None, "_renderConvergenceSummary is missing"
+        body = m.group(1)
+        # Inner DOM writes go through textContent / createElement / appendChild.
+        assert "innerHTML" not in body, (
+            "_renderConvergenceSummary uses innerHTML — switch to "
+            "textContent + createElement to keep the XSS audit clean.")
+
+
 class TestTrajectoryInspectorClaimsOptimXyz:
     """PySCF's geom-opt wrapper (and bare geomeTRIC runs) write the
     multi-frame trajectory to ``<job>_geom_optim.xyz`` (or older

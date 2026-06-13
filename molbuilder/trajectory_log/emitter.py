@@ -56,7 +56,8 @@ class MolwatchEmitter:
     HARTREE_TO_EV          = 27.211386245988
     HARTREE_BOHR_TO_EV_ANG = 51.42208619
 
-    def __init__(self, path, job, mol, runtime_info=None):
+    def __init__(self, path, job, mol, runtime_info=None,
+                 convergence_targets=None):
         self.path = path
         self.job  = job
         self._scf_buf   = []   # per-cycle dicts; reset each new SCF
@@ -87,6 +88,22 @@ class MolwatchEmitter:
                         # break the line-oriented parse.
                         v_str = str(v).replace("\n", " ").replace("\r", " ")
                         fh.write(f"# runtime.{k}: {v_str}\n")
+            # Convergence-target header: one ``# convergence.<key>:
+            # <value>`` line per known target.  The trajectory-log
+            # parser reads these into ``runtime_info["convergence_
+            # targets"]``; the /results inspector renders the threshold
+            # line + "current vs target" readout from them.  Skipped
+            # when convergence_targets is None (older scripts) -- the
+            # parser tolerates absence and the inspector falls back to
+            # a "targets not found in source" hint.
+            if convergence_targets:
+                for k in ("max_force_tol_eV_per_A", "scf_energy_tol",
+                          "scf_grad_tol", "max_scf_iter", "max_geom_iter",
+                          "max_displ_ang"):
+                    if k in convergence_targets and convergence_targets[k] is not None:
+                        v = convergence_targets[k]
+                        v_str = str(v).replace("\n", " ").replace("\r", " ")
+                        fh.write(f"# convergence.{k}: {v_str}\n")
             fh.write("\n")
         # Step 0: initial-state preview, written BEFORE any SCF runs.
         # Carries coordinates only; energy / forces / scf_history are

@@ -353,6 +353,70 @@ round-trip).  Filename is `<sanitised-label>_plots.csv`.
 
 ---
 
+## 4.6 Convergence-targets summary + threshold lines (2026-06-13)
+
+The trajectory inspector renders a small text band BETWEEN the
+run-state badge and the plots row that names the convergence
+targets the run was configured to chase and tells the user how far
+the current step is from them.  The matching plots gain a green
+dashed horizontal threshold line at the target value.
+
+**Data shape.**  `Trajectory.runtime_info["convergence_targets"]`
+(a nested dict, populated by the parsers):
+
+| Key | Units | Read by which parser |
+|---|---|---|
+| `max_force_tol_eV_per_A` | eV/Å | SIESTA (`redata: Force tolerance`); molwatch (`# convergence.*`); PySCF emitter passes from `cfg.geom_conv_gmax` after Ha/Bohr→eV/Å conversion |
+| `dm_tolerance` | dimensionless | SIESTA (`redata: DM tolerance for SCF`); molwatch |
+| `scf_energy_tol` | Hartree | molwatch (PySCF runs); not in SIESTA echo |
+| `scf_grad_tol` | eV/Å | molwatch (geomeTRIC gmax-style); not in SIESTA |
+| `max_scf_iter` | integer | SIESTA (`redata: Max. number of SCF Iter`); molwatch |
+| `max_geom_iter` | integer | molwatch (from `cfg.geom_max_steps`) |
+| `max_displ_ang` | Å | SIESTA (`redata: Max atomic displ per move`); molwatch |
+| `source` | string | One of `"siesta_input_echo"`, `"molwatch_header"`, `"geomeTRIC_log"` — drives the italic provenance label in the UI |
+
+Each parser populates what its source actually carries; missing
+keys are tolerated by the inspector (it renders only the rows
+present).  When the `convergence_targets` subdict is entirely
+absent (older runs, runs from non-molbuilder scripts), the band
+falls back to a short hint pointing at how to get the lines next
+time: "load the source .fdf / .py file next to the run, or rerun
+via molbuilder for self-describing output."
+
+**Plot recolor (load-bearing).**  Pre-2026-06-13 the "free atoms"
+convergence-gating force trace was green (`#1f9d55`).  Adding the
+green threshold line on the same plot meant trace + target would
+sit indistinguishable.  The recolor moves:
+
+| Element | Before | After | Source |
+|---|---|---|---|
+| Free-atoms force trace | green `#1f9d55` | blue (`--accent` via `_themeColors()`) | trajectory/core.js |
+| All-atoms force trace | red `#d62728` | unchanged | trajectory/core.js |
+| SCF gnorm residual trace | amber/green | orange `#fb923c` | trajectory/core.js |
+| Threshold line (force + SCF) | — | green `--success` dashed | trajectory/core.js |
+| Stage-marker dashed verticals | `#888` | `--text-muted` via theme helper | trajectory/core.js |
+
+`_themeColors()` reads CSS custom properties via
+`getComputedStyle(document.documentElement)` once per `makePlots()`
+call so a future theme retune in `lib/tokens.css` repaints traces
++ threshold lines together.  Non-themable plot-convention colours
+(red for "all atoms" informational; orange for SCF gnorm) stay
+literal — pinning them to tokens would couple "scientific plotting
+convention" to "site theme" in a way that doesn't make sense.
+
+**Auto log y-axis.**  When `max(force_history) / max_force_tol_eV_per_A > 50`
+the force plot switches to a log y-axis so the threshold line +
+the trace are both legible at the same time.  Below that ratio
+the linear/`rangemode: "tozero"` view shows the target line at
+the bottom of the plot, where the eye naturally lands on "the
+floor we're approaching."
+
+**Pinned by:** `tests/test_live_poll_invariants_audit.py::TestConvergenceTargetsAndPlotColors`
+(parser extracts targets, `_themeColors()` helper present, no
+hardcoded `#1f9d55` outside comments).
+
+---
+
 ## 5. What this design does NOT include
 
 * No multi-file comparison ("diff two runs"). Bigger feature; later.

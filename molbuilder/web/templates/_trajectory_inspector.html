@@ -65,6 +65,37 @@
       aria-label="Parser issues"></ul>
 </details>
 
+<!-- Convergence-targets summary (2026-06-13).  Renders the threshold
+     values the run was configured to chase + the current step's
+     distance from them.  Populated by core.js from
+     ``Trajectory.runtime_info.convergence_targets``; hidden until
+     that subdict is present.
+
+     When targets are PRESENT, the matching plot below gets a green
+     dashed horizontal threshold line + an annotation.  When ABSENT
+     (older runs, runs from non-molbuilder scripts), this section
+     renders a short hint pointing at how to get the lines next time
+     (load the source .fdf / .py next to the run, or rerun via
+     molbuilder for self-describing output).
+
+     Layout: matches the run-state-badge above — a single section
+     with a header + key/value rows, no card chrome (lives between
+     the badge and the plots row, structurally part of the metadata
+     band). -->
+<section id="convergence-summary" class="convergence-summary" hidden>
+  <header class="convergence-summary-header">
+    <span class="convergence-summary-title">Convergence targets</span>
+    <span id="convergence-summary-source"
+          class="convergence-summary-source"></span>
+  </header>
+  <dl id="convergence-summary-targets"
+      class="convergence-summary-targets"></dl>
+  <div id="convergence-summary-current"
+       class="convergence-summary-current"></div>
+  <p id="convergence-summary-hint" class="convergence-summary-hint"
+     hidden></p>
+</section>
+
 <section class="card viewer-card">
 <section class="viewer-row">
   <div id="viewer"></div>

@@ -1037,9 +1037,23 @@ def _emit_molwatch_emitter(v: bool, cfg: "PySCFConfig") -> List[str]:
     # Strip the placeholder; what's left is the suffix the generator
     # appends to ``JOB`` at runtime.
     _suffix = _resolved_for_X[len(_placeholder):]
+    # Convergence-targets dict for the molwatch header.  geomeTRIC's
+    # gmax is in Ha/Bohr; convert to eV/Å (the unit the Results-tab
+    # force plot uses) so the threshold line lands on the right
+    # y-value.  Conversion constant 51.42208619 = ASE / NIST historical
+    # convention (matches MolwatchEmitter's HARTREE_BOHR_TO_EV_ANG).
+    _ha_bohr_to_ev_ang = 51.42208619
+    _force_tol_ev_ang = float(cfg.geom_conv_gmax) * _ha_bohr_to_ev_ang
+    out.append("_CONVERGENCE_TARGETS = {")
+    out.append(f"    'max_force_tol_eV_per_A': {_force_tol_ev_ang!r},")
+    out.append(f"    'scf_energy_tol':         {float(cfg.scf_conv_tol)!r},")
+    out.append(f"    'max_scf_iter':           {int(cfg.scf_max_cycle)!r},")
+    out.append(f"    'max_geom_iter':          {int(cfg.geom_max_steps)!r},")
+    out.append("}")
     out.append(f'_molwatch = MolwatchEmitter('
                f'_mb_outfile(JOB + {_suffix!r}), JOB, mol, '
-               f'runtime_info=_RUNTIME_INFO)')
+               f'runtime_info=_RUNTIME_INFO, '
+               f'convergence_targets=_CONVERGENCE_TARGETS)')
     out.append("")
     # Run-state markers.  The watch UI reads these to render a binary
     # "Finished / Ongoing / Error" badge -- authoritative when present,

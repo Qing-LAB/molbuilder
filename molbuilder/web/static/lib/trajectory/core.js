@@ -923,17 +923,198 @@
     /*  Plotly traces                                                      */
     /* ------------------------------------------------------------------ */
 
+    // Read theme tokens once per makePlots() so the trace colours
+    // track lib/tokens.css.  Falls back to literal hex if the token
+    // isn't defined (e.g. a partial CSS load), so the plot never
+    // ends up colourless.  The non-themable plot-only colours
+    // (the red "all atoms" force trace, the orange SCF-gnorm trace)
+    // stay literal because they encode scientific-plot conventions
+    // that should be stable across themes — see _trajectory_inspector
+    // documentation in docs/protocols/results-tab.md.
+    function _themeColors() {
+        const cs = getComputedStyle(document.documentElement);
+        const get = (name, fb) =>
+            (cs.getPropertyValue(name) || "").trim() || fb;
+        return {
+            // Token-driven (theme-responsive)
+            accent:     get("--accent",     "#6ba6ff"),
+            success:    get("--success",    "#4ade80"),
+            warnSoft:   get("--warn-soft",  "#d8a64b"),
+            textMuted:  get("--text-muted", "#6c7280"),
+            // Non-themable plot conventions
+            forceAllAtoms: "#d62728",   // red — "all atoms" informational trace
+            energy:        "#1f77b4",   // blue — single-trace
+            scfEnergy:     "#1f77b4",   // blue — single-trace
+            scfGnorm:      "#fb923c",   // orange — moved off green to keep
+                                        //          the threshold-line green
+                                        //          unambiguous
+            stageMarker:   "#888",      // gray — stage-boundary dashed line
+        };
+    }
+
+    // Pull convergence_targets out of runtime_info.  Returns null
+    // when the parser didn't find them (older runs / non-molbuilder
+    // scripts).  Callers (plots + summary block) decide what to do
+    // with absence; the most common is "hide the threshold line +
+    // render the hint instead."
+    function _convergenceTargets() {
+        const rt = state.data && state.data.runtime_info;
+        if (!rt) return null;
+        const ct = rt.convergence_targets;
+        if (!ct || typeof ct !== "object") return null;
+        return ct;
+    }
+
+    // Render the convergence-summary section above the plots row.
+    // Shape + intent documented in docs/protocols/results-tab.md
+    // and templates/_trajectory_inspector.html.  Uses textContent /
+    // createElement everywhere — no innerHTML interpolation, per
+    // the XSS audit's no-unsafe-innerHTML rule.
+    function _renderConvergenceSummary() {
+        const sec = $("convergence-summary");
+        if (!sec) return;
+        const ct = _convergenceTargets();
+        const targets = $("convergence-summary-targets");
+        const current = $("convergence-summary-current");
+        const hint = $("convergence-summary-hint");
+        const sourceEl = $("convergence-summary-source");
+
+        // Clear scrubbed inner state on each render — the parent
+        // section is visibility-toggled below.
+        if (targets) targets.replaceChildren();
+        if (current) current.replaceChildren();
+        if (sourceEl) sourceEl.textContent = "";
+        if (hint) hint.hidden = true;
+        sec.classList.remove("is-off-target", "is-unknown");
+
+        if (!ct) {
+            // No targets — show the "where to put them" hint.
+            sec.classList.add("is-unknown");
+            sec.hidden = false;
+            if (hint) {
+                hint.hidden = false;
+                hint.textContent = (
+                    "Convergence targets not found in source. "
+                    + "Load the source .fdf / .py file next to the run, "
+                    + "or rerun via molbuilder for self-describing output "
+                    + "— the molwatch.log header writes the targets "
+                    + "automatically."
+                );
+            }
+            return;
+        }
+
+        sec.hidden = false;
+
+        // Source provenance label.
+        const sourceMap = {
+            "siesta_input_echo": "from SIESTA input echo (redata:)",
+            "molwatch_header":   "from molwatch log header",
+            "geomeTRIC_log":     "from geomeTRIC log",
+        };
+        if (sourceEl) {
+            sourceEl.textContent =
+                sourceMap[ct.source] || (ct.source ? "from " + ct.source : "");
+        }
+
+        // Targets list — render only the keys that are populated.
+        const rows = [];
+        if (typeof ct.max_force_tol_eV_per_A === "number") {
+            rows.push(["max |F|",
+                ct.max_force_tol_eV_per_A.toFixed(4) + " eV/Å"]);
+        }
+        if (typeof ct.dm_tolerance === "number") {
+            rows.push(["DM tolerance", ct.dm_tolerance.toExponential(2)]);
+        }
+        if (typeof ct.scf_energy_tol === "number") {
+            rows.push(["SCF energy tol",
+                ct.scf_energy_tol.toExponential(2) + " Ha"]);
+        }
+        if (typeof ct.max_scf_iter === "number") {
+            rows.push(["MaxSCFIterations", String(ct.max_scf_iter)]);
+        }
+        if (typeof ct.max_geom_iter === "number") {
+            rows.push(["geom steps cap", String(ct.max_geom_iter)]);
+        }
+        if (typeof ct.max_displ_ang === "number") {
+            rows.push(["max displ", ct.max_displ_ang + " Å"]);
+        }
+        if (targets) {
+            for (const [label, val] of rows) {
+                const dt = document.createElement("dt");
+                dt.textContent = label;
+                const dd = document.createElement("dd");
+                dd.textContent = val;
+                targets.appendChild(dt);
+                targets.appendChild(dd);
+            }
+        }
+
+        // Current step's max force vs target.  Prefers the
+        // convergence-gating "free atoms" value when present; falls
+        // back to "all atoms" otherwise.  Adds the off-target
+        // styling when ratio > 2× so the visual reads "still work
+        // to do" without the user having to compute the division.
+        const tol = ct.max_force_tol_eV_per_A;
+        const forces = state.data && state.data.max_forces;
+        const constrained = state.data && state.data.max_forces_constrained;
+        const iters = state.data && state.data.iterations;
+        if (typeof tol === "number" && Array.isArray(forces)
+                && forces.length > 0 && current) {
+            const lastIdx = forces.length - 1;
+            const allMax = forces[lastIdx];
+            const freeMax = (Array.isArray(constrained) && constrained.length)
+                ? constrained[constrained.length - 1] : null;
+            const primary = (freeMax != null) ? freeMax : allMax;
+            if (typeof primary === "number" && isFinite(primary)) {
+                const ratio = primary / tol;
+                const cls = ratio > 2 ? "off-target"
+                          : (ratio <= 1 ? "at-target" : "");
+                const ratioText = ratio <= 1
+                    ? "at or below target"
+                    : ratio.toFixed(1) + "× over target";
+                const stepLabel = (Array.isArray(iters) && iters[lastIdx] != null)
+                    ? "Step " + iters[lastIdx]
+                    : "Latest step";
+                const label = (freeMax != null)
+                    ? "max |F| (free atoms)"
+                    : "max |F|";
+                const span = document.createElement("span");
+                if (cls) span.className = cls;
+                span.textContent = stepLabel + " — " + label + " = "
+                    + primary.toFixed(4) + " eV/Å — " + ratioText;
+                current.appendChild(span);
+                if (freeMax != null && typeof allMax === "number"
+                        && isFinite(allMax)) {
+                    current.appendChild(document.createElement("br"));
+                    const span2 = document.createElement("span");
+                    span2.style.color = "var(--text-muted)";
+                    span2.textContent = "max |F| (all atoms)  = "
+                        + allMax.toFixed(4) + " eV/Å";
+                    current.appendChild(span2);
+                }
+                sec.classList.toggle("is-off-target", ratio > 2);
+            }
+        }
+    }
+
     // Build Plotly ``shapes`` + ``annotations`` for stage boundaries
     // when state.data is a multi-stage merged trajectory.  Each
     // stage transition (where a new source .molwatch.log begins)
     // gets a dashed vertical line + a small label at the top of the
     // plot showing the stage name.  Returns {shapes, annotations}
     // (both empty arrays for single-stage runs).
-    function stageMarkers() {
+    function stageMarkers(themeArg) {
         const stages = state.data && state.data.stages;
         if (!Array.isArray(stages) || stages.length < 2) {
             return { shapes: [], annotations: [] };
         }
+        // ``themeArg`` is the theme palette from _themeColors() —
+        // makePlots reads it once and passes here so we don't
+        // re-walk getComputedStyle for every plot.  Fallback to a
+        // neutral hex if a caller forgot, so this function stays
+        // safe to call in isolation.
+        const stageColor = (themeArg && themeArg.stageMarker) || "#888";
         const shapes = [];
         const annotations = [];
         for (const s of stages) {
@@ -945,7 +1126,7 @@
                     xref: "x", yref: "paper",
                     x0: s.start_frame, x1: s.start_frame,
                     y0: 0, y1: 1,
-                    line: { color: "#888", width: 1, dash: "dash" },
+                    line: { color: stageColor, width: 1, dash: "dash" },
                 });
             }
             const labelX = s.start_frame
@@ -957,7 +1138,7 @@
                 xref: "x", yref: "paper",
                 text: stageLabel,
                 showarrow: false,
-                font: { size: 10, color: "#888" },
+                font: { size: 10, color: stageColor },
                 xanchor: "center",
                 yanchor: "bottom",
             });
@@ -968,13 +1149,20 @@
     function makePlots() {
         if (!state.data) return;
         const x = state.data.iterations;
-        const stageMx = stageMarkers();
+        const theme = _themeColors();
+        const ct = _convergenceTargets();
+        const stageMx = stageMarkers(theme);
+
+        // Render the convergence-summary band above the plots before
+        // we touch Plotly — the section's visibility + content drive
+        // the eye to the run's progress, then the plots show "where".
+        _renderConvergenceSummary();
 
         Plotly.react("energy-plot", [{
             x: x,
             y: state.data.energies,
             mode: "lines+markers",
-            line: { color: "#1f77b4", width: 1.5 },
+            line: { color: theme.energy, width: 1.5 },
             marker: { size: 6 },
             name: "E_KS",
             connectgaps: false,
@@ -1021,7 +1209,7 @@
             x: x,
             y: state.data.max_forces,
             mode: "lines+markers",
-            line: { color: "#d62728", width: 1.5,
+            line: { color: theme.forceAllAtoms, width: 1.5,
                     dash: (constrained && constrained.length)
                             ? "dash" : "solid" },
             marker: { size: (constrained && constrained.length) ? 4 : 6 },
@@ -1037,9 +1225,10 @@
                 x: x,
                 y: constrained,
                 mode: "lines+markers",
-                // Brighter color + thicker line so the convergence-
-                // gating series reads as the primary signal.
-                line: { color: "#1f9d55", width: 2 },
+                // Theme accent (blue) for the convergence-gating
+                // primary signal — moved off green so the green
+                // threshold line stays unambiguously "the target".
+                line: { color: theme.accent, width: 2 },
                 marker: { size: 6 },
                 name: "free atoms",
                 hovertemplate: "step %{x}<br>Max |F| (free atoms): "
@@ -1050,6 +1239,40 @@
         }
         // ``hasBothTraces`` is used twice — extract for readability.
         var hasBothTraces = !!(constrained && constrained.length);
+
+        // Threshold-line shape + annotation on the force plot when
+        // the parser found a convergence target.  Green dashed at
+        // y = max_force_tol_eV_per_A; annotation right-anchored so
+        // it never collides with the trace at the leading edge.
+        // Auto-switch the y-axis to log scale when the trajectory
+        // is more than 50× above the target so the target line
+        // isn't crushed against the x-axis.
+        const forceShapes = stageMx.shapes.slice();
+        const forceAnnotations = stageMx.annotations.slice();
+        var forceYType = undefined;
+        if (ct && typeof ct.max_force_tol_eV_per_A === "number") {
+            const tol = ct.max_force_tol_eV_per_A;
+            forceShapes.push({
+                type: "line", xref: "paper",
+                x0: 0, x1: 1,
+                yref: "y", y0: tol, y1: tol,
+                line: { color: theme.success, width: 1.5, dash: "dash" },
+            });
+            forceAnnotations.push({
+                xref: "paper", x: 1, xanchor: "right",
+                yref: "y", y: tol, yanchor: "bottom",
+                text: "target " + tol.toFixed(3) + " eV/Å",
+                font: { size: 9, color: theme.success },
+                showarrow: false,
+            });
+            // Log y-axis when the run is far above target.
+            const allValues = state.data.max_forces || [];
+            const maxSeen = allValues.reduce(
+                (m, v) => (typeof v === "number" && v > m ? v : m), 0);
+            if (tol > 0 && maxSeen / tol > 50) {
+                forceYType = "log";
+            }
+        }
         Plotly.react("force-plot", forceTraces, {
             title: { text: "Max force", font: { size: 13 } },
             margin: { l: 8, r: 12, t: 32,
@@ -1059,7 +1282,16 @@
                      nticks: 6 },
             yaxis: { title: { text: "Max |F| (eV/\u00C5)", standoff: 4 },
                      tickformat: ".3~r",
-                     rangemode: "tozero", zeroline: false,
+                     // rangemode "tozero" anchors the axis at the
+                     // x-axis when on a linear scale (the visual
+                     // metaphor: "converged means y -> 0").  Log
+                     // scale picks its own range so the threshold
+                     // line + the trace are both legible at any
+                     // magnitude \u2014 auto-engaged when the trajectory
+                     // is more than 50x above target.
+                     rangemode: forceYType === "log" ? undefined : "tozero",
+                     type: forceYType,
+                     zeroline: false,
                      automargin: true, nticks: 5 },
             font: { family: "system-ui, sans-serif", size: 10 },
             showlegend: hasBothTraces,
@@ -1070,8 +1302,8 @@
                 font: { size: 9 },
                 bgcolor: "rgba(0,0,0,0)",
             },
-            shapes:      stageMx.shapes,
-            annotations: stageMx.annotations,
+            shapes:      forceShapes,
+            annotations: forceAnnotations,
         }, { displayModeBar: false, responsive: true });
 
         renderScfProgress();
@@ -1115,6 +1347,11 @@
         const scfEnergyEl = $("scf-energy-plot");
         const scfGnormEl  = $("scf-gnorm-plot");
         const history = state.data && state.data.scf_history;
+        // Local theme + targets lookups so this can be reasoned
+        // about in isolation; both helpers are cheap (one
+        // getComputedStyle, one runtime_info read).
+        const theme = _themeColors();
+        const ct = _convergenceTargets();
         const hideScf = () => {
             section.hidden = true;
             scfEnergyEl.hidden = true;
@@ -1156,18 +1393,21 @@
 
         // Pick the residual: prefer PySCF's |g|, fall back to
         // SIESTA's dHmax.  Both decrease toward 0 during convergence
-        // and look natural on a log y-axis.
-        let residual, residualName, residualUnit, residualColor;
+        // and look natural on a log y-axis.  Both use the orange
+        // ``theme.scfGnorm`` so the green threshold line stays the
+        // only green element on the plot (2026-06-13 recolor; the
+        // pre-fix amber + green choices conflicted with the new
+        // threshold-line green).
+        let residual, residualName, residualUnit;
+        const residualColor = theme.scfGnorm;
         if (current[0].gnorm !== undefined) {
             residual      = current.map(c => c.gnorm);
             residualName  = "|g|";
             residualUnit  = "eV/Å";
-            residualColor = "#fbbf24";   // amber
         } else if (current[0].dHmax !== undefined) {
             residual      = current.map(c => c.dHmax);
             residualName  = "dHmax";
             residualUnit  = "eV";
-            residualColor = "#4ade80";   // green
         } else {
             residual = null;
         }
@@ -1218,7 +1458,7 @@
             x: cycles,
             y: energies,
             mode: "lines+markers",
-            line: { color: "#6ba6ff", width: 1.5 },
+            line: { color: theme.scfEnergy, width: 1.5 },
             marker: { size: 5 },
             name: "E",
         }], {
@@ -1237,6 +1477,34 @@
         const resPlotEl = $("scf-gnorm-plot");
         if (residual !== null) {
             resPlotEl.hidden = false;
+            // SCF-tolerance threshold line, if we know the target.
+            // dm_tolerance is dimensionless (DM convergence) and
+            // applies to dHmax-style residuals; scf_grad_tol /
+            // scf_energy_tol apply to PySCF's |g|.  Pick the one
+            // that's relevant to the trace we're plotting; skip if
+            // neither was found in the source.
+            const scfShapes = [];
+            const scfAnnotations = [];
+            const scfTol = (residualName === "dHmax")
+                ? (ct && typeof ct.dm_tolerance === "number"
+                    ? ct.dm_tolerance : null)
+                : (ct && typeof ct.scf_grad_tol === "number"
+                    ? ct.scf_grad_tol : null);
+            if (scfTol != null) {
+                scfShapes.push({
+                    type: "line", xref: "paper",
+                    x0: 0, x1: 1,
+                    yref: "y", y0: scfTol, y1: scfTol,
+                    line: { color: theme.success, width: 1.5, dash: "dash" },
+                });
+                scfAnnotations.push({
+                    xref: "paper", x: 1, xanchor: "right",
+                    yref: "y", y: scfTol, yanchor: "bottom",
+                    text: "tol " + scfTol.toExponential(1),
+                    font: { size: 9, color: theme.success },
+                    showarrow: false,
+                });
+            }
             Plotly.react("scf-gnorm-plot", [{
                 x: cycles,
                 y: residual,
@@ -1256,6 +1524,8 @@
                          type: "log", zeroline: false, tickformat: ".0e",
                          automargin: true, nticks: 5 },
                 font: { family: "system-ui, sans-serif", size: 10 },
+                shapes:      scfShapes,
+                annotations: scfAnnotations,
             }, { displayModeBar: false, responsive: true });
         } else {
             resPlotEl.hidden = true;

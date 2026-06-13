@@ -55,6 +55,23 @@ _SIESTA_HOST_RE    = re.compile(
 _SIESTA_RUNTIME_RE = re.compile(
     r"^#\s*runtime\.([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$")
 
+# Convergence-target echo lines from SIESTA's ``redata:`` preamble.
+# Captured into ``runtime_info["convergence_targets"]`` so the Results
+# tab can render the threshold line + "current vs target" text without
+# the user having to load the source .fdf next to the run.  Each entry
+# matches ONE SIESTA echo line; values are floats / ints, no units in
+# the captured string (units are documented per key on the receiving
+# side).  Refs: SIESTA manual § 6 ("Output") -- ``redata:`` lines are a
+# stable contract across SIESTA 4.x and 5.x.
+_SIESTA_FORCE_TOL_RE = re.compile(
+    r"^\s*redata:\s+Force tolerance\s+=\s+([0-9.eE+-]+)\s+eV/Ang", re.IGNORECASE)
+_SIESTA_DM_TOL_RE = re.compile(
+    r"^\s*redata:\s+DM tolerance for SCF\s+=\s+([0-9.eE+-]+)", re.IGNORECASE)
+_SIESTA_MAX_SCF_RE = re.compile(
+    r"^\s*redata:\s+Max\. number of SCF Iter\s+=\s+(\d+)", re.IGNORECASE)
+_SIESTA_MAX_DISPL_RE = re.compile(
+    r"^\s*redata:\s+Max atomic displ per move\s+=\s+([0-9.eE+-]+)\s+Ang", re.IGNORECASE)
+
 # Lightweight prefix match for any SIESTA SCF iteration line.  We
 # capture iscf + the rest of the line as a single string; the actual
 # float columns are parsed separately by ``_parse_scf_floats`` below.
@@ -870,6 +887,15 @@ class SiestaParser(TrajectoryParser):
         #     over parser state) are iterated individually.
         compiled = compile_rules(rules)
 
+        def _set_conv_target(key: str, value: Any) -> None:
+            """Lazily create ``runtime_info['convergence_targets']`` and
+            stamp ``source`` once.  Called by the ``redata:`` echo probes
+            below — the Results tab consumes the populated subdict to
+            draw threshold lines + the "current vs target" readout."""
+            ct = runtime_info.setdefault("convergence_targets", {})
+            ct[key] = value
+            ct.setdefault("source", "siesta_input_echo")
+
         def _scan_runtime_info(line: str) -> bool:
             """Orthogonal runtime-info regex probes.  Not section
             boundaries -- just free-form key/value lines that may
@@ -898,6 +924,37 @@ class SiestaParser(TrajectoryParser):
                         runtime_info[key] = int(val)
                     except ValueError:
                         runtime_info[key] = val
+                return True
+            # Convergence-target probes (SIESTA's ``redata:`` echo
+            # block at run start).  Each line is matched at MOST
+            # once per run; idempotent re-matches are safe.
+            m = _SIESTA_FORCE_TOL_RE.match(line)
+            if m:
+                try:
+                    _set_conv_target("max_force_tol_eV_per_A", float(m.group(1)))
+                except ValueError:
+                    pass
+                return True
+            m = _SIESTA_DM_TOL_RE.match(line)
+            if m:
+                try:
+                    _set_conv_target("dm_tolerance", float(m.group(1)))
+                except ValueError:
+                    pass
+                return True
+            m = _SIESTA_MAX_SCF_RE.match(line)
+            if m:
+                try:
+                    _set_conv_target("max_scf_iter", int(m.group(1)))
+                except ValueError:
+                    pass
+                return True
+            m = _SIESTA_MAX_DISPL_RE.match(line)
+            if m:
+                try:
+                    _set_conv_target("max_displ_ang", float(m.group(1)))
+                except ValueError:
+                    pass
                 return True
             return False
 

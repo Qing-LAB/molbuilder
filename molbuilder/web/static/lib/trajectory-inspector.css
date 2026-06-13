@@ -261,6 +261,90 @@
     outline-offset: 1px;
 }
 
+/* ---- Convergence-targets summary (2026-06-13) ---------------------
+ *
+ * Sits between the run-state badge and the plots row.  Mirrors the
+ * .run-state visual treatment (single bordered block, no card
+ * chrome) so the metadata band reads as one continuous strip.  Left
+ * border in --success when targets are known + the run is on track,
+ * --warn-soft when current > 2× target, --text-muted when targets
+ * aren't known (the "not found in source" hint). */
+.convergence-summary {
+    margin:         var(--space-sm) 0;
+    padding:        var(--space-sm) var(--space-md);
+    border:         1px solid var(--border-soft);
+    border-left:    3px solid var(--success);
+    border-radius:  var(--radius);
+    background:     var(--bg-card);
+    color:          var(--text-primary);
+    font-size:      var(--text-sm);
+    line-height:    1.4;
+}
+.convergence-summary.is-off-target {
+    border-left-color: var(--warn-soft);
+}
+.convergence-summary.is-unknown {
+    border-left-color: var(--text-muted);
+}
+.convergence-summary[hidden] { display: none; }
+
+.convergence-summary-header {
+    display:        flex;
+    align-items:    baseline;
+    justify-content: space-between;
+    gap:            var(--space-md);
+    margin-bottom:  var(--space-xs);
+}
+.convergence-summary-title {
+    font-weight:    var(--weight-semibold);
+    color:          var(--text-primary);
+}
+.convergence-summary-source {
+    color:          var(--text-muted);
+    font-style:     italic;
+    font-size:      var(--text-xs);
+}
+
+/* Two-column dt/dd grid for the target rows.  Monospace numbers so
+ * decimal alignment reads cleanly. */
+.convergence-summary-targets {
+    display:        grid;
+    grid-template-columns: max-content 1fr;
+    column-gap:     var(--space-md);
+    row-gap:        2px;
+    margin:         0;
+    font-family:    ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size:      var(--text-xs);
+}
+.convergence-summary-targets dt {
+    color:          var(--text-secondary);
+}
+.convergence-summary-targets dd {
+    margin:         0;
+    color:          var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+.convergence-summary-current {
+    margin-top:     var(--space-xs);
+    padding-top:    var(--space-xs);
+    border-top:     1px dashed var(--border-soft);
+    font-family:    ui-monospace, "JetBrains Mono", Menlo, Consolas, monospace;
+    font-size:      var(--text-xs);
+    font-variant-numeric: tabular-nums;
+    color:          var(--text-primary);
+}
+.convergence-summary-current .at-target  { color: var(--success); }
+.convergence-summary-current .off-target { color: var(--warn-soft); }
+
+.convergence-summary-hint {
+    margin:         var(--space-xs) 0 0;
+    color:          var(--text-secondary);
+    font-size:      var(--text-xs);
+    line-height:    1.4;
+}
+.convergence-summary-hint[hidden] { display: none; }
+
 .plots-row {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));

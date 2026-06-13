@@ -109,6 +109,16 @@ _ENGINE_RE    = re.compile(r"^#\s*engine:\s*(\S+)", re.IGNORECASE)
 # emitter; the inspector parses ints/bools out of the strings as
 # needed.
 _RUNTIME_RE   = re.compile(r"^#\s*runtime\.([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$")
+# Convergence-target header lines look like
+# ``# convergence.<key>: <value>``.  Same shape as ``# runtime.*``
+# above so a single regex family covers both — keeps the molwatch
+# file format readable.  Captures into
+# ``runtime_info["convergence_targets"]`` (a nested subdict, NOT a
+# flat key) so the Results-tab inspector can render the threshold
+# line + "current vs target" readout without having to guess at
+# semantics from prefix matching.
+_CONVERGENCE_RE = re.compile(
+    r"^#\s*convergence\.([a-zA-Z_][a-zA-Z0-9_]*):\s*(.*)$")
 # Run-state markers, written by the inlined PySCF emitter via
 # atexit/excepthook hooks.  Both lines may appear at the FOOTER of
 # a log (atexit fires after the last step block).  When neither is
@@ -220,6 +230,36 @@ class MolwatchLogParser(TrajectoryParser):
                     runtime_info[key] = int(val)
                 except ValueError:
                     runtime_info[key] = val
+
+        def _on_convergence(line: str, line_no: int) -> None:
+            """``# convergence.<key>: <value>`` header lines populate
+            ``runtime_info["convergence_targets"]``.  Stamps
+            ``source = "molwatch_header"`` on first hit so the UI knows
+            where the values came from."""
+            m = _CONVERGENCE_RE.match(line)
+            if not m:
+                return
+            key, val = m.group(1), m.group(2).strip()
+            ct = runtime_info.setdefault("convergence_targets", {})
+            ct.setdefault("source", "molwatch_header")
+            # Coerce int / float / bool / None into Python types.
+            if val == "None" or val == "null":
+                ct[key] = None
+                return
+            if val in ("True", "False"):
+                ct[key] = (val == "True")
+                return
+            try:
+                ct[key] = int(val)
+                return
+            except ValueError:
+                pass
+            try:
+                ct[key] = float(val)
+                return
+            except ValueError:
+                pass
+            ct[key] = val
 
         # ---- block boundary on_start callbacks ---------------------------
 
@@ -406,6 +446,13 @@ class MolwatchLogParser(TrajectoryParser):
                 start=matches_regex_ci(
                     r"^#\s*runtime\.[a-zA-Z_][a-zA-Z0-9_]*:"),
                 on_start=_on_runtime,
+            ),
+            SectionRule(
+                name="convergence",
+                aliases=["# convergence.<key>: ..."],
+                start=matches_regex_ci(
+                    r"^#\s*convergence\.[a-zA-Z_][a-zA-Z0-9_]*:"),
+                on_start=_on_convergence,
             ),
             block_begin_rule,
         ]
