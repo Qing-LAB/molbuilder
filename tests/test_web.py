@@ -2069,11 +2069,15 @@ def test_siesta_form_schema_matches_documented_layout():
         # side-chains (carboxylates, lysines, sulfonates -- not seen
         # by the phosphate auto-detect heuristic) have a form input.
         ("System",                   3),
-        ("Basis & grid",             3),
+        # 2026-06-13 fold: kgrid (Monkhorst-Pack) moved from its own
+        # one-field section into "Basis & grid" so the form stops
+        # having a one-field-only section.  Both are about how
+        # finely we sample the calculation (real space + reciprocal
+        # space).  Basis & grid: 3 + 1 = 4 fields now.
+        ("Basis & grid",             4),
         ("Exchange-correlation",     2),
         ("SCF",                      7),
         ("Spin",                     2),
-        ("k-grid (Monkhorst-Pack)",  1),
         # Relaxation: 4 -> 7 fields after 2026-05-26.  When the user
         # picks Verlet / Nose from MD.TypeOfRun, SIESTA silently used
         # the dataclass defaults (300 K / 1 fs / 0 K target) with NO
