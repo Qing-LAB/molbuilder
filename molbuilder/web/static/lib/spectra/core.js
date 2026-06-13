@@ -1061,6 +1061,27 @@
             state.selectedMode = null;
             return;
         }
+        // 2026-06-12 (audit #352): live-watch same-content guard.
+        // ``watchTick`` polls /api/spectra/load every WATCH_INTERVAL_MS
+        // and most ticks return identical results (Hessian phase still
+        // running, ES phase still cooking).  Without this gate the
+        // viewer-dispose block below tears down + rebuilds the 3Dmol
+        // canvas every 2s, which resets the user's camera angle and
+        // pauses the vibration animation right when they're trying to
+        // study a mode.  Fingerprint on the fields that drive what's
+        // rendered: atom count, mode count + per-mode ES presence,
+        // phase markers, and currently-selected mode.  Same fingerprint
+        // = nothing to redraw, bail.
+        const prev = state.results;
+        const newFp = _resultsFingerprint(results, state.selectedMode);
+        const prevFp = prev ? _resultsFingerprint(prev, state.selectedMode) : null;
+        if (prevFp !== null && prevFp === newFp) {
+            // Keep state.results pointing at the freshest object so any
+            // downstream reads see the latest references (runtime_info
+            // etc. can update even when the fingerprint is stable).
+            state.results = results;
+            return;
+        }
         state.results = results;
         els.resultsSummary.hidden = false;
 
@@ -1139,6 +1160,24 @@
             if (els.modeViewer) els.modeViewer.innerHTML = "";
         }
         renderModeViewer();
+    }
+
+    function _resultsFingerprint(results, selectedMode) {
+        // Compact key over the fields renderResults branches on.  Any
+        // change here means "user-visible viewer state needs to update".
+        // Stable string makes equality cheap — bail without rerendering
+        // when the live-watch poll returned an unchanged snapshot.
+        const modes = results.modes || [];
+        const esBits = modes.map(m => m.electronic_structure ? "1" : "0").join("");
+        return [
+            results.n_atoms_total,
+            modes.length,
+            esBits,
+            results.phase_frequencies || "",
+            results.phase_raman || "",
+            results.phase_es || "",
+            selectedMode == null ? "-" : String(selectedMode),
+        ].join("|");
     }
 
     function _pickDefaultMode(modes, preferES) {

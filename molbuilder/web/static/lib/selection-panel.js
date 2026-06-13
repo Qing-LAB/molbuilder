@@ -862,7 +862,13 @@
         // "auto-disables when the selection becomes empty"; this
         // wires up that contract.
         const _isolateSubscribed = { last: false };
-        store.subscribe((s) => {
+        // Capture the unsubscribe so dispose() can detach this
+        // subscriber.  Audit #352 caught this leak — the auto-
+        // uncheck wiring used to fire-and-forget the subscription,
+        // so each /modify mount→dispose cycle stranded a closure
+        // that kept the panel's els.isolateChk reference + the
+        // _isolateAdapter() lookup alive across navigations.
+        const _isolateUnsubscribe = store.subscribe((s) => {
             const empty = !s.indices || s.indices.length === 0;
             if (!els.isolateChk) return;
             const adapter = _isolateAdapter();
@@ -874,6 +880,9 @@
                 }
                 _isolateSubscribed.last = false;
             }
+        });
+        cleanups.push(() => {
+            try { _isolateUnsubscribe(); } catch (_) { /* ignore */ }
         });
         on(els.assignTgt,       "change", renderAssignVisibility);
         on(els.assignBtn,       "click",  onAssign);

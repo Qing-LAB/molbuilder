@@ -3199,8 +3199,16 @@
         slider.max = String(a.frames.length - 1);
         slider.step = "1";
         slider.addEventListener("input", () => {
+            // Snapshot the dragged-to value BEFORE _stopAnimationLoop
+            // runs: that call routes through _refreshFrameStrip, which
+            // re-writes ``slider.value = a.currentFrame`` from the
+            // pre-drag frame.  Reading ``slider.value`` after the stop
+            // would yield the OLD frame and the seek would be a no-op
+            // — that bug class shipped briefly in 2026-06-12 before
+            // this snapshot landed (#353).
+            const target = parseInt(slider.value, 10);
             _stopAnimationLoop(state);
-            _showTrajectoryFrame(state, parseInt(slider.value, 10));
+            _showTrajectoryFrame(state, target);
         });
 
         strip.appendChild(prev);

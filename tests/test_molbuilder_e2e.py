@@ -4520,6 +4520,36 @@ def watch_log_file_with_forces(tmp_path, monkeypatch):
     return str(p)
 
 
+def _build_multi_step_molwatch(n_frames):
+    """Build an n-frame molwatch log with small per-frame drift so
+    each frame's renders are distinct (per-frame check on the slider
+    actually moves the viewer)."""
+    lines = ["# molwatch trajectory log v1", "# engine: pyscf"]
+    for i in range(n_frames):
+        lines.append(f"==== molwatch step {i} begin ====")
+        lines.append(f"step_index: {i}")
+        lines.append("n_atoms: 3")
+        lines.append("coordinates (Ang):")
+        # Nudge oxygen along z so the frames visibly differ.
+        z = i * 0.02
+        lines.append(f"   O    0.00000000   0.00000000   {z:.8f}")
+        lines.append( "   H    0.95700000   0.00000000   0.00000000")
+        lines.append( "   H   -0.23900000   0.92700000   0.00000000")
+        lines.append(f"energy (eV): {-76.4 + i * 0.001:.5f}")
+        lines.append(f"==== molwatch step {i} end ====")
+    return "\n".join(lines) + "\n"
+
+
+@pytest.fixture
+def watch_log_file_multi_step(tmp_path, monkeypatch):
+    """A 10-step molwatch trajectory so the embed's frame strip mounts
+    a slider with max=9 — the prerequisite for slider-scrub tests."""
+    _register_tmp_as_picker_root(tmp_path, monkeypatch)
+    p = tmp_path / "multi-step.molwatch.log"
+    p.write_text(_build_multi_step_molwatch(10))
+    return str(p)
+
+
 def test_watch_show_forces_renders_arrows(
         page, flask_server, watch_log_file_with_forces):
     """Toggling 'Show force vectors' on a trajectory that carries
@@ -4651,6 +4681,78 @@ def _load_watch_log(page, base_url, log_path):
         "  return el && /\\d+/.test(el.textContent || '');"
         "}",
         timeout=8000,
+    )
+
+
+def test_frame_slider_scrubs(page, flask_server, watch_log_file_multi_step):
+    """2026-06-12: the embed's frame strip slider must move the
+    displayed frame when the user drags it.
+
+    Reproduces the user-reported "slidebar cannot be dragged" bug.
+    The slider's ``input`` event handler in mol-viewer-embed.js
+    calls ``_showTrajectoryFrame`` directly, so the wiring is
+    intact AT MOUNT; the prior bug was that the live-poll path
+    rebuilt the model on every same-data tick which re-mounted
+    the frame strip and clobbered slider drag state.  Post-fix
+    (commit 12e219b's ``noNewContent`` guard) this should stay
+    responsive across polls.
+
+    Two paths exercised:
+      (a) programmatic ``input`` event on the slider DOM element
+          — pins the handler wiring;
+      (b) real mouse drag from start to end — pins the user-
+          interaction path that broke in production.
+    """
+    _load_watch_log(page, flask_server, watch_log_file_multi_step)
+    page.wait_for_selector(
+        ".mol-viewer-frame-strip .frame-slider", timeout=8000
+    )
+    # The 10-frame fixture pins slider max = 9.
+    page.wait_for_function(
+        "() => document.querySelector('.frame-slider').max === '9'"
+    )
+
+    # (a) Programmatic input event.
+    page.evaluate(
+        "() => {"
+        "  const s = document.querySelector('.frame-slider');"
+        "  s.value = '5';"
+        "  s.dispatchEvent(new Event('input', {bubbles: true}));"
+        "}"
+    )
+    page.wait_for_timeout(150)
+    counter_after_prog = page.evaluate(
+        "() => document.querySelector('.frame-counter').textContent"
+    )
+    assert "6 / 10" in counter_after_prog, (
+        f"programmatic input to value=5 should show frame 6/10 "
+        f"(1-based); got {counter_after_prog!r}"
+    )
+
+    # (b) Real mouse drag from one end to the other.
+    rect = page.locator(".frame-slider").bounding_box()
+    start_x = rect["x"] + 4
+    end_x = rect["x"] + rect["width"] - 4
+    y = rect["y"] + rect["height"] / 2
+    page.mouse.move(start_x, y)
+    page.mouse.down()
+    # Multi-step drag so the browser fires intermediate ``input``
+    # events the same way a real user's drag would.
+    page.mouse.move(end_x, y, steps=8)
+    page.mouse.up()
+    page.wait_for_timeout(200)
+    counter_after_drag = page.evaluate(
+        "() => document.querySelector('.frame-counter').textContent"
+    )
+    # End-of-track drag should land at the last frame (or near it).
+    assert "/ 10" in counter_after_drag, (
+        f"drag should land at a frame; got {counter_after_drag!r}"
+    )
+    last_val = page.evaluate(
+        "() => parseInt(document.querySelector('.frame-slider').value, 10)"
+    )
+    assert last_val >= 7, (
+        f"end-of-track drag should land near frame 9; got value={last_val}"
     )
 
 
