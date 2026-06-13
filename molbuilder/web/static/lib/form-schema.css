@@ -341,3 +341,119 @@ fieldset select:disabled {
     color: var(--text-muted);
     line-height: 1.35;
 }
+
+/* ---- Workflow-group framework -----------------------------------
+ *
+ * Used by stage-shaped multi-card forms (Structure-Optimization v2,
+ * future Spectrum/Transport variants).  Three group ROLES, each
+ * with a distinct left-border accent + subtitle prose so the
+ * user reads "what changes when I switch stages?" from the visual
+ * hierarchy alone:
+ *
+ *   .workflow-group--system  identity, set once per system
+ *   .workflow-group--stage   the convergence target — switching the
+ *                            stage selector mutates ONLY this card
+ *   .workflow-group--budget  patience caps, set-and-forget
+ *
+ * The framework uses a SCOPED CSS variable (--workflow-group-accent)
+ * set on the parent and read by descendants (header title, detection
+ * chip, focus outlines).  This lets a chip, a button border, and a
+ * sub-heading all pick up the right color with zero per-element
+ * duplication — and a theme retune touches one --group-* token in
+ * lib/tokens.css instead of every selector here. */
+
+.workflow-group {
+    border: 1px solid var(--border-soft);
+    border-left: 4px solid var(--workflow-group-accent, var(--border-soft));
+    border-radius: var(--radius);
+    padding: var(--space-md) var(--space-lg);
+    margin-bottom: var(--space-md);
+    background: var(--bg-card);
+}
+
+.workflow-group:last-child {
+    margin-bottom: 0;
+}
+
+.workflow-group-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-sm);
+    margin-bottom: var(--space-xs);
+    flex-wrap: wrap;
+}
+
+.workflow-group-title {
+    margin: 0;
+    font-size: var(--text-md);
+    font-weight: var(--weight-semibold);
+    line-height: var(--line-tight);
+    color: var(--workflow-group-accent, var(--text-primary));
+}
+
+/* One-line italic explanation under the header.  Carries the
+ * load-bearing "what does switching the stage selector touch?"
+ * answer for this group.  Hidden on narrow viewports if it
+ * would crowd the chip; that case the chip wins. */
+.workflow-group-subtitle {
+    margin: 0 0 var(--space-sm);
+    font-size: var(--text-sm);
+    line-height: var(--line-snug);
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+/* Detection chip on the right side of the header.  Used to surface
+ * an analysis-derived hint ("232 atoms · 1 Au cluster"); when
+ * present, signals that the group has auto-suggested defaults.
+ * Tinted background uses color-mix against the group accent so a
+ * theme change to the role tokens repaints the chip automatically. */
+.workflow-detection-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: 2px var(--space-sm);
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb,
+                          var(--workflow-group-accent, var(--accent)) 18%,
+                          transparent);
+    color: var(--workflow-group-accent, var(--accent));
+    font-size: var(--text-xs);
+    font-weight: var(--weight-medium);
+    white-space: nowrap;
+}
+
+/* "Apply suggestions" button: borrows the group's accent so the
+ * affordance reads as "this acts on this card."  Uses the same
+ * shape as the engine-key badge for consistency. */
+.workflow-group-apply-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
+    padding: 3px var(--space-md);
+    border: 1px solid var(--workflow-group-accent, var(--accent));
+    background: transparent;
+    color: var(--workflow-group-accent, var(--accent));
+    border-radius: var(--radius-sm);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-medium);
+    cursor: pointer;
+    transition: background 120ms ease;
+}
+.workflow-group-apply-btn:hover {
+    background: color-mix(in srgb,
+                          var(--workflow-group-accent, var(--accent)) 12%,
+                          transparent);
+}
+.workflow-group-apply-btn:focus-visible {
+    outline: 2px solid var(--workflow-group-accent, var(--accent));
+    outline-offset: 1px;
+}
+
+/* Per-group accent: scoped variable set on the parent.  Descendants
+ * inherit it via the var() fallback chain so chip + title + button
+ * all pick up the role color from one place. */
+.workflow-group--system { --workflow-group-accent: var(--group-system-accent); }
+.workflow-group--stage  { --workflow-group-accent: var(--group-stage-accent); }
+.workflow-group--budget { --workflow-group-accent: var(--group-budget-accent); }

@@ -155,4 +155,22 @@
     /* Hover-state remove / delete affordances (lighter than --error
      * for legibility on a dark panel background) */
     --sp-danger-fg:       #ff7070;
+
+    /* --- Workflow-group accents (lib/form-schema.css) ---
+     * Three roles used by stage-shaped multi-card forms (the
+     * Structure-Optimization stage UI; future Spectrum/Transport
+     * variants).  The role name carries the semantic meaning;
+     * the value is an alias of an existing palette token so a
+     * theme retune touches one line, not the form.
+     *
+     *   --group-system-accent  identity, set once per system
+     *   --group-stage-accent   what changes 1→2→3 ("review me")
+     *   --group-budget-accent  patience caps, set-and-forget
+     *
+     * Authors should reach for the role tokens, NOT the underlying
+     * --accent / --warn-soft / --success aliases, so the
+     * workflow-group semantics stay readable from the CSS. */
+    --group-system-accent:  var(--accent);
+    --group-stage-accent:   var(--warn-soft);
+    --group-budget-accent:  var(--success);
 }
