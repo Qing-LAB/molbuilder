@@ -117,6 +117,13 @@
   "parse_warning_count": 0,
   "run_state": "error",
   "runtime_info": {
+    "convergence_targets": {
+      "dm_tolerance": 1e-05,
+      "max_displ_ang": 0.05,
+      "max_force_tol_eV_per_A": 0.01,
+      "max_scf_iter": 500,
+      "source": "siesta_input_echo"
+    },
     "n_mpi_processes": 20
   },
   "source_format": "siesta"

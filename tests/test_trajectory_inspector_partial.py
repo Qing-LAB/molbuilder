@@ -120,6 +120,20 @@ class TestPartialIntegrity:
         "scf-section", "scf-title", "scf-status",
         "energy-plot", "force-plot",
         "scf-energy-plot", "scf-gnorm-plot",
+        # Convergence-targets summary band (task #362, 2026-06-12).
+        # Populated by lib/trajectory/core.js::_renderConvergenceSummary
+        # from Trajectory.runtime_info.convergence_targets — the
+        # parser captures it from the SIESTA input echo / molwatch
+        # header / PySCF script's _CONVERGENCE_TARGETS dict.  Hidden
+        # by default; shows when the trajectory carries targets.
+        "convergence-summary",
+        "convergence-summary-source",
+        "convergence-summary-targets",
+        "convergence-summary-current",
+        "convergence-summary-hint",
+        # Per-trajectory CSV export button (compact legend + Export
+        # all CSV row, 2026-06-12 result-plot polish).
+        "trajectory-export-csv-btn",
     }
 
     # IDs the partial MUST NOT declare — they belong to the embed.
