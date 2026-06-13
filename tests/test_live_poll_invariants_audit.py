@@ -338,3 +338,80 @@ class TestSelectionPanelIsolateUnsubscribeCleanup:
             "panel's cleanups discipline: every addEventListener / "
             "subscribe in mount() MUST push its undo into "
             "cleanups, no exceptions.")
+
+
+# --------------------------------------------------------------------- #
+#  Trajectory inspector claims geomeTRIC / PySCF multi-frame XYZ        #
+# --------------------------------------------------------------------- #
+
+
+class TestTrajectoryInspectorClaimsOptimXyz:
+    """PySCF's geom-opt wrapper (and bare geomeTRIC runs) write the
+    multi-frame trajectory to ``<job>_geom_optim.xyz`` (or older
+    ``<job>_optim.xyz``).  These files ARE valid multi-frame XYZ
+    that ``PySCFParser.can_parse`` accepts and renders correctly via
+    the trajectory inspector.
+
+    Before this pin (2026-06-12, after the user reported a Results-
+    tab regression on a BDT/optimization folder), the trajectory
+    inspector matched only ``.molwatch.log`` + ``.out``.  The
+    structure inspector — which matches every ``.xyz`` — claimed the
+    multi-frame trajectory and rendered the first frame as a
+    single static structure.  The user saw "Structure" in the
+    picker, with no way to access the trajectory animation /
+    energy plots / SCF history that DO exist in the file.
+
+    Pin both the match expansion AND the resultCategory routing so
+    a future refactor that "simplifies" the match (e.g. drops the
+    `_optim.xyz` arm assuming the structure inspector covers it)
+    fails this test rather than silently reverting the regression."""
+
+    @pytest.fixture(scope="class")
+    def trajectory_inspector_body(self):
+        return (_LIB / "inspectors" / "trajectory.js").read_text()
+
+    def test_match_claims_geom_optim_xyz(self, trajectory_inspector_body):
+        """``*_geom_optim.xyz`` (the conventional geomeTRIC + PySCF
+        wrapper naming) MUST land on the trajectory inspector, not
+        the structure inspector."""
+        assert '_geom_optim.xyz"' in trajectory_inspector_body, (
+            "trajectory inspector no longer claims `_geom_optim.xyz`. "
+            "PySCF / geomeTRIC multi-frame trajectories will fall "
+            "back to the structure inspector (single-frame view) and "
+            "the user loses the animation + energy/force plots that "
+            "are the whole point of the trajectory.  See the 2026-06-12 "
+            "Results-tab regression report.")
+
+    def test_match_claims_plain_optim_xyz(self, trajectory_inspector_body):
+        """Older PySCF runs (and direct geomeTRIC invocations) write
+        ``<job>_optim.xyz`` without the ``_geom_`` infix.  Keep the
+        plain pattern in the match too."""
+        assert '"_optim.xyz"' in trajectory_inspector_body, (
+            "trajectory inspector no longer claims `*_optim.xyz`. "
+            "Older PySCF / direct-geomeTRIC trajectories will hit "
+            "the same single-frame structure-inspector regression as "
+            "`_geom_optim.xyz`.")
+
+    def test_resultCategory_routes_optim_xyz_to_pyscf_bucket(
+            self, trajectory_inspector_body):
+        """The picker groups files by ``resultCategory``; the new
+        ``_optim.xyz`` files should bucket under "PySCF
+        optimization" (same as ``.molwatch.log``) so the user finds
+        them next to the engine's other artifacts."""
+        # Confirm both _optim.xyz forms are routed to a PySCF bucket
+        # somewhere inside the resultCategory function body.
+        m = re.search(
+            r"resultCategory\s*:\s*\(\s*file\s*\)\s*=>\s*\{(.+?)\}\s*,",
+            trajectory_inspector_body, re.DOTALL,
+        )
+        assert m is not None, (
+            "trajectory inspector lost its resultCategory function — "
+            "the picker can no longer group result files by engine.")
+        body = m.group(1)
+        # Both _optim.xyz forms should return "PySCF optimization"
+        # (or some label that contains "PySCF").
+        assert "_optim.xyz" in body and "PySCF" in body, (
+            "trajectory inspector's resultCategory no longer routes "
+            "`_optim.xyz` to a PySCF bucket.  The files will still "
+            "show in the picker but under a generic header, hiding "
+            "their engine provenance from the user.")

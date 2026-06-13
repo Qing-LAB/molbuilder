@@ -1,13 +1,30 @@
 /* Trajectory inspector -- registry-side adapter that wires the
  * shared partial-inspector factory to ``lib/trajectory/core.js``.
  *
- * Match rule: ``*.molwatch.log`` (the canonical molbuilder format)
- * + ``.out`` (SIESTA's redirected stdout, content-sniffed by
- * SiestaParser).  ``.pyscf.log`` is NOT claimed here — it's plain
- * PySCF wrapper stdout, not a trajectory format; falls through to
- * the source inspector (text viewer) until a dedicated
- * ``pyscf-log`` inspector lands on the roadmap.  Plain ``.log``
- * stays unclaimed too — too generic.
+ * Match rule:
+ *   * ``*.molwatch.log`` — the canonical molbuilder format
+ *     (single self-contained file with frames + SCF + forces)
+ *   * ``*.out`` — SIESTA's redirected stdout, content-sniffed by
+ *     SiestaParser
+ *   * ``*_optim.xyz`` — PySCF / geomeTRIC's multi-frame
+ *     trajectory XYZ (the geom-opt wrapper writes
+ *     ``<job>_geom_optim.xyz``; older PySCF runs may use
+ *     ``<job>_optim.xyz``).  PySCFParser handles both shapes via
+ *     ``can_parse`` content-sniff in ``parsers/pyscf.py``.
+ *
+ * Registration order in results.html puts this BEFORE the
+ * structure inspector (which matches all ``.xyz`` / ``.pdb``), so
+ * the ``*_optim.xyz`` claim here wins over structure's generic
+ * ``.xyz`` match.  Plain user-named single-frame ``.xyz`` files
+ * still flow to the structure inspector — only the conventional
+ * geomeTRIC / PySCF trajectory naming is intercepted.
+ *
+ * Intentional non-matches:
+ *   * ``.pyscf.log`` — plain PySCF wrapper stdout, not a
+ *     trajectory format; falls through to the source inspector
+ *     (text viewer) until a dedicated ``pyscf-log`` inspector
+ *     lands on the roadmap.
+ *   * Plain ``.log`` — too generic.
  *
  * Mount flow + error-card rendering live in
  * lib/inspectors/_partial_inspector_factory.js (DRY'd 2026-06-09,
@@ -43,17 +60,23 @@
         match: (file) => {
             const lower = file.toLowerCase();
             return lower.endsWith(".molwatch.log")
-                || lower.endsWith(".out");
+                || lower.endsWith(".out")
+                || lower.endsWith("_optim.xyz")
+                || lower.endsWith("_geom_optim.xyz");
         },
-        // Two different engine outputs land here; the picker groups
+        // Three different engine outputs land here; the picker groups
         // them under distinct headers so the user scans visually.
-        // ``.out`` → SIESTA (siesta wrapper redirects stdout into
-        // ``<base>-runN.out``); ``.molwatch.log`` → the unified
-        // molwatch format emitted by the PySCF geom-opt wrapper.
+        //   ``.out``                 → SIESTA wrapper redirected stdout
+        //   ``.molwatch.log``        → unified molwatch format (any engine)
+        //   ``*_optim.xyz`` (incl. ``_geom_optim.xyz``)
+        //                            → PySCF / geomeTRIC multi-frame XYZ
         resultCategory: (file) => {
             const lower = file.toLowerCase();
-            if (lower.endsWith(".molwatch.log")) return "PySCF optimization";
-            if (lower.endsWith(".out"))           return "SIESTA optimization";
+            if (lower.endsWith(".molwatch.log"))   return "PySCF optimization";
+            if (lower.endsWith(".out"))             return "SIESTA optimization";
+            if (lower.endsWith("_optim.xyz")
+                || lower.endsWith("_geom_optim.xyz"))
+                return "PySCF optimization";
             return "Trajectory";  // fallback (shouldn't fire given match())
         },
     });
