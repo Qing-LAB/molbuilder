@@ -20,27 +20,27 @@
     display: flex;
     flex-wrap: wrap;
     align-items: stretch;
-    background: #141414;
-    border-bottom: 1px solid #2a2a2a;
+    background: var(--ps-bg-deep);
+    border-bottom: 1px solid var(--ps-border);
     font: 15px/1.4 system-ui, sans-serif;
 }
 
 .app-tab {
     padding: 0.75rem 1.6rem;
-    color: #777;
+    color: var(--ps-fg-dim);
     font-weight: 500;
     text-decoration: none;
     border-bottom: 4px solid transparent;
     transition: color 0.12s, background 0.12s, border-color 0.12s;
 }
 .app-tab:hover {
-    color: #ddd;
-    background: #1c1c1c;
+    color: var(--ps-fg);
+    background: var(--ps-bg-tile);
 }
 .app-tab.is-active {
-    color: #fff;
-    background: #2a2a2a;
-    border-bottom-color: #4a9eff;
+    color: var(--ps-selected-fg);
+    background: var(--ps-border);
+    border-bottom-color: var(--accent);
     font-weight: 700;
 }
 
@@ -57,23 +57,23 @@
     align-items: center;
     gap: 0.8rem;
     padding: 0 1.4rem;
-    color: #aaa;
+    color: var(--ps-fg-dim);
     font: 14px/1.4 system-ui, sans-serif;
 }
 .app-account__email {
-    color: #ddd;
+    color: var(--ps-fg);
     font-weight: 500;
 }
 .app-account__logout {
-    color: #4a9eff;
+    color: var(--accent);
     text-decoration: none;
     padding: 0.4rem 0.8rem;
-    border: 1px solid #4a9eff;
+    border: 1px solid var(--accent);
     border-radius: 4px;
     font-weight: 500;
     transition: background 0.12s, color 0.12s;
 }
 .app-account__logout:hover {
-    background: #4a9eff;
-    color: #fff;
+    background: var(--accent);
+    color: var(--ps-selected-fg);
 }

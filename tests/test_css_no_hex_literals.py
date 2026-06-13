@@ -55,27 +55,32 @@ STATIC_ROOT = (Path(__file__).resolve().parent.parent
 EXCLUDE_PATH_SUBSTRS = ("vendor", "codemirror")
 
 # Files where raw hex is allowed up to a documented cap.  Each
-# entry is (max_allowed, why + phase-3-plan).  Shrink the cap
+# entry is (max_allowed, why + phase-N-plan).  Shrink the cap
 # whenever a cleanup commit reduces the count; do NOT grow without
-# a plan.
+# a plan.  Goal: drive every entry to zero, then promote to
+# STRICT_FILES below.
 HEX_BUDGET: dict[str, tuple[int, str]] = {
-    "lib/selection-panel.css":   (97, "phase 3: introduce --sp-* namespaced palette in tokens.css"),
-    "lib/projects-sidebar.css":  (66, "phase 3: promote --ps-* palette from local :root into tokens.css"),
-    "spectra/style.css":         (20, "phase 3: spectra-specific issue colors → semantic tokens"),
-    "lib/tabs.css":              (14, "phase 3: tab-bar palette → namespaced tokens"),
-    "lib/mol-viewer-embed.css":  (12, "phase 3: 3Dmol overlay knob colors → --mv-* namespaced tokens"),
-    "lib/trajectory-inspector.css": (1, "phase 3: replace one remaining ffffff with --text-on-accent"),
-    "lib/selection/measurement-chip.css": (4, "phase 3: measurement-chip palette → tokens"),
+    "lib/trajectory-inspector.css": (1, "phase 4: one #ffffff in the run-state header (covered by warn-pastel exemptions plus 1 stray)"),
 }
 
 # Files allowed ZERO raw hex (anything outside protected regions
-# is a bug).  Adding to this list is the goal of Phase 2.
+# OR not on an /* exempt: ... */ line is a bug).  Phase 3
+# (2026-06-13) moved selection-panel, projects-sidebar, tabs,
+# mol-viewer-embed, measurement-chip, and spectra from BUDGET into
+# STRICT after promoting their palettes (--ps-*, --sp-*) into
+# tokens.css and replacing raw hex with token references.
 STRICT_FILES: set[str] = {
     "style.css",
     "results/style.css",
     "modify/style.css",
     "lib/page-shell.css",
     "lib/form-schema.css",
+    "lib/projects-sidebar.css",
+    "lib/selection-panel.css",
+    "lib/tabs.css",
+    "lib/mol-viewer-embed.css",
+    "lib/selection/measurement-chip.css",
+    "spectra/style.css",
 }
 
 # tokens.css is its own thing — that file IS the home for hex.

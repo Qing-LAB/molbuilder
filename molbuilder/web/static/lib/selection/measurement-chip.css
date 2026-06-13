@@ -36,7 +36,7 @@
     max-width: calc(100% - 1.2rem);
     padding: 0.35rem 0.6rem;
     background: rgba(15, 17, 21, 0.78);
-    color: #f3f4f6;
+    color: var(--text-primary);
     border: 1px solid rgba(74, 158, 255, 0.45);
     border-left-width: 3px;
     border-radius: 4px;
@@ -47,9 +47,9 @@
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
 }
 .selection-measurement-overlay[hidden] { display: none; }
-.selection-measurement-overlay[data-kind="xyz"]      { border-left-color: #94a3b8; }
-.selection-measurement-overlay[data-kind="distance"] { border-left-color: #4a9eff; }
-.selection-measurement-overlay[data-kind="angle"]    { border-left-color: #fb923c; }
+.selection-measurement-overlay[data-kind="xyz"]      { border-left-color: var(--text-secondary); }
+.selection-measurement-overlay[data-kind="distance"] { border-left-color: var(--accent); }
+.selection-measurement-overlay[data-kind="angle"]    { border-left-color: #fb923c; /* exempt: distinct orange for angle measurement */ }
 
 /* Trajectory-inspector Inspect panel: the chip lives inline in
  * the panel body (no canvas to overlay), so static positioning

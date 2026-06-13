@@ -98,4 +98,61 @@
     --weight-normal:    400;
     --weight-medium:    500;
     --weight-semibold:  600;
+
+    /* ============================================================== */
+    /*  Component-scoped palettes (Phase 3, 2026-06-13)               */
+    /* ============================================================== */
+    /* Promoted from per-file :root blocks so the palette is global +
+     * a single source of truth.  Each family is namespaced (--ps-*,
+     * --sp-*, --mv-*) so semantic intent stays clear vs. the global
+     * tokens above. */
+
+    /* --- Projects sidebar (lib/projects-sidebar.css) ---
+     * Self-contained sidebar palette — flat black/gray backgrounds
+     * + the standard cool-blue accent + red/amber severity colors
+     * for entry-action chrome.  Promoted from projects-sidebar.css's
+     * :root block on 2026-06-13.  Authors that previously wrote raw
+     * hex inside this file should reach for these tokens instead. */
+    --ps-w:               18rem;
+    --ps-bg:              #181818;
+    --ps-bg-deep:         #141414;   /* code-input bg in sidebar */
+    --ps-bg-tile:         #1c1c1c;   /* tile / hover-shaded surfaces */
+    --ps-fg:              #dddddd;
+    --ps-fg-muted:        #999999;
+    --ps-fg-dim:          #888888;   /* dimmer than fg-muted */
+    --ps-border:          #2a2a2a;
+    --ps-border-strong:   #3a3a3a;
+    --ps-hover:           #232323;
+    --ps-selected:        #2d4a6e;
+    --ps-selected-fg:     #ffffff;
+    --ps-accent:          #4f7ab8;
+    --ps-accent-strong:   #355a90;
+    --ps-accent-fg:       #cfe0fb;   /* bright text on dark sidebar */
+    --ps-danger:          #5a1f1f;
+    --ps-danger-fg:       #e07a7a;
+    --ps-warn-bg:         #5d4520;
+    --ps-warn-fg:         #ffdca7;
+
+    /* --- Selection panel (lib/selection-panel.css) ---
+     * Distinct teal/cyan accent + green-include / red-exclude tags
+     * so the selection-panel reads visually distinct from the
+     * sidebar (blue) and the global accent (cool blue).  Greys /
+     * borders reuse the --ps-* family above to keep the surface
+     * palette consistent across the sidebar + panel column. */
+    --sp-accent:          #2a5a78;
+    --sp-accent-strong:   #356f93;
+    --sp-accent-light:    #4b95c2;
+    --sp-accent-bg:       #15263a;
+    --sp-accent-bg-mid:   #1b3a52;
+    --sp-accent-fg:       #cce6ff;
+    /* Region/include tag (green) */
+    --sp-include-bg:      #1f3a1f;
+    --sp-include-fg:      #b9dab9;
+    /* Exclude tag (red) */
+    --sp-exclude-bg:      #3a1f1f;
+    --sp-exclude-fg:      #dab9b9;
+    --sp-exclude-border:  #5a2f2f;
+    /* Hover-state remove / delete affordances (lighter than --error
+     * for legibility on a dark panel background) */
+    --sp-danger-fg:       #ff7070;
 }

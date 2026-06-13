@@ -223,8 +223,8 @@ button > code {
     color: var(--text-secondary);
     min-height: 1.1em;
 }
-.status.ok    { color: #6fcf6f; }
-.status.error { color: #e07070; }
+.status.ok    { color: var(--success); }
+.status.error { color: var(--ps-danger-fg); }
 .status.muted { color: var(--text-secondary); opacity: 0.75; }
 
 /* ---- Issues panel ---- */
@@ -246,9 +246,9 @@ button > code {
     font-size: 0.88rem;
     line-height: 1.4;
 }
-.issue.error  { border-color: #80262f; background: #2d1518; }
-.issue.warn   { border-color: #7a652c; background: #2a2515; }
-.issue.info   { border-color: #2c5a7a; background: #15212a; }
+.issue.error  { border-color: var(--ps-danger); background: var(--sp-exclude-bg); }
+.issue.warn   { border-color: var(--ps-warn-bg); background: var(--ps-warn-bg); }
+.issue.info   { border-color: var(--sp-accent); background: var(--sp-accent-bg); }
 .issue .badge {
     display: inline-block;
     font-size: 0.72rem;
@@ -259,9 +259,9 @@ button > code {
     margin-right: 0.4rem;
     vertical-align: 1px;
 }
-.issue.error .badge { background: #80262f; color: #fff; }
-.issue.warn  .badge { background: #7a652c; color: #fff; }
-.issue.info  .badge { background: #2c5a7a; color: #fff; }
+.issue.error .badge { background: var(--ps-danger); color: var(--ps-selected-fg); }
+.issue.warn  .badge { background: var(--ps-warn-bg); color: var(--ps-selected-fg); }
+.issue.info  .badge { background: var(--sp-accent); color: var(--ps-selected-fg); }
 .issue .where {
     margin-left: 0.4rem;
     font-size: 0.78rem;
@@ -405,10 +405,10 @@ button > code {
 .modes-table tbody tr:hover { background: var(--bg-card-hover); }
 .modes-table tbody tr.active {
     background: rgba(255, 212, 84, 0.15);
-    outline: 1px solid #ffd454;
+    outline: 1px solid var(--warning);
     outline-offset: -1px;
 }
-.modes-table tbody tr.mode-imag td:nth-child(2) { color: #e07070; }
+.modes-table tbody tr.mode-imag td:nth-child(2) { color: var(--ps-danger-fg); }
 
 /* .sr-only lives in lib/page-shell.css. */
 
@@ -573,14 +573,14 @@ button > code {
     box-shadow: inset 0 0 0 2px var(--bg-input);
 }
 .phase-dot.phase-running {
-    background: #ffd454;
-    border-color: #ffd454;
+    background: var(--warning);
+    border-color: var(--warning);
     box-shadow: inset 0 0 0 2px var(--bg-input);
     animation: phase-pulse 1.4s ease-in-out infinite;
 }
 .phase-dot.phase-complete {
-    background: #6fcf6f;
-    border-color: #6fcf6f;
+    background: var(--success);
+    border-color: var(--success);
     box-shadow: inset 0 0 0 2px var(--bg-input);
 }
 @keyframes phase-pulse {

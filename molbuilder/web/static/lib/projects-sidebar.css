@@ -17,16 +17,12 @@
  * Behaviour:        static/lib/projects-sidebar.js
  */
 
-:root {
-  --ps-w:           18rem;
-  --ps-bg:          #181818;
-  --ps-fg:          #ddd;
-  --ps-fg-muted:    #999;
-  --ps-border:      #2a2a2a;
-  --ps-hover:       #232323;
-  --ps-selected:    #2d4a6e;
-  --ps-selected-fg: #fff;
-}
+/* The --ps-* palette moved into lib/tokens.css (Phase 3, 2026-06-13)
+ * so every page that loads tokens.css gets the same projects-sidebar
+ * color system without having to import this file too.  The palette
+ * now also includes --ps-accent / --ps-fg-dim that this file already
+ * referenced via fallbacks AND --ps-danger / --ps-warn-* for the
+ * red/amber severity surfaces. */
 
 /* Shift the page content right to make room for the sidebar.
  * The sidebar fills the FULL viewport height (top: 0 -> bottom: 0),
@@ -112,7 +108,7 @@ body.has-mobile-sidebar-open .ps-resize-handle {
   gap: 0.5rem;
   padding: 0.4rem 0.7rem;
   border-bottom: 1px solid var(--ps-border);
-  background: #141414;
+  background: var(--ps-bg-deep);
 }
 
 .ps-title {
@@ -162,9 +158,9 @@ body.has-mobile-sidebar-open .ps-resize-handle {
   transform: translateY(-50%);
   width: 28px;
   height: 110px;
-  background: linear-gradient(180deg, #4f7ab8 0%, #355a90 100%);
-  color: #fff;
-  border: 1px solid #355a90;
+  background: linear-gradient(180deg, var(--ps-accent) 0%, var(--ps-accent-strong) 100%);
+  color: var(--ps-selected-fg);
+  border: 1px solid var(--ps-accent-strong);
   border-left: none;
   border-radius: 0 6px 6px 0;
   cursor: pointer;
@@ -193,11 +189,11 @@ body.has-mobile-sidebar-open .ps-resize-handle {
   line-height: 1;
 }
 .ps-collapsed-handle:hover {
-  background: linear-gradient(180deg, #5b8ad0 0%, #4068a8 100%);
+  background: linear-gradient(180deg, var(--ps-accent) 0%, var(--ps-accent-strong) 100%);
   box-shadow: 2px 0 12px rgba(80, 130, 200, 0.45);
 }
 .ps-collapsed-handle:focus-visible {
-  outline: 2px solid #88bbff;
+  outline: 2px solid var(--ps-accent-fg);
   outline-offset: 2px;
 }
 
@@ -244,13 +240,13 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
   gap: 0.4rem;
   padding: 0.4rem 0.6rem 0.5rem;
   border-bottom: 1px solid var(--ps-border);
-  background: #141414;
+  background: var(--ps-bg-deep);
 }
 .ps-create-action {
   appearance: none;
   flex: 1 1 0;
   min-width: 0;            /* let flex shrink labels when sidebar narrows */
-  background: #0f0f0f;
+  background: var(--ps-bg-deep);
   color: var(--ps-fg);
   border: 1px solid var(--ps-border);
   border-radius: 4px;
@@ -310,7 +306,7 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
 .ps-mkdir-error {
   margin: 0;
   font-size: 0.78rem;
-  color: #e07a7a;
+  color: var(--ps-danger-fg);
   min-height: 1em;
 }
 
@@ -322,7 +318,7 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
  * any backdrop (no transparent fill).
  */
 .molbuilder-projects-dialog {
-  background: #1c1c1c;
+  background: var(--ps-bg-tile);
   color: var(--ps-fg, #ddd);
   border: 1px solid var(--ps-border, #2a2a2a);
   border-radius: 6px;
@@ -339,7 +335,7 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
   margin: 0 0 0.7rem;
   font-size: 1rem;
   font-weight: 600;
-  color: #fff;
+  color: var(--ps-selected-fg);
 }
 .molbuilder-projects-dialog-hint {
   margin: 0 0 0.6rem;
@@ -361,7 +357,7 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
 .molbuilder-projects-dialog-field input[type="file"] {
   font: inherit;
   padding: 0.35rem 0.55rem;
-  background: #0d0d0d;
+  background: var(--ps-bg-deep);
   color: var(--ps-fg, #ddd);
   border: 1px solid var(--ps-border, #2a2a2a);
   border-radius: 3px;
@@ -373,7 +369,7 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
 .molbuilder-projects-dialog-error {
   margin: 0.2rem 0 0.5rem;
   font-size: 0.78rem;
-  color: #e07a7a;
+  color: var(--ps-danger-fg);
   min-height: 1em;
 }
 .molbuilder-projects-dialog-actions {
@@ -394,7 +390,7 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
   transition: background 0.1s;
 }
 .molbuilder-projects-dialog-actions button:hover {
-  background: #3a3a3a;
+  background: var(--ps-border-strong);
 }
 .molbuilder-projects-dialog-actions button.is-primary {
   background: var(--ps-selected, #2d4a6e);
@@ -402,15 +398,15 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
   border-color: var(--ps-selected, #2d4a6e);
 }
 .molbuilder-projects-dialog-actions button.is-primary:hover:not([disabled]) {
-  background: #355a90;
+  background: var(--ps-accent-strong);
 }
 .molbuilder-projects-dialog-actions button.is-destructive {
-  background: #5a1f1f;
-  color: #fff;
-  border-color: #6e2929;
+  background: var(--ps-danger);
+  color: var(--ps-selected-fg);
+  border-color: var(--ps-danger);
 }
 .molbuilder-projects-dialog-actions button.is-destructive:hover {
-  background: #7a2929;
+  background: var(--ps-danger);
 }
 .molbuilder-projects-dialog-actions button[disabled] {
   opacity: 0.5;
@@ -421,7 +417,7 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
 .molbuilder-projects-dest-tree {
   max-height: 30vh;
   overflow-y: auto;
-  background: #0d0d0d;
+  background: var(--ps-bg-deep);
   border: 1px solid var(--ps-border, #2a2a2a);
   border-radius: 3px;
   padding: 0.3rem 0;
@@ -493,7 +489,7 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
 .ps-entry-menu {
   z-index: 50;
   min-width: 10rem;
-  background: #1c1c1c;
+  background: var(--ps-bg-tile);
   border: 1px solid var(--ps-border, #2a2a2a);
   border-radius: 4px;
   box-shadow: 0 6px 14px rgba(0, 0, 0, 0.5);
@@ -519,12 +515,12 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
   outline: none;
 }
 .ps-entry-menu-item.is-destructive {
-  color: #d68080;
+  color: var(--ps-danger-fg);
 }
 .ps-entry-menu-item.is-destructive:hover,
 .ps-entry-menu-item.is-destructive:focus {
-  background: #5a1f1f;
-  color: #fff;
+  background: var(--ps-danger);
+  color: var(--ps-selected-fg);
 }
 
 /* ---- Breadcrumb (2026-06-12 pill upgrade) -----------------------
@@ -578,14 +574,14 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
   cursor: default;
   background: rgba(79, 122, 184, 0.22);    /* matches accent at low alpha */
   border-color: rgba(79, 122, 184, 0.55);
-  color: #cfe0fb;                          /* bright on dark sidebar bg */
+  color: var(--ps-accent-fg);                          /* bright on dark sidebar bg */
   font-weight: 600;
 }
 
 .ps-crumb.is-current:hover {
   background: rgba(79, 122, 184, 0.22);    /* no hover lift on current */
   border-color: rgba(79, 122, 184, 0.55);
-  color: #cfe0fb;
+  color: var(--ps-accent-fg);
 }
 
 /* ---- Filter bar (B.5.5) --------------------------------------
@@ -628,7 +624,7 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
   padding: 0 0.25rem;
   line-height: 1;
 }
-.ps-filter-clear:hover { color: #fff; }
+.ps-filter-clear:hover { color: var(--ps-selected-fg); }
 
 /* When the filter hides every entry in the current dir, the list
  * is empty after filtering; surface the same "(no match)" affordance
@@ -716,7 +712,7 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
 .ps-actions {
   padding: 0.5rem 0.7rem;
   border-top: 1px solid var(--ps-border);
-  background: #141414;
+  background: var(--ps-bg-deep);
 }
 
 .ps-selection {
@@ -773,9 +769,9 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
   font-size: 0.9rem;       /* the × glyph reads better slightly larger */
 }
 .ps-entry-delete:hover {
-  background: #5a1f1f;
-  color: #fff;
-  border-color: #6e2929;
+  background: var(--ps-danger);
+  color: var(--ps-selected-fg);
+  border-color: var(--ps-danger);
 }
 
 /* ---- File-preview modal -------------------------------------- */
@@ -828,7 +824,7 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
    * needs an explicit height for everything to flow correctly. */
   height: 80vh;
   max-height: 80vh;
-  background: #1e1e1e;
+  background: var(--ps-bg-tile);
   color: var(--ps-fg);
   border: 1px solid var(--ps-border);
   border-radius: 5px;
@@ -848,7 +844,7 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
   align-items: center;
   gap: 0.6rem;
   padding: 0.5rem 0.8rem;
-  background: #141414;
+  background: var(--ps-bg-deep);
   border-bottom: 1px solid var(--ps-border);
 }
 
@@ -882,7 +878,7 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
   font-size: 0.75rem;
   font-family: monospace;
   color: var(--ps-fg-muted);
-  background: #141414;
+  background: var(--ps-bg-deep);
   border-bottom: 1px solid var(--ps-border);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -918,7 +914,7 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
   min-height: 0;
   margin: 0;
   overflow: hidden;
-  background: #0e0e0e;
+  background: var(--ps-bg-deep);
 }
 .ps-preview-cmview .CodeMirror {
   /* CM5 + flex recipe (see CodeMirror manual § "Fill the screen"):
@@ -935,15 +931,15 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.85rem;
   line-height: 1.45;
-  background: #0e0e0e;
+  background: var(--ps-bg-deep);
   color: var(--ps-fg);
 }
 .ps-preview-cmview .CodeMirror-gutters {
-  background: #0a0a0a;
-  border-right: 1px solid #222;
+  background: var(--ps-bg-deep);
+  border-right: 1px solid var(--ps-bg-tile);
 }
 .ps-preview-cmview .CodeMirror-linenumber {
-  color: #555;
+  color: var(--ps-border-strong);
 }
 
 /* Cursor: bump the caret to 2px so it's clearly visible against the
@@ -958,7 +954,7 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
 .ps-preview-cmview .CodeMirror-focused .CodeMirror-cursor {
   /* Brighter when focused so the user can pick the caret out of
    * the line-numbers gutter at a glance. */
-  border-left-color: #8ec5ff;
+  border-left-color: var(--ps-accent-fg);
 }
 .ps-preview-cmview .CodeMirror-activeline-background {
   background: rgba(74, 158, 255, 0.06);
@@ -1000,27 +996,27 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
 .ps-preview-cmview .CodeMirror-hscrollbar::-webkit-scrollbar {
   width: 12px;
   height: 12px;
-  background: #161616;
+  background: var(--ps-bg-deep);
 }
 .ps-preview-cmview .CodeMirror-vscrollbar::-webkit-scrollbar-thumb,
 .ps-preview-cmview .CodeMirror-hscrollbar::-webkit-scrollbar-thumb {
-  background: #3a3a3a;
+  background: var(--ps-border-strong);
   border-radius: 6px;
-  border: 2px solid #161616;
+  border: 2px solid var(--ps-bg-deep);
 }
 .ps-preview-cmview .CodeMirror-vscrollbar::-webkit-scrollbar-thumb:hover,
 .ps-preview-cmview .CodeMirror-hscrollbar::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: var(--ps-border-strong);
 }
 /* Firefox scrollbars (no ::-webkit pseudo-element). */
 .ps-preview-cmview .CodeMirror-vscrollbar,
 .ps-preview-cmview .CodeMirror-hscrollbar {
   scrollbar-width: thin;
-  scrollbar-color: #3a3a3a #161616;
+  scrollbar-color: var(--ps-border-strong) var(--ps-bg-deep);
 }
 
 .ps-preview-cmview.is-editing .CodeMirror {
-  background: #161616;
+  background: var(--ps-bg-deep);
   box-shadow: inset 0 0 0 1px var(--ps-accent, #4a9eff);
 }
 
@@ -1039,17 +1035,17 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
  * black background of the viewer. */
 .ps-preview-cmview .CodeMirror-dialog {
   padding: 0.4rem 0.6rem;
-  background: #1a1a1a;
+  background: var(--ps-bg-deep);
   color: var(--ps-fg);
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--ps-border);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.85rem;
 }
 .ps-preview-cmview .CodeMirror-dialog input {
   font: inherit;
   color: inherit;
-  background: #0e0e0e;
-  border: 1px solid #333;
+  background: var(--ps-bg-deep);
+  border: 1px solid var(--ps-border);
   padding: 0.2rem 0.4rem;
   min-width: 14rem;
 }
@@ -1058,8 +1054,8 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
   flex: 0 0 auto;
   margin: 0;
   padding: 0.4rem 0.8rem;
-  color: #e07a7a;
-  background: #2a1818;
+  color: var(--ps-danger-fg);
+  background: var(--ps-bg-tile);
   font-size: 0.85rem;
 }
 .ps-preview-error:empty { display: none; }
@@ -1076,8 +1072,8 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
   font-style: italic;
 }
 .ps-preview-status:empty { display: none; }
-.ps-preview-status.is-dirty { color: #d8a64b; }
-.ps-preview-status.is-ok    { color: #7ec78a; }
+.ps-preview-status.is-dirty { color: var(--warn-soft); }
+.ps-preview-status.is-ok    { color: var(--success); }
 
 .ps-preview-footer {
   flex: 0 0 auto;
@@ -1085,7 +1081,7 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
   gap: 0.45rem;
   justify-content: flex-end;
   padding: 0.55rem 0.8rem;
-  background: #141414;
+  background: var(--ps-bg-deep);
   border-top: 1px solid var(--ps-border);
 }
 .ps-preview-footer button {
@@ -1124,9 +1120,9 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  background: #3a2a14;        /* warm amber so it pops against the dark UI */
-  color: #ffdca7;
-  border: 1px solid #5d4520;
+  background: var(--ps-warn-bg);        /* warm amber so it pops against the dark UI */
+  color: var(--ps-warn-fg);
+  border: 1px solid var(--ps-warn-bg);
   border-radius: 4px;
   font-size: 0.85rem;
 }
@@ -1162,15 +1158,15 @@ body.is-projects-sidebar-collapsed .ps-collapsed-handle {
   flex: 0 0 auto;
   font-size: 0.78rem;
   padding: 0.2rem 0.55rem;
-  background: #5d4520;
-  color: #ffdca7;
-  border: 1px solid #7a5e30;
+  background: var(--ps-warn-bg);
+  color: var(--ps-warn-fg);
+  border: 1px solid var(--ps-warn-bg);
   border-radius: 3px;
   cursor: pointer;
 }
 .ps-lock-cancel:hover {
-  background: #7a5e30;
-  color: #fff;
+  background: var(--ps-warn-bg);
+  color: var(--ps-selected-fg);
 }
 
 /* When locked, everything in the sidebar EXCEPT the lock banner

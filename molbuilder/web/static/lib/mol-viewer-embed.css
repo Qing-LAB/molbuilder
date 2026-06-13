@@ -359,10 +359,12 @@
     transform:      scale(1.08);
 }
 .mol-viewer-bg-swatch.is-transparent {
+    /* Decorative checkerboard pattern for the "transparent" swatch —
+     * the greys are visual structure, not theme colors. */
     background:
-        linear-gradient(45deg, #888 25%, transparent 25%, transparent 75%, #888 75%) 0 0/0.5rem 0.5rem,
-        linear-gradient(45deg, #888 25%, transparent 25%, transparent 75%, #888 75%) 0.25rem 0.25rem/0.5rem 0.5rem;
-    color:          #fff;
+        linear-gradient(45deg, #888 25%, transparent 25%, transparent 75%, #888 75%) 0 0/0.5rem 0.5rem, /* exempt: checkerboard */
+        linear-gradient(45deg, #888 25%, transparent 25%, transparent 75%, #888 75%) 0.25rem 0.25rem/0.5rem 0.5rem; /* exempt: checkerboard */
+    color:          #ffffff; /* exempt: legible on checkerboard */
     font-size:      0.7rem;
     line-height:    1.6rem;
     text-align:     center;
@@ -379,10 +381,12 @@
 .mol-viewer-bg-custom {
     position:       relative;
     overflow:       hidden;
-    /* Rainbow ring so the chip is recognisable as "pick a colour". */
+    /* Rainbow ring so the chip is recognisable as "pick a colour".
+     * The 6 stops ARE the visual; tokenizing would defeat the
+     * rainbow. */
     background:     conic-gradient(
-                        #ff5050, #ffd54a, #5fdc7a, #5fb6ff,
-                        #b75fff, #ff5fb0, #ff5050);
+                        #ff5050, #ffd54a, #5fdc7a, #5fb6ff, /* exempt: rainbow */
+                        #b75fff, #ff5fb0, #ff5050);          /* exempt: rainbow */
 }
 .mol-viewer-bg-custom > input[type="color"] {
     position:       absolute;
