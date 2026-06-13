@@ -789,6 +789,96 @@ making the test feel hung. Default timeouts (5 s for `expect`, 30 s
 for `wait_for_*`) are well-chosen. Override only when the operation
 GENUINELY takes longer (e.g., a heavy parse on a large file).
 
+### A10. Re-reading user-controlled inputs after side-effecting helpers
+
+This isn't a Playwright pattern — it's a JS-code anti-pattern that
+breeds Playwright tests for the bug it causes. Documented here
+because the resulting bugs are subtle, recurring, and the right
+defense (source-text invariant tests) lives next to the other
+test-discipline tools.
+
+**The bug class.** An event handler reads a user-controlled input
+value (slider, text field, scroll position, selection range, etc.),
+calls a helper that mutates state, and then re-reads the same input
+later in the same handler. The helper's side effects can include
+writing back to the input — `_refreshFrameStrip` setting
+`slider.value = a.currentFrame`, a `change`-event callback resetting
+a checkbox, a redraw routine restoring scroll position. The re-read
+sees the helper's value, not the user's value, and the handler
+silently does the wrong thing.
+
+**Concrete instance (2026-06-12 task #353).** The trajectory frame
+slider's input handler was:
+
+```js
+// BUG — bookkeeping helper resets slider.value before parseInt runs
+slider.addEventListener("input", () => {
+    _stopAnimationLoop(state);
+    _showTrajectoryFrame(state, parseInt(slider.value, 10));
+    //                                  ^^^^^^^^^^^^
+    //                                  reset back to old frame
+    //                                  by _stopAnimationLoop's
+    //                                  side effect (which calls
+    //                                  _refreshFrameStrip which
+    //                                  writes slider.value = ...)
+});
+```
+
+User drags slider from frame 9 to frame 4. Browser fires the input
+event. The handler stops the playback loop (correct), then reads
+`slider.value` — but `_stopAnimationLoop` already rewrote it back
+to 9. `parseInt` sees 9, `_showTrajectoryFrame(state, 9)` is a
+no-op, slider drag silently does nothing.
+
+**The rule.** **Snapshot user-controlled input values at handler
+entry, into a `const`, before calling any helper that might
+side-effect the input.** Use that captured `const` for the rest of
+the handler:
+
+```js
+// GOOD — snapshot first, then call side-effecting helpers
+slider.addEventListener("input", () => {
+    const target = parseInt(slider.value, 10);  // <-- snapshot
+    _stopAnimationLoop(state);
+    _showTrajectoryFrame(state, target);
+});
+```
+
+**Why this is a Playwright concern.** Tests for this class of bug
+naturally end up Playwright-shaped (dispatch an input event +
+assert the seek landed). But the cheaper, equally-effective defense
+is a source-text invariant test that pins the snapshot pattern in
+the JS file itself. See
+[`tests/test_live_poll_invariants_audit.py`](../../tests/test_live_poll_invariants_audit.py)
+`TestFrameSliderHandlerSnapshotPattern` for the regex that catches
+the regression in <10 ms vs. the multi-second e2e equivalent.
+
+**Related: live-poll loops.** The same root cause — code that runs
+on a timer and touches user-controlled UI state on no-op ticks —
+shows up server-side too:
+
+* `lib/trajectory/core.js::applyNewData` early-returns on
+  `noNewContent` (atom count + frame count + lattice all stable)
+  rather than rebuilding the model. Without that guard, the 2s
+  live-watch poll reset the user's camera angle every 2s.
+
+* `lib/spectra/core.js::renderResults` early-returns on
+  `_resultsFingerprint` match (atom count + mode count + per-mode
+  ES bits + phase markers + selected mode). Without that guard,
+  the 2s watchTick disposed + rebuilt the 3Dmol viewer every tick.
+
+Both guards have source-text pin-tests in
+`tests/test_live_poll_invariants_audit.py`.
+
+**The general rule.** Any code that runs in response to either
+(a) a user-controlled input event, or (b) a recurring timer, must
+ask: "what user-visible state am I about to touch, and is the
+change actually new?" If the answer is "I'd write the same value
+that's already there" — short-circuit before touching it. State
+that DOES need updating in the no-op case (mtime, run-state markers,
+parse warnings) lands ABOVE the early-return so the metadata stays
+fresh while the heavy rebuild is skipped.
+
 ---
 
 ## 9. Patterns specific to molbuilder
