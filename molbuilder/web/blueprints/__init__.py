@@ -12,10 +12,13 @@ package hold the page + API routes for the other tabs:
   * ``spectra.py``   -- /spectra page + /api/spectra/* endpoints
   * ``modify.py``    -- /modify page + /api/modify/* endpoints
   * ``results.py``   -- /results page + /partials/* partials
-  * ``selection.py`` -- /api/selection/eval + /api/selection/toggle
-                       (atom-selection rule eval + click-toggle bookkeeping,
-                       Pattern C: stateless, JS holds the rule tree, Python
-                       canonicalises + evaluates)
+  * ``selection.py`` -- /api/selection/eval + /api/selection/atoms +
+                       /api/selection/save + /api/selection/save-sidecar
+                       + /api/selection/refresh-hash (atom-selection rule
+                       eval + atom list + sidecar I/O; Pattern C:
+                       stateless, JS holds the rule tree, Python
+                       canonicalises + evaluates.  Click-toggle is
+                       handled client-side in the selection store)
   * ``auth.py``      -- /login + /oauth-callback/* + provider dispatch
 
 All blueprints are registered into a single Flask app by

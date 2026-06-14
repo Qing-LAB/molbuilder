@@ -1,4 +1,4 @@
-"""Selection blueprint -- evaluator + click-toggle endpoints (L2).
+"""Selection blueprint -- rule evaluator + atoms + sidecar I/O (L2).
 
 The selection system is layered:
 
@@ -81,44 +81,6 @@ Endpoints
           "n_atoms_total": M
         }
 
-``POST /api/selection/toggle``
-    Toggle an atom's membership in the rule's ``ByClick`` clause.
-    This is the bookkeeping the user asked for: 3Dmol fires
-    ``onclick(atom)`` with atom index N, JS posts that index here,
-    Python flips its membership in the rule, returns the canonical
-    rule + the new evaluated set.
-
-    The bookkeeping rule:
-
-      * If the existing rule already has a top-level ``ByClick`` (or
-        an ``Or`` whose operands include one), N is toggled in that
-        clause.
-      * If no ``ByClick`` clause exists, one is created and the
-        rule is wrapped in ``Or(existing_rule, ByClick([N]))`` (so
-        the algorithmic part of the selection is preserved).
-      * The ``All()`` rule is a special case: clicking on top of
-        "everything" produces ``Minus(All(), ByClick([N]))`` --
-        the click DEselects (since N was already selected).  This
-        is the same semantics whenever the index is already in the
-        evaluated set: a click deselects rather than re-selects.
-
-    Body::
-
-        {
-          "structure_path": "...",
-          "rule": {<rule-json>},
-          "index": N
-        }
-
-    Response::
-
-        {
-          "rule": {<canonical-rule-json>},
-          "selected_indices": [...],
-          "count": N,
-          "n_atoms_total": M
-        }
-
 The structure_path is validated against the same allow-list as the
 files blueprint (path must resolve inside a configured root); on
 failure the response is HTTP 400 with a JSON error.
@@ -146,8 +108,8 @@ from flask import Blueprint, jsonify, request
 from molbuilder import selection
 from molbuilder.parsers import molstruct_json
 from molbuilder.selection import (
-    All, ByClick, Minus, Or, Rule, SelectionError, evaluate,
-    from_json as rule_from_json, to_json as rule_to_json,
+    Rule, SelectionError, evaluate,
+    from_json as rule_from_json,
 )
 from molbuilder.structure import Structure
 
@@ -285,8 +247,8 @@ def _expose_frozen_as_region(struct) -> None:
     atoms``'s response (every frozen atom would carry a
     ``"frozen_atoms"`` label tag in addition to the ``is_frozen``
     flag, double-rendering in the panel).  Only ``/api/selection/
-    eval`` + ``/api/selection/toggle`` (the rule-resolution paths)
-    need the synthetic — call this just before ``evaluate``.
+    eval`` (the rule-resolution path) needs the synthetic — call
+    this just before ``evaluate``.
 
     Mutates ``struct.regions`` in place.  ``frozen_atoms`` is
     reserved as a sidecar target name (``selection_save`` treats
@@ -300,71 +262,6 @@ def _expose_frozen_as_region(struct) -> None:
             struct.regions = {"frozen_atoms": frozen}
         else:
             regions.setdefault("frozen_atoms", frozen)
-
-
-# --------------------------------------------------------------------- #
-#  Toggle bookkeeping (pure function over rule trees)                    #
-# --------------------------------------------------------------------- #
-
-
-def _toggle_click(rule: Rule, index: int, currently_selected: bool) -> Rule:
-    """Return a new rule tree with ``index`` toggled in its click
-    bookkeeping.
-
-    Contract:
-
-      * ``currently_selected = True``  -> deselect: result must
-        exclude ``index`` from its evaluation.
-      * ``currently_selected = False`` -> select: result must
-        include ``index`` in its evaluation.
-
-    Strategy:
-
-      * Find the top-level ``ByClick`` clause if there is one (either
-        the rule itself or one of the immediate ``Or`` operands).
-        Add or remove ``index`` from its tuple.
-      * If there is no ``ByClick`` clause, wrap the rule:
-          * selecting    -> ``Or(rule, ByClick((index,)))``
-          * deselecting  -> ``Minus(rule, ByClick((index,)))``
-        These are the smallest tree-edits that achieve the desired
-        evaluation change, and they keep the rule auditable (the
-        UI can show a "clicked: [...]" row separately from the
-        algorithmic clauses).
-    """
-    # Case 1: the entire rule is a ByClick.  Toggle in place.
-    if isinstance(rule, ByClick):
-        return _byclick_with_toggled(rule, index)
-
-    # Case 2: rule is an Or whose operands include a ByClick.  Edit
-    # that operand; preserve the rest.
-    if isinstance(rule, Or):
-        new_operands = []
-        found = False
-        for op in rule.operands:
-            if isinstance(op, ByClick) and not found:
-                new_operands.append(_byclick_with_toggled(op, index))
-                found = True
-            else:
-                new_operands.append(op)
-        if found:
-            return Or(tuple(new_operands))
-
-    # Case 3: rule has no ByClick clause.  Add one.  Selecting wraps
-    # in Or; deselecting wraps in Minus.
-    if currently_selected:
-        return Minus(rule, ByClick((index,)))
-    return Or((rule, ByClick((index,))))
-
-
-def _byclick_with_toggled(clause: ByClick, index: int) -> ByClick:
-    """Return a new ByClick with ``index`` toggled in its indices
-    tuple (sorted to keep the rule canonical)."""
-    indices = set(clause.indices)
-    if index in indices:
-        indices.discard(index)
-    else:
-        indices.add(index)
-    return ByClick(tuple(sorted(indices)))
 
 
 # --------------------------------------------------------------------- #
@@ -994,53 +891,3 @@ def selection_eval():
         return _bad_request(exc.message, exc.status)
 
 
-@bp.route("/api/selection/toggle", methods=["POST"])
-def selection_toggle():
-    """Toggle ``index`` in the rule's click bookkeeping; return the
-    canonical rule + the new evaluated set.  See module docstring
-    for body shape + toggle semantics."""
-    try:
-        payload = _parse_request_payload(request)
-        path = payload.get("structure_path")
-        if not isinstance(path, str) or not path:
-            return _bad_request("missing 'structure_path'")
-        struct = _load_structure(path)
-        _expose_frozen_as_region(struct)
-        rule = _load_rule_from_payload(payload)
-        idx = payload.get("index")
-        # ``isinstance(True, int)`` is True in Python; reject bool
-        # explicitly so a ``{"index": true}`` payload doesn't toggle
-        # atom index 1 (same guard as the save endpoint at line 399).
-        if not isinstance(idx, int) or isinstance(idx, bool):
-            return _bad_request("'index' must be an integer")
-        n = len(struct.elements)
-        if not 0 <= idx < n:
-            return _bad_request(
-                f"index {idx} out of range [0, {n})"
-            )
-
-        # Evaluate the EXISTING rule first to decide whether the
-        # click should select or deselect.  This is the bookkeeping
-        # decision: if the user clicked an already-selected atom,
-        # they're asking to deselect.
-        try:
-            existing = evaluate(rule, struct)
-        except SelectionError as exc:
-            return _bad_request(f"evaluation failed: {exc}")
-        was_selected = idx in existing
-
-        new_rule = _toggle_click(rule, idx, currently_selected=was_selected)
-        try:
-            new_indices = evaluate(new_rule, struct)
-        except SelectionError as exc:
-            return _bad_request(f"evaluation failed: {exc}")
-
-        return jsonify({
-            "ok":               True,
-            "rule":             rule_to_json(new_rule),
-            "selected_indices": sorted(new_indices),
-            "count":            len(new_indices),
-            "n_atoms_total":    n,
-        })
-    except _PickerError as exc:
-        return _bad_request(exc.message, exc.status)

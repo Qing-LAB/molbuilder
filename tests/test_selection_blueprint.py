@@ -1,4 +1,4 @@
-"""Tests for /api/selection/eval and /api/selection/toggle (L2 of
+"""Tests for /api/selection/eval (L2 of
 the selection system).
 
 Endpoint contract is pinned: shape of response, error responses on
@@ -254,139 +254,6 @@ class TestEval:
         )
         assert "frozen_atoms" not in atoms[6]["regions"]
 
-
-# --------------------------------------------------------------------- #
-#  /api/selection/toggle -- bookkeeping semantics                        #
-# --------------------------------------------------------------------- #
-
-
-class TestToggleSemantics:
-    def test_click_unselected_with_empty_rule(self, web, selection_root):
-        # Starting with ByClick([]), clicking index 5 should add it.
-        r = web.post("/api/selection/toggle", json={
-            "structure_path": _path(selection_root),
-            "rule": {"op": "by_click", "indices": []},
-            "index": 5,
-        })
-        assert r.status_code == 200
-        j = r.get_json()
-        assert j["rule"]["op"] == "by_click"
-        assert j["rule"]["indices"] == [5]
-        assert j["selected_indices"] == [5]
-
-    def test_click_selected_with_byclick_removes_it(self, web, selection_root):
-        # Starting with ByClick([5, 8]), clicking 5 should remove it.
-        r = web.post("/api/selection/toggle", json={
-            "structure_path": _path(selection_root),
-            "rule": {"op": "by_click", "indices": [5, 8]},
-            "index": 5,
-        })
-        j = r.get_json()
-        assert j["rule"]["op"] == "by_click"
-        assert j["rule"]["indices"] == [8]
-        assert j["selected_indices"] == [8]
-
-    def test_click_unselected_with_algorithmic_rule_wraps_in_or(
-        self, web, selection_root,
-    ):
-        # ByElement('C') selects {4,5,6}.  Clicking 9 (an Au atom)
-        # should add 9 to the selection by wrapping in Or.
-        r = web.post("/api/selection/toggle", json={
-            "structure_path": _path(selection_root),
-            "rule": {"op": "by_element", "elements": ["C"]},
-            "index": 9,
-        })
-        j = r.get_json()
-        assert j["rule"]["op"] == "or"
-        assert j["selected_indices"] == [4, 5, 6, 9]
-
-    def test_click_selected_with_algorithmic_rule_wraps_in_minus(
-        self, web, selection_root,
-    ):
-        # ByElement('C') selects {4,5,6}.  Clicking 5 (already
-        # selected) should deselect it via Minus.
-        r = web.post("/api/selection/toggle", json={
-            "structure_path": _path(selection_root),
-            "rule": {"op": "by_element", "elements": ["C"]},
-            "index": 5,
-        })
-        j = r.get_json()
-        assert j["rule"]["op"] == "minus"
-        assert j["selected_indices"] == [4, 6]
-
-    def test_or_with_byclick_edits_in_place(self, web, selection_root):
-        # Or(ByElement('C'), ByClick([8])) selects {4,5,6,8}.
-        # Clicking 9 should ADD 9 to the existing ByClick clause,
-        # not nest in another Or.
-        r = web.post("/api/selection/toggle", json={
-            "structure_path": _path(selection_root),
-            "rule": {
-                "op": "or",
-                "operands": [
-                    {"op": "by_element", "elements": ["C"]},
-                    {"op": "by_click",   "indices":  [8]},
-                ],
-            },
-            "index": 9,
-        })
-        j = r.get_json()
-        # Top-level still Or, ByClick now [8, 9]:
-        assert j["rule"]["op"] == "or"
-        byclick = [op for op in j["rule"]["operands"]
-                   if op["op"] == "by_click"][0]
-        assert byclick["indices"] == [8, 9]
-        assert j["selected_indices"] == [4, 5, 6, 8, 9]
-
-    def test_round_trip_two_clicks(self, web, selection_root):
-        """Click index 5, then click 5 again -- back to nothing."""
-        first = web.post("/api/selection/toggle", json={
-            "structure_path": _path(selection_root),
-            "rule": {"op": "by_click", "indices": []},
-            "index": 5,
-        }).get_json()
-        assert first["selected_indices"] == [5]
-
-        second = web.post("/api/selection/toggle", json={
-            "structure_path": _path(selection_root),
-            "rule": first["rule"],
-            "index": 5,
-        }).get_json()
-        assert second["selected_indices"] == []
-
-    def test_index_out_of_range_returns_400(self, web, selection_root):
-        r = web.post("/api/selection/toggle", json={
-            "structure_path": _path(selection_root),
-            "rule":           {"op": "by_click", "indices": []},
-            "index":          99,
-        })
-        assert r.status_code == 400
-        assert "out of range" in r.get_json()["error"]
-
-    def test_non_integer_index_returns_400(self, web, selection_root):
-        r = web.post("/api/selection/toggle", json={
-            "structure_path": _path(selection_root),
-            "rule":           {"op": "by_click", "indices": []},
-            "index":          "five",
-        })
-        assert r.status_code == 400
-
-    def test_bool_index_rejected(self, web, selection_root):
-        """``isinstance(True, int)`` is True in Python -- without an
-        explicit bool guard, ``{"index": true}`` would toggle index 1
-        (and ``{"index": false}`` would toggle index 0).  Pin the
-        rejection so a future refactor that drops the guard fails
-        loudly.
-        """
-        for bad in (True, False):
-            r = web.post("/api/selection/toggle", json={
-                "structure_path": _path(selection_root),
-                "rule":           {"op": "by_click", "indices": []},
-                "index":          bad,
-            })
-            assert r.status_code == 400, (
-                f"bool index {bad!r} should be rejected; got "
-                f"{r.status_code} with body {r.get_json()!r}"
-            )
 
 
 # --------------------------------------------------------------------- #
@@ -916,7 +783,7 @@ class TestStateless:
 #  Error-path coverage gaps (task #147)                                 #
 #                                                                       #
 #  Each endpoint has 3-5 error branches.  Pre-existing test classes    #
-#  (TestEval, TestToggleSemantics, TestAtomsEndpoint, TestSaveEndpoint) #
+#  (TestEval, TestAtomsEndpoint, TestSaveEndpoint)                     #
 #  cover the happy path + a few of the most common bad inputs.  This   #
 #  class fills the gaps so every error branch in the blueprint has    #
 #  at least one test pinning its status code + message shape.          #
@@ -1444,60 +1311,6 @@ class TestEvalErrorPaths:
             assert r.status_code == 400
 
 
-class TestToggleErrorPaths:
-    """Toggle branches: ``test_index_out_of_range_returns_400``,
-    ``test_non_integer_index_returns_400`` + ``test_bool_index_rejected``
-    cover the index validation; this fills in the path / rule /
-    extension errors."""
-
-    def test_missing_path_returns_400(self, web):
-        r = web.post("/api/selection/toggle", json={
-            "rule":  {"op": "by_element", "elements": ["Au"]},
-            "index": 0,
-        })
-        assert r.status_code == 400
-
-    def test_missing_rule_returns_400(self, web, selection_root):
-        r = web.post("/api/selection/toggle", json={
-            "structure_path": _path(selection_root),
-            "index":          0,
-        })
-        assert r.status_code == 400
-
-    def test_invalid_rule_returns_400(self, web, selection_root):
-        r = web.post("/api/selection/toggle", json={
-            "structure_path": _path(selection_root),
-            "rule":           {"op": "no-such-op", "args": []},
-            "index":          0,
-        })
-        assert r.status_code == 400
-
-    def test_missing_index_returns_400(self, web, selection_root):
-        r = web.post("/api/selection/toggle", json={
-            "structure_path": _path(selection_root),
-            "rule":           {"op": "by_element", "elements": ["Au"]},
-        })
-        # Code's ``isinstance(idx, int)`` check on ``payload.get("index")``
-        # treats None as not-int and returns 400.
-        assert r.status_code == 400
-
-    def test_path_traversal_rejected(self, web):
-        r = web.post("/api/selection/toggle", json={
-            "structure_path": "/etc/passwd",
-            "rule":           {"op": "by_element", "elements": ["Au"]},
-            "index":          0,
-        })
-        assert r.status_code in (400, 403)
-
-    def test_file_not_found_returns_404(self, web, selection_root):
-        r = web.post("/api/selection/toggle", json={
-            "structure_path": str(selection_root / "no-such.xyz"),
-            "rule":           {"op": "by_element", "elements": ["Au"]},
-            "index":          0,
-        })
-        assert r.status_code == 404
-
-
 class TestCrossCutting:
     """Body-validation paths shared by every endpoint."""
 
@@ -1505,7 +1318,6 @@ class TestCrossCutting:
         "/api/selection/atoms",
         "/api/selection/save",
         "/api/selection/eval",
-        "/api/selection/toggle",
     ])
     def test_non_json_body_returns_400(self, web, endpoint):
         """Hitting any endpoint without ``Content-Type:
@@ -1522,7 +1334,6 @@ class TestCrossCutting:
         "/api/selection/atoms",
         "/api/selection/save",
         "/api/selection/eval",
-        "/api/selection/toggle",
     ])
     def test_top_level_not_object_returns_400(self, web, endpoint):
         """JSON body must be an OBJECT, not an array / string / null."""
@@ -1564,27 +1375,14 @@ class TestUniformEnvelope:
         assert body["count"] == 3
         assert body["n_atoms_total"] == 11
 
-    def test_toggle_success_has_ok_true(self, web, selection_root):
-        r = web.post("/api/selection/toggle", json={
-            "structure_path": _path(selection_root),
-            "rule": {"op": "by_click", "indices": []},
-            "index": 1,
-        })
-        assert r.status_code == 200
-        body = r.get_json()
-        assert body.get("ok") is True
-        assert 1 in body["selected_indices"]
-        assert body["n_atoms_total"] == 11
-
     @pytest.mark.parametrize("endpoint", [
         "/api/selection/atoms",
         "/api/selection/eval",
-        "/api/selection/toggle",
     ])
     def test_error_envelope_has_ok_false(self, web, endpoint):
         """Every error path through ``_bad_request`` must include
         ``ok: false`` alongside ``error``."""
-        # All three endpoints reject a non-JSON body with a 400.
+        # Both endpoints reject a non-JSON body with a 400.
         r = web.post(endpoint, data="not json", content_type="text/plain")
         assert r.status_code == 400
         body = r.get_json(silent=True) or {}
