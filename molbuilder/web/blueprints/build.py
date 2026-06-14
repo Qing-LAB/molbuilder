@@ -544,7 +544,7 @@ def api_structure_analyze():
     needs no change.
 
     The same ``ChemistryAnalysis`` instance backs the pre-emission
-    validation pass (``validation._check_open_shell_metal``) —
+    validation pass (``validation.check_open_shell_metal``) —
     auto-detect and validate cannot disagree by construction.
     """
     from dataclasses import asdict

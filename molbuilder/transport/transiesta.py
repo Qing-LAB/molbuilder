@@ -13,7 +13,7 @@ Scope of THIS module — what's in vs deferred
   in the run directory; see "Electrode .fdf workflow" below for
   how to produce them.
 * :meth:`TransiestaEngine.preflight` — basic region-label
-  validation + the cross-engine ``_check_open_shell_metal`` check.
+  validation + the cross-engine ``check_open_shell_metal`` check.
 
 **Deferred to follow-up sessions:**
 
@@ -527,8 +527,8 @@ class TransiestaEngine:
         # treat the run as closed-shell unless future config adds
         # spin handling.  The check returns [] when there's no
         # open-shell metal present, so it's harmless on organics.
-        from ..validation import _check_open_shell_metal
-        issues.extend(_check_open_shell_metal(
+        from ..validation import check_open_shell_metal
+        issues.extend(check_open_shell_metal(
             struct,
             is_closed_shell=True,
             engine_label="TranSIESTA (this Transport calculation)",

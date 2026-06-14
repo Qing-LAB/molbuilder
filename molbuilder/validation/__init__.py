@@ -37,7 +37,7 @@ Package layout (split 2026-06-13; see
 Pre-split this all lived in one ``validation.py``.  The flat file
 worked while only ``validate()``/``_validate_siesta``/``_validate_pyscf``
 were callers; once Spectra + Transport preflights needed
-``_check_open_shell_metal`` the import path through a private
+``check_open_shell_metal`` the import path through a private
 underscore-name in a 1326-LoC flat module became the smell that
 preceded the 2026-06-13 Au-BDT-Au drift incident.  The split is
 purely organisational — every function body, signature, and
@@ -65,7 +65,7 @@ from ..structure import Structure
 # them is the follow-up promotion proposed in
 # scientific-validation.md § 10 and is out of scope for this commit.
 from .chemistry import (_check_metal_basis_adequacy,
-                        _check_open_shell_metal,
+                        check_open_shell_metal,
                         _check_peptide_protonation)
 from .geometry import (_check_polymer_orientation,
                        _min_image_distance,

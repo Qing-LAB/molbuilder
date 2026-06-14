@@ -566,7 +566,7 @@ class ChemistryAnalysis:
 
     Single source of truth for every science-aware surface in the
     system: UI auto-detect (``/api/structure/analyze``), pre-emission
-    validation (``validation._check_open_shell_metal``), future
+    validation (``validation.check_open_shell_metal``), future
     Transport-tab Auto-detect, CLI ``molbuilder analyze``.  Two
     surfaces consuming this dataclass cannot disagree about the
     chemistry by construction.

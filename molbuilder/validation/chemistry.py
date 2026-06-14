@@ -107,7 +107,7 @@ def _check_metal_basis_adequacy(struct: Structure, *,
     return []
 
 
-def _check_open_shell_metal(struct: Structure, *,
+def check_open_shell_metal(struct: Structure, *,
                               is_closed_shell: bool,
                               engine_label: str) -> List[Issue]:
     """Shared chemistry rule: structure whose ANALYZER recommends

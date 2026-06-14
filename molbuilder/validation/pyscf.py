@@ -19,7 +19,7 @@ import numpy as np
 from ..issues import Issue
 from ..structure import Structure
 from .chemistry import (_check_metal_basis_adequacy,
-                        _check_open_shell_metal,
+                        check_open_shell_metal,
                         _check_peptide_protonation)
 from .sidecar import _check_frozen_atoms_consumed
 
@@ -41,7 +41,7 @@ def _validate_pyscf(struct: Structure, cfg,
 
     # Open-shell metal + closed-shell SCF: shared rule with SIESTA.
     method_upper = (getattr(cfg, "method", "") or "").upper()
-    issues += _check_open_shell_metal(
+    issues += check_open_shell_metal(
         struct,
         is_closed_shell=(getattr(cfg, "spin", 0) == 0
                          and method_upper in ("RKS", "RHF")),

@@ -446,7 +446,7 @@ class TestSpinPolarizedNeedsSpinTotal:
     def test_no_spin_polarized_no_check(self):
         """spin_polarized=False -> no propor invocation at SIESTA setup
         time, so the check shouldn't fire (the open-shell-metal WARN
-        from _check_open_shell_metal is the right complaint there)."""
+        from check_open_shell_metal is the right complaint there)."""
         from molbuilder.config.siesta import SiestaConfig
         from molbuilder.validation import validate
         issues = validate(self._hemeC_like(), SiestaConfig())  # spin_polarized default = False

@@ -121,7 +121,7 @@ class TestSuggestSpinTotal:
 
 
 class TestCheckOpenShellMetalUsesAnalyzer:
-    """Pins the contract added in Phase 1d: ``_check_open_shell_metal``
+    """Pins the contract added in Phase 1d: ``check_open_shell_metal``
     reads its conclusions from ``ChemistryAnalysis``, not from a
     separately-imported ``detect_open_shell_metals``.  Single source
     of truth for the chemistry — validator and ``/api/structure/analyze``
@@ -152,7 +152,7 @@ class TestCheckOpenShellMetalUsesAnalyzer:
         ``detect_open_shell_metals`` directly.
         """
         from molbuilder import chemistry as ch
-        from molbuilder.validation import _check_open_shell_metal
+        from molbuilder.validation import check_open_shell_metal
 
         def _fake_analysis(struct):
             # Force empty metals — pretend it's pure organic.
@@ -175,7 +175,7 @@ class TestCheckOpenShellMetalUsesAnalyzer:
         if hasattr(val_mod, "analyze_structure"):
             monkeypatch.setattr(val_mod, "analyze_structure", _fake_analysis)
 
-        issues = _check_open_shell_metal(
+        issues = check_open_shell_metal(
             self._hemeC_like(),
             is_closed_shell=True,
             engine_label="PySCF",
@@ -193,8 +193,8 @@ class TestCheckOpenShellMetalUsesAnalyzer:
         is consuming ChemistryAnalysis output, not assembling its own
         rationale inline.
         """
-        from molbuilder.validation import _check_open_shell_metal
-        issues = _check_open_shell_metal(
+        from molbuilder.validation import check_open_shell_metal
+        issues = check_open_shell_metal(
             self._hemeC_like(),
             is_closed_shell=True,
             engine_label="PySCF",
@@ -224,7 +224,7 @@ class TestCheckOpenShellMetalUsesAnalyzer:
         which is "closed" for Au_4 + ligand systems; warning silenced."""
         import numpy as np
         from molbuilder.structure import Structure
-        from molbuilder.validation import _check_open_shell_metal
+        from molbuilder.validation import check_open_shell_metal
         # 4 Au + 2 S + 6 C + 4 H — 16 atoms, even electron count.
         elements = ["Au"]*4 + ["S"]*2 + ["C"]*6 + ["H"]*4
         struct = Structure(
@@ -235,7 +235,7 @@ class TestCheckOpenShellMetalUsesAnalyzer:
             residue_names = ["JCT"] * len(elements),
             chain_ids     = ["A"] * len(elements),
         )
-        issues = _check_open_shell_metal(
+        issues = check_open_shell_metal(
             struct,
             is_closed_shell=True,
             engine_label="SIESTA",
@@ -257,7 +257,7 @@ class TestCheckOpenShellMetalUsesAnalyzer:
         ≥ 4 atoms."""
         import numpy as np
         from molbuilder.structure import Structure
-        from molbuilder.validation import _check_open_shell_metal
+        from molbuilder.validation import check_open_shell_metal
         struct = Structure(
             elements      = ["Au"],
             positions     = np.zeros((1, 3)),
@@ -266,7 +266,7 @@ class TestCheckOpenShellMetalUsesAnalyzer:
             residue_names = ["AU"],
             chain_ids     = ["A"],
         )
-        issues = _check_open_shell_metal(
+        issues = check_open_shell_metal(
             struct,
             is_closed_shell=True,
             engine_label="PySCF",

@@ -18,7 +18,7 @@ import numpy as np
 
 from ..issues import Issue
 from ..structure import Structure
-from .chemistry import _check_open_shell_metal, _check_peptide_protonation
+from .chemistry import check_open_shell_metal, _check_peptide_protonation
 from .sidecar import _check_frozen_atoms_consumed
 
 
@@ -357,7 +357,7 @@ def _validate_siesta(struct: Structure, cfg,
     issues += _check_siesta_charged_makov_payne_notice(struct, cfg)
 
     # Open-shell metal + closed-shell SCF: shared rule with PySCF.
-    issues += _check_open_shell_metal(
+    issues += check_open_shell_metal(
         struct,
         is_closed_shell=not bool(getattr(cfg, "spin_polarized", False)),
         engine_label="SIESTA (spin_polarized = False)",

@@ -60,7 +60,7 @@ Geometry choice:
 
 - The TranSIESTA `.fdf` emits with every required NEGF keyword.
 - Preflight passes on the labeled structure (no errors).
-- The shared `_check_open_shell_metal` check correctly returns no
+- The shared `check_open_shell_metal` check correctly returns no
   warning (no open-shell metals — Au has a closed 5d¹⁰ shell as
   far as the analyzer's open-shell-metals set is concerned).
 - The atom-ordering preflight accepts the structure (contiguous

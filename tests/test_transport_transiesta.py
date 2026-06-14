@@ -384,7 +384,7 @@ def test_preflight_does_not_fire_high_bias_warning_at_low_v(
 def test_preflight_open_shell_metal_routes_through_shared_check(
         labeled_device):
     """Phase 1d single-source contract: the open-shell-metal check
-    runs here too via the SHARED ``_check_open_shell_metal`` from
+    runs here too via the SHARED ``check_open_shell_metal`` from
     validation.py.  Pin so a future refactor that re-inlines the
     chemistry detection in this engine doesn't break the cross-
     engine consistency rule.

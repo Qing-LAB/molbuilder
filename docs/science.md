@@ -82,7 +82,7 @@ In `molbuilder/chemistry.py` + `molbuilder/validation.py`:
 | `check_spin_charge_parity(struct, charge, spin)` | spin=0 requires even electron count; spin=1 requires odd; etc.  PySCF raises this AT RUN TIME; we catch it pre-emission for a clearer message. |
 | `detect_open_shell_metals(struct)` | Returns list of open-shell transition metals present.  Empty for pure organics. |
 | `explain_metal_spin(element, spin)` | One-line description of what (Fe, spin=4) implies (Fe(II) high-spin, S=2, 4 unpaired — e.g. deoxy-heme). |
-| `_check_open_shell_metal()` (validation/chemistry.py) | Shared by `_validate_pyscf` AND `_validate_siesta`: warns when a structure with an open-shell metal is paired with a closed-shell SCF (PySCF RKS/RHF + spin=0; SIESTA SpinPolarized=False).  SAME warning regardless of engine — same chemistry. |
+| `check_open_shell_metal()` (validation/chemistry.py) | Shared by `_validate_pyscf` AND `_validate_siesta`: warns when a structure with an open-shell metal is paired with a closed-shell SCF (PySCF RKS/RHF + spin=0; SIESTA SpinPolarized=False).  SAME warning regardless of engine — same chemistry. |
 
 ### 2.3 Post-mortem: hemeC-dithiol (2026-05-22)
 
@@ -123,7 +123,7 @@ occupancies, hence the enormous gradient.
   examples.
 - Emit them in the script's `gto.M(...)`.
 - Add the open-shell-metal check to BOTH `_validate_pyscf` and
-  `_validate_siesta` (via shared `_check_open_shell_metal`
+  `_validate_siesta` (via shared `check_open_shell_metal`
   helper) AND to `PySCFSpectraEngine.preflight` — triple
   coverage so any surface that calls either entry point sees
   the warning.

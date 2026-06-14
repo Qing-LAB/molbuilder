@@ -56,7 +56,7 @@ read `suggested_treatment` from this dataclass.** No exceptions:
 
 * The detection chip in the Run profile card
 * The Auto-detect panel's rationale text
-* The `_check_open_shell_metal` validator
+* The `check_open_shell_metal` validator
 * The PySCF script's UKS/RKS preflight check
 * The SIESTA script's `spin_polarized` preflight check
 
@@ -185,7 +185,7 @@ down so the next violation lands in code review with a clear citation.
 ## References
 
 * `molbuilder/chemistry.py::analyze_structure` — the canonical analyzer.
-* `molbuilder/validation/chemistry.py::_check_open_shell_metal` — the validator
+* `molbuilder/validation/chemistry.py::check_open_shell_metal` — the validator
   that reads `analysis.suggested_treatment` (2026-06-13 fix).
 * `molbuilder/web/static/lib/detection-chip.js` — the shared detection
   chip helper (`buildText` + `render`) that every engine tab consumes;
@@ -196,6 +196,6 @@ down so the next violation lands in code review with a clear citation.
 * [`scientific-validation.md`](scientific-validation.md) — the
   companion doc; **§ 3.4** holds the noble-metal vs open-d-shell
   cluster-context rule, **§ 5.3** holds the consumer list (every
-  surface that delegates to `_check_open_shell_metal`), and **§ 10**
+  surface that delegates to `check_open_shell_metal`), and **§ 10**
   proposes the validator-package split that completes the
   organisation work this doc names.

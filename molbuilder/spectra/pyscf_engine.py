@@ -279,11 +279,11 @@ class PySCFSpectraEngine:
         # so the supplemental ``explain_metal_spin`` info-line below
         # can echo (element, spin) → (likely oxidation state) for
         # non-spin=0 cases.
-        from ..validation import _check_open_shell_metal
+        from ..validation import check_open_shell_metal
         method_upper = cfg.method.upper()
         is_closed_shell = (cfg.spin == 0
                            and method_upper in ("RKS", "RHF"))
-        issues.extend(_check_open_shell_metal(
+        issues.extend(check_open_shell_metal(
             struct,
             is_closed_shell=is_closed_shell,
             engine_label=f"PySCF spectra ({cfg.method})",

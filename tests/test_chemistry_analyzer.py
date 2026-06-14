@@ -13,7 +13,7 @@ Pins the contract:
   on; changes here propagate to per-engine ``to_params`` outputs.
 
 Single-source-of-truth claim: this same analyzer is consumed by
-``validation._check_open_shell_metal`` (Phase 1d) and by
+``validation.check_open_shell_metal`` (Phase 1d) and by
 ``/api/structure/analyze`` (Phase 1c).  Cross-engine consistency
 test lives in ``tests/test_chemistry_adapters.py``.
 """

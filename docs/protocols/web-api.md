@@ -977,7 +977,7 @@ endpoint iterates the registry, so a future Transport engine
 without endpoint changes.
 
 Same chemistry analysis backs the pre-emission validation pass
-(`molbuilder.validation._check_open_shell_metal`) — UI auto-detect
+(`molbuilder.validation.check_open_shell_metal`) — UI auto-detect
 and CLI validation read identical conclusions, per the
 cross-engine consistency rule ([`science.md`](../science.md) § 2.4).
 The full runtime call graph + dataclass shapes are documented in
@@ -1088,7 +1088,7 @@ Error responses:
   - `|V| > 2 V` outside linear-response regime (di Ventra 2008)
   - Multi-bias request (today emits only `bias_voltages_v[0]`)
   - Open-shell-metal device run as closed-shell (shared
-    `_check_open_shell_metal` from `validation.py`, same as
+    `check_open_shell_metal` from `validation/chemistry.py`, same as
     Build/Spectra — the cross-engine consistency rule from
     [`science.md`](../science.md) § 2.4 holds on Transport too)
 

@@ -40,7 +40,7 @@ flowchart TB
 
     subgraph L4 ["L4 — Surfaces (consumers)"]
         api["/api/structure/analyze<br/>(UI auto-detect)"]
-        validator["validation.py<br/>_check_open_shell_metal<br/>(pre-emission)"]
+        validator["validation.py<br/>check_open_shell_metal<br/>(pre-emission)"]
         scripts["Engine emitters<br/>(SIESTA .fdf, PySCF .py,<br/>Spectra .py)"]
     end
 
@@ -70,7 +70,7 @@ Three boundaries, each with a typed contract:
 |---|---|---|---|
 | `analyze_structure(struct)` | `molbuilder.chemistry` | `Structure` | `ChemistryAnalysis` (dataclass) |
 | `EngineParameterAdapter.to_params(analysis)` | per-engine submodule | `ChemistryAnalysis` | engine-specific frozen dataclass (e.g. `SiestaSuggestedParams`) |
-| `_check_open_shell_metal(struct, cfg)` | `molbuilder.validation` | `Structure` + engine `Config` | `List[Issue]` |
+| `check_open_shell_metal(struct, cfg)` | `molbuilder.validation` | `Structure` + engine `Config` | `List[Issue]` |
 
 All boundaries pass dataclasses, not dicts.  JSON only appears
 when the HTTP endpoint serialises `asdict(...)` for the wire.
@@ -396,10 +396,10 @@ def api_structure_analyze():
 ~25 LoC.  New engines surface in `suggested.<engine>` the moment
 their adapter module is imported — endpoint code unchanged.
 
-### 5.2 Pre-emission validator — `_check_open_shell_metal`
+### 5.2 Pre-emission validator — `check_open_shell_metal`
 
 ```python
-def _check_open_shell_metal(struct, *, is_closed_shell, engine_label):
+def check_open_shell_metal(struct, *, is_closed_shell, engine_label):
     analysis = analyze_structure(struct)   # SAME source of truth
     # Read the analyzer's recommendation, NOT the flat metals list.
     # Pre-2026-06-13 this checked ``analysis.metals`` directly and
@@ -427,7 +427,7 @@ the [`web-ui-coherence.md`](web-ui-coherence.md) Rule 1 pins.
 ### 5.3 The current consumer list
 
 Every surface that talks about open-vs-closed shell now goes
-through `_check_open_shell_metal`:
+through `check_open_shell_metal`:
 
 | Surface | Caller | Where |
 |---|---|---|
@@ -438,7 +438,7 @@ through `_check_open_shell_metal`:
 | UI Auto-detect chip | shared lib | `web/static/lib/detection-chip.js` (writes the chip via the analyzer's `suggested_treatment`; the chip text never disagrees with the validator) |
 
 **Anti-pattern caught 2026-06-13** — every other engine preflight
-must call the shared `_check_open_shell_metal`.  The Spectra
+must call the shared `check_open_shell_metal`.  The Spectra
 preflight had its own parallel `metals + cfg.spin == 0` check
 that pre-dated the noble-metal logic, which is exactly the
 Au-BDT-Au drift class the validator fix on the same day closed.
@@ -453,7 +453,7 @@ The analyzer runs at two moments and in two directions:
 | Direction | When | Surface | What the user sees |
 |---|---|---|---|
 | **Forward** — suggest | After loading a structure, before configuring | Auto-detect button → `/api/structure/analyze` | Form fields pre-filled with suggested `(charge, spin, method)`; rationale + warnings shown next to the form |
-| **Reverse** — check | At Generate click, with the user's final params | `validation.py` → `_check_open_shell_metal` | `Issue` in the pre-emission issues panel if the user's choice contradicts the chemistry |
+| **Reverse** — check | At Generate click, with the user's final params | `validation.py` → `check_open_shell_metal` | `Issue` in the pre-emission issues panel if the user's choice contradicts the chemistry |
 
 Both consume the same `ChemistryAnalysis` instance shape (re-computed,
 since structures may have changed).  By design, they cannot disagree.
@@ -505,7 +505,7 @@ its validator share the same chemistry analysis:
    so the adapter registers at app startup.
 3. (Optional) Wire the engine's validator
    (`validation._validate_<engine>`) to call
-   `_check_open_shell_metal(struct, ...)` so the validator shares
+   `check_open_shell_metal(struct, ...)` so the validator shares
    the analysis.
 4. Add adapter tests to `tests/test_chemistry_adapters.py`
    (cross-engine consistency invariant runs against the
@@ -563,7 +563,7 @@ documented in [`web-api.md`](web-api.md) § 10, AND each
 
 `tests/validation/test_chemistry.py::TestCheckOpenShellMetalUsesAnalyzer::test_validator_reads_metals_from_analyze_structure`
 + `::test_validator_includes_analyzer_rationale_in_message`:
-the validator's `_check_open_shell_metal` reads its conclusions
+the validator's `check_open_shell_metal` reads its conclusions
 from `analyze_structure(struct)` (proved by monkeypatching the
 analyzer to return `metals=[]` and asserting no warn fires
 despite real-chemistry having metals), and the warn message
@@ -615,7 +615,7 @@ molbuilder/
     │                                     # _check_polymer_orientation
     ├── metadata.py                       # _validate_config_metadata
     │                                     # (dataclass-field driven)
-    ├── chemistry.py                      # _check_open_shell_metal,
+    ├── chemistry.py                      # check_open_shell_metal,
     │                                     # _check_metal_basis_adequacy,
     │                                     # _check_peptide_protonation
     ├── sidecar.py                        # _check_frozen_atoms_consumed
@@ -642,7 +642,7 @@ LOAD-BEARING for every test that counts issues by position.
   by every test that asserts an issue's position in the returned
   list.
 * **The public import surface.**  `from molbuilder.validation import
-  validate, report, validate_geometry, _check_open_shell_metal` still
+  validate, report, validate_geometry, check_open_shell_metal` still
   works — `__init__.py` re-exports every name external callers
   imported pre-split.  External-caller files (`spectra/pyscf_engine.py`,
   `transport/transiesta.py`, `siesta/input.py`, `pyscf/input.py`,
@@ -654,16 +654,27 @@ LOAD-BEARING for every test that counts issues by position.
 
 ### Naming policy
 
-Underscore-prefixed helpers (`_check_open_shell_metal`,
-`_check_metal_basis_adequacy`, etc.) keep their underscores at this
-split.  The leading `_` was originally a "this is for
-`validate()`'s internal aggregator" hint; today these helpers have
-external callers and the underscore reads as misleading.  Dropping
-the underscore is a follow-up rename — the next time
-`docs/protocols/web-ui-coherence.md` Rule 1 catches a new external
-caller, that PR can promote the helper to the public name as part
-of the same change.  No backward-compat shim per
-[memory: feedback_no_backward_compat] (`feedback_no_backward_compat.md`).
+Chemistry helpers that have **cross-module callers** lose their
+underscore prefix.  The leading `_` originally meant "internal to
+`validate()`'s aggregator"; once a helper is imported by
+`spectra/pyscf_engine.py`, `transport/transiesta.py`, or
+`web/blueprints/build.py`, that hint is misleading and the helper
+should read as part of the public surface:
+
+| Helper | Status | External callers |
+|---|---|---|
+| `check_open_shell_metal` | **public** (renamed 2026-06-13) | spectra/pyscf_engine, transport/transiesta, web/blueprints/build, chemistry |
+| `_check_metal_basis_adequacy` | private | none (only validation/pyscf.py) |
+| `_check_peptide_protonation` | private | none (only validation/siesta.py + validation/pyscf.py) |
+| `_check_frozen_atoms_consumed` | private | none (only validation/siesta.py + validation/pyscf.py + web/blueprints/build.py via direct construction of Issue, not import of the helper) |
+
+The other three helpers keep their underscores — they have no
+external callers today, so the prefix correctly signals "internal
+to the validation package."  If a future PR adds an external caller
+for any of them, that PR should promote the helper to a public
+name in the same commit (per `web-ui-coherence.md` Rule 1).  No
+backward-compat shim per [memory: feedback_no_backward_compat]
+(`feedback_no_backward_compat.md`).
 
 ### Follow-up: split tests by submodule
 
@@ -697,5 +708,5 @@ UI layer; the dataclass is authoritative everywhere.
 |---|---|---|
 | 2026-06-10 | Middle layer landed as `analyze_structure` + `EngineParameterAdapter` registry; per-engine `auto_defaults.py` submodules; per-engine frozen `SuggestedParams` dataclasses. | The `/api/structure/analyze` endpoint shipped 2026-05-23 with both engine translations hardcoded inline in `web/blueprints/build.py` — duplication waiting to drift, no on-ramp for Transport B.3 engines.  Hoisting the chemistry into a named analyzer + decoupling per-engine translation realizes the cross-engine consistency rule that `science.md` § 2.4 had already promised at the validator level, extending it to the UI auto-detect surface.  Dataclass-first per `design.md` Principle 1.  Pinned with cross-engine, validator-agreement, and new-engine on-ramp tests. |
 | 2026-06-10 | `science.md` stays the principles/contract doc.  This doc (`scientific-validation.md`) takes the implementation/machinery role.  Per-protocol adapter doc (`chemistry-adapters.md`) folded in here — the adapter layer is part of the validation machinery, not a separate concern. | Splitting "what we promise" (science.md) from "how we deliver it" (this doc) lets each evolve independently.  A new engine landing changes this doc; a new scientific invariant changes science.md.  Cross-references keep them coherent. |
-| 2026-06-13 | **Validator-package split landed + companion test-strategy doc.**  Flat `molbuilder/validation.py` (1326 LoC) became `molbuilder/validation/` (7 files: `__init__.py`, `geometry.py`, `metadata.py`, `chemistry.py`, `sidecar.py`, `siesta.py`, `pyscf.py`).  Each submodule is small enough that "where does the new check go?" has a one-step answer.  Split is purely organisational — every function body, signature, and `_validate_<engine>` internal CALL ORDER preserved verbatim from the pre-split source.  Public import surface unchanged: `__init__.py` re-exports every name external callers imported pre-split, so `spectra/pyscf_engine.py`, `transport/transiesta.py`, `cli.py`, `web/blueprints/_shared.py`, etc. + every test continue to work without modification.  Outcome preservation pinned by running the full validation + chemistry + spectra + transport test suite (643 pass + 2 skip — identical to pre-split counts).  Companion doc [`test-strategy.md`](test-strategy.md) writes the 5-layer pyramid (unit / module / interface / integration / e2e) + the decision tree for "where does the new test go?" so the test split that has to follow has a target shape, not improvisation per PR. | The Spectra preflight drift caught on 2026-06-13 was a direct consequence of the flat module: external engine files had no convenient `from molbuilder.validation.chemistry import check_open_shell_metal` import, so each one rolled its own chemistry check or fished out the deeply-private `_check_open_shell_metal`. The package split makes the right import the convenient one. The user's framing was unambiguous: "we have established the usefulness of these validators but now it is time to make them well organized and effectively unified into module that can systematically and correctly serving the whole project with always-up-to-date information." The single biggest correctness invariant — call order inside the per-engine aggregators — is the reason this split was done with mechanical verbatim moves rather than the cleanup-and-rename pass that's tempting at refactor time. Renames + the underscore-prefix removal land as follow-ups when each one is forced by a new external caller (per `feedback_no_backward_compat`).  Test-strategy doc landed alongside because reorganising source without reorganising tests would leave the same 1479-LoC pain in `test_validation.py` that motivated the source split. |
-| 2026-06-13 | **Noble-metal cluster-context analyzer rule + validator delegation cleanup.**  Split `OPEN_SHELL_METALS` into three sets — `OPEN_D_TRANSITION_METALS` / `NOBLE_METALS_S1` / `CLOSED_D10_METALS` (§ 3.4) — so the analyzer correctly recommends closed-shell singlet for Au junctions (≥ 4 atoms, even electron count).  Updated `_check_open_shell_metal` to gate on `analysis.suggested_treatment == "open"` instead of `analysis.metals` (the pre-fix logic fired for Au-BDT-Au despite the chip showing "closed-shell singlet" — direct contradiction the user reported).  Routed `PySCFSpectraEngine.preflight` through the shared `_check_open_shell_metal` so the Spectra preflight cannot drift from the SIESTA / PySCF Build preflights.  Extracted UI detection chip into shared `lib/detection-chip.js`; Transport tab gained `workflow_group` metadata + chip wiring so Au-thiol junctions surface the chemistry conclusion on the form.  Companion: [`web-ui-coherence.md`](web-ui-coherence.md) Rule 1 is the formal source-of-truth statement; this doc's § 5.3 consumer table is the enforcement list. | Two-surface drift is the most expensive bug class molbuilder ships: the user sees "closed-shell singlet" on one panel and "switch to open-shell" two panels down on the same form.  The remedy isn't "fix the parallel path" but "delete the parallel path."  Every chemistry question — open-vs-closed, basis adequacy, electron parity — goes through `analyze_structure(...)` and the helpers it composes from `chemistry.py`.  Pinned by `test_validation.py::test_au_bdt_au_closed_shell_does_NOT_warn`, the renamed `TestCheckOpenShellMetalUsesAnalyzer` agreement tests, and the source-text invariant `TestWorkflowGroupSchemaConsistency::test_detection_chip_renderer_present` which now asserts viewer.js + transport/core.js both delegate to `lib/detection-chip.js`. |
+| 2026-06-13 | **Validator-package split landed + companion test-strategy doc.**  Flat `molbuilder/validation.py` (1326 LoC) became `molbuilder/validation/` (7 files: `__init__.py`, `geometry.py`, `metadata.py`, `chemistry.py`, `sidecar.py`, `siesta.py`, `pyscf.py`).  Each submodule is small enough that "where does the new check go?" has a one-step answer.  Split is purely organisational — every function body, signature, and `_validate_<engine>` internal CALL ORDER preserved verbatim from the pre-split source.  Public import surface unchanged: `__init__.py` re-exports every name external callers imported pre-split, so `spectra/pyscf_engine.py`, `transport/transiesta.py`, `cli.py`, `web/blueprints/_shared.py`, etc. + every test continue to work without modification.  Outcome preservation pinned by running the full validation + chemistry + spectra + transport test suite (643 pass + 2 skip — identical to pre-split counts).  Companion doc [`test-strategy.md`](test-strategy.md) writes the 5-layer pyramid (unit / module / interface / integration / e2e) + the decision tree for "where does the new test go?" so the test split that has to follow has a target shape, not improvisation per PR. | The Spectra preflight drift caught on 2026-06-13 was a direct consequence of the flat module: external engine files had no convenient `from molbuilder.validation.chemistry import check_open_shell_metal` import, so each one rolled its own chemistry check or fished out the deeply-private `check_open_shell_metal`. The package split makes the right import the convenient one. The user's framing was unambiguous: "we have established the usefulness of these validators but now it is time to make them well organized and effectively unified into module that can systematically and correctly serving the whole project with always-up-to-date information." The single biggest correctness invariant — call order inside the per-engine aggregators — is the reason this split was done with mechanical verbatim moves rather than the cleanup-and-rename pass that's tempting at refactor time. Renames + the underscore-prefix removal land as follow-ups when each one is forced by a new external caller (per `feedback_no_backward_compat`).  Test-strategy doc landed alongside because reorganising source without reorganising tests would leave the same 1479-LoC pain in `test_validation.py` that motivated the source split. |
+| 2026-06-13 | **Noble-metal cluster-context analyzer rule + validator delegation cleanup.**  Split `OPEN_SHELL_METALS` into three sets — `OPEN_D_TRANSITION_METALS` / `NOBLE_METALS_S1` / `CLOSED_D10_METALS` (§ 3.4) — so the analyzer correctly recommends closed-shell singlet for Au junctions (≥ 4 atoms, even electron count).  Updated `check_open_shell_metal` to gate on `analysis.suggested_treatment == "open"` instead of `analysis.metals` (the pre-fix logic fired for Au-BDT-Au despite the chip showing "closed-shell singlet" — direct contradiction the user reported).  Routed `PySCFSpectraEngine.preflight` through the shared `check_open_shell_metal` so the Spectra preflight cannot drift from the SIESTA / PySCF Build preflights.  Extracted UI detection chip into shared `lib/detection-chip.js`; Transport tab gained `workflow_group` metadata + chip wiring so Au-thiol junctions surface the chemistry conclusion on the form.  Companion: [`web-ui-coherence.md`](web-ui-coherence.md) Rule 1 is the formal source-of-truth statement; this doc's § 5.3 consumer table is the enforcement list. | Two-surface drift is the most expensive bug class molbuilder ships: the user sees "closed-shell singlet" on one panel and "switch to open-shell" two panels down on the same form.  The remedy isn't "fix the parallel path" but "delete the parallel path."  Every chemistry question — open-vs-closed, basis adequacy, electron parity — goes through `analyze_structure(...)` and the helpers it composes from `chemistry.py`.  Pinned by `test_validation.py::test_au_bdt_au_closed_shell_does_NOT_warn`, the renamed `TestCheckOpenShellMetalUsesAnalyzer` agreement tests, and the source-text invariant `TestWorkflowGroupSchemaConsistency::test_detection_chip_renderer_present` which now asserts viewer.js + transport/core.js both delegate to `lib/detection-chip.js`. |
