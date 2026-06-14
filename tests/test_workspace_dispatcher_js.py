@@ -35,73 +35,30 @@ CANVAS_PATH     = ROOT / "molbuilder/web/static/lib/workspace/_canvas-state-impl
 
 def _run_node(snippet: str) -> object:
     """Run a Node.js snippet under a minimal stub environment that
-    mounts the legacy stores ahead of the dispatcher.
+    mounts the workspace-internal store impls ahead of the
+    dispatcher.
 
     Mocks ``window`` + ``document`` + ``sessionStorage`` so the
     canvas-state + selection store + dispatcher IIFEs can load
     without a real browser.  Tests then drive the public surface
     via ``window.molbuilder.workspace.*`` and assert on JSON
     snapshots emitted to stdout.
+
+    Load order: canvas-state impl → selection-store impl →
+    selection.store singleton mount → dispatcher.  Canvas-state's
+    UMD branch in CommonJS exports via ``module.exports`` (skipping
+    the browser mount), so the bootstrap manually mounts it on the
+    legacy ``structureCanvas`` slot the dispatcher's ``_canvas()``
+    escape hatch reads.  Selection-store's IIFE only mounts the
+    factory (``_createStore``), so the bootstrap creates the
+    singleton instance and mounts it on the legacy
+    ``selection.store`` slot the dispatcher's ``_store()`` escape
+    hatch reads.
     """
     node = shutil.which("node")
     if node is None:
         pytest.skip("node not available")
 
-    bootstrap = """
-        // Minimal browser-shim for the IIFE stores.
-        const _events = {};
-        global.window = global;
-        global.document = {
-            readyState: "complete",
-            addEventListener: () => {},
-            getElementById:  () => null,
-        };
-        const _storage = {};
-        global.sessionStorage = {
-            getItem:   (k) => (_storage[k] == null ? null : _storage[k]),
-            setItem:   (k, v) => { _storage[k] = String(v); },
-            removeItem: (k) => { delete _storage[k]; },
-        };
-        global.molbuilder = global.molbuilder || {};
-        global.window.molbuilder = global.molbuilder;
-        // Minimal runtime registry stub — the dispatcher uses it
-        // for whenReady("modify.postOp") + similar.
-        const _registry = {};
-        const _waiters  = {};
-        global.molbuilder.runtime = {
-            register: (name, value) => {
-                _registry[name] = value;
-                if (_waiters[name]) {
-                    _waiters[name].forEach((res) => res(value));
-                    delete _waiters[name];
-                }
-            },
-            whenReady: (name) => {
-                if (name in _registry) return Promise.resolve(_registry[name]);
-                return new Promise((res) => {
-                    (_waiters[name] = _waiters[name] || []).push(res);
-                });
-            },
-        };
-
-        // Load the canvas-state + selection store IIFEs (the
-        // legacy stores the dispatcher delegates to).
-        require({DISPATCHER_DEPS_LOAD});
-
-        // Tests append their snippet here.
-        {SNIPPET}
-    """.replace("{DISPATCHER_DEPS_LOAD}", json.dumps(str(CANVAS_PATH))) \
-       .replace("{SNIPPET}", snippet)
-
-    # canvas-state, selection store, AND dispatcher all load via
-    # the same require chain — keep it explicit.
-    # canvas-state ships a UMD branch: in CommonJS it exports via
-    # ``module.exports`` and skips the ``window.molbuilder.*`` mount
-    # the browser would do.  Manually mount it so the dispatcher's
-    # ``_canvas()`` resolver finds it.  selection store mounts
-    # unconditionally on the window — just require it.  Dispatcher
-    # mounts BOTH module.exports AND window.molbuilder.workspace
-    # (Phase 4 UMD-ish update).
     bootstrap = (
         "window.molbuilder.structureCanvas = require("
         + json.dumps(str(CANVAS_PATH)) + ");\n"

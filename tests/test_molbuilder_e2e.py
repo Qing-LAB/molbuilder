@@ -372,56 +372,29 @@ def test_modify_page_loads_without_js_errors(page, flask_server):
     assert page.locator("a.app-tab.is-active").inner_text() == "Molbuilder"
 
 
-def test_runtime_modules_registered_on_modify(page, flask_server):
-    """Pin the module-init contract (design.md "Module init contract"):
-    every module-with-a-global on /modify MUST call
-    ``runtime.register(name, api)`` so consumers can ``whenReady``
-    instead of polling for ``window.molbuilder.foo``.
+def test_runtime_listPending_is_empty_on_modify(page, flask_server):
+    """Pin the consumer/producer integrity: every
+    ``runtime.whenReady("X")`` call has a matching producer that
+    actually called ``runtime.register("X", ...)``.  An unresolved
+    waiter is a wiring bug — the consumer would hang forever.
 
-    Regression target: a future module-with-a-global that forgets
-    to register would still work for same-tick consumers (because of
-    the backward-compat global) but break any consumer that
-    legitimately uses ``whenReady``.  This test catches that drift."""
+    The per-module ``runtime.register("X", api)`` source-level
+    contract is covered at L2 by
+    ``tests/test_runtime_module_registrations_js.py`` (source-text
+    grep, no browser needed).  This test catches the orthogonal
+    drift class: a consumer's ``whenReady("X")`` for a producer
+    that doesn't exist (e.g., the producer was renamed but its
+    consumer wasn't updated)."""
     page.goto(f"{flask_server}/molbuilder")
+    # Wait for the last-to-register sentinel so we know the script
+    # chain finished loading.  modify.handle is the latest signal
+    # since modify/viewer.js loads near the end of modify.html.
     page.wait_for_function(
         "() => window.molbuilder && window.molbuilder.runtime "
         "      && window.molbuilder.runtime.listRegistered()"
         "                 .includes('modify.handle')",
         timeout=10000,
     )
-    registered = page.evaluate(
-        "() => window.molbuilder.runtime.listRegistered()"
-    )
-    # The expected set is the module-name registry from design.md;
-    # adding a module requires updating BOTH the table there and
-    # this assert (intentional friction so the rename gets caught).
-    #
-    # Review cleanup 2026-06-08 dropped ``modify.loadStructureText``
-    # from the required set — its registration had no whenReady
-    # consumer in the codebase, so emitting it was dead-code that
-    # the workspace-state migration audit caught.  Consumers that
-    # need the loader read the global
-    # ``window.molbuilder.loadStructureText`` directly (it's still
-    # mounted by modify/viewer.js; only the runtime-registry alias
-    # was retired).
-    #
-    # Phase 9 (2026-06-13) dropped ``selection.store`` — the
-    # workspace dispatcher now owns the singleton internally, so
-    # there's no whenReady consumer to satisfy.
-    for required in (
-        "projects",
-        "selection.panel",
-        "selection.viewerAdapter",
-        "modify.handle",
-    ):
-        assert required in registered, (
-            f"runtime is missing the {required!r} registration; "
-            f"see design.md \"Module init contract\".  "
-            f"Got: {registered}"
-        )
-    # listPending should be empty -- a non-empty list means a
-    # consumer is hung forever waiting for a producer that never
-    # called register().
     pending = page.evaluate(
         "() => window.molbuilder.runtime.listPending()"
     )
