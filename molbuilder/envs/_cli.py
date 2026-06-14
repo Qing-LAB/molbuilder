@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import shlex
 import sys
-from typing import Iterable, Optional
+from typing import Iterable
 
 import click
 

@@ -29,7 +29,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 from ..diagnostics import Capabilities, get_capabilities
-from .doctor import EnvReport, _effective_name, _run_verify
+from .doctor import _effective_name
 from .recipes import Recipe
 
 
