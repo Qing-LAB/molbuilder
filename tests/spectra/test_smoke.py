@@ -47,6 +47,8 @@ from molbuilder.spectra.pyscf_script import render_spectra_script
 from molbuilder.structure import Structure
 
 
+pytestmark = pytest.mark.smoke
+
 # Skip the whole module if PySCF isn't importable.
 pyscf = pytest.importorskip("pyscf", reason="smoke tests require PySCF")
 

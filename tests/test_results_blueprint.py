@@ -854,6 +854,25 @@ class TestPartialSpectraInspectorEndpoint:
             f"inspector queries this id and would crash on /results"
         )
 
+    def test_partial_has_no_undocumented_ids(self, web):
+        """Bidirectional contract pin: every id in the partial body
+        must be in ``REQUIRED_IDS``.  Pre-2026-06-13 only the one-way
+        check existed; new template additions could drift in without
+        the test set being updated, defeating the "explicit contract"
+        invariant the trajectory-partial test pins.  Per
+        ``docs/protocols/test-strategy.md`` § 8.8 the partial-pin tests
+        should mirror ``TestPartialIntegrity::test_partial_declares_*``
+        in both directions."""
+        import re
+        body = web.get("/partials/spectra-inspector").get_data(as_text=True)
+        actual = set(re.findall(r'id="([^"]+)"', body))
+        extra = actual - set(self.REQUIRED_IDS)
+        assert not extra, (
+            f"spectra inspector partial has IDs not in the explicit "
+            f"contract: {sorted(extra)}.  Add them to REQUIRED_IDS "
+            f"if intentional, or remove them from the template."
+        )
+
     def test_partial_does_not_carry_page_chrome(self, web):
         """Fragment, not a full page -- no top-level <html>/<head>/
         <body>.  Match on tags, not substrings (``<head`` is a
@@ -967,6 +986,22 @@ class TestPartialSelectionPanelEndpoint:
         assert f'id="{element_id}"' in body, (
             f"selection partial is missing {element_id!r}; "
             f"lib/selection-panel.js will fail on $() lookup."
+        )
+
+    def test_partial_has_no_undocumented_ids(self, web):
+        """Bidirectional contract pin (added 2026-06-13).  Catches new
+        template IDs that aren't yet in ``REQUIRED_IDS`` — the gap
+        that let ``selection-invert-btn`` + ``selection-isolate-checkbox``
+        sit unpinned for a month after the 2026-06-12 selection-panel
+        v3 work."""
+        import re
+        body = web.get("/partials/selection-panel").get_data(as_text=True)
+        actual = set(re.findall(r'id="([^"]+)"', body))
+        extra = actual - set(self.REQUIRED_IDS)
+        assert not extra, (
+            f"selection panel partial has IDs not in the explicit "
+            f"contract: {sorted(extra)}.  Add them to REQUIRED_IDS "
+            f"if intentional, or remove them from the template."
         )
 
 

@@ -561,7 +561,7 @@ documented in [`web-api.md`](web-api.md) § 10, AND each
 
 ### 9.3 Validator + analyzer agreement
 
-`tests/test_validation.py::TestCheckOpenShellMetalUsesAnalyzer::test_validator_reads_metals_from_analyze_structure`
+`tests/validation/test_chemistry.py::TestCheckOpenShellMetalUsesAnalyzer::test_validator_reads_metals_from_analyze_structure`
 + `::test_validator_includes_analyzer_rationale_in_message`:
 the validator's `_check_open_shell_metal` reads its conclusions
 from `analyze_structure(struct)` (proved by monkeypatching the
@@ -667,11 +667,11 @@ of the same change.  No backward-compat shim per
 
 ### Follow-up: split tests by submodule
 
-`tests/test_validation.py` is still a 1479-LoC flat file as of the
-split.  Splitting it into `tests/validation/test_<submodule>.py`
-that mirrors the source layout is the next step; see
-[`test-strategy.md`](test-strategy.md) for the target shape +
-decision tree.
+`tests/test_validation.py` was a 1479-LoC flat file before the
+test-side split (commit 8b4afed, 2026-06-13) — now lives as
+`tests/validation/` mirroring the source layout (6 per-submodule
+files + conftest + helpers).  See [`test-strategy.md`](test-strategy.md)
+§ 8.8 for the canonical worked example.
 
 ---
 

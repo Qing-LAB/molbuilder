@@ -4870,6 +4870,8 @@ import re as _re_badge
 _HHMMSS_RE = _re_badge.compile(r"\d{1,2}:\d{2}:\d{2}")
 
 
+pytestmark = pytest.mark.e2e
+
 def test_watch_run_state_badge_ongoing_shows_last_result_timestamp(
         page, flask_server, watch_log_file):
     """Loading an ongoing molwatch log (no `# concluded:` marker)
