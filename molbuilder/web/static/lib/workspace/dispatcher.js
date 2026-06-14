@@ -81,9 +81,26 @@
 
     // ─── Internal references resolved on demand ─────────────────── //
 
+    // Phase 9 (2026-06-13): the canvas-state singleton is no
+    // longer mounted as a public global.  The impl file
+    // (lib/workspace/_canvas-state-impl.js) places it on the
+    // private ``workspace._canvasState`` slot in the browser.
+    // Test escape hatch: a harness that ``require()``s the impl
+    // and assigns the return value to ``root.molbuilder
+    // .structureCanvas`` (test_workspace_dispatcher_js.py) is
+    // honoured too — so existing test setup keeps working
+    // without re-exposing the legacy global in production
+    // templates.
     function _canvas() {
-        return (root.molbuilder && root.molbuilder.structureCanvas)
-            ? root.molbuilder.structureCanvas : null;
+        if (root.molbuilder
+            && root.molbuilder.workspace
+            && root.molbuilder.workspace._canvasState) {
+            return root.molbuilder.workspace._canvasState;
+        }
+        if (root.molbuilder && root.molbuilder.structureCanvas) {
+            return root.molbuilder.structureCanvas;
+        }
+        return null;
     }
 
     // Phase 9 (2026-06-13): the selection store is no longer a

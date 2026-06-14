@@ -38,7 +38,6 @@
  *   "workspace"                 -- lib/workspace/dispatcher.js  (Phase 10 — the public surface)
  *   "selection.panel"           -- lib/selection-panel.js
  *   "selection.viewerAdapter"   -- lib/selection/viewer-adapter.js
- *   "structure.canvas"          -- lib/structure/canvas-state.js   (DEPRECATED: ws.*)
  *   "structure.page"            -- lib/structure/page.js
  *   "structure.save"            -- lib/structure/save.js
  *   "modify.handle"             -- modify/viewer.js (per-tab; embed handle, not raw 3Dmol)

@@ -455,11 +455,12 @@ The following surfaces existed pre-Phase-10 but are now **deleted**:
 
 A `grep -rn 'structureCanvas\|selection\.store\|window.molbuilder.modify.state' molbuilder/web/static/` from a non-`lib/workspace/` directory MUST return zero matches.  This is enforced by `tests/test_no_legacy_store_consumers.py` (shipped 2026-06-09 with Phase 10 Fix 4).
 
-**Implementation status (Phase 10, 2026-06-09):** the legacy modules `lib/structure/canvas-state.js`, `lib/selection/store.js` still exist as the dispatcher's internal implementation, but they are no longer consumed externally.  Migration paths:
+**Implementation status (Phase 9, 2026-06-13):** the legacy module paths `lib/structure/canvas-state.js` + `lib/selection/store.js` are GONE.  Their bodies live at `lib/workspace/_canvas-state-impl.js` + `lib/workspace/_selection-store-impl.js` — workspace-internal helpers the dispatcher loads to build its singletons.
 
 * Every consumer goes through `ws.*` — enforced by `tests/test_no_legacy_store_consumers.py`.
-* `window.molbuilder.structureCanvas` + `window.molbuilder.selection.store` remain mounted (the dispatcher delegates to them internally).  They are marked DEPRECATED in `lib/molbuilder-runtime.js`'s registry docstring.
-* Physical deletion of the legacy files is a follow-up cleanup PR — the dispatcher's internal delegation needs to absorb their bodies first.  Today's contract enforcement (no external consumers) is the architectural win; deletion is a refactor with no behavior change.
+* `window.molbuilder.structureCanvas` + `window.molbuilder.selection.store` are NO LONGER mounted in production.  The dispatcher reads from the private `window.molbuilder.workspace._canvasState` slot (canvas-state) and constructs its selection-store singleton via the `_createStore` factory at module init.
+* Test escape hatch: dispatcher `_canvas()` + `_store()` honour pre-mounted legacy globals if a harness installs them before the dispatcher loads.  Production templates never do.
+* `runtime.register("selection.store", …)` + `runtime.register("structure.canvas", …)` are GONE — no consumer ever called `whenReady` on them.
 
 ---
 

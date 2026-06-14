@@ -67,9 +67,9 @@ describes the wire protocol; § 6 is the migration plan.
 
 | Store | Path | Owns | Persisted to |
 |---|---|---|---|
-| canvas-state | `static/lib/structure/canvas-state.js` | `{source_format, text, source: {kind, file, generator_input}, dirty, last_save_to}` | `sessionStorage["molbuilder.structure_canvas"]` |
+| canvas-state | `static/lib/workspace/_canvas-state-impl.js` | `{source_format, text, source: {kind, file, generator_input}, dirty, last_save_to}` | `sessionStorage["molbuilder.structure_canvas"]` |
 | modify viewer state IIFE | `static/modify/viewer.js` (module-scope `state`) | `{xyz, elements, atom_names, residue_ids, residue_names, chain_ids, title, n_atoms, positions, history, inFlight, _inFlightAbort}` | `sessionStorage["modify-state"]` (schema v1) |
-| selection store | `static/lib/selection/store.js` | `{sourceFile, atoms, selection, mode, filters, combinator, loading, error}` | none directly — restored via modify-viewer-state's `atoms` field added 2026-06-07 |
+| selection store | `static/lib/workspace/_selection-store-impl.js` | `{sourceFile, atoms, selection, mode, filters, combinator, loading, error}` | none directly — restored via modify-viewer-state's `atoms` field added 2026-06-07 |
 | 3Dmol embed | `window.molbuilder.modify.handle` | the rendered model (xyz bytes + camera + style + axes + labels) | camera saved by modify viewer state |
 
 Pieces of the workspace duplicated across stores:

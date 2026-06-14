@@ -1,16 +1,13 @@
-/* Structure-tab canvas state.
+/* Structure-tab canvas state — workspace-internal as of Phase 9
+ * (2026-06-13).  This module no longer mounts a public singleton
+ * on ``window.molbuilder.structureCanvas``.  The workspace
+ * dispatcher (lib/workspace/dispatcher.js) holds the one
+ * process-wide instance via the private mount this file places
+ * on ``window.molbuilder.workspace._canvasState``.  Every
+ * external consumer goes through ``window.molbuilder.workspace.*``
+ * (=``ws.*``).
  *
  * Single source of truth for "what's loaded in the Structure tab
- * **Internal as of Phase 9 (2026-06-08) of the workspace-state
- * migration** (docs/protocols/workspace-state.md).  New code
- * MUST consume ``window.molbuilder.workspace`` instead of
- * touching this module's globals directly.  The module + its
- * legacy ``molbuilder.structure_canvas`` sessionStorage mirror
- * stay in place to keep the existing consumers (modify-tab
- * viewer, generators, save panel) working during the migration
- * window; they will be folded into the dispatcher in a follow-up
- * once every direct consumer has migrated.
- *
  * canvas."  Survives browser refresh via sessionStorage; cleared
  * when the tab is closed.  The Structure tab's interactive
  * primitives (load-from-project, generators, modifier panels) read
@@ -388,20 +385,22 @@
         STORAGE_KEY:       STORAGE_KEY,
     };
 
-    // UMD-ish export.  In the browser this is a side-effect IIFE
-    // that mounts on window.molbuilder.structureCanvas; in Node test
-    // contexts the module.exports path is taken so the contract can
-    // be unit-tested without a DOM.
+    // UMD-ish export.  In Node test contexts (canvas-state-only
+    // unit tests) ``module.exports`` carries the api so tests can
+    // ``require()`` it without a DOM.  In the browser the api is
+    // mounted on a PRIVATE workspace namespace as of Phase 9
+    // (2026-06-13) — the legacy ``window.molbuilder.structureCanvas``
+    // global + the matching ``runtime.register("structure.canvas",
+    // ...)`` are gone.  The dispatcher reads from
+    // ``window.molbuilder.workspace._canvasState`` (this mount) and
+    // also honours a legacy ``structureCanvas`` mount as a
+    // test-only escape hatch for harnesses that ``require()`` this
+    // file and assign the return value manually.
     if (typeof module !== "undefined" && module.exports) {
         module.exports = api;
     } else {
         root.molbuilder = root.molbuilder || {};
-        root.molbuilder.structureCanvas = api;
-        // Register with the runtime if available.
-        if (root.molbuilder && root.molbuilder.runtime
-            && typeof root.molbuilder.runtime.register === "function") {
-            root.molbuilder.runtime.register(
-                "structure.canvas", api);
-        }
+        root.molbuilder.workspace = root.molbuilder.workspace || {};
+        root.molbuilder.workspace._canvasState = api;
     }
 })(typeof window !== "undefined" ? window : globalThis);

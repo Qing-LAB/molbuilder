@@ -71,7 +71,6 @@ The naming scheme is **flat, dotted, lowercased**.
 | Name | Source file | Producer side |
 |---|---|---|
 | `projects` | `lib/projects-sidebar.js` | type=module |
-| `selection.store` | `lib/selection/store.js` | classic IIFE |
 | `selection.panel` | `lib/selection-panel.js` | classic IIFE |
 | `selection.viewerAdapter` | `lib/selection/viewer-adapter.js` | classic IIFE |
 | `modify.handle` | `modify/viewer.js` | classic IIFE (per-tab); embed handle, not raw 3Dmol viewer |

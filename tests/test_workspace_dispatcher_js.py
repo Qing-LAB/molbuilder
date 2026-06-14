@@ -30,7 +30,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 DISPATCHER_PATH = ROOT / "molbuilder/web/static/lib/workspace/dispatcher.js"
 STORE_PATH      = ROOT / "molbuilder/web/static/lib/workspace/_selection-store-impl.js"
-CANVAS_PATH     = ROOT / "molbuilder/web/static/lib/structure/canvas-state.js"
+CANVAS_PATH     = ROOT / "molbuilder/web/static/lib/workspace/_canvas-state-impl.js"
 
 
 def _run_node(snippet: str) -> object:

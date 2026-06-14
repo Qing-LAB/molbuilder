@@ -9,7 +9,10 @@ globals are:
 
   * lib/workspace/dispatcher.js — delegates to them as internal
     implementation
-  * lib/structure/canvas-state.js — self-mounts the canvas global
+  * lib/workspace/_canvas-state-impl.js — Phase 9 (2026-06-13)
+    moved out of lib/structure/canvas-state.js; no longer mounts
+    the structureCanvas global, but places the singleton on the
+    private workspace._canvasState slot the dispatcher consumes
   * lib/workspace/_selection-store-impl.js — Phase 9 (2026-06-13)
     moved out of lib/selection/store.js; no longer mounts the
     selection.store global, but exposes the _createStore factory
@@ -42,7 +45,7 @@ ALLOW_LIST = {
     # these modules + inline their logic into the dispatcher, but
     # the dispatcher itself is permitted to know about them.
     "lib/workspace/dispatcher.js",
-    "lib/structure/canvas-state.js",
+    "lib/workspace/_canvas-state-impl.js",
     "lib/workspace/_selection-store-impl.js",
     # The runtime registry's module docstring lists every mounted
     # name including the deprecated ones.  The list is documentation,
