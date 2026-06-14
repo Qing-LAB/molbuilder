@@ -1039,12 +1039,12 @@ Success response:
 
 ```json
 {
-  "ok":       true,
-  "engine":   "transiesta",
-  "script":   "<...the .fdf text...>",
-  "filename": "transport.fdf",
-  "issues":   [{"severity": "warn", "message": "...", "where": "..."}],
-  "errors":   []
+  "ok":          true,
+  "engine":      "transiesta",
+  "script":      "<...the .fdf text...>",
+  "filename":    "transport.fdf",
+  "issues":      [{"severity": "warn", "message": "...", "where": "..."}],
+  "errors_only": []
 }
 ```
 
@@ -1053,12 +1053,18 @@ pattern — `script` key omitted, NOT `script: null`):
 
 ```json
 {
-  "ok":     false,
-  "engine": "transiesta",
-  "errors": [{"severity": "error", "message": "...", "where": "..."}],
-  "issues": [{"severity": "error", "message": "...", "where": "..."}]
+  "ok":          false,
+  "engine":      "transiesta",
+  "error":       "preflight failed; see issues",
+  "issues":      [{"severity": "error", "message": "...", "where": "..."}],
+  "errors_only": [{"severity": "error", "message": "...", "where": "..."}]
 }
 ```
+
+`errors_only` is the pre-filtered error-severity subset of
+`issues` — a convenience for consumers that want just the
+blockers without re-filtering on their own.  See § "Response
+envelope shape" for the canonical envelope fields.
 
 Error responses:
 

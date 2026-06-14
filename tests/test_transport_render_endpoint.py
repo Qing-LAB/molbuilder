@@ -5,8 +5,11 @@ Pins the contract:
 * The endpoint dispatches via :func:`molbuilder.transport.get_engine`
   so a new engine drops in without endpoint code changes.
 * Wire shape mirrors Spectra's render endpoint:
-  ``{ok, engine, script, filename, issues, errors}`` on success;
-  ``{ok=False, errors, issues}`` when preflight blocks emission.
+  ``{ok, engine, script, filename, issues, errors_only}`` on
+  success; ``{ok=False, error, issues, errors_only}`` when preflight
+  blocks emission.  ``errors_only`` is the pre-filtered
+  error-severity subset of ``issues`` — see transport.py's
+  field-meaning comment block for the full envelope shape.
 * The structure path goes through the picker-root allowlist so a
   client can't read arbitrary files.
 * Sidecar (.molstruct.json) is applied if reachable — that's where
@@ -131,8 +134,9 @@ def test_render_returns_fdf_for_labeled_au_s_junction(web):
 
 def test_render_blocks_when_regions_missing(web):
     """No sidecar (= no region labels) → preflight returns error →
-    endpoint returns 400 with ``errors`` populated and NO script.
-    The user sees the issues panel before a runtime failure.
+    endpoint returns 400 with ``errors_only`` populated and NO
+    script.  The user sees the issues panel before a runtime
+    failure.
     """
     client, tmp = web
     proj = tmp / "unlabeled"
@@ -149,7 +153,9 @@ def test_render_blocks_when_regions_missing(web):
     body = r.get_json()
     assert body["ok"] is False
     assert body.get("script") is None
-    assert any("region" in e["message"].lower() for e in body["errors"])
+    assert any(
+        "region" in e["message"].lower() for e in body["errors_only"]
+    )
 
 
 # --------------------------------------------------------------------- #
@@ -236,7 +242,9 @@ def test_render_response_has_documented_shape(web):
     })
     assert r.status_code == 200
     body = r.get_json()
-    for key in ("ok", "engine", "script", "filename", "issues", "errors"):
+    for key in (
+        "ok", "engine", "script", "filename", "issues", "errors_only",
+    ):
         assert key in body, f"response missing documented key {key!r}"
 
 
@@ -283,8 +291,9 @@ def test_render_preflight_error_envelope_carries_top_level_error(web):
     """Regression for the 2026-06-11 review: Spectra's preflight
     error envelope carries a top-level ``error`` field
     (``"preflight failed; see issues"``) but Transport's previously
-    omitted it.  An envelope-handler that gates on ``error`` (not
-    ``errors``) had no message to surface.  Pin parity with Spectra.
+    omitted it.  An envelope-handler that gates on ``error`` (the
+    banner string, not the ``errors_only`` list) had no message to
+    surface.  Pin parity with Spectra.
     """
     client, tmp = web
     proj = tmp / "envelope"

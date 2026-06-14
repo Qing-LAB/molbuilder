@@ -105,18 +105,22 @@ def api_transport_render() -> Any:
     Returns::
 
       {
-        "ok":      True,
-        "engine":  "transiesta",
-        "script":  "<.fdf text>",
-        "filename": "<jobname>.fdf",
-        "issues":  [{"severity": "warn", "message": "...", "where": "..."}],
-        "errors":  []
+        "ok":          True,
+        "engine":      "transiesta",
+        "script":      "<.fdf text>",
+        "filename":    "<jobname>.fdf",
+        "issues":      [{"severity": "warn", "message": "...", "where": "..."}],
+        "errors_only": []
       }
 
     On preflight errors (``severity = "error"``) the endpoint
-    returns ``ok = False`` with ``errors`` populated; ``script``
-    is not emitted (generating an incorrect .fdf would risk a
-    silent runtime failure for the user).
+    returns ``ok = False`` with ``errors_only`` populated;
+    ``script`` is not emitted (generating an incorrect .fdf would
+    risk a silent runtime failure for the user).
+
+    ``errors_only`` is the pre-filtered error-severity subset of
+    ``issues`` — see the field-meaning comment block below the
+    preflight-error branch for the full envelope shape.
 
     Engine dispatch goes through the registry — adding a new
     engine = drop ``molbuilder/transport/<engine>.py`` with an
@@ -196,20 +200,48 @@ def api_transport_render() -> Any:
         # consequence in human-readable form.
         issues.append(Issue("warn", sidecar_notice, "structure_path"))
 
-    errors = [i for i in issues if i.severity == "error"]
-    if errors:
-        # Match Build / Spectra: omit ``script`` key entirely on
-        # preflight errors instead of returning ``script: None`` —
-        # the JS detects absence to drive the script-preview card
-        # visibility.  The top-level ``error`` field mirrors Spectra
-        # (spectra.py:407) so a generic envelope handler that gates
-        # on ``error`` (not ``errors``) surfaces a sensible message.
+    # What each field on this response means — written down here so
+    # anyone reading the code later does not mistake the names for
+    # each other:
+    #
+    #   error        — a short string for the status banner at the
+    #                  top of the form, e.g. "preflight failed; see
+    #                  issues".  Not present on a successful run.
+    #                  Same field that /api/build/fdf, /api/build/
+    #                  pyscf, and /api/spectra/render use.
+    #
+    #   issues       — the full list of things found while preparing
+    #                  the script: errors, warnings, and notes
+    #                  mixed together (each carries a severity).
+    #                  The UI shows this as the colour-coded list
+    #                  under the banner.
+    #
+    #   errors_only  — the same list as `issues`, with only the
+    #                  error-severity items kept.  Always emitted as
+    #                  a list, including [] on success.  The browser
+    #                  does not read this today; it stays on the
+    #                  wire so a future caller (a CI script, a
+    #                  future "show only errors" button) can read
+    #                  the blockers without doing the severity
+    #                  filter on its own.
+    #
+    # Do not delete `errors_only` thinking it duplicates `error` or
+    # `issues`.  It does not: `error` is one string, `issues` is the
+    # mixed-severity list, `errors_only` is the pre-filtered
+    # error-severity slice of `issues`.
+    errors_only = [i for i in issues if i.severity == "error"]
+    if errors_only:
+        # Omit the `script` key entirely on preflight failure
+        # (instead of returning `script: None`) — the JS detects
+        # absence to drive the script-preview card visibility.
+        # Mirrors /api/build/fdf, /api/build/pyscf,
+        # /api/spectra/render.
         return jsonify({
-            "ok":      False,
-            "engine":  cfg.engine,
-            "error":   "preflight failed; see issues",
-            "errors":  _issues_to_json(errors),
-            "issues":  _issues_to_json(issues),
+            "ok":          False,
+            "engine":      cfg.engine,
+            "error":       "preflight failed; see issues",
+            "issues":      _issues_to_json(issues),
+            "errors_only": _issues_to_json(errors_only),
         }), 400
 
     # Emit the script.  Engine-side rendering is pure (no I/O); the
@@ -239,10 +271,12 @@ def api_transport_render() -> Any:
         filename = f"{cfg.job_name}.py"
 
     return jsonify({
-        "ok":       True,
-        "engine":   cfg.engine,
-        "script":   script,
-        "filename": filename,
-        "issues":   _issues_to_json(issues),
-        "errors":   [],
+        "ok":          True,
+        "engine":      cfg.engine,
+        "script":      script,
+        "filename":    filename,
+        "issues":      _issues_to_json(issues),
+        # See the field-meaning comment near the preflight-error
+        # branch above for what `errors_only` is for.
+        "errors_only": [],
     })
