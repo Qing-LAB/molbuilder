@@ -238,10 +238,22 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
             f'# Read SystemLabel from the .fdf so the warm-start glob\n'
             f"# matches the files SIESTA will look for at startup\n"
             f"# (not what the wrapper's filename happens to be).\n"
-            f'_warm_label=$(awk \'BEGIN{{IGNORECASE=1}} '
-            f'/^[[:space:]]*SystemLabel[[:space:]]+/ '
-            f'{{print $2; exit}}\' "{basename}.fdf" 2>/dev/null)\n'
-            f'[ -z "$_warm_label" ] && _warm_label="{basename}"\n'
+            f"# Robustness notes:\n"
+            f"#   * Lower-case the line before matching instead of\n"
+            f"#     using gawk's IGNORECASE (mawk / BusyBox awk /\n"
+            f"#     BSD awk silently ignore IGNORECASE).\n"
+            f"#   * Strip surrounding ``\"...\"`` quotes from the\n"
+            f"#     extracted token -- SIESTA accepts quoted labels.\n"
+            f"#   * ``|| true`` keeps awk's non-zero exit (e.g.\n"
+            f"#     missing .fdf) from aborting the wrapper under\n"
+            f"#     ``set -euo pipefail``.\n"
+            f"#   * The :- default guards against ``set -u`` when\n"
+            f"#     awk produced no output at all.\n"
+            f'_warm_label=$(awk \''
+            f'tolower($1) == "systemlabel" '
+            f'{{ gsub(/"/, "", $2); print $2; exit }}'
+            f'\' "{basename}.fdf" 2>/dev/null || true)\n'
+            f'_warm_label="${{_warm_label:-{basename}}}"\n'
         )
         # Two-label glob: SystemLabel-keyed AND wrapper-basename-keyed
         # so we catch both naming styles.
@@ -252,10 +264,14 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
         )
     else:
         # PySCF: extract the JOB assignment from the script.
+        # Anchored to a literal ``JOB =`` (whitespace tolerant) on
+        # a single line.  Same set-u guard as SIESTA.
         label_extract = (
-            f'_warm_label=$(awk -F\'["\\\'"]\' \'/^JOB[[:space:]]*=/ '
-            f'{{print $2; exit}}\' "{basename}.py" 2>/dev/null)\n'
-            f'[ -z "$_warm_label" ] && _warm_label="{basename}"\n'
+            f'_warm_label=$(awk -F\'["\\\'"]\' \''
+            f'/^[[:space:]]*JOB[[:space:]]*=/ '
+            f'{{print $2; exit}}'
+            f'\' "{basename}.py" 2>/dev/null || true)\n'
+            f'_warm_label="${{_warm_label:-{basename}}}"\n'
         )
         glob_pieces = " ".join(
             f'"$_warm_label.{ext}" {basename}.{ext}'
@@ -354,12 +370,46 @@ def _runtime_status_block(
         warmstart_listing = " ".join(
             f"{basename}.{ext}" for ext in warmstart_exts
         )
+        # Awk that:
+        #   * lower-cases the first token for case-insensitive
+        #     ``%block`` / ``%endblock`` / ``position`` matching
+        #     (portable; replaces gawk's IGNORECASE).
+        #   * accepts BOTH ``Geometry.Constraints`` and
+        #     ``Geometry_Constraints`` for the block name (SIESTA
+        #     treats ``.`` and ``_`` interchangeably).
+        # Two passes so ``_ncon_lines`` and ``_ncon_indices`` come
+        # from the same logical scan.  ``|| true`` keeps awk's exit
+        # code from aborting under ``set -euo pipefail``.
+        _awk_count_program = (
+            r'{ k = tolower($1) } '
+            r'k == "%block" && '
+            r'(tolower($2) == "geometry.constraints" || '
+            r'tolower($2) == "geometry_constraints") '
+            r'{ in_b = 1; next } '
+            r'k == "%endblock" && '
+            r'(tolower($2) == "geometry.constraints" || '
+            r'tolower($2) == "geometry_constraints") '
+            r'{ in_b = 0; next } '
+            r'in_b && tolower($1) == "position"'
+        )
         constraint_detection = (
             f'_constraints="(no Geometry.Constraints block -- all atoms free)"\n'
             f'_fdf_path="{script_name}"\n'
-            f'if [ -e "$_fdf_path" ] && grep -qiE \'^[[:space:]]*%block[[:space:]]+Geometry\\.Constraints\' "$_fdf_path"; then\n'
-            f'    _ncon_lines=$(awk \'BEGIN{{IGNORECASE=1;in_b=0;n=0}} /^[[:space:]]*%block[[:space:]]+Geometry\\.Constraints/{{in_b=1;next}} /^[[:space:]]*%endblock[[:space:]]+Geometry\\.Constraints/{{in_b=0;next}} in_b && /^[[:space:]]*position/{{n++}} END{{print n}}\' "$_fdf_path")\n'
-            f'    _ncon_indices=$(awk \'BEGIN{{IGNORECASE=1;in_b=0;n=0}} /^[[:space:]]*%block[[:space:]]+Geometry\\.Constraints/{{in_b=1;next}} /^[[:space:]]*%endblock[[:space:]]+Geometry\\.Constraints/{{in_b=0;next}} in_b && /^[[:space:]]*position/{{for(i=2;i<=NF;i++) if($i~/^[0-9]+$/) n++}} END{{print n}}\' "$_fdf_path")\n'
+            # Grep gate: case-insensitive AND tolerant of both
+            # `.` and `_` in the block name.  Same dialect as the
+            # awk below.
+            f'if [ -e "$_fdf_path" ] && grep -qiE '
+            f'\'^[[:space:]]*%block[[:space:]]+Geometry[._]Constraints\' '
+            f'"$_fdf_path"; then\n'
+            f'    _ncon_lines=$(awk \'BEGIN{{in_b=0;n=0}} '
+            f'{_awk_count_program} '
+            f'{{ n++ }} END{{ print n }}\' "$_fdf_path" 2>/dev/null '
+            f'|| echo 0)\n'
+            f'    _ncon_indices=$(awk \'BEGIN{{in_b=0;n=0}} '
+            f'{_awk_count_program} '
+            f'{{ for (i=2;i<=NF;i++) if ($i ~ /^[0-9]+$/) n++ }} '
+            f'END{{ print n }}\' "$_fdf_path" 2>/dev/null '
+            f'|| echo 0)\n'
             f'    if [ -z "$_ncon_lines" ] || [ "$_ncon_lines" = "0" ]; then\n'
             f'        _constraints="Geometry.Constraints block present but EMPTY -- all atoms free"\n'
             f'    else\n'
@@ -404,18 +454,25 @@ def _runtime_status_block(
     # (the cold block also extracts it but inside its own ``if``).
     # The wrapper runs under ``set -euo pipefail``; an unbound
     # variable would otherwise abort the run.
+    # Same robustness rules as the cold block's extraction:
+    # portable case-insensitive matching (no gawk IGNORECASE),
+    # quote-stripping for SystemLabel, ``|| true`` under set-e,
+    # ``:-`` default under set-u.
     if engine == "siesta":
         label_extract_unconditional = (
-            f'_warm_label=$(awk \'BEGIN{{IGNORECASE=1}} '
-            f'/^[[:space:]]*SystemLabel[[:space:]]+/ '
-            f'{{print $2; exit}}\' "{script_name}" 2>/dev/null)\n'
-            f'[ -z "$_warm_label" ] && _warm_label="{basename}"\n'
+            f'_warm_label=$(awk \''
+            f'tolower($1) == "systemlabel" '
+            f'{{ gsub(/"/, "", $2); print $2; exit }}'
+            f'\' "{script_name}" 2>/dev/null || true)\n'
+            f'_warm_label="${{_warm_label:-{basename}}}"\n'
         )
     else:                              # pyscf
         label_extract_unconditional = (
-            f'_warm_label=$(awk -F\'["\\\'"]\' \'/^JOB[[:space:]]*=/ '
-            f'{{print $2; exit}}\' "{script_name}" 2>/dev/null)\n'
-            f'[ -z "$_warm_label" ] && _warm_label="{basename}"\n'
+            f'_warm_label=$(awk -F\'["\\\'"]\' \''
+            f'/^[[:space:]]*JOB[[:space:]]*=/ '
+            f'{{print $2; exit}}'
+            f'\' "{script_name}" 2>/dev/null || true)\n'
+            f'_warm_label="${{_warm_label:-{basename}}}"\n'
         )
     return (
         f"# --- Runtime status banner --------------------------\n"

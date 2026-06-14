@@ -352,6 +352,79 @@ class TestColdBehaviourSystemLabelMismatch:
         for name in ("job.DM", "job.XV", "job-stage3.DM", "job-stage3.XV"):
             assert (aside / name).exists()
 
+    def test_quoted_systemlabel_stripped_in_glob(self, tmp_path):
+        """SIESTA accepts ``SystemLabel "my job"`` (quoted, with
+        embedded space).  The wrapper's awk must strip the surrounding
+        quotes BEFORE using the label as a glob anchor -- otherwise
+        ``"my`` becomes the prefix and the warm-start files are
+        missed.  Embedded spaces are a separate concern (the wrapper's
+        SAFE_WRAPPER_NAME_RE rejects them at emission time) so we
+        only test the quote-strip here."""
+        wrapper = self._truncated_siesta_with_label(
+            tmp_path,
+            fdf_basename="job-stage1",
+            system_label='"foo"',  # quoted label
+        )
+        # Plant warm-start files keyed on the UNQUOTED label.
+        (tmp_path / "foo.DM").write_text("fake")
+        (tmp_path / "foo.XV").write_text("fake")
+
+        proc = subprocess.run(
+            ["bash", str(wrapper), "--cold"],
+            cwd=tmp_path,
+            capture_output=True, text=True, timeout=20,
+        )
+        assert proc.returncode == 0, (
+            f"wrapper exited {proc.returncode}\n"
+            f"stderr:\n{proc.stderr}\nstdout:\n{proc.stdout}"
+        )
+        assert not (tmp_path / "foo.DM").exists(), (
+            "quoted SystemLabel must be quote-stripped before globbing "
+            "-- pre-fix the glob looked for ``\"foo\".DM`` and missed "
+            "the unquoted filename SIESTA actually wrote."
+        )
+        assert not (tmp_path / "foo.XV").exists()
+
+    def test_lowercase_systemlabel_keyword_still_matched(
+            self, tmp_path):
+        """Replaces gawk's ``IGNORECASE`` with ``tolower($1) ==
+        "systemlabel"`` for awk portability.  Pin that a .fdf
+        whose ``systemlabel`` keyword is lowercase (or any other
+        case) still drives the glob.  Pre-fix mawk / BSD awk
+        silently ignored IGNORECASE and the glob fell back to
+        wrapper basename -- the exact bug the SystemLabel
+        extraction was added to fix."""
+        # Author the .fdf manually so we can pick the keyword case.
+        _bind()
+        script = tmp_path / "job-stage1.fdf"
+        script.write_text(
+            "systemlabel foo\n"   # lowercase keyword
+            "NumberOfAtoms 1\n"
+            "%block AtomicCoordinatesAndAtomicSpecies\n"
+            "0 0 0 1\n"
+            "%endblock AtomicCoordinatesAndAtomicSpecies\n"
+        )
+        wrapper = write_run_wrapper(script)
+        text = wrapper.read_text()
+        end = text.find('echo "================================')
+        if end < 0:
+            end = text.find("mpirun")
+        end = text.find("\n", end) + 1
+        wrapper.write_text(text[:end] + "\nexit 0\n")
+        (tmp_path / "foo.DM").write_text("fake")
+
+        proc = subprocess.run(
+            ["bash", str(wrapper), "--cold"],
+            cwd=tmp_path,
+            capture_output=True, text=True, timeout=20,
+        )
+        assert proc.returncode == 0
+        assert not (tmp_path / "foo.DM").exists(), (
+            "lowercase ``systemlabel`` keyword must still be matched "
+            "by the awk (uses tolower($1) for portability across "
+            "gawk / mawk / BSD awk)"
+        )
+
     def test_status_banner_detects_systemlabel_keyed_files(self, tmp_path):
         """When the user runs WITHOUT --cold but
         ``$SystemLabel.{DM,XV,CG}`` files are on disk, the status
