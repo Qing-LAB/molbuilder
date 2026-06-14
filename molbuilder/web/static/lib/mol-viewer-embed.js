@@ -762,22 +762,33 @@
         }
 
         if (knobs.projection) {
-            // Camera-projection toggle (2026-06-13).  3Dmol supports
+            // Camera-projection selector (2026-06-13).  3Dmol supports
             // perspective (the default) and orthographic.  The latter
             // renders parallel lines as parallel — useful for crystal/
             // surface side-by-side comparison + visually measuring
-            // bond lengths without depth foreshortening.  Toggle is a
-            // single button: "Orthographic" when off, "Perspective"
-            // when on (i.e. the label names the mode the click WILL
-            // produce), matching the Axes button's convention.
+            // bond lengths without depth foreshortening.  Native <select>
+            // so the visible label IS the current mode (no flipping-
+            // label ambiguity); _syncKnobBarToProjection keeps the
+            // option in sync after programmatic setProjection() calls.
             const sect = _menuSection("projection", "Projection");
-            const b = document.createElement("button");
-            b.type = "button";
-            b.className = "mol-viewer-toggle";
-            b.setAttribute("data-action", "projection");
-            b.setAttribute("aria-pressed", "false");
-            b.textContent = "Orthographic";
-            sect.appendChild(b);
+            const sel = document.createElement("select");
+            sel.className = "mol-viewer-select";
+            sel.setAttribute("data-action", "projection");
+            sel.setAttribute("aria-label", "Camera projection");
+            for (const [val, label] of [
+                ["perspective", "Perspective"],
+                ["orthographic", "Orthographic"],
+            ]) {
+                const opt = document.createElement("option");
+                opt.value = val;
+                opt.textContent = label;
+                sel.appendChild(opt);
+            }
+            // Default option matches the mount-time projection default
+            // ("perspective"); _syncKnobBarToProjection reasserts after
+            // any setProjection() call.
+            sel.value = "perspective";
+            sect.appendChild(sel);
             body.appendChild(sect);
         }
 
@@ -1828,21 +1839,14 @@
             });
         }
 
-        // Projection: perspective ↔ orthographic toggle.
-        const projBtn = bar.querySelector(
-            '.mol-viewer-toggle[data-action="projection"]');
-        if (projBtn) {
-            projBtn.addEventListener("click", () => {
-                const next = state.current.projection === "orthographic"
-                    ? "perspective" : "orthographic";
-                handle.setProjection(next);
-                // Update label to name the OPPOSITE mode (the mode the
-                // next click will produce) — same UX convention as the
-                // axes button.
-                projBtn.textContent = next === "orthographic"
-                    ? "Perspective" : "Orthographic";
-                projBtn.setAttribute("aria-pressed",
-                    next === "orthographic" ? "true" : "false");
+        // Projection: <select> dropdown — the visible option IS the
+        // current mode (handle.setProjection drives state; sync helper
+        // mirrors state back to the select after programmatic calls).
+        const projSel = bar.querySelector(
+            'select.mol-viewer-select[data-action="projection"]');
+        if (projSel) {
+            projSel.addEventListener("change", () => {
+                handle.setProjection(projSel.value);
             });
         }
 
@@ -2022,18 +2026,18 @@
         _syncKnobBarToProjection(state);
     }
 
-    // Knob-bar sync for the projection toggle.  Stubbed for now —
-    // the projection knob isn't yet in the bar template (added
-    // 2026-06-13 as a programmatic API first; UI wiring follows when
-    // the knob-bar template is regenerated).  Defined so setProjection
-    // doesn't crash on the missing helper.
+    // Knob-bar sync for the projection selector.  Mirrors
+    // state.current.projection onto the <select>'s value so that
+    // programmatic setProjection() calls (e.g. from applyState or
+    // host code) keep the visible UI in sync with the rendered mode.
     function _syncKnobBarToProjection(state) {
         if (!state || !state.knobBar) return;
-        const btn = state.knobBar.querySelector(
-            '.mol-viewer-toggle[data-action="projection"]');
-        if (!btn) return;
-        btn.classList.toggle("active",
-            state.current.projection === "orthographic");
+        const sel = state.knobBar.querySelector(
+            'select.mol-viewer-select[data-action="projection"]');
+        if (!sel) return;
+        const target = state.current.projection === "orthographic"
+            ? "orthographic" : "perspective";
+        if (sel.value !== target) sel.value = target;
     }
 
     /* ------------------------------------------------------------ */

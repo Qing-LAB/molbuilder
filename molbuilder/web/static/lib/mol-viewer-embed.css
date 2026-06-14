@@ -318,6 +318,28 @@
     border-color:   var(--accent, #5fb6ff);
 }
 
+/* Select dropdown (Projection) ------------------------------ */
+/* Visually matches .mol-viewer-toggle / .mol-viewer-action so the
+   View menu has consistent control sizing; the native <select>
+   carries its own caret + system menu UI on click. */
+.mol-viewer-select {
+    width:          100%;
+    padding:        0.4rem 0.6rem;
+    background:     var(--bg-input, #262b33);
+    color:          var(--text-primary, #e6e9ee);
+    border:         1px solid var(--border-soft, rgba(255,255,255,0.08));
+    border-radius:  var(--radius-sm, 6px);
+    font:           inherit;
+    cursor:         pointer;
+    transition:     background 120ms ease, border-color 120ms ease;
+}
+.mol-viewer-select:hover,
+.mol-viewer-select:focus {
+    background:     var(--bg-input-focus, #2c323b);
+    border-color:   var(--border-strong, rgba(255,255,255,0.16));
+    outline:        none;
+}
+
 /* Plain action button (Reset view) -------------------------- */
 .mol-viewer-action {
     width:          100%;
