@@ -26,13 +26,11 @@ fieldset {
     background: var(--bg-fieldset);
     min-width: 0;     /* allow grid items to shrink below content width */
 }
-fieldset legend {
-    font-weight: 600;
-    padding: 0 8px;
-    font-size: 0.92rem;
-    color: var(--accent);
-    letter-spacing: 0.01em;
-}
+/* fieldset legend lives in style.css — every template loads
+ * form-schema.css BEFORE style.css, so any rule here would be
+ * overridden anyway.  Keeping the canonical fieldset legend
+ * styling in one place (style.css:561) avoids silent drift if a
+ * future maintainer changes one but not the other. */
 
 /* Optional per-section description (`{"description": "..."}` on a
  * schema section).  Renders as a small paragraph between the
@@ -45,20 +43,9 @@ fieldset .schema-section-desc {
     color: var(--text-secondary);
 }
 
-/* Default fieldset label style: stack the label name above the input.
- * With the side-by-side default, long labels like "preopt functional"
- * push inputs out of the column; stacked is also more responsive on
- * narrow viewports. */
-fieldset label {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    margin: 10px 0;
-    font-size: 0.9rem;
-    line-height: 1.4;
-    color: var(--text-primary);
-    min-width: 0;
-}
+/* fieldset label lives in style.css — same load-order
+ * reasoning as the fieldset legend block above.  The canonical
+ * "stack name above input" rule is at style.css:573. */
 fieldset label > input,
 fieldset label > select {
     width: 100%;
