@@ -111,10 +111,24 @@ function _emptyState() {
         // range; ``loadedBytes`` tracks how much of the file is
         // currently in the editor; ``loadingMore`` blocks
         // overlapping fetches when the user scrolls fast.
+        //
+        // ``rangeAbort`` is the AbortController for the in-flight
+        // range fetch (if any).  It gates two race scenarios:
+        //   1. Fast scroll: the user scrolls past the next chunk's
+        //      threshold while the previous chunk is still loading.
+        //      ``loadingMore`` blocks re-entry, so this only
+        //      matters at close time.
+        //   2. Modal close mid-fetch: when the user closes the
+        //      modal before the range response lands, the response
+        //      would otherwise try to append to a torn-down editor.
+        //      ``closePreviewModal`` calls ``.abort()`` to drop the
+        //      response on the floor; ``_fetchNextRangeChunk``
+        //      filters AbortError silently.
         mode:          "bulk",
         loadedBytes:   0,
         loadingMore:   false,
         eof:           true,
+        rangeAbort:    null,
     };
 }
 
@@ -132,6 +146,12 @@ export function closePreviewModal() {
     if (!elModal) return;
     elModal.hidden = true;
     document.removeEventListener("keydown", _onKeydown);
+    // Drop any in-flight range fetch on the floor — its response
+    // would otherwise try to append to the editor we're about to
+    // discard.  Safe to call even if no fetch is running.
+    if (_state.rangeAbort) {
+        try { _state.rangeAbort.abort(); } catch (_) {}
+    }
     _state = _emptyState();
     _renderUiFromState();
 }
@@ -700,12 +720,19 @@ async function _loadPaginated(path, totalSize) {
 async function _fetchNextRangeChunk(path) {
     if (_state.loadingMore || _state.eof) return;
     _state.loadingMore = true;
+    // One in-flight fetch at a time; loadingMore gates re-entry.
+    // Tie the fetch to an AbortController so the modal-close path
+    // can drop the response on the floor instead of letting it
+    // append to a torn-down editor.
+    const ctrl = new AbortController();
+    _state.rangeAbort = ctrl;
     let body = null;
     try {
         const r = await fetch(
             "/api/files/read_range?path=" + encodeURIComponent(path)
             + "&offset="    + _state.loadedBytes
-            + "&max_bytes=" + PAGE_BYTES
+            + "&max_bytes=" + PAGE_BYTES,
+            { signal: ctrl.signal }
         );
         body = await r.json();
         if (!r.ok || !body.ok) {
@@ -716,6 +743,10 @@ async function _fetchNextRangeChunk(path) {
             return;
         }
     } catch (e) {
+        // AbortError fires when the modal was closed mid-fetch;
+        // the editor is already torn down and the response is
+        // irrelevant.  Silent return; do not surface as an error.
+        if (e && e.name === "AbortError") return;
         elError.textContent = "Network error: "
             + (e && e.message ? e.message : String(e));
         _state.readError = "network";
@@ -723,7 +754,15 @@ async function _fetchNextRangeChunk(path) {
         return;
     } finally {
         _state.loadingMore = false;
+        // Only clear the controller if it's still ours — a later
+        // fetch may have replaced it (it won't have, because
+        // loadingMore gates entry, but defend the invariant).
+        if (_state.rangeAbort === ctrl) _state.rangeAbort = null;
     }
+    // The fetch returned a valid chunk, but the modal may have
+    // closed between the fetch landing and this append.  Guard
+    // against appending to a torn-down editor.
+    if (!_cm || _state.path !== path) return;
     // Append the chunk to the end of the editor doc.  CM5 accepts
     // ``{line: Infinity}`` and clamps to the last position.
     _cm.replaceRange(body.text, { line: Infinity, ch: 0 });
