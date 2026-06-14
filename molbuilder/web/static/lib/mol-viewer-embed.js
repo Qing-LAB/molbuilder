@@ -1754,18 +1754,40 @@
     }
 
     function _syncKnobBarToAnimation(state) {
-        // Phase 6: Animation Export section is hidden by default and
-        // revealed only when a trajectory or vibration animation is
-        // currently mounted.  Data + Snapshot sections stay visible
-        // unconditionally — they don't need an animation.  Phase 6e
-        // toggles the whole `<div data-section="animation">` wrapper
-        // (label + Save row + Download row) instead of individual
-        // buttons, so the user doesn't see an empty section label.
+        // 2026-06-14: the Animation Export section is ALWAYS
+        // visible.  Pre-fix the whole section vanished when no
+        // animation was mounted -- same disease class as the
+        // hide-frozen-row case (UI presence tied to data).  A user
+        // who learned the section was here didn't find it on the
+        // next static-structure load and assumed the controls
+        // moved or broke.
+        //
+        // New contract: section's PRESENCE is unconditional.  The
+        // BUTTONS inside it get ``aria-disabled`` + ``disabled``
+        // set when there's nothing to save/download (the same
+        // pattern the Save / Download buttons use in the projects
+        // sidebar).  This keeps the affordance stable across
+        // loads while making the no-op state visible to the user.
         if (!state.scaffold || !state.scaffold.knobsEl) return;
         const hasAnim = !!state.current.animation;
         const sect = state.scaffold.knobsEl.querySelector(
-            ".mol-viewer-export-section[data-section=\"animation\"]");
-        if (sect) sect.hidden = !hasAnim;
+            '.mol-viewer-export-section[data-section="animation"]');
+        if (!sect) return;
+        // Stable presence; do NOT touch sect.hidden.
+        // Disable the interactive controls instead.  Each button
+        // inside the section gets ``disabled`` + an explicit
+        // ``aria-disabled`` so screen-readers see the no-op
+        // state.  CSS already greys out [disabled] buttons.
+        for (const btn of sect.querySelectorAll(
+                "button, a[href]")) {
+            if (hasAnim) {
+                btn.removeAttribute("disabled");
+                btn.removeAttribute("aria-disabled");
+            } else {
+                btn.setAttribute("disabled", "");
+                btn.setAttribute("aria-disabled", "true");
+            }
+        }
     }
 
     function _wireKnobBar(state, bar, knobs) {

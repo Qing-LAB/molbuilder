@@ -1176,12 +1176,21 @@
                            + "<dd>" + escapeHtml(String(v)) + "</dd>")
             .join("");
 
-        // Show/hide ES-derived table columns based on whether any
-        // mode has electronic_structure populated.
+        // ES-derived table columns: ALWAYS visible.  Pre-fix the
+        // ES column headers vanished when no mode had electronic_
+        // structure populated -- same disease as the hide-frozen-
+        // row case (UI presence tied to data).  Users would see
+        // the column headers disappear on first results-load and
+        // wonder where they went; subsequent runs of a different
+        // job with ES data would have the columns reappear,
+        // breaking column-position muscle memory.
+        //
+        // Contract: column presence is a stable affordance.  When
+        // no mode has ES data, the cells render empty (per
+        // ``renderModesTable`` below) -- that's the honest UX.
+        // See 2026-06-14 hide-frozen-row precedent + the same-day
+        // audit findings for context.
         const anyES = (results.modes || []).some(m => !!m.electronic_structure);
-        rootEl.querySelectorAll(".modes-table .es-col").forEach(th => {
-            th.hidden = !anyES;
-        });
 
         // Auto-select the highest-Raman-activity real mode so the
         // ES panel comes up populated (if any mode has ES).  If no
