@@ -18,7 +18,7 @@ file-selection model).  This doc covers **atom selection**.
 
 | File | Layer | Responsibility | Public API |
 |---|---|---|---|
-| `lib/selection/store.js` | L1 | Singleton state + HTTP wiring + rule translation | `subscribe`, `getState`, mutators |
+| `lib/workspace/_selection-store-impl.js` | L1 | Workspace-internal state + HTTP wiring + rule translation.  As of Phase 9 (2026-06-13) the factory is mounted at `window.molbuilder.selection._createStore`; the dispatcher creates the one process-wide instance.  External consumers go through `ws.selection.*`. | `subscribe`, `getState`, mutators |
 | `lib/selection-panel.js` | L2 | DOM only — subscribes to store, renders, calls mutators on user input | `mount(rootEl) → {dispose}` |
 | `lib/selection/viewer-adapter.js` | L2 | 3Dmol overlay only — subscribes to store, paints region tints + halo, forwards viewer clicks to `store.toggleAtom`, optionally hides non-selected atoms (isolate mode) | `attach(viewer) → {dispose, setIsolateMode(bool), getIsolateMode()}` |
 | `<page>/selection-bootstrap.js` | L3 | Page glue — fetches partial, mounts panel + adapter, wires sidebar `onChange → store.setSourceFile` | (none; runs on DOMContentLoaded) |
@@ -432,10 +432,11 @@ just hides the irrelevant atoms in 3D.
                 └─────────────┬─────────────┘
                               │ HTTP (POST/GET, JSON)
                               │
-                ┌─────────────▼─────────────┐
-                │   lib/selection/store.js   │
-                │   (singleton; state + HTTP)│
-                └──┬───────┬───────┬─────────┘
+                ┌────────────────────────────────────┐
+                │ lib/workspace/                     │
+                │   _selection-store-impl.js         │
+                │ (workspace-internal; state + HTTP) │
+                └──┬───────────┬───────────┬─────────┘
        subscribe   │       │       │   subscribe
         ┌──────────┘       │       └─────────┐
         ▼                  ▼                 ▼

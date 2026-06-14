@@ -1,16 +1,16 @@
-# Workspace state — unified design (2026-06-07 audit + 2026-06-09 implementation)
+# Workspace state — unified design (2026-06-07 audit + 2026-06-09 implementation + 2026-06-13 Phase 9 close)
 
-> **Status: Phases 1–8 SHIPPED; Phase 9 (physical deletion of
-> legacy stores) DEFERRED.** This document originally landed as
-> a design proposal after three rounds of selection-list bugs
-> ([cd9655e], [bebc73d], follow-ups).  Each bug was a symptom;
-> the root cause was **architectural** — the client had four
-> parallel stores for one conceptual entity, the server returned
-> the same entity in four different wire shapes, and persistence
-> was scattered across three sessionStorage keys.
+> **Status: Phases 1–9 SHIPPED.** This document originally
+> landed as a design proposal after three rounds of selection-
+> list bugs ([cd9655e], [bebc73d], follow-ups).  Each bug was a
+> symptom; the root cause was **architectural** — the client had
+> four parallel stores for one conceptual entity, the server
+> returned the same entity in four different wire shapes, and
+> persistence was scattered across three sessionStorage keys.
 >
-> Phases 1–8 of the migration table in § 6 have shipped:
-> server-side `WorkspacePayload` (`molbuilder/web/blueprints/_shared.py::workspace_payload`),
+> Phases 1–8 of the migration table in § 6 shipped 2026-06-07
+> through 2026-06-09: server-side `WorkspacePayload`
+> (`molbuilder/web/blueprints/_shared.py::workspace_payload`),
 > client-side `window.molbuilder.workspace` dispatcher
 > (`lib/workspace/dispatcher.js`), the `ws.*` public API surface,
 > and consumer migration of all 6 known call sites.  The
@@ -18,15 +18,19 @@
 > [`workspace-contract.md`](workspace-contract.md); a
 > contract-compliance test enforces zero legacy consumers.
 >
-> Phase 9 (deletion of `lib/structure/canvas-state.js` and
-> `lib/selection/store.js`) was deferred because the migration
-> contract is complete (those files are internal-only; no
-> external consumer reaches into them).  Deletion requires
-> simultaneous rewrites of `selection-panel.js` (~840 LoC),
-> `selection/viewer-adapter.js`, and `selection-bootstrap.js`
-> and is out of scope for the Phase 10 consolidation that
-> delivered the architectural goal.  Track via task #354 if a
-> follow-up cleanup PR is opened.
+> Phase 9 (retirement of the legacy public globals
+> `window.molbuilder.structureCanvas` + `window.molbuilder.selection.store`)
+> shipped 2026-06-13 in two commits: 9A (`23e4e80`) moved the
+> selection store to `lib/workspace/_selection-store-impl.js` and
+> dropped the singleton self-mount; 9B (`f9355bc`) did the same
+> for canvas-state at `lib/workspace/_canvas-state-impl.js`.  The
+> dispatcher owns both singletons internally; production
+> templates no longer mount the legacy globals.  A test-only
+> escape hatch (the dispatcher honours a pre-mounted legacy
+> global if a Node harness installs one before the dispatcher
+> loads) keeps `tests/test_workspace_dispatcher_js.py` working
+> without a wholesale rewrite.  See § 6 row 9 for the full
+> rationale.
 
 ---
 
@@ -498,8 +502,8 @@ Each step is an independently mergeable PR with regression tests.
 | 6 | Migrate generators (dna/rna/smiles/name/peptide/file) from `structurePage.loadIntoCanvas` + `viewerLoader` → `ws.generate(kind, input, opts)`. | client | high | **✅ shipped 2026-06-07.**  Generator modules unchanged — they keep calling `structurePage.loadIntoCanvas` + `viewerLoader` because that's the warning-modal gate's natural seam.  The migration happens INSIDE `viewerLoader` (= `window.molbuilder.loadStructureText`): the post-fetch state replacement now routes through `ws.applyPayload({touchCanvas: false, resetSelection: true})`, the SAME pipeline modifier ops use.  `touchCanvas:false` because canvas-state was already populated by `structurePage.loadIntoCanvas` (dirty=false); `resetSelection:true` because every load is a fresh-structure swap.  `ws.loadStructure(payload, source)` is now a public method that combines the structurePage gate + applyPayload for callers that have a pre-fetched workspace payload (future Phase 9 inlining of the load fetch).  Every existing generator + sidebar load test passes unchanged. |
 | 7 | Migrate selection-bootstrap / panel / viewer-adapter to consume `ws.selection.*`. | client | medium | **✅ effectively shipped 2026-06-07 (no code change required).**  `ws.selection.*` is implemented as a passthrough wrapper over `window.molbuilder.selection.store.*` (Phase 4 contract).  Existing consumers (selection-bootstrap, selection-panel, viewer-adapter) call the store directly; calling `ws.selection.*` would land on the same underlying store.  No code change is required for the migration to satisfy its semantic intent — `ws.selection.*` IS the new public API surface, and the existing consumers will be retired in Phase 9 when the legacy stores fold into the dispatcher.  New code SHOULD use `ws.selection.*`. |
 | 8 | Collapse persistence: delete `sessionStorage["modify-state"]` + `sessionStorage["molbuilder.structure_canvas"]`; write only `sessionStorage["molbuilder.workspace.v1"]`. | client | medium | **✅ shipped 2026-06-08.**  Dispatcher writes the unified snapshot under `molbuilder.workspace.v1` (schema v1) on every state change (debounced 100ms) plus a final flush on `pagehide`.  Eager subscribe-on-mount so persistence fires regardless of whether a UI consumer subscribed.  Dirty-gated atoms in `_serialise`: when canvas is clean AND has a source file, atoms are nulled out so the restore re-fetches from disk (preserves the cd9655e external-file-change semantics).  Public `readPersistedSnapshot()` getter on `ws` for the restore path.  **Legacy mirror retirement** (the "what didn't land" sub-list from the previous status): canvas-state's `_persistToSession` and modify viewer's `saveModifyState` now both early-return when `window.molbuilder.workspace` is mounted — only the dispatcher writes on `/molbuilder`.  `restoreModifyState` reads `ws.readPersistedSnapshot()` first via a new `_modifyShapeFromDispatcherSnapshot` translator; canvas-state's `_restoreFromSession` does the same via `_restoreFromDispatcherSnapshot`.  Legacy keys stay as fallback for users mid-session at rollout AND for test contexts that load canvas-state in isolation (no dispatcher → legacy mirror still works).  Pinned by `tests/test_workspace_dispatcher_js.py::TestPersistRoundtrip` + the existing `TestModifySecondVisitExternalChange` + `test_modify_state_after_op_survives_navigation` e2e suite (which all pass unchanged after the collapse). |
-| 9 | Delete the legacy stores (canvas-state.js, modify-tab IIFE state, selection/store.js).  Their public globals become re-exports of `ws.*`. | client | low | **✅ marked internal 2026-06-08; full deletion deferred.**  Each legacy module's docstring now carries an "Internal as of Phase 9" banner explicitly directing new code to consume `window.molbuilder.workspace` instead.  Their public globals (`structureCanvas`, `selection.store`, modify-tab IIFE state) are kept in place to keep the existing panel + viewer-adapter + bootstrap + modifier UI working without a same-PR rewrite.  Full code deletion is a follow-up cleanup PR once every direct consumer has migrated.  Deferred-but-rationalised: deleting the stores in this PR would require rewriting `selection-panel.js` (~840 LoC), `selection/viewer-adapter.js`, `selection-bootstrap.js`, plus every consumer of `structureCanvas.{getStructure,getSource,...}` — out of scope for the 8-phase consolidation that delivered the architectural goal (single client API surface + single wire shape + unified persistence). |
-| 10 | Delete `/api/selection/atoms` if no remaining caller — it's covered by `/api/build/load` once the migration completes. | server | low | **⏸️ blocked on Phase 9 full deletion.**  Caller audit (2026-06-08): `/api/selection/atoms` is still used by `lib/selection/store.js`'s `_fetchAtoms` + `setSourceFile` + `refreshAtoms` paths, plus `tests/test_pdb_workflow_integration.py` (integration suite).  Removing the endpoint without first folding the selection store into the dispatcher (Phase 9 deletion step) would break the selection panel + the integration tests.  Deferred — drop together with the Phase 9 store fold. |
+| 9 | Retire the legacy public globals (`structureCanvas`, `selection.store`) by moving the impl files into `lib/workspace/` and dropping the public mounts. | client | low | **✅ shipped 2026-06-13.**  Phase 9A (`23e4e80`): `lib/selection/store.js` → `lib/workspace/_selection-store-impl.js`; the singleton self-mount on `window.molbuilder.selection.store` + the matching `runtime.register("selection.store", ...)` are gone; the factory `window.molbuilder.selection._createStore` stays mounted for test harnesses.  Phase 9B (`f9355bc`): `lib/structure/canvas-state.js` → `lib/workspace/_canvas-state-impl.js`; browser-branch mount moved from `structureCanvas` to private `workspace._canvasState`; `runtime.register("structure.canvas", ...)` gone.  Dispatcher owns both singletons internally (creates the selection-store instance from the factory at module init, reads the canvas-state singleton from the impl file's private mount).  **Test escape hatch**: dispatcher's `_canvas()` + `_store()` honour pre-mounted legacy globals if a harness installs them before the dispatcher loads — `tests/test_workspace_dispatcher_js.py` uses this so its existing setup (`structureCanvas = require(...)`, `selection.store = _createStore()`) keeps working unchanged.  Compliance test (`tests/test_no_legacy_store_consumers.py`) enforces zero production consumers; allow-list now lists the two impl files + the dispatcher. |
+| 10 | Delete `/api/selection/atoms` if no remaining caller — it's covered by `/api/build/load` once the migration completes. | server | low | **⏸️ blocked on internal API rationalisation.**  Caller audit (2026-06-13): `/api/selection/atoms` is still used by `lib/workspace/_selection-store-impl.js`'s `_fetchAtoms` + `setSourceFile` + `refreshAtoms` paths (now workspace-internal but still hit the endpoint), plus `tests/test_pdb_workflow_integration.py` (integration suite).  Removing the endpoint without first folding the per-source-file atoms refresh into the workspace payload pipeline would break the selection panel + the integration tests.  Deferred — track separately if the consolidation is worthwhile (the architectural debt of two endpoints is small now that the consumers are all dispatcher-internal). |
 
 Each step is gated on its own regression test surface; § 7
 enumerates the tests that need to land alongside each step.

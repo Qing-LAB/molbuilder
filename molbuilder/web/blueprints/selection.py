@@ -10,14 +10,17 @@ The selection system is layered:
     plus the atom-list read and sidecar save endpoints.  Stateless:
     every request is self-contained, the server stores no per-user
     selection state.
-  * L3 (``lib/selection/store.js``) -- canonical JS state holder
-    (atoms, selection, filters, mode, error).  Singleton; the SOLE
-    cross-module signal bus for L4.  Posts to L2 only on
-    ``applyFilter`` and ``writeLabel``; click toggles are
-    client-side.
+  * L3 (``lib/workspace/_selection-store-impl.js`` since Phase 9 /
+    2026-06-13) -- workspace-internal JS state holder (atoms,
+    selection, filters, mode, error).  One process-wide instance
+    owned by the workspace dispatcher; external consumers reach
+    it via ``window.molbuilder.workspace.selection.*``
+    (=``ws.selection.*``).  Posts to L2 only on ``applyFilter``
+    and ``writeLabel``; click toggles are client-side.
   * L4 (``lib/selection-panel.js`` + ``lib/selection/viewer-adapter.js``)
-    -- DOM panel + 3Dmol overlay/click consumer.  Both subscribe
-    to the L3 store and call its mutators on user action.
+    -- DOM panel + 3Dmol overlay/click consumer.  Both consume
+    the L3 store via ``ws.selection.*`` and call its mutators on
+    user action.
 
 See ``docs/protocols/atom-selection.md`` for the full module
 contract, including the public API surface of the store.

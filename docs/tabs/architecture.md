@@ -573,6 +573,11 @@ docs; renamed paths break by design.  See § 3.2.
   canvas-state primitive + sessionStorage mirror + dirty flag.
   (`structure/` here is the JS namespace for canvas data, not
   the user-facing tab name; the tab is the Molbuilder tab.)
+  *Phase 9 (2026-06-13) note*: this file moved to
+  `static/lib/workspace/_canvas-state-impl.js` and stopped
+  mounting `window.molbuilder.structureCanvas`; the dispatcher
+  owns the singleton.  Historical name preserved here for
+  context with the original design proposal.
 - New module `static/lib/structure/warning-modal.js` — the
   "unsaved modifications" modal.
 - `static/lib/structure/generators/` — one module per

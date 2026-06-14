@@ -71,18 +71,18 @@ a Playwright contract test that opens `/results` and calls
 ### 1.1 Module singletons and test isolation
 
 JS modules that mount a SINGLETON on `window.molbuilder.*` at load
-time (e.g. `selection/store.js`, `inspectors/registry.js`) are a
-testing trap: every test that mutates the singleton leaks state to
-the next.  The canonical fix in this repo is to EXPORT a factory
-under a `_create*` prefix that builds a fresh instance:
+time (e.g. `inspectors/registry.js`) are a testing trap: every
+test that mutates the singleton leaks state to the next.  The
+canonical fix in this repo is to EXPORT a factory under a
+`_create*` prefix that builds a fresh instance:
 
 ```js
-// At the bottom of the module:
+// At the bottom of the module (post-Phase 9 pattern — the impl
+// no longer mounts a public singleton; the dispatcher owns it):
 root.molbuilder.selection = root.molbuilder.selection || {};
-if (!root.molbuilder.selection.store) {
-    root.molbuilder.selection.store = _create();  // production singleton
-}
 root.molbuilder.selection._createStore = _create;  // test factory
+// The dispatcher calls _createStore() once at module init to
+// build its private instance; tests build their own.
 ```
 
 Tests then call `_createStore()` per test for isolated state:
@@ -905,11 +905,14 @@ reach into the /modify Flask routes directly from the test.
 
 ### 9.3 Selection-store interaction
 
-The selection store (`lib/selection/store.js`) exposes its state via
-`window.molbuilder.selection.store`. Test helpers like
-`_set_selection(page, [0, 2])` and `_get_selection(page)` go through
-that API rather than poking the DOM checkboxes — DOM is the rendered
-view of the store, not the source of truth.
+The selection store (`lib/workspace/_selection-store-impl.js`,
+workspace-internal as of Phase 9 / 2026-06-13) is owned by the
+workspace dispatcher; external consumers reach it through
+`window.molbuilder.workspace.selection.*` (= `ws.selection.*`).
+Test helpers like `_set_selection(page, [0, 2])` and
+`_get_selection(page)` go through that API rather than poking the
+DOM checkboxes — DOM is the rendered view of the store, not the
+source of truth.
 
 ### 9.4 Inspector ready signal
 
