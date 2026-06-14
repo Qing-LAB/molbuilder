@@ -177,6 +177,20 @@ header .tagline {
     grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
     gap: var(--gap);
     align-items: start;
+    /* Cap the total grid width so at very wide screens the three
+     * panels stay visually attached.  Pre-fix the grid filled the
+     * full viewport; viewer caps at 600 px (see below) but
+     * selection + modify had NO max-width, so at >1800 px the
+     * three columns each grew to ~600+ px, leaving the panels
+     * looking detached from each other (selection ↔ modify gap
+     * grew to >100 px on a 24" monitor).  ``max-width: 1840px``
+     * keeps the grid at "comfortable 3-column" sizing — 600 px
+     * viewer + 600 px selection + 600 px modify + 2× gap — and
+     * ``margin: 0 auto`` centres it in the viewport.  Reported
+     * by the user 2026-06-13. */
+    max-width: calc(600px * 3 + var(--gap) * 2);
+    margin-inline: auto;
+    width: 100%;
 }
 .workspace-viewer    { min-width: 360px; }
 .workspace-selection { min-width: 320px; }
