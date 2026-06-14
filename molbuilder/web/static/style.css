@@ -369,6 +369,17 @@ button.primary:disabled,
     gap: 4px;
     font-size: 0.88rem;
 }
+/* Per-card issues panel (web-ui-coherence Rule 2): each
+ * .workflow-group--<role> card has its own .card-issues panel at
+ * the bottom so validator findings concerning that card's fields
+ * land WITH those fields, not in a far-away residual panel.
+ * Slight top margin + accent border so the panel reads as part of
+ * the card it sits in. */
+.workflow-group .card-issues {
+    margin-top: 12px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border-soft);
+}
 .issues-panel .issue-item {
     padding: 6px 10px 6px 12px;
     border-radius: 4px;

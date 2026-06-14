@@ -12,7 +12,7 @@ Spec: docs/design.md § "Pre-emission geometry validation" + §
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, List, Literal
+from typing import Iterable, List, Literal, Optional
 
 # The closed set of severities a validator may emit.  Pinned in one
 # place so the runtime check + the static type stay in lock-step
@@ -43,10 +43,23 @@ class Issue:
           "cell.determinant"        -- about the cell
           "config.mesh_cutoff"      -- about a config field
         Used by the CLI / web UI to highlight the offending field.
+    workflow_group : Optional[str]
+        Optional workflow-card binding -- one of "profile", "stage",
+        or "budget" -- so the web UI can attach the finding to the
+        card whose fields it concerns rather than dumping every
+        issue into one panel below the Generate button (per
+        docs/protocols/web-ui-coherence.md Rule 2).  Defaults to
+        None; usually set by ``_shared.resolve_workflow_group(where,
+        cfg)`` at serialization time so individual ``_check_*``
+        functions don't need to think about UI structure.  Findings
+        whose ``where`` doesn't map to a config field (geometry,
+        cell, polymer) keep ``workflow_group = None`` and render in
+        the residual "structure" panel.
     """
-    severity: Severity
-    message:  str
-    where:    str = ""
+    severity:        Severity
+    message:         str
+    where:           str = ""
+    workflow_group:  Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.severity not in _SEVERITIES:

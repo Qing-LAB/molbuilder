@@ -95,6 +95,7 @@ class PySCFConfig:
     # ---------------- Method (main run) ----------------
     method: str = field(default="RKS", metadata={
         "section": "Method",
+        "workflow_group": "profile",
         "label":   "SCF method",
         "engine_key":  'RKS / UKS / RHF / UHF  (PySCF class selection)',
         "choices": ("RKS", "UKS", "RHF", "UHF"),
@@ -102,12 +103,14 @@ class PySCFConfig:
     })
     functional: str = field(default="B3LYP", metadata={
         "section": "Method",
+        "workflow_group": "profile",
         "label":   "Functional",
         "engine_key":  'mf.xc = ...',
         "help": "XC functional (e.g. B3LYP / PBE / PBE0 / M06-2X / wB97X-D)",
     })
     basis: str = field(default="def2-SVP", metadata={
         "section": "Method",
+        "workflow_group": "profile",
         "label":   "Basis set",
         "engine_key":  'gto.M(basis=...)',
         "help": "Gaussian basis set (e.g. def2-SVP / def2-TZVP / cc-pVDZ)",
@@ -186,6 +189,7 @@ class PySCFConfig:
     })
     grid_level: int = field(default=4, metadata={
         "section": "SCF",
+        "workflow_group": "stage",
         "label": "DFT grid level",
         "engine_key":  'mf.grids.level',
         "range": (0, 9),

@@ -833,12 +833,12 @@ def api_build_fdf():
         # failure, which is exactly when they need it (the missing
         # sidecar may be the reason validation rejected the run).
         # Caught by the 2026-05-26 review.
-        merged_issues = _issues_to_json(exc.issues)
+        merged_issues = _issues_to_json(exc.issues, cfg=cfg)
         # Add any pre-render issues NOT already in exc.issues (de-dup
         # by (severity, where, message) tuple).
         exc_keys = {(d["severity"], d.get("where", ""), d["message"])
                     for d in merged_issues}
-        for i in _issues_to_json(issues):
+        for i in _issues_to_json(issues, cfg=cfg):
             if (i["severity"], i.get("where", ""), i["message"]) not in exc_keys:
                 merged_issues.append(i)
         return jsonify({
@@ -854,7 +854,7 @@ def api_build_fdf():
         "ok": True,
         "fdf": fdf,
         "system_label": cfg.system_label,
-        "issues": _issues_to_json(issues),
+        "issues": _issues_to_json(issues, cfg=cfg),
     })
 
 
@@ -904,10 +904,10 @@ def api_build_pyscf():
         # + any pre-render issues in the error response so the user
         # sees the full picture instead of just render_script's
         # internal validation issues.
-        merged_issues = _issues_to_json(exc.issues)
+        merged_issues = _issues_to_json(exc.issues, cfg=cfg)
         exc_keys = {(d["severity"], d.get("where", ""), d["message"])
                     for d in merged_issues}
-        for i in _issues_to_json(issues):
+        for i in _issues_to_json(issues, cfg=cfg):
             if (i["severity"], i.get("where", ""), i["message"]) not in exc_keys:
                 merged_issues.append(i)
         return jsonify({
@@ -923,7 +923,7 @@ def api_build_pyscf():
         "ok": True,
         "script": script,
         "job_name": cfg.job_name,
-        "issues": _issues_to_json(issues),
+        "issues": _issues_to_json(issues, cfg=cfg),
     })
 
 
@@ -1018,7 +1018,7 @@ def api_build_preflight():
 
     return jsonify({
         "ok": True,
-        "issues": _issues_to_json(validate(struct, cfg)),
+        "issues": _issues_to_json(validate(struct, cfg), cfg=cfg),
     })
 
 

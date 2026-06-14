@@ -336,6 +336,10 @@ class SiestaConfig:
         # "how finely we sample the calculation."  Folding into
         # "Basis & grid" so the form stops having a one-field section.
         "section": "Basis & grid",
+        # Folded into the Stage card (a convergence knob: more
+        # k-points → tighter sampling → more cost) per the
+        # web-ui-coherence Rule 2 attachment pass on 2026-06-13.
+        "workflow_group": "stage",
         "label": "kgrid_Monkhorst_Pack",
         "engine_key":  '%block kgrid_Monkhorst_Pack',
         "id_suffix": "k",

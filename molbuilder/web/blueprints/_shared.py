@@ -36,17 +36,70 @@ from molbuilder.validation import validate_geometry
 # --------------------------------------------------------------------- #
 
 
-def issues_to_json(issues):
+def resolve_workflow_group(where: str, cfg) -> Optional[str]:
+    """Return the workflow-group binding for an Issue ``where`` field.
+
+    Per docs/protocols/web-ui-coherence.md Rule 2, validator findings
+    should attach to the workflow-group card whose fields they
+    concern: a ``config.mesh_cutoff`` finding belongs in the Stage
+    card; ``config.spin_polarized`` belongs in the Run profile card;
+    ``config.max_scf_iter`` belongs in the Compute & budget card.
+    The mapping is the SAME single source of truth that drives the
+    form-schema render: each dataclass field's
+    ``metadata["workflow_group"]``.
+
+    Returns ``None`` for:
+      * Issues that don't target a config field (where prefix isn't
+        ``config.``) — geometry / cell / polymer findings render in
+        a residual panel below the cards.
+      * Issues whose dotted name doesn't resolve to a real dataclass
+        field (typo, future-proofing).
+      * Issues whose field has no ``workflow_group`` metadata (legacy
+        untagged fields; rendered in residual panel).
+    """
+    if not where or not where.startswith("config."):
+        return None
+    if not dataclasses.is_dataclass(cfg):
+        return None
+    # Strip "config." prefix and any further dotted sub-fields:
+    # "config.net_charge.makov_payne" → "net_charge".
+    tail = where.split(".", 1)[1]
+    field_name = tail.split(".", 1)[0]
+    for f in fields(cfg):
+        if f.name == field_name:
+            return f.metadata.get("workflow_group")
+    return None
+
+
+def issues_to_json(issues, cfg=None):
     """Serialise List[Issue] for the JSON wire.
 
-    The web client reads ``issues[].severity / message / where`` to
-    decide how to display.  Schema duplicated literally in both
-    blueprints' tests; if a key changes here, those tests catch it.
+    The web client reads ``issues[].severity / message / where /
+    workflow_group`` to decide how to display.  Schema duplicated
+    literally in both blueprints' tests; if a key changes here,
+    those tests catch it.
+
+    ``cfg`` is the engine config dataclass — when provided, each
+    issue's ``workflow_group`` is resolved (per
+    :func:`resolve_workflow_group`) so the frontend can attach
+    findings to their workflow-group card per web-ui-coherence
+    Rule 2.  When ``cfg`` is None, the ``workflow_group`` key is
+    omitted from the dict (the Issue's own ``workflow_group`` field
+    is still honoured if pre-tagged).
     """
-    return [
-        {"severity": i.severity, "message": i.message, "where": i.where}
-        for i in issues
-    ]
+    out = []
+    for i in issues:
+        d = {"severity": i.severity, "message": i.message,
+             "where": i.where}
+        # An Issue may pre-tag its workflow_group; if not, derive
+        # from the where field via the config dataclass metadata.
+        group = i.workflow_group
+        if group is None and cfg is not None:
+            group = resolve_workflow_group(i.where, cfg)
+        if group is not None:
+            d["workflow_group"] = group
+        out.append(d)
+    return out
 
 
 # --------------------------------------------------------------------- #
