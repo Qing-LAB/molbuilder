@@ -21,7 +21,7 @@ sessionStorage).
    selection store became the canonical source of truth.  All tests
    that used to drive selection by clicking ``#atom-list-body tr``
    now drive it via the ``_set_selection`` helper, which calls
-   ``window.molbuilder.selection.store.setSelection(indices)`` and
+   ``window.molbuilder.workspace.selection.set(indices)`` and
    waits for the test hook to observe the new state.  Tests that
    counted ``#atom-list-body tr`` to detect structure-size changes
    now poll ``window.__molbuilder_modify_test.getNAtoms()`` for the
@@ -230,7 +230,7 @@ def _load_file(page, xyz_path, expected_atoms):
         " if (t && typeof t.commitFile === 'function') {"
         "   return t.commitFile(path);"
         " }"
-        " return window.molbuilder.selection.store.setSourceFile(path);"
+        " return window.molbuilder.workspace.selection.setSourceFile(path);"
         "}",
         str(p),
     )
@@ -243,7 +243,7 @@ def _load_file(page, xyz_path, expected_atoms):
     # tests see populated rows.  commitFile calls adoptSession
     # which fetches atoms; settle before tests read state.
     page.wait_for_function(
-        f"() => window.molbuilder.selection.store.getState()"
+        f"() => window.molbuilder.workspace.selection.getState()"
         f"             .atoms.length === {int(expected_atoms)}"
     )
 
@@ -255,7 +255,7 @@ def _set_selection(page, indices):
     Awaits the microtask so subsequent reads see the new state.
     """
     page.evaluate(
-        "(indices) => window.molbuilder.selection.store.setSelection(indices)",
+        "(indices) => window.molbuilder.workspace.selection.set(indices)",
         list(indices),
     )
     page.wait_for_function(
@@ -330,7 +330,7 @@ def _set_selection_mode(page, mode):
 def _clear_selection(page):
     """Empty the store's selection."""
     page.evaluate(
-        "() => window.molbuilder.selection.store.clearSelection()"
+        "() => window.molbuilder.workspace.selection.clear()"
     )
     page.wait_for_function(
         "() => window.__molbuilder_modify_test.getSelected().length === 0"
@@ -1805,7 +1805,7 @@ def test_dna_generator_populates_selection_store(
     # The selection store MUST have the same atoms.  Pre-fix this
     # was 0 — viewer populated, store empty, panel blank.
     store_atom_count = page.evaluate(
-        "() => window.molbuilder.selection.store.getState().atoms.length"
+        "() => window.molbuilder.workspace.selection.getState().atoms.length"
     )
     viewer_atom_count = page.evaluate(
         "() => window.__molbuilder_modify_test.getNAtoms()"
@@ -1854,7 +1854,7 @@ def test_generator_resets_stale_selection(
     page.locator("#smiles-input").fill("C")   # methane (5 atoms)
     page.locator("#smiles-generate-btn").click()
     page.wait_for_function(
-        "() => window.molbuilder.selection.store.getState()"
+        "() => window.molbuilder.workspace.selection.getState()"
         ".atoms.length === 5",
         timeout=10_000,
     )
@@ -1886,7 +1886,7 @@ def test_smiles_generator_populates_selection_store(
         timeout=10_000,
     )
     store_atom_count = page.evaluate(
-        "() => window.molbuilder.selection.store.getState().atoms.length"
+        "() => window.molbuilder.workspace.selection.getState().atoms.length"
     )
     assert store_atom_count == 3, (
         f"selection store should have 3 atoms after SMILES generate; "
@@ -1902,7 +1902,7 @@ def test_sidebar_load_populates_selection_store(
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
     store_atom_count = page.evaluate(
-        "() => window.molbuilder.selection.store.getState().atoms.length"
+        "() => window.molbuilder.workspace.selection.getState().atoms.length"
     )
     assert store_atom_count == 3
 
@@ -2047,7 +2047,7 @@ def test_smiles_generator_empty_input_surfaces_inline_error(
 #  The legacy "plain click = single-select, shift-click = multi-select" #
 #  + #selection-readout + #selection-info-body tests were retired       #
 #  2026-05-20 along with the UI that backed them.  The selection store  #
-#  (window.molbuilder.selection.store) is now the canonical state,      #
+#  (window.molbuilder.workspace.selection) is now the canonical state,      #
 #  edited via ``toggleAtom`` / ``setSelection`` / ``applyFilter``.  The #
 #  tests below pin the contracts a /modify user actually relies on:     #
 #  the store updates state.selection, viewer.js re-renders button       #
@@ -2108,7 +2108,7 @@ def test_store_toggle_atom_flips_membership(
     _open_modify(page, flask_server)
     _load_water(page, water_xyz_file)
     toggle = ("(i) => "
-              "window.molbuilder.selection.store.toggleAtom(i)")
+              "window.molbuilder.workspace.selection.toggle(i)")
     page.evaluate(toggle, 0)
     page.evaluate(toggle, 2)
     assert _get_selection(page) == [0, 2]
@@ -2457,7 +2457,7 @@ def test_panel_apply_filter_with_empty_row_skips_that_row(
     # still pass with the wrong rule, so we test AND explicitly
     # which is the failure mode.
     page.evaluate("""() => {
-        const s = window.molbuilder.selection.store;
+        const s = window.molbuilder.workspace.selection;
         s.setFilters([
             {kind: "by_element", value: "O"},
             {kind: "by_index",   value: ""}
@@ -2681,17 +2681,17 @@ def test_panel_filter_drafts_persist_through_file_switch(
     # user clicking + Add filter and typing.  No applyFilter() is
     # called; the draft lives in state.filters.
     page.evaluate(
-        "() => window.molbuilder.selection.store.addFilter("
+        "() => window.molbuilder.workspace.selection.addFilter("
         "  {kind: 'by_element', value: 'O'})"
     )
     page.wait_for_function(
-        "() => window.molbuilder.selection.store"
+        "() => window.molbuilder.workspace.selection"
         "      .getState().filters.length === 1"
     )
     # Switch source files through the store.
     _load_file(page, str(other), expected_atoms=3)
     drafts = page.evaluate(
-        "() => window.molbuilder.selection.store.getState().filters"
+        "() => window.molbuilder.workspace.selection.getState().filters"
     )
     assert len(drafts) == 1 and drafts[0]["kind"] == "by_element", (
         f"filter drafts were wiped on file switch; got {drafts}"
@@ -2862,7 +2862,7 @@ def test_selection_store_atoms_sync_with_in_memory_edits(
     # Pre-delete: 3 atoms in both the viewer AND the store.
     pre = page.evaluate("""() => ({
         viewer_n: window.__molbuilder_modify_test.getNAtoms(),
-        store_n:  window.molbuilder.selection.store
+        store_n:  window.molbuilder.workspace.selection
                     .getState().atoms.length,
     })""")
     assert pre == {"viewer_n": 3, "store_n": 3}
@@ -2876,9 +2876,9 @@ def test_selection_store_atoms_sync_with_in_memory_edits(
     # the store stayed at 3 indefinitely (no disk write).
     post = page.evaluate("""() => ({
         viewer_n:    window.__molbuilder_modify_test.getNAtoms(),
-        store_n:     window.molbuilder.selection.store
+        store_n:     window.molbuilder.workspace.selection
                        .getState().atoms.length,
-        store_elements: window.molbuilder.selection.store
+        store_elements: window.molbuilder.workspace.selection
                        .getState().atoms.map(a => a.element),
     })""")
     assert post["viewer_n"] == 2
@@ -3956,10 +3956,10 @@ def test_measurement_readout_shows_xyz_distance_angle(
     # And the vertex really is the middle click.
     vertex = page.evaluate(
         "() => window.molbuilder.selection.measurements.compute("
-        "  window.molbuilder.selection.store.getState().selection,"
-        "  window.molbuilder.selection.store.getState().atoms,"
+        "  window.molbuilder.workspace.selection.getState().selection,"
+        "  window.molbuilder.workspace.selection.getState().atoms,"
         "  window.molbuilder.selection.positionsProvider(),"
-        "  window.molbuilder.selection.store.getState().pickOrder"
+        "  window.molbuilder.workspace.selection.getState().pickOrder"
         ").vertexIndex"
     )
     assert vertex == 0, (
@@ -5235,7 +5235,7 @@ class TestModifySecondVisitExternalChange:
         _load_water(page, water_xyz_file)
         # Atom list reflects 3 atoms.
         assert page.evaluate(
-            "() => window.molbuilder.selection.store.getState()"
+            "() => window.molbuilder.workspace.selection.getState()"
             ".atoms.length"
         ) == 3
 
@@ -5247,7 +5247,7 @@ class TestModifySecondVisitExternalChange:
         # contract, sessionStorage has the file path but the store's
         # internal "lastSourceFile" still matches -> no re-fetch.
         page.wait_for_function(
-            "() => window.molbuilder.selection.store.getState()"
+            "() => window.molbuilder.workspace.selection.getState()"
             ".atoms.length === 3",
             timeout=5000,
         )
@@ -5297,7 +5297,7 @@ class TestModifySecondVisitExternalChange:
         # delete), NOT 3 atoms (disk).  Disk would override
         # in-memory if the dirty-gate is broken.
         page.wait_for_function(
-            "() => window.molbuilder.selection.store.getState()"
+            "() => window.molbuilder.workspace.selection.getState()"
             ".atoms.length === 2",
             timeout=5000,
         )
@@ -5340,7 +5340,7 @@ class TestModifySecondVisitExternalChange:
         # the user sees stale 3 atoms.  This is the same bug shape
         # as #192.
         page.wait_for_function(
-            "() => window.molbuilder.selection.store.getState()"
+            "() => window.molbuilder.workspace.selection.getState()"
             ".atoms.length === 5",
             timeout=5000,
         )
