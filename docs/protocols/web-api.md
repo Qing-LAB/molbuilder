@@ -190,7 +190,6 @@ flowchart LR
     end
     subgraph "Modify"
         m_meta["GET /api/modify/meta"]
-        m_load["POST /api/modify/load"]
         m_del["POST /api/modify/delete"]
         m_add["POST /api/modify/add_atom"]
         m_orient["POST /api/modify/orient"]
@@ -617,7 +616,6 @@ function.
 | Route | Method | Body |
 |---|---|---|
 | `/api/modify/meta` | GET | — |
-| `/api/modify/load` | POST | `{xyz, format?}` |
 | `/api/modify/delete` | POST | `{xyz, indices, atom_names?, residue_ids?, ...}` |
 | `/api/modify/add_atom` | POST | `{xyz, element, anchor_index, offset, ...}` |
 | `/api/modify/orient` | POST | `{xyz, anchor_indices, axis, center, ...}` |

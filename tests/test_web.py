@@ -1223,28 +1223,6 @@ def test_modify_add_atom_returns_identity_selection_remap(web_client):
 _H2O_XYZ = "3\nh2o\nO 0 0 0\nH 0.957 0 0\nH -0.24 0.927 0\n"
 
 
-def test_modify_load_validates_and_canonicalises(web_client):
-    r = web_client.post("/api/modify/load", json={"xyz": _H2O_XYZ})
-    body = r.get_json()
-    assert body["ok"] is True
-    assert body["n_atoms"] == 3
-    assert body["elements"] == ["O", "H", "H"]
-    # Canonical re-export round-trips through Structure.from_xyz, so the
-    # atom count + first/last positions match the input.
-    out_xyz = body["xyz"]
-    assert "3" in out_xyz.splitlines()[0]
-    # Issues array is always present (even when empty).
-    assert isinstance(body.get("issues"), list)
-
-
-def test_modify_load_rejects_empty_xyz(web_client):
-    r = web_client.post("/api/modify/load", json={"xyz": ""})
-    assert r.status_code == 400
-    body = r.get_json()
-    assert body["ok"] is False
-    assert "xyz" in body["error"].lower()
-
-
 def test_modify_delete_drops_listed_indices(web_client):
     r = web_client.post("/api/modify/delete", json={
         "xyz": _H2O_XYZ,
@@ -1361,19 +1339,19 @@ def test_modify_add_atom_rejects_missing_offset(web_client):
 
 def test_modify_endpoint_chain_preserves_metadata(web_client):
     """Spec invariant: per-atom metadata round-trips through every op
-    when the client passes it back in the body.  Load -> add_atom ->
-    delete keeps the atom_names / residue_ids carried alongside xyz."""
-    # 1. Initial load -- supply explicit per-atom metadata.
-    r1 = web_client.post("/api/modify/load", json={
-        "xyz": _H2O_XYZ,
+    when the client passes it back in the body.  add_atom -> delete
+    keeps the atom_names / residue_ids carried alongside xyz."""
+    # 1. Initial state -- the canonical body shape every modify op
+    # accepts (xyz + parallel-array metadata).  No validate-and-echo
+    # roundtrip needed; each modify op revalidates via
+    # _struct_from_body.
+    s1 = {
+        "xyz":           _H2O_XYZ,
         "atom_names":    ["OW", "HW1", "HW2"],
         "residue_ids":   [7, 7, 7],
         "residue_names": ["WAT", "WAT", "WAT"],
         "chain_ids":     ["B", "B", "B"],
-    })
-    s1 = r1.get_json()
-    assert s1["atom_names"]  == ["OW", "HW1", "HW2"]
-    assert s1["residue_ids"] == [7, 7, 7]
+    }
     # 2. Add an atom; the metadata for the original 3 atoms must
     # survive (Structure preserves through add_atom).
     r2 = web_client.post("/api/modify/add_atom", json={
@@ -1636,13 +1614,15 @@ def test_modify_translate_preserves_metadata(web_client):
 def test_modify_orient_then_rotate_chains_through_metadata(web_client):
     """Chain orient -> rotate while preserving per-atom metadata
     (matches the spec § 5 invariant)."""
-    s1 = web_client.post("/api/modify/load", json={
-        "xyz": _LINEAR_XYZ,
+    # Initial state -- canonical body shape; each modify op
+    # revalidates via _struct_from_body.
+    s1 = {
+        "xyz":           _LINEAR_XYZ,
         "atom_names":    ["C1", "C2", "C3", "C4"],
         "residue_ids":   [1, 1, 1, 1],
         "residue_names": ["MOL", "MOL", "MOL", "MOL"],
         "chain_ids":     ["A", "A", "A", "A"],
-    }).get_json()
+    }
     s2 = web_client.post("/api/modify/orient", json={
         "xyz":           s1["xyz"],
         "atom_names":    s1["atom_names"],

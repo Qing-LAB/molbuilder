@@ -127,25 +127,6 @@ def api_modify_meta():
 
 
 # --------------------------------------------------------------------- #
-#  /api/modify/load                                                     #
-# --------------------------------------------------------------------- #
-
-
-@bp.route("/api/modify/load", methods=["POST"])
-def api_modify_load():
-    """Validate an XYZ payload + echo back the canonical re-parsed
-    structure.  Catches malformed input early so a chain of edit ops
-    doesn't proceed against a half-broken structure.
-    """
-    body = request.get_json(silent=True) or {}
-    try:
-        struct = _struct_from_body(body)
-    except ValueError as exc:
-        return _err(f"could not parse xyz: {exc}", 400)
-    return _ok_response(struct)
-
-
-# --------------------------------------------------------------------- #
 #  /api/modify/delete                                                   #
 # --------------------------------------------------------------------- #
 
