@@ -615,22 +615,39 @@
             return;
         }
         const fmin = parseFloat($("force-min").value) || 0.0;
-        const mags = forces.map(function (f) {
-            return Math.sqrt(f[0]*f[0] + f[1]*f[1] + f[2]*f[2]);
-        });
+        // Honour the "Hide frozen atoms" toggle the same way
+        // _buildArrowsForFrame does: skip frozen indices when the
+        // checkbox is on so the reported max-force and arrow count
+        // describe what's actually drawn (the unfrozen / free
+        // atoms), not the whole frame.  Without this the status
+        // line keeps reporting the frozen-atom max even after the
+        // user hides those arrows, which made the toggle look
+        // like a no-op.
+        const hideFrozen = $("hide-frozen") && $("hide-frozen").checked;
+        const frozen = hideFrozen ? _frozenSet() : null;
         let maxMag = 0;
-        for (const m of mags) if (m > maxMag) maxMag = m;
-        const drawn = mags.filter(function (m) { return m >= fmin; }).length;
+        let drawn  = 0;
+        for (let i = 0; i < forces.length; i++) {
+            if (frozen && frozen.has(i)) continue;
+            const f   = forces[i];
+            const mag = Math.sqrt(f[0]*f[0] + f[1]*f[1] + f[2]*f[2]);
+            if (mag > maxMag) maxMag = mag;
+            if (mag >= fmin) drawn += 1;
+        }
+        const suffix = (frozen && frozen.size > 0)
+            ? " (frozen atoms hidden)"
+            : "";
         if (drawn === 0) {
             setForcesStatus(
                 "0 arrows shown (all |F| < threshold "
               + fmin.toFixed(3) + " eV/Å; max |F| = "
-              + maxMag.toFixed(3) + ").");
+              + maxMag.toFixed(3) + ")" + suffix + ".");
         } else {
             setForcesStatus(
                 "Showing " + drawn + " arrow"
               + (drawn === 1 ? "" : "s")
-              + " (max |F| = " + maxMag.toFixed(3) + " eV/Å).");
+              + " (max |F| = " + maxMag.toFixed(3) + " eV/Å)"
+              + suffix + ".");
         }
     }
 
