@@ -174,8 +174,8 @@ def _drive_modify_with(page, base_url, structure_path):
     page.goto(base_url + "/molbuilder")
     page.wait_for_function(
         "() => !!window.molbuilder "
-        "      && !!window.molbuilder.selection "
-        "      && !!window.molbuilder.selection.store "
+        "      && !!window.molbuilder.workspace "
+        "      && !!window.molbuilder.workspace.selection "
         "      && !!window.molbuilder.runtime"
     )
     # Wait for the projects module to land via the runtime registry.
@@ -201,7 +201,7 @@ def _drive_modify_with(page, base_url, structure_path):
 
 def _wait_atoms_loaded(page, n_expected):
     page.wait_for_function(
-        f"() => window.molbuilder.selection.store.getState()"
+        f"() => window.molbuilder.workspace.selection.getState()"
         f"             .atoms.length === {n_expected}",
         timeout=15000,
     )
@@ -233,11 +233,11 @@ def _force_mode(page, mode):
         """(mode) => {
             window.molbuilder.selectionPanel.forceRenderMode = mode;
             // Force a notify so the panel re-renders with the new mode.
-            const s = window.molbuilder.selection.store;
-            const cur = s.getState().selection;
+            const s = window.molbuilder.workspace.selection;
+            const cur = s.getState().indices;
             // Toggle then restore to drive _notify cheaply.
-            s.setSelection(cur.length ? [] : [0]);
-            s.setSelection(cur);
+            s.set(cur.length ? [] : [0]);
+            s.set(cur);
         }""",
         mode,
     )
@@ -380,7 +380,7 @@ class TestLargeStructureRenderPaths:
         # Select atom 800.  Force-mode toggle helper already drove a
         # re-render; explicitly set the selection now.
         page.evaluate(
-            "() => window.molbuilder.selection.store.setSelection([800])"
+            "() => window.molbuilder.workspace.selection.set([800])"
         )
         # Scroll the container to bring atom 800 into the visible window.
         scrolled_to_visible = page.evaluate(
