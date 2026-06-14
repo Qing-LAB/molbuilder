@@ -62,6 +62,23 @@ _SCF_CONVERGED_RE = re.compile(
     r"converged SCF energy\s*=\s*(-?[\d.eE+-]+)"
 )
 
+# geomeTRIC's per-step progress line:
+#   ``Step    0 : Gradient = ... Energy = -1028.231870``
+# Captured for the 2026-06-14 early-window fallback: when
+# ``<JOB>_geom_optim.xyz`` is empty/missing on a fresh run, the
+# Results-tab energy plot has nothing to show even though the
+# .pyscf.log already carries the canonical first-step energy.
+# Pulling THIS value lets the plot render one data point while
+# geomeTRIC computes the next step.  Symmetric to SIESTA's
+# preamble Etot fallback.
+_GEOMETRIC_STEP_RE = re.compile(
+    r"^Step\s+(\d+)\s*:[^\n]*?Energy\s*=\s*(-?[\d.eE+-]+)",
+    re.MULTILINE,
+)
+# ANSI escape codes geomeTRIC uses to color its progress lines.
+# We strip them before regex matching so the pattern stays simple.
+_ANSI_ESC_RE = re.compile(r"\x1b\[[0-9;]*m")
+
 
 class PySCFParser(TrajectoryParser):
     name  = "pyscf"
@@ -237,6 +254,35 @@ class PySCFParser(TrajectoryParser):
                 scf_history = scf_for_step,
             ))
 
+        # 2026-06-14 early-window fallback: when the user loads
+        # ``<JOB>_initial.xyz`` (the starting geometry) on a fresh
+        # PySCF run, the parsed frame has no energy because the
+        # comment line is just an XYZ description.  But the sibling
+        # ``.pyscf.log`` (or ``<JOB>-runN.pyscf.log``) may already
+        # carry the geomeTRIC first-step energy.  Surface it so the
+        # Results-tab energy plot has a data point during the brief
+        # initialization window of a fresh run, symmetric to the
+        # SIESTA preamble-Etot fallback.
+        #
+        # Only triggers when we have exactly ONE frame whose energy
+        # is None (the typical fresh-run case).  Multi-frame
+        # trajectories already carry per-step energies in the
+        # ``Iteration K Energy E`` comment.
+        if (len(frames) == 1 and frames[0].energy is None):
+            fallback_energy = cls._read_initial_energy_from_log(path)
+            if (fallback_energy is not None
+                    and math.isfinite(fallback_energy)):
+                f = frames[0]
+                frames[0] = Frame(
+                    structure   = f.structure,
+                    step_index  = f.step_index,
+                    energy      = fallback_energy,
+                    forces      = f.forces,
+                    max_force   = f.max_force,
+                    max_force_constrained = f.max_force_constrained,
+                    scf_history = f.scf_history,
+                )
+
         # Surface the sidecar's frozen_atoms to the consumer (same
         # contract as the SIESTA parser).  Used by the trajectory
         # inspector's "Hide frozen atoms" overlay + force-arrow
@@ -253,6 +299,84 @@ class PySCFParser(TrajectoryParser):
             lattice       = None,           # geomeTRIC traj has no cell
             runtime_info  = runtime_info,
         )
+
+    # ------------------------------------------------------------- #
+    #  Early-window fallback: scan sibling .pyscf.log for initial   #
+    #  geomeTRIC ``Step 0 ... Energy = X`` line                     #
+    # ------------------------------------------------------------- #
+    @classmethod
+    def _read_initial_energy_from_log(
+        cls, traj_path: str,
+    ) -> Optional[float]:
+        """Return the geomeTRIC ``Step 0`` energy (in eV) from the
+        sibling ``.pyscf.log`` / ``-run<N>.pyscf.log`` file, or
+        None when no log exists / no Step-0 line is found.
+
+        Filename derivation matches molbuilder's run-wrapper
+        convention.  For a trajectory at:
+
+          * ``<base>_geom_optim.xyz`` -> ``<base>-run<N>.pyscf.log``
+                                         or ``<base>.pyscf.log``
+          * ``<base>_initial.xyz``    -> same lookup (the
+                                         initial-xyz case is the
+                                         primary user of this
+                                         fallback)
+
+        When multiple ``-run<N>.pyscf.log`` files exist, the
+        highest N wins (matches the convention that the latest
+        run's log is the live one).
+
+        Strips ANSI color escapes geomeTRIC emits before regex
+        matching.
+        """
+        base, fname = os.path.split(traj_path)
+        if not base:
+            base = "."
+        # Strip whichever recognised .xyz suffix is present to get
+        # the JOB stem.
+        stem = fname
+        for suffix in ("_geom_optim.xyz", "_initial.xyz",
+                       "_optimized.xyz", ".xyz"):
+            if stem.endswith(suffix):
+                stem = stem[: -len(suffix)]
+                break
+        # Prefer the highest-N -run<N>.pyscf.log; fall back to
+        # bare ``<stem>.pyscf.log``.
+        candidates: List[str] = []
+        try:
+            for entry in os.listdir(base):
+                if entry.startswith(stem + "-run") \
+                        and entry.endswith(".pyscf.log"):
+                    candidates.append(os.path.join(base, entry))
+        except OSError:
+            pass
+        candidates.sort()   # ``-run0`` < ``-run1`` < ...
+        bare = os.path.join(base, stem + ".pyscf.log")
+        if os.path.isfile(bare):
+            candidates.append(bare)
+
+        for log_path in reversed(candidates):
+            try:
+                with open(log_path, "r", errors="replace") as fh:
+                    text = fh.read()
+            except OSError:
+                continue
+            # Strip ANSI escapes before regex.
+            text = _ANSI_ESC_RE.sub("", text)
+            # Find the LAST Step 0 occurrence (multiple geom-opt
+            # restarts within one log would re-emit Step 0).
+            last = None
+            for m in _GEOMETRIC_STEP_RE.finditer(text):
+                if int(m.group(1)) == 0:
+                    last = m
+            if last is None:
+                continue
+            try:
+                ha = float(last.group(2))
+            except (TypeError, ValueError):
+                continue
+            return ha * _HARTREE_TO_EV
+        return None
 
     # ------------------------------------------------------------- #
     #  qdata-companion helper                                        #
