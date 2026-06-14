@@ -97,6 +97,146 @@ def _scan_file(path: Path) -> list[tuple[int, str]]:
     return hits
 
 
+# --------------------------------------------------------------------- #
+#  L1 tests for the scanner internals — added 2026-06-14 per task #390  #
+#                                                                       #
+#  ``_is_in_comment`` is documented as "approximate" — these tests pin  #
+#  the exact behaviour so a future tightening (or a regression that    #
+#  silently broadens it) surfaces immediately.  Comment-detection is   #
+#  what gates whether a legitimate code reference becomes a false       #
+#  positive (or vice versa) in the main compliance check.               #
+# --------------------------------------------------------------------- #
+
+
+class TestIsInComment:
+    """The approximate comment detector at line 71.
+
+    The function returns True when a ``//`` or an unclosed ``/*``
+    appears in the line BEFORE ``match_start``.  Cases the docstring
+    promises to handle:
+
+      * ``//`` anywhere before the match → True (line comment that
+        started earlier)
+      * ``/*`` before the match without a closing ``*/`` between
+        them → True (multi-line block-comment open)
+      * ``/*`` ... ``*/`` BOTH before the match → False (block
+        comment closed before the match)
+      * Neither marker before the match → False (real code)
+    """
+
+    def test_no_markers_means_not_in_comment(self):
+        line = "    foo = window.molbuilder.structureCanvas;"
+        # ``window.molbuilder.structureCanvas`` starts at index 10.
+        assert _is_in_comment(line, 10) is False
+
+    def test_line_comment_before_match(self):
+        line = "    // foo = window.molbuilder.structureCanvas;"
+        # The match would land at index ~16; ``//`` at index 4.
+        assert _is_in_comment(line, 16) is True
+
+    def test_line_comment_in_middle(self):
+        """``// stuff`` mid-line still gates the rest of the line."""
+        line = "    foo();  // window.molbuilder.structureCanvas"
+        assert _is_in_comment(line, 16) is True
+
+    def test_block_comment_unclosed_before_match(self):
+        """``/*`` started, no ``*/`` before the match → in comment."""
+        line = "    /* TODO: window.molbuilder.structureCanvas"
+        assert _is_in_comment(line, 18) is True
+
+    def test_block_comment_closed_before_match(self):
+        """``/* ... */`` fully closed before the match → not in
+        comment.  This is the case where the doc says "approximate"
+        and a more thorough parser might still flag it, but our
+        contract is to treat closed comments as having ended."""
+        line = "    /* prefix */ window.molbuilder.structureCanvas"
+        # Match starts at index 17 (right after ``*/ ``).
+        assert _is_in_comment(line, 17) is False
+
+    def test_match_at_index_zero(self):
+        """Edge: match at index 0 → no prefix to scan → not in
+        comment (defensive default)."""
+        line = "window.molbuilder.structureCanvas = 1"
+        assert _is_in_comment(line, 0) is False
+
+    def test_two_block_comments_before_match(self):
+        """``/* a */ /* b */`` — both closed → not in comment."""
+        line = "  /* one */ /* two */ window.molbuilder.structureCanvas"
+        # The function's approximation: it counts ANY ``/*`` and ANY
+        # ``*/`` in the prefix.  Two of each → still balanced → not
+        # in comment.  Pinning this so future tightening doesn't
+        # silently change behavior on real lines like this.
+        prefix = line[: line.find("window")]
+        assert "/*" in prefix and "*/" in prefix
+        assert _is_in_comment(line, line.find("window")) is False
+
+
+class TestScanFile:
+    """End-to-end check that the file-level scanner correctly
+    distinguishes real consumer code from comments + strings.  The
+    scanner is the load-bearing check for the workspace-contract.md
+    § 8 compliance contract."""
+
+    def _make_file(self, tmp_path, body: str) -> Path:
+        path = tmp_path / "snippet.js"
+        path.write_text(body, encoding="utf-8")
+        return path
+
+    def test_real_consumer_is_flagged(self, tmp_path):
+        path = self._make_file(tmp_path, """\
+function read() {
+    return window.molbuilder.structureCanvas.getText();
+}
+""")
+        hits = _scan_file(path)
+        assert len(hits) == 1
+        assert "structureCanvas" in hits[0][1]
+
+    def test_full_line_comment_is_skipped(self, tmp_path):
+        path = self._make_file(tmp_path, """\
+function read() {
+    // window.molbuilder.structureCanvas is gone post-Phase-9;
+    return window.molbuilder.workspace.getStructure();
+}
+""")
+        hits = _scan_file(path)
+        assert hits == [], (
+            "full-line ``// …`` comment must be skipped; "
+            f"got {hits!r}"
+        )
+
+    def test_jsdoc_star_line_is_skipped(self, tmp_path):
+        """Lines whose first non-whitespace token is ``*`` are
+        treated as JSDoc continuation lines — common in headers."""
+        path = self._make_file(tmp_path, """\
+/**
+ * window.molbuilder.structureCanvas — retired 2026-06-13.
+ */
+function noop() {}
+""")
+        hits = _scan_file(path)
+        assert hits == []
+
+    def test_trailing_inline_comment_is_skipped(self, tmp_path):
+        path = self._make_file(tmp_path, """\
+function noop() {
+    return null;  // window.molbuilder.structureCanvas is gone
+}
+""")
+        hits = _scan_file(path)
+        assert hits == []
+
+    def test_multiple_consumers_all_flagged(self, tmp_path):
+        path = self._make_file(tmp_path, """\
+function a() { return window.molbuilder.structureCanvas; }
+function b() { return root.molbuilder.selection.store; }
+""")
+        hits = _scan_file(path)
+        assert len(hits) == 2
+        assert any("structureCanvas" in h[1] for h in hits)
+        assert any("selection.store" in h[1] for h in hits)
+
+
 def test_no_legacy_store_consumers_outside_allow_list():
     """No consumer file outside the implementation allow-list may
     reference ``window.molbuilder.structureCanvas`` or

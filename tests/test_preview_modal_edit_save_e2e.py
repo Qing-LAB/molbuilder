@@ -18,7 +18,6 @@ internal DOM.
 from __future__ import annotations
 
 import threading
-import time
 from pathlib import Path
 
 import pytest
@@ -244,10 +243,15 @@ def test_preview_modal_save_handles_mtime_conflict(
     )
 
     # Simulate an out-of-band write: the file gets a NEW mtime
-    # before the user clicks Save.  Sleep briefly to ensure the
-    # filesystem records a distinguishable mtime; then rewrite.
-    time.sleep(1.1)
+    # before the user clicks Save.  Set the mtime explicitly via
+    # os.utime so the test doesn't depend on filesystem mtime
+    # resolution (the previous time.sleep(1.1) burned ~1s per run
+    # for no contract value — the contract is "different mtime,"
+    # not "mtime distinguishable to the second").
+    import os as _os
+    old_mtime = target.stat().st_mtime
     target.write_text("someone else's edit\n")
+    _os.utime(target, (old_mtime + 2.0, old_mtime + 2.0))
 
     page.locator("#ps-preview-save-btn").click()
     page.wait_for_function(
