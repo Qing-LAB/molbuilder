@@ -18,22 +18,86 @@ plus the dispatcher in `molbuilder/web/app.py`.
 
 ## 1. Conventions
 
-### 1.1 Uniform `{ok}` envelope
+### 1.1 Uniform response envelope
 
 Every endpoint returns JSON with a top-level `ok: bool` field.
 Decisions log #187 (2026-06-02) made this a hard rule — there
-are no exceptions.
+are no exceptions.  This section spells out the full envelope so
+adding a new endpoint or auditing an old one does not need to
+hunt across the code for the field meanings.
+
+#### 1.1.1 Canonical fields
+
+The complete set of fields the response body may carry.  Every
+endpoint picks the subset it needs; every field that IS present
+has the meaning below.  Adding a new meaning under an existing
+name is a wire-break — pick a new name instead.
+
+| Field | Type | When present | What it is |
+|---|---|---|---|
+| `ok` | `bool` | always | `true` for success; `false` for any failure. |
+| `error` | `string` | failure only | Short, human-readable banner string for the status UI, e.g., `"preflight failed; see issues"`.  No stack trace, no absolute paths, no jargon — this is what shows up at the top of the form. |
+| `kind` | `string` | optional, failure | Machine-readable failure tag.  Lowercase snake_case, e.g., `"schema_mismatch"`, `"no_project"`, `"locked_for_write"`.  The UI may dispatch on this to render a more specific affordance than the generic error banner. |
+| `issues` | `list[Issue]` | when the endpoint runs a validator or preflight | Full mixed-severity list.  Each entry: `{severity: "error"\|"warn"\|"info", message: str, where: str}` (the JSON-encoded form of `molbuilder.issues.Issue`).  Drives the colour-coded list under the banner.  Always emitted as a list, even when empty. |
+| `errors_only` | `list[Issue]` | when the endpoint runs a validator or preflight | Pre-filtered subset of `issues` containing only the `severity == "error"` items.  Always emitted as a list, including `[]` on success.  Convenience for consumers that want just the blockers (a CI script, a "show only blockers" toggle) — no client today reads this, but the contract guarantees it is there. |
+| `engine` | `string` | render endpoints | Which engine produced the response (`"siesta"`, `"pyscf"`, `"transiesta"`, etc.). |
+| domain-specific keys | varies | per endpoint | The payload the endpoint exists to deliver: `script`, `atoms`, `xyz`, `wrapper_path`, `entries`, etc.  Documented per endpoint. |
+
+#### 1.1.2 Common shapes
 
 | Outcome | Shape |
 |---|---|
-| Success | `{ok: true, <payload fields>}` |
-| Expected failure (validation, missing dep, etc.) | `{ok: false, error: "<human-readable>"}` |
-| Optional structured failure | `{ok: false, error: "...", kind: "<machine-readable>", ...}` |
+| Plain success | `{ok: true, <payload fields>}` |
+| Plain failure | `{ok: false, error: "<banner string>"}` |
+| Structured failure | `{ok: false, error: "...", kind: "<tag>"}` |
+| Validator/preflight success | `{ok: true, <payload>, issues: [...warns + infos...], errors_only: []}` |
+| Validator/preflight failure | `{ok: false, error: "preflight failed; see issues", issues: [...], errors_only: [...]}` |
 
 HTTP status codes classify (200 / 4xx / 5xx) but the body shape
 **does not** depend on status — the JS apiX wrappers
 (`lib/projects/api.js`) branch on `body.ok`, not on
 `Response.ok`.
+
+#### 1.1.3 Naming rules for new fields
+
+When adding a new field to an endpoint's response, keep these
+rules in mind so the next reader (and the next audit) does not
+mistake it for a duplicate of something else:
+
+1. **Existing names are stable.**  Never reuse `error`, `issues`,
+   `errors_only`, `ok`, `kind`, or `engine` for a different
+   meaning than § 1.1.1 lists.  Renaming an existing field is a
+   wire break.
+2. **A filtered view of an existing list is named
+   `<source>_<filter>`.**  `errors_only` is named that way
+   because it is `issues` filtered to severity=error.  If we add
+   a "warnings only" view tomorrow, it is `warnings_only`.  This
+   makes the relationship obvious from the name alone.
+3. **Singular vs plural is not load-bearing.**  Do NOT add a
+   field named `errors` next to a field named `error` — the eye
+   reads them as plural-of-the-same-thing.  Pick a name that
+   says what it is (`errors_only`, `blocker_issues`) instead.
+4. **Lists are emitted, not omitted, when their concept applies
+   to the endpoint.**  An endpoint that runs a validator emits
+   `issues: []` on success, not by leaving the key off.  The
+   client always sees the shape it knows.
+5. **A field that no consumer reads today is fine as long as it
+   is documented.**  `errors_only` is in this category — kept on
+   the wire so a future consumer can adopt it without a
+   server-side rev.
+
+#### 1.1.4 Extensibility — new optional fields
+
+Adding a NEW optional field to a response is non-breaking:
+consumers must tolerate unknown fields (the JS apiX wrappers
+do).  The reverse — removing or renaming an existing field — is
+breaking and requires either a doc version bump or coordinated
+client + server commits.
+
+A new field that ALL endpoints will eventually carry (a future
+hypothetical: `request_id`, `server_version`) lands in § 1.1.1
+as a new row first, then ships endpoint-by-endpoint.  Until it
+is in § 1.1.1, clients cannot rely on it being present.
 
 ### 1.2 Path validation
 
