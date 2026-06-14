@@ -126,14 +126,6 @@ def detect_parser(path: str) -> Type[TrajectoryParser]:
     raise UnknownFormatError("\n".join(lines))
 
 
-def parser_summary() -> List[dict]:
-    """Lightweight metadata used by the /api/formats endpoint."""
-    return [
-        {"name": c.name, "label": c.label, "hint": c.hint}
-        for c in PARSERS
-    ]
-
-
 def trajectory_to_legacy_dict(traj: Trajectory) -> Dict[str, Any]:
     """Adapter: build the molwatch v1 JSON dict from a Trajectory.
 
@@ -261,6 +253,5 @@ __all__ = [
     "TrajectoryParser",
     "UnknownFormatError",
     "detect_parser",
-    "parser_summary",
     "trajectory_to_legacy_dict",
 ]

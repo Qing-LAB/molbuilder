@@ -12,7 +12,6 @@ from molbuilder.parsers import (
     PARSERS,
     UnknownFormatError,
     detect_parser,
-    parser_summary,
 )
 from molbuilder.parsers.molwatch_log import MolwatchLogParser
 from molbuilder.parsers.siesta import SiestaParser
@@ -117,14 +116,6 @@ def test_registry_lists_all_parsers():
     names = [c.name for c in PARSERS]
     assert "siesta" in names
     assert "pyscf" in names
-
-
-def test_summary_shape():
-    s = parser_summary()
-    assert isinstance(s, list) and s
-    for entry in s:
-        assert "name" in entry and "label" in entry
-        assert "hint" in entry
 
 
 # --------------------------------------------------------------------- #

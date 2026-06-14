@@ -7,7 +7,6 @@ consumed by the /results trajectory inspector (see
 
 Routes (registered with no url_prefix; each carries its own full path):
 
-    GET  /api/watch/formats    parser registry summary
     POST /api/watch/load       JSON {"path": "..."} or multipart upload
                                 ``path`` may be either a single file or
                                 a run directory (job-layout v1; see
@@ -47,7 +46,6 @@ from flask import Blueprint, jsonify, request
 from molbuilder.parsers import (
     UnknownFormatError,
     detect_parser,
-    parser_summary,
     trajectory_to_legacy_dict,
 )
 
@@ -548,12 +546,6 @@ def _merge_molwatch_trajectories(paths: List[str]) -> Tuple[Dict[str, Any],
 # /api/watch/* endpoints below -- those are the canonical API for
 # loading + polling a trajectory file and are consumed by the
 # /results adapter.  KEEP the API; the page is gone.
-
-
-@bp.route("/api/watch/formats")
-def api_formats():
-    """Lightweight: lists registered parsers + their human labels."""
-    return jsonify({"ok": True, "formats": parser_summary()})
 
 
 @bp.route("/api/watch/load", methods=["POST"])

@@ -217,7 +217,6 @@ flowchart LR
         tp_render["POST /api/transport/render"]
     end
     subgraph "Watch (trajectory inspector backing)"
-        w_fmt["GET /api/watch/formats"]
         w_load["POST /api/watch/load"]
         w_data["GET /api/watch/data"]
     end
@@ -798,7 +797,6 @@ trajectory inspector on `/results` instead. Tests:
 
 | Route | Method | Body | Success | Error codes |
 |---|---|---|---|---|
-| `/api/watch/formats` | GET | — | `{ok, formats: [{name, label, hint}]}` | — |
 | `/api/watch/load` | POST | JSON `{path}` OR multipart `file=` | see § 8.3 | 400 · 403 (outside `MOLBUILDER_WATCH_ROOT`) · 404 · 413 · 500 |
 | `/api/watch/data` | GET | `?mtime=` (optional) | see § 8.4 | 200 (errors carry `{ok:false, error}`) |
 

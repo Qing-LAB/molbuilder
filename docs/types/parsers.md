@@ -474,9 +474,6 @@ PARSERS: List[Type[TrajectoryParser]] = [
 
 def detect_parser(path) -> Type[TrajectoryParser]:
     """First parser whose can_parse(path) is True wins."""
-
-def parser_summary() -> List[dict]:
-    """[{name, label, hint}, ...] — feeds /api/watch/formats."""
 ```
 
 * Order matters: more-specific format markers go first so a permissive
