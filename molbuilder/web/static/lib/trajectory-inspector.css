@@ -166,6 +166,19 @@
     cursor: pointer;
     user-select: none;
 }
+/* 2026-06-14 [hidden]-attribute audit (mirrors style.css:357 for
+ * .issues-panel).  The ``.ctab-panel label`` rules above set
+ * ``display: flex`` which ties on specificity with the UA
+ * ``[hidden]`` rule and wins, so a row with ``hidden=""`` stays
+ * visible in the layout.  The trajectory inspector's
+ * refreshHideFrozenAvailability sets ``hide-frozen-row``'s
+ * ``hidden`` attribute to true when no frozen indices are
+ * available; without this guard the user sees a clickable but
+ * non-functional toggle (clicking it changes is_checked but
+ * applyHideFrozen / _buildArrowsForFrame early-return because
+ * _frozenSet() is null).  Restore attribute-driven visibility. */
+.ctab-panel label.check[hidden],
+.ctab-panel label[hidden] { display: none; }
 /* Stretch text inputs / numeric inputs / selects to the panel width,
    but NOT checkboxes -- those keep their natural ~13px square so the
    following label text sits immediately to the right of the box. */
