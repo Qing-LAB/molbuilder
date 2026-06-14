@@ -1047,18 +1047,38 @@ class SiestaParser(TrajectoryParser):
                 "(run truncated without '>> End of run' marker)"
             )
 
-        # Surface the .molstruct.json sidecar's frozen_atoms list to
-        # the consumer.  The trajectory inspector uses this for the
-        # "Hide frozen atoms" overlay + filters force arrows to free
-        # atoms only.  SIESTA's .out doesn't list per-atom constraint
-        # indices (it reports the aggregate "Max … constrained" only);
-        # the sidecar is the canonical source.  Empty list when no
-        # sidecar / no frozen_atoms field — frontend hides the
-        # checkbox in that case.
-        from ._sidecar import read_frozen_atoms
-        frozen = sorted(read_frozen_atoms(path))
-        if frozen:
-            runtime_info["frozen_atoms"] = frozen
+        # Surface frozen-atom indices to the consumer.  The
+        # trajectory inspector uses this for the "Hide frozen atoms"
+        # overlay + filters force arrows to free atoms only.
+        # SIESTA's ``.out`` reports only the AGGREGATE "Max …
+        # constrained" value, not which atoms are constrained; we
+        # have to recover the indices from another source.  Two
+        # paths are tried in order:
+        #
+        #   1. ``.molstruct.json`` sidecar — the canonical source
+        #      when present (writes shared with the modify-tab's
+        #      sidecar-aware save path).
+        #   2. Sibling ``.fdf`` input's ``%block Geometry.
+        #      Constraints`` — fallback for runs where no sidecar
+        #      was written but the input's constraint block carries
+        #      the indices we need.  2026-06-14 addition: the chart
+        #      was showing the constrained trace correctly while
+        #      the "Hide frozen atoms" toggle stayed hidden because
+        #      step 1 was empty for these runs (see
+        #      docs/protocols/code-audit.md § 3.3, cross-source-of-
+        #      truth gap).
+        #
+        # Both helpers return empty on any failure — frozen-atom
+        # data is optional UI metadata.
+        from ._sidecar import (
+            read_frozen_atoms,
+            read_frozen_atoms_from_siesta_fdf,
+        )
+        frozen_set = read_frozen_atoms(path)
+        if not frozen_set:
+            frozen_set = read_frozen_atoms_from_siesta_fdf(path)
+        if frozen_set:
+            runtime_info["frozen_atoms"] = sorted(frozen_set)
 
         return Trajectory(
             source_format  = cls.name,
