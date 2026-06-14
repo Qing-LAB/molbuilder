@@ -215,9 +215,8 @@ def test_siesta_peptide_protonation_warn(water_struct):
 
 # --------------------------------------------------------------------- #
 #  SIESTA pseudo-coverage check is wired into the preflight             #
-#  (2026-05-23: previously pseudos.py was only callable via the         #
-#  /api/siesta/check-pseudos endpoint or in tests -- nothing in the     #
-#  Build->Generate flow ever ran it.  These tests pin that every        #
+#  (2026-05-23: previously the pseudos.py coverage check was not        #
+#  exercised by the Build->Generate flow.  These tests pin that every   #
 #  validate(struct, SiestaConfig) call now exercises the coverage       #
 #  check, surfacing missing files / XC mismatches as preflight Issues.) #
 # --------------------------------------------------------------------- #

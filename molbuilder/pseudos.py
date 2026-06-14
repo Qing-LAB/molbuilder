@@ -20,10 +20,11 @@ Functions here:
     ``{element: PsmlInfo}`` mapping all parseable .psml files.
   * :func:`check_coverage` -- given a Structure and a directory,
     return a list of per-element status entries: present / missing
-    / mismatched-XC / mismatched-relativistic.  The web layer's
-    ``/api/siesta/check-pseudos`` endpoint surfaces these so the
-    user sees a clear "missing Fe.psml" or "Fe.psml is for LDA but
-    you picked GGA" message before they run SIESTA.
+    / mismatched-XC / mismatched-relativistic.  The SIESTA
+    validator (``molbuilder.validation.siesta``) calls this during
+    preflight + render so the user sees a clear "missing Fe.psml"
+    or "Fe.psml is for LDA but you picked GGA" Issue message
+    before they run SIESTA.
 
 Format reference: PSML 1.1 spec
 (https://siesta-project.org/SIESTA_MATERIAL/Pseudos/Code/psml-1.1.pdf).

@@ -229,11 +229,12 @@ class SiestaConfig:
         "workflow_group": "profile",
         "label":   "XC.Authors",
         "engine_key":  'XC.authors',
-        # Choices match what /api/siesta/check-pseudos accepts when
-        # mapping authors->family for the coverage check (see
-        # build.py).  Free-text was needed historically (unusual
-        # functionals); dropdown covers the 99% case and the user
-        # can still set unusual values via the Python API.
+        # Choices feed the validator's authors->family map for the
+        # pseudopotential coverage check (see
+        # molbuilder/validation/siesta.py::_check_siesta_pseudo_coverage).
+        # Free-text was needed historically (unusual functionals);
+        # dropdown covers the 99% case and the user can still set
+        # unusual values via the Python API.
         "choices": ("PBE", "PBEsol", "revPBE", "RPBE", "BLYP",
                     "CA", "PZ", "PW", "DRSLL", "LMKLL"),
         "help":    "XC parameterisation within the family.  GGA: PBE "

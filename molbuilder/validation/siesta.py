@@ -337,12 +337,9 @@ def _validate_siesta(struct: Structure, cfg,
     issues += _check_peptide_protonation(struct, getattr(cfg, "net_charge", None))
 
     # Pseudopotential coverage (the actionable use of pseudos.py).
-    # Without this wired in, the parser was dead code -- only the
-    # tests + the unwired /api/siesta/check-pseudos endpoint
-    # exercised it.  Now every Build->Generate runs it: missing
-    # files become ERROR Issues (SIESTA hard-fails without them);
-    # XC mismatches become WARN (silent wrong bond lengths
-    # otherwise).
+    # Wired into preflight + render: missing files become ERROR
+    # Issues (SIESTA hard-fails without them); XC mismatches
+    # become WARN (silent wrong bond lengths otherwise).
     issues += _check_siesta_pseudo_coverage(struct, cfg, dest_dir=dest_dir)
 
     # MeshCutoff floor: warn below 150 Ry (production-defensible

@@ -223,7 +223,6 @@ flowchart LR
         misc_anal["POST /api/structure/analyze"]
         misc_wrap["POST /api/run/install-wrapper"]
         misc_ips["POST /api/siesta/install-pseudos"]
-        misc_chk["POST /api/siesta/check-pseudos"]
         misc_back["GET /api/backends"]
         misc_health["GET /api/health"]
     end
@@ -977,7 +976,6 @@ Implementation: `molbuilder/web/blueprints/build.py`.
 |---|---|---|---|
 | `/api/run/install-wrapper` | POST | `{script_path, mpi_np?, omp_threads?, max_memory_mb?}` | Write the bash launcher wrapper next to a `.fdf` / `.py` |
 | `/api/siesta/install-pseudos` | POST | `{psml_lib, dest_dir, elements}` | Copy `.psml` files for the structure's elements into `dest_dir` |
-| `/api/siesta/check-pseudos` | POST | `{psml_lib, elements}` | Validate the user-supplied pseudopotential directory before write |
 
 Wrappers emit `--continue` + `-runN.out` series support so a
 re-run doesn't clobber the previous run's output. See
