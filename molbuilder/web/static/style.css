@@ -21,8 +21,8 @@ html, body { height: 100%; }
 header {
     padding: 18px 28px 14px;
     background: linear-gradient(180deg,
-                                rgba(107, 166, 255, 0.05) 0%,
-                                rgba(107, 166, 255, 0.00) 100%),
+                                var(--header-gradient-top) 0%,
+                                var(--header-gradient-bottom) 100%),
                 var(--bg-card);
     border-bottom: 1px solid var(--border-strong);
 }
