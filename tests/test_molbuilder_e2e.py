@@ -1285,8 +1285,8 @@ def test_modifier_op_marks_canvas_dirty(
     _load_water_via_button(page, water_xyz_file)
     # Pre-op: canvas exists but isn't dirty (just loaded).
     state_before = page.evaluate("""() => ({
-        empty: window.molbuilder.structureCanvas.isEmpty(),
-        dirty: window.molbuilder.structureCanvas.isDirty(),
+        empty: window.molbuilder.workspace.isEmpty(),
+        dirty: window.molbuilder.workspace.isDirty(),
     })""")
     assert state_before == {"empty": False, "dirty": False}, (
         f"pre-op state should be loaded+clean, got {state_before!r}"
@@ -1299,7 +1299,7 @@ def test_modifier_op_marks_canvas_dirty(
     )
     # Post-op: canvas-state is dirty.
     is_dirty = page.evaluate(
-        "() => window.molbuilder.structureCanvas.isDirty()"
+        "() => window.molbuilder.workspace.isDirty()"
     )
     assert is_dirty is True, (
         "modifier op should flip canvas-state.dirty so a subsequent "
@@ -1413,7 +1413,7 @@ def test_save_writes_to_source_and_clears_dirty(
         "() => window.__molbuilder_modify_test.getNAtoms() === 2"
     )
     assert page.evaluate(
-        "() => window.molbuilder.structureCanvas.isDirty()"
+        "() => window.molbuilder.workspace.isDirty()"
     ) is True
     # Expand the Save panel + click Save.
     page.locator("#save-to-source-btn").click()
@@ -1438,10 +1438,10 @@ def test_save_writes_to_source_and_clears_dirty(
     )
     # Dirty bit cleared via markSavedTo.
     assert page.evaluate(
-        "() => window.molbuilder.structureCanvas.isDirty()"
+        "() => window.molbuilder.workspace.isDirty()"
     ) is False
     assert page.evaluate(
-        "() => window.molbuilder.structureCanvas.getLastSavedTo()"
+        "() => window.molbuilder.workspace.getLastSavedTo()"
     ) == water_xyz_file
     # The file on disk now reflects the 2-atom post-delete structure.
     new_text = _P(water_xyz_file).read_text()
@@ -3637,7 +3637,7 @@ def test_canvas_dirty_bit_survives_navigation_to_other_tab_and_back(
         "() => window.__molbuilder_modify_test.getNAtoms() === 2"
     )
     pre_nav = page.evaluate("""() => ({
-        dirty:     window.molbuilder.structureCanvas.isDirty(),
+        dirty:     window.molbuilder.workspace.isDirty(),
         n_atoms:   window.__molbuilder_modify_test.getNAtoms(),
     })""")
     assert pre_nav == {"dirty": True, "n_atoms": 2}, (
@@ -3655,7 +3655,7 @@ def test_canvas_dirty_bit_survives_navigation_to_other_tab_and_back(
         "      && window.__molbuilder_modify_test.getNAtoms() === 2"
     )
     post_nav = page.evaluate("""() => ({
-        dirty:     window.molbuilder.structureCanvas.isDirty(),
+        dirty:     window.molbuilder.workspace.isDirty(),
         n_atoms:   window.__molbuilder_modify_test.getNAtoms(),
     })""")
     assert post_nav == {"dirty": True, "n_atoms": 2}, (
@@ -5286,7 +5286,7 @@ class TestModifySecondVisitExternalChange:
         )
         # Canvas is now dirty.
         assert page.evaluate(
-            "() => window.molbuilder.structureCanvas.isDirty()"
+            "() => window.molbuilder.workspace.isDirty()"
         ) is True
 
         page.goto(f"{flask_server}/structure-optimization")
