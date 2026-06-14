@@ -386,7 +386,7 @@ def test_runtime_modules_registered_on_modify(page, flask_server):
     page.wait_for_function(
         "() => window.molbuilder && window.molbuilder.runtime "
         "      && window.molbuilder.runtime.listRegistered()"
-        "                 .includes('selection.store')",
+        "                 .includes('modify.handle')",
         timeout=10000,
     )
     registered = page.evaluate(
@@ -404,9 +404,12 @@ def test_runtime_modules_registered_on_modify(page, flask_server):
     # ``window.molbuilder.loadStructureText`` directly (it's still
     # mounted by modify/viewer.js; only the runtime-registry alias
     # was retired).
+    #
+    # Phase 9 (2026-06-13) dropped ``selection.store`` — the
+    # workspace dispatcher now owns the singleton internally, so
+    # there's no whenReady consumer to satisfy.
     for required in (
         "projects",
-        "selection.store",
         "selection.panel",
         "selection.viewerAdapter",
         "modify.handle",

@@ -29,7 +29,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 DISPATCHER_PATH = ROOT / "molbuilder/web/static/lib/workspace/dispatcher.js"
-STORE_PATH      = ROOT / "molbuilder/web/static/lib/selection/store.js"
+STORE_PATH      = ROOT / "molbuilder/web/static/lib/workspace/_selection-store-impl.js"
 CANVAS_PATH     = ROOT / "molbuilder/web/static/lib/structure/canvas-state.js"
 
 
@@ -106,6 +106,19 @@ def _run_node(snippet: str) -> object:
         "window.molbuilder.structureCanvas = require("
         + json.dumps(str(CANVAS_PATH)) + ");\n"
         "require(" + json.dumps(str(STORE_PATH))      + ");\n"
+        # Phase 9 (2026-06-13): the impl file no longer auto-mounts
+        # a singleton on ``window.molbuilder.selection.store``.
+        # The dispatcher owns the one process-wide instance and
+        # honours an existing mount if a test harness pre-installs
+        # one (see dispatcher.js ``_store()`` escape hatch).  Spin
+        # up the singleton here so:
+        #   (a) test code can read/write the same instance the
+        #       dispatcher sees via ``window.molbuilder.selection
+        #       .store.*``;
+        #   (b) the dispatcher reuses the test-installed instance
+        #       instead of creating a separate one.
+        "window.molbuilder.selection.store = "
+        "  window.molbuilder.selection._createStore();\n"
         "require(" + json.dumps(str(DISPATCHER_PATH)) + ");\n"
         + snippet
     )

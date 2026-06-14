@@ -36,7 +36,6 @@
  *   "formSchema"                -- lib/form-schema.js
  *   "projects"                  -- lib/projects-sidebar.js
  *   "workspace"                 -- lib/workspace/dispatcher.js  (Phase 10 — the public surface)
- *   "selection.store"           -- lib/selection/store.js          (DEPRECATED: ws.selection)
  *   "selection.panel"           -- lib/selection-panel.js
  *   "selection.viewerAdapter"   -- lib/selection/viewer-adapter.js
  *   "structure.canvas"          -- lib/structure/canvas-state.js   (DEPRECATED: ws.*)

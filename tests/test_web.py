@@ -886,7 +886,19 @@ def test_modify_static_assets_load(web_client):
     # retired -- atom-list rendering + click handling moved to the
     # selection panel + viewer-adapter.
     assert "/api/build/load" in body
-    assert "selection.store" in body or "_selStore" in body
+    # Phase 9 (2026-06-13) — the legacy ``selection.store`` global
+    # is gone; the code now reaches the store via the workspace
+    # dispatcher's selection sub-API.  Match either the
+    # ``ws.selection``/``workspace.selection`` accessor or the
+    # legacy ``_selStore`` local name (some files still keep the
+    # variable name during the migration window).
+    assert ("workspace.selection" in body
+            or "ws.selection" in body
+            or "_selStore" in body), (
+        "expected the JS to subscribe via the workspace dispatcher's "
+        "selection sub-API (workspace.selection / ws.selection) or "
+        "via the legacy _selStore local name"
+    )
 
 
 def test_every_page_links_to_molbuilder_tab(web_client):

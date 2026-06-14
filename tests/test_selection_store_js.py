@@ -1,4 +1,4 @@
-"""Unit tests for ``lib/selection/store.js`` driven via Node.
+"""Unit tests for ``lib/workspace/_selection-store-impl.js`` driven via Node.
 
 Task #146 — Phase B.1.15.  The selection store is the canonical
 state holder for the /modify selection panel (see
@@ -31,19 +31,19 @@ import pytest
 
 
 ROOT   = Path(__file__).resolve().parents[1]
-MODULE = ROOT / "molbuilder/web/static/lib/selection/store.js"
+MODULE = ROOT / "molbuilder/web/static/lib/workspace/_selection-store-impl.js"
 
 
 def _run_node(snippet: str) -> object:
     """Run a JS snippet under Node with the store module pre-loaded.
 
-    The store IIFE auto-mounts a SINGLETON on ``window.molbuilder.
-    selection.store`` at load time.  Tests that mutate state would
-    pollute later tests via the singleton, so each test calls
-    ``window.molbuilder.selection._createStore()`` to spin up a
-    fresh isolated instance.  This entry point is exported
-    explicitly for testing -- see the comment at the bottom of
-    ``store.js``.
+    As of Phase 9 (2026-06-13) the module no longer auto-mounts a
+    public singleton; the workspace dispatcher owns the one
+    process-wide instance.  Tests call
+    ``window.molbuilder.selection._createStore()`` to spin up
+    fresh isolated instances — that factory stays mounted under
+    the existing namespace exactly so test harnesses (here + a
+    future Playwright `_test` hook) can build their own.
     """
     node = shutil.which("node")
     if node is None:

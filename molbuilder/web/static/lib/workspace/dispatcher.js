@@ -85,11 +85,38 @@
         return (root.molbuilder && root.molbuilder.structureCanvas)
             ? root.molbuilder.structureCanvas : null;
     }
+
+    // Phase 9 (2026-06-13): the selection store is no longer a
+    // public global — the dispatcher creates the one process-wide
+    // instance from the factory at lib/workspace/
+    // _selection-store-impl.js and holds it for the lifetime of
+    // the page.  The factory must be mounted before this IIFE
+    // executes (templates load the impl file just before the
+    // dispatcher; test_workspace_dispatcher_js.py mirrors that
+    // order in its require chain).
+    //
+    // Test escape hatch: if a harness pre-mounted an instance on
+    // ``root.molbuilder.selection.store`` BEFORE the dispatcher
+    // loaded, honour it.  This lets test setup share the same
+    // store instance the dispatcher reads (so stubs of e.g.
+    // ``refreshAtoms`` affect what the dispatcher sees) without
+    // re-exposing the legacy global in production templates.
+    let _selectionStore = null;
     function _store() {
-        return (root.molbuilder
-                && root.molbuilder.selection
-                && root.molbuilder.selection.store)
-            ? root.molbuilder.selection.store : null;
+        if (_selectionStore) return _selectionStore;
+        if (root.molbuilder
+            && root.molbuilder.selection
+            && root.molbuilder.selection.store) {
+            _selectionStore = root.molbuilder.selection.store;
+            return _selectionStore;
+        }
+        const factory = (root.molbuilder
+                         && root.molbuilder.selection
+                         && root.molbuilder.selection._createStore);
+        if (typeof factory === "function") {
+            _selectionStore = factory();
+        }
+        return _selectionStore;
     }
     function _handle() {
         return (root.molbuilder

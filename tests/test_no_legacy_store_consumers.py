@@ -10,7 +10,10 @@ globals are:
   * lib/workspace/dispatcher.js — delegates to them as internal
     implementation
   * lib/structure/canvas-state.js — self-mounts the canvas global
-  * lib/selection/store.js — self-mounts the selection store global
+  * lib/workspace/_selection-store-impl.js — Phase 9 (2026-06-13)
+    moved out of lib/selection/store.js; no longer mounts the
+    selection.store global, but exposes the _createStore factory
+    the dispatcher consumes
 
 Every other consumer must go through ``window.molbuilder.workspace.*``
 (``ws.*``).  A new file matching the pattern outside the allow-list
@@ -40,7 +43,7 @@ ALLOW_LIST = {
     # the dispatcher itself is permitted to know about them.
     "lib/workspace/dispatcher.js",
     "lib/structure/canvas-state.js",
-    "lib/selection/store.js",
+    "lib/workspace/_selection-store-impl.js",
     # The runtime registry's module docstring lists every mounted
     # name including the deprecated ones.  The list is documentation,
     # not consumption.

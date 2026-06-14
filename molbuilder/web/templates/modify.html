@@ -687,7 +687,7 @@ Adds and parameter changes for slabs are undoable; up to 20 steps.">↶ Undo</bu
    Per workspace-contract.md §8 these are deprecated public
    surfaces; consumers go through ``window.molbuilder.workspace.*``
    instead. #}
-<script src="{{ url_for('static', filename='lib/selection/store.js') }}"></script>
+<script src="{{ url_for('static', filename='lib/workspace/_selection-store-impl.js') }}"></script>
 <script src="{{ url_for('static', filename='lib/structure/canvas-state.js') }}"></script>
 {# Workspace dispatcher (workspace-contract.md §1) — mounts
    ``window.molbuilder.workspace`` as the SINGLE public API surface

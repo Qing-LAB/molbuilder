@@ -1,14 +1,17 @@
-/* **Internal as of Phase 9 (2026-06-08) of the workspace-state
- * migration** (docs/protocols/workspace-state.md).  New code
- * MUST consume ``window.molbuilder.workspace.selection`` instead
- * of this module's globals directly.  The store + its existing
- * HTTP surface (``/api/selection/atoms`` etc.) stay in place to
- * keep the panel + viewer-adapter + bootstrap working during the
- * migration window; they will be folded into the dispatcher in
- * a follow-up.  Phase 10 (delete ``/api/selection/atoms``) is
- * blocked on that fold.
+/* **Workspace-internal as of Phase 9 (2026-06-13)** — this module
+ * no longer mounts a public singleton on
+ * ``window.molbuilder.selection.store``.  The workspace
+ * dispatcher (lib/workspace/dispatcher.js) creates + holds the
+ * one process-wide instance via the ``_createStore`` factory
+ * exported below.  Every external consumer goes through
+ * ``window.molbuilder.workspace.selection.*`` (=``ws.selection.*``).
  *
- * Atom-selection store -- singleton state + HTTP + mutators.
+ * The factory stays mounted under ``window.molbuilder.selection.
+ * _createStore`` so per-test isolation (Node L2 tests + a future
+ * Playwright `_test` hook) can spin up fresh stores without
+ * driving the dispatcher.
+ *
+ * Atom-selection store -- factory + state shape + mutators.
  *
  * THE state holder for the atom-selection module.  Consumers (panel,
  * viewer-adapter, page bootstrap) subscribe to the store and call its
@@ -881,17 +884,16 @@
         };
     }
 
+    // Phase 9 (2026-06-13): the public singleton mount + the
+    // matching ``runtime.register("selection.store", ...)`` call
+    // are GONE.  The dispatcher owns the one process-wide
+    // instance, created via the factory below.  Consumers reach
+    // it through ``window.molbuilder.workspace.selection.*``.
+    //
+    // The factory stays mounted at the existing namespace so
+    // test harnesses + a future per-instance test hook can spin
+    // up isolated stores.
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.selection = root.molbuilder.selection || {};
-    if (!root.molbuilder.selection.store) {
-        root.molbuilder.selection.store = _create();
-    }
     root.molbuilder.selection._createStore = _create;
-    // Module-init contract: register with the runtime so consumers
-    // can ``whenReady("selection.store")`` (see design.md).
-    if (root.molbuilder.runtime
-        && typeof root.molbuilder.runtime.register === "function") {
-        root.molbuilder.runtime.register(
-            "selection.store", root.molbuilder.selection.store);
-    }
 })(typeof window !== "undefined" ? window : globalThis);

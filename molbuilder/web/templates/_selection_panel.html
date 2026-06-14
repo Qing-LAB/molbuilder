@@ -2,8 +2,9 @@
 
     Mounted by tabs that need atom selection (initially /modify; later
     /spectra to replace the three frozen-atoms inputs).  Owned by
-    ``lib/selection-panel.js`` which subscribes to the singleton
-    ``lib/selection/store.js`` (the state + HTTP layer).
+    ``lib/selection-panel.js`` which subscribes via the workspace
+    dispatcher (``ws.selection.subscribe`` → the store instance the
+    dispatcher created from ``lib/workspace/_selection-store-impl.js``).
 
     Layout (compact, single-column -- fits beside the 3D viewer):
 
