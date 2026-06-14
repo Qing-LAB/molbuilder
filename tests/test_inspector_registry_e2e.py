@@ -83,44 +83,16 @@ def _open_results(page, base_url):
 # --------------------------------------------------------------------- #
 
 
-# --------------------------------------------------------------------- #
-#  /results file-picker contract (2026-06-01)                           #
-#                                                                       #
-#  The tab-level result picker at ``lib/results/file-picker.js`` reads #
-#  three new fields off the inspector contract:                         #
-#                                                                       #
-#    * ``isResult: bool``           -- whether the inspector's matched #
-#                                       files should appear in the     #
-#                                       picker dropdown.                #
-#    * ``pickResult(file)``         -- registry helper that returns    #
-#                                       the matched inspector iff its  #
-#                                       ``isResult`` is true (else     #
-#                                       null).                          #
-#    * ``resultCategory(file)``     -- per-file engine-flavoured       #
-#                                       group label rendered as a      #
-#                                       ``<optgroup>`` header.          #
-#                                                                       #
-#  These tests pin the contract against the LIVE registered inspectors #
-#  so a regression that drops ``isResult`` (silently removing a file   #
-#  type from the picker) or mistypes a category label fails loudly.    #
-# --------------------------------------------------------------------- #
-
-
-class TestPickerContract:
-    """RETIRED 2026-06-13 — see header above.  The 16 picker-contract
-    tests (isResult flags, pickResult dispatch, resultCategory labels)
-    moved to tests/test_inspector_registry_dispatch_js.py.
-
-    This class is intentionally empty; a future PR may delete it
-    entirely once a grep confirms no external references.  Kept as
-    a documentation breadcrumb for the migration."""
-# --------------------------------------------------------------------- #
-
-
 class TestMountLifecycle:
     """The host element is owned exclusively by the active inspector;
     a new selection disposes the previous handle BEFORE mounting
-    the new one."""
+    the new one.
+
+    The unknown-extension → null path is covered at L2 by
+    ``test_inspector_registry_dispatch_js.py::
+    test_registry_pick_dispatches_filename[unknown_ext→null]``; mount()
+    returns null when pick() returns null, so the e2e equivalent
+    added no contract beyond the dispatch table."""
 
     def test_mount_returns_handle_with_dispose(self, page, flask_server):
         """Registry's mount(host, file, ctx) returns a handle with
@@ -136,16 +108,6 @@ class TestMountLifecycle:
             return h && typeof h.dispose === "function";
         }""")
         assert ok
-
-    def test_mount_unknown_extension_returns_null(self, page, flask_server):
-        _open_results(page, flask_server)
-        out = page.evaluate("""() => {
-            const reg = window.molbuilder.inspectors;
-            const host = document.createElement("div");
-            const ctx  = reg.createDefaultContext(host);
-            return reg.mount(host, "/projects/foo/x.unknown", ctx);
-        }""")
-        assert out is None
 
 
 # --------------------------------------------------------------------- #

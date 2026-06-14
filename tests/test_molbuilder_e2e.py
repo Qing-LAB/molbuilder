@@ -1219,36 +1219,117 @@ def test_load_button_disabled_when_non_structure_file_picked(
     assert page.locator("#load-candidate-readout").inner_text() == ""
 
 
-def test_smiles_generator_renders_structure_in_viewer(page, flask_server):
-    """End-to-end SMILES flow: type ``CCO`` into the SMILES input,
-    click Generate.  The RDKit backend builds ethanol; the panel
-    routes the XYZ through ``structurePage.loadIntoCanvas`` (canvas
-    is empty → no warning fires) and the 3Dmol viewer renders the
-    9 atoms (3 heavy + 6 H).  Status text reports the atom count.
+# --------------------------------------------------------------------- #
+#  Load-path contract — generators + sidebar Load                       #
+#                                                                       #
+#  Five entry paths hit ``/api/build/load`` (SMILES / DNA / RNA /       #
+#  peptide generators + the sidebar Load button).  Each must:           #
+#    (a) render the structure in the 3Dmol viewer, and                 #
+#    (b) propagate the canonical ``atoms`` payload into                #
+#        ``selection.store`` so the selection panel populates (the     #
+#        2026-06-07 BOMB-0 regression: /api/build/load was returning   #
+#        no atoms list, so the front-end's adoptAtoms silently no-     #
+#        op'd; viewer populated, store empty, panel blank).             #
+#                                                                       #
+#  One parametrized test holds the contract across all five paths.     #
+#  Consolidated from seven near-identical tests on 2026-06-13          #
+#  (4 generator-renders + 2 generator-store-pop + 1 sidebar-store-pop) #
+#  — same coverage, plus extending the store-population check to RNA   #
+#  + peptide (it should hold there too; the previous tests omitted     #
+#  those paths).                                                        #
+# --------------------------------------------------------------------- #
 
-    Skips if rdkit isn't installed — the build endpoint surfaces
-    a clean error in that case but this test wants the happy path.
-    """
-    try:
-        import rdkit  # noqa: F401
-    except ImportError:
-        pytest.skip("rdkit not installed; cannot exercise SMILES build")
+
+# Each case names: the entry-path key, the user-typed input, the
+# viewer atom-count predicate, the status-text substrings the
+# user-facing readout must show (empty for sidebar, which has no
+# #*-status counterpart), and the backend gate (any-of).
+_LOAD_PATH_CASES = [
+    # SMILES "CCO" → ethanol via RDKit: 9 atoms (3 heavy + 6 H).
+    ("smiles_CCO_ethanol", "smiles", "CCO", "=== 9", ("9", "CCO"),
+     ("rdkit",)),
+    # DNA "ACGT" → B-form helix via 3DNA/Amber/RDKit (≥50 atoms).
+    ("dna_ACGT_bform", "dna", "ACGT", ">= 50", ("ACGT", "B-form"),
+     ("threedna", "amber", "rdkit")),
+    # RNA "ACGU" → A-form helix via 3DNA/Amber/RDKit (≥50 atoms).
+    ("rna_ACGU_aform", "rna", "ACGU", ">= 50", ("ACGU", "A-form"),
+     ("threedna", "amber", "rdkit")),
+    # Peptide "AC" → alanine-cysteine via tleap.  Floor of 20 atoms
+    # — a future tleap force-field tweak can change exact caps.
+    ("peptide_AC_dipeptide", "peptide", "AC", ">= 20", ("AC",),
+     ("amber",)),
+    # Sidebar Load button — water.xyz fixture (3 atoms).  No backend
+    # gate, no status text (no #sidebar-status element).
+    ("sidebar_water_xyz", "_sidebar", None, "=== 3", (), ()),
+]
+
+
+@pytest.mark.parametrize(
+    "init_tab,input_str,atom_predicate,status_substrings,backends_any",
+    [
+        pytest.param(*c[1:], id=c[0])
+        for c in _LOAD_PATH_CASES
+    ],
+)
+def test_load_path_renders_structure_and_populates_selection_store(
+        page, flask_server, water_xyz_file,
+        init_tab, input_str, atom_predicate, status_substrings,
+        backends_any):
+    """Every entry path that hits ``/api/build/load`` must render
+    the structure in the viewer AND propagate atoms into
+    ``selection.store``.  See section header above for the
+    regression history."""
+    if backends_any:
+        try:
+            from molbuilder.backends import available_backends
+        except ImportError:
+            pytest.skip("molbuilder.backends import failed")
+        avail = available_backends()
+        if not any(avail.get(b, False) for b in backends_any):
+            pytest.skip(
+                f"none of {list(backends_any)} backends installed"
+            )
 
     _open_modify(page, flask_server)
-    # Expand the SMILES panel + type a SMILES + click Generate.
-    page.locator(".init-tab[data-init-tab='smiles']").click()
-    page.locator("#smiles-input").fill("CCO")
-    page.locator("#smiles-generate-btn").click()
-    # Wait for the viewer to populate.  Ethanol with H = 9 atoms
-    # via RDKit's default geometry generation.
+
+    if init_tab == "_sidebar":
+        # Sidebar pick + setSourceFile path — exercises /api/build/
+        # load without going through any generator's Click→Generate.
+        _load_water(page, water_xyz_file)
+    else:
+        page.locator(f".init-tab[data-init-tab='{init_tab}']").click()
+        page.locator(f"#{init_tab}-input").fill(input_str)
+        page.locator(f"#{init_tab}-generate-btn").click()
+
     page.wait_for_function(
-        "() => window.__molbuilder_modify_test"
-        "      && window.__molbuilder_modify_test.getNAtoms() === 9",
-        timeout=10_000,
+        f"() => window.__molbuilder_modify_test"
+        f"      && window.__molbuilder_modify_test.getNAtoms() "
+        f"{atom_predicate}",
+        timeout=20_000,
     )
-    # Status text reports the result with the SMILES echo.
-    status_text = page.locator("#smiles-status").inner_text()
-    assert "9" in status_text and "CCO" in status_text
+
+    # Selection-store atoms MUST match the viewer.  Without this the
+    # selection panel stays blank even after a successful load — the
+    # BOMB-0 finale.
+    counts = page.evaluate("""() => ({
+        viewer: window.__molbuilder_modify_test.getNAtoms(),
+        store:  window.molbuilder.workspace.selection
+                  .getState().atoms.length,
+    })""")
+    assert counts["store"] == counts["viewer"], (
+        f"selection store has {counts['store']} atoms but viewer "
+        f"shows {counts['viewer']} — load path failed to push atoms "
+        f"through applyStructure → adoptAtoms"
+    )
+
+    # Status readout (generator paths only).
+    if status_substrings:
+        status_text = page.locator(f"#{init_tab}-status").inner_text()
+        for substring in status_substrings:
+            assert substring in status_text, (
+                f"#{init_tab}-status text {status_text!r} missing "
+                f"required substring {substring!r}"
+            )
 
 
 def _load_water_via_button(page, water_xyz_file):
@@ -1732,91 +1813,6 @@ def test_save_button_disabled_for_smiles_without_prior_save(
     )
 
 
-def test_dna_generator_renders_structure_in_viewer(page, flask_server):
-    """End-to-end DNA flow: type "ACGT" into the DNA input, click
-    Generate.  Backend picks 3DNA → AmberTools → RDKit in that
-    preference order; the panel routes the XYZ through the canvas
-    gate and the viewer renders the helix.
-
-    Skips if no DNA backend is installed (the 3-backend cascade
-    needs at least one of 3DNA / AmberTools / RDKit).
-    """
-    try:
-        from molbuilder.backends import available_backends
-    except ImportError:
-        pytest.skip("molbuilder.backends import failed")
-    avail = available_backends()
-    if not (avail.get("threedna", False)
-            or avail.get("amber",    False)
-            or avail.get("rdkit",    False)):
-        pytest.skip("no DNA backend (3DNA / AmberTools / RDKit) installed")
-
-    _open_modify(page, flask_server)
-    page.locator(".init-tab[data-init-tab='dna']").click()
-    page.locator("#dna-input").fill("ACGT")
-    page.locator("#dna-generate-btn").click()
-    page.wait_for_function(
-        "() => window.__molbuilder_modify_test"
-        "      && window.__molbuilder_modify_test.getNAtoms() >= 50",
-        timeout=20_000,
-    )
-    status_text = page.locator("#dna-status").inner_text()
-    assert "ACGT" in status_text
-    assert "B-form" in status_text
-
-
-def test_dna_generator_populates_selection_store(
-        page, flask_server):
-    """Generator → selection panel sync (2026-06-07 BOMB-0 finale).
-
-    The user-reported regression: generating DNA on the Molbuilder
-    tab put the structure in the viewer but the selection panel's
-    atom list stayed empty.  Root cause: /api/build/load (the
-    endpoint loadStructureText calls after every generator) was
-    not including the canonical ``atoms`` payload, so the
-    front-end's ``applyStructure(r) -> store.adoptAtoms(r.atoms)``
-    silently no-op'd (Array.isArray(undefined) === false).
-
-    This test pins that the selection store ACTUALLY has atoms
-    after a DNA generate — not just that the viewer has them.
-    The 3 prior reviews missed this because the existing
-    generator tests only checked viewer atom count, not the
-    selection store, and the BOMB-0 test only exercised
-    /api/modify/* which already used the atoms_list helper."""
-    try:
-        from molbuilder.backends import available_backends
-    except ImportError:
-        pytest.skip("molbuilder.backends import failed")
-    avail = available_backends()
-    if not (avail.get("threedna", False)
-            or avail.get("amber",    False)
-            or avail.get("rdkit",    False)):
-        pytest.skip("no DNA backend installed")
-
-    _open_modify(page, flask_server)
-    page.locator(".init-tab[data-init-tab='dna']").click()
-    page.locator("#dna-input").fill("ACGT")
-    page.locator("#dna-generate-btn").click()
-    page.wait_for_function(
-        "() => window.__molbuilder_modify_test"
-        "      && window.__molbuilder_modify_test.getNAtoms() >= 50",
-        timeout=20_000,
-    )
-    # The selection store MUST have the same atoms.  Pre-fix this
-    # was 0 — viewer populated, store empty, panel blank.
-    store_atom_count = page.evaluate(
-        "() => window.molbuilder.workspace.selection.getState().atoms.length"
-    )
-    viewer_atom_count = page.evaluate(
-        "() => window.__molbuilder_modify_test.getNAtoms()"
-    )
-    assert store_atom_count == viewer_atom_count, (
-        f"selection store has {store_atom_count} atoms but viewer "
-        f"shows {viewer_atom_count} — generator path failed to "
-        f"push atoms through applyStructure -> adoptAtoms"
-    )
-
-
 def test_generator_resets_stale_selection(
         page, flask_server, water_xyz_file):
     """Pin the resetSelection=true semantic for loadStructureText.
@@ -1862,111 +1858,6 @@ def test_generator_resets_stale_selection(
         f"selection must clear after a generator-driven structure "
         f"swap; still got {_get_selection(page)}"
     )
-
-
-def test_smiles_generator_populates_selection_store(
-        page, flask_server):
-    """Same contract as DNA but for SMILES — exercises the OTHER
-    generator path (RDKit instead of 3DNA/Amber) so a regression
-    that hits one but not the other is caught."""
-    try:
-        from molbuilder.backends import available_backends
-    except ImportError:
-        pytest.skip("molbuilder.backends import failed")
-    if not available_backends().get("rdkit", False):
-        pytest.skip("RDKit not installed")
-
-    _open_modify(page, flask_server)
-    page.locator(".init-tab[data-init-tab='smiles']").click()
-    page.locator("#smiles-input").fill("O")  # water
-    page.locator("#smiles-generate-btn").click()
-    page.wait_for_function(
-        "() => window.__molbuilder_modify_test"
-        "      && window.__molbuilder_modify_test.getNAtoms() === 3",
-        timeout=10_000,
-    )
-    store_atom_count = page.evaluate(
-        "() => window.molbuilder.workspace.selection.getState().atoms.length"
-    )
-    assert store_atom_count == 3, (
-        f"selection store should have 3 atoms after SMILES generate; "
-        f"got {store_atom_count}"
-    )
-
-
-def test_sidebar_load_populates_selection_store(
-        page, flask_server, water_xyz_file):
-    """The OTHER path that hits /api/build/load: sidebar pick →
-    Load button → loadStructureText → applyStructure.  Pin that
-    this also propagates atoms into the store."""
-    _open_modify(page, flask_server)
-    _load_water(page, water_xyz_file)
-    store_atom_count = page.evaluate(
-        "() => window.molbuilder.workspace.selection.getState().atoms.length"
-    )
-    assert store_atom_count == 3
-
-
-def test_rna_generator_renders_structure_in_viewer(page, flask_server):
-    """End-to-end RNA flow: type "ACGU" → click Generate.  Backend
-    picks 3DNA → AmberTools → RDKit; viewer renders the A-form
-    helix.  Skips if no nucleic backend installed."""
-    try:
-        from molbuilder.backends import available_backends
-    except ImportError:
-        pytest.skip("molbuilder.backends import failed")
-    avail = available_backends()
-    if not (avail.get("threedna", False)
-            or avail.get("amber",    False)
-            or avail.get("rdkit",    False)):
-        pytest.skip("no RNA backend (3DNA / AmberTools / RDKit) installed")
-
-    _open_modify(page, flask_server)
-    page.locator(".init-tab[data-init-tab='rna']").click()
-    page.locator("#rna-input").fill("ACGU")
-    page.locator("#rna-generate-btn").click()
-    page.wait_for_function(
-        "() => window.__molbuilder_modify_test"
-        "      && window.__molbuilder_modify_test.getNAtoms() >= 50",
-        timeout=20_000,
-    )
-    status_text = page.locator("#rna-status").inner_text()
-    assert "ACGU" in status_text
-    assert "A-form" in status_text
-
-
-def test_peptide_generator_renders_structure_in_viewer(page, flask_server):
-    """End-to-end peptide flow: type "AC" (alanine-cysteine) into
-    the Peptide input, click Generate.  Backend dispatches to
-    tleap; the panel routes the XYZ through
-    ``structurePage.loadIntoCanvas`` and the viewer renders the
-    dipeptide.
-
-    Skips if AmberTools isn't available — that's the peptide
-    backend; without it the test would hit a 4xx and pass false.
-    """
-    try:
-        from molbuilder.backends import available_backends
-    except ImportError:
-        pytest.skip("molbuilder.backends import failed")
-    if not available_backends().get("amber", False):
-        pytest.skip("AmberTools not available; cannot exercise peptide build")
-
-    _open_modify(page, flask_server)
-    page.locator(".init-tab[data-init-tab='peptide']").click()
-    page.locator("#peptide-input").fill("AC")
-    page.locator("#peptide-generate-btn").click()
-    # A dipeptide has ~30 atoms (alanine ~13 + cysteine ~14 +
-    # caps).  Assert a reasonable floor rather than an exact
-    # count so a future tleap force-field change with different
-    # cap atoms still passes.
-    page.wait_for_function(
-        "() => window.__molbuilder_modify_test"
-        "      && window.__molbuilder_modify_test.getNAtoms() >= 20",
-        timeout=20_000,
-    )
-    status_text = page.locator("#peptide-status").inner_text()
-    assert "AC" in status_text
 
 
 def test_file_upload_panel_loads_local_xyz(
