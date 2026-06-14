@@ -87,6 +87,7 @@ class TestNormaliseOpts:
             "xyz", "pdb", "style", "axes", "cell",
             "labels", "arrows", "pick", "lattice",
             "overlays", "knobs",
+            "projection",   # added 2026-06-13 — perspective / orthographic
         ])
 
     def test_xyz_string_passes_through(self):
@@ -258,6 +259,32 @@ class TestPartialUpdateContract:
             "setLabels no longer merges the patch onto state.current.labels; "
             "partial updates will silently clobber sibling fields."
         )
+
+    def test_setProjection_accepts_valid_modes_and_rejects_others(self):
+        """``setProjection`` is a scalar setter, not a patch — the API
+        is single-string (``"perspective" | "orthographic"``).  The
+        partial-update merge concern doesn't apply, but the validity
+        check + state-store-then-apply order does.  Pin that the
+        function exists + the valid-modes constant covers exactly the
+        two 3Dmol-supported modes."""
+        import re
+        src = MODULE.read_text()
+        # Function definition exists.
+        m = re.search(r"function\s+setProjection\(p\)\s*\{", src)
+        assert m is not None, (
+            "mol-viewer-embed.js lost setProjection — orthographic-vs-"
+            "perspective control is broken.")
+        # The valid-modes whitelist is the canonical "what 3Dmol
+        # supports" list; adding a third mode without 3Dmol-side
+        # support would be drift.
+        valid = re.search(
+            r'VALID_PROJECTIONS\s*=\s*\[([^\]]+)\]', src)
+        assert valid is not None
+        modes = {s.strip().strip('"\'')
+                 for s in valid.group(1).split(",") if s.strip()}
+        assert modes == {"perspective", "orthographic"}, (
+            f"VALID_PROJECTIONS drifted from 3Dmol's two supported "
+            f"camera modes: {sorted(modes)}")
 
 
 # --------------------------------------------------------------------- #

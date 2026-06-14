@@ -142,6 +142,7 @@ class SpectraConfig:
 
     engine: str = field(default="pyscf", metadata={
         "section": "System",
+        "workflow_group": "profile",
         "label":   "Engine",
         # Only PySCF in v1.  SIESTA is reserved (see
         # spec.md § 13.2); adding it later extends this tuple by
@@ -155,6 +156,7 @@ class SpectraConfig:
     })
     job_name: str = field(default="spectra", metadata={
         "section":  "System",
+        "workflow_group": "profile",
         "label":    "Job name",
         "id_suffix": "job-name",
         "pattern":  r"^[A-Za-z0-9_\-]+$",
@@ -170,6 +172,7 @@ class SpectraConfig:
 
     method: str = field(default="RKS", metadata={
         "section": "Method",
+        "workflow_group": "profile",
         "label":   "SCF method",
         "choices": ("RKS", "UKS", "RHF", "UHF"),
         "engine_key": 'RKS / UKS / RHF / UHF  (PySCF class selection)',
@@ -186,6 +189,7 @@ class SpectraConfig:
     })
     charge: int = field(default=0, metadata={
         "section": "Method",
+        "workflow_group": "profile",
         "label":   "Net charge",
         "range":   (-10, 10),
         "engine_key": 'gto.M(charge=...)',
@@ -199,6 +203,7 @@ class SpectraConfig:
     })
     spin: int = field(default=0, metadata={
         "section": "Method",
+        "workflow_group": "profile",
         "label":   "Spin (2S = # unpaired electrons)",
         "range":   (0, 10),
         "engine_key": 'gto.M(spin=...)  # 2S, # of unpaired electrons',
@@ -216,6 +221,7 @@ class SpectraConfig:
     })
     functional: str = field(default="B3LYP", metadata={
         "section": "Method",
+        "workflow_group": "profile",
         "label":   "Functional",
         "engine_key": 'mf.xc = ...',
         "help":    "XC functional name (libxc string).  Recommendations: "
@@ -232,6 +238,7 @@ class SpectraConfig:
     })
     basis: str = field(default="def2-SVP", metadata={
         "section": "Method",
+        "workflow_group": "profile",
         "label":   "Basis set",
         "engine_key": 'gto.M(basis=...)',
         "help":    "Gaussian basis set name.  Recommendations by tier: "
@@ -247,6 +254,7 @@ class SpectraConfig:
     })
     ecp: Optional[str] = field(default=None, metadata={
         "section":    "Method",
+        "workflow_group": "profile",
         "label":      "Pseudopotential (ECP)",
         "null_label": "(auto)",
         "engine_key": 'gto.M(ecp=...)',
@@ -270,6 +278,7 @@ class SpectraConfig:
     })
     dispersion: Optional[str] = field(default="d3bj", metadata={
         "section":    "Method",
+        "workflow_group": "profile",
         "label":      "Dispersion",
         "choices":    ("d3", "d3bj", "d4", "none"),
         "null_label": "(none)",
@@ -279,6 +288,7 @@ class SpectraConfig:
     })
     density_fit: bool = field(default=True, metadata={
         "section": "Method",
+        "workflow_group": "profile",
         "label":   "Density fitting",
         "engine_key": 'mf = mf.density_fit()',
         "help":    "speeds up each SCF cycle 5-10x by approximating "
@@ -311,6 +321,7 @@ class SpectraConfig:
 
     frozen_elements: List[str] = field(default_factory=list, metadata={
         "section": "Frozen atoms",
+        "workflow_group": "profile",
         "label":   "Freeze by element",
         "engine_key": '(molbuilder: frozen-atom filter by element)',
         "help":    "comma-separated element symbols whose atoms are "
@@ -324,6 +335,7 @@ class SpectraConfig:
     })
     frozen_residue_names: List[str] = field(default_factory=list, metadata={
         "section": "Frozen atoms",
+        "workflow_group": "profile",
         "label":   "Freeze by residue name",
         "engine_key": '(molbuilder: frozen-atom filter by PDB residue)',
         "help":    "comma-separated PDB residue names whose atoms "
@@ -334,6 +346,7 @@ class SpectraConfig:
     })
     frozen_indices: List[int] = field(default_factory=list, metadata={
         "section": "Frozen atoms",
+        "workflow_group": "profile",
         "label":   "Freeze by atom index",
         "engine_key": '(molbuilder: frozen-atom filter by explicit index, sidecar-bridged)',
         "help":    "comma-separated 0-based atom indices, optionally "
@@ -346,6 +359,7 @@ class SpectraConfig:
 
     compute_raman: bool = field(default=True, metadata={
         "section": "Spectrum",
+        "workflow_group": "profile",
         "label":   "Compute Raman activities",
         "engine_key": '(molbuilder: finite-diff polarizability path)',
         "help":    "compute Raman scattering intensity for every "
@@ -357,6 +371,7 @@ class SpectraConfig:
     })
     compute_ir: bool = field(default=False, metadata={
         "section": "Spectrum",
+        "workflow_group": "profile",
         "label":   "Compute IR intensities (scaffold; not yet validated)",
         "tier":    "advanced",
         "engine_key": '(molbuilder: finite-diff dipole-moment derivative path)',
@@ -374,6 +389,7 @@ class SpectraConfig:
     })
     displacement_amplitude_ang: float = field(default=0.02, metadata={
         "section": "Spectrum",
+        "workflow_group": "stage",
         "label":   "Displacement amplitude",
         "unit":    "Å",
         "range":   (0.02, 0.30),
@@ -407,6 +423,7 @@ class SpectraConfig:
 
     es_mode_selection: str = field(default="skip", metadata={
         "section": "Electronic structure",
+        "workflow_group": "stage",
         "label":   "Mode selection",
         "id_suffix": "es-selection",
         "choices": ("skip", "all", "top_n", "threshold", "explicit"),
@@ -435,6 +452,7 @@ class SpectraConfig:
     })
     es_top_n: int = field(default=10, metadata={
         "section": "Electronic structure",
+        "workflow_group": "stage",
         "label":   "Top-N modes",
         "range":   (1, 1000),
         "tier":    "advanced",
@@ -446,6 +464,7 @@ class SpectraConfig:
     })
     es_threshold: float = field(default=1.0, metadata={
         "section": "Electronic structure",
+        "workflow_group": "stage",
         "label":   "Raman-activity threshold",
         "unit":    "Å⁴/amu",
         "range":   (0.0, 1000.0),
@@ -459,6 +478,7 @@ class SpectraConfig:
     })
     es_explicit_indices: List[int] = field(default_factory=list, metadata={
         "section": "Electronic structure",
+        "workflow_group": "stage",
         "label":   "Explicit modes",
         "tier":    "advanced",
         "engine_key": '(molbuilder: per-mode selector parameter)',
@@ -481,6 +501,7 @@ class SpectraConfig:
     # at L4 only (L2 + L3 are fixed-cost).
     freq_min_cm1: Optional[float] = field(default=None, metadata={
         "section":    "Electronic structure",
+        "workflow_group": "stage",
         "label":      "Min frequency",
         "unit":       "cm⁻¹",
         "null_label": "(no lower bound)",
@@ -497,6 +518,7 @@ class SpectraConfig:
     })
     freq_max_cm1: Optional[float] = field(default=None, metadata={
         "section":    "Electronic structure",
+        "workflow_group": "stage",
         "label":      "Max frequency",
         "unit":       "cm⁻¹",
         "null_label": "(no upper bound)",
@@ -510,6 +532,7 @@ class SpectraConfig:
     })
     es_n_homo_below: int = field(default=5, metadata={
         "section": "Electronic structure",
+        "workflow_group": "stage",
         "label":   "Orbitals below HOMO to save",
         "id_suffix": "es-n-homo-below",
         "range":   (0, 50),
@@ -524,6 +547,7 @@ class SpectraConfig:
     })
     es_n_lumo_above: int = field(default=5, metadata={
         "section": "Electronic structure",
+        "workflow_group": "stage",
         "label":   "Orbitals above LUMO to save",
         "id_suffix": "es-n-lumo-above",
         "range":   (0, 50),
@@ -539,6 +563,7 @@ class SpectraConfig:
 
     scf_conv_tol: float = field(default=1e-9, metadata={
         "section": "SCF",
+        "workflow_group": "stage",
         "label":   "SCF energy convergence (scf.conv_tol)",
         "unit":    "Hartree",
         "range":   (1e-12, 1e-4),
@@ -555,6 +580,7 @@ class SpectraConfig:
     })
     scf_max_cycle: int = field(default=100, metadata={
         "section": "SCF",
+        "workflow_group": "budget",
         "label":   "Max SCF iterations (scf.max_cycle)",
         "range":   (10, 1000),
         "tier":    "advanced",
@@ -569,6 +595,7 @@ class SpectraConfig:
     })
     grid_level: int = field(default=4, metadata={
         "section": "SCF",
+        "workflow_group": "stage",
         "label":   "DFT integration grid level",
         "range":   (0, 9),
         "tier":    "advanced",
@@ -594,6 +621,7 @@ class SpectraConfig:
     # them visually prominent on the form.
     max_memory_mb: int = field(default=4000, metadata={
         "section":  "Runtime",
+        "workflow_group": "budget",
         "label":    "Max memory (max_memory)",
         "unit":     "MB",
         "id_suffix": "max-memory",
@@ -607,6 +635,7 @@ class SpectraConfig:
     })
     threads: Optional[int] = field(default=None, metadata={
         "section":    "Runtime",
+        "workflow_group": "budget",
         "label":      "CPU threads",
         "null_label": "(auto: physical cores)",
         "engine_key": "lib.num_threads(N) + os.environ['OMP_NUM_THREADS']",
@@ -624,6 +653,7 @@ class SpectraConfig:
     })
     use_gpu: bool = field(default=False, metadata={
         "section": "Runtime",
+        "workflow_group": "budget",
         "label":   "Use GPU (NVIDIA, via gpu4pyscf)",
         "id_suffix": "use-gpu",
         "engine_key": 'gpu4pyscf: mf = mf.to_gpu()',
@@ -643,6 +673,7 @@ class SpectraConfig:
     })
     verbose: int = field(default=4, metadata={
         "section": "Runtime",
+        "workflow_group": "budget",
         "label":   "Log verbosity (verbose)",
         "range":   (0, 9),
         "tier":    "advanced",
@@ -655,6 +686,7 @@ class SpectraConfig:
     })
     verbose_comments: bool = field(default=True, metadata={
         "section": "Runtime",
+        "workflow_group": "profile",
         "label":   "Verbose comments in generated script",
         "engine_key": '(molbuilder: emit explanatory comments into spectra.py)',
         "help":    "embed inline scientific explanations + the "

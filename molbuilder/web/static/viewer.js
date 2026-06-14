@@ -49,6 +49,12 @@
             // the canvas) per § 7.1 usage pattern.
             card:   { title: "Structure", showInfoLine: true,
                       height: "100%" },
+            // Axes default OFF (2026-06-13) — explicit here for the
+            // cross-tab consistency rule that every embed mount
+            // states the axes default rather than relying on the
+            // embed's implicit "axes: opts.axes !== false" treatment
+            // (which defaults to TRUE).  Opt in via the knob bar.
+            axes:   false,
             // Default export filename when the user clicks Save
             // to project / Download from the Export popover.
             export: { defaultName: "structure" },

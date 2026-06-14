@@ -184,7 +184,19 @@
             lattice:    _normaliseLattice(opts.lattice),
             overlays:   _normaliseOverlays(opts.overlays),
             knobs:      _normaliseKnobs(opts.knobs),
+            projection: _normaliseProjection(opts.projection),
         };
+    }
+
+    // Camera projection mode: "perspective" (3Dmol's default) or
+    // "orthographic" (parallel projection, useful for measuring
+    // distances + comparing molecular geometries side-by-side).
+    // Anything else falls back to "perspective".
+    const VALID_PROJECTIONS = ["perspective", "orthographic"];
+
+    function _normaliseProjection(p) {
+        if (typeof p !== "string") return "perspective";
+        return VALID_PROJECTIONS.includes(p) ? p : "perspective";
     }
 
     function _normaliseStyle(s) {
@@ -504,6 +516,10 @@
             labels:     opts.labels     !== false,
             background: opts.background !== false,
             axes:       opts.axes       !== false,
+            // Projection knob added 2026-06-13.  Defaults to true so
+            // every embed gains the perspective/orthographic toggle in
+            // the View menu without each mount site opting in.
+            projection: opts.projection !== false,
             reset:      opts.reset      !== false,
             backgroundPresets: Array.isArray(opts.backgroundPresets)
                 ? opts.backgroundPresets.slice()
@@ -741,6 +757,26 @@
             b.setAttribute("data-action", "axes");
             b.setAttribute("aria-pressed", "false");
             b.textContent = "Show axes";
+            sect.appendChild(b);
+            body.appendChild(sect);
+        }
+
+        if (knobs.projection) {
+            // Camera-projection toggle (2026-06-13).  3Dmol supports
+            // perspective (the default) and orthographic.  The latter
+            // renders parallel lines as parallel — useful for crystal/
+            // surface side-by-side comparison + visually measuring
+            // bond lengths without depth foreshortening.  Toggle is a
+            // single button: "Orthographic" when off, "Perspective"
+            // when on (i.e. the label names the mode the click WILL
+            // produce), matching the Axes button's convention.
+            const sect = _menuSection("projection", "Projection");
+            const b = document.createElement("button");
+            b.type = "button";
+            b.className = "mol-viewer-toggle";
+            b.setAttribute("data-action", "projection");
+            b.setAttribute("aria-pressed", "false");
+            b.textContent = "Orthographic";
             sect.appendChild(b);
             body.appendChild(sect);
         }
@@ -1792,6 +1828,24 @@
             });
         }
 
+        // Projection: perspective ↔ orthographic toggle.
+        const projBtn = bar.querySelector(
+            '.mol-viewer-toggle[data-action="projection"]');
+        if (projBtn) {
+            projBtn.addEventListener("click", () => {
+                const next = state.current.projection === "orthographic"
+                    ? "perspective" : "orthographic";
+                handle.setProjection(next);
+                // Update label to name the OPPOSITE mode (the mode the
+                // next click will produce) — same UX convention as the
+                // axes button.
+                projBtn.textContent = next === "orthographic"
+                    ? "Perspective" : "Orthographic";
+                projBtn.setAttribute("aria-pressed",
+                    next === "orthographic" ? "true" : "false");
+            });
+        }
+
         // Reset view.
         const resetBtn = bar.querySelector(
             '.mol-viewer-action[data-action="reset"]');
@@ -1965,6 +2019,21 @@
         _syncKnobBarToBackground(state);
         _syncKnobBarToAxes(state);
         _syncKnobBarToAnimation(state);
+        _syncKnobBarToProjection(state);
+    }
+
+    // Knob-bar sync for the projection toggle.  Stubbed for now —
+    // the projection knob isn't yet in the bar template (added
+    // 2026-06-13 as a programmatic API first; UI wiring follows when
+    // the knob-bar template is regenerated).  Defined so setProjection
+    // doesn't crash on the missing helper.
+    function _syncKnobBarToProjection(state) {
+        if (!state || !state.knobBar) return;
+        const btn = state.knobBar.querySelector(
+            '.mol-viewer-toggle[data-action="projection"]');
+        if (!btn) return;
+        btn.classList.toggle("active",
+            state.current.projection === "orthographic");
     }
 
     /* ------------------------------------------------------------ */
@@ -3461,6 +3530,16 @@
         _redrawAllOverlays(state);
         _wirePick(viewer, state);
         viewer.zoomTo();
+        // Apply the projection mode chosen at mount.  3Dmol's
+        // default is "perspective"; the call is a no-op when the
+        // chosen mode matches the default.  Calling it explicitly
+        // here keeps the state.current.projection state in sync
+        // with the actual viewer state from frame 0.
+        if (state.current.projection
+            && typeof viewer.setProjection === "function") {
+            try { viewer.setProjection(state.current.projection); }
+            catch (_) {}
+        }
         viewer.render();
         _refreshInfoLine(state);
 
@@ -3819,6 +3898,30 @@
             _redrawLabels(state);
             state.viewer.render();
             _syncKnobBarToLabels(state);
+        }
+
+        function setProjection(p) {
+            if (state.disposed) return;
+            if (p !== undefined && p !== null
+                && (typeof p !== "string"
+                    || !VALID_PROJECTIONS.includes(p))) {
+                _dispatchInvalidInput(state,
+                    "setProjection: argument must be one of "
+                  + VALID_PROJECTIONS.join(", ")
+                  + "; got " + JSON.stringify(p));
+            }
+            const next = _normaliseProjection(p);
+            if (state.current.projection === next) return;
+            state.current.projection = next;
+            // 3Dmol's GLViewer.setProjection switches the camera
+            // mode in-place and re-renders.  No camera-zoom reset
+            // needed; the existing camera state survives the switch.
+            if (state.viewer
+                && typeof state.viewer.setProjection === "function") {
+                state.viewer.setProjection(next);
+                state.viewer.render();
+            }
+            _syncKnobBarToProjection(state);
         }
 
         function setArrows(arr) {
@@ -5469,6 +5572,7 @@
             setBackground:      setBackground,
             setOverlays:        setOverlays,
             setAtomStyle:       setAtomStyle,
+            setProjection:      setProjection,
 
             setKnobs:           setKnobs,
 

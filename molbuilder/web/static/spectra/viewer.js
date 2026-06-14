@@ -138,6 +138,11 @@
             // Axes default OFF (2026-06-13) — see
             // lib/trajectory/core.js for the cross-tab consistency note.
             axes: false,
+            // Spectra used to mount with rep="ball-and-stick" while
+            // every other tab defaulted to "stick".  2026-06-13: align
+            // to the project-wide default (stick) for consistency.
+            // Users can switch via the knob bar's Style menu.
+            style: { rep: "stick" },
         });
 
         let _sidebarLastFile = "";

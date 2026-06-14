@@ -1777,7 +1777,11 @@
                 // background; spectra no longer needs to override it
                 // explicitly (or widen the preset list — the default
                 // list is ["#1d2128", "#ffffff", "transparent"]).
-                style:  { rep: "ball-and-stick", radiusScale: 1.0 },
+                // Project-wide default rep is "stick" (2026-06-13
+                // cross-tab consistency); the vibrational-mode
+                // viewer used "ball-and-stick" before — users can
+                // switch via the knob bar's Style menu.
+                style:  { rep: "stick", radiusScale: 1.0 },
                 pick:   { mode: "none" },
                 card:   { title: "Vibrational mode",
                           showInfoLine: false,

@@ -71,8 +71,8 @@ header {
     padding: 14px 22px 12px;
     border-bottom: 1px solid var(--border-strong);
     background: linear-gradient(180deg,
-                                rgba(107, 166, 255, 0.05) 0%,
-                                rgba(107, 166, 255, 0.00) 100%),
+                                var(--header-gradient-top) 0%,
+                                var(--header-gradient-bottom) 100%),
                 var(--bg-card);
 }
 header h1 {

@@ -38,6 +38,13 @@
     --accent:        #6ba6ff;       /* primary cool blue */
     --accent-hover:  #8ab8ff;
     --accent-strong: #4a8de0;
+    /* Header gradient overlay (used by lib/page-shell.css header).
+     * Same hue as --accent (#6ba6ff = 107,166,255) at low alpha so
+     * the header reads as accented without losing the dark-theme
+     * card colour underneath.  Tokenised 2026-06-13 — was two raw
+     * rgba literals. */
+    --header-gradient-top:    rgba(107, 166, 255, 0.05);
+    --header-gradient-bottom: rgba(107, 166, 255, 0.00);
     --accent-bg:     rgba(107, 166, 255, 0.10);
     --accent-glow:   rgba(107, 166, 255, 0.25);
     --success:       #4ade80;

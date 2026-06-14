@@ -164,7 +164,7 @@ open/closed-shell verdict.  That's a boundary contract.
   `test_au_bdt_au_closed_shell_does_NOT_warn_through_full_validate`,
   `test_analyzer_validator_chip_agree_on_open_shell_metal`.
 
-**Example.**  `test_validation.py::TestCheckOpenShellMetalUsesAnalyzer::test_validator_reads_metals_from_analyze_structure`
+**Example.**  `tests/validation/test_chemistry.py::TestCheckOpenShellMetalUsesAnalyzer::test_validator_reads_metals_from_analyze_structure`
 — monkeypatches the analyzer, drives the full validator path,
 asserts agreement.  Cross-subsystem (chemistry ↔ validation).
 
@@ -310,7 +310,7 @@ difference between proving "the validator reads the analyzer" and
 * **L5 e2e.**  Never mock chemistry.  The whole point of e2e is the
   real stack.
 
-See `tests/test_validation.py::TestCheckOpenShellMetalUsesAnalyzer`
+See `tests/validation/test_chemistry.py::TestCheckOpenShellMetalUsesAnalyzer`
 for the canonical fake-analyzer pattern.
 
 ---

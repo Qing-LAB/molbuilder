@@ -82,7 +82,7 @@ In `molbuilder/chemistry.py` + `molbuilder/validation.py`:
 | `check_spin_charge_parity(struct, charge, spin)` | spin=0 requires even electron count; spin=1 requires odd; etc.  PySCF raises this AT RUN TIME; we catch it pre-emission for a clearer message. |
 | `detect_open_shell_metals(struct)` | Returns list of open-shell transition metals present.  Empty for pure organics. |
 | `explain_metal_spin(element, spin)` | One-line description of what (Fe, spin=4) implies (Fe(II) high-spin, S=2, 4 unpaired — e.g. deoxy-heme). |
-| `_check_open_shell_metal()` (validation.py) | Shared by `_validate_pyscf` AND `_validate_siesta`: warns when a structure with an open-shell metal is paired with a closed-shell SCF (PySCF RKS/RHF + spin=0; SIESTA SpinPolarized=False).  SAME warning regardless of engine — same chemistry. |
+| `_check_open_shell_metal()` (validation/chemistry.py) | Shared by `_validate_pyscf` AND `_validate_siesta`: warns when a structure with an open-shell metal is paired with a closed-shell SCF (PySCF RKS/RHF + spin=0; SIESTA SpinPolarized=False).  SAME warning regardless of engine — same chemistry. |
 
 ### 2.3 Post-mortem: hemeC-dithiol (2026-05-22)
 
@@ -107,7 +107,7 @@ occupancies, hence the enormous gradient.
    `_emit_build_mol` in `spectra/pyscf_script.py` emitted
    `gto.M(...)` without `charge=` / `spin=`, falling through to
    PySCF's `(0, 0)` default.
-2. The validation pass exists (`validation.py::_validate_pyscf`)
+2. The validation pass exists (`validation/pyscf.py::_validate_pyscf`)
    but only ran from Build's `render_script`, not from the
    spectra script's emit path — the spectra engine's `preflight`
    had its OWN list of checks that didn't include the
@@ -208,7 +208,7 @@ Full machinery in [`protocols/scientific-validation.md`](protocols/scientific-va
 ## 3. Validation pass (pre-emission)
 
 Runs before `render_fdf` / `render_script` writes any output.
-Implemented in `molbuilder/validation.py::validate_geometry(struct,
+Implemented in `molbuilder/validation/geometry.py::validate_geometry(struct,
 cfg) -> List[Issue]`.  Errors stop emission; warnings print to
 stderr.
 

@@ -121,7 +121,7 @@ validator MUST NOT immediately turn around and warn that closed-shell
 is wrong. The two surfaces read from the same analyzer; they must
 agree about what they recommend.
 
-**Pinned by:** `tests/test_validation.py::TestCheckOpenShellMetalUsesAnalyzer::test_au_bdt_au_closed_shell_does_NOT_warn`
+**Pinned by:** `tests/validation/test_chemistry.py::TestCheckOpenShellMetalUsesAnalyzer::test_au_bdt_au_closed_shell_does_NOT_warn`
 
 ---
 
@@ -158,7 +158,7 @@ Concretely:
   asserts what the button writes to the form matches
   `ChemistryAnalysis.suggested_*`.
 
-The agreement-tests live in `tests/test_validation.py` for backend
+The agreement-tests live in `tests/validation/test_<submodule>.py` for backend
 agreement and `tests/test_live_poll_invariants_audit.py` for source-
 text JS agreement.
 
@@ -185,13 +185,13 @@ down so the next violation lands in code review with a clear citation.
 ## References
 
 * `molbuilder/chemistry.py::analyze_structure` — the canonical analyzer.
-* `molbuilder/validation.py::_check_open_shell_metal` — the validator
+* `molbuilder/validation/chemistry.py::_check_open_shell_metal` — the validator
   that reads `analysis.suggested_treatment` (2026-06-13 fix).
 * `molbuilder/web/static/lib/detection-chip.js` — the shared detection
   chip helper (`buildText` + `render`) that every engine tab consumes;
   reads `n_atoms`, `metals`, and the per-engine suggested-params
   block from the `/api/structure/analyze` response.
-* `tests/test_validation.py::TestCheckOpenShellMetalUsesAnalyzer` —
+* `tests/validation/test_chemistry.py::TestCheckOpenShellMetalUsesAnalyzer` —
   the analyzer-validator agreement pins.
 * [`scientific-validation.md`](scientific-validation.md) — the
   companion doc; **§ 3.4** holds the noble-metal vs open-d-shell
