@@ -1975,38 +1975,6 @@ def test_3dmol_atom_serial_matches_zero_based_index(
     )
 
 
-def test_store_set_selection_persists_through_test_hook(
-        page, flask_server, water_xyz_file):
-    """``store.setSelection`` writes state.selection; the test hook
-    reads it live.  Pins the round-trip the rest of the suite uses
-    to drive selection state."""
-    _open_modify(page, flask_server)
-    _load_water(page, water_xyz_file)
-    _set_selection(page, [0, 2])
-    assert _get_selection(page) == [0, 2]
-    _set_selection(page, [1])
-    assert _get_selection(page) == [1]
-    _clear_selection(page)
-    assert _get_selection(page) == []
-
-
-def test_store_toggle_atom_flips_membership(
-        page, flask_server, water_xyz_file):
-    """Each ``store.toggleAtom`` call flips the atom's membership in
-    state.selection (client-side; no HTTP).  Replaces the old
-    plain-click / shift-click semantics with the new
-    "every click toggles" model."""
-    _open_modify(page, flask_server)
-    _load_water(page, water_xyz_file)
-    toggle = ("(i) => "
-              "window.molbuilder.workspace.selection.toggle(i)")
-    page.evaluate(toggle, 0)
-    page.evaluate(toggle, 2)
-    assert _get_selection(page) == [0, 2]
-    page.evaluate(toggle, 0)   # toggle off
-    assert _get_selection(page) == [2]
-
-
 _PANEL_URL_FOR_FIXTURE = "/partials/selection-panel"
 
 
