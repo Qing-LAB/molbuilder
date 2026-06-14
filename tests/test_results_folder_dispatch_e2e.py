@@ -159,8 +159,26 @@ def _open_results(page, base_url):
 
 
 class TestRegistryDispatchPerFile:
-    """For each engine output, the registry's pick() must select the
-    right inspector.  Direct mount call — no picker, no sidebar."""
+    """Smoke test for the FULL e2e chain (page loads → inspectors
+    register → registry.pick works).
+
+    Pre-2026-06-13 this class held 5 separate Playwright tests, one
+    per filename pattern.  Each took ~1.8 s of Chromium startup to
+    call ``window.molbuilder.inspectors.pick(path)`` — a pure JS
+    function call that doesn't need a browser at all.  Per
+    docs/protocols/test-strategy.md § 7 the dispatch logic was
+    demoted to the L2 module tier in
+    ``tests/test_inspector_registry_dispatch_js.py`` (Node-level,
+    ~50 ms total instead of ~10 s).
+
+    What stays here: ONE regression smoke that verifies the
+    INTEGRATION still works end-to-end — page loads, inspectors
+    actually register on /results, registry's ``pick()`` is
+    reachable via ``window.molbuilder.inspectors``.  Picks the
+    geom_optim.xyz case because it's the original regression-pin
+    (PySCF/geomeTRIC trajectory was silently rendered as static
+    structure for 5 days; 2026-06-12 user report).
+    """
 
     def test_geom_optim_xyz_mounts_trajectory_not_structure(
             self, page, flask_server, tmp_path, monkeypatch):
@@ -168,7 +186,15 @@ class TestRegistryDispatchPerFile:
         ``<job>_geom_optim.xyz`` (geomeTRIC's multi-frame trajectory)
         MUST hit the trajectory inspector, not the structure inspector.
         Before 2026-06-12 the structure inspector claimed it and
-        rendered frame 0 as a single static structure."""
+        rendered frame 0 as a single static structure.
+
+        Kept at L5 (Playwright) because its job is to verify the
+        full chain works: page mounts → inspectors module loads →
+        registry is populated → pick() is reachable from JS.  The
+        4 sibling cases (.molwatch.log, .out, .pyscf.log, plain
+        .xyz) moved to L2 — the function-call assertion doesn't
+        need a browser; see ``test_inspector_registry_dispatch_js.py``.
+        """
         _register_tmp_as_picker_root(tmp_path, monkeypatch)
         proj = _project_dir(tmp_path, "BDT", "optimization")
         traj = proj / "BDT_geom_optim.xyz"
@@ -192,107 +218,6 @@ class TestRegistryDispatchPerFile:
             f"This is the 2026-06-12 regression: the trajectory "
             f"inspector's match() must claim *_optim.xyz / "
             f"*_geom_optim.xyz.")
-
-    def test_plain_xyz_still_mounts_structure_inspector(
-            self, page, flask_server, tmp_path, monkeypatch):
-        """Plain user-named ``.xyz`` (single structure, not the
-        conventional optimization trajectory naming) MUST keep going
-        to the structure inspector.  The trajectory expansion is
-        narrowed to ``*_optim.xyz`` precisely so plain ``.xyz``
-        doesn't get hijacked."""
-        _register_tmp_as_picker_root(tmp_path, monkeypatch)
-        proj = _project_dir(tmp_path, "water_demo")
-        struct = proj / "water.xyz"
-        struct.write_text(_xyz_single_frame_water("water"))
-        _open_results(page, flask_server)
-        picked = page.evaluate(
-            "(path) => {"
-            "  const reg = window.molbuilder.inspectors;"
-            "  const i = reg.pick(path);"
-            "  return i ? i.name : null;"
-            "}",
-            str(struct),
-        )
-        assert picked == "structure", (
-            f"Plain ``water.xyz`` should mount the structure "
-            f"inspector but got: {picked!r}.  If trajectory has "
-            f"broadened its match to claim all .xyz, plain single-"
-            f"frame structures are being rendered with frame-strip "
-            f"chrome they don't need.")
-
-    def test_molwatch_log_still_mounts_trajectory(
-            self, page, flask_server, tmp_path, monkeypatch):
-        """The trajectory inspector's pre-existing claim on
-        ``.molwatch.log`` must still hold (no narrowing slipped in
-        when we broadened the .xyz arms)."""
-        _register_tmp_as_picker_root(tmp_path, monkeypatch)
-        proj = _project_dir(tmp_path, "BDT", "optimization")
-        log = proj / "BDT.molwatch.log"
-        # Minimal molwatch log content — the registry's match() is
-        # filename-based; can_parse content-sniff happens server-
-        # side at /api/watch/load time which we don't exercise here.
-        log.write_text("# molwatch trajectory log v1\n# engine: pyscf\n")
-        _open_results(page, flask_server)
-        picked = page.evaluate(
-            "(path) => {"
-            "  const reg = window.molbuilder.inspectors;"
-            "  const i = reg.pick(path);"
-            "  return i ? i.name : null;"
-            "}",
-            str(log),
-        )
-        assert picked == "trajectory", (
-            "trajectory inspector lost its .molwatch.log claim — "
-            "the canonical molbuilder format is no longer being "
-            "routed correctly.")
-
-    def test_siesta_out_still_mounts_trajectory(
-            self, page, flask_server, tmp_path, monkeypatch):
-        """SIESTA's ``.out`` claim must still hold."""
-        _register_tmp_as_picker_root(tmp_path, monkeypatch)
-        proj = _project_dir(tmp_path, "siesta_run")
-        out = proj / "BDT-run0.out"
-        out.write_text("# SIESTA output stub\n")
-        _open_results(page, flask_server)
-        picked = page.evaluate(
-            "(path) => {"
-            "  const reg = window.molbuilder.inspectors;"
-            "  const i = reg.pick(path);"
-            "  return i ? i.name : null;"
-            "}",
-            str(out),
-        )
-        assert picked == "trajectory", (
-            "trajectory inspector lost its .out claim — SIESTA "
-            "result viewing is broken.")
-
-    def test_pyscf_log_falls_through_to_source(
-            self, page, flask_server, tmp_path, monkeypatch):
-        """``.pyscf.log`` (the verbose stdout the PySCF wrapper
-        writes) is intentionally NOT claimed by the trajectory
-        inspector — it's not a trajectory format.  It currently
-        falls to the source inspector (plain-text viewer).  Pin
-        this so a future "let's add .pyscf.log to trajectory"
-        accident is caught."""
-        _register_tmp_as_picker_root(tmp_path, monkeypatch)
-        proj = _project_dir(tmp_path, "pyscf_run")
-        log = proj / "BDT-run0.pyscf.log"
-        log.write_text("# PySCF wrapper stdout\n")
-        _open_results(page, flask_server)
-        picked = page.evaluate(
-            "(path) => {"
-            "  const reg = window.molbuilder.inspectors;"
-            "  const i = reg.pick(path);"
-            "  return i ? i.name : null;"
-            "}",
-            str(log),
-        )
-        # Source IS the expected fallback; if a dedicated
-        # ``pyscf-log`` inspector lands, update this assertion.
-        assert picked == "source", (
-            f".pyscf.log should fall to the source inspector "
-            f"(text viewer) — trajectory's parser cannot handle "
-            f"PySCF wrapper stdout — but got: {picked!r}.")
 
 
 # --------------------------------------------------------------------- #
