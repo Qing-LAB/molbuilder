@@ -135,7 +135,9 @@
                 showInfoLine: false,
                 height:       "420px",
             },
-            axes: true,
+            // Axes default OFF (2026-06-13) — see
+            // lib/trajectory/core.js for the cross-tab consistency note.
+            axes: false,
         });
 
         let _sidebarLastFile = "";

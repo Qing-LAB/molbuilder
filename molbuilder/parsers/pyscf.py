@@ -237,10 +237,21 @@ class PySCFParser(TrajectoryParser):
                 scf_history = scf_for_step,
             ))
 
+        # Surface the sidecar's frozen_atoms to the consumer (same
+        # contract as the SIESTA parser).  Used by the trajectory
+        # inspector's "Hide frozen atoms" overlay + force-arrow
+        # filter.  Empty list when no sidecar — frontend hides the
+        # checkbox.
+        runtime_info: Dict[str, object] = {}
+        frozen = sorted(cls._read_sidecar_frozen_atoms(path))
+        if frozen:
+            runtime_info["frozen_atoms"] = frozen
+
         return Trajectory(
             source_format = cls.name,
             frames        = frames,
             lattice       = None,           # geomeTRIC traj has no cell
+            runtime_info  = runtime_info,
         )
 
     # ------------------------------------------------------------- #
@@ -360,41 +371,15 @@ class PySCFParser(TrajectoryParser):
 
     @classmethod
     def _read_sidecar_frozen_atoms(cls, traj_path: str) -> "set[int]":
-        """Look for ``<base>.molstruct.json`` next to ``<base>_optim
-        .xyz`` and return the ``frozen_atoms`` set (0-based ints).
+        """Look for ``<base>.molstruct.json`` next to the trajectory
+        and return the ``frozen_atoms`` set (0-based ints).
 
-        Empty set when:
-          * no sidecar is present
-          * sidecar has no ``frozen_atoms`` field
-          * sidecar fails to parse (the constrained-max field stays
-            ``None`` for the run; no error surfaces to the user)
+        Delegates to the shared ``parsers._sidecar.read_frozen_atoms``
+        helper so SIESTA + molwatch parsers see the same conventions
+        (2026-06-13 refactor; was a private method here before).
         """
-        base, fname = os.path.split(traj_path)
-        stem = fname
-        if stem.endswith("_optim.xyz"):
-            stem = stem[: -len("_optim.xyz")]
-        # Try a couple of conventions: the geomeTRIC pair often
-        # has a stripped ``_geom`` suffix on the sidecar too.
-        candidates = [
-            os.path.join(base, f"{stem}.molstruct.json"),
-        ]
-        if stem.endswith("_geom"):
-            candidates.append(
-                os.path.join(base, stem[:-5] + ".molstruct.json"))
-        sidecar_path = next(
-            (p for p in candidates if os.path.isfile(p)), None)
-        if sidecar_path is None:
-            return set()
-        try:
-            import json as _json
-            with open(sidecar_path, "r", errors="replace") as fh:
-                data = _json.load(fh)
-        except (OSError, ValueError):
-            return set()
-        frozen = data.get("frozen_atoms")
-        if not isinstance(frozen, list):
-            return set()
-        return {int(i) for i in frozen if isinstance(i, int)}
+        from ._sidecar import read_frozen_atoms
+        return read_frozen_atoms(traj_path)
 
     # ------------------------------------------------------------- #
     #  PySCF-log SCF-iteration helper                                #

@@ -1047,6 +1047,19 @@ class SiestaParser(TrajectoryParser):
                 "(run truncated without '>> End of run' marker)"
             )
 
+        # Surface the .molstruct.json sidecar's frozen_atoms list to
+        # the consumer.  The trajectory inspector uses this for the
+        # "Hide frozen atoms" overlay + filters force arrows to free
+        # atoms only.  SIESTA's .out doesn't list per-atom constraint
+        # indices (it reports the aggregate "Max … constrained" only);
+        # the sidecar is the canonical source.  Empty list when no
+        # sidecar / no frozen_atoms field — frontend hides the
+        # checkbox in that case.
+        from ._sidecar import read_frozen_atoms
+        frozen = sorted(read_frozen_atoms(path))
+        if frozen:
+            runtime_info["frozen_atoms"] = frozen
+
         return Trajectory(
             source_format  = cls.name,
             frames         = frames,

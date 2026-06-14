@@ -545,6 +545,14 @@ class MolwatchLogParser(TrajectoryParser):
 
         # Torn final block at EOF: drop it (in_block True, no `end` seen).
 
+        # Surface the .molstruct.json sidecar's frozen_atoms list (same
+        # contract as SIESTA + PySCF parsers).  Used by the trajectory
+        # inspector's "Hide frozen atoms" overlay.
+        from ._sidecar import read_frozen_atoms
+        frozen = sorted(read_frozen_atoms(path))
+        if frozen:
+            runtime_info["frozen_atoms"] = frozen
+
         return Trajectory(
             source_format = engine,
             frames        = frames,

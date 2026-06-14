@@ -104,6 +104,11 @@ class TestPartialIntegrity:
         # show-indices retired 2026-06-13 — atom-index labels now
         # exclusively the molview knob bar's Labels popover.
         "show-forces", "forces-status",
+        # Hide-frozen-atoms toggle (2026-06-13).  Visible only when
+        # the parser surfaced runtime_info.frozen_atoms — hidden by
+        # default (the trajectory inspector reveals the row in
+        # refreshHideFrozenAvailability after a successful load).
+        "hide-frozen-row", "hide-frozen",
         "force-scale", "force-scale-val", "force-min",
         "highlight-max",
         # Inspect panel (atom list + measurement chip).  The static

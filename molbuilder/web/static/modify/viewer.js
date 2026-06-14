@@ -107,7 +107,12 @@
             rep:         "stick",
             radiusScale: 1.0,
         },
-        axes:    true,
+        // Axes default OFF (2026-06-13) — see lib/trajectory/core.js
+        // for the cross-tab consistency rationale.  Modify still
+        // persists axes-state per session so the user's previous
+        // choice survives a tab switch; this default just sets the
+        // FIRST-mount baseline.
+        axes:    false,
         // /modify uses the selection-store viewer-adapter for atom
         // pick; the embed's built-in pick is NOT used here (the
         // adapter does its own setClickable wiring + draws labelled

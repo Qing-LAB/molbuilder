@@ -169,6 +169,18 @@
       <label class="check"><input type="checkbox" id="highlight-max" checked>
         Highlight largest force</label>
 
+      {#- Hide-frozen-atoms toggle (2026-06-13).  Visible only when
+          the parser surfaced runtime_info.frozen_atoms (sidecar-
+          driven; see molbuilder/parsers/_sidecar.py).  When checked:
+            * frozen atoms render via overlay style.hidden:true
+              (same mechanism the selection-panel isolate mode uses)
+            * force-vector arrows on frozen atoms are skipped — their
+              forces are artificial (constraint-balancing) and not
+              physically meaningful. -#}
+      <label class="check" id="hide-frozen-row" hidden>
+        <input type="checkbox" id="hide-frozen">
+        Hide frozen atoms (filter force arrows to free atoms)</label>
+
       <hr class="panel-sep">
 
       {#- Playback group: from the prior "Playback" tab.  Speed +

@@ -172,7 +172,15 @@
         card:  { title:        "Trajectory",
                  showInfoLine: false,
                  height:       "100%" },
-        axes:    true,
+        // Axes default OFF (2026-06-13).  Pre-fix every tab mounted
+        // the embed with ``axes: true`` so axes always showed on
+        // first mount, but a tab that persists axes-state in
+        // sessionStorage (Modify) could remember "axes off" from a
+        // prior visit and show that on revisit — looking
+        // "unpredictable" to the user even though each tab was
+        // internally consistent.  Default OFF here matches the
+        // user's expectation that axes are an opt-in overlay.
+        axes:    false,
         export:  { defaultName: "trajectory" },
         onError(err) {
             try { console.warn("[trajectory.inspector]",
@@ -457,6 +465,58 @@
     // template control + the listener wire keeps the knob bar as the
     // sole owner per the file-top design note.
 
+    // Frozen-atom indices from runtime_info.frozen_atoms (sidecar-
+    // driven; see parsers/_sidecar.py).  Returns a Set<number> for
+    // O(1) membership; empty set when no sidecar / no frozen field.
+    function _frozenSet() {
+        const rt = state.data && state.data.runtime_info;
+        const arr = rt && rt.frozen_atoms;
+        if (!Array.isArray(arr) || !arr.length) return null;
+        return new Set(arr);
+    }
+
+    // Toggle the "Hide frozen atoms" overlay on the embed.  Single
+    // overlay entry whose ``style.hidden: true`` applies to every
+    // frozen index — same primitive selection-panel isolate-mode
+    // uses (mol-viewer-embed.js short-circuits empty stylespec to
+    // disable every rep + the bonds that touch those atoms).  The
+    // trajectory inspector has no other overlay sender, so a full
+    // setOverlays replace is safe here.
+    function applyHideFrozen() {
+        if (!_handle) return;
+        const cb = $("hide-frozen");
+        const frozen = _frozenSet();
+        if (!frozen || !cb || !cb.checked) {
+            _handle.setOverlays({ atoms: [] });
+            return;
+        }
+        _handle.setOverlays({
+            atoms: [{
+                indices: Array.from(frozen),
+                style: { hidden: true },
+            }],
+        });
+    }
+
+    // Reveal the "Hide frozen atoms" row when the parser surfaced
+    // frozen_atoms in runtime_info; hide it otherwise.  Called when
+    // new data lands so the control is only visible when meaningful.
+    function refreshHideFrozenAvailability() {
+        const row = $("hide-frozen-row");
+        if (!row) return;
+        const frozen = _frozenSet();
+        if (frozen && frozen.size > 0) {
+            row.hidden = false;
+        } else {
+            row.hidden = true;
+            const cb = $("hide-frozen");
+            if (cb && cb.checked) {
+                cb.checked = false;
+                applyHideFrozen();
+            }
+        }
+    }
+
     // Build the ArrowSpec array for ONE frame given the current
     // force-knob settings.  Returns [] when forces are off OR the
     // parser didn't capture forces for this frame.
@@ -470,17 +530,28 @@
         const fscale    = parseFloat($("force-scale").value) || 1.0;
         const fmin      = parseFloat($("force-min").value)   || 0.0;
         const highlight = $("highlight-max").checked;
+        // When the "Hide frozen atoms" toggle is on, skip force
+        // vectors on frozen atoms — their forces are constraint-
+        // balancing artefacts, not physical free-atom forces.
+        const hideFrozen = $("hide-frozen") && $("hide-frozen").checked;
+        const frozen = hideFrozen ? _frozenSet() : null;
 
         const mags = forces.map(function (f) {
             return Math.sqrt(f[0]*f[0] + f[1]*f[1] + f[2]*f[2]);
         });
+        // Recompute max excluding frozen atoms when the filter is on
+        // — otherwise the "highlight max" arrow would still gold the
+        // frozen-atom max and the user wouldn't see the gold marker
+        // move to the true free-atom max.
         let maxMag = 0, maxIdx = -1;
         for (let i = 0; i < mags.length; i++) {
+            if (frozen && frozen.has(i)) continue;
             if (mags[i] > maxMag) { maxMag = mags[i]; maxIdx = i; }
         }
 
         const arrows = [];
         for (let i = 0; i < frame.length && i < forces.length; i++) {
+            if (frozen && frozen.has(i)) continue;
             const mag = mags[i];
             if (mag < fmin) continue;
             const a = frame[i], f = forces[i];
@@ -892,6 +963,12 @@
         // knob bar's Labels popover (2026-06-13 — see comment above
         // the retired applyIndexLabels stub).  No initial-render
         // call needed; labels start hidden until the user clicks.
+        // Hide-frozen-atoms checkbox visibility + initial overlay
+        // sync (2026-06-13).  Reveal the row only when the parser
+        // surfaced frozen_atoms; apply the overlay if the user had
+        // it checked from a prior load.
+        refreshHideFrozenAvailability();
+        applyHideFrozen();
         // Populate the Inspect-tab atom list now that the model is
         // loaded; the list mirrors the per-frame coordinates and is
         // the keyboard-friendly path to selection.
@@ -2117,6 +2194,13 @@
     });
     _on($("force-min"),     "input",  drawForces);
     _on($("highlight-max"), "change", drawForces);
+    // Hide-frozen-atoms checkbox (2026-06-13).  Toggling sends a
+    // hide overlay to the embed + redraws arrows so the force
+    // filter takes effect on the current frame too.
+    _on($("hide-frozen"),   "change", function () {
+        applyHideFrozen();
+        drawForces();
+    });
 
     // Playback configuration → embed animation partial-update
     // (§ 3.9).  Speed slider is in ms-per-frame; fps = 1000/ms.

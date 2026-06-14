@@ -190,7 +190,10 @@
                         showInfoLine: false,
                         height:       "420px",
                     },
-                    axes:   true,
+                    // Axes default OFF (2026-06-13) — consistent
+                    // across all viewer mount sites; opt in via the
+                    // knob bar's Axes button.
+                    axes:   false,
                     export: { defaultName: r.basename || "structure" },
                     // 3-atom pick with halos drives the measurement
                     // chip — click 1 atom for xyz, 2 for distance,

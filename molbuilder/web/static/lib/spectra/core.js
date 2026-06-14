@@ -1782,7 +1782,9 @@
                 card:   { title: "Vibrational mode",
                           showInfoLine: false,
                           height: "100%" },
-                axes:   true,
+                // Axes default OFF (2026-06-13) — consistent across
+                // viewer mount sites; opt in via the knob bar.
+                axes:   false,
                 export: { defaultName: "vibration" },
                 onError(err) {
                     try { console.warn("[spectra.inspector]",
