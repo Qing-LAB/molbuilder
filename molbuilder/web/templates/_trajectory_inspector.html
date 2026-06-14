@@ -141,10 +141,17 @@
 
       <hr class="panel-sep">
 
-      {#- Overlays group: from the prior "Overlays" tab.  Index
-          labels + force-vector arrows + the diagnostic readout. -#}
-      <label class="check"><input type="checkbox" id="show-indices">
-        Show atom indices</label>
+      {#- Overlays group: from the prior "Overlays" tab.  Force-
+          vector arrows + the diagnostic readout.  ``#show-indices``
+          was removed 2026-06-13 — atom-index labels are now
+          exclusively controlled by the molview knob bar's Labels
+          popover (the docstring at the top of this file already
+          says "the standard knob bar … owns all the per-viewer
+          chrome").  Pre-removal both controls called the same
+          ``handle.setLabels()`` with slightly different defaults
+          (the duplicate used fontSize=9; the knob-bar default
+          inherits whatever the last setLabels saw), so users could
+          flip them out of sync and see surprising font-size jumps. -#}
       <label class="check"
         title="Renders a coloured arrow at each atom whose force magnitude exceeds the threshold below.&#10;The longest arrow gets a 'highlight' gold tint when 'Highlight largest force' is ticked.&#10;Forces are only available when the parser captured them (molwatch logs and SIESTA .out always do; geomeTRIC trajectory .xyz does NOT).">
         <input type="checkbox" id="show-forces">

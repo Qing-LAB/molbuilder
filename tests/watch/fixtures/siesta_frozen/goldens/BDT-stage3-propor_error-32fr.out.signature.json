@@ -331,6 +331,7 @@
       "dm_tolerance": 1e-05,
       "max_displ_ang": 0.05,
       "max_force_tol_eV_per_A": 0.01,
+      "max_geom_iter": 30,
       "max_scf_iter": 500,
       "source": "siesta_input_echo"
     },

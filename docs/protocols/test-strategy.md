@@ -207,6 +207,90 @@ existing ones for the pattern.
 
 ---
 
+## 5a. State-composition bugs (the molview class)
+
+A whole family of bugs hides from per-function tests because the bug
+lives in the **composition** of two successful calls.
+
+### The pattern
+
+A stateful module exposes setter functions that the docstring calls
+"patches": the caller sends only the field they want to change.
+But the implementation runs the input through a `_normalise*` helper
+that applies DEFAULTS to unspecified fields — so the patch becomes a
+**replace** at the implementation layer.  Each individual call works.
+The COMPOSITION of two calls clobbers state silently.
+
+### The molview example (2026-06-13)
+
+```javascript
+// Documented contract: setStyle is a patch.
+setStyle({ rep: "sphere" });        // user picks sphere — works
+setStyle({ radiusScale: 1.5 });     // user drags radius slider…
+                                     //   …and rep silently reverts to "stick"
+```
+
+The bug survived six months of source.  Per-function tests passed:
+
+```python
+def test_setStyle_with_sphere_sets_sphere():
+    setStyle({"rep": "sphere"})
+    assert state.rep == "sphere"      # ✓ passes
+
+def test_setStyle_with_radius_sets_radius():
+    setStyle({"radiusScale": 1.5})
+    assert state.radiusScale == 1.5   # ✓ passes
+```
+
+What was missing: the COMPOSITION test.
+
+```python
+def test_setStyle_radius_patch_preserves_rep():
+    setStyle({"rep": "sphere"})
+    setStyle({"radiusScale": 1.5})    # patch, not replace
+    assert state.rep == "sphere"      # ← this is the bug
+```
+
+### How to catch state-composition bugs
+
+* **Name the contract.**  If a setter is a patch, write that in the
+  function's docstring + the protocol doc.  Reviewers + future you
+  can then notice when the implementation drifts to "replace."
+* **Pin the contract at the source level.**  Source-text invariant
+  tests can assert "the implementation merges the patch onto current
+  state BEFORE the normalise helper" — see
+  `tests/test_mol_viewer_embed_js.py::TestPartialUpdateContract`.
+* **Write sequence tests for stateful APIs.**  Even one sequence
+  test per stateful setter catches the bug class: "after rep=X,
+  setStyle(...other fields...) preserves rep=X."
+* **For L4 integration tests, drive SEQUENCES, not isolated calls.**
+  A test that sets up a session state, then drives 3-4 user
+  interactions in order, catches composition bugs that
+  parallel-axes tests miss.
+
+### When to write what
+
+| Bug class | Layer | Mechanism |
+|---|---|---|
+| "Function returns wrong value for input X" | L1 unit | Parametrized inputs |
+| "Function's output drops a documented field" | L2 module | Schema assertion |
+| "Two functions interact wrong" | L4 integration | Sequence test |
+| "Implementation drifts from contract" | L2 source-text | Regex on source |
+
+A per-function test cluster + a sequence test cluster + a contract-
+text invariant covers most of what unit tests miss.
+
+### Why this hides for a long time
+
+The molview module was the **first** module in the project.  Its tests
+were written when the API was small (1-2 setters); composition wasn't
+visibly a concern.  As new setters landed and the API grew, the test
+shape didn't grow with it.  The lesson: **rev test design when the
+module's API surface gains a new shape, not just when it gains a new
+function.**
+
+---
+
 ## 6. Mocking discipline
 
 The chemistry analyzer (`analyze_structure`) is the single source

@@ -160,6 +160,7 @@ _SIESTA_WITH_REDATA = (
     "redata: DM tolerance for SCF          =     0.000100\n"
     "redata: Max. number of SCF Iter        =          500\n"
     "redata: Max atomic displ per move      =        0.1000 Ang\n"
+    "redata: Maximum number of optimization moves        =       80\n"
     "outcoor: Atomic coordinates (Ang):\n"
     "   1.00000000    2.00000000    3.00000000   1       1  C\n"
     "\n"
@@ -208,11 +209,15 @@ def test_watch_data_surfaces_runtime_info_convergence_targets(client):
     ct = runtime_info["convergence_targets"]
     # Every documented key from results-tab.md § 4.6 + the source tag.
     for key in ("max_force_tol_eV_per_A", "dm_tolerance",
-                "max_scf_iter", "max_displ_ang", "source"):
+                "max_scf_iter", "max_geom_iter", "max_displ_ang", "source"):
         assert key in ct, (
             f"convergence_targets missing documented key {key!r}: "
             f"{sorted(ct)}")
     assert ct["source"] == "siesta_input_echo"
+    # max_geom_iter is the optimization-step cap (MD.NumCGsteps);
+    # added 2026-06-13 after the user reported the gap in the
+    # trajectory inspector's convergence summary.
+    assert ct["max_geom_iter"] == 80
 
 
 # --------------------------------------------------------------------- #

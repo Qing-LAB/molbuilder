@@ -177,6 +177,90 @@ class TestNormaliseStyle:
 
 
 # --------------------------------------------------------------------- #
+#  Partial-update contract for stateful setters                         #
+#                                                                       #
+#  ``setStyle`` / ``setAxes`` / ``setLabels`` are documented as patches #
+#  (the caller sends only the field they want to change), but the      #
+#  pre-2026-06-13 implementation routed straight through                #
+#  ``_normaliseStyle`` / ``_normaliseAxes`` / ``_normaliseLabels``      #
+#  which apply DEFAULTS to unspecified fields.  Calling                #
+#  ``setStyle({radiusScale: 1.5})`` on a viewer with ``rep: "sphere"`` #
+#  silently reset rep back to "stick" (the _normaliseStyle default).   #
+#                                                                       #
+#  The fix: merge the patch onto ``state.current.{style,axes,labels}`` #
+#  BEFORE normalisation so undefined fields stay at their current      #
+#  values.  This source-text invariant pins the merge pattern so a     #
+#  future refactor that drops it surfaces in CI immediately.           #
+#                                                                       #
+#  The deeper test-design lesson (test-strategy.md § 5a) is that       #
+#  state-composition bugs hide from per-function unit tests; a JSDOM   #
+#  test that creates a viewer + exercises a SEQUENCE of setter calls   #
+#  would catch the behaviour directly.  Source-text invariant is the  #
+#  cheap interim until that infrastructure lands.                     #
+# --------------------------------------------------------------------- #
+
+
+class TestPartialUpdateContract:
+
+    def test_setStyle_merges_patch_onto_current_style(self):
+        """``setStyle`` body must call ``Object.assign({}, state.current.style, s …)``
+        (or equivalent merge) BEFORE ``_normaliseStyle``.  Without
+        this, the radius slider's ``setStyle({radiusScale: v})``
+        silently clobbers the user's rep choice back to "stick"."""
+        import re
+        src = MODULE.read_text()
+        m = re.search(
+            r"function\s+setStyle\(s\)\s*\{(.+?)\n        \}",
+            src, re.DOTALL)
+        assert m is not None, (
+            "mol-viewer-embed.js: setStyle function shape changed; "
+            "update this test")
+        body = m.group(1)
+        # The merge must precede _normaliseStyle.
+        merge_idx = body.find("state.current.style")
+        norm_idx = body.find("_normaliseStyle(")
+        assert merge_idx != -1 and merge_idx < norm_idx, (
+            "setStyle no longer merges the patch onto state.current.style "
+            "before calling _normaliseStyle — the radius-slider-clobbers-"
+            "rep bug class (2026-06-13) has returned."
+        )
+
+    def test_setAxes_merges_patch_onto_current_axes(self):
+        """Same invariant for setAxes — ``setAxes({colors: [...]})``
+        must not reset mode back to "auto"."""
+        import re
+        src = MODULE.read_text()
+        m = re.search(
+            r"function\s+setAxes\(a\)\s*\{(.+?)\n        \}",
+            src, re.DOTALL)
+        assert m is not None
+        body = m.group(1)
+        merge_idx = body.find("state.current.axes")
+        norm_idx = body.find("_normaliseAxes(")
+        assert merge_idx != -1 and merge_idx < norm_idx, (
+            "setAxes no longer merges the patch onto state.current.axes; "
+            "partial updates will silently clobber sibling fields."
+        )
+
+    def test_setLabels_merges_patch_onto_current_labels(self):
+        """Same invariant for setLabels — ``setLabels({format: "element"})``
+        must not reset atoms back to "all"."""
+        import re
+        src = MODULE.read_text()
+        m = re.search(
+            r"function\s+setLabels\(l\)\s*\{(.+?)\n        \}",
+            src, re.DOTALL)
+        assert m is not None
+        body = m.group(1)
+        merge_idx = body.find("state.current.labels")
+        norm_idx = body.find("_normaliseLabels(")
+        assert merge_idx != -1 and merge_idx < norm_idx, (
+            "setLabels no longer merges the patch onto state.current.labels; "
+            "partial updates will silently clobber sibling fields."
+        )
+
+
+# --------------------------------------------------------------------- #
 #  Lattice validation                                                   #
 # --------------------------------------------------------------------- #
 

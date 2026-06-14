@@ -448,13 +448,14 @@
         }
     }
 
-    function applyIndexLabels() {
-        if (!_handle) return;
-        const cb = $("show-indices");
-        _handle.setLabels(cb && cb.checked
-            ? { atoms: "all", format: "index", fontSize: 9 }
-            : false);
-    }
+    // applyIndexLabels / drawIndices were retired 2026-06-13.  Atom-
+    // index labels are now exclusively controlled by the molview knob
+    // bar's Labels popover; the trajectory inspector's #show-indices
+    // checkbox was a duplicate that called the same handle.setLabels
+    // API with a different default font size, letting the two
+    // controls drift out of sync.  Removing the wrapper here + the
+    // template control + the listener wire keeps the knob bar as the
+    // sole owner per the file-top design note.
 
     // Build the ArrowSpec array for ONE frame given the current
     // force-knob settings.  Returns [] when forces are off OR the
@@ -583,8 +584,9 @@
     /* ------------------------------------------------------------------ */
 
     function drawIndices() {
-        // Thin shim — see applyIndexLabels above (#234 follow-up).
-        applyIndexLabels();
+        // Retired wrapper kept as a no-op for legacy callsites that
+        // might still reference it; safe to inline-delete in a
+        // follow-up once a grep confirms no remaining caller exists.
     }
 
     /* ------------------------------------------------------------------ */
@@ -886,8 +888,10 @@
                 refreshForcesStatus();
             },
         });
-        // Atom-index labels via the embed's setLabels (#234 follow-up).
-        applyIndexLabels();
+        // Atom-index labels: controlled exclusively by the molview
+        // knob bar's Labels popover (2026-06-13 — see comment above
+        // the retired applyIndexLabels stub).  No initial-render
+        // call needed; labels start hidden until the user clicks.
         // Populate the Inspect-tab atom list now that the model is
         // loaded; the list mirrors the per-frame coordinates and is
         // the keyboard-friendly path to selection.
@@ -2104,8 +2108,8 @@
     // toggle remains a trajectory-specific overlay control.
     _on($("show-cell"),   "change", drawCell);
 
-    /* Overlays */
-    _on($("show-indices"), "change", drawIndices);
+    /* Overlays — show-indices retired 2026-06-13 (now exclusively
+     * the knob bar's Labels popover; see template note). */
     _on($("show-forces"),  "change", drawForces);
     _on($("force-scale"), "input", (e) => {
         $("force-scale-val").textContent = parseFloat(e.target.value).toFixed(1);

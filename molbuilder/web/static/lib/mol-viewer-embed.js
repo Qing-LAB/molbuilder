@@ -3690,7 +3690,18 @@
                         "setStyle: 'radiusScale' must be a finite number");
                 }
             }
-            const next = _normaliseStyle(s);
+            // setStyle is a PATCH, not a replace.  Pre-2026-06-13
+            // _normaliseStyle defaulted any unspecified field to its
+            // baseline (rep → "stick"), so calling
+            // ``setStyle({radiusScale: 1.5})`` after the user picked
+            // "sphere" silently reverted the rep back to stick.  Merge
+            // the patch onto the current style BEFORE normalisation so
+            // undefined fields stay at their current values.  See
+            // docs/protocols/embedded-viewer.md § 3.3 + the
+            // "partial-update" property test in
+            // tests/test_mol_viewer_embed_js.py.
+            const merged = Object.assign({}, state.current.style, s || {});
+            const next = _normaliseStyle(merged);
             if (_equalNormalised(state.current.style, next)) return;
             state.current.style = next;
             _applyStyle(state.viewer, next);
@@ -3731,7 +3742,19 @@
                   + "mode 'auto' for graceful fallback");
                 return;
             }
-            const next = _normaliseAxes(a);
+            // Partial-update contract (same fix as setStyle).
+            // ``setAxes({colors: […]})`` shouldn't reset mode / length
+            // / origin back to their _normaliseAxes defaults; merge the
+            // object onto the current state first.  ``true`` / ``false``
+            // / ``null`` are full-state signals, not patches, and pass
+            // through unchanged.
+            let _input = a;
+            if (a && typeof a === "object" && a !== true
+                && state.current.axes
+                && typeof state.current.axes === "object") {
+                _input = Object.assign({}, state.current.axes, a);
+            }
+            const next = _normaliseAxes(_input);
             if (_equalNormalised(state.current.axes, next)) return;
             state.current.axes = next;
             _redrawAxes(state);
@@ -3774,7 +3797,17 @@
                         "; got " + JSON.stringify(l.format));
                 }
             }
-            const next = _normaliseLabels(l);
+            // Partial-update contract (same fix as setStyle).
+            // ``setLabels({format: "element"})`` shouldn't reset atoms
+            // back to "all"; merge onto current state first.  ``true``
+            // / ``false`` / ``null`` are full-state signals.
+            let _linput = l;
+            if (l && typeof l === "object" && l !== true
+                && state.current.labels
+                && typeof state.current.labels === "object") {
+                _linput = Object.assign({}, state.current.labels, l);
+            }
+            const next = _normaliseLabels(_linput);
             // Phase 6: remember the last non-null LabelOpts so the
             // View → Labels toggle can restore it when flipped back
             // on (otherwise toggle Off → On would always land on the

@@ -100,7 +100,9 @@ class TestPartialIntegrity:
         # indices wire to handle.setCell / handle.setLabels; show-
         # forces drives the trajectory's arrowsPerFrame (DFT force
         # vectors — the embed knows nothing about forces).
-        "show-cell", "show-indices",
+        "show-cell",
+        # show-indices retired 2026-06-13 — atom-index labels now
+        # exclusively the molview knob bar's Labels popover.
         "show-forces", "forces-status",
         "force-scale", "force-scale-val", "force-min",
         "highlight-max",

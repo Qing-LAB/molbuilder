@@ -71,6 +71,18 @@ _SIESTA_MAX_SCF_RE = re.compile(
     r"^\s*redata:\s+Max\. number of SCF Iter\s+=\s+(\d+)", re.IGNORECASE)
 _SIESTA_MAX_DISPL_RE = re.compile(
     r"^\s*redata:\s+Max atomic displ per move\s+=\s+([0-9.eE+-]+)\s+Ang", re.IGNORECASE)
+# Geometry-optimisation step cap (MD.NumCGsteps / MD.Steps).  SIESTA
+# echoes this as ``redata: Maximum number of optimization moves = N``
+# regardless of which MD.TypeOfRun produced it.  Without this,
+# runtime_info.convergence_targets carries max_scf_iter but not the
+# OPTIMIZATION-level cap, so the trajectory inspector's convergence
+# summary was missing the "geom steps cap" row even though the JS
+# rendering code (lib/trajectory/core.js _renderConvergenceSummary)
+# was ready to display it.  Added 2026-06-13 after the user reported
+# the gap.
+_SIESTA_MAX_OPT_RE = re.compile(
+    r"^\s*redata:\s+Maximum number of optimization moves\s+=\s+(\d+)",
+    re.IGNORECASE)
 
 # Lightweight prefix match for any SIESTA SCF iteration line.  We
 # capture iscf + the rest of the line as a single string; the actual
@@ -953,6 +965,13 @@ class SiestaParser(TrajectoryParser):
             if m:
                 try:
                     _set_conv_target("max_displ_ang", float(m.group(1)))
+                except ValueError:
+                    pass
+                return True
+            m = _SIESTA_MAX_OPT_RE.match(line)
+            if m:
+                try:
+                    _set_conv_target("max_geom_iter", int(m.group(1)))
                 except ValueError:
                     pass
                 return True
