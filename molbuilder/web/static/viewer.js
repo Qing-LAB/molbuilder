@@ -19,6 +19,15 @@
         labels: [],           // 3Dmol label objects so we can clear them
         fdf: null,
         pyscf: null,
+        // 2026-06-14 viewer-is-truth contract: hold the loaded
+        // structure's labels in memory at Load time so the Generate
+        // POST can ship them DIRECTLY in the body -- no path-pointer
+        // indirection on the server.  Empty defaults mean "no labels
+        // on this structure" (an explicit user claim, not a hint to
+        // the server to consult disk).  Populated by sidecarLabels
+        // .fetch() inside _commitStructure on each successful Load.
+        frozen_atoms: [],
+        regions: {},
     };
 
     // Embedded MolViewer (#198, 2026-06-02; contract:
@@ -656,6 +665,31 @@
                     return;
                 }
                 applyStructureResult(r);
+                // 2026-06-14 contract: pull the file's sidecar
+                // labels into in-memory state.  These travel with
+                // the bytes when Generate fires; no server-side
+                // disk re-read.  ``sidecarLabels.fetch`` always
+                // resolves (missing sidecar -> empty defaults), so
+                // this Promise can't reject the Load.
+                const _sl = window.molbuilder
+                         && window.molbuilder.sidecarLabels;
+                if (_sl && typeof _sl.fetch === "function") {
+                    try {
+                        const labels = await _sl.fetch(f);
+                        state.frozen_atoms = labels.frozen_atoms || [];
+                        state.regions     = labels.regions || {};
+                    } catch (_) {
+                        // Defensive -- helper is documented as never
+                        // throwing; if it does, default to empty
+                        // rather than silently keep stale labels
+                        // from the prior load.
+                        state.frozen_atoms = [];
+                        state.regions     = {};
+                    }
+                } else {
+                    state.frozen_atoms = [];
+                    state.regions     = {};
+                }
                 setStatus("load-status",
                     `Loaded ${r.n_atoms}-atom ${ext.toUpperCase()} `
                     + `from ${filename}.`, "ok");
@@ -1200,11 +1234,25 @@
         const _proj = (window.molbuilder || {}).projects;
         const _destDir = (_proj && _proj.getCurrentDir()) || "";
         // structure_path lets the server apply the .molstruct.json sidecar
-        // next to the loaded XYZ/PDB.  Without this hop /modify's
+        // next to the LOADED XYZ/PDB.  Without this hop /modify's
         // frozen_atoms list NEVER reaches render_fdf and SIESTA relaxes
         // every atom even when the user explicitly froze some.  Mirrors
         // /spectra; was the silent gap that prompted the 2026-05-25 fix.
-        const _structPath = (_proj && _proj.getCurrentFile()) || "";
+        //
+        // MUST read ``_sidebarLastFile`` (the file the user actually
+        // committed into the viewer), NOT ``_proj.getCurrentFile()``
+        // (the LIVE sidebar pick, which changes on every click while
+        // the user navigates to pick a dest_dir or browse).  The
+        // 2026-06-14 BDT-stage-2 incident: user loaded an .xyz with a
+        // sidecar carrying 50 frozen atoms, then clicked into a
+        // sibling directory to set dest_dir, then Generate.  Pre-fix
+        // ``getCurrentFile()`` returned the LAST-CLICKED-IN-SIDEBAR
+        // path (the dest dir's stage-1 .fdf), the server looked for a
+        // sidecar next to that file, found none, emitted a
+        // constraints-free stage-2 .fdf.  ``_sidebarLastFile`` stays
+        // pinned to the committed load, so the server reads the
+        // correct sidecar regardless of subsequent sidebar navigation.
+        const _structPath = _sidebarLastFile || "";
         // Abort any in-flight Generate so two rapid clicks don't
         // race -- the LATER click should win, but without
         // AbortController the response that arrives LAST writes
@@ -1222,7 +1270,20 @@
                     xyz:            state.xyz,
                     params,
                     dest_dir:       _destDir || null,
+                    // structure_path remains a back-compat fallback
+                    // for the server (kicks in when frozen_atoms /
+                    // regions keys aren't sent).  In-body labels
+                    // below are the authoritative source under the
+                    // 2026-06-14 viewer-is-truth contract.
                     structure_path: _structPath || null,
+                    // In-body labels (viewer-is-truth contract):
+                    // the server consumes these directly and skips
+                    // sidecar re-read when the keys are present
+                    // (even when empty).  See _shared.apply_labels_
+                    // to_struct docstring.  Pulled into state at
+                    // Load time inside _commitStructure.
+                    frozen_atoms: state.frozen_atoms || [],
+                    regions:      state.regions || {},
                 }),
                 signal: _signal,
             }).then(x => x.json());
@@ -1580,8 +1641,14 @@
         // structure_path: see /api/build/fdf handler for rationale --
         // lets the server apply /modify's .molstruct.json sidecar
         // (frozen_atoms + regions) before render_script runs.
-        const _projPy = (window.molbuilder || {}).projects;
-        const _structPathPy = (_projPy && _projPy.getCurrentFile()) || "";
+        //
+        // Reads ``_sidebarLastFile`` (committed-load path), NOT
+        // ``_proj.getCurrentFile()`` (live sidebar pick).  Same bug
+        // class as the SIESTA path above: the live pick changes
+        // every time the user clicks ANYWHERE in the sidebar, so by
+        // the time Generate fires the path may point at whatever
+        // file the user last browsed -- breaking sidecar discovery.
+        const _structPathPy = _sidebarLastFile || "";
         // Abort any in-flight Generate -- see /api/build/fdf above
         // for the rationale.  Two rapid clicks otherwise race.
         if (state.pyscfAbort) state.pyscfAbort.abort();
@@ -1594,7 +1661,14 @@
                 body: JSON.stringify({
                     xyz:            state.xyz,
                     params,
+                    // structure_path: back-compat fallback when
+                    // in-body labels aren't present.
                     structure_path: _structPathPy || null,
+                    // In-body labels (viewer-is-truth contract);
+                    // pulled into state at Load time.  Server
+                    // prefers these over sidecar re-read.
+                    frozen_atoms: state.frozen_atoms || [],
+                    regions:      state.regions || {},
                 }),
                 signal: _signalPy,
             }).then(x => x.json());

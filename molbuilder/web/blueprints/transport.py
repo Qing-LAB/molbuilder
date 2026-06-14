@@ -165,11 +165,17 @@ def api_transport_render() -> Any:
             "error": f"could not parse structure file: {exc}",
         }), 400
 
-    # Apply the .molstruct.json sidecar — this is where the
-    # L-electrode / R-electrode / bridge region labels come from.
-    # Without the sidecar, struct.regions is empty and preflight
-    # will surface a clear error.
-    sidecar_notice = apply_sidecar_if_possible(struct, str(struct_path))
+    # 2026-06-14 contract update: prefer in-body labels (the
+    # viewer-is-truth contract).  Transport's L-electrode /
+    # R-electrode / bridge region labels travel in the POST body
+    # from the Transport tab's in-memory state; only when neither
+    # in-body key is present do we re-read the sidecar from disk.
+    # See _shared.apply_labels_to_struct docstring.
+    from ._shared import apply_labels_to_struct
+    # ``body`` doesn't yet carry ``structure_path`` in the local
+    # name scope here; the helper reads it via body.get for the
+    # fallback path.
+    sidecar_notice = apply_labels_to_struct(struct, body)
 
     # Build the config.  Unknown-field protection + dataclass
     # validation surfaces a clean 400 for bad params instead of a

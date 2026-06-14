@@ -26,7 +26,7 @@ import shutil
 import subprocess
 from typing import Sequence, Optional
 
-from .diagnostics import get_capabilities
+from ..diagnostics import get_capabilities
 
 
 def run_in_env(env_name: str,

@@ -33,6 +33,7 @@ from typing import Iterable, Iterator, Optional, Sequence
 import click
 
 from .diagnostics import initialize as _initialize_diagnostics
+from .envs._cli import envs_group
 from .runtime_config import RuntimeConfigError, get_tls, read_config
 from .structure import Structure
 
@@ -305,6 +306,12 @@ KGRID = KGridParam()
 def cli() -> None:
     """Build a 3-D molecule from a sequence / SMILES / name and turn
     it into SIESTA / PySCF / ASE input."""
+
+
+# `molbuilder envs ...`  (doctor / install / list).  Recipe registry +
+# doctor + install live under molbuilder/envs/; the CLI surface is a
+# self-contained click group registered here as a single sub-group.
+cli.add_command(envs_group)
 
 
 # --------------------------------------------------------------------- #

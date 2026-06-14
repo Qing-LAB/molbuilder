@@ -860,6 +860,116 @@ def config_from_params(cls, params: Dict[str, Any],
     return cls(**kwargs)
 
 
+def apply_labels_to_struct(struct, body):
+    """Apply ``frozen_atoms`` + ``regions`` from the request body,
+    falling back to disk sidecar lookup only when neither key is
+    present in the body.
+
+    Contract (2026-06-14, ``feedback_three_stage_contract``):
+    the client (viewer) is the source of truth.  When the user
+    clicks Generate, what's in the viewer at that moment IS the
+    input -- including labels.  Tabs that pull the sidecar into
+    in-memory state at Load time ship those labels directly in the
+    POST body.  This endpoint applies them verbatim, with no disk
+    re-read, no path-pointer indirection, no silent no-ops.
+
+    Falls through to :func:`apply_sidecar_if_possible` only when the
+    body carries neither ``frozen_atoms`` NOR ``regions`` keys.
+    That branch covers older callers (e.g. /api/spectra/render
+    pending its frontend migration to the in-body contract) and
+    keeps the path-driven flow working for them.
+
+    Why ``in`` instead of truthiness:
+
+      * ``body.get("frozen_atoms", [])`` -> ``[]`` looks identical
+        whether the client deliberately sent ``frozen_atoms: []``
+        (= "no frozen atoms in the viewer") or omitted the key
+        entirely.  Both reduce to falsy.
+      * ``"frozen_atoms" in body`` distinguishes them: present-but-
+        empty is the client's explicit "I have nothing to freeze."
+        Absent means "I'm an older caller; please consult disk."
+
+    Returns
+    -------
+    None
+      Success (in-body labels applied, or sidecar applied, or
+      clean no-op).
+    str
+      User-facing notice when in-body labels couldn't be applied
+      (atom-count mismatch) OR when the sidecar fallback couldn't.
+      Caller surfaces as a preflight warn-severity Issue.
+    """
+    has_in_body = ("frozen_atoms" in body) or ("regions" in body)
+    if not has_in_body:
+        return apply_sidecar_if_possible(struct, body.get("structure_path"))
+
+    # In-body branch: the client claims authority over the labels.
+    # 2026-06-14: Structure is a plain ``@dataclass`` -- assigning
+    # to ``.frozen_atoms`` / ``.regions`` does NOT trigger the
+    # ``__post_init__`` validators.  We MUST validate explicitly
+    # here, or a malicious / confused client sending
+    # ``{"frozen_atoms": [9999]}`` on a 5-atom struct sails through
+    # this code path and crashes deep inside the generator (or, worse,
+    # silently mis-emits a .fdf with a position line pointing at a
+    # non-existent atom).  Same threat model for ``regions``.
+    frozen_in = body.get("frozen_atoms") or []
+    regions_in = body.get("regions") or {}
+    n_atoms = len(struct.elements)
+    try:
+        if not isinstance(frozen_in, list):
+            raise ValueError(
+                f"``frozen_atoms`` must be a list; got "
+                f"{type(frozen_in).__name__}"
+            )
+        for idx in frozen_in:
+            if not isinstance(idx, int) or isinstance(idx, bool):
+                raise ValueError(
+                    f"``frozen_atoms`` indices must be int; got "
+                    f"{type(idx).__name__} ({idx!r})"
+                )
+            if idx < 0 or idx >= n_atoms:
+                raise ValueError(
+                    f"``frozen_atoms`` index {idx} out of range "
+                    f"[0, {n_atoms}); structure has {n_atoms} atoms"
+                )
+        if not isinstance(regions_in, dict):
+            raise ValueError(
+                f"``regions`` must be a dict; got "
+                f"{type(regions_in).__name__}"
+            )
+        for label, indices in regions_in.items():
+            if not isinstance(label, str):
+                raise ValueError(
+                    f"``regions`` keys must be strings; got "
+                    f"{type(label).__name__} ({label!r})"
+                )
+            if not isinstance(indices, list):
+                raise ValueError(
+                    f"``regions[{label!r}]`` must be a list; got "
+                    f"{type(indices).__name__}"
+                )
+            for idx in indices:
+                if not isinstance(idx, int) or isinstance(idx, bool):
+                    raise ValueError(
+                        f"``regions[{label!r}]`` indices must be int; "
+                        f"got {type(idx).__name__} ({idx!r})"
+                    )
+                if idx < 0 or idx >= n_atoms:
+                    raise ValueError(
+                        f"``regions[{label!r}]`` index {idx} out of "
+                        f"range [0, {n_atoms})"
+                    )
+        # All validated; commit atomically.  Sorted/unique applied
+        # for frozen_atoms (matches the sidecar contract).
+        struct.frozen_atoms = sorted(set(frozen_in))
+        struct.regions      = {k: list(v) for k, v in regions_in.items()}
+    except (ValueError, TypeError) as exc:
+        return (f"in-body labels could not be applied ({exc}); "
+                f"the form's freeze rules are the sole boundary "
+                f"condition for this run.")
+    return None
+
+
 def apply_sidecar_if_possible(struct, structure_path):
     """Best-effort .molstruct.json sidecar application.
 
@@ -980,6 +1090,7 @@ __all__ = [
     "finite_float",
     "coerce_to_field_type",
     "config_from_params",
+    "apply_labels_to_struct",
     "apply_sidecar_if_possible",
     "regions_pattern_b_notice",
 ]

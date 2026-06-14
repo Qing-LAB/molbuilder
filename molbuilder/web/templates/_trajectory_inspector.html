@@ -177,7 +177,20 @@
             * force-vector arrows on frozen atoms are skipped — their
               forces are artificial (constraint-balancing) and not
               physically meaningful. -#}
-      <label class="check" id="hide-frozen-row" hidden>
+      {#- 2026-06-14: this row is ALWAYS visible.  Pre-fix it hid
+          itself when ``runtime_info.frozen_atoms`` was empty, which
+          made the toggle disappear silently every time the parser
+          failed to surface the indices.  Worse, it broke muscle
+          memory: a user who learned the toggle was here didn't
+          find it on the next run, and assumed a regression.  The
+          control's PRESENCE doesn't depend on the data -- only its
+          EFFECT does.  When there are no frozen atoms, the toggle
+          is a no-op (it has nothing to hide); that's a fine UX
+          state and a stable one.  Removing the legacy ``hidden``
+          attribute + the ``refreshHideFrozenAvailability`` show/
+          hide call.  See lib/trajectory/core.js for the matching
+          code change. -#}
+      <label class="check" id="hide-frozen-row">
         <input type="checkbox" id="hide-frozen">
         Hide frozen atoms (filter force arrows to free atoms)</label>
 
@@ -272,6 +285,19 @@
     ↓ Export all plot data (CSV)
   </button>
 </div>
+
+<!-- Pre-data status banner.  Visible only when the run has produced
+     no usable per-step data yet (fresh-start window between the
+     engine launching and writing its first energy-bearing line).
+     The trajectory module shows / hides this based on what's in
+     state.data; CSS controls the appearance.  See _renderEmptyStatus
+     in lib/trajectory/core.js.  Added 2026-06-14 so a freshly-cold-
+     started run shows ``Initializing -- first energy estimate pending``
+     instead of two silently-blank plots that look like a broken UI. -->
+<aside id="trajectory-empty-status"
+       class="trajectory-empty-status" role="status" hidden>
+  <span class="trajectory-empty-status-text">Loading…</span>
+</aside>
 
 <!-- Plots row: 4 plots when there's space, 2 when narrower, 1 on
      phones.  ``auto-fit`` with a minimum 280px reflows

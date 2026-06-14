@@ -229,6 +229,24 @@
     // Generate, and Save (the values have been emitted into a
     // script or written to disk).
     let _formDirty = false;
+    // 2026-06-14: viewer-is-truth contract.  Tracks the file the
+    // user actually committed (Load / dblclick), not the live
+    // sidebar pick.  Used by the Generate POST to build
+    // ``body.structure_path`` so the sidecar discovery hits the
+    // file the user sees in the viewer regardless of subsequent
+    // sidebar clicks.  Same fix pattern as /structure-optimization
+    // (viewer.js ``_sidebarLastFile``) and parallel to /transport-
+    // calculation (lib/transport/core.js ``_currentStructureFile``).
+    let _committedStructureFile = "";
+    // 2026-06-14 viewer-is-truth contract Phase 2: cache the
+    // committed structure's labels at Load time so the Generate
+    // POST can ship them DIRECTLY (no server-side path-indirected
+    // sidecar re-read).  Populated by ``sidecarLabels.fetch()``
+    // inside _commitStructureForSpectra below; consumed by the
+    // /api/spectra/render POST.  Empty defaults mean "no labels"
+    // (the explicit truth, not "consult disk").
+    let _committedFrozenAtoms = [];
+    let _committedRegions = {};
 
     // ----- Status helper ----------------------------------------
     function setStatus(el, msg, kind) {
@@ -323,6 +341,33 @@
                 if (!proceed) return;
             }
             _formDirty = false;
+            // Pin the committed-load file path so the Generate
+            // POST sends the file the user ACTUALLY loaded into the
+            // viewer, not whatever they happen to be hovering over
+            // in the sidebar at click-time.  2026-06-14 viewer-is-
+            // truth contract: same bug class as /structure-
+            // optimization's prior ``getCurrentFile()`` read.
+            _committedStructureFile = f;
+            // Phase 2: pull the file's sidecar labels into in-
+            // memory state so the Generate POST can ship them
+            // directly.  ``sidecarLabels.fetch`` always resolves
+            // (missing sidecar -> empty defaults), so this can't
+            // reject the Load.
+            const _sl = window.molbuilder
+                     && window.molbuilder.sidecarLabels;
+            if (_sl && typeof _sl.fetch === "function") {
+                try {
+                    const labels = await _sl.fetch(f);
+                    _committedFrozenAtoms = labels.frozen_atoms || [];
+                    _committedRegions    = labels.regions || {};
+                } catch (_) {
+                    _committedFrozenAtoms = [];
+                    _committedRegions    = {};
+                }
+            } else {
+                _committedFrozenAtoms = [];
+                _committedRegions    = {};
+            }
             await _reloadSchemaForCurrentStructure(fs).catch(() => {});
         }
         // Universal commit subscription — dblclick on a structure
@@ -485,6 +530,14 @@
             // the first line of the content.
             structure_text: structureText,
             params:         collectParams(),
+            // 2026-06-14 viewer-is-truth contract: ship the
+            // labels we pulled in at Load time directly.  Server
+            // applies them verbatim; only when these keys are
+            // ABSENT does it fall back to disk sidecar discovery
+            // against ``structure_path``.  See _shared.apply_
+            // labels_to_struct on the server.
+            frozen_atoms:   _committedFrozenAtoms || [],
+            regions:        _committedRegions || {},
         };
         // Pass the current sidebar XYZ path (if any) so the server
         // can apply the .molstruct.json sidecar to the structure
@@ -498,20 +551,18 @@
         // skip the sidecar and lose stage-3 guards -- the right
         // behavior when there genuinely is no sidecar to honor.
         //
-        // Variable name: ``projForStruct`` (not ``proj``) because
-        // the lower saveToWorkspace block already has a ``const
-        // proj`` -- a second ``const proj`` in the same function
-        // scope is a SyntaxError that breaks the whole module.
-        const projForStruct = (window.molbuilder || {}).projects;
-        if (projForStruct && typeof projForStruct.getCurrentFile === "function") {
-            const f = (projForStruct.getCurrentFile() || "");
-            // Both .xyz and .pdb are accepted on the server -- send
-            // the path either way so the sidecar's frozen_atoms +
-            // regions flow into preflight Pattern A/B regardless
-            // of source format.
-            const lc = f.toLowerCase();
+        // 2026-06-14 viewer-is-truth contract: read the COMMITTED-
+        // load path (set by _commitStructureForSpectra on Load /
+        // dblclick), NOT the live ``projForStruct.getCurrentFile()``.
+        // Pre-fix this read getCurrentFile() at click-time, which
+        // returned whatever-was-last-clicked-in-the-sidebar -- so
+        // navigating to set a dest dir after Load silently
+        // redirected the sidecar lookup to the wrong file.  Same
+        // bug class as the /structure-optimization tab fix.
+        if (_committedStructureFile) {
+            const lc = _committedStructureFile.toLowerCase();
             if (lc.endsWith(".xyz") || lc.endsWith(".pdb")) {
-                body.structure_path = f;
+                body.structure_path = _committedStructureFile;
             }
         }
         const priorPath = (els.priorPath.value || "").trim();

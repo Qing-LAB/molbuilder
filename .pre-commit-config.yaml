@@ -24,20 +24,23 @@ repos:
         # deliberately use unused imports (e.g. import * lookups).
         exclude: '^(molbuilder/web/static/vendor/|tests/data/)'
 
-  # Local-repo hooks: fast-subset pytest + JS syntax check.  Both
-  # are bounded to <30s so pre-commit doesn't feel slow.
+  # Local-repo hooks: pytest + JS syntax check.
   - repo: local
     hooks:
-      # Fast subset of the test suite -- excludes the slow / e2e /
-      # browser tests.  Catches the regressions we've actually been
-      # shipping (engine_key metadata, frozen_atoms wiring, element
-      # case canonicalisation, propor preflight, runwrap probe).
-      - id: pytest-fast
-        name: pytest (fast subset, ~20s)
+      # Run the full pytest suite except ``slow``-marked tests and
+      # the chromium-required atom-list file.  ``-m "not e2e"`` is
+      # DELIBERATELY ABSENT: the 2026-06-14 workspace-dispatcher
+      # clobber-BLOCKER shipped through three commits because the
+      # pre-existing e2e tests that caught it lived behind that
+      # filter (existed, passed locally on ``make test-all``, never
+      # ran pre-commit).  When a test catches a class of production
+      # bug, GATE on it -- don't filter it out for speed.  Memory:
+      # feedback_dont_hide_failing_tests.
+      - id: pytest
+        name: pytest (full suite, slow excluded)
         entry: python -m pytest -q --no-header
-            --ignore=tests/test_modify_e2e.py
             --ignore=tests/test_atom_list_render_paths.py
-            -m "not slow and not e2e"
+            -m "not slow"
         language: system
         pass_filenames: false
         always_run: true

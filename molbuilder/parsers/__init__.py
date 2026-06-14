@@ -126,6 +126,43 @@ def detect_parser(path: str) -> Type[TrajectoryParser]:
     raise UnknownFormatError("\n".join(lines))
 
 
+def _nan_to_none(obj: Any) -> Any:
+    """Recursively replace NaN floats with ``None`` for JSON safety.
+
+    The JSON spec doesn't allow ``NaN`` / ``Infinity`` tokens; Python's
+    ``json.dumps`` emits them anyway (``allow_nan=True`` is the
+    default), but the BROWSER's strict ``r.json()`` / ``JSON.parse``
+    rejects them and the fetch throws -- silently blanking the
+    Results-tab view.
+
+    NaN reaches the trajectory dict primarily from
+    ``_parse_fortran_float`` (Fortran fixed-width overflow on a
+    divergent SCF cycle), but any future numeric path that surfaces
+    NaN ends up here too.  Replacing with ``None`` (which serialises
+    as ``null``) lets the frontend treat the overflow column as
+    "value missing" -- exactly the diagnostic the NaN signal was
+    meant to convey, and Plotly renders the gap in the trace.
+
+    Walks dicts and lists in-place semantics (returns a new structure
+    so callers don't get surprise mutations of their inputs).
+    """
+    if isinstance(obj, float):
+        # math.isnan would import math just for this; the NaN-only
+        # check ``obj != obj`` is a stdlib-free idiom for the same
+        # thing.  Infinity passes through (json.dumps emits
+        # ``Infinity`` similarly out-of-spec; if a future code path
+        # produces it we should sweep it too, but no real engine
+        # output does today).
+        return None if obj != obj else obj
+    if isinstance(obj, dict):
+        return {k: _nan_to_none(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_nan_to_none(v) for v in obj]
+    if isinstance(obj, tuple):
+        return tuple(_nan_to_none(v) for v in obj)
+    return obj
+
+
 def trajectory_to_legacy_dict(traj: Trajectory) -> Dict[str, Any]:
     """Adapter: build the molwatch v1 JSON dict from a Trajectory.
 
@@ -207,6 +244,28 @@ def trajectory_to_legacy_dict(traj: Trajectory) -> Dict[str, Any]:
     # entries usually mean a partial parse).
     if all(v is None for v in out_max_forces_constrained):
         out_max_forces_constrained = []
+
+    # Browser-side ``r.json()`` is strict-spec: ``NaN`` and ``Infinity``
+    # are not legal JSON tokens.  Python's ``json.dumps`` will happily
+    # emit ``NaN`` (default ``allow_nan=True``); when the response
+    # reaches the browser, the fetch throws SyntaxError and the
+    # Results-tab trajectory plot renders blank.
+    #
+    # ``_nan_to_none`` walks the output and replaces every NaN with
+    # ``None`` (→ JSON ``null``).  NaN reaches us mostly via
+    # ``_parse_fortran_float`` (SIESTA fixed-width overflow on
+    # divergent SCF cycles), but any other code path that surfaces
+    # NaN -- now or in the future -- gets sanitised here too, at the
+    # single adapter that all watch / results endpoints flow through.
+    # Plotly renders ``null`` as a gap in the line; that gap IS the
+    # divergence diagnostic (per the 2026-06-14 BDT-stage-2 report).
+    out_scf = _nan_to_none(out_scf)
+    out_energies = _nan_to_none(out_energies)
+    out_max_forces = _nan_to_none(out_max_forces)
+    out_max_forces_constrained = _nan_to_none(out_max_forces_constrained)
+    out_forces = _nan_to_none(out_forces)
+    out_frames = _nan_to_none(out_frames)
+    lattice_out = _nan_to_none(lattice_out)
 
     return {
         "frames":        out_frames,

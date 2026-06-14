@@ -498,22 +498,31 @@
         });
     }
 
-    // Reveal the "Hide frozen atoms" row when the parser surfaced
-    // frozen_atoms in runtime_info; hide it otherwise.  Called when
-    // new data lands so the control is only visible when meaningful.
+    // 2026-06-14: the "Hide frozen atoms" row is ALWAYS visible.
+    // Pre-fix this function gated visibility on
+    // ``runtime_info.frozen_atoms.size > 0`` and hid the row when
+    // the parser failed to surface indices -- which made the
+    // toggle silently vanish every time a SIESTA .out failed the
+    // filename-pairing heuristic, every time a Results-tab user
+    // loaded a constraint-free structure, etc.  The control's
+    // PRESENCE is a stable UI affordance; only its EFFECT depends
+    // on data.  When there are no frozen atoms, clicking the
+    // checkbox is a no-op (applyHideFrozen() returns early because
+    // _frozenSet() is empty).  Stable affordance, correct effect,
+    // no muscle-memory whiplash.
+    //
+    // Kept as a named no-op so the existing callsites compile and
+    // a future refactor can re-attach availability logic without a
+    // wider refactor.  All it does today is keep the checkbox in
+    // sync with state when external code resets frozen_atoms:
+    // un-check it so the user doesn't see a stale "hidden" filter.
     function refreshHideFrozenAvailability() {
-        const row = $("hide-frozen-row");
-        if (!row) return;
         const frozen = _frozenSet();
-        if (frozen && frozen.size > 0) {
-            row.hidden = false;
-        } else {
-            row.hidden = true;
-            const cb = $("hide-frozen");
-            if (cb && cb.checked) {
-                cb.checked = false;
-                applyHideFrozen();
-            }
+        if (frozen && frozen.size > 0) return;
+        const cb = $("hide-frozen");
+        if (cb && cb.checked) {
+            cb.checked = false;
+            applyHideFrozen();
         }
     }
 
@@ -1244,12 +1253,74 @@
         return { shapes, annotations };
     }
 
+    /**
+     * Render the pre-data status banner that explains a blank
+     * energy/force plot when the engine hasn't yet written a first
+     * data point.  Engine-agnostic: shows "Initializing — first
+     * energy estimate pending" for SIESTA, "Optimizing — first
+     * step pending" for PySCF, or hides itself once there's
+     * usable data.
+     *
+     * Added 2026-06-14 so a freshly-started run doesn't look like
+     * a broken UI to the user.  The "blank plots" symptom on a
+     * cold start is correct (engine just hasn't written anything
+     * yet) but reads as a bug without explanation.
+     */
+    function _renderEmptyStatus() {
+        const el = $("trajectory-empty-status");
+        if (!el) return;
+        const data = state.data;
+        if (!data) {
+            el.hidden = false;
+            el.querySelector(".trajectory-empty-status-text")
+                .textContent = "Loading run output…";
+            return;
+        }
+        // Heuristic: the run has usable data when any frame has a
+        // finite energy OR any SCF cycle has been parsed.
+        const energies = data.energies || [];
+        const hasEnergy = energies.some(e =>
+            typeof e === "number" && Number.isFinite(e));
+        const scfHistory = data.scf_history || [];
+        const hasScf = scfHistory.some(s => Array.isArray(s)
+                                          && s.length > 0);
+        if (hasEnergy || hasScf) {
+            el.hidden = true;
+            return;
+        }
+        // No energy + no SCF cycles yet.  Engine-specific message.
+        const fmt = data.source_format || "";
+        let msg;
+        if (fmt === "pyscf") {
+            msg = ("PySCF initializing — first geomeTRIC step "
+                 + "pending.  No energy yet to plot; SCF setup, "
+                 + "basis build, and initial guess can take "
+                 + "minutes to tens of minutes for large systems.");
+        } else if (fmt === "siesta") {
+            msg = ("SIESTA initializing — first SCF cycle pending.  "
+                 + "No energy yet to plot; pseudopotential + basis "
+                 + "setup and initial DM construction can take "
+                 + "seconds to a few minutes for large systems.");
+        } else {
+            msg = ("Run initializing — no data points yet.  "
+                 + "Plots will populate once the engine writes its "
+                 + "first energy line.");
+        }
+        el.hidden = false;
+        el.querySelector(".trajectory-empty-status-text").textContent = msg;
+    }
+
     function makePlots() {
         if (!state.data) return;
         const x = state.data.iterations;
         const theme = _themeColors();
         const ct = _convergenceTargets();
         const stageMx = stageMarkers(theme);
+
+        // Render the empty-state banner BEFORE the plots so it
+        // either takes the screen during the brief pre-data window
+        // or is hidden in time for Plotly to lay out cleanly.
+        _renderEmptyStatus();
 
         // Render the convergence-summary band above the plots before
         // we touch Plotly — the section's visibility + content drive

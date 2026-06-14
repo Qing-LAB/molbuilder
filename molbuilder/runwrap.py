@@ -24,10 +24,31 @@ overrides.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Optional
 
 from .diagnostics import EXTENSION_TO_CATEGORY, get_capabilities
+
+
+# Shell-safety guard for wrapper emission.  The wrapper interpolates
+# ``basename`` and ``script_name`` (the script's filename stem and
+# the filename itself) into many bash strings -- some inside ``"..."``,
+# some unquoted in glob lists, some inside ``$(...)`` substitutions.
+# A filename containing ``"``, ``$``, ``` ` ```, ``\\``, ``;``, ``|``,
+# ``&``, newlines, etc. would either break the wrapper or execute
+# arbitrary code at run time.
+#
+# Rather than escape every interpolation (fragile + makes the bash
+# unreadable for the user, who is meant to be able to read and edit
+# the wrapper), we restrict the input to a safe alphabet at
+# emission time.  Matches the ``_BASENAME_RE`` rule in
+# ``molbuilder/config/siesta.py`` (SystemLabel validation) and
+# ``molbuilder/config/pyscf.py`` (job_name): letters, digits, dot,
+# underscore, hyphen.  The dot is allowed because PySCF emits files
+# like ``<basename>.molwatch.log`` and SIESTA's user-named
+# SystemLabel often contains dots.
+_SAFE_WRAPPER_NAME_RE = re.compile(r"^[A-Za-z0-9._\-]+$")
 
 
 class WrapperError(Exception):
@@ -109,41 +130,316 @@ def _run_index_resolver(basename: str, ext: str = ".out") -> str:
 
 def _continue_force_args_parser(name_for_usage: str) -> str:
     """Bash snippet declaring + parsing ``--continue`` / ``-c`` /
-    ``--force`` / ``-f``.  Returns code that:
+    ``--force`` / ``-f`` / ``--cold`` / ``--from-scratch``.
 
-      * declares ``_continue=0`` and ``_force=0``
-      * iterates ``$@`` and shifts as it consumes ``--continue`` /
-        ``--force`` flags (other args remain for engine-specific
-        loops to handle).
+    Three orthogonal flags:
 
-    The caller is responsible for the eventual ``--help`` text.  We
-    DON'T parse it here because SIESTA also has ``-np N`` which has
-    its own help text path; merging them would couple the two engine
-    paths.
+      * ``--continue`` / ``-c``: advance run-index AND let the
+        engine warm-start from prior state files (SIESTA: .DM, .CG,
+        .XV; PySCF: .chk).
+      * ``--force`` / ``-f``: start a fresh run-index sequence
+        (-run0) even when prior outputs exist.  Does NOT touch the
+        engine warm-start files -- the engine still loads them.
+      * ``--cold`` / ``--from-scratch``: move prior warm-start
+        files (SIESTA .DM/.CG/.XV/.LWF/.ZM; PySCF .chk) into a
+        timestamped backup directory before running, so the engine
+        starts strictly from the .fdf / .py coordinates and
+        conditions.  Distinct from ``--force`` which only resets
+        the run-index; ``--cold`` resets the engine state too.
+
+    Added 2026-06-14 after the BDT-stage-2 incident where stage 2
+    ran without the user's frozen-atom constraints (contract bug
+    in the form, fixed in the same release); the now-corrupt
+    warm-start files would have contaminated every subsequent run
+    until ``--cold`` was provided.
+
+    Caller is responsible for the eventual ``--help`` text.
     """
     return (
         f"# --- Continuation flags (shared SIESTA / PySCF) --------\n"
-        f"# ``--continue`` / ``-c`` : advance run-index, restart from\n"
-        f"#                          last engine state (.DM / .CG / .XV\n"
-        f"#                          for SIESTA, .chk for PySCF).\n"
-        f"# ``--force``    / ``-f`` : start over from -run0 even if a\n"
-        f"#                          prior run exists.  The previous\n"
-        f"#                          -runN file is preserved; only the\n"
-        f"#                          run-index sequence resets.\n"
+        f"# ``--continue`` / ``-c``: advance run-index AND warm-\n"
+        f"#                          start from prior .DM/.CG/.XV\n"
+        f"#                          (SIESTA) or .chk (PySCF).\n"
+        f"# ``--force``    / ``-f``: reset run-index to -run0; prior\n"
+        f"#                          warm-start files remain on disk\n"
+        f"#                          and the engine still loads them.\n"
+        f"# ``--cold`` / ``--from-scratch``:\n"
+        f"#                          move warm-start files (.DM/.CG/\n"
+        f"#                          .XV/.LWF/.ZM/.chk) into a\n"
+        f"#                          timestamped backup dir BEFORE\n"
+        f"#                          running, so the engine starts\n"
+        f"#                          purely from the .fdf/.py.  Use\n"
+        f"#                          when the prior run was bad and\n"
+        f"#                          its restart files would corrupt\n"
+        f"#                          the next run.\n"
         f"_continue=0\n"
         f"_force=0\n"
-        f"# We strip --continue / --force from $@ here, leaving the\n"
-        f"# rest for the engine-specific arg loop below (-np for SIESTA;\n"
-        f"# nothing for PySCF).\n"
+        f"_cold=0\n"
+        f"# We strip --continue / --force / --cold from $@ here,\n"
+        f"# leaving the rest for the engine-specific arg loop below\n"
+        f"# (-np for SIESTA; nothing for PySCF).\n"
         f"_argv_remaining=()\n"
         f'while [ $# -gt 0 ]; do\n'
         f'    case "$1" in\n'
-        f"        --continue|-c) _continue=1; shift ;;\n"
-        f"        --force|-f)    _force=1;    shift ;;\n"
-        f'        *)             _argv_remaining+=("$1"); shift ;;\n'
+        f"        --continue|-c)        _continue=1; shift ;;\n"
+        f"        --force|-f)           _force=1;    shift ;;\n"
+        f"        --cold|--from-scratch) _cold=1;    shift ;;\n"
+        f'        *)                    _argv_remaining+=("$1"); shift ;;\n'
         f"    esac\n"
         f"done\n"
         f'set -- "${{_argv_remaining[@]+\"${{_argv_remaining[@]}}\"}}"\n'
+        f"\n"
+    )
+
+
+def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
+    """Bash snippet that moves engine warm-start files aside when
+    ``_cold=1``.  Idempotent: no-op when ``_cold=0`` or when no
+    warm-start files exist.
+
+    Engine extensions handled:
+
+      * ``siesta``: ``.DM``, ``.CG``, ``.XV``, ``.LWF``, ``.ZM``,
+        ``.Bonds``, ``.PARTIAL``, ``.EIG`` (anything SIESTA's
+        ``DM.UseSaveDM`` / ``MD.UseSaveCG`` / ``MD.UseSaveXV``
+        family auto-loads).  We move them all so a partial set
+        can't trigger a half-warm-start.
+      * ``pyscf``: ``.chk`` (PySCF's chkfile + the geomeTRIC
+        chkpoint when present).
+
+    Backups land in
+    ``<basename>-restart-aside-<UTC-timestamp>/`` so the user can
+    inspect / recover the prior state if needed.  Deleting that
+    directory is a manual user action -- we never auto-delete the
+    user's prior results.
+    """
+    if engine == "siesta":
+        exts = ("DM", "CG", "XV", "LWF", "ZM", "Bonds", "PARTIAL", "EIG")
+    elif engine == "pyscf":
+        exts = ("chk",)
+    else:                                  # pragma: no cover
+        raise WrapperError(f"unknown engine for cold-restart: {engine!r}")
+    # 2026-06-14 fix: SIESTA names its warm-start files after the
+    # ``SystemLabel`` from inside the .fdf, NOT after the .fdf's
+    # filename basename.  E.g. an .fdf named ``foo-stage2.fdf``
+    # whose ``SystemLabel`` line says ``foo`` writes ``foo.DM`` /
+    # ``foo.XV`` / ``foo.CG`` -- NOT ``foo-stage2.DM``.  The first
+    # ``--cold`` ship missed this and emitted a glob against the
+    # wrapper basename only, which silently missed every staged-
+    # relaxation project (basename ``foo-stage2`` vs SystemLabel
+    # ``foo``).  At runtime we read the SystemLabel from the .fdf
+    # for SIESTA; for PySCF we read the ``JOB`` assignment from
+    # the .py script which is the equivalent.
+    # The glob also covers the wrapper-basename case as a fallback
+    # because some users name SystemLabel == basename and we still
+    # want to clean those up.
+    if engine == "siesta":
+        label_extract = (
+            f'# Read SystemLabel from the .fdf so the warm-start glob\n'
+            f"# matches the files SIESTA will look for at startup\n"
+            f"# (not what the wrapper's filename happens to be).\n"
+            f'_warm_label=$(awk \'BEGIN{{IGNORECASE=1}} '
+            f'/^[[:space:]]*SystemLabel[[:space:]]+/ '
+            f'{{print $2; exit}}\' "{basename}.fdf" 2>/dev/null)\n'
+            f'[ -z "$_warm_label" ] && _warm_label="{basename}"\n'
+        )
+        # Two-label glob: SystemLabel-keyed AND wrapper-basename-keyed
+        # so we catch both naming styles.
+        glob_pieces = " ".join(
+            f'"$_warm_label.{ext}" "$_warm_label".*.{ext} '
+            f"{basename}.{ext} {basename}.*.{ext}"
+            for ext in exts
+        )
+    else:
+        # PySCF: extract the JOB assignment from the script.
+        label_extract = (
+            f'_warm_label=$(awk -F\'["\\\'"]\' \'/^JOB[[:space:]]*=/ '
+            f'{{print $2; exit}}\' "{basename}.py" 2>/dev/null)\n'
+            f'[ -z "$_warm_label" ] && _warm_label="{basename}"\n'
+        )
+        glob_pieces = " ".join(
+            f'"$_warm_label.{ext}" {basename}.{ext}'
+            for ext in exts
+        )
+    return (
+        f"# --- Cold-restart: move engine warm-start files aside ---\n"
+        f'if [ "$_cold" = "1" ]; then\n'
+        f"    # UTC timestamp keeps multiple cold runs from\n"
+        f"    # colliding when they fire within a second of each\n"
+        f"    # other.\n"
+        f'    _aside="{basename}-restart-aside-$(date -u +%Y%m%dT%H%M%SZ)"\n'
+        f"    _moved=0\n"
+        f"    shopt -s nullglob 2>/dev/null || true\n"
+        f"    {label_extract}"
+        f"    echo \"[molbuilder] --cold: scanning for "
+        f"\\\"$_warm_label\\\".* and \\\"{basename}\\\".* warm-start files\" >&2\n"
+        f"    for _f in {glob_pieces}; do\n"
+        f'        if [ -e "$_f" ]; then\n'
+        f'            if [ "$_moved" = "0" ]; then\n'
+        f'                mkdir -p "$_aside"\n'
+        f"                _moved=1\n"
+        f"            fi\n"
+        f'            mv "$_f" "$_aside/"\n'
+        f'            echo "[molbuilder] --cold: moved $_f" >&2\n'
+        f"        fi\n"
+        f"    done\n"
+        f'    if [ "$_moved" = "1" ]; then\n'
+        f'        echo "[molbuilder] --cold: moved warm-start files into $_aside/" >&2\n'
+        f"    else\n"
+        f'        echo "[molbuilder] --cold: no warm-start files to move; already a clean start" >&2\n'
+        f"    fi\n"
+        f"fi\n"
+        f"\n"
+    )
+
+
+def _runtime_status_block(
+    basename: str,
+    *,
+    engine: str,
+    script_name: str,
+) -> str:
+    """Bash snippet that detects and emits the execution status banner.
+
+    Prints, at script launch time, AFTER cold/run-index resolution but
+    BEFORE the engine launches:
+
+      * **Mode** -- one of:
+        - ``COLD`` (``--cold`` was passed; warm-start files moved aside)
+        - ``WARM-RESUME`` (``--continue`` with prior state on disk)
+        - ``WARM-RESUME REQUESTED but no prior state`` (``--continue``
+          with nothing to resume from -- the user probably intended
+          this to be a fresh start)
+        - ``WARM-RESTART`` (no ``--continue``, but warm-start files
+          exist on disk; the engine will silently load them.  This is
+          the silent-failure mode pre-2026-06-14: a stage-2 run with
+          bad constraints contaminated stage-3's restart files and the
+          user couldn't see why their numbers were wrong.  The flag
+          now makes this case loudly visible.)
+        - ``initial-run (clean state)`` (no prior state; no flags).
+
+      * **Constraints** -- engine-specific:
+        - SIESTA: counts ``position`` lines + total listed indices in
+          ``%block Geometry.Constraints``; ``(none)`` when the block
+          is absent or empty.
+        - PySCF: counts indices from the ``# Source: Structure.
+          frozen_atoms = [...]`` comment the generator emits.
+
+    The detection logic reads the actual on-disk script at runtime
+    (NOT the values baked in at emit time), so a user-edited .fdf
+    or .py shows the EDITED values -- the script ``you see is
+    what runs`` contract that the 2026-06-14 fix landed.
+
+    Added 2026-06-14 as part of the BDT-stage-2 incident response:
+    silently-warm-restarting from contaminated restart files would
+    have re-contaminated every downstream run; users have to be able
+    to see at a glance whether their constraints are honored and
+    where the SCF / geometry will start from.
+    """
+    if engine == "siesta":
+        # Warm-start file extensions matching the cold-restart block.
+        # 2026-06-14 fix: SIESTA writes warm-start files keyed on the
+        # ``SystemLabel`` from inside the .fdf -- NOT on the .fdf's
+        # filename basename.  So a stage2 .fdf with
+        # ``SystemLabel  foo`` writes ``foo.DM`` etc., regardless of
+        # the script being named ``foo-stage2.fdf``.  Test both label
+        # patterns (SystemLabel-keyed AND basename-keyed) for the
+        # warm-start detection so the Mode line is accurate.
+        warmstart_exts = ("DM", "CG", "XV", "LWF", "ZM")
+        warmstart_test_pieces = []
+        for ext in warmstart_exts:
+            warmstart_test_pieces.append(f'[ -e "$_warm_label.{ext}" ]')
+            warmstart_test_pieces.append(f'[ -e "{basename}.{ext}" ]')
+        warmstart_test = " || ".join(warmstart_test_pieces)
+        warmstart_listing = " ".join(
+            f"{basename}.{ext}" for ext in warmstart_exts
+        )
+        constraint_detection = (
+            f'_constraints="(no Geometry.Constraints block -- all atoms free)"\n'
+            f'_fdf_path="{script_name}"\n'
+            f'if [ -e "$_fdf_path" ] && grep -qiE \'^[[:space:]]*%block[[:space:]]+Geometry\\.Constraints\' "$_fdf_path"; then\n'
+            f'    _ncon_lines=$(awk \'BEGIN{{IGNORECASE=1;in_b=0;n=0}} /^[[:space:]]*%block[[:space:]]+Geometry\\.Constraints/{{in_b=1;next}} /^[[:space:]]*%endblock[[:space:]]+Geometry\\.Constraints/{{in_b=0;next}} in_b && /^[[:space:]]*position/{{n++}} END{{print n}}\' "$_fdf_path")\n'
+            f'    _ncon_indices=$(awk \'BEGIN{{IGNORECASE=1;in_b=0;n=0}} /^[[:space:]]*%block[[:space:]]+Geometry\\.Constraints/{{in_b=1;next}} /^[[:space:]]*%endblock[[:space:]]+Geometry\\.Constraints/{{in_b=0;next}} in_b && /^[[:space:]]*position/{{for(i=2;i<=NF;i++) if($i~/^[0-9]+$/) n++}} END{{print n}}\' "$_fdf_path")\n'
+            f'    if [ -z "$_ncon_lines" ] || [ "$_ncon_lines" = "0" ]; then\n'
+            f'        _constraints="Geometry.Constraints block present but EMPTY -- all atoms free"\n'
+            f'    else\n'
+            f'        _constraints="$_ncon_lines position line(s), $_ncon_indices listed indices (range expansion not counted)"\n'
+            f"    fi\n"
+            f"fi\n"
+        )
+        warm_files_label = "DM/CG/XV/LWF/ZM"
+    elif engine == "pyscf":
+        # PySCF's ``mf.chkfile`` is keyed on ``JOB`` (a Python
+        # variable in the .py script), same naming-mismatch risk as
+        # SIESTA's SystemLabel.  Mirror the dual test.
+        warmstart_test = (
+            f'[ -e "$_warm_label.chk" ] || [ -e "{basename}.chk" ]'
+        )
+        warmstart_listing = f"{basename}.chk"
+        # PySCF embeds the canonical frozen-atom list as a single-line
+        # comment.  Counting digits in that comment is sufficient
+        # since the indices are comma-separated inside ``[...]``.
+        constraint_detection = (
+            f'_constraints="(no frozen_atoms -- all atoms free)"\n'
+            f'_py_path="{script_name}"\n'
+            f'if [ -e "$_py_path" ]; then\n'
+            f'    _frozen_line=$(grep -E \'^[[:space:]]*#[[:space:]]*Source:[[:space:]]+Structure\\.frozen_atoms\' "$_py_path" | head -1 || true)\n'
+            f'    if [ -n "$_frozen_line" ]; then\n'
+            f'        _ncon_indices=$(printf %s "$_frozen_line" | grep -oE \'[0-9]+\' | wc -l)\n'
+            f'        if [ "$_ncon_indices" = "0" ]; then\n'
+            f'            _constraints="frozen_atoms comment present but lists 0 indices -- all atoms free"\n'
+            f"        else\n"
+            f'            _constraints="frozen_atoms: $_ncon_indices listed indices (geomeTRIC constraints file)"\n'
+            f"        fi\n"
+            f"    fi\n"
+            f"fi\n"
+        )
+        warm_files_label = "chk"
+    else:                                  # pragma: no cover
+        raise WrapperError(f"unknown engine for status block: {engine!r}")
+
+    # Extract the engine's canonical label (SystemLabel for SIESTA,
+    # JOB for PySCF) UNCONDITIONALLY so the warmstart_test below has
+    # ``$_warm_label`` in scope even when ``--cold`` was NOT passed
+    # (the cold block also extracts it but inside its own ``if``).
+    # The wrapper runs under ``set -euo pipefail``; an unbound
+    # variable would otherwise abort the run.
+    if engine == "siesta":
+        label_extract_unconditional = (
+            f'_warm_label=$(awk \'BEGIN{{IGNORECASE=1}} '
+            f'/^[[:space:]]*SystemLabel[[:space:]]+/ '
+            f'{{print $2; exit}}\' "{script_name}" 2>/dev/null)\n'
+            f'[ -z "$_warm_label" ] && _warm_label="{basename}"\n'
+        )
+    else:                              # pyscf
+        label_extract_unconditional = (
+            f'_warm_label=$(awk -F\'["\\\'"]\' \'/^JOB[[:space:]]*=/ '
+            f'{{print $2; exit}}\' "{script_name}" 2>/dev/null)\n'
+            f'[ -z "$_warm_label" ] && _warm_label="{basename}"\n'
+        )
+    return (
+        f"# --- Runtime status banner --------------------------\n"
+        f"# Reads the actual on-disk script + state files at run\n"
+        f"# time and reports the resulting MODE + CONSTRAINTS so\n"
+        f"# the user can see what's about to happen BEFORE the\n"
+        f"# engine starts.  See _runtime_status_block docstring.\n"
+        + label_extract_unconditional
+        + f'_warmstart_present=0\n'
+        + f"if {warmstart_test}; then _warmstart_present=1; fi\n"
+        f'_mode="initial-run (clean state)"\n'
+        f'if [ "$_cold" = "1" ]; then\n'
+        f'    _mode="COLD (--cold; warm-start files moved aside)"\n'
+        f'elif [ "$_continue" = "1" ]; then\n'
+        f'    if [ "$_warmstart_present" = "1" ]; then\n'
+        f'        _mode="WARM-RESUME (--continue; engine will load {warm_files_label})"\n'
+        f"    else\n"
+        f'        _mode="WARM-RESUME REQUESTED but no prior state found -- starting cold by necessity"\n'
+        f"    fi\n"
+        f'elif [ "$_warmstart_present" = "1" ]; then\n'
+        f'    _mode="WARM-RESTART (silent; engine will load existing {warm_files_label}.  '
+        f'Pass --cold to discard them.)"\n'
+        f"fi\n"
+        f"{constraint_detection}"
         f"\n"
     )
 
@@ -230,6 +526,29 @@ def render_run_wrapper(script_path: Path, *,
 
     basename = script_path.stem
     script_name = script_path.name
+    # Shell-safety: both basename and script_name are interpolated
+    # raw into bash f-strings throughout this module (inside
+    # ``"..."``, inside glob lists, inside ``$(...)``, etc.).
+    # Reject anything outside ``_SAFE_WRAPPER_NAME_RE`` to prevent
+    # shell injection via a malicious filename.  The same alphabet
+    # the SIESTA SystemLabel / PySCF job_name validators enforce
+    # in ``molbuilder/config/*``.
+    if not _SAFE_WRAPPER_NAME_RE.fullmatch(basename):
+        raise WrapperError(
+            f"unsafe script basename for wrapper emission: "
+            f"{basename!r}.  Allowed characters: letters, digits, "
+            f"``.``, ``_``, ``-``.  Rename the script before "
+            f"running ``molbuilder run``."
+        )
+    if not _SAFE_WRAPPER_NAME_RE.fullmatch(script_name):
+        # script_name is basename + suffix; if basename passed but
+        # script_name fails, the suffix carries the offending char
+        # (shouldn't be reachable since suffix is fixed to .fdf/.py,
+        # but defence in depth).
+        raise WrapperError(
+            f"unsafe script filename for wrapper emission: "
+            f"{script_name!r}."
+        )
 
     # Pre-command env exports.  Shared anti-oversubscription recipe
     # with PySCF / spectra (see molbuilder/runtime_info.py): BLAS is
@@ -364,7 +683,7 @@ def render_run_wrapper(script_path: Path, *,
             f'            _mpi_np="$2"; shift 2 ;;\n'
             f"        -h|--help)\n"
             f'            cat <<USAGE\n'
-            f'Usage: bash $(basename "$0") [--continue|-c] [--force|-f] [-np N] [-h]\n'
+            f'Usage: bash $(basename "$0") [--continue|-c] [--force|-f] [--cold] [-np N] [-h]\n'
             f"\n"
             f"  --continue, -c   resume from prior run.  Scans existing\n"
             f"                   -runN.out files and writes -run(N+1).\n"
@@ -375,6 +694,16 @@ def render_run_wrapper(script_path: Path, *,
             f"  --force, -f      start over from -run0 even if prior\n"
             f"                   runs exist.  Old files are NOT deleted;\n"
             f"                   the existing -run0.out is overwritten.\n"
+            f"                   Prior .DM/.CG/.XV warm-start files STAY\n"
+            f"                   on disk -- SIESTA will still load them.\n"
+            f"  --cold,\n"
+            f"  --from-scratch   move .DM/.CG/.XV/.LWF/.ZM warm-start\n"
+            f"                   files into a timestamped backup dir\n"
+            f"                   BEFORE running.  Use when a prior run\n"
+            f"                   was bad (e.g. wrong constraints) and its\n"
+            f"                   restart files would corrupt this run.\n"
+            f"                   Combine with -f to also restart the\n"
+            f"                   run-index sequence at -run0.\n"
             f"  -np N            override MPI rank count.  Default at\n"
             f"                   generation time was $_mpi_np_default.\n"
             f"  -h               this help.\n"
@@ -400,6 +729,9 @@ def render_run_wrapper(script_path: Path, *,
             f"fi\n"
             f"\n"
             + _run_index_resolver(basename)
+            + _cold_restart_aside_block(basename, engine="siesta")
+            + _runtime_status_block(basename, engine="siesta",
+                                     script_name=script_name)
         )
 
         env_prefix = (
@@ -517,6 +849,16 @@ def render_run_wrapper(script_path: Path, *,
             f'echo "  Launch mode   : $_launch_note"\n'
             f'echo "  Threading     : OMP_NUM_THREADS={resolved_omp}, '
             f'OPENBLAS=1, MKL=1"\n'
+            # ---- Mode + constraints (post-cold, post-run-index) ----
+            # Surfaces the silent-warm-restart class explicitly so the
+            # user can see whether the engine is starting clean,
+            # resuming from prior state, or being asked to honor
+            # frozen-atom constraints.  Both lines are read from the
+            # on-disk script + restart files at runtime so a manual
+            # .fdf edit shows the EDITED state, not the generation-
+            # time snapshot (the "what you see is what runs" rule).
+            f'echo "  Mode          : $_mode"\n'
+            f'echo "  Constraints   : $_constraints"\n'
             f'echo "  Command       : $_launch_cmd {script_name} > $_out_file"\n'
             f'echo "  Stdout        : $_out_file (live; tail -f to follow)"\n'
             f'echo "========================================="\n'
@@ -542,7 +884,7 @@ def render_run_wrapper(script_path: Path, *,
             f'    case "$1" in\n'
             f"        -h|--help)\n"
             f'            cat <<USAGE\n'
-            f'Usage: bash $(basename "$0") [--continue|-c] [--force|-f] [-h]\n'
+            f'Usage: bash $(basename "$0") [--continue|-c] [--force|-f] [--cold] [-h]\n'
             f"\n"
             f"  --continue, -c   resume from prior run.  Scans existing\n"
             f"                   -runN.pyscf.log files and writes\n"
@@ -555,7 +897,13 @@ def render_run_wrapper(script_path: Path, *,
             f"  --force, -f      start over from -run0 even if prior\n"
             f"                   runs exist.  Old files are NOT deleted;\n"
             f"                   the existing -run0.pyscf.log is\n"
-            f"                   overwritten.\n"
+            f"                   overwritten.  Prior ``.chk`` warm-start\n"
+            f"                   files STAY on disk -- PySCF still loads.\n"
+            f"  --cold,\n"
+            f"  --from-scratch   move ``.chk`` warm-start files into a\n"
+            f"                   timestamped backup dir BEFORE running.\n"
+            f"                   Use when the prior run was bad and its\n"
+            f"                   chkfile would corrupt this run.\n"
             f"  -h               this help.\n"
             f"USAGE\n"
             f"            exit 0 ;;\n"
@@ -570,6 +918,9 @@ def render_run_wrapper(script_path: Path, *,
             # apart from SIESTA's (which keeps ``.out``).  Per
             # docs/tabs/architecture.md § 7 (Phase C, 2026-06-07).
             + _run_index_resolver(basename, ext=".pyscf.log")
+            + _cold_restart_aside_block(basename, engine="pyscf")
+            + _runtime_status_block(basename, engine="pyscf",
+                                     script_name=script_name)
         )
 
         # Same human-readable banner pattern as SIESTA -- the script
@@ -578,13 +929,17 @@ def render_run_wrapper(script_path: Path, *,
         env_prefix = (
             pyscf_args_block
             + f'echo "===== molbuilder PySCF run-wrapper ====="\n'
-            f'echo "  Date    : $(date -Iseconds)"\n'
-            f'echo "  Host    : $(hostname)"\n'
-            f'echo "  Cwd     : $(pwd)"\n'
-            f'echo "  Conda   : ${{CONDA_DEFAULT_ENV:-?}}"\n'
-            f'echo "  Command : python {script_name} > $_out_file"\n'
-            f'echo "  Stdout  : $_out_file"\n'
-            f'echo "  Logs    : see <basename>.molwatch.log (script writes its own)"\n'
+            f'echo "  Date        : $(date -Iseconds)"\n'
+            f'echo "  Host        : $(hostname)"\n'
+            f'echo "  Cwd         : $(pwd)"\n'
+            f'echo "  Conda       : ${{CONDA_DEFAULT_ENV:-?}}"\n'
+            # ---- Mode + constraints (mirrors SIESTA; see siesta
+            # banner above for the rationale). ----
+            f'echo "  Mode        : $_mode"\n'
+            f'echo "  Constraints : $_constraints"\n'
+            f'echo "  Command     : python {script_name} > $_out_file"\n'
+            f'echo "  Stdout      : $_out_file"\n'
+            f'echo "  Logs        : see <basename>.molwatch.log (script writes its own)"\n'
             f'echo "========================================"\n'
             f"\n"
         )

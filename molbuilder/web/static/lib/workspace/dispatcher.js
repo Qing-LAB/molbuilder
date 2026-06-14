@@ -1086,7 +1086,20 @@
     // see tests/test_workspace_dispatcher_js.py for the canonical
     // setup.
     root.molbuilder = root.molbuilder || {};
-    root.molbuilder.workspace = api;
+    // MUST merge into any pre-existing ``workspace`` namespace, not
+    // replace it: ``_canvas-state-impl.js`` runs BEFORE this file
+    // and mounts itself on ``workspace._canvasState``.  A plain
+    // ``= api`` assignment here would silently clobber that mount,
+    // and then this dispatcher's first ``installStructure`` call
+    // would throw "canvas store not available on this page" — the
+    // exact symptom users see on /molbuilder when Generate or Load
+    // fail with "Could not reach /api/build/molecule: workspace
+    // dispatcher: canvas store not available on this page".
+    // Preserve `_canvasState` (and any other private slot a future
+    // impl mounts here) by merging the dispatcher's public API into
+    // whatever the impls already set.
+    root.molbuilder.workspace = Object.assign(
+        root.molbuilder.workspace || {}, api);
     if (_runtime() && typeof _runtime().register === "function") {
         _runtime().register("workspace", api);
     }

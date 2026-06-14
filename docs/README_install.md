@@ -116,6 +116,29 @@ Notes:
 
 Run each block from any base shell with `conda` available.
 
+Once the host env exists, every other env is also installable through
+the CLI (single entry point + machine-readable recipe registry):
+
+```bash
+# From any shell with conda available:
+bash scripts/install-env.sh --list                  # show all recipes
+bash scripts/install-env.sh --doctor                # full health report
+bash scripts/install-env.sh --dry-run molbuilder-siesta   # print the plan
+bash scripts/install-env.sh molbuilder-siesta             # install it
+
+# From inside the activated host env:
+python -m molbuilder envs list
+python -m molbuilder envs doctor
+python -m molbuilder envs install molbuilder-siesta --dry-run
+python -m molbuilder envs install molbuilder-siesta
+```
+
+The CLI reads recipes from `molbuilder/envs/recipes.py`; the prose
+blocks below remain the human-readable source of truth, and a
+consistency test (`tests/test_envs_readme_consistency.py`) asserts
+the two stay in sync.  Install is idempotent: re-running picks up
+new pip dependencies without disturbing the env.
+
 ### Host env (required)
 
 ```bash
@@ -251,7 +274,11 @@ Verify:
 
 ```bash
 conda run -n molbuilder-MDtools tleap -f /dev/null < /dev/null
-# Expect: tleap banner + a "source leaprc.protein.ff14SB" hint or similar; exits 0
+# Expect: the banner "Welcome to LEaP!" followed by "(no leaprc in
+# search path)".  tleap exits 1 (no script to run), which is normal
+# and not a failure -- the banner itself proves the env is healthy.
+# `molbuilder envs doctor` performs the same check via the
+# `verify_ignore_exit_code` flag on the recipe.
 ```
 
 ### Customising env names via `molbuilder.json`

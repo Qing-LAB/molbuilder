@@ -1,28 +1,29 @@
-"""L2 Node test: hide-frozen-row visibility transition.
+"""L2 Node test: hide-frozen-row visibility CONTRACT.
 
-Pins the contract that ``refreshHideFrozenAvailability`` (in
-``lib/trajectory/core.js``) drives the ``#hide-frozen-row``
-checkbox's visibility based on ``state.data.runtime_info.
-frozen_atoms``:
+2026-06-14 contract change: the "Hide frozen atoms" row is ALWAYS
+visible.  UI presence is not data.  The control's PRESENCE is a
+stable affordance the user can build muscle memory around; only its
+EFFECT depends on data (when there are no frozen atoms, clicking the
+checkbox is a no-op).
 
-  * non-empty array  → row.hidden = false
-  * empty array      → row.hidden = true
-  * missing field    → row.hidden = true
-  * row missing      → silent no-op (defensive)
+Pre-fix this test pinned the OPPOSITE behaviour -- the row was
+hidden when ``frozen_atoms`` was empty / missing.  That contract
+caused the row to silently vanish every time the parser failed to
+surface indices (which it did on every wrapper-launched .out
+because of the filename-pairing bug) and broke users' muscle memory
+on constraint-free runs.  See user feedback 2026-06-14: ``it is a
+fucking UI`` -- meaning UI affordances should not appear and
+disappear based on data shape.
 
-The original 2026-06-14 user-reported bug had three layers
-contributing — the CSS ``[hidden]`` override (separate test:
-``test_css_hidden_attribute_audit.py``), the SIESTA parser not
-populating ``frozen_atoms`` without a sidecar (separate test:
-``test_siesta_fdf_constraints.py``), and the JS state-machine that
-drives the visibility from ``frozen_atoms``.  This file covers the
-third layer end-to-end so a regression in any of the four code
-paths above surfaces immediately at CI time.
-
-The trajectory module is an IIFE — the function under test is
-closure-private.  We extract its source via regex (same pattern as
-``test_trajectory_status_js.py::_classifyStopReason``) and run it
-under Node with stubbed ``$`` + ``state`` + ``applyHideFrozen``.
+What ``refreshHideFrozenAvailability`` does now:
+  * Row visibility is template-owned: ``hidden`` attribute is gone.
+    The JS NEVER touches ``row.hidden``.
+  * When ``frozen_atoms`` is empty / missing AND the checkbox is
+    checked, un-check it (so the user doesn't see a stale "filter
+    on" state with nothing to filter) and call ``applyHideFrozen()``
+    once to clear any leftover overlay.
+  * When ``frozen_atoms`` is non-empty, the function is a no-op
+    (the user's checkbox state is preserved).
 """
 
 from __future__ import annotations
@@ -39,28 +40,21 @@ pytestmark = pytest.mark.module
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE = ROOT / "molbuilder/web/static/lib/trajectory/core.js"
+TEMPLATE = (
+    ROOT / "molbuilder/web/templates/_trajectory_inspector.html"
+)
 
 
 def _extract_fn_source(name: str) -> str:
-    """Extract the literal source of a top-level function inside
-    the trajectory module's IIFE.  Walks brace-depth from
-    ``function <name>`` to the matching ``}`` at depth 0.
-
-    Same pattern the embed-handle invariant tests use; works
-    because the module sticks to a consistent 4-space-indented
-    top-level layout.
-    """
     src = MODULE.read_text(encoding="utf-8")
-    start = src.find(f"function {name}(")
+    needle = f"    function {name}("
+    start = src.find(needle)
     if start < 0:
         pytest.fail(
-            f"Could not find ``function {name}(`` in "
-            f"{MODULE.relative_to(ROOT)}.  Either the function "
-            f"was renamed or this test's parser needs updating."
+            f"Could not find ``    function {name}(`` in "
+            f"{MODULE.relative_to(ROOT)}."
         )
     open_brace = src.find("{", start)
-    if open_brace < 0:
-        pytest.fail(f"No opening brace after function {name}")
     depth = 0
     i = open_brace
     while i < len(src):
@@ -75,76 +69,45 @@ def _extract_fn_source(name: str) -> str:
     pytest.fail(f"Unbalanced braces in function {name}")
 
 
-def _run_with_state(
-    frozen_atoms: list[int] | None,
+def _run_with_frozen(
+    frozen,
     *,
-    row_exists: bool = True,
-    cb_starts_checked: bool = False,
-) -> dict[str, object]:
-    """Build a Node program that stubs the closure dependencies
-    (``$``, ``state``, ``applyHideFrozen``) the way the trajectory
-    module's IIFE would have populated them, then evaluates the
-    extracted ``_frozenSet`` + ``refreshHideFrozenAvailability``
-    sources and reports the resulting ``row.hidden`` /
-    ``cb.checked`` state plus a count of how many times
-    ``applyHideFrozen`` was called.
-
-    Returns the parsed JSON observation.
-    """
+    row_present: bool = True,
+    cb_present: bool = True,
+    cb_checked: bool = False,
+):
     node = shutil.which("node")
     if node is None:
         pytest.skip("node not available")
-
-    fn_frozen_set = _extract_fn_source("_frozenSet")
-    fn_refresh    = _extract_fn_source("refreshHideFrozenAvailability")
-
-    # Build runtime_info.  ``None`` → no field; empty list → field
-    # is present but empty (different code path through _frozenSet).
-    runtime_info: dict[str, object] = {}
-    if frozen_atoms is not None:
-        runtime_info["frozen_atoms"] = frozen_atoms
-
-    state_payload = {
-        "data": {
-            "runtime_info": runtime_info,
-        },
-    }
-
+    fn_src = _extract_fn_source("refreshHideFrozenAvailability")
     bootstrap = f"""
-        // ===== Closure dependencies the trajectory module would
-        //       have populated; we stub them here. =====
-        const state = {json.dumps(state_payload)};
-        let _applyCalls = 0;
-        function applyHideFrozen() {{ _applyCalls += 1; }}
+        const row = {("{ hidden: false, _id: 'row' }"
+                      if row_present else "null")};
+        const cb  = {("{ checked: " + ("true" if cb_checked else "false")
+                      + ", _id: 'cb' }" if cb_present else "null")};
+        function $(id) {{
+            if (id === 'hide-frozen-row') return row;
+            if (id === 'hide-frozen')     return cb;
+            return null;
+        }}
+        const _frozen = {json.dumps(frozen)};
+        function _frozenSet() {{
+            if (_frozen === null || _frozen === undefined) return null;
+            return new Set(_frozen);
+        }}
+        let applyHideFrozenCalls = 0;
+        function applyHideFrozen() {{ applyHideFrozenCalls += 1; }}
 
-        // Mock DOM: a single ``getElementById``-like lookup.  Only
-        // the two ids the function touches need stubs.
-        const dom = {{
-            "hide-frozen-row": {json.dumps(
-                {"hidden": False, "_id": "hide-frozen-row"}
-                if row_exists else None
-            )},
-            "hide-frozen":     {json.dumps(
-                {"checked": cb_starts_checked, "_id": "hide-frozen"}
-            )},
-        }};
-        function $(id) {{ return dom[id] || null; }}
+        {fn_src}
 
-        // ===== Extracted closure-private functions =====
-        {fn_frozen_set}
-
-        {fn_refresh}
-
-        // ===== Drive the test scenario =====
         refreshHideFrozenAvailability();
+
         console.log(JSON.stringify({{
-            row_hidden:     dom["hide-frozen-row"]
-                              ? dom["hide-frozen-row"].hidden : null,
-            cb_checked:     dom["hide-frozen"].checked,
-            apply_calls:    _applyCalls,
+            row_hidden_after: row ? row.hidden : null,
+            cb_checked_after: cb ? cb.checked : null,
+            apply_calls:       applyHideFrozenCalls,
         }}));
     """
-
     proc = subprocess.run(
         [node, "--input-type=commonjs", "-e", bootstrap],
         capture_output=True, text=True, timeout=10,
@@ -158,100 +121,80 @@ def _run_with_state(
 
 
 # --------------------------------------------------------------------- #
-#  Contract: non-empty frozen_atoms → row visible                        #
+#  Architectural contract: presence is data-independent                  #
 # --------------------------------------------------------------------- #
 
 
-def test_non_empty_frozen_atoms_shows_the_row():
-    """A trajectory whose runtime_info.frozen_atoms carries 1+
-    indices is the case the toggle is FOR — the row reveals so
-    the user can click the checkbox."""
-    out = _run_with_state(frozen_atoms=[3, 5, 7])
-    assert out["row_hidden"] is False
-    # The function doesn't touch the checkbox or call
-    # applyHideFrozen on this branch (the toggle just becomes
-    # available; the user activates it themselves).
-    assert out["cb_checked"] is False
-    assert out["apply_calls"] == 0
+class TestRowAlwaysVisibleContract:
+    """The row's PRESENCE is unconditional.  Pins both the template
+    + the JS so neither side can re-introduce the visibility gate."""
 
+    def test_template_does_not_ship_hidden_on_row(self):
+        html = TEMPLATE.read_text(encoding="utf-8")
+        m = re.search(
+            r'<label[^>]*id="hide-frozen-row"[^>]*>',
+            html,
+        )
+        assert m is not None, (
+            "could not find <label id=\"hide-frozen-row\"> in "
+            "the template"
+        )
+        opening = m.group(0)
+        assert " hidden" not in opening and "hidden=" not in opening, (
+            f"#hide-frozen-row must NOT ship with the ``hidden`` "
+            f"attribute -- the row is ALWAYS visible per the "
+            f"2026-06-14 UI contract.  Opening tag: {opening!r}"
+        )
 
-def test_non_empty_with_single_atom_shows_the_row():
-    """Boundary: even one frozen atom counts."""
-    out = _run_with_state(frozen_atoms=[42])
-    assert out["row_hidden"] is False
-
-
-# --------------------------------------------------------------------- #
-#  Contract: empty frozen_atoms → row hidden                             #
-# --------------------------------------------------------------------- #
-
-
-def test_empty_frozen_atoms_hides_the_row():
-    """Empty array → toggle has nothing to gate; hide the row so
-    the user doesn't click a non-functional control."""
-    out = _run_with_state(frozen_atoms=[])
-    assert out["row_hidden"] is True
-    assert out["apply_calls"] == 0
-
-
-def test_missing_frozen_atoms_field_hides_the_row():
-    """The trajectory has no frozen_atoms field at all (no sidecar,
-    no .fdf with Constraints).  Same outcome as empty: hide."""
-    out = _run_with_state(frozen_atoms=None)
-    assert out["row_hidden"] is True
+    def test_refresh_never_writes_row_hidden(self):
+        """The JS function must NEVER set ``row.hidden``.  Pre-fix
+        it wrote ``row.hidden = true / false`` to gate visibility
+        on data; new contract: presence is data-independent."""
+        fn = _extract_fn_source("refreshHideFrozenAvailability")
+        assert "row.hidden" not in fn, (
+            f"refreshHideFrozenAvailability must NOT touch "
+            f"``row.hidden``; the row's visibility is owned by "
+            f"the template and is unconditional.  Function body:\n"
+            f"{fn}"
+        )
 
 
 # --------------------------------------------------------------------- #
-#  Contract: row missing from DOM → silent no-op                         #
+#  Runtime behaviour: stale checkbox cleanup                             #
 # --------------------------------------------------------------------- #
 
 
-def test_row_missing_from_dom_silent_no_op():
-    """If the partial DOM hasn't injected ``#hide-frozen-row`` yet
-    (defensive guard), the function returns without throwing —
-    it must not crash trajectory mount."""
-    out = _run_with_state(frozen_atoms=[1, 2, 3], row_exists=False)
-    # No row → row_hidden in our mock is null (the element didn't
-    # exist).  The fact that the function returned at all (i.e.,
-    # the Node script didn't fail) is the assertion.
-    assert out["row_hidden"] is None
+class TestRefreshBehaviour:
+    """When frozen_atoms goes empty AND the checkbox was checked,
+    un-check it so the user doesn't see a stale ``filter on`` state
+    with nothing to filter.  Everything else is a no-op."""
 
+    def test_non_empty_frozen_atoms_is_a_noop(self):
+        out = _run_with_frozen([5, 7, 9], cb_checked=True)
+        assert out["row_hidden_after"] is False
+        assert out["cb_checked_after"] is True
+        assert out["apply_calls"] == 0
 
-# --------------------------------------------------------------------- #
-#  Contract: when row hides, a previously-checked checkbox resets        #
-# --------------------------------------------------------------------- #
+    def test_non_empty_with_unchecked_box_is_noop(self):
+        out = _run_with_frozen([5, 7, 9], cb_checked=False)
+        assert out["row_hidden_after"] is False
+        assert out["cb_checked_after"] is False
+        assert out["apply_calls"] == 0
 
+    def test_empty_frozen_atoms_unchecks_stale_box(self):
+        out = _run_with_frozen([], cb_checked=True)
+        assert out["row_hidden_after"] is False
+        assert out["cb_checked_after"] is False
+        assert out["apply_calls"] == 1
 
-def test_hiding_the_row_clears_a_stale_checked_state():
-    """Edge case: user had hide-frozen ON for a previous trajectory
-    with frozen atoms.  They open a different trajectory with no
-    frozen atoms.  Hide the row AND uncheck the checkbox so the
-    overlay state matches reality (and apply the hide overlay's
-    empty payload via applyHideFrozen so the viewer clears any
-    lingering hidden-atoms overlay)."""
-    out = _run_with_state(
-        frozen_atoms=[], cb_starts_checked=True,
-    )
-    assert out["row_hidden"] is True
-    assert out["cb_checked"] is False, (
-        "checkbox must be unchecked when the row hides — "
-        "otherwise a remount with new data would keep the "
-        "stale checked state visible in DOM"
-    )
-    assert out["apply_calls"] == 1, (
-        "applyHideFrozen() must fire on uncheck so the embed's "
-        "overlay clears the previously-hidden atoms"
-    )
+    def test_empty_with_already_unchecked_box_is_noop(self):
+        out = _run_with_frozen([], cb_checked=False)
+        assert out["row_hidden_after"] is False
+        assert out["cb_checked_after"] is False
+        assert out["apply_calls"] == 0
 
-
-def test_already_unchecked_does_not_trigger_apply():
-    """Symmetric case to the cleanup test: when the row hides AND
-    the checkbox was already unchecked, the function shouldn't
-    spuriously fire applyHideFrozen — no overlay change is needed.
-    """
-    out = _run_with_state(
-        frozen_atoms=[], cb_starts_checked=False,
-    )
-    assert out["row_hidden"] is True
-    assert out["cb_checked"] is False
-    assert out["apply_calls"] == 0
+    def test_missing_frozen_field_behaves_like_empty(self):
+        out = _run_with_frozen(None, cb_checked=True)
+        assert out["row_hidden_after"] is False
+        assert out["cb_checked_after"] is False
+        assert out["apply_calls"] == 1

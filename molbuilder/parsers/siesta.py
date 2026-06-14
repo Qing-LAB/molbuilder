@@ -25,6 +25,7 @@ Tolerant to in-progress + malformed files (Level 3 contract,
 
 from __future__ import annotations
 
+import math
 import re
 from typing import Any, Dict, List, Optional
 
@@ -94,28 +95,82 @@ _SCF_PREFIX_RE = re.compile(r"^\s*scf:\s*(\d+)\s+(.+)$", re.IGNORECASE)
 
 # Defensive separator-inserter for SIESTA's fixed-width SCF columns.
 # When two adjacent columns pack so tight that no whitespace separates
-# them (the dHmax-and-Ef_dn case in spin-polarized output where both
-# values fill their fields), the naive ``split()`` captures them as
-# one token like ``-1.929956131.029438``.  We detect SIESTA's f10.6-
-# style 6-decimal field signature (``.NNNNNN`` immediately followed by
-# a digit, which can only be the start of the next column) and insert
-# a separator.  This is a FORMATTING quirk, NOT value overflow; the
-# values themselves are fine, the issue is the field width.  Re-using
-# the helper from the early 2026-05-28 patch with a more honest name.
-_SCF_TIGHT_PACK_RE = re.compile(r"(\.\d{6})(?=\d)")
+# them, the naive ``split()`` captures them as one token.  Two adjacency
+# cases the regex catches:
+#
+#   * column NEXT to a fine column -- e.g. ``-1.929956131.029438`` --
+#     both values fine, fields just touched (dHmax-and-Ef_dn case
+#     fixed 2026-05-28).
+#   * column NEXT to an overflowed column -- e.g. ``6.401317**********``
+#     -- fine value glued to a Fortran field-width overflow (the
+#     all-asterisks indicator).  Without splitting here, the joint
+#     token fails ``float()`` AND ``_parse_fortran_float`` (which
+#     only matches all-asterisks), nuking the row.  Added 2026-06-14
+#     after the BDT-stage-2 divergent-SCF report.
+#
+# We detect SIESTA's f10.6-style 6-decimal field signature
+# (``.NNNNNN`` followed immediately by either a digit OR an asterisk;
+# both can only be the start of the next column) and insert a space.
+# This is a FORMATTING quirk on the SIESTA side; we recover the
+# columns without altering any values.
+_SCF_TIGHT_PACK_RE = re.compile(r"(\.\d{6})(?=[\d*])")
+
+# Fortran fixed-width overflow indicator.  When a value can't fit its
+# format field (e.g. ``f10.6`` for a magnitude > 999), Fortran prints
+# the field as all asterisks (``**********``).  This is DISTINCT from
+# the tight-pack case (where the values are fine but the columns
+# touch): here the value itself was lost in the I/O layer; the SCF
+# cycle is most likely diverging.  We tokenise these as NaN so the
+# rest of the row's data is still recoverable -- the user CAN still
+# see WHEN the divergence started (from the early healthy cycles) and
+# WHICH column blew first; dropping the row entirely would erase that
+# diagnostic.  Pattern: a contiguous run of 2+ asterisks (1 asterisk
+# is too generic; Fortran always emits the full field width, which
+# is always >= 2 for any column we care about).
+_FORTRAN_OVERFLOW_RE = re.compile(r"^\*{2,}$")
+
+
+def _parse_fortran_float(tok: str) -> float:
+    """``float(tok)`` but with one Fortran-only escape hatch.
+
+    A token of all asterisks (``**********``) is what Fortran writes
+    when a value can't fit its fixed-width format field.  In that
+    case the magnitude is gone but the cycle around it is still
+    interesting (often diagnostic of divergence).  Return NaN so the
+    caller can keep parsing the row instead of dropping it.  Every
+    other unparseable token still raises ``ValueError`` -- this is
+    NOT a permissive ``try: float ... except: NaN`` blanket.
+    """
+    if _FORTRAN_OVERFLOW_RE.match(tok):
+        return float("nan")
+    return float(tok)
 
 
 def _parse_scf_floats(rest: str) -> Optional[List[float]]:
     """Tokenize the post-``scf: <iscf>`` part of an SCF line into
     floats.  Returns the list, or None if any token can't be parsed.
 
-    Handles SIESTA's tight-packed fixed-width fields (no whitespace
-    between adjacent columns when both values fill their widths)
-    by inserting a separator at the f10.6 6-decimal signature.
+    Handles two SIESTA-side formatting quirks:
+
+      * **Tight-packed columns** -- no whitespace between adjacent
+        f10.6 fields when both values fill their widths.  Resolved
+        by ``_SCF_TIGHT_PACK_RE`` which inserts a separator at the
+        6-decimal signature.
+      * **Fortran field overflow** -- a value too large for its field
+        prints as ``**********``.  The cycle is most likely diverging;
+        the asterisk token is parsed as NaN via
+        ``_parse_fortran_float`` so the row's other columns (early
+        ones with healthy magnitudes) survive and the divergence
+        diagnostic stays visible in the Results tab.
+
+    Returns ``None`` only on a genuinely unparseable token (neither
+    a real float nor a Fortran-overflow indicator) -- those are real
+    parser bugs we want surfaced as a ParseWarning, not silently
+    coerced.
     """
     fixed = _SCF_TIGHT_PACK_RE.sub(r"\1 ", rest)
     try:
-        return [float(t) for t in fixed.split()]
+        return [_parse_fortran_float(t) for t in fixed.split()]
     except ValueError:
         return None
 
@@ -405,17 +460,30 @@ class SiestaParser(TrajectoryParser):
         # is the real "did we converge?" signal.  Parse + propagate.
         step_max_force_constrained: Optional[float] = None
         step_forces: List[List[float]] = []
+        # 2026-06-14: SIESTA emits ``siesta: Etot = <value>`` in its
+        # ``Program's energy decomposition`` block right after the
+        # initial DM is built but BEFORE the first SCF cycle of
+        # each geometry step.  We capture it so the Results-tab
+        # plot has a data point during the brief "DM built, SCF
+        # not yet started" window of a fresh run -- otherwise the
+        # plot stays blank until the first ``scf: 1`` line lands
+        # (10-60 s for a 200-atom system).  Same idempotent fall-
+        # back as the SCF-cycle path: only consulted when the
+        # canonical ``E_KS(eV) =`` line hasn't been written yet
+        # AND no SCF cycle exists either.
+        step_initial_etot: Optional[float] = None
 
         def commit() -> None:
             nonlocal step_frame, step_energy, step_max_force, step_forces
             nonlocal step_max_force_constrained
-            nonlocal current_scf, prev_E_KS
+            nonlocal current_scf, prev_E_KS, step_initial_etot
             if not step_frame:
                 step_frame = None
                 step_energy = None
                 step_max_force = None
                 step_max_force_constrained = None
                 step_forces = []
+                step_initial_etot = None
                 # Don't reset current_scf here -- a torn frame at EOF
                 # has no Frame to attach to, but otherwise current_scf
                 # may legitimately belong to a NOT-YET-committed frame
@@ -429,10 +497,63 @@ class SiestaParser(TrajectoryParser):
             struct = Structure(elements=elements, positions=positions)
             forces_arr = (np.asarray(step_forces, dtype=float)
                           if step_forces else None)
+            # 2026-06-14: when SIESTA hasn't yet emitted
+            # ``siesta: E_KS(eV) = ...`` (the first geom step is
+            # still mid-SCF), fall back to the most recent FINITE
+            # energy from the SCF cycle history.  Otherwise the
+            # Results-tab energy plot is blank during the entire
+            # first geometry step -- which for a heavy system (like
+            # BDT-Au-junction) can be many tens of minutes.
+            #
+            # Robustness rules (each one was a real edge case
+            # observed in production .out files, NOT speculative):
+            #
+            #   * ``step_energy is not None``: nothing to fall back
+            #     to, frame.energy is canonical -- skip the fallback
+            #     entirely.
+            #   * ``current_scf`` empty / None: very first run,
+            #     SIESTA hasn't even started cycling.  Leave None;
+            #     plot draws nothing for this frame (correct).
+            #   * Last cycle's energy is None / not numeric: defen-
+            #     sive against a parser-side promotion failure.
+            #   * Last cycle's energy is NaN / inf: ``_parse_fortran
+            #     _float`` returns NaN on a SIESTA fixed-width over-
+            #     flow.  Skip over those and keep walking backward
+            #     until we find a finite value.  The user's last-
+            #     known-good energy is more useful than NaN, and the
+            #     overflow itself is visible elsewhere (the SCF cycle
+            #     plot + the dHmax column).
+            #   * All cycles infinite/NaN: leave None, plot blank.
+            # Energy resolution order (each lower step is a fallback
+            # for the one above):
+            #
+            #   1. canonical ``E_KS(eV) = ...`` line (step_energy).
+            #   2. most recent FINITE SCF-cycle energy.
+            #   3. preamble ``siesta: Etot = ...`` (post-initial-DM,
+            #      pre-first-SCF).  Same numeric value SIESTA will
+            #      use for scf:1 once it appears, so the plot is
+            #      continuous when scf:1 lands a few seconds later.
+            #
+            # The three sources are listed from "most converged" to
+            # "least converged"; we use the strongest available
+            # signal.  None of them is invented -- each is a number
+            # SIESTA itself wrote into the .out.
+            frame_energy = step_energy
+            if frame_energy is None and current_scf:
+                for cycle in reversed(current_scf):
+                    candidate = cycle.get("energy")
+                    if (isinstance(candidate, (int, float))
+                            and math.isfinite(candidate)):
+                        frame_energy = float(candidate)
+                        break
+            if (frame_energy is None
+                    and step_initial_etot is not None
+                    and math.isfinite(step_initial_etot)):
+                frame_energy = step_initial_etot
             frames.append(Frame(
                 structure   = struct,
                 step_index  = len(frames),
-                energy      = step_energy,
+                energy      = frame_energy,
                 forces      = forces_arr,
                 max_force   = step_max_force,
                 max_force_constrained = step_max_force_constrained,
@@ -443,6 +564,7 @@ class SiestaParser(TrajectoryParser):
             step_max_force = None
             step_max_force_constrained = None
             step_forces = []
+            step_initial_etot = None
             current_scf = []
             prev_E_KS = None
 
@@ -553,10 +675,16 @@ class SiestaParser(TrajectoryParser):
                 # so re-feed through scan rules.
                 return END_BUBBLE
             try:
-                x = float(parts[0]); y = float(parts[1]); z = float(parts[2])
+                x = _parse_fortran_float(parts[0])
+                y = _parse_fortran_float(parts[1])
+                z = _parse_fortran_float(parts[2])
             except ValueError:
                 # Same: the line that ends a torn outcoor block may
                 # be ``>> End of run`` -- re-feed so that rule fires.
+                # ``_parse_fortran_float`` returns NaN for the
+                # all-asterisks Fortran overflow case, so this branch
+                # only fires on a genuine section-end / format glitch,
+                # not on an overflowed numeric column.
                 return END_BUBBLE
             step_frame.append([parts[-1], x, y, z])
             return CONTINUE
@@ -578,10 +706,14 @@ class SiestaParser(TrajectoryParser):
                 # the next section header.
                 return END_BUBBLE
             try:
-                row = [float(parts[0]), float(parts[1]), float(parts[2])]
+                row = [_parse_fortran_float(parts[0]),
+                       _parse_fortran_float(parts[1]),
+                       _parse_fortran_float(parts[2])]
             except ValueError:
                 # Same: a non-vector line ending the cell block may
-                # be the next section header.
+                # be the next section header.  Fortran-overflow
+                # columns parse as NaN via _parse_fortran_float, so
+                # this branch fires only on a real format mismatch.
                 return END_BUBBLE
             pending_lattice.append(row)
             if len(pending_lattice) >= 3:
@@ -606,8 +738,16 @@ class SiestaParser(TrajectoryParser):
                 return END_BUBBLE
             try:
                 int(parts[0])  # atom index
-                fx = float(parts[1]); fy = float(parts[2]); fz = float(parts[3])
+                fx = _parse_fortran_float(parts[1])
+                fy = _parse_fortran_float(parts[2])
+                fz = _parse_fortran_float(parts[3])
             except ValueError:
+                # _parse_fortran_float NaN-ifies a ``**********``
+                # overflow column (likely on a divergent SCF where
+                # forces blow up), so this branch is "atom-index
+                # column isn't an int" or "next-section header
+                # mis-shapes the line" -- the genuine end-of-block
+                # cases that should re-feed through scan rules.
                 return END_BUBBLE
             step_forces.append([fx, fy, fz])
             return CONTINUE
@@ -617,11 +757,41 @@ class SiestaParser(TrajectoryParser):
         def _on_e_ks(line: str, line_no: int) -> None:
             nonlocal step_energy
             try:
-                step_energy = float(line.split("=", 1)[1].split()[0])
+                step_energy = _parse_fortran_float(
+                    line.split("=", 1)[1].split()[0])
             except (ValueError, IndexError) as exc:
                 _warn(line_no, line,
                       f"E_KS line: malformed value: {exc}",
                       category="energy")
+
+        # Initial-DM energy decomposition: SIESTA emits a block
+        #
+        #     siesta: Program's energy decomposition (eV):
+        #     siesta: Ebs     =   ...
+        #     ...
+        #     siesta: Etot    =   <value>
+        #     ...
+        #
+        # right after the initial DM is built but BEFORE the first
+        # SCF cycle of each geometry step.  ``Etot`` is the most
+        # useful number to surface as a fallback because it's
+        # exactly the value scf:1 will print a few seconds later
+        # (same numerical column).  Capturing it lets the Results-
+        # tab energy plot show a data point during the brief
+        # initialization window of a fresh run.  See the energy-
+        # resolution-order comment in commit().
+        def _on_initial_etot(line: str, line_no: int) -> None:
+            nonlocal step_initial_etot
+            try:
+                val = _parse_fortran_float(
+                    line.split("=", 1)[1].split()[0])
+                if math.isfinite(val):
+                    step_initial_etot = val
+            except (ValueError, IndexError):
+                # Malformed Etot in the decomposition block is rare
+                # and not worth a parser warning -- the SCF cycle
+                # fallback will pick up after first scf:.
+                pass
 
         # SCF column header: single-line.  Records the canonical
         # column layout for the upcoming ``scf:`` data rows.
@@ -717,7 +887,8 @@ class SiestaParser(TrajectoryParser):
         def _on_max_force(line: str, line_no: int) -> None:
             nonlocal step_max_force
             try:
-                step_max_force = float(line.strip().split()[1])
+                step_max_force = _parse_fortran_float(
+                    line.strip().split()[1])
             except (ValueError, IndexError) as exc:
                 _warn(line_no, line,
                       f"Max-force line: malformed value: {exc}",
@@ -726,7 +897,7 @@ class SiestaParser(TrajectoryParser):
         def _on_max_force_constrained(line: str, line_no: int) -> None:
             nonlocal step_max_force_constrained
             try:
-                step_max_force_constrained = float(
+                step_max_force_constrained = _parse_fortran_float(
                     line.strip().split()[1])
             except (ValueError, IndexError) as exc:
                 _warn(line_no, line,
@@ -832,6 +1003,16 @@ class SiestaParser(TrajectoryParser):
                 # Substring (not prefix): the marker sits mid-line.
                 start=contains_ci("siesta: e_ks(ev)"),
                 on_start=_on_e_ks,
+            ),
+            SectionRule(
+                name="initial_etot",
+                aliases=["siesta: Etot ="],
+                # Substring: the marker appears in the
+                # ``Program's energy decomposition`` block
+                # after the initial DM is built but before
+                # scf:1.  See _on_initial_etot docstring.
+                start=contains_ci("siesta: etot"),
+                on_start=_on_initial_etot,
             ),
             SectionRule(
                 name="forces",
@@ -1073,8 +1254,20 @@ class SiestaParser(TrajectoryParser):
         from ._sidecar import (
             read_frozen_atoms,
             read_frozen_atoms_from_siesta_fdf,
+            read_frozen_atoms_from_siesta_out,
         )
-        frozen_set = read_frozen_atoms(path)
+        # 2026-06-14 contract fix: read constraints from the .out's
+        # OWN ``siesta: Constraints applied in the following order:``
+        # echo as the primary source.  No filename heuristic needed
+        # because the data lives in the same file we're parsing.
+        # Fall back to sidecar -> paired .fdf only when the .out
+        # echo is absent.  Order matters: the .out is authoritative
+        # (SIESTA ran with whatever it parsed), the sidecar is
+        # user-edited, the .fdf is what was on disk at some point
+        # before the run.
+        frozen_set = read_frozen_atoms_from_siesta_out(path)
+        if not frozen_set:
+            frozen_set = read_frozen_atoms(path)
         if not frozen_set:
             frozen_set = read_frozen_atoms_from_siesta_fdf(path)
         if frozen_set:

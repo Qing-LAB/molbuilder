@@ -105,6 +105,131 @@ _FDF_POSITION_RANGE_RE = re.compile(
 )
 
 
+_RUN_INDEX_SUFFIX_RE = re.compile(r"-run\d+$")
+
+# SIESTA echoes its applied constraints directly into the .out --
+# that's the AUTHORITATIVE source of truth for "what atoms did
+# SIESTA actually freeze."  The format (verified against SIESTA v5
+# on the BDT-stage-1 .out):
+#
+#   siesta: Constraints applied in the following order:
+#   siesta: Constraint (20): pos
+#     [ 88 -- 107 ]
+#   siesta: Constraint (20): pos
+#     [ 108 -- 112, 188 -- 202 ]
+#   siesta: Constraint (10): pos
+#     [ 203 -- 212 ]
+#
+# Indices are 1-based, ranges are inclusive, comma-separated
+# multiple ranges per Constraint line.  We consume this section
+# in preference to ANY filename-paired .fdf because:
+#   * the .out is what the user is viewing; the data lives WITH
+#     the file the UI reads.
+#   * no filename heuristics (the prior pairing depended on
+#     ``-run<N>`` vs no-suffix and was fragile).
+#   * the .out's echo reflects what SIESTA ACTUALLY did, including
+#     any constraint resolution SIESTA did at parse time (range
+#     deduplication, etc.); the .fdf could differ from the .out
+#     if the user edited the .fdf post-run.
+_SIESTA_CONSTRAINTS_HEADER_RE = re.compile(
+    r"siesta:\s+Constraints\s+applied\s+in\s+the\s+following\s+order:",
+    re.IGNORECASE,
+)
+_SIESTA_CONSTRAINT_LINE_RE = re.compile(
+    r"^\s*siesta:\s+Constraint\s*\(\d+\)\s*:\s*pos\s*$",
+    re.IGNORECASE,
+)
+_SIESTA_CONSTRAINT_RANGES_RE = re.compile(
+    r"^\s*\[\s*(.+?)\s*\]\s*$"
+)
+_RANGE_PIECE_RE = re.compile(r"(\d+)\s*--\s*(\d+)")
+
+
+def read_frozen_atoms_from_siesta_out(out_path: str) -> Set[int]:
+    """Return 0-based frozen-atom indices from the .out's own
+    ``siesta: Constraints applied in the following order:`` echo.
+
+    AUTHORITATIVE source of truth for SIESTA constraints -- the
+    data lives in the same file the Results-tab UI reads, so
+    there's no filename-pairing heuristic between the .out and a
+    sibling .fdf.  Returns the empty set when the section is
+    absent (e.g., a run with no constraints, or a SIESTA build
+    that doesn't echo this -- unknown today, but cheap to skip
+    silently).
+
+    Replaces ``read_frozen_atoms_from_siesta_fdf`` as the primary
+    source.  The .fdf-paired helper stays as a fallback for the
+    rare case where the .out lacks the echo.
+
+    Added 2026-06-14 after the BDT incident: ``-run<N>.out``
+    files weren't pairing with ``<basename>.fdf`` so the "Hide
+    frozen atoms" toggle stayed hidden silently on EVERY wrapper-
+    launched run.  The .out-direct path makes filename pairing
+    irrelevant.
+    """
+    try:
+        with open(out_path, encoding="utf-8", errors="replace") as fh:
+            text = fh.read()
+    except OSError:
+        return set()
+
+    m = _SIESTA_CONSTRAINTS_HEADER_RE.search(text)
+    if m is None:
+        return set()
+
+    one_based: Set[int] = set()
+    # Walk the lines after the header.  Each Constraint line is
+    # followed by a ``[ ranges ]`` data line; non-conforming lines
+    # end the section.
+    after = text[m.end():]
+    lines = after.splitlines()
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        # Skip the "Constraint (N): pos" header line; the data
+        # line follows it.
+        if _SIESTA_CONSTRAINT_LINE_RE.match(line):
+            if i + 1 >= len(lines):
+                break
+            data_line = lines[i + 1]
+            m_data = _SIESTA_CONSTRAINT_RANGES_RE.match(data_line)
+            if m_data is None:
+                break
+            body = m_data.group(1)
+            # body = "88 -- 107" OR "108 -- 112, 188 -- 202" OR a
+            # comma-separated mix of singletons and ranges.
+            for part in body.split(","):
+                part = part.strip()
+                if not part:
+                    continue
+                m_range = _RANGE_PIECE_RE.match(part)
+                if m_range is not None:
+                    start, end = int(m_range.group(1)), int(m_range.group(2))
+                    if end >= start:
+                        for n in range(start, end + 1):
+                            one_based.add(n)
+                elif part.isdigit():
+                    one_based.add(int(part))
+                # Anything else: silently skip, don't poison the
+                # set with garbage.
+            i += 2
+            continue
+        # Blank line -- could be a section separator OR a layout
+        # gap inside the section.  Peek ahead one more line; if
+        # it's another Constraint header, continue; otherwise end.
+        stripped = line.strip()
+        if not stripped:
+            if (i + 1 < len(lines)
+                    and _SIESTA_CONSTRAINT_LINE_RE.match(lines[i + 1])):
+                i += 1
+                continue
+            break
+        # Anything else -- end of section.
+        break
+
+    return {n - 1 for n in one_based}
+
+
 def _siesta_fdf_path_for(traj_path: str) -> str | None:
     """Return the path of the SIESTA ``.fdf`` file most likely
     paired with ``traj_path``, or ``None`` if no candidate exists.
@@ -112,9 +237,23 @@ def _siesta_fdf_path_for(traj_path: str) -> str | None:
     The ``.out`` is SIESTA's stdout redirect; ``run.out`` typically
     pairs with ``run.fdf``.  The ``.molwatch.log`` is the molbuilder
     unified format; ``run.molwatch.log`` typically pairs with
-    ``run.fdf`` too.  When the stem strip leaves nothing identifiable,
-    fall back to any single ``*.fdf`` in the same directory (common
-    for one-run-per-folder layouts).
+    ``run.fdf`` too.
+
+    The molbuilder run wrapper writes outputs as
+    ``<basename>-run<N>.out`` (the run-index resolver in
+    ``runwrap.py``).  We strip BOTH the engine suffix AND any
+    ``-run<digits>`` tail so e.g. ``foo-stage1-run3.out`` pairs
+    with ``foo-stage1.fdf`` rather than only ``foo-stage1-run3
+    .fdf`` (which would never exist).  2026-06-14 fix: pre-strip
+    the Results-tab "Hide frozen atoms" toggle was hidden on EVERY
+    wrapper-launched run because the pairing fell through to the
+    directory-scan fallback and that requires exactly one ``.fdf``
+    in the folder -- which fails for staged-relaxation projects
+    that hold stage1.fdf, stage2.fdf, stage3.fdf side-by-side.
+
+    When the stem strip leaves nothing identifiable, fall back to
+    any single ``*.fdf`` in the same directory (still useful for
+    one-fdf-per-folder layouts).
     """
     base, fname = os.path.split(traj_path)
     if not base:
@@ -124,6 +263,9 @@ def _siesta_fdf_path_for(traj_path: str) -> str | None:
         if stem.endswith(suffix):
             stem = stem[: -len(suffix)]
             break
+    # Strip the wrapper's run-index suffix so
+    # ``foo-stage1-run3.out`` finds ``foo-stage1.fdf``.
+    stem = _RUN_INDEX_SUFFIX_RE.sub("", stem)
     # Same-stem candidate first.
     same_stem = os.path.join(base, f"{stem}.fdf")
     if os.path.isfile(same_stem):

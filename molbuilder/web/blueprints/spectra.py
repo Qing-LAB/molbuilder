@@ -341,16 +341,14 @@ def api_spectra_render():
         return jsonify({"ok": False,
                         "error": f"could not parse structure text: {exc}"}), 400
 
-    # Apply the sidecar (if any) so preflight's stage-3 guards see
-    # the real ``struct.frozen_atoms`` + ``struct.regions``.  A
-    # sidecar that exists but fails to apply (malformed, atom-count
-    # mismatch) is surfaced as a warn-severity Issue rather than
-    # silently dropped -- per the "no silent absorption" rule in
-    # design.md's three-stage contract.  No-sidecar-on-disk is a
-    # quiet success: there's nothing to honor.
-    sidecar_notice: Optional[str] = None
-    if structure_path:
-        sidecar_notice = _apply_sidecar_if_possible(struct, structure_path)
+    # 2026-06-14 contract update: prefer in-body labels (the
+    # viewer-is-truth contract).  When the body carries
+    # ``frozen_atoms`` / ``regions``, apply them directly with no
+    # disk re-read; fall back to disk sidecar only when neither
+    # in-body key is present (back-compat for the path-driven
+    # flow).  See _shared.apply_labels_to_struct docstring.
+    from ._shared import apply_labels_to_struct
+    sidecar_notice: Optional[str] = apply_labels_to_struct(struct, body)
 
     # Build SpectraConfig from form params.  Coercion failures
     # surface as an error-severity Issue rather than HTTP 400 so

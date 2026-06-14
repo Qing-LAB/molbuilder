@@ -162,6 +162,14 @@
     // Drives the Generate button's enable state and the
     // ``structure_path`` field on the /api/transport/render POST.
     var _currentStructureFile = "";
+    // 2026-06-14 viewer-is-truth contract Phase 2: cache the
+    // committed structure's labels (frozen atoms + transport
+    // regions) at Load time so the Generate POST ships them
+    // DIRECTLY.  Empty defaults = "no labels"; the server uses
+    // them verbatim and skips disk re-read.  See _shared.
+    // apply_labels_to_struct on the server.
+    var _currentFrozenAtoms = [];
+    var _currentRegions = {};
 
     function _refreshGenerateButton() {
         var btn = _$("transport-generate-btn");
@@ -232,6 +240,27 @@
                 }
                 _formDirty = false;
                 _currentStructureFile = f;
+                // Pull sidecar labels into in-memory state so the
+                // Generate POST can ship them directly (no path-
+                // pointer indirection on the server).  Helper
+                // always resolves; missing sidecar -> empty
+                // defaults.  Awaited so the commit-completion
+                // signal (UI Status + Generate button enable)
+                // happens AFTER labels are in state, not before.
+                var _sl = root.molbuilder && root.molbuilder.sidecarLabels;
+                if (_sl && typeof _sl.fetch === "function") {
+                    try {
+                        var labels = await _sl.fetch(f);
+                        _currentFrozenAtoms = labels.frozen_atoms || [];
+                        _currentRegions    = labels.regions || {};
+                    } catch (_) {
+                        _currentFrozenAtoms = [];
+                        _currentRegions    = {};
+                    }
+                } else {
+                    _currentFrozenAtoms = [];
+                    _currentRegions    = {};
+                }
                 _setCurrentStructureReadout(f);
                 _refreshGenerateButton();
                 _refreshAutoDetectButton();
@@ -497,7 +526,13 @@
                 headers: { "Content-Type": "application/json" },
                 body:    JSON.stringify({
                     params:         params,
+                    // structure_path stays for back-compat /
+                    // logging; in-body labels below are
+                    // authoritative per the 2026-06-14 viewer-is-
+                    // truth contract.
                     structure_path: _currentStructureFile,
+                    frozen_atoms:   _currentFrozenAtoms || [],
+                    regions:        _currentRegions || {},
                 }),
             })
                 .then(function (r) {

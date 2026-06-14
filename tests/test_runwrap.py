@@ -734,11 +734,17 @@ def test_pyscf_wrapper_emits_continue_args_block(tmp_path):
     script.write_text("# fake\n")
     wrapper_path = write_run_wrapper(script)
     text = wrapper_path.read_text()
-    assert "--continue|-c) _continue=1" in text
-    assert "--force|-f)    _force=1" in text
+    # 2026-06-14: ``--cold``/``--from-scratch`` joined the cross-
+    # engine arg set; the case labels are aligned in the bash
+    # source so the text now has a different whitespace pattern
+    # but the same per-flag substring.
+    assert "--continue|-c)" in text and "_continue=1" in text
+    assert "--force|-f)" in text and "_force=1" in text
+    assert "--cold|--from-scratch)" in text and "_cold=1" in text
     # The help is wired up.
     assert "--continue, -c" in text
     assert "--force, -f" in text
+    assert "--cold," in text and "--from-scratch" in text
 
 
 def test_pyscf_wrapper_continue_advances_run_index(tmp_path):

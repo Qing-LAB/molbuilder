@@ -320,9 +320,16 @@ def test_audit_actually_found_some_hidden_ids(dynamically_hidden_ids):
     (e.g., a regex that stops matching) goes unnoticed.  Assert
     that we found at least the canonical few ids we know JS hides.
     """
+    # 2026-06-14: ``hide-frozen-row`` and ``phase-indicator`` were
+    # removed -- neither is dynamically hidden by JS any more (the
+    # hide-frozen row is template-owned + always-visible; the
+    # phase-indicator's setHidden was refactored).  Use IDs the
+    # current scanner actually finds.  This sanity gate's purpose
+    # is to catch a regex regression in the scanner; any handful
+    # of real ids satisfies that.
     expected_some_of = {
-        "hide-frozen-row",   # trajectory inspector
-        "phase-indicator",   # spectra inspector
+        "fdf-output",        # /structure-optimization
+        "auto-detect-panel", # /structure-optimization
     }
     found = dynamically_hidden_ids & expected_some_of
     assert found, (
