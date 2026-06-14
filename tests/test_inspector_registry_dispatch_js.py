@@ -78,11 +78,17 @@ def _run_node(snippet: str) -> object:
         };
     """
     # The order matters: registry + factory before inspectors that
-    # consume them.
+    # consume them.  Match the live script-tag order in
+    # templates/results.html exactly — first-match-wins means a
+    # different order would mis-route compound extensions
+    # (.spectra.json → source instead of spectra).  Spectra inspector
+    # added 2026-06-13 alongside the 28-test demotion from
+    # test_inspector_registry_e2e.py.
     modules = [
         "lib/inspectors/registry.js",
         "lib/inspectors/_partial_inspector_factory.js",
         "lib/inspectors/trajectory.js",
+        "lib/inspectors/spectra.js",
         "lib/inspectors/structure.js",
         "lib/inspectors/source.js",
     ]
@@ -179,3 +185,217 @@ class TestRegistryDispatch:
         """Catch-all: filename the trajectory/structure matchers
         don't claim falls through to source."""
         assert _pick("/tmp/notes.txt") == "source"
+
+
+def _run_query(expr: str) -> object:
+    """Run a single expression against the registry and return its
+    JSON-encoded value."""
+    return _run_node(
+        f"console.log(JSON.stringify({expr}));"
+    )
+
+
+# --------------------------------------------------------------------- #
+#  Registry contract — was tests/test_inspector_registry_e2e.py         #
+#  ::TestRegistryContract (12 tests demoted 2026-06-13)                 #
+# --------------------------------------------------------------------- #
+
+
+class TestRegistryContract:
+    """The registry's register/pick/list contract.  All assertions
+    here previously required a Playwright bring-up just to call a
+    JS function and check its return; now they run under Node in
+    ~30 ms each."""
+
+    def test_four_inspectors_self_registered_on_load(self):
+        """Loading the four inspector modules registers each.  The
+        registry's list() must report all four by name."""
+        names = _run_query(
+            "window.molbuilder.inspectors.list().map(i => i.name)"
+        )
+        assert set(names) >= {"source", "structure", "trajectory", "spectra"}
+
+    def test_pick_returns_null_for_unknown_extension(self):
+        assert _pick("/projects/foo/spectrum/run.unknown_ext") is None
+
+    def test_pick_returns_null_for_empty_path(self):
+        assert _pick("") is None
+
+    def test_pick_dispatches_xyz_to_structure(self):
+        assert _pick("/projects/foo/struct/water.xyz") == "structure"
+
+    def test_pick_dispatches_pdb_to_structure(self):
+        assert _pick("/projects/foo/struct/peptide.pdb") == "structure"
+
+    def test_pick_dispatches_fdf_to_source(self):
+        assert _pick("/projects/foo/spectrum/run.fdf") == "source"
+
+    def test_pick_dispatches_compound_log_to_trajectory(self):
+        """Compound extension ``.molwatch.log`` MUST win over plain
+        ``.log`` (which source would also claim)."""
+        assert _pick("/projects/foo/spectrum/run.molwatch.log") == "trajectory"
+
+    def test_pick_dispatches_compound_json_to_spectra(self):
+        """Same first-match-wins invariant for ``.spectra.json`` vs
+        plain ``.json``."""
+        assert _pick("/projects/foo/spectrum/water.spectra.json") == "spectra"
+
+    def test_pick_dispatches_plain_json_to_source(self):
+        assert _pick("/projects/foo/user/config.json") == "source"
+
+    def test_register_rejects_missing_required_fields(self):
+        """The registry validates the Inspector interface at register
+        time — a missing field is a programming error, not a runtime
+        surprise."""
+        errs = _run_node(r"""
+            const out = [];
+            const cases = [
+                {},
+                {name: "x"},
+                {name: "x", displayName: "X"},
+                {name: "x", displayName: "X", match: () => true},
+            ];
+            for (const c of cases) {
+                try { window.molbuilder.inspectors.register(c); out.push(null); }
+                catch (e) { out.push(e.message || String(e)); }
+            }
+            console.log(JSON.stringify(out));
+        """)
+        assert all(msg is not None for msg in errs), (
+            f"registry accepted an incomplete inspector definition: {errs!r}"
+        )
+
+    def test_register_is_idempotent_on_name(self):
+        """Re-registering the same name replaces the previous entry
+        (the contract that lets a placeholder be swapped for a real
+        implementation without code changes elsewhere)."""
+        result = _run_node(r"""
+            const reg = window.molbuilder.inspectors;
+            const before = reg.list().length;
+            const fake = {
+                name: "source",
+                displayName: "Source TEST REPLACEMENT",
+                match: () => false,
+                mount: () => ({dispose: () => {}}),
+            };
+            reg.register(fake);
+            const after = reg.list().length;
+            const replaced = reg.list().find(i => i.name === "source");
+            console.log(JSON.stringify(
+                {before, after, displayName: replaced.displayName}));
+        """)
+        assert result["after"] == result["before"], (
+            "re-registering same name should NOT grow the list")
+        assert result["displayName"] == "Source TEST REPLACEMENT"
+
+
+# --------------------------------------------------------------------- #
+#  Picker contract — was tests/test_inspector_registry_e2e.py           #
+#  ::TestPickerContract (16 tests demoted 2026-06-13)                   #
+# --------------------------------------------------------------------- #
+
+
+def _pick_result(filename: str) -> "str | None":
+    """Return the name of the inspector pickResult selects, or None."""
+    return _run_node(
+        f"const r = window.molbuilder.inspectors.pickResult({json.dumps(filename)});"
+        f"console.log(JSON.stringify(r ? r.name : null));"
+    )
+
+
+def _result_category(filename: str) -> "str | None":
+    """Drive ``pickResult(path).resultCategory(path)`` and return the
+    label string (or None when pickResult returned null)."""
+    return _run_node(
+        f"const r = window.molbuilder.inspectors.pickResult({json.dumps(filename)});"
+        f"console.log(JSON.stringify("
+        f"  r ? r.resultCategory({json.dumps(filename)}) : null));"
+    )
+
+
+class TestPickerIsResultFlag:
+    """The ``isResult`` flag distinguishes inspectors whose matches
+    belong in the /results picker dropdown vs catch-all viewers."""
+
+    def test_result_inspectors_opt_in(self):
+        """trajectory + spectra + structure declare isResult:true."""
+        flags = _run_node(r"""
+            const list = window.molbuilder.inspectors.list();
+            const out = {};
+            for (const i of list) out[i.name] = i.isResult;
+            console.log(JSON.stringify(out));
+        """)
+        assert flags["trajectory"] is True
+        assert flags["spectra"] is True
+        assert flags["structure"] is True
+
+    def test_source_inspector_opts_out(self):
+        """source is a catch-all viewer and MUST stay out of the
+        picker — otherwise the dropdown floods with input files +
+        READMEs."""
+        is_result = _run_node(
+            "console.log(JSON.stringify("
+            "  window.molbuilder.inspectors.list()"
+            "    .find(i => i.name === 'source').isResult));"
+        )
+        assert is_result is False
+
+
+class TestPickResult:
+    """``pickResult(file)`` returns the inspector iff its
+    ``isResult`` flag is true; otherwise null.  Used by the
+    /results file-picker to gate which files appear in the
+    dropdown."""
+
+    def test_pickResult_returns_trajectory_for_out(self):
+        assert _pick_result("/projects/foo/bar.out") == "trajectory"
+
+    def test_pickResult_returns_trajectory_for_molwatch_log(self):
+        assert _pick_result("/projects/foo/run.molwatch.log") == "trajectory"
+
+    def test_pickResult_returns_spectra_for_spectra_json(self):
+        assert _pick_result("/projects/foo/raman.spectra.json") == "spectra"
+
+    def test_pickResult_returns_structure_for_xyz(self):
+        assert _pick_result("/projects/foo/optimized.xyz") == "structure"
+
+    def test_pickResult_returns_structure_for_pdb(self):
+        assert _pick_result("/projects/foo/protein.pdb") == "structure"
+
+    def test_pickResult_returns_null_for_source_only_extension(self):
+        """source matches .fdf but is isResult:false → pickResult
+        returns null.  The .fdf is an input file, not a result."""
+        assert _pick_result("/projects/foo/inputs/job.fdf") is None
+
+    def test_pickResult_returns_null_for_plain_log(self):
+        """source matches .log (plain extension); not a result."""
+        assert _pick_result("/projects/foo/build.log") is None
+
+    def test_pickResult_returns_null_for_unknown_extension(self):
+        assert _pick_result("/projects/foo/data.xyzzy") is None
+
+    def test_pickResult_returns_null_for_empty_path(self):
+        assert _pick_result("") is None
+
+
+class TestResultCategory:
+    """Engine-flavoured ``<optgroup>`` headers in the picker
+    dropdown.  Pin the exact spellings — a typo silently changes
+    the user-facing UI."""
+
+    def test_resultCategory_out_is_siesta_optimization(self):
+        assert _result_category("/projects/foo/bar.out") == "SIESTA optimization"
+
+    def test_resultCategory_molwatch_log_is_pyscf_optimization(self):
+        assert _result_category(
+            "/projects/foo/run.molwatch.log") == "PySCF optimization"
+
+    def test_resultCategory_spectra_json_is_pyscf_spectrum(self):
+        assert _result_category(
+            "/projects/foo/r.spectra.json") == "PySCF spectrum"
+
+    def test_resultCategory_xyz_is_structure(self):
+        assert _result_category("/projects/foo/q.xyz") == "Structure"
+
+    def test_resultCategory_pdb_is_structure(self):
+        assert _result_category("/projects/foo/p.pdb") == "Structure"
