@@ -1266,48 +1266,82 @@
      * cold start is correct (engine just hasn't written anything
      * yet) but reads as a bug without explanation.
      */
+    // Last rendered banner state -- guards the poll-tick re-render
+    // path.  Per ``feedback_no_rewrite_user_ui_state_on_poll`` the
+    // banner must NOT stomp on textContent every poll tick once
+    // it's settled into "data present + hidden"; that's wasted DOM
+    // work and produces unnecessary mutation observers / layout
+    // thrash on slow tabs.  ``null`` sentinel means "never rendered
+    // yet" so the very first call still writes.
+    let _lastEmptyStatus = { hidden: null, text: null };
+
     function _renderEmptyStatus() {
         const el = $("trajectory-empty-status");
         if (!el) return;
+        // Compute the target state first; only commit when it
+        // differs from what's already on the DOM.
         const data = state.data;
+        let nextHidden, nextText;
         if (!data) {
-            el.hidden = false;
-            el.querySelector(".trajectory-empty-status-text")
-                .textContent = "Loading run output…";
-            return;
-        }
-        // Heuristic: the run has usable data when any frame has a
-        // finite energy OR any SCF cycle has been parsed.
-        const energies = data.energies || [];
-        const hasEnergy = energies.some(e =>
-            typeof e === "number" && Number.isFinite(e));
-        const scfHistory = data.scf_history || [];
-        const hasScf = scfHistory.some(s => Array.isArray(s)
-                                          && s.length > 0);
-        if (hasEnergy || hasScf) {
-            el.hidden = true;
-            return;
-        }
-        // No energy + no SCF cycles yet.  Engine-specific message.
-        const fmt = data.source_format || "";
-        let msg;
-        if (fmt === "pyscf") {
-            msg = ("PySCF initializing — first geomeTRIC step "
-                 + "pending.  No energy yet to plot; SCF setup, "
-                 + "basis build, and initial guess can take "
-                 + "minutes to tens of minutes for large systems.");
-        } else if (fmt === "siesta") {
-            msg = ("SIESTA initializing — first SCF cycle pending.  "
-                 + "No energy yet to plot; pseudopotential + basis "
-                 + "setup and initial DM construction can take "
-                 + "seconds to a few minutes for large systems.");
+            nextHidden = false;
+            nextText = "Loading run output…";
         } else {
-            msg = ("Run initializing — no data points yet.  "
-                 + "Plots will populate once the engine writes its "
-                 + "first energy line.");
+            // Heuristic: usable data when any frame has a finite
+            // energy OR any SCF cycle has been parsed.
+            const energies = data.energies || [];
+            const hasEnergy = energies.some(e =>
+                typeof e === "number" && Number.isFinite(e));
+            const scfHistory = data.scf_history || [];
+            const hasScf = scfHistory.some(s => Array.isArray(s)
+                                              && s.length > 0);
+            if (hasEnergy || hasScf) {
+                nextHidden = true;
+                nextText = "";   // not displayed when hidden; sentinel only
+            } else {
+                nextHidden = false;
+                const fmt = data.source_format || "";
+                if (fmt === "pyscf") {
+                    nextText = (
+                        "PySCF initializing — first geomeTRIC step "
+                        + "pending.  No energy yet to plot; SCF "
+                        + "setup, basis build, and initial guess "
+                        + "can take minutes to tens of minutes for "
+                        + "large systems."
+                    );
+                } else if (fmt === "siesta") {
+                    nextText = (
+                        "SIESTA initializing — first SCF cycle "
+                        + "pending.  No energy yet to plot; "
+                        + "pseudopotential + basis setup and "
+                        + "initial DM construction can take "
+                        + "seconds to a few minutes for large "
+                        + "systems."
+                    );
+                } else {
+                    nextText = (
+                        "Run initializing — no data points yet.  "
+                        + "Plots will populate once the engine "
+                        + "writes its first energy line."
+                    );
+                }
+            }
         }
-        el.hidden = false;
-        el.querySelector(".trajectory-empty-status-text").textContent = msg;
+        // Early-return on no-op tick.  Stable affordance, no DOM
+        // writes when nothing changed.
+        if (nextHidden === _lastEmptyStatus.hidden
+                && nextText === _lastEmptyStatus.text) {
+            return;
+        }
+        el.hidden = nextHidden;
+        if (!nextHidden) {
+            // Only touch textContent when we're about to display;
+            // when hidden, the text doesn't matter and skipping
+            // the write avoids reflow.
+            const textEl = el.querySelector(
+                ".trajectory-empty-status-text");
+            if (textEl) textEl.textContent = nextText;
+        }
+        _lastEmptyStatus = { hidden: nextHidden, text: nextText };
     }
 
     function makePlots() {

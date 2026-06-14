@@ -167,65 +167,79 @@ def read_frozen_atoms_from_siesta_out(out_path: str) -> Set[int]:
     launched run.  The .out-direct path makes filename pairing
     irrelevant.
     """
+    # 2026-06-14 robustness pass: stream the file line-by-line
+    # instead of reading the whole .out into memory.  Pre-fix this
+    # loaded e.g. a 100 MB BDT-stage-trajectory .out into a single
+    # ~200 MB Python string, then again splitlines'd it.  The
+    # streaming version uses constant memory regardless of file
+    # size and stops at the first non-constraints line AFTER the
+    # section, so for the typical case (constraints near the top
+    # of the .out) we only touch the first few hundred KB.
+    one_based: Set[int] = set()
+    state = "before_header"
+    # Pending "Constraint (N): pos" header waiting for its data
+    # line on the very next non-blank line.
+    expecting_data = False
+    # Track one consecutive blank line so a small layout gap
+    # inside the section doesn't end it.  Two non-blank
+    # non-conforming lines in a row end the section.
+    just_blanked = False
     try:
-        with open(out_path, encoding="utf-8", errors="replace") as fh:
-            text = fh.read()
+        fh = open(out_path, encoding="utf-8", errors="replace")
     except OSError:
         return set()
+    try:
+        for raw_line in fh:
+            # Strip trailing newline for regex matching but keep
+            # leading whitespace -- the matchers anchor on
+            # whitespace-tolerant patterns.
+            line = raw_line.rstrip("\n")
 
-    m = _SIESTA_CONSTRAINTS_HEADER_RE.search(text)
-    if m is None:
-        return set()
-
-    one_based: Set[int] = set()
-    # Walk the lines after the header.  Each Constraint line is
-    # followed by a ``[ ranges ]`` data line; non-conforming lines
-    # end the section.
-    after = text[m.end():]
-    lines = after.splitlines()
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        # Skip the "Constraint (N): pos" header line; the data
-        # line follows it.
-        if _SIESTA_CONSTRAINT_LINE_RE.match(line):
-            if i + 1 >= len(lines):
-                break
-            data_line = lines[i + 1]
-            m_data = _SIESTA_CONSTRAINT_RANGES_RE.match(data_line)
-            if m_data is None:
-                break
-            body = m_data.group(1)
-            # body = "88 -- 107" OR "108 -- 112, 188 -- 202" OR a
-            # comma-separated mix of singletons and ranges.
-            for part in body.split(","):
-                part = part.strip()
-                if not part:
-                    continue
-                m_range = _RANGE_PIECE_RE.match(part)
-                if m_range is not None:
-                    start, end = int(m_range.group(1)), int(m_range.group(2))
-                    if end >= start:
-                        for n in range(start, end + 1):
-                            one_based.add(n)
-                elif part.isdigit():
-                    one_based.add(int(part))
-                # Anything else: silently skip, don't poison the
-                # set with garbage.
-            i += 2
-            continue
-        # Blank line -- could be a section separator OR a layout
-        # gap inside the section.  Peek ahead one more line; if
-        # it's another Constraint header, continue; otherwise end.
-        stripped = line.strip()
-        if not stripped:
-            if (i + 1 < len(lines)
-                    and _SIESTA_CONSTRAINT_LINE_RE.match(lines[i + 1])):
-                i += 1
+            if state == "before_header":
+                if _SIESTA_CONSTRAINTS_HEADER_RE.search(line):
+                    state = "in_section"
                 continue
+
+            # state == "in_section"
+            if expecting_data:
+                m_data = _SIESTA_CONSTRAINT_RANGES_RE.match(line)
+                if m_data is None:
+                    # No data line where one was expected -- end.
+                    break
+                body = m_data.group(1)
+                for part in body.split(","):
+                    part = part.strip()
+                    if not part:
+                        continue
+                    m_range = _RANGE_PIECE_RE.match(part)
+                    if m_range is not None:
+                        start = int(m_range.group(1))
+                        end = int(m_range.group(2))
+                        if end >= start:
+                            for n in range(start, end + 1):
+                                one_based.add(n)
+                    elif part.isdigit():
+                        one_based.add(int(part))
+                expecting_data = False
+                just_blanked = False
+                continue
+
+            if _SIESTA_CONSTRAINT_LINE_RE.match(line):
+                expecting_data = True
+                just_blanked = False
+                continue
+
+            if not line.strip():
+                # One blank tolerated; two ends the section.
+                if just_blanked:
+                    break
+                just_blanked = True
+                continue
+
+            # Any other non-blank line ends the section.
             break
-        # Anything else -- end of section.
-        break
+    finally:
+        fh.close()
 
     return {n - 1 for n in one_based}
 

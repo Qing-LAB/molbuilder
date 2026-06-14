@@ -133,6 +133,46 @@ class TestEnergyFallback:
         traj = _parse_synthetic(body)
         assert traj.frames[0].energy is None
 
+    def test_initial_etot_fallback_when_no_scf_cycles(self):
+        """The preamble Etot fallback: when SIESTA has written the
+        ``Program's energy decomposition`` block but NOT the first
+        scf: cycle yet, frame.energy uses the preamble Etot."""
+        body = _BASE_BODY.format(scf_block="").replace(
+            "outcoor: Atomic coordinates (Ang):",
+            "siesta: Etot    =   -1234.5678\n\n"
+            "outcoor: Atomic coordinates (Ang):"
+        )
+        traj = _parse_synthetic(body)
+        assert traj.frames[0].energy == pytest.approx(-1234.5678)
+
+    def test_etot_anchor_rejects_etot_over_n_variant(self):
+        """The 2026-06-14 audit found the original rule used
+        ``contains_ci("siesta: etot")`` which would silently match
+        ``siesta: Etot/N = ...`` or ``siesta: Etot(eV) = ...`` if
+        SIESTA ever printed those.  Pin that the tightened anchor
+        rejects them so the fallback isn't overwritten with a
+        per-atom or unit-suffixed value."""
+        # Synthetic decomposition block that emits a misleading
+        # ``siesta: Etot/N = ...`` line BEFORE the real
+        # ``siesta: Etot = ...`` row.  If the regex were still
+        # ``contains_ci("siesta: etot")``, the Etot/N value would
+        # be captured first and held since on_start fires once at
+        # the section start.
+        body = _BASE_BODY.format(scf_block="").replace(
+            "outcoor: Atomic coordinates (Ang):",
+            "siesta: Etot/N  =     -999.9999\n"
+            "siesta: Etot    =   -1234.5678\n\n"
+            "outcoor: Atomic coordinates (Ang):"
+        )
+        traj = _parse_synthetic(body)
+        # Must be the real Etot, NOT Etot/N.
+        assert traj.frames[0].energy == pytest.approx(-1234.5678), (
+            f"got {traj.frames[0].energy!r}; expected -1234.5678 "
+            f"(the real Etot value).  Pre-fix the regex matched "
+            f"both ``Etot`` and ``Etot/N`` -- the latter would "
+            f"have been silently captured first."
+        )
+
     def test_explicit_e_ks_wins_over_scf_fallback(self):
         """When SIESTA HAS emitted ``E_KS(eV) = ...`` (i.e., the
         canonical first-step energy is present), that value wins.

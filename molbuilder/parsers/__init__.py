@@ -127,7 +127,8 @@ def detect_parser(path: str) -> Type[TrajectoryParser]:
 
 
 def _nan_to_none(obj: Any) -> Any:
-    """Recursively replace NaN floats with ``None`` for JSON safety.
+    """Recursively replace NaN / +-inf scalars with ``None`` for
+    JSON safety.
 
     The JSON spec doesn't allow ``NaN`` / ``Infinity`` tokens; Python's
     ``json.dumps`` emits them anyway (``allow_nan=True`` is the
@@ -143,17 +144,51 @@ def _nan_to_none(obj: Any) -> Any:
     "value missing" -- exactly the diagnostic the NaN signal was
     meant to convey, and Plotly renders the gap in the trace.
 
-    Walks dicts and lists in-place semantics (returns a new structure
-    so callers don't get surprise mutations of their inputs).
+    2026-06-14 robustness pass: also handles ``numpy.float64`` /
+    ``numpy.float32`` / 0-d numpy arrays (their isinstance(., float)
+    check returns False!) and ``numpy.ndarray``.  The SIESTA path
+    always casts to python float before the dict is built so the
+    SIESTA case is unaffected; the guard is defensive against
+    future regressions and against PySCF / molwatch paths that may
+    pass through numpy types unconverted.
+
+    Walks dicts/lists/tuples in-place semantics (returns a new
+    structure so callers don't get surprise mutations of their
+    inputs).
     """
+    # Python float fast-path (most common case in the trajectory
+    # legacy dict).  ``obj != obj`` is a stdlib-free NaN check;
+    # ``not math.isfinite(obj)`` also catches +-inf, which would
+    # otherwise serialise as ``Infinity`` (out-of-spec).
     if isinstance(obj, float):
-        # math.isnan would import math just for this; the NaN-only
-        # check ``obj != obj`` is a stdlib-free idiom for the same
-        # thing.  Infinity passes through (json.dumps emits
-        # ``Infinity`` similarly out-of-spec; if a future code path
-        # produces it we should sweep it too, but no real engine
-        # output does today).
-        return None if obj != obj else obj
+        if obj != obj:           # NaN
+            return None
+        if obj == _POS_INF or obj == _NEG_INF:
+            return None
+        return obj
+    # Numpy scalars (float16/32/64/128, complex skipped).
+    # isinstance(np.float64, float) is False on some numpy / python
+    # combinations, so check numbers.Real to catch the duck-typed
+    # case without importing numpy here.
+    if isinstance(obj, _Real) and not isinstance(obj, bool):
+        try:
+            f = float(obj)
+        except (TypeError, ValueError, OverflowError):
+            return obj
+        if f != f:
+            return None
+        if f == _POS_INF or f == _NEG_INF:
+            return None
+        # Preserve int identity for normal ints.
+        return obj
+    # Numpy ndarray -- walk the underlying tolist().  This catches
+    # any place a lattice / coords array slipped through unconverted.
+    # We don't import numpy here; duck-type on ``.tolist()``.
+    if hasattr(obj, "tolist") and not isinstance(obj, (str, bytes)):
+        try:
+            return _nan_to_none(obj.tolist())
+        except (TypeError, ValueError):
+            return obj
     if isinstance(obj, dict):
         return {k: _nan_to_none(v) for k, v in obj.items()}
     if isinstance(obj, list):
@@ -161,6 +196,15 @@ def _nan_to_none(obj: Any) -> Any:
     if isinstance(obj, tuple):
         return tuple(_nan_to_none(v) for v in obj)
     return obj
+
+
+_POS_INF = float("inf")
+_NEG_INF = float("-inf")
+# Import here to avoid a circular dependency with parsers loaded
+# from molbuilder.frame / Structure.  ``numbers.Real`` catches
+# python ints/floats AND numpy scalars (via the abstract base
+# numpy registers against numbers.Real).
+from numbers import Real as _Real  # noqa: E402
 
 
 def trajectory_to_legacy_dict(traj: Trajectory) -> Dict[str, Any]:

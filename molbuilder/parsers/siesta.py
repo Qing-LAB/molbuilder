@@ -483,13 +483,14 @@ class SiestaParser(TrajectoryParser):
                 step_max_force = None
                 step_max_force_constrained = None
                 step_forces = []
-                step_initial_etot = None
-                # Don't reset current_scf here -- a torn frame at EOF
-                # has no Frame to attach to, but otherwise current_scf
-                # may legitimately belong to a NOT-YET-committed frame
-                # (SCF runs *before* outcoor in SIESTA's stream, so
-                # commit() bailing on an empty step_frame at the start
-                # of a run is normal).
+                # Don't reset current_scf or step_initial_etot here --
+                # a torn frame at EOF has no Frame to attach to, but
+                # otherwise both belong to a NOT-YET-committed frame
+                # (SCF runs *before* outcoor in SIESTA's stream, and
+                # the preamble Etot is written even earlier; commit()
+                # bailing on an empty step_frame at the start of a run
+                # is normal, and the accumulated SCF/Etot state must
+                # survive into the next commit attempt).
                 return
             elements  = [row[0] for row in step_frame]
             positions = np.array([row[1:4] for row in step_frame],
@@ -1007,11 +1008,17 @@ class SiestaParser(TrajectoryParser):
             SectionRule(
                 name="initial_etot",
                 aliases=["siesta: Etot ="],
-                # Substring: the marker appears in the
-                # ``Program's energy decomposition`` block
-                # after the initial DM is built but before
-                # scf:1.  See _on_initial_etot docstring.
-                start=contains_ci("siesta: etot"),
+                # Anchored regex: ``siesta: Etot`` (whitespace) ``=``
+                # exact match.  ``contains_ci("siesta: etot")``
+                # would also match ``siesta: Etot/N = ...``,
+                # ``siesta: Etot(eV) = ...``, and any future SIESTA
+                # decomposition variant that starts with the same
+                # word -- the wrong row would overwrite the
+                # initial-Etot fallback.  Anchor explicitly to
+                # the bare ``Etot`` token followed by ``=``.
+                start=matches_regex_ci(
+                    r"^\s*siesta:\s+Etot\s*=\s*[-\d]"
+                ),
                 on_start=_on_initial_etot,
             ),
             SectionRule(
