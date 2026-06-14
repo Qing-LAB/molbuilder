@@ -68,19 +68,21 @@ The test layout mirrors the source layout:
 
 ```
 tests/
-├── conftest.py                       # shared fixtures
+├── conftest.py                       # project-wide shared fixtures
 ├── data/                             # fixture data files
 ├── validation/                       # mirrors molbuilder/validation/
-│   ├── test_geometry.py              # L1+L2
-│   ├── test_metadata.py              # L1+L2
-│   ├── test_chemistry.py             # L1+L2
-│   ├── test_sidecar.py               # L1+L2
+│   ├── __init__.py                   # empty (makes the dir a package)
+│   ├── conftest.py                   # water_struct fixture
+│   ├── _helpers.py                   # _vacuum_cell, _peptide_struct
+│   ├── test_geometry.py              # L2 — geometry submodule
+│   ├── test_metadata.py              # L2 — metadata submodule
+│   ├── test_chemistry.py             # L2 — chemistry submodule
 │   ├── test_siesta.py                # L2 — _validate_siesta sequence pin
 │   ├── test_pyscf.py                 # L2 — _validate_pyscf sequence pin
-│   ├── test_interface.py             # L3 — boundary contracts
-│   └── test_integration.py           # L4 — analyzer ↔ validator agreement
+│   └── test_aggregator.py            # L2 — validate() + report() entry
 ├── spectra/                          # mirrors molbuilder/spectra/
 ├── transport/                        # mirrors molbuilder/transport/ (planned)
+├── watch/                            # mirrors molbuilder/parsers/ (watch goldens)
 ├── test_chemistry_analyzer.py        # L2 chemistry module
 ├── test_chemistry_adapters.py        # L3 adapter registry boundary
 ├── test_structure_analyze_endpoint.py # L4 HTTP boundary
@@ -89,11 +91,14 @@ tests/
 └── test_css_*.py                     # L2 — CSS source-text invariants
 ```
 
-Today (2026-06-13) the validation split has landed but the
-1479-LoC `test_validation.py` has NOT yet been split into the
-per-submodule files above.  That's a forward task; the file works
-as-is because `from molbuilder.validation import ...` still
-resolves through the package's `__init__.py` re-exports.
+The validation split landed 2026-06-13 (88 tests across 6 files,
+parity-verified with the pre-split flat `test_validation.py`).
+Other top-level flat files (`test_web.py`, `test_modify.py`, etc.)
+may follow the same pattern when they cross the "~1000 LoC and
+multiple concerns mixed in one file" smell threshold — but only
+when there's a forcing function.  Don't split for the sake of
+splitting; the convention exists so that drift is catchable, not
+to optimise line counts.
 
 ---
 
@@ -265,7 +270,187 @@ to find the destination.
 
 ---
 
-## 8. What this strategy does NOT cover
+## 8. Naming convention + namespacing framework
+
+molbuilder uses **pytest's built-in mechanisms** for hierarchy + selection.
+No external framework needed — pytest gives us four orthogonal axes that
+together cover every "find / add / manage" question:
+
+| Axis | Mechanism | Example | Selects via |
+|---|---|---|---|
+| **Subject** (what's tested) | Directory hierarchy mirroring `molbuilder/` | `tests/validation/test_chemistry.py` | `pytest tests/validation/test_chemistry.py` |
+| **Layer** (pyramid tier) | `@pytest.mark.<tier>` registered in pyproject.toml | `@pytest.mark.unit` | `pytest -m unit` |
+| **Group** (related setup) | Class `Test<Concern>` | `class TestCheckOpenShellMetalUsesAnalyzer` | `pytest -k TestCheckOpenShell` |
+| **Scenario** (specific case) | Function `test_<input>_<outcome>` | `test_h_ratio_skeleton_is_warn` | `pytest -k test_h_ratio_skeleton` |
+
+The four axes compose:
+
+```bash
+# Every unit-level test under the validation subject:
+pytest tests/validation/ -m unit
+
+# Every integration test on chemistry, regardless of subject directory:
+pytest -m "integration" -k "chemistry"
+
+# Every test in the open-shell-metal class:
+pytest -k TestCheckOpenShellMetal
+```
+
+### 8.1 Directory naming (subject)
+
+Mirror source layout 1-to-1.  `molbuilder/<package>/<module>.py` →
+`tests/<package>/test_<module>.py`.  When the source is a flat module
+(no `<package>/`), use `tests/test_<module>.py` at the test root.
+
+* **Why**: "where do I add a test for `validation/chemistry.py`?" has
+  exactly one answer — `tests/validation/test_chemistry.py`.
+* **Why not**: never group tests by what they test FOR (e.g. a
+  `tests/regressions/` or `tests/bugs/`) — that loses the locality
+  between source and test.
+
+### 8.2 File naming (subject continued)
+
+* `test_<module>.py` for tests of a single source submodule.
+* `test_<concern>.py` for cross-cutting concerns that don't have one
+  source home (e.g. `test_layering.py`, `test_css_no_duplicate_selectors.py`,
+  `test_live_poll_invariants_audit.py`).
+* `conftest.py` at each level for shared pytest fixtures (auto-picked
+  up by pytest; no import needed).
+* `_helpers.py` (underscore prefix) for plain Python helpers that aren't
+  pytest fixtures.  Import explicitly: `from ._helpers import _vacuum_cell`.
+* `__init__.py` (empty) makes the directory a Python package so
+  `from ._helpers import ...` works.
+
+### 8.3 Class naming (group)
+
+Use a class when a cluster of tests shares setup (a fixture call sequence,
+a synthetic input dataset, a monkeypatch).  Class name reads as the
+invariant under test:
+
+```python
+class TestCheckOpenShellMetalUsesAnalyzer:
+    """The validator must read its open-vs-closed verdict from
+    analyze_structure().suggested_treatment — not parallel logic."""
+
+    def test_au_bdt_au_closed_shell_does_NOT_warn(self):
+        ...
+    def test_single_au_atom_still_warns_open_shell(self):
+        ...
+```
+
+Format: `Test<Concept>[<Predicate>]`.  Examples:
+* `TestCheckOpenShellMetalUsesAnalyzer` — invariant: function delegates to analyzer
+* `TestPartialSpectraInspectorEndpoint` — invariant: endpoint serves the partial
+* `TestWorkflowGroupSchemaConsistency` — invariant: schema honors the workflow_group tag
+
+Don't use a class for a single test — promote to a function.
+
+### 8.4 Function naming (scenario)
+
+Format: `test_<subject>_<input_state>_<expected_outcome>`.
+
+* `test_h_ratio_skeleton_is_warn` — given a heavy-atom skeleton → warn fires
+* `test_h_ratio_organic_no_warn` — given an organic molecule → no warn
+* `test_au_bdt_au_closed_shell_does_NOT_warn` — given Au-BDT-Au with closed-shell config → no warn
+* `test_render_fdf_raises_on_overlapping_atoms` — given overlapping atoms + render call → raises
+
+Capitalised words inside test names (NOT, MUST) signal load-bearing
+negative assertions — read at a glance from a failure report.
+
+### 8.5 Marker registration (layer)
+
+Markers are registered in `pyproject.toml` under
+`[tool.pytest.ini_options].markers` with one-line semantics.  An
+unregistered marker emits a warning, so adding a new marker without
+registering it shows up as drift.
+
+Today's registered markers:
+
+```toml
+markers = [
+    "unit:        L1 — pure helper, no I/O, no globals (microsecond cost)",
+    "module:      L2 — single submodule's public surface end-to-end",
+    "interface:   L3 — contract between two modules (registry, severity, shape)",
+    "integration: L4 — multiple subsystems agreeing on a shared fact",
+    "smoke:       e2e smoke tests that subprocess-run a generated script",
+    "e2e:         browser-driven Playwright tests",
+    "slow:        tests that take > 1s",
+]
+```
+
+**Applying markers.**  Default: don't.  Most tests are obvious from their
+directory.  Use a marker when the test's intent CROSSES the directory
+boundary:
+
+* A test in `tests/validation/test_chemistry.py` that exercises the
+  full `validate(struct, cfg)` flow gets `@pytest.mark.integration` —
+  its subject is "chemistry validator" but its layer is L4.
+* A `slow` test that hits a 30-second SIESTA subprocess gets
+  `@pytest.mark.slow @pytest.mark.smoke` — let pre-commit skip it.
+
+**Don't mark every test.**  Marker discipline is "no marker = the
+default for this file's directory."  Conftest can apply default
+markers per directory if it gets noisy.
+
+### 8.6 Helper / fixture naming
+
+* Pytest fixtures live in `conftest.py`, named without underscore
+  prefix (e.g. `water_struct`).  Fixtures cascade — `conftest.py` at
+  `tests/` is visible everywhere; `tests/validation/conftest.py` is
+  visible to `tests/validation/**`.
+* Plain Python helpers live in `_helpers.py`, named with underscore
+  prefix (e.g. `_vacuum_cell`, `_peptide_struct`).  Import explicitly.
+* Fixture vs helper: if it builds something you'd otherwise have to
+  rebuild per test, make it a fixture.  If it's a one-line constructor
+  used only by certain tests, make it a helper.
+
+### 8.7 Parametrize discipline
+
+Use `@pytest.mark.parametrize` for orthogonal scenarios sharing the
+same assertion:
+
+```python
+@pytest.mark.parametrize("element_id", REQUIRED_IDS)
+def test_body_carries_required_inspector_ids(self, web, element_id):
+    body = web.get("/partials/trajectory-inspector").get_data(as_text=True)
+    assert f'id="{element_id}"' in body
+```
+
+The parametrize IDs become the test name suffix
+(`test_body_carries_required_inspector_ids[viewer]`,
+`test_body_carries_required_inspector_ids[run-state-badge]`, …) so
+failures are individually addressable.
+
+Avoid parametrize for scenarios that need different setup — split into
+separate test functions.
+
+### 8.8 Worked example
+
+The shape that now sits in `tests/validation/` is the canonical
+example of the convention:
+
+```
+tests/validation/
+├── __init__.py           # empty (makes the directory a package)
+├── conftest.py           # water_struct fixture
+├── _helpers.py           # _vacuum_cell, _peptide_struct (plain helpers)
+├── test_geometry.py      # mirrors molbuilder/validation/geometry.py
+├── test_metadata.py      # mirrors molbuilder/validation/metadata.py
+├── test_chemistry.py     # mirrors molbuilder/validation/chemistry.py
+├── test_siesta.py        # mirrors molbuilder/validation/siesta.py
+├── test_pyscf.py         # mirrors molbuilder/validation/pyscf.py
+└── test_aggregator.py    # validate() + report() — the __init__.py surface
+```
+
+Each per-module file holds the unit + module tests for that submodule
+(default — no marker needed).  Aggregator-level tests live in
+`test_aggregator.py`.  An integration test that crosses submodule
+boundaries gets `@pytest.mark.integration` regardless of which file it
+lives in.
+
+---
+
+## 9. Out of scope
 
 * **Performance / benchmark tests.**  No pytest-benchmark today;
   `test_modify_layout_*` is the closest thing (asserts a render
@@ -277,8 +462,9 @@ If we add any of these, this doc gets a new section.
 
 ---
 
-## 9. Decisions log
+## 10. Decisions log
 
 | Date | Decision | Why |
 |---|---|---|
 | 2026-06-13 | This doc landed alongside the validator-package split.  Test strategy explicitly named: L1 unit / L2 module / L3 interface / L4 integration / L5 e2e, with directory layout mirroring source layout. | The validator split (1326 LoC → 7 files) made the question "where does this validator live?" answerable for source — but the corresponding question for tests was unanswered: every validation test still lived in one 1479-LoC file.  This doc writes the answer down so the test split that has to follow has a target shape, not improvisation per PR.  The pyramid + decision tree make "where does this NEW test go?" answerable without reading every existing test file. |
+| 2026-06-13 | Naming convention + namespacing framework added (§ 8): four orthogonal axes (subject / layer / group / scenario) covered by pytest's built-in mechanisms (directory hierarchy / `@pytest.mark` / class / function name).  No external framework needed.  Markers `unit` / `module` / `interface` / `integration` registered in `pyproject.toml` alongside the existing `smoke` / `e2e` / `slow`. | The directory hierarchy mirroring source code answers "where does this test live?" but doesn't answer "how do I select all integration tests across the project?" Markers cover that cross-cutting axis without forcing files to migrate to a `tests/integration/` parallel tree.  Pytest's built-in registry (markers in pyproject.toml) makes the marker set discoverable + warns on typos.  Class + function name conventions encode the invariant under test in the test's own name so failure reports read like a contract violation summary — `TestCheckOpenShellMetalUsesAnalyzer::test_au_bdt_au_closed_shell_does_NOT_warn` IS the contract being checked. |

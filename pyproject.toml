@@ -160,6 +160,15 @@ testpaths    = ["tests"]
 pythonpath   = ["."]
 addopts      = "-ra"
 markers      = [
+    # ---- Pyramid layers (docs/protocols/test-strategy.md § 2) ---- #
+    # Markers are orthogonal to directory structure: a test in
+    # tests/validation/test_chemistry.py is L2 by directory but might
+    # be marked @pytest.mark.integration if it exercises the full
+    # validate() pipeline.  Pick by intent, not file location.
+    "unit:        L1 — pure helper, no I/O, no globals (microsecond cost)",
+    "module:      L2 — single submodule's public surface end-to-end",
+    "interface:   L3 — contract between two modules (registry, severity, shape)",
+    "integration: L4 — multiple subsystems agreeing on a shared fact",
     "smoke: end-to-end smoke tests that subprocess-run a generated script (slow; require pyscf)",
     "e2e: browser-driven Playwright tests (slow; require chromium install)",
     "slow: tests that take > 1s (full-suite runs include these; pre-commit skips)",
