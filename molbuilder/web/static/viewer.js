@@ -11,6 +11,35 @@
 
     const $ = (id) => document.getElementById(id);
 
+    /**
+     * Format a fetch / response-parse exception into a
+     * user-friendly status banner string.  Distinguishes:
+     *
+     *   * ``SyntaxError`` -- ``r.json()`` failed because the server
+     *     returned non-JSON (5xx with an HTML error page, 501
+     *     stub, proxy plain-text drop).  Surfacing as "network
+     *     error" misleads the user into checking their connection
+     *     when the server itself crashed.
+     *   * Anything else -- genuine network failure (TypeError
+     *     "Failed to fetch", DNS issue, CORS preflight rejection),
+     *     surface as "Network error: <message>".
+     *
+     * AbortError is caller's responsibility -- this helper is
+     * called AFTER the caller has filtered abort.
+     *
+     * L2 round-4 fix (R4-A finding #4): same pattern as
+     * ``projects/api.js::_fetchEnvelope`` lines 74-83.
+     */
+    function _formatFetchError(e) {
+        if (e && e.name === "SyntaxError") {
+            return "Server returned non-JSON response "
+                 + "(likely a 5xx error page).  Check the server "
+                 + "log for the actual failure.";
+        }
+        return "Network error: "
+             + (e && e.message ? e.message : String(e));
+    }
+
     // ----- State ------------------------------------------------------
     const state = {
         xyz: null,            // last successful build's XYZ string
@@ -738,7 +767,7 @@
             } catch (e) {
                 if (mySeq !== _sidebarLoadSeq) return;
                 setStatus("load-status",
-                    "Network error: " + e.message, "error");
+                    _formatFetchError(e), "error");
                 clearStructureInfo("load failed: " + filename);
             }
         }   // close _commitStructure
@@ -938,9 +967,7 @@
                     if (mySeq !== _autoDetectSeq
                         || myLoadSeq !== _sidebarLoadSeq) return;
                     setStatus("auto-detect-status",
-                        "Network error: "
-                        + (e && e.message ? e.message : String(e)),
-                        "error");
+                        _formatFetchError(e), "error");
                     return;
                 } finally {
                     // Re-enable only if this is still the latest
@@ -1375,7 +1402,7 @@
             // AbortError = a newer Generate click superseded this one;
             // the newer click's handler owns state -- don't clobber.
             if (e && e.name === "AbortError") return;
-            setStatus("fdf-status", "Network error: " + e.message, "error");
+            setStatus("fdf-status", _formatFetchError(e), "error");
             state.fdf = null;
             state.lastFdfSave = null;
             state.savingFdf = false;
@@ -1750,7 +1777,7 @@
                       issues.some(i => i.severity === "warn") ? "warn" : "ok");
         } catch (e) {
             if (e && e.name === "AbortError") return;  // superseded
-            setStatus("pyscf-status", "Network error: " + e.message, "error");
+            setStatus("pyscf-status", _formatFetchError(e), "error");
             state.pyscf = null;
             state.lastPyscfSave = null;
             state.savingPyscf = false;

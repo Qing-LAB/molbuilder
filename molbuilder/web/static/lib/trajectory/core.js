@@ -2364,6 +2364,18 @@
         // Cancel any previous in-flight load (rapid file-switching
         // case).  Start a new controller; dispose() will abort it.
         if (state.loadAbort) state.loadAbort.abort();
+        // L1 2026-06-14 (R4-A finding): also abort any in-flight
+        // /api/watch/data POLL whose response is bound to the
+        // PRIOR file's mtime.  Without this, a poll that started
+        // while the user was viewing file A would land AFTER
+        // loadByPath(B) completed and call applyNewData with A's
+        // (stale) frames -- silently reverting the user's data.
+        // The pollTimer keeps running, so a NEW poll fires on the
+        // next tick already pinned to B's mtime; only the in-
+        // flight pre-supersede response is killed.  Mirrors the
+        // K2 fix for spectra loadByPath ↔ watchTick.
+        if (state.pollAbort) state.pollAbort.abort();
+        state.pollInFlight = false;
         state.loadAbort = new AbortController();
         const signal = state.loadAbort.signal;
         try {

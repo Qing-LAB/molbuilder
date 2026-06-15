@@ -892,15 +892,23 @@ def api_build_preflight():
         else:
             cfg = _pyscf_config_from_params(params)
     except Exception as exc:
-        # Bad params surface as a single error-severity issue so the
-        # UI can display the same panel for the "your config doesn't
-        # parse" case without a separate code path.
+        # L3 R4-A fix 2026-06-14: the "bad params" branch now
+        # returns ``ok: False`` to match the wire-api.md envelope
+        # contract -- pre-fix it returned ``ok: True`` even though
+        # the config didn't parse, which the UI (viewer.js:211)
+        # silently ignored because it gates issue-rendering on
+        # ``r.ok``.  Switching to ``ok: False`` + the same issue
+        # makes the failure surface uniformly with
+        # ``/api/build/fdf``'s 400 path; the UI's existing
+        # ``!body.ok`` gate then renders the issue + the user sees
+        # the parse error in the issues panel.
         return jsonify({
-            "ok": True,
+            "ok":     False,
+            "error":  f"bad parameters: {exc}",
             "issues": [{"severity": "error",
                         "message": f"bad parameters: {exc}",
                         "where":   "config"}],
-        })
+        }), 400
 
     return jsonify({
         "ok": True,
