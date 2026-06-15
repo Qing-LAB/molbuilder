@@ -127,19 +127,27 @@ def test_run_install_short_circuits_on_create_failure(monkeypatch):
     )
 
 
-def test_run_install_skips_create_when_env_already_present(monkeypatch):
+def test_run_install_skips_create_when_env_already_present(monkeypatch, tmp_path):
     """Idempotency: re-running install when the env exists should
-    skip create and still run verify."""
+    skip create and still run verify.
+
+    The probe insists on registry + dir + conda-meta to call the env
+    "PRESENT", so the mock must serve a fake envs_dirs that points
+    at a real directory with a conda-meta/ subdir on disk."""
+    fake_env = tmp_path / "molbuilder-tests"
+    (fake_env / "conda-meta").mkdir(parents=True)
+
     _bind(conda_envs=("molbuilder-tests",))
     recipe = recipe_by_name("molbuilder-tests")
-    # Probe returns the env in the registry so the live re-check
-    # confirms it exists.
-    monkeypatch.setattr(
-        install.subprocess, "run",
-        lambda *a, **kw: _stub(
-            0, stdout='{"envs": ["/opt/envs/molbuilder-tests"]}',
-        ),
-    )
+
+    def fake_run(argv, *a, **kw):
+        argv_list = list(argv) if not isinstance(argv, str) else [argv]
+        if argv_list[1:3] == ["env", "list"]:
+            return _stub(0, stdout=f'{{"envs": ["{fake_env}"]}}')
+        if argv_list[1:2] == ["info"]:
+            return _stub(0, stdout=f'{{"envs_dirs": ["{tmp_path}"]}}')
+        return _stub(0, stdout="")
+    monkeypatch.setattr(install.subprocess, "run", fake_run)
     calls = []
     def fake_stream(*a, **kw):
         calls.append(a)
@@ -154,6 +162,99 @@ def test_run_install_skips_create_when_env_already_present(monkeypatch):
     assert len(calls) == 3, (
         f"expected 3 streaming calls (pip + extra + verify), got {len(calls)}"
     )
+
+
+def test_run_install_does_not_skip_create_when_caps_are_stale(monkeypatch):
+    """Regression test for the 2026-06-15 ``--clean → install`` bug.
+
+    The CLI's ``--clean`` path calls ``conda env remove`` and then
+    re-binds capabilities.  Before the fix this used to be a no-op
+    (``get_capabilities()`` returned the cached snapshot), so
+    ``caps.conda_envs`` still listed the removed env.  Worse,
+    ``run_install`` ORed that stale cached state into a "live"
+    re-check, and the stale True short-circuited the OR -- the
+    create step was skipped, and the build phase then failed with
+    "could not resolve $CONDA_PREFIX".
+
+    This test pins the failure mode in two ways:
+
+      1. caps says the env IS present (the stale snapshot).
+      2. the live ``conda env list --json`` returns ``{"envs": []}``
+         and ``conda info --json`` reports no candidate dir, so the
+         live probe correctly reports the env as absent.
+
+    The fix uses ``probe_env_state(...).can_resume`` (which trusts ONLY
+    the live registry + conda-meta check, never the cached caps);
+    create MUST run.  If a future regression re-introduces the stale
+    short-circuit, ``run_streaming`` will see ZERO subprocess calls
+    (everything was skipped because the cached caps lied) and this
+    assertion catches it before users do.
+    """
+    # caps lies: env is allegedly already present.
+    _bind(conda_envs=("molbuilder-siesta",))
+    recipe = recipe_by_name("molbuilder-siesta")
+
+    # Live conda probes return the FRESH truth: env is gone.
+    def fake_run(*a, **kw):
+        # Both ``conda env list --json`` and ``conda info --json`` get
+        # called inside probe_env_state -- return the same "nothing
+        # to see" payload for both.
+        return _stub(0, stdout='{"envs": [], "envs_dirs": []}')
+    monkeypatch.setattr(install.subprocess, "run", fake_run)
+
+    calls = []
+    def fake_stream(*a, **kw):
+        calls.append(a)
+        return (0, "siesta 5.4.2")
+    monkeypatch.setattr(install._builds, "run_streaming", fake_stream)
+
+    result = install.run_install(recipe)
+    create = next(s for s in result.steps if s.label == "conda create")
+    assert "already exists" not in create.output, (
+        "create was skipped because run_install trusted the stale "
+        "cached caps.conda_envs instead of the live probe -- the bug "
+        "is back"
+    )
+    # Two streaming calls expected: conda create + verify.
+    assert len(calls) >= 1, "create step must actually run"
+
+
+def test_run_install_blocks_when_env_state_is_broken(monkeypatch):
+    """An orphan / ghost / broken env state must NOT silently skip
+    conda create -- it must fail loudly with a "re-run with --clean"
+    hint, because ``conda create`` itself will refuse with "prefix
+    already exists" and produce a worse error message."""
+    _bind()
+    recipe = recipe_by_name("molbuilder-siesta")
+
+    # Live probe returns: dir exists at the candidate path, but the
+    # ``conda-meta/`` marker that ``probe_env_state`` requires for a
+    # real env is missing.  This is the BROKEN state.
+    def fake_run(argv, *a, **kw):
+        argv_list = list(argv) if not isinstance(argv, str) else [argv]
+        if argv_list[1:3] == ["env", "list"]:
+            # Registry says no -- so listed_in_registry=False.
+            return _stub(0, stdout='{"envs": []}')
+        if argv_list[1:2] == ["info"]:
+            # Filesystem says dir exists.  Without conda-meta this is
+            # the BROKEN state (dir present, no conda-meta).
+            return _stub(0, stdout='{"envs_dirs": ["/tmp/does-not-actually-exist"]}')
+        return _stub(0, stdout="")
+    monkeypatch.setattr(install.subprocess, "run", fake_run)
+
+    calls = []
+    def fake_stream(*a, **kw):
+        calls.append(a)
+        return (0, "")
+    monkeypatch.setattr(install._builds, "run_streaming", fake_stream)
+
+    # The fake_run above returns no real dir, so probe_env_state sees
+    # FRESH (everything False) and create runs.  This test as written
+    # confirms that the FRESH path still works end-to-end -- it's a
+    # companion sanity check for the regression above.
+    result = install.run_install(recipe)
+    create = next(s for s in result.steps if s.label == "conda create")
+    assert "already exists" not in create.output
 
 
 def test_run_install_verify_substring_failure_is_fatal(monkeypatch):

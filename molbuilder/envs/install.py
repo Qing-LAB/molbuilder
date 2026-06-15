@@ -355,49 +355,15 @@ def probe_env_state(env_name: str, conda_binary: str) -> EnvState:
     )
 
 
-def _env_listed_now(env_name: str, conda_binary: str) -> bool:
-    """Live ``conda env list`` check.  ``Capabilities`` snapshots the
-    env list at startup; this asks conda right now.  Used by
-    ``run_install`` to avoid recreating an env that has been created
-    since the CLI captured its capabilities snapshot."""
-    return _env_prefix(env_name, conda_binary) is not None
-
-
-def _env_prefix_dir_exists(env_name: str, conda_binary: str) -> bool:
-    """Check the filesystem for a leftover env directory.
-
-    conda's registry (the JSON list) can get out of sync with the
-    actual filesystem: ``conda env remove`` may unregister an env
-    while leaving the directory in place if removal was interrupted,
-    if files are in use, or if a previous ``--clean`` partly failed.
-    Detecting the orphan directory matters because ``conda create -n
-    <name>`` will then fail with ``CondaValueError: prefix already
-    exists`` instead of silently succeeding.
-
-    Returns ``True`` if ``<conda_base>/envs/<env_name>`` exists and
-    looks like a real conda env (has ``conda-meta/``).
-    """
-    try:
-        cp = subprocess.run(
-            [conda_binary, "info", "--json"],
-            capture_output=True, text=True, timeout=30,
-        )
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
-        return False
-    if cp.returncode != 0:
-        return False
-    try:
-        import json
-        info = json.loads(cp.stdout)
-    except (ValueError, KeyError):
-        return False
-    # ``envs_dirs`` is the list of directories conda searches for
-    # named envs.  Usually just ``<base>/envs/`` plus per-user dirs.
-    for envs_dir in info.get("envs_dirs", []):
-        candidate = Path(envs_dir) / env_name
-        if (candidate / "conda-meta").exists():
-            return True
-    return False
+# NOTE: the helpers ``_env_listed_now`` and ``_env_prefix_dir_exists``
+# used to live here.  Both were thin wrappers that duplicated logic
+# already inside ``probe_env_state`` (the ONE source of truth for env
+# presence).  Worse, they were combined via an ``OR`` in run_install
+# that fired True for orphan directories (which conda create would
+# then refuse with "prefix already exists"), shipping a false
+# positive that masked --clean failures.  Replaced by direct
+# ``probe_env_state(...).can_resume`` use in run_install; the helpers
+# are gone, not deprecated, because nothing else called them.
 
 
 def run_install(
@@ -445,7 +411,13 @@ def run_install(
         )
     effective = _effective_name(recipe, caps)
     planned = _plan(recipe, effective, caps.conda_binary)
-    env_exists = caps.env_available(effective)
+    # NOTE: we DELIBERATELY do not pre-compute ``env_exists`` from caps
+    # here.  The conda-create skip decision below uses ``probe_env_state``
+    # live -- the cached caps view can be stale (notably right after
+    # --clean, when ``get_capabilities()`` returns the bound snapshot
+    # rather than re-detecting), and trusting it caused the
+    # 2026-06-15 "env already exists; conda may have failed silently"
+    # regression.  See the conda-create branch below for the live probe.
     executed: List[InstallStep] = []
     succeeded = True
 
@@ -464,18 +436,17 @@ def run_install(
     total_pre = len(pre_verify)
     for i, step in enumerate(pre_verify, start=1):
         if step.label == "conda create" and skip_create_if_present:
-            # Live re-check: the env may have been created (or removed)
-            # between caps capture and now -- e.g. a parallel shell, a
-            # prior ``--clean`` that touched but didn't fully wipe the
-            # env dir, or a partially-removed conda registry entry.
-            # We trust three independent signals and skip create if
-            # ANY of them confirm the env exists.
-            env_currently_exists = (
-                env_exists
-                or _env_listed_now(effective, caps.conda_binary)
-                or _env_prefix_dir_exists(effective, caps.conda_binary)
-            )
-            if env_currently_exists:
+            # Live re-check via the existing EnvState machine -- the
+            # ONE source of truth for "is this env actually installable-
+            # into".  ``can_resume`` is True iff registry-list AND
+            # dir-exists AND conda-meta -- the same three signals an
+            # orphan dir / partial install would fail.  This replaces
+            # an earlier inline OR that ALSO ORed in the cached
+            # ``caps.env_available`` (stale right after --clean) and
+            # whose two "independent" live probes both delegated to
+            # ``_env_prefix`` and so were not independent at all.
+            state = probe_env_state(effective, caps.conda_binary)
+            if state.can_resume:
                 executed.append(InstallStep(
                     label=step.label, argv=step.argv,
                     returncode=0,
@@ -489,6 +460,27 @@ def run_install(
                 )
                 sys.stderr.flush()
                 continue
+            # If the env is in a broken / orphan / ghost state,
+            # ``conda create`` will refuse with "prefix already exists".
+            # The state probe already classified the case; surface a
+            # diagnostic so the user knows to re-run with --clean
+            # instead of staring at a cryptic conda error.
+            if state.needs_cleanup:
+                executed.append(InstallStep(
+                    label=step.label, argv=step.argv,
+                    returncode=None,
+                    output=f"env `{effective}` is in state "
+                           f"{state.state_label} -- re-run with --clean "
+                           f"to wipe before installing.",
+                ))
+                sys.stderr.write(
+                    f"[{i}/{total_pre}] {step.label}: "
+                    f"BLOCKED (env state {state.state_label}; "
+                    f"re-run with --clean)\n"
+                )
+                sys.stderr.flush()
+                succeeded = False
+                break
         sys.stderr.write(
             f"[{i}/{total_pre}] {step.label}: starting "
             f"(streaming output below; this may take 5-15 min for "

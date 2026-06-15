@@ -22,7 +22,7 @@ from typing import Iterable, Optional, TextIO
 
 import click
 
-from ..diagnostics import get_capabilities
+from ..diagnostics import get_capabilities, reset_capabilities
 from . import builds as _builds
 from . import doctor as _doctor
 from . import install as _install
@@ -539,7 +539,16 @@ def cmd_install(name: str, dry_run: bool, check: bool,
                 click.echo(f"wiped {artifact_root}")
 
             # Refresh capabilities so the downstream install knows
-            # the env is gone (conda create will run fresh).
+            # the env is gone.  ``get_capabilities()`` returns the
+            # bound snapshot; without ``reset_capabilities()`` first
+            # this would be a no-op and ``conda_envs`` would still
+            # list the env we just removed -- which downstream code
+            # used to OR into the conda-create skip decision, masking
+            # --clean failures.  The bug is now also defended against
+            # in ``install.run_install`` (which probes live via
+            # ``probe_env_state``), but the cleaner contract is to
+            # keep the snapshot in sync at every state mutation.
+            reset_capabilities()
             caps = get_capabilities()
             click.echo("")
 
