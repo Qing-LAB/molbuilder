@@ -35,6 +35,27 @@ sequence / SMILES / PDB │ build → edit → orient → assemble │
 
 ---
 
+## Who is this for?
+
+You are doing molecular-electronics or single-molecule-DFT research,
+and you have at least one of these problems:
+
+| The problem | What molbuilder does about it |
+|---|---|
+| **"I need a Au–thiol–Au junction from a SMILES, by Tuesday."** | Build → orient → add slab → save, all in one tab, no file editing. |
+| **"My SIESTA `.fdf` is 200 lines of pasted boilerplate that nobody on the team understands."** | The Generate step emits a fresh `.fdf` with every parameter tooltipped + a methods-paragraph that reads as plain English. |
+| **"My optimisation has been running for 6 hours and I have no idea if it's converging."** | Open the run dir in the Results tab; trajectory + energy + force + SCF residual plots refresh every minute on file mtime. |
+| **"I want Raman spectra but writing the PySCF script + parsing the output is half a day each time."** | Configure a form, hit Generate, run the script, open `.spectra.json` in Results — modes table + per-mode 3-D animation. |
+| **"My group has 5 different installs of SIESTA / PySCF / AmberTools that all conflict."** | `python -m molbuilder envs install <name>` for each backend; isolated conda envs; one CLI manages them all. |
+| **"I want my collaborators to use this without me sitting next to them at a terminal."** | `molbuilder serve` on your workstation; built-in OAuth (Google / GitHub / Microsoft / ORCID / institutional CAS); they get the web UI in their browser. |
+
+If you also want the heavy machinery underneath (GPU SIESTA from
+source, schema-driven UI generation, sole-source-of-truth doc rule,
+end-to-end validation against external references) it's all there —
+see [§ Highlights](#highlights) — but you don't have to opt in.
+
+---
+
 ## Highlights
 
 - **Full nanojunction pipeline in one app** — peptide / DNA / RNA /
@@ -116,6 +137,99 @@ python -m molbuilder serve --port 8000
 For LAN or internet exposure (TLS, OAuth sign-in, reverse-proxy
 auth), see [§ Deployment](#deployment) and
 [`docs/deployment.md`](docs/deployment.md).
+
+---
+
+## Common tasks
+
+Concrete recipes that cover ~90 % of what users do day-to-day.
+Each is a same-screen workflow inside the web app; the keyboard
+arrow ↓ between steps is just a tab switch or a panel scroll.
+
+### "I have a SMILES — give me an Au–S–molecule–S–Au junction"
+
+```
+Molbuilder tab → Sources panel
+   ↓ Type SMILES: Sc1ccc(S)cc1   (1,4-benzenedithiol)
+   ↓ Click "Build"
+Atom panel
+   ↓ Click each thiol H, hit Delete (exposes the two S atoms)
+Pose panel
+   ↓ Shift-click the two S atoms, axis=z, center=midpoint, "Apply orient"
+Junction panel
+   ↓ Element=Au, plane=111, m×n×layers=3×3×2, gap=12 Å, "Apply Add Electrode"
+Save panel
+   ↓ "Save to project"  →  BDT-Au.xyz  +  BDT-Au.molstruct.json
+```
+
+You now have a transport-ready Au-BDT-Au geometry.  Total: ~2 min,
+zero file editing.
+
+### "Generate a SIESTA `.fdf` for this geometry"
+
+```
+Structure-optimization tab
+   ↓ In the Projects sidebar, double-click BDT-Au.xyz   (commits the selection)
+   ↓ Engine: SIESTA.  Pick the relaxation stage, k-grid, basis, mesh.
+   ↓ "Generate"  →  BDT-Au.fdf + BDT-Au.run.sh + .psml files
+```
+
+The generated `.fdf` is annotated with tooltips-as-comments so it
+reads as a tutorial.  Drop the directory on your cluster, run
+`bash BDT-Au.run.sh`, done.
+
+### "Watch the optimization converge in real time"
+
+```
+Results tab
+   ↓ Single-click your run directory's .molwatch.log in the sidebar
+Inspector renders:
+   * 3Dmol frame-by-frame animation of the geometry
+   * Energy vs step (Plotly)
+   * Max atomic force vs step
+   * Per-cycle SCF residual on log scale
+   ↓ auto-refreshes every ~1 min on file mtime change
+```
+
+You see new frames stream in while the job is still running on the
+cluster.  No file copying, no offline plotting.
+
+### "Run Raman on a small molecule"
+
+```
+Molbuilder tab → Sources panel
+   ↓ Type compound name: aspirin  (PubChem lookup)
+   ↓ Save to project as aspirin.xyz
+Structure-optimization tab
+   ↓ Engine: PySCF, method: B3LYP/def2-SVP, "Generate"  →  aspirin.py
+   ↓ (run on cluster)
+Spectrum-calculation tab
+   ↓ Pick aspirin_optimized.xyz from the sidebar
+   ↓ compute_raman = True, compute_frequencies = True, "Generate"
+   ↓ (run on cluster)  →  aspirin.spectra.json
+Results tab
+   ↓ Pick aspirin.spectra.json
+   ↓ See Lorentzian-broadened spectrum + modes table + per-mode 3-D animation
+```
+
+The Raman pipeline is bit-for-bit validated against an independent
+hand-written reference (see § [Scientific validation](#scientific-validation)).
+
+### "Bias-scan a finished transport calc"
+
+```
+Transport-calculation tab
+   ↓ Pick BDT-Au.xyz from the sidebar
+   ↓ Configure: electrode mode, k-mesh, contour, lead orientation
+   ↓ "Generate"  →  BDT-Au-transport.fdf
+   ↓ (run on cluster, requires electrode .TSHS — manual today; wizard planned)
+Results tab
+   ↓ Pick BDT-Au.transport.json
+   ↓ T(E) + I-V Plotly charts (planned; today shows the file metadata)
+```
+
+The Au-BDT-Au transport pipeline is cross-checked against Reed 2006 /
+Stokbro 2003 to within factor-of-2 (~0.01 G₀).
 
 ---
 
@@ -675,6 +789,60 @@ Method + full result tables:
 | [`docs/types/structure.md`](docs/types/structure.md) | `Structure` dataclass + readers / writers |
 | [`docs/types/parsers.md`](docs/types/parsers.md) | Trajectory parser registry + auto-detect |
 | [`molbuilder/data/README.md`](molbuilder/data/README.md) | Citations for every numeric value (FCC lattice constants, contact distances, …) |
+
+---
+
+## Tips & FAQ
+
+A handful of things that come up often:
+
+**"Why are there so many conda envs?"**  Mixing SIESTA-MPI +
+AmberTools + Playwright + cupy in one env produces three independent
+unresolvable conflicts (numpy 1.x vs 2.x, libnetcdf 4.10 vs 4.9.3,
+icu vs nodejs).  One env per backend is the only way to keep each
+one production-stable.  You only install the ones you need.
+
+**"Do I have to run the install for every env?"**  No — only for the
+backends you actually use.  Most users just need `molbuilder-pySCF`
++ `molbuilder-siesta`.  GPU SIESTA and AmberTools are opt-in.
+
+**"What if I just want to play with the UI?"**  The host env alone
+is enough.  Build geometries in the Molbuilder tab, save to disk,
+generate `.fdf` / `.py` scripts — no backend env needed.  You can't
+actually run the calculations without the backend envs, but you can
+get all the way through script generation.
+
+**"My SIESTA / PySCF script crashed — where do I look?"**  The
+generated `<job>.run.sh` writes stderr + stdout to
+`<job>.<engine>.log` next to the inputs.  The Results tab's Source
+inspector renders it.
+
+**"Can I run more than one user on one machine?"**  Yes — but
+launch a separate `molbuilder serve` process per user (different
+port), each with its own `projects/` directory.  The Flask app holds
+one global lock and isn't multi-tenant.
+
+**"How do I update / change a backend version?"**  For conda-backed
+backends (`molbuilder-siesta`, `molbuilder-pySCF`, `molbuilder-MDtools`),
+just `python -m molbuilder envs install <name>` again — it's
+idempotent.  For source-built GPU SIESTA, use
+`MOLBUILDER_ELPA_TAG=<version> bash scripts/siesta-gpu-bootstrap.sh`,
+or `--rebuild=<component>` if only one piece changed, or `--clean`
+for a guaranteed-clean start.
+
+**"The install errored — what should I do?"**  Try
+`bash scripts/install-env.sh --clean <env-name>` for a clean reinstall.
+For the GPU SIESTA env, this removes the conda env entirely and
+wipes the source-build artifact dir; you start over from a known-
+clean state.  The interactive preflight reports detected toolchain
+state up front so you can spot driver / disk / network issues before
+the build commits.
+
+**"My structure rendered wrong in the viewer."**  3Dmol guesses
+bonds from distances; for unusual geometries that guess can be off.
+The PDB writer doesn't emit CONECT records, so PDB-input downstream
+tools re-guess too.  If you need explicit bonds, use XYZ + the
+sidecar (`.molstruct.json`) for atom labels.
 
 ---
 
