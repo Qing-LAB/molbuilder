@@ -65,7 +65,19 @@
     function mountInspector(rootEl, opts) {
     opts = opts || {};
 
-    const POLL_MS = 15000;
+    // Poll cadence (2026-06-14 relax from 15 s -> 60 s):
+    // ``/api/watch/data`` for a multi-stage / multi-MB trajectory
+    // routinely exceeded 15 s of server-side parsing, so the next
+    // tick fired BEFORE the previous response landed.  Pre-fix the
+    // overlap was masked by an unconditional ``pollAbort.abort()``
+    // at the top of ``pollOnce`` -- which tore down the TLS
+    // connection mid-response and surfaced as ``SSL: UNEXPECTED_
+    // EOF_WHILE_READING`` lines in the server log.  Bumping the
+    // cadence is the easier half of the fix; the in-flight guard
+    // in ``pollOnce`` is the other half (overlapping ticks now
+    // SKIP instead of aborting the in-flight request, so legitimate
+    // slow responses can complete instead of generating noise).
+    const POLL_MS = 60000;
 
     // Inside-partial lookup: scoped to the inspector's root element
     // (i.e., the #inspector-host on /results after the adapter has
@@ -131,6 +143,12 @@
         // AbortController pattern in lib/inspectors/trajectory.js.
         loadAbort:  null,
         pollAbort:  null,
+        // 2026-06-14 tick-overlap guard.  ``true`` while a poll
+        // fetch is on the wire; the next tick (POLL_MS later)
+        // checks this flag and SKIPS instead of aborting + re-
+        // firing.  Cleared in ``pollOnce``'s ``finally`` so
+        // settle-then-tick is always allowed.
+        pollInFlight: false,
     };
 
     // #205 Part A migration: mount via the standard embed so the
@@ -1740,14 +1758,31 @@
     /* ------------------------------------------------------------------ */
 
     async function pollOnce() {
-        // Each poll tick supersedes the previous in-flight poll --
-        // if a previous tick is still on the wire we don't care
-        // about it any more (state.mtime in the URL pins what we're
-        // checking against, and an answer to an old mtime is stale
-        // by the time it arrives).
-        if (state.pollAbort) state.pollAbort.abort();
+        // 2026-06-14 in-flight guard: if the previous tick's
+        // request is still on the wire, SKIP this tick.  The next
+        // tick (POLL_MS later) fires only if the prior one has
+        // settled.  Pre-fix every tick UNCONDITIONALLY aborted any
+        // in-flight prior poll, tearing down the TLS connection
+        // mid-response on slow / large-file polls and surfacing
+        // as ``SSL: UNEXPECTED_EOF_WHILE_READING`` in the server
+        // log.  The legitimate cancellation path -- the user's
+        // dispose() or a file-change supersede -- still aborts
+        // via the AbortController held in ``state.pollAbort``;
+        // it's only the tick-overlap case the guard prevents.
+        //
+        // The earlier "stale-mtime-by-arrival" concern in the
+        // old comment was always a false worry: ``state.mtime``
+        // is the POSTed query param + the server returns
+        // ``changed: false`` for any matched mtime, so a slow
+        // response with the old mtime is correctly a no-op.  No
+        // staleness risk -- just a wasted client wait, which the
+        // guard skips entirely.
+        if (state.pollInFlight) {
+            return;
+        }
         state.pollAbort = new AbortController();
         const signal = state.pollAbort.signal;
+        state.pollInFlight = true;
         try {
             const url = state.mtime !== null
                 ? "/api/watch/data?mtime=" + encodeURIComponent(state.mtime)
@@ -1770,11 +1805,19 @@
             }
             applyNewData(r);
         } catch (e) {
-            // AbortError: another poll superseded this one, or
-            // dispose() ran.  Silent -- the next tick (or the
-            // unmount) is the authoritative state.
+            // AbortError: dispose() or a file-change supersede ran.
+            // Silent -- the next tick (or the unmount) is the
+            // authoritative state.  Pre-fix this also caught the
+            // tick-overlap abort case; the in-flight guard above
+            // means it no longer fires for plain overlap.
             if (e.name === "AbortError") return;
             setStatus("Network error: " + e.message, "error");
+        } finally {
+            // Always release the in-flight flag so the NEXT tick
+            // (typically 60 s away) can fire.  Even on AbortError
+            // / network error, the controller is settled at this
+            // point and a new tick is welcome.
+            state.pollInFlight = false;
         }
     }
 
