@@ -603,15 +603,28 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
         "# Policy researched 2026-06-15; sources cited in runwrap.py.\n"
         "# Override anywhere via MOLBUILDER_MPI_NP /\n"
         "# MOLBUILDER_OMP_NUM_THREADS / wrapper '-np N' / MB_NP env.\n"
-        '_phys_cores=$(nproc --all 2>/dev/null '
+        '# Hardware probe -- prefer lscpu because it gives PHYSICAL\n'
+        '# cores (HT-aware); nproc returns logical, which counts HT\n'
+        '# siblings and would make _cps too large -> over-binding.\n'
+        '_phys_cores=$(LANG=C lscpu -p=Core,Socket 2>/dev/null '
+        '| grep -v "^#" | sort -u | wc -l 2>/dev/null)\n'
+        'if [ -z "$_phys_cores" ] || [ "$_phys_cores" -lt 1 ]; then\n'
+        '    # Fallback: nproc / 2 (assume 2-way HT, conservative\n'
+        '    # estimate; bare nproc would over-count on HT boxes).\n'
+        '    _logical=$(nproc --all 2>/dev/null '
         '|| getconf _NPROCESSORS_ONLN 2>/dev/null || echo 8)\n'
+        '    _phys_cores=$(( _logical / 2 ))\n'
+        '    [ "$_phys_cores" -lt 1 ] && _phys_cores=$_logical\n'
+        'fi\n'
         '_n_sockets=$(LANG=C lscpu -p=Socket 2>/dev/null '
-        '| grep -v "^#" | awk -F, "{print \\$2}" '
-        '| sort -u | wc -l 2>/dev/null || echo 1)\n'
+        '| grep -v "^#" | sort -u | wc -l 2>/dev/null)\n'
         'if [ -z "$_n_sockets" ] || [ "$_n_sockets" -lt 1 ]; '
         'then _n_sockets=1; fi\n'
         '_cps=$(( _phys_cores / _n_sockets ))\n'
         '[ "$_cps" -lt 1 ] && _cps=1\n'
+        '# Echo what we detected so the user can sanity-check it\n'
+        'echo "molbuilder: detected phys_cores=$_phys_cores, '
+        'n_sockets=$_n_sockets, cores_per_socket=$_cps" >&2\n'
         # MPI policy: 1 rank per package, except single-socket
         # small (CPS < 16) gets 1 rank total.
         'if [ "$_n_sockets" -ge 2 ]; then\n'
@@ -652,9 +665,9 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
         '# Banner: single-line, stderr, kubectl-style.\n'
         'echo "molbuilder: GPU mode (ELPA-CUDA, no NCCL) -- '
         'mpi_np=$_gpu_mpi_np_default, OMP=$_omp_default, '
-        '--bind-to core --map-by package:PE=$_omp_default" >&2\n'
+        '--bind-to core --map-by core:PE=$_omp_default" >&2\n'
         'echo "molbuilder: override via MOLBUILDER_MPI_NP / '
-        'MOLBUILDER_OMP_NUM_THREADS / -np" >&2\n'
+        'MOLBUILDER_OMP_NUM_THREADS / -np / -omp" >&2\n'
         "\n"
     )
 
@@ -1152,7 +1165,15 @@ def render_run_wrapper(script_path: Path, *,
             # per package.  On OpenMPI 5.x "package" is canonical;
             # "socket" still works as an alias.
             + (
-                f'_mpirun_bind="--bind-to core --map-by package:PE=$_omp_threads"\n'
+                # ``--map-by core:PE=N`` binds each rank to a group of
+                # N consecutive cores -- no ``package:`` qualifier, so
+                # OpenMPI won't refuse when mpi_np > n_packages.  The
+                # earlier ``--map-by package:PE=N`` shape died on
+                # single-package boxes with mpi_np=2 ("more cpus than
+                # available in your allocation").  Switching to core
+                # mapping keeps the per-rank thread-pinning intent
+                # without the package-count constraint.
+                f'_mpirun_bind="--bind-to core --map-by core:PE=$_omp_threads"\n'
                 if gpu_mode else
                 f'_mpirun_bind=""\n'
             )
