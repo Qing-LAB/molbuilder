@@ -502,6 +502,13 @@
     // setOverlays replace is safe here.
     function applyHideFrozen() {
         if (!_handle) return;
+        // G6 2026-06-14: re-render the Inspect atom-list so frozen
+        // rows disappear (when on) / re-appear (when off) in lockstep
+        // with the 3D viewer overlay.  Pre-fix the table was rendered
+        // once per rebuildModel and stayed atom-complete even after
+        // the user toggled hide-frozen on, so the user could pick a
+        // frozen atom that was visually hidden in the viewer.
+        rebuildInspectAtomList();
         const cb = $("hide-frozen");
         const frozen = _frozenSet();
         if (!frozen || !cb || !cb.checked) {
@@ -846,8 +853,23 @@
         tbody.innerHTML = "";
         if (!state.data || !state.data.frames.length) return;
         const frame = state.data.frames[state.currentFrame] || [];
+        // G6 2026-06-14: respect the hide-frozen toggle in the
+        // Inspect atom list.  Pre-fix the table still rendered one
+        // row per frozen atom + the row remained clickable, so the
+        // user could pick + measure an atom that was visually
+        // hidden in the 3D viewer.  Frozen rows now render as
+        // ``.inspect-atom-row--frozen`` (CSS-muted, non-clickable)
+        // when hide-frozen is on; this matches the force-arrow
+        // filter pattern at line 562.
+        const cb = $("hide-frozen");
+        const hideFrozen = !!(cb && cb.checked);
+        const frozen = hideFrozen ? _frozenSet() : null;
         const frag = document.createDocumentFragment();
         for (let i = 0; i < frame.length; i++) {
+            // Skip rendering frozen atoms entirely when hide-frozen
+            // is on -- a muted row is still a target for click +
+            // would carry a stale picked-state on toggle-off.
+            if (frozen && frozen.has(i)) continue;
             const r = frame[i];
             const tr = document.createElement("tr");
             // dataset.atomIndex stays 0-based (matches the embed's
@@ -903,16 +925,36 @@
         if (!tbody || !state.data || !state.data.frames.length) return;
         const frame = state.data.frames[state.currentFrame] || [];
         const rows  = tbody.children;
-        if (rows.length !== frame.length) {
-            // Atom count changed (unlikely mid-trajectory) -- rebuild.
-            rebuildInspectAtomList();
+        // G6 2026-06-14: when hide-frozen is on, rendered rows are
+        // a SUBSET of frame atoms — indexing rows[i] against
+        // frame[i] would mis-attribute coords to the wrong row.
+        // Read each row's dataset.atomIndex to find its source.
+        // Defensive: if the count matches frame.length we still use
+        // the index path (cheap parity for the common hide-frozen-
+        // off case).
+        if (rows.length === frame.length) {
+            for (let i = 0; i < frame.length; i++) {
+                const cells = rows[i].children;
+                cells[2].textContent = frame[i][1].toFixed(2);
+                cells[3].textContent = frame[i][2].toFixed(2);
+                cells[4].textContent = frame[i][3].toFixed(2);
+            }
             return;
         }
-        for (let i = 0; i < frame.length; i++) {
-            const cells = rows[i].children;
-            cells[2].textContent = frame[i][1].toFixed(2);
-            cells[3].textContent = frame[i][2].toFixed(2);
-            cells[4].textContent = frame[i][3].toFixed(2);
+        // hide-frozen path: rows are a filtered subset, use the
+        // per-row dataset.atomIndex to look up the right frame row.
+        for (let r = 0; r < rows.length; r++) {
+            const tr = rows[r];
+            const ai = Number(tr.dataset.atomIndex);
+            if (!Number.isInteger(ai) || ai < 0 || ai >= frame.length) {
+                // Stale row: atom count shrank, fall back to rebuild.
+                rebuildInspectAtomList();
+                return;
+            }
+            const cells = tr.children;
+            cells[2].textContent = frame[ai][1].toFixed(2);
+            cells[3].textContent = frame[ai][2].toFixed(2);
+            cells[4].textContent = frame[ai][3].toFixed(2);
         }
     }
 

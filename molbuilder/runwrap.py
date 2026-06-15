@@ -214,7 +214,43 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
     user's prior results.
     """
     if engine == "siesta":
-        exts = ("DM", "CG", "XV", "LWF", "ZM", "Bonds", "PARTIAL", "EIG")
+        # SIESTA warm-start file extensions.  Every one of these
+        # carries SCF / geometry / electronic state that a fresh
+        # run would otherwise pick up via ioxv / restart code paths,
+        # silently contaminating the "cold" run.
+        #
+        #   DM, CG, XV, LWF, ZM, Bonds, PARTIAL, EIG
+        #     -- canonical relaxation restart set (density matrix,
+        #        CG geometry checkpoint, coordinates+velocities,
+        #        Wannier functions, Z-matrix, bond cache, partial
+        #        sums, eigenvalues).
+        #   HSX     -- Hamiltonian + overlap matrices.  Loaded by
+        #              TranSIESTA NEGF on restart.  Missing this in
+        #              the first --cold ship was a B.3 transport
+        #              hazard: a fresh run could pick up the prior
+        #              run's H/S matrices and silently reuse them.
+        #   WFSX    -- saved wavefunctions (SaveWaveFunctions /
+        #              post-processing).  Loaded on TS.SaveBias /
+        #              transmission calculations.
+        #   STRUCT_NEXT_ITER -- next-iteration geometry checkpoint
+        #              written by SIESTA at the end of every CG /
+        #              FIRE step.  SIESTA reads it on restart with
+        #              ``MD.UseStructFile T`` (default true for
+        #              relaxations); without removal a stage-2
+        #              cold run reuses the stage-1 geometry.
+        #   TSHS    -- TranSIESTA self-energy Hamiltonian; loaded on
+        #              electrode reuse.  Critical for transport.
+        #   TSDE    -- TranSIESTA density matrix (NEGF-specific
+        #              counterpart of .DM).  Same restart hazard.
+        #
+        # Intentionally OMITTED: .PSF (pseudopotential cache;
+        # regenerable, and a stale cache may carry the user's
+        # custom pseudo which would be destructive to remove).
+        exts = (
+            "DM", "CG", "XV", "LWF", "ZM", "Bonds", "PARTIAL", "EIG",
+            "HSX", "WFSX", "STRUCT_NEXT_ITER",
+            "TSHS", "TSDE",
+        )
     elif engine == "pyscf":
         exts = ("chk",)
     else:                                  # pragma: no cover
@@ -361,7 +397,16 @@ def _runtime_status_block(
         # the script being named ``foo-stage2.fdf``.  Test both label
         # patterns (SystemLabel-keyed AND basename-keyed) for the
         # warm-start detection so the Mode line is accurate.
-        warmstart_exts = ("DM", "CG", "XV", "LWF", "ZM")
+        # Match the full SIESTA warm-start ext tuple used by the
+        # cold-restart aside below — covers transport (.HSX/.TSHS/
+        # .TSDE/.WFSX) and the geometry-checkpoint case
+        # (STRUCT_NEXT_ITER) too.  Used only to detect whether the
+        # banner should report "Mode: hot/warm" vs "Mode: cold".
+        warmstart_exts = (
+            "DM", "CG", "XV", "LWF", "ZM",
+            "HSX", "WFSX", "STRUCT_NEXT_ITER",
+            "TSHS", "TSDE",
+        )
         warmstart_test_pieces = []
         for ext in warmstart_exts:
             warmstart_test_pieces.append(f'[ -e "$_warm_label.{ext}" ]')

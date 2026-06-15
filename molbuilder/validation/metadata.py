@@ -40,10 +40,29 @@ def _validate_config_metadata(cfg) -> List[Issue]:
                         f"config.{f.name}",
                     ))
             except TypeError:
-                # Field metadata claims a numeric range but the value
-                # isn't comparable -- silently skip rather than crash;
-                # a misconfigured metadata entry shouldn't break runs.
-                pass
+                # 2026-06-14 G5: pre-fix this branch silently
+                # swallowed every TypeError, which hid a real bug
+                # class -- a Tuple-typed field (e.g. SIESTA's
+                # ``kgrid: Tuple[int,int,int]``) with a scalar
+                # ``range = (lo, hi)`` metadata is uncomparable and
+                # the field's range goes unenforced.  Surfacing
+                # this as an error-severity Issue makes the metadata
+                # bug visible at preflight time instead of leaving
+                # the user with a silently-permissive validator.
+                # Use a ``validate`` callable on the field metadata
+                # to range-check each component (see the kgrid
+                # field's ``validate`` callable in config/siesta.py
+                # for the pattern).
+                issues.append(Issue(
+                    "error",
+                    (f"Field metadata for ``{f.name}`` declares "
+                     f"``range = {rng}`` but the value "
+                     f"{value!r} is not scalar-comparable.  "
+                     f"This is a programmer bug: drop the scalar "
+                     f"``range`` and add a per-component "
+                     f"``validate`` callable instead."),
+                    f"config.{f.name}",
+                ))
         # Optional callable: meta["validate"] -> Issue or None
         validator = meta.get("validate")
         if validator is not None:

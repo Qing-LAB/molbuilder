@@ -72,6 +72,7 @@ from ._shared import (
 from .files import _PickerError, _resolve_within_roots
 
 from molbuilder.config.spectra import SpectraConfig
+from molbuilder.validation.metadata import _validate_config_metadata
 from molbuilder.parsers import molstruct_json as _molstruct_json
 from molbuilder.parsers.spectra_json import (
     SpectraJsonError,
@@ -384,7 +385,21 @@ def api_spectra_render():
                         "where":   "config.engine"}],
         }), 400
 
-    issues = list(engine.preflight(struct, cfg, prior=prior))
+    # 2026-06-14 G9 fix: run the generic dataclass-field-metadata
+    # validator (range checks etc.) in addition to the engine
+    # preflight.  Pre-fix this endpoint skipped the metadata pass
+    # entirely, so ``range = (lo, hi)`` declared on SpectraConfig
+    # fields was dead documentation -- out-of-range values
+    # surfaced no warn.  Same pattern build.py:720 uses via the
+    # full ``validate(struct, cfg)`` aggregator; we call the
+    # metadata pass directly because spectra has no
+    # engine-specific validator registered (the geometry pass is
+    # also useful but excluded here to avoid re-warning on
+    # /api/structure/analyze findings the chip already shows).
+    issues = (
+        list(_validate_config_metadata(cfg))
+        + list(engine.preflight(struct, cfg, prior=prior))
+    )
     if prior_warn is not None:
         issues.append(prior_warn)
     # Surface the sidecar-application failure (if any) so the user
@@ -403,7 +418,7 @@ def api_spectra_render():
         return jsonify({
             "ok":     False,
             "error":  "preflight failed; see issues",
-            "issues": _issues_to_json(issues),
+            "issues": _issues_to_json(issues, cfg=cfg),
         }), 400
 
     # Render the script + Methods text + bibliography keys.
@@ -415,7 +430,7 @@ def api_spectra_render():
         return jsonify({
             "ok":     False,
             "error":  f"render failed: {exc}",
-            "issues": _issues_to_json(issues),
+            "issues": _issues_to_json(issues, cfg=cfg),
         }), 500
 
     methods_md = render_methods_md(
@@ -431,7 +446,7 @@ def api_spectra_render():
         "methods_md":        methods_md,
         "bibliography_keys": bib_keys,
         "job_name":          cfg.job_name,
-        "issues":            _issues_to_json(issues),
+        "issues":            _issues_to_json(issues, cfg=cfg),
     })
 
 

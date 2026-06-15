@@ -149,6 +149,16 @@
         watchTimer:     null,     // setInterval handle, or null
         watchPath:      null,     // server-side path being polled
         watchErrors:    0,        // consecutive transient-error counter
+        // 2026-06-14 G4 in-flight guard, same shape as trajectory's
+        // ``pollInFlight``.  Set true while a watchTick fetch is on
+        // the wire; the next tick checks the flag and SKIPS instead
+        // of aborting + re-firing.  Cleared in watchTick's finally.
+        watchInFlight:  false,
+        // AbortController for the in-flight fetch — held so dispose()
+        // can cancel a mid-flight request cleanly without producing
+        // an SSL EOF traceback on the dev server.  Created per tick
+        // inside watchTick; nulled in dispose().
+        watchAbort:     null,
         // Spectrum chart -- Lorentzian broadening FWHM in cm⁻¹.
         // 0 disables the overlay (sticks only).
         broadeningFWHM: 20,
@@ -829,12 +839,21 @@
             cp.hidden = false;
         }
 
-        // Write residual.  Empty residual → muted "No issues" so
-        // the user sees the panel did update, just with nothing
-        // un-categorised.
+        // Write residual.  G8 2026-06-14: when all issues are
+        // tagged (the common case post-Rule-2), the residual is
+        // empty.  Treat that as "nothing left to surface here" and
+        // collapse the residual to the same muted ``No issues``
+        // filler the no-issues-at-all branch uses (above).  Pre-
+        // fix this branch wrote ``No untagged issues.`` which
+        // leaked internal jargon ("untagged" is the dev-side word
+        // for "no workflow_group metadata"; a chemistry user has
+        // no reason to know that).  Aligns with the SIESTA / PySCF
+        // / transport renderers' "hide the panel when empty"
+        // behaviour — see viewer.js:159-163, transport/core.js
+        // residual hide.
         if (!residual.length) {
             panel.innerHTML =
-                '<p class="status muted">No untagged issues.</p>';
+                '<p class="status muted">No issues.</p>';
             return;
         }
         const errs  = residual.filter(i => i.severity === "error");
@@ -1079,12 +1098,29 @@
 
     async function watchTick() {
         if (!state.watchPath) return;
+        // 2026-06-14 G4 in-flight guard, same pattern as trajectory
+        // core.js::pollOnce.  Pre-fix the 2 s WATCH_INTERVAL_MS was
+        // shorter than the time /api/spectra/load takes on a large
+        // .spectra.json, so the next tick fired BEFORE the previous
+        // response landed.  Without an AbortController on the fetch
+        // the prior request continued silently to completion and
+        // landed on torn-down DOM after dispose(); with the planned
+        // AbortController, an abort-on-tick would tear down the TLS
+        // connection mid-stream and produce the SSL EOF noise the
+        // trajectory fix retired.  The cleaner shape: skip overlap
+        // ticks entirely, let in-flight finish.  Dispose still
+        // aborts via the AbortController held in state.watchAbort.
+        if (state.watchInFlight) return;
         let body;
+        state.watchAbort = new AbortController();
+        const signal = state.watchAbort.signal;
+        state.watchInFlight = true;
         try {
             const r = await fetch("/api/spectra/load", {
                 method:  "POST",
                 headers: { "Content-Type": "application/json" },
                 body:    JSON.stringify({ path: state.watchPath }),
+                signal:  signal,
             });
             // Phase 6e seventh-review LANDMINE-4: r.json() inside
             // the try so malformed JSON (proxy drop, SIESTA
@@ -1092,6 +1128,12 @@
             // rejection in the setInterval that drives the watch.
             body = await r.json();
         } catch (exc) {
+            // AbortError: dispose() ran while a tick was on the
+            // wire.  Silent -- the dispose has already cleared the
+            // timer + DOM is gone, no work to do.
+            if (exc.name === "AbortError") {
+                return;
+            }
             state.watchErrors++;
             setStatus(els.watchStatus,
                       "Network error (" + state.watchErrors + "/"
@@ -1101,6 +1143,11 @@
                           + " consecutive network errors.");
             }
             return;
+        } finally {
+            // Always release the in-flight flag so the next tick
+            // can fire.  Even on AbortError / network error, the
+            // controller is settled at this point.
+            state.watchInFlight = false;
         }
         if (!body.ok) {
             // 404 (file not yet written) is the COMMON case during
@@ -2584,6 +2631,10 @@
             // unmount mid-fetch).
             if (state.loadAbort)   { state.loadAbort.abort();   state.loadAbort = null; }
             if (state.renderAbort) { state.renderAbort.abort(); state.renderAbort = null; }
+            // G4 2026-06-14: live-watch fetch controller.  Clean
+            // TLS tear-down on dispose() avoids the SSL EOF the
+            // trajectory-poll fix retired.
+            if (state.watchAbort)  { state.watchAbort.abort();  state.watchAbort = null; }
             if (state.watchTimer) {
                 clearInterval(state.watchTimer);
                 state.watchTimer = null;

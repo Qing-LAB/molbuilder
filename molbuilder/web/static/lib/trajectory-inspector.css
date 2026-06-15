@@ -360,7 +360,12 @@
 
 .plots-row {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    /* ``min(280px, 100%)`` floor lets a plot cell shrink below
+     * 280 px when the container is narrower (a narrow inspector
+     * panel rendered inside a phone viewport).  See
+     * docs/protocols/mobile-layout.md for the responsive-grid
+     * pattern. */
+    grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
     gap: var(--gap);
 }
 .plot {

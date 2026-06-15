@@ -48,6 +48,44 @@ from typing import Optional, Sequence, Tuple
 _BASENAME_RE = re.compile(r"^[A-Za-z0-9_\-]+$")
 
 
+def _validate_kgrid(value):
+    """Per-component range check for SiestaConfig.kgrid (a
+    Tuple[int,int,int]).  Used as the ``validate`` callable on the
+    kgrid field metadata so the scalar ``range`` check in
+    ``_validate_config_metadata`` doesn't fire (and silently
+    swallow a TypeError) on this tuple-typed field.
+
+    Returns a list of Issue (empty = OK).  Range (1, 64) per the
+    accepted SIESTA sampling density: 1 is the gamma-only floor;
+    anything > 32 in any direction is wasteful for real-space
+    integration and very rarely justified.  64 leaves some headroom
+    for the periodic-1D / 2D cases without un-bounding the field.
+    """
+    from ..issues import Issue
+    if not isinstance(value, (tuple, list)) or len(value) != 3:
+        return [Issue(
+            "error",
+            f"kgrid must be a 3-tuple of ints; got {value!r}",
+            "config.kgrid",
+        )]
+    out = []
+    for i, v in enumerate(value):
+        if not isinstance(v, int) or isinstance(v, bool):
+            out.append(Issue(
+                "error",
+                f"kgrid[{i}] = {v!r} must be an int (1..64)",
+                "config.kgrid",
+            ))
+        elif v < 1 or v > 64:
+            out.append(Issue(
+                "warn",
+                f"kgrid[{i}] = {v} is outside the recommended "
+                f"range [1, 64]",
+                "config.kgrid",
+            ))
+    return out
+
+
 def _validate_basename(label: str):
     """Return a validate callable for SiestaConfig.system_label /
     PySCFConfig.job_name.  Used as ``metadata["validate"]`` -- the
@@ -348,6 +386,15 @@ class SiestaConfig:
         "tier":  "basic",
         "help":  "Monkhorst-Pack mesh (e.g. 4x4x1 in CLI or [4,4,1] in code)",
         "skip_cli": True,
+        # 2026-06-14 G5: per-component validator so the metadata
+        # range check actually runs on a Tuple-typed field.  Without
+        # this, ``_validate_config_metadata`` would TypeError on the
+        # scalar comparison and silently skip — a future ``kgrid =
+        # (0, 0, 0)`` (illegal: SIESTA requires ≥ 1) would slip
+        # through.  Range (1, 64) per the engine's accepted sampling
+        # density (anything > 32 in any direction is wasteful for
+        # a real-space integration).
+        "validate": (lambda value, cfg: _validate_kgrid(value)),
     })
 
     # Relaxation; relax_type="none" disables the MD block entirely.

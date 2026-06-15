@@ -38,6 +38,7 @@ from ._shared import (
 
 from molbuilder.config.transport import TransportConfig
 from molbuilder.transport import get_engine, UnknownEngineError
+from molbuilder.validation.metadata import _validate_config_metadata
 
 
 bp = Blueprint("transport", __name__)
@@ -195,7 +196,20 @@ def api_transport_render() -> Any:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
     # Preflight: scientific + structural checks before emission.
-    issues = engine.preflight(struct, cfg)
+    # 2026-06-14 G9 fix: prepend the generic dataclass-field-
+    # metadata validator (range checks etc.) so out-of-range
+    # values declared on TransportConfig fields actually surface
+    # as warns.  Pre-fix this endpoint only called
+    # engine.preflight() which doesn't run the metadata pass,
+    # leaving every ``range = (lo, hi)`` declaration on Transport
+    # fields as dead documentation.  Same pattern build.py:720
+    # uses via the full ``validate(struct, cfg)`` aggregator;
+    # we call the metadata pass directly because the
+    # _validate_transport engine entry isn't registered yet.
+    issues = (
+        list(_validate_config_metadata(cfg))
+        + list(engine.preflight(struct, cfg))
+    )
     if sidecar_notice:
         from molbuilder.issues import Issue
         # ``where="structure_path"`` matches Spectra's sidecar-load
@@ -246,8 +260,8 @@ def api_transport_render() -> Any:
             "ok":          False,
             "engine":      cfg.engine,
             "error":       "preflight failed; see issues",
-            "issues":      _issues_to_json(issues),
-            "errors_only": _issues_to_json(errors_only),
+            "issues":      _issues_to_json(issues, cfg=cfg),
+            "errors_only": _issues_to_json(errors_only, cfg=cfg),
         }), 400
 
     # Emit the script.  Engine-side rendering is pure (no I/O); the
@@ -281,7 +295,7 @@ def api_transport_render() -> Any:
         "engine":      cfg.engine,
         "script":      script,
         "filename":    filename,
-        "issues":      _issues_to_json(issues),
+        "issues":      _issues_to_json(issues, cfg=cfg),
         # See the field-meaning comment near the preflight-error
         # branch above for what `errors_only` is for.
         "errors_only": [],
