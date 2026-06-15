@@ -126,8 +126,8 @@ cd /path/to/molbuilder
 python -m molbuilder envs install molbuilder-siesta      # CPU SIESTA
 python -m molbuilder envs install molbuilder-pySCF       # PySCF + geomeTRIC
 python -m molbuilder envs install molbuilder-MDtools     # AmberTools
-# Optional GPU SIESTA (45-min source build; gated by preflight + confirm):
-bash scripts/siesta-gpu-bootstrap.sh
+# Optional GPU SIESTA (~45-min source build; gated by preflight + confirm):
+python -m molbuilder envs install molbuilder-siesta-gpu --yes
 
 # 4. Start the web app
 python -m molbuilder serve --port 8000
@@ -556,14 +556,23 @@ separate lets each backend pin its own native stack.
 ### One CLI manages every env
 
 ```bash
-python -m molbuilder envs list                      # one-line status per recipe
-python -m molbuilder envs doctor                    # full health report (runs verify per env)
-python -m molbuilder envs install molbuilder-siesta # idempotent install
-python -m molbuilder envs install <name> --dry-run  # preview the plan
-python -m molbuilder envs install <name> --check    # report present + verified
+python -m molbuilder envs list                       # one-line status per recipe
+python -m molbuilder envs doctor                     # full health report (runs verify per env)
+python -m molbuilder envs install molbuilder-siesta  # idempotent install
+python -m molbuilder envs install <name> --dry-run   # preview the plan
+python -m molbuilder envs install <name> --check     # report present + verified
+python -m molbuilder envs install <name> --yes       # skip the confirmation speed-bumps (CI)
+python -m molbuilder envs install <name> --clean     # wipe + reinstall from scratch
+python -m molbuilder envs install <name> --rebuild=<component>  # source-build envs only
+python -m molbuilder envs validate molbuilder-siesta-gpu        # post-install correctness probes
 # Or from any shell (no host env activation needed):
 bash scripts/install-env.sh <name>
 ```
+
+Every install drops a full transcript at
+`~/.molbuilder/logs/install-<recipe>-<timestamp>.log` so you can
+grep or share a build session without rerunning it.  The CLI prints
+the log path at the start of the install and again at the end.
 
 Recipes are declared in
 [`molbuilder/envs/recipes.py`](molbuilder/envs/recipes.py); a
@@ -572,47 +581,73 @@ and code can't drift silently.
 
 ### GPU SIESTA from source
 
-`molbuilder-siesta-gpu` builds **ELPA + ELSI + SIESTA 5.4.2** from
-source against CUDA-enabled ELPA.  The install runs ~45 min on 8
-cores and consumes ~12 GB under `$CONDA_PREFIX`.
+`molbuilder-siesta-gpu` builds **ELPA + SIESTA 5.4.2** from source
+against the env's pinned toolchain, with ELPA's CUDA back-end on (the
+conda-forge ELPA package isn't built with CUDA, which is why the
+source build exists).  The install runs ~45 min on 8 cores and
+consumes ~12 GB under `$CONDA_PREFIX`.  Same CLI as every other env:
 
 ```bash
-bash scripts/siesta-gpu-bootstrap.sh           # first-time install
-bash scripts/siesta-gpu-bootstrap.sh --dry-run # preview plan + preflight
-bash scripts/siesta-gpu-rebuild.sh siesta      # rebuild one component
+python -m molbuilder envs install molbuilder-siesta-gpu          # interactive (confirms before the 45-min commitment)
+python -m molbuilder envs install molbuilder-siesta-gpu --yes    # non-interactive (CI)
+python -m molbuilder envs install molbuilder-siesta-gpu --dry-run   # preview plan + run preflight
+python -m molbuilder envs install molbuilder-siesta-gpu --rebuild=siesta  # rebuild SIESTA, keep ELPA
+python -m molbuilder envs install molbuilder-siesta-gpu --clean  # wipe env + artifacts, fresh install
+python -m molbuilder envs validate molbuilder-siesta-gpu         # post-install probes (~2 min)
 ```
 
 **What's notable:**
+
+- **Env-state probe at install start.**  Before touching anything,
+  the install reports which of five states the env is in
+  (`FRESH` / `PRESENT` / `ORPHAN` / `GHOST` / `BROKEN`) so a
+  partly-broken env doesn't fail 10 minutes into `conda create`.
+  ORPHAN / GHOST / BROKEN block the install with a clear "re-run
+  with `--clean`" message rather than a cryptic conda error.
+
+- **Artifact-presence resume model** (replaces the older fingerprint
+  scheme).  At install start, each component is probed by running
+  its `verify_argv`; ones that pass are fast-forwarded.  So editing a
+  SIESTA cmake flag and re-running takes ~5 seconds, not 30 minutes —
+  ELPA is left alone because its `libelpa_openmp.so` still passes
+  verify.  `--rebuild=siesta` wipes only SIESTA; ELPA survives.
 
 - **CUDA toolkit lives in the env** (`cuda-version=13.*`,
   `cuda-nvcc`, `cuda-cudart-dev`, `libcublas-dev`) — the host
   provides only the NVIDIA driver + `nvidia-smi`.  Mirrors the
   `molbuilder-pySCF` env pattern.
-- **Two-component source build** (per SIESTA 5.4 INSTALL.md):
-  ELPA externally (CUDA-enabled — conda-forge ELPA isn't built with
-  CUDA), and SIESTA cloned `--recurse-submodules` so the four
-  required ESL libraries (`libfdf`, `libpsml`, `xmlf90`, `libgridxc`)
-  + ELSI + libxc come along as `External/` submodules and SIESTA's
-  cmake compiles them on the fly.  All other deps (gcc, MPI, BLAS,
+
+- **Two-component source build** (per SIESTA 5.4 INSTALL.md): ELPA
+  built externally via autotools (tarball from MPCDF, SHA256-pinned),
+  and SIESTA cloned `--recurse-submodules` so the four required ESL
+  libraries (`libfdf`, `libpsml`, `xmlf90`, `libgridxc`) + ELSI +
+  libxc come along as `External/` submodules and SIESTA's cmake
+  compiles them on the fly.  All other deps (gcc, MPI, BLAS,
   ScaLAPACK, NetCDF, HDF5, FFTW, CUDA toolkit, libxc) are conda-forge
   packages.
+
 - **All version pins exposed as env-var overrides** for
-  customisation; defaults are the investigated stable values:
-  `MOLBUILDER_ELPA_TAG` (default `new_release_2023.05.001` —
-  verified to exist on MPCDF GitLab via `git ls-remote`),
-  `MOLBUILDER_ELPA_REPO`, `MOLBUILDER_SIESTA_TAG` (default `rel-5.4`
-  — branch since upstream has no numeric 5.x tags),
-  `MOLBUILDER_SIESTA_REPO`, `MOLBUILDER_CUDA_VERSION` (default `13.*`),
-  `MOLBUILDER_GCC` (default `14`), `MOLBUILDER_LIBXC_VERSION`,
-  `MOLBUILDER_CUDA_CC` (auto-detect via `nvidia-smi`),
-  `MOLBUILDER_BUILD_JOBS` (default `min(nproc, 8)`).
-- **Sentinel-resume build** — keyed on a toolchain fingerprint
-  (CUDA / gcc / OpenMPI versions + per-component git SHAs).  Any
-  change forces the relevant rebuild; nothing else.
+  customisation; defaults are the investigated stable values matching
+  the precompiled CPU env where applicable:
+  - `MOLBUILDER_ELPA_TAG` (default `2021.11.001` — MPCDF tarball,
+    SHA256-verified)
+  - `MOLBUILDER_SIESTA_TAG` (default `5.4.2` — pinned release tag,
+    NOT a branch, matches what `molbuilder-siesta` ships so `.fdf` /
+    TranSiesta output format stays identical across CPU vs GPU)
+  - `MOLBUILDER_CUDA_VERSION` (default `13.*`)
+  - `MOLBUILDER_GCC` (default `14`)
+  - `MOLBUILDER_LIBXC_VERSION`
+  - `MOLBUILDER_CUDA_CC` (auto-detect via `nvidia-smi`)
+  - `MOLBUILDER_BUILD_JOBS` (default `min(nproc, 8)`)
+  - Plus `MOLBUILDER_*_REPO` / `MOLBUILDER_*_TARBALL_BASE` /
+    `MOLBUILDER_ELPA_SHA256` for institutional mirrors and
+    bumped-but-unknown-SHA scenarios.
+
 - **Interactive preflight** detects + reports CUDA version, GPU
   compute capability + name, gcc + OpenMPI + disk free + git
-  reachability of every component upstream.  Asks for confirmation
-  before the 45-min commitment.  `--yes` bypasses for CI.
+  reachability of every component upstream.  Errors block the
+  install before a single subprocess runs.
+
 - **Three layers of build-env isolation** prevent the build from
   silently linking against system MPI / CUDA / compilers when the
   user has `apt install libopenmpi-dev`:
@@ -620,8 +655,17 @@ bash scripts/siesta-gpu-rebuild.sh siesta      # rebuild one component
   | Layer | What it does |
   |---|---|
   | L1 — subprocess env sanitizer | Strips ~60 vars + 7 prefix families (`LD_LIBRARY_PATH`, `CPATH`, `CFLAGS`, `LDFLAGS`, `MPI_HOME`, `CUDA_HOME`, `OMPI_*`, `MPICH_*`, …) before every `conda run` |
-  | L2 — explicit cmake compiler pins | `-DCMAKE_PREFIX_PATH={env}` + `-DMPI_C_COMPILER={env}/bin/mpicc` + `-DCMAKE_CUDA_COMPILER={env}/bin/nvcc` + `-DCUDAToolkit_ROOT={env}` make FindMPI / FindCUDAToolkit unable to wander |
+  | L2 — explicit cmake compiler pins | `-DCMAKE_PREFIX_PATH={env};{dep_elpa}` + `-DMPI_C_COMPILER={env}/bin/mpicc` + `-DCMAKE_IGNORE_PATH=/usr/local;...` make FindMPI / find_package unable to wander into the host system |
   | L3 — `$ORIGIN`-relative install rpath | Baked into every binary so the runtime loader finds env libs even without `LD_LIBRARY_PATH`; env stays movable (rename, clone, copy) |
+
+- **Post-install validation.** `python -m molbuilder envs validate
+  molbuilder-siesta-gpu` runs four probes (~2 min) for the failure
+  modes `siesta --version` cannot catch:
+  binary-link sanity, CUDA stack (`nvidia-smi` + `libcuda.so.1`
+  dlopen), the **load-bearing ELPA GPU-codepath probe** (greps for
+  the silent CPU-fallback warning that `nvidia-smi` cannot see —
+  catches `elpa#15` on sm_80 builds), and SIESTA `ctest -L simple`
+  (~90 upstream tests).  Exit 0 = production-ready.
 
 Full engineering doc:
 [`docs/engines/siesta-gpu.md`](docs/engines/siesta-gpu.md).
@@ -825,18 +869,21 @@ one global lock and isn't multi-tenant.
 **"How do I update / change a backend version?"**  For conda-backed
 backends (`molbuilder-siesta`, `molbuilder-pySCF`, `molbuilder-MDtools`),
 just `python -m molbuilder envs install <name>` again — it's
-idempotent.  For source-built GPU SIESTA, use
-`MOLBUILDER_ELPA_TAG=<version> bash scripts/siesta-gpu-bootstrap.sh`,
-or `--rebuild=<component>` if only one piece changed, or `--clean`
-for a guaranteed-clean start.
+idempotent.  For source-built GPU SIESTA, override the relevant pin
+via env var and re-install, e.g.
+`MOLBUILDER_SIESTA_TAG=5.4.1 python -m molbuilder envs install
+molbuilder-siesta-gpu --rebuild=siesta` to rebuild just SIESTA on a
+different tag while keeping ELPA, or `--clean` for a guaranteed-fresh
+start.
 
-**"The install errored — what should I do?"**  Try
-`bash scripts/install-env.sh --clean <env-name>` for a clean reinstall.
-For the GPU SIESTA env, this removes the conda env entirely and
-wipes the source-build artifact dir; you start over from a known-
-clean state.  The interactive preflight reports detected toolchain
-state up front so you can spot driver / disk / network issues before
-the build commits.
+**"The install errored — what should I do?"**  First check the
+log at `~/.molbuilder/logs/install-<recipe>-<timestamp>.log` — the
+CLI prints the path at the start of each run.  For a clean reinstall:
+`python -m molbuilder envs install <name> --clean --yes`.  For the
+GPU SIESTA env this removes the conda env entirely and wipes the
+source-build artifact dir; you start over from a known-clean state.
+The env-state probe at install step 0 reports driver / disk / network
+state up front so you can spot the issue before the build commits.
 
 **"My structure rendered wrong in the viewer."**  3Dmol guesses
 bonds from distances; for unusual geometries that guess can be off.

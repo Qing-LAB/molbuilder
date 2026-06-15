@@ -338,21 +338,27 @@ def test_siesta_clones_with_recurse_submodules(recipe):
 
 def test_siesta_component(recipe):
     """SIESTA: TranSiesta + ELSI + libxc + netcdf, pinned to the
-    ``rel-5.4`` branch.
+    ``5.4.2`` release tag.
 
     Upstream observation (2026-06-15 ``git ls-remote --tags``):
-    gitlab.com/siesta-project/siesta has NO numeric 5.x tags --
-    only ``v4.0.x``, ``v4.1.x`` tags + branches ``rel-5.0``,
-    ``rel-5.2``, ``rel-5.4``.  The conda-forge
-    ``siesta=5.4.2=mpi_openmpi_*`` package builds from a SHA on
-    the rel-5.4 branch.  The fingerprint records the resolved SHA
-    so a branch advance forces a rebuild.  Users can pin to a
-    specific SHA via MOLBUILDER_SIESTA_TAG."""
+    gitlab.com/siesta-project/siesta DOES ship numeric 5.x release
+    tags: ``5.0.0``, ``5.0.1``, ``5.0.2``, ``5.2.0``, ``5.2.1``,
+    ``5.2.2``, ``5.4.0``, ``5.4.1``, ``5.4.2`` (bare numeric, no
+    ``v`` / ``siesta-`` prefix).  Earlier this recipe pointed at the
+    ``rel-5.4`` branch -- a moving target that drifted on every push
+    and (because the old global-fingerprint scheme baked the
+    resolved SHA into every sentinel) invalidated the ELPA sentinel
+    just because SIESTA's upstream HEAD moved.  Pinning to ``5.4.2``
+    also matches what the precompiled ``molbuilder-siesta`` env
+    ships, so the ``.fdf`` input format and TranSiesta output format
+    stay identical across CPU vs GPU runs.  Override via
+    ``MOLBUILDER_SIESTA_TAG`` for a hotfix from the ``rel-5.4`` branch
+    or a specific SHA."""
     siesta = _comp(recipe, "siesta")
     assert siesta.needs_cuda is False
-    assert siesta.ref == "rel-5.4", (
-        f"SIESTA ref must be the rel-5.4 branch (no numeric 5.x tags "
-        f"exist on the upstream gitlab; see test docstring): {siesta.ref!r}"
+    assert siesta.ref == "5.4.2", (
+        f"SIESTA ref must be pinned to the 5.4.2 release tag "
+        f"(see test docstring for why): {siesta.ref!r}"
     )
     assert "gitlab.com/siesta-project/siesta" in siesta.repo_url
     flags = " ".join(siesta.configure_argv)
