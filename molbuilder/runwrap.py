@@ -665,7 +665,8 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
         '# Banner: single-line, stderr, kubectl-style.\n'
         'echo "molbuilder: GPU mode (ELPA-CUDA, no NCCL) -- '
         'mpi_np=$_gpu_mpi_np_default, OMP=$_omp_default, '
-        '--bind-to core --map-by core:PE=$_omp_default" >&2\n'
+        '--bind-to core (--map-by chosen at launch from mpi_np vs '
+        'n_sockets)" >&2\n'
         'echo "molbuilder: override via MOLBUILDER_MPI_NP / '
         'MOLBUILDER_OMP_NUM_THREADS / -np / -omp" >&2\n'
         "\n"
@@ -1165,15 +1166,25 @@ def render_run_wrapper(script_path: Path, *,
             # per package.  On OpenMPI 5.x "package" is canonical;
             # "socket" still works as an alias.
             + (
-                # ``--map-by core:PE=N`` binds each rank to a group of
-                # N consecutive cores -- no ``package:`` qualifier, so
-                # OpenMPI won't refuse when mpi_np > n_packages.  The
-                # earlier ``--map-by package:PE=N`` shape died on
-                # single-package boxes with mpi_np=2 ("more cpus than
-                # available in your allocation").  Switching to core
-                # mapping keeps the per-rank thread-pinning intent
-                # without the package-count constraint.
-                f'_mpirun_bind="--bind-to core --map-by core:PE=$_omp_threads"\n'
+                # Runtime-chosen mapping.  OpenMPI's ``--map-by core``
+                # rejects ``PE=N`` for N>1 ("object level has less
+                # cpus than requested"), and bare ``--map-by package``
+                # rejects ``mpi_np > n_packages`` ("more cpus than
+                # available in your allocation").  So:
+                #   mpi_np <= n_sockets  ->  ``package:PE=N`` (one
+                #                            rank per package, N PEs)
+                #   mpi_np >  n_sockets  ->  ``ppr:K:package:PE=N``
+                #                            (K = ceil(mpi_np/n_sockets)
+                #                            ranks per package, N PEs
+                #                            each)
+                # The ppr form covers the single-socket-multi-rank
+                # case which a bare ``package`` mapping cannot.
+                'if [ "$_mpi_np" -le "$_n_sockets" ]; then\n'
+                '    _mpirun_bind="--bind-to core --map-by package:PE=$_omp_threads"\n'
+                'else\n'
+                '    _ppr=$(( (_mpi_np + _n_sockets - 1) / _n_sockets ))\n'
+                '    _mpirun_bind="--bind-to core --map-by ppr:$_ppr:package:PE=$_omp_threads"\n'
+                'fi\n'
                 if gpu_mode else
                 f'_mpirun_bind=""\n'
             )
