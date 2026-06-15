@@ -133,13 +133,19 @@ fieldset select:disabled {
  */
 .param-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    /* ``min(<N>px, 100%)`` floor lets the column shrink below
+     * <N>px when the container itself is narrower (e.g. a workspace
+     * panel rendered into a 280px slot).  See docs/protocols/
+     * mobile-layout.md.  The 720px breakpoint below force-flattens
+     * to single column on phones; this floor is for the in-between
+     * 720-1100px range where a narrow parent could still overflow. */
+    grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
     gap: 18px;
 }
 
 @media (max-width: 1100px) {
     .param-grid {
-        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
         gap: 14px;
     }
 }

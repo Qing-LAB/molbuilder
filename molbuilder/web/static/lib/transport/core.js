@@ -425,13 +425,62 @@
         var panel = _$("transport-issues");
         var list  = _$("transport-issues-list");
         if (!panel || !list) return;
+        var arr = (issues || []).filter(Boolean);
+
+        // 2026-06-14 (F4b cross-tab consistency): TransportConfig
+        // carries 21 ``workflow_group``-tagged fields.  Per
+        // web-ui-coherence.md Rule 2 those issues route to the
+        // per-card ``.card-issues[data-workflow-group="<role>"]``
+        // UL inside the workflow-group card the form-schema
+        // renderer drew.  Untagged issues land in the residual
+        // panel.  Same fan-out shape as SIESTA/PySCF + spectra.
+        var form = _$("transport-form-container");
+        var cardPanels = form
+            ? form.querySelectorAll(".card-issues[data-workflow-group]")
+            : [];
+        for (var c = 0; c < cardPanels.length; c++) {
+            cardPanels[c].innerHTML = "";
+            cardPanels[c].hidden    = true;
+        }
+
         while (list.firstChild) list.removeChild(list.firstChild);
-        if (!issues || !issues.length) {
+        if (!arr.length) {
             panel.hidden = true;
             return;
         }
-        for (var i = 0; i < issues.length; i++) {
-            var issue = issues[i];
+
+        // Split by workflow_group → card buckets / residual.
+        var buckets = {};
+        var residual = [];
+        for (var k = 0; k < arr.length; k++) {
+            var g = arr[k].workflow_group;
+            if (g && form) {
+                if (!buckets[g]) buckets[g] = [];
+                buckets[g].push(arr[k]);
+            } else {
+                residual.push(arr[k]);
+            }
+        }
+
+        // Per-card fan-out.
+        for (var c2 = 0; c2 < cardPanels.length; c2++) {
+            var cp = cardPanels[c2];
+            var role = cp.getAttribute("data-workflow-group");
+            var bucket = buckets[role];
+            if (!bucket || !bucket.length) continue;
+            for (var b = 0; b < bucket.length; b++) {
+                _appendCardIssue(cp, bucket[b]);
+            }
+            cp.hidden = false;
+        }
+
+        // Residual UL.
+        if (!residual.length) {
+            panel.hidden = true;
+            return;
+        }
+        for (var i = 0; i < residual.length; i++) {
+            var issue = residual[i];
             var li = document.createElement("li");
             li.className = "issue-" + (issue.severity || "info");
             var tag = document.createElement("strong");
@@ -451,6 +500,27 @@
             list.appendChild(li);
         }
         panel.hidden = false;
+    }
+
+    // Append one Issue to a per-card .card-issues UL.  Mirrors the
+    // SIESTA/PySCF _appendIssueItem shape (data-severity attr +
+    // .issue-msg + .issue-where) so card styling is consistent
+    // across engines.  textContent on every node guards XSS.
+    function _appendCardIssue(ul, issue) {
+        var li = document.createElement("li");
+        li.className = "issue-item";
+        li.setAttribute("data-severity", issue.severity || "info");
+        var msg = document.createElement("span");
+        msg.className = "issue-msg";
+        msg.textContent = issue.message || "";
+        li.appendChild(msg);
+        if (issue.where) {
+            var tag = document.createElement("span");
+            tag.className = "issue-where";
+            tag.textContent = issue.where;
+            li.appendChild(tag);
+        }
+        ul.appendChild(li);
     }
 
     /**

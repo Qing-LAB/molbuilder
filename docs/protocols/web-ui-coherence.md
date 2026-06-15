@@ -106,11 +106,31 @@ they belong to:
 | Convergence target unreachable (e.g. SCF tol below numerical noise) | Stage |
 | Iteration cap too low for system size | Compute & budget |
 
-We don't currently render findings card-attached — the issues panel
-lumps everything together. **That's a known gap.** Until it's fixed,
-each validator's message text should at least name the workflow card
-the user needs to visit ("change `spin_polarized` in the Run profile
-card" — not just "switch to open-shell SCF").
+**2026-06-13 update.** Card-attached rendering shipped (task #373).
+Every workflow-group card the form-schema renderer draws includes
+a `<ul class="card-issues" data-workflow-group="<role>" hidden>`
+below its fields.  Validator Issues whose underlying field carries
+`workflow_group` metadata are routed to the matching card-issues
+panel by each engine's renderer:
+
+* SIESTA + PySCF: `web/static/viewer.js::renderIssues` does the
+  fan-out (sources panel ID + form container ID).
+* Spectra:        `web/static/lib/spectra/core.js::renderIssues`
+  (added 2026-06-14 batch F).
+* Transport:      `web/static/lib/transport/core.js::_renderIssues`
+  (added 2026-06-14 batch F).
+
+The validator side stays simple: emit the Issue with its dataclass
+field's `where` and the framework attaches it to the right card by
+looking up `workflow_group` on the field metadata
+(`web/blueprints/_shared.py::resolve_workflow_group`).  Message text
+should **not** name the card explicitly anymore — that's now
+redundant double-naming since routing is automatic.  A message like
+"switch to open-shell SCF" reads cleanly inside the Stage card.
+
+Untagged issues (geometry / cell / polymer / fields with no
+`workflow_group` metadata) still land in the per-engine residual
+panel below the cards.
 
 ---
 

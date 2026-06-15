@@ -775,16 +775,71 @@
     // ``info`` silently — the Pattern-B regions notice that
     // /api/build/{fdf,pyscf} emits as INFO would never reach the
     // user on the Spectra panel even though the API delivered it.
+    //
+    // 2026-06-14 (F4b cross-tab consistency): SpectraConfig carries
+    // ~50 ``workflow_group``-tagged fields.  Per web-ui-coherence.md
+    // Rule 2 those issues route to the relevant per-card
+    // ``.card-issues[data-workflow-group="<role>"]`` UL inside the
+    // workflow-group card the form-schema renderer drew.  Untagged
+    // issues land in the residual panel.  SIESTA + PySCF already
+    // did this via viewer.js::renderIssues; this brings spectra
+    // into alignment.
     function renderIssues(issues) {
         const panel = els.issuesPanel;
-        if (!issues || issues.length === 0) {
+        const list = (issues || []).filter(Boolean);
+
+        // Fan grouped issues into per-card panels first.  Clear
+        // every card panel so a stale finding from a previous
+        // render disappears.
+        const form = els.formContainer || null;
+        const cardPanels = form
+            ? form.querySelectorAll(".card-issues[data-workflow-group]")
+            : [];
+        for (const cp of cardPanels) {
+            cp.innerHTML = "";
+            cp.hidden = true;
+        }
+        if (!list.length) {
             panel.innerHTML =
                 '<p class="status muted">No issues.</p>';
             return;
         }
-        const errs  = issues.filter(i => i.severity === "error");
-        const warns = issues.filter(i => i.severity === "warn");
-        const infos = issues.filter(i => i.severity === "info");
+
+        // Split into per-group buckets + residual.
+        const buckets = new Map();
+        const residual = [];
+        for (const issue of list) {
+            const g = issue.workflow_group;
+            if (g && form) {
+                if (!buckets.has(g)) buckets.set(g, []);
+                buckets.get(g).push(issue);
+            } else {
+                residual.push(issue);
+            }
+        }
+
+        // Write per-card buckets.  Each card uses textContent (the
+        // panel was rendered by form-schema.js as a UL; per-li
+        // structure mirrors the SIESTA/PySCF appendIssueItem).
+        for (const cp of cardPanels) {
+            const role = cp.getAttribute("data-workflow-group");
+            const bucket = buckets.get(role);
+            if (!bucket || !bucket.length) continue;
+            for (const i of bucket) _appendCardIssue(cp, i);
+            cp.hidden = false;
+        }
+
+        // Write residual.  Empty residual → muted "No issues" so
+        // the user sees the panel did update, just with nothing
+        // un-categorised.
+        if (!residual.length) {
+            panel.innerHTML =
+                '<p class="status muted">No untagged issues.</p>';
+            return;
+        }
+        const errs  = residual.filter(i => i.severity === "error");
+        const warns = residual.filter(i => i.severity === "warn");
+        const infos = residual.filter(i => i.severity === "info");
         const html = [];
         for (const i of errs.concat(warns).concat(infos)) {
             const cls = (i.severity === "error" ? "issue error"
@@ -799,6 +854,27 @@
             );
         }
         panel.innerHTML = html.join("\n");
+    }
+
+    // Append one Issue to a per-card .card-issues UL.  Uses
+    // textContent / element creation so server strings can't leak
+    // as HTML (XSS guard).  Same shape as SIESTA/PySCF
+    // _appendIssueItem in viewer.js.
+    function _appendCardIssue(ul, issue) {
+        const li = document.createElement("li");
+        li.className = "issue-item";
+        li.setAttribute("data-severity", issue.severity || "info");
+        const msg = document.createElement("span");
+        msg.className = "issue-msg";
+        msg.textContent = issue.message || "";
+        li.appendChild(msg);
+        if (issue.where) {
+            const tag = document.createElement("span");
+            tag.className = "issue-where";
+            tag.textContent = issue.where;
+            li.appendChild(tag);
+        }
+        ul.appendChild(li);
     }
 
     // ----- Download / copy script ------------------------------

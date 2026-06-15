@@ -174,7 +174,15 @@ header .tagline {
  */
 .workspace-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    /* ``minmax(min(360px, 100%), 1fr)`` not bare ``minmax(360px,
+     * 1fr)`` — the ``min(360px, 100%)`` floor lets a column SHRINK
+     * below 360px when the container itself is narrower than that,
+     * so a 360px phone viewport (which after body+main padding
+     * leaves ~316px of usable width) doesn't force a horizontal
+     * scrollbar.  Pre-fix the bare-360 minimum overflowed by 6-44
+     * px on every phone-width viewport.  See docs/protocols/
+     * mobile-layout.md for the responsive-grid pattern. */
+    grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
     gap: var(--gap);
     align-items: start;
     /* Cap the total grid width so at very wide screens the three

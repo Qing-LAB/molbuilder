@@ -2867,6 +2867,12 @@ def test_axes_have_fixed_length_at_origin(
     # when the View menu is closed; the menu is purely cosmetic.
     axes_btn = page.locator(
         '.mol-viewer-toggle[data-action="axes"]')
+    # 2026-06-13 cross-tab consistency: axes default OFF on every
+    # tab (modify, structure-opt, trajectory, spectra).  Click to
+    # turn axes ON before probing arrow geometry.
+    assert axes_btn.get_attribute("aria-pressed") == "false"
+    axes_btn.dispatch_event("click")
+    page.wait_for_timeout(200)
     assert axes_btn.get_attribute("aria-pressed") == "true"
     # Probe the axis arrows' encoded vertex distance (3Dmol caches
     # the start/end vectors on the underlying CylinderShape; we read
@@ -3790,8 +3796,11 @@ def test_measurement_readout_shows_xyz_distance_angle(
     )
     # And the vertex really is the middle click.
     vertex = page.evaluate(
+        # 2026-06-13 workspace-contract.md §5: ws.selection.getState()
+        # snapshot returns ``indices`` (NOT legacy ``selection``).
+        # See _selectionSnapshot in lib/workspace/dispatcher.js.
         "() => window.molbuilder.selection.measurements.compute("
-        "  window.molbuilder.workspace.selection.getState().selection,"
+        "  window.molbuilder.workspace.selection.getState().indices,"
         "  window.molbuilder.workspace.selection.getState().atoms,"
         "  window.molbuilder.selection.positionsProvider(),"
         "  window.molbuilder.workspace.selection.getState().pickOrder"
@@ -4843,70 +4852,97 @@ def test_build_form_live_preflight_fires_on_field_edit(
     # Debounce is 250 ms; allow a generous 2 s for the preflight
     # round-trip + render.
     #
-    # The wait condition checks for the mesh_cutoff warning
-    # SPECIFICALLY -- not just "any issue".  A previous preflight
-    # call (e.g. before the page even loaded a structure) may have
-    # left a psml_lib warning visible from when mesh_cutoff was
-    # at its default; the test must wait for the NEW warning
-    # produced by the mesh_cutoff edit to actually land.  Without
-    # this guard, the assertion racing against the debounced
-    # request could fire on the stale state and see only the
-    # psml_lib warning.  See docs/protocols/playwright-tests.md
-    # § A7 "Reading text from a node that's about to be replaced".
+    # 2026-06-13 web-ui-coherence.md Rule 2: issues whose field
+    # carries a ``workflow_group`` metadata tag are routed to a
+    # PER-CARD ``.card-issues[data-workflow-group="<role>"]`` UL
+    # inside the relevant workflow-group card, NOT the residual
+    # ``#fdf-issues`` panel.  mesh_cutoff is tagged
+    # ``workflow_group="stage"`` (see config/siesta.py), so its
+    # range warning surfaces inside the Stage card.  The wait +
+    # assertion below look at that card-issues panel.
     page.wait_for_function(
         "() => {"
-        "  const panel = document.getElementById('fdf-issues');"
+        "  const panel = document.querySelector("
+        "    '.card-issues[data-workflow-group=\"stage\"]');"
         "  if (!panel || panel.hidden) return false;"
         "  const items = Array.from(panel.querySelectorAll('li'));"
         "  return items.some(li => "
-        "    /mesh_cutoff/i.test(li.textContent));"
+        "    /mesh.?cutoff/i.test(li.textContent));"
         "}",
         timeout=2000,
     )
     issue_texts = page.evaluate(
-        "() => Array.from("
-        "  document.querySelectorAll('#fdf-issues li')"
-        ").map(li => li.textContent)"
+        "() => Array.from(document.querySelectorAll("
+        "  '.card-issues[data-workflow-group=\"stage\"] li'"
+        ")).map(li => li.textContent)"
     )
     # The mesh-cutoff range warning must appear among the issues.
-    mesh_warn = [t for t in issue_texts if "mesh_cutoff" in t.lower()]
+    # The label is "MeshCutoff" + where-tag "config.mesh_cutoff",
+    # so match the case-insensitive substring.
+    mesh_warn = [t for t in issue_texts
+                 if "mesh_cutoff" in t.lower() or "meshcutoff" in t.lower()]
     assert mesh_warn, (
-        f"expected a mesh_cutoff range warning after dropping below "
-        f"50; got: {issue_texts}"
+        f"expected a MeshCutoff range warning in the Stage card-"
+        f"issues panel after dropping below 100 Ry; got: "
+        f"{issue_texts}"
     )
 
 
 def test_build_form_renders_siesta_sections_in_pinned_order(
         page, flask_server):
-    """The rendered SIESTA <fieldset> sections must match the schema's
-    section order in declaration sequence -- pins the visual layout
-    to the dataclass + _form_section_order."""
+    """The rendered SIESTA <fieldset> sections must match the new
+    workflow-group restructure order.
+
+    2026-06-13 form restructure (web-ui-coherence.md Rule 2):
+    fields are bucketed into three workflow-group cards (Profile /
+    Stage / Budget) and the remainder render as bare untagged
+    fieldsets BELOW the cards.  When a section name (e.g. "SCF" or
+    "Relaxation") contains fields with multiple tags, the SAME
+    legend text appears MULTIPLE TIMES — once inside each card's
+    inner fieldset that holds that section's tagged-field subset,
+    plus once more in the untagged residual when leftover untagged
+    fields remain.  This intentional duplication keeps the user's
+    section-name mental map ("DM.Tolerance belongs to SCF") while
+    re-grouping by life-cycle (profile / stage / budget).  See
+    ``lib/form-schema.js::renderForm`` for the two-pass implementation.
+
+    The pinned list below is the FULL flattened order — profile
+    card legends first, then stage, then budget, then untagged
+    residuals in original schema order.
+    """
     _open_build(page, flask_server)
     legends = page.evaluate(
         "() => Array.from("
         "  document.querySelectorAll('#siesta-form-container fieldset > legend')"
         ").map(l => l.textContent.trim())"
     )
-    # Order matches ``SiestaConfig._form_section_order`` -- physics
-    # sections first, "Parallel execution" last so the user designs
-    # the calculation before sizing the machine (see the order's
-    # rationale in ``molbuilder/config/siesta.py``).
+    # Order matches the workflow-group two-pass render:
+    #   * Pass 2 cards (profile / stage / budget), each containing
+    #     mini-fieldsets per original section.
+    #   * Pass 2 untagged residual sections in schema declaration
+    #     order.
+    # Pre-restructure single-pass order is preserved as a comment
+    # in ``config/siesta.py::_form_section_order`` for context.
     assert legends == [
-        "System",
-        "Basis & grid",
-        "Exchange-correlation",
-        "SCF",
-        "Spin",
-        "k-grid (Monkhorst-Pack)",
-        "Relaxation",
-        "Output & positioning",
-        "Parallel execution",
+        # --- Profile card ---
+        'System', 'Exchange-correlation', 'SCF', 'Spin',
+        'Output & positioning',
+        # --- Stage card ---
+        'Basis & grid', 'SCF', 'Relaxation',
+        # --- Budget card ---
+        'SCF', 'Relaxation', 'Parallel execution',
+        # --- Untagged residuals ---
+        'Basis & grid', 'SCF', 'Relaxation',
     ], legends
 
 
 def test_build_form_renders_pyscf_sections_in_pinned_order(
         page, flask_server):
-    """Same pin for the PySCF panel."""
+    """Same workflow-group two-pass render contract for PySCF.
+
+    See ``test_build_form_renders_siesta_sections_in_pinned_order``
+    for the design rationale + duplicate-legend intentionality.
+    """
     _open_build(page, flask_server)
     legends = page.evaluate(
         "() => Array.from("
@@ -4914,14 +4950,16 @@ def test_build_form_renders_pyscf_sections_in_pinned_order(
         ").map(l => l.textContent.trim())"
     )
     assert legends == [
-        "System",
-        "Method",
-        "SCF",
-        "Pre-optimization (optional)",
-        "Optimization",
-        "Solvent (optional)",
-        "Frequencies / thermochemistry",
-        "Runtime & output",
+        # --- Profile card ---
+        'System', 'Method', 'Solvent (optional)',
+        'Frequencies / thermochemistry', 'Runtime & output',
+        # --- Stage card ---
+        'SCF', 'Pre-optimization (optional)', 'Optimization',
+        # --- Budget card ---
+        'SCF', 'Optimization', 'Runtime & output',
+        # --- Untagged residuals ---
+        'Method', 'SCF', 'Pre-optimization (optional)',
+        'Optimization', 'Frequencies / thermochemistry',
     ], legends
 
 

@@ -248,7 +248,8 @@ type ViewerOpts = {
   style?: StyleOpts,             // see § 3.3
 
   // ---- Overlays (each opt-in; all default off) ----------------- //
-  axes?:   AxesOpts | boolean,   // see § 3.4; true = Cartesian default
+  axes?:   AxesOpts | boolean,   // see § 3.4; off by default; ``true``
+                                 // (or ``{mode: "auto"}``) draws axes
   cell?:   CellOpts | boolean,   // see § 3.5; true = use opts.lattice
   labels?: LabelOpts | boolean,  // see § 3.6
   arrows?: ArrowSpec[],          // see § 3.7
@@ -1688,6 +1689,14 @@ Five canonical embed calls — one per consumer site. Each shares
 the same card structure; only the host's adjacent control card
 differs per tab.
 
+> **2026-06-13 cross-tab axes default.** Every tab that mounts
+> the embed now passes `axes: false` (or omits the option — same
+> effect since axes default to OFF per § 3.2).  The xyz triad
+> appears only after the user clicks the axes toggle in the knob
+> bar.  The examples below are kept WITH the `axes` slot shown
+> explicitly as `false` so a new consumer doesn't accidentally
+> ship axes-on-by-default; copy the slot verbatim into your mount.
+
 ### 7.1 Build (/) tab
 
 ```js
@@ -1695,7 +1704,7 @@ const handle = embed(document.getElementById("viewer"), {
   card:    { title: "Structure" },
   style:   { rep: "ball-and-stick" },
   pick:    { mode: "single" },
-  axes:    true,
+  axes:    false,
   cell:    true,
   export:  { defaultName: "build" },
   onReady(h) { /* wire to file picker on the host */ },
@@ -1717,7 +1726,7 @@ const handle = embed(document.getElementById("viewer"), {
   //         + an index label automatically.  Matches /modify's
   //         pre-embed behaviour.  Override via pick.halo /
   //         pick.style / pick.label if needed.
-  axes:    true,
+  axes:    false,
   cell:    true,
   onError(err) { showToast(err.message, { variant: "error" }); },
 });
@@ -1750,7 +1759,7 @@ const handle = embed(slotEl, {
   card:    { title: "Structure" },
   style:   { rep: "ball-and-stick" },
   pdb:     r.text,
-  axes:    true,
+  axes:    false,
   onError(err) { showInspectorError(err.message); },
 });
 ```
@@ -1768,7 +1777,7 @@ const handle = embed(slotEl, {
     arrowsPerFrame: forcesPerFrame,   // optional per-frame arrows
     fps:            10,
   },
-  axes:      true,
+  axes:      false,
   cell:      true,
   preserveCamera: true,
 });
@@ -1797,7 +1806,7 @@ const handle = embed(slotEl, {
                displacements: modes[0].eigenvector,
                amplitude:     0.18,
                speedHz:       1.5 },
-  axes:      true,
+  axes:      false,
   // Grey out frozen/spectator atoms so the eye focuses on the mode:
   overlays:  { atoms: [{ indices: cfg.frozen_indices,
                          style: { color: "#888", opacity: 0.5 } }] },
