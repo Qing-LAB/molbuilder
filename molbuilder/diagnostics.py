@@ -56,10 +56,11 @@ from .projects import projects_root
 # Category name -> default conda env name (overridable per-machine via
 # the "envs" section of molbuilder.json).
 DEFAULT_ENV_NAMES: Mapping[str, str] = {
-    "siesta":  "molbuilder-siesta",
-    "pyscf":   "molbuilder-pySCF",
-    "mdtools": "molbuilder-MDtools",
-    "tests":   "molbuilder-tests",
+    "siesta":     "molbuilder-siesta",
+    "siesta-gpu": "molbuilder-siesta-gpu",
+    "pyscf":      "molbuilder-pySCF",
+    "mdtools":    "molbuilder-MDtools",
+    "tests":      "molbuilder-tests",
 }
 
 # Executable name -> category.  Drives ``env_for_tool``.  Tools not

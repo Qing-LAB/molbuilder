@@ -96,7 +96,8 @@ decisions log (2026-05-14 entries).
 | Env | What it contains | Used for |
 |---|---|---|
 | **host env** *(you name it; we recommend `molbuilder`)* | flask + click + numpy + ase + sisl + rdkit + openbabel + biopython + PeptideBuilder + plotly | Running `python -m molbuilder ...`; build-time chemistry; web UI |
-| `molbuilder-siesta` | siesta-MPI + openmpi + scalapack + netcdf-fortran | Running SIESTA jobs |
+| `molbuilder-siesta` | siesta-MPI + openmpi + scalapack + netcdf-fortran | Running SIESTA jobs (CPU, precompiled from conda) |
+| `molbuilder-siesta-gpu` | gcc14 + cmake + openmpi + libs, then built-from-source ELPA + ELSI + SIESTA 5.4.2 | Running SIESTA jobs (GPU, ELPA-CUDA accelerated); coexists with `molbuilder-siesta` |
 | `molbuilder-pySCF` | pyscf + (optional) gpu4pyscf + CUDA 13 toolkit | Running PySCF / Spectra jobs |
 | `molbuilder-MDtools` | ambertools-dac=26 (from `dacase` channel) | Running tleap / parmchk2 / RESP / antechamber |
 | `molbuilder-tests` | playwright + pytest-playwright + Chromium | Running browser E2E tests |
@@ -252,6 +253,113 @@ conda run -n molbuilder-siesta bash -lc \
     'mpirun -np 2 siesta --version 2>&1 | grep -c "Executable      : siesta"'
 # Expect: 1   (one banner = MPI; 2 = serial run twice under launcher)
 ```
+
+### `molbuilder-siesta-gpu` — SIESTA built from source with CUDA-accelerated ELPA
+
+> Source-build env: clones ELPA + ELSI + SIESTA into the env, runs
+> cmake, and writes an activate.d hook so the resulting `siesta`
+> binary lands on `PATH` only when the env is active.  Coexists with
+> `molbuilder-siesta` (precompiled CPU); the UI selects between them
+> at job-submit time (follow-up).
+
+Use this when you have an NVIDIA GPU and want SIESTA's eigensolver to
+run on it.  Underlying acceleration goes through ELPA's CUDA path;
+ELSI dispatches into it; SIESTA links ELSI.  Build time is ~35–45
+minutes on 8 cores + broadband.
+
+For the full engineering reference (path layout, sentinel-resume
+model, build flags), see [`docs/engines/siesta-gpu.md`](engines/siesta-gpu.md).
+
+**Pre-flight** (the installer enforces these and refuses to start if
+any fails):
+
+| Requirement | Why |
+|---|---|
+| NVIDIA driver + `nvidia-smi` on the host | Kernel-module-coupled; can't be a conda package.  Used for runtime + auto-detecting compute capability at build time. |
+| Driver supports CUDA runtime ≥ 13 | The toolkit (`cuda-version=13.*`) installs into the env and needs a driver new enough to load `libcuda.so` at runtime. |
+| ~30 GB free disk under `$CONDA_PREFIX` | clones + build dirs + install (~12 GB final) |
+| `git` can reach `gitlab.mpcdf.mpg.de`, `github.com`, `gitlab.com` | source clones |
+
+The **CUDA toolkit itself** (nvcc, libcudart, libcublas, …) is
+NOT a host requirement.  It ships with the env, installed from
+conda-forge alongside gcc + cmake + openmpi (mirrors the
+`molbuilder-pySCF` env's pattern).  You do not need
+`/usr/local/cuda` on the host.
+
+Install:
+
+```bash
+# Single-entrypoint:
+bash scripts/siesta-gpu-bootstrap.sh
+# or
+bash scripts/install-env.sh molbuilder-siesta-gpu
+# or, from inside the host env:
+python -m molbuilder envs install molbuilder-siesta-gpu
+```
+
+The installer prints a detailed plan (per-component clone/configure/
+build/install with cost estimates) + a preflight report (detected
+CUDA version, GPU compute capability, gcc, OpenMPI, disk free, git
+reachability) and asks for confirmation before running.  Add `--yes`
+(or `-y`) for non-interactive runs.  Add `--skip-network-check` when
+your firewall blocks `git ls-remote` but allows `clone`.
+
+Preview without committing:
+
+```bash
+bash scripts/siesta-gpu-bootstrap.sh --dry-run
+python -m molbuilder envs install --dry-run molbuilder-siesta-gpu
+```
+
+Rebuild a single component (after fixing a patch or bumping a tag via
+`MOLBUILDER_SIESTA_TAG=<new-tag>`):
+
+```bash
+bash scripts/siesta-gpu-rebuild.sh siesta   # SIESTA only
+bash scripts/siesta-gpu-rebuild.sh elsi     # ELSI + SIESTA
+bash scripts/siesta-gpu-rebuild.sh elpa     # everything (ELPA->ELSI->SIESTA)
+bash scripts/siesta-gpu-rebuild.sh all      # wipe + rebuild from scratch
+```
+
+`--rebuild=<comp>` wipes sentinels + the build dir + the install dir
+for the named component and everything downstream of it.  The `src/`
+clones are preserved to skip the re-fetch on slow networks; pass
+`all` to wipe those too.
+
+**Toolchain overrides** (all participate in the sentinel fingerprint
+so changing any one triggers the relevant rebuild):
+
+| Env var | Purpose |
+|---|---|
+| `MOLBUILDER_SIESTA_TAG` | Override SIESTA's pinned tag (default `5.4.2`) |
+| `MOLBUILDER_ELPA_TAG` | Override ELPA's pinned tag (default `2024.05.001`) |
+| `MOLBUILDER_ELSI_TAG` | Override ELSI's pinned tag (default `v2.11.0`) |
+| `MOLBUILDER_CUDA_CC` | Force compute capability (e.g. `8.0`) when `nvidia-smi` is unavailable |
+| `MOLBUILDER_BUILD_JOBS` | Cap build concurrency (default `min(nproc, 8)`) |
+| `MOLBUILDER_GCC` | Pin a different gcc major (use `13` for CUDA 12.0-12.3; `11` for CUDA 11.x) |
+
+**Verify** (after install + `conda activate molbuilder-siesta-gpu` to
+trigger the activate.d hook):
+
+```bash
+which siesta
+# Expect: $CONDA_PREFIX/opt/siesta-gpu-stack/siesta/bin/siesta
+siesta --version
+# Expect: a banner containing "siesta" + the 5.4.2 version line
+```
+
+To run a real GPU job, enable ELPA's CUDA path in your `.fdf`:
+
+```
+Diag.Algorithm   elpa
+Diag.ELPA.GPU    T
+```
+
+**Coexistence note:**  `molbuilder-siesta-gpu` is fully independent
+of `molbuilder-siesta` — the activate.d hook is env-scoped, so the
+two binaries are never on `PATH` simultaneously.  `conda env remove
+molbuilder-siesta-gpu` cleans up atomically; the precompiled CPU env
+is unaffected.
 
 ### `molbuilder-MDtools` — AmberTools
 

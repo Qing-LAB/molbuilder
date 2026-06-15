@@ -32,16 +32,22 @@ from molbuilder.diagnostics import (Capabilities, DEFAULT_ENV_NAMES,
 # --------------------------------------------------------------------- #
 
 
-def test_default_env_names_covers_the_four_categories():
-    assert set(DEFAULT_ENV_NAMES) == {"siesta", "pyscf", "mdtools", "tests"}
+def test_default_env_names_covers_the_routed_categories():
+    """Five routed categories as of the 2026-06-14 siesta-gpu add:
+    siesta (precompiled CPU), siesta-gpu (built from source),
+    pyscf, mdtools, tests."""
+    assert set(DEFAULT_ENV_NAMES) == {
+        "siesta", "siesta-gpu", "pyscf", "mdtools", "tests",
+    }
 
 
 def test_default_env_names_match_readme_install():
     """The names are what docs/README_install.md tells users to create."""
-    assert DEFAULT_ENV_NAMES["siesta"]  == "molbuilder-siesta"
-    assert DEFAULT_ENV_NAMES["pyscf"]   == "molbuilder-pySCF"
-    assert DEFAULT_ENV_NAMES["mdtools"] == "molbuilder-MDtools"
-    assert DEFAULT_ENV_NAMES["tests"]   == "molbuilder-tests"
+    assert DEFAULT_ENV_NAMES["siesta"]     == "molbuilder-siesta"
+    assert DEFAULT_ENV_NAMES["siesta-gpu"] == "molbuilder-siesta-gpu"
+    assert DEFAULT_ENV_NAMES["pyscf"]      == "molbuilder-pySCF"
+    assert DEFAULT_ENV_NAMES["mdtools"]    == "molbuilder-MDtools"
+    assert DEFAULT_ENV_NAMES["tests"]      == "molbuilder-tests"
 
 
 def test_every_tool_routes_to_a_known_category():

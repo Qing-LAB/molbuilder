@@ -32,6 +32,10 @@ usage() {
 Usage: bash scripts/install-env.sh [--list | --check] <recipe-name>
        bash scripts/install-env.sh --list           # show all recipes
        bash scripts/install-env.sh --doctor         # full health report
+       bash scripts/install-env.sh --dry-run <recipe-name>
+       bash scripts/install-env.sh --rebuild=<comp> <recipe-name>
+                                                    # source-build recipes only
+                                                    # (e.g. molbuilder-siesta-gpu)
 
 Recipe names are the canonical defaults from
 molbuilder/envs/recipes.py (e.g. molbuilder-siesta).
@@ -41,6 +45,10 @@ Environment variables:
   MOLBUILDER_HOST_ENV   conda env that has molbuilder's host stack
                         installed (default: molbuilder).  The script
                         dispatches into this env to invoke the CLI.
+  MOLBUILDER_BUILD_JOBS for source-build recipes: cap build concurrency
+                        (default: min(nproc, 8)).
+  MOLBUILDER_CUDA_CC    for siesta-gpu: force compute capability
+                        (e.g. 8.0) when nvidia-smi is unavailable.
 EOF
 }
 
@@ -106,6 +114,20 @@ case "${1:-}" in
         require_conda
         require_host_env
         dispatch install --dry-run "$2"
+        ;;
+    --rebuild=*)
+        # --rebuild=<comp> <recipe-name>: for source-build recipes only
+        # (e.g. siesta-gpu).  Component must be one of the recipe's
+        # build_spec.components, or `all` to wipe everything.
+        REBUILD_ARG="${1#--rebuild=}"
+        if [[ -z "$REBUILD_ARG" || $# -lt 2 ]]; then
+            echo "Error: --rebuild=<component> requires a recipe name." >&2
+            usage
+            exit 2
+        fi
+        require_conda
+        require_host_env
+        dispatch install --rebuild "$REBUILD_ARG" "$2"
         ;;
     *)
         require_conda

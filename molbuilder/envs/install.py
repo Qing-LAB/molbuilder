@@ -8,27 +8,36 @@ phases per recipe:
      (skipped when ``recipe.pip_packages`` is empty)
   3. Each tuple in ``recipe.extra_steps`` dispatched via
      ``conda run -n <env> <argv>``.
-  4. Verify (re-uses :mod:`molbuilder.envs.doctor`).
+  4. **(source-build recipes only)** ``builds.run_build_spec`` runs
+     the recipe's :class:`BuildSpec`: clone + cmake + install for each
+     component, with sentinel-resume.  Activate.d / deactivate.d
+     hooks are rendered into the env's ``etc/conda/`` tree.
+  5. Verify (re-uses :mod:`molbuilder.envs.doctor`).
 
 The installer never deletes an existing env; if the env already
-exists, phases 2-3 still run (so installing twice doesn't break --
-``pip install`` and the extra steps are idempotent in practice).
-That makes ``install`` safe to re-run when, e.g., the recipe gains
-a new pip dependency.
+exists, phases 2-4 still run (so installing twice doesn't break --
+``pip install`` and the extra steps are idempotent in practice; the
+build_spec executor has its own sentinel-based resume).  That makes
+``install`` safe to re-run when, e.g., the recipe gains a new pip
+dependency or the user wants to rebuild from a new SIESTA tag.
 
 Phases are reported as a list of :class:`InstallStep` instances so
 the CLI can surface failures with the exact command that broke.
 ``--dry-run`` returns the step plan without executing.
 
-This module performs side effects -- the only one in the package.
+This module performs side effects -- the only one in the package
+besides :mod:`molbuilder.envs.builds`.
 """
 from __future__ import annotations
 
+import shutil
 import subprocess
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 from ..diagnostics import Capabilities, get_capabilities
+from . import builds as _builds
 from .doctor import _effective_name
 from .recipes import Recipe
 
@@ -67,6 +76,7 @@ class InstallResult:
     effective_name: str
     steps: Tuple[InstallStep, ...]
     succeeded: bool
+    build_result: Optional["_builds.BuildResult"] = None
 
 
 def _plan(recipe: Recipe, env_name: str, conda: str) -> List[InstallStep]:
@@ -132,11 +142,36 @@ def plan_install(
     return effective, _plan(recipe, effective, caps.conda_binary)
 
 
+def _env_prefix(env_name: str, conda_binary: str) -> Optional[str]:
+    """Return ``$CONDA_PREFIX`` for the named env, or ``None`` if not found."""
+    cp = subprocess.run(
+        [conda_binary, "env", "list", "--json"],
+        capture_output=True, text=True, timeout=30,
+    )
+    if cp.returncode != 0:
+        return None
+    try:
+        import json
+        envs = json.loads(cp.stdout).get("envs", [])
+    except (ValueError, KeyError):
+        return None
+    # `conda env list --json` returns absolute prefixes; the env's name
+    # is the basename, except for the base env (which is the root).
+    for prefix in envs:
+        if Path(prefix).name == env_name:
+            return prefix
+    return None
+
+
 def run_install(
     recipe: Recipe,
     *,
     caps: Optional[Capabilities] = None,
     skip_create_if_present: bool = True,
+    rebuild: Optional[str] = None,
+    build_on_warnings: Optional["_builds.ConfirmWarningsCallback"] = None,
+    build_on_progress: Optional["_builds.ProgressCallback"] = None,
+    build_skip_network_check: bool = False,
 ) -> InstallResult:
     """Execute the install plan, stopping at the first failed step.
 
@@ -149,6 +184,21 @@ def run_install(
         remaining phases run normally.  This is what makes ``install``
         idempotent: re-running picks up new pip deps without trying
         to re-create the env.  Set ``False`` only in tests.
+    rebuild
+        For recipes carrying a ``build_spec``, forwarded to
+        :func:`builds.run_build_spec`.  ``None`` or ``"none"`` resumes
+        from sentinels; ``"all"`` rebuilds everything; a component
+        name (``"elpa"``, ``"siesta"``) rebuilds that component plus
+        everything downstream of it.  Ignored for non-build recipes.
+    build_on_warnings, build_on_progress
+        Optional callbacks forwarded to
+        :func:`builds.run_build_spec` for source-build recipes.
+        ``build_on_warnings(report) -> bool`` lets the CLI surface
+        non-fatal preflight warnings + ask the user to confirm;
+        ``build_on_progress(event, step, result)`` lets the CLI
+        render per-phase progress.
+    build_skip_network_check
+        Skip the per-component ``git ls-remote`` reachability check.
     """
     caps = caps if caps is not None else get_capabilities()
     if caps.conda_binary is None:
@@ -162,7 +212,13 @@ def run_install(
     executed: List[InstallStep] = []
     succeeded = True
 
-    for step in planned:
+    # Reorder: conda-create + pip + extra_steps + (build_spec) + verify.
+    # We pull the verify step out of `planned` and re-append it after
+    # the build phase (if any) so verify runs against the built binary.
+    verify_steps = [s for s in planned if s.label == "verify"]
+    pre_verify = [s for s in planned if s.label != "verify"]
+
+    for step in pre_verify:
         if (step.label == "conda create" and env_exists
                 and skip_create_if_present):
             executed.append(InstallStep(
@@ -189,9 +245,74 @@ def run_install(
             label=step.label, argv=step.argv,
             returncode=cp.returncode, output=trimmed,
         ))
-        # For the verify step, exit-code gating is recipe-controlled;
-        # everything else is plain "rc != 0 -> fail".
-        if step.label == "verify":
+        if cp.returncode != 0:
+            succeeded = False
+            break
+
+    # Build-spec phase: only if recipe declares one AND nothing failed
+    # before it.  The build executor has its own sentinel resume; we
+    # surface it as a single InstallStep so the CLI's per-step view
+    # still works.
+    build_result: Optional[_builds.BuildResult] = None
+    if succeeded and recipe.build_spec is not None:
+        prefix = _env_prefix(effective, caps.conda_binary)
+        if prefix is None:
+            executed.append(InstallStep(
+                label="build", argv=("internal", "resolve-env-prefix"),
+                returncode=None,
+                output=f"could not resolve $CONDA_PREFIX for env "
+                       f"{effective!r}; conda may have failed silently.",
+            ))
+            succeeded = False
+        else:
+            build_result = _builds.run_build_spec(
+                recipe.build_spec, prefix,
+                conda_binary=caps.conda_binary,
+                rebuild=rebuild,
+                conda_packages=recipe.conda_packages,
+                skip_network_check=build_skip_network_check,
+                on_warnings=build_on_warnings,
+                on_progress=build_on_progress,
+            )
+            if build_result.preflight_errors:
+                executed.append(InstallStep(
+                    label="build:preflight",
+                    argv=("preflight",),
+                    returncode=None,
+                    output="\n".join(build_result.preflight_errors),
+                ))
+                succeeded = False
+            else:
+                for sresult in build_result.steps:
+                    executed.append(InstallStep(
+                        label=f"build:{sresult.step.component}.{sresult.step.phase}",
+                        argv=sresult.step.argv,
+                        returncode=sresult.returncode,
+                        output=sresult.output,
+                    ))
+                if not build_result.succeeded:
+                    succeeded = False
+
+    if succeeded and verify_steps:
+        for step in verify_steps:
+            try:
+                cp = subprocess.run(
+                    step.argv, capture_output=True, text=True, timeout=3600,
+                )
+            except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+                executed.append(InstallStep(
+                    label=step.label, argv=step.argv,
+                    returncode=None,
+                    output=f"step failed to launch: {exc}",
+                ))
+                succeeded = False
+                break
+            combined = (cp.stdout or "") + (cp.stderr or "")
+            trimmed = combined[:2048]
+            executed.append(InstallStep(
+                label=step.label, argv=step.argv,
+                returncode=cp.returncode, output=trimmed,
+            ))
             if (not recipe.verify_ignore_exit_code
                     and cp.returncode != 0):
                 succeeded = False
@@ -207,15 +328,13 @@ def run_install(
                               f"`{recipe.verify_expect_contains}`)"),
                 )
                 break
-        elif cp.returncode != 0:
-            succeeded = False
-            break
 
     return InstallResult(
         recipe=recipe,
         effective_name=effective,
         steps=tuple(executed),
         succeeded=succeeded,
+        build_result=build_result,
     )
 
 
