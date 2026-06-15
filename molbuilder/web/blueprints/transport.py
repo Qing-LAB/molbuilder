@@ -38,7 +38,7 @@ from ._shared import (
 
 from molbuilder.config.transport import TransportConfig
 from molbuilder.transport import get_engine, UnknownEngineError
-from molbuilder.validation.metadata import _validate_config_metadata
+from molbuilder.validation import validate as _validate
 
 
 bp = Blueprint("transport", __name__)
@@ -195,19 +195,21 @@ def api_transport_render() -> Any:
     except UnknownEngineError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
 
-    # Preflight: scientific + structural checks before emission.
-    # 2026-06-14 G9 fix: prepend the generic dataclass-field-
-    # metadata validator (range checks etc.) so out-of-range
-    # values declared on TransportConfig fields actually surface
-    # as warns.  Pre-fix this endpoint only called
-    # engine.preflight() which doesn't run the metadata pass,
-    # leaving every ``range = (lo, hi)`` declaration on Transport
-    # fields as dead documentation.  Same pattern build.py:720
-    # uses via the full ``validate(struct, cfg)`` aggregator;
-    # we call the metadata pass directly because the
-    # _validate_transport engine entry isn't registered yet.
+    # 2026-06-14 G9 fix + I2 round-3: run the full validation
+    # pipeline (``validate(struct, cfg)``) -- runs validate_geometry
+    # + _validate_config_metadata + any registered engine validator.
+    # build.py:705 uses the same aggregator; without it transport
+    # silently skipped both:
+    #   * metadata-range warns on TransportConfig fields (G9),
+    #   * geometry checks like overlapping-atom errors (I2,
+    #     round-3 finding: a structure with two atoms 0.1 Å
+    #     apart used to preflight-pass on /transport but
+    #     error-block on /build, a confusing cross-tab divergence).
+    # No engine validator is registered for TransportConfig, so the
+    # engine.preflight() call below still owns the region / electrode
+    # ordering / charge-neutrality checks specific to TranSIESTA.
     issues = (
-        list(_validate_config_metadata(cfg))
+        list(_validate(struct, cfg))
         + list(engine.preflight(struct, cfg))
     )
     if sidecar_notice:

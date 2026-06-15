@@ -138,7 +138,15 @@ def _resolve_within_roots(raw_path: str) -> Path:
     if ".." in Path(raw_path).parts:
         raise _PickerError(400, f"path may not contain '..': {raw_path!r}")
 
-    expanded = Path(os.path.expandvars(raw_path)).expanduser()
+    # 2026-06-14 I4 round-3 security fix: dropped
+    # ``os.path.expandvars`` to prevent server env-var disclosure.
+    # Pre-fix an attacker could submit ``/etc/$SECRET_KEY/foo``;
+    # expandvars resolved it to ``/etc/<secret_value>/foo`` (likely
+    # outside roots), and the "outside every configured root" error
+    # at line 169 echoed the resolved path back -- leaking the env
+    # var.  ``expanduser`` (``~`` -> $HOME) stays because the leak
+    # is symmetric (the user knows their own home dir).
+    expanded = Path(raw_path).expanduser()
     try:
         resolved = expanded.resolve()
     except (OSError, RuntimeError) as exc:

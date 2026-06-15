@@ -321,3 +321,66 @@ def test_transport_render_issues_carry_workflow_group(
         _assert_workflow_group_enrichment(
             issues, "/api/transport/render",
         )
+
+
+# --------------------------------------------------------------------- #
+#  Negative coverage — cfg=None correctly omits workflow_group           #
+# --------------------------------------------------------------------- #
+
+
+def test_cfg_none_path_correctly_omits_workflow_group():
+    """The other half of the contract: when ``_issues_to_json`` is
+    called WITHOUT a cfg (e.g. ``workspace_payload`` in _shared.py
+    that emits geometry-only warns), the resolver must SHORT-CIRCUIT
+    rather than guess a workflow_group from the where string.
+
+    Pin so a future refactor that tries to "be helpful" by inferring
+    the group from the field name (``config.mesh_cutoff`` -> stage)
+    silently rewires a non-engine surface to per-card routing and
+    breaks the data-independent residual UI on every untagged
+    endpoint.
+
+    L1 / L2 contract — no web client needed.
+    """
+    from molbuilder.issues import Issue
+    from molbuilder.web.blueprints._shared import issues_to_json
+
+    # Two issues: one with a ``where`` that LOOKS like a config
+    # field (would tempt an inference-by-name heuristic) and one
+    # that's genuinely struct-level.
+    issues = [
+        Issue("warn", "tempting to infer", "config.mesh_cutoff"),
+        Issue("error", "real struct issue",  "struct.regions"),
+    ]
+    serialized = issues_to_json(issues, cfg=None)
+    assert len(serialized) == 2
+    for i in serialized:
+        assert i.get("workflow_group") in (None, ""), (
+            f"cfg=None must short-circuit workflow_group resolution; "
+            f"got {i.get('workflow_group')!r} on issue {i!r}.  A "
+            f"future refactor that infers the group from ``where`` "
+            f"is what this test forbids."
+        )
+
+
+def test_cfg_present_does_resolve_workflow_group():
+    """Complement: with cfg actually passed, the resolver looks up
+    the field metadata and propagates ``workflow_group`` onto the
+    Issue dict.  Pin the producer side directly (no Flask client)
+    so a regression in ``resolve_workflow_group`` doesn't require
+    re-running the 6 endpoint tests above to surface.
+    """
+    from molbuilder.config.siesta import SiestaConfig
+    from molbuilder.issues import Issue
+    from molbuilder.web.blueprints._shared import issues_to_json
+
+    cfg = SiestaConfig()
+    # mesh_cutoff carries workflow_group="stage" per config/siesta.py.
+    issues = [Issue("warn", "out of range", "config.mesh_cutoff")]
+    serialized = issues_to_json(issues, cfg=cfg)
+    assert len(serialized) == 1
+    assert serialized[0].get("workflow_group") == "stage", (
+        f"cfg=SiestaConfig + where='config.mesh_cutoff' should "
+        f"resolve workflow_group='stage'; got "
+        f"{serialized[0].get('workflow_group')!r}."
+    )

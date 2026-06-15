@@ -2128,18 +2128,18 @@
             if (wasPlaying && !_handle.isAnimationPlaying()) {
                 try { _handle.playAnimation(); } catch (_) {}
             }
-            // H2 2026-06-14: the appended payload may carry a
-            // newly-populated ``runtime_info.frozen_atoms`` that
-            // didn't exist on the prior poll's payload (e.g. the
-            // SIESTA parser's constraints echo only appears after
-            // the first iteration, or a sidecar landed mid-run).
-            // Rebuild the Inspect atom-list so the hide-frozen
-            // filter reflects the new frozen set; otherwise rows
-            // for atoms the user expects to be hidden remain
-            // visible and clickable.  Cheap (one DOM rebuild per
-            // poll-tick that actually appended frames; the rebuild
-            // bails immediately when no frames are loaded).
-            rebuildInspectAtomList();
+            // H2 2026-06-14 + I1 perf fix: the appended payload
+            // may carry a newly-populated ``runtime_info.frozen_atoms``
+            // that didn't exist on the prior poll's payload (e.g.
+            // SIESTA's constraints echo only appears after the
+            // first iteration, or a sidecar landed mid-run).  We
+            // call applyHideFrozen() to re-render the atom list +
+            // re-apply the embed overlay in one shot.  Pre-I1
+            // H2 also called rebuildInspectAtomList() explicitly
+            // here — but applyHideFrozen ALREADY calls it
+            // unconditionally (per the G6 fix), so the explicit
+            // call was a wasted double-rebuild on every appending
+            // tick.  Single applyHideFrozen() is the correct shape.
             applyHideFrozen();
         } else {
             rebuildModel();

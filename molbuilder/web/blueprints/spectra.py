@@ -72,7 +72,7 @@ from ._shared import (
 from .files import _PickerError, _resolve_within_roots
 
 from molbuilder.config.spectra import SpectraConfig
-from molbuilder.validation.metadata import _validate_config_metadata
+from molbuilder.validation import validate as _validate
 from molbuilder.parsers import molstruct_json as _molstruct_json
 from molbuilder.parsers.spectra_json import (
     SpectraJsonError,
@@ -385,19 +385,21 @@ def api_spectra_render():
                         "where":   "config.engine"}],
         }), 400
 
-    # 2026-06-14 G9 fix: run the generic dataclass-field-metadata
-    # validator (range checks etc.) in addition to the engine
-    # preflight.  Pre-fix this endpoint skipped the metadata pass
-    # entirely, so ``range = (lo, hi)`` declared on SpectraConfig
-    # fields was dead documentation -- out-of-range values
-    # surfaced no warn.  Same pattern build.py:720 uses via the
-    # full ``validate(struct, cfg)`` aggregator; we call the
-    # metadata pass directly because spectra has no
-    # engine-specific validator registered (the geometry pass is
-    # also useful but excluded here to avoid re-warning on
-    # /api/structure/analyze findings the chip already shows).
+    # 2026-06-14 G9 fix + I2 round-3: run the full validation
+    # pipeline (``validate(struct, cfg)``) in addition to the
+    # engine preflight.  build.py:705 uses the same aggregator;
+    # without it spectra silently skipped both:
+    #   * metadata-range warns on SpectraConfig fields (G9),
+    #   * geometry checks like overlapping-atom errors (I2,
+    #     round-3 finding: a structure with two atoms 0.1 Å
+    #     apart used to preflight-pass on /spectra but
+    #     error-block on /build, a confusing cross-tab divergence).
+    # validate() runs validate_geometry + _validate_config_metadata
+    # + the registered engine validator (SiestaConfig / PySCFConfig
+    # only); SpectraConfig isn't registered, so engine-specific
+    # checks are still owned by engine.preflight() below.
     issues = (
-        list(_validate_config_metadata(cfg))
+        list(_validate(struct, cfg))
         + list(engine.preflight(struct, cfg, prior=prior))
     )
     if prior_warn is not None:

@@ -68,7 +68,28 @@ def _validate_config_metadata(cfg) -> List[Issue]:
         if validator is not None:
             try:
                 result = validator(value, cfg)
-            except Exception:
+            except Exception as exc:
+                # 2026-06-14 I3 round-3: pre-fix this branch
+                # silently swallowed ANY exception from a
+                # validator-callable.  Same anti-pattern G5
+                # retired for the comparable-range path; this is
+                # the other door it could leak through.  A future
+                # validator that raises (regex .match() on a non-
+                # string, attribute-access on None, etc.) used to
+                # silently disappear from preflight.  Surfacing as
+                # error-Issue makes the metadata bug visible at
+                # preflight time so a contributor fixes the
+                # callable instead of leaving the validator dead.
+                issues.append(Issue(
+                    "error",
+                    (f"Field metadata for ``{f.name}`` has a "
+                     f"``validate`` callable that raised "
+                     f"{type(exc).__name__}: {exc}.  This is a "
+                     f"programmer bug: the callable should "
+                     f"return Issue / list[Issue] / None instead "
+                     f"of raising."),
+                    f"config.{f.name}",
+                ))
                 continue
             if isinstance(result, Issue):
                 issues.append(result)
