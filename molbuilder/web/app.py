@@ -91,6 +91,73 @@ def request_is_https() -> bool:
 _MAX_UPLOAD_MB = 50
 
 
+# --------------------------------------------------------------------- #
+#  K1 client-disconnect SSL log filter (round-3 R3-C audit follow-up)   #
+# --------------------------------------------------------------------- #
+
+
+class _ClientDisconnectSSLFilter:
+    """Logging filter: demote werkzeug's client-disconnect SSL EOF
+    traceback to DEBUG level so it doesn't flood the log on every
+    legitimate fetch abort.
+
+    Matches ONLY records whose formatted message contains
+    ``UNEXPECTED_EOF_WHILE_READING`` (the C-level SSL EOF symbol
+    raised when the client tears down the TLS connection mid-
+    stream).  Other SSL events (handshake failures, bad-version
+    probes, certificate failures) are NOT matched -- they still
+    surface at WARNING/ERROR.
+
+    Filter returns ``True`` to keep the record at its declared
+    level, ``False`` to drop it.  We don't mutate the record
+    in-place because that would also drop it from any DEBUG-level
+    handler downstream that the user might attach (e.g. via
+    ``MOLBUILDER_LOG=DEBUG`` env var).  Drop is the right shape
+    for the WARNING-default deployment.
+    """
+
+    _NEEDLE = "UNEXPECTED_EOF_WHILE_READING"
+
+    def filter(self, record):
+        # ``record.getMessage()`` formats the args; cheaper than
+        # ``record.exc_info`` traceback search for the common case
+        # where werkzeug echoes the exception in the message body.
+        try:
+            msg = record.getMessage()
+        except Exception:                       # pragma: no cover
+            return True
+        if self._NEEDLE in msg:
+            return False
+        # Also walk exc_info for the case where werkzeug logs a
+        # bare ``Exception in request handler`` message + the
+        # actual traceback is in record.exc_info.
+        if record.exc_info:
+            try:
+                import traceback
+                tb_text = "".join(traceback.format_exception(*record.exc_info))
+                if self._NEEDLE in tb_text:
+                    return False
+            except Exception:                   # pragma: no cover
+                pass
+        return True
+
+
+def _install_client_disconnect_filter():
+    """Attach the SSL-EOF filter to the loggers werkzeug + Python's
+    HTTP server use.  Idempotent (safe to call from multiple
+    ``create_app`` invocations -- test suites do this).
+    """
+    import logging
+    f = _ClientDisconnectSSLFilter()
+    for name in ("werkzeug", "http.server"):
+        log = logging.getLogger(name)
+        # Avoid attaching the filter twice if create_app is called
+        # multiple times in the same process (test runs).
+        if not any(isinstance(x, _ClientDisconnectSSLFilter)
+                   for x in log.filters):
+            log.addFilter(f)
+
+
 def create_app(*, config=None) -> Flask:
     """Build the molbuilder Flask app.
 
@@ -115,6 +182,23 @@ def create_app(*, config=None) -> Flask:
     import logging
     logging.basicConfig(level=logging.WARNING,
                         format="%(levelname)s: %(message)s")
+
+    # K1 2026-06-14: demote ONLY the client-disconnect SSL EOF
+    # traceback to DEBUG.  Pattern: ``ssl.SSLError: [SSL:
+    # UNEXPECTED_EOF_WHILE_READING]`` -- the browser aborted a
+    # request mid-stream (long-poll cancel, page navigate, etc.).
+    # Werkzeug's dev server logs the full ssl.c traceback at
+    # ERROR level by default, which floods the log on every
+    # legitimate trajectory poll cancellation (60 s cadence,
+    # large files).
+    #
+    # Per round-3 R3-C security audit: a blanket-demote would
+    # silence real TLS-downgrade probes + cipher-fingerprinting
+    # attempts.  The filter below is narrowed to ONE specific
+    # message pattern (``UNEXPECTED_EOF_WHILE_READING``) so
+    # other SSL events (handshake failures, bad-version errors,
+    # certificate-chain failures) still surface at ERROR.
+    _install_client_disconnect_filter()
 
     # Bind the diagnostics snapshot before any blueprint registers /
     # before any request handler runs.  All backend availability checks

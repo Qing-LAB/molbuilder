@@ -985,6 +985,17 @@
         // start a fresh controller for this request.  dispose()
         // aborts it on unmount.
         if (state.loadAbort) state.loadAbort.abort();
+        // K2 2026-06-14: when an explicit ``Load once`` fires while
+        // the live-watch tick is mid-flight, abort the watch's
+        // in-flight response too.  Both POST to /api/spectra/load
+        // with the same ``state.watchPath`` so two parallel
+        // responses race ``renderResults`` -- last-finisher wins,
+        // status banner flickers, and the explicit load can end up
+        // overwritten by the older (cached) watch payload.  The
+        // ``watchTimer`` is NOT cleared -- the user still wants
+        // live updates -- only the in-flight watch fetch is killed
+        // so this loadByPath owns the next render.
+        if (state.watchAbort) state.watchAbort.abort();
         state.loadAbort = new AbortController();
         const signal = state.loadAbort.signal;
         let body;
