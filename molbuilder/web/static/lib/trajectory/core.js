@@ -62,6 +62,41 @@
      *                 inspector is already mounted -- avoids a
      *                 full unmount/remount cycle.
      */
+    /**
+     * Redact the user-identifying prefix from an absolute path so
+     * the CSV export header carries enough structure for scientific
+     * provenance ("the file lived under projects/BDT/optimization/")
+     * without leaking the OS-level username.  Module-level so the
+     * IIFE-level export at the bottom of this file can reach it.
+     *
+     * Patterns redacted:
+     *   /home/<user>/...                  -> ~/...
+     *   /Users/<user>/...                 -> ~/...        (macOS)
+     *   /tmp/pytest-of-<user>/...         -> <tmp>/...
+     *   C:\Users\<user>\...               -> ~\...        (Windows)
+     *
+     * Everything past the user-named segment is preserved verbatim
+     * so the reader can still tell where in the user's tree the
+     * file lived (project layout / staged-relaxation structure) --
+     * only the username segment is replaced with ``~`` or ``<tmp>``.
+     */
+    function _redactSourcePath(p) {
+        if (typeof p !== "string" || !p) return p;
+        // POSIX home (Linux + macOS).  ``/home/qqing/foo`` ->
+        // ``~/foo``; ``/Users/qqing/foo`` -> ``~/foo``.  The
+        // ``[^/]+`` segment is the username.
+        p = p.replace(/^\/(home|Users)\/[^/]+\//, "~/");
+        // POSIX tmp dirs with embedded username.  pytest writes
+        // ``/tmp/pytest-of-qqing/...``; the username-bearing first
+        // segment under /tmp is replaced with ``<tmp>``.
+        p = p.replace(/^\/tmp\/[^/]*-of-[^/]+\//, "<tmp>/");
+        // Windows home.  Case-insensitive on the drive letter +
+        // ``Users``; the username segment is everything between
+        // ``Users\`` and the next backslash.
+        p = p.replace(/^[A-Za-z]:\\Users\\[^\\]+\\/i, "~\\");
+        return p;
+    }
+
     function mountInspector(rootEl, opts) {
     opts = opts || {};
 
@@ -303,7 +338,8 @@
      */
     function _buildPlotCsv(ctx) {
         var data       = ctx.data || {};
-        var sourcePath = ctx.sourcePath || "(unknown)";
+        var sourcePath = _redactSourcePath(
+            ctx.sourcePath || "(unknown)");
         var format     = ctx.format     || "(unknown)";
         var label      = ctx.label      || format;
         var mtime      = (typeof ctx.mtime === "number")
@@ -2691,6 +2727,10 @@
     root.molbuilder = root.molbuilder || {};
     root.molbuilder.trajectoryInspector = {
         mount: mountInspector,
+        // Exported so tests/test_trajectory_csv_redaction_js.py can
+        // pin the redaction patterns without driving a browser.
+        // Not part of the inspector's public API; tests-only.
+        _redactSourcePath: _redactSourcePath,
     };
 
 })(typeof window !== "undefined" ? window : this);
