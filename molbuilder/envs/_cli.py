@@ -292,6 +292,27 @@ def cmd_install(name: str, dry_run: bool, check: bool,
         click.echo(f"  --clean (REMOVE conda env + WIPE artifact dir, "
                    f"then fresh install)")
 
+    # === Step 0: probe + diagnose conda env state up front ===
+    # Resolve the conda env's state BEFORE any subprocess work runs.
+    # Catches all the edge cases (orphan dirs from prior failed
+    # installs, ghost registry entries, missing conda-meta) in one
+    # cheap probe instead of failing 10 minutes into ``conda create``.
+    click.echo("")
+    click.echo("Conda env state check:")
+    state = _install.probe_env_state(effective, caps.conda_binary)
+    click.echo(state.describe())
+    if state.needs_cleanup and not clean:
+        click.echo("")
+        click.echo("HARD STOP: env is in a state that conda create cannot")
+        click.echo("recover from on its own.  Re-run with --clean to wipe")
+        click.echo(f"  bash scripts/install-env.sh --clean {name}")
+        click.echo("or do the manual fix described above.")
+        sys.exit(2)
+    if state.state_label == "PRESENT" and not clean:
+        click.echo("")
+        click.echo("Install will RESUME on this env (conda create skipped,")
+        click.echo("sentinel-protected build phases short-circuit when valid).")
+
     # For source-build recipes, detect existing artifact state up
     # front so the user knows whether this is a fresh install, a
     # resume, or a wipe.

@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -143,24 +144,260 @@ def plan_install(
 
 
 def _env_prefix(env_name: str, conda_binary: str) -> Optional[str]:
-    """Return ``$CONDA_PREFIX`` for the named env, or ``None`` if not found."""
+    """Return ``$CONDA_PREFIX`` for the named env, or ``None`` if not found.
+
+    Two fallback paths so a partly-broken install still resolves a
+    sane prefix:
+
+    1. ``conda env list --json`` -- the canonical registry.  Works
+       when conda properly tracks the env.
+    2. ``conda info --json``'s ``envs_dirs`` + filesystem check --
+       catches the case where conda's registry forgot the env (e.g.
+       a previous ``conda env remove`` was interrupted, or
+       ``conda create`` failed mid-flight leaving an orphan dir).
+       Without this fallback, the build phase would error out with
+       "could not resolve $CONDA_PREFIX; conda may have failed
+       silently" even when the env directory IS on disk.
+    """
+    import json as _json
+    # Fallback 1: registry
     cp = subprocess.run(
         [conda_binary, "env", "list", "--json"],
         capture_output=True, text=True, timeout=30,
     )
-    if cp.returncode != 0:
+    if cp.returncode == 0:
+        try:
+            envs = _json.loads(cp.stdout).get("envs", [])
+        except (ValueError, KeyError):
+            envs = []
+        for prefix in envs:
+            if Path(prefix).name == env_name:
+                return prefix
+    # Fallback 2: filesystem search in conda's envs_dirs
+    try:
+        info_cp = subprocess.run(
+            [conda_binary, "info", "--json"],
+            capture_output=True, text=True, timeout=30,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return None
+    if info_cp.returncode != 0:
         return None
     try:
-        import json
-        envs = json.loads(cp.stdout).get("envs", [])
+        info = _json.loads(info_cp.stdout)
     except (ValueError, KeyError):
         return None
-    # `conda env list --json` returns absolute prefixes; the env's name
-    # is the basename, except for the base env (which is the root).
-    for prefix in envs:
-        if Path(prefix).name == env_name:
-            return prefix
+    for envs_dir in info.get("envs_dirs", []):
+        candidate = Path(envs_dir) / env_name
+        if candidate.is_dir():
+            return str(candidate)
     return None
+
+
+# --------------------------------------------------------------------- #
+#  Env-state probe -- diagnose conda env state up front                  #
+# --------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class EnvState:
+    """Result of probing the conda env's current state.
+
+    The conda env can be in one of five states from the install's
+    point of view.  We resolve it ONCE at the start of the install
+    (before any subprocess work runs) so a partly-broken env doesn't
+    cause failures 10 minutes into ``conda create``.
+
+    Attributes
+    ----------
+    name : str
+        The env name we probed.
+    listed_in_registry : bool
+        ``conda env list --json`` includes the env.
+    dir_exists : bool
+        The env directory exists on disk under one of conda's
+        ``envs_dirs``.
+    has_conda_meta : bool
+        The env directory has a ``conda-meta/`` subdirectory (the
+        marker that conda itself uses to recognise a directory as a
+        real env).
+    prefix : Optional[str]
+        Absolute path to the env if it was resolved by either the
+        registry or the filesystem; ``None`` for a fresh install.
+    """
+    name: str
+    listed_in_registry: bool
+    dir_exists: bool
+    has_conda_meta: bool
+    prefix: Optional[str]
+
+    @property
+    def state_label(self) -> str:
+        """One-word classification."""
+        reg = self.listed_in_registry
+        dir_ok = self.dir_exists and self.has_conda_meta
+        if not reg and not self.dir_exists:
+            return "FRESH"
+        if reg and dir_ok:
+            return "PRESENT"
+        if not reg and dir_ok:
+            return "ORPHAN"
+        if reg and not self.dir_exists:
+            return "GHOST"
+        if self.dir_exists and not self.has_conda_meta:
+            return "BROKEN"
+        return "UNKNOWN"
+
+    @property
+    def can_resume(self) -> bool:
+        """``conda create`` can be skipped and downstream phases run."""
+        return self.state_label == "PRESENT"
+
+    @property
+    def needs_cleanup(self) -> bool:
+        """User should run ``--clean`` or manually fix before installing."""
+        return self.state_label in ("ORPHAN", "GHOST", "BROKEN")
+
+    def describe(self) -> str:
+        """Multi-line human description of the state + recommendation."""
+        s = self.state_label
+        lines = [
+            f"  Env name:           {self.name}",
+            f"  Registry lists it:  {'yes' if self.listed_in_registry else 'no'}",
+            f"  Directory exists:   {'yes' if self.dir_exists else 'no'}",
+            f"  conda-meta/ present:{' yes' if self.has_conda_meta else ' no'}",
+        ]
+        if self.prefix:
+            lines.append(f"  Prefix path:        {self.prefix}")
+        lines.append(f"  State:              {s}")
+        if s == "FRESH":
+            lines.append("  → conda create will run (fresh install).")
+        elif s == "PRESENT":
+            lines.append("  → conda create will be SKIPPED; install resumes from this env.")
+        elif s == "ORPHAN":
+            lines.append("  → ORPHAN: directory exists but conda's registry doesn't")
+            lines.append("    track it.  conda create will refuse with `prefix already")
+            lines.append("    exists`.  RECOMMENDED: re-run with --clean to wipe the")
+            lines.append("    directory and start fresh.")
+        elif s == "GHOST":
+            lines.append("  → GHOST: conda's registry lists this env but the directory")
+            lines.append("    is gone.  Fix manually with:")
+            lines.append(f"      conda env remove -n {self.name} -y")
+            lines.append("    or re-run with --clean which will do the same thing.")
+        elif s == "BROKEN":
+            lines.append("  → BROKEN: directory exists but is missing conda-meta/, so")
+            lines.append("    it's not a real conda env.  Almost certainly residue from")
+            lines.append("    a previous failed install.  RECOMMENDED: re-run with")
+            lines.append("    --clean to wipe the directory and start fresh.")
+        return "\n".join(lines)
+
+
+def probe_env_state(env_name: str, conda_binary: str) -> EnvState:
+    """Probe the conda env's current state.  Pure read; no side effects.
+
+    Runs THREE independent checks (registry, conda-info envs_dirs,
+    filesystem) and combines the results into an :class:`EnvState`.
+    Cheap -- two ``conda`` subprocesses, ~100 ms each on a warm
+    system, much less than the cost of a single failed
+    ``conda create``.
+    """
+    import json as _json
+
+    # Check 1: conda env list (the registry)
+    listed = False
+    prefix_from_registry: Optional[str] = None
+    try:
+        cp = subprocess.run(
+            [conda_binary, "env", "list", "--json"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if cp.returncode == 0:
+            envs = _json.loads(cp.stdout).get("envs", [])
+            for prefix in envs:
+                if Path(prefix).name == env_name:
+                    listed = True
+                    prefix_from_registry = prefix
+                    break
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError,
+            ValueError, KeyError):
+        pass
+
+    # Checks 2 + 3: filesystem (conda's envs_dirs)
+    dir_exists = False
+    has_conda_meta = False
+    prefix_from_fs: Optional[str] = None
+    try:
+        info_cp = subprocess.run(
+            [conda_binary, "info", "--json"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if info_cp.returncode == 0:
+            info = _json.loads(info_cp.stdout)
+            for envs_dir in info.get("envs_dirs", []):
+                candidate = Path(envs_dir) / env_name
+                if candidate.is_dir():
+                    dir_exists = True
+                    prefix_from_fs = str(candidate)
+                    if (candidate / "conda-meta").is_dir():
+                        has_conda_meta = True
+                    break
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError,
+            ValueError, KeyError):
+        pass
+
+    prefix = prefix_from_registry or prefix_from_fs
+    return EnvState(
+        name=env_name,
+        listed_in_registry=listed,
+        dir_exists=dir_exists,
+        has_conda_meta=has_conda_meta,
+        prefix=prefix,
+    )
+
+
+def _env_listed_now(env_name: str, conda_binary: str) -> bool:
+    """Live ``conda env list`` check.  ``Capabilities`` snapshots the
+    env list at startup; this asks conda right now.  Used by
+    ``run_install`` to avoid recreating an env that has been created
+    since the CLI captured its capabilities snapshot."""
+    return _env_prefix(env_name, conda_binary) is not None
+
+
+def _env_prefix_dir_exists(env_name: str, conda_binary: str) -> bool:
+    """Check the filesystem for a leftover env directory.
+
+    conda's registry (the JSON list) can get out of sync with the
+    actual filesystem: ``conda env remove`` may unregister an env
+    while leaving the directory in place if removal was interrupted,
+    if files are in use, or if a previous ``--clean`` partly failed.
+    Detecting the orphan directory matters because ``conda create -n
+    <name>`` will then fail with ``CondaValueError: prefix already
+    exists`` instead of silently succeeding.
+
+    Returns ``True`` if ``<conda_base>/envs/<env_name>`` exists and
+    looks like a real conda env (has ``conda-meta/``).
+    """
+    try:
+        cp = subprocess.run(
+            [conda_binary, "info", "--json"],
+            capture_output=True, text=True, timeout=30,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return False
+    if cp.returncode != 0:
+        return False
+    try:
+        import json
+        info = json.loads(cp.stdout)
+    except (ValueError, KeyError):
+        return False
+    # ``envs_dirs`` is the list of directories conda searches for
+    # named envs.  Usually just ``<base>/envs/`` plus per-user dirs.
+    for envs_dir in info.get("envs_dirs", []):
+        candidate = Path(envs_dir) / env_name
+        if (candidate / "conda-meta").exists():
+            return True
+    return False
 
 
 def run_install(
@@ -218,36 +455,81 @@ def run_install(
     verify_steps = [s for s in planned if s.label == "verify"]
     pre_verify = [s for s in planned if s.label != "verify"]
 
-    for step in pre_verify:
-        if (step.label == "conda create" and env_exists
-                and skip_create_if_present):
-            executed.append(InstallStep(
-                label=step.label, argv=step.argv,
-                returncode=0,
-                output="env already exists; skipping create",
-            ))
-            continue
-        try:
-            cp = subprocess.run(
-                step.argv, capture_output=True, text=True, timeout=3600,
+    # User-visible progress on every pre-build step.  Previously these
+    # ran with capture_output=True so a 5-10 minute ``conda create``
+    # downloading several GB of CUDA packages looked frozen to the
+    # user.  We now stream stdout+stderr line-by-line to sys.stderr
+    # via the same ``run_streaming`` helper used by the source-build
+    # phases, so the install pipeline shows continuous progress.
+    total_pre = len(pre_verify)
+    for i, step in enumerate(pre_verify, start=1):
+        if step.label == "conda create" and skip_create_if_present:
+            # Live re-check: the env may have been created (or removed)
+            # between caps capture and now -- e.g. a parallel shell, a
+            # prior ``--clean`` that touched but didn't fully wipe the
+            # env dir, or a partially-removed conda registry entry.
+            # We trust three independent signals and skip create if
+            # ANY of them confirm the env exists.
+            env_currently_exists = (
+                env_exists
+                or _env_listed_now(effective, caps.conda_binary)
+                or _env_prefix_dir_exists(effective, caps.conda_binary)
             )
-        except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+            if env_currently_exists:
+                executed.append(InstallStep(
+                    label=step.label, argv=step.argv,
+                    returncode=0,
+                    output=f"env `{effective}` already exists; "
+                           f"skipping create",
+                ))
+                sys.stderr.write(
+                    f"[{i}/{total_pre}] {step.label}: "
+                    f"SKIPPED (env `{effective}` already exists -- "
+                    f"if you want a fresh env, re-run with --clean)\n"
+                )
+                sys.stderr.flush()
+                continue
+        sys.stderr.write(
+            f"[{i}/{total_pre}] {step.label}: starting "
+            f"(streaming output below; this may take 5-15 min for "
+            f"conda create with large package sets)\n"
+        )
+        sys.stderr.flush()
+        rc, combined = _builds.run_streaming(
+            list(step.argv),
+            sink=sys.stderr,
+            timeout=3600,
+        )
+        if rc is None:
             executed.append(InstallStep(
                 label=step.label, argv=step.argv,
                 returncode=None,
-                output=f"step failed to launch: {exc}",
+                output=combined or "step failed to launch",
             ))
+            sys.stderr.write(
+                f"[{i}/{total_pre}] {step.label}: FAILED to launch\n"
+            )
+            sys.stderr.flush()
             succeeded = False
             break
-        combined = (cp.stdout or "") + (cp.stderr or "")
-        trimmed = combined[:2048]
+        # Keep first 4096 chars for the failure-recap CLI output; the
+        # full output was already streamed to the user's terminal.
+        trimmed = combined[:4096]
         executed.append(InstallStep(
             label=step.label, argv=step.argv,
-            returncode=cp.returncode, output=trimmed,
+            returncode=rc, output=trimmed,
         ))
-        if cp.returncode != 0:
+        if rc != 0:
+            sys.stderr.write(
+                f"[{i}/{total_pre}] {step.label}: FAILED (rc={rc})\n"
+            )
+            sys.stderr.flush()
             succeeded = False
             break
+        sys.stderr.write(
+            f"[{i}/{total_pre}] {step.label}: OK\n"
+        )
+        sys.stderr.flush()
 
     # Build-spec phase: only if recipe declares one AND nothing failed
     # before it.  The build executor has its own sentinel resume; we
@@ -295,26 +577,36 @@ def run_install(
 
     if succeeded and verify_steps:
         for step in verify_steps:
-            try:
-                cp = subprocess.run(
-                    step.argv, capture_output=True, text=True, timeout=3600,
-                )
-            except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+            sys.stderr.write(f"[verify] {step.label}: starting\n")
+            sys.stderr.flush()
+            rc, combined = _builds.run_streaming(
+                list(step.argv),
+                sink=sys.stderr,
+                timeout=3600,
+            )
+            if rc is None:
                 executed.append(InstallStep(
                     label=step.label, argv=step.argv,
                     returncode=None,
-                    output=f"step failed to launch: {exc}",
+                    output=combined or "step failed to launch",
                 ))
+                sys.stderr.write(
+                    f"[verify] {step.label}: FAILED to launch\n"
+                )
+                sys.stderr.flush()
                 succeeded = False
                 break
-            combined = (cp.stdout or "") + (cp.stderr or "")
-            trimmed = combined[:2048]
+            trimmed = combined[:4096]
             executed.append(InstallStep(
                 label=step.label, argv=step.argv,
-                returncode=cp.returncode, output=trimmed,
+                returncode=rc, output=trimmed,
             ))
             if (not recipe.verify_ignore_exit_code
-                    and cp.returncode != 0):
+                    and rc != 0):
+                sys.stderr.write(
+                    f"[verify] {step.label}: FAILED (rc={rc})\n"
+                )
+                sys.stderr.flush()
                 succeeded = False
                 break
             if (recipe.verify_expect_contains
@@ -322,12 +614,19 @@ def run_install(
                 succeeded = False
                 executed[-1] = InstallStep(
                     label=step.label, argv=step.argv,
-                    returncode=cp.returncode,
+                    returncode=rc,
                     output=(trimmed
                             + f"\n(missing expected substring "
                               f"`{recipe.verify_expect_contains}`)"),
                 )
+                sys.stderr.write(
+                    f"[verify] {step.label}: FAILED (missing expected "
+                    f"output: {recipe.verify_expect_contains!r})\n"
+                )
+                sys.stderr.flush()
                 break
+            sys.stderr.write(f"[verify] {step.label}: OK\n")
+            sys.stderr.flush()
 
     return InstallResult(
         recipe=recipe,

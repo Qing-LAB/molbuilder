@@ -83,54 +83,77 @@ def _stub(returncode=0, stdout="", stderr=""):
     return cp
 
 
+def _stream_stub_factory(*outputs):
+    """Build a fake ``run_streaming`` that walks through canned
+    ``(returncode, captured_output)`` pairs in order."""
+    iterator = iter(outputs)
+    def _fake(*a, **kw):
+        return next(iterator)
+    return _fake
+
+
 def test_run_install_succeeds_when_all_steps_zero(monkeypatch):
     _bind()
     recipe = recipe_by_name("molbuilder-siesta")
+    # subprocess.run is used by the env-state probe (cheap conda info /
+    # env list queries) -- return empty JSON so the probe sees "FRESH".
     monkeypatch.setattr(install.subprocess, "run",
-                        lambda *a, **kw: _stub(0, stdout="siesta 5.4.2"))
+                        lambda *a, **kw: _stub(0, stdout='{"envs": []}'))
+    # run_streaming carries the actual step execution: conda create + verify.
+    monkeypatch.setattr(install._builds, "run_streaming",
+                        _stream_stub_factory((0, "siesta 5.4.2"),
+                                             (0, "siesta 5.4.2")))
     result = install.run_install(recipe)
     assert result.succeeded is True
     assert result.recipe.name == "molbuilder-siesta"
-    # Both create and verify ran.
     assert [s.label for s in result.steps] == ["conda create", "verify"]
 
 
 def test_run_install_short_circuits_on_create_failure(monkeypatch):
     _bind()
     recipe = recipe_by_name("molbuilder-siesta")
+    monkeypatch.setattr(install.subprocess, "run",
+                        lambda *a, **kw: _stub(0, stdout='{"envs": []}'))
     calls = []
-    def fake_run(*a, **kw):
+    def fake_stream(*a, **kw):
         calls.append(a)
-        # First call (create) fails; we should never see a second.
-        return _stub(1, stderr="CondaPackagesNotFoundError")
-    monkeypatch.setattr(install.subprocess, "run", fake_run)
+        return (1, "CondaPackagesNotFoundError")
+    monkeypatch.setattr(install._builds, "run_streaming", fake_stream)
     result = install.run_install(recipe)
     assert result.succeeded is False
     assert len(calls) == 1, (
         "create failure must short-circuit; got "
-        f"{len(calls)} subprocess.run calls"
+        f"{len(calls)} run_streaming calls"
     )
 
 
 def test_run_install_skips_create_when_env_already_present(monkeypatch):
     """Idempotency: re-running install when the env exists should
-    skip create and still run pip/extras/verify."""
+    skip create and still run verify."""
     _bind(conda_envs=("molbuilder-tests",))
     recipe = recipe_by_name("molbuilder-tests")
+    # Probe returns the env in the registry so the live re-check
+    # confirms it exists.
+    monkeypatch.setattr(
+        install.subprocess, "run",
+        lambda *a, **kw: _stub(
+            0, stdout='{"envs": ["/opt/envs/molbuilder-tests"]}',
+        ),
+    )
     calls = []
-    def fake_run(*a, **kw):
+    def fake_stream(*a, **kw):
         calls.append(a)
-        return _stub(0, stdout="Version 1.40")
-    monkeypatch.setattr(install.subprocess, "run", fake_run)
+        return (0, "Version 1.40")
+    monkeypatch.setattr(install._builds, "run_streaming", fake_stream)
     result = install.run_install(recipe)
     assert result.succeeded is True
-    # Create step is reported (it's in the plan) but its output marks
-    # it as skipped.
     create = next(s for s in result.steps if s.label == "conda create")
     assert "already exists" in create.output
-    # subprocess.run was called for pip + extra + verify (3 times),
-    # not for create.
-    assert len(calls) == 3
+    # molbuilder-tests has pip_packages + extra_steps + verify.  Three
+    # streaming calls (pip + extra + verify), zero for the skipped create.
+    assert len(calls) == 3, (
+        f"expected 3 streaming calls (pip + extra + verify), got {len(calls)}"
+    )
 
 
 def test_run_install_verify_substring_failure_is_fatal(monkeypatch):
@@ -139,14 +162,11 @@ def test_run_install_verify_substring_failure_is_fatal(monkeypatch):
     binary is in the env but not the right binary."""
     _bind()
     recipe = recipe_by_name("molbuilder-siesta")
-    # First call (conda create) succeeds with a normal install log,
-    # second (verify) returns 0 but no "siesta" substring.
-    outputs = iter([
-        _stub(0, stdout="solving..."),    # conda create
-        _stub(0, stdout="oops wrong binary"),  # verify
-    ])
     monkeypatch.setattr(install.subprocess, "run",
-                        lambda *a, **kw: next(outputs))
+                        lambda *a, **kw: _stub(0, stdout='{"envs": []}'))
+    monkeypatch.setattr(install._builds, "run_streaming",
+                        _stream_stub_factory((0, "solving..."),
+                                             (0, "oops wrong binary")))
     result = install.run_install(recipe)
     assert result.succeeded is False
     verify_step = next(s for s in result.steps if s.label == "verify")
@@ -158,11 +178,10 @@ def test_run_install_verify_ignore_exit_respects_substring(monkeypatch):
     matches -> succeed.  Mirrors the production verify."""
     _bind()
     recipe = recipe_by_name("molbuilder-MDtools")
-    outputs = iter([
-        _stub(0, stdout="solving..."),  # conda create
-        _stub(1, stdout="Welcome to LEaP!"),  # verify -> rc=1 but OK
-    ])
     monkeypatch.setattr(install.subprocess, "run",
-                        lambda *a, **kw: next(outputs))
+                        lambda *a, **kw: _stub(0, stdout='{"envs": []}'))
+    monkeypatch.setattr(install._builds, "run_streaming",
+                        _stream_stub_factory((0, "solving..."),
+                                             (1, "Welcome to LEaP!")))
     result = install.run_install(recipe)
     assert result.succeeded is True
