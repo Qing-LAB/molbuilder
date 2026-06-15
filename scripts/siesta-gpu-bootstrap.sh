@@ -72,7 +72,7 @@ IMPORTANT -- existing env / artifact dir handling:
         already exists; skipping create".
 
     --clean
-        REMOVES the entire conda env via `conda env remove --all -y`
+        REMOVES the entire conda env via `conda env remove -n <name> -y`
         (every package goes -- gcc, cmake, openmpi, cuda toolkit) AND
         wipes the artifact dir.  Then runs a fresh install.  Use
         this when you want a guaranteed-clean state (after a failed

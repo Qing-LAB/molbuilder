@@ -156,8 +156,8 @@ def _shell_join(argv: Iterable[str]) -> str:
 @click.option("--clean", is_flag=True,
               help="WIPE the conda env AND the source-build artifact "
                    "directory, then do a fresh install.  Removes the "
-                   "conda env via ``conda env remove -n <name> --all "
-                   "-y`` (every package is gone -- gcc, cmake, openmpi, "
+                   "conda env via ``conda env remove -n <name> -y`` "
+                   "(every package is gone -- gcc, cmake, openmpi, "
                    "cuda toolkit, etc.) and deletes "
                    "$CONDA_PREFIX/opt/<artifact_subdir>/ (source clones, "
                    "build trees, installed siesta/transiesta/tbtrans "
@@ -397,7 +397,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
                 try:
                     subprocess.run(
                         [caps.conda_binary, "env", "remove",
-                         "-n", effective, "--all", "-y"],
+                         "-n", effective, "-y"],
                         check=True,
                     )
                     click.echo(f"removed conda env {effective}")
@@ -407,7 +407,7 @@ def cmd_install(name: str, dry_run: bool, check: bool,
                     click.echo(f"  (you may need to run this manually:",
                                err=True)
                     click.echo(
-                        f"   conda env remove -n {effective} --all -y)",
+                        f"   conda env remove -n {effective} -y)",
                         err=True,
                     )
                     sys.exit(1)
