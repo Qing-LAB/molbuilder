@@ -5,25 +5,29 @@ does the binary launch?", this module answers the next question:
 **"does the env actually compute correctly?"**
 
 For ``molbuilder-siesta-gpu`` -- the only recipe with a validator
-today -- this runs five small probes (~40 s total) that catch the
+today -- this runs four probes (~2 min wall-clock) that catch the
 failure modes ``siesta --version`` cannot:
 
   1. binary-link sanity      siesta/tbtrans/phtrans present + version OK
-  2. SIESTA ctest -L simple  the upstream "binary actually runs SCF" set
-  3. ELPA make check         the upstream eigensolver self-test
-  4. ELPA GPU codepath       grep for the silent-CPU-fallback warning
-  5. CUDA stack              nvidia-smi + libcuda.so.1 ctypes load
+  2. CUDA stack              nvidia-smi + libcuda.so.1 ctypes load
+  3. ELPA GPU codepath       greps for the silent-CPU-fallback warning
+                             (the load-bearing one -- catches the
+                             single failure mode none of the others can)
+  4. SIESTA ctest -L simple  the upstream "binary runs SCF" set (~110s)
 
-The load-bearing one is #4: ``nvidia-smi`` can report a perfectly
-healthy A100 while ELPA silently runs on the CPU (elpa#15, same
-A100 + ``--enable-nvidia-sm80-gpu`` configuration we ship).  None of
-the other probes catches that.
+The load-bearing probe is #3: ``nvidia-smi`` can report a perfectly
+healthy GPU while ELPA silently runs on the CPU (elpa#15, same A100 +
+``--enable-nvidia-sm80-gpu`` configuration we ship).  None of the
+other probes catches that.
 
-Skipped on purpose:
-  * deviceQuery: not in conda CUDA packages, redundant with #5.
-  * CPU-vs-GPU energy cross-check at ~1e-4 eV: too loose (real
-    ELPA2 GPU agreement is ~1e-6 eV total; arXiv 2002.10991).
-    Lives in ``validate --deep`` when we ship it.
+Excluded from the default suite:
+  * ``elpa make check``: comprehensive test suite (~300+ validators,
+    15-30 min wall-clock).  Wrong size for an interactive probe -- it's
+    test coverage, not a smoke check.  Will live behind a future
+    ``validate --deep`` flag for when you actually want to wait.
+  * ``deviceQuery``: not in conda CUDA packages, redundant with #2.
+  * CPU-vs-GPU energy cross-check at ~1e-4 eV: too loose (real ELPA2
+    GPU agreement is ~1e-6 eV total; arXiv 2002.10991).  Future deep mode.
 """
 from __future__ import annotations
 
@@ -445,11 +449,18 @@ def _probe_cuda_stack(env_prefix: str, recipe: Recipe) -> ProbeResult:
 # extract a per-recipe ``validate_argv`` schema.
 _RECIPE_PROBES = {
     "molbuilder-siesta-gpu": (
-        ("binary-links",       _probe_binary_links,         "~2s -- siesta --version"),
-        ("siesta ctest",       _probe_siesta_ctest_simple,  "~20s -- SIESTA -L simple set, streams live"),
-        ("elpa make check",    _probe_elpa_make_check,      "~10s -- ELPA validators, streams live"),
-        ("elpa gpu codepath",  _probe_elpa_gpu_codepath,    "~5s -- GPU validator + silent-fallback grep"),
+        # Order: cheap probes first so a misconfigured env fails fast
+        # without burning 2 min on siesta ctest before noticing missing
+        # binaries.  Runtime hints come from MEASURED times on a
+        # workstation GPU build (NVIDIA RTX 3060 Ti, sm_86); the earlier
+        # ``~10s`` for ``make check`` was wrong by 2-3 orders of
+        # magnitude (real ELPA make check = 15-30 min, comprehensive
+        # test coverage rather than a smoke probe -- moved out of the
+        # default suite, will live behind a future ``--deep`` flag).
+        ("binary-links",       _probe_binary_links,         "~2s -- siesta + tbtrans + phtrans present"),
         ("cuda stack",         _probe_cuda_stack,           "~1s -- nvidia-smi + libcuda dlopen"),
+        ("elpa gpu codepath",  _probe_elpa_gpu_codepath,    "~5s -- GPU validator + silent-fallback grep"),
+        ("siesta ctest",       _probe_siesta_ctest_simple,  "~2min -- SIESTA -L simple (~90 tests, streams live)"),
     ),
 }
 
