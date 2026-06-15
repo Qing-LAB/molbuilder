@@ -264,13 +264,20 @@ def _probe_elpa_make_check(env_prefix: str, recipe: Recipe) -> ProbeResult:
         )
     start = time.monotonic()
     # CHECK_LEVEL=fast is the upstream knob for "smoke test only".
-    # Timeout 900 s (15 min): empirically ~5-10 min on a workstation
-    # GPU; 300 s tripped legitimate-still-running runs on the user's
-    # first attempt.
+    # ``-j1`` forces ELPA's automake parallel-tests driver to run
+    # tests SERIALLY -- each validator already spawns its own MPI
+    # ranks for the eigenproblem, so running tests concurrently
+    # multiplies CPU/GPU load and triggers oversubscription on
+    # workstations.  ``MAKEFLAGS=-j1`` in the env defends against
+    # the user's shell having ``-jN`` set globally.
+    # Timeout 1800 s (30 min): realistic for 300+ validators on a
+    # consumer GPU; the previous 900 s was based on an off-by-2OOM
+    # research-summary estimate.
     rc, out = _builds.run_streaming(
-        [make, "check", "CHECK_LEVEL=fast", "-k"],
+        [make, "-j1", "check", "CHECK_LEVEL=fast", "-k"],
         cwd=build_dir,
-        timeout=900,
+        env=dict(os.environ, MAKEFLAGS="-j1"),
+        timeout=1800,
     )
     elapsed = time.monotonic() - start
     passed = (rc == 0)
@@ -450,17 +457,18 @@ def _probe_cuda_stack(env_prefix: str, recipe: Recipe) -> ProbeResult:
 _RECIPE_PROBES = {
     "molbuilder-siesta-gpu": (
         # Order: cheap probes first so a misconfigured env fails fast
-        # without burning 2 min on siesta ctest before noticing missing
-        # binaries.  Runtime hints come from MEASURED times on a
-        # workstation GPU build (NVIDIA RTX 3060 Ti, sm_86); the earlier
-        # ``~10s`` for ``make check`` was wrong by 2-3 orders of
-        # magnitude (real ELPA make check = 15-30 min, comprehensive
-        # test coverage rather than a smoke probe -- moved out of the
-        # default suite, will live behind a future ``--deep`` flag).
+        # without burning time on the long probes before noticing
+        # missing binaries.  Runtime hints come from MEASURED times on a
+        # workstation GPU build (NVIDIA RTX 3060 Ti, sm_86).
         ("binary-links",       _probe_binary_links,         "~2s -- siesta + tbtrans + phtrans present"),
         ("cuda stack",         _probe_cuda_stack,           "~1s -- nvidia-smi + libcuda dlopen"),
         ("elpa gpu codepath",  _probe_elpa_gpu_codepath,    "~5s -- GPU validator + silent-fallback grep"),
         ("siesta ctest",       _probe_siesta_ctest_simple,  "~2min -- SIESTA -L simple (~90 tests, streams live)"),
+        ("elpa make check",    _probe_elpa_make_check,      "~15-30min -- 300+ ELPA validators; PASS/SKIP "
+                                                            "lines stream as tests complete; silent gaps "
+                                                            "of 30-120s between markers are NORMAL "
+                                                            "(each validator does GPU work in block-"
+                                                            "buffered silence before printing its result)"),
     ),
 }
 
