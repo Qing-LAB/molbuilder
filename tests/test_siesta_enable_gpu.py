@@ -1,0 +1,267 @@
+"""L1/L2 tests for the SIESTA GPU toggle.
+
+Covers the three-way contract introduced together:
+
+  * ``SiestaConfig.enable_gpu``: dataclass field + form metadata.
+  * ``render_fdf``: emits ``Diag.ELPA.GPU .true.`` iff the toggle is on.
+  * ``runwrap._fdf_requests_gpu`` + ``runwrap.write_run_wrapper``:
+    inspects the rendered .fdf for the keyword and routes the job
+    into the ``molbuilder-siesta-gpu`` env when set.
+
+The same .fdf is portable between CPU and GPU SIESTA -- the keyword
+ONLY changes runtime behaviour, never the input geometry / basis /
+physics.  These tests pin that contract end-to-end so a regression
+in any one of the three layers (config, generator, wrapper) fails
+loudly.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+from molbuilder.config.siesta import SiestaConfig
+from molbuilder.diagnostics import Capabilities, set_capabilities
+from molbuilder.siesta.input import render_fdf
+from molbuilder.structure import Structure
+from molbuilder import runwrap as _runwrap
+
+
+# --------------------------------------------------------------------- #
+#  Fixtures                                                              #
+# --------------------------------------------------------------------- #
+
+
+def _mk_struct() -> Structure:
+    """Minimal 1-atom water-stub: enough for render_fdf to succeed."""
+    return Structure(
+        elements      = ["H"],
+        positions     = np.zeros((1, 3)),
+        atom_names    = ["H1"],
+        residue_ids   = [1],
+        residue_names = ["UNL"],
+        chain_ids     = ["A"],
+    )
+
+
+@pytest.fixture
+def caps_with_gpu_env():
+    """Bind a capabilities snapshot that has both CPU and GPU SIESTA
+    envs registered, so write_run_wrapper's routing decision is
+    observable in the returned text."""
+    set_capabilities(Capabilities(
+        runtime_config={},
+        conda_binary="/usr/bin/conda",
+        conda_envs=frozenset({"molbuilder-siesta", "molbuilder-siesta-gpu"}),
+    ))
+    yield
+    set_capabilities(Capabilities(runtime_config={}))
+
+
+# --------------------------------------------------------------------- #
+#  L1: SiestaConfig field shape                                          #
+# --------------------------------------------------------------------- #
+
+
+def test_enable_gpu_default_is_off():
+    """Safety default: a brand-new config does NOT request GPU.  This
+    is load-bearing because the same .fdf is portable across CPU/GPU
+    envs; a True default would silently route every SIESTA job into
+    the GPU env regardless of whether the user has one installed."""
+    cfg = SiestaConfig()
+    assert cfg.enable_gpu is False
+
+
+def test_enable_gpu_metadata_is_present():
+    """The form schema is auto-built from dataclass metadata.  Missing
+    a key here means the field renders as a default text input (or
+    not at all), not the boolean checkbox we want."""
+    field = SiestaConfig.__dataclass_fields__["enable_gpu"]
+    md = field.metadata
+    assert md["section"] == "Parallel execution"
+    assert md["workflow_group"] == "budget"
+    assert md["id_suffix"] == "enable-gpu"
+    # The engine_key must reference the SIESTA fdf keyword so the
+    # methods-text generator can cite it; an empty value would let
+    # the field silently drift from the keyword the generator emits.
+    assert "Diag.ELPA.GPU" in md["engine_key"]
+
+
+# --------------------------------------------------------------------- #
+#  L1: render_fdf emission                                               #
+# --------------------------------------------------------------------- #
+
+
+def test_render_fdf_omits_gpu_keyword_by_default():
+    """Off by default: the rendered .fdf must NOT contain the keyword
+    when enable_gpu=False, so a job rendered for a CPU-only host
+    never accidentally routes to GPU on a different machine."""
+    fdf = render_fdf(_mk_struct(), SiestaConfig())
+    assert "Diag.ELPA.GPU" not in fdf
+
+
+def test_render_fdf_emits_gpu_keyword_when_enabled():
+    """``Diag.ELPA.GPU .true.`` is the modern (5.4.2) spelling per
+    Src/diag_option.F90:139.  Asserting the literal value catches a
+    typo like ``T``, ``Yes``, etc. -- they're ACCEPTED by fdf_get
+    but the run-wrapper detector also has to accept them, and pinning
+    one form keeps the contract simple."""
+    cfg = SiestaConfig(enable_gpu=True)
+    fdf = render_fdf(_mk_struct(), cfg)
+    assert "Diag.ELPA.GPU      .true." in fdf
+
+
+# --------------------------------------------------------------------- #
+#  L1: _fdf_requests_gpu detector                                        #
+# --------------------------------------------------------------------- #
+
+
+def _write_fdf(tmp_path: Path, body: str) -> Path:
+    p = tmp_path / "job.fdf"
+    p.write_text(body, encoding="utf-8")
+    return p
+
+
+def test_fdf_requests_gpu_modern_spelling(tmp_path):
+    p = _write_fdf(tmp_path, "Diag.ELPA.GPU .true.\n")
+    assert _runwrap._fdf_requests_gpu(p) is True
+
+
+def test_fdf_requests_gpu_alias_spelling(tmp_path):
+    """SIESTA 5.4.2 fdf_get accepts both ``Diag.ELPA.UseGPU`` (older)
+    and ``Diag.ELPA.GPU`` (newer) for the same internal flag.  Our
+    detector mirrors that so an .fdf written against either spelling
+    routes correctly."""
+    p = _write_fdf(tmp_path, "Diag.ELPA.UseGPU .true.\n")
+    assert _runwrap._fdf_requests_gpu(p) is True
+
+
+@pytest.mark.parametrize("truthy", [".true.", "true", "yes", "T", "Y", "1"])
+def test_fdf_requests_gpu_truthy_values(tmp_path, truthy):
+    """fdf_get's truthy alphabet -- pinning that the detector accepts
+    the same set, not just the canonical ``.true.``.  Any user who
+    hand-edits the file with a shorter form must route the same way
+    SIESTA itself will read it."""
+    p = _write_fdf(tmp_path, f"Diag.ELPA.GPU {truthy}\n")
+    assert _runwrap._fdf_requests_gpu(p) is True
+
+
+def test_fdf_requests_gpu_false_value(tmp_path):
+    p = _write_fdf(tmp_path, "Diag.ELPA.GPU .false.\n")
+    assert _runwrap._fdf_requests_gpu(p) is False
+
+
+def test_fdf_requests_gpu_missing_keyword(tmp_path):
+    p = _write_fdf(tmp_path, "SystemLabel siesta\nMeshCutoff 300.0 Ry\n")
+    assert _runwrap._fdf_requests_gpu(p) is False
+
+
+def test_fdf_requests_gpu_last_assignment_wins(tmp_path):
+    """SIESTA's fdf reader takes the LAST occurrence of a duplicated
+    key (read_options.F90 semantics).  An .fdf that turns GPU on then
+    off must route to the CPU env -- otherwise a user disabling GPU
+    via a trailing override would silently still go to the GPU env."""
+    body = "Diag.ELPA.GPU .true.\nDiag.ELPA.GPU .false.\n"
+    p = _write_fdf(tmp_path, body)
+    assert _runwrap._fdf_requests_gpu(p) is False
+
+
+def test_fdf_requests_gpu_unreadable_returns_false(tmp_path):
+    """Missing file -> safe default (CPU env).  Routing must never
+    raise from inside write_run_wrapper -- the wrapper is on a
+    user-input boundary and an OSError here would propagate as a
+    500."""
+    missing = tmp_path / "absent.fdf"
+    assert _runwrap._fdf_requests_gpu(missing) is False
+
+
+# --------------------------------------------------------------------- #
+#  L2: write_run_wrapper routing                                         #
+# --------------------------------------------------------------------- #
+
+
+def test_write_run_wrapper_routes_to_gpu_env_when_keyword_set(
+        tmp_path, caps_with_gpu_env):
+    """End-to-end: render_fdf(enable_gpu=True) -> file with keyword ->
+    write_run_wrapper picks ``molbuilder-siesta-gpu``."""
+    cfg = SiestaConfig(enable_gpu=True)
+    fdf_text = render_fdf(_mk_struct(), cfg)
+    fdf = tmp_path / "job.fdf"
+    fdf.write_text(fdf_text, encoding="utf-8")
+    wrapper_path = _runwrap.write_run_wrapper(fdf)
+    wrapper_text = wrapper_path.read_text(encoding="utf-8")
+    assert "molbuilder-siesta-gpu" in wrapper_text
+
+
+def test_write_run_wrapper_routes_to_cpu_env_by_default(
+        tmp_path, caps_with_gpu_env):
+    """Symmetric: enable_gpu=False -> file without keyword ->
+    ``molbuilder-siesta`` (CPU env)."""
+    fdf_text = render_fdf(_mk_struct(), SiestaConfig())
+    fdf = tmp_path / "job.fdf"
+    fdf.write_text(fdf_text, encoding="utf-8")
+    wrapper_path = _runwrap.write_run_wrapper(fdf)
+    wrapper_text = wrapper_path.read_text(encoding="utf-8")
+    assert "molbuilder-siesta-gpu" not in wrapper_text
+    assert "molbuilder-siesta" in wrapper_text
+
+
+def test_gpu_wrapper_keeps_siesta_template_intact(
+        tmp_path, caps_with_gpu_env):
+    """Regression for the 2026-06-15 ``.pyscf.log`` leak + unbalanced-
+    quote shell-syntax error.
+
+    Earlier the routing fix mutated ``category`` from ``"siesta"`` to
+    ``"siesta-gpu"``, which silently disabled every downstream
+    ``if category == "siesta":`` branch in ``runwrap.py``.  The wrapper
+    then fell through to the PySCF code path -- emitting a
+    ``-run0.pyscf.log`` filename for a SIESTA job AND an unclosed
+    quote in the template (the SIESTA-specific siesta_args_block
+    never rendered, so the heredoc it lived inside never closed).
+    Pin both signatures here.
+    """
+    import subprocess
+    cfg = SiestaConfig(enable_gpu=True)
+    fdf_text = render_fdf(_mk_struct(), cfg)
+    fdf = tmp_path / "job.fdf"
+    fdf.write_text(fdf_text, encoding="utf-8")
+    wrapper_path = _runwrap.write_run_wrapper(fdf)
+    wrapper_text = wrapper_path.read_text(encoding="utf-8")
+    # Signature 1: SIESTA log extension (.out), NOT .pyscf.log.
+    assert ".pyscf.log" not in wrapper_text, (
+        "wrapper fell through to the PySCF code path -- the SIESTA "
+        "branch didn't render.  Check that the routing fix overrides "
+        "the ENV lookup only, leaving `category` untouched."
+    )
+    # Signature 2: bash syntax-check the rendered wrapper.  An
+    # unclosed heredoc / unbalanced quote / dangling brace would fail
+    # ``bash -n`` here.  Catches the wider class of partial-template
+    # bugs the .pyscf.log signature would miss when the PySCF branch
+    # itself rendered cleanly.
+    cp = subprocess.run(
+        ["bash", "-n", str(wrapper_path)],
+        capture_output=True, text=True, timeout=15,
+    )
+    assert cp.returncode == 0, (
+        f"rendered wrapper failed bash -n syntax check.  stderr:\n"
+        f"{cp.stderr}"
+    )
+
+
+def test_write_run_wrapper_explicit_env_overrides_detection(
+        tmp_path, caps_with_gpu_env):
+    """``env=...`` is the user's escape hatch and takes precedence
+    over the .fdf-driven routing -- they may want to force a specific
+    env for testing.  Pinning that the detector doesn't override an
+    explicit user choice."""
+    cfg = SiestaConfig(enable_gpu=True)
+    fdf_text = render_fdf(_mk_struct(), cfg)
+    fdf = tmp_path / "job.fdf"
+    fdf.write_text(fdf_text, encoding="utf-8")
+    wrapper_path = _runwrap.write_run_wrapper(
+        fdf, env="molbuilder-siesta",
+    )
+    wrapper_text = wrapper_path.read_text(encoding="utf-8")
+    assert "molbuilder-siesta-gpu" not in wrapper_text
+    assert "molbuilder-siesta" in wrapper_text

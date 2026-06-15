@@ -577,6 +577,39 @@ def _runtime_status_block(
     )
 
 
+def _fdf_requests_gpu(fdf_path: Path) -> bool:
+    """Whether the .fdf has ``Diag.ELPA.GPU`` set true.
+
+    The SIESTA 5.4.2 source (Src/diag_option.F90:138-139) accepts two
+    keyword spellings that toggle the same internal ``elpa_use_gpu``
+    flag: ``Diag.ELPA.UseGPU`` (older) and ``Diag.ELPA.GPU`` (newer).
+    Either turning the value true means the job needs to run in the
+    ``molbuilder-siesta-gpu`` env (the CPU env's SIESTA is linked
+    against a non-CUDA ELPA and silently ignores the flag).
+
+    Match defensively: SIESTA's FDF parser is whitespace- and case-
+    insensitive on labels; the value may be ``.true.``, ``true``,
+    ``yes``, ``T``, ``Y``, or ``1`` (the canonical truthy set fdf_get
+    accepts).  Returns False on any read error -- the routing
+    fall-through is the CPU env, which is the safe default.
+    """
+    import re
+    try:
+        text = fdf_path.read_text()
+    except OSError:
+        return False
+    pat = re.compile(
+        r"(?im)^\s*Diag\.ELPA\.(?:Use)?GPU\b\s+(\S+)"
+    )
+    truthy = {".true.", "true", "yes", "t", "y", "1"}
+    # FDF re-reads the same keyword: last occurrence wins (matches
+    # SIESTA's read_options.F90 semantics).
+    last_value: Optional[str] = None
+    for m in pat.finditer(text):
+        last_value = m.group(1).strip().lower()
+    return last_value in truthy if last_value is not None else False
+
+
 def _parse_fdf_n_atoms(fdf_path: Path) -> Optional[int]:
     """Read the ``NumberOfAtoms`` line from a SIESTA .fdf, or None.
 
@@ -648,8 +681,29 @@ def render_run_wrapper(script_path: Path, *,
             f"{', '.join(sorted(EXTENSION_TO_CATEGORY))}."
         )
 
+    # SIESTA-GPU routing: the .fdf is the ground truth for which env
+    # to run in.  When ``Diag.ELPA.GPU`` is set true at generate time,
+    # the job needs ``molbuilder-siesta-gpu`` (whose ELPA was built
+    # with --enable-nvidia-gpu) -- the CPU env would silently ignore
+    # the keyword and run on CPU.  Inspecting the fdf here keeps the
+    # config -> runwrap path stateless: there's no parallel routing
+    # metadata to keep in sync with the file.
+    #
+    # IMPORTANT: ``category`` drives every downstream ``if category ==
+    # "siesta":`` branch in this module (MPI launch, .out filename,
+    # log extension, runtime-status block).  We must NOT change it
+    # here -- only the env LOOKUP needs to differ.  The earlier shape
+    # of this fix mutated ``category`` to ``"siesta-gpu"`` and silently
+    # disabled the entire SIESTA branch, which leaked a ``.pyscf.log``
+    # filename and an unbalanced-quote template into the wrapper.
+    env_lookup_category = category
+    if (category == "siesta" and env is None
+            and _fdf_requests_gpu(script_path)):
+        env_lookup_category = "siesta-gpu"
+
     caps = get_capabilities()
-    target_env = env if env is not None else caps.env_for_category(category)
+    target_env = (env if env is not None
+                  else caps.env_for_category(env_lookup_category))
     if target_env is None:
         raise WrapperError(
             f"category `{category}`: no env name registered.  Pass "

@@ -746,6 +746,30 @@ class SiestaConfig:
                       "runtime_info so the /results display shows it.",
         "skip_cli":   True,
     })
+    enable_gpu: bool = field(default=False, metadata={
+        "section":   "Parallel execution",
+        "workflow_group": "budget",
+        "label":     "Use GPU (NVIDIA, via ELPA-CUDA)",
+        # SIESTA 5.4.2 fdf keyword (verified against upstream source
+        # at Src/diag_option.F90:138-139 -- both ``Diag.ELPA.UseGPU``
+        # and the newer alias ``Diag.ELPA.GPU`` are accepted with the
+        # same semantics; we emit the modern form).  Setting True
+        # emits ``Diag.ELPA.GPU .true.`` and the run-wrapper detects
+        # that and routes the job into the ``molbuilder-siesta-gpu``
+        # env instead of ``molbuilder-siesta`` -- so the same .fdf
+        # is portable between backends; turning the toggle on at
+        # generate time makes the choice explicit and reproducible.
+        "engine_key":  'Diag.ELPA.GPU',
+        "id_suffix": "enable-gpu",
+        "help":      "Run SIESTA's diagonalizer on an NVIDIA GPU via "
+                     "ELPA-CUDA.  Requires the ``molbuilder-siesta-gpu`` "
+                     "env (install: ``python -m molbuilder envs install "
+                     "molbuilder-siesta-gpu``).  When on, the run-"
+                     "wrapper auto-routes the job into the GPU env; "
+                     "leave off to use the precompiled CPU SIESTA.  "
+                     "Off when the .fdf is rendered for a system "
+                     "without a CUDA GPU.",
+    })
 
     # Pseudopotentials -- psml_lib uses click.Path() in the CLI so it's
     # hand-rolled there; species_order needs comma-string parsing on

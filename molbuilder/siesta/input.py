@@ -876,6 +876,15 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
     else:
         over_k = bool(cfg.parallel_over_k)
     out.append(f"Diag.ParallelOverK {'.true.' if over_k else '.false.'}")
+    if cfg.enable_gpu:
+        # SIESTA 5.4.2 fdf keyword (Src/diag_option.F90:139).  Routes
+        # the diagonaliser through ELPA's CUDA back-end -- requires
+        # the ``molbuilder-siesta-gpu`` env (the CPU-only
+        # ``molbuilder-siesta`` env's siesta binary will ignore this
+        # silently, since its ELPA wasn't built with --enable-nvidia-gpu).
+        # The run-wrapper (molbuilder/runwrap.py) detects this line
+        # in the .fdf and auto-routes the job into the GPU env.
+        out.append("Diag.ELPA.GPU      .true.")
     out.append("")
 
     # Relaxation / dynamics.  SIESTA uses different step-count and
