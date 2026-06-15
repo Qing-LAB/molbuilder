@@ -31,11 +31,13 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from . import builds as _builds
 from .recipes import Recipe, recipe_by_name
 
 
@@ -142,7 +144,13 @@ def _probe_binary_links(env_prefix: str, recipe: Recipe) -> ProbeResult:
     """
     siesta_install = _stack_root(env_prefix, recipe) / "siesta"
     bin_dir = siesta_install / "bin"
-    required = ("siesta", "transiesta", "tbtrans")
+    # SIESTA 5.4.2 ships these binaries.  ``transiesta`` is NOT a
+    # separate executable -- TranSiesta is a run mode of ``siesta``
+    # itself (``%block ... transiesta`` in the .fdf).  Used to be its
+    # own binary in 4.x; the merge landed pre-5.0.  ``siesta_qmmm`` is
+    # also present but is a niche QM/MM driver -- not required for the
+    # "binary is sane" check.
+    required = ("siesta", "tbtrans", "phtrans")
     missing = [b for b in required if not (bin_dir / b).is_file()]
     if missing:
         return ProbeResult(
@@ -182,6 +190,9 @@ def _probe_siesta_ctest_simple(env_prefix: str, recipe: Recipe) -> ProbeResult:
     subtests don't trip on conda-package drift.  This is the test set
     the SIESTA Tests/README explicitly recommends as
     "is the freshly compiled binary sane?".
+
+    Output streams live (via ``_builds.run_streaming``) so the user
+    sees ctest's own per-test progress instead of a 20 s silent gap.
     """
     build_dir = _stack_root(env_prefix, recipe) / "build" / "siesta"
     if not (build_dir / "CTestTestfile.cmake").is_file():
@@ -201,7 +212,7 @@ def _probe_siesta_ctest_simple(env_prefix: str, recipe: Recipe) -> ProbeResult:
             detail="ctest not found in env or on PATH",
         )
     start = time.monotonic()
-    rc, out = _run(
+    rc, out = _builds.run_streaming(
         [ctest, "-E", "verify", "-L", "simple", "--output-on-failure"],
         cwd=build_dir,
         timeout=120,
@@ -209,7 +220,7 @@ def _probe_siesta_ctest_simple(env_prefix: str, recipe: Recipe) -> ProbeResult:
     elapsed = time.monotonic() - start
     # ctest's tail line is the most reliable parse target.
     summary = ""
-    for line in out.splitlines():
+    for line in (out or "").splitlines():
         if "tests passed" in line:
             summary = line.strip()
     passed = (rc == 0)
@@ -220,7 +231,7 @@ def _probe_siesta_ctest_simple(env_prefix: str, recipe: Recipe) -> ProbeResult:
         name="siesta ctest",
         passed=passed,
         detail=detail,
-        output=_trim(out),
+        output=_trim(out or ""),
     )
 
 
@@ -229,7 +240,8 @@ def _probe_elpa_make_check(env_prefix: str, recipe: Recipe) -> ProbeResult:
 
     Per ELPA INSTALL.md the canonical "shipped ELPA is sane" test.
     Runs the small validators built alongside the library.  Uses
-    ``-k`` so one flake doesn't mask other failures.
+    ``-k`` so one flake doesn't mask other failures.  Output streams
+    live so the user sees per-validator pass/fail as they run.
     """
     build_dir = _stack_root(env_prefix, recipe) / "build" / "elpa"
     if not (build_dir / "Makefile").is_file():
@@ -248,13 +260,17 @@ def _probe_elpa_make_check(env_prefix: str, recipe: Recipe) -> ProbeResult:
         )
     start = time.monotonic()
     # CHECK_LEVEL=fast is the upstream knob for "smoke test only".
-    rc, out = _run(
+    # Timeout 900 s (15 min): empirically ~5-10 min on a workstation
+    # GPU; 300 s tripped legitimate-still-running runs on the user's
+    # first attempt.
+    rc, out = _builds.run_streaming(
         [make, "check", "CHECK_LEVEL=fast", "-k"],
         cwd=build_dir,
-        timeout=300,
+        timeout=900,
     )
     elapsed = time.monotonic() - start
     passed = (rc == 0)
+    out = out or ""
     # ELPA's check output ends in a "Testsuite summary" block on success;
     # on fail it prints "TOTAL: N | FAIL: M".  Either way, count PASS/FAIL
     # lines for a stable summary.
@@ -294,13 +310,28 @@ def _probe_elpa_gpu_codepath(env_prefix: str,
             passed=False,
             detail=f"validator binary missing at {validator}",
         )
+    # ELPA's GPU validators require >= 2 MPI ranks (the runtime
+    # explicitly aborts with "must be run with more than 1 task" when
+    # launched bare).  Use the env's mpirun -- both ranks share the
+    # one GPU on a typical workstation, which ELPA handles fine.
+    env_mpirun = Path(env_prefix) / "bin" / "mpirun"
+    mpirun = str(env_mpirun) if env_mpirun.is_file() else shutil.which("mpirun")
+    if mpirun is None:
+        return ProbeResult(
+            name="elpa gpu codepath",
+            passed=False,
+            detail="mpirun not found in env or on PATH",
+        )
     # 1000 / 500 / 16 -- small enough to run in <5 s, large enough to
     # exercise the kernel meaningfully.  argv order is "na nev nblk"
     # per ELPA test/Fortran/test.F90:read_input_parameters_traditional.
+    # ``--oversubscribe`` lets us run 2 ranks on a single-socket box
+    # without conda's mpirun complaining about CPU count.
     rc, out = _run(
-        [str(validator), "1000", "500", "16"],
+        [mpirun, "--oversubscribe", "-n", "2", str(validator),
+         "1000", "500", "16"],
         cwd=build_dir,
-        timeout=60,
+        timeout=120,
     )
     fallback_hit = _ELPA_GPU_FALLBACK_RE.search(out) is not None
     if rc != 0:
@@ -397,18 +428,28 @@ def _probe_cuda_stack(env_prefix: str, recipe: Recipe) -> ProbeResult:
 # --------------------------------------------------------------------- #
 
 
-# Dispatch table: recipe name -> list of probe callables.  Hardcoded
-# rather than a recipe field because only one recipe has a validator
-# today (siesta-gpu) and the probes are tightly coupled to its
-# build-tree layout.  When another recipe needs a validator we'll
+# Dispatch table: recipe name -> ordered list of
+# ``(slug, callable, runtime_hint)`` for each probe.
+#
+# * ``slug`` is the stable short identifier shown in the progress
+#   markers ("[2/5] siesta ctest: starting ...").  It must match the
+#   ``name`` field the probe writes into its ``ProbeResult``.
+# * ``runtime_hint`` is the user-facing "~Ns" estimate so the terminal
+#   is never silent for longer than the user expects.  Without these,
+#   the slow probes (ctest, make check) look hung even when they're
+#   making forward progress.
+#
+# Hardcoded rather than a recipe field because only one recipe has a
+# validator today (siesta-gpu) and the probes are tightly coupled to
+# its build-tree layout.  When another recipe needs a validator we'll
 # extract a per-recipe ``validate_argv`` schema.
 _RECIPE_PROBES = {
     "molbuilder-siesta-gpu": (
-        _probe_binary_links,
-        _probe_siesta_ctest_simple,
-        _probe_elpa_make_check,
-        _probe_elpa_gpu_codepath,
-        _probe_cuda_stack,
+        ("binary-links",       _probe_binary_links,         "~2s -- siesta --version"),
+        ("siesta ctest",       _probe_siesta_ctest_simple,  "~20s -- SIESTA -L simple set, streams live"),
+        ("elpa make check",    _probe_elpa_make_check,      "~10s -- ELPA validators, streams live"),
+        ("elpa gpu codepath",  _probe_elpa_gpu_codepath,    "~5s -- GPU validator + silent-fallback grep"),
+        ("cuda stack",         _probe_cuda_stack,           "~1s -- nvidia-smi + libcuda dlopen"),
     ),
 }
 
@@ -417,10 +458,17 @@ def has_validator(recipe_name: str) -> bool:
     return recipe_name in _RECIPE_PROBES
 
 
-def validate_recipe(recipe_name: str, env_prefix: str) -> ValidationReport:
+def validate_recipe(recipe_name: str, env_prefix: str,
+                    *, quiet: bool = False) -> ValidationReport:
     """Run the validator suite for ``recipe_name`` against an installed
     env at ``env_prefix``.  Returns a :class:`ValidationReport` even on
     partial failure so the CLI can render every probe's result.
+
+    Unless ``quiet=True``, prints per-probe start/done markers to
+    ``sys.stderr`` so the user sees forward progress while the longer
+    probes (ctest, make check) run.  The slow probes additionally
+    stream their subprocess output live -- see
+    ``_probe_siesta_ctest_simple`` and ``_probe_elpa_make_check``.
     """
     recipe = recipe_by_name(recipe_name)
     if recipe is None:
@@ -437,9 +485,23 @@ def validate_recipe(recipe_name: str, env_prefix: str) -> ValidationReport:
             f"recipe `{recipe_name}` has no build_spec -- the source-"
             f"build dirs needed by the validator don't exist"
         )
+    total = len(probes)
     results: List[ProbeResult] = []
-    for probe in probes:
-        results.append(probe(env_prefix, recipe))
+    for i, (slug, probe, hint) in enumerate(probes, start=1):
+        if not quiet:
+            sys.stderr.write(f"[{i}/{total}] {slug}: starting ({hint})\n")
+            sys.stderr.flush()
+        start = time.monotonic()
+        result = probe(env_prefix, recipe)
+        elapsed = time.monotonic() - start
+        results.append(result)
+        if not quiet:
+            tag = "PASS" if result.passed else "FAIL"
+            sys.stderr.write(
+                f"[{i}/{total}] {slug}: {tag} ({elapsed:.1f}s) "
+                f"-- {result.detail}\n"
+            )
+            sys.stderr.flush()
     return ValidationReport(
         recipe_name=recipe_name,
         env_prefix=env_prefix,

@@ -171,6 +171,7 @@ _LEAKAGE_ENV_PREFIXES: Tuple[str, ...] = (
 def run_streaming(
     argv: Sequence[str],
     *,
+    cwd: Optional[Path] = None,
     env: Optional[Mapping[str, str]] = None,
     log_file: Optional[Path] = None,
     sink: Optional[TextIO] = None,
@@ -225,6 +226,7 @@ def run_streaming(
         # paragraph instead of blocking until exit.
         proc = subprocess.Popen(
             list(argv),
+            cwd=str(cwd) if cwd is not None else None,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
