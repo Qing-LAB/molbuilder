@@ -21,7 +21,7 @@ The specs in this directory decouple the two.
 | Folder | What lives here |
 |---|---|
 | `protocols/` | How parts of the system talk to each other (HTTP API, CLI surface, JS module contracts, on-disk file layout, test patterns) |
-| `tabs/` | Per-UI-tab specs (`build`, `modify`, `spectra`, `results`) |
+| `tabs/` | Per-UI-tab specs + cross-tab `architecture.md` (`molbuilder`, `structure-optimization`, `spectra/`, `results`; transport-calculation tracked under `engines/transport.md`) |
 | `engines/` | Per-engine emitter specs (SIESTA / PySCF) + build-backend contract |
 | `types/` | L1 data-type contracts (Structure, parsers, chemistry helpers) |
 | `archive/` | Superseded docs — NOT a source of truth |

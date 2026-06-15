@@ -218,10 +218,10 @@ docs/
     builders.md                   # build-backend contract + tool limitations
   tabs/                           # per-UI-tab specs (subfolders when multi-asset)
     architecture.md               # tab inventory + routes + cross-tab workflow
-    build.md                      # /build (retires in Phase B → structure-optimization)
-    modify.md                     # /modify (merges into structure in Phase B)
+    molbuilder.md                 # /molbuilder (renamed from modify.md 2026-06-07)
+    structure-optimization.md     # /structure-optimization (renamed from build.md 2026-06-07)
     results.md                    # /results — registry dispatch + file picker
-    spectra/                      # /spectra
+    spectra/                      # /spectrum-calculation
       spec.md                     #   full spec
       references.bib              #   bibliography
   archive/                        # superseded docs (NOT a source of truth)

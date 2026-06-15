@@ -150,22 +150,22 @@ def test_buildspec_rejects_unsafe_artifact_subdir():
 
 
 def test_siesta_gpu_components_in_dependency_order(siesta_gpu_spec):
-    """elpa -> elsi -> siesta.  ELSI links ELPA; SIESTA links ELSI."""
+    """Two-component build: elpa -> siesta.  SIESTA links ELPA
+    externally; ELSI is a SIESTA submodule (per SIESTA 5.4 INSTALL.md)."""
     names = [c.name for c in siesta_gpu_spec.components]
-    assert names == ["elpa", "elsi", "siesta"]
+    assert names == ["elpa", "siesta"]
 
 
 def test_downstream_components_walks_chain(siesta_gpu_spec):
     """Asking to rebuild a component implies rebuilding everything
     downstream of it (later components have linked it)."""
     assert B.downstream_components(siesta_gpu_spec, "elpa") \
-        == ("elpa", "elsi", "siesta")
-    assert B.downstream_components(siesta_gpu_spec, "elsi") \
-        == ("elsi", "siesta")
+        == ("elpa", "siesta")
     assert B.downstream_components(siesta_gpu_spec, "siesta") \
         == ("siesta",)
     # Unknown component -> empty tuple, not exception.
     assert B.downstream_components(siesta_gpu_spec, "ghost") == ()
+    assert B.downstream_components(siesta_gpu_spec, "elsi") == ()
 
 
 # --------------------------------------------------------------------- #
@@ -542,6 +542,63 @@ def test_format_preflight_report_includes_all_sections(tmp_path):
 # --------------------------------------------------------------------- #
 #  run_build_spec: preflight short-circuit                               #
 # --------------------------------------------------------------------- #
+
+
+def test_detect_stale_artifact_dirs_finds_old_component_dirs(tmp_path):
+    """detect_stale_artifact_dirs catches leftover directories from
+    a prior recipe version -- specifically an ``elsi/`` install dir
+    from the deprecated 3-component layout."""
+    spec = recipe_by_name("molbuilder-siesta-gpu").build_spec
+    env_prefix = str(tmp_path / "env")
+    paths = B.resolve_paths(spec, env_prefix)
+    # Simulate a prior 3-component install
+    (paths.root / "elsi" / "lib").mkdir(parents=True)
+    (paths.root / "elpa" / "lib").mkdir(parents=True)  # known, NOT stale
+    (paths.root / "leftover_garbage").mkdir()
+    stale = B.detect_stale_artifact_dirs(spec, env_prefix)
+    assert "elsi" in stale
+    assert "leftover_garbage" in stale
+    assert "elpa" not in stale          # known component
+    assert ".sentinels" not in stale    # known infra dir (doesn't exist here but expected)
+
+
+def test_detect_stale_artifact_dirs_empty_when_clean(tmp_path):
+    """No stale dirs reported on a clean install."""
+    spec = recipe_by_name("molbuilder-siesta-gpu").build_spec
+    env_prefix = str(tmp_path / "fresh-env")
+    # Root doesn't exist at all -- definitely clean.
+    assert B.detect_stale_artifact_dirs(spec, env_prefix) == []
+    # Root exists with only expected entries -- still clean.
+    paths = B.resolve_paths(spec, env_prefix)
+    paths.root.mkdir(parents=True)
+    (paths.root / "src").mkdir()
+    (paths.root / "build").mkdir()
+    (paths.root / "logs").mkdir()
+    (paths.root / ".sentinels").mkdir()
+    (paths.root / "elpa").mkdir()
+    (paths.root / "siesta").mkdir()
+    assert B.detect_stale_artifact_dirs(spec, env_prefix) == []
+
+
+def test_preflight_surfaces_stale_dirs_as_warning(tmp_path, monkeypatch):
+    """When stale dirs are detected, preflight returns a warning
+    (not an error), and the message tells the user how to clean up."""
+    spec = recipe_by_name("molbuilder-siesta-gpu").build_spec
+    pkgs = recipe_by_name("molbuilder-siesta-gpu").conda_packages
+    env_prefix = str(tmp_path / "env")
+    paths = B.resolve_paths(spec, env_prefix)
+    (paths.root / "elsi").mkdir(parents=True)
+    # Probe doesn't matter for this test -- we just check the warning
+    # surfaces.  Skip CUDA + network checks to keep the test focused.
+    probe = B.ToolchainProbe(
+        env_prefix=env_prefix, cuda_home=env_prefix,
+        cuda_version="13.0", cuda_compute_cap="8.0",
+        gcc_version="14.2", openmpi_version="5.0.5", jobs=8,
+    )
+    report = B.preflight(spec, probe, pkgs, env_prefix, check_network=False)
+    warn_text = " ".join(report.warnings)
+    assert "elsi" in warn_text or "stale" in warn_text.lower()
+    assert "--rebuild=all" in warn_text
 
 
 def test_run_build_short_circuits_on_preflight_error(tmp_path):

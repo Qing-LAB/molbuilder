@@ -31,8 +31,102 @@ Design choices worth pinning here:
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Mapping, Optional, Tuple
+
+
+# --------------------------------------------------------------------- #
+#  Env-var overrides                                                     #
+# --------------------------------------------------------------------- #
+#
+# Every version / tag / repo URL in the source-build recipes is
+# overridable via a ``MOLBUILDER_*`` environment variable.  Defaults
+# are the **investigated stable values**: ELPA tag verified to exist
+# on MPCDF GitLab via ``git ls-remote``, SIESTA branch confirmed as
+# the canonical 5.x dev line (no numeric 5.x tags exist upstream),
+# version pairings cross-checked against SIESTA 5.4 INSTALL.md.
+#
+# These read once at module import time and bake into the
+# corresponding BuildComponent / Recipe instances.  Changing one
+# triggers a rebuild (the value participates in the toolchain
+# fingerprint via ``probe_toolchain`` and the resolved git SHA).
+
+
+def _env_default(var: str, default: str) -> str:
+    """Read ``$var`` or return ``default`` when the env var is unset/empty."""
+    val = os.environ.get(var)
+    return val.strip() if (val and val.strip()) else default
+
+
+# Source-build refs.  These are the heads of the truth chain for what
+# gets cloned + compiled; users can bump any one without editing the
+# recipe.
+_ELPA_REPO   = _env_default("MOLBUILDER_ELPA_REPO",
+                            "https://gitlab.mpcdf.mpg.de/elpa/elpa.git")
+_ELPA_TAG    = _env_default("MOLBUILDER_ELPA_TAG",
+                            # ELPA version (bare version string, used in
+                            # the tarball URL + fingerprint).
+                            #
+                            # Selection (verified 2026-06-15 against upstream
+                            # configure.ac + conda-forge feedstock):
+                            #
+                            # * ELPA uses AUTOTOOLS, never cmake (verified
+                            #   across 2020.11, 2021.11, 2023.05, 2025.06:
+                            #   CMakeLists.txt is HTTP 404 on every tag,
+                            #   configure.ac is HTTP 200).
+                            # * The ``--enable-nvidia-gpu`` +
+                            #   ``--with-NVIDIA-GPU-compute-capability``
+                            #   naming was introduced in ELPA 2021.x;
+                            #   2020.x uses the older ``--enable-gpu``.
+                            # * ``2021.11.001`` is the first version with
+                            #   the modern Nvidia naming AND has 4+ years
+                            #   of production hardening in the SIESTA + ELSI
+                            #   community.  Compatible with CUDA 11.x /
+                            #   12.x / 13.x.
+                            # * conda-forge's elpa-feedstock currently pins
+                            #   ``2025.06.001``; users wanting the most-
+                            #   recent conda-forge-tested version can set
+                            #   ``MOLBUILDER_ELPA_TAG=2025.06.001`` (and
+                            #   ``MOLBUILDER_ELPA_SHA256=`` to skip the
+                            #   integrity check or supply a matching SHA).
+                            "2021.11.001")
+_ELPA_SHA256 = _env_default("MOLBUILDER_ELPA_SHA256",
+                            # SHA256 of elpa-2021.11.001.tar.gz fetched from
+                            # MPCDF's tarball archive 2026-06-15.  Recipe
+                            # verifies this matches before unpacking.  Empty
+                            # string skips the check -- set when bumping the
+                            # tag via env var without a known SHA.
+                            "fb361da6c59946661b73e51538d419028f763d7cb"
+                            "9dacf9d8cd5c9cd3fb7802f")
+_ELPA_TARBALL_BASE = _env_default(
+    "MOLBUILDER_ELPA_TARBALL_BASE",
+    # Canonical MPCDF tarball archive.  Used by conda-forge, Spack, and
+    # EasyBuild.  Override for institutional mirrors.
+    "https://elpa.mpcdf.mpg.de/software/tarball-archive",
+)
+_SIESTA_REPO = _env_default("MOLBUILDER_SIESTA_REPO",
+                            "https://gitlab.com/siesta-project/siesta.git")
+_SIESTA_REF  = _env_default("MOLBUILDER_SIESTA_TAG",
+                            # SIESTA upstream has NO numeric 5.x tags
+                            # (verified 2026-06-15 via ls-remote -- only
+                            # v4.0.x / v4.1.x).  The 5.x line lives on the
+                            # ``rel-5.4`` branch.  Fingerprint records the
+                            # resolved SHA so a branch advance forces a
+                            # rebuild.
+                            "rel-5.4")
+
+# Conda-package version pins.  Empty default = unpinned (conda's SAT
+# solver picks the latest compatible).  Override by setting the
+# variable to a conda spec fragment (e.g. ``=14`` or ``>=3.30``).
+def _spec(name: str, version_var: str = "") -> str:
+    """Compose a conda spec ``<name><version>`` or just ``<name>``."""
+    return f"{name}{version_var}" if version_var else name
+
+
+_GCC_VERSION    = _env_default("MOLBUILDER_GCC", "14")          # gcc_linux-64=<N>
+_CUDA_VERSION   = _env_default("MOLBUILDER_CUDA_VERSION", "13.*")
+_LIBXC_VERSION  = _env_default("MOLBUILDER_LIBXC_VERSION", "")  # unpinned
 
 
 # --------------------------------------------------------------------- #
@@ -87,8 +181,44 @@ class BuildComponent:
     needs_cuda
         When ``True``, this component participates in the CUDA-version
         compatibility pre-flight and the fingerprint records the
-        detected CUDA toolkit version.  ELPA needs ``True``; ELSI +
-        SIESTA proxy through ELPA so they don't.
+        detected CUDA toolkit version.  ELPA needs ``True`` (the
+        only component that itself emits CUDA kernels); SIESTA proxies
+        all GPU work through ELPA and doesn't need its own CUDA
+        config.
+    clone_recurse_submodules
+        When ``True``, ``git clone`` runs with
+        ``--recurse-submodules --shallow-submodules`` so the
+        component's ``External/`` submodules come along in one shot.
+        SIESTA's ``rel-5.4`` branch uses this to pull libfdf,
+        libpsml, xmlf90, libgridxc, ELSI, and libxc as on-the-fly
+        compiled submodules (per SIESTA 5.4 INSTALL.md
+        § "Required domain-specific libraries").
+    clone_shallow
+        When ``True`` (default), ``git clone --depth=1`` produces a
+        shallow clone (faster, smaller).  When ``False``, full
+        history is cloned -- needed when ``ref`` is a SHA that
+        isn't reachable from the default branch in shallow mode.
+    tarball_url
+        When set, the clone phase downloads a tarball via curl + tar
+        instead of ``git clone``.  Mutually exclusive with
+        ``repo_url`` for the clone step; ``ref`` is still used for
+        the toolchain fingerprint.  Used for ELPA, where conda-forge
+        + Spack + EasyBuild all download from MPCDF's tarball archive
+        at ``elpa.mpcdf.mpg.de/software/tarball-archive/Releases/``.
+        Pre-bootstrapped (no autoreconf needed) and SHA256-pinnable.
+        Templated with ``{ref}`` so the URL bumps automatically when
+        ``MOLBUILDER_*_TAG`` overrides the version.
+    tarball_sha256
+        Optional SHA256 hex digest of the tarball for integrity
+        verification.  Empty string skips the check (use only when
+        a tarball_url is being bumped via env-var override to a
+        version with no recorded SHA).
+    tarball_inner_dir
+        Templated name of the top-level directory inside the
+        tarball (e.g. ``"elpa-{ref}"``).  After extraction the
+        executor renames this to a stable ``<src>`` path so the
+        configure_argv ``{src}`` placeholder always resolves to
+        the same location.
     """
     name: str
     repo_url: str
@@ -98,6 +228,11 @@ class BuildComponent:
     install_argv: Tuple[str, ...]
     verify_argv: Tuple[str, ...] = ()
     needs_cuda: bool = False
+    clone_recurse_submodules: bool = False
+    clone_shallow: bool = True
+    tarball_url: str = ""
+    tarball_sha256: str = ""
+    tarball_inner_dir: str = ""
 
 
 @dataclass(frozen=True)
@@ -392,7 +527,6 @@ _mbsg_prepend_libpath() {
 
 _mbsg_prepend_path     "$CONDA_PREFIX/opt/siesta-gpu-stack/siesta/bin"
 _mbsg_prepend_libpath  "$CONDA_PREFIX/opt/siesta-gpu-stack/elpa/lib"
-_mbsg_prepend_libpath  "$CONDA_PREFIX/opt/siesta-gpu-stack/elsi/lib"
 _mbsg_prepend_libpath  "$CONDA_PREFIX/lib"
 
 export MOLBUILDER_SIESTA_GPU_PREFIX="$CONDA_PREFIX/opt/siesta-gpu-stack"
@@ -419,7 +553,6 @@ _mbsg_drop_from_path_var() {
 
 _mbsg_drop_from_path_var PATH            "$CONDA_PREFIX/opt/siesta-gpu-stack/siesta/bin"
 _mbsg_drop_from_path_var LD_LIBRARY_PATH "$CONDA_PREFIX/opt/siesta-gpu-stack/elpa/lib"
-_mbsg_drop_from_path_var LD_LIBRARY_PATH "$CONDA_PREFIX/opt/siesta-gpu-stack/elsi/lib"
 _mbsg_drop_from_path_var LD_LIBRARY_PATH "$CONDA_PREFIX/lib"
 
 unset MOLBUILDER_SIESTA_GPU_PREFIX
@@ -435,10 +568,11 @@ unset -f _mbsg_drop_from_path_var
 # Concretely defends against the failure mode where a user with
 # system openmpi installed via apt would get a build that LINKS
 # against system libmpi.so.40 even though the env provides its own.
-_PIN_ENV_TOOLS = (
-    # cmake's FindXXX modules check CMAKE_PREFIX_PATH first.  Pointing
-    # it at the conda env makes every Find* call resolve to env libs.
-    "-DCMAKE_PREFIX_PATH={env_prefix}",
+#
+# NOTE: ``CMAKE_PREFIX_PATH`` is component-specific (SIESTA needs
+# both the env prefix AND the ELPA install dir on the search path)
+# and is set inline per component, not in this shared tuple.
+_PIN_MPI_TOOLS = (
     # MPI: bypass FindMPI's PATH walk -- pin compilers explicitly.
     "-DMPI_C_COMPILER={env_prefix}/bin/mpicc",
     "-DMPI_CXX_COMPILER={env_prefix}/bin/mpicxx",
@@ -468,90 +602,96 @@ _PIN_CUDA_TOOLS = (
 # NOTE: no shell escape needed -- we pass cmake argv through
 # subprocess.run with list argv (no shell interposed), so $ORIGIN
 # is preserved literally and the linker writes it into DT_RUNPATH.
-_RPATH_ELPA   = "$ORIGIN/../../../../lib"
-_RPATH_ELSI   = "$ORIGIN/../../../../lib:$ORIGIN/../../elpa/lib"
-_RPATH_SIESTA_BIN = (
-    "$ORIGIN/../../../../lib"
-    ":$ORIGIN/../../elsi/lib"
-    ":$ORIGIN/../../elpa/lib"
-)
+_RPATH_ELPA       = "$ORIGIN/../../../../lib"
+_RPATH_SIESTA_BIN = "$ORIGIN/../../../../lib:$ORIGIN/../../elpa/lib"
+
+
+# --------------------------------------------------------------------- #
+#  Two-component build (literature + doc supported)                     #
+#                                                                       #
+#  Per SIESTA 5.4 INSTALL.md (verified 2026-06-15 by fetching           #
+#  rel-5.4/INSTALL.md from gitlab):                                     #
+#                                                                       #
+#    - External ELPA is the recommended GPU path                        #
+#      (§ "ELPA (native interface) (recommended)").                     #
+#    - Domain-specific libs (libfdf, libpsml, xmlf90, libgridxc) are    #
+#      ESL-distributed and "can be made available by instantiation of   #
+#      a git submodule (it will be placed in the External/<package>     #
+#      folder)" (§ "Required domain-specific libraries").  None are     #
+#      packaged on conda-forge (verified by `conda search` 2026-06-15). #
+#    - ELSI is similarly a SIESTA submodule under                       #
+#      External/ELSI-project/elsi_interface (§ "ELSI (recommended,      #
+#      used by default)": "The ELSI library interface is now by         #
+#      default compiled on-the-fly. The source can be downloaded        #
+#      automatically, or it can reside in a submodule").                #
+#                                                                       #
+#  So we clone:                                                         #
+#    1. ELPA externally (CUDA must be baked in; conda-forge ELPA isn't  #
+#       built with CUDA support).                                       #
+#    2. SIESTA with ``--recurse-submodules`` so libfdf + libpsml +      #
+#       xmlf90 + libgridxc + ELSI come along as on-the-fly compiled     #
+#       submodules using SIESTA-tested versions.                        #
+#                                                                       #
+#  Everything else (BLAS/LAPACK/ScaLAPACK/NetCDF/HDF5/FFTW/libxc/MPI/   #
+#  CUDA toolkit/compilers) comes from conda-forge packages.             #
+# --------------------------------------------------------------------- #
 
 
 _ELPA = BuildComponent(
     name="elpa",
-    # MPCDF is the canonical upstream; github mirrors lag.  Override
-    # repo + ref via MOLBUILDER_ELPA_REPO / MOLBUILDER_ELPA_TAG.
-    repo_url="https://gitlab.mpcdf.mpg.de/elpa/elpa.git",
-    # Default ref is a 2024-stable tag.  Users with newer CUDA may
-    # want to bump to 2025.* via MOLBUILDER_ELPA_TAG.  The fingerprint
-    # records the resolved SHA, so changing the tag forces a rebuild.
-    ref="2024.05.001",
+    # ELPA: tarball download + autotools build.  Matches the
+    # conda-forge elpa-feedstock pattern, MPCDF's documented install
+    # path, and what Spack + EasyBuild use.  No git clone, no
+    # autoreconf needed (tarball ships a pre-generated ``configure``
+    # script).
+    repo_url="",                 # not used; tarball path overrides clone
+    ref=_ELPA_TAG,               # bare version string ("2021.11.001")
+    tarball_url=f"{_ELPA_TARBALL_BASE}/Releases/{_ELPA_TAG}/elpa-{_ELPA_TAG}.tar.gz",
+    tarball_sha256=_ELPA_SHA256,
+    tarball_inner_dir=f"elpa-{_ELPA_TAG}",
     configure_argv=(
-        "cmake",
-        "-S", "{src}",
-        "-B", "{build}",
-        "-G", "Ninja",
-        "-DCMAKE_BUILD_TYPE=Release",
-        "-DCMAKE_INSTALL_PREFIX={install}",
-        "-DBUILD_SHARED_LIBS=ON",
-        # Env-isolation pins (compilers + MPI + CUDA all from env).
-        *_PIN_ENV_TOOLS,
-        *_PIN_CUDA_TOOLS,
-        # $ORIGIN-relative install rpath so libelpa.so at runtime finds
-        # libcudart/libmpi/libgomp via env's lib dir without needing
-        # LD_LIBRARY_PATH set by the user.
-        f"-DCMAKE_INSTALL_RPATH={_RPATH_ELPA}",
-        "-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON",
-        # CUDA + OpenMP + MPI features
-        "-DENABLE_NVIDIA_GPU=ON",
-        "-DCMAKE_CUDA_ARCHITECTURES={cuda_cc_numeric}",
-        "-DENABLE_OPENMP=ON",
-        "-DUSE_MPI_MODULE=ON",
+        # ELPA autotools (VPATH build from {build}).  Pre-bootstrapped
+        # tarball means no autoreconf step.  Env vars before the
+        # configure call set autoconf-time variables:
+        #   FC/CC/CXX   -- compilers from the conda env's bin/
+        #   SCALAPACK_* -- where ELPA's checks should look for libscalapack
+        #
+        # Why ``--enable-nvidia-gpu`` (not ``--enable-gpu``): the modern
+        # Nvidia-specific naming was introduced in ELPA 2021.x; the
+        # default tag (2021.11.001) and every later tag use it.  See
+        # docs/engines/siesta-gpu.md for the flag history table.
+        "sh", "-c",
+        'set -e; '
+        'mkdir -p "{build}"; cd "{build}"; '
+        '"{src}/configure" '
+        ' FC=mpifort CC=mpicc CXX=mpicxx '
+        ' --prefix={install} '
+        ' --enable-shared '
+        ' --enable-openmp '
+        ' --enable-nvidia-gpu '
+        ' --with-cuda-path={env_prefix} '
+        ' --with-NVIDIA-GPU-compute-capability=sm_{cuda_cc_numeric} '
+        ' SCALAPACK_LDFLAGS="-L{env_prefix}/lib -lscalapack -lopenblas" '
+        ' SCALAPACK_FCFLAGS="-I{env_prefix}/include"'
     ),
-    build_argv=("cmake", "--build", "{build}", "-j", "{jobs}"),
-    install_argv=("cmake", "--install", "{build}"),
+    build_argv=(
+        "sh", "-c",
+        'cd "{build}" && make -j{jobs}'
+    ),
+    install_argv=(
+        "sh", "-c",
+        'cd "{build}" && make install'
+    ),
     verify_argv=("test", "-f", "{install}/lib/libelpa.so"),
     needs_cuda=True,
-)
-
-
-_ELSI = BuildComponent(
-    name="elsi",
-    repo_url="https://github.com/ElectronicStructureLibrary/elsi-interface.git",
-    ref="v2.11.0",
-    configure_argv=(
-        "cmake",
-        "-S", "{src}",
-        "-B", "{build}",
-        "-G", "Ninja",
-        "-DCMAKE_BUILD_TYPE=Release",
-        "-DCMAKE_INSTALL_PREFIX={install}",
-        "-DBUILD_SHARED_LIBS=ON",
-        # Env-isolation pins (compilers + MPI from env; no CUDA here).
-        *_PIN_ENV_TOOLS,
-        f"-DCMAKE_INSTALL_RPATH={_RPATH_ELSI}",
-        "-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON",
-        # Use OUR ELPA install dir, not whatever conda-elpa / system-elpa
-        # might exist.  No PEXSI / SIPS (would need extra deps).
-        "-DENABLE_PEXSI=OFF",
-        "-DENABLE_SIPS=OFF",
-        "-DUSE_EXTERNAL_ELPA=ON",
-        "-DELPA_INCLUDE_DIRS={dep_elpa}/include",
-        "-DELPA_LIBRARIES={dep_elpa}/lib/libelpa.so",
-    ),
-    build_argv=("cmake", "--build", "{build}", "-j", "{jobs}"),
-    install_argv=("cmake", "--install", "{build}"),
-    verify_argv=("test", "-f", "{install}/lib/libelsi.so"),
-    needs_cuda=False,
+    clone_recurse_submodules=False,
 )
 
 
 _SIESTA_GPU_COMPONENT = BuildComponent(
     name="siesta",
-    repo_url="https://gitlab.com/siesta-project/siesta.git",
-    # Matches the precompiled CPU env's pin -- so any CPU<->GPU diff
-    # in a downstream comparison is the GPU acceleration only.
-    ref="5.4.2",
+    repo_url=_SIESTA_REPO,
+    ref=_SIESTA_REF,
     configure_argv=(
         "cmake",
         "-S", "{src}",
@@ -559,28 +699,46 @@ _SIESTA_GPU_COMPONENT = BuildComponent(
         "-G", "Ninja",
         "-DCMAKE_BUILD_TYPE=Release",
         "-DCMAKE_INSTALL_PREFIX={install}",
-        # Env-isolation pins (compilers + MPI from env).
-        *_PIN_ENV_TOOLS,
+        # SIESTA's cmake searches both the env (for conda-installed
+        # BLAS/ScaLAPACK/NetCDF/HDF5/FFTW/libxc + the CUDA toolkit) AND
+        # the external ELPA install dir.  Semicolons (cmake list
+        # separator), not colons.
+        "-DCMAKE_PREFIX_PATH={env_prefix};{dep_elpa}",
+        # Env-isolation pins (compilers + MPI from env).  SIESTA's CUDA
+        # acceleration is entirely via ELPA's CUDA-enabled build, so
+        # SIESTA itself needs no CUDA flags.
+        *_PIN_MPI_TOOLS,
         f"-DCMAKE_INSTALL_RPATH={_RPATH_SIESTA_BIN}",
         "-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON",
-        # SIESTA features.  ELSI links ELPA (which links CUDA), so we
-        # don't need CUDA flags here.
+        # SIESTA features.  ELSI + libfdf + libpsml + xmlf90 + libgridxc
+        # are built on-the-fly from the External/ submodule directories
+        # (SIESTA's <PACKAGE>_FIND_METHOD defaults to
+        # "cmake;pkgconf;source;fetch" -- the "source" step finds them
+        # in External/<package>/ which our --recurse-submodules clone
+        # has populated).
+        "-DSIESTA_WITH_MPI=ON",
         "-DSIESTA_WITH_TRANSIESTA=ON",
         "-DSIESTA_WITH_ELSI=ON",
-        "-DELSI_ROOT={dep_elsi}",
+        "-DSIESTA_WITH_ELPA=ON",
         "-DSIESTA_WITH_LIBXC=ON",
         "-DSIESTA_WITH_NETCDF=ON",
+        "-DSIESTA_WITH_OPENMP=ON",
     ),
     build_argv=("cmake", "--build", "{build}", "-j", "{jobs}"),
     install_argv=("cmake", "--install", "{build}"),
     verify_argv=("{install}/bin/siesta", "--version"),
     needs_cuda=False,
+    # Submodule recursion brings libfdf + libpsml + xmlf90 + libgridxc
+    # + ELSI + libxc as External/ subdirectories; SIESTA's cmake
+    # picks them up via FIND_METHOD=source step.  This is the path
+    # SIESTA's CI tests and what its INSTALL.md documents.
+    clone_recurse_submodules=True,
 )
 
 
 _SIESTA_GPU_BUILD = BuildSpec(
     artifact_subdir="siesta-gpu-stack",
-    components=(_ELPA, _ELSI, _SIESTA_GPU_COMPONENT),
+    components=(_ELPA, _SIESTA_GPU_COMPONENT),
     cuda_required=True,
     cuda_min_version="12.4",
     # Forbids MKL + intel-openmp to keep libgomp the only OpenMP runtime
@@ -609,15 +767,18 @@ _SIESTA_GPU = Recipe(
     # conda package).  System CUDA at /usr/local/cuda is no longer
     # consulted by the build.
     conda_packages=(
-        # Toolchain
+        # Toolchain.  gcc_linux-64=<N> compiler family pinned via
+        # MOLBUILDER_GCC (default 14; use 13 for CUDA 12.0-12.7, 11
+        # for CUDA 11.x).
         "python=3.12",
-        "gcc_linux-64=14", "gxx_linux-64=14", "gfortran_linux-64=14",
+        f"gcc_linux-64={_GCC_VERSION}",
+        f"gxx_linux-64={_GCC_VERSION}",
+        f"gfortran_linux-64={_GCC_VERSION}",
         "cmake>=3.30", "ninja", "make", "git", "m4",
         "pkg-config",
-        # CUDA toolkit (mirrors molbuilder-pySCF's pattern).  cuda 13.x
-        # ships nvcc compatible with gcc 14; older toolkits would need
-        # MOLBUILDER_GCC=13 (or =11 for cuda 11.x).
-        "cuda-version=13.*",
+        # CUDA toolkit (mirrors molbuilder-pySCF's pattern).  Version
+        # pinned via MOLBUILDER_CUDA_VERSION (default 13.*).
+        f"cuda-version={_CUDA_VERSION}",
         "cuda-nvcc",
         "cuda-cudart-dev",
         "cuda-nvrtc",
@@ -629,12 +790,29 @@ _SIESTA_GPU = Recipe(
         # runtime; mixing libiomp5 + libgomp blows up at runtime.
         "openblas",
         "scalapack",
-        # File I/O (parallel HDF5 + netcdf for SIESTA's NetCDF backend)
+        # File I/O (parallel HDF5 + netcdf for SIESTA's NetCDF backend).
+        # NOTE: conda-forge's netcdf-c is built with S3 backend support
+        # enabled by default, so this transitively pulls a handful of
+        # ``aws-c-*`` packages (aws-c-auth, aws-c-cal, aws-c-s3, ...).
+        # The AWS C SDK code paths only activate when NetCDF is asked
+        # to open an ``s3://`` URL, which never happens on a local
+        # workstation; ~10 MB of dormant disk is the only cost.  See
+        # docs/engines/siesta-gpu.md for the documented trade.
         "fftw=*=mpi_openmpi_*",
         "hdf5=*=mpi_openmpi_*",
         "netcdf-fortran=*=mpi_openmpi_*",
-        # Functional library
-        "libxc",
+        # XC functional library (highly recommended per SIESTA
+        # INSTALL.md § "libxc (highly recommended)").
+        _spec("libxc", f"={_LIBXC_VERSION}" if _LIBXC_VERSION else ""),
+        # NOTE: the four ESL domain-specific libraries SIESTA 5.4
+        # requires -- libfdf, libpsml, xmlf90, libgridxc -- are NOT
+        # available on conda-forge (verified by ``conda search``
+        # 2026-06-15).  They ship as SIESTA's git submodules under
+        # External/<package> and SIESTA's cmake compiles them on
+        # the fly when the --recurse-submodules clone (see the
+        # SIESTA BuildComponent) brings them along.  This is what
+        # SIESTA 5.4 INSTALL.md § "Required domain-specific
+        # libraries" recommends.
     ),
     build_spec=_SIESTA_GPU_BUILD,
     verify_argv=(
@@ -647,7 +825,10 @@ _SIESTA_GPU = Recipe(
     system_preconditions=(
         "NVIDIA driver + nvidia-smi on the host (toolkit ships in env)",
         "NVIDIA driver supporting CUDA runtime 13.x (driver-side compat)",
-        "Internet access for git clone of ELPA / ELSI / SIESTA sources",
+        "Internet access for the ELPA tarball download "
+        "(elpa.mpcdf.mpg.de) + the SIESTA git clone "
+        "(gitlab.com/siesta-project), which recursively pulls "
+        "libfdf, libpsml, xmlf90, libgridxc, ELSI submodules",
         "~30 GB free disk space under $CONDA_PREFIX",
     ),
 )

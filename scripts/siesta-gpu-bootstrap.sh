@@ -39,18 +39,33 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # confirmation.
 cat <<'EOF'
 ========================================================================
-  molbuilder-siesta-gpu  --  source-build env (SIESTA + ELPA + ELSI)
+  molbuilder-siesta-gpu  --  source-build env (SIESTA + ELPA, GPU)
 ========================================================================
 This wrapper hands off to:
   python -m molbuilder envs install molbuilder-siesta-gpu
 
+Architecture (2-component, per SIESTA 5.4 INSTALL.md):
+  - ELPA built externally (CUDA-enabled eigensolver).
+  - SIESTA cloned with --recurse-submodules: External/ holds
+    libfdf, libpsml, xmlf90, libgridxc, ELSI, libxc as submodules;
+    SIESTA cmake compiles them on the fly.
+  - Everything else (gcc, MPI, BLAS, ScaLAPACK, NetCDF, HDF5, FFTW,
+    libxc, CUDA toolkit) comes from conda-forge packages.
+
 What the Python layer will do, in order:
-  1. probe host: CUDA toolkit + compute capability + disk + git access
+  1. probe host: NVIDIA driver + nvidia-smi + CUDA (env) + disk + git
   2. show you a preflight report; ask for confirmation
-  3. conda create + pip + extra steps (~3-5 min)
-  4. clone + cmake build + install ELPA / ELSI / SIESTA (~35-45 min)
+  3. conda create + pip + extra steps (~5-10 min)
+  4. clone + cmake build + install ELPA, then SIESTA (~30-45 min)
   5. write activate.d hook so the env's binaries land on PATH at
      the next `conda activate`
+
+IMPORTANT -- artifact directory should be clean:
+  If $CONDA_PREFIX/opt/siesta-gpu-stack/ already exists from a prior
+  failed install or an older recipe version, the preflight will warn
+  you about stale directories and tell you to pass `--rebuild=all`
+  to wipe everything and start fresh.  Resuming from sentinels on
+  partial state usually works, but starting clean is the safe call.
 
 You can pass:
   --dry-run        print every command + cost estimate; do not run.

@@ -36,6 +36,10 @@ Usage: bash scripts/install-env.sh [--list | --check] <recipe-name>
        bash scripts/install-env.sh --rebuild=<comp> <recipe-name>
                                                     # source-build recipes only
                                                     # (e.g. molbuilder-siesta-gpu)
+       bash scripts/install-env.sh --clean <recipe-name>
+                                                    # WIPE artifact dir
+                                                    # (source-build recipes only;
+                                                    # confirmation required)
 
 Recipe names are the canonical defaults from
 molbuilder/envs/recipes.py (e.g. molbuilder-siesta).
@@ -128,6 +132,19 @@ case "${1:-}" in
         require_conda
         require_host_env
         dispatch install --rebuild "$REBUILD_ARG" "$2"
+        ;;
+    --clean)
+        # --clean <recipe-name>: WIPE the artifact directory under
+        # $CONDA_PREFIX/opt/<artifact_subdir>/ before installing.
+        # Destructive; the Python layer asks for confirmation.
+        if [[ $# -lt 2 ]]; then
+            echo "Error: --clean requires a recipe name." >&2
+            usage
+            exit 2
+        fi
+        require_conda
+        require_host_env
+        dispatch install --clean "$2"
         ;;
     *)
         require_conda

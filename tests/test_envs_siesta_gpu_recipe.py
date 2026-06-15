@@ -190,27 +190,35 @@ def test_build_spec_forbids_mkl_variants(recipe):
 
 
 def test_build_spec_components_in_order(recipe):
-    """Components MUST be listed in dependency order: elpa -> elsi -> siesta.
-    The executor visits them top-to-bottom and each one's install must
-    finish before the next configures (ELSI links ELPA; SIESTA links
-    ELSI)."""
+    """Components MUST be listed in dependency order: elpa -> siesta.
+
+    Two-component architecture (literature + doc supported, 2026-06-15):
+    ELSI + libfdf + libpsml + xmlf90 + libgridxc are SIESTA git
+    submodules (per SIESTA 5.4 INSTALL.md § "Required domain-specific
+    libraries") that SIESTA's cmake compiles on the fly when the
+    --recurse-submodules clone populates External/.  ELPA is the only
+    component we build separately because conda-forge ELPA isn't
+    built with CUDA support."""
     names = [c.name for c in recipe.build_spec.components]
-    assert names == ["elpa", "elsi", "siesta"], (
+    assert names == ["elpa", "siesta"], (
         f"components in wrong order: {names}"
     )
 
 
 def test_build_spec_activate_hook_publishes_paths(recipe):
-    """Activate.d hook puts siesta on PATH, ELPA/ELSI on LD_LIBRARY_PATH,
+    """Activate.d hook puts siesta on PATH, ELPA on LD_LIBRARY_PATH,
     and $CONDA_PREFIX/lib on LD_LIBRARY_PATH (where conda-installed
-    libcudart / libmpi / libgomp live).  Per the 2026-06-15 design
-    correction: CUDA toolkit lives IN the env, so we point at
-    $CONDA_PREFIX/lib not /usr/local/cuda/lib64."""
+    libcudart / libmpi / libgomp live).  ELSI no longer has its own
+    install dir since it's built into the siesta executable via the
+    SIESTA submodule path."""
     hook = recipe.build_spec.activate_hook
     assert '"$CONDA_PREFIX/opt/siesta-gpu-stack/siesta/bin"' in hook
     assert '"$CONDA_PREFIX/opt/siesta-gpu-stack/elpa/lib"' in hook
-    assert '"$CONDA_PREFIX/opt/siesta-gpu-stack/elsi/lib"' in hook
     assert '"$CONDA_PREFIX/lib"' in hook
+    # No separate ELSI install dir -- ELSI is a SIESTA submodule, its
+    # libs end up inside the SIESTA install tree (if at all; usually
+    # it's a static link).
+    assert "elsi/lib" not in hook
     # No legacy system-CUDA path
     assert "/usr/local/cuda" not in hook
     # We DO NOT export CUDA_HOME -- conda-forge's cuda-nvcc package
@@ -223,8 +231,8 @@ def test_build_spec_deactivate_hook_mirrors_activate(recipe):
     deact = recipe.build_spec.deactivate_hook
     assert '"$CONDA_PREFIX/opt/siesta-gpu-stack/siesta/bin"' in deact
     assert '"$CONDA_PREFIX/opt/siesta-gpu-stack/elpa/lib"' in deact
-    assert '"$CONDA_PREFIX/opt/siesta-gpu-stack/elsi/lib"' in deact
     assert '"$CONDA_PREFIX/lib"' in deact
+    assert "elsi/lib" not in deact
     assert "/usr/local/cuda" not in deact
 
 
@@ -272,49 +280,91 @@ def _comp(recipe: Recipe, name: str) -> BuildComponent:
 
 
 def test_elpa_component(recipe):
-    """ELPA: CUDA-enabled, ENABLE_OPENMP=ON, CMAKE_CUDA_ARCHITECTURES set."""
+    """ELPA: tarball download + autotools build (verified 2026-06-15
+    against upstream configure.ac across 2020.11 / 2021.11 / 2023.05 /
+    2025.06: no CMakeLists.txt exists on any tag; all versions ship a
+    pre-bootstrapped ``configure`` script in the tarball).
+
+    Configure flags use the modern ``--enable-nvidia-gpu`` naming
+    (introduced in ELPA 2021.x).  Older ``--enable-gpu`` syntax is NOT
+    used because the default tag is 2021.11.001+.
+    """
     elpa = _comp(recipe, "elpa")
     assert elpa.needs_cuda is True
-    flags = " ".join(elpa.configure_argv)
-    assert "-DENABLE_NVIDIA_GPU=ON" in flags
-    assert "-DENABLE_OPENMP=ON" in flags
-    assert "-DCMAKE_CUDA_ARCHITECTURES={cuda_cc_numeric}" in flags
-    assert "{install}" in flags  # CMAKE_INSTALL_PREFIX template
-    # Upstream is MPCDF GitLab (not the GitHub mirror).
-    assert "gitlab.mpcdf.mpg.de" in elpa.repo_url, (
-        f"ELPA upstream should be gitlab.mpcdf.mpg.de: {elpa.repo_url!r}"
+    # Tarball, not git clone.
+    assert elpa.tarball_url, "ELPA must use tarball download"
+    assert "elpa.mpcdf.mpg.de" in elpa.tarball_url, (
+        f"ELPA tarball must come from MPCDF: {elpa.tarball_url!r}"
     )
+    assert elpa.tarball_inner_dir, "ELPA needs tarball_inner_dir set"
+    # SHA256 pin for integrity.
+    assert elpa.tarball_sha256, (
+        "ELPA tarball_sha256 must be pinned for integrity verification"
+    )
+    assert len(elpa.tarball_sha256) == 64
+    # autotools configure_argv (sh -c wrapping autotools build).
+    flags = " ".join(elpa.configure_argv)
+    assert elpa.configure_argv[0] == "sh"
+    assert "configure" in flags
+    assert "--enable-nvidia-gpu" in flags
+    assert "--with-NVIDIA-GPU-compute-capability=sm_{cuda_cc_numeric}" in flags
+    assert "--enable-openmp" in flags
+    assert "--prefix={install}" in flags
+    assert "--with-cuda-path={env_prefix}" in flags
+    # No cmake flags from the old recipe.
+    assert "cmake" not in flags.lower() or "cmake" not in flags
+    assert "-DENABLE_NVIDIA_GPU" not in flags
+    assert "-DCMAKE_CUDA_ARCHITECTURES" not in flags
 
 
-def test_elsi_component(recipe):
-    """ELSI: USE_EXTERNAL_ELPA=ON pointing at ELPA's install dir."""
-    elsi = _comp(recipe, "elsi")
-    assert elsi.needs_cuda is False
-    flags = " ".join(elsi.configure_argv)
-    assert "-DUSE_EXTERNAL_ELPA=ON" in flags
-    assert "-DELPA_INCLUDE_DIRS={dep_elpa}/include" in flags
-    assert "-DELPA_LIBRARIES={dep_elpa}/lib/libelpa.so" in flags
-    # PEXSI + SIPS off (we don't ship those; they would force extra deps).
-    assert "-DENABLE_PEXSI=OFF" in flags
-    assert "-DENABLE_SIPS=OFF" in flags
+def test_no_elsi_component(recipe):
+    """ELSI is NOT a separate BuildComponent in the 2-component
+    architecture -- it's a SIESTA submodule under
+    External/ELSI-project/elsi_interface and SIESTA's cmake builds
+    it on the fly.  Per SIESTA 5.4 INSTALL.md."""
+    names = [c.name for c in recipe.build_spec.components]
+    assert "elsi" not in names
+
+
+def test_siesta_clones_with_recurse_submodules(recipe):
+    """SIESTA must be cloned with --recurse-submodules so the four
+    required ESL libraries (libfdf, libpsml, xmlf90, libgridxc) +
+    ELSI come along as External/ submodules.  None of those four
+    are on conda-forge; SIESTA cmake's source-step in
+    FIND_METHOD=source picks them up from External/<package>."""
+    siesta = _comp(recipe, "siesta")
+    assert siesta.clone_recurse_submodules is True
 
 
 def test_siesta_component(recipe):
-    """SIESTA: TranSiesta + ELSI + libxc + netcdf, pinned to 5.4.2."""
+    """SIESTA: TranSiesta + ELSI + libxc + netcdf, pinned to the
+    ``rel-5.4`` branch.
+
+    Upstream observation (2026-06-15 ``git ls-remote --tags``):
+    gitlab.com/siesta-project/siesta has NO numeric 5.x tags --
+    only ``v4.0.x``, ``v4.1.x`` tags + branches ``rel-5.0``,
+    ``rel-5.2``, ``rel-5.4``.  The conda-forge
+    ``siesta=5.4.2=mpi_openmpi_*`` package builds from a SHA on
+    the rel-5.4 branch.  The fingerprint records the resolved SHA
+    so a branch advance forces a rebuild.  Users can pin to a
+    specific SHA via MOLBUILDER_SIESTA_TAG."""
     siesta = _comp(recipe, "siesta")
     assert siesta.needs_cuda is False
-    assert siesta.ref == "5.4.2", (
-        f"SIESTA ref must be 5.4.2 to match the precompiled CPU env "
-        f"(locked decision #4): {siesta.ref!r}"
+    assert siesta.ref == "rel-5.4", (
+        f"SIESTA ref must be the rel-5.4 branch (no numeric 5.x tags "
+        f"exist on the upstream gitlab; see test docstring): {siesta.ref!r}"
     )
     assert "gitlab.com/siesta-project/siesta" in siesta.repo_url
     flags = " ".join(siesta.configure_argv)
     # One binary serves siesta + transiesta + tbtrans (locked decision #7).
     assert "-DSIESTA_WITH_TRANSIESTA=ON" in flags
     assert "-DSIESTA_WITH_ELSI=ON" in flags
-    assert "-DELSI_ROOT={dep_elsi}" in flags
+    # ELSI built from SIESTA submodule -- no ELSI_ROOT; cmake's FIND_METHOD
+    # source step picks it up from External/.
+    assert "-DELSI_ROOT" not in flags
     assert "-DSIESTA_WITH_LIBXC=ON" in flags
     assert "-DSIESTA_WITH_NETCDF=ON" in flags
+    assert "-DSIESTA_WITH_ELPA=ON" in flags
 
 
 # --------------------------------------------------------------------- #
@@ -338,43 +388,46 @@ def _configure_flags(component_name: str, recipe: Recipe) -> str:
     return " ".join(_comp(recipe, component_name).configure_argv)
 
 
-def test_every_component_pins_cmake_prefix_path_to_env(recipe):
-    """Without CMAKE_PREFIX_PATH={env_prefix}, cmake's Find* modules
-    would search system paths first and could pick up system MPI/
-    BLAS/HDF5/NetCDF instead of the env's pinned versions."""
-    for comp in ("elpa", "elsi", "siesta"):
-        flags = _configure_flags(comp, recipe)
-        assert "-DCMAKE_PREFIX_PATH={env_prefix}" in flags, (
-            f"{comp}: CMAKE_PREFIX_PATH must pin to the env prefix"
-        )
+def test_siesta_pins_cmake_prefix_path_to_env_and_elpa(recipe):
+    """SIESTA (cmake): CMAKE_PREFIX_PATH must include BOTH the env
+    prefix (for conda-installed deps) AND the ELPA install dir.
+    Semicolon = cmake's list separator."""
+    siesta_flags = _configure_flags("siesta", recipe)
+    assert "-DCMAKE_PREFIX_PATH={env_prefix};{dep_elpa}" in siesta_flags
 
 
-def test_every_component_pins_mpi_compilers_to_env(recipe):
-    """FindMPI walks PATH for mpicc/mpicxx/mpifort.  If system OpenMPI
-    is installed via apt and PATH has /usr/bin before $CONDA_PREFIX/bin
-    in some odd shell ordering, the build silently links system libmpi.
-    Explicit pins make that impossible."""
-    for comp in ("elpa", "elsi", "siesta"):
-        flags = _configure_flags(comp, recipe)
-        assert "-DMPI_C_COMPILER={env_prefix}/bin/mpicc" in flags
-        assert "-DMPI_CXX_COMPILER={env_prefix}/bin/mpicxx" in flags
-        assert "-DMPI_Fortran_COMPILER={env_prefix}/bin/mpifort" in flags
-
-
-def test_elpa_pins_cuda_compiler_and_root_to_env(recipe):
-    """FindCUDAToolkit prefers /usr/local/cuda when CUDAToolkit_ROOT
-    isn't set.  Without the explicit pin, ELPA could compile against
-    a different CUDA than the env's cuda-nvcc."""
+def test_elpa_pins_env_compilers_and_cuda_path(recipe):
+    """ELPA (autotools): FC/CC/CXX use the env's mpi compilers, and
+    --with-cuda-path points at the env (where conda-installed cuda-nvcc
+    lives).  This bypasses autoconf's PATH walk so the system openmpi
+    can't be picked up by accident."""
     flags = _configure_flags("elpa", recipe)
-    assert "-DCMAKE_CUDA_COMPILER={env_prefix}/bin/nvcc" in flags
-    assert "-DCUDAToolkit_ROOT={env_prefix}" in flags
+    # MPI compilers via FC=mpifort etc. (resolves via PATH inside conda
+    # activate; the autotools build doesn't take cmake's explicit
+    # -DMPI_C_COMPILER pin).
+    assert "FC=mpifort" in flags
+    assert "CC=mpicc" in flags
+    assert "CXX=mpicxx" in flags
+    # CUDA path points at the env (conda-installed cuda-nvcc + libs).
+    assert "--with-cuda-path={env_prefix}" in flags
+
+
+def test_siesta_pins_mpi_compilers_to_env(recipe):
+    """SIESTA (cmake): FindMPI walks PATH for mpicc/mpicxx/mpifort.
+    If system OpenMPI is installed via apt and PATH has /usr/bin
+    before $CONDA_PREFIX/bin in some odd shell ordering, the build
+    silently links system libmpi.  Explicit pins make that impossible."""
+    flags = _configure_flags("siesta", recipe)
+    assert "-DMPI_C_COMPILER={env_prefix}/bin/mpicc" in flags
+    assert "-DMPI_CXX_COMPILER={env_prefix}/bin/mpicxx" in flags
+    assert "-DMPI_Fortran_COMPILER={env_prefix}/bin/mpifort" in flags
 
 
 def test_no_system_paths_in_cmake_flags(recipe):
     """A regression guard.  None of the cmake flags should reference
     /usr/lib, /usr/local/cuda, /opt/cuda, or similar system locations.
     The full toolchain must live inside the env."""
-    for comp in ("elpa", "elsi", "siesta"):
+    for comp in ("elpa", "siesta"):
         flags = _configure_flags(comp, recipe)
         for forbidden in ("/usr/lib", "/usr/local/cuda", "/opt/cuda",
                           "/usr/include"):
@@ -384,33 +437,35 @@ def test_no_system_paths_in_cmake_flags(recipe):
             )
 
 
-def test_install_rpath_uses_origin_relative_path(recipe):
-    """Each component bakes an $ORIGIN-relative install rpath so the
+def test_siesta_install_rpath_uses_origin_relative_path(recipe):
+    """SIESTA (cmake): bakes $ORIGIN-relative install rpath so the
     binary can find its sibling libs (and the env's lib) at runtime
     WITHOUT depending on LD_LIBRARY_PATH being set.  $ORIGIN-relative
-    so the env stays movable (rename + clone work)."""
-    for comp in ("elpa", "elsi", "siesta"):
-        flags = _configure_flags(comp, recipe)
-        assert "CMAKE_INSTALL_RPATH=$ORIGIN" in flags, (
-            f"{comp} must set CMAKE_INSTALL_RPATH with $ORIGIN-relative "
-            f"path; got: {flags}"
-        )
-        assert "-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON" in flags, (
-            f"{comp} must build with install rpath so the binary in "
-            f"build/ links the same way it will after install"
-        )
+    so the env stays movable (rename + clone work).
+
+    ELPA (autotools) does NOT bake explicit rpath; instead the
+    activate.d hook publishes $CONDA_PREFIX/opt/.../elpa/lib on
+    LD_LIBRARY_PATH so the SIESTA binary finds libelpa.so via the
+    loader's standard search path.  This is the common autotools
+    pattern (cleaner than the autotools-LDFLAGS rpath hack)."""
+    flags = _configure_flags("siesta", recipe)
+    assert "CMAKE_INSTALL_RPATH=$ORIGIN" in flags
+    assert "-DCMAKE_BUILD_WITH_INSTALL_RPATH=ON" in flags
 
 
-def test_siesta_rpath_finds_elpa_elsi_and_env_lib(recipe):
-    """SIESTA binary depends on libelsi, libelpa, libcudart, libmpi,
-    libgomp.  Its rpath must reach all three locations from
+def test_siesta_rpath_finds_elpa_and_env_lib(recipe):
+    """SIESTA binary depends on libelpa, libcudart, libmpi, libgomp.
+    Its rpath must reach both locations from
     $CONDA_PREFIX/opt/siesta-gpu-stack/siesta/bin/siesta:
 
-      - elsi/lib    via $ORIGIN/../../elsi/lib
       - elpa/lib    via $ORIGIN/../../elpa/lib
       - env's lib   via $ORIGIN/../../../../lib
+
+    libelsi is statically linked into the siesta binary via the
+    submodule build, so no separate rpath entry is needed for it.
     """
     flags = _configure_flags("siesta", recipe)
-    assert "$ORIGIN/../../elsi/lib" in flags
     assert "$ORIGIN/../../elpa/lib" in flags
     assert "$ORIGIN/../../../../lib" in flags
+    # No ELSI lib dir -- ELSI is built into the siesta binary itself.
+    assert "elsi/lib" not in flags

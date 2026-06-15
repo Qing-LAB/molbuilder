@@ -31,10 +31,11 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, List, Mapping, Optional, Sequence, Tuple
+from typing import Callable, Dict, List, Mapping, Optional, Sequence, TextIO, Tuple
 
 from .recipes import BuildComponent, BuildSpec
 
@@ -58,26 +59,19 @@ PHASES: Tuple[str, ...] = ("clone", "configure", "build", "install", "verify")
 # detected `jobs` value differs.
 _PHASE_ESTIMATES: Mapping[Tuple[str, str], Tuple[str, str]] = {
     # (component, phase) -> (action description, expected cost label)
-    ("elpa", "clone"):     ("git clone the ELPA eigensolver source",
-                            "~30-60s, ~150 MB"),
-    ("elpa", "configure"): ("cmake configure ELPA with CUDA + OpenMP enabled",
-                            "~30s"),
+    ("elpa", "clone"):     ("download + extract ELPA tarball from MPCDF",
+                            "~30s, ~1.5 MB"),
+    ("elpa", "configure"): ("autotools configure ELPA with CUDA + OpenMP",
+                            "~60s"),
     ("elpa", "build"):     ("compile ELPA (CUDA kernels are the slow part)",
                             "~10-15 min"),
     ("elpa", "install"):   ("install ELPA library + headers",
                             "~10s"),
     ("elpa", "verify"):    ("check that libelpa.so exists",
                             "instant"),
-    ("elsi", "clone"):     ("git clone the ELSI interface library",
-                            "~20s, ~80 MB"),
-    ("elsi", "configure"): ("cmake configure ELSI to use external ELPA",
-                            "~20s"),
-    ("elsi", "build"):     ("compile ELSI",
-                            "~8-10 min"),
-    ("elsi", "install"):   ("install ELSI library + headers",
-                            "~10s"),
-    ("elsi", "verify"):    ("check that libelsi.so exists",
-                            "instant"),
+    # ELSI is built as a SIESTA submodule per the 2026-06-15 architecture
+    # decision (see docs/engines/siesta-gpu.md § 3.1).  No standalone
+    # ELSI phases here.
     ("siesta", "clone"):   ("git clone the SIESTA source",
                             "~60s, ~200 MB"),
     ("siesta", "configure"):("cmake configure SIESTA with ELSI + TranSiesta + libxc + netcdf",
@@ -172,6 +166,133 @@ _LEAKAGE_ENV_PREFIXES: Tuple[str, ...] = (
     "PMI_", "PMIX_",         # PMI launcher config
     "SLURM_",                # SLURM exports vars that affect MPI
 )
+
+
+def run_streaming(
+    argv: Sequence[str],
+    *,
+    env: Optional[Mapping[str, str]] = None,
+    log_file: Optional[Path] = None,
+    sink: Optional[TextIO] = None,
+    indent: str = "    ",
+    timeout: Optional[int] = None,
+) -> Tuple[Optional[int], str]:
+    """Run a subprocess streaming stdout+stderr to ``sink`` in real time.
+
+    Designed for long-running build steps (cmake, ninja, conda
+    create) so the user sees progress instead of a silent gap
+    between "phase start" and "phase done / failed".  Without this,
+    a 15-minute ELPA build looks identical to a hung process.
+
+    Parameters
+    ----------
+    argv
+        Command + args as a list.  Passed directly to
+        ``subprocess.Popen`` (no shell).
+    env
+        Environment dict for the subprocess.  ``None`` inherits
+        ``os.environ`` per usual subprocess semantics.
+    log_file
+        Optional path; the full captured output is written here at
+        the end (overwrites any prior content).  ``None`` skips
+        log persistence.
+    sink
+        Where to stream lines as they arrive (typically
+        ``sys.stderr``).  ``None`` defaults to ``sys.stderr``.
+    indent
+        Prefix prepended to each streamed line so subprocess
+        output is visually distinct from the wrapper's own progress
+        lines.  Pass ``""`` for no indent.
+    timeout
+        Optional seconds; ``Popen.wait(timeout=...)`` raises
+        :class:`subprocess.TimeoutExpired` on overrun.  ``None``
+        waits indefinitely.
+
+    Returns
+    -------
+    (returncode, captured)
+        ``returncode`` is ``None`` on launch failure / timeout;
+        ``captured`` is the full combined stdout+stderr as a
+        string (the tail of which is shown in the CLI's failure
+        recap).
+    """
+    out_sink: TextIO = sink if sink is not None else sys.stderr
+    try:
+        # text=True + bufsize=1 + stderr→stdout gives line-buffered
+        # interleaved output as the build emits it.  Many build tools
+        # (cmake, ninja) line-flush by default; some don't (autoconf-
+        # style) but the merge to stdout still streams paragraph-by-
+        # paragraph instead of blocking until exit.
+        proc = subprocess.Popen(
+            list(argv),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            env=dict(env) if env is not None else None,
+        )
+    except (FileNotFoundError, OSError) as exc:
+        msg = f"failed to launch: {exc}"
+        if log_file is not None:
+            try:
+                log_file.parent.mkdir(parents=True, exist_ok=True)
+                log_file.write_text(msg, encoding="utf-8")
+            except OSError:
+                pass
+        return None, msg
+
+    captured_lines: List[str] = []
+    try:
+        # Stream each line: write indented copy to sink, accumulate
+        # unindented copy for the log + the CLI's tail-on-failure.
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            captured_lines.append(line)
+            try:
+                out_sink.write(indent + line)
+                out_sink.flush()
+            except OSError:
+                # If the sink dies (closed pipe, etc.) keep accumulating;
+                # we still want the log file to land.
+                pass
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                pass
+            tail = f"\n[killed after {timeout}s timeout]\n"
+            captured_lines.append(tail)
+            try:
+                out_sink.write(indent + tail)
+                out_sink.flush()
+            except OSError:
+                pass
+            combined = "".join(captured_lines)
+            if log_file is not None:
+                try:
+                    log_file.parent.mkdir(parents=True, exist_ok=True)
+                    log_file.write_text(combined, encoding="utf-8")
+                except OSError:
+                    pass
+            return None, combined
+    finally:
+        try:
+            if proc.stdout is not None:
+                proc.stdout.close()
+        except Exception:  # noqa: BLE001 -- best-effort cleanup
+            pass
+
+    combined = "".join(captured_lines)
+    if log_file is not None:
+        try:
+            log_file.parent.mkdir(parents=True, exist_ok=True)
+            log_file.write_text(combined, encoding="utf-8")
+        except OSError:
+            pass
+    return proc.returncode, combined
 
 
 def build_subprocess_env(base_env: Optional[Mapping[str, str]] = None
@@ -680,6 +801,45 @@ class PreflightReport:
     info: Tuple[str, ...]
 
 
+def detect_stale_artifact_dirs(spec: BuildSpec, env_prefix: str) -> List[str]:
+    """Return names of artifact dirs that are not in the current spec.
+
+    A user re-running ``molbuilder envs install`` after an earlier
+    failed install, an old recipe version (e.g. the pre-2026-06-15
+    three-component shape), or hand-edited state, may have stale
+    directories under ``$CONDA_PREFIX/opt/<artifact_subdir>/``.
+    Concrete cases this catches:
+
+    - An ``elsi/`` install dir left over from the deprecated 3-component
+      recipe.  Harmless but signals the user is on outdated state.
+    - Half-cloned ``src/<comp>/`` from an interrupted install (handled
+      by the clone-wipe rule, but worth surfacing).
+    - ``logs/`` or ``.sentinels/`` from a wildly different prior config
+      (only weird if .toolchain-fingerprint disagrees with the current
+      build's fingerprint, which is a separate sentinel-resume check).
+
+    Returns a list of unexpected entries (relative names); empty list
+    means clean.
+    """
+    paths = resolve_paths(spec, env_prefix)
+    if not paths.root.exists():
+        return []
+    expected = {c.name for c in spec.components} | {
+        "src", "build", "logs", ".sentinels",
+        ".toolchain-fingerprint",
+    }
+    stale: List[str] = []
+    try:
+        for entry in sorted(paths.root.iterdir()):
+            if entry.name not in expected:
+                stale.append(entry.name)
+    except OSError:
+        # Unreadable dir -- preflight elsewhere will catch the actual
+        # filesystem error; here we just say "no stale".
+        return []
+    return stale
+
+
 def preflight(spec: BuildSpec, probe: ToolchainProbe,
               conda_packages: Sequence[str],
               env_prefix: Optional[str] = None,
@@ -799,6 +959,24 @@ def preflight(spec: BuildSpec, probe: ToolchainProbe,
         f"Build concurrency  -j{probe.jobs:<8d}  "
         f"(MOLBUILDER_BUILD_JOBS to override)"
     )
+
+    # Stale artifact directories from a prior failed / outdated install.
+    # See `detect_stale_artifact_dirs` docstring for the failure modes.
+    if env_prefix:
+        stale = detect_stale_artifact_dirs(spec, env_prefix)
+        if stale:
+            paths = resolve_paths(spec, env_prefix)
+            warnings.append(
+                f"Artifact directory at {paths.root} contains "
+                f"{len(stale)} entry/entries that are NOT part of the "
+                f"current build ({', '.join(stale)}).  These may be "
+                f"leftovers from a prior failed install or an older "
+                f"recipe version.  The current install will resume from "
+                f"valid sentinels and ignore these dirs, but they will "
+                f"continue to consume disk.  Pass `--rebuild=all` to "
+                f"wipe everything (including these stale dirs) and "
+                f"start clean."
+            )
 
     # Network: verify git can reach each component's repo.  Cheap
     # (ls-remote, no clone) but catches firewalls, DNS, dead mirrors.
@@ -1122,12 +1300,59 @@ def plan_build_spec(spec: BuildSpec,
     steps: List[BuildStep] = []
     for comp in spec.components:
         subs = _build_substitutions(comp, spec, paths, probe)
-        # clone: not a templated arg list -- this is git plumbing
-        clone_argv: Tuple[str, ...] = (
-            "git", "clone", "--depth=1",
-            "--branch", comp.ref, comp.repo_url,
-            str(paths.component_src(comp.name)),
-        )
+        # Clone phase: either ``git clone`` (most components) or
+        # ``curl + tar`` (when ``tarball_url`` is set).  The phase
+        # name stays "clone" so the sentinel-resume model works
+        # uniformly.
+        src_dir = paths.component_src(comp.name)
+        if comp.tarball_url:
+            # Tarball path -- matches conda-forge's elpa-feedstock
+            # pattern.  Single shell command that:
+            #   1. wipes any partial state from a prior failed install
+            #   2. downloads via curl with -fL (fail on HTTP error, follow redirects)
+            #   3. verifies SHA256 if the recipe pinned one
+            #   4. extracts via tar
+            #   5. renames inner dir (e.g. "elpa-2021.11.001/") to {src}
+            tar_path = src_dir.parent / f"{comp.name}.tar.gz"
+            sha_check = ""
+            if comp.tarball_sha256:
+                sha_check = (
+                    f'echo "{comp.tarball_sha256}  $TARBALL" '
+                    f'  | sha256sum -c -; '
+                )
+            clone_argv = (
+                "sh", "-c",
+                f'set -e; '
+                f'TARBALL="{tar_path}"; '
+                f'rm -rf "{src_dir}" "$TARBALL"; '
+                f'mkdir -p "{src_dir.parent}"; '
+                f'echo "[clone] downloading {comp.tarball_url}"; '
+                f'curl -fsSL -o "$TARBALL" "{comp.tarball_url}"; '
+                + sha_check +
+                f'echo "[clone] extracting"; '
+                f'tar -xzf "$TARBALL" -C "{src_dir.parent}"; '
+                f'mv "{src_dir.parent}/{comp.tarball_inner_dir}" "{src_dir}"; '
+                f'rm "$TARBALL"; '
+                f'echo "[clone] source ready at {src_dir}"',
+            )
+        else:
+            # Git clone path.  --recurse-submodules brings the
+            # component's External/ submodules along in one clone
+            # (SIESTA needs this to pull libfdf + libpsml + xmlf90 +
+            # libgridxc + ELSI + libxc per SIESTA INSTALL.md).
+            clone_argv_list: List[str] = ["git", "clone"]
+            if comp.clone_shallow:
+                clone_argv_list.append("--depth=1")
+            if comp.clone_recurse_submodules:
+                clone_argv_list.extend([
+                    "--recurse-submodules",
+                    "--shallow-submodules",
+                ])
+            clone_argv_list.extend([
+                "--branch", comp.ref, comp.repo_url,
+                str(src_dir),
+            ])
+            clone_argv = tuple(clone_argv_list)
         steps.append(BuildStep(
             component=comp.name, phase="clone",
             argv=clone_argv,
@@ -1172,7 +1397,14 @@ def _run_phase(step: BuildStep,
                env_prefix: str,
                conda_binary: str,
                timeout: int = 7200) -> BuildStepResult:
-    """Run one phase under ``conda run -n <env>``, log to file, return result."""
+    """Run one phase under ``conda run -n <env>`` with live output.
+
+    Output streams to stderr line-by-line so the user can see the
+    build's progress (cmake compile lines, ninja step counts, git
+    clone receiving-objects updates) instead of staring at a silent
+    "[1/15] elpa.clone: ..." for 15 minutes.  The full transcript is
+    still written to ``step.log_file`` for post-hoc inspection.
+    """
     step.log_file.parent.mkdir(parents=True, exist_ok=True)
     # Resolve the env's prefix to a name for `conda run`.  ``conda run``
     # accepts a prefix too, which avoids ambiguity when the env name
@@ -1182,32 +1414,26 @@ def _run_phase(step: BuildStep,
         "--no-capture-output", "--",
         *step.argv,
     )
-    try:
-        cp = subprocess.run(
-            list(argv), capture_output=True, text=True, timeout=timeout,
-            # Strip leakage vectors (LD_LIBRARY_PATH / CPATH / CFLAGS /
-            # MPI_HOME / CUDA_HOME / OMPI_* / ...) so user-shell vars
-            # can't pull system MPI/CUDA into the conda build.  Conda's
-            # activate.d sets the env-pinned values on top of this slate.
-            env=build_subprocess_env(),
-        )
-    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
-        msg = f"failed to launch: {exc}"
-        step.log_file.write_text(msg, encoding="utf-8")
-        return BuildStepResult(
-            step=step, status="fail", returncode=None, output=msg,
-        )
-    combined = (cp.stdout or "") + (cp.stderr or "")
-    try:
-        step.log_file.write_text(combined, encoding="utf-8")
-    except OSError:
-        # Log write failure should not mask the build outcome.
-        pass
-    trimmed = combined[-4096:]  # tail (cmake compile errors tend to be terminal)
+    rc, combined = run_streaming(
+        argv,
+        # Strip leakage vectors (LD_LIBRARY_PATH / CPATH / CFLAGS /
+        # MPI_HOME / CUDA_HOME / OMPI_* / ...) so user-shell vars
+        # can't pull system MPI/CUDA into the conda build.  Conda's
+        # activate.d sets the env-pinned values on top of this slate.
+        env=build_subprocess_env(),
+        log_file=step.log_file,
+        timeout=timeout,
+    )
+    if rc is None and not combined:
+        # run_streaming returned launch failure with no captured output;
+        # _run_phase still has to surface something to the caller.
+        combined = "failed to launch (no output)"
+    trimmed = combined[-4096:]  # tail -- cmake compile errors tend to be terminal
+    status = "ok" if rc == 0 else "fail"
     return BuildStepResult(
         step=step,
-        status="ok" if cp.returncode == 0 else "fail",
-        returncode=cp.returncode,
+        status=status,
+        returncode=rc,
         output=trimmed,
     )
 
@@ -1303,6 +1529,17 @@ def run_build_spec(spec: BuildSpec,
     # short-circuit when the ref hasn't moved.
     for comp_name in _components_to_wipe(spec, rebuild):
         _wipe_component(paths, comp_name)
+
+    # --rebuild=all also wipes any stale artifact dirs left over from a
+    # prior recipe version (e.g. an `elsi/` install dir from the
+    # pre-2026-06-15 three-component recipe).  Without this, a user
+    # passing --rebuild=all to "start fresh" would still have those
+    # stale dirs surviving on disk.
+    if rebuild == "all":
+        for stale_name in detect_stale_artifact_dirs(spec, env_prefix):
+            stale_path = paths.root / stale_name
+            if stale_path.exists():
+                shutil.rmtree(stale_path, ignore_errors=True)
 
     # First pass: figure out the resolved component refs.  For
     # components that already have a clone, read the SHA from .git;
@@ -1428,7 +1665,14 @@ def format_install_summary(spec: BuildSpec, probe: ToolchainProbe,
         cfg_act, cfg_cost = describe_phase(comp.name, "configure")
         bld_act, bld_cost = describe_phase(comp.name, "build")
         inst_act, inst_cost = describe_phase(comp.name, "install")
-        lines.append(f"  Component {i}: {comp.name}  ({comp.repo_url} @ {comp.ref})")
+        # Show tarball URL for tarball-based components (e.g. ELPA),
+        # else the git repo URL.
+        source = (
+            f"tarball: {comp.tarball_url}"
+            if comp.tarball_url
+            else comp.repo_url
+        )
+        lines.append(f"  Component {i}: {comp.name}  ({source} @ {comp.ref})")
         lines.append(f"     - {clone_act:<55s} {clone_cost}")
         lines.append(f"     - {cfg_act:<55s} {cfg_cost}")
         lines.append(f"     - {bld_act:<55s} {bld_cost}")

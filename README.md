@@ -1,417 +1,542 @@
 # molbuilder
 
-> Assemble **metal–molecule–metal nanojunctions** for transport-DFT
-> simulations.  Build → modify → simulate → watch, all in one
-> toolkit.
-
-molbuilder is built around the **molecular-electronics workflow**:
-constructing the geometry of a single-molecule junction sandwiched
-between two metal electrodes (Au–thiol–Au is the canonical example),
-generating **SIESTA** or **PySCF** input for that geometry, and
-watching the resulting DFT optimisation live in a browser.
+> **An end-to-end toolkit for molecular-electronics simulations.**
+> Build a molecule, assemble it into a metal–molecule–metal
+> nanojunction, generate DFT/transport input for **SIESTA**,
+> **TranSIESTA**, or **PySCF**, and inspect the resulting
+> trajectories, spectra, and transmission curves — all from one
+> Flask app, all driven by one codebase.
 
 ```
-                          Build / Modify          Spectra
-sequence ──► Structure ──► SIESTA .fdf  ──► siesta ──┐
-                       ├─► PySCF .py    ──► python  ─┴──► .molwatch.log  ─┐
-                       └─► spectra.py   ──► python  ───► .spectra.json   ─┤
-                                                                          │
-                                                              Results / Watch
-                                                            ◄───────────── ┘
+                       ┌────────── Molbuilder tab ─────────┐
+sequence / SMILES / PDB │ build → edit → orient → assemble │
+                       └────────────────┬──────────────────┘
+                                        ▼ Save to project
+                              ┌─────────┴─────────┐
+                              │  Task tabs        │
+                              │  ─────────────    │
+                              │  Structure opt.   │ ──► .fdf  / .py
+                              │  Spectrum calc.   │ ──► .spectra.py
+                              │  Transport calc.  │ ──► TranSIESTA .fdf
+                              └─────────┬─────────┘
+                                        ▼ run on cluster
+                              ┌─────────┴─────────┐
+                              │  Results tab      │ ◄── trajectory
+                              │  unified inspector│ ◄── spectrum
+                              │                   │ ◄── T(E) / I-V
+                              └───────────────────┘
 ```
 
-The **Modify** tab is the headline feature.  It takes a relaxed
-molecule (built here or loaded from anywhere), lets you orient its
-anchor atoms onto the z-axis, and adds crystallographic FCC
-electrode slabs at a chosen gap — giving you a transport-ready
-geometry in a few clicks.  The full pipeline (build / modify /
-generate / watch) is what differentiates molbuilder from a
-general-purpose builder: every step knows about the next.
+> **Status:** active development, pre-1.0.  Used in production for
+> Au–thiol–Au transport studies in the Qing lab.  Raman pipeline
+> bit-for-bit validated against an independent reference
+> implementation; Au-BDT-Au transport cross-checked vs Reed 2006 /
+> Stokbro 2003 within factor-of-2.  MIT licensed.
 
-These are **starting structures for a geometry optimisation** — not
-equilibrium geometries.  Always relax in your DFT/MP2 code before
-computing properties.
+---
+
+## Highlights
+
+- **Full nanojunction pipeline in one app** — peptide / DNA / RNA /
+  SMILES / PubChem compound builders → atom-level editor → orient
+  anchors → add crystallographic FCC slabs (Au / Ag / Cu / Ni / Pt /
+  Pd on 100 / 110 / 111) → transport-ready geometry → SIESTA `.fdf` /
+  TranSIESTA / PySCF.  Most tools do one step; molbuilder does all of
+  them.
+- **Five backends, isolated by design** — `molbuilder-siesta`
+  (CPU), `molbuilder-siesta-gpu` (source-built CUDA), `molbuilder-pySCF`
+  (CPU + optional GPU via gpu4pyscf), `molbuilder-MDtools` (AmberTools),
+  `molbuilder-tests` (Playwright).  Each env pins its own native stack;
+  no numpy 1.x vs 2.x or libnetcdf-version conflicts.  All managed
+  through one `molbuilder envs {list,doctor,install}` CLI.
+- **Optional GPU SIESTA, source-built** — ELPA (CUDA) + ELSI +
+  SIESTA 5.4.2 compiled from source against the env's pinned
+  toolchain.  Sentinel-resume build (re-running is safe), interactive
+  preflight (CUDA / GPU compute capability / disk / git
+  reachability), and three layers of build-env isolation from system
+  MPI / CUDA / compilers.
+- **Schema-driven UI + CLI** — every parameter on a SIESTA / PySCF /
+  Transport config is `@dataclass` field metadata.  Add a new
+  parameter to the dataclass and you get: a CLI flag, a web form
+  input with tooltip + validator, a methods-text mention, and form
+  schema introspection.  No parallel HTML / JS / fixture edits.
+- **Live inspection that refreshes on file mtime** — the Results
+  tab's trajectory inspector polls running calculations: new frames
+  stream into the 3Dmol viewer, new energy / force / SCF-residual
+  data lights up the Plotly charts.  Truncation-tolerant parser
+  handles half-written final blocks.
+- **Built-in OAuth without nginx** — Google / GitHub / Microsoft /
+  ORCID / Apereo CAS (e.g. ASURITE) for internet-exposed deployments.
+  Per-provider `allowed_users` lists.  Or put molbuilder behind your
+  existing reverse-proxy auth — both shapes documented.
+- **Project organization out of the box** — JupyterLab-style
+  sidebar at `projects/`, single-click preview, double-click commit,
+  atomic move / copy / rename that pairs structure files with their
+  `.molstruct.json` sidecars (per-atom labels never orphan).
+- **Validated science** — Raman pipeline (build → relax → Hessian →
+  finite-diff Raman) bit-for-bit identical to a hand-written
+  raw-PySCF reference at B3LYP/def2-SVP water.  Au-BDT-Au transport
+  T(E_F) within factor-of-2 of Reed 2006 / Stokbro 2003 (~0.01 G₀).
+- **Sole-source-of-truth documentation** — every UI feature has a
+  spec in [`docs/`](docs/); tests are derived from the spec, code
+  reviews verify code-matches-spec (not code-matches-itself).  No
+  doc-vs-code drift.
+
+> Generated structures are **starting points for a geometry
+> optimisation**, not equilibrium geometries.  Always relax in your
+> DFT code before computing properties.
 
 ---
 
 ## Quick start
 
-molbuilder uses a **four-env conda model** — a user-named *host* env
-runs molbuilder and the web UI; each compute backend (SIESTA, PySCF,
-MDtools, the test runner) lives in its own named env that the host
-dispatches into via `conda run`.  Full setup recipe in
-[`docs/README_install.md`](docs/README_install.md).
-
 ```bash
-# After the host env exists (see docs/README_install.md):
-python -m molbuilder serve --port 8000   # opens build / modify / watch / spectra UI
-# browser: http://localhost:8000/
+# 1. One-time host env (any name; we suggest "molbuilder")
+conda create -n molbuilder -c conda-forge -y python=3.12 pip \
+    numpy ase sisl rdkit openbabel biopython \
+    flask click plotly authlib python-cas pytest pyflakes
+conda run -n molbuilder python -m pip install PeptideBuilder pubchempy
+
+# 2. From inside the host env:
+conda activate molbuilder
+cd /path/to/molbuilder
+
+# 3. Add the backend envs you need (each ~3 GB; each is one CLI call)
+python -m molbuilder envs install molbuilder-siesta      # CPU SIESTA
+python -m molbuilder envs install molbuilder-pySCF       # PySCF + geomeTRIC
+python -m molbuilder envs install molbuilder-MDtools     # AmberTools
+# Optional GPU SIESTA (45-min source build; gated by preflight + confirm):
+bash scripts/siesta-gpu-bootstrap.sh
+
+# 4. Start the web app
+python -m molbuilder serve --port 8000
+# Browser: http://localhost:8000/  → redirects to /molbuilder
 ```
 
-Five tabs in one Flask app, plus a **persistent Projects sidebar**
-on the left of every page (JupyterLab-style file explorer rooted at
-`projects/`; click a file to select it, every tab reads the
-selection):
+For LAN or internet exposure (TLS, OAuth sign-in, reverse-proxy
+auth), see [§ Deployment](#deployment) and
+[`docs/deployment.md`](docs/deployment.md).
 
-| Tab | URL | What it does |
+---
+
+## Feature tour
+
+molbuilder is a Flask app with **five canonical tabs** plus a
+persistent Projects sidebar.  Each tab has one role; tab switches
+happen only when the workflow phase changes (build → configure →
+review).  Routes match the visible tab labels exactly.
+
+| Tab | Route | Role |
 |---|---|---|
-| **Build**    | `/`         | sequence → structure → SIESTA `.fdf` / PySCF `.py` |
-| **Modify**   | `/modify`   | edit atoms, build metal-molecule-metal junctions, hand off to Build |
-| **Spectra**  | `/spectra`  | harmonic frequencies + Raman activities + per-mode orbital probes |
-| **Results**  | `/results`  | unified inspector — pick a file in the sidebar, the matching inspector renders (in progress: trajectory + spectra inspectors lifting from /watch + /spectra; structure + source inspectors work today) |
-| **Watch**    | `/watch`    | legacy trajectory viewer (full feature set; will be absorbed into Results once 1B+1C+1D + step 2 lifts complete — see [`docs/protocols/results-tab.md`](docs/protocols/results-tab.md)) |
+| **Molbuilder** | `/molbuilder` (bare `/` redirects) | Interactive workspace — load / build / edit / assemble |
+| **Structure optimization** | `/structure-optimization` | File-driven SIESTA `.fdf` + PySCF `.py` generator |
+| **Spectrum calculation** | `/spectrum-calculation` | File-driven PySCF Raman / IR script generator |
+| **Transport calculation** | `/transport-calculation` | File-driven TranSIESTA `.fdf` generator |
+| **Results** | `/results` | Unified file-dispatched inspector — trajectory, spectra, structure, source |
 
----
+### 1. The Molbuilder tab — interactive workspace
 
-## The Build tab
+![Molbuilder workspace — 3Dmol viewer at centre, atom-list + selection panel on the left, foldable Sources / Atom / Pose / Geom / Junction / Save command panels on the right](docs/img/modify-tab.png)
 
-![Build tab — type ARNDC, click Build, see the peptide rendered; SIESTA form below sets generation params](docs/img/build-tab.png)
+> *The Molbuilder tab is the only tab that holds in-memory canvas
+> state.  Every other tab reads from disk.  Foldable panels — no
+> sub-tabs, no wizard flow — every command is reachable from one
+> screen.*
 
-Build a structure from any of:
+**What you do here:**
 
-* **Peptide** sequence (1-letter or PDB 3-letter) — `ARNDC`,
-  `AR[SEP]C` (phospho-Ser), …
-* **DNA / RNA** sequence — `ATGCATGCAT`, `AUGCAUGCAU`; the
-  `threedna` backend (when 3DNA is installed) gives a canonical
-  B/A/Z helix, otherwise `amber` (extended chain) or `rdkit`
-  (folded conformer).
-* **SMILES** — `Sc1ccc(S)cc1` (1,4-benzenedithiol)
-* **Compound name** — `aspirin` (PubChem lookup → SMILES → 3D).
+- **Sources** — load `.xyz` / `.pdb` from the sidebar selection;
+  generate from a SMILES string (RDKit), a peptide / DNA / RNA
+  sequence, a compound name (PubChem), or a canonical B / A / Z DNA
+  helix (3DNA, optional).
+- **Atom** — click atoms in the viewer (or atom list) to select;
+  Shift-click extends the selection; picked atoms wear a bright
+  orange wireframe halo visible from any angle.  Delete selected
+  atoms (strip H caps to expose S anchors), or insert a new atom at
+  `(dx, dy, dz)` with a live distance readout.
+- **Pose** — orient an anchor pair onto the z-axis (with a tilt
+  slider) so the S–S vector points along z, or rotate the whole
+  structure around x / y / z with a centroid / origin pivot.
+- **Geom** — centre the geometric centroid at the origin or apply
+  an explicit `(Δx, Δy, Δz)` shift.  Used to clean up after chained
+  ops or to recover an off-origin xyz.
+- **Junction** — add FCC electrode slabs (Au / Ag / Cu / Ni / Pt /
+  Pd; 100 / 110 / 111) at a chosen gap.  **Anchorless mode**
+  (default): slabs land at `z = ±gap/2` around the world origin —
+  no atom selection needed.  **Anchor-pair mode** (legacy): slabs
+  placed so the midpoint of two selected anchor atoms becomes the
+  slab midpoint.
+- **Save** — write `<project>/<name>.xyz` + a `.molstruct.json`
+  sidecar with per-atom labels.  File-driven task tabs pick it up.
 
-Click **Build**, see the 3Dmol viewer render the molecule, then fill
-in the SIESTA or PySCF parameter form and click **Generate**.  Every
-field has an inline tooltip with a recommended range; the generated
-file carries verbose tuning hints next to each parameter so it's
-readable as a tutorial.
+**What makes this tab unique:**
 
----
+- 20-deep **slab-only Undo** lets you sweep `gap` values
+  exploratorily without losing your atom-edit history.
+- Element-aware contact distances ship as defaults (2.40 Å Au–S,
+  2.50 Å Ag–S, 2.30 Å Cu–S / Pd–S, 2.20 Å Ni–S, 2.05 Å Pt–N) with
+  citations in
+  [`molbuilder/data/contact_distance.json`](molbuilder/data/contact_distance.json).
+- **Focus molecule** button anchors the camera on the molecule
+  (ignoring the bulky slabs) when interaction feels off-centre
+  after adding electrodes.
+- Auto-detection chip identifies the chemistry (e.g.
+  "Au-thiol-Au junction; closed-shell singlet") and surfaces
+  validator warnings inline.
 
-## The Modify tab — assemble a nanojunction
+Spec: [`docs/tabs/molbuilder.md`](docs/tabs/molbuilder.md).
 
-![Modify tab — water loaded, atom list on the left, viewer in the middle, Edit panel on the right with 4 sub-tabs](docs/img/modify-tab.png)
+### 2. Structure optimization — SIESTA `.fdf` + PySCF `.py`
 
-The Modify tab assembles a **metal–molecule–metal nanojunction** from
-an existing molecule plus a couple of clicks.  The canonical workflow
-takes a thiol-anchored molecule (1,4-benzenedithiol, an alkanedithiol,
-an oligophenyl, …) and produces a Au–S–molecule–S–Au geometry ready
-for SIESTA / TranSIESTA transport calculations.
+![Structure-optimization form — engine selector at top, three workflow-group cards (Profile / Stage / Budget), 3Dmol viewer rendering the input geometry, inline detection chip + per-card issues panel](docs/img/build-tab.png)
 
-### Canonical Au–thiol–Au workflow
+> *A file-driven task tab: the user picks an `.xyz` / `.pdb` from
+> the sidebar, the form configures it, and Generate emits a
+> self-contained `<name>.fdf` (or `.py`) + `<name>.run.sh` wrapper
+> that already knows which conda env to dispatch into.*
 
-1. **Load** the relaxed molecule (`.xyz` or `.pdb`).
-2. **Atom subtab** — click the two thiol hydrogens, hit **Delete**
-   to expose the S atoms.
-3. **Pose subtab** — select the two S atoms (Shift-click), pick
-   target axis **z** with `center = midpoint`, hit **Apply orient**.
-   The S–S vector now lies along z; their midpoint is at the origin.
-4. **Geom subtab** — optional `Centre at origin` cleans up any
-   residual offset.
-5. **Junction subtab** — pick element **Au**, plane **111**, set
-   `m × n × layers` (e.g. 3 × 3 × 2), set the gap (12 Å is a sensible
-   default for short oligomers; longer molecules need more), click
-   **Apply Add Electrode**.  In the default *anchorless* mode no
-   atom selection is required: slabs land at `z = ±gap/2` around the
-   world origin and the molecule fits between them.
-6. **Send to Build** — Build picks up the assembled junction and you
-   generate `.fdf` / `.py` normally.
+**What's special:**
 
-### What each subtab is for
+- **Schema-driven form** generated from `SiestaConfig` /
+  `PySCFConfig` dataclass field metadata.  Adding a new knob is a
+  one-line edit; CLI flag + form input + tooltip + validator all
+  follow automatically.
+- **Three workflow-group cards** — Profile / Stage / Budget —
+  group fields by life-cycle phase (what the system is, what stage
+  you're at, what computational budget you have).  Not alphabetical;
+  not by FDF block.  Pinned by per-card e2e tests.
+- **Methods-text preview** writes manuscript-ready prose for the
+  methods section of a paper, kept in sync with the form state.
+- **Issues panel** routed through the shared `analyze_structure`
+  pipeline.  The chip, the validator, and the preflight all agree
+  on chemistry (e.g. Au-BDT-Au is correctly identified as a
+  noble-metal cluster — the open-shell-spin warning is suppressed).
+- **Staged relaxation** (coarse → medium → tight) — each stage
+  writes a distinct `<basename>-stage<N>.molwatch.log`; pointing
+  the Results inspector at the directory **merges stages into one
+  trajectory** with stage-boundary markers on the energy / force
+  plots.
 
-* **Atom** — delete selected atoms, add a new atom with `(dx, dy,
-  dz)` offset and a live distance readout.  Used to strip H caps
-  before exposing anchor atoms, or to add an explicit cap (-CH₃, -F)
-  at an arbitrary site.
-* **Pose** — orient an anchor pair onto the z-axis (with a tilt
-  slider), or rotate the whole structure around x / y / z.  The
-  Rotate op has a `Pivot` select (centroid = rotate in place,
-  origin = world-axis rotation).
-* **Geom** — translate the structure: centre the geometric centroid
-  at the origin or apply an explicit `(Δx, Δy, Δz)` shift.  Useful
-  when chaining ops or recovering from an off-origin starting xyz.
-* **Junction** — add FCC electrode slabs (Au / Ag / Cu / Ni / Pt /
-  Pd) on the (100) / (110) / (111) plane.  Two modes:
-  * **Anchorless (default)** — slabs at `z = ±gap/2` around the
-    world origin.  No atom selection needed; controlled entirely by
-    `gap` + lateral `(dx, dy)` offset.  The user's job is to centre
-    + pose the molecule first, then add slabs around it.
-  * **Anchor-pair (legacy)** — with two atoms selected, slabs are
-    placed so the *midpoint* of those anchors becomes the slab
-    midpoint.  Useful when the molecule is not pre-centred or when
-    you want the slabs to follow a tilted anchor pair.
+Spec: [`docs/tabs/structure-optimization.md`](docs/tabs/structure-optimization.md).
 
-Element-aware defaults for contact distance: 2.40 Å Au–S, 2.50 Å
-Ag–S, 2.30 Å Cu–S / Pd–S, 2.20 Å Ni–S, 2.05 Å Pt–N (see
-[`molbuilder/data/contact_distance.json`](molbuilder/data/contact_distance.json)
-for citations).  Override with the contact-distance slider in
-Single mode or pass `contact_distance=` in the Python API.
+### 3. Spectrum calculation — PySCF Raman / IR
 
-### Slab-only Undo
+A file-driven task tab that generates `<job>.spectra.py` PySCF
+scripts for **harmonic vibrational analysis** (frequencies + Raman
+activities + optional per-mode electronic-structure probes +
+scaffolded IR).
 
-The Junction subtab carries a 20-deep **Undo** for electrode ops
-only.  Other ops (delete / rotate / translate / centre) are
-committed immediately and roll back via re-load.  Snapshot pushes
-only on a successful response so a failed Apply doesn't consume an
-undo slot.
+**What's special:**
 
-### Atom-picking helpers
+- **End-to-end validated** — the Raman pipeline produces bit-for-bit
+  identical frequencies and Raman activities to a hand-written
+  raw-PySCF reference script at B3LYP/def2-SVP water.  Method +
+  full result table:
+  [`docs/tabs/spectra/spec.md § 12.1`](docs/tabs/spectra/spec.md).
+- **Per-mode electronic-structure probes** — optional displaced-SCF
+  jobs around the equilibrium geometry, projected onto each mode's
+  eigenvector to compute mode-resolved orbital responses.
+- **IR add-on scaffold** (`compute_ir=True`) populates
+  `ir_intensity_km_mol` "for free" on top of the Raman finite-diff
+  loop (dipole-moment readout adds no extra SCFs).  **Absolute
+  magnitudes are unvalidated** — treat as preliminary.
+- **Output format includes mass-weighted canonical eigenvectors**
+  (for post-hoc Raman / IR re-projection) **plus display-normalised
+  eigenvectors** (for 3-D animation in the Results tab).
 
-Click any atom in the viewer or in the left-hand atom list to
-select; Shift-click to add to a multi-selection (orient + legacy
-electrode mode read a pair as anchors).  Picked atoms wear a bright
-orange wireframe halo, visible from any camera angle.  The viewer
-toolbar's **Focus molecule** button anchors the camera pivot on the
-molecule (ignoring electrode slabs) when interaction feels
-off-centre — useful after adding bulky slabs that dominate the
-auto-fit bounding box.
+Spec + bibliography:
+[`docs/tabs/spectra/spec.md`](docs/tabs/spectra/spec.md) +
+[`docs/tabs/spectra/references.bib`](docs/tabs/spectra/references.bib).
 
-The full Modify spec, including every endpoint and the
-electrode-placement math, lives at
-[`docs/tabs/modify.md`](docs/tabs/modify.md).
-The directory-layout protocol that ties Modify to Build and Watch
-is at [`docs/protocols/job-layout.md`](docs/protocols/job-layout.md).
+### 4. Transport calculation — TranSIESTA scripts
 
----
+A file-driven task tab that emits TranSIESTA `.fdf` for **zero-bias
+transmission**.  Today's scope is the zero-bias path; bias-scan and
+electrode-`.TSHS`-generation wizards are roadmap items.
 
-## The Spectra tab
+**What's special:**
 
-Generate runnable PySCF scripts for **harmonic vibrational analysis**
-(frequencies + Raman activities + optional per-mode electronic
-structure probes).  Output is a `<job>.spectra.py` script you run
-externally; results land in `<job>.spectra.json` with mass-weighted
-canonical eigenvectors (for post-hoc Raman/IR re-projection) plus
-display-normalised eigenvectors (for 3-D animation).
+- **Au-BDT-Au validation fixture** in `tests/` cross-checks T(E_F)
+  within factor-of-2 of Reed 2006 / Stokbro 2003 (~0.01 G₀).
+- **Atom-ordering preflight** catches the canonical failure mode
+  (TranSIESTA needs left-lead → device → right-lead ordering;
+  silent miscounts produce wrong transmission and no error).
+- **Validator covers** k-mesh, contour parameters, electrode mode,
+  mesh cutoff defaults per element (Au needs a higher cutoff than
+  the SIESTA default).
+- **Region labels** persist through the workflow via the
+  `.molstruct.json` sidecar (electrode / bridge / anchor regions
+  set in the Molbuilder tab carry into the TranSIESTA emitter).
 
-Live capabilities today:
-* Schema-driven parameter form (everything below shown inline with
-  per-field tooltips, ranges, defaults)
-* Methods-text preview (manuscript-ready prose for the methods
-  section of a paper)
-* Issues panel (validator surfaces configuration mistakes before
-  you hit Generate)
-* Mode-eigenvector 3-D animation + Lorentzian-broadened spectrum
-  chart + modes table with CSV export (when inspecting a finished
-  `.spectra.json`)
-* Live polling of an in-progress run (refreshes the inspector
-  every 2s; auto-stops when all phases finish)
+Engine doc: [`docs/engines/transport.md`](docs/engines/transport.md).
 
-**Note:** the inspection side of Spectra (mode viewer / chart /
-table) is in the middle of being lifted into the unified **Results**
-tab.  See [`docs/protocols/results-tab.md`](docs/protocols/results-tab.md).
+### 5. Results — unified inspector
 
-Full spec including the JSON schema, per-mode probe semantics, and
-the validated Raman / preliminary IR magnitudes:
-[`docs/tabs/spectra/spec.md`](docs/tabs/spectra/spec.md).
+![Trajectory inspector — viewer with .molwatch.log loaded, frame strip + scrub slider below, Style/Overlays/Playback controls combined, energy + force + SCF-residual plots stacked on the right](docs/img/watch-tab.png)
 
----
+> *Pick any file in the Projects sidebar; `/results` dispatches to
+> the right inspector based on extension.  Same UI for "is the
+> optimisation converged?" and "is the transmission peak in the
+> right place?".*
 
-## The Results tab (in progress)
+| File pattern | Inspector | Highlights |
+|---|---|---|
+| `*.xyz`, `*.pdb` | Structure preview | 3Dmol viewer, atom-list cross-highlight, axes overlay toggle |
+| `*.fdf`, `*.py`, `*.log`, `*.out`, `*.txt`, `*.md`, `*.json` | Source listing | Read-only CodeMirror; Find dialog; > 1 MB files load view-only |
+| `*.molwatch.log`, `<job>.out` (SIESTA), `<job>_geom_optim.xyz` (geomeTRIC) | Trajectory | 3Dmol movie + Plotly energy / force / SCF-residual; frame slider; atom-distance measurement; auto-refresh on mtime |
+| `*.spectra.json` | Spectra | Lorentzian-broadened spectrum + modes table + per-mode 3-D animation |
+| `*.transport.json` | Transport | T(E) + I-V Plotly charts (planned) |
 
-The `/results` tab is a **unified inspector** that replaces the
-per-tab "load a file" UIs sprinkled across Spectra and Watch.  Pick
-any file in the Projects sidebar; `/results` dispatches to the right
-inspector for that file type based on its extension.
+**Architecture:**
 
-| File pattern | Inspector |
-|---|---|
-| `*.xyz`, `*.pdb` | Structure preview (3Dmol) — **live** |
-| `*.fdf`, `*.py`, `*.json`, `*.log`, `*.out`, `*.txt`, `*.md` | Source listing (read-only) — **live** |
-| `*.molwatch.log` | Trajectory inspector — **placeholder** (real lift from `/watch` in progress; today the placeholder shows the file metadata and links back to `/watch` for full inspection) |
-| `*.spectra.json` | Spectra inspector — **placeholder** (real lift from `/spectra` in progress; placeholder behaves the same way) |
-| anything else | Fallback message listing supported types |
-
-Architecture (the part that's solid):
-* **Inspector Registry** at `lib/inspectors/registry.js` — each
+- **Inspector Registry** at `lib/inspectors/registry.js` — each
   inspector self-registers; the dispatcher knows nothing about
   specific file types.
-* Adding a new file type = one new `lib/inspectors/<name>.js` +
+- Adding a new file type = one new `lib/inspectors/<name>.js` +
   one `<script>` tag in `results.html`.  No edit to the dispatcher.
-* Mount lifecycle is explicit: each inspector returns a
-  `dispose()` handle so file-swap cleanly tears down 3Dmol viewers,
-  Plotly charts, and polling timers.
+- **Explicit mount lifecycle** — each inspector returns a `dispose()`
+  handle so file-swap cleanly tears down 3Dmol viewers, Plotly
+  charts, and polling timers.
+- **Live polling on `mtime` change** — streams new frames into an
+  open inspector while a calculation is still running.  Parser
+  drops half-written final blocks and picks them up next refresh.
 
-Full design spec including remaining migration steps:
-[`docs/protocols/results-tab.md`](docs/protocols/results-tab.md).
-
----
-
-## The Watch tab (legacy)
-
-![Watch tab — molwatch.log loaded, structure in viewer, Inspect tab visible on the right, energy/force plots below](docs/img/watch-tab.png)
-
-Point at a **run directory** (or a specific output file) and the
-viewer renders:
-
-* **Geometry** frame-by-frame in 3Dmol (movie mode; frames load once,
-  animate client-side).
-* **Total energy** vs step (Plotly).
-* **Max atomic force** vs step.
-* **Per-cycle SCF convergence** for the active step — energy + the
-  residual norm on log scales, so you spot stalled / oscillating
-  SCFs while the run is still going.
-
-Four right-aside control tabs: **Style** (representation, color
-scheme, cell visibility), **Overlays** (atom indices, force arrows,
-max-force highlight), **Inspect** (click two atoms to measure their
-live per-frame distance), **Playback** (slider, play / pause / step,
-speed).
-
-Auto-detected formats:
-
-* `<job>.molwatch.log` — the unified format molbuilder emits;
-  preferred (one file carries trajectory + per-cycle SCF data + a
-  step-0 preview written at FDF emission time, so the viewer has
-  content the moment the user loads).
-* SIESTA stdout (`run.out` / `siesta.log`).
-* geomeTRIC's `<job>_geom_optim.xyz`.
-
-The page re-parses on file `mtime` change (~15 s polling), so a
-still-running calculation streams new frames into the open tab.
-The parser is truncation-tolerant: a half-written final block in a
-still-running job is dropped on parse and picked up next refresh.
-
-### Run directory + staged relaxation
-
-Point Watch at a **directory** and it walks the [job-layout
-v1 protocol](docs/protocols/job-layout.md) to find the right files
-automatically — `*.molwatch.log` first, then `*.fdf` / `*.py` parsed
-for the basename, then generic fallbacks.
-
-For staged relaxation (coarse → medium → tight), pick the stage
-from Build's **Relaxation stage** select.  Each stage writes a
-distinct `<basename>-stage<N>.molwatch.log`; pointing Watch at the
-directory **merges all stages into one trajectory** with stage-
-boundary markers on the energy / force plots.  The full mechanics
-(restart files, what's safe to change between stages) are documented
-inline as a collapsible "Staged relaxation workflow" panel right on
-the Watch page.
+Spec: [`docs/tabs/results.md`](docs/tabs/results.md) +
+[`docs/protocols/results-tab.md`](docs/protocols/results-tab.md) +
+[`docs/protocols/inspector-registry.md`](docs/protocols/inspector-registry.md).
 
 ---
 
-## Python API
+## Workflow — the canonical cross-tab flow
 
-```python
-import molbuilder
+Two principles:
 
-# Build a structure
-s = molbuilder.build_peptide("ARNDC")
-s = molbuilder.build_dna("ATGCATGCAT", backend="threedna", form="B")
-s = molbuilder.build_from_smiles("Sc1ccc(S)cc1")
-s = molbuilder.build_from_name("aspirin")
+1. **The Molbuilder tab is the only interactive workspace.**  It
+   holds the in-memory canvas.  Everything else reads from disk.
+2. **Task tabs are file-driven.**  Structure-optimization,
+   Spectrum-calculation, Transport-calculation all read their input
+   geometry from the sidebar-selected project file.  They do NOT
+   read in-memory canvas state.
 
-# Modify
-from molbuilder.modify import (
-    delete_atoms, orient_along_axis, add_symmetric_electrodes,
-)
-s = delete_atoms(s, [12, 13])                       # strip H caps
-s = orient_along_axis(s, anchor_indices=(10, 11),    # S-S anchors → z
-                      axis="z", center="midpoint")
-s = s.centered()                                    # atoms centred at origin
-s = add_symmetric_electrodes(s, "Au", "111", (3, 3, 2), gap=12.0)
+This decouples interactive editing from deterministic script
+generation: the same project directory always produces the same
+script regardless of which tab the user came from.
 
-# Output
-s.to_xyz("junction.xyz")
-s.to_pdb("junction.pdb")
-
-# Generate engine input
-from molbuilder.siesta import SiestaConfig, render_fdf
-from molbuilder.pyscf  import PySCFConfig, render_script
-fdf = render_fdf(s, SiestaConfig(system_label="junction", stage=1))
-py  = render_script(s, PySCFConfig(method="UKS", xc="B3LYP"))
-
-# Opt-in post-relax harmonic frequencies + RRHO thermochemistry.
-# Emits a <job>.thermo.txt alongside the converged log with the
-# vibrational wavenumbers and ZPE / U / H / G / S / Cv / Cp at the
-# configured temperature and pressure.  Adds one analytic Hessian
-# to the run (5-15x a single SCF for small molecules); wrapped in
-# try/except so a Hessian failure never loses the converged
-# energy or <job>_optimized.xyz.
-py = render_script(s, PySCFConfig(
-    compute_frequencies=True,
-    temperature_K=298.15,    # standard
-    pressure_atm=1.0,
-))
+```
+[Molbuilder tab]
+   ↓ load file OR generate (SMILES / peptide / DNA / name / 3DNA)
+   ↓ edit (delete, add, orient, rotate, translate)
+   ↓ assemble (anchorless or anchor-pair slab)
+   ↓ Save to project  ────► <proj>/<name>.xyz  +  .molstruct.json
+                                                 │
+   [Structure optimization tab]                  │
+      sidebar pick ◄───────────────────── pick the saved file
+      configure form                             │
+      Generate ──────────► <proj>/<name>.fdf  +  .run.sh  +  .psml
+                                                 │
+   [Run on cluster, results land back]           │
+                                                 │
+   [Results tab]                                 │
+      sidebar pick ◄───────────────────── pick <name>.out  /  .molwatch.log
+      trajectory inspector renders
+                                                 │
+   (optional) [Spectrum calculation tab]         │
+      sidebar pick ◄───────────────────── pick the optimised geometry
+      configure form
+      Generate ──────────► <proj>/<name>.spectra.py
+                                                 │
+   [Run on cluster, results land back]           │
+                                                 │
+   [Results tab]                                 │
+      sidebar pick ◄───────────────────── pick <name>.spectra.json
+      spectra inspector renders (modes + chart + 3-D animation)
 ```
 
+Every arrow except "Save to project" and the cluster round-trip is
+a same-tab UI gesture.  Tab switches happen only when the workflow
+phase changes.
+
+Cross-tab architecture spec:
+[`docs/tabs/architecture.md`](docs/tabs/architecture.md).
+
 ---
 
-## CLI
+## Design at a glance
 
-All commands are invoked as `python -m molbuilder <subcommand>` from
-the host conda env.  The shorthand `molbuilder ...` works too once
-the host env is active.  The examples below use the short form.
+### Three-layer architecture
+
+```
+┌──────────────────────────────────────────────────────────┐
+│  L3 — Surfaces                                            │
+│  cli.py (click), web/app.py (Flask + Blueprints)          │
+│  Convert UI gestures → L2 calls.  No business logic.      │
+├──────────────────────────────────────────────────────────┤
+│  L2 — Domain verbs                                        │
+│  builders/, generators/, parsers/, validation/            │
+│  Each verb is a focused module operating on L1 types.     │
+├──────────────────────────────────────────────────────────┤
+│  L1 — Core types (nouns)                                  │
+│  structure.py, frame.py, config/, issues.py               │
+│  + chemistry, residues, trajectory_log/                   │
+│  Pure data + minimal serialization.  Field metadata here. │
+└──────────────────────────────────────────────────────────┘
+```
+
+**Layering rule (load-bearing):** higher layers may import lower;
+lower layers never import higher.  Field metadata (label / range /
+validator / units / tooltip) lives **on the dataclass field** —
+CLI options and web form schemas are both generated from
+`dataclasses.fields(Config)`, not maintained in parallel.
+
+### Four core types
+
+| Type | Role |
+|---|---|
+| `Structure` | One geometric configuration: elements + positions + PDB metadata + optional cell + region labels |
+| `Frame` | A `Structure` plus per-step physics (energy, forces, lattice, scf_history) — parse-side |
+| `SiestaConfig`, `PySCFConfig`, `TransportConfig` | Emission parameters per backend; carry the field metadata that drives CLI options, form schema, and validation |
+| `Issue` | A validation finding: `severity` (error / warn), `message`, `where` (field id / "geometry"), `workflow_group` (Profile / Stage / Budget routing) |
+
+### The doc rule
+
+Every UI feature has a `docs/tabs/*.md` or `docs/protocols/*.md`
+spec that is the **single source of truth**.  Tests are derived
+from the spec without reading the implementation.  Code reviews
+verify code-matches-spec, not code-matches-itself.  Master index:
+[`docs/design.md`](docs/design.md) § 0.
+
+### Why split build / modify / generate / inspect across tabs?
+
+After 5+ rounds of practical use, collapsing them into one tab
+forced a save-reload round-trip for every generated structure that
+needed editing.  The 5-tab split + file-driven task tabs makes the
+script output **deterministic from disk alone**: same project dir
+→ same script.  Two users on the same project see the same script.
+Sharing a project (export / re-import) loses no information.
+
+Full architecture + principles + decisions log:
+[`docs/design.md`](docs/design.md).
+
+---
+
+## Install + multi-env model
+
+molbuilder runs from a **user-named host env** (any name; we
+suggest `molbuilder`) and dispatches into named backend envs via
+`conda run -n <env> ...`.  This model exists because collapsing
+AmberTools + siesta-mpi + cupy + playwright into one env produces
+three independent unresolvable dep conflicts.  Keeping them
+separate lets each backend pin its own native stack.
+
+### The envs
+
+| Env | Contents | When you need it |
+|---|---|---|
+| **host env** | flask + click + numpy + ase + sisl + rdkit + openbabel + biopython + plotly | always — runs `python -m molbuilder ...`, build-time chemistry, the web UI |
+| `molbuilder-siesta` | precompiled `siesta=5.4.2=mpi_openmpi_*` | CPU SIESTA / TranSIESTA jobs |
+| `molbuilder-siesta-gpu` *(optional)* | source-built ELPA + ELSI + SIESTA 5.4.2 with CUDA-enabled ELPA | GPU-accelerated SIESTA / TranSIESTA |
+| `molbuilder-pySCF` | pyscf + geometric + (optional) gpu4pyscf + CUDA 13 | PySCF / Spectra / Spectrum-calculation jobs |
+| `molbuilder-MDtools` | ambertools-dac=26 (dacase channel) | tleap / parmchk2 / RESP / antechamber |
+| `molbuilder-tests` | playwright + pytest-playwright + Chromium | browser E2E suite |
+
+### One CLI manages every env
 
 ```bash
-# Build subcommands
-molbuilder peptide ARNDC --out peptide.xyz
-molbuilder dna ATGCATGCAT --backend threedna --out dna.xyz
-molbuilder smiles "c1ccccc1" --out benzene.xyz
-molbuilder name "aspirin" --pdb aspirin.pdb
-
-# Generate engine input from a structure file
-molbuilder fdf in.xyz out.fdf --psml-lib /opt/psml --kgrid 4x4x1
-molbuilder pyscf in.xyz out.py --functional B3LYP --preopt
-
-# Edit a structure: one op type per call, chain via stdin/stdout
-molbuilder modify bdt.xyz - --orient-axis 10,11 |
-  molbuilder modify - junction.xyz --electrode "Au:111:3x3x2@gap=12.0:3,0"
-
-# Live watch
-molbuilder watch parse run.molwatch.log     # JSON to stdout
-molbuilder watch tail  run.molwatch.log     # NDJSON, one frame per line
-molbuilder serve       --port 8000          # web UI on /
-
-# Pre-flight validation
-molbuilder validate in.xyz --config siesta.fdf
+python -m molbuilder envs list                      # one-line status per recipe
+python -m molbuilder envs doctor                    # full health report (runs verify per env)
+python -m molbuilder envs install molbuilder-siesta # idempotent install
+python -m molbuilder envs install <name> --dry-run  # preview the plan
+python -m molbuilder envs install <name> --check    # report present + verified
+# Or from any shell (no host env activation needed):
+bash scripts/install-env.sh <name>
 ```
 
-All subcommands accept `-` for stdin / stdout piping.  Machine-
-consumable subcommands (`validate`, `watch parse`, `watch tail`)
-emit JSON; warnings + progress go to stderr.
+Recipes are declared in
+[`molbuilder/envs/recipes.py`](molbuilder/envs/recipes.py); a
+consistency test asserts the README ↔ registry pairing so the doc
+and code can't drift silently.
 
----
+### GPU SIESTA from source
 
-## Install
+`molbuilder-siesta-gpu` builds **ELPA + ELSI + SIESTA 5.4.2** from
+source against CUDA-enabled ELPA.  The install runs ~45 min on 8
+cores and consumes ~12 GB under `$CONDA_PREFIX`.
 
-See [`docs/README_install.md`](docs/README_install.md) for the full
-recipe.  Short version: build a *host* conda env (any name you pick,
-e.g. `molbuilder`) holding flask + click + numpy + ase + sisl + rdkit
-+ openbabel + biopython + PeptideBuilder + plotly; then build the
-named backend envs you actually need (`molbuilder-pySCF`,
-`molbuilder-siesta`, `molbuilder-MDtools`, `molbuilder-tests`).
-molbuilder dispatches into them via `conda run -n <env> ...`; nothing
-gets pip-installed editable into the host.
+```bash
+bash scripts/siesta-gpu-bootstrap.sh           # first-time install
+bash scripts/siesta-gpu-bootstrap.sh --dry-run # preview plan + preflight
+bash scripts/siesta-gpu-rebuild.sh siesta      # rebuild one component
+```
 
-Why four envs?  Because collapsing AmberTools + siesta-mpi + cupy +
-playwright into one env produces three independent unresolvable
-dependency conflicts (numpy 1.x vs 2.x, libnetcdf 4.10 vs 4.9.3, icu
-vs nodejs).  Keeping them separate lets each backend hold its own
-native pin set without poisoning the others -- see the
-[`design.md`](docs/design.md) decisions-log entry dated 2026-05-14.
+**What's notable:**
+
+- **CUDA toolkit lives in the env** (`cuda-version=13.*`,
+  `cuda-nvcc`, `cuda-cudart-dev`, `libcublas-dev`) — the host
+  provides only the NVIDIA driver + `nvidia-smi`.  Mirrors the
+  `molbuilder-pySCF` env pattern.
+- **Two-component source build** (per SIESTA 5.4 INSTALL.md):
+  ELPA externally (CUDA-enabled — conda-forge ELPA isn't built with
+  CUDA), and SIESTA cloned `--recurse-submodules` so the four
+  required ESL libraries (`libfdf`, `libpsml`, `xmlf90`, `libgridxc`)
+  + ELSI + libxc come along as `External/` submodules and SIESTA's
+  cmake compiles them on the fly.  All other deps (gcc, MPI, BLAS,
+  ScaLAPACK, NetCDF, HDF5, FFTW, CUDA toolkit, libxc) are conda-forge
+  packages.
+- **All version pins exposed as env-var overrides** for
+  customisation; defaults are the investigated stable values:
+  `MOLBUILDER_ELPA_TAG` (default `new_release_2023.05.001` —
+  verified to exist on MPCDF GitLab via `git ls-remote`),
+  `MOLBUILDER_ELPA_REPO`, `MOLBUILDER_SIESTA_TAG` (default `rel-5.4`
+  — branch since upstream has no numeric 5.x tags),
+  `MOLBUILDER_SIESTA_REPO`, `MOLBUILDER_CUDA_VERSION` (default `13.*`),
+  `MOLBUILDER_GCC` (default `14`), `MOLBUILDER_LIBXC_VERSION`,
+  `MOLBUILDER_CUDA_CC` (auto-detect via `nvidia-smi`),
+  `MOLBUILDER_BUILD_JOBS` (default `min(nproc, 8)`).
+- **Sentinel-resume build** — keyed on a toolchain fingerprint
+  (CUDA / gcc / OpenMPI versions + per-component git SHAs).  Any
+  change forces the relevant rebuild; nothing else.
+- **Interactive preflight** detects + reports CUDA version, GPU
+  compute capability + name, gcc + OpenMPI + disk free + git
+  reachability of every component upstream.  Asks for confirmation
+  before the 45-min commitment.  `--yes` bypasses for CI.
+- **Three layers of build-env isolation** prevent the build from
+  silently linking against system MPI / CUDA / compilers when the
+  user has `apt install libopenmpi-dev`:
+
+  | Layer | What it does |
+  |---|---|
+  | L1 — subprocess env sanitizer | Strips ~60 vars + 7 prefix families (`LD_LIBRARY_PATH`, `CPATH`, `CFLAGS`, `LDFLAGS`, `MPI_HOME`, `CUDA_HOME`, `OMPI_*`, `MPICH_*`, …) before every `conda run` |
+  | L2 — explicit cmake compiler pins | `-DCMAKE_PREFIX_PATH={env}` + `-DMPI_C_COMPILER={env}/bin/mpicc` + `-DCMAKE_CUDA_COMPILER={env}/bin/nvcc` + `-DCUDAToolkit_ROOT={env}` make FindMPI / FindCUDAToolkit unable to wander |
+  | L3 — `$ORIGIN`-relative install rpath | Baked into every binary so the runtime loader finds env libs even without `LD_LIBRARY_PATH`; env stays movable (rename, clone, copy) |
+
+Full engineering doc:
+[`docs/engines/siesta-gpu.md`](docs/engines/siesta-gpu.md).
 
 ### Optional: 3DNA for canonical helices
 
-The **3DNA** `fiber` backend produces true B-form / A-form / Z-form
-DNA — the only thing the bundled `rdkit` / `amber` backends do not.
-3DNA is distributed by the Olson lab (Columbia, x3dna.org) behind a
-**registration + non-commercial license**.  molbuilder cannot fetch
-it for you; download from http://x3dna.org/ and either:
+The **3DNA** `fiber` backend produces true B / A / Z DNA — the
+only thing the bundled `rdkit` / `amber` backends don't.  3DNA is
+distributed by the Olson lab (Columbia, x3dna.org) behind a
+**registration + non-commercial license**.  molbuilder cannot
+fetch it for you; download from http://x3dna.org/ and either
+in-tree extract (auto-detected) or set `$X3DNA`.  Full install +
+license contract: [`docs/design.md`](docs/design.md) § "3DNA
+(canonical helix builder)".
 
-```bash
-# Option A: in-tree (auto-detected)
-tar -xzf x3dna-v2.4-linux-64bit.tar.gz       # alongside pyproject.toml
-
-# Option B: system install
-tar -xzf x3dna-v2.4-linux-64bit.tar.gz -C ~/opt
-export X3DNA=$HOME/opt/x3dna-v2.4
-export PATH=$X3DNA/bin:$PATH
-```
-
-See [docs/design.md § "3DNA (canonical helix builder)"](docs/design.md)
-for the full install + license contract.
+Full install recipe:
+[`docs/README_install.md`](docs/README_install.md).
 
 ---
 
 ## Deployment
+
+> **Target deployment: a workstation (laptop, lab server, or HPC
+> node) with multi-CPU and optional NVIDIA GPU.**  molbuilder is
+> **not** designed for and does not target cloud / AWS /
+> containerised deployment.  MPI is used for **intra-workstation
+> parallelism** (e.g. `mpirun -np 8` across the local cores or NUMA
+> nodes); the molbuilder app, the conda envs, and every backend run
+> on the same physical machine.
 
 The default `python -m molbuilder serve` binds `127.0.0.1` —
 reachable only from the same machine.  No auth, no TLS.  Right
@@ -421,9 +546,9 @@ For anything beyond localhost:
 
 | Goal | What you need | Doc |
 |---|---|---|
-| **LAN** (lab workstation reachable from your laptop) | TLS cert/key for non-loopback bind | [`docs/deployment.md`](docs/deployment.md) § 1 |
-| **Internet** (collaborators reach it from anywhere) | Built-in sign-in — pick from Google / GitHub / Microsoft / ORCID / Apereo CAS (e.g. ASURITE); enable one or several with one button each on the login page; each provider has its own `allowed_users` list | [`docs/deployment.md`](docs/deployment.md) § 2a |
-| **Internet, your auth already exists** (campus SSO, Cloudflare Access, etc.) | Put molbuilder behind your auth gateway (reverse proxy) | [`docs/deployment.md`](docs/deployment.md) § 2b |
+| **LAN** (lab workstation reachable from your laptop) | TLS cert / key for non-loopback bind | [`docs/deployment.md`](docs/deployment.md) § 1 |
+| **Internet — built-in sign-in** | Google / GitHub / Microsoft / ORCID / Apereo CAS (e.g. ASURITE); enable one or several with one button on the login page; each provider gets its own `allowed_users` list | [`docs/deployment.md`](docs/deployment.md) § 2a |
+| **Internet — your auth already exists** (campus SSO, Cloudflare Access, etc.) | Put molbuilder behind your existing auth gateway (reverse proxy) | [`docs/deployment.md`](docs/deployment.md) § 2b |
 
 Configuration lives in **one file** at the repo root:
 `molbuilder.json` (gitignored).  Copy the template:
@@ -435,21 +560,89 @@ molbuilder serve --host 0.0.0.0 --port 443
 ```
 
 The template has inline `_comment_*` keys explaining every field
-(JSON doesn't support comments, but molbuilder's parser ignores
-`_comment_*` keys silently — they ride along as documentation).
+(JSON doesn't support comments; molbuilder's parser silently
+ignores `_comment_*` — they ride along as inline documentation).
 
-**What molbuilder does on its own** for any non-default deployment:
-TLS-or-loopback guard at startup, Content-Security-Policy +
-X-Frame-Options + X-Content-Type-Options + Referrer-Policy
-headers, self-hosted 3Dmol (no CDN trust), path validation on
-every file-ops endpoint, filename validation on upload, 50 MB
-upload cap.
+### What molbuilder does on its own
 
-**What molbuilder explicitly does NOT do** (delegate to deployment
-layer): account management, CSRF tokens, rate limiting, audit
-logging, per-user `projects/` isolation.  See
-[`docs/deployment.md`](docs/deployment.md) for which deployment
-shape covers which of these.
+For any non-default deployment, the server enforces:
+
+- TLS-or-loopback guard at startup (binding non-loopback without TLS
+  is a hard error)
+- Content-Security-Policy + X-Frame-Options + X-Content-Type-Options
+  + Referrer-Policy headers
+- Self-hosted 3Dmol (no CDN trust)
+- Path validation on every file-ops endpoint (no `..` escape)
+- Filename validation on upload, 50 MB upload cap
+
+### What molbuilder explicitly does NOT do
+
+Delegate to the deployment layer:
+
+- Account management (user CRUD, password resets)
+- CSRF tokens
+- Rate limiting
+- Audit logging
+- Per-user `projects/` isolation
+
+[`docs/deployment.md`](docs/deployment.md) explains which
+deployment shape covers which of these — and why the split is the
+way it is.
+
+---
+
+## Python API + CLI (for scripting)
+
+molbuilder is also a Python library and a CLI you can pipe through.
+Quick examples:
+
+```python
+import molbuilder
+s = molbuilder.build_from_smiles("Sc1ccc(S)cc1")        # 1,4-benzenedithiol
+from molbuilder.modify import delete_atoms, orient_along_axis, add_symmetric_electrodes
+s = delete_atoms(s, [12, 13])                            # strip H caps
+s = orient_along_axis(s, (10, 11), axis="z", center="midpoint")
+s = add_symmetric_electrodes(s.centered(), "Au", "111", (3, 3, 2), gap=12.0)
+s.to_xyz("junction.xyz")
+
+from molbuilder.siesta import SiestaConfig, render_fdf
+open("junction.fdf", "w").write(render_fdf(s, SiestaConfig(system_label="junction")))
+```
+
+```bash
+molbuilder smiles "Sc1ccc(S)cc1" - |                              # stdin/stdout piping
+  molbuilder modify - - --orient-axis 10,11 |
+  molbuilder modify - junction.xyz --electrode "Au:111:3x3x2@gap=12.0:3,0"
+molbuilder fdf junction.xyz junction.fdf --psml-lib /opt/psml --kgrid 4x4x1
+```
+
+Every Python verb has a matching CLI subcommand; all CLI subcommands
+accept `-` for stdin / stdout.  Machine-consumable subcommands
+(`validate`, `watch parse`, `watch tail`) emit JSON; warnings +
+progress go to stderr.
+
+Full Python API + CLI reference:
+[`docs/types/structure.md`](docs/types/structure.md) +
+[`docs/protocols/cli.md`](docs/protocols/cli.md) +
+[`docs/engines/builders.md`](docs/engines/builders.md).
+
+---
+
+## Scientific validation
+
+molbuilder's correctness claims are anchored to **external
+cross-checks**, not internal coherence:
+
+| Pipeline | Validation | Result |
+|---|---|---|
+| **Raman** (build → relax → Hessian → finite-diff Raman) | Independent hand-written raw-PySCF reference script, water at B3LYP/def2-SVP | Bit-for-bit identical: frequencies max Δ < 10⁻³ cm⁻¹, Raman activities max Δ < 10⁻⁶ Å⁴/amu.  Absolute magnitudes within literature range. |
+| **PySCF relaxation** (geomeTRIC) | Same water reference | Max position Δ 1.1 × 10⁻⁷ Å |
+| **Au-BDT-Au transport** (TranSIESTA zero-bias) | Reed 2006 / Stokbro 2003 published T(E_F) | Factor-of-2 of literature ~0.01 G₀ (integration test gated; runs in `molbuilder-siesta` env with electrode `.TSHS` files) |
+| **IR add-on** (`compute_ir=True`) | **Not yet validated.**  Scaffold emits `ir_intensity_km_mol` but absolute magnitudes are preliminary until the Raman-style external cross-check is applied. |
+
+Method + full result tables:
+[`docs/tabs/spectra/spec.md § 12.1`](docs/tabs/spectra/spec.md) +
+[`docs/protocols/scientific-validation.md`](docs/protocols/scientific-validation.md).
 
 ---
 
@@ -457,157 +650,75 @@ shape covers which of these.
 
 | Document | What it covers |
 |---|---|
-| [`docs/README_install.md`](docs/README_install.md) | Four-env install recipe (host + molbuilder-{pySCF,siesta,MDtools,tests}) |
-| [`docs/deployment.md`](docs/deployment.md) | **Deployment** — localhost / LAN / internet (built-in sign-in for Google / GitHub / Microsoft / ORCID / CAS, or reverse-proxy auth), TLS, config reference, security headers |
-| [`docs/molbuilder.json.example`](docs/molbuilder.json.example) | **Config template** — every supported section with inline `_comment_*` annotations; copy → edit → run |
-| [`docs/design.md`](docs/design.md) | Durable design, architecture (L1/L2/L3 layering), principles, decisions log, anti-patterns |
-| [`docs/tabs/modify.md`](docs/tabs/modify.md) | Modify tab Python API + endpoints + UI walkthrough |
-| [`docs/tabs/spectra/spec.md`](docs/tabs/spectra/spec.md) | Spectra tab spec — schema, layers, atom-fixing semantics; **end-to-end Raman validation in §12.1** |
-| [`docs/protocols/results-tab.md`](docs/protocols/results-tab.md) | **Results tab design** — inspector registry, migration plan (1A done; 1B–D + 2 pending) |
-| [`docs/protocols/job-layout.md`](docs/protocols/job-layout.md) | Directory + filename protocol (Build writes, Watch reads) |
-| [`docs/protocols/selection.md`](docs/protocols/selection.md) | Projects-sidebar selection model + tab Inquire-API contract |
+| [`docs/design.md`](docs/design.md) | **Master design** — mission, three-layer architecture, four core types, principles, anti-patterns, decisions log (chronological) |
+| [`docs/README_install.md`](docs/README_install.md) | Install recipes (host + 5 backend envs) + `molbuilder envs` CLI |
+| [`docs/deployment.md`](docs/deployment.md) | **Deployment** — localhost / LAN / internet, built-in sign-in vs reverse-proxy auth, TLS, config reference, security headers |
+| [`docs/molbuilder.json.example`](docs/molbuilder.json.example) | **Config template** — every supported section with inline `_comment_*` annotations |
+| [`docs/tabs/architecture.md`](docs/tabs/architecture.md) | Tab inventory + canonical routes + cross-tab workflow model |
+| [`docs/tabs/molbuilder.md`](docs/tabs/molbuilder.md) | Molbuilder tab (interactive workspace) — Sources / Atom / Pose / Geom / Junction / Save |
+| [`docs/tabs/structure-optimization.md`](docs/tabs/structure-optimization.md) | Structure-optimization tab — SIESTA `.fdf` + PySCF `.py` form |
+| [`docs/tabs/spectra/spec.md`](docs/tabs/spectra/spec.md) | Spectrum-calculation tab — schema, layers, atom-fixing semantics; end-to-end Raman validation in § 12.1 |
+| [`docs/tabs/results.md`](docs/tabs/results.md) | Results tab (stub pointing at protocols/) |
+| [`docs/protocols/results-tab.md`](docs/protocols/results-tab.md) | Results tab dispatch architecture |
+| [`docs/protocols/inspector-registry.md`](docs/protocols/inspector-registry.md) | Inspector contract — `mount(host, file, ctx) → {dispose}`, trajectory inspector internals |
+| [`docs/protocols/projects-sidebar.md`](docs/protocols/projects-sidebar.md) | Sidebar architecture + API + sidecar-pairing semantics |
+| [`docs/protocols/job-layout.md`](docs/protocols/job-layout.md) | Directory + filename protocol |
+| [`docs/protocols/sidecar-contract.md`](docs/protocols/sidecar-contract.md) | `.molstruct.json` sidecar — schema + atomic-move/copy rules |
+| [`docs/protocols/web-api.md`](docs/protocols/web-api.md) | HTTP API reference for every blueprint |
+| [`docs/protocols/web-ui-coherence.md`](docs/protocols/web-ui-coherence.md) | Cross-surface coherence rules (analyzer / chip / validator / palette must agree) |
+| [`docs/protocols/scientific-validation.md`](docs/protocols/scientific-validation.md) | External validation fixtures + reference results |
 | [`docs/engines/siesta.md`](docs/engines/siesta.md) | SIESTA generator contract |
 | [`docs/engines/pyscf.md`](docs/engines/pyscf.md) | PySCF generator contract |
+| [`docs/engines/transport.md`](docs/engines/transport.md) | TranSIESTA generator + transport roadmap |
+| [`docs/engines/siesta-gpu.md`](docs/engines/siesta-gpu.md) | **GPU SIESTA env** — source-build recipe, BuildSpec executor, sentinel-resume model, three-layer isolation |
+| [`docs/engines/builders.md`](docs/engines/builders.md) | Per-backend behaviour (peptide / DNA / RNA / SMILES / name) |
 | [`docs/types/structure.md`](docs/types/structure.md) | `Structure` dataclass + readers / writers |
-| [`docs/engines/builders.md`](docs/engines/builders.md) | Per-backend behavior (peptide / DNA / RNA / SMILES / name) |
 | [`docs/types/parsers.md`](docs/types/parsers.md) | Trajectory parser registry + auto-detect |
-| [`molbuilder/data/README.md`](molbuilder/data/README.md) | Citations for every numeric value (FCC lattice constants, etc.) |
-
-### Scientific validation
-
-The **Raman pipeline** (build → relax → Hessian → finite-difference
-Raman) has been cross-checked end-to-end against an independent
-hand-written raw-PySCF reference script: bit-for-bit identical
-frequencies and Raman activities at B3LYP/def2-SVP water, within
-literature ballpark for the absolute scale.  Method + full result
-table: [`docs/tabs/spectra/spec.md § 12.1`](docs/tabs/spectra/spec.md).
-
-The **IR add-on** scaffold (when present) populates
-`ir_intensity_km_mol` in the spectra JSON, but the IR
-unit-conversion + prefactor have **not yet been validated** against
-an external reference — treat absolute IR magnitudes as preliminary
-until the same validation is applied to that path.
+| [`molbuilder/data/README.md`](molbuilder/data/README.md) | Citations for every numeric value (FCC lattice constants, contact distances, …) |
 
 ---
 
 ## Limits
 
-* **Single-stranded DNA / RNA only.** Double helices need a complementary
-  strand placed on a Watson-Crick offset; straightforward addition.
-* **Web app is single-tenant.** One user, one tab, one calculation —
-  the server holds one global state under a lock.  For multi-user
-  use, run a separate process per user.
-* **Watch is read-only.** It does not start, monitor, or kill the
-  engine process; it only reads files the engine has produced.
-* **No bond-detection / CONECT output.** PDB records are ATOM-only.
+- **Single-stranded DNA / RNA only.**  Double helices need a
+  complementary strand placed on a Watson-Crick offset;
+  straightforward addition.
+- **Web app is single-tenant.**  One user, one tab, one
+  calculation — the server holds one global state under a lock.
+  For multi-user use, run a separate process per user (gunicorn
+  with `--workers 1 --threads ...` per user, separate ports).
+- **Results inspectors are read-only.**  They do not start,
+  monitor, or kill the engine process; they only read files the
+  engine has produced.
+- **No bond detection / CONECT output.**  PDB records are
+  ATOM-only.
+- **Transport tab is zero-bias today.**  Bias scan + the electrode
+  `.TSHS` generation wizard are roadmap items.
+- **PySCF IR absolute magnitudes are scaffolded, not validated.**
 
 ---
 
-## Running the tests
+## For developers
+
+| Topic | Where the canonical doc lives |
+|---|---|
+| Three-layer architecture, four core types, principles, decisions log | [`docs/design.md`](docs/design.md) |
+| Project layout (every file's role + the layering rule) | [`docs/package-layout.md`](docs/package-layout.md) |
+| Adding a new SIESTA / PySCF / Transport parameter (schema-driven; one-line dataclass edit) | [`docs/engines/siesta.md`](docs/engines/siesta.md) + [`docs/engines/pyscf.md`](docs/engines/pyscf.md) + [`docs/protocols/web-ui-coherence.md`](docs/protocols/web-ui-coherence.md) |
+| Sequence syntax (peptide / DNA / RNA grammar + modified residues) | [`docs/engines/builders.md`](docs/engines/builders.md) |
+| HTTP API reference for every blueprint | [`docs/protocols/web-api.md`](docs/protocols/web-api.md) |
+| `.molwatch.log` v1 file format | [`docs/types/parsers.md`](docs/types/parsers.md) |
+| `.molstruct.json` sidecar contract (per-atom labels, region tags) | [`docs/protocols/sidecar-contract.md`](docs/protocols/sidecar-contract.md) |
+| Test-strategy pyramid (L1 unit / L2 module / L3 interface / L4 integration / L5 e2e) | [`docs/protocols/test-strategy.md`](docs/protocols/test-strategy.md) |
+| GPU SIESTA env — BuildSpec executor, sentinel resume, 3-layer build-env isolation | [`docs/engines/siesta-gpu.md`](docs/engines/siesta-gpu.md) |
+
+Running the tests:
 
 ```bash
-pytest tests/ -q                            # full suite (~2 min with E2E)
-pytest tests/test_modify.py -q              # Python modify ops
-pytest tests/test_modify_e2e.py -q          # Playwright + live Flask
-pytest tests/watch/ -q                      # parser + watch-app tests
+pytest tests/ -q                            # full suite (~45 min with E2E)
+pytest tests/test_envs_*.py -q              # env recipes + builds executor (fast)
+pytest tests/test_modify_e2e.py -q          # Playwright + live Flask (needs molbuilder-tests env)
 ```
-
-The Playwright E2E suite (`test_modify_e2e.py`) starts a live
-Werkzeug server on a random port and drives Chromium through the
-Modify tab.  The `molbuilder-tests` env in
-[`docs/README_install.md`](docs/README_install.md) already wires up
-pytest-playwright + Chromium so the suite runs once the env exists.
-
----
-
-## Sequence syntax
-
-Tiny grammar shared by `peptide` / `dna` / `rna` subcommands:
-
-```
-sequence  = (oneletter | bracketed | whitespace)*
-oneletter = a single ASCII letter, case-insensitive
-bracketed = "[" 3-or-4-letter PDB / modified-residue code "]"
-```
-
-| Input            | Meaning                                        |
-|------------------|------------------------------------------------|
-| `ARNDC`          | Ala-Arg-Asn-Asp-Cys                            |
-| `AR[SEP]C`       | Ala-Arg-phosphoSer-Cys                         |
-| `ATGC`           | DA-DT-DG-DC (DNA, 5'→3' by convention)         |
-| `AUGC`           | A-U-G-C (RNA)                                  |
-| `5'-ATGC-3'`     | DNA with explicit 5'/3' labels                 |
-| `3'-CGTA-5'`     | reverse-direction; parser flips before build   |
-
-Modified residues currently supported (extend in
-`molbuilder/residues.py:MODIFIED_RESIDUES`):
-**SEP** phosphoserine · **TPO** phosphothreonine · **PTR**
-phosphotyrosine · **MLY** N-methyl-lysine · **M3L**
-N,N,N-trimethyl-lysine · **ALY** N6-acetyl-lysine.
-
----
-
-## Project layout (overview)
-
-```
-molbuilder/
-  structure.py / frame.py / issues.py    # L1: core data types
-  config/{siesta,pyscf}.py                # L1: emission configs (field metadata)
-  chemistry.py / residues.py              # L1: chemistry tables
-  trajectory_log/                         # L1: .molwatch.log v1 writer
-  parsers/                                # L2: trajectory parsers (SIESTA / PySCF / molwatch_log)
-  builders/backends/                      # L2: build backends (amber / rdkit / threedna)
-  peptide.py / nucleic.py / smiles.py     # L2: build verbs
-  modify.py / validation.py               # L2: edit + validate verbs
-  siesta/input.py / pyscf/input.py        # L2: generators (render_fdf / render_script)
-  cli.py                                  # L3: click-based CLI
-  web/                                    # L3: Flask + Blueprints + 3Dmol UI
-    blueprints/{build,modify,watch}.py
-    templates/{index,modify,watch}.html
-    static/...
-tests/
-docs/
-  design.md                               # durable design + decisions log
-  README.md                               # docs index
-  protocols/                              # cross-cutting interfaces (web-api, cli, job-layout, ...)
-  types/                                  # L1 data-type contracts (structure, parsers, chemistry)
-  engines/                                # per-engine emitter specs (siesta, pyscf, builders)
-  tabs/                                   # per-tab UI specs (modify, watch; subfolders when multi-asset)
-  img/                                    # README screenshots
-```
-
-Layering rule: higher layers may import lower; lower layers must
-never import higher.  Field metadata (label / range / validator)
-lives on the dataclass field — CLI options and web form schemas are
-both generated from `dataclasses.fields(Config)`, not maintained in
-parallel.
-
-### Adding a new SIESTA / PySCF parameter
-
-The Build form is **schema-driven** end-to-end (v1.1.0+).  To expose
-a new SIESTA or PySCF knob, the only edit is to the dataclass:
-
-```python
-# in molbuilder/config/siesta.py (or pyscf.py)
-my_new_param: float = field(default=0.5, metadata={
-    "section": "SCF",                       # which form fieldset
-    "label":   "My new parameter",          # user-facing label
-    "unit":    "Ry",                        # appended to the label
-    "range":   (0.1, 2.0),                  # validator + form min/max
-    "tier":    "advanced",                  # styling cue
-    "help":    "what this knob does",       # tooltip
-    # "choices": (...) for select-style enums
-    # "id_suffix": "..." to override the default hyphenated id
-})
-```
-
-The generator emits the right FDF / Python lines, the click CLI
-gains a `--my-new-param` flag, the validator checks the range,
-and `GET /api/build/schema/<engine>` ships the field to the JS
-renderer which adds an input to the Build tab — **no HTML, JS, or
-test-fixture edits needed**.  Pin-tests in
-`tests/test_web.py::test_*_form_schema_matches_documented_layout`
-update once when you add the field; everything else is automatic.
 
 ---
 

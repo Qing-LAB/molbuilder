@@ -152,20 +152,30 @@ def _shell_join(argv: Iterable[str]) -> str:
                    "everything downstream of it.  Pass `all` to rebuild "
                    "every component.  Default behaviour resumes from the "
                    "sentinel set.")
+@click.option("--clean", is_flag=True,
+              help="WIPE the entire artifact directory at "
+                   "$CONDA_PREFIX/opt/<artifact_subdir>/ before "
+                   "starting.  DESTRUCTIVE: removes source clones, "
+                   "build directories, installed binaries, logs, and "
+                   "sentinel files.  Use for a guaranteed-clean start "
+                   "after a failed install or recipe upgrade.  Source-"
+                   "build recipes only.  Requires explicit confirmation "
+                   "unless --yes is also passed.")
 @click.option("--yes", "-y", "auto_yes", is_flag=True,
               help="proceed without asking for confirmation.  Required "
                    "for non-interactive runs (CI, headless installs).  "
                    "Source-build recipes ask for confirmation at three "
                    "points without this: before initial install "
-                   "(~45 min commitment), before --rebuild=all "
-                   "(destructive), and when preflight surfaces a "
-                   "non-fatal warning (sm_80 fallback etc.).")
+                   "(~45 min commitment), before --rebuild=all or "
+                   "--clean (destructive), and when preflight surfaces "
+                   "a non-fatal warning (sm_80 fallback etc.).")
 @click.option("--skip-network-check", is_flag=True,
               help="skip the git ls-remote reachability check.  Use "
                    "when running behind a firewall that blocks "
                    "ls-remote but allows clone.")
 def cmd_install(name: str, dry_run: bool, check: bool,
                 rebuild: Optional[str],
+                clean: bool,
                 auto_yes: bool,
                 skip_network_check: bool) -> None:
     """Run a recipe's install plan against the local conda.
@@ -202,6 +212,12 @@ def cmd_install(name: str, dry_run: bool, check: bool,
             raise click.UsageError(
                 f"--rebuild={rebuild!r} unknown; choices: {', '.join(valid)}"
             )
+
+    if clean and recipe.build_spec is None:
+        raise click.UsageError(
+            f"--clean only applies to source-build recipes; "
+            f"`{name}` is a conda-only recipe."
+        )
 
     caps = get_capabilities()
 
@@ -267,6 +283,88 @@ def cmd_install(name: str, dry_run: bool, check: bool,
     click.echo(f"installing `{effective}` ({recipe.description})")
     if rebuild:
         click.echo(f"  --rebuild={rebuild}")
+    if clean:
+        click.echo(f"  --clean (WIPE artifact dir before install)")
+
+    # For source-build recipes, detect existing artifact state up
+    # front so the user knows whether this is a fresh install, a
+    # resume, or a wipe.
+    if recipe.build_spec is not None:
+        env_prefix_for_state = (
+            _install._env_prefix(effective, caps.conda_binary)
+            if caps.env_available(effective) else None
+        )
+        if env_prefix_for_state:
+            paths_for_state = _builds.resolve_paths(
+                recipe.build_spec, env_prefix_for_state,
+            )
+            if paths_for_state.root.exists():
+                stale = _builds.detect_stale_artifact_dirs(
+                    recipe.build_spec, env_prefix_for_state,
+                )
+                click.echo("")
+                click.echo("Existing artifact directory detected:")
+                click.echo(f"  {paths_for_state.root}")
+                if clean:
+                    click.echo(
+                        "  → --clean will WIPE this directory (sources, "
+                        "build trees, installed binaries, logs, "
+                        "sentinels) before starting."
+                    )
+                elif rebuild == "all":
+                    click.echo(
+                        "  → --rebuild=all will wipe per-component "
+                        "install + build dirs (keeping src/ clones)."
+                    )
+                else:
+                    click.echo(
+                        "  → resuming: phases with valid sentinels "
+                        "(matching toolchain fingerprint) will be "
+                        "SKIPPED.  Pass --clean to wipe everything, "
+                        "or --rebuild=all to wipe per-component dirs."
+                    )
+                if stale:
+                    click.echo(
+                        f"  ⚠ stale entries (from a prior recipe "
+                        f"version or failed install): {', '.join(stale)}"
+                    )
+
+    # Execute --clean BEFORE running run_install -- this is destructive,
+    # so we ask for explicit confirmation independent of the post-summary
+    # confirmation.
+    if clean and recipe.build_spec is not None:
+        env_prefix = (
+            _install._env_prefix(effective, caps.conda_binary)
+            if caps.env_available(effective) else None
+        )
+        if env_prefix:
+            paths = _builds.resolve_paths(recipe.build_spec, env_prefix)
+            if paths.root.exists():
+                click.echo("")
+                click.echo("=" * 60)
+                click.echo("  --clean: ARTIFACT DIRECTORY WILL BE OVERWRITTEN")
+                click.echo("=" * 60)
+                click.echo(f"  Path: {paths.root}")
+                click.echo(f"  Contents to be deleted:")
+                try:
+                    for entry in sorted(paths.root.iterdir()):
+                        click.echo(f"    - {entry.name}/")
+                except OSError:
+                    pass
+                click.echo("  This includes source clones, build trees,")
+                click.echo("  installed binaries (siesta, transiesta,")
+                click.echo("  tbtrans), logs, and sentinel files.")
+                click.echo("")
+                if not auto_yes:
+                    if not click.confirm(
+                            "Proceed with wipe?", default=False,
+                    ):
+                        click.echo("aborted by user (--clean declined)")
+                        sys.exit(0)
+                import shutil as _shutil
+                _shutil.rmtree(paths.root)
+                click.echo(f"wiped {paths.root}")
+                click.echo("")
 
     # For source-build recipes, surface the install summary + ask for
     # confirmation BEFORE any subprocess runs.  The 45-min commitment
