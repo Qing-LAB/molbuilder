@@ -108,13 +108,23 @@ _ELPA_TARBALL_BASE = _env_default(
 _SIESTA_REPO = _env_default("MOLBUILDER_SIESTA_REPO",
                             "https://gitlab.com/siesta-project/siesta.git")
 _SIESTA_REF  = _env_default("MOLBUILDER_SIESTA_TAG",
-                            # SIESTA upstream has NO numeric 5.x tags
-                            # (verified 2026-06-15 via ls-remote -- only
-                            # v4.0.x / v4.1.x).  The 5.x line lives on the
-                            # ``rel-5.4`` branch.  Fingerprint records the
-                            # resolved SHA so a branch advance forces a
-                            # rebuild.
-                            "rel-5.4")
+                            # Pinned to the 5.4.2 release tag (verified
+                            # 2026-06-15 via ls-remote -- bare numeric
+                            # tag, no ``v`` prefix, no ``siesta-``
+                            # prefix).  ``5.4.2`` matches the version
+                            # used by the precompiled CPU env
+                            # (molbuilder-siesta), so .fdf input format
+                            # and TranSiesta output format stay
+                            # identical between the two backends -- a
+                            # paper-citable, reproducible default.
+                            #
+                            # Power users who need a hotfix from the
+                            # rel-5.4 branch or a different release can
+                            # override:
+                            #   MOLBUILDER_SIESTA_TAG=rel-5.4
+                            #   MOLBUILDER_SIESTA_TAG=5.4.1
+                            #   MOLBUILDER_SIESTA_TAG=<sha>
+                            "5.4.2")
 
 # Conda-package version pins.  Empty default = unpinned (conda's SAT
 # solver picks the latest compatible).  Override by setting the
