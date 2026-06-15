@@ -11,10 +11,14 @@ all the rendering lives next to the recipe / doctor / install code.
 """
 from __future__ import annotations
 
+import contextlib
+import os
 import shlex
 import subprocess
 import sys
-from typing import Iterable, Optional
+import time
+from pathlib import Path
+from typing import Iterable, Optional, TextIO
 
 import click
 
@@ -23,6 +27,97 @@ from . import builds as _builds
 from . import doctor as _doctor
 from . import install as _install
 from .recipes import BUILTIN_RECIPES, recipe_by_name
+
+
+# --------------------------------------------------------------------- #
+#  Install log persistence                                               #
+# --------------------------------------------------------------------- #
+#
+# Every ``molbuilder envs install`` run drops a full copy of its
+# terminal output at ``~/.molbuilder/logs/install-<recipe>-<TS>.log``
+# so the user can grep / diff / share install transcripts later
+# without rerunning the build.  The path is reported at the start of
+# the install and again at the end.
+
+
+_LOG_ROOT = Path(os.path.expanduser("~/.molbuilder/logs"))
+
+
+def _resolve_install_log_path(recipe_name: str) -> Path:
+    """Compose the log filename for one install run."""
+    ts = time.strftime("%Y%m%d-%H%M%S", time.localtime())
+    safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in recipe_name)
+    return _LOG_ROOT / f"install-{safe}-{ts}.log"
+
+
+class _TeeStream:
+    """Forward writes to two streams (terminal + on-disk log).
+
+    Used to tee ``sys.stderr`` during install so every click.echo
+    plus every line streamed by ``run_streaming`` lands in both the
+    user's terminal and the persisted log file -- no extra plumbing
+    needed in run_install / run_build_spec / the per-phase callbacks.
+    """
+
+    def __init__(self, primary: TextIO, secondary: TextIO) -> None:
+        self._primary = primary
+        self._secondary = secondary
+
+    def write(self, data: str) -> int:
+        # Best-effort: writes to the persisted log MUST NOT mask
+        # terminal output if the disk fills / file system blips.
+        n = self._primary.write(data)
+        try:
+            self._secondary.write(data)
+        except Exception:
+            pass
+        return n
+
+    def flush(self) -> None:
+        self._primary.flush()
+        try:
+            self._secondary.flush()
+        except Exception:
+            pass
+
+    def isatty(self) -> bool:
+        return getattr(self._primary, "isatty", lambda: False)()
+
+    @property
+    def encoding(self) -> str:
+        return getattr(self._primary, "encoding", "utf-8") or "utf-8"
+
+
+@contextlib.contextmanager
+def _tee_console_to(log_path: Path):
+    """Context manager: tee BOTH ``sys.stdout`` and ``sys.stderr`` to
+    ``log_path`` for the duration of the block.  Both streams are
+    needed because click.echo defaults to stdout (recap lines, "install
+    OK") while ``err=True`` calls and ``run_streaming``'s subprocess
+    output go to stderr.  Best-effort -- if the log dir can't be
+    created (read-only HOME, etc.) the install still runs and the
+    user just doesn't get a persisted log."""
+    fh = None
+    orig_out = sys.stdout
+    orig_err = sys.stderr
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        fh = open(log_path, "w", encoding="utf-8", buffering=1)
+        sys.stdout = _TeeStream(orig_out, fh)
+        sys.stderr = _TeeStream(orig_err, fh)
+    except OSError:
+        # Bail silently -- install proceeds without a persisted log.
+        fh = None
+    try:
+        yield
+    finally:
+        sys.stdout = orig_out
+        sys.stderr = orig_err
+        if fh is not None:
+            try:
+                fh.close()
+            except OSError:
+                pass
 
 
 @click.group("envs",
@@ -345,10 +440,12 @@ def cmd_install(name: str, dry_run: bool, check: bool,
                     )
                 else:
                     click.echo(
-                        "  → resuming: phases with valid sentinels "
-                        "(matching toolchain fingerprint) will be "
-                        "SKIPPED.  Pass --clean to wipe everything, "
-                        "or --rebuild=all to wipe per-component dirs."
+                        "  → resuming: each component is probed at "
+                        "install start (install dir + verify); ones "
+                        "that pass are SKIPPED end-to-end.  Pass "
+                        "--clean to wipe everything, or "
+                        "--rebuild=<component> to force one component "
+                        "+ everything downstream to rebuild."
                     )
                 if stale:
                     click.echo(
@@ -511,68 +608,82 @@ def cmd_install(name: str, dry_run: bool, check: bool,
             5 if c.verify_argv else 4 for c in recipe.build_spec.components
         )
 
-    result = _install.run_install(
-        recipe, caps=caps, rebuild=rebuild,
-        build_on_warnings=on_warnings,
-        build_on_progress=on_progress,
-        build_skip_network_check=skip_network_check,
-    )
+    # Persist the full install transcript so the user can grep / diff /
+    # share it later without re-running the build (which can take 30-45
+    # min for siesta-gpu).  Path is reported up front (so it's grep-
+    # able even if the install crashes) and again on completion.
+    log_path = _resolve_install_log_path(recipe.name)
+    click.echo(f"install log: {log_path}")
 
-    # If the build_spec executor short-circuited on preflight errors,
-    # print them PROMINENTLY before the per-step recap.  Previously
-    # the ``build:preflight`` step was silently filtered out by the
-    # ``startswith("build:")`` skip rule so the user got "install
-    # FAILED" with zero diagnostic info.  This is the failure mode
-    # the user hit on 2026-06-15 when ELPA's empty repo_url caused a
-    # check_repo_reachable failure that never reached the terminal.
-    if (result.build_result is not None
-            and result.build_result.preflight_errors):
-        click.echo("", err=True)
-        click.echo("=" * 64, err=True)
-        click.echo("  BUILD PREFLIGHT FAILED -- install cannot proceed",
-                   err=True)
-        click.echo("=" * 64, err=True)
-        for err_msg in result.build_result.preflight_errors:
-            for line in err_msg.splitlines():
-                click.echo(f"  ! {line}", err=True)
-        click.echo("", err=True)
+    with _tee_console_to(log_path):
+        result = _install.run_install(
+            recipe, caps=caps, rebuild=rebuild,
+            build_on_warnings=on_warnings,
+            build_on_progress=on_progress,
+            build_skip_network_check=skip_network_check,
+        )
 
-    # Per-step recap.  Build steps (component.phase) were already
-    # streamed live by on_progress, so we skip those.  But the
-    # ``build:preflight`` pseudo-step is the EXCEPTION: preflight
-    # never runs through on_progress (it short-circuits before
-    # phases), so if we skipped it here too the user sees nothing.
-    # The block above already printed preflight_errors loudly, so
-    # the recap still skips it (avoiding duplication).
-    for step in result.steps:
-        if step.label.startswith("build:"):
-            continue
-        click.echo(f"-- {step.label} (rc={step.returncode})")
-        if step.output.strip():
-            tail = "\n".join(
-                "    " + ln
-                for ln in step.output.strip().splitlines()[-12:]
-            )
-            click.echo(tail)
-    if result.succeeded:
-        click.echo("install OK")
+        # If the build_spec executor short-circuited on preflight errors,
+        # print them PROMINENTLY before the per-step recap.  Previously
+        # the ``build:preflight`` step was silently filtered out by the
+        # ``startswith("build:")`` skip rule so the user got "install
+        # FAILED" with zero diagnostic info.  This is the failure mode
+        # the user hit on 2026-06-15 when ELPA's empty repo_url caused a
+        # check_repo_reachable failure that never reached the terminal.
         if (result.build_result is not None
-                and result.build_result.activate_hook_written):
-            click.echo(
-                f"  activate hook: $CONDA_PREFIX/etc/conda/activate.d/"
-                f"zz-{recipe.build_spec.artifact_subdir}.sh"
-            )
-            click.echo(
-                f"  binaries:      $CONDA_PREFIX/opt/"
-                f"{recipe.build_spec.artifact_subdir}/siesta/bin/"
-            )
-            click.echo(
-                f"  re-activate the env (`conda activate {effective}`) "
-                f"to pick up the new PATH + LD_LIBRARY_PATH."
-            )
-        return
-    click.echo("install FAILED -- see step output above", err=True)
-    sys.exit(1)
+                and result.build_result.preflight_errors):
+            click.echo("", err=True)
+            click.echo("=" * 64, err=True)
+            click.echo("  BUILD PREFLIGHT FAILED -- install cannot proceed",
+                       err=True)
+            click.echo("=" * 64, err=True)
+            for err_msg in result.build_result.preflight_errors:
+                for line in err_msg.splitlines():
+                    click.echo(f"  ! {line}", err=True)
+            click.echo("", err=True)
+
+        # Per-step recap.  Build steps (component.phase) were already
+        # streamed live by on_progress, so we skip those.  But the
+        # ``build:preflight`` pseudo-step is the EXCEPTION: preflight
+        # never runs through on_progress (it short-circuits before
+        # phases), so if we skipped it here too the user sees nothing.
+        # The block above already printed preflight_errors loudly, so
+        # the recap still skips it (avoiding duplication).
+        for step in result.steps:
+            if step.label.startswith("build:"):
+                continue
+            click.echo(f"-- {step.label} (rc={step.returncode})")
+            if step.output.strip():
+                tail = "\n".join(
+                    "    " + ln
+                    for ln in step.output.strip().splitlines()[-12:]
+                )
+                click.echo(tail)
+
+        if result.succeeded:
+            click.echo("install OK")
+            if (result.build_result is not None
+                    and result.build_result.activate_hook_written):
+                click.echo(
+                    f"  activate hook: $CONDA_PREFIX/etc/conda/activate.d/"
+                    f"zz-{recipe.build_spec.artifact_subdir}.sh"
+                )
+                click.echo(
+                    f"  binaries:      $CONDA_PREFIX/opt/"
+                    f"{recipe.build_spec.artifact_subdir}/siesta/bin/"
+                )
+                click.echo(
+                    f"  re-activate the env (`conda activate {effective}`) "
+                    f"to pick up the new PATH + LD_LIBRARY_PATH."
+                )
+        else:
+            click.echo("install FAILED -- see step output above", err=True)
+
+    # Echo the log path AGAIN after the tee block closes so it lands
+    # in the user's terminal even if scrollback ate the leading line.
+    click.echo(f"install log saved: {log_path}")
+    if not result.succeeded:
+        sys.exit(1)
 
 
 __all__ = ["envs_group"]

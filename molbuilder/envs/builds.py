@@ -1171,8 +1171,52 @@ def write_sentinel(sentinel_path: Path, fingerprint: str, *,
 
 
 def sentinel_valid(sentinel_path: Path, fingerprint: str) -> bool:
-    """A sentinel is "valid" iff it exists and its fingerprint matches."""
-    return read_sentinel_fingerprint(sentinel_path) == fingerprint
+    """Backwards-compat shim.  Sentinels are now plain existence markers
+    (the artifact-presence probe at install start is the trust source);
+    callers should prefer ``sentinel_path.exists()`` directly.  This
+    helper still exists so external tooling that imports it doesn't
+    break, and so the recorded fingerprint can be used as forensic
+    metadata when ``compute_fingerprint`` is recomputed for debugging.
+    """
+    return sentinel_path.exists()
+
+
+def component_install_valid(
+    spec: BuildSpec,
+    paths: BuildPaths,
+    comp: BuildComponent,
+    probe: ToolchainProbe,
+    conda_binary: str,
+) -> bool:
+    """Probe whether one component is already installed and working.
+
+    Runs the component's ``verify_argv`` against the install dir.
+    Returns True when the install dir exists AND verify exits 0 (and
+    matches ``verify_expected`` if set).  Returns False when the
+    install dir is missing, no verify is defined, or the probe fails.
+
+    This is the artifact-presence gate that replaced the global
+    fingerprint check.  See the 2026-06-15 "drop fingerprint, gate
+    on artifact" decision in molbuilder/docs/design.md for context.
+    """
+    install_dir = paths.component_install(comp.name)
+    if not install_dir.exists():
+        return False
+    if not comp.verify_argv:
+        # No verify defined -- safer to re-run than to assume done.
+        return False
+    subs = _build_substitutions(comp, spec, paths, probe)
+    try:
+        argv = _apply_template(comp.verify_argv, subs)
+    except ValueError:
+        return False
+    # ``test -f`` and similar work as plain argv; binary checks
+    # (e.g. ``{install}/bin/siesta --version``) also work.  We don't
+    # route through ``conda run`` here -- the install dir is a fully
+    # self-contained set of files, and the verify argv either targets
+    # a file existence check or an executable inside that dir.
+    cp = _run_capture(list(argv))
+    return cp.returncode == 0
 
 
 # --------------------------------------------------------------------- #
@@ -1578,10 +1622,9 @@ def run_build_spec(spec: BuildSpec,
             if stale_path.exists():
                 shutil.rmtree(stale_path, ignore_errors=True)
 
-    # First pass: figure out the resolved component refs.  For
-    # components that already have a clone, read the SHA from .git;
-    # for the rest, use the declared ref (the clone phase will resolve
-    # it and the next install picks up the new fingerprint).
+    # Resolved-ref dict is still useful as forensic metadata recorded
+    # in the fingerprint file, but it no longer gates rebuilds.  The
+    # artifact-presence probe below is the trust source.
     component_refs: dict = {}
     for comp in spec.components:
         src_git = paths.component_src(comp.name) / ".git"
@@ -1599,16 +1642,45 @@ def run_build_spec(spec: BuildSpec,
 
     paths.fingerprint_file.write_text(fingerprint, encoding="utf-8")
 
+    # Artifact-presence reconciliation -- the trust source for "is
+    # this component installed".  Replaces the old global-fingerprint
+    # sentinel check (which invalidated ELPA whenever SIESTA's ref
+    # shifted, causing wasteful rebuilds).  Two cases per component:
+    #
+    # 1. install dir present + ``verify_argv`` exits 0
+    #    --> fast-forward ALL phase sentinels so the loop skips this
+    #    component.  Editing a SIESTA cmake flag won't invalidate ELPA;
+    #    ``--rebuild=siesta`` won't punish ELPA either (ELPA's install
+    #    dir survives, verify still passes).
+    #
+    # 2. install dir missing OR verify fails
+    #    --> wipe just the install + verify sentinels so those phases
+    #    re-run.  Clone/configure/build sentinels stay -- if the prior
+    #    build artifacts are intact in ``{build}/``, re-running install
+    #    is fast and resume-friendly.  If they're also broken, the user
+    #    can pass ``--rebuild=<component>`` to wipe the whole component.
+    for comp in spec.components:
+        if component_install_valid(spec, paths, comp, probe, conda_binary):
+            for phase in PHASES:
+                sentinel = paths.sentinel(comp.name, phase)
+                if not sentinel.exists():
+                    write_sentinel(sentinel, fingerprint, now=now)
+        else:
+            for phase in ("install", "verify"):
+                sentinel = paths.sentinel(comp.name, phase)
+                if sentinel.exists():
+                    sentinel.unlink()
+
     executed: List[BuildStepResult] = []
     failed = False
     for step in plan:
         if failed:
             executed.append(BuildStepResult(step=step, status="not-run"))
             continue
-        if sentinel_valid(step.sentinel, fingerprint):
+        if step.sentinel.exists():
             skipped = BuildStepResult(step=step, status="skip",
                                       returncode=0,
-                                      output="sentinel valid; skipped")
+                                      output="sentinel present; skipped")
             executed.append(skipped)
             if on_progress is not None:
                 on_progress("skip", step, skipped)
@@ -1640,16 +1712,6 @@ def run_build_spec(spec: BuildSpec,
             failed = True
             continue
         write_sentinel(step.sentinel, fingerprint, now=now)
-        # If we just cloned, refresh the fingerprint to record the
-        # resolved SHA so subsequent runs invalidate when the ref moves.
-        if step.phase == "clone":
-            cp = _run_capture(["git", "-C",
-                               str(paths.component_src(step.component)),
-                               "rev-parse", "HEAD"])
-            if cp.returncode == 0 and cp.stdout.strip():
-                component_refs[step.component] = cp.stdout.strip()
-                fingerprint = compute_fingerprint(spec, probe, component_refs)
-                paths.fingerprint_file.write_text(fingerprint, encoding="utf-8")
 
     activate_written = False
     deactivate_written = False
@@ -1773,6 +1835,7 @@ __all__ = [
     "read_sentinel_fingerprint",
     "write_sentinel",
     "sentinel_valid",
+    "component_install_valid",
     "downstream_components",
     "plan_build_spec",
     "run_build_spec",

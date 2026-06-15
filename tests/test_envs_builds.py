@@ -232,29 +232,39 @@ def test_fingerprint_changes_with_openmpi_version(tiny_spec, fake_probe):
 
 
 def test_sentinel_roundtrip(tmp_path):
-    """A sentinel just-written must read back as valid for the same
-    fingerprint and invalid for a different one."""
+    """A sentinel that's present marks the phase as done -- the recorded
+    fingerprint is forensic metadata only, not a gating check.  Per the
+    2026-06-15 artifact-presence redesign: editing a SIESTA flag must
+    not invalidate ELPA's sentinel just because the global fingerprint
+    shifts.  The install-start ``component_install_valid`` probe is
+    the trust source for "is this component already installed"."""
     sentinel = tmp_path / "x.done"
     # Fixed clock so the timestamp doesn't depend on wall time.
     B.write_sentinel(sentinel, "fp-1", now=lambda: 1700000000.0)
     assert sentinel.exists()
-    assert B.sentinel_valid(sentinel, "fp-1") is True
-    assert B.sentinel_valid(sentinel, "fp-2") is False
+    # Fingerprint string is recorded for debugging but ignored by the
+    # shim -- callers should prefer ``sentinel.exists()`` directly.
+    assert B.read_sentinel_fingerprint(sentinel) == "fp-1"
+    assert B.sentinel_valid(sentinel, "any-string") is True
 
 
 def test_sentinel_absent_is_invalid(tmp_path):
-    """A nonexistent sentinel is never valid (no fingerprint to match)."""
+    """A nonexistent sentinel marks the phase as not-done."""
     sentinel = tmp_path / "missing.done"
     assert B.sentinel_valid(sentinel, "any") is False
 
 
-def test_sentinel_corrupt_is_invalid(tmp_path):
-    """A corrupt sentinel file (bad JSON, missing key) is treated as
-    "rebuild this phase", not "match any fingerprint"."""
+def test_sentinel_corrupt_still_counts_as_present(tmp_path):
+    """A corrupt sentinel file still trips the "present" check -- under
+    the artifact-presence model a sentinel is a marker, not a payload.
+    If the underlying install is actually broken, the install-start
+    verify probe catches that and the marker gets re-written cleanly."""
     sentinel = tmp_path / "corrupt.done"
     sentinel.write_text("not-json-at-all", encoding="utf-8")
+    # Fingerprint isn't readable from a corrupt file, but the sentinel
+    # itself exists -- and that's the only thing the phase loop checks.
     assert B.read_sentinel_fingerprint(sentinel) is None
-    assert B.sentinel_valid(sentinel, "any") is False
+    assert B.sentinel_valid(sentinel, "any") is True
 
 
 # --------------------------------------------------------------------- #
