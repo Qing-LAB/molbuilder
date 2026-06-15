@@ -1226,10 +1226,20 @@ def render_run_wrapper(script_path: Path, *,
             # GPU mode: print a brief monitoring hint so the user has
             # nvidia-smi commands at hand when they start the run.
             + ((
-                'echo "  GPU monitor   : '
-                'nvidia-smi dmon -s pucvmet -d 1  (sm%, mem%, clk, temp, power)"\n'
-                'echo "                : if sm% bounces 0->100->0 across '
-                'MPI ranks, MPS may help (no NCCL in this ELPA build)"\n'
+                # IMPORTANT: keep the command on its own line so the
+                # user can copy-paste it directly into a shell.  An
+                # earlier banner shape put ``(sm%, mem%, ...)`` after
+                # the command on the same line and bash interpreted
+                # the ``(`` as a subshell open + ``%`` as a format op
+                # when the user pasted it -- "syntax error near
+                # unexpected token \`(\`".  Annotation goes on the
+                # NEXT line, prefixed with ``# `` so even if it's
+                # included accidentally in a paste the shell treats
+                # it as a comment.
+                'echo "  GPU monitor   : nvidia-smi dmon -s pucvmet -d 1"\n'
+                'echo "                # columns: sm%, mem%, clk, temp, power"\n'
+                'echo "                # if sm% bounces 0->100->0 across ranks, MPS may help"\n'
+                'echo "                # (this ELPA build has no NCCL; multi-rank-per-GPU benefits from MPS)"\n'
             ) if gpu_mode else "")
             # ---- Mode + constraints (post-cold, post-run-index) ----
             # Surfaces the silent-warm-restart class explicitly so the
