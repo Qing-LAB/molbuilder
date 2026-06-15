@@ -60,12 +60,32 @@ What the Python layer will do, in order:
   5. write activate.d hook so the env's binaries land on PATH at
      the next `conda activate`
 
-IMPORTANT -- artifact directory should be clean:
-  If $CONDA_PREFIX/opt/siesta-gpu-stack/ already exists from a prior
-  failed install or an older recipe version, the preflight will warn
-  you about stale directories and tell you to pass `--rebuild=all`
-  to wipe everything and start fresh.  Resuming from sentinels on
-  partial state usually works, but starting clean is the safe call.
+IMPORTANT -- existing env / artifact dir handling:
+
+  If the conda env "molbuilder-siesta-gpu" already exists OR the
+  artifact dir $CONDA_PREFIX/opt/siesta-gpu-stack/ has content from
+  a prior failed install:
+
+    DEFAULT (no flags)
+        Install resumes from valid sentinels; phases that succeeded
+        in the prior run are skipped.  Conda create reports "env
+        already exists; skipping create".
+
+    --clean
+        REMOVES the entire conda env via `conda env remove --all -y`
+        (every package goes -- gcc, cmake, openmpi, cuda toolkit) AND
+        wipes the artifact dir.  Then runs a fresh install.  Use
+        this when you want a guaranteed-clean state (after a failed
+        install, a recipe upgrade, or just to be sure).  Destructive:
+        explicit confirmation required.
+
+    --rebuild=all
+        Keeps the conda env; wipes per-component install + build dirs
+        (sources stay so re-clone is skipped).  Useful when only the
+        source-build state needs to be reset.
+
+    --rebuild=elpa  /  --rebuild=siesta
+        Wipes the named component + anything downstream of it.
 
 You can pass:
   --dry-run        print every command + cost estimate; do not run.

@@ -12,6 +12,7 @@ all the rendering lives next to the recipe / doctor / install code.
 from __future__ import annotations
 
 import shlex
+import subprocess
 import sys
 from typing import Iterable, Optional
 
@@ -153,14 +154,18 @@ def _shell_join(argv: Iterable[str]) -> str:
                    "every component.  Default behaviour resumes from the "
                    "sentinel set.")
 @click.option("--clean", is_flag=True,
-              help="WIPE the entire artifact directory at "
-                   "$CONDA_PREFIX/opt/<artifact_subdir>/ before "
-                   "starting.  DESTRUCTIVE: removes source clones, "
-                   "build directories, installed binaries, logs, and "
-                   "sentinel files.  Use for a guaranteed-clean start "
-                   "after a failed install or recipe upgrade.  Source-"
-                   "build recipes only.  Requires explicit confirmation "
-                   "unless --yes is also passed.")
+              help="WIPE the conda env AND the source-build artifact "
+                   "directory, then do a fresh install.  Removes the "
+                   "conda env via ``conda env remove -n <name> --all "
+                   "-y`` (every package is gone -- gcc, cmake, openmpi, "
+                   "cuda toolkit, etc.) and deletes "
+                   "$CONDA_PREFIX/opt/<artifact_subdir>/ (source clones, "
+                   "build trees, installed siesta/transiesta/tbtrans "
+                   "binaries, logs, sentinels).  Use this for a "
+                   "guaranteed-clean start after a failed install, a "
+                   "recipe upgrade, or when in doubt.  Source-build "
+                   "recipes only.  Destructive: requires explicit "
+                   "confirmation unless --yes is also passed.")
 @click.option("--yes", "-y", "auto_yes", is_flag=True,
               help="proceed without asking for confirmation.  Required "
                    "for non-interactive runs (CI, headless installs).  "
@@ -284,7 +289,8 @@ def cmd_install(name: str, dry_run: bool, check: bool,
     if rebuild:
         click.echo(f"  --rebuild={rebuild}")
     if clean:
-        click.echo(f"  --clean (WIPE artifact dir before install)")
+        click.echo(f"  --clean (REMOVE conda env + WIPE artifact dir, "
+                   f"then fresh install)")
 
     # For source-build recipes, detect existing artifact state up
     # front so the user knows whether this is a fresh install, a
@@ -331,40 +337,93 @@ def cmd_install(name: str, dry_run: bool, check: bool,
 
     # Execute --clean BEFORE running run_install -- this is destructive,
     # so we ask for explicit confirmation independent of the post-summary
-    # confirmation.
+    # confirmation.  --clean does TWO things:
+    #
+    #   1. Remove the conda env entirely (``conda env remove -n <name>
+    #      --all -y``) if it exists.  The downstream install then runs
+    #      ``conda create`` to make a fresh env -- equivalent to the
+    #      first-install state.
+    #   2. Wipe the source-build artifact dir at
+    #      ``$CONDA_PREFIX/opt/<artifact_subdir>/`` if it survives.
+    #      Usually step 1 takes the dir with it (it lived inside the
+    #      env's prefix), so this is belt-and-suspenders.
     if clean and recipe.build_spec is not None:
+        env_exists_pre_clean = caps.env_available(effective)
         env_prefix = (
             _install._env_prefix(effective, caps.conda_binary)
-            if caps.env_available(effective) else None
+            if env_exists_pre_clean else None
         )
+        artifact_root = None
         if env_prefix:
             paths = _builds.resolve_paths(recipe.build_spec, env_prefix)
             if paths.root.exists():
-                click.echo("")
-                click.echo("=" * 60)
-                click.echo("  --clean: ARTIFACT DIRECTORY WILL BE OVERWRITTEN")
-                click.echo("=" * 60)
-                click.echo(f"  Path: {paths.root}")
-                click.echo(f"  Contents to be deleted:")
+                artifact_root = paths.root
+
+        if env_exists_pre_clean or artifact_root:
+            click.echo("")
+            click.echo("=" * 64)
+            click.echo("  --clean: ENV + ARTIFACTS WILL BE WIPED")
+            click.echo("=" * 64)
+            if env_exists_pre_clean:
+                click.echo(f"  Conda env to REMOVE:")
+                click.echo(f"    {effective}")
+                if env_prefix:
+                    click.echo(f"      (prefix: {env_prefix})")
+            if artifact_root:
+                click.echo(f"  Artifact directory to DELETE:")
+                click.echo(f"    {artifact_root}")
                 try:
-                    for entry in sorted(paths.root.iterdir()):
-                        click.echo(f"    - {entry.name}/")
+                    for entry in sorted(artifact_root.iterdir()):
+                        click.echo(f"      - {entry.name}/")
                 except OSError:
                     pass
-                click.echo("  This includes source clones, build trees,")
-                click.echo("  installed binaries (siesta, transiesta,")
-                click.echo("  tbtrans), logs, and sentinel files.")
-                click.echo("")
-                if not auto_yes:
-                    if not click.confirm(
-                            "Proceed with wipe?", default=False,
-                    ):
-                        click.echo("aborted by user (--clean declined)")
-                        sys.exit(0)
+            click.echo("")
+            click.echo("  This wipes the conda env (every package -- gcc,")
+            click.echo("  cmake, openmpi, cuda toolkit, etc.) AND any")
+            click.echo("  source-built artifacts (siesta/transiesta/tbtrans")
+            click.echo("  binaries, build trees, logs, sentinels).  A fresh")
+            click.echo("  install runs after, equivalent to first-time setup.")
+            click.echo("")
+            if not auto_yes:
+                if not click.confirm(
+                        "Proceed with wipe?", default=False,
+                ):
+                    click.echo("aborted by user (--clean declined)")
+                    sys.exit(0)
+
+            # Step 1: remove conda env.
+            if env_exists_pre_clean:
+                click.echo(f"removing conda env: {effective}")
+                try:
+                    subprocess.run(
+                        [caps.conda_binary, "env", "remove",
+                         "-n", effective, "--all", "-y"],
+                        check=True,
+                    )
+                    click.echo(f"removed conda env {effective}")
+                except subprocess.CalledProcessError as exc:
+                    click.echo(f"FAILED to remove conda env: {exc}",
+                               err=True)
+                    click.echo(f"  (you may need to run this manually:",
+                               err=True)
+                    click.echo(
+                        f"   conda env remove -n {effective} --all -y)",
+                        err=True,
+                    )
+                    sys.exit(1)
+
+            # Step 2: wipe artifact dir if it survived (usually it was
+            # inside the env's prefix and went with step 1, but for
+            # defensiveness).
+            if artifact_root and artifact_root.exists():
                 import shutil as _shutil
-                _shutil.rmtree(paths.root)
-                click.echo(f"wiped {paths.root}")
-                click.echo("")
+                _shutil.rmtree(artifact_root)
+                click.echo(f"wiped {artifact_root}")
+
+            # Refresh capabilities so the downstream install knows
+            # the env is gone (conda create will run fresh).
+            caps = get_capabilities()
+            click.echo("")
 
     # For source-build recipes, surface the install summary + ask for
     # confirmation BEFORE any subprocess runs.  The 45-min commitment
