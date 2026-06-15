@@ -26,6 +26,7 @@ from ..diagnostics import get_capabilities, reset_capabilities
 from . import builds as _builds
 from . import doctor as _doctor
 from . import install as _install
+from . import validate as _validate
 from .recipes import BUILTIN_RECIPES, recipe_by_name
 
 
@@ -224,6 +225,87 @@ def cmd_doctor(no_verify: bool) -> None:
     caps = get_capabilities()
     reports = _doctor.report_all(caps, run_verify=not no_verify)
     sys.exit(_render_doctor(reports))
+
+
+# --------------------------------------------------------------------- #
+#  validate                                                              #
+# --------------------------------------------------------------------- #
+
+
+def _render_validation(report: "_validate.ValidationReport",
+                       *, show_output_on_fail: bool) -> int:
+    """Print the table + return the process exit code (0 / 1)."""
+    if not report.probes:
+        click.echo(
+            f"`{report.recipe_name}` has no validator defined yet.  "
+            f"(Today only molbuilder-siesta-gpu is wired.)",
+            err=True,
+        )
+        return 0
+    click.echo(f"Validating {report.recipe_name}:")
+    longest = max(len(p.name) for p in report.probes)
+    for probe in report.probes:
+        tag = "PASS" if probe.passed else "FAIL"
+        click.echo(f"  [{tag}] {probe.name.ljust(longest)}  {probe.detail}")
+        if not probe.passed and show_output_on_fail and probe.output:
+            for line in probe.output.splitlines()[-20:]:
+                click.echo(f"        {line}")
+    n_pass = sum(1 for p in report.probes if p.passed)
+    n_total = len(report.probes)
+    if report.all_passed:
+        click.echo(f"all {n_total} checks passed")
+        return 0
+    click.echo(f"{n_pass}/{n_total} checks passed -- env not production-ready",
+               err=True)
+    return 1
+
+
+@envs_group.command("validate",
+                    short_help="run post-install correctness probes")
+@click.argument("name")
+@click.option("--quiet-on-fail", is_flag=True,
+              help="don't dump the failing probe's captured output "
+                   "(useful for terse CI logs).")
+def cmd_validate(name: str, quiet_on_fail: bool) -> None:
+    """Run the post-install validator suite for one recipe.
+
+    Where ``doctor`` only confirms the env is present and ``siesta
+    --version`` exits 0, ``validate`` runs the upstream-recommended
+    sanity tests (SIESTA ``ctest -L simple``, ELPA ``make check``,
+    plus a probe for the silent CPU-fallback warning that
+    ``nvidia-smi`` cannot detect).  See ``molbuilder/envs/validate.py``
+    for the full rationale + sources.
+
+    Exits 0 when every probe passes, 1 otherwise.  Today only
+    ``molbuilder-siesta-gpu`` has probes defined; other recipes
+    return 0 with a "no validator" notice.
+    """
+    recipe = recipe_by_name(name)
+    if recipe is None:
+        registered = ", ".join(r.name for r in BUILTIN_RECIPES)
+        raise click.UsageError(
+            f"unknown recipe `{name}`.  Registered: {registered}"
+        )
+    caps = get_capabilities()
+    # Need the env to exist and its prefix to be resolvable.
+    effective = caps.env_for_category(recipe.category) or recipe.name
+    if effective not in caps.conda_envs:
+        click.echo(
+            f"env `{effective}` is not present.  Install it first:\n"
+            f"  molbuilder envs install {name}",
+            err=True,
+        )
+        sys.exit(2)
+    env_prefix = _install._env_prefix(effective, caps.conda_binary)
+    if env_prefix is None:
+        click.echo(
+            f"could not resolve $CONDA_PREFIX for env `{effective}` "
+            f"(registry says present but path lookup failed)",
+            err=True,
+        )
+        sys.exit(2)
+    report = _validate.validate_recipe(name, env_prefix)
+    sys.exit(_render_validation(report, show_output_on_fail=not quiet_on_fail))
 
 
 # --------------------------------------------------------------------- #
@@ -539,15 +621,11 @@ def cmd_install(name: str, dry_run: bool, check: bool,
                 click.echo(f"wiped {artifact_root}")
 
             # Refresh capabilities so the downstream install knows
-            # the env is gone.  ``get_capabilities()`` returns the
-            # bound snapshot; without ``reset_capabilities()`` first
-            # this would be a no-op and ``conda_envs`` would still
-            # list the env we just removed -- which downstream code
-            # used to OR into the conda-create skip decision, masking
-            # --clean failures.  The bug is now also defended against
-            # in ``install.run_install`` (which probes live via
-            # ``probe_env_state``), but the cleaner contract is to
-            # keep the snapshot in sync at every state mutation.
+            # the env is gone (conda create will run fresh).  IMPORTANT:
+            # ``get_capabilities()`` returns the previously-bound
+            # snapshot when one exists; without ``reset_capabilities()``
+            # first, this is a no-op and the install proceeds with a
+            # stale ``conda_envs`` that still lists the removed env.
             reset_capabilities()
             caps = get_capabilities()
             click.echo("")
