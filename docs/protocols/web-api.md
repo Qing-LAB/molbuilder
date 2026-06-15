@@ -765,7 +765,7 @@ Implementation: `molbuilder/web/blueprints/spectra.py`.
 | Route | Method | Body | Success |
 |---|---|---|---|
 | `/api/build/schema/spectra` | GET | — | `{ok, schema}` |
-| `/api/spectra/render` | POST | `{xyz, params, structure_path?}` | `{ok, script, job_name, issues, methods_md?}` |
+| `/api/spectra/render` | POST | `{structure_text, params, structure_path?, frozen_atoms?, regions?}` | `{ok, script, job_name, issues, methods_md?}` |
 | `/api/spectra/load` | POST | file upload / `{path}` / `{json}` inline | parsed `SpectraResults` dict |
 
 `/api/spectra/render` mirrors `/api/build/pyscf` for the spectra
@@ -1054,7 +1054,7 @@ planned) drop in without endpoint code changes.
 | Route | Method | Body | Success |
 |---|---|---|---|
 | `/api/transport/schema` | GET | — | `{ok, schema}` — the rendered form schema for `TransportConfig` |
-| `/api/transport/render` | POST | `{params, structure_path}` | `{ok, engine, script, filename, issues, errors}` |
+| `/api/transport/render` | POST | `{params, structure_path, frozen_atoms?, regions?}` | `{ok, engine, script, filename, issues, errors_only}` |
 
 ### 11.2 `/api/transport/schema`
 

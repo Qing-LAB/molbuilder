@@ -278,7 +278,20 @@ def workspace_payload(
         "n_atoms":       struct.n_atoms,
         "atoms":         atoms_list(struct),
         "lattice":       None,
-        "issues":        issues_to_json(validate_geometry(struct)),
+        # H1 2026-06-14: ``cfg=None`` explicit (not implicit
+        # default) so the missing-cfg case is documented at the
+        # call site.  ``validate_geometry`` emits only ``where=
+        # "struct.*"`` issues -- no engine config field is in
+        # scope here -- so workflow_group enrichment correctly
+        # short-circuits to None.  A future refactor that moves
+        # engine-config validation upstream of this helper MUST
+        # pass cfg= or the per-card fan-out (web-ui-coherence
+        # Rule 2) silently drops engine issues into the residual
+        # panel.  Pinned by ``test_workflow_group_wire_contract``
+        # at the wire side; this comment documents WHY this site
+        # is fine.
+        "issues":        issues_to_json(
+            validate_geometry(struct), cfg=None),
         "extra":         dict(extra) if extra else {},
     }
 

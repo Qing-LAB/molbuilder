@@ -352,6 +352,18 @@ absorbs a label, or silently drops one, must fail loudly.
 | 2026-06-05 | Pattern B added when transport engine abstraction landed (#135). Engines now must explicitly notice EVERY sidecar field they don't consume. | Without pattern B, the transport-reserved `regions` field would silently be ignored by `/spectra`; the user would not realise their region tags were spectra-irrelevant. |
 | 2026-06-12 | File-tree operations (`rename`, `move`, `copy`) MUST pair the sidecar with its structure file atomically.  See § 11. | Without pairing, renaming `water.xyz` to `bridge.xyz` orphaned `water.molstruct.json` — the sidecar's stem stopped matching any structure on disk, sidecar-aware loads couldn't find it from the new stem, and the user's labels silently disappeared. |
 | 2026-06-12 | The PySCF parser is the second sidecar CONSUMER (after the SIESTA scripts).  Reads `frozen_atoms` to mask out atoms from the qdata.txt gradient when computing the constrained max-force series.  See § 12. | The user can't tell from the max-force plot when a relaxation has actually converged if the plot tracks a forever-pinned frozen atom's huge force.  Same problem SIESTA solves by emitting `Max <val> constrained`; PySCF + geomeTRIC needs the sidecar to do the equivalent computation. |
+| 2026-06-14 | Per-engine in-body label consumption (table below).  Explicit because a round-2 audit incorrectly flagged spectra + transport as silently dropping in-body `frozen_atoms` -- they don't; the contract is engine-specific and documented here. | Auditors (human and agent) reach for "is the label consumed?" without knowing each engine's design.  Pinning the per-engine semantics here means future audits ask the right question. |
+
+### Per-engine in-body label consumption
+
+| Engine | Build endpoint | Reads `struct.frozen_atoms`? | Reads `struct.regions`? | Notes |
+|---|---|---|---|---|
+| SIESTA (build) | `/api/build/fdf` | YES — emits `%block Geometry.Constraints` from `struct.frozen_atoms` (`siesta/input.py:512-531`) | NO (the build form has no electrode-region concept) | The canonical in-body frozen contract. |
+| PySCF (build) | `/api/build/pyscf` | YES — emits the `FROZEN_INDICES` array directly into the script | NO | Same shape as SIESTA. |
+| Spectra (PySCF mode) | `/api/spectra/render` | NO — script emits `cfg.frozen_indices` verbatim (`spectra/pyscf_engine.py:511`).  Preflight WARNS when `struct.frozen_atoms` diverges from `cfg.frozen_indices` (`pyscf_engine.py:524-541`) so the user can decide explicitly. | NO — preflight WARNS on any non-empty region label (`pyscf_engine.py:554-571`) so the user sees what the spectra engine ignores. | Per the founding directives (§ 2): "no silent absorption" -- a divergence between the sidecar and the form is surfaced, not merged. |
+| Transport (TranSIESTA) | `/api/transport/render` | NO — TranSIESTA's transport calculation uses `struct.regions` (electrode_1 / channel / electrode_2) for electrode definitions; `Geometry.Constraints` is not emitted (`transport/transiesta.py:189-233`). | YES — required; preflight ERRORS if any of the 3 expected regions are missing or empty (`transiesta.py:384-426`). | Different boundary-condition primitive than build (regions, not frozen atoms). |
+
+A future "PySCF transport" engine (planned, not shipped) WILL consume `struct.regions` and follow the same warn-on-divergence pattern.
 
 ---
 
@@ -385,7 +397,7 @@ sidecar-as-source-of-truth is unaffected.
 | SIESTA fdf generator (`siesta/input.py`) | `regions`, `frozen_atoms` | Stage 2 emit — see § 5 |
 | Spectra (PySCF mode-selection generators) | `regions` | Stage 2 emit — see § 5 |
 | Transport (TranSIESTA generator) | `regions` (L/R electrodes + bridge), `frozen_atoms` | Stage 2 emit + preflight |
-| `/api/selection/eval`, `/api/selection/toggle` (web blueprint) | `regions`, `frozen_atoms` (via `_expose_frozen_as_region` synthetic) | Selection panel filter resolution |
+| `/api/selection/eval` (web blueprint; `/api/selection/toggle` retired client-side, commit `64bc8c0`) | `regions`, `frozen_atoms` (via `_expose_frozen_as_region` synthetic) | Selection panel filter resolution |
 | `/api/selection/atoms` (web blueprint) | `regions`, `frozen_atoms` (separate per-atom `is_frozen` flag) | Atom-list rendering in the panel |
 | **PySCF trajectory parser** (`parsers/pyscf.py::_read_sidecar_frozen_atoms`) | `frozen_atoms` | Mask out frozen indices from qdata.txt gradient → compute `Frame.max_force_constrained` |
 

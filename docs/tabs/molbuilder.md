@@ -605,7 +605,7 @@ op-specific args; respond with `{"ok": bool, "xyz": <new>, "n_atoms": int,
 | Endpoint | Body shape | Effect |
 |---|---|---|
 | `GET /api/modify/meta` | (no body) | Returns `{ok, fcc_elements, fcc_planes}` for UI dropdowns; reads from the `SUPPORTED_FCC_ELEMENTS` / `SUPPORTED_FCC_PLANES` tuples in `molbuilder.modify`.  Single source of truth -- HTML must not duplicate the lists. |
-| `POST /api/modify/load` | `{xyz, format?}` | Validate input.  Echo back canonical xyz (re-parsed; catches malformed input early). |
+| `POST /api/build/load` | `{xyz, format?}` (retired `/api/modify/load`; superseded by build's load path on commit `7105ae8`) | Validate input.  Echo back canonical xyz (re-parsed; catches malformed input early). |
 | `POST /api/modify/delete` | `{xyz, indices: List[int]}` | `delete_atoms` |
 | `POST /api/modify/add_atom` | `{xyz, element, anchor_index, offset: [dx,dy,dz]}` | `add_atom` |
 | `POST /api/modify/orient` | `{xyz, anchors: [a0,a1], axis?, center?}` | `orient_along_axis` |

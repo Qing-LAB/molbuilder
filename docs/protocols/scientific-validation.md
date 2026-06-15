@@ -526,7 +526,7 @@ treatment)` triplet plus open-shell-metal hints**.  Out of scope:
 | Basis set (`def2-SVP`, `DZP`, etc.) | Engine-specific; chemistry doesn't pick a basis |
 | XC functional (`PBE`, `B3LYP`, …) | User preference + computational budget |
 | K-points / mesh cutoff | Periodic-system geometry, not chemistry |
-| Pseudopotential family | SIESTA-only; covered by sibling endpoint `/api/siesta/check-pseudos` |
+| Pseudopotential family | SIESTA-only; covered server-side by the validator pass (`/api/siesta/check-pseudos` was retired) |
 | Convergence thresholds | Engine-specific defaults are already sensible |
 | Optimization steps | Workflow choice, not chemistry |
 | Spectral broadening / IR vs Raman | Workflow choice |

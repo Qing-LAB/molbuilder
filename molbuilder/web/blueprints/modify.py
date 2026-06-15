@@ -2,7 +2,10 @@
 
 Routes (no url_prefix; each carries its own full path):
 
-    POST /api/modify/load                  validate / canonicalise XYZ
+    (``POST /api/modify/load`` was retired in commit ``7105ae8``;
+     XYZ canonicalisation is now part of ``/api/build/load``'s
+     `_struct_from_body` path so both tabs share one validator.)
+
     POST /api/modify/delete                delete_atoms(indices)
     POST /api/modify/add_atom              add_atom(element, anchor,
                                                     offset)

@@ -91,7 +91,7 @@ display string.  Server-side, `selection.py::_expose_frozen_as_
 region(struct)` adds a synthetic `frozen_atoms` entry to
 `struct.regions` so the standard `ByRegion` rule resolves to the
 frozen-atom set.  The synthetic region is added ONLY in
-`/api/selection/eval` + `/api/selection/toggle` (the rule-
+`/api/selection/eval` (the rule-
 resolution paths) — it does NOT appear in `/api/selection/atoms`'s
 per-atom regions response (which would double-render frozen atoms)
 and does NOT get written to the sidecar on save.
@@ -553,7 +553,7 @@ NOTIFY
 | `panel.modeState.click` / `modeState.filter` | Replaced by `state.selection` (shared across modes) |
 | `state.clicks` (mode-private click buffer) | Selection is one shared set; modes are pure UI |
 | Per-key eval on filter edits | Replaced by explicit `applyFilter()` -- drafts don't auto-evaluate |
-| Client use of `/api/selection/toggle` | Toggle is client-side now; the server endpoint is unused (kept for future programmatic callers) |
+| Client use of `/api/selection/toggle` | Toggle is client-side now; the server endpoint was retired in commit `64bc8c0` (superseded by `store.toggleAtom`) |
 | `panel.atomList` cache | Lives in `state.atoms` now |
 | `bootstrap.lastLoadedPath` | Store batches; no duplicate-fire problem |
 | `adapter.rerender()` | `setSourceFile` is atomic; no load race |

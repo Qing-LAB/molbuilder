@@ -610,7 +610,28 @@
                 }
                 return;
             }
-            if (f === _sidebarLastFile) return;
+            if (f === _sidebarLastFile) {
+                // H3 2026-06-14: same file as last commit -- skip
+                // the structure reload (cached) but RE-FIRE the
+                // auto-detect chip refresh.  The user may have
+                // edited the file on /molbuilder, saved under the
+                // same path, and navigated back to this tab; the
+                // structure-cache still matches the prior bytes,
+                // but ``/api/structure/analyze`` reads from disk,
+                // so the chip CAN refresh to reflect the on-disk
+                // change.  Pre-fix the bare early-return left the
+                // chip showing the verdict from before the edit
+                // (e.g. "closed-shell singlet" after the user just
+                // removed the metal atom).  Cheap fix: just re-
+                // fire the analyzer — the per-tab structure cache
+                // stays correct because the on-disk file might or
+                // might not have changed; the chip is the user-
+                // visible surface that needs to stay honest.
+                if (typeof _autoAnalyzeOnLoad === "function") {
+                    _autoAnalyzeOnLoad(_sidebarLastFile);
+                }
+                return;
+            }
             // Form-dirty gate: if the user has typed parameter
             // edits since the last commit/Generate, ask before
             // discarding them via the shared warning modal.
