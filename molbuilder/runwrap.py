@@ -577,6 +577,88 @@ def _runtime_status_block(
     )
 
 
+def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
+    """Bash that probes hardware and computes GPU-mode MPI/OMP defaults.
+
+    Encodes the 2026-06-15 ELPA-CUDA policy (single workstation, 1 GPU,
+    no NCCL in our ELPA 2021.11.001 build).  Inputs come from
+    ``nproc``/``lscpu``; outputs are shell variables consumed by the
+    rest of the SIESTA wrapper template:
+
+      * ``_gpu_mpi_np_default``: 2 if dual-socket OR cores-per-socket
+        >= 16; else 1; clamped <= n_atoms.
+      * ``_omp_default``: cores_per_socket // 2, forced even, clamped
+        so ``mpi_np * OMP <= phys_cores - 1`` (leave a core for the
+        ELPA-GPU host driver).
+      * Override knobs (read here so the same banner can name them):
+        ``MOLBUILDER_MPI_NP`` and ``MOLBUILDER_OMP_NUM_THREADS``.
+
+    The block also prints a kubectl-context-switch-style one-line
+    banner to stderr so the user sees the mode change without scrolling
+    through the full wrapper banner.
+    """
+    n_atoms_lit = "" if n_atoms is None else str(int(n_atoms))
+    return (
+        "# --- GPU mode: ELPA-CUDA defaults (no NCCL in our build) ---\n"
+        "# Policy researched 2026-06-15; sources cited in runwrap.py.\n"
+        "# Override anywhere via MOLBUILDER_MPI_NP /\n"
+        "# MOLBUILDER_OMP_NUM_THREADS / wrapper '-np N' / MB_NP env.\n"
+        '_phys_cores=$(nproc --all 2>/dev/null '
+        '|| getconf _NPROCESSORS_ONLN 2>/dev/null || echo 8)\n'
+        '_n_sockets=$(LANG=C lscpu -p=Socket 2>/dev/null '
+        '| grep -v "^#" | awk -F, "{print \\$2}" '
+        '| sort -u | wc -l 2>/dev/null || echo 1)\n'
+        'if [ -z "$_n_sockets" ] || [ "$_n_sockets" -lt 1 ]; '
+        'then _n_sockets=1; fi\n'
+        '_cps=$(( _phys_cores / _n_sockets ))\n'
+        '[ "$_cps" -lt 1 ] && _cps=1\n'
+        # MPI policy: 1 rank per package, except single-socket
+        # small (CPS < 16) gets 1 rank total.
+        'if [ "$_n_sockets" -ge 2 ]; then\n'
+        '    _gpu_mpi_np_default=2\n'
+        'elif [ "$_cps" -ge 16 ]; then\n'
+        '    _gpu_mpi_np_default=2\n'
+        'else\n'
+        '    _gpu_mpi_np_default=1\n'
+        'fi\n'
+        + (
+            # n_atoms clamp -- same rationale as CPU path (avoid empty
+            # propor blocks); only emit when generation-time parser
+            # found the value.
+            f'# n_atoms clamp (auto-parsed from .fdf): {n_atoms_lit}\n'
+            f'if [ "$_gpu_mpi_np_default" -gt {n_atoms_lit} ]; then\n'
+            f'    _gpu_mpi_np_default={n_atoms_lit}\n'
+            f'fi\n'
+            if n_atoms_lit else ""
+        ) +
+        # OMP policy: cores_per_socket // 2, forced even, never spill
+        # across packages, never 0.
+        '_omp_default=$(( _cps / 2 ))\n'
+        '[ "$_omp_default" -lt 1 ] && _omp_default=1\n'
+        '# Force even (cleaner divisor for ScaLAPACK BlockSize math)\n'
+        'if [ "$_omp_default" -gt 1 ] '
+        '&& [ $(( _omp_default % 2 )) -eq 1 ]; '
+        'then _omp_default=$(( _omp_default - 1 )); fi\n'
+        '# Leave a core for the ELPA-GPU host driver thread\n'
+        'while [ $(( _gpu_mpi_np_default * _omp_default )) '
+        '-gt $(( _phys_cores - 1 )) ] '
+        '&& [ "$_omp_default" -gt 1 ]; do\n'
+        '    _omp_default=$(( _omp_default - 1 ))\n'
+        'done\n'
+        '[ "$_omp_default" -lt 1 ] && _omp_default=1\n'
+        '# Apply env-var overrides (precedence: env > policy)\n'
+        '_gpu_mpi_np_default="${MOLBUILDER_MPI_NP:-$_gpu_mpi_np_default}"\n'
+        '_omp_default="${MOLBUILDER_OMP_NUM_THREADS:-$_omp_default}"\n'
+        '# Banner: single-line, stderr, kubectl-style.\n'
+        'echo "molbuilder: GPU mode (ELPA-CUDA, no NCCL) -- '
+        'mpi_np=$_gpu_mpi_np_default, OMP=$_omp_default, '
+        '--bind-to core --map-by package:PE=$_omp_default" >&2\n'
+        'echo "molbuilder: override via MOLBUILDER_MPI_NP / '
+        'MOLBUILDER_OMP_NUM_THREADS / -np" >&2\n'
+        "\n"
+    )
+
+
 def _fdf_requests_gpu(fdf_path: Path) -> bool:
     """Whether the .fdf has ``Diag.ELPA.GPU`` set true.
 
@@ -754,6 +836,22 @@ def render_run_wrapper(script_path: Path, *,
     #     in-script setdefault wins.
     env_prefix = ""
     if category == "siesta":
+        # GPU mode is detected from the .fdf (the single source of
+        # truth -- see _fdf_requests_gpu).  When on, the wrapper
+        # switches to the ELPA-CUDA defaults policy researched
+        # 2026-06-15:
+        #   * mpi_np = 2 if dual-socket OR cores/socket >= 16,
+        #     else 1 (clamped <= n_atoms)
+        #   * OMP = cores_per_socket // 2, forced even
+        #   * mpirun --bind-to core --map-by package:PE=$OMP
+        # Sources: ELPA User Guide §"ELPA - Usability" (Raven A100,
+        # 2024.05 benchmarks); SIESTA performance-options doc; OpenMPI
+        # 5.0 mpirun(1) ("socket" is an alias for "package").
+        # NCCL/RCCL is NOT compiled into our ELPA 2021.11.001 build,
+        # so we sit firmly in the "multi-rank-per-GPU" regime; the
+        # 1-rank-per-GPU best case only applies when NCCL is on.
+        gpu_mode = (script_path.suffix.lower() == ".fdf"
+                    and _fdf_requests_gpu(script_path))
         # Resolve MPI rank count.  SIESTA is fundamentally an MPI
         # code; even single-host execution is launched via mpirun.
         # When the user leaves mpi_np blank we default to ALL physical
@@ -852,14 +950,33 @@ def render_run_wrapper(script_path: Path, *,
         # ORDER matters: --continue/--force are recognised first so
         # callers can combine them with -np in any order
         # (``--continue -np 8`` and ``-np 8 --continue`` both work).
+        # GPU-mode default expressions for ``_mpi_np_default`` /
+        # ``_omp_threads_default``: the GPU runtime block (injected
+        # FIRST in env_prefix when gpu_mode=True) sets the underlying
+        # shell vars to the hardware-derived policy values.
+        _mpi_np_default_expr = (
+            "$_gpu_mpi_np_default" if gpu_mode else str(resolved_mpi)
+        )
+        _omp_threads_default_expr = (
+            "$_omp_default" if gpu_mode else str(resolved_omp)
+        )
         siesta_args_block = (
             _continue_force_args_parser("SIESTA wrapper")
             + f"# --- SIESTA-specific argument parsing -----------\n"
-            f"# Override the generation-time -np with: ``-np N`` or\n"
-            f"# ``MB_NP=N``.  Useful for retrying after a propor crash\n"
-            f"# (see diagnostic at the bottom of this wrapper).\n"
-            f"_mpi_np_default={resolved_mpi}\n"
+            f"# Override the generation-time defaults with: ``-np N`` /\n"
+            f"# ``-omp N`` flags, or ``MB_NP`` / ``OMP_NUM_THREADS`` env\n"
+            f"# vars.  Useful for retrying after a propor crash (see the\n"
+            f"# diagnostic at the bottom of this wrapper) or for bench\n"
+            f"# sweeps WITHOUT regenerating the .fdf / wrapper.\n"
+            f"_mpi_np_default={_mpi_np_default_expr}\n"
+            f"_omp_threads_default={_omp_threads_default_expr}\n"
             f'_mpi_np="${{MB_NP:-$_mpi_np_default}}"\n'
+            # OMP precedence: -omp flag > OMP_NUM_THREADS env > policy
+            # default.  Honoring a user-set OMP_NUM_THREADS matches the
+            # standard OMP-toolchain convention; the prior wrapper
+            # unconditionally clobbered it, which surprised users
+            # benching with ``OMP_NUM_THREADS=8 ./run.sh``.
+            f'_omp_threads="${{OMP_NUM_THREADS:-$_omp_threads_default}}"\n'
             f'while [ $# -gt 0 ]; do\n'
             f'    case "$1" in\n'
             f"        -np|--np)\n"
@@ -868,9 +985,16 @@ def render_run_wrapper(script_path: Path, *,
             f"                exit 1\n"
             f"            fi\n"
             f'            _mpi_np="$2"; shift 2 ;;\n'
+            f"        -omp|--omp|-t|--threads)\n"
+            f'            if [ $# -lt 2 ]; then\n'
+            f'                echo "ERROR: -omp requires a value" >&2\n'
+            f"                exit 1\n"
+            f"            fi\n"
+            f'            _omp_threads="$2"; shift 2 ;;\n'
             f"        -h|--help)\n"
             f'            cat <<USAGE\n'
-            f'Usage: bash $(basename "$0") [--continue|-c] [--force|-f] [--cold] [-np N] [-h]\n'
+            f'Usage: bash $(basename "$0") [--continue|-c] [--force|-f] [--cold] '
+            f"[-np N] [-omp N] [-h]\n"
             f"\n"
             f"  --continue, -c   resume from prior run.  Scans existing\n"
             f"                   -runN.out files and writes -run(N+1).\n"
@@ -893,11 +1017,23 @@ def render_run_wrapper(script_path: Path, *,
             f"                   run-index sequence at -run0.\n"
             f"  -np N            override MPI rank count.  Default at\n"
             f"                   generation time was $_mpi_np_default.\n"
+            f"  -omp N,          override OpenMP threads per MPI rank.\n"
+            f"  -t N, --threads  Aliased.  Default was $_omp_threads_default.\n"
+            f"                   (For SIESTA: pure MPI w/ OMP=1 is the\n"
+            f"                   typical CPU recipe; GPU mode auto-picks\n"
+            f"                   half-the-cores-per-package, even.)\n"
             f"  -h               this help.\n"
             f"\n"
             f"Environment variables:\n"
-            f"  MB_NP=N  same as -np N (useful for SLURM/PBS scripts:\n"
-            f"           ``export MB_NP=\\$SLURM_NTASKS`` then bash this).\n"
+            f"  MB_NP=N            same as -np N (useful for SLURM/PBS:\n"
+            f"                     ``export MB_NP=\\$SLURM_NTASKS``).\n"
+            f"  OMP_NUM_THREADS=N  same as -omp N (standard OMP toolchain\n"
+            f"                     convention; honored if set in env).\n"
+            f"  MOLBUILDER_MPI_NP=N\n"
+            f"  MOLBUILDER_OMP_NUM_THREADS=N\n"
+            f"                     GPU-mode policy overrides applied\n"
+            f"                     BEFORE -np / -omp.  Useful when a\n"
+            f"                     workstation has unusual topology.\n"
             f"\n"
             f"On 'propor: ERROR: IMAX = 0' crashes at startup, retry\n"
             f"with a smaller -np.  See the diagnostic the wrapper prints\n"
@@ -914,6 +1050,11 @@ def render_run_wrapper(script_path: Path, *,
             f'\'$_mpi_np\'" >&2\n'
             f"    exit 1\n"
             f"fi\n"
+            f'if ! printf %s "$_omp_threads" | grep -qE \'^[1-9][0-9]*$\'; then\n'
+            f'    echo "ERROR: -omp must be a positive integer; got: '
+            f'\'$_omp_threads\'" >&2\n'
+            f"    exit 1\n"
+            f"fi\n"
             f"\n"
             + _run_index_resolver(basename)
             + _cold_restart_aside_block(basename, engine="siesta")
@@ -922,7 +1063,8 @@ def render_run_wrapper(script_path: Path, *,
         )
 
         env_prefix = (
-            siesta_args_block
+            (_gpu_runtime_defaults_block(n_atoms) if gpu_mode else "")
+            + siesta_args_block
             + f"# MPI rank count: $_mpi_np (default: $_mpi_np_default, "
             f"source: {mpi_source})\n"
             f"{clamp_note}"
@@ -930,10 +1072,13 @@ def render_run_wrapper(script_path: Path, *,
             f"#   * OMP_NUM_THREADS ({omp_source}): SIESTA mainline is\n"
             f"#     mostly not OMP-aware, so pure MPI with OMP=1 is the\n"
             f"#     standard recipe.  Bump only with an OMP-compiled\n"
-            f"#     SIESTA build (hybrid MPI+OMP).\n"
+            f"#     SIESTA build (hybrid MPI+OMP).  In GPU mode the\n"
+            f"#     default is the hardware-derived policy value (see\n"
+            f"#     the GPU-mode block above); override with -omp N or\n"
+            f"#     by exporting OMP_NUM_THREADS before invoking.\n"
             f"#   * BLAS pinned to 1 per rank so OMP * BLAS doesn't\n"
             f"#     oversubscribe.\n"
-            f"export OMP_NUM_THREADS={resolved_omp}\n"
+            f"export OMP_NUM_THREADS=$_omp_threads\n"
             f"export MKL_NUM_THREADS=1\n"
             f"export OPENBLAS_NUM_THREADS=1\n"
         )
@@ -1001,18 +1146,28 @@ def render_run_wrapper(script_path: Path, *,
             f'| tr "[:space:]" " " | tr ",;" "  " | tr -s " ") "\n'
             f'case "$_par_norm" in *" MPI "*) _has_mpi=1 ;; esac\n'
             f'case "$_par_norm" in *" OMP "*|*" OpenMP "*) _has_omp=1 ;; esac\n'
-            f'if [ "$_has_mpi" = 1 ]; then\n'
-            f'    _launch_cmd="mpirun -np $_mpi_np siesta"\n'
+            # GPU mode: pin threads to cores in the same package so
+            # OpenMP doesn't spill across sockets (SIESTA performance-
+            # options guidance), and tell OpenMPI to place ranks one
+            # per package.  On OpenMPI 5.x "package" is canonical;
+            # "socket" still works as an alias.
+            + (
+                f'_mpirun_bind="--bind-to core --map-by package:PE=$_omp_threads"\n'
+                if gpu_mode else
+                f'_mpirun_bind=""\n'
+            )
+            + f'if [ "$_has_mpi" = 1 ]; then\n'
+            f'    _launch_cmd="mpirun -np $_mpi_np $_mpirun_bind siesta"\n'
             f'    if [ "$_has_omp" = 1 ]; then\n'
-            f'        _launch_note="hybrid MPI+OMP ($_mpi_np ranks x {resolved_omp} OMP threads)"\n'
+            f'        _launch_note="hybrid MPI+OMP ($_mpi_np ranks x $_omp_threads OMP threads)"\n'
             f'    else\n'
             f'        _launch_note="pure MPI ($_mpi_np ranks; OMP setting irrelevant to this binary)"\n'
             f'    fi\n'
             f'elif [ "$_has_omp" = 1 ]; then\n'
             f'    _launch_cmd="siesta"\n'
-            f'    _launch_note="OMP-only build ({resolved_omp} threads)"\n'
+            f'    _launch_note="OMP-only build ($_omp_threads threads)"\n'
             f'elif [ -z "$_siesta_par" ]; then\n'
-            f'    _launch_cmd="mpirun -np $_mpi_np siesta"\n'
+            f'    _launch_cmd="mpirun -np $_mpi_np $_mpirun_bind siesta"\n'
             f'    _launch_note="MPI fallback (probe inconclusive; safe default for MPI-compiled SIESTA)"\n'
             f'else\n'
             f'    _launch_cmd="siesta"\n'
@@ -1034,8 +1189,16 @@ def render_run_wrapper(script_path: Path, *,
             f'echo "  SIESTA version: ${{_siesta_ver:-unknown}}"\n'
             f'echo "  Build paral.  : ${{_siesta_par:-unknown}}"\n'
             f'echo "  Launch mode   : $_launch_note"\n'
-            f'echo "  Threading     : OMP_NUM_THREADS={resolved_omp}, '
+            f'echo "  Threading     : OMP_NUM_THREADS=$_omp_threads, '
             f'OPENBLAS=1, MKL=1"\n'
+            # GPU mode: print a brief monitoring hint so the user has
+            # nvidia-smi commands at hand when they start the run.
+            + ((
+                'echo "  GPU monitor   : '
+                'nvidia-smi dmon -s pucvmet -d 1  (sm%, mem%, clk, temp, power)"\n'
+                'echo "                : if sm% bounces 0->100->0 across '
+                'MPI ranks, MPS may help (no NCCL in this ELPA build)"\n'
+            ) if gpu_mode else "")
             # ---- Mode + constraints (post-cold, post-run-index) ----
             # Surfaces the silent-warm-restart class explicitly so the
             # user can see whether the engine is starting clean,
@@ -1044,10 +1207,10 @@ def render_run_wrapper(script_path: Path, *,
             # on-disk script + restart files at runtime so a manual
             # .fdf edit shows the EDITED state, not the generation-
             # time snapshot (the "what you see is what runs" rule).
-            f'echo "  Mode          : $_mode"\n'
-            f'echo "  Constraints   : $_constraints"\n'
-            f'echo "  Command       : $_launch_cmd {script_name} > $_out_file"\n'
-            f'echo "  Stdout        : $_out_file (live; tail -f to follow)"\n'
+            + f'echo "  Mode          : $_mode"\n'
+            + f'echo "  Constraints   : $_constraints"\n'
+            + f'echo "  Command       : $_launch_cmd {script_name} > $_out_file"\n'
+            + f'echo "  Stdout        : $_out_file (live; tail -f to follow)"\n'
             f'echo "========================================="\n'
             f"\n"
         )
