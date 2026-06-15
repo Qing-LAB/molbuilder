@@ -855,10 +855,18 @@
             const sect = document.createElement("div");
             sect.className = "mol-viewer-export-section";
             sect.setAttribute("data-section", section.key);
-            // Animation section starts hidden; revealed by
-            // _syncKnobBarToAnimation when state.current.animation
-            // is non-null.
-            if (section.kind === "animation") sect.hidden = true;
+            // 2026-06-14 UI-presence contract: every export section
+            // is unconditionally visible.  Pre-fix the animation
+            // section was created with sect.hidden = true and
+            // revealed by _syncKnobBarToAnimation when an animation
+            // mounted; that path made the affordance vanish on
+            // static-structure loads, breaking section-position
+            // muscle memory.  The Save/Download buttons inside are
+            // disabled by _syncKnobBarToAnimation when
+            // state.current.animation is null instead, surfacing
+            // the no-op state without hiding the section.  See
+            // test_ui_presence_data_independent_js.py for the L2
+            // guard against re-introduction.
 
             const label = document.createElement("div");
             label.className = "mol-viewer-export-section-label";

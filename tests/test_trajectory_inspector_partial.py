@@ -91,6 +91,12 @@ class TestPartialIntegrity:
         # Run-state badge + compact runtime-info one-liner.
         "run-state-badge", "run-state-label", "run-state-detail",
         "runtime-summary",
+        # Pre-data empty-state banner (batch A, 2026-06-14): rendered
+        # by lib/trajectory/core.js::_renderEmptyStatus when the
+        # parser surfaces zero frames or fails to attach an energy
+        # series.  Cleared once state.data is populated.  See the
+        # _lastEmptyStatus cache in core.js for the poll-tick guard.
+        "trajectory-empty-status",
         # Parse-warnings panel (Level-3 parser, 2026-05-28).  Hidden
         # by default; shows when the parser hit non-fatal issues.
         "parse-warnings",

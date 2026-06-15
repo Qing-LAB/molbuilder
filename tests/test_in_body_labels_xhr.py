@@ -134,7 +134,17 @@ class TestBuildFdfInBodyLabels:
         """Absent in-body keys are the legacy ``structure_path``
         flow.  No sidecar on disk = no labels.  Pin that the
         fall-through still works (back-compat)."""
-        body = _post_fdf(web)  # no frozen_atoms key
+        # Inline POST so the status_code check + body negative-
+        # assertion live in the same scope -- satisfies the
+        # tests/test_negative_body_assert_lint.py guard (a 404 must
+        # not silently pass the "Constraints block not present"
+        # check against the Flask error page).
+        r = web.post(
+            "/api/build/fdf",
+            json={"xyz": _XYZ, "params": {}},
+        )
+        assert r.status_code == 200
+        body = r.get_json() or {}
         assert body.get("ok") is True
         # Without a sidecar, no Constraints block.
         assert "%block Geometry.Constraints" not in body.get("fdf", "")

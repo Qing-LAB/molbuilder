@@ -3814,8 +3814,15 @@ class TestAnimationExportUX:
             self, page, flask_server):
         """Export menu must group buttons into Data / Snapshot /
         Animation sections, not mix them into one flat row.
-        Animation section starts hidden (no animation mounted) but
-        the DOM element exists."""
+
+        2026-06-14: all three sections are unconditionally visible
+        (UI-presence-is-data-independent contract; see
+        test_ui_presence_data_independent_js.py).  Pre-fix this
+        test pinned Animation to ``hidden=True`` when no animation
+        was mounted; the contract was retired so users see the
+        section affordance regardless of payload.  Buttons inside
+        get disabled when state.current.animation is null, which
+        is the visible no-op surface the test below now asserts."""
         page.goto(f"{flask_server}/structure-optimization")
         page.wait_for_selector("#viewer .mol-viewer-canvas",
                                timeout=_BOOT_TIMEOUT_MS)
@@ -3846,17 +3853,15 @@ class TestAnimationExportUX:
         assert keys == ["data", "snapshot", "animation"], (
             f"Export menu sections in wrong order: {keys}"
         )
-        # Animation hidden when no animation mounted.
-        anim = next(s for s in out if s["key"] == "animation")
-        assert anim["hidden"] is True, (
-            "Animation section should be hidden when no animation "
-            "is mounted"
-        )
-        # Data + Snapshot always visible.
-        data = next(s for s in out if s["key"] == "data")
-        snap = next(s for s in out if s["key"] == "snapshot")
-        assert data["hidden"] is False
-        assert snap["hidden"] is False
+        # 2026-06-14: every section is visible regardless of
+        # state.current.animation — Animation's no-op surface lives
+        # in its disabled buttons, not in hide/show of the wrapper.
+        for s in out:
+            assert s["hidden"] is False, (
+                f"{s['key']!r} section must be visible per the "
+                "data-independent UI-presence contract; got "
+                f"hidden=True"
+            )
 
     def test_export_menu_animation_section_visible_with_animation(
             self, page, flask_server):
