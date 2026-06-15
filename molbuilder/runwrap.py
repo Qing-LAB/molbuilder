@@ -290,6 +290,25 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
             f'{{ gsub(/"/, "", $2); print $2; exit }}'
             f'\' "{basename}.fdf" 2>/dev/null || true)\n'
             f'_warm_label="${{_warm_label:-{basename}}}"\n'
+            # J1 2026-06-14 (defense in depth): sanitize the
+            # SystemLabel string read from the .fdf to the same
+            # charset the wrapper basename already enforces
+            # ([A-Za-z0-9._-]; ``_SAFE_WRAPPER_NAME_RE``).  Bash
+            # double-quotes already block command-substitution
+            # on ``$_warm_label`` -- this is belt + suspenders for
+            # the case where a future emitter forgets the quotes
+            # and ``rm -rf /`` lives in a SystemLabel.  ``tr`` is
+            # POSIX so we don't drag in awk or grep for the
+            # sanitiser; everything matching the safe charset
+            # passes through, everything else is dropped.
+            'case "$_warm_label" in\n'
+            '    *[!A-Za-z0-9._-]*)\n'
+            f'        echo "[molbuilder] warning: SystemLabel in '
+            f'{basename}.fdf contained disallowed characters; '
+            f'falling back to basename" >&2\n'
+            f'        _warm_label="{basename}"\n'
+            '        ;;\n'
+            'esac\n'
         )
         # Two-label glob: SystemLabel-keyed AND wrapper-basename-keyed
         # so we catch both naming styles.
@@ -308,6 +327,18 @@ def _cold_restart_aside_block(basename: str, *, engine: str) -> str:
             f'{{print $2; exit}}'
             f'\' "{basename}.py" 2>/dev/null || true)\n'
             f'_warm_label="${{_warm_label:-{basename}}}"\n'
+            # Mirror of the SIESTA-side sanitizer above (J1 2026-
+            # 06-14): the PySCF JOB string is user-controlled too
+            # (read from the user's script).  Sanitize to the same
+            # safe charset.
+            'case "$_warm_label" in\n'
+            '    *[!A-Za-z0-9._-]*)\n'
+            f'        echo "[molbuilder] warning: JOB string in '
+            f'{basename}.py contained disallowed characters; '
+            f'falling back to basename" >&2\n'
+            f'        _warm_label="{basename}"\n'
+            '        ;;\n'
+            'esac\n'
         )
         glob_pieces = " ".join(
             f'"$_warm_label.{ext}" {basename}.{ext}'

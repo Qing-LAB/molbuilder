@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import dataclasses
 import math
+import re
 import typing
 from dataclasses import fields
 from typing import Any, Dict, List, Optional, Tuple
@@ -29,6 +30,15 @@ from flask import jsonify
 
 from molbuilder.structure import Structure
 from molbuilder.validation import validate_geometry
+
+
+# J2 2026-06-14: charset guard for region label keys in
+# ``apply_labels_to_struct``.  Same charset the wrapper basename
+# uses (``runwrap.py::_SAFE_WRAPPER_NAME_RE``) so the labels are
+# safe to embed in shell, JSON, sidecar filenames, and Issue
+# message bodies without per-consumer escaping.  Length capped
+# at 64 to avoid abuse via giant strings.
+_SAFE_REGION_LABEL_RE = re.compile(r"^[A-Za-z0-9._\-]{1,64}$")
 
 
 # --------------------------------------------------------------------- #
@@ -955,6 +965,27 @@ def apply_labels_to_struct(struct, body):
                 raise ValueError(
                     f"``regions`` keys must be strings; got "
                     f"{type(label).__name__} ({label!r})"
+                )
+            # J2 2026-06-14 defense in depth: charset-validate the
+            # region label key.  Today no engine emits the label
+            # into a shell context (TranSIESTA reads canonical
+            # keys; spectra warns on labels it doesn't consume),
+            # so a label like ``electrode_1; rm -rf /`` is
+            # functionally inert.  But the same key reaches Issue
+            # messages (textContent-safe), TranSIESTA's region-key
+            # comparison, and the .molstruct.json sidecar on save
+            # — keeping the charset tight protects every future
+            # consumer that might emit the label without escaping.
+            # Matches the SystemLabel + wrapper-basename charset
+            # at runwrap.py: [A-Za-z0-9._-] (no whitespace, no
+            # shell-special chars, no Unicode that could spoof
+            # the canonical-key comparison via NFKC fold).
+            if not _SAFE_REGION_LABEL_RE.match(label):
+                raise ValueError(
+                    f"``regions`` label {label!r} contains "
+                    f"disallowed characters; allowed charset is "
+                    f"[A-Za-z0-9._-] (1-64 chars).  Rename the "
+                    f"region in /modify and resubmit."
                 )
             if not isinstance(indices, list):
                 raise ValueError(

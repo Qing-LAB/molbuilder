@@ -297,10 +297,18 @@
     // ---------- Auto-detect chemistry handler (Card 2) ---------- //
 
     var _autoDetectSeq = 0;
+    // J3 2026-06-14: shared AbortController so a spam-click or a
+    // commit-on-file-change racing a prior request kills the older
+    // server-side parse instead of letting both complete.  Mirrors
+    // viewer.js's _autoDetectAbort pattern.
+    var _autoDetectAbort = null;
 
     function _autoAnalyzeOnCommit(path) {
         if (!path) return;
         var mySeq = ++_autoDetectSeq;
+        if (_autoDetectAbort) _autoDetectAbort.abort();
+        _autoDetectAbort = new (root.AbortController)();
+        var mySignal = _autoDetectAbort.signal;
         var btn = _$("auto-detect-btn");
         if (btn) btn.disabled = true;
         _autoDetectSetStatus("Analyzing chemistry…", null);
@@ -308,6 +316,7 @@
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify({ structure_path: path }),
+            signal:  mySignal,
         })
             .then(function (r) {
                 return r.json().then(function (body) {
@@ -341,6 +350,9 @@
                 _refreshAutoDetectButton();
             })
             .catch(function (e) {
+                // AbortError = J3 supersede.  Silent; the new
+                // request owns the UI.
+                if (e && e.name === "AbortError") return;
                 if (mySeq !== _autoDetectSeq) return;
                 _autoDetectSetStatus(
                     "Network error: "

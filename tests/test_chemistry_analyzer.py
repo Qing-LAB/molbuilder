@@ -320,6 +320,78 @@ def test_au_dimer_falls_through_to_parity():
     assert "small" in a.rationale.lower() or "cluster" in a.rationale.lower()
 
 
+# --------------------------------------------------------------------- #
+#  J4 round-3 follow-up: noble-metal cluster threshold direction        #
+#                                                                        #
+#  The audit flagged that the existing Au-cluster tests only pin the    #
+#  "closed-shell" side of the threshold — Au_4 / Cu_4 → closed.  A      #
+#  regression where the rule ALWAYS returns closed-shell would          #
+#  silently pass.  Pin the open-shell pole below (single atom + odd-    #
+#  electron clusters above the threshold) so the threshold is checked  #
+#  from BOTH directions.                                                #
+# --------------------------------------------------------------------- #
+
+
+def test_single_au_atom_open_shell():
+    """A single Au atom: Z=79 (odd) → spin=1, treatment=open.
+    Atomic ground state is 5d¹⁰ 6s¹, a single unpaired s electron.
+    Pre-J4 the existing tests didn't pin treatment on the open-shell
+    pole; a regression that hard-coded ``treatment="closed"`` would
+    pass everywhere except this test."""
+    a = analyze_structure(_mk(["Au"]))
+    assert a.suggested_spin == 1, (
+        f"Single Au: expected spin=1 (odd electron parity); "
+        f"got spin={a.suggested_spin}"
+    )
+    assert a.suggested_treatment == "open", (
+        f"Single Au: expected treatment='open' (s¹ ground state); "
+        f"got treatment={a.suggested_treatment!r}"
+    )
+
+
+def test_au_trimer_below_threshold_odd_parity_open_shell():
+    """Au_3: below the cluster threshold (3 < 4) AND odd-electron
+    parity (3 × 79 = 237).  Should fall through to parity → spin=1,
+    treatment=open.  The noble-metal cluster rule MUST NOT fire
+    here -- if it did, the user would get a closed-shell singlet
+    for an odd-electron system (catastrophic for SCF convergence).
+    """
+    a = analyze_structure(_mk(["Au"] * 3))
+    assert a.suggested_spin == 1, (
+        f"Au_3: expected spin=1 (odd parity); got spin={a.suggested_spin}.  "
+        f"Cluster threshold should NOT fire below n=4."
+    )
+    assert a.suggested_treatment == "open", (
+        f"Au_3: expected treatment='open'; got "
+        f"treatment={a.suggested_treatment!r}"
+    )
+
+
+def test_au_5_atoms_above_threshold_but_odd_parity_open_shell():
+    """Au_5: above the noble-metal cluster threshold (5 >= 4) but
+    odd-electron parity (5 × 79 = 395).  The cluster rule should
+    DEFER to parity for odd-electron systems -- the s-band-
+    delocalisation argument only justifies closed-shell when the
+    parity also allows it.  Pin so a future refactor that
+    unconditionally fires closed-shell above the threshold (a real
+    regression direction) doesn't silently corrupt every odd-
+    parity Au-junction calculation."""
+    a = analyze_structure(_mk(["Au"] * 5))
+    assert a.suggested_spin == 1, (
+        f"Au_5: odd parity must override the cluster rule; got "
+        f"spin={a.suggested_spin}"
+    )
+    # The cluster rule logically applies (n>=4) but the analyzer
+    # should NOT close-shell an odd-electron system.  The treatment
+    # could legitimately be either "open" (the parity says so) or
+    # the analyzer could fall through to "open" via the same path.
+    # Either way, treatment != "closed".
+    assert a.suggested_treatment != "closed", (
+        f"Au_5: odd-electron above-threshold must NOT be "
+        f"treatment='closed'; got {a.suggested_treatment!r}"
+    )
+
+
 def test_cu_cluster_4_atoms_closed_shell():
     """Cu obeys the same Stoner-fails / s-band-delocalises argument
     as Au.  Cu_4 → closed-shell singlet (4 × Cu_Z=29 = 116, even)."""

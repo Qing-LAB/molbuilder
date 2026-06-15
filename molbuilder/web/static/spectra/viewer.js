@@ -319,6 +319,10 @@
             btn.disabled = !_sidebarLastFile;
         }
         let _autoDetectSeq = 0;
+        // J3 2026-06-14: shared AbortController across the manual
+        // click + background _autoAnalyzeOnLoad fires.  See
+        // viewer.js (structure-opt) for the same pattern.
+        let _autoDetectAbort = null;
         const _autoBtn = _$("auto-detect-btn");
         if (_autoBtn) {
             _autoBtn.addEventListener("click", async () => {
@@ -326,6 +330,9 @@
                 const mySeq     = ++_autoDetectSeq;
                 const myLoadSeq = _loadSeq;
                 const myPath    = _sidebarLastFile;
+                if (_autoDetectAbort) _autoDetectAbort.abort();
+                _autoDetectAbort = new AbortController();
+                const mySignal = _autoDetectAbort.signal;
                 _autoBtn.disabled = true;
                 setStatus("auto-detect-status", "Analyzing…", null);
                 let body;
@@ -334,6 +341,7 @@
                         method:  "POST",
                         headers: { "Content-Type": "application/json" },
                         body:    JSON.stringify({ structure_path: myPath }),
+                        signal:  mySignal,
                     });
                     body = await r.json();
                     if (mySeq !== _autoDetectSeq
@@ -347,6 +355,7 @@
                         return;
                     }
                 } catch (e) {
+                    if (e && e.name === "AbortError") return;
                     if (mySeq !== _autoDetectSeq
                         || myLoadSeq !== _loadSeq) return;
                     setStatus("auto-detect-status",
@@ -380,11 +389,15 @@
             if (!path) return;
             const mySeq     = ++_autoDetectSeq;
             const myLoadSeq = _loadSeq;
+            if (_autoDetectAbort) _autoDetectAbort.abort();
+            _autoDetectAbort = new AbortController();
+            const mySignal = _autoDetectAbort.signal;
             try {
                 const r = await fetch("/api/structure/analyze", {
                     method:  "POST",
                     headers: { "Content-Type": "application/json" },
                     body:    JSON.stringify({ structure_path: path }),
+                    signal:  mySignal,
                 });
                 const body = await r.json();
                 if (mySeq !== _autoDetectSeq

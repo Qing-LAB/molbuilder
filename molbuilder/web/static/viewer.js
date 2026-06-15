@@ -876,6 +876,15 @@
         }
         _refreshAutoDetectButton();
         let _autoDetectSeq = 0;
+        // J3 2026-06-14: shared AbortController so spam-clicks (or a
+        // mount-time auto-fire racing a manual click) cancel the
+        // prior request instead of letting it land on the server.
+        // The ``_autoDetectSeq`` gate above prevents stale responses
+        // from updating the DOM, but the request still completes
+        // server-side -- wasted CPU + bytes on every spam-click.
+        // The AbortController kills the in-flight fetch cleanly so
+        // the server stops parsing on supersede.
+        let _autoDetectAbort = null;
 
         const _autoBtn = $("auto-detect-btn");
         if (_autoBtn) {
@@ -886,6 +895,12 @@
                 const mySeq      = ++_autoDetectSeq;
                 const myLoadSeq  = _sidebarLoadSeq;
                 const myPath     = _sidebarLastFile;
+                // J3: abort any prior analyze request still on the
+                // wire (manual click + background fire share the
+                // same controller so either supersedes the other).
+                if (_autoDetectAbort) _autoDetectAbort.abort();
+                _autoDetectAbort = new AbortController();
+                const mySignal = _autoDetectAbort.signal;
                 _autoBtn.disabled = true;
                 setStatus("auto-detect-status", "Analyzing…");
                 let body;
@@ -896,6 +911,7 @@
                         body:    JSON.stringify({
                             structure_path: myPath,
                         }),
+                        signal: mySignal,
                     });
                     body = await r.json();
                     if (mySeq !== _autoDetectSeq
@@ -915,6 +931,10 @@
                         return;
                     }
                 } catch (e) {
+                    // AbortError = superseded by another click /
+                    // load fire.  Silent; the new request owns
+                    // the UI now.
+                    if (e && e.name === "AbortError") return;
                     if (mySeq !== _autoDetectSeq
                         || myLoadSeq !== _sidebarLoadSeq) return;
                     setStatus("auto-detect-status",
@@ -955,11 +975,19 @@
             if (!path) return;
             const mySeq      = ++_autoDetectSeq;
             const myLoadSeq  = _sidebarLoadSeq;
+            // J3: abort any prior in-flight analyze.  Mount-time
+            // auto-fires can race the user's manual click on the
+            // SAME path (H3 same-file re-fire path); aborting the
+            // first lets the second take ownership cleanly.
+            if (_autoDetectAbort) _autoDetectAbort.abort();
+            _autoDetectAbort = new AbortController();
+            const mySignal = _autoDetectAbort.signal;
             try {
                 const r = await fetch("/api/structure/analyze", {
                     method:  "POST",
                     headers: { "Content-Type": "application/json" },
                     body:    JSON.stringify({ structure_path: path }),
+                    signal:  mySignal,
                 });
                 const body = await r.json();
                 if (mySeq !== _autoDetectSeq
@@ -978,6 +1006,7 @@
                     null);
             } catch (_) {
                 // Same silent-failure rationale — background fire.
+                // Includes AbortError from supersede; nothing to do.
             }
         }
 
