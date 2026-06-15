@@ -622,6 +622,31 @@ def check_disk(path: str, *,
     return free, None
 
 
+def check_url_reachable(url: str, *, timeout: int = 15) -> Optional[str]:
+    """Return ``None`` if the URL is reachable, else an error string.
+
+    Uses ``curl -fsI`` (HEAD request) for tarball URLs.  Cheap (no
+    body download) but surfaces the same auth / DNS / firewall errors
+    a real ``curl -L -o`` would hit.
+    """
+    if not url:
+        return "empty URL"
+    if shutil.which("curl") is None:
+        return "curl CLI not found on PATH; install curl."
+    try:
+        cp = subprocess.run(
+            ["curl", "-fsI", "--max-time", str(timeout), url],
+            capture_output=True, text=True, timeout=timeout + 5,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError) as exc:
+        return f"curl HEAD failed: {exc}"
+    if cp.returncode != 0:
+        err = (cp.stderr or cp.stdout or "").strip().splitlines()
+        msg = err[-1] if err else "(no stderr)"
+        return f"curl -fsI {url} returned rc={cp.returncode}: {msg}"
+    return None
+
+
 def check_repo_reachable(repo_url: str, *, timeout: int = 15
                          ) -> Optional[str]:
     """Return ``None`` if the git repo is reachable, else an error string.
@@ -978,16 +1003,28 @@ def preflight(spec: BuildSpec, probe: ToolchainProbe,
                 f"start clean."
             )
 
-    # Network: verify git can reach each component's repo.  Cheap
-    # (ls-remote, no clone) but catches firewalls, DNS, dead mirrors.
+    # Network: verify each component's upstream is reachable.  Cheap
+    # (HEAD / ls-remote, no actual clone or download) but catches
+    # firewalls, DNS, dead mirrors.  Tarball-based components use
+    # ``curl -I`` (HEAD); git-based components use ``git ls-remote``.
     if check_network:
         for comp in spec.components:
-            err = check_repo_reachable(comp.repo_url, timeout=15)
+            if comp.tarball_url:
+                err = check_url_reachable(comp.tarball_url, timeout=15)
+                source = comp.tarball_url
+            elif comp.repo_url:
+                err = check_repo_reachable(comp.repo_url, timeout=15)
+                source = comp.repo_url
+            else:
+                # Component has neither tarball nor repo -- shouldn't
+                # happen, but don't crash on a malformed recipe.
+                err = "component has no tarball_url or repo_url set"
+                source = "(none)"
             if err is None:
-                info.append(f"git reachable      ok        {comp.repo_url}")
+                info.append(f"upstream reachable ok        {source}")
             else:
                 errors.append(
-                    f"Cannot reach {comp.name} upstream: {err}"
+                    f"Cannot reach {comp.name} upstream ({source}): {err}"
                 )
 
     return PreflightReport(

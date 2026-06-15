@@ -661,28 +661,78 @@ _ELPA = BuildComponent(
         # default tag (2021.11.001) and every later tag use it.  See
         # docs/engines/siesta-gpu.md for the flag history table.
         "sh", "-c",
+        # Pass CFLAGS/CXXFLAGS/FCFLAGS so configure's AVX feature
+        # tests can actually compile.  Without these, conda's gcc 14
+        # doesn't auto-enable AVX in test programs and ELPA's
+        # configure errors out with:
+        #     configure: error: Could not compile a test program with
+        #     AVX, try with --disable-avx, or adjust the C compiler
+        #     or CFLAGS.
+        # The flag list matches the one ELPA configure itself
+        # suggests.  Any kernel whose intrinsics can't compile on the
+        # current CPU is silently dropped by the configure script.
         'set -e; '
         'mkdir -p "{build}"; cd "{build}"; '
+        'export CFLAGS="-O2 -mavx -mavx2 -mfma -msse4.1 -msse4.2 -maes"; '
+        'export CXXFLAGS="$CFLAGS"; '
+        'export FCFLAGS="-O2"; '
+        # Conda activate scripts inject -Wl,--sort-common -Wl,--as-needed
+        # (and friends) into LDFLAGS for binary-package portability.
+        # libtool stores those at configure time and replays them on
+        # every link line -- including ELPA's nvcc_wrap calls, which
+        # die with ``nvcc fatal: Unknown option '-Wl,--sort-common'``.
+        # Wipe LDFLAGS at configure time so libtool records a clean
+        # link line; the make step does the same as belt + braces.
+        'unset LDFLAGS LDFLAGS_LD CPPFLAGS; '
+        'export LDFLAGS=""; '
+        # CC-specific kernel selection.  ELPA ships a generic NVIDIA
+        # kernel (--enable-nvidia-gpu) AND optimised variants for
+        # specific architecture families.  For Ampere and newer (sm_80,
+        # sm_86, sm_87, sm_89, sm_90) the SM80 kernel uses cuBLAS APIs
+        # only available on those GPUs.  sm_90 PTX is backward-compat
+        # with sm_80 so the SM80 kernel runs on Hopper too.  Pre-Ampere
+        # GPUs (Volta sm_70, Turing sm_75) fall back to the generic
+        # NVIDIA kernel since the SM80 variant would fail to link.
+        'CC_NUM={cuda_cc_numeric}; SM_EXTRA=""; '
+        'if [ "$CC_NUM" -ge 80 ]; then SM_EXTRA="--enable-nvidia-sm80-gpu"; fi; '
         '"{src}/configure" '
         ' FC=mpifort CC=mpicc CXX=mpicxx '
         ' --prefix={install} '
         ' --enable-shared '
         ' --enable-openmp '
         ' --enable-nvidia-gpu '
+        ' $SM_EXTRA '
         ' --with-cuda-path={env_prefix} '
         ' --with-NVIDIA-GPU-compute-capability=sm_{cuda_cc_numeric} '
+        # AVX-512 is opt-in and many AMD/older-Xeon hosts lack it.  We
+        # require it explicitly only when the host CPU advertises
+        # ``avx512f`` in /proc/cpuinfo (set by ``MOLBUILDER_ELPA_AVX512=1``).
+        # The default disables it so the configure test passes on the
+        # AVX2-only majority.
+        ' --disable-avx512 '
         ' SCALAPACK_LDFLAGS="-L{env_prefix}/lib -lscalapack -lopenblas" '
         ' SCALAPACK_FCFLAGS="-I{env_prefix}/include"'
     ),
     build_argv=(
         "sh", "-c",
-        'cd "{build}" && make -j{jobs}'
+        # See configure_argv comment above: nvcc rejects conda's -Wl,*
+        # link flags; libtool replays them at compile time.  Strip any
+        # leftover env-level LDFLAGS so the make recipe can't reintroduce
+        # them through .lo recipes that rely on $LDFLAGS at substitution
+        # time.
+        'cd "{build}" && unset LDFLAGS LDFLAGS_LD CPPFLAGS '
+        '&& export LDFLAGS="" && make -j{jobs}'
     ),
     install_argv=(
         "sh", "-c",
-        'cd "{build}" && make install'
+        'cd "{build}" && unset LDFLAGS LDFLAGS_LD CPPFLAGS '
+        '&& export LDFLAGS="" && make install'
     ),
-    verify_argv=("test", "-f", "{install}/lib/libelpa.so"),
+    # ``--enable-openmp`` makes ELPA's autotools tag the library name
+    # with ``_openmp`` (libelpa_openmp.so).  The non-OpenMP build would
+    # produce libelpa.so instead.  Our SIESTA cmake step also looks for
+    # the _openmp variant via pkg-config (elpa_openmp.pc).
+    verify_argv=("test", "-f", "{install}/lib/libelpa_openmp.so"),
     needs_cuda=True,
     clone_recurse_submodules=False,
 )
@@ -704,6 +754,32 @@ _SIESTA_GPU_COMPONENT = BuildComponent(
         # the external ELPA install dir.  Semicolons (cmake list
         # separator), not colons.
         "-DCMAKE_PREFIX_PATH={env_prefix};{dep_elpa}",
+        # cmake's default ``CMAKE_SYSTEM_PREFIX_PATH`` always includes
+        # /usr/local regardless of what we pass via ``CMAKE_PREFIX_PATH``.
+        # If the host has a prior SIESTA-stack install at
+        # /usr/local/lib/cmake/{s-dftd3,mctc-lib,libfdf,libgridxc,
+        # libpsml,xmlf90}/ -- which many workstations do -- find_package
+        # picks that up FIRST.  Stale *-targets.cmake there make the
+        # ``include(...)`` in the system config files abort fatally
+        # before SIESTA's source fallback (the bundled External/<pkg>/
+        # submodule) gets a chance.  IGNORE_PATH + IGNORE_PREFIX_PATH
+        # surgically skip /usr/local for THIS build only -- nothing on
+        # the host is touched.
+        "-DCMAKE_IGNORE_PATH=/usr/local;/usr/local/lib;"
+        "/usr/local/lib/cmake;/usr/local/include",
+        "-DCMAKE_IGNORE_PREFIX_PATH=/usr/local",
+        # Block /usr/local/lib/cmake from leaking into the build.  Many
+        # workstations have a pre-existing system install of
+        # s-dftd3 / mctc-lib / libfdf / libgridxc / libpsml / xmlf90
+        # there (often from a prior SIESTA build) and SIESTA's cmake
+        # finds them BEFORE the conda env / the bundled External/ tree.
+        # If those system installs are stale (missing *-targets.cmake)
+        # the configure aborts with a fatal "include could not find
+        # requested file" error.  IGNORE_PATH skips them; the bundled
+        # External/<package>/ sources still get picked up.
+        "-DCMAKE_IGNORE_PATH=/usr/local;/usr/local/lib;"
+        "/usr/local/lib/cmake;/usr/local/include",
+        "-DCMAKE_IGNORE_PREFIX_PATH=/usr/local",
         # Env-isolation pins (compilers + MPI from env).  SIESTA's CUDA
         # acceleration is entirely via ELPA's CUDA-enabled build, so
         # SIESTA itself needs no CUDA flags.
@@ -776,6 +852,11 @@ _SIESTA_GPU = Recipe(
         f"gfortran_linux-64={_GCC_VERSION}",
         "cmake>=3.30", "ninja", "make", "git", "m4",
         "pkg-config",
+        # Autotools chain.  ELPA's build invokes ``libtool`` directly
+        # (via its ``nvcc_wrap`` script) when compiling the NVIDIA-GPU
+        # .cu kernels into .lo objects.  Without these, the build dies
+        # with ``libtool: command not found`` partway through.
+        "autoconf", "automake", "libtool",
         # CUDA toolkit (mirrors molbuilder-pySCF's pattern).  Version
         # pinned via MOLBUILDER_CUDA_VERSION (default 13.*).
         f"cuda-version={_CUDA_VERSION}",

@@ -517,9 +517,35 @@ def cmd_install(name: str, dry_run: bool, check: bool,
         build_on_progress=on_progress,
         build_skip_network_check=skip_network_check,
     )
+
+    # If the build_spec executor short-circuited on preflight errors,
+    # print them PROMINENTLY before the per-step recap.  Previously
+    # the ``build:preflight`` step was silently filtered out by the
+    # ``startswith("build:")`` skip rule so the user got "install
+    # FAILED" with zero diagnostic info.  This is the failure mode
+    # the user hit on 2026-06-15 when ELPA's empty repo_url caused a
+    # check_repo_reachable failure that never reached the terminal.
+    if (result.build_result is not None
+            and result.build_result.preflight_errors):
+        click.echo("", err=True)
+        click.echo("=" * 64, err=True)
+        click.echo("  BUILD PREFLIGHT FAILED -- install cannot proceed",
+                   err=True)
+        click.echo("=" * 64, err=True)
+        for err_msg in result.build_result.preflight_errors:
+            for line in err_msg.splitlines():
+                click.echo(f"  ! {line}", err=True)
+        click.echo("", err=True)
+
+    # Per-step recap.  Build steps (component.phase) were already
+    # streamed live by on_progress, so we skip those.  But the
+    # ``build:preflight`` pseudo-step is the EXCEPTION: preflight
+    # never runs through on_progress (it short-circuits before
+    # phases), so if we skipped it here too the user sees nothing.
+    # The block above already printed preflight_errors loudly, so
+    # the recap still skips it (avoiding duplication).
     for step in result.steps:
         if step.label.startswith("build:"):
-            # Already streamed by on_progress; skip the trailing recap.
             continue
         click.echo(f"-- {step.label} (rc={step.returncode})")
         if step.output.strip():
