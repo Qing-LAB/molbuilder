@@ -206,50 +206,23 @@ def _probe_gpu() -> Tuple[Optional[str], Optional[int], Optional[str]]:
     return name, vram, cc
 
 
-_TOPO_HEADER_RE = re.compile(r"GPU0\s")
-
-
 def _probe_gpu_numa() -> Optional[int]:
     """Return the NUMA node GPU 0 is attached to (None if not detectable).
 
-    Parses ``nvidia-smi topo -m`` and reads the ``NUMA Affinity`` column
-    of the row whose label starts ``GPU0``.  Column order is fixed in
-    nvidia-smi but the column count varies with GPU count, so we locate
-    the column by its header rather than positional offset.
+    Delegates to :func:`molbuilder.runwrap._probe_gpu0_numa`, which is
+    the single source of truth across the project for this probe.  It
+    uses NVML (via ``nvidia-ml-py``) + the kernel sysfs ABI
+    (``/sys/bus/pci/devices/<id>/numa_node``) -- no parsing of
+    ``nvidia-smi`` tabular output, which was the failure mode of an
+    earlier in-house implementation that misread the "GPU NUMA ID"
+    column as the "NUMA Affinity" column and broke a Stage-3 run
+    on 2026-06-16.  Same call here keeps the advisor's reading
+    consistent with what the wrapper actually bakes into the run
+    script (any future change to the probe lights up both surfaces
+    automatically).
     """
-    if shutil.which("nvidia-smi") is None:
-        return None
-    rc, out = _run_cmd(["nvidia-smi", "topo", "-m"])
-    if rc != 0:
-        return None
-    lines = out.splitlines()
-    header_idx = None
-    for i, line in enumerate(lines):
-        if "NUMA Affinity" in line:
-            header_idx = i
-            break
-    if header_idx is None:
-        return None
-    header_cols = [c.strip() for c in re.split(r"\s{2,}|\t", lines[header_idx])
-                   if c.strip()]
-    try:
-        numa_col = header_cols.index("NUMA Affinity")
-    except ValueError:
-        return None
-    for line in lines[header_idx + 1:]:
-        if not _TOPO_HEADER_RE.match(line):
-            continue
-        cols = [c.strip() for c in re.split(r"\s{2,}|\t", line) if c.strip()]
-        # Header has one less column than the data row (the leading
-        # GPU label column has no header text), so shift by +1.
-        idx = numa_col + 1
-        if 0 <= idx < len(cols):
-            try:
-                return int(cols[idx])
-            except ValueError:
-                return None
-        return None
-    return None
+    from molbuilder.runwrap import _probe_gpu0_numa  # local import to avoid cycle
+    return _probe_gpu0_numa()
 
 
 def _probe_mps_available() -> bool:
