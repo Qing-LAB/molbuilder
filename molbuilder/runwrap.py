@@ -622,17 +622,47 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
         'then _n_sockets=1; fi\n'
         '_cps=$(( _phys_cores / _n_sockets ))\n'
         '[ "$_cps" -lt 1 ] && _cps=1\n'
+        # ---- MPS availability ----
+        # NVIDIA Multi-Process Service: a daemon that lets multiple
+        # CUDA client processes share one GPU CONCURRENTLY via Hyper-Q
+        # instead of serialising through the driver context.  Without
+        # MPS, our 2 MPI ranks queue their CUDA calls sequentially --
+        # one rank's ELPA-GPU diag must finish before the other's can
+        # start.  With MPS, both ranks' kernels run on the GPU at the
+        # same time.  The binary lives on the HOST DRIVER side
+        # (nvidia-cuda-mps-control); not a conda package.
+        '_have_mps=0\n'
+        'if command -v nvidia-cuda-mps-control >/dev/null 2>&1; '
+        'then _have_mps=1; fi\n'
+        # User overrides: --mps / --no-mps flag wins; env var second;
+        # default ON when MPS is available AND the run will use >= 2
+        # ranks (single-rank MPS adds overhead with no concurrency
+        # benefit).  Decided AFTER mpi_np resolves below.
+        '_use_mps_default="${MOLBUILDER_USE_MPS:-$_have_mps}"\n'
         '# Echo what we detected so the user can sanity-check it\n'
         'echo "molbuilder: detected phys_cores=$_phys_cores, '
-        'n_sockets=$_n_sockets, cores_per_socket=$_cps" >&2\n'
-        # MPI policy: 1 rank per package, except single-socket
-        # small (CPS < 16) gets 1 rank total.
-        'if [ "$_n_sockets" -ge 2 ]; then\n'
-        '    _gpu_mpi_np_default=2\n'
-        'elif [ "$_cps" -ge 16 ]; then\n'
-        '    _gpu_mpi_np_default=2\n'
+        'n_sockets=$_n_sockets, cores_per_socket=$_cps, '
+        'mps_available=$_have_mps" >&2\n'
+        # ---- MPI rank policy ----
+        # With MPS: target ~4 ranks/GPU (ELPA User Guide §"ELPA -
+        # Usability" reports 4 ranks/GPU as the sweet spot without
+        # NCCL on 2024.05; our older 2021.11.001 build runs in the
+        # same regime).  Cap so each rank gets >= 4 cores -- ranks
+        # crammed onto fewer cores lose to MPI overhead.
+        # Without MPS: ranks serialise on the GPU, so 2 is the
+        # practical ceiling (the prior 2026-06-15 policy).
+        'if [ "$_use_mps_default" = "1" ]; then\n'
+        '    _gpu_mpi_np_default=$(( _phys_cores / 4 ))\n'
+        '    [ "$_gpu_mpi_np_default" -gt 4 ] && _gpu_mpi_np_default=4\n'
+        '    [ "$_gpu_mpi_np_default" -lt 1 ] && _gpu_mpi_np_default=1\n'
         'else\n'
-        '    _gpu_mpi_np_default=1\n'
+        '    if [ "$_n_sockets" -ge 2 ]; then\n'
+        '        _gpu_mpi_np_default=2\n'
+        '    elif [ "$_cps" -ge 16 ]; then\n'
+        '        _gpu_mpi_np_default=2\n'
+        '    else\n'
+        '        _gpu_mpi_np_default=1\n'
+        '    fi\n'
         'fi\n'
         + (
             # n_atoms clamp -- same rationale as CPU path (avoid empty
@@ -665,10 +695,12 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
         '# Banner: single-line, stderr, kubectl-style.\n'
         'echo "molbuilder: GPU mode (ELPA-CUDA, no NCCL) -- '
         'mpi_np=$_gpu_mpi_np_default, OMP=$_omp_default, '
+        'mps=$_use_mps_default, '
         '--bind-to core (--map-by chosen at launch from mpi_np vs '
         'n_sockets)" >&2\n'
         'echo "molbuilder: override via MOLBUILDER_MPI_NP / '
-        'MOLBUILDER_OMP_NUM_THREADS / -np / -omp" >&2\n'
+        'MOLBUILDER_OMP_NUM_THREADS / MOLBUILDER_USE_MPS / '
+        '-np / -omp / --mps / --no-mps" >&2\n'
         "\n"
     )
 
@@ -1021,6 +1053,19 @@ def render_run_wrapper(script_path: Path, *,
             f"                exit 1\n"
             f"            fi\n"
             f'            _omp_threads="$2"; shift 2 ;;\n'
+            # MPS toggle.  Default state is decided in the GPU runtime
+            # defaults block based on (a) ``nvidia-cuda-mps-control``
+            # binary presence and (b) the MOLBUILDER_USE_MPS env var.
+            # These flags ALWAYS win.  Single-rank runs auto-disable
+            # below (MPS has overhead with no concurrency benefit when
+            # only one process touches the GPU).
+            + (
+                f"        --mps)\n"
+                f'            _use_mps_default=1; shift ;;\n'
+                f"        --no-mps)\n"
+                f'            _use_mps_default=0; shift ;;\n'
+                if gpu_mode else ""
+            ) +
             f"        -h|--help)\n"
             f'            cat <<USAGE\n'
             f'Usage: bash $(basename "$0") [--continue|-c] [--force|-f] [--cold] '
@@ -1126,6 +1171,48 @@ def render_run_wrapper(script_path: Path, *,
             )
             + f""
             f"export OPENBLAS_NUM_THREADS=1\n"
+            # MPS setup: enable Hyper-Q GPU sharing when (a) the binary
+            # is on PATH, (b) the user hasn't opted out, and (c) we'll
+            # actually have multiple ranks (single-rank MPS is pure
+            # overhead).  Per-job pipe / log directories so concurrent
+            # molbuilder runs don't trample each other's MPS daemon.
+            # Trap on EXIT cleans up after siesta returns.
+            + (
+                'if [ "$_use_mps_default" = "1" ] '
+                '&& [ "$_mpi_np" -ge 2 ]; then\n'
+                '    export CUDA_MPS_PIPE_DIRECTORY="/tmp/mb-mps-$$"\n'
+                '    export CUDA_MPS_LOG_DIRECTORY="/tmp/mb-mps-$$-log"\n'
+                '    mkdir -p "$CUDA_MPS_PIPE_DIRECTORY" '
+                '"$CUDA_MPS_LOG_DIRECTORY" 2>/dev/null\n'
+                '    # Start MPS only if not already running for THIS\n'
+                '    # pipe dir (a global one started outside this run\n'
+                '    # uses a different dir, so this is independent).\n'
+                '    if ! echo get_server_list '
+                '| nvidia-cuda-mps-control 2>/dev/null '
+                '| grep -q .; then\n'
+                '        nvidia-cuda-mps-control -d 2>/dev/null\n'
+                '        # Give the daemon a beat to bind its socket\n'
+                '        # before mpirun launches the ranks.\n'
+                '        sleep 0.5\n'
+                '    fi\n'
+                '    # Cleanup: stop daemon + remove per-job dirs on\n'
+                '    # ANY exit (success, error, signal).\n'
+                '    trap \'echo quit | nvidia-cuda-mps-control '
+                '>/dev/null 2>&1; '
+                'rm -rf "$CUDA_MPS_PIPE_DIRECTORY" '
+                '"$CUDA_MPS_LOG_DIRECTORY"\' EXIT\n'
+                '    echo "molbuilder: MPS enabled '
+                '(pipe=$CUDA_MPS_PIPE_DIRECTORY)" >&2\n'
+                'else\n'
+                '    if [ "$_use_mps_default" = "1" ] '
+                '&& [ "$_mpi_np" -lt 2 ]; then\n'
+                '        echo "molbuilder: MPS auto-disabled '
+                '(single-rank run; MPS adds overhead with no '
+                'concurrency benefit)" >&2\n'
+                '    fi\n'
+                'fi\n'
+                if gpu_mode else ""
+            )
         )
         if max_memory_mb is not None and int(max_memory_mb) > 0:
             kb = int(max_memory_mb) * 1024
