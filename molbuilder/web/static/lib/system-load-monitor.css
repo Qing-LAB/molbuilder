@@ -103,6 +103,13 @@
     min-width: 13.5em;
 }
 
+/* GPU / GPU BW cells: value is just "100%" so they don't need
+ * the full 12em.  Tightens the strip when GPU is on. */
+.system-load-cell[data-metric="gpu"] .value,
+.system-load-cell[data-metric="gpubw"] .value {
+    min-width: 3.5em;
+}
+
 .system-load-cell canvas.spark {
     display: block;
     /* width / height set as HTML attributes (120 / 32) on the canvas
@@ -128,7 +135,8 @@
     .system-load-cell canvas.spark {
         width: 60px;
     }
-    .system-load-cell[data-metric="vram"] {
+    .system-load-cell[data-metric="vram"],
+    .system-load-cell[data-metric="gpubw"] {
         display: none;  /* hide on phones; covered by the GPU cell's
                            per-device tooltip on hover anyway */
     }

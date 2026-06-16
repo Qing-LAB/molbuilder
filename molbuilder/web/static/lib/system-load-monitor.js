@@ -93,16 +93,18 @@
         var root = $$("#system-load-monitor");
         if (!root) return;  // page didn't include the widget HTML; bail
 
-        var cellCpu  = $$("[data-metric='cpu']",  root);
-        var cellRam  = $$("[data-metric='ram']",  root);
-        var cellGpu  = $$("[data-metric='gpu']",  root);
-        var cellVram = $$("[data-metric='vram']", root);
-        var toggle   = $$(".system-load-toggle", root);
+        var cellCpu   = $$("[data-metric='cpu']",   root);
+        var cellRam   = $$("[data-metric='ram']",   root);
+        var cellGpu   = $$("[data-metric='gpu']",   root);
+        var cellGpuBw = $$("[data-metric='gpubw']", root);
+        var cellVram  = $$("[data-metric='vram']",  root);
+        var toggle    = $$(".system-load-toggle", root);
 
-        var bufCpu  = ringBuffer(BUFFER_N);
-        var bufRam  = ringBuffer(BUFFER_N);
-        var bufGpu  = ringBuffer(BUFFER_N);
-        var bufVram = ringBuffer(BUFFER_N);
+        var bufCpu   = ringBuffer(BUFFER_N);
+        var bufRam   = ringBuffer(BUFFER_N);
+        var bufGpu   = ringBuffer(BUFFER_N);
+        var bufGpuBw = ringBuffer(BUFFER_N);
+        var bufVram  = ringBuffer(BUFFER_N);
 
         function updateCell(cell, buf, value, valueText) {
             if (!cell) return;
@@ -217,40 +219,68 @@
                         + (d.ram_used_gb || 0).toFixed(2) + " GB used of "
                         + (d.ram_total_gb || 0).toFixed(2) + " GB total";
                     // GPU: server returns [] when NVML init failed (CPU-
-                    // only host or driver missing).  Hide both GPU cells
-                    // entirely; widget collapses to 2 cells.
+                    // only host or driver missing).  Hide all three GPU
+                    // cells entirely; widget collapses to 2 cells.
                     var gpus = d.gpus || [];
                     if (gpus.length === 0) {
-                        cellGpu.hidden  = true;
-                        cellVram.hidden = true;
+                        cellGpu.hidden   = true;
+                        cellGpuBw.hidden = true;
+                        cellVram.hidden  = true;
                         return;
                     }
-                    cellGpu.hidden  = false;
-                    cellVram.hidden = false;
+                    cellGpu.hidden   = false;
+                    cellGpuBw.hidden = false;
+                    cellVram.hidden  = false;
                     // Multi-GPU: report GPU 0 in the sparklines (the
                     // common case) and put the per-device breakdown in
                     // the cell title (hover tooltip).
                     var g0 = gpus[0];
-                    var gUtil = (typeof g0.util_pct === "number") ? g0.util_pct : 0;
-                    var gMem  = (typeof g0.mem_pct  === "number") ? g0.mem_pct  : 0;
+                    var gUtil = (typeof g0.util_pct      === "number") ? g0.util_pct     : 0;
+                    var gBw   = (typeof g0.util_mem_pct  === "number") ? g0.util_mem_pct : 0;
+                    var gMem  = (typeof g0.mem_pct       === "number") ? g0.mem_pct      : 0;
                     bufGpu.push(gUtil);
+                    bufGpuBw.push(gBw);
                     bufVram.push(gMem);
-                    updateCell(cellGpu, bufGpu, gUtil,
-                               gUtil.toFixed(0) + "%");
+                    updateCell(cellGpu,   bufGpu,   gUtil, gUtil.toFixed(0) + "%");
+                    updateCell(cellGpuBw, bufGpuBw, gBw,   gBw.toFixed(0)   + "%");
                     updateCell(cellVram, bufVram, gMem,
                                gMem.toFixed(0) + "%  "
                                + ((g0.mem_used_mb || 0) / 1024).toFixed(1) + "/"
                                + ((g0.mem_total_mb || 0) / 1024).toFixed(1) + " GB");
-                    // Tooltip: per-GPU name + util + mem.  Cheap derivation;
-                    // text-only so no XSS surface.
+                    // Tooltips: shared text-only summary across all 3
+                    // GPU cells.  Per-cell context line + per-GPU
+                    // device breakdown.  Surfaces power / temp / clocks
+                    // which are NOT on the strip but matter for
+                    // diagnosis: drops in power_w mid-run = thermal /
+                    // power throttle; sm_clock_mhz drop at sustained
+                    // 100% util = clock throttle (often the underlying
+                    // cause).  All fields are best-effort -- show "—"
+                    // when NVML didn't return them on this chip.
+                    function _fmt(v, suffix) {
+                        return (typeof v === "number") ? (v + suffix) : "—";
+                    }
                     var tip = gpus.map(function(g, i) {
-                        return "GPU " + i + " " + (g.name || "?")
-                            + ": util " + (g.util_pct || 0) + "%, mem "
-                            + ((g.mem_used_mb || 0) / 1024).toFixed(1) + "/"
-                            + ((g.mem_total_mb || 0) / 1024).toFixed(1) + " GB";
+                        var line = "GPU " + i + " " + (g.name || "?")
+                            + "\n  SM compute   : " + _fmt(g.util_pct, "%")
+                            + "\n  Memory BW    : " + _fmt(g.util_mem_pct, "%")
+                            + "\n  VRAM         : "
+                              + ((g.mem_used_mb || 0) / 1024).toFixed(1) + "/"
+                              + ((g.mem_total_mb || 0) / 1024).toFixed(1) + " GB"
+                              + "  (" + _fmt(g.mem_pct, "%") + ")"
+                            + "\n  Power        : " + _fmt(g.power_w, " W")
+                            + "\n  Temperature  : " + _fmt(g.temp_c, " °C")
+                            + "\n  SM clock     : " + _fmt(g.sm_clock_mhz, " MHz")
+                            + "\n  Memory clock : " + _fmt(g.mem_clock_mhz, " MHz");
+                        return line;
                     }).join("\n");
-                    cellGpu.title  = tip;
-                    cellVram.title = tip;
+                    // Per-cell tooltip headline so the hover reads
+                    // naturally on whichever cell the user is over.
+                    cellGpu.title   = "GPU compute (SM busy %)\n" + tip;
+                    cellGpuBw.title = "GPU memory-bandwidth %\n"
+                        + "high here + low GPU = memory-bandwidth bound\n"
+                        + "(more ranks won't help; smaller BlockSize might)\n\n"
+                        + tip;
+                    cellVram.title  = "VRAM occupancy\n" + tip;
                 })
                 .catch(function(err) {
                     if (err && err.name === "AbortError") return;
@@ -258,9 +288,19 @@
                 });
         }
 
-        var timer = null;
+        // Polling-active iff (a) document is visible AND (b) user has
+        // NOT collapsed the widget.  Both conditions are flipped by
+        // independent event sources (visibilitychange + toggle click)
+        // so we OR-stop / AND-start instead of letting either source
+        // unconditionally call startTimer() (which would resume polling
+        // even when the user has explicitly collapsed -- the original
+        // bug this commit closes).
+        var timer       = null;
+        var userClosed  = false;   // user clicked the collapse toggle
         function startTimer() {
             if (timer !== null) return;
+            if (userClosed)      return;     // collapsed -> never poll
+            if (document.hidden) return;     // tab backgrounded -> wait
             poll();  // immediate first sample so the user doesn't wait 1 s
             timer = setInterval(poll, POLL_MS);
         }
@@ -268,6 +308,12 @@
             if (timer === null) return;
             clearInterval(timer);
             timer = null;
+            // Cancel any in-flight fetch so we don't render a stale
+            // sample on resume.  Idempotent if aborter is null.
+            if (aborter) {
+                try { aborter.abort(); } catch (_) { /* ignore */ }
+                aborter = null;
+            }
         }
         document.addEventListener("visibilitychange", function() {
             if (document.hidden) stopTimer();
@@ -278,15 +324,24 @@
         // between tabs preserves the user's choice; cleared on
         // browser close (this is a transient UI preference, not a
         // user setting).
+        //
+        // Collapsing now ALSO stops polling (and aborts any in-flight
+        // request) -- with the widget hidden the snapshots are wasted
+        // server work + wasted client bandwidth.  Expanding restarts
+        // polling AND triggers an immediate first sample so the
+        // sparklines re-populate without a 1 s wait.
         function applyCollapsed(collapsed) {
+            userClosed = !!collapsed;
             if (collapsed) {
                 root.classList.add("is-collapsed");
                 toggle.setAttribute("aria-pressed", "true");
                 toggle.title = "Show server load";
+                stopTimer();
             } else {
                 root.classList.remove("is-collapsed");
                 toggle.setAttribute("aria-pressed", "false");
                 toggle.title = "Hide server load";
+                startTimer();
             }
         }
         if (toggle) {
@@ -301,9 +356,10 @@
             try { saved = sessionStorage.getItem(STORAGE_KEY_COLLAPSED) || "0"; }
             catch (_) { /* ignore */ }
             applyCollapsed(saved === "1");
+        } else {
+            // No toggle button mounted -- default to polling.
+            startTimer();
         }
-
-        startTimer();
     }
 
     if (document.readyState === "loading") {

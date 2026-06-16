@@ -92,25 +92,72 @@ def _gpu_name(handle) -> str:
     return str(n)
 
 
+def _try(fn, *args):
+    """NVML field probe wrapper.  Returns ``fn(*args)`` or ``None`` if
+    NVML raises -- some fields aren't supported on every chip
+    (consumer cards lack power-cap, etc.) so the snapshot stays
+    partial-fail rather than all-or-nothing."""
+    try:
+        return fn(*args)
+    except Exception:  # noqa: BLE001 -- NVML throws many distinct types
+        return None
+
+
 def _gpu_snapshot() -> List[Dict[str, Any]]:
-    """One entry per GPU; empty list when NVML is unavailable."""
+    """One entry per GPU; empty list when NVML is unavailable.
+
+    Fields emitted per GPU (all best-effort -- consumer cards may not
+    expose every probe, in which case the value is ``None`` and the
+    widget shows ``—`` for that cell):
+
+      * ``util_pct``       -- SM compute %% (kernels running)
+      * ``util_mem_pct``   -- memory controller %% (VRAM bandwidth
+                              utilisation -- distinguishes compute-bound
+                              from memory-bandwidth-bound kernels;
+                              same struct as util_pct, no extra call)
+      * ``mem_used_mb`` / ``mem_total_mb`` / ``mem_pct``
+                             -- VRAM occupancy (capacity, not bw)
+      * ``power_w``        -- current power draw (W); drops mid-run
+                              signal thermal/power throttle
+      * ``temp_c``         -- GPU package temperature (°C);
+                              >83 °C on consumer cards triggers throttle
+      * ``sm_clock_mhz``   -- graphics clock (boost behaviour visible
+                              here when correlated against util_pct)
+      * ``mem_clock_mhz``  -- memory clock (drops when not under load)
+    """
     if not _NVML_OK or pynvml is None:
         return []
     out: List[Dict[str, Any]] = []
     for i, h in enumerate(_GPU_HANDLES):
         try:
-            util = pynvml.nvmlDeviceGetUtilizationRates(h).gpu
-            mem  = pynvml.nvmlDeviceGetMemoryInfo(h)
+            util  = pynvml.nvmlDeviceGetUtilizationRates(h)
+            mem   = pynvml.nvmlDeviceGetMemoryInfo(h)
             mem_used_mb  = mem.used  / (1 << 20)
             mem_total_mb = mem.total / (1 << 20)
             mem_pct = (100.0 * mem.used / mem.total) if mem.total else 0.0
+            # Remaining fields are best-effort: every consumer card
+            # exposes them, but data-center variants or virtualised
+            # environments sometimes don't.
+            power_mw = _try(pynvml.nvmlDeviceGetPowerUsage, h)
+            temp_c   = _try(pynvml.nvmlDeviceGetTemperature, h,
+                            pynvml.NVML_TEMPERATURE_GPU)
+            sm_mhz   = _try(pynvml.nvmlDeviceGetClockInfo, h,
+                            pynvml.NVML_CLOCK_GRAPHICS)
+            mem_mhz  = _try(pynvml.nvmlDeviceGetClockInfo, h,
+                            pynvml.NVML_CLOCK_MEM)
             out.append({
                 "index":         i,
                 "name":          _gpu_name(h),
-                "util_pct":      float(util),
+                "util_pct":      float(util.gpu),
+                "util_mem_pct":  float(util.memory),
                 "mem_used_mb":   round(mem_used_mb, 1),
                 "mem_total_mb": round(mem_total_mb, 1),
                 "mem_pct":      round(mem_pct, 1),
+                "power_w":      (None if power_mw is None
+                                  else round(power_mw / 1000.0, 1)),
+                "temp_c":       (None if temp_c   is None else int(temp_c)),
+                "sm_clock_mhz":  (None if sm_mhz   is None else int(sm_mhz)),
+                "mem_clock_mhz": (None if mem_mhz  is None else int(mem_mhz)),
             })
         except Exception as exc:  # noqa: BLE001
             # Don't let one flaky GPU kill the whole snapshot --
