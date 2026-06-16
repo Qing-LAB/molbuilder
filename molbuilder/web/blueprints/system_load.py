@@ -27,6 +27,7 @@ human-driven widget polling at multi-second cadence.
 from __future__ import annotations
 
 import logging
+import subprocess
 from typing import Any, Dict, List
 
 from flask import Blueprint, jsonify
@@ -123,6 +124,101 @@ def _gpu_snapshot() -> List[Dict[str, Any]]:
     return out
 
 
+# --------------------------------------------------------------------- #
+#  Per-socket CPU topology + utilisation                                 #
+# --------------------------------------------------------------------- #
+#
+# Why per-socket matters: on multi-socket boxes running the SIESTA-GPU
+# wrapper with NUMA pinning, only one socket is active (ranks pinned
+# to the GPU-proximate socket; the other socket sits idle).  Aggregate
+# CPU% then reads "~10/20 cores busy", which a casual observer reads
+# as half-saturated.  Per-socket lets the tooltip say "socket 0:
+# 9/10 busy, socket 1: idle" so the diagnosis is "NUMA pin healthy,
+# GPU socket saturated", not "machine under-used".
+#
+# Topology is one-shot at module import (sockets don't move at run
+# time); per-CPU utilisation runs per request via psutil.
+
+
+def _read_cpu_to_socket_map() -> Dict[int, int]:
+    """Map ``logical_cpu_id -> socket_id`` from ``lscpu -p=CPU,Core,Socket,Node``.
+
+    Returns ``{}`` when lscpu is unavailable or the parse fails -- the
+    snapshot then skips ``per_socket_pct`` (front-end falls back to the
+    aggregate view, no breakage).
+    """
+    try:
+        cp = subprocess.run(
+            ["lscpu", "-p=CPU,Core,Socket,Node"],
+            capture_output=True, text=True, timeout=2.0,
+        )
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return {}
+    if cp.returncode != 0:
+        return {}
+    mapping: Dict[int, int] = {}
+    for line in cp.stdout.splitlines():
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split(",")
+        if len(parts) < 3:
+            continue
+        try:
+            cpu_id = int(parts[0])
+            socket_id = int(parts[2])
+        except ValueError:
+            continue
+        mapping[cpu_id] = socket_id
+    return mapping
+
+
+_CPU_TO_SOCKET: Dict[int, int] = _read_cpu_to_socket_map()
+
+
+def _per_socket_pct() -> List[Dict[str, Any]]:
+    """Aggregate psutil per-CPU% by socket.
+
+    Returns one entry per socket, sorted by socket id:
+      ``[{"socket": 0, "pct": 87.3, "cpu_count": 20}, ...]``
+
+    Returns ``[]`` when topology couldn't be read (single-socket
+    box, lscpu missing, etc.) -- caller treats absence as "skip the
+    per-socket breakdown, show only the aggregate".
+
+    Note: psutil's per-CPU list is indexed by LOGICAL CPU id (HT
+    siblings are separate entries).  Two HT-siblings on the same
+    physical core land in the same socket bucket, which is what we
+    want -- the saturation reading is "how busy is socket 0", not
+    "how busy is core 0".
+    """
+    if not _CPU_TO_SOCKET:
+        return []
+    try:
+        per_cpu = psutil.cpu_percent(interval=None, percpu=True)
+    except Exception:  # noqa: BLE001 -- defensive; psutil rarely fails here
+        return []
+    if not per_cpu:
+        return []
+    # Aggregate.
+    sums: Dict[int, float] = {}
+    counts: Dict[int, int] = {}
+    for cpu_idx, pct in enumerate(per_cpu):
+        sock = _CPU_TO_SOCKET.get(cpu_idx)
+        if sock is None:
+            continue
+        sums[sock]    = sums.get(sock, 0.0) + float(pct)
+        counts[sock]  = counts.get(sock, 0) + 1
+    out: List[Dict[str, Any]] = []
+    for sock in sorted(sums.keys()):
+        n = counts[sock] or 1
+        out.append({
+            "socket":    sock,
+            "pct":       round(sums[sock] / n, 1),
+            "cpu_count": counts[sock],
+        })
+    return out
+
+
 def snapshot() -> Dict[str, Any]:
     """Single-call system-load snapshot.
 
@@ -138,6 +234,13 @@ def snapshot() -> Dict[str, Any]:
     Unix 1/5/15 min queue-depth average) tells the truth about
     OVER-subscription: load 25 on a 20-core box means the run queue
     is queueing -- which a 100% cpu_pct can hide.
+
+    ``per_socket_pct`` (added 2026-06-16) emits one entry per CPU
+    socket so the tooltip can distinguish "GPU socket saturated +
+    other socket idle" (NUMA-pin healthy) from "both sockets half-
+    busy" (rank spread, paying UPI penalty).  Empty list on
+    single-socket / lscpu-less hosts -- the front-end falls back to
+    the aggregate-only view.
     """
     vm = psutil.virtual_memory()
     # ``getloadavg`` isn't on Windows; psutil emulates it but may
@@ -151,6 +254,7 @@ def snapshot() -> Dict[str, Any]:
         "cpu_pct":             psutil.cpu_percent(interval=None),
         "cpu_count_physical":  psutil.cpu_count(logical=False),
         "cpu_count_logical":   psutil.cpu_count(logical=True),
+        "per_socket_pct":      _per_socket_pct(),
         "loadavg_1m":          (None if la1  is None else round(la1,  2)),
         "loadavg_5m":          (None if la5  is None else round(la5,  2)),
         "loadavg_15m":         (None if la15 is None else round(la15, 2)),

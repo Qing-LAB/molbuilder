@@ -182,6 +182,32 @@
                             cpuTip += "\n[over-subscribed: load > physical cores]";
                         }
                     }
+                    // Per-socket breakdown -- empty list on single-
+                    // socket / lscpu-less hosts.  When present, this
+                    // is the load-bearing diagnostic for the SIESTA-
+                    // GPU NUMA-pin case: one socket fully busy +
+                    // other socket idle means "GPU socket saturated,
+                    // NUMA pin healthy".  Both half-busy means
+                    // "ranks spread, paying UPI penalty".
+                    var perSock = d.per_socket_pct;
+                    if (Array.isArray(perSock) && perSock.length >= 2) {
+                        cpuTip += "\nper socket:";
+                        var maxPct = 0, minPct = 100;
+                        perSock.forEach(function(s) {
+                            var p = (typeof s.pct === "number") ? s.pct : 0;
+                            cpuTip += "\n  socket " + s.socket
+                                + ": "     + p.toFixed(1) + "%"
+                                + " ("     + s.cpu_count + " logical CPUs)";
+                            if (p > maxPct) maxPct = p;
+                            if (p < minPct) minPct = p;
+                        });
+                        // Asymmetric load (one socket >70, another
+                        // <20) is the NUMA-pin signature.
+                        if (maxPct - minPct > 50 && maxPct > 70) {
+                            cpuTip += "\n[asymmetric: likely NUMA-pinned"
+                                   + " to one socket]";
+                        }
+                    }
                     cellCpu.title = cpuTip;
                     updateCell(cellRam, bufRam, ram,
                                ram.toFixed(0) + "%  "

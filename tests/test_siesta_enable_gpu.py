@@ -367,31 +367,106 @@ def test_write_run_wrapper_explicit_env_overrides_detection(
 # --------------------------------------------------------------------- #
 
 
-def test_gpu_runtime_defaults_block_fills_the_box(
+def test_gpu_runtime_defaults_block_uses_numa_aware_budget(
         tmp_path, caps_with_gpu_env):
-    """Policy (2026-06-16, revised after OMP-per-rank correction):
-    OMP_NUM_THREADS = (phys_cores - 1) // mpi_np.  Fills the box,
-    leaves 1 core for the ELPA-GPU host driver thread.
+    """Policy (2026-06-16, NUMA-aware revision):
 
-    OMP threads DO accelerate ELPA's host-side eigensolver stages
-    AND SIESTA's non-solver host code even with Diag.ELPA.GPU on --
-    the "GPU runtime switch not compatible with OpenMP" docs
-    sentence applies to a different API (elpa_setup_gpu) than what
-    SIESTA uses.
+      _gpu_budget = _cps           when NUMA-pinnable (dual+ socket,
+                                   GPU NUMA known, numactl available)
+                  = _phys_cores-1  otherwise
+      _omp_default = _gpu_budget / _gpu_mpi_np_default
 
-    Pin the load-bearing formula so a future "fixed 2" regression
+    Pin both branches of the budget decision + the divisor so a
+    regression to the old (_phys_cores - 1)/np formula (which over-
+    subscribed the GPU socket on dual-socket boxes when NUMA-pinned)
     surfaces loudly."""
     cfg = SiestaConfig(enable_gpu=True)
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
     wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
-    assert ("_omp_default=$(( (_phys_cores - 1) / _gpu_mpi_np_default ))"
-            in wrapper_text)
-    # The 2026-06-15 over-subscribing CPU-mode policy MUST NOT appear.
+    # NUMA-pin decision is a 3-condition AND.
+    assert 'if [ "$_gpu_numa" != "unknown" ] && ' in wrapper_text
+    assert '[ "$_n_sockets" -ge 2 ] && ' in wrapper_text
+    assert 'command -v numactl >/dev/null 2>&1' in wrapper_text
+    # Budget switch.
+    assert "_gpu_budget=$_cps" in wrapper_text
+    assert "_gpu_budget=$(( _phys_cores - 1 ))" in wrapper_text
+    # OMP divisor uses the budget, NOT phys_cores - 1 directly.
+    assert "_omp_default=$(( _gpu_budget / _gpu_mpi_np_default ))" in wrapper_text
+    # Earlier policies MUST NOT appear.
     assert "_omp_default=$(( _cps / 2 ))" not in wrapper_text
-    # The 2026-06-16 first-cut "fixed 2" policy MUST NOT appear either.
     assert "_omp_default=2\n" not in wrapper_text
+    assert ("_omp_default=$(( (_phys_cores - 1) / _gpu_mpi_np_default ))"
+            not in wrapper_text)
+
+
+def test_gpu_runtime_defaults_block_wraps_mpirun_in_numactl(
+        tmp_path, caps_with_gpu_env):
+    """The launch_cmd MUST prefix with $_numa_wrap_gpu so dual-socket
+    boxes with numactl can pin all ranks to the GPU socket.  For
+    single-socket / no-numactl hosts the variable is empty and the
+    launch line behaves as before."""
+    cfg = SiestaConfig(enable_gpu=True)
+    fdf_text = render_fdf(_mk_struct(), cfg)
+    fdf = tmp_path / "job.fdf"
+    fdf.write_text(fdf_text, encoding="utf-8")
+    wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
+    # The wrap variable is set inside the GPU defaults block.
+    assert ('_numa_wrap_gpu="numactl --cpunodebind=$_gpu_numa '
+            '--membind=$_gpu_numa"' in wrapper_text)
+    # The launch_cmd interpolates it (both MPI branches).
+    assert ('_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np '
+            '$_mpirun_bind siesta"' in wrapper_text)
+    # And the launch logic gives it a defensive default for CPU mode.
+    assert '_numa_wrap_gpu="${_numa_wrap_gpu:-}"' in wrapper_text
+
+
+def test_gpu_runtime_defaults_uses_effective_sockets_under_numa_pin(
+        tmp_path, caps_with_gpu_env):
+    """When numactl --cpunodebind restricts the cpuset to one NUMA
+    node, mpirun sees only ONE package inside its cpuset.  The
+    ppr:K:package mapping then needs _effective_sockets=1 -- using
+    the full _n_sockets count would underfill (K ranks on socket 0,
+    the remaining ranks never spawn because socket 1 is excluded).
+
+    Pin both the variable's definition AND the conditional override
+    so a regression to bare _n_sockets surfaces loudly."""
+    cfg = SiestaConfig(enable_gpu=True)
+    fdf_text = render_fdf(_mk_struct(), cfg)
+    fdf = tmp_path / "job.fdf"
+    fdf.write_text(fdf_text, encoding="utf-8")
+    wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
+    # The variable is set to _n_sockets and conditionally overridden.
+    assert "_effective_sockets=$_n_sockets" in wrapper_text
+    assert '[ "${_numa_pinned:-0}" = 1 ] && _effective_sockets=1' in wrapper_text
+    # Both branches of the placement decision use the EFFECTIVE count.
+    assert 'if [ "$_mpi_np" -le "$_effective_sockets" ]; then' in wrapper_text
+    assert ('_ppr=$(( (_mpi_np + _effective_sockets - 1) / '
+            '_effective_sockets ))' in wrapper_text)
+    # And the older bare-_n_sockets comparison MUST NOT appear.
+    assert 'if [ "$_mpi_np" -le "$_n_sockets" ]; then' not in wrapper_text
+
+
+def test_cpu_mode_wrapper_does_not_emit_numa_wrap_gpu_branches(
+        tmp_path, caps_with_gpu_env):
+    """For CPU-only SIESTA (no enable_gpu), the GPU defaults block
+    isn't injected -- the launcher's defensive default
+    ``_numa_wrap_gpu="${_numa_wrap_gpu:-}"`` is what keeps the
+    interpolation empty.  Pin that the variable initialiser still
+    appears (so the launch_cmd doesn't expand to an unbound var)."""
+    cfg = SiestaConfig(enable_gpu=False)
+    fdf_text = render_fdf(_mk_struct(), cfg)
+    fdf = tmp_path / "job.fdf"
+    fdf.write_text(fdf_text, encoding="utf-8")
+    wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
+    # The GPU defaults block must NOT be injected.
+    assert "_gpu_mpi_np_default" not in wrapper_text
+    assert "_gpu_budget" not in wrapper_text
+    # But the launch_cmd's defensive default MUST still be there.
+    assert '_numa_wrap_gpu="${_numa_wrap_gpu:-}"' in wrapper_text
+    # And the launch_cmd uses the (empty) interpolation.
+    assert '$_numa_wrap_gpu mpirun' in wrapper_text
 
 
 def test_gpu_runtime_defaults_block_emits_3_line_banner(

@@ -79,8 +79,11 @@ def test_run_passes_mpi_np_for_siesta(tmp_path):
     assert "_mpi_np_default=8" in text
     # Launch line includes the runtime-computed ``$_mpirun_bind`` slot
     # so bind-to / map-by can switch at run time between socket-spread
-    # and packed-on-package shapes.
-    assert '_launch_cmd="mpirun -np $_mpi_np $_mpirun_bind siesta"' in text
+    # and packed-on-package shapes, AND the ``$_numa_wrap_gpu`` slot
+    # so GPU+dual-socket+numactl combos can NUMA-pin all ranks to the
+    # GPU-proximate socket.  CPU mode leaves it empty.
+    assert ('_launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np '
+            '$_mpirun_bind siesta"' in text)
 
 
 def test_run_env_override(tmp_path):

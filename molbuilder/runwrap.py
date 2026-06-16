@@ -590,16 +590,30 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
         no-NCCL throughput optimum; BSC MareNostrum5 SIESTA-ACC report
         confirms on V100/A100/H100); without MPS, 2 dual-socket or
         ``cps >= 16``, else 1.  Clamped <= n_atoms.
-      * ``_omp_default``: ``(phys_cores - 1) // mpi_np`` -- fills the
-        box, leaves 1 core for the ELPA-GPU host driver thread.  Policy
-        revised 2026-06-16 after the OMP-per-rank correction: OMP threads
-        DO accelerate ELPA's host-side eigensolver stages and SIESTA's
-        non-solver host code even when ``Diag.ELPA.GPU`` is on.  The
-        prior "fixed 2" default was based on a misread of the
-        "GPU choice at runtime not compatible with OpenMP" ELPA docs
-        sentence -- that sentence applies to the elpa_setup_gpu
-        runtime-switch API (2023.11+), not to OpenMP threading within
-        a rank that uses elpa_set("nvidia-gpu", 1) at SCF-setup time.
+      * ``_gpu_numa``: NUMA node the GPU is attached to, parsed from
+        ``nvidia-smi topo -m``.  Either an integer string (``"0"``,
+        ``"1"``, ...) or the literal ``"unknown"`` when nvidia-smi is
+        missing or the topology table can't be parsed.
+      * ``_gpu_budget``: phys-core budget the OMP arithmetic divides.
+        Two regimes:
+          - NUMA-pinned (``_gpu_numa != "unknown"`` AND
+            ``_n_sockets >= 2`` AND numactl is on PATH): ``_cps`` --
+            the full GPU-proximate socket.  The other socket sits
+            idle, leaving plenty of room for the kernel + ELPA-GPU
+            host driver thread without reserving a core.
+          - Single-socket OR GPU-NUMA unknown: ``_phys_cores - 1``
+            -- the whole box minus 1 core for the driver thread,
+            because there is no other socket to absorb it.
+      * ``_omp_default``: ``_gpu_budget // mpi_np`` -- divide the
+        budget across ranks.  Policy revised 2026-06-16 after the
+        OMP-per-rank correction: OMP threads DO accelerate ELPA's
+        host-side eigensolver stages and SIESTA's non-solver host
+        code even when ``Diag.ELPA.GPU`` is on.  The "GPU choice at
+        runtime not compatible with OpenMP" ELPA docs sentence
+        applies to the ``elpa_setup_gpu`` runtime-switch API
+        (2023.11+), NOT to OpenMP threading within a rank that uses
+        ``elpa_set("nvidia-gpu", 1)`` at SCF-setup time (which is
+        the path SIESTA takes when ``Diag.ELPA.GPU .true.`` is set).
       * Override knobs (read here so the same banner can name them):
         ``MOLBUILDER_MPI_NP`` and ``MOLBUILDER_OMP_NUM_THREADS``.
 
@@ -694,14 +708,59 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
             f'fi\n'
             if n_atoms_lit else ""
         ) +
-        # OMP policy (2026-06-16): fill the box -- one OMP thread per
-        # idle core, divided across ranks.  OMP threads accelerate both
-        # ELPA's host-side eigensolver stages (tridiag, back-transform)
-        # AND SIESTA's non-solver host code (H_matrix_setup, grid,
-        # nlefsm) even when Diag.ELPA.GPU is on.  Leave 1 core for the
-        # ELPA-GPU host driver thread (the rank that owns the CUDA
-        # context spawns extra worker threads for async memcpy).
-        '_omp_default=$(( (_phys_cores - 1) / _gpu_mpi_np_default ))\n'
+        # ---- GPU NUMA proximity probe ----
+        # nvidia-smi topo -m exposes one row per GPU; the "NUMA
+        # Affinity" column names the NUMA node the GPU's PCIe root
+        # complex is attached to.  On dual-socket boxes with one GPU
+        # this is the socket the MPI ranks SHOULD bind to: every
+        # cudaMemcpy from a rank on the WRONG socket pays UPI/QPI
+        # crossing latency.  Best-effort: prints "unknown" when
+        # nvidia-smi is absent or the topology table can't be parsed
+        # (single-socket boxes always print "0" here, but we don't
+        # numactl-wrap those because there is only one socket).
+        '_gpu_numa=$(nvidia-smi topo -m 2>/dev/null '
+        '| awk \'/NUMA Affinity/ {for(i=1;i<=NF;i++) '
+        'if($i=="NUMA"&&$(i+1)=="Affinity") nc=i; next} '
+        '/^GPU0/ {if(nc) print $(nc+1)}\' '
+        '| head -n1)\n'
+        '[ -z "$_gpu_numa" ] && _gpu_numa="unknown"\n'
+        # ---- numactl availability + NUMA-pin decision ----
+        # numactl is the canonical tool for restricting a child
+        # process tree to one NUMA node.  We wrap mpirun (not each
+        # rank) so the cpuset is inherited uniformly by every rank
+        # OpenMPI forks.  Three conditions must all hold:
+        #   1. dual-socket+ box (single-socket has no NUMA penalty)
+        #   2. GPU NUMA known (else we don't know which socket)
+        #   3. numactl on PATH (otherwise the wrap would no-op)
+        '_numa_wrap_gpu=""\n'
+        '_numa_pinned=0\n'
+        'if [ "$_gpu_numa" != "unknown" ] && '
+        '[ "$_n_sockets" -ge 2 ] && '
+        'command -v numactl >/dev/null 2>&1; then\n'
+        '    _numa_wrap_gpu="numactl --cpunodebind=$_gpu_numa '
+        '--membind=$_gpu_numa"\n'
+        '    _numa_pinned=1\n'
+        'fi\n'
+        # ---- Phys-core budget for the OMP arithmetic ----
+        # NUMA-pinned: only the GPU socket is usable, but its full
+        # capacity is available (the OTHER socket sits idle, so the
+        # kernel + ELPA-GPU host driver thread can use it -- no need
+        # to reserve a core on the GPU socket).
+        # Single-socket / NUMA unknown: whole box is in play but the
+        # driver thread shares this socket, so leave 1 core.
+        'if [ "$_numa_pinned" = 1 ]; then\n'
+        '    _gpu_budget=$_cps\n'
+        'else\n'
+        '    _gpu_budget=$(( _phys_cores - 1 ))\n'
+        '    [ "$_gpu_budget" -lt 1 ] && _gpu_budget=1\n'
+        'fi\n'
+        # OMP policy (2026-06-16): fill the budget -- one OMP thread
+        # per available core, divided across ranks.  OMP threads
+        # accelerate BOTH ELPA's host-side eigensolver stages
+        # (tridiag, back-transform) AND SIESTA's non-solver host code
+        # (H_matrix_setup, grid, nlefsm) even when Diag.ELPA.GPU is
+        # on.  See the docstring for the policy correction note.
+        '_omp_default=$(( _gpu_budget / _gpu_mpi_np_default ))\n'
         '[ "$_omp_default" -lt 1 ] && _omp_default=1\n'
         '# Apply env-var overrides (precedence: env > policy)\n'
         '_gpu_mpi_np_default="${MOLBUILDER_MPI_NP:-$_gpu_mpi_np_default}"\n'
@@ -713,30 +772,19 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
         '# choose: one MPS daemon per GPU, all ranks share it).\n'
         '_use_mps_str="off"; '
         '[ "$_use_mps_default" = "1" ] && _use_mps_str="on"\n'
-        # GPU NUMA proximity probe (nvidia-smi topo -m, "NUMA Affinity"
-        # column of the GPU0 row).  Best-effort: shows "unknown" when
-        # the host has no nvidia-smi or the topology table parser
-        # can't find the column.  Surfacing this lets the user (or a
-        # downstream wrapper layer) bind ranks to the GPU-proximate
-        # socket via numactl on dual-socket machines.
-        '_gpu_numa=$(nvidia-smi topo -m 2>/dev/null '
-        '| awk \'/NUMA Affinity/ {for(i=1;i<=NF;i++) '
-        'if($i=="NUMA"&&$(i+1)=="Affinity") nc=i; next} '
-        '/^GPU0/ {if(nc) print $(nc+1)}\' '
-        '| head -n1)\n'
-        '[ -z "$_gpu_numa" ] && _gpu_numa="unknown"\n'
+        '_numa_str="off"; [ "$_numa_pinned" = 1 ] && '
+        '_numa_str="on (socket $_gpu_numa)"\n'
         '_total_cores_used=$(( _gpu_mpi_np_default * _omp_default ))\n'
-        '# Banner: 3 lines on stderr, kubectl-style.  Line 1 is the\n'
-        '# mode summary; line 2 is the derived arithmetic + NUMA\n'
-        '# proximity; line 3 is the advisor / override hint.\n'
+        # Banner: 3 lines on stderr, kubectl-style.  Line 1 is the
+        # mode summary; line 2 is the derived arithmetic + NUMA pin
+        # state + budget shape; line 3 is the advisor / override hint.
         'echo "molbuilder: GPU mode (ELPA-CUDA, no NCCL) -- '
         'mpi_np=$_gpu_mpi_np_default, OMP=$_omp_default, '
-        'mps=$_use_mps_str, '
-        '--bind-to core (--map-by chosen at launch from mpi_np vs '
-        'n_sockets)" >&2\n'
+        'mps=$_use_mps_str, numa-pin=$_numa_str" >&2\n'
         'echo "molbuilder: chosen $_gpu_mpi_np_default ranks '
         '× $_omp_default threads = $_total_cores_used '
-        'of $_phys_cores phys cores; GPU0 NUMA=$_gpu_numa" >&2\n'
+        'of $_gpu_budget budget cores (GPU0 NUMA=$_gpu_numa, '
+        'phys=$_phys_cores, cps=$_cps)" >&2\n'
         'echo "molbuilder: tune via \'molbuilder envs advise '
         'siesta-gpu\' or MOLBUILDER_MPI_NP / '
         'MOLBUILDER_OMP_NUM_THREADS / MOLBUILDER_USE_MPS / '
@@ -1360,17 +1408,35 @@ def render_run_wrapper(script_path: Path, *,
                 #                            each)
                 # The ppr form covers the single-socket-multi-rank
                 # case which a bare ``package`` mapping cannot.
-                'if [ "$_mpi_np" -le "$_n_sockets" ]; then\n'
+                # When numactl restricts the wrapper to one NUMA node,
+                # mpirun sees only that ONE socket in its cpuset.  The
+                # package-aware mapping must treat n_sockets as 1 in
+                # that regime; using the full 2-socket count would make
+                # ppr:K:package=2 underfill (K ranks on socket 0, the
+                # other K never spawn because socket 1 isn't visible).
+                # Outside the numactl wrap _effective_sockets matches
+                # the lscpu count and behaviour is unchanged.
+                '_effective_sockets=$_n_sockets\n'
+                '[ "${_numa_pinned:-0}" = 1 ] && _effective_sockets=1\n'
+                'if [ "$_mpi_np" -le "$_effective_sockets" ]; then\n'
                 '    _mpirun_bind="--bind-to core --map-by package:PE=$_omp_threads"\n'
                 'else\n'
-                '    _ppr=$(( (_mpi_np + _n_sockets - 1) / _n_sockets ))\n'
+                '    _ppr=$(( (_mpi_np + _effective_sockets - 1) / _effective_sockets ))\n'
                 '    _mpirun_bind="--bind-to core --map-by ppr:$_ppr:package:PE=$_omp_threads"\n'
                 'fi\n'
                 if gpu_mode else
                 f'_mpirun_bind=""\n'
             )
+            # ``_numa_wrap_gpu`` is set by _gpu_runtime_defaults_block
+            # in GPU mode; default to empty here so CPU-mode wrappers
+            # (which never inject that block) still see a defined var
+            # in the launch_cmd interpolation below.  This is also the
+            # safe-default branch when GPU mode runs on single-socket
+            # boxes / boxes where numactl isn't installed -- the block
+            # leaves the var empty in those cases.
+            + '_numa_wrap_gpu="${_numa_wrap_gpu:-}"\n'
             + f'if [ "$_has_mpi" = 1 ]; then\n'
-            f'    _launch_cmd="mpirun -np $_mpi_np $_mpirun_bind siesta"\n'
+            f'    _launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind siesta"\n'
             f'    if [ "$_has_omp" = 1 ]; then\n'
             f'        _launch_note="hybrid MPI+OMP ($_mpi_np ranks x $_omp_threads OMP threads)"\n'
             f'    else\n'
@@ -1380,7 +1446,7 @@ def render_run_wrapper(script_path: Path, *,
             f'    _launch_cmd="siesta"\n'
             f'    _launch_note="OMP-only build ($_omp_threads threads)"\n'
             f'elif [ -z "$_siesta_par" ]; then\n'
-            f'    _launch_cmd="mpirun -np $_mpi_np $_mpirun_bind siesta"\n'
+            f'    _launch_cmd="$_numa_wrap_gpu mpirun -np $_mpi_np $_mpirun_bind siesta"\n'
             f'    _launch_note="MPI fallback (probe inconclusive; safe default for MPI-compiled SIESTA)"\n'
             f'else\n'
             f'    _launch_cmd="siesta"\n'

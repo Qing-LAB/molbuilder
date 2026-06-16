@@ -18,7 +18,8 @@ from molbuilder.envs._cli import envs_group
 def _probe(*, phys_cores=20, sockets=1, cps=20,
            gpu_name="NVIDIA RTX 4090",
            gpu_vram_mb=24576, gpu_compute_cap="89",
-           gpu_numa=0, mps_available=True) -> _advise.HostProbe:
+           gpu_numa=0, mps_available=True,
+           numactl_available=True) -> _advise.HostProbe:
     return _advise.HostProbe(
         phys_cores=phys_cores, sockets=sockets,
         cores_per_socket=cps,
@@ -27,6 +28,7 @@ def _probe(*, phys_cores=20, sockets=1, cps=20,
         gpu_compute_cap=gpu_compute_cap,
         gpu_numa=gpu_numa,
         mps_available=mps_available,
+        numactl_available=numactl_available,
     )
 
 
@@ -62,11 +64,68 @@ def test_recommend_returns_three_named_presets_on_typical_workstation():
 
 
 def test_recommend_default_omp_fills_the_box():
-    """Policy-shape pin: OMP = (phys - 1) // np.  On 32-core box,
-    default (np=4) should give OMP=7, NOT the old fixed-2 value."""
+    """Policy-shape pin: OMP = (phys - 1) // np for SINGLE-socket.
+    On 32-core single-socket box, default (np=4) should give OMP=7,
+    NOT the old fixed-2 value."""
     presets = _advise.recommend(_probe(phys_cores=32, sockets=1, cps=32))
     assert presets[0].mpi_np == 4
     assert presets[0].omp == 7  # (32-1)//4 = 7
+
+
+# --------------------------------------------------------------------- #
+#  NUMA-pin policy: dual-socket budget = cores_per_socket                #
+# --------------------------------------------------------------------- #
+
+
+def test_recommend_dual_socket_uses_cps_budget_when_numa_pinnable():
+    """The Quan workstation: 2 sockets × 10 phys cores = 20 phys
+    total, GPU on NUMA 0, numactl installed.  All ranks should be
+    pinnable to socket 0 (the GPU-proximate one), so the budget the
+    advisor divides should be ``cores_per_socket=10``, NOT
+    ``phys_cores - 1 = 19``.
+
+    Concrete check: OMP = 10/np for each preset (matches the BSC
+    "OMP=2 sweet spot" at np=4 AND the new source's "OMP=10 on
+    socket 0" at np=1)."""
+    probe = _probe(phys_cores=20, sockets=2, cps=10)
+    assert probe.can_numa_pin is True
+    presets = _advise.recommend(probe)
+    default, memory, fallback = presets
+    assert default.mpi_np == 4 and default.omp == 2   # 10 // 4 = 2
+    assert memory.mpi_np == 2 and memory.omp == 5     # 10 // 2 = 5
+    assert fallback.mpi_np == 1 and fallback.omp == 10  # 10 // 1 = 10
+
+
+def test_recommend_dual_socket_falls_back_when_numactl_missing():
+    """numactl not installed -> can't pin to one NUMA -> we have to
+    spread across sockets and accept UPI latency.  Budget reverts to
+    ``phys_cores - 1``."""
+    probe = _probe(phys_cores=20, sockets=2, cps=10, numactl_available=False)
+    assert probe.can_numa_pin is False
+    presets = _advise.recommend(probe)
+    # Budget = 20 - 1 = 19; default (np=4) -> 19//4 = 4
+    assert presets[0].omp == 4
+
+
+def test_recommend_dual_socket_falls_back_when_gpu_numa_unknown():
+    """nvidia-smi couldn't tell us where GPU0 lives -> we can't
+    pin -> use spread."""
+    probe = _probe(phys_cores=20, sockets=2, cps=10, gpu_numa=None)
+    assert probe.can_numa_pin is False
+
+
+def test_can_numa_pin_requires_all_three_conditions():
+    """The property must mirror the runwrap.py bash conditions
+    exactly -- one source of truth, three required conditions."""
+    base = dict(phys_cores=20, sockets=2, cps=10,
+                gpu_numa=0, numactl_available=True)
+    assert _probe(**base).can_numa_pin is True
+    # Single-socket -> off
+    assert _probe(**{**base, "sockets": 1}).can_numa_pin is False
+    # GPU NUMA unknown -> off
+    assert _probe(**{**base, "gpu_numa": None}).can_numa_pin is False
+    # numactl missing -> off
+    assert _probe(**{**base, "numactl_available": False}).can_numa_pin is False
 
 
 def test_recommend_caps_np_by_atom_count():

@@ -48,7 +48,19 @@ _PROBE_TIMEOUT_S = 4.0
 
 @dataclass(frozen=True)
 class HostProbe:
-    """Host hardware snapshot used to derive recommendations."""
+    """Host hardware snapshot used to derive recommendations.
+
+    Fields cluster into three groups:
+
+    * CPU topology: ``phys_cores``, ``sockets``, ``cores_per_socket``
+      from ``lscpu -p=Core,Socket`` (HT-aware physical-core count).
+    * GPU snapshot: ``gpu_name``, ``gpu_vram_mb``, ``gpu_compute_cap``,
+      ``gpu_numa`` from ``nvidia-smi --query-gpu`` and ``topo -m``.
+    * Runtime affordances: ``mps_available`` checks
+      ``nvidia-cuda-mps-control`` on PATH; ``numactl_available`` checks
+      ``numactl`` on PATH (needed to NUMA-pin mpirun on multi-socket
+      hosts).
+    """
 
     phys_cores: int
     sockets: int
@@ -58,6 +70,22 @@ class HostProbe:
     gpu_compute_cap: Optional[str]
     gpu_numa: Optional[int]
     mps_available: bool
+    numactl_available: bool
+
+    @property
+    def can_numa_pin(self) -> bool:
+        """True when the wrapper would actually wrap mpirun in
+        ``numactl --cpunodebind=$_gpu_numa --membind=$_gpu_numa``.
+
+        Same three conditions the bash side checks (kept in sync to
+        keep the advisor's preset budgets aligned with what the
+        wrapper will actually do at runtime).
+        """
+        return (
+            self.sockets >= 2
+            and self.gpu_numa is not None
+            and self.numactl_available
+        )
 
     def describe(self) -> str:
         lines = [
@@ -79,6 +107,25 @@ class HostProbe:
         lines.append(
             f"mps:     {'available' if self.mps_available else 'NOT installed'}"
         )
+        lines.append(
+            f"numactl: {'available' if self.numactl_available else 'NOT installed'}"
+        )
+        if self.can_numa_pin:
+            lines.append(
+                f"numa-pin: ON — ranks will bind to socket "
+                f"{self.gpu_numa} (the {self.cores_per_socket}-core "
+                f"GPU-proximate socket)"
+            )
+        elif self.sockets >= 2 and self.gpu_numa is not None:
+            lines.append(
+                "numa-pin: OFF (numactl not installed — "
+                "ranks will spread across sockets, accepting UPI "
+                "crossing latency)"
+            )
+        else:
+            lines.append(
+                "numa-pin: N/A (single-socket box or GPU NUMA unknown)"
+            )
         return "\n".join(lines)
 
 
@@ -209,11 +256,16 @@ def _probe_mps_available() -> bool:
     return shutil.which("nvidia-cuda-mps-control") is not None
 
 
+def _probe_numactl_available() -> bool:
+    return shutil.which("numactl") is not None
+
+
 def probe_host() -> HostProbe:
     phys, nsock, cps = _probe_cores()
     name, vram, cc = _probe_gpu()
     numa = _probe_gpu_numa()
     mps = _probe_mps_available()
+    nctl = _probe_numactl_available()
     return HostProbe(
         phys_cores=phys,
         sockets=nsock,
@@ -223,6 +275,7 @@ def probe_host() -> HostProbe:
         gpu_compute_cap=cc,
         gpu_numa=numa,
         mps_available=mps,
+        numactl_available=nctl,
     )
 
 
@@ -278,12 +331,33 @@ def recommend(probe: HostProbe,
     artefact: it tells them when to pick this preset.
     """
     phys = max(1, probe.phys_cores)
+    cps = max(1, probe.cores_per_socket)
     # Cap rank count by atom count when known (same rule the wrapper
     # uses, kept in sync with _gpu_runtime_defaults_block).
     atom_cap = max(1, n_atoms) if n_atoms else None
 
+    # Phys-core budget mirrors the runwrap.py policy exactly:
+    #
+    # * NUMA-pinned (multi-socket + GPU NUMA known + numactl available):
+    #   only the GPU-proximate socket is usable, but its FULL capacity
+    #   is available -- the other socket sits idle, leaving room for
+    #   the kernel + ELPA-GPU host driver thread without reserving a
+    #   core on the GPU socket.  Budget = cps.
+    # * Single-socket OR NUMA unknown OR numactl missing: whole box
+    #   in play, but the driver thread shares this socket -- leave 1
+    #   core.  Budget = phys_cores - 1.
+    #
+    # See runwrap._gpu_runtime_defaults_block for the bash mirror.
+    if probe.can_numa_pin:
+        budget = cps
+    else:
+        budget = max(1, phys - 1)
+
     def _cap_np(target: int) -> int:
-        capped = min(target, phys)
+        # Cap by the BUDGET (cps when NUMA-pinned, else phys_cores).
+        # On a NUMA-pinned 10-core socket, 4 ranks of OMP=2 is the
+        # max throughput preset; capping by phys_cores=20 would lie.
+        capped = min(target, budget)
         if atom_cap is not None:
             capped = min(capped, atom_cap)
         return max(1, capped)
@@ -296,11 +370,11 @@ def recommend(probe: HostProbe,
         # The "ELPA GPU choice at runtime not compatible with OpenMP"
         # docs sentence applies to the elpa_setup_gpu runtime-switch
         # API (2023.11+), which our build does not use -- SIESTA picks
-        # GPU at SCF-setup time via Diag.ELPA.GPU.  So: fill the box,
-        # OMP = floor((phys_cores - 1) / mpi_np); leave 1 core for the
-        # ELPA-GPU host driver thread.
-        room = max(1, phys - 1)
-        return max(1, room // max(1, np_))
+        # GPU at SCF-setup time via Diag.ELPA.GPU.
+        #
+        # So: fill the budget, OMP = floor(budget / mpi_np), with
+        # budget set above by the NUMA-pin decision.
+        return max(1, budget // max(1, np_))
 
     default_np = _cap_np(4)
     default_omp = _omp_for(default_np)
