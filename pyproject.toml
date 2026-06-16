@@ -30,9 +30,26 @@ dependencies = [
                                  # and I(V) integration.  Pulls netCDF4 + h5py
                                  # transitively -- heavier install but a
                                  # one-time cost.
+    "psutil>=5.9",               # Cross-platform CPU + RAM stats for the
+                                 # Results-tab system-load monitor (cpu_percent,
+                                 # virtual_memory).  ~150 KB pure-Python +
+                                 # tiny C ext, on conda-forge.
 ]
 
 [project.optional-dependencies]
+# NVIDIA GPU stats for the system-load monitor.  Optional because
+# CPU-only hosts MUST still run molbuilder without NVML.  Use the
+# official ``nvidia-ml-py`` package directly (NOT ``pynvml``, which
+# is a deprecated community wrapper that prints a FutureWarning at
+# import).  Both expose the same ``pynvml`` import namespace, so
+# the application code is unchanged.  ~80 KB pure Python; far
+# cheaper to call than ``nvidia-smi`` subprocess (~1 ms vs
+# ~50-100 ms).  Graceful import-guarded in
+# web.blueprints.system_load so a missing or broken NVML degrades to
+# ``gpus: []`` in the API response and the JS widget hides its GPU
+# bars accordingly.
+gpu = ["nvidia-ml-py>=12.0"]
+
 # Hydrogen addition on peptides + SMILES building
 rdkit = ["rdkit>=2023.9"]
 

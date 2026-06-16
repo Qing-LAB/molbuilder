@@ -1,0 +1,126 @@
+/* System-load monitor -- fixed bottom strip at the page edge.
+ *
+ * Polled + drawn by lib/system-load-monitor.js.  Compact, dark, semi-
+ * transparent so it doesn't pull focus from the main content but is
+ * always glanceable while a long job runs.
+ */
+
+#system-load-monitor {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 90;                              /* above sidebar (z-50 ish),
+                                                 below modals (z-1000+) */
+    display: flex;
+    align-items: center;
+    gap: var(--space-3, 12px);
+    padding: 6px 12px;
+    background: var(--surface-elevated, rgba(20, 24, 28, 0.92));
+    color: var(--text-primary, #e7e7e7);
+    border-top: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    backdrop-filter: blur(8px);
+    font-size: 12px;
+    font-family: var(--font-mono, "Menlo", "Consolas", monospace);
+    line-height: 1.2;
+    pointer-events: auto;
+}
+
+#system-load-monitor[hidden] {
+    display: none;
+}
+
+#system-load-monitor.is-collapsed .system-load-strip {
+    display: none;
+}
+
+/* The toggle is always visible -- a tiny pill in the bottom-left that
+ * the user can grab to bring the strip back when collapsed. */
+.system-load-toggle {
+    background: transparent;
+    color: inherit;
+    border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.18));
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+    line-height: 1;
+}
+
+.system-load-toggle:hover,
+.system-load-toggle:focus-visible {
+    background: var(--surface-hover, rgba(255, 255, 255, 0.08));
+    outline: none;
+}
+
+.system-load-strip {
+    display: flex;
+    gap: var(--space-4, 16px);
+    flex: 1;
+}
+
+.system-load-cell {
+    /* Each cell sets its own --load-* tokens so the sparkline canvas
+     * can pick stroke colors via getComputedStyle.  Tokens fall back
+     * to safe defaults if the CSS variables aren't defined on this
+     * page (defensive — the load monitor mounts on every tab,
+     * including ones whose own token set is independent). */
+    --load-ok:   var(--ok,   #4ad991);
+    --load-warn: var(--warn, #f0c040);
+    --load-bad:  var(--bad,  #ef5b5b);
+
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+
+.system-load-cell[hidden] {
+    display: none;          /* defensive against any future CSS rule that
+                               competes with the [hidden] attribute --
+                               same § 3.1 trap doc warns about. */
+}
+
+.system-load-cell .label {
+    color: var(--text-secondary, #a4a4a4);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+
+.system-load-cell .value {
+    min-width: 4em;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.system-load-cell canvas.spark {
+    display: block;
+    /* width / height set as HTML attributes (120 / 32) on the canvas
+     * element so the bitmap matches the drawing buffer; the CSS rules
+     * only control DOM layout. */
+    border-left: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+    padding-left: 6px;
+}
+
+/* Phone widths: drop the wider GPU-mem cell, shrink sparklines.
+ * The cells use min-width so they don't squeeze the label text.
+ * 480 px chosen to match the established mobile breakpoint in
+ * the rest of the app. */
+@media (max-width: 480px) {
+    #system-load-monitor {
+        font-size: 11px;
+        gap: 6px;
+        padding: 4px 8px;
+    }
+    .system-load-strip {
+        gap: 10px;
+    }
+    .system-load-cell canvas.spark {
+        width: 60px;
+    }
+    .system-load-cell[data-metric="vram"] {
+        display: none;  /* hide on phones; covered by the GPU cell's
+                           per-device tooltip on hover anyway */
+    }
+}
