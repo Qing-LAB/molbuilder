@@ -89,9 +89,18 @@
 }
 
 .system-load-cell .value {
-    min-width: 4em;
+    /* "100%  ~10.0/20 cores" is wider than the original "100%" --
+     * give the CPU cell room to breathe without re-flowing the strip
+     * each tick.  RAM uses similar width with "100% 252.0/252.0 GB". */
+    min-width: 12em;
     text-align: right;
     font-variant-numeric: tabular-nums;
+}
+
+/* Tighter CPU/RAM cells -- their value strings are predictable widths. */
+.system-load-cell[data-metric="cpu"] .value,
+.system-load-cell[data-metric="ram"] .value {
+    min-width: 13.5em;
 }
 
 .system-load-cell canvas.spark {

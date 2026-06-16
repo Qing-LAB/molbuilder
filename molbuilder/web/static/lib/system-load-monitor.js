@@ -141,12 +141,55 @@
                     var ram = d.ram_pct || 0;
                     bufCpu.push(cpu);
                     bufRam.push(ram);
-                    updateCell(cellCpu, bufCpu, cpu,
-                               cpu.toFixed(0) + "%");
+                    // Absolute core-equivalents: ``cpu_pct`` reports
+                    // the percentage across ALL logical CPUs, so
+                    // ``cpu_pct * cpu_count_logical / 100`` is the
+                    // number of logical-thread-equivalents currently
+                    // busy.  Divide by 2 if the system has SMT to
+                    // approximate physical-core-equivalents -- or
+                    // simply quote against ``cpu_count_physical``.
+                    // We show "(~N/M cores)" where M is physical
+                    // core count, computing N as
+                    // ``cpu_pct * cpu_count_physical / 100`` (so
+                    // 50% on a 20-phys / 40-logical box reads as
+                    // "~10/20 cores" -- matches what a SIESTA job
+                    // with mpi_np * omp = 20 actually consumes).
+                    var nPhys = d.cpu_count_physical || 0;
+                    var nLog  = d.cpu_count_logical  || 0;
+                    var coresBusy = (nPhys > 0) ? cpu * nPhys / 100 : 0;
+                    var cpuText = cpu.toFixed(0) + "%";
+                    if (nPhys > 0) {
+                        cpuText += "  ~" + coresBusy.toFixed(1) + "/"
+                                 + nPhys + " cores";
+                    }
+                    updateCell(cellCpu, bufCpu, cpu, cpuText);
+                    // CPU tooltip: spell out the logical vs physical
+                    // distinction + the load-avg trio so the user can
+                    // tell when the run queue is over-subscribed
+                    // (load > cpu_count) even if cpu_pct is at 100.
+                    var cpuTip = "CPU: " + cpu.toFixed(1) + "% aggregate"
+                        + "\n" + nPhys + " physical cores"
+                        + (nLog && nLog !== nPhys
+                           ? " (" + nLog + " logical with SMT)" : "")
+                        + "\n~" + coresBusy.toFixed(1)
+                        + " physical-core-equivalents busy";
+                    if (typeof d.loadavg_1m === "number") {
+                        cpuTip += "\nload avg: " + d.loadavg_1m.toFixed(2)
+                                + " (1m), "    + d.loadavg_5m.toFixed(2)
+                                + " (5m), "    + d.loadavg_15m.toFixed(2)
+                                + " (15m)";
+                        if (d.loadavg_1m > nPhys) {
+                            cpuTip += "\n[over-subscribed: load > physical cores]";
+                        }
+                    }
+                    cellCpu.title = cpuTip;
                     updateCell(cellRam, bufRam, ram,
                                ram.toFixed(0) + "%  "
                                + (d.ram_used_gb || 0).toFixed(1) + "/"
                                + (d.ram_total_gb || 0).toFixed(1) + " GB");
+                    cellRam.title = "RAM: " + ram.toFixed(1) + "% used\n"
+                        + (d.ram_used_gb || 0).toFixed(2) + " GB used of "
+                        + (d.ram_total_gb || 0).toFixed(2) + " GB total";
                     // GPU: server returns [] when NVML init failed (CPU-
                     // only host or driver missing).  Hide both GPU cells
                     // entirely; widget collapses to 2 cells.

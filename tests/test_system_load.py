@@ -19,7 +19,9 @@ def test_snapshot_returns_documented_shape():
     snap = sl.snapshot()
     # CPU/RAM fields always present even on a CPU-only host -- psutil
     # works everywhere we support.
-    for key in ("cpu_pct", "cpu_count",
+    for key in ("cpu_pct",
+                "cpu_count_physical", "cpu_count_logical",
+                "loadavg_1m", "loadavg_5m", "loadavg_15m",
                 "ram_pct", "ram_used_gb", "ram_total_gb",
                 "gpus"):
         assert key in snap, f"snapshot missing required key {key!r}"
@@ -28,6 +30,14 @@ def test_snapshot_returns_documented_shape():
     assert isinstance(snap["ram_used_gb"],  (int, float))
     assert isinstance(snap["ram_total_gb"], (int, float))
     assert isinstance(snap["gpus"], list)
+    # Load avg may be None on non-POSIX hosts but is a float here.
+    for key in ("loadavg_1m", "loadavg_5m", "loadavg_15m"):
+        v = snap[key]
+        assert v is None or isinstance(v, (int, float)), \
+            f"loadavg field {key!r} has unexpected type: {type(v)}"
+    # Physical < logical when SMT is on; equal otherwise.  Both > 0.
+    assert snap["cpu_count_physical"] >= 1
+    assert snap["cpu_count_logical"]  >= snap["cpu_count_physical"]
 
 
 def test_snapshot_gpu_entries_have_required_fields():

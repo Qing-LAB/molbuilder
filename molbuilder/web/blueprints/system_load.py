@@ -128,15 +128,36 @@ def snapshot() -> Dict[str, Any]:
 
     Public so unit tests + a future CLI ``molbuilder system load``
     subcommand can both use this without going through Flask.
+
+    Why we emit BOTH ``cpu_pct`` and the absolute load fields:
+    ``50%`` on a 20-physical / 40-logical box means "the equivalent
+    of 10 physical cores fully busy" or "20 logical threads busy" --
+    the bare percentage hides which.  ``cpu_count_physical`` /
+    ``cpu_count_logical`` let the UI report ``~10/20 cores`` so the
+    user reads the actual saturation.  ``loadavg_*`` (the classic
+    Unix 1/5/15 min queue-depth average) tells the truth about
+    OVER-subscription: load 25 on a 20-core box means the run queue
+    is queueing -- which a 100% cpu_pct can hide.
     """
     vm = psutil.virtual_memory()
+    # ``getloadavg`` isn't on Windows; psutil emulates it but may
+    # raise ``OSError`` on platforms where it can't.  Default to
+    # (None, None, None) so the wire shape stays stable.
+    try:
+        la1, la5, la15 = psutil.getloadavg()
+    except (OSError, AttributeError):  # pragma: no cover -- non-POSIX hosts
+        la1 = la5 = la15 = None
     return {
-        "cpu_pct":      psutil.cpu_percent(interval=None),
-        "cpu_count":    psutil.cpu_count(logical=False),
-        "ram_pct":      vm.percent,
-        "ram_used_gb":  round(vm.used  / (1 << 30), 2),
-        "ram_total_gb": round(vm.total / (1 << 30), 2),
-        "gpus":         _gpu_snapshot(),
+        "cpu_pct":             psutil.cpu_percent(interval=None),
+        "cpu_count_physical":  psutil.cpu_count(logical=False),
+        "cpu_count_logical":   psutil.cpu_count(logical=True),
+        "loadavg_1m":          (None if la1  is None else round(la1,  2)),
+        "loadavg_5m":          (None if la5  is None else round(la5,  2)),
+        "loadavg_15m":         (None if la15 is None else round(la15, 2)),
+        "ram_pct":             vm.percent,
+        "ram_used_gb":         round(vm.used  / (1 << 30), 2),
+        "ram_total_gb":        round(vm.total / (1 << 30), 2),
+        "gpus":                _gpu_snapshot(),
     }
 
 
