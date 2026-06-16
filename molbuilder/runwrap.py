@@ -965,15 +965,31 @@ def render_run_wrapper(script_path: Path, *,
         # callers can combine them with -np in any order
         # (``--continue -np 8`` and ``-np 8 --continue`` both work).
         # GPU-mode default expressions for ``_mpi_np_default`` /
-        # ``_omp_threads_default``: the GPU runtime block (injected
-        # FIRST in env_prefix when gpu_mode=True) sets the underlying
-        # shell vars to the hardware-derived policy values.
-        _mpi_np_default_expr = (
-            "$_gpu_mpi_np_default" if gpu_mode else str(resolved_mpi)
-        )
-        _omp_threads_default_expr = (
-            "$_omp_default" if gpu_mode else str(resolved_omp)
-        )
+        # ``_omp_threads_default``.  Precedence in GPU mode:
+        #
+        #   1. User explicitly set ``mpi_np`` / ``omp_threads`` on the
+        #      form (the values arrive in this function as non-None
+        #      kwargs) -- bake them into the wrapper as literal ints.
+        #   2. User left them auto (kwargs are None) AND gpu_mode is
+        #      on -- defer to the runtime-probed GPU policy via
+        #      ``$_gpu_mpi_np_default`` / ``$_omp_default`` (set by
+        #      _gpu_runtime_defaults_block injected earlier in
+        #      env_prefix).
+        #   3. CPU mode -- bake the resolved integer (existing path).
+        #
+        # The pre-2026-06-15 shape skipped step 1 and always used the
+        # bash shell var in GPU mode, silently dropping the user's
+        # form choices.
+        user_set_mpi = mpi_np is not None
+        user_set_omp = omp_threads is not None
+        if gpu_mode and not user_set_mpi:
+            _mpi_np_default_expr = "$_gpu_mpi_np_default"
+        else:
+            _mpi_np_default_expr = str(resolved_mpi)
+        if gpu_mode and not user_set_omp:
+            _omp_threads_default_expr = "$_omp_default"
+        else:
+            _omp_threads_default_expr = str(resolved_omp)
         siesta_args_block = (
             _continue_force_args_parser("SIESTA wrapper")
             + f"# --- SIESTA-specific argument parsing -----------\n"

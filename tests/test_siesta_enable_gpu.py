@@ -296,6 +296,46 @@ def test_gpu_wrapper_keeps_siesta_template_intact(
     )
 
 
+def test_gpu_wrapper_honors_user_set_mpi_np(tmp_path, caps_with_gpu_env):
+    """Regression for the 2026-06-15 silent-shadow bug: when the user
+    explicitly sets ``mpi_np=4`` on the form, the rendered wrapper
+    MUST bake that literal value into ``_mpi_np_default``, not defer
+    to the bash-runtime ``$_gpu_mpi_np_default`` (which would
+    silently use the hardware-probed policy value and ignore the
+    user's choice).  Same shape as the prior bug catch: an
+    explicit form-set value got silently dropped because the GPU
+    code path unconditionally chose the policy default."""
+    cfg = SiestaConfig(enable_gpu=True)
+    fdf_text = render_fdf(_mk_struct(), cfg)
+    fdf = tmp_path / "job.fdf"
+    fdf.write_text(fdf_text, encoding="utf-8")
+    wrapper_path = _runwrap.write_run_wrapper(fdf, mpi_np=4, omp_threads=3)
+    wrapper_text = wrapper_path.read_text(encoding="utf-8")
+    # Both literals must appear; the shell-var fallback names must NOT
+    # be the source of either ``_*_default`` line for THIS run.
+    assert "_mpi_np_default=4" in wrapper_text
+    assert "_omp_threads_default=3" in wrapper_text
+    assert "_mpi_np_default=$_gpu_mpi_np_default" not in wrapper_text
+    assert "_omp_threads_default=$_omp_default" not in wrapper_text
+
+
+def test_gpu_wrapper_uses_policy_default_when_user_unset(
+        tmp_path, caps_with_gpu_env):
+    """Companion test: when the user leaves mpi_np / omp_threads as
+    auto (None), GPU mode SHOULD use the runtime-probed policy via
+    the shell vars.  Pinning that the prior fix didn't disable the
+    auto path for users who actually want it."""
+    cfg = SiestaConfig(enable_gpu=True)
+    fdf_text = render_fdf(_mk_struct(), cfg)
+    fdf = tmp_path / "job.fdf"
+    fdf.write_text(fdf_text, encoding="utf-8")
+    # No mpi_np / omp_threads kwargs -> auto path.
+    wrapper_path = _runwrap.write_run_wrapper(fdf)
+    wrapper_text = wrapper_path.read_text(encoding="utf-8")
+    assert "_mpi_np_default=$_gpu_mpi_np_default" in wrapper_text
+    assert "_omp_threads_default=$_omp_default" in wrapper_text
+
+
 def test_write_run_wrapper_explicit_env_overrides_detection(
         tmp_path, caps_with_gpu_env):
     """``env=...`` is the user's escape hatch and takes precedence
