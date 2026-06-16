@@ -1750,6 +1750,38 @@
                        + lastResid.toExponential(2) + " " + residualUnit;
         }
         statusText += ", ΔE=" + lastDe.toExponential(2) + " eV";
+
+        // Wall-time annotation: SIESTA writes a ``timer: Routine,Calls,Time,%
+        // = IterSCF`` line right after each SCF cycle, and the parser
+        // attaches the cumulative seconds to each cycle dict as
+        // ``cumulative_walltime_s``.  Show:
+        //   * last iter's wall time (delta from previous cumulative)
+        //   * total SCF wall time so far (last cumulative)
+        // Both let the user spot "this iter took 2x the previous one"
+        // -- the classic DM-mixing-divergence early warning -- without
+        // having to grep the .out manually.  When the parser couldn't
+        // attach the field (Fortran column overflow at very long runs,
+        // OR a non-SIESTA engine where the timer isn't emitted) the
+        // block is silently skipped -- the chart still renders the
+        // residual + energy without the annotation.
+        const lastCum = current[current.length - 1].cumulative_walltime_s;
+        if (typeof lastCum === "number" && isFinite(lastCum)) {
+            const prevCum = current.length >= 2
+                ? current[current.length - 2].cumulative_walltime_s
+                : 0;
+            const dt = (typeof prevCum === "number" && isFinite(prevCum))
+                ? (lastCum - prevCum) : null;
+            // Format ``X.Ys`` for <60 s, ``Xm Ys`` for >=60 s -- the
+            // researcher cares about minutes once iters are slow.
+            const fmt = (s) => {
+                if (s < 60) return s.toFixed(1) + "s";
+                const m = Math.floor(s / 60);
+                const r = Math.round(s - m * 60);
+                return m + "m " + r + "s";
+            };
+            statusText += ", iter " + (dt !== null ? fmt(dt) : "?");
+            statusText += " (total " + fmt(lastCum) + ")";
+        }
         $("scf-status").textContent = statusText;
 
         // SCF energy convergence within the current step.
