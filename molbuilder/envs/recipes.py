@@ -677,6 +677,54 @@ _RPATH_SIESTA_BIN = "$ORIGIN/../../../../lib:$ORIGIN/../../elpa/lib"
 # --------------------------------------------------------------------- #
 
 
+# --------------------------------------------------------------------- #
+#  Conda-CUDA path bridge (applied identically in configure / build /    #
+#  install argvs for any component that uses conda-forge's CUDA layout)  #
+#                                                                       #
+#  ONE EXPLICIT ASSUMPTION, applied everywhere:                          #
+#                                                                       #
+#    Conda-forge CUDA packages place artifacts at:                       #
+#      Headers   $CONDA_PREFIX/targets/x86_64-linux/include/  (primary)  #
+#                $CONDA_PREFIX/include/                       (generic)  #
+#      Libraries $CONDA_PREFIX/lib/                                      #
+#                $CONDA_PREFIX/targets/x86_64-linux/lib/      (some)     #
+#                                                                       #
+#  Compilers need these via CPPFLAGS (headers) and LDFLAGS (libraries).  #
+#  Conda's stock activate-scripts inject extra flags (``-Wl,--sort-      #
+#  common``, ``-fdebug-prefix-map=...``) for binary-package portability  #
+#  -- those break libtool replay through nvcc.  So the systematic        #
+#  prelude is: wipe conda's stock CPPFLAGS/LDFLAGS, then re-export       #
+#  EXACTLY the include + library paths the compilers need, with no       #
+#  other fluff.                                                          #
+#                                                                       #
+#  Apply this prelude to EVERY shell-out that compiles or links against  #
+#  the conda CUDA stack (configure step, make step, make-install step,   #
+#  ELPA + SIESTA + any future cmake-based CUDA component).  The pattern  #
+#  is small enough to inline as a string; importing as a shell `.` would #
+#  introduce a separate file the recipe has to ship.                     #
+# --------------------------------------------------------------------- #
+_CONDA_CUDA_ENV_BRIDGE = (
+    # 1. Wipe inherited flags from the conda activate scripts.  Those
+    #    are tuned for conda's binary-package builds, not us.
+    'unset LDFLAGS LDFLAGS_LD CPPFLAGS; '
+    # 2. Re-export CPPFLAGS with both standard conda-CUDA include
+    #    paths.  The targets/ subdir is where conda-forge's CUDA
+    #    packages put their .h files; the bare include/ catches any
+    #    generic conda packages (libxc, openblas, etc.).
+    'export CPPFLAGS="-I{env_prefix}/include '
+                    '-I{env_prefix}/targets/x86_64-linux/include"; '
+    # 3. Re-export LDFLAGS with both standard conda-CUDA library
+    #    paths, RPATH-embedding so the .so finds its deps at runtime
+    #    without needing LD_LIBRARY_PATH at user level.  -Wl,-rpath
+    #    is safe under nvcc (it gets passed through to ld); -Wl,
+    #    --sort-common (what we wiped above) is what nvcc rejects.
+    'export LDFLAGS="-L{env_prefix}/lib '
+                   '-L{env_prefix}/targets/x86_64-linux/lib '
+                   '-Wl,-rpath,{env_prefix}/lib '
+                   '-Wl,-rpath,{env_prefix}/targets/x86_64-linux/lib"; '
+)
+
+
 _ELPA = BuildComponent(
     name="elpa",
     # ELPA: tarball download + autotools build.  Matches the
@@ -716,15 +764,17 @@ _ELPA = BuildComponent(
         'export CFLAGS="-O2 -mavx -mavx2 -mfma -msse4.1 -msse4.2 -maes"; '
         'export CXXFLAGS="$CFLAGS"; '
         'export FCFLAGS="-O2"; '
-        # Conda activate scripts inject -Wl,--sort-common -Wl,--as-needed
-        # (and friends) into LDFLAGS for binary-package portability.
-        # libtool stores those at configure time and replays them on
-        # every link line -- including ELPA's nvcc_wrap calls, which
-        # die with ``nvcc fatal: Unknown option '-Wl,--sort-common'``.
-        # Wipe LDFLAGS at configure time so libtool records a clean
-        # link line; the make step does the same as belt + braces.
-        'unset LDFLAGS LDFLAGS_LD CPPFLAGS; '
-        'export LDFLAGS=""; '
+        # CUDA include + library path bridge -- single source of truth
+        # for "where conda put CUDA headers + libs".  See the
+        # _CONDA_CUDA_ENV_BRIDGE block at the top of this file for the
+        # one explicit layout assumption.  Applied identically in the
+        # configure / build / install steps below so libtool's replay
+        # of CPPFLAGS / LDFLAGS gets the same setup every time --
+        # which is what cured the ``cannon.c: cuda_runtime.h: No such
+        # file or directory`` error on the ELPA 2024.05.001 upgrade
+        # (the configure step had the include path, but the make step
+        # was using its own unset+empty prelude that erased it).
+        + _CONDA_CUDA_ENV_BRIDGE +
         # CC-specific kernel selection.  ELPA ships a generic NVIDIA
         # kernel (--enable-nvidia-gpu) AND optimised variants for
         # specific architecture families.  For Ampere and newer (sm_80,
@@ -784,18 +834,26 @@ _ELPA = BuildComponent(
     ),
     build_argv=(
         "sh", "-c",
-        # See configure_argv comment above: nvcc rejects conda's -Wl,*
-        # link flags; libtool replays them at compile time.  Strip any
-        # leftover env-level LDFLAGS so the make recipe can't reintroduce
-        # them through .lo recipes that rely on $LDFLAGS at substitution
-        # time.
-        'cd "{build}" && unset LDFLAGS LDFLAGS_LD CPPFLAGS '
-        '&& export LDFLAGS="" && make -j{jobs}'
+        # Same env bridge as configure_argv (see _CONDA_CUDA_ENV_BRIDGE
+        # at the top of this file).  The make step compiles + links
+        # the .c / .F90 / .cu source -- it reads CPPFLAGS for header
+        # search (cuda_runtime.h, cublas_v2.h, ...) and LDFLAGS for
+        # libcudart.so / libcublas.so resolution.  Without the bridge
+        # the configure-time include path is invisible to make and
+        # the build dies on the first .c that does ``#include
+        # <cuda_runtime.h>``.
+        'cd "{build}"; '
+        + _CONDA_CUDA_ENV_BRIDGE +
+        'make -j{jobs}'
     ),
     install_argv=(
         "sh", "-c",
-        'cd "{build}" && unset LDFLAGS LDFLAGS_LD CPPFLAGS '
-        '&& export LDFLAGS="" && make install'
+        # Same env bridge as configure / build steps -- consistent
+        # toolchain view across all three phases.  See
+        # _CONDA_CUDA_ENV_BRIDGE for the assumption that drives this.
+        'cd "{build}"; '
+        + _CONDA_CUDA_ENV_BRIDGE +
+        'make install'
     ),
     # ``--enable-openmp`` makes ELPA's autotools tag the library name
     # with ``_openmp`` (libelpa_openmp.so).  The non-OpenMP build would
