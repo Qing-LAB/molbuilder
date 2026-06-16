@@ -585,17 +585,26 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
     ``nproc``/``lscpu``; outputs are shell variables consumed by the
     rest of the SIESTA wrapper template:
 
-      * ``_gpu_mpi_np_default``: 2 if dual-socket OR cores-per-socket
-        >= 16; else 1; clamped <= n_atoms.
-      * ``_omp_default``: cores_per_socket // 2, forced even, clamped
-        so ``mpi_np * OMP <= phys_cores - 1`` (leave a core for the
-        ELPA-GPU host driver).
+      * ``_gpu_mpi_np_default``: with MPS, ``phys_cores // 4`` capped
+        at 4 (ELPA 2024.05 release notes report 4 ranks/GPU as the
+        no-NCCL throughput optimum; BSC MareNostrum5 SIESTA-ACC report
+        confirms on V100/A100/H100); without MPS, 2 dual-socket or
+        ``cps >= 16``, else 1.  Clamped <= n_atoms.
+      * ``_omp_default``: 2 (BSC report: "two OpenMP threads per MPI
+        task" showed clear speedup vs higher; above that the non-solver
+        host code dominates).  Bumped up only when there is otherwise
+        idle core budget AND the BLAS-bound non-solver host work has
+        room to soak it (rare on a single-GPU box).
       * Override knobs (read here so the same banner can name them):
         ``MOLBUILDER_MPI_NP`` and ``MOLBUILDER_OMP_NUM_THREADS``.
 
     The block also prints a kubectl-context-switch-style one-line
     banner to stderr so the user sees the mode change without scrolling
-    through the full wrapper banner.
+    through the full wrapper banner.  A second line surfaces the
+    derived "chosen X ranks × Y threads = Z of phys_cores" arithmetic
+    and the GPU-NUMA proximity so the user can decide whether to
+    override or run ``molbuilder envs advise siesta-gpu`` for a guided
+    pick.
     """
     n_atoms_lit = "" if n_atoms is None else str(int(n_atoms))
     return (
@@ -680,20 +689,32 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
             f'fi\n'
             if n_atoms_lit else ""
         ) +
-        # OMP policy: cores_per_socket // 2, forced even, never spill
-        # across packages, never 0.
-        '_omp_default=$(( _cps / 2 ))\n'
-        '[ "$_omp_default" -lt 1 ] && _omp_default=1\n'
+        # OMP policy: fixed 2 (BSC MareNostrum5 SIESTA-ACC report --
+        # "two OpenMP threads per MPI task" gave clear speedup vs
+        # higher, above that the non-solver host code dominates).
+        # Bump only if (a) there is idle core budget AND (b) the run
+        # has few MPI ranks (1-2) where OMP must pick up the missing
+        # parallelism.  Never over-subscribe; leave 1 core for the
+        # ELPA-GPU host driver thread.
+        '_omp_default=2\n'
+        '_omp_max=$(( (_phys_cores - 1) / _gpu_mpi_np_default ))\n'
+        '[ "$_omp_max" -lt 1 ] && _omp_max=1\n'
+        '# When mpi_np is small, OMP picks up the slack -- target a\n'
+        '# larger OMP only on np<=2 single-rank fallback paths so 4-\n'
+        '# rank default keeps the published OMP=2 sweet spot.\n'
+        'if [ "$_gpu_mpi_np_default" -le 2 ]; then\n'
+        '    _omp_target=$(( _phys_cores / 2 ))\n'
+        '    [ "$_omp_target" -gt "$_omp_max" ] && _omp_target=$_omp_max\n'
+        '    [ "$_omp_target" -gt "$_omp_default" ] && '
+        '_omp_default=$_omp_target\n'
+        'fi\n'
         '# Force even (cleaner divisor for ScaLAPACK BlockSize math)\n'
         'if [ "$_omp_default" -gt 1 ] '
         '&& [ $(( _omp_default % 2 )) -eq 1 ]; '
         'then _omp_default=$(( _omp_default - 1 )); fi\n'
-        '# Leave a core for the ELPA-GPU host driver thread\n'
-        'while [ $(( _gpu_mpi_np_default * _omp_default )) '
-        '-gt $(( _phys_cores - 1 )) ] '
-        '&& [ "$_omp_default" -gt 1 ]; do\n'
-        '    _omp_default=$(( _omp_default - 1 ))\n'
-        'done\n'
+        '# Final clamp -- never spill past _omp_max\n'
+        'if [ "$_omp_default" -gt "$_omp_max" ]; then '
+        '_omp_default=$_omp_max; fi\n'
         '[ "$_omp_default" -lt 1 ] && _omp_default=1\n'
         '# Apply env-var overrides (precedence: env > policy)\n'
         '_gpu_mpi_np_default="${MOLBUILDER_MPI_NP:-$_gpu_mpi_np_default}"\n'
@@ -705,13 +726,32 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
         '# choose: one MPS daemon per GPU, all ranks share it).\n'
         '_use_mps_str="off"; '
         '[ "$_use_mps_default" = "1" ] && _use_mps_str="on"\n'
-        '# Banner: single-line, stderr, kubectl-style.\n'
+        # GPU NUMA proximity probe (nvidia-smi topo -m, "NUMA Affinity"
+        # column of the GPU0 row).  Best-effort: shows "unknown" when
+        # the host has no nvidia-smi or the topology table parser
+        # can't find the column.  Surfacing this lets the user (or a
+        # downstream wrapper layer) bind ranks to the GPU-proximate
+        # socket via numactl on dual-socket machines.
+        '_gpu_numa=$(nvidia-smi topo -m 2>/dev/null '
+        '| awk \'/NUMA Affinity/ {for(i=1;i<=NF;i++) '
+        'if($i=="NUMA"&&$(i+1)=="Affinity") nc=i; next} '
+        '/^GPU0/ {if(nc) print $(nc+1)}\' '
+        '| head -n1)\n'
+        '[ -z "$_gpu_numa" ] && _gpu_numa="unknown"\n'
+        '_total_cores_used=$(( _gpu_mpi_np_default * _omp_default ))\n'
+        '# Banner: 3 lines on stderr, kubectl-style.  Line 1 is the\n'
+        '# mode summary; line 2 is the derived arithmetic + NUMA\n'
+        '# proximity; line 3 is the advisor / override hint.\n'
         'echo "molbuilder: GPU mode (ELPA-CUDA, no NCCL) -- '
         'mpi_np=$_gpu_mpi_np_default, OMP=$_omp_default, '
         'mps=$_use_mps_str, '
         '--bind-to core (--map-by chosen at launch from mpi_np vs '
         'n_sockets)" >&2\n'
-        'echo "molbuilder: override via MOLBUILDER_MPI_NP / '
+        'echo "molbuilder: chosen $_gpu_mpi_np_default ranks '
+        '× $_omp_default threads = $_total_cores_used '
+        'of $_phys_cores phys cores; GPU0 NUMA=$_gpu_numa" >&2\n'
+        'echo "molbuilder: tune via \'molbuilder envs advise '
+        'siesta-gpu\' or MOLBUILDER_MPI_NP / '
         'MOLBUILDER_OMP_NUM_THREADS / MOLBUILDER_USE_MPS / '
         '-np / -omp / --mps / --no-mps" >&2\n'
         "\n"

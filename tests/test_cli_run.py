@@ -77,7 +77,10 @@ def test_run_passes_mpi_np_for_siesta(tmp_path):
     # so ``bash run.sh -np N`` / ``MB_NP=N`` can override at run time.
     # The generation-time --np value bakes ``_mpi_np_default=N``.
     assert "_mpi_np_default=8" in text
-    assert '_launch_cmd="mpirun -np $_mpi_np siesta"' in text
+    # Launch line includes the runtime-computed ``$_mpirun_bind`` slot
+    # so bind-to / map-by can switch at run time between socket-spread
+    # and packed-on-package shapes.
+    assert '_launch_cmd="mpirun -np $_mpi_np $_mpirun_bind siesta"' in text
 
 
 def test_run_env_override(tmp_path):

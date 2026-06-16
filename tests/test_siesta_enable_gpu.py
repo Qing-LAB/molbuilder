@@ -360,3 +360,63 @@ def test_write_run_wrapper_explicit_env_overrides_detection(
     wrapper_text = wrapper_path.read_text(encoding="utf-8")
     assert "molbuilder-siesta-gpu" not in wrapper_text
     assert "molbuilder-siesta" in wrapper_text
+
+
+# --------------------------------------------------------------------- #
+#  GPU runtime defaults block: OMP policy + banner shape                 #
+# --------------------------------------------------------------------- #
+
+
+def test_gpu_runtime_defaults_block_uses_fixed_omp_2_policy(
+        tmp_path, caps_with_gpu_env):
+    """B fix (2026-06-16): GPU-mode OMP default is the BSC-reported
+    sweet spot (2 threads/rank), NOT the old CPU-mode
+    ``cores_per_socket // 2`` policy that over-subscribed on
+    single-socket workstations (4 ranks × 10 OMP on 20 cores).
+
+    The bash block must set ``_omp_default=2`` as the literal start
+    of the OMP policy.  Bumping up is reserved for low-rank paths
+    (np<=2) where there is unused budget."""
+    cfg = SiestaConfig(enable_gpu=True)
+    fdf_text = render_fdf(_mk_struct(), cfg)
+    fdf = tmp_path / "job.fdf"
+    fdf.write_text(fdf_text, encoding="utf-8")
+    wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
+    # The 2-thread default is the load-bearing assertion: regress
+    # this and the user is back to oversubscribing every workstation.
+    assert "_omp_default=2\n" in wrapper_text
+    # The old policy line must NOT appear -- that was the bug.
+    assert "_omp_default=$(( _cps / 2 ))" not in wrapper_text
+
+
+def test_gpu_runtime_defaults_block_emits_3_line_banner(
+        tmp_path, caps_with_gpu_env):
+    """C fix (2026-06-16): the GPU runtime banner now has 3 lines on
+    stderr: (1) mode summary, (2) chosen arithmetic + GPU NUMA, (3)
+    the advisor / override pointer.  Pin all three line headers so a
+    regression in the bash heredoc surfaces loudly."""
+    cfg = SiestaConfig(enable_gpu=True)
+    fdf_text = render_fdf(_mk_struct(), cfg)
+    fdf = tmp_path / "job.fdf"
+    fdf.write_text(fdf_text, encoding="utf-8")
+    wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
+    assert "molbuilder: GPU mode (ELPA-CUDA, no NCCL)" in wrapper_text
+    assert "molbuilder: chosen" in wrapper_text
+    assert "GPU0 NUMA=" in wrapper_text
+    assert "molbuilder envs advise siesta-gpu" in wrapper_text
+
+
+def test_gpu_runtime_defaults_block_probes_gpu_numa(
+        tmp_path, caps_with_gpu_env):
+    """C fix: the chosen-line carries GPU NUMA proximity so the user
+    knows when to bind ranks to a specific socket.  Pin the awk
+    extractor that reads the "NUMA Affinity" column out of
+    ``nvidia-smi topo -m``."""
+    cfg = SiestaConfig(enable_gpu=True)
+    fdf_text = render_fdf(_mk_struct(), cfg)
+    fdf = tmp_path / "job.fdf"
+    fdf.write_text(fdf_text, encoding="utf-8")
+    wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
+    assert "_gpu_numa=" in wrapper_text
+    assert "nvidia-smi topo -m" in wrapper_text
+    assert "NUMA Affinity" in wrapper_text

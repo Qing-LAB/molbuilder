@@ -23,6 +23,7 @@ from typing import Iterable, Optional, TextIO
 import click
 
 from ..diagnostics import get_capabilities, reset_capabilities
+from . import advise as _advise
 from . import builds as _builds
 from . import doctor as _doctor
 from . import install as _install
@@ -258,6 +259,44 @@ def _render_validation(report: "_validate.ValidationReport",
     click.echo(f"{n_pass}/{n_total} checks passed -- env not production-ready",
                err=True)
     return 1
+
+
+@envs_group.command("advise",
+                    short_help="recommend mpi_np/omp/mps for a recipe + this host")
+@click.argument("name")
+@click.option("--n-atoms", type=int, default=None,
+              help="atom count for the eigenproblem (caps mpi_np "
+                   "in the recommendation, same rule the runtime uses).")
+@click.option("--n-orbitals", type=int, default=None,
+              help="orbital count (used to estimate VRAM/rank).  If "
+                   "omitted, the VRAM column shows 'n/a'.")
+def cmd_advise(name: str,
+               n_atoms: Optional[int],
+               n_orbitals: Optional[int]) -> None:
+    """Print a per-host preset table for one recipe.
+
+    Today only ``siesta-gpu`` has a real advisor; other names return
+    a "no advisor" notice.  The advisor probes the host (lscpu /
+    nvidia-smi / nvidia-cuda-mps-control) and prints three presets
+    side-by-side -- `default` (ELPA 2024.05 throughput optimum),
+    `memory` (fewer ranks, more OMP), and `fallback` (single rank,
+    no MPS).  The recommended preset for the detected host is echoed
+    as ready-to-paste ``MOLBUILDER_*`` env-var exports.
+    """
+    if name not in ("siesta-gpu", "molbuilder-siesta-gpu"):
+        click.echo(
+            f"`{name}` has no advisor wired.  Today only `siesta-gpu` "
+            f"is supported (it's the only recipe whose performance "
+            f"depends on host topology).",
+            err=True,
+        )
+        sys.exit(0)
+    probe = _advise.probe_host()
+    presets = _advise.recommend(probe, n_atoms=n_atoms, n_orbitals=n_orbitals)
+    click.echo(_advise.format_report(
+        probe, presets,
+        n_atoms=n_atoms, n_orbitals=n_orbitals,
+    ))
 
 
 @envs_group.command("validate",
