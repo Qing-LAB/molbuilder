@@ -577,6 +577,92 @@ def _runtime_status_block(
     )
 
 
+def _probe_gpu0_numa() -> Optional[int]:
+    """Resolve the NUMA node that GPU 0 is attached to.
+
+    Two paths, tried in order:
+
+    1. NVML via the ``nvidia-ml-py`` package (importable as
+       ``pynvml`` -- same as ``web/blueprints/system_load.py`` and
+       the project's pinned dependency in ``pyproject.toml``).
+       Returns the GPU's PCI bus ID as bytes
+       (``b"00000000:65:00.0"``) which we feed to step 2.
+    2. Kernel sysfs at ``/sys/bus/pci/devices/<id>/numa_node``.  The
+       stable ABI the Linux kernel itself uses for NUMA-aware
+       allocation.  A single integer; "-1" for "no NUMA / single
+       node system".
+
+    Returns the int, or ``None`` when:
+      * pynvml isn't importable (CPU-only host, no NVIDIA stack)
+      * NVML init or device enumeration fails
+      * the sysfs file isn't readable
+      * the sysfs value is "-1" (no NUMA affinity)
+
+    Called once per wrapper render, at script-generation time.  The
+    answer is baked into the generated bash as a literal -- no
+    string-parsing of ``nvidia-smi`` output at runtime.
+    """
+    try:
+        import pynvml  # type: ignore[import-untyped]
+    except ImportError:
+        return None
+    try:
+        pynvml.nvmlInit()
+    except Exception:  # noqa: BLE001 -- many distinct NVML failure types
+        return None
+    try:
+        try:
+            h = pynvml.nvmlDeviceGetHandleByIndex(0)
+        except Exception:  # noqa: BLE001 -- no GPUs / permission denied
+            return None
+        try:
+            pci = pynvml.nvmlDeviceGetPciInfo(h)
+        except Exception:  # noqa: BLE001
+            return None
+        # busId is ``bytes`` in older pynvml, ``str`` in newer; coerce.
+        bus_id = getattr(pci, "busId", None)
+        if isinstance(bus_id, bytes):
+            bus_id = bus_id.decode("ascii", errors="replace")
+        if not isinstance(bus_id, str) or not bus_id:
+            return None
+        bus_id = bus_id.strip().lower()
+        # nvidia-smi / NVML format: ``00000000:65:00.0`` (8-hex domain).
+        # sysfs path:             ``0000:65:00.0``    (4-hex domain).
+        # Strip the leading 4 hex digits of the domain.
+        import re
+        m = re.match(r"^[0-9a-f]{8}:[0-9a-f]{2}:[0-9a-f]{2}\.[0-9a-f]$", bus_id)
+        if not m:
+            return None
+        sysfs_id = bus_id[4:]
+        try:
+            with open(f"/sys/bus/pci/devices/{sysfs_id}/numa_node", "r") as fh:
+                txt = fh.read().strip()
+        except OSError:
+            return None
+        try:
+            val = int(txt)
+        except ValueError:
+            return None
+        if val < 0:
+            return None  # "-1" = no NUMA affinity / single-node system
+        return val
+    finally:
+        try:
+            pynvml.nvmlShutdown()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _baked_numa_literal_line() -> str:
+    """Format the ``_gpu_numa="${MOLBUILDER_GPU_NUMA:-<probed>}"``
+    bash line with the probed value baked in.  Factored out so the
+    "0 is a valid NUMA node, don't truthy-fallback it" logic stays
+    in one obvious place."""
+    probed = _probe_gpu0_numa()
+    value = "unknown" if probed is None else str(probed)
+    return f'_gpu_numa="${{MOLBUILDER_GPU_NUMA:-{value}}}"\n'
+
+
 def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
     """Bash that probes hardware and computes GPU-mode MPI/OMP defaults.
 
@@ -708,22 +794,37 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
             f'fi\n'
             if n_atoms_lit else ""
         ) +
-        # ---- GPU NUMA proximity probe ----
-        # nvidia-smi topo -m exposes one row per GPU; the "NUMA
-        # Affinity" column names the NUMA node the GPU's PCIe root
-        # complex is attached to.  On dual-socket boxes with one GPU
-        # this is the socket the MPI ranks SHOULD bind to: every
-        # cudaMemcpy from a rank on the WRONG socket pays UPI/QPI
-        # crossing latency.  Best-effort: prints "unknown" when
-        # nvidia-smi is absent or the topology table can't be parsed
-        # (single-socket boxes always print "0" here, but we don't
-        # numactl-wrap those because there is only one socket).
-        '_gpu_numa=$(nvidia-smi topo -m 2>/dev/null '
-        '| awk \'/NUMA Affinity/ {for(i=1;i<=NF;i++) '
-        'if($i=="NUMA"&&$(i+1)=="Affinity") nc=i; next} '
-        '/^GPU0/ {if(nc) print $(nc+1)}\' '
-        '| head -n1)\n'
-        '[ -z "$_gpu_numa" ] && _gpu_numa="unknown"\n'
+        # ---- GPU NUMA proximity (probed at generation time) ----
+        # Resolved by the Python generator via ``_probe_gpu0_numa()``
+        # using NVML (the official NVIDIA library, already imported
+        # by the load-monitor blueprint) + the kernel sysfs ABI
+        # (``/sys/bus/pci/devices/<id>/numa_node``).  No string-
+        # scraping of ``nvidia-smi``'s tabular output -- that was
+        # the failure mode of the 2026-06-16 run where libnuma
+        # rejected ``--cpunodebind=N/A`` because we misread the
+        # "GPU NUMA ID" column as NUMA Affinity.
+        #
+        # Baked literal:
+        #   * an integer string ("0", "1", ...) when NVML + sysfs
+        #     report a real NUMA assignment for GPU 0
+        #   * "unknown" when no GPU present at generation time, NVML
+        #     can't bind, sysfs says "-1" (no affinity), or the host
+        #     is single-NUMA
+        # The runtime override ``MOLBUILDER_GPU_NUMA=N`` wins over
+        # the baked value (useful for moving the wrapper between
+        # boxes or when sysfs lies).
+        # NB: explicit ``is None`` check; ``probe() or "unknown"`` is
+        # WRONG because 0 is a valid NUMA node (very common on
+        # single-GPU boxes where GPU 0 sits on socket 0) and would
+        # be silently swallowed by the truthy fallback.  Caught
+        # 2026-06-16 by smoke after the libnuma N/A regression.
+        _baked_numa_literal_line() +
+        '# Defence in depth: even if the baked / override value got\n'
+        '# garbage, refuse to use it as a NUMA target unless it parses\n'
+        '# as a non-negative integer.\n'
+        'case "$_gpu_numa" in\n'
+        '    ""|*[!0-9]*) _gpu_numa="unknown" ;;\n'
+        'esac\n'
         # ---- numactl availability + NUMA-pin decision ----
         # numactl is the canonical tool for restricting a child
         # process tree to one NUMA node.  We wrap mpirun (not each
@@ -1307,13 +1408,25 @@ def render_run_wrapper(script_path: Path, *,
                 '        done\n'
                 '    fi\n'
                 '    # Cleanup: stop daemon + remove per-job dirs on\n'
-                '    # ANY exit (success, error, signal).\n'
+                '    # ANY exit (success, error, signal).  Trap is\n'
+                '    # armed regardless of whether the daemon actually\n'
+                '    # bound -- a partially-started daemon still wants\n'
+                '    # the directories cleaned.\n'
                 '    trap \'echo quit | nvidia-cuda-mps-control '
                 '>/dev/null 2>&1; '
                 'rm -rf "$CUDA_MPS_PIPE_DIRECTORY" '
                 '"$CUDA_MPS_LOG_DIRECTORY"\' EXIT\n'
-                '    echo "molbuilder: MPS enabled '
+                # Gate the "MPS enabled" message on the daemon-bind
+                # result.  Before this gate the readiness-poll fallback
+                # at the loop above would print "MPS daemon failed to
+                # bind ... falling back to no-MPS" AND THEN the line
+                # below would print "MPS enabled (pipe=...)" -- two
+                # contradictory messages, with the run continuing
+                # without MPS but the banner claiming otherwise.
+                '    if [ "$_use_mps_default" = "1" ]; then\n'
+                '        echo "molbuilder: MPS enabled '
                 '(pipe=$CUDA_MPS_PIPE_DIRECTORY)" >&2\n'
+                '    fi\n'
                 'else\n'
                 '    if [ "$_use_mps_default" = "1" ] '
                 '&& [ "$_mpi_np" -lt 2 ]; then\n'

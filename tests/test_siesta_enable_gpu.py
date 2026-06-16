@@ -488,15 +488,28 @@ def test_gpu_runtime_defaults_block_emits_3_line_banner(
 
 def test_gpu_runtime_defaults_block_probes_gpu_numa(
         tmp_path, caps_with_gpu_env):
-    """C fix: the chosen-line carries GPU NUMA proximity so the user
-    knows when to bind ranks to a specific socket.  Pin the awk
-    extractor that reads the "NUMA Affinity" column out of
-    ``nvidia-smi topo -m``."""
+    """C fix (revised 2026-06-16 after the libnuma N/A bug): the
+    GPU NUMA value is resolved by Python via ``_probe_gpu0_numa()``
+    (pynvml + kernel sysfs) at generation time and baked into the
+    wrapper as a literal.  No ``nvidia-smi topo -m`` parsing at
+    runtime -- that table layout misled the prior awk implementation.
+
+    Pin three things:
+      * The runtime override knob ``MOLBUILDER_GPU_NUMA`` is honored.
+      * A numeric validation guard rejects anything that isn't a
+        non-negative integer (defence in depth so a bad baked value
+        / bad env override can't reach numactl as ``N/A``).
+      * The old runtime probe (``nvidia-smi topo -m`` + ``NUMA
+        Affinity`` column parse) MUST NOT be back.
+    """
     cfg = SiestaConfig(enable_gpu=True)
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
     wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
     assert "_gpu_numa=" in wrapper_text
-    assert "nvidia-smi topo -m" in wrapper_text
-    assert "NUMA Affinity" in wrapper_text
+    assert 'MOLBUILDER_GPU_NUMA' in wrapper_text   # runtime override
+    assert '*[!0-9]*' in wrapper_text              # numeric guard
+    # The old runtime nvidia-smi probe is gone.
+    assert "nvidia-smi topo -m" not in wrapper_text
+    assert "NUMA Affinity" not in wrapper_text
