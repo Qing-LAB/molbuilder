@@ -422,30 +422,36 @@ def test_gpu_runtime_defaults_block_wraps_mpirun_in_numactl(
     assert '_numa_wrap_gpu="${_numa_wrap_gpu:-}"' in wrapper_text
 
 
-def test_gpu_runtime_defaults_uses_effective_sockets_under_numa_pin(
+def test_gpu_mpirun_binds_to_physical_cores_not_ht_siblings(
         tmp_path, caps_with_gpu_env):
-    """When numactl --cpunodebind restricts the cpuset to one NUMA
-    node, mpirun sees only ONE package inside its cpuset.  The
-    ppr:K:package mapping then needs _effective_sockets=1 -- using
-    the full _n_sockets count would underfill (K ranks on socket 0,
-    the remaining ranks never spawn because socket 1 is excluded).
+    """2026-06-16 fix: replace the ppr:K:package:PE=N form (which on
+    Intel HT boxes allocated PE=2 PUs per rank mapped as HT-sibling
+    pairs of ONE physical core, halving the effective core count)
+    with the canonical ``package:PE=N --bind-to core --rank-by core``
+    form.
 
-    Pin both the variable's definition AND the conditional override
-    so a regression to bare _n_sockets surfaces loudly."""
+    The user-visible symptom that prompted the fix: live 212-atom
+    Au-BDT run showed rank-0 bound to cpus={0,20} (core 0 threads 0
+    and 1), rank-1 {2,22}, etc -- 4 ranks used only 4 physical cores
+    with each rank's 2 OMP threads sharing one core's execution
+    units, capping socket 0 at 20% utilisation.
+
+    Pin the new canonical form + explicitly REJECT the broken
+    forms so a regression surfaces loudly.
+    """
     cfg = SiestaConfig(enable_gpu=True)
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
     wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
-    # The variable is set to _n_sockets and conditionally overridden.
-    assert "_effective_sockets=$_n_sockets" in wrapper_text
-    assert '[ "${_numa_pinned:-0}" = 1 ] && _effective_sockets=1' in wrapper_text
-    # Both branches of the placement decision use the EFFECTIVE count.
-    assert 'if [ "$_mpi_np" -le "$_effective_sockets" ]; then' in wrapper_text
-    assert ('_ppr=$(( (_mpi_np + _effective_sockets - 1) / '
-            '_effective_sockets ))' in wrapper_text)
-    # And the older bare-_n_sockets comparison MUST NOT appear.
-    assert 'if [ "$_mpi_np" -le "$_n_sockets" ]; then' not in wrapper_text
+    # The new form: package-level mapping, PE counts physical cores,
+    # bound to core, ranked by core for deterministic ordering.
+    assert ('_mpirun_bind="--bind-to core --map-by '
+            'package:PE=$_omp_threads --rank-by core"' in wrapper_text)
+    # Older broken forms MUST NOT appear.
+    assert "ppr:" not in wrapper_text  # the HT-stacking ppr form
+    assert "_effective_sockets" not in wrapper_text  # no longer needed
+    assert "_ppr=" not in wrapper_text
 
 
 def test_cpu_mode_wrapper_does_not_emit_numa_wrap_gpu_branches(

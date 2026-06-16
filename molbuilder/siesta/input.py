@@ -47,7 +47,8 @@ from ..config.siesta import SiestaConfig
 
 
 def _auto_block_size(n_atoms: int,
-                     mpi_np: Optional[int] = None) -> int:
+                     mpi_np: Optional[int] = None,
+                     gpu_mode: bool = False) -> int:
     """Pick a SIESTA ``BlockSize`` for the ScaLAPACK orbital
     distribution.  Affects cache efficiency at moderate rank counts.
 
@@ -80,21 +81,45 @@ def _auto_block_size(n_atoms: int,
 
     Strategy
     --------
-      * If mpi_np is None or 1: size-only ladder (1, 2, 4, 8 by
-        n_atoms), capped at 8.
-      * If mpi_np >= 2: largest power of 2 satisfying
-        ``BlockSize <= floor(n_atoms / mpi_np)``, no artificial cap.
+    Two regimes -- CPU mode and GPU mode -- because the optimal
+    BlockSize is fundamentally different on the two solvers.
 
-    GPU mode note
-    -------------
-    The low-mpi_np regime that GPU mode runs in (1-4 ranks) naturally
-    pushes BlockSize HIGHER -- which is exactly what the ELPA CUDA
-    kernel wants (more orbitals per kernel launch → better memory
-    coalescing → fewer Hyper-Q round-trips).  For n_atoms=600,
-    mpi_np=2 → 256, mpi_np=4 → 128; CPU mode at mpi_np=20 → 16.
-    The kernel itself caps at 2^10 = 1024; we never approach it.
-    No GPU-specific override needed -- the formula already biases
-    correctly.
+    CPU mode (default)
+      * mpi_np is None or 1: size-only ladder (1, 2, 4, 8 by
+        n_atoms), capped at 8.
+      * mpi_np >= 2: largest power of 2 satisfying
+        ``BlockSize <= floor(n_atoms / mpi_np)``.
+
+    GPU mode (``gpu_mode=True``)
+      Target **64** -- the ELPA-CUDA published sweet spot
+      ([arXiv 2002.10991]).  64×64 blocks fit GPU L2 cache; kernel
+      launch overhead is amortised across enough work to keep the
+      SMs saturated; smaller blocks pay more launch overhead than
+      compute, bigger blocks tail-empty when ranks divide the
+      problem.
+
+      Capped only when the problem is too small to support 64
+      (n_orbitals/mpi_np < 64).  We estimate n_orbitals as
+      ``10 × n_atoms`` (rough DZP/DZ-polarised heuristic; an
+      underestimate for heavy elements like Au where DZP gives
+      ~25 orb/atom, but the cap only kicks in for systems too
+      small to need GPU acceleration in the first place).
+
+      Result is the largest power of 2 in
+      ``[8, min(64, floor(10 × n_atoms / mpi_np))]``.
+
+      Concrete numbers:
+        n_atoms=212, mpi_np=4 (the 2026-06-16 Au-BDT case):  64
+        n_atoms=16,  mpi_np=4 (tiny test fixture):           32
+        n_atoms=1000, mpi_np=4 (big metal slab):             64
+
+    HISTORY
+      The pre-2026-06-16 CPU formula was used uniformly.  For the
+      typical GPU-form path (cfg.mpi_np = None, gpu_mode = True)
+      it fell into the size-only ladder and returned 8 for any
+      system >=16 atoms -- way below the ELPA-CUDA optimum.  A
+      live 212-atom Au-BDT GPU run was using BlockSize=8 the whole
+      time before this fix.
 
     Returns
     -------
@@ -102,19 +127,29 @@ def _auto_block_size(n_atoms: int,
     SIESTA still crashes at startup with propor IMAX=0, the issue
     is mpi_np / molecule mismatch, not BlockSize.
     """
+    if gpu_mode:
+        # GPU mode targets ELPA-CUDA's published 64-block optimum.
+        # The cap protects against tiny systems where 64 wouldn't
+        # divide the orbital space across ranks evenly.  Estimate
+        # n_orbitals from n_atoms (10x is a rough DZP heuristic).
+        np_ = max(1, int(mpi_np)) if mpi_np else 4  # 4 = GPU+MPS default
+        orbital_estimate = 10 * max(1, n_atoms)
+        upper = min(64, orbital_estimate // np_)
+        pow2 = 8
+        while pow2 * 2 <= upper:
+            pow2 *= 2
+        return pow2
     if not mpi_np or int(mpi_np) <= 1:
-        # No rank info -- conservative size-only baseline.  Cap at 8
-        # is the historical safety choice; with mpi_np known we
-        # remove this ceiling below.
+        # CPU + no rank info -- conservative size-only baseline.
+        # Cap at 8 is the historical safety choice; with mpi_np
+        # known we remove this ceiling below.
         if   n_atoms >= 16:  return 8
         elif n_atoms >=  8:  return 4
         elif n_atoms >=  4:  return 2
         else:                return 1
-    # Rank constraint: every rank must get >= 1 atom block, i.e.
-    # ``BlockSize <= floor(n_atoms / mpi_np)``.  Take the LARGEST
-    # power of 2 that satisfies it.  No artificial cap: scaling up
-    # naturally rewards bigger systems + more ranks with bigger
-    # BlockSize, which is what ScaLAPACK wants.
+    # CPU mode with mpi_np >= 2.  Rank constraint: every rank must
+    # get >= 1 atom block, i.e. ``BlockSize <= floor(n_atoms /
+    # mpi_np)``.  Take the LARGEST power of 2 that satisfies it.
     cap = max(1, n_atoms // int(mpi_np))
     pow2 = 1
     while pow2 * 2 <= cap:
@@ -872,7 +907,13 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         "# (molecule / vacuum), .true. for multi-k periodic runs.",
     ]
     if cfg.parallel_block_size is None:
-        block_size = _auto_block_size(struct.n_atoms, cfg.mpi_np)
+        # GPU and CPU have fundamentally different BlockSize optima
+        # (GPU targets the ELPA-CUDA 64-block sweet spot; CPU keeps
+        # the historical n_atoms/mpi_np formula).  Branch the picker
+        # via ``gpu_mode`` rather than hand-rolling it here.
+        block_size = _auto_block_size(
+            struct.n_atoms, cfg.mpi_np, gpu_mode=bool(cfg.enable_gpu),
+        )
     else:
         # User-set BlockSize is honored verbatim.  Earlier code
         # auto-downgraded when ``BlockSize * mpi_np > n_atoms`` on

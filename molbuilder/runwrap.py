@@ -1512,35 +1512,38 @@ def render_run_wrapper(script_path: Path, *,
             # per package.  On OpenMPI 5.x "package" is canonical;
             # "socket" still works as an alias.
             + (
-                # Runtime-chosen mapping.  OpenMPI's ``--map-by core``
-                # rejects ``PE=N`` for N>1 ("object level has less
-                # cpus than requested"), and bare ``--map-by package``
-                # rejects ``mpi_np > n_packages`` ("more cpus than
-                # available in your allocation").  So:
-                #   mpi_np <= n_sockets  ->  ``package:PE=N`` (one
-                #                            rank per package, N PEs)
-                #   mpi_np >  n_sockets  ->  ``ppr:K:package:PE=N``
-                #                            (K = ceil(mpi_np/n_sockets)
-                #                            ranks per package, N PEs
-                #                            each)
-                # The ppr form covers the single-socket-multi-rank
-                # case which a bare ``package`` mapping cannot.
-                # When numactl restricts the wrapper to one NUMA node,
-                # mpirun sees only that ONE socket in its cpuset.  The
-                # package-aware mapping must treat n_sockets as 1 in
-                # that regime; using the full 2-socket count would make
-                # ppr:K:package=2 underfill (K ranks on socket 0, the
-                # other K never spawn because socket 1 isn't visible).
-                # Outside the numactl wrap _effective_sockets matches
-                # the lscpu count and behaviour is unchanged.
-                '_effective_sockets=$_n_sockets\n'
-                '[ "${_numa_pinned:-0}" = 1 ] && _effective_sockets=1\n'
-                'if [ "$_mpi_np" -le "$_effective_sockets" ]; then\n'
-                '    _mpirun_bind="--bind-to core --map-by package:PE=$_omp_threads"\n'
-                'else\n'
-                '    _ppr=$(( (_mpi_np + _effective_sockets - 1) / _effective_sockets ))\n'
-                '    _mpirun_bind="--bind-to core --map-by ppr:$_ppr:package:PE=$_omp_threads"\n'
-                'fi\n'
+                # PE counting hazard caught 2026-06-16 in a live
+                # 212-atom Au-BDT run: the previous
+                # ``ppr:K:package:PE=$_omp`` form, on Intel HT boxes,
+                # allocated PE=2 *processing units* (PUs) per rank
+                # mapped as HT-sibling pairs of ONE physical core.
+                # Observed binding: rank 0 cpus={0,20} (core 0
+                # threads), rank 1 cpus={2,22}, etc.  So 4 ranks x
+                # PE=2 used only 4 physical cores (not 8), with each
+                # rank's 2 OMP threads sharing one core's execution
+                # units -- socket 0 idle at 20% while it should have
+                # been driving 80%.
+                #
+                # Replace with the canonical "N physical cores per
+                # rank, packed onto packages" form:
+                #
+                #   --map-by package:PE=$_omp_threads
+                #     map ranks across packages, PE counts physical
+                #     CORES (not PUs) by default in OpenMPI 5 without
+                #     ``--use-hwthread-cpus``.  When the cpuset
+                #     restricts to one package (numactl wrap),
+                #     OpenMPI packs all ranks onto that single
+                #     visible package -- correct.
+                #   --bind-to core
+                #     bind each rank to its PE cores (one cpuset
+                #     per rank covering all its cores; OS scheduler
+                #     places OMP threads on those cores).
+                #   --rank-by core
+                #     stable rank ordering (rank 0 -> first core in
+                #     map, ...) so a future fix to identify "the
+                #     master rank" works deterministically.
+                '_mpirun_bind="--bind-to core --map-by '
+                'package:PE=$_omp_threads --rank-by core"\n'
                 if gpu_mode else
                 f'_mpirun_bind=""\n'
             )
