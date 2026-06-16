@@ -417,6 +417,93 @@ hardcoded `#1f9d55` outside comments).
 
 ---
 
+## 4.7 SCF wall-time annotation (2026-06-15)
+
+Trajectory inspector's `#scf-status` line carries a per-iter
+wall-time annotation so the researcher can answer "is this run
+progressing at a reasonable pace?" without having to compare timer
+lines by hand.  Three-tier precedence ladder, in order from
+"freshest measurement" to "best available":
+
+| Tier | Source | Annotation suffix |
+|---|---|---|
+| **STAGE 2a** | Server-side mtime delta between successive polls (`watch.py::_attach_iter_walltime`); survives browser reload | `~Xs/iter (from refresh delta, N iters in last Ms)` |
+| **STAGE 2b** | Client-side `state.scfPollHistory` rolling buffer; fills the first 1–2 polls before the server has paired samples | `~Xs/iter (from poll estimate, N iters in last Ms)` |
+| **STAGE 1 ladder** | Parser-attached `cumulative_walltime_s` from SIESTA's once-per-run `timer: IterSCF` line: walks `history` newest-first for the most relevant cycle | `~Xs/iter (from current step report` \| `from last step report` \| `from SIESTA iter-1 timer; refresh delta pending)` |
+| (none) | No SCF data at all | no annotation |
+
+The transition between tiers is automatic and self-healing:
+
+* The mtime-delta path produces a fresh measurement once two polls
+  span ≥1 iter in the same geom step.  Cross-step deltas are
+  deliberately skipped (the DM extrapolation + mesh rebuild between
+  steps is not iter cost), so when a step boundary falls between
+  two polls the annotation briefly falls back to the snapshot
+  label until the next iter completes.
+* The client buffer (`scfPollHistory`) resets on file switch in
+  `loadByPath()` — without that reset, the rolling average would
+  delta file A's `totalIters` against file B's and surface a bogus
+  `(from poll estimate, N iters in last Ms)` for one full buffer
+  cycle.  See `core.js` line ~2615.
+* The Refresh button on the file picker dispatches a custom
+  `molbuilder:results:refresh` event that the trajectory inspector
+  listens for in `startPolling`; clicking Refresh runs an immediate
+  `pollOnce()` instead of waiting up to 60 s for the scheduled
+  tick.  Camera + animation state are preserved (no remount).
+
+The provenance label is load-bearing UX: a user reading "~16.2s/iter
+(from SIESTA iter-1 timer; refresh delta pending)" knows the number
+is a snapshot from start-of-run, not a measurement of the current
+iter — and that a fresh measurement will arrive once two polls have
+been compared.  Labels are spelt out (not slug-coded) so the meaning
+doesn't require reading the source.
+
+Wire shape pinned in [`web-api.md § 8.4`](./web-api.md#84-apiwatchdata--polling-endpoint).
+Algorithm in `web/blueprints/watch.py::_attach_iter_walltime`.
+L1 tests in `tests/test_watch_iter_walltime.py`.
+
+---
+
+## 4.8 System load monitor — bottom strip (2026-06-15)
+
+Persistent fixed bottom strip on every page, mounted from
+`_app_header.html`.  Polled at 1 Hz from `/api/system/load`
+(see [`web-api.md § 9`](./web-api.md#9-apisystemload--server-load-snapshot-2026-06-15)).
+Four canvas sparkline cells:
+
+| Cell | Metric | Hover tooltip |
+|---|---|---|
+| `CPU` | `cpu_pct` aggregate across logical CPUs | `~N/M cores busy` (`cpu_pct × cpu_count_physical / 100`) + loadavg 1m/5m/15m + `[over-subscribed: load > physical cores]` footer when load > phys |
+| `RAM` | `ram_pct` | `X.X / Y.Y GB used` |
+| `GPU` | `gpus[0].util_pct` | NVIDIA name + util across multi-GPU hosts |
+| `VRAM` | `gpus[0].mem_pct` | `X.X / Y.Y GB used` per GPU |
+
+Behavior rules:
+
+* **CPU-only hosts**: server returns `gpus: []`; widget hides GPU
+  + VRAM cells.  Strip collapses to two cells.
+* **Pause on backgrounded tab**: `document.visibilitychange` →
+  `stopTimer()`.  Resume on visibility return.  Zero requests
+  while the user is on another tab.
+* **Collapse toggle** (`≡` pill): persisted in `sessionStorage`,
+  intra-session only.  Per-session UI preference, not a stored
+  setting.
+* **Color thresholds** read from CSS tokens (`--load-ok` <50%,
+  `--load-warn` 50–80%, `--load-bad` ≥80%) so dark / light themes
+  pick the right contrast.
+
+The strip is intentionally NOT scoped to the Results tab — it's on
+every page, because the load monitor is most useful when the user
+is on the Modify tab building the next structure WHILE a SIESTA
+job runs in the background.
+
+JS: `lib/system-load-monitor.js`.  CSS: `lib/system-load-monitor.css`.
+Backend: `web/blueprints/system_load.py` (psutil core dep,
+`nvidia-ml-py` in the `[gpu]` extra with graceful import guard).
+L1 tests in `tests/test_system_load.py`.
+
+---
+
 ## 5. What this design does NOT include
 
 * No multi-file comparison ("diff two runs"). Bigger feature; later.

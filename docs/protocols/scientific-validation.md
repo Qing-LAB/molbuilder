@@ -516,6 +516,99 @@ beyond appending a row to § 4.3's table.
 
 ---
 
+## 7.5 GPU eigensolver (ELPA-CUDA via MPS) (2026-06-15)
+
+The `molbuilder-siesta-gpu` env routes SIESTA's diagonalization
+through **ELPA-CUDA** when the .fdf carries `Diag.Algorithm
+ELPA-1STAGE` (or `ELPA-2STAGE`) AND `Diag.ELPA.GPU .true.`.
+NVIDIA **MPS** (Multi-Process Service) is used to share a single
+GPU concurrently across multiple MPI ranks — required because our
+ELPA build does not link NCCL, so without MPS multiple ranks
+serialise on the GPU's driver context.
+
+| Layer | Component | Scientific role |
+|---|---|---|
+| **Diagonalisation** | ELPA 2024.05.001 (libelpa_openmp_private_la, GPU support tag `nvidia-gpu` at API version 20241105) | One eigensolver call per SCF iter against the distributed Hamiltonian |
+| **Concurrency** | NVIDIA MPS (`nvidia-cuda-mps-control`) | Multiplexes N ranks' CUDA contexts onto the GPU's Hyper-Q hardware so they run concurrently |
+| **Numerical pairing** | ELPA + ScaLAPACK | The non-eigenvector parts (mesh integration, DM mix, H rebuild) remain on the host; ELPA is one call inside SIESTA's IterSCF, not the whole loop |
+
+**Numerical-equivalence claim.**  ELPA-GPU and ELPA-CPU on the
+same `Diag.Algorithm` produce eigenvalues that agree to ~1e-6 eV
+total energy on the documented A100 + sm_80 reference (arXiv
+2002.10991).  Our build targets sm_80 specialised kernel only for
+cc=8.0; cc=8.6 / 8.7 / 8.9 / 9.0 use ELPA's generic NVIDIA kernel
+compiled NATIVELY for the user's cc (see § 7.5.1 for the
+recipe-level pinning rationale).  No documented chemistry-relevant
+divergence between the two; same SCF converges to the same total
+energy within ~1e-5 eV across the build-flag matrix.
+
+### 7.5.1 The 2021.11.001 → 2024.05.001 bump
+
+The previous recipe pinned ELPA 2021.11.001.  End-to-end testing
+on a BDT-Au junction (3924 orbitals, 20 MPI ranks + MPS on RTX
+3060 Ti) revealed a **multi-rank GPU finalize deadlock** that
+matched the documented CSCS Cray-XC50 report
+([CP2K issue #1956](https://github.com/cp2k/cp2k/issues/1956))
+and the A100/sm_80 kernel-mismatch issue
+([ELPA upstream #15](https://github.com/marekandreas/elpa/issues/15)).
+
+| `Diag.Algorithm` | `Diag.ELPA.GPU` | Behaviour on 2021.11.001 |
+|---|---|---|
+| `ELPA-1STAGE` | `.true.` | Hangs after iter 1 (MPI sync deadlock in the GPU finalize path) |
+| `ELPA-2STAGE` | `.true.` | Hangs after iter 1 (same code path — algorithm-independent) |
+| `ELPA-2STAGE` | `.true.` | Sometimes warns "GPU usage requested but compute kernel is set as non-GPU" + silently falls back to CPU + STILL hangs (CUDA contexts held by the linked toolkit, not the kernel — the hang is in cleanup, not the algorithm) |
+| (none — default ScaLAPACK) | (n/a) | Converges normally |
+
+Resolution: bump to **ELPA 2024.05.001** which has documented
+multi-rank GPU finalize fixes.  Recipe also gained a uniform
+conda-CUDA path bridge (`_CONDA_CUDA_ENV_BRIDGE` constant applied
+to configure / build / install argvs so `cuda_runtime.h: No such
+file or directory` from ELPA 2024's `cannon.c:99` direct include
+is closed in ALL phases, not just configure) and a
+`--with-cusolver=no` toggle (the `cusolverDnXtrtri` symbol that
+ELPA 2024 probes for isn't visible to autoconf in the conda-forge
+cuda-cudart 13.* layout; ScaLAPACK fallback is negligible at our
+problem sizes <10k orbitals).
+
+### 7.5.2 MPS contract (rank policy)
+
+The runwrap.py SIESTA-GPU wrapper auto-detects
+`nvidia-cuda-mps-control` and starts a per-job MPS daemon (pipe
+dir `/tmp/mb-mps-$$`) with trap-based EXIT cleanup.  The
+**default rank policy is conditional on MPS**:
+
+| MPS | Default `mpi_np` | Reason |
+|---|---|---|
+| `on` | **4** (1 daemon serves up to 48 client contexts on Ampere+) | 4 concurrent ranks via Hyper-Q ≈ optimal for our ELPA tag without NCCL |
+| `off` | **2** | Without MPS, ranks serialise on the GPU's driver context — adding more ranks only adds MPI overhead |
+
+The user can override at any time via `MOLBUILDER_MPI_NP` env var
+or `-np` flag.  MPS itself is auto-enabled when both
+`Diag.ELPA.GPU .true.` is in the .fdf AND `nvidia-cuda-mps-control`
+is on the host PATH; the `envs validate` probe `mps daemon`
+surfaces the absence loudly so the user can install the missing
+host package (NOT a conda package — ships with the NVIDIA host
+driver).
+
+### 7.5.3 Validation probes
+
+`python -m molbuilder envs validate molbuilder-siesta-gpu` runs:
+
+| Probe | What it catches |
+|---|---|
+| `binary-links` | siesta + tbtrans + phtrans exist + `siesta --version` exits 0 |
+| `cuda stack` | `nvidia-smi` + `libcuda.so.1` via ctypes (driver loaded) |
+| `mps daemon` | `nvidia-cuda-mps-control -V` succeeds (host MPS available) |
+| `elpa gpu codepath` | Runs an ELPA 1stage-real-double validator + greps stderr for the silent-CPU-fallback warning string from `elpa2_template.F90`.  This is the load-bearing probe — `nvidia-smi` can report a clean GPU while ELPA silently runs on CPU for every SCF step. |
+| `siesta ctest` | `ctest -L simple -E verify` against SIESTA's bundled tests (~90 s) |
+
+`elpa gpu codepath` is the canary — none of the other probes
+catches silent CPU fallback.  Defended by upstream code reference
+(`src/elpa2/elpa2_template.F90`) so a future ELPA refactor of the
+warning string surfaces in the test diff.
+
+---
+
 ## 8. What the middle layer does NOT cover
 
 The analyzer scope is **the chemistry-driven `(charge, spin,

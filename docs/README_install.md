@@ -361,6 +361,49 @@ two binaries are never on `PATH` simultaneously.  `conda env remove
 molbuilder-siesta-gpu` cleans up atomically; the precompiled CPU env
 is unaffected.
 
+#### Verify the GPU env actually exercises the GPU codepath
+
+After install, run the GPU-specific validator:
+
+```bash
+python -m molbuilder envs validate molbuilder-siesta-gpu
+```
+
+This runs five probes (~2 min wall-clock):
+
+| Probe | What it catches |
+|---|---|
+| `binary-links` | `siesta` + `tbtrans` + `phtrans` present; `siesta --version` exits 0 |
+| `cuda stack` | `nvidia-smi` reports the host driver + `libcuda.so.1` loadable via ctypes |
+| `mps daemon` | `nvidia-cuda-mps-control -V` succeeds (the host MPS binary is reachable) |
+| `elpa gpu codepath` | Runs ELPA's own GPU validator + greps stderr for the documented silent-CPU-fallback warning string.  Load-bearing — `nvidia-smi` can report a healthy GPU while ELPA silently runs on CPU for every SCF step. |
+| `siesta ctest` | SIESTA's bundled `-L simple` ctest set (~90 s) |
+
+If the `mps daemon` probe FAILS with "nvidia-cuda-mps-control not
+found on host PATH":
+
+```bash
+# Debian / Ubuntu — the MPS binary ships with the NVIDIA driver
+# package, NOT as a conda package.
+sudo apt install nvidia-cuda-mps
+# Or, on rpm-family distros:
+sudo dnf install nvidia-driver-cuda
+```
+
+The wrapper auto-falls-back to non-MPS multi-rank (mpi_np capped at
+2, no Hyper-Q concurrency on the GPU) when MPS is missing, but
+multi-rank GPU runs lose most of their speedup.  Worth installing.
+
+If the `elpa gpu codepath` probe FAILS with "silent CPU fallback
+warning detected", the ELPA build picked the wrong kernel for your
+GPU.  Common cause: a SM_80-specialised kernel built for the wrong
+compute capability (the build is supposed to use the SM_80 kernel
+ONLY for A100; cc 8.6 / 8.7 / 8.9 / 9.0 should use ELPA's generic
+NVIDIA kernel compiled natively for their cc).  Open an issue with
+your `nvidia-smi --query-gpu=compute_cap --format=csv,noheader`
+output; the recipe auto-detects but the audit trail helps diagnose
+edge cases.
+
 ### `molbuilder-MDtools` — AmberTools
 
 For Amber-side parameterisation: tleap, parmchk2, antechamber, RESP
