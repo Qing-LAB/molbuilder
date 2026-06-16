@@ -1,0 +1,55 @@
+{#- System-load monitor partial.  Include from a page template
+    (currently: results.html) to mount the bottom strip with 1 Hz
+    polling and a canvas sparkline per metric (CPU%, RAM%, GPU SM%,
+    GPU BW%, VRAM%).
+
+    Module lives at lib/system-load-monitor.js + .css; HTML here so
+    template includes opt in explicitly instead of every page-include
+    of _app_header.html getting the widget unconditionally (which
+    burned 1 Hz NVML probes on tabs where the user wasn't watching
+    long-running jobs).
+
+    GPU cells start hidden and are unhidden by the JS when
+    /api/system/load reports gpus.length > 0 (so CPU-only hosts
+    naturally show a 2-cell strip).  The toggle pill ("≡") collapses
+    /expands the strip AND stops polling; persisted in sessionStorage
+    so the user's choice survives intra-session navigation between
+    tabs. -#}
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/system-load-monitor.css') }}">
+<aside id="system-load-monitor" aria-label="Server load monitor">
+  <button class="system-load-toggle" type="button"
+          aria-pressed="false" title="Hide server load">≡</button>
+  <div class="system-load-strip">
+    <div class="system-load-cell" data-metric="cpu" title="Aggregate CPU utilization (psutil.cpu_percent)">
+      <span class="label">CPU</span>
+      <span class="value" data-value>—</span>
+      <canvas class="spark" width="120" height="32"
+              aria-label="CPU usage sparkline, last 60 seconds"></canvas>
+    </div>
+    <div class="system-load-cell" data-metric="ram" title="System memory used (psutil.virtual_memory)">
+      <span class="label">RAM</span>
+      <span class="value" data-value>—</span>
+      <canvas class="spark" width="120" height="32"
+              aria-label="RAM usage sparkline, last 60 seconds"></canvas>
+    </div>
+    <div class="system-load-cell" data-metric="gpu" hidden>
+      <span class="label">GPU</span>
+      <span class="value" data-value>—</span>
+      <canvas class="spark" width="120" height="32"
+              aria-label="GPU SM compute utilization sparkline, last 60 seconds"></canvas>
+    </div>
+    <div class="system-load-cell" data-metric="gpubw" hidden>
+      <span class="label">GPU BW</span>
+      <span class="value" data-value>—</span>
+      <canvas class="spark" width="120" height="32"
+              aria-label="GPU memory bandwidth utilization sparkline, last 60 seconds"></canvas>
+    </div>
+    <div class="system-load-cell" data-metric="vram" hidden>
+      <span class="label">VRAM</span>
+      <span class="value" data-value>—</span>
+      <canvas class="spark" width="120" height="32"
+              aria-label="GPU memory usage sparkline, last 60 seconds"></canvas>
+    </div>
+  </div>
+</aside>
+<script src="{{ url_for('static', filename='lib/system-load-monitor.js') }}"></script>

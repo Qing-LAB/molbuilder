@@ -359,25 +359,36 @@ def recommend(probe: HostProbe,
     fallback_omp = _omp_for(fallback_np)
 
     def _notes_default() -> str:
-        bits = ["ELPA 2024.05 published optimum"]
+        bits = ["ELPA 2024.05 published optimum (4 ranks/GPU + MPS)"]
         if not probe.mps_available:
             bits.append("REQUIRES MPS -- install nvidia-cuda-mps-control")
         return "; ".join(bits)
 
     def _notes_memory() -> str:
-        bits = ["balanced if VRAM ≥ 12 GB / rank"]
-        if probe.gpu_vram_mb and probe.gpu_vram_mb < 12 * 1024:
-            bits.append(f"your GPU has {probe.gpu_vram_mb / 1024:.1f} GB total")
+        # WARNING for future me: the ``memory`` preset is NOT for
+        # VRAM-bound runs.  ELPA-CUDA splits the matrix across
+        # ranks, so np=2 means EACH rank holds half the matrix
+        # (vs 1/4 at np=4) -- per-rank VRAM is HIGHER, not lower.
+        # What this preset actually buys you is fewer CUDA contexts,
+        # less MPS daemon overhead, and a larger contiguous matrix
+        # block per rank (CUDA SMs prefer this at small N).
+        # The notes here MUST not promise "memory savings".
+        bits = ["fewer CUDA contexts / larger per-rank matrix block"]
         if not probe.mps_available:
             bits.append("requires MPS")
         return "; ".join(bits)
 
     def _notes_fallback() -> str:
-        bits = ["single-rank fallback"]
+        # WARNING: similarly, "fallback" is NOT a VRAM rescue.  Single
+        # rank means the whole matrix lives on one rank -- highest
+        # per-rank VRAM of all three presets.  Use this only when
+        # MPS is unavailable (multi-rank without MPS serialises
+        # through the CUDA driver context, slower than single-rank).
+        bits = ["single-rank, no MPS dependency"]
         if not probe.mps_available:
             bits.append("MPS unavailable -- this is the only safe choice")
         else:
-            bits.append("use if both presets above OOM")
+            bits.append("uses MORE VRAM/rank than the other two")
         return "; ".join(bits)
 
     return [
