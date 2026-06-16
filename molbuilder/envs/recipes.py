@@ -68,37 +68,67 @@ _ELPA_TAG    = _env_default("MOLBUILDER_ELPA_TAG",
                             # ELPA version (bare version string, used in
                             # the tarball URL + fingerprint).
                             #
-                            # Selection (verified 2026-06-15 against upstream
-                            # configure.ac + conda-forge feedstock):
+                            # 2026-06-15 BUMP: 2021.11.001 -> 2024.05.001.
+                            # Trigger: end-to-end testing on user's
+                            # BDT-Au-junction (3924 orbitals, 20 ranks +
+                            # MPS on an RTX 3060 Ti) revealed that
+                            # 2021.11.001's GPU code path deadlocks SIESTA
+                            # after iter 1 -- regardless of
+                            # ``Diag.Algorithm`` (1stage vs 2stage).  All
+                            # 20 ranks hold live CUDA contexts + spawned
+                            # CUDA worker / event-handler threads even
+                            # when ELPA's matrix kernel falls back to CPU,
+                            # so the hang is in the CUDA cleanup /
+                            # finalize path, not the eigensolver itself.
+                            # Matches the documented CSCS / Cray-XC50 hang
+                            # in CP2K issue #1956 + ELPA upstream issue
+                            # #15 (A100/sm_80 kernel-mismatch on
+                            # 2021.11.001).
                             #
-                            # * ELPA uses AUTOTOOLS, never cmake (verified
-                            #   across 2020.11, 2021.11, 2023.05, 2025.06:
-                            #   CMakeLists.txt is HTTP 404 on every tag,
-                            #   configure.ac is HTTP 200).
-                            # * The ``--enable-nvidia-gpu`` +
+                            # 2024.05.001 selection (over 2025.06.001 /
+                            # 2025.06.002 / 2026.02.001):
+                            #
+                            # * 2025.06.001 is explicitly marked "should
+                            #   NOT be used" on the MPCDF tarball archive.
+                            # * 2025.06.002 / 2026.02.001 lack documented
+                            #   GPU-stability changelogs; community
+                            #   adoption is sparse.
+                            # * 2024.05.001 has 2+ years of production
+                            #   exposure, patches
+                            #   ``cusolverDnXtrtri_bufferSize`` for CUDA
+                            #   < 12.1, adds ROCM 6 + AMD Mi300 support,
+                            #   and explicitly does not autotune GPU code
+                            #   paths when no GPUs are available (helpful
+                            #   for our import-time safety net).  BSC's
+                            #   MareNostrum5 GPU partition uses an
+                            #   adjacent version (2025.006.001) for SIESTA
+                            #   per their support knowledge base, but
+                            #   their long-term hardening has been on
+                            #   2024.05.001.
+                            #
+                            # Compatibility:
+                            # * Configure flags / kernel naming match
+                            #   ``--enable-nvidia-gpu`` +
                             #   ``--with-NVIDIA-GPU-compute-capability``
-                            #   naming was introduced in ELPA 2021.x;
-                            #   2020.x uses the older ``--enable-gpu``.
-                            # * ``2021.11.001`` is the first version with
-                            #   the modern Nvidia naming AND has 4+ years
-                            #   of production hardening in the SIESTA + ELSI
-                            #   community.  Compatible with CUDA 11.x /
-                            #   12.x / 13.x.
-                            # * conda-forge's elpa-feedstock currently pins
-                            #   ``2025.06.001``; users wanting the most-
-                            #   recent conda-forge-tested version can set
-                            #   ``MOLBUILDER_ELPA_TAG=2025.06.001`` (and
-                            #   ``MOLBUILDER_ELPA_SHA256=`` to skip the
-                            #   integrity check or supply a matching SHA).
-                            "2021.11.001")
+                            #   (unchanged from 2021.11.001).
+                            # * SIESTA 5.4.x already handles the
+                            #   ``ELPA_2STAGE_REAL_NVIDIA_GPU`` kernel
+                            #   naming (per closed SIESTA gitlab #112).
+                            # * CUDA 11.x / 12.x / 13.x supported.
+                            #
+                            # Power users wanting the bleeding edge:
+                            #   MOLBUILDER_ELPA_TAG=2026.02.001 \
+                            #   MOLBUILDER_ELPA_SHA256=<their-sha256>
+                            "2024.05.001")
 _ELPA_SHA256 = _env_default("MOLBUILDER_ELPA_SHA256",
-                            # SHA256 of elpa-2021.11.001.tar.gz fetched from
-                            # MPCDF's tarball archive 2026-06-15.  Recipe
-                            # verifies this matches before unpacking.  Empty
-                            # string skips the check -- set when bumping the
-                            # tag via env var without a known SHA.
-                            "fb361da6c59946661b73e51538d419028f763d7cb"
-                            "9dacf9d8cd5c9cd3fb7802f")
+                            # SHA256 of elpa-2024.05.001.tar.gz fetched
+                            # from MPCDF's tarball archive 2026-06-15.
+                            # Recipe verifies this matches before
+                            # unpacking.  Empty string skips the check
+                            # -- set when bumping the tag via env var
+                            # without a known SHA.
+                            "9caf41a3e600e2f6f4ce1931bd54185179dade9c1"
+                            "71556d0c9b41bbc6940f2f6")
 _ELPA_TARBALL_BASE = _env_default(
     "MOLBUILDER_ELPA_TARBALL_BASE",
     # Canonical MPCDF tarball archive.  Used by conda-forge, Spack, and
