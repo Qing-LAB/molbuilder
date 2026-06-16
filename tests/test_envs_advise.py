@@ -36,27 +36,37 @@ def _probe(*, phys_cores=20, sockets=1, cps=20,
 
 
 def test_recommend_returns_three_named_presets_on_typical_workstation():
-    """20-core / 1-GPU / MPS-installed: the canonical workstation."""
-    presets = _advise.recommend(_probe())
+    """20-core / 1-GPU / MPS-installed: the canonical workstation.
+
+    Policy (2026-06-16): OMP = (phys_cores - 1) // mpi_np for every
+    preset -- fills the box, leaves 1 core for the ELPA-GPU host
+    driver thread.  Across the three presets the user is choosing
+    mpi_np (which sets the diag-parallelism + VRAM/rank trade-off);
+    OMP follows.
+    """
+    presets = _advise.recommend(_probe())  # 20 phys cores
     assert [p.name for p in presets] == ["default", "memory", "fallback"]
     default, memory, fallback = presets
+    # default: np=4 → OMP=(20-1)//4=4
     assert default.mpi_np == 4
-    assert default.omp == 2  # ELPA 2024.05 published optimum
+    assert default.omp == 4
     assert default.mps is True
+    # memory: np=2 → OMP=(20-1)//2=9
     assert memory.mpi_np == 2
-    assert memory.omp >= 4
+    assert memory.omp == 9
     assert memory.mps is True
+    # fallback: np=1 → OMP=(20-1)//1=19
     assert fallback.mpi_np == 1
-    assert fallback.omp >= 4  # single-rank fallback gets the OMP budget
+    assert fallback.omp == 19
     assert fallback.mps is False
 
 
-def test_recommend_default_omp_is_two_on_4_rank_path():
-    """BSC report: "two OpenMP threads per MPI task" is the GPU sweet
-    spot.  Pinning this so a future tuning change is loud."""
+def test_recommend_default_omp_fills_the_box():
+    """Policy-shape pin: OMP = (phys - 1) // np.  On 32-core box,
+    default (np=4) should give OMP=7, NOT the old fixed-2 value."""
     presets = _advise.recommend(_probe(phys_cores=32, sockets=1, cps=32))
     assert presets[0].mpi_np == 4
-    assert presets[0].omp == 2
+    assert presets[0].omp == 7  # (32-1)//4 = 7
 
 
 def test_recommend_caps_np_by_atom_count():

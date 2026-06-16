@@ -590,11 +590,16 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
         no-NCCL throughput optimum; BSC MareNostrum5 SIESTA-ACC report
         confirms on V100/A100/H100); without MPS, 2 dual-socket or
         ``cps >= 16``, else 1.  Clamped <= n_atoms.
-      * ``_omp_default``: 2 (BSC report: "two OpenMP threads per MPI
-        task" showed clear speedup vs higher; above that the non-solver
-        host code dominates).  Bumped up only when there is otherwise
-        idle core budget AND the BLAS-bound non-solver host work has
-        room to soak it (rare on a single-GPU box).
+      * ``_omp_default``: ``(phys_cores - 1) // mpi_np`` -- fills the
+        box, leaves 1 core for the ELPA-GPU host driver thread.  Policy
+        revised 2026-06-16 after the OMP-per-rank correction: OMP threads
+        DO accelerate ELPA's host-side eigensolver stages and SIESTA's
+        non-solver host code even when ``Diag.ELPA.GPU`` is on.  The
+        prior "fixed 2" default was based on a misread of the
+        "GPU choice at runtime not compatible with OpenMP" ELPA docs
+        sentence -- that sentence applies to the elpa_setup_gpu
+        runtime-switch API (2023.11+), not to OpenMP threading within
+        a rank that uses elpa_set("nvidia-gpu", 1) at SCF-setup time.
       * Override knobs (read here so the same banner can name them):
         ``MOLBUILDER_MPI_NP`` and ``MOLBUILDER_OMP_NUM_THREADS``.
 
@@ -689,32 +694,14 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
             f'fi\n'
             if n_atoms_lit else ""
         ) +
-        # OMP policy: fixed 2 (BSC MareNostrum5 SIESTA-ACC report --
-        # "two OpenMP threads per MPI task" gave clear speedup vs
-        # higher, above that the non-solver host code dominates).
-        # Bump only if (a) there is idle core budget AND (b) the run
-        # has few MPI ranks (1-2) where OMP must pick up the missing
-        # parallelism.  Never over-subscribe; leave 1 core for the
-        # ELPA-GPU host driver thread.
-        '_omp_default=2\n'
-        '_omp_max=$(( (_phys_cores - 1) / _gpu_mpi_np_default ))\n'
-        '[ "$_omp_max" -lt 1 ] && _omp_max=1\n'
-        '# When mpi_np is small, OMP picks up the slack -- target a\n'
-        '# larger OMP only on np<=2 single-rank fallback paths so 4-\n'
-        '# rank default keeps the published OMP=2 sweet spot.\n'
-        'if [ "$_gpu_mpi_np_default" -le 2 ]; then\n'
-        '    _omp_target=$(( _phys_cores / 2 ))\n'
-        '    [ "$_omp_target" -gt "$_omp_max" ] && _omp_target=$_omp_max\n'
-        '    [ "$_omp_target" -gt "$_omp_default" ] && '
-        '_omp_default=$_omp_target\n'
-        'fi\n'
-        '# Force even (cleaner divisor for ScaLAPACK BlockSize math)\n'
-        'if [ "$_omp_default" -gt 1 ] '
-        '&& [ $(( _omp_default % 2 )) -eq 1 ]; '
-        'then _omp_default=$(( _omp_default - 1 )); fi\n'
-        '# Final clamp -- never spill past _omp_max\n'
-        'if [ "$_omp_default" -gt "$_omp_max" ]; then '
-        '_omp_default=$_omp_max; fi\n'
+        # OMP policy (2026-06-16): fill the box -- one OMP thread per
+        # idle core, divided across ranks.  OMP threads accelerate both
+        # ELPA's host-side eigensolver stages (tridiag, back-transform)
+        # AND SIESTA's non-solver host code (H_matrix_setup, grid,
+        # nlefsm) even when Diag.ELPA.GPU is on.  Leave 1 core for the
+        # ELPA-GPU host driver thread (the rank that owns the CUDA
+        # context spawns extra worker threads for async memcpy).
+        '_omp_default=$(( (_phys_cores - 1) / _gpu_mpi_np_default ))\n'
         '[ "$_omp_default" -lt 1 ] && _omp_default=1\n'
         '# Apply env-var overrides (precedence: env > policy)\n'
         '_gpu_mpi_np_default="${MOLBUILDER_MPI_NP:-$_gpu_mpi_np_default}"\n'

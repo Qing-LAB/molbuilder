@@ -85,6 +85,17 @@ def _auto_block_size(n_atoms: int,
       * If mpi_np >= 2: largest power of 2 satisfying
         ``BlockSize <= floor(n_atoms / mpi_np)``, no artificial cap.
 
+    GPU mode note
+    -------------
+    The low-mpi_np regime that GPU mode runs in (1-4 ranks) naturally
+    pushes BlockSize HIGHER -- which is exactly what the ELPA CUDA
+    kernel wants (more orbitals per kernel launch → better memory
+    coalescing → fewer Hyper-Q round-trips).  For n_atoms=600,
+    mpi_np=2 → 256, mpi_np=4 → 128; CPU mode at mpi_np=20 → 16.
+    The kernel itself caps at 2^10 = 1024; we never approach it.
+    No GPU-specific override needed -- the formula already biases
+    correctly.
+
     Returns
     -------
     A positive power of 2.  Safe to use regardless of mpi_np; if

@@ -367,26 +367,31 @@ def test_write_run_wrapper_explicit_env_overrides_detection(
 # --------------------------------------------------------------------- #
 
 
-def test_gpu_runtime_defaults_block_uses_fixed_omp_2_policy(
+def test_gpu_runtime_defaults_block_fills_the_box(
         tmp_path, caps_with_gpu_env):
-    """B fix (2026-06-16): GPU-mode OMP default is the BSC-reported
-    sweet spot (2 threads/rank), NOT the old CPU-mode
-    ``cores_per_socket // 2`` policy that over-subscribed on
-    single-socket workstations (4 ranks × 10 OMP on 20 cores).
+    """Policy (2026-06-16, revised after OMP-per-rank correction):
+    OMP_NUM_THREADS = (phys_cores - 1) // mpi_np.  Fills the box,
+    leaves 1 core for the ELPA-GPU host driver thread.
 
-    The bash block must set ``_omp_default=2`` as the literal start
-    of the OMP policy.  Bumping up is reserved for low-rank paths
-    (np<=2) where there is unused budget."""
+    OMP threads DO accelerate ELPA's host-side eigensolver stages
+    AND SIESTA's non-solver host code even with Diag.ELPA.GPU on --
+    the "GPU runtime switch not compatible with OpenMP" docs
+    sentence applies to a different API (elpa_setup_gpu) than what
+    SIESTA uses.
+
+    Pin the load-bearing formula so a future "fixed 2" regression
+    surfaces loudly."""
     cfg = SiestaConfig(enable_gpu=True)
     fdf_text = render_fdf(_mk_struct(), cfg)
     fdf = tmp_path / "job.fdf"
     fdf.write_text(fdf_text, encoding="utf-8")
     wrapper_text = _runwrap.write_run_wrapper(fdf).read_text(encoding="utf-8")
-    # The 2-thread default is the load-bearing assertion: regress
-    # this and the user is back to oversubscribing every workstation.
-    assert "_omp_default=2\n" in wrapper_text
-    # The old policy line must NOT appear -- that was the bug.
+    assert ("_omp_default=$(( (_phys_cores - 1) / _gpu_mpi_np_default ))"
+            in wrapper_text)
+    # The 2026-06-15 over-subscribing CPU-mode policy MUST NOT appear.
     assert "_omp_default=$(( _cps / 2 ))" not in wrapper_text
+    # The 2026-06-16 first-cut "fixed 2" policy MUST NOT appear either.
+    assert "_omp_default=2\n" not in wrapper_text
 
 
 def test_gpu_runtime_defaults_block_emits_3_line_banner(

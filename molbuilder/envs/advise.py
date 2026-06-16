@@ -288,21 +288,28 @@ def recommend(probe: HostProbe,
             capped = min(capped, atom_cap)
         return max(1, capped)
 
-    def _omp_for(np_: int, target_omp: int) -> int:
-        # Never over-subscribe physical cores; leave 1 for the host
-        # driver thread when there's room.
+    def _omp_for(np_: int) -> int:
+        # Policy adopted 2026-06-16 after the OMP-per-rank correction:
+        # OMP threads inside a rank DO accelerate ELPA's host-side
+        # eigensolver stages (tridiag setup, back-transform) AND
+        # SIESTA's non-solver host code, even when Diag.ELPA.GPU is on.
+        # The "ELPA GPU choice at runtime not compatible with OpenMP"
+        # docs sentence applies to the elpa_setup_gpu runtime-switch
+        # API (2023.11+), which our build does not use -- SIESTA picks
+        # GPU at SCF-setup time via Diag.ELPA.GPU.  So: fill the box,
+        # OMP = floor((phys_cores - 1) / mpi_np); leave 1 core for the
+        # ELPA-GPU host driver thread.
         room = max(1, phys - 1)
-        budget = max(1, room // max(1, np_))
-        return max(1, min(target_omp, budget))
+        return max(1, room // max(1, np_))
 
     default_np = _cap_np(4)
-    default_omp = _omp_for(default_np, 2)
+    default_omp = _omp_for(default_np)
 
     memory_np = _cap_np(2)
-    memory_omp = _omp_for(memory_np, 4)
+    memory_omp = _omp_for(memory_np)
 
     fallback_np = 1
-    fallback_omp = _omp_for(fallback_np, 8)
+    fallback_omp = _omp_for(fallback_np)
 
     def _notes_default() -> str:
         bits = ["ELPA 2024.05 published optimum"]
