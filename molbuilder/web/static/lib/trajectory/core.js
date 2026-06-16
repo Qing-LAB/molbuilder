@@ -1840,21 +1840,71 @@
                        + " in last " + fmtWall(measured.windowSeconds) + ")";
         } else {
             // STAGE 1: fall back to the SIESTA snapshot.
+            //
+            // The ``timer: IterSCF`` line is emitted EXACTLY ONCE per
+            // SIESTA invocation -- at iter 1 of geom step 1, when
+            // SIESTA's internal Timer routine prints its first call-
+            // count summary.  Subsequent SCF cycles (geom step 2 +,
+            // every iter after the first) carry NO timer attribution
+            // even though they may run for hours.  So a STAGE 1
+            // scan limited to ``current`` (the most-recent step's
+            // cycles) will return null for every run past geom step
+            // 1, and the wall-time note silently disappears after the
+            // CG optimizer takes its first step.
+            //
+            // Fix: walk ALL steps NEWEST-FIRST and lock onto the most
+            // recent cycle that carries ``cumulative_walltime_s`` and
+            // ``cumulative_calls``.  Two reasons newest beats oldest:
+            //
+            //   1. If SIESTA does emit the timer line more than once
+            //      in a future build (it shouldn't today, but our
+            //      ``test_overflowed_time_drops_only_walltime_keeps_calls``
+            //      fixture proves the parser handles the multi-line
+            //      case), the most-recent measurement is the best
+            //      estimate of CURRENT per-iter cost -- which may
+            //      differ from iter 1 if the diag size or mesh
+            //      changed mid-run (rare but possible with adaptive
+            //      mesh-cutoff schemes).
+            //
+            //   2. Per-iter cost is the right quantity to report,
+            //      not iter-1 cumulative.  Newest cycle's
+            //      cumulative_walltime / cumulative_calls = average
+            //      per-iter so far -- a more honest projection than
+            //      "iter 1 was Xs, assume all iters take Xs".
+            //
+            // Falls through gracefully when nothing's attached (e.g.
+            // a malformed .out): no annotation, no crash, same as
+            // STAGE 2's silent fall-through.
             let baselineCycle = null;
-            for (let i = 0; i < current.length; i++) {
-                const v = current[i].cumulative_walltime_s;
-                if (typeof v === "number" && isFinite(v)) {
-                    baselineCycle = current[i];
-                    break;
+            for (let i = history.length - 1; i >= 0 && baselineCycle === null; i--) {
+                const step = history[i];
+                if (!Array.isArray(step)) continue;
+                for (let j = step.length - 1; j >= 0; j--) {
+                    const cyc = step[j];
+                    const v = cyc && cyc.cumulative_walltime_s;
+                    if (typeof v === "number" && isFinite(v)) {
+                        baselineCycle = cyc;
+                        break;
+                    }
                 }
             }
             if (baselineCycle !== null) {
-                const t1 = baselineCycle.cumulative_walltime_s;
-                statusText += ", iter1=" + fmtWall(t1);
+                const cumT = baselineCycle.cumulative_walltime_s;
+                const cumN = baselineCycle.cumulative_calls;
+                // Prefer per-iter (cumulative/calls) when calls is
+                // attached -- it's the right cost-per-iter quantity.
+                // Fall back to absolute cumulative when calls is
+                // missing (rare: timer line with overflowed Calls
+                // but clean Time -- our overflow-tolerant parser
+                // handles this).
+                const perIter = (typeof cumN === "number" && cumN >= 1)
+                    ? cumT / cumN
+                    : cumT;
+                statusText += ", ~" + fmtWall(perIter) + "/iter (snapshot)";
                 const nNow = current.length;
                 if (nNow > 1) {
-                    statusText += " (~" + fmtWall(t1 * nNow)
-                               + " elapsed @iter1 rate; live avg pending)";
+                    statusText += " ~" + fmtWall(perIter * nNow)
+                               + " elapsed @snapshot rate; live avg pending";
                 }
             }
         }
