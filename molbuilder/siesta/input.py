@@ -877,13 +877,27 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         over_k = bool(cfg.parallel_over_k)
     out.append(f"Diag.ParallelOverK {'.true.' if over_k else '.false.'}")
     if cfg.enable_gpu:
-        # SIESTA 5.4.2 fdf keyword (Src/diag_option.F90:139).  Routes
-        # the diagonaliser through ELPA's CUDA back-end -- requires
-        # the ``molbuilder-siesta-gpu`` env (the CPU-only
-        # ``molbuilder-siesta`` env's siesta binary will ignore this
-        # silently, since its ELPA wasn't built with --enable-nvidia-gpu).
-        # The run-wrapper (molbuilder/runwrap.py) detects this line
-        # in the .fdf and auto-routes the job into the GPU env.
+        # SIESTA 5.4.2 ELPA-GPU routing requires TWO keywords:
+        #
+        #   * Diag.Algorithm ELPA-1STAGE -- without this the default
+        #     remains Divide-and-Conquer (ScaLAPACK), and the
+        #     ``Diag.ELPA.GPU`` keyword below is silently ignored.
+        #     Confirmed from Src/diag_option.F90:213-225 (default
+        #     algorithm path) + :264-273 (the ELPA branches).
+        #     ELPA-1STAGE is preferred over ELPA-2STAGE on GPU: ELPA's
+        #     own User Guide reports ~3x speedup for the 1-stage solver
+        #     on NVIDIA hardware vs the 2-stage variant; verified by
+        #     the 2025-02 ELPA/ELSI paper (arXiv:2502.02460).
+        #
+        #   * Diag.ELPA.GPU true (Src/diag_option.F90:139) -- toggles
+        #     the GPU codepath inside ELPA itself.
+        #
+        # ELPA-1STAGE forces ParallelOverK=.false. internally regardless
+        # of the line above; harmless but worth knowing if k-points
+        # were enabled.  The run-wrapper detects ``Diag.ELPA.GPU``
+        # via ``_fdf_requests_gpu`` and auto-routes the job into the
+        # molbuilder-siesta-gpu env.
+        out.append("Diag.Algorithm     ELPA-1STAGE")
         out.append("Diag.ELPA.GPU      .true.")
     out.append("")
 

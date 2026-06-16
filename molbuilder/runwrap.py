@@ -1094,6 +1094,21 @@ def render_run_wrapper(script_path: Path, *,
             f"#     oversubscribe.\n"
             f"export OMP_NUM_THREADS=$_omp_threads\n"
             f"export MKL_NUM_THREADS=1\n"
+            + (
+                # Hybrid MPI+OMP needs the OMP runtime told to bind --
+                # ``mpirun --bind-to core`` only binds the rank
+                # (cpuset), not the threads inside it.  Without these
+                # two env vars SIESTA prints "OpenMP NOT bound (please
+                # bind threads!)" and the OMP runtime is free to
+                # migrate threads across cores, causing cache thrash
+                # + cross-package traffic that defeats the binding
+                # we set on mpirun.  ``close`` keeps threads near the
+                # rank's master; ``cores`` says "one place per core".
+                "export OMP_PROC_BIND=close\n"
+                "export OMP_PLACES=cores\n"
+                if gpu_mode else ""
+            )
+            + f""
             f"export OPENBLAS_NUM_THREADS=1\n"
         )
         if max_memory_mb is not None and int(max_memory_mb) > 0:
