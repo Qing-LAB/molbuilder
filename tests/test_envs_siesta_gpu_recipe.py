@@ -307,7 +307,15 @@ def test_elpa_component(recipe):
     assert elpa.configure_argv[0] == "sh"
     assert "configure" in flags
     assert "--enable-nvidia-gpu" in flags
-    assert "--with-NVIDIA-GPU-compute-capability=sm_{cuda_cc_numeric}" in flags
+    # 2026-06-16 (recipe bump to ELPA 2024.05.001): the cc flag now
+    # uses a bash variable (CC_TAG) instead of a literal template, so
+    # the SM_80 specialised kernel can force sm_80 (A100-only) while
+    # everyone else uses their native cc.  See the CC_TAG block in
+    # recipes.py for the design rationale.
+    assert "--with-NVIDIA-GPU-compute-capability=$CC_TAG" in flags
+    # The native cc still flows through via the CC_NUM/CC_TAG assignment
+    # at the top of the configure prelude.
+    assert "CC_TAG=sm_{cuda_cc_numeric}" in flags
     assert "--enable-openmp" in flags
     assert "--prefix={install}" in flags
     assert "--with-cuda-path={env_prefix}" in flags

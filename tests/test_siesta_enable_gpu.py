@@ -79,7 +79,11 @@ def test_enable_gpu_metadata_is_present():
     not at all), not the boolean checkbox we want."""
     field = SiestaConfig.__dataclass_fields__["enable_gpu"]
     md = field.metadata
-    assert md["section"] == "Parallel execution"
+    # 2026-06-16 form restructure: merged "Relaxation" + "Parallel
+    # execution" into a single "Compute & budget" section so the
+    # physics axis (System -> Basis -> XC -> SCF -> Spin -> Output)
+    # stays compact.  See SiestaConfig._form_section_order.
+    assert md["section"] == "Compute & budget"
     assert md["workflow_group"] == "budget"
     assert md["id_suffix"] == "enable-gpu"
     # The engine_key must reference the SIESTA fdf keyword so the
@@ -150,7 +154,11 @@ def test_elpa_algorithm_field_metadata():
     dropdown (not a free-text field) with the correct two choices."""
     field = SiestaConfig.__dataclass_fields__["elpa_algorithm"]
     md = field.metadata
-    assert md["section"] == "Parallel execution"
+    # 2026-06-16 form restructure: merged "Relaxation" + "Parallel
+    # execution" into a single "Compute & budget" section so the
+    # physics axis (System -> Basis -> XC -> SCF -> Spin -> Output)
+    # stays compact.  See SiestaConfig._form_section_order.
+    assert md["section"] == "Compute & budget"
     assert md["workflow_group"] == "budget"
     assert md["choices"] == ("ELPA-1STAGE", "ELPA-2STAGE")
     assert md["engine_key"] == "Diag.Algorithm"
