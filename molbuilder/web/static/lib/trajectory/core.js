@@ -2613,6 +2613,19 @@
         // K2 fix for spectra loadByPath ↔ watchTick.
         if (state.pollAbort) state.pollAbort.abort();
         state.pollInFlight = false;
+        // P1.A 2026-06-16 (audit follow-up): scfPollHistory accumulates
+        // ``(ts, totalIters)`` across polls of the CURRENT file.  When
+        // the user switches files (or this loadByPath call comes via
+        // the file-picker's Refresh), totalIters from file A is
+        // meaningless for file B -- the STAGE-2b rolling-avg fallback
+        // would compute ``(now - oldest_ts) / (B_totalIters -
+        // A_totalIters)`` and surface a bogus "from poll estimate"
+        // annotation in the SCF status line for ~32 polls (one full
+        // buffer cycle) before the bad reference rolls off.
+        // ``setting length = 0`` is the canonical JS array-truncate;
+        // cheaper than ``new Array()`` and preserves identity for any
+        // accidental holder (none today, but future-proof).
+        state.scfPollHistory.length = 0;
         state.loadAbort = new AbortController();
         const signal = state.loadAbort.signal;
         try {

@@ -619,13 +619,14 @@ _PIN_MPI_TOOLS = (
     "-DMPI_Fortran_COMPILER={env_prefix}/bin/mpifort",
 )
 
-# CUDA-specific pins (ELPA only).  CUDAToolkit_ROOT + CMAKE_CUDA_COMPILER
-# force FindCUDAToolkit to use the conda-installed nvcc + libs and
-# refuse to wander into /usr/local/cuda or wherever else.
-_PIN_CUDA_TOOLS = (
-    "-DCMAKE_CUDA_COMPILER={env_prefix}/bin/nvcc",
-    "-DCUDAToolkit_ROOT={env_prefix}",
-)
+# P1.E 2026-06-16 audit cleanup: ``_PIN_CUDA_TOOLS`` was a defunct
+# constant -- defined for a never-shipped cmake-based ELPA build path,
+# and never referenced anywhere (verified by ``grep _PIN_CUDA_TOOLS``).
+# ELPA uses autotools; SIESTA's CUDA acceleration is entirely via
+# ELPA's CUDA-enabled build, so SIESTA itself needs no CUDA pin.
+# The CUDA isolation we DO want (refuse to wander into /usr/local/cuda)
+# is achieved via the ``CMAKE_IGNORE_PATH`` block above and via ELPA's
+# ``--with-cuda-path={env_prefix}`` configure flag.
 
 # Install rpath blocks: cmake's RPATH at install time, so the binary
 # can find ELPA/ELSI/CUDA/MPI libs at runtime WITHOUT relying on the
@@ -823,12 +824,19 @@ _ELPA = BuildComponent(
         # both of which fall back to ScaLAPACK with negligible
         # measurable cost at our problem sizes (< 10000 orbitals).
         ' --with-cusolver=no '
-        # AVX-512 is opt-in and many AMD/older-Xeon hosts lack it.  We
-        # require it explicitly only when the host CPU advertises
-        # ``avx512f`` in /proc/cpuinfo (set by ``MOLBUILDER_ELPA_AVX512=1``).
-        # The default disables it so the configure test passes on the
-        # AVX2-only majority.
-        ' --disable-avx512 '
+        # AVX-512 is opt-in: many AMD / older-Xeon hosts lack it AND
+        # several Intel chips that DO have it perform WORSE with
+        # AVX-512 enabled (downclocking after wide-vector traffic).
+        # Default off; user opts in by exporting MOLBUILDER_ELPA_AVX512=1
+        # before running ``envs install`` (or persistently in
+        # ~/.bashrc).  P1.D 2026-06-16 audit: previously the comment
+        # promised the env var would work but the code was hard-coded
+        # to ``--disable-avx512`` -- closed by reading the env var at
+        # configure-time and choosing the flag dynamically.  Bash
+        # evaluation (not Python recipe-eval) so the user can flip
+        # the toggle without re-running the Python install layer.
+        ' $( [ "${MOLBUILDER_ELPA_AVX512:-0}" = "1" ] && '
+        '    echo "--enable-avx512" || echo "--disable-avx512" ) '
         ' SCALAPACK_LDFLAGS="-L{env_prefix}/lib -lscalapack -lopenblas" '
         ' SCALAPACK_FCFLAGS="-I{env_prefix}/include"'
     ),
@@ -892,18 +900,13 @@ _SIESTA_GPU_COMPONENT = BuildComponent(
         # submodule) gets a chance.  IGNORE_PATH + IGNORE_PREFIX_PATH
         # surgically skip /usr/local for THIS build only -- nothing on
         # the host is touched.
-        "-DCMAKE_IGNORE_PATH=/usr/local;/usr/local/lib;"
-        "/usr/local/lib/cmake;/usr/local/include",
-        "-DCMAKE_IGNORE_PREFIX_PATH=/usr/local",
-        # Block /usr/local/lib/cmake from leaking into the build.  Many
-        # workstations have a pre-existing system install of
-        # s-dftd3 / mctc-lib / libfdf / libgridxc / libpsml / xmlf90
-        # there (often from a prior SIESTA build) and SIESTA's cmake
-        # finds them BEFORE the conda env / the bundled External/ tree.
-        # If those system installs are stale (missing *-targets.cmake)
-        # the configure aborts with a fatal "include could not find
-        # requested file" error.  IGNORE_PATH skips them; the bundled
-        # External/<package>/ sources still get picked up.
+        # P1.E 2026-06-16 audit cleanup: removed duplicate
+        # ``-DCMAKE_IGNORE_PATH=...`` + ``-DCMAKE_IGNORE_PREFIX_PATH``
+        # pair that used to follow this one.  cmake honors only the
+        # LAST value of any repeated ``-D`` flag, so the second copy
+        # was a no-op -- but readers had to verify that both copies
+        # carried identical values before being sure.  Kept the
+        # earlier copy + this single explanatory comment block.
         "-DCMAKE_IGNORE_PATH=/usr/local;/usr/local/lib;"
         "/usr/local/lib/cmake;/usr/local/include",
         "-DCMAKE_IGNORE_PREFIX_PATH=/usr/local",

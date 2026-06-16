@@ -607,6 +607,16 @@
     color:   var(--error);
 }
 .run-state.run-state-blank    { display: none; }
+/* P1.C 2026-06-16 audit § 3.1: every component CSS rule that sets a
+ * non-none ``display`` MUST pair with a ``[hidden]`` guard.  The base
+ * ``.run-state { display: flex; }`` ties on specificity with the UA
+ * stylesheet's ``[hidden] { display: none }`` and wins by source
+ * order, so a future JS path that sets ``el.hidden = true`` on the
+ * badge would surface a clickable ghost.  Latent today (no caller
+ * sets the attribute) but ships the same trap the trajectory-
+ * inspector hide-frozen audit landed on twice; closing the
+ * invariant here prevents the next regression. */
+.run-state[hidden]            { display: none; }
 
 /* (::-webkit-scrollbar rules deleted 2026-05-18 -- the file's own
  * docstring said they'd moved to lib/page-shell.css but the block
