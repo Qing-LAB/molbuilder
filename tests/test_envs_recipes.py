@@ -143,7 +143,7 @@ def test_cuda_wheel_tag_derived_from_cuda_version():
     assert _cuda_wheel_tag("") == "cuda13x"  # safe fallback
     # Wheel tag matches the resolved CUDA version.
     import re
-    expected = f"cuda{re.search(r'(\\d+)', _CUDA_VERSION).group(1)}x"
+    expected = f"cuda{re.search(r'(\d+)', _CUDA_VERSION).group(1)}x"
     assert _CUDA_WHEEL_TAG == expected
 
     # The PySCF recipe references the derived tag in BOTH the cupy
