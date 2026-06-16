@@ -1220,6 +1220,70 @@ class SiestaParser(TrajectoryParser):
             step_frame = None
         commit()
 
+        # In-progress SCF visibility: when the run is still active
+        # (no End-of-run / fatal marker) and we have buffered SCF
+        # cycles but no outcoor block to attach them to yet, emit a
+        # synthetic Frame so the Results-tab inspector can render the
+        # SCF convergence chart in real time.  Without this the
+        # inspector appears stalled for 5-30 min during the first
+        # SCF cycle of a heavy run (a 200-atom Au-thiol-Au junction
+        # was the motivating case) -- and if the SCF is silently
+        # diverging the user only finds out an hour later instead of
+        # immediately.
+        #
+        # The synthetic frame is FLAGGED as in_progress so consumers
+        # know to hide trajectory animation controls and show only
+        # the SCF chart + a "calculation in progress" banner.
+        if run_state == "ongoing" and current_scf:
+            # Geometry placeholder: use the most recent COMMITTED
+            # frame's structure when available (correct for "SCF for
+            # next geom step", since SIESTA holds geometry constant
+            # within an SCF cycle).  When no committed frame exists
+            # yet (first-SCF case), use a 1-atom "X" placeholder --
+            # the inspector hides the viewer based on in_progress=True
+            # so the placeholder geometry is never actually rendered.
+            if frames:
+                placeholder_struct = frames[-1].structure
+            else:
+                placeholder_struct = Structure(
+                    elements=["X"],
+                    positions=np.zeros((1, 3), dtype=float),
+                )
+            # Energy: most-recent FINITE SCF-cycle energy (E_KS first,
+            # then Eharris, then FreeEng -- same hierarchy commit()
+            # uses), falling back to the preamble Etot if no cycle has
+            # a finite energy yet.  Same NaN-skipping logic as the
+            # commit() fallback path.
+            # SCF cycle dicts use the canonical key ``energy`` (mapped
+            # from E_KS at parse time -- see _SCF_FIELD_MAP); walk back
+            # to the most recent FINITE value.
+            in_prog_energy: Optional[float] = None
+            for cycle in reversed(current_scf):
+                v = cycle.get("energy")
+                if v is None:
+                    continue
+                try:
+                    fv = float(v)
+                except (TypeError, ValueError):
+                    continue
+                if math.isfinite(fv):
+                    in_prog_energy = fv
+                    break
+            if in_prog_energy is None and step_initial_etot is not None:
+                try:
+                    fv = float(step_initial_etot)
+                    if math.isfinite(fv):
+                        in_prog_energy = fv
+                except (TypeError, ValueError):
+                    pass
+            frames.append(Frame(
+                structure   = placeholder_struct,
+                step_index  = len(frames),
+                energy      = in_prog_energy,
+                scf_history = list(current_scf),
+                in_progress = True,
+            ))
+
         # Post-process: if we never saw "End of run" AND the last SCF
         # block failed to converge, this is a non-convergence error
         # even without an explicit "siesta: ERROR" line (some SIESTA

@@ -113,6 +113,18 @@ class Frame:
                       show "Started 2h 15m ago, last step 30s ago" --
                       the latency-of-progress signal a researcher
                       actually wants when staring at a long run.
+      in_progress  -- True when this Frame represents a calculation
+                      mid-flight rather than a completed geometry step
+                      with a real outcoor block.  Set by parsers when
+                      they emit a synthetic frame for the very first
+                      SCF cycle (so the user can watch the residual
+                      drop in real time instead of waiting for the
+                      first outcoor block to land 5-30 min later).
+                      Consumers should hide trajectory animation
+                      controls and show a "SCF in progress" banner
+                      when True; the SCF convergence chart is the
+                      only meaningful display.  Always False after a
+                      real outcoor block has been committed.
     """
     structure:    Structure
     step_index:   int
@@ -123,6 +135,7 @@ class Frame:
     lattice:      Optional[np.ndarray]            = None
     scf_history:  Optional[List[Dict[str, float]]] = None
     wall_time:    Optional[float]                 = None
+    in_progress:  bool                            = False
 
     def __post_init__(self) -> None:
         # Be tolerant about input -- parsers may pass plain lists for
