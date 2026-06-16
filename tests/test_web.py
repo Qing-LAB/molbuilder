@@ -518,9 +518,17 @@ def test_preflight_rejects_bad_engine(web_client, peptide_xyz):
 def test_preflight_bad_params_returned_as_error_issue(web_client, peptide_xyz):
     """When the params dict can't be coerced into a valid config
     (e.g. kgrid with non-numeric entries that fail the int() cast),
-    preflight returns a single error-severity issue with where='config'
-    rather than HTTP 400.  This lets the UI render the same panel for
-    the parse-failure case without a separate code path."""
+    preflight surfaces the failure as an error-severity Issue with
+    where='config' in the body's ``issues`` array.
+
+    2026-06-14 R4-A contract change (see build.py:895-911): the
+    response now uses ``ok: False`` + HTTP 400 instead of the
+    earlier ``ok: True`` + 200 -- so the wire shape matches
+    /api/build/fdf's parse-failure shape and the UI's
+    ``!body.ok`` gate renders issues uniformly across both
+    endpoints.  Asserting the new shape so the test stays a
+    contract pin and not stale documentation.
+    """
     r = web_client.post("/api/build/preflight", json={
         "xyz": peptide_xyz,
         "engine": "siesta",
@@ -530,12 +538,14 @@ def test_preflight_bad_params_returned_as_error_issue(web_client, peptide_xyz):
         "params": {"kgrid": ["x", "y", "z"]},
     })
     body = r.get_json()
-    # ok=True so the UI can keep showing the panel; the actual
-    # problem surfaces as an error-severity Issue.
-    assert body["ok"] is True
+    assert r.status_code == 400
+    assert body["ok"] is False
     err = [i for i in body["issues"] if i["severity"] == "error"]
     assert err, f"expected an error issue for bad params; got {body['issues']}"
     assert err[0]["where"] == "config"
+    # The error string echoes the underlying ValueError so the user
+    # can tell WHICH field broke (kgrid -> "invalid literal for int...").
+    assert "kgrid" in err[0]["message"] or "int" in err[0]["message"]
 
 
 # --------------------------------------------------------------------- #
