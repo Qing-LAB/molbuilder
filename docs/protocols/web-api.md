@@ -893,7 +893,10 @@ by `parsers/__init__.py::trajectory_to_legacy_dict`:
   "run_state":     "ongoing" | "finished" | "errored",
   "error_message": "<string when run_state=errored>",
   "stages":        [<merged stage info — multi-stage runs>] | [],
-  "runtime_info":  { /* per-stage CPU/MPI/GPU report — see types/parsers.md */ }
+  "runtime_info":  { /* per-stage CPU/MPI/GPU report — see types/parsers.md */ },
+  "wall_time_per_iter_s":      <float> | <absent>,
+  "wall_time_per_iter_window": { "iters": <int>, "seconds": <float>,
+                                  "step_idx": <int> } | <absent>
 }
 ```
 
@@ -923,6 +926,24 @@ plain `max_forces` series stays in the response as informational
 Per-field semantics + per-engine carry rules live in
 [`docs/types/parsers.md`](../types/parsers.md).
 
+#### `wall_time_per_iter_s` + `wall_time_per_iter_window` (2026-06-15)
+
+Per-iter SCF wall time, derived from filesystem mtime deltas between
+successive polls.  The trajectory inspector renders this as the
+status-line annotation `~16.5s/iter (from refresh delta, 2 iters in
+last 33s)`.
+
+| Field | Type | Meaning |
+|---|---|---|
+| `wall_time_per_iter_s` | float | Most recent measurement (seconds/iter).  Absent on first poll, when iters didn't advance between polls, or when the SCF step just changed. |
+| `wall_time_per_iter_window.iters` | int | How many SCF iters the measurement covered.  `>=1`; multi-iter naturally averages. |
+| `wall_time_per_iter_window.seconds` | float | Wall-clock span the measurement covered. |
+| `wall_time_per_iter_window.step_idx` | int | Which geometry step the measurement came from.  Cross-step deltas are skipped (the algorithm only deltas within a single step's SCF cycle). |
+
+The server-side ring buffer is bounded at 16 samples; both fields
+clear on a `/api/watch/load` to a different path or directory.
+Algorithm + rationale: see `web/blueprints/watch.py::_attach_iter_walltime`.
+
 ### 8.5 `MOLBUILDER_WATCH_ROOT` env var
 
 When the operator sets `MOLBUILDER_WATCH_ROOT=/abs/path` before
@@ -947,6 +968,59 @@ re-acquires briefly to commit. Three guarantees:
    `test_stale_parse_doesnt_clobber_swapped_state`.
 3. Cheap path (mtime unchanged) returns the cached state under a
    short lock — no parse, no I/O.
+
+---
+
+## 9. `/api/system/load` — server load snapshot (2026-06-15)
+
+Single endpoint, polled by the bottom-strip load monitor at 1 Hz.
+
+| Path | Method | Body | Returns | Status codes |
+|---|---|---|---|---|
+| `/api/system/load` | GET | — | see below | 200 (errors carry `{ok:false, error}`) |
+
+```json
+{
+  "ok":   true,
+  "data": {
+    "cpu_pct":             <float>,         // aggregate CPU% across logical CPUs
+    "cpu_count_physical":  <int>,           // physical cores (= "true" count)
+    "cpu_count_logical":   <int>,           // logical (incl SMT/HT)
+    "loadavg_1m":          <float|null>,    // POSIX load average (run-queue depth)
+    "loadavg_5m":          <float|null>,
+    "loadavg_15m":         <float|null>,
+    "ram_pct":             <float>,         // 0..100
+    "ram_used_gb":         <float>,
+    "ram_total_gb":        <float>,
+    "gpus": [
+      {
+        "index":          <int>,
+        "name":           "<NVIDIA product name>",
+        "util_pct":       <float>,          // 0..100, ``nvmlDeviceGetUtilizationRates(...).gpu``
+        "mem_used_mb":    <float>,
+        "mem_total_mb":   <float>,
+        "mem_pct":        <float>           // 0..100
+      },
+      ...
+    ]
+  }
+}
+```
+
+**CPU-only hosts** (no NVIDIA driver, ``pynvml`` import failed, or
+NVML init refused): ``gpus: []``.  The JS widget hides its GPU /
+VRAM cells when the array is empty.
+
+**Why both ``cpu_pct`` AND ``cpu_count_*``**: ``cpu_pct`` is the
+aggregate across all logical CPUs; on a 20-physical / 40-logical
+box, ``50%`` could mean "10 cores fully busy" or "20 logical
+threads half-busy".  The widget multiplies ``cpu_pct *
+cpu_count_physical / 100`` to display "~N/M cores busy" so the
+absolute saturation is unambiguous.
+
+**Backend module**: `web/blueprints/system_load.py`.  CPU + RAM
+via `psutil` (required core dep).  GPU via `nvidia-ml-py` (in the
+`[gpu]` extra; degrades gracefully when absent).
 
 ### 8.7 Security model
 
