@@ -154,6 +154,17 @@
         data: null,            // {frames, lattice, iterations, energies, max_forces, max_forces_constrained, forces}
         currentFrame: 0,
         pollTimer: null,
+        // SCF wall-time progression tracker.  Each entry:
+        //   { ts: Date.now() ms, totalIters: int }
+        // We measure WALL CLOCK between consecutive polls and divide
+        // by the SCF-iter delta to get a true per-iter wall-time
+        // estimate that DOES include the brief CPU work between iters
+        // (DM mixing, mesh setup) -- exactly what the user cares about
+        // when judging "is this run going to finish today?".  See the
+        // SCF chart status-line builder for the display logic that
+        // prefers this measurement over the iter1=X baseline once a
+        // few polls have accumulated.
+        scfPollHistory: [],
         // playTimer removed by #246 A1: the embed owns playback now;
         // the parallel setInterval was racing with the embed loop.
         firstFit: true,        // call handle.refit() once after first load
@@ -1751,45 +1762,100 @@
         }
         statusText += ", ΔE=" + lastDe.toExponential(2) + " eV";
 
-        // Wall-time annotation: SIESTA's ``timer: Routine,Calls,Time,%
-        // = IterSCF`` line is a ONE-TIME first-iteration snapshot
-        // (verified empirically against SIESTA 5.4.2: exactly one
-        // emission after scf:1; nothing after subsequent iters).  So
-        // the parser attaches ``cumulative_walltime_s`` only to the
-        // FIRST cycle in the SCF history.  Scan backward for that
-        // value -- using ``current[length-1].cumulative_walltime_s``
-        // (the old shape) would miss the annotation for every view
-        // past iter 1.  When present, surface as a baseline + a
-        // simple linear extrapolation so the user can spot whether
-        // a run that took 46 s on iter 1 is heading for 15 min or
-        // an hour.  When absent (overflow OR non-SIESTA engine) the
-        // block is silently skipped.
-        let baselineCycle = null;
-        for (let i = 0; i < current.length; i++) {
-            const v = current[i].cumulative_walltime_s;
-            if (typeof v === "number" && isFinite(v)) {
-                baselineCycle = current[i];
-                break;
+        // Wall-time annotation.  Two-stage progressive refinement:
+        //
+        //   STAGE 1 (early, only 1 sample): show SIESTA's first-iter
+        //   snapshot from the ``timer: Routine,Calls,Time,% = IterSCF``
+        //   line (parsed once at scf:1 -- verified empirically: SIESTA
+        //   emits this line exactly once per run, not per iter).
+        //
+        //   STAGE 2 (>=2 polls with iter increase): use a measured
+        //   wall-clock average from the live-poll history.  Each
+        //   render pushes (Date.now, total_SCF_iters_across_all_frames)
+        //   into state.scfPollHistory.  Two samples that span an
+        //   iter increase give us actual per-iter wall time --
+        //   including the brief CPU work between iters (DM mixing,
+        //   mesh, Etot), which is what the user actually cares about
+        //   when judging "is this run going to finish today?".
+        //
+        // The transition is automatic: as soon as the rolling-window
+        // measurement is available it replaces the snapshot.  When the
+        // user is mid-iter and the polls are too close together for
+        // an iter to have completed, we fall back to STAGE 1 so the
+        // display never goes blank.
+        //
+        // Format helper -- "X.Ys" under 60 s, "Xm Ys" otherwise.  Above
+        // 60 s the researcher's mental model switches from "seconds"
+        // to "minutes" and the rounded form is more useful.
+        const fmtWall = (s) => {
+            if (s < 60) return s.toFixed(1) + "s";
+            const m = Math.floor(s / 60);
+            const r = Math.round(s - m * 60);
+            return m + "m " + r + "s";
+        };
+
+        // Track total SCF iters across ALL frames for this poll cycle.
+        // The trajectory may have N committed frames each with their
+        // own scf_history plus an in-progress frame -- iterations are
+        // additive across them.
+        let totalIters = 0;
+        if (state.data && Array.isArray(state.data.frames)) {
+            for (const f of state.data.frames) {
+                if (f && Array.isArray(f.scf_history)) {
+                    totalIters += f.scf_history.length;
+                }
             }
         }
-        if (baselineCycle !== null) {
-            const fmt = (s) => {
-                if (s < 60) return s.toFixed(1) + "s";
-                const m = Math.floor(s / 60);
-                const r = Math.round(s - m * 60);
-                return m + "m " + r + "s";
-            };
-            const t1 = baselineCycle.cumulative_walltime_s;
-            statusText += ", iter1=" + fmt(t1);
-            // Linear extrapolation -- explicitly labelled "@iter1"
-            // so the user sees this is a baseline projection, not a
-            // measurement of the current iter.  Honest about its
-            // limitations: SIESTA's later iters often go FASTER (DM
-            // warm-started from cycle 1) so this is an upper bound.
-            const nNow = current.length;
-            if (nNow > 1) {
-                statusText += " (cycle " + nNow + "; "
-                    + fmt(t1 * nNow) + " elapsed @iter1 rate)";
+        // Push this sample; keep last 32 (~32 polls = ~32 min at the
+        // default 60 s poll cadence -- plenty of window for averaging
+        // without unbounded growth).
+        const nowMs = Date.now();
+        state.scfPollHistory.push({ ts: nowMs, totalIters: totalIters });
+        if (state.scfPollHistory.length > 32) {
+            state.scfPollHistory.shift();
+        }
+
+        // STAGE 2: measured rolling average.  Look back ~60 s for the
+        // oldest sample we'll use as a reference; if no iter has
+        // completed in that window, the average isn't meaningful so
+        // we fall through to STAGE 1.
+        let measured = null;
+        if (state.scfPollHistory.length >= 2) {
+            const oldest = state.scfPollHistory[0];
+            const dtS = (nowMs - oldest.ts) / 1000;
+            const di  = totalIters - oldest.totalIters;
+            if (di >= 1 && dtS > 1) {
+                measured = {
+                    avgPerIter: dtS / di,
+                    itersInWindow: di,
+                    windowSeconds: dtS,
+                };
+            }
+        }
+
+        if (measured !== null) {
+            statusText += ", avg " + fmtWall(measured.avgPerIter)
+                       + "/iter (" + measured.itersInWindow + " iter"
+                       + (measured.itersInWindow > 1 ? "s" : "")
+                       + " in last " + fmtWall(measured.windowSeconds) + ")";
+        } else {
+            // STAGE 1: fall back to the SIESTA snapshot.
+            let baselineCycle = null;
+            for (let i = 0; i < current.length; i++) {
+                const v = current[i].cumulative_walltime_s;
+                if (typeof v === "number" && isFinite(v)) {
+                    baselineCycle = current[i];
+                    break;
+                }
+            }
+            if (baselineCycle !== null) {
+                const t1 = baselineCycle.cumulative_walltime_s;
+                statusText += ", iter1=" + fmtWall(t1);
+                const nNow = current.length;
+                if (nNow > 1) {
+                    statusText += " (~" + fmtWall(t1 * nNow)
+                               + " elapsed @iter1 rate; live avg pending)";
+                }
             }
         }
         $("scf-status").textContent = statusText;
