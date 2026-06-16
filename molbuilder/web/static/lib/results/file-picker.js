@@ -821,6 +821,23 @@
             // when the listing is already up-to-date.
             _showTransientStatus("Refreshing…");
             _forceRescan();
+            // Tell any currently-mounted inspector to re-fetch its
+            // underlying data NOW instead of waiting for its next
+            // polling tick (which the trajectory inspector sets at
+            // 60 s -- way too slow for a deliberate user refresh).
+            // Fired separately from EVENT_FILE_SELECTED because
+            // the file path didn't change -- re-emitting that would
+            // remount + lose camera/playback state.  Inspectors
+            // that don't poll (e.g. spectra, structure) can ignore
+            // the event entirely.
+            try {
+                document.dispatchEvent(new CustomEvent(
+                    C.EVENT_REFRESH_REQUESTED));
+            } catch (_) {
+                // CustomEvent unavailable -- belt + braces for older
+                // headless test runners; the picker's rescan still
+                // gives the user the dir listing update.
+            }
         }
         if (refreshBtn) {
             refreshBtn.addEventListener("click", _onRefreshClick);

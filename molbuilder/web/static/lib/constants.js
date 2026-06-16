@@ -38,5 +38,14 @@
         // ---- Custom event names ----------------------------- //
         EVENT_FILE_SELECTED:   "molbuilder:results:fileSelected",
         EVENT_INSPECTOR_READY: "molbuilder:inspector:ready",
+        // Fired when the user clicks the file-picker's "Refresh"
+        // button.  The currently-mounted inspector (if any) should
+        // re-fetch its underlying data IMMEDIATELY rather than
+        // wait for its next polling tick.  Decoupled from
+        // EVENT_FILE_SELECTED because the file path hasn't changed
+        // -- re-emitting fileSelected would cause a full re-mount,
+        // which throws away camera/playback state.  A bare
+        // ``refresh`` is "re-fetch + redraw, keep everything else".
+        EVENT_REFRESH_REQUESTED: "molbuilder:results:refresh",
     });
 })(typeof window !== "undefined" ? window : this);

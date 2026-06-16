@@ -2532,6 +2532,31 @@
     function startPolling() {
         if (state.pollTimer) clearInterval(state.pollTimer);
         state.pollTimer = setInterval(pollOnce, POLL_MS);
+        // Honor the user-driven refresh button: the file picker
+        // dispatches EVENT_REFRESH_REQUESTED on click; we run an
+        // immediate poll instead of making the user wait up to 60 s
+        // (POLL_MS) for the next scheduled tick.  This is the
+        // intuitive ask: "I clicked Refresh -- update the chart NOW."
+        //
+        // pollOnce() already guards against tick-overlap via
+        // state.pollInFlight, so a click during an in-flight poll
+        // is a no-op (the in-flight poll will pick up the latest
+        // mtime on its own).  Pushed into _cleanups so the listener
+        // tears down with the inspector dispose path.
+        const C = (window.molbuilder || {}).constants;
+        if (C && C.EVENT_REFRESH_REQUESTED) {
+            const _onRefresh = () => {
+                if (!state.data) return;     // not yet loaded; nothing to refresh
+                if (state.pollInFlight) return;  // a tick is already running
+                pollOnce();
+            };
+            document.addEventListener(C.EVENT_REFRESH_REQUESTED,
+                                       _onRefresh);
+            _cleanups.push(() => {
+                document.removeEventListener(C.EVENT_REFRESH_REQUESTED,
+                                              _onRefresh);
+            });
+        }
     }
 
     function stopPolling() {
