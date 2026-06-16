@@ -1815,27 +1815,57 @@
             state.scfPollHistory.shift();
         }
 
-        // STAGE 2: measured rolling average.  Look back ~60 s for the
-        // oldest sample we'll use as a reference; if no iter has
-        // completed in that window, the average isn't meaningful so
-        // we fall through to STAGE 1.
+        // STAGE 2a: SERVER-SIDE mtime-delta measurement.  The watch
+        // blueprint computes per-iter wall time from the .out's mtime
+        // advancement between polls (see watch.py:_attach_iter_walltime).
+        // This is the best source: mtime is filesystem state so it
+        // survives browser reload, and it's grounded in when the
+        // engine ACTUALLY wrote -- not an approximation from the
+        // browser's polling clock.  When present, prefer it over
+        // the local scfPollHistory.
+        const serverPerIter = state.data && state.data.wall_time_per_iter_s;
+        const serverWindow  = state.data && state.data.wall_time_per_iter_window;
         let measured = null;
-        if (state.scfPollHistory.length >= 2) {
+        if (typeof serverPerIter === "number" && isFinite(serverPerIter)
+            && serverPerIter > 0) {
+            measured = {
+                avgPerIter:    serverPerIter,
+                itersInWindow: (serverWindow && serverWindow.iters)   || 1,
+                windowSeconds: (serverWindow && serverWindow.seconds) || serverPerIter,
+                source:        "measured",
+            };
+        }
+        // STAGE 2b: client-side rolling avg as a fallback for the
+        // first poll or two before the server has paired samples.
+        // Once the server measurement lands, this is shadowed.
+        if (measured === null && state.scfPollHistory.length >= 2) {
             const oldest = state.scfPollHistory[0];
             const dtS = (nowMs - oldest.ts) / 1000;
             const di  = totalIters - oldest.totalIters;
             if (di >= 1 && dtS > 1) {
                 measured = {
-                    avgPerIter: dtS / di,
+                    avgPerIter:    dtS / di,
                     itersInWindow: di,
                     windowSeconds: dtS,
+                    source:        "live",
                 };
             }
         }
 
         if (measured !== null) {
-            statusText += ", avg " + fmtWall(measured.avgPerIter)
-                       + "/iter (" + measured.itersInWindow + " iter"
+            // Provenance label spelt out so the user can tell at a
+            // glance where the number came from:
+            //   "from refresh delta" -- server compared two polls'
+            //     mtimes (most trustworthy; survives browser reload).
+            //   "from poll estimate" -- client-side scfPollHistory
+            //     fallback (used during the first 1-2 polls before
+            //     the server has paired mtimes).
+            const provenanceText = measured.source === "measured"
+                ? "from refresh delta"
+                : "from poll estimate";
+            statusText += ", ~" + fmtWall(measured.avgPerIter)
+                       + "/iter (" + provenanceText + ", "
+                       + measured.itersInWindow + " iter"
                        + (measured.itersInWindow > 1 ? "s" : "")
                        + " in last " + fmtWall(measured.windowSeconds) + ")";
         } else {
@@ -1880,7 +1910,7 @@
             const currentHit = findLatestCycleWithWalltime(current);
             if (currentHit) {
                 baselineCycle = currentHit;
-                provenance = "current step";
+                provenance = "from current step report";
             }
 
             // (2) Previous (completed) step
@@ -1888,12 +1918,15 @@
                 const prevHit = findLatestCycleWithWalltime(history[stepIdx - 1]);
                 if (prevHit) {
                     baselineCycle = prevHit;
-                    provenance = "last step avg";
+                    provenance = "from last step report";
                 }
             }
 
-            // (3) First IterSCF snapshot anywhere (oldest non-null;
-            //     this is the SIESTA-canonical single-emission case)
+            // (3) First IterSCF snapshot anywhere -- SIESTA's
+            //     one-and-only ``timer: IterSCF`` line at iter 1 of
+            //     step 1.  Used when the live mtime-delta hasn't
+            //     produced a fresh measurement yet (e.g. the page
+            //     was just opened, the server has only seen 1 poll).
             if (!baselineCycle) {
                 for (let i = 0; i < history.length; i++) {
                     const step = history[i];
@@ -1903,7 +1936,8 @@
                         const v = c && c.cumulative_walltime_s;
                         if (typeof v === "number" && isFinite(v)) {
                             baselineCycle = c;
-                            provenance = "first-iter snapshot";
+                            provenance = "from SIESTA iter-1 timer; "
+                                       + "refresh delta pending";
                             break;
                         }
                     }
