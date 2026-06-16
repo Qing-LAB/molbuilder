@@ -125,6 +125,61 @@ def test_verify_ignore_exit_code_field_present():
     pytest.fail("molbuilder-MDtools recipe not found in registry")
 
 
+def test_cuda_wheel_tag_derived_from_cuda_version():
+    """The PySCF recipe's pip_packages MUST carry cupy + gpu4pyscf
+    wheels whose ``cuda<N>x`` suffix matches the project's resolved
+    ``_CUDA_VERSION``.  Pins the contract: if the auto-detect /
+    env-var override / project-default ladder lands on ``12.*``,
+    the pip extras MUST land on ``cuda12x`` -- a hardcoded ``cuda13x``
+    here would silently install a wheel incompatible with the user's
+    driver."""
+    from molbuilder.envs.recipes import (
+        _CUDA_VERSION, _CUDA_WHEEL_TAG, _cuda_wheel_tag,
+    )
+    # Helper extracts the major digit.
+    assert _cuda_wheel_tag("13.*") == "cuda13x"
+    assert _cuda_wheel_tag("12.4") == "cuda12x"
+    assert _cuda_wheel_tag(">=14") == "cuda14x"
+    assert _cuda_wheel_tag("") == "cuda13x"  # safe fallback
+    # Wheel tag matches the resolved CUDA version.
+    import re
+    expected = f"cuda{re.search(r'(\\d+)', _CUDA_VERSION).group(1)}x"
+    assert _CUDA_WHEEL_TAG == expected
+
+    # The PySCF recipe references the derived tag in BOTH the cupy
+    # and gpu4pyscf pip entries -- this is the load-bearing piece
+    # (the recipe is what ``molbuilder envs install`` runs).
+    for r in BUILTIN_RECIPES:
+        if r.name == "molbuilder-pySCF":
+            assert f"cupy-{_CUDA_WHEEL_TAG}[ctk]" in r.pip_packages, (
+                f"PySCF recipe missing cupy-{_CUDA_WHEEL_TAG}[ctk] "
+                f"in pip_packages (got: {r.pip_packages!r})"
+            )
+            assert f"gpu4pyscf-{_CUDA_WHEEL_TAG}" in r.pip_packages, (
+                f"PySCF recipe missing gpu4pyscf-{_CUDA_WHEEL_TAG} "
+                f"in pip_packages (got: {r.pip_packages!r})"
+            )
+            return
+    pytest.fail("molbuilder-pySCF recipe not found in registry")
+
+
+def test_resolve_cuda_version_env_override_beats_probe(monkeypatch):
+    """Precedence: explicit MOLBUILDER_CUDA_VERSION must win over the
+    host-driver probe.  Use case: cross-targeting or downgrading the
+    pin on a host whose driver is newer than the project supports."""
+    from molbuilder.envs.recipes import _resolve_cuda_version
+    monkeypatch.setenv("MOLBUILDER_CUDA_VERSION", "11.8")
+    assert _resolve_cuda_version() == "11.8"
+
+
+def test_resolve_cuda_version_falls_back_to_default_without_driver(monkeypatch):
+    """No env var + no nvidia-smi on PATH -> project default ``13.*``."""
+    from molbuilder.envs import recipes
+    monkeypatch.delenv("MOLBUILDER_CUDA_VERSION", raising=False)
+    monkeypatch.setattr(recipes, "_detect_host_cuda_major", lambda: None)
+    assert recipes._resolve_cuda_version() == "13.*"
+
+
 def test_extra_steps_are_tuples_of_tuples():
     """Defensive shape check on extra_steps -- catches the easy
     mistake of writing `extra_steps=(("python","-m","x"),)` vs

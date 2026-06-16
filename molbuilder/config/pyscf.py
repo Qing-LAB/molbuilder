@@ -396,13 +396,23 @@ class PySCFConfig:
         "label":     "Use GPU (NVIDIA, via gpu4pyscf)",
         "engine_key":  'gpu4pyscf: mf = mf.to_gpu()',
         "id_suffix": "use-gpu",
+        # Help text intentionally references the recipe rather than
+        # naming a specific cuda<N>x wheel tag: the project-wide
+        # CUDA pin lives in ``MOLBUILDER_CUDA_VERSION`` /
+        # ``molbuilder/envs/recipes.py`` and the right wheel is
+        # auto-installed by ``molbuilder envs install molbuilder-pySCF``.
+        # Quoting a specific tag here drifts the moment the toolkit
+        # bumps; the recipe is the single source of truth.
         "help":      "run the SCF (and geom-opt forces) on an NVIDIA "
-                     "GPU via the gpu4pyscf extension.  Install: "
-                     "``pip install gpu4pyscf-cuda12x`` (or "
-                     "-cuda13x to match your driver).  The script "
-                     "probes gpu4pyscf at runtime and falls back to "
-                     "CPU if the package isn't installed or the GPU "
-                     "is missing / too old (compute capability < 7.0).",
+                     "GPU via the gpu4pyscf extension.  The recipe "
+                     "for ``molbuilder-pySCF`` installs the matching "
+                     "``cupy-cudaNx[ctk]`` + ``gpu4pyscf-cudaNx`` "
+                     "wheels for the project's pinned CUDA toolkit "
+                     "(see ``molbuilder envs doctor molbuilder-pySCF``); "
+                     "the script probes gpu4pyscf at runtime and "
+                     "falls back to CPU if the package isn't "
+                     "importable or the GPU is missing / too old "
+                     "(compute capability < 7.0).",
     })
     verbose: int = field(default=4, metadata={
         "workflow_group": "profile",

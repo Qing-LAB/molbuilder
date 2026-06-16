@@ -203,19 +203,31 @@ install it manually:
 conda run -n molbuilder-pySCF python -m pip install 'setuptools<81' pyberny
 ```
 
-Add GPU (check first: `nvidia-smi` should report CUDA version ≥ 13):
+GPU support ships in the recipe — `molbuilder envs install
+molbuilder-pySCF` auto-pins `cupy-cudaNx[ctk]` and `gpu4pyscf-cudaNx`
+to whatever CUDA major your driver reports.  Detection precedence
+(see `molbuilder/envs/recipes.py::_resolve_cuda_version`):
+
+1. `MOLBUILDER_CUDA_VERSION` env var — explicit override, e.g. `12.*`
+2. `nvidia-smi` "CUDA Version" line — auto-detect from the host driver
+3. `13.*` — project default when no NVIDIA driver is present
+
+The `[ctk]` extra on `cupy` is load-bearing — it pulls in the matching
+nvidia-cublas / cusolver / cusparse / cufft / curand / nvrtc / nvjitlink
+runtime wheels.  Without it, `import gpu4pyscf` fails with
+`libcublasLt.so not found`.
+
+Manual add (only if you're patching an existing env without re-running
+the recipe — confirm the wheel tag matches your driver first via
+`nvidia-smi | grep "CUDA Version"`):
 
 ```bash
+# Example for a CUDA-13 host; substitute 12x / 14x to match yours.
 conda install -n molbuilder-pySCF -c conda-forge -y \
     'cuda-version=13.*' cuda-nvcc cuda-cudart-dev cuda-nvrtc cuda-cccl
 conda run -n molbuilder-pySCF python -m pip install \
     'cupy-cuda13x[ctk]' gpu4pyscf-cuda13x
 ```
-
-The `[ctk]` extra is load-bearing — it pulls in the matching
-nvidia-cublas / cusolver / cusparse / cufft / curand / nvrtc / nvjitlink
-runtime wheels.  Without it, `import gpu4pyscf` fails with
-`libcublasLt.so not found`.
 
 Verify:
 

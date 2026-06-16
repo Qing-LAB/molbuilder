@@ -32,6 +32,9 @@ Design choices worth pinning here:
 from __future__ import annotations
 
 import os
+import re
+import shutil
+import subprocess
 from dataclasses import dataclass, field
 from typing import Mapping, Optional, Tuple
 
@@ -165,8 +168,89 @@ def _spec(name: str, version_var: str = "") -> str:
 
 
 _GCC_VERSION    = _env_default("MOLBUILDER_GCC", "14")          # gcc_linux-64=<N>
-_CUDA_VERSION   = _env_default("MOLBUILDER_CUDA_VERSION", "13.*")
+
+
+# ---- CUDA version resolution: env override > host probe > project default ----
+#
+# Three-tier precedence so the recipe self-corrects across hardware
+# without the user having to remember to set an env var:
+#
+#   1. ``MOLBUILDER_CUDA_VERSION``  -- explicit user override, wins
+#      unconditionally.  Useful for cross-compile / forced downgrades.
+#   2. ``nvidia-smi`` probe         -- reads the host driver's reported
+#      "CUDA Version" line.  This is the *runtime* CUDA the driver can
+#      load (e.g. driver 595.x reports "CUDA Version: 13.2"); we pin
+#      the env to that major (``13.*``) so the conda toolkit + the
+#      ``cupy-cudaNx[ctk]`` wheels link against a compatible runtime.
+#   3. ``"13.*"``                   -- project default if the host has
+#      no NVIDIA driver (CPU-only laptop, headless box without a GPU
+#      stack).  Pin chosen to match the project's stated 2026 target;
+#      change here if the project as a whole moves CUDA major.
+#
+# Probe is one subprocess call at module import time, with a 2 s
+# timeout and graceful fallback -- it never blocks the user's
+# ``molbuilder envs list`` or test runs if nvidia-smi is missing /
+# hung.  Caching at module level means repeated recipe lookups in
+# the same Python process pay it exactly once.
+def _detect_host_cuda_major() -> Optional[str]:
+    """Read driver-reported CUDA runtime major (e.g. ``"13"``) from
+    ``nvidia-smi``.  Returns ``None`` when nvidia-smi is missing,
+    times out, or the output doesn't carry a CUDA Version line.
+    """
+    if shutil.which("nvidia-smi") is None:
+        return None
+    try:
+        cp = subprocess.run(
+            ["nvidia-smi"], capture_output=True, text=True, timeout=2.0,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if cp.returncode != 0:
+        return None
+    m = re.search(r"CUDA Version:\s*(\d+)", cp.stdout)
+    return m.group(1) if m else None
+
+
+def _resolve_cuda_version() -> str:
+    """User env-var override > host driver probe > project default."""
+    explicit = os.environ.get("MOLBUILDER_CUDA_VERSION", "").strip()
+    if explicit:
+        return explicit
+    detected = _detect_host_cuda_major()
+    if detected:
+        return f"{detected}.*"
+    return "13.*"
+
+
+_CUDA_VERSION   = _resolve_cuda_version()
 _LIBXC_VERSION  = _env_default("MOLBUILDER_LIBXC_VERSION", "")  # unpinned
+
+
+def _cuda_wheel_tag(cuda_version_spec: str) -> str:
+    """Derive the ``cuda<MAJOR>x`` wheel suffix used by cupy / gpu4pyscf
+    PyPI releases from our ``_CUDA_VERSION`` conda spec.
+
+    Examples (the literal returns):
+      ``"13.*"``  -> ``"cuda13x"``
+      ``"12.4"``  -> ``"cuda12x"``
+      ``">=13"``  -> ``"cuda13x"``
+      ``""``      -> ``"cuda13x"`` (safe fallback)
+
+    Why this lives in code, not as a hardcoded literal: the project
+    target moves (CUDA 11 → 12 → 13 → 14 over time) and the upstream
+    wheels track it.  Hardcoding ``cuda13x`` in recipes / docs invites
+    the same drift bug as hardcoding ``MOLBUILDER_CUDA_VERSION``
+    elsewhere.  This helper is the single source of truth for the
+    wheel suffix; every reference to a cuda-tagged Python wheel
+    (recipe pip_packages, README walkthrough, validator messages,
+    config help text) should derive from this.
+    """
+    import re
+    m = re.search(r"\d+", cuda_version_spec or "")
+    return f"cuda{m.group(0) if m else '13'}x"
+
+
+_CUDA_WHEEL_TAG = _cuda_wheel_tag(_CUDA_VERSION)
 
 
 # --------------------------------------------------------------------- #
@@ -466,8 +550,8 @@ _HOST = Recipe(
 _PYSCF = Recipe(
     name="molbuilder-pySCF",
     category="pyscf",
-    description="PySCF (CPU + optional GPU runtime libs); Spectra-tab "
-                "Raman/IR + geomeTRIC geomopt.",
+    description="PySCF (CPU + GPU runtime libs); Spectra-tab Raman/IR + "
+                "geomeTRIC geomopt; gpu4pyscf available when use_gpu=True.",
     channels=("conda-forge",),
     conda_packages=(
         "python=3.12", "pip",
@@ -479,7 +563,20 @@ _PYSCF = Recipe(
         # for PySCF jobs but present so future tuning has the tool.
         "numactl",
     ),
-    pip_packages=("pyscf-properties",),
+    # GPU support: gpu4pyscf + cupy ship via PyPI (not conda-forge for
+    # current versions).  Wheel suffix derived from _CUDA_VERSION via
+    # _cuda_wheel_tag() so a future ``MOLBUILDER_CUDA_VERSION=14.*``
+    # auto-picks ``cupy-cuda14x[ctk]`` + ``gpu4pyscf-cuda14x`` -- no
+    # hand-edits to chase the toolkit bump.  The ``[ctk]`` extra on
+    # cupy pulls the matching cuda-cudart conda packages.  Without
+    # these the ``use_gpu`` form toggle is a no-op (the runtime probe
+    # in molbuilder/runtime_info.py would land in its CPU-fallback
+    # branch on every run).
+    pip_packages=(
+        "pyscf-properties",
+        f"cupy-{_CUDA_WHEEL_TAG}[ctk]",
+        f"gpu4pyscf-{_CUDA_WHEEL_TAG}",
+    ),
     verify_argv=("python", "-c",
                  "import pyscf, geometric; "
                  "print(f'pyscf {pyscf.__version__}, "
