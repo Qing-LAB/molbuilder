@@ -63,12 +63,15 @@
   {# Tab-level result-file picker.  Populated by
      lib/results/file-picker.js with every file in the current
      project directory that any ``isResult:true`` inspector would
-     mount (sorted newest-first).  Hidden when zero or one result
-     file exists -- no point in a single-entry dropdown.  Replaced
-     the in-trajectory dropdown (2026-06-01); now ANY result-bearing
-     directory gets the dropdown regardless of which inspector
-     ultimately mounts. #}
-  <div id="results-file-picker-bar" class="result-list-bar" hidden>
+     mount (sorted newest-first).  ALWAYS VISIBLE -- even when zero
+     result files exist yet -- so the user can hit Refresh after
+     starting a job without having to leave + return to /results
+     to recover the button (2026-06-15, supersedes the original
+     single-entry-dropdown hiding rule).  The only path that
+     hides the bar is the registry-unavailable fallback in
+     file-picker.js, which is a load-order error.  Replaced the
+     in-trajectory dropdown (2026-06-01). #}
+  <div id="results-file-picker-bar" class="result-list-bar">
     <label class="result-list-label" for="results-file-picker-select">
       Result file:
     </label>

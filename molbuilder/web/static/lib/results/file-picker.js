@@ -239,6 +239,25 @@
      * empty (no results) the dropdown is cleared but stays in the
      * DOM.  Callers gate visibility by toggling ``barEl.hidden``.
      */
+    /**
+     * Fill the dropdown with a single non-selectable placeholder
+     * option whose text explains the current empty state to the
+     * user.  Called from the four no-results / error paths so the
+     * picker bar stays visible (Refresh button reachable) instead
+     * of disappearing entirely.
+     */
+    function _populatePlaceholder(selectEl, placeholderText) {
+        while (selectEl.firstChild) {
+            selectEl.removeChild(selectEl.firstChild);
+        }
+        const opt = document.createElement("option");
+        opt.value = "";
+        opt.textContent = placeholderText;
+        opt.disabled = true;
+        opt.selected = true;
+        selectEl.appendChild(opt);
+    }
+
     function _populate(selectEl, groups, currentPath) {
         while (selectEl.firstChild) {
             selectEl.removeChild(selectEl.firstChild);
@@ -439,9 +458,16 @@
             _abortInFlight();
             _clearParseTimer();
             if (!dir) {
-                barEl.hidden = true;
+                // No directory selected (sidebar cleared).  Show
+                // the picker bar in its placeholder state so the
+                // user can still see the Refresh button -- they
+                // may have just opened the page before navigating
+                // the sidebar.  Empty dropdown + idle status.
+                _populatePlaceholder(selEl,
+                    "(navigate the Projects sidebar to a directory)");
                 cachedResults = [];
                 cachedGroups  = [];
+                _showIdleMeta(null);
                 return;
             }
             // Pre-show the picker bar with an empty dropdown + a
@@ -473,15 +499,16 @@
                 .then(body => {
                     if (disposed || signal.aborted) return;
                     if (!body || body.ok !== true) {
-                        // Bar-hide path: drop the transient busy
-                        // status so the Refresh button's
-                        // MutationObserver re-enables it.  Without
-                        // this the button stays disabled until
-                        // remount.
+                        // Fetch failed (file listing API errored).
+                        // Keep the bar visible so Refresh is still
+                        // clickable -- a transient error shouldn't
+                        // strand the user; one Refresh click retries.
                         if (metaEl) metaEl.classList.remove("is-busy");
-                        barEl.hidden = true;
+                        _populatePlaceholder(selEl,
+                            "(directory listing failed — click Refresh)");
                         cachedResults = [];
                         cachedGroups  = [];
+                        _showIdleMeta(null);
                         return;
                     }
                     const results = filterToResultFiles(
@@ -491,11 +518,17 @@
                     );
                     cachedResults = results;
                     if (results.length === 0) {
-                        // Empty result set: no point showing the
-                        // bar.  Same is-busy clear as above.
+                        // Empty result set.  Bar stays VISIBLE with
+                        // an empty-state placeholder so the user
+                        // can hit Refresh when their first job
+                        // emits its first output file -- they
+                        // shouldn't have to re-click the Results
+                        // tab to recover the button.
                         if (metaEl) metaEl.classList.remove("is-busy");
                         cachedGroups = [];
-                        barEl.hidden = true;
+                        _populatePlaceholder(selEl,
+                            "(no result files yet — click Refresh)");
+                        _showIdleMeta(null);
                         return;
                     }
                     cachedGroups = groupResultFiles(
@@ -528,13 +561,16 @@
                 .catch(err => {
                     if (err && err.name === "AbortError") return;
                     console.warn(
-                        "[results-file-picker] scan failed; hiding bar",
+                        "[results-file-picker] scan failed; "
+                        + "showing placeholder",
                         err
                     );
                     if (metaEl) metaEl.classList.remove("is-busy");
-                    barEl.hidden = true;
+                    _populatePlaceholder(selEl,
+                        "(scan failed — click Refresh to retry)");
                     cachedResults = [];
                     cachedGroups  = [];
+                    _showIdleMeta(null);
                 });
         }
 
