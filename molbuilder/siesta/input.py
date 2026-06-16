@@ -91,27 +91,35 @@ def _auto_block_size(n_atoms: int,
         ``BlockSize <= floor(n_atoms / mpi_np)``.
 
     GPU mode (``gpu_mode=True``)
-      Target **64** -- the ELPA-CUDA published sweet spot
-      ([arXiv 2002.10991]).  64×64 blocks fit GPU L2 cache; kernel
-      launch overhead is amortised across enough work to keep the
-      SMs saturated; smaller blocks pay more launch overhead than
-      compute, bigger blocks tail-empty when ranks divide the
-      problem.
+      Orbital-aware formula with two caps:
 
-      Capped only when the problem is too small to support 64
-      (n_orbitals/mpi_np < 64).  We estimate n_orbitals as
-      ``10 × n_atoms`` (rough DZP/DZ-polarised heuristic; an
-      underestimate for heavy elements like Au where DZP gives
-      ~25 orb/atom, but the cap only kicks in for systems too
-      small to need GPU acceleration in the first place).
+        BlockSize = largest power of 2 in
+                    ``[8, min(256, 1024, floor(10·n_atoms/mpi_np))]``
 
-      Result is the largest power of 2 in
-      ``[8, min(64, floor(10 × n_atoms / mpi_np))]``.
+      The 10·n_atoms term estimates n_orbitals (rough DZP heuristic;
+      underestimates for heavy elements like Au where DZP gives
+      ~25 orb/atom).  The 256 cap is a defensible upper bound:
+      bigger than the historical CPU number (which under-shot by
+      using n_atoms not n_orbitals), within the range of values
+      ELPA-GPU benchmark papers actually swept, and small enough
+      that load balance stays good with ≤4 ranks.  The 1024 cap is
+      the ELPA CUDA kernel hard limit (2^10).
+
+      Honest framing: the "right" GPU BlockSize is hardware- and
+      problem-dependent.  Without measurement on the target box
+      no single number can claim "the optimum".  256 is a
+      defensible default that's bigger than 64 (overhead-bound)
+      and smaller than 512 (load-imbalance-prone), measured in
+      kernel launch latency × work-per-launch ratios.  See
+      ``scripts/bench-siesta-blocksize.sh`` for an in-tree sweep
+      script that runs a few short SIESTA jobs with different
+      BlockSize values and prints wall-time/iter for direct
+      comparison.
 
       Concrete numbers:
-        n_atoms=212, mpi_np=4 (the 2026-06-16 Au-BDT case):  64
-        n_atoms=16,  mpi_np=4 (tiny test fixture):           32
-        n_atoms=1000, mpi_np=4 (big metal slab):             64
+        n_atoms=212, mpi_np=4 (the 2026-06-16 Au-BDT case):  256
+        n_atoms=16,  mpi_np=4 (tiny test fixture):            32
+        n_atoms=1000, mpi_np=4 (big metal slab):             256
 
     HISTORY
       The pre-2026-06-16 CPU formula was used uniformly.  For the
@@ -128,13 +136,32 @@ def _auto_block_size(n_atoms: int,
     is mpi_np / molecule mismatch, not BlockSize.
     """
     if gpu_mode:
-        # GPU mode targets ELPA-CUDA's published 64-block optimum.
-        # The cap protects against tiny systems where 64 wouldn't
-        # divide the orbital space across ranks evenly.  Estimate
-        # n_orbitals from n_atoms (10x is a rough DZP heuristic).
+        # GPU mode wants bigger BlockSize than the historical CPU-
+        # mode formula gives (which uses n_atoms instead of
+        # n_orbitals and so under-estimates by ~10x).
+        #
+        # The orbital-aware cap is ``floor(10 * n_atoms / mpi_np)``
+        # (the 10x is a rough DZP-basis heuristic; underestimates
+        # for heavy elements like Au where DZP gives ~25 orb/atom).
+        # Two further caps narrow the choice to a defensible range:
+        #
+        #   * ``256`` (load-balance ceiling).  With BlockSize > 256
+        #     and mpi_np <= 4, you typically get fewer than 12 blocks
+        #     per rank; tail-effect load imbalance starts to bite.
+        #     Above 256 also moves outside the BlockSize range that
+        #     ELPA-GPU benchmark papers actually swept, so we'd be
+        #     extrapolating off the measured curve.
+        #   * ``1024`` (ELPA CUDA kernel hard limit, 2^10).
+        #
+        # An empirical sweep on the target hardware (see
+        # ``scripts/bench-siesta-blocksize.sh``) can refine this
+        # default for power users.  Without measurement, 256 is a
+        # defensible upper bound -- bigger than the historical CPU
+        # number, smaller than the kernel limit, and within the
+        # range the literature has actually measured.
         np_ = max(1, int(mpi_np)) if mpi_np else 4  # 4 = GPU+MPS default
         orbital_estimate = 10 * max(1, n_atoms)
-        upper = min(64, orbital_estimate // np_)
+        upper = min(256, 1024, orbital_estimate // np_)
         pow2 = 8
         while pow2 * 2 <= upper:
             pow2 *= 2
