@@ -377,6 +377,67 @@ def _probe_elpa_gpu_codepath(env_prefix: str,
     )
 
 
+def _probe_mps_available(env_prefix: str, recipe: Recipe) -> ProbeResult:
+    """Probe 6: NVIDIA MPS daemon binary present on host PATH.
+
+    MPS (Multi-Process Service) is what lets >= 2 MPI ranks share one
+    GPU concurrently for ELPA-GPU diag, since our ELPA tag
+    (2021.11.001) has no NCCL.  Without MPS, multi-rank ELPA-GPU runs
+    serialise on the CUDA driver context and the second rank pays
+    serialisation overhead with no benefit -- which is why the wrapper
+    auto-caps to ``mpi_np=2`` without MPS and to ``mpi_np=4`` with it.
+
+    The ``nvidia-cuda-mps-control`` binary ships with the **NVIDIA
+    host driver** (same package as ``nvidia-smi``).  It is NOT a
+    conda package -- there is no `cuda-mps` or similar in conda-forge;
+    the daemon is kernel-driver-coupled and lives on the host side.
+    If ``nvidia-smi`` works (probe ``cuda stack``) and MPS is missing,
+    the user's driver was installed without the MPS server -- some
+    distro packages split it out (eg. Debian's
+    ``nvidia-cuda-mps`` package).  Detail tells them where to get it.
+
+    Soft fail: env still WORKS without MPS -- single-rank ELPA-GPU
+    runs perfectly fine, and multi-rank runs auto-fall-back at the
+    wrapper.  Marked FAIL only to surface it in the report; the
+    wrapper handles the absence gracefully.
+    """
+    mps_ctrl = shutil.which("nvidia-cuda-mps-control")
+    if mps_ctrl is None:
+        return ProbeResult(
+            name="mps daemon",
+            passed=False,
+            detail=("nvidia-cuda-mps-control not found on host PATH "
+                    "-- multi-rank GPU runs will lose concurrency "
+                    "(wrapper auto-caps to mpi_np=2); install via "
+                    "host NVIDIA driver / `nvidia-cuda-mps` distro pkg"),
+        )
+    # Don't actually START the daemon (it would conflict with the
+    # wrapper's per-job pipe dir, and the user may already have one
+    # running for another workload).  ``-V`` just prints version and
+    # exits -- safe + cheap.
+    rc, out = _run([mps_ctrl, "-V"], timeout=5)
+    if rc != 0:
+        # The binary exists but won't run -- broken install.  Still
+        # mark as fail but report the rc for diagnostics.
+        return ProbeResult(
+            name="mps daemon",
+            passed=False,
+            detail=f"nvidia-cuda-mps-control -V exited rc={rc}",
+            output=_trim(out),
+        )
+    # First non-blank line of -V output is the version banner.
+    version_line = next(
+        (ln.strip() for ln in out.splitlines() if ln.strip()),
+        "(version banner not parsed)",
+    )
+    return ProbeResult(
+        name="mps daemon",
+        passed=True,
+        detail=f"MPS available -- {version_line}",
+        output=_trim(out),
+    )
+
+
 def _probe_cuda_stack(env_prefix: str, recipe: Recipe) -> ProbeResult:
     """Probe 5: CUDA driver + libcuda.so.1 loadability.
 
@@ -462,6 +523,7 @@ _RECIPE_PROBES = {
         # workstation GPU build (NVIDIA RTX 3060 Ti, sm_86).
         ("binary-links",       _probe_binary_links,         "~2s -- siesta + tbtrans + phtrans present"),
         ("cuda stack",         _probe_cuda_stack,           "~1s -- nvidia-smi + libcuda dlopen"),
+        ("mps daemon",         _probe_mps_available,        "~1s -- nvidia-cuda-mps-control on PATH"),
         ("elpa gpu codepath",  _probe_elpa_gpu_codepath,    "~5s -- GPU validator + silent-fallback grep"),
         ("siesta ctest",       _probe_siesta_ctest_simple,  "~2min -- SIESTA -L simple (~90 tests, streams live)"),
         ("elpa make check",    _probe_elpa_make_check,      "~15-30min -- 300+ ELPA validators; PASS/SKIP "

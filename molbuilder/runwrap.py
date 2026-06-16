@@ -639,10 +639,16 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
         # ranks (single-rank MPS adds overhead with no concurrency
         # benefit).  Decided AFTER mpi_np resolves below.
         '_use_mps_default="${MOLBUILDER_USE_MPS:-$_have_mps}"\n'
-        '# Echo what we detected so the user can sanity-check it\n'
+        '# Echo what we detected so the user can sanity-check it.\n'
+        '# Format ``mps_available=yes/no`` to make it obvious that\n'
+        '# this is a binary capability flag, not a count (no matter\n'
+        '# how many MPI ranks you run, there\'s exactly ONE MPS\n'
+        '# daemon per GPU -- the ranks share it).\n'
+        '_have_mps_str="no"; '
+        '[ "$_have_mps" = "1" ] && _have_mps_str="yes"\n'
         'echo "molbuilder: detected phys_cores=$_phys_cores, '
         'n_sockets=$_n_sockets, cores_per_socket=$_cps, '
-        'mps_available=$_have_mps" >&2\n'
+        'mps_available=$_have_mps_str" >&2\n'
         # ---- MPI rank policy ----
         # With MPS: target ~4 ranks/GPU (ELPA User Guide §"ELPA -
         # Usability" reports 4 ranks/GPU as the sweet spot without
@@ -692,10 +698,17 @@ def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
         '# Apply env-var overrides (precedence: env > policy)\n'
         '_gpu_mpi_np_default="${MOLBUILDER_MPI_NP:-$_gpu_mpi_np_default}"\n'
         '_omp_default="${MOLBUILDER_OMP_NUM_THREADS:-$_omp_default}"\n'
+        '# Stringify the MPS boolean for the banner.  ``mps=on`` /\n'
+        '# ``mps=off`` reads unambiguously next to the numeric\n'
+        '# ``mpi_np=N`` / ``OMP=M`` -- no risk of the reader thinking\n'
+        '# ``mps=1`` means "1 MPS instance" (there is no count to\n'
+        '# choose: one MPS daemon per GPU, all ranks share it).\n'
+        '_use_mps_str="off"; '
+        '[ "$_use_mps_default" = "1" ] && _use_mps_str="on"\n'
         '# Banner: single-line, stderr, kubectl-style.\n'
         'echo "molbuilder: GPU mode (ELPA-CUDA, no NCCL) -- '
         'mpi_np=$_gpu_mpi_np_default, OMP=$_omp_default, '
-        'mps=$_use_mps_default, '
+        'mps=$_use_mps_str, '
         '--bind-to core (--map-by chosen at launch from mpi_np vs '
         'n_sockets)" >&2\n'
         'echo "molbuilder: override via MOLBUILDER_MPI_NP / '
