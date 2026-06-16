@@ -804,6 +804,23 @@ _ELPA = BuildComponent(
         'if [ "$CC_NUM" = "80" ]; then '
         '    SM_EXTRA="--enable-nvidia-sm80-gpu"; '  # A100-only specialised path
         'fi; '
+        # AVX-512 toggle (P1.D 2026-06-16 audit): default OFF, opt-in
+        # via ``MOLBUILDER_ELPA_AVX512=1`` in the user's shell.  Many
+        # AMD / older-Xeon hosts lack AVX-512, AND several Intel chips
+        # that DO have it downclock when running wide-vector ops -- so
+        # off-by-default is conservative AND fast on most hardware.
+        # Bash ``$VAR`` form, not ``${VAR:-default}``: Python's
+        # ``str.format_map`` treats ``{...}`` as a template placeholder
+        # regardless of the leading ``$`` (the braced form raised
+        # ``KeyError: 'MOLBUILDER_ELPA_AVX512'`` at plan time).  An
+        # unset ``$MOLBUILDER_ELPA_AVX512`` expands to "" which fails
+        # the ``= "1"`` test cleanly -- same end effect as ``:-0``
+        # without the brace collision.
+        'AVX512_FLAG=--disable-avx512; '
+        '[ "$MOLBUILDER_ELPA_AVX512" = "1" ] '
+        '&& AVX512_FLAG=--enable-avx512 || true; '
+        'echo "molbuilder ELPA: AVX-512 -> $AVX512_FLAG '
+        '(set MOLBUILDER_ELPA_AVX512=1 to enable)" >&2; '
         '"{src}/configure" '
         ' FC=mpifort CC=mpicc CXX=mpicxx '
         ' --prefix={install} '
@@ -824,19 +841,7 @@ _ELPA = BuildComponent(
         # both of which fall back to ScaLAPACK with negligible
         # measurable cost at our problem sizes (< 10000 orbitals).
         ' --with-cusolver=no '
-        # AVX-512 is opt-in: many AMD / older-Xeon hosts lack it AND
-        # several Intel chips that DO have it perform WORSE with
-        # AVX-512 enabled (downclocking after wide-vector traffic).
-        # Default off; user opts in by exporting MOLBUILDER_ELPA_AVX512=1
-        # before running ``envs install`` (or persistently in
-        # ~/.bashrc).  P1.D 2026-06-16 audit: previously the comment
-        # promised the env var would work but the code was hard-coded
-        # to ``--disable-avx512`` -- closed by reading the env var at
-        # configure-time and choosing the flag dynamically.  Bash
-        # evaluation (not Python recipe-eval) so the user can flip
-        # the toggle without re-running the Python install layer.
-        ' $( [ "${MOLBUILDER_ELPA_AVX512:-0}" = "1" ] && '
-        '    echo "--enable-avx512" || echo "--disable-avx512" ) '
+        ' $AVX512_FLAG '  # set by MOLBUILDER_ELPA_AVX512 above
         ' SCALAPACK_LDFLAGS="-L{env_prefix}/lib -lscalapack -lopenblas" '
         ' SCALAPACK_FCFLAGS="-I{env_prefix}/include"'
     ),
