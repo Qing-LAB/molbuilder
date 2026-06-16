@@ -127,12 +127,26 @@ _TIMER_ITERSCF_RE = re.compile(
 #     only matches all-asterisks), nuking the row.  Added 2026-06-14
 #     after the BDT-stage-2 divergent-SCF report.
 #
-# We detect SIESTA's f10.6-style 6-decimal field signature
-# (``.NNNNNN`` followed immediately by either a digit OR an asterisk;
-# both can only be the start of the next column) and insert a space.
-# This is a FORMATTING quirk on the SIESTA side; we recover the
-# columns without altering any values.
-_SCF_TIGHT_PACK_RE = re.compile(r"(\.\d{6})(?=[\d*])")
+# SIESTA's SCF data row uses Fortran format ``(3F16.6, 3F10.6)`` for
+# closed-shell or ``(3F16.6, 4F10.6)`` for spin-polarized.  Every
+# F-field ends with EXACTLY 6 decimal places: ``.NNNNNN`` is the
+# canonical end-of-field signature.  Any non-whitespace character
+# immediately following must be the first character of the next
+# field -- a sign, a digit, an asterisk (Fortran overflow), or even
+# a stray ``.`` from a value too long for its width.  Insert a
+# separator there.
+#
+# Why the lookahead is ``\S`` and not the narrower ``[-+\d*]``:
+# unconverged early SCF iters can chain together arbitrarily.  The
+# original ``[\d*]`` missed the ``-`` case (BDT-Au stage3 iter 1
+# regression, 2026-06-15: ``45.787763-15.068303410.273625`` -- Ef
+# = -15.068 left no padding so the minus sign of the next field was
+# the only separator).  Widening to ``[-+\d*]`` fixed that but is
+# enumerative; ``\S`` is structurally exhaustive -- the ``.6``
+# signature itself IS the field boundary, anything past it must
+# be the next column.  No false positives are possible: Fortran
+# F-format always ends a field at ``.NNNNNN``, never mid-value.
+_SCF_TIGHT_PACK_RE = re.compile(r"(\.\d{6})(?=\S)")
 
 # Fortran fixed-width overflow indicator.  When a value can't fit its
 # format field (e.g. ``f10.6`` for a magnitude > 999), Fortran prints
@@ -165,33 +179,141 @@ def _parse_fortran_float(tok: str) -> float:
     return float(tok)
 
 
-def _parse_scf_floats(rest: str) -> Optional[List[float]]:
+# Fortran field widths in the SIESTA SCF data row format.  Three
+# F16.6 energy columns followed by either 3 (closed-shell) or 4
+# (spin-polarized) F10.6 columns.  Used by the column-position
+# fallback when whitespace recovery fails.
+_SCF_ENERGY_FIELD_WIDTH = 16
+_SCF_RATIO_FIELD_WIDTH  = 10
+_SCF_N_ENERGY_FIELDS    = 3
+# Valid total counts after the iscf integer: 3 + 3 = 6 (closed-shell),
+# 3 + 4 = 7 (spin-polarized).
+_SCF_VALID_VALUE_COUNTS = (6, 7)
+
+
+def _parse_scf_floats_by_columns(
+    line: str, data_start: int,
+) -> Optional[List[float]]:
+    """Recover the SCF row's floats by Fortran column position.
+
+    SIESTA writes the SCF row using format ``(3F16.6, 3F10.6)`` for
+    closed-shell or ``(3F16.6, 4F10.6)`` for spin-polarized.  Each
+    F-field has a fixed character width regardless of the value's
+    magnitude, so we can slice at known boundaries even when:
+
+      * Multiple values run together with no whitespace separator
+        (the leading sign / digits of the next column consume all
+        of its leading-space padding -- see ``_SCF_TIGHT_PACK_RE``
+        for the pure-text recovery, this is the structural fallback)
+      * A column contains a Fortran overflow indicator
+        (``**********``) that ``_parse_fortran_float`` decodes as NaN
+      * The whitespace recovery would mis-bind tokens (e.g. a
+        future SIESTA format variant we haven't characterised yet)
+
+    ``data_start`` must be the position in ``line`` immediately AFTER
+    the iscf integer -- i.e. the first character of the first F16.6
+    field, INCLUDING its leading whitespace.  Callers obtain this
+    from ``m.end(1)`` of the prefix regex match.
+
+    Returns 6 floats (closed-shell) or 7 (spin-polarized); returns
+    None when the column structure is missing or a slice can't be
+    parsed as a Fortran float.  The 7th-column probe is OPTIONAL --
+    a clean closed-shell row that has trailing whitespace beyond
+    the 6 expected columns still returns the 6 floats.
+    """
+    pos = data_start
+    floats: List[float] = []
+    # Slot 1-3: F16.6 energy columns.
+    for _ in range(_SCF_N_ENERGY_FIELDS):
+        chunk = line[pos:pos + _SCF_ENERGY_FIELD_WIDTH].strip()
+        if not chunk:
+            return None
+        try:
+            floats.append(_parse_fortran_float(chunk))
+        except ValueError:
+            return None
+        pos += _SCF_ENERGY_FIELD_WIDTH
+    # Slot 4-6 (and optional 7): F10.6 ratio / threshold columns.
+    # The minimum is 3 (closed-shell); a 7th if present is the spin
+    # Ef_dn extra field.
+    for slot_idx in range(4):
+        if pos >= len(line):
+            break
+        chunk = line[pos:pos + _SCF_RATIO_FIELD_WIDTH].strip()
+        if not chunk:
+            # No more data; allowed only if we already have the
+            # closed-shell complement.
+            break
+        try:
+            floats.append(_parse_fortran_float(chunk))
+        except ValueError:
+            if len(floats) in _SCF_VALID_VALUE_COUNTS:
+                # We already had a valid set; the trailing garbage
+                # is noise (could be a ``** ...`` warning glued on).
+                # Accept what we have.
+                break
+            return None
+        pos += _SCF_RATIO_FIELD_WIDTH
+    if len(floats) not in _SCF_VALID_VALUE_COUNTS:
+        return None
+    return floats
+
+
+def _parse_scf_floats(
+    rest: str,
+    *,
+    line: Optional[str] = None,
+    data_start: Optional[int] = None,
+) -> Optional[List[float]]:
     """Tokenize the post-``scf: <iscf>`` part of an SCF line into
-    floats.  Returns the list, or None if any token can't be parsed.
+    floats.  Returns the list, or None if both recovery layers fail.
 
-    Handles two SIESTA-side formatting quirks:
+    Two-layer recovery:
 
-      * **Tight-packed columns** -- no whitespace between adjacent
-        f10.6 fields when both values fill their widths.  Resolved
-        by ``_SCF_TIGHT_PACK_RE`` which inserts a separator at the
-        6-decimal signature.
-      * **Fortran field overflow** -- a value too large for its field
-        prints as ``**********``.  The cycle is most likely diverging;
-        the asterisk token is parsed as NaN via
-        ``_parse_fortran_float`` so the row's other columns (early
-        ones with healthy magnitudes) survive and the divergence
-        diagnostic stays visible in the Results tab.
+      1. **Whitespace recovery** (the fast path).  ``_SCF_TIGHT_PACK_RE``
+         inserts a separator after each ``.NNNNNN`` six-decimal field
+         when the next column begins with a sign / digit / asterisk.
+         Then ``split()`` + per-token ``_parse_fortran_float``.
+         Handles the common cases:
+           * Tight-packed columns where Ef or dHmax filled their
+             whole F10.6 widths and bumped into the next column.
+           * Fortran field overflow (``**********``) tokens decoded
+             as NaN so the rest of the row survives.
 
-    Returns ``None`` only on a genuinely unparseable token (neither
-    a real float nor a Fortran-overflow indicator) -- those are real
-    parser bugs we want surfaced as a ParseWarning, not silently
-    coerced.
+      2. **Column-position fallback** (the safety net).  When the
+         whitespace recovery yields the wrong number of floats
+         (i.e. a glue pattern the regex didn't catch),
+         ``_parse_scf_floats_by_columns`` slices the line at the
+         known Fortran F-format boundaries (3 × F16.6 + 3..4 ×
+         F10.6) and parses each field independently.  Requires the
+         caller to pass ``line=`` + ``data_start=`` (the position
+         immediately after the iscf integer).  This is the robust
+         answer to any future format glitch we haven't characterised:
+         column widths are stable across SIESTA versions back to v3.
+
+    Returns ``None`` only when BOTH layers fail -- that's a real
+    parser bug we want surfaced as a ParseWarning, not silently
+    coerced into NaNs.
     """
     fixed = _SCF_TIGHT_PACK_RE.sub(r"\1 ", rest)
     try:
-        return [_parse_fortran_float(t) for t in fixed.split()]
+        vals = [_parse_fortran_float(t) for t in fixed.split()]
     except ValueError:
-        return None
+        vals = None
+    if vals is not None and len(vals) in _SCF_VALID_VALUE_COUNTS:
+        return vals
+    # Layer 2: column-position fallback.  Optional context lets
+    # legacy callers (tests with synthetic ``rest`` strings) still
+    # use the regex path alone; callers that have the full line
+    # get the more robust slicing.
+    if line is not None and data_start is not None:
+        cols = _parse_scf_floats_by_columns(line, data_start)
+        if cols is not None:
+            return cols
+    # Layer 1 may have produced an unusual count (e.g. 5 or 8) --
+    # return None so the caller emits a ParseWarning rather than
+    # passing through garbage.
+    return None
 
 
 # SCF column-header detection.  Real-world example lines:
@@ -846,7 +968,14 @@ class SiestaParser(TrajectoryParser):
                 return
             iscf = int(m_scf_prefix.group(1))
             rest = m_scf_prefix.group(2)
-            vals = _parse_scf_floats(rest)
+            # ``m.end(1)`` is the position immediately AFTER the iscf
+            # integer in the original line -- i.e. the first character
+            # of the first F16.6 field, with its leading whitespace
+            # still attached.  The column-position fallback in
+            # ``_parse_scf_floats`` needs this so it can slice at
+            # the Fortran format boundaries (3 x F16.6 + 3..4 x F10.6).
+            vals = _parse_scf_floats(rest, line=line,
+                                     data_start=m_scf_prefix.end(1))
             if vals is None:
                 _warn(line_no, line,
                       "SCF line: could not tokenize as floats")

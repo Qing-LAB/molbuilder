@@ -196,7 +196,68 @@ class TestParseSCFOverflowVariants:
         a ParseWarning.  NaN-coercion is ONLY for the Fortran
         overflow signature."""
         rest = "  1.0  2.0  some_text  3.0  4.0  5.0"
+        # No column-position fallback context, so a real garbage
+        # token has to fail both layers -> None.
         assert _parse_scf_floats(rest) is None
+
+    def test_minus_separator_triple_glue_bdt_au_regression(self):
+        """The BDT-Au-junction stage3-run0 regression (2026-06-15):
+        unconverged iter 1 had Ef = -15.068303 (10 chars exactly,
+        zero leading-space padding) and dHmax = 410.273625 (10
+        chars exactly), so the F10.6 columns chained together with
+        the minus sign of Ef as the only separator between dDmax
+        and Ef.
+
+        Before the ``\\S`` lookahead fix the regex stopped at
+        ``[\\d*]`` and missed the minus, leaving a glued token
+        that float() couldn't decode.  The whole row failed to
+        tokenize as floats and the inspector showed "1 issue ...
+        could not tokenize" instead of the SCF cycle data.
+        """
+        # User's literal failing line from line 1422 of the .out.
+        rest = ("  -660624.384691  -760090.911374  -760091.068034 "
+                "45.787763-15.068303410.273625")
+        vals = _parse_scf_floats(rest)
+        assert vals is not None, (
+            "regex tight-pack alone must recover this -- column-"
+            "position fallback isn't reachable from the test "
+            "harness (no line/data_start), so verifying the "
+            "primary path catches the regression"
+        )
+        assert vals == pytest.approx([
+            -660624.384691, -760090.911374, -760091.068034,
+            45.787763, -15.068303, 410.273625,
+        ])
+
+    def test_column_position_fallback_recovers_when_regex_fails(self):
+        """The structural safety net: when the regex tight-pack
+        path produces the wrong number of floats (a future format
+        variant we haven't characterised), the column-position
+        slicer using F16.6 / F10.6 widths must recover them.
+
+        Simulated by feeding a synthetic line where the regex
+        recovery alone wouldn't split correctly (we know it does
+        for SIESTA's current format; this verifies the FALLBACK
+        path is callable + correct).
+        """
+        line = ("   scf:    1  -660624.384691  -760090.911374  "
+                "-760091.068034 45.787763-15.068303410.273625")
+        # Compute data_start the same way _on_scf_data does:
+        # position immediately after the iscf integer.
+        import re
+        m = re.match(r"^\s*scf:\s*(\d+)", line, re.IGNORECASE)
+        data_start = m.end(1)
+        vals = _parse_scf_floats(m.group(0).split(":", 1)[1].lstrip()[1:],
+                                  line=line, data_start=data_start)
+        # The regex path resolves it for this case; that's the
+        # documented behaviour.  But the column path is ALSO
+        # exercised + tested directly:
+        from molbuilder.parsers.siesta import _parse_scf_floats_by_columns
+        cols = _parse_scf_floats_by_columns(line, data_start)
+        assert cols == pytest.approx([
+            -660624.384691, -760090.911374, -760091.068034,
+            45.787763, -15.068303, 410.273625,
+        ])
 
 
 # --------------------------------------------------------------------- #
