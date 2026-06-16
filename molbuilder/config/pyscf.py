@@ -36,15 +36,32 @@ class PySCFConfig:
     # Pre-opt declared between SCF and Optimization).  Pinning the
     # order here keeps the schema independent of those declaration
     # quirks.
+    # 2026-06-15 restructure: merged "Optimization" + "Runtime & output"
+    # into a single "Compute & budget" section, mirroring the SIESTA
+    # form's same-day restructure.  Reasoning: both sections covered
+    # "how the run proceeds" -- the optimization algorithm + its
+    # convergence targets on one hand, the CPU/GPU compute budget +
+    # I/O knobs on the other.  Keeping them split forced the user to
+    # scroll past unrelated cards (Solvent, Frequencies) between two
+    # semantically connected groups.  Merging keeps the physics axis
+    # (System -> Method -> SCF -> Pre-opt -> Solvent -> Frequencies)
+    # compact and gathers all the "execution strategy + resources"
+    # knobs in one section at the end.  Workflow-group cards inside
+    # the new section split the merged fields cleanly:
+    #   * Profile card -- optimize toggle + optimizer choice
+    #   * Stage card   -- geom_conv_energy + geom_conv_grms +
+    #                     geom_conv_gmax (convergence targets)
+    #   * Budget card  -- geom_max_steps + max_memory_mb + threads +
+    #                     use_gpu + verbose + chkfile + log_file +
+    #                     verbose_comments
     _form_section_order = (
         "System",
         "Method",
         "SCF",
         "Pre-optimization (optional)",
-        "Optimization",
         "Solvent (optional)",
         "Frequencies / thermochemistry",
-        "Runtime & output",
+        "Compute & budget",
     )
 
     # ---------------- System ----------------
@@ -279,20 +296,20 @@ class PySCFConfig:
 
     # ---------------- Main optimization ----------------
     optimize: bool = field(default=True, metadata={
-        "section": "Optimization",
+        "section": "Compute & budget",
         "label":   "Optimize geometry",
         "engine_key":  '(molbuilder: gates geomeTRIC opt() vs single-point)',
         "help": "run geometry optimization; --no-optimize for single-point only",
     })
     optimizer: str = field(default="geometric", metadata={
-        "section": "Optimization",
+        "section": "Compute & budget",
         "label":   "Optimizer",
         "engine_key":  'geomeTRIC / berny  (driver selection)',
         "choices": ("geometric", "berny"),
         "help": "geomeTRIC or berny",
     })
     geom_max_steps: int = field(default=200, metadata={
-        "section": "Optimization",
+        "section": "Compute & budget",
         # Resource-budget cap — same logic as SIESTA's relax_steps.
         # Scale with system size, not stage.
         "workflow_group": "budget",
@@ -303,7 +320,7 @@ class PySCFConfig:
         "help":  "max optimization steps",
     })
     geom_conv_energy: float = field(default=1.0e-6, metadata={
-        "section": "Optimization",
+        "section": "Compute & budget",
         "workflow_group": "stage",
         "label":   "geom_conv_energy", "unit": "Hartree",
         "engine_key":  'geomeTRIC convergence_energy',
@@ -311,7 +328,7 @@ class PySCFConfig:
         "help": "geomeTRIC energy convergence (Hartree)",
     })
     geom_conv_grms: float = field(default=3.0e-4, metadata={
-        "section": "Optimization",
+        "section": "Compute & budget",
         "workflow_group": "stage",
         "label":   "geom_conv_grms", "unit": "Ha/Bohr",
         "engine_key":  'geomeTRIC convergence_grms',
@@ -319,7 +336,7 @@ class PySCFConfig:
         "help": "geomeTRIC RMS gradient convergence (Ha/Bohr)",
     })
     geom_conv_gmax: float = field(default=4.5e-4, metadata={
-        "section": "Optimization",
+        "section": "Compute & budget",
         "workflow_group": "stage",
         "label":   "geom_conv_gmax", "unit": "Ha/Bohr",
         "engine_key":  'geomeTRIC convergence_gmax',
@@ -348,7 +365,7 @@ class PySCFConfig:
     # ---------------- Runtime ----------------
     max_memory_mb: int = field(default=4000, metadata={
         "workflow_group": "budget",
-        "section": "Runtime & output",
+        "section": "Compute & budget",
         "label": "max_memory", "unit": "MB",
         "engine_key":  'mol.max_memory',
         "id_suffix": "max-memory",
@@ -358,7 +375,7 @@ class PySCFConfig:
     })
     threads: Optional[int] = field(default=None, metadata={
         "workflow_group": "budget",
-        "section":    "Runtime & output",
+        "section": "Compute & budget",
         "label":      "CPU threads",
         "engine_key":  "lib.num_threads(N) + os.environ['OMP_NUM_THREADS']",
         "null_label": "(auto: physical cores)",
@@ -375,7 +392,7 @@ class PySCFConfig:
     })
     use_gpu: bool = field(default=False, metadata={
         "workflow_group": "budget",
-        "section":   "Runtime & output",
+        "section": "Compute & budget",
         "label":     "Use GPU (NVIDIA, via gpu4pyscf)",
         "engine_key":  'gpu4pyscf: mf = mf.to_gpu()',
         "id_suffix": "use-gpu",
@@ -389,7 +406,7 @@ class PySCFConfig:
     })
     verbose: int = field(default=4, metadata={
         "workflow_group": "profile",
-        "section": "Runtime & output",
+        "section": "Compute & budget",
         "label": "PySCF verbose",
         "engine_key":  'mol.verbose',
         "range": (0, 9),
@@ -398,14 +415,14 @@ class PySCFConfig:
     })
     chkfile: bool = field(default=True, metadata={
         "workflow_group": "profile",
-        "section": "Runtime & output",
+        "section": "Compute & budget",
         "label":   "Write checkpoint (.chk)",
         "engine_key":  "mf.chkfile = '<path>'",
         "help": "write <job>.chk (DM, mol, energies for restart)",
     })
     log_file: bool = field(default=True, metadata={
         "workflow_group": "profile",
-        "section": "Runtime & output",
+        "section": "Compute & budget",
         "label":   "Write PySCF log",
         "engine_key":  "mol.stdout = open('<path>','w')",
         "help": "write the PySCF text log to <job>.log",
@@ -486,7 +503,7 @@ class PySCFConfig:
     # ---------------- Comments ----------------
     verbose_comments: bool = field(default=True, metadata={
         "workflow_group": "profile",
-        "section": "Runtime & output",
+        "section": "Compute & budget",
         "label":   "Verbose comments in script",
         "engine_key":  '(molbuilder: script comment-block control)',
         "help": "emit inline tuning hints + troubleshooting block in the script",

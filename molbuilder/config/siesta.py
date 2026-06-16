@@ -128,16 +128,30 @@ class SiestaConfig:
     # Output) cover.  Interleaving Parallel between SCF and Spin
     # broke the mental flow.  Now physics-first, plumbing-last so
     # the user designs the calculation then sizes the machine.
+    # 2026-06-15 second restructure: merged "Relaxation" + "Parallel
+    # execution" into a single "Compute & budget" section.  Reasoning:
+    # both sections covered "how the run proceeds" -- the optimization
+    # algorithm + its budget on one hand, the MPI/OMP resources on the
+    # other.  Splitting them across two sections forced the user to
+    # scroll past unrelated cards (Output) between two semantically
+    # connected groups.  Merging keeps the physics axis (System ->
+    # Basis -> XC -> SCF -> Spin -> Output) compact and gathers all
+    # the "execution strategy + resources" knobs in one section.
+    # The workflow-group cards INSIDE the new section split the merged
+    # fields cleanly:
+    #   * Profile card -- relax_type + MD physics (room/temp/dt)
+    #   * Stage card   -- force_tol + max_displ (convergence targets)
+    #   * Budget card  -- relax_steps + mpi_np + omp_threads +
+    #                     BlockSize + ParallelOverK + max_memory_mb +
+    #                     enable_gpu + elpa_algorithm
     _form_section_order = (
         "System",
         "Basis & grid",
         "Exchange-correlation",
         "SCF",
         "Spin",
-        "k-grid (Monkhorst-Pack)",
-        "Relaxation",
         "Output & positioning",
-        "Parallel execution",   # ← code/execution, sits right above Generate
+        "Compute & budget",   # ← optimization algo + resources, sits right above Generate
     )
 
     # System
@@ -183,6 +197,23 @@ class SiestaConfig:
     # Basis
     basis_size: str = field(default="DZP", metadata={
         "section": "Basis & grid",
+        # Workflow-group tag (2026-06-15): joined the Stage card so it
+        # sits alongside ``mesh_cutoff``, ``pao_energy_shift``, and
+        # ``kgrid`` — all of which are "how finely we sample the
+        # calculation" knobs that scale with the convergence target.
+        # Previously this field rendered as a one-control "Base" card
+        # bare in the Basis & grid section, separated by visual gap
+        # from the actual basis-relevant knobs in the Stage card next
+        # to it (user complaint 2026-06-15).
+        #
+        # Tagging ``stage`` puts basis_size in the same workflow-group
+        # card as the other "sampling-fidelity" knobs.  It is NOT in
+        # STAGE_PRESETS in viewer.js, so switching the relaxation
+        # stage (coarse / medium / tight) does NOT silently rewrite
+        # the basis size -- that stays the user's choice (which is
+        # what people expect: basis is part of the run's identity, not
+        # part of the stage refinement schedule).
+        "workflow_group": "stage",
         "label": "PAO.BasisSize",
         "engine_key":  'PAO.BasisSize',
         "choices": ("SZ", "DZ", "SZP", "DZP", "TZP"),
@@ -406,7 +437,7 @@ class SiestaConfig:
     # labels below are therefore generic; per-engine help text lives
     # in the FDF's verbose comments.
     relax_type: str = field(default="CG", metadata={
-        "section": "Relaxation",
+        "section": "Compute & budget",
         "label": "MD.TypeOfRun",
         "engine_key":  'MD.TypeOfRun',
         "id_suffix": "relax",
@@ -414,7 +445,7 @@ class SiestaConfig:
         "help": "MD/relax algorithm: CG / Broyden / FIRE / Verlet / Nose / none",
     })
     relax_steps: int = field(default=200, metadata={
-        "section": "Relaxation",
+        "section": "Compute & budget",
         # Resource-budget cap — same as max_scf_iter, this is "how
         # many outer steps am I willing to wait for", not a
         # convergence target.  Scales with system size, not stage.
@@ -436,7 +467,7 @@ class SiestaConfig:
                  "displacement cap = slow descent), not fewer.",
     })
     relax_force_tol: float = field(default=0.02, metadata={
-        "section": "Relaxation",
+        "section": "Compute & budget",
         "workflow_group": "stage",
         "label": "MD.MaxForceTol", "unit": "eV/Å",
         "engine_key":  'MD.MaxForceTol',
@@ -446,7 +477,7 @@ class SiestaConfig:
         "help":  "force-tol stop criterion (CG/Broyden/FIRE only; ignored in Verlet/Nose)",
     })
     relax_max_displ: float = field(default=0.05, metadata={
-        "section": "Relaxation",
+        "section": "Compute & budget",
         "workflow_group": "stage",
         "label": "MD max-displ", "unit": "Å",
         "engine_key":  'MD.MaxCGDispl / MD.MaxDispl (per relax_type)',
@@ -471,7 +502,7 @@ class SiestaConfig:
     # the user at least SEES them on the page; their help text marks
     # them as ignored-for-CG so the form doesn't mislead non-MD users.
     md_initial_temperature: float = field(default=300.0, metadata={
-        "section": "Relaxation",
+        "section": "Compute & budget",
         "label": "MD.InitialTemperature", "unit": "K",
         "engine_key":  'MD.InitialTemperature',
         "range": (0.0, 5000.0),
@@ -482,7 +513,7 @@ class SiestaConfig:
                   "velocities to seed."),
     })
     md_target_temperature: Optional[float] = field(default=None, metadata={
-        "section": "Relaxation",
+        "section": "Compute & budget",
         "label": "MD.TargetTemperature", "unit": "K",
         "engine_key":  'MD.TargetTemperature',
         "null_label": "(use MD.InitialTemperature)",
@@ -494,7 +525,7 @@ class SiestaConfig:
                   "when unset."),
     })
     md_length_timestep: float = field(default=1.0, metadata={
-        "section": "Relaxation",
+        "section": "Compute & budget",
         "label": "MD.LengthTimeStep", "unit": "fs",
         "engine_key":  'MD.LengthTimeStep',
         "range": (0.1, 5.0),
@@ -641,7 +672,7 @@ class SiestaConfig:
     # MD.NumCGsteps.  Folds the Parallel-execution section into the
     # Compute & budget workflow-group card.
     mpi_np: Optional[int] = field(default=None, metadata={
-        "section":    "Parallel execution",
+        "section": "Compute & budget",
         "workflow_group": "budget",
         "label":      "MPI ranks (np)",
         "engine_key":  '(molbuilder: .run.sh ``mpirun -np N`` only; not in .fdf)',
@@ -672,7 +703,7 @@ class SiestaConfig:
     })
 
     parallel_block_size: Optional[int] = field(default=None, metadata={
-        "section": "Parallel execution",
+        "section": "Compute & budget",
         "workflow_group": "budget",
         "label": "BlockSize",
         "engine_key":  'BlockSize',
@@ -694,7 +725,7 @@ class SiestaConfig:
         "skip_cli": True,
     })
     parallel_over_k: Optional[bool] = field(default=None, metadata={
-        "section": "Parallel execution",
+        "section": "Compute & budget",
         "workflow_group": "budget",
         "label": "ParallelOverK",
         "engine_key":  'Diag.ParallelOverK',
@@ -709,7 +740,7 @@ class SiestaConfig:
     # oversubscribe -- canonical anti-oversubscription recipe shared
     # with the PySCF / spectra scripts.
     omp_threads: Optional[int] = field(default=None, metadata={
-        "section":    "Parallel execution",
+        "section": "Compute & budget",
         "workflow_group": "budget",
         "label":      "OMP threads per rank",
         # Not a SIESTA fdf keyword.  Emits ``export OMP_NUM_THREADS=N``
@@ -731,7 +762,7 @@ class SiestaConfig:
     # set.  Not auto-set in the .fdf today; if set here, runtime_info
     # records it so the /results trajectory inspector shows the cap.
     max_memory_mb: Optional[int] = field(default=None, metadata={
-        "section":    "Parallel execution",
+        "section": "Compute & budget",
         "workflow_group": "budget",
         "label":      "Max memory (per rank)",
         # Not a SIESTA fdf keyword.  Emits ``ulimit -v`` into .run.sh
@@ -747,7 +778,7 @@ class SiestaConfig:
         "skip_cli":   True,
     })
     enable_gpu: bool = field(default=False, metadata={
-        "section":   "Parallel execution",
+        "section": "Compute & budget",
         "workflow_group": "budget",
         "label":     "Use GPU (NVIDIA, via ELPA-CUDA)",
         # SIESTA 5.4.2 fdf keyword (verified against upstream source
@@ -779,7 +810,7 @@ class SiestaConfig:
                      "faster on GPU).",
     })
     elpa_algorithm: str = field(default="ELPA-1STAGE", metadata={
-        "section":   "Parallel execution",
+        "section": "Compute & budget",
         "workflow_group": "budget",
         "label":     "ELPA solver (when GPU on)",
         # SIESTA 5.4.2 fdf keyword (Src/diag_option.F90:264-273):

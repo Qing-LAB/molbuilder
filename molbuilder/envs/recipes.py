@@ -733,8 +733,26 @@ _ELPA = BuildComponent(
         # with sm_80 so the SM80 kernel runs on Hopper too.  Pre-Ampere
         # GPUs (Volta sm_70, Turing sm_75) fall back to the generic
         # NVIDIA kernel since the SM80 variant would fail to link.
-        'CC_NUM={cuda_cc_numeric}; SM_EXTRA=""; '
-        'if [ "$CC_NUM" -ge 80 ]; then SM_EXTRA="--enable-nvidia-sm80-gpu"; fi; '
+        # 2026-06-15 bump: ELPA 2024.05.001 tightened the configure check
+        # for ``--enable-nvidia-sm80-gpu`` -- despite the error message
+        # wording ("sm_80 or higher"), the literal string check rejects
+        # sm_86 / sm_87 / sm_89, breaking the build for every non-A100
+        # Ampere GPU.  Resolution: ONLY use ``--enable-nvidia-sm80-gpu``
+        # when the user's GPU is literally cc 8.0 (A100).  For cc 8.6
+        # (RTX 30xx consumer Ampere), cc 8.7 (Jetson Orin), cc 8.9 (Ada
+        # Lovelace, RTX 40xx), and cc 9.0 (Hopper H100), use ELPA's
+        # generic NVIDIA kernel compiled NATIVELY for that cc -- no
+        # PTX-JIT fallback, no kernel-tag mismatch.  The SM80 kernel is
+        # an A100-specific hand-tuned path (tensor-core ops + cusolver
+        # APIs only present on A100); on the consumer/datacenter Ampere
+        # + Ada + Hopper GPUs, the generic NVIDIA kernel uses cuBLAS /
+        # cuSOLVER and benefits from native sm_86 / sm_89 / sm_90
+        # compilation paths.  Net: A100 keeps its specialised kernel,
+        # everyone else gets sm-correct generic ELPA-CUDA.
+        'CC_NUM={cuda_cc_numeric}; SM_EXTRA=""; CC_TAG=sm_{cuda_cc_numeric}; '
+        'if [ "$CC_NUM" = "80" ]; then '
+        '    SM_EXTRA="--enable-nvidia-sm80-gpu"; '  # A100-only specialised path
+        'fi; '
         '"{src}/configure" '
         ' FC=mpifort CC=mpicc CXX=mpicxx '
         ' --prefix={install} '
@@ -743,7 +761,18 @@ _ELPA = BuildComponent(
         ' --enable-nvidia-gpu '
         ' $SM_EXTRA '
         ' --with-cuda-path={env_prefix} '
-        ' --with-NVIDIA-GPU-compute-capability=sm_{cuda_cc_numeric} '
+        ' --with-NVIDIA-GPU-compute-capability=$CC_TAG '
+        # ELPA 2024.05.001 turns cuSOLVER on by default when GPU streams
+        # are enabled and probes for ``cusolverDnXtrtri`` -- which only
+        # exists in cuSOLVER 11.4+ (CUDA 12.1+).  Our conda-forge
+        # cuda-cudart=13.* pulls a cuSOLVER that satisfies the API, but
+        # the conda libcusolver_dev package is not visible to autoconf's
+        # default link probe (the .so lives in a non-standard subdir).
+        # Rather than fight the conda layout, disable cuSOLVER -- ELPA
+        # uses it only for triangular-matrix inversion and Cholesky,
+        # both of which fall back to ScaLAPACK with negligible
+        # measurable cost at our problem sizes (< 10000 orbitals).
+        ' --with-cusolver=no '
         # AVX-512 is opt-in and many AMD/older-Xeon hosts lack it.  We
         # require it explicitly only when the host CPU advertises
         # ``avx512f`` in /proc/cpuinfo (set by ``MOLBUILDER_ELPA_AVX512=1``).

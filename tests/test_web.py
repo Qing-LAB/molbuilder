@@ -2048,13 +2048,14 @@ def test_siesta_form_schema_matches_documented_layout():
     assert sch["config"] == "SiestaConfig"
     assert sch["id_prefix"] == "p"
 
-    # 2026-05-27 reorder: "Parallel execution" moved from 5th to
-    # LAST.  Reasoning: it's the code/execution axis (MPI ranks, OMP
-    # threads, ScaLAPACK BlockSize, memory cap) -- orthogonal to the
-    # physics axis the other sections cover.  Sitting between SCF
-    # and Spin broke the user's mental flow ("design physics, then
-    # size the machine").  Now physics-first, plumbing-last, with
-    # the section sitting right above the Generate / Save action row.
+    # 2026-06-15 second restructure: merged "Relaxation" + "Parallel
+    # execution" into a single "Compute & budget" section so the
+    # physics axis (System -> Basis -> XC -> SCF -> Spin -> Output)
+    # stays compact and the "how the run executes" knobs are
+    # gathered in one place at the end of the form.  See the
+    # SiestaConfig._form_section_order comment block for the full
+    # design rationale + the workflow-group card split (profile /
+    # stage / budget) inside the merged section.
     expected = [
         # System: 2 -> 3 fields after the 2026-05-26 review added
         # section="System" to ``net_charge`` so users with charged
@@ -2070,21 +2071,15 @@ def test_siesta_form_schema_matches_documented_layout():
         ("Exchange-correlation",     2),
         ("SCF",                      7),
         ("Spin",                     2),
-        # Relaxation: 4 -> 7 fields after 2026-05-26.  When the user
-        # picks Verlet / Nose from MD.TypeOfRun, SIESTA silently used
-        # the dataclass defaults (300 K / 1 fs / 0 K target) with NO
-        # form input -- the user got a fictitious thermostat setup.
-        # md_initial_temperature / md_target_temperature /
-        # md_length_timestep are now in the form (advanced tier).
-        ("Relaxation",               7),
         ("Output & positioning",     6),
-        # Parallel execution field-count timeline:
-        #   2 (original): parallel_block_size + parallel_over_k
-        #   4 (2026-05-22 runtime pass): + omp_threads + max_memory_mb
-        #   5 (2026-05-23 review): + mpi_np (form had no MPI rank
-        #     input -> wrapper always emitted single-process,
-        #     even when user wanted mpirun).
-        ("Parallel execution",       5),
+        # Compute & budget: 14 fields after the 2026-06-15 merge.
+        #   Relaxation contributed 7 (relax_type, relax_steps,
+        #   relax_force_tol, relax_max_displ, md_initial_temperature,
+        #   md_target_temperature, md_length_timestep).
+        #   Parallel execution contributed 7 (mpi_np,
+        #   parallel_block_size, parallel_over_k, omp_threads,
+        #   max_memory_mb, enable_gpu, elpa_algorithm).
+        ("Compute & budget",        14),
     ]
     got = [(s["name"], len(s["fields"])) for s in sch["sections"]]
     assert got == expected, got
@@ -2179,13 +2174,16 @@ def test_pyscf_form_schema_matches_documented_layout():
         ("Method",                       5),
         ("SCF",                          5),
         ("Pre-optimization (optional)",  5),
-        ("Optimization",                 6),
         ("Solvent (optional)",           2),
         ("Frequencies / thermochemistry", 3),
-        # Runtime & output: 6 -> 7 fields after the 2026-05-22
-        # runtime-info pass added cfg.use_gpu (so Build's PySCF
-        # generator can emit the GPU probe shared with /spectra).
-        ("Runtime & output",             7),
+        # Compute & budget: 13 fields after the 2026-06-15 merge
+        # (mirrors the SIESTA same-day restructure).
+        #   Optimization contributed 6 (optimize, optimizer,
+        #   geom_max_steps, geom_conv_energy, geom_conv_grms,
+        #   geom_conv_gmax).
+        #   Runtime & output contributed 7 (max_memory_mb, threads,
+        #   use_gpu, verbose, chkfile, log_file, verbose_comments).
+        ("Compute & budget",            13),
     ]
     got = [(s["name"], len(s["fields"])) for s in sch["sections"]]
     assert got == expected, got
