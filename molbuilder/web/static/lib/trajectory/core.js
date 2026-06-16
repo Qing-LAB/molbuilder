@@ -1839,73 +1839,93 @@
                        + (measured.itersInWindow > 1 ? "s" : "")
                        + " in last " + fmtWall(measured.windowSeconds) + ")";
         } else {
-            // STAGE 1: fall back to the SIESTA snapshot.
+            // STAGE 1: explicit precedence ladder over parser-attached
+            // walltime data.  SIESTA emits its ``timer: IterSCF`` line
+            // EXACTLY ONCE per run (verified empirically: stage3-run0
+            // with 15 geom steps + ~520 SCF cycles had a single timer
+            // line at iter 1 of step 1).  But user-facing relevance
+            // ranks the available data in a clear order:
             //
-            // The ``timer: IterSCF`` line is emitted EXACTLY ONCE per
-            // SIESTA invocation -- at iter 1 of geom step 1, when
-            // SIESTA's internal Timer routine prints its first call-
-            // count summary.  Subsequent SCF cycles (geom step 2 +,
-            // every iter after the first) carry NO timer attribution
-            // even though they may run for hours.  So a STAGE 1
-            // scan limited to ``current`` (the most-recent step's
-            // cycles) will return null for every run past geom step
-            // 1, and the wall-time note silently disappears after the
-            // CG optimizer takes its first step.
+            //   1. Current step's most recent cycle (best -- it's
+            //      what's happening right now, accounts for any
+            //      mid-run cost changes like mesh adaptation)
+            //   2. Previous (completed) step's most recent cycle
+            //      (good -- a real average over a finished SCF run
+            //      at similar problem size)
+            //   3. Very first step's iter-1 snapshot (worst -- old,
+            //      may include warm-up costs like cache cold-start
+            //      and MPS daemon spin-up, but always present in a
+            //      well-formed SIESTA .out)
+            //   4. Nothing -- no annotation (genuinely no data yet)
             //
-            // Fix: walk ALL steps NEWEST-FIRST and lock onto the most
-            // recent cycle that carries ``cumulative_walltime_s`` and
-            // ``cumulative_calls``.  Two reasons newest beats oldest:
-            //
-            //   1. If SIESTA does emit the timer line more than once
-            //      in a future build (it shouldn't today, but our
-            //      ``test_overflowed_time_drops_only_walltime_keeps_calls``
-            //      fixture proves the parser handles the multi-line
-            //      case), the most-recent measurement is the best
-            //      estimate of CURRENT per-iter cost -- which may
-            //      differ from iter 1 if the diag size or mesh
-            //      changed mid-run (rare but possible with adaptive
-            //      mesh-cutoff schemes).
-            //
-            //   2. Per-iter cost is the right quantity to report,
-            //      not iter-1 cumulative.  Newest cycle's
-            //      cumulative_walltime / cumulative_calls = average
-            //      per-iter so far -- a more honest projection than
-            //      "iter 1 was Xs, assume all iters take Xs".
-            //
-            // Falls through gracefully when nothing's attached (e.g.
-            // a malformed .out): no annotation, no crash, same as
-            // STAGE 2's silent fall-through.
-            let baselineCycle = null;
-            for (let i = history.length - 1; i >= 0 && baselineCycle === null; i--) {
-                const step = history[i];
-                if (!Array.isArray(step)) continue;
+            // Each rung also carries a provenance string into the UI
+            // so the user can see WHICH source the number came from.
+            // Today (3) is the common path because SIESTA only emits
+            // once, but (1) and (2) auto-kick-in if a future SIESTA
+            // build or PySCF logs richer per-step timing.
+            const findLatestCycleWithWalltime = (step) => {
+                if (!Array.isArray(step)) return null;
                 for (let j = step.length - 1; j >= 0; j--) {
-                    const cyc = step[j];
-                    const v = cyc && cyc.cumulative_walltime_s;
-                    if (typeof v === "number" && isFinite(v)) {
-                        baselineCycle = cyc;
-                        break;
-                    }
+                    const c = step[j];
+                    const v = c && c.cumulative_walltime_s;
+                    if (typeof v === "number" && isFinite(v)) return c;
+                }
+                return null;
+            };
+
+            let baselineCycle = null;
+            let provenance = "";
+
+            // (1) Current step
+            const currentHit = findLatestCycleWithWalltime(current);
+            if (currentHit) {
+                baselineCycle = currentHit;
+                provenance = "current step";
+            }
+
+            // (2) Previous (completed) step
+            if (!baselineCycle && stepIdx >= 1) {
+                const prevHit = findLatestCycleWithWalltime(history[stepIdx - 1]);
+                if (prevHit) {
+                    baselineCycle = prevHit;
+                    provenance = "last step avg";
                 }
             }
+
+            // (3) First IterSCF snapshot anywhere (oldest non-null;
+            //     this is the SIESTA-canonical single-emission case)
+            if (!baselineCycle) {
+                for (let i = 0; i < history.length; i++) {
+                    const step = history[i];
+                    if (!Array.isArray(step)) continue;
+                    for (let j = 0; j < step.length; j++) {
+                        const c = step[j];
+                        const v = c && c.cumulative_walltime_s;
+                        if (typeof v === "number" && isFinite(v)) {
+                            baselineCycle = c;
+                            provenance = "first-iter snapshot";
+                            break;
+                        }
+                    }
+                    if (baselineCycle) break;
+                }
+            }
+
+            // (4) Nothing -- leave statusText untouched.
             if (baselineCycle !== null) {
                 const cumT = baselineCycle.cumulative_walltime_s;
                 const cumN = baselineCycle.cumulative_calls;
-                // Prefer per-iter (cumulative/calls) when calls is
-                // attached -- it's the right cost-per-iter quantity.
-                // Fall back to absolute cumulative when calls is
-                // missing (rare: timer line with overflowed Calls
-                // but clean Time -- our overflow-tolerant parser
-                // handles this).
+                // Prefer per-iter (cumulative/calls).  Fall back to
+                // raw cumulative when calls is missing (rare: Fortran
+                // column overflow on Calls but not Time -- our
+                // overflow-tolerant parser handles each field
+                // independently, see test_overflowed_time_drops_only
+                // _walltime_keeps_calls).
                 const perIter = (typeof cumN === "number" && cumN >= 1)
                     ? cumT / cumN
                     : cumT;
-                statusText += ", ~" + fmtWall(perIter) + "/iter (snapshot)";
-                const nNow = current.length;
-                if (nNow > 1) {
-                    statusText += " ~" + fmtWall(perIter * nNow)
-                               + " elapsed @snapshot rate; live avg pending";
-                }
+                statusText += ", ~" + fmtWall(perIter)
+                           + "/iter (" + provenance + ")";
             }
         }
         $("scf-status").textContent = statusText;
