@@ -93,6 +93,25 @@ _SIESTA_MAX_OPT_RE = re.compile(
 # Ef_up + Ef_dn) without writing a brittle multi-regex dispatch.
 _SCF_PREFIX_RE = re.compile(r"^\s*scf:\s*(\d+)\s+(.+)$", re.IGNORECASE)
 
+# SIESTA timer lines emitted right after each SCF cycle.  Format:
+#   timer: Routine,Calls,Time,% = IterSCF        1      40.820  49.49
+# We capture CUMULATIVE Calls and Time (since the start of the run);
+# the per-iteration time is computed downstream as the delta between
+# successive cycles' cumulative values.  Format observed across
+# SIESTA 4.1 / 5.0 / 5.4: ``Routine,Calls,Time,%`` header is fixed,
+# then ``= <name>`` then four whitespace-separated fields.  We only
+# care about the IterSCF row (other timer rows like ``Setup``,
+# ``PostSCF`` etc. are emitted at different cadences and aren't
+# load-bearing for the live SCF chart).
+# Loose start matcher: just the prefix through ``IterSCF``.  Field
+# parsing happens in the handler via ``_parse_fortran_float`` so a
+# Fortran column overflow ("******") in Time or % degrades gracefully
+# (NaN -> field omitted) rather than dropping the whole attribution.
+_TIMER_ITERSCF_RE = re.compile(
+    r"^\s*timer:\s*Routine,Calls,Time,%\s*=\s*IterSCF\s+(.+)$",
+    re.IGNORECASE,
+)
+
 # Defensive separator-inserter for SIESTA's fixed-width SCF columns.
 # When two adjacent columns pack so tight that no whitespace separates
 # them, the naive ``split()`` captures them as one token.  Two adjacency
@@ -856,6 +875,67 @@ class SiestaParser(TrajectoryParser):
             current_scf.append(cycle_dict)
             prev_E_KS = e_ks
 
+        def _on_iter_scf_timer(line: str, line_no: int) -> None:
+            """Attach SIESTA's cumulative IterSCF wall-time to the most-
+            recent SCF cycle.
+
+            SIESTA emits the timer line RIGHT AFTER each SCF cycle's
+            data line.  Format::
+
+                timer: Routine,Calls,Time,% = IterSCF      1      40.820  49.49
+
+            ``Calls`` (=1 here) is the cumulative iteration count and
+            ``Time`` (=40.820) is the cumulative wall-time in seconds
+            since the run started.  We attach BOTH to the cycle dict
+            so the inspector can compute per-iteration deltas (Time_N
+            - Time_N-1) AND show the absolute progress.  The JS chart
+            does the delta arithmetic so a stale + fresh cycle render
+            consistently.
+
+            Defensive in two ways:
+
+            * If the timer line arrives WITHOUT a preceding scf-data
+              cycle (e.g. truncated file, weird ordering), drop it
+              silently -- attaching wall-time to a non-existent cycle
+              would be more misleading than just omitting the field.
+
+            * Fortran column overflow ("******") in any of Calls /
+              Time / % does NOT discard the whole attribution -- each
+              field is parsed independently via ``_parse_fortran_float``
+              (NaN on overflow / non-numeric), and the cycle dict only
+              gets the keys that DID parse cleanly.  So a long run that
+              overflows Time but not Calls still gets ``cumulative_calls``
+              attached; the JS just falls back to the cycle index when
+              ``cumulative_walltime_s`` is missing.
+            """
+            nonlocal current_scf
+            m = _TIMER_ITERSCF_RE.match(line)
+            if m is None:
+                return
+            if not current_scf:
+                return
+            # Tokenise the rest of the line: Calls Time % (3 fields).
+            # Anything beyond the third is ignored -- some SIESTA builds
+            # append extra columns we don't consume.
+            tokens = m.group(1).split()
+            if not tokens:
+                return
+            last_cycle = current_scf[-1]
+            # Calls (integer): tolerate "*****" by skipping.
+            calls_tok = tokens[0]
+            if "*" not in calls_tok:
+                try:
+                    last_cycle["cumulative_calls"] = int(calls_tok)
+                except (ValueError, TypeError):
+                    pass
+            # Time (float seconds): ``_parse_fortran_float`` returns NaN
+            # for "*****" so the math.isfinite guard suppresses the
+            # attachment cleanly without raising.
+            if len(tokens) >= 2:
+                cum_time_s = _parse_fortran_float(tokens[1])
+                if math.isfinite(cum_time_s):
+                    last_cycle["cumulative_walltime_s"] = cum_time_s
+
         # Max-force lines: single-line, both variants.  Gated by a
         # closure-captured check on ``step_forces`` -- only valid
         # after a Forces section closed.  Without the gate a stray
@@ -1048,6 +1128,22 @@ class SiestaParser(TrajectoryParser):
                 # Combined-regex eligible.
                 start=matches_regex_ci(r"^\s*scf:\s*\d+\s+"),
                 on_start=_on_scf_data,
+            ),
+            SectionRule(
+                name="iter_scf_timer",
+                aliases=["timer: ... IterSCF"],
+                # Matches the cumulative ``IterSCF`` timer line SIESTA
+                # emits right after each completed SCF cycle so the
+                # Results-tab inspector can show per-iteration wall
+                # time live -- the canonical "is this run progressing
+                # at a reasonable pace?" signal.  See _on_iter_scf_timer
+                # for the cumulative-to-delta computation: we attach
+                # ``cumulative_walltime_s`` to the SCF cycle dict that
+                # was just appended; the JS chart computes per-iter
+                # deltas from the cumulative series.
+                start=matches_regex_ci(
+                    r"^\s*timer:\s*Routine,Calls,Time,%\s*=\s*IterSCF\s"),
+                on_start=_on_iter_scf_timer,
             ),
             SectionRule(
                 name="max_force",
