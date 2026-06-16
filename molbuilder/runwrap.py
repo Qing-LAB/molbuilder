@@ -666,20 +666,24 @@ def _baked_numa_literal_line() -> str:
 def _gpu_runtime_defaults_block(n_atoms: Optional[int]) -> str:
     """Bash that probes hardware and computes GPU-mode MPI/OMP defaults.
 
-    Encodes the 2026-06-15 ELPA-CUDA policy (single workstation, 1 GPU,
-    no NCCL in our ELPA 2021.11.001 build).  Inputs come from
-    ``nproc``/``lscpu``; outputs are shell variables consumed by the
-    rest of the SIESTA wrapper template:
+    Encodes the GPU-mode placement policy for our ELPA-CUDA build
+    (single workstation, 1 GPU, no NCCL).  Inputs come from
+    ``lscpu`` / NVML / kernel sysfs; outputs are shell variables
+    consumed by the rest of the SIESTA wrapper template:
 
       * ``_gpu_mpi_np_default``: with MPS, ``phys_cores // 4`` capped
         at 4 (ELPA 2024.05 release notes report 4 ranks/GPU as the
         no-NCCL throughput optimum; BSC MareNostrum5 SIESTA-ACC report
         confirms on V100/A100/H100); without MPS, 2 dual-socket or
         ``cps >= 16``, else 1.  Clamped <= n_atoms.
-      * ``_gpu_numa``: NUMA node the GPU is attached to, parsed from
-        ``nvidia-smi topo -m``.  Either an integer string (``"0"``,
-        ``"1"``, ...) or the literal ``"unknown"`` when nvidia-smi is
-        missing or the topology table can't be parsed.
+      * ``_gpu_numa``: NUMA node the GPU is attached to.  Baked at
+        script-generation time by :func:`_probe_gpu0_numa` (NVML
+        ``nvmlDeviceGetPciInfo`` + kernel sysfs
+        ``/sys/bus/pci/devices/<id>/numa_node``); overridable at run
+        time via ``MOLBUILDER_GPU_NUMA``.  Either an integer string
+        ("0", "1", ...) or the literal "unknown" when no GPU was
+        present at generation time / NVML failed / sysfs reports
+        "-1".  Stable: not subject to nvidia-smi tabular-layout drift.
       * ``_gpu_budget``: phys-core budget the OMP arithmetic divides.
         Two regimes:
           - NUMA-pinned (``_gpu_numa != "unknown"`` AND
@@ -1373,35 +1377,35 @@ def render_run_wrapper(script_path: Path, *,
                 '    export CUDA_MPS_LOG_DIRECTORY="/tmp/mb-mps-$$-log"\n'
                 '    mkdir -p "$CUDA_MPS_PIPE_DIRECTORY" '
                 '"$CUDA_MPS_LOG_DIRECTORY" 2>/dev/null\n'
-                '    # Start MPS only if not already running for THIS\n'
-                '    # pipe dir (a global one started outside this run\n'
-                '    # uses a different dir, so this is independent).\n'
-                '    if ! echo get_server_list '
-                '| nvidia-cuda-mps-control 2>/dev/null '
-                '| grep -q .; then\n'
+                '    # Start MPS only if the control socket for THIS\n'
+                '    # pipe dir is not already present (a global daemon\n'
+                '    # started outside this run uses a different dir,\n'
+                '    # so this check is independent).\n'
+                '    if [ ! -S "$CUDA_MPS_PIPE_DIRECTORY/control" ]; then\n'
                 '        nvidia-cuda-mps-control -d 2>/dev/null\n'
-                '        # P1.B 2026-06-16 audit fix: replaced a\n'
-                '        # blind ``sleep 0.5`` with a bounded poll so\n'
-                '        # the wrapper waits for the daemon\'s UNIX\n'
-                '        # socket to BE there before launching ranks.\n'
-                '        # On a busy / contended host the daemon can\n'
-                '        # take >0.5 s to bind; the old timeout meant\n'
-                '        # ranks would open CUDA contexts directly\n'
-                '        # (bypassing MPS) and lose the Hyper-Q\n'
-                '        # concurrency the whole stack was set up for\n'
-                '        # -- silently, with no error.  5 s ceiling\n'
-                '        # because if the daemon hasn\'t come up in\n'
-                '        # that long, something is broken and we want\n'
-                '        # a loud failure rather than a degraded run.\n'
+                '        # Daemon readiness signal: the control UNIX\n'
+                '        # SOCKET file appears in the pipe directory.\n'
+                '        # 2026-06-16 audit fix: the prior probe polled\n'
+                '        # ``echo get_server_list | nvidia-cuda-mps-control\n'
+                '        # | grep -q .`` -- BUT MPS servers are spawned\n'
+                '        # by the daemon only when a CLIENT FIRST\n'
+                '        # CONNECTS.  Pre-launch, ``get_server_list``\n'
+                '        # returns an empty string regardless of daemon\n'
+                '        # health, so the loop always timed out at 5 s\n'
+                '        # and falsely reported "daemon failed to bind"\n'
+                '        # on perfectly healthy hosts.  The control\n'
+                '        # socket appears as soon as the daemon binds\n'
+                '        # (typically <100 ms) -- that is the correct\n'
+                '        # readiness signal.\n'
                 '        _mps_wait=0\n'
-                '        while ! echo get_server_list '
-                '| nvidia-cuda-mps-control 2>/dev/null '
-                '| grep -q .; do\n'
+                '        while [ ! -S "$CUDA_MPS_PIPE_DIRECTORY/control" ]; do\n'
                 '            sleep 0.1\n'
                 '            _mps_wait=$((_mps_wait + 1))\n'
                 '            if [ "$_mps_wait" -gt 50 ]; then\n'
-                '                echo "molbuilder: MPS daemon failed '
-                'to bind within 5 s; falling back to no-MPS." >&2\n'
+                '                echo "molbuilder: MPS control socket '
+                'did not appear within 5 s ('
+                '$CUDA_MPS_PIPE_DIRECTORY/control); falling back '
+                'to no-MPS." >&2\n'
                 '                _use_mps_default=0\n'
                 '                break\n'
                 '            fi\n'
