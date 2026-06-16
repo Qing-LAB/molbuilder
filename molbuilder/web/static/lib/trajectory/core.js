@@ -1751,36 +1751,46 @@
         }
         statusText += ", ΔE=" + lastDe.toExponential(2) + " eV";
 
-        // Wall-time annotation: SIESTA writes a ``timer: Routine,Calls,Time,%
-        // = IterSCF`` line right after each SCF cycle, and the parser
-        // attaches the cumulative seconds to each cycle dict as
-        // ``cumulative_walltime_s``.  Show:
-        //   * last iter's wall time (delta from previous cumulative)
-        //   * total SCF wall time so far (last cumulative)
-        // Both let the user spot "this iter took 2x the previous one"
-        // -- the classic DM-mixing-divergence early warning -- without
-        // having to grep the .out manually.  When the parser couldn't
-        // attach the field (Fortran column overflow at very long runs,
-        // OR a non-SIESTA engine where the timer isn't emitted) the
-        // block is silently skipped -- the chart still renders the
-        // residual + energy without the annotation.
-        const lastCum = current[current.length - 1].cumulative_walltime_s;
-        if (typeof lastCum === "number" && isFinite(lastCum)) {
-            const prevCum = current.length >= 2
-                ? current[current.length - 2].cumulative_walltime_s
-                : 0;
-            const dt = (typeof prevCum === "number" && isFinite(prevCum))
-                ? (lastCum - prevCum) : null;
-            // Format ``X.Ys`` for <60 s, ``Xm Ys`` for >=60 s -- the
-            // researcher cares about minutes once iters are slow.
+        // Wall-time annotation: SIESTA's ``timer: Routine,Calls,Time,%
+        // = IterSCF`` line is a ONE-TIME first-iteration snapshot
+        // (verified empirically against SIESTA 5.4.2: exactly one
+        // emission after scf:1; nothing after subsequent iters).  So
+        // the parser attaches ``cumulative_walltime_s`` only to the
+        // FIRST cycle in the SCF history.  Scan backward for that
+        // value -- using ``current[length-1].cumulative_walltime_s``
+        // (the old shape) would miss the annotation for every view
+        // past iter 1.  When present, surface as a baseline + a
+        // simple linear extrapolation so the user can spot whether
+        // a run that took 46 s on iter 1 is heading for 15 min or
+        // an hour.  When absent (overflow OR non-SIESTA engine) the
+        // block is silently skipped.
+        let baselineCycle = null;
+        for (let i = 0; i < current.length; i++) {
+            const v = current[i].cumulative_walltime_s;
+            if (typeof v === "number" && isFinite(v)) {
+                baselineCycle = current[i];
+                break;
+            }
+        }
+        if (baselineCycle !== null) {
             const fmt = (s) => {
                 if (s < 60) return s.toFixed(1) + "s";
                 const m = Math.floor(s / 60);
                 const r = Math.round(s - m * 60);
                 return m + "m " + r + "s";
             };
-            statusText += ", iter " + (dt !== null ? fmt(dt) : "?");
-            statusText += " (total " + fmt(lastCum) + ")";
+            const t1 = baselineCycle.cumulative_walltime_s;
+            statusText += ", iter1=" + fmt(t1);
+            // Linear extrapolation -- explicitly labelled "@iter1"
+            // so the user sees this is a baseline projection, not a
+            // measurement of the current iter.  Honest about its
+            // limitations: SIESTA's later iters often go FASTER (DM
+            // warm-started from cycle 1) so this is an upper bound.
+            const nNow = current.length;
+            if (nNow > 1) {
+                statusText += " (cycle " + nNow + "; "
+                    + fmt(t1 * nNow) + " elapsed @iter1 rate)";
+            }
         }
         $("scf-status").textContent = statusText;
 
