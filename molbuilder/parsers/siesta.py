@@ -492,7 +492,21 @@ class SiestaParser(TrajectoryParser):
         # AND no SCF cycle exists either.
         step_initial_etot: Optional[float] = None
 
-        def commit() -> None:
+        def commit(in_progress: bool = False) -> None:
+            """Commit the accumulated step state as a Frame.
+
+            ``in_progress`` is set True by the EOF flush when the file
+            ends mid-step (step has a structure echo + SCF cycles but
+            no canonical step-end signal yet).  Without this flag the
+            EOF-flushed frame would be indistinguishable from a real
+            completed geom step in the Results-tab trajectory slider,
+            so the user would see a "step 0" frame in the slider
+            during the very first SCF cycle and the inspector would
+            show a real-but-stale energy/force display while the
+            actual run is still spinning up.
+
+            See the EOF block below for the detection logic.
+            """
             nonlocal step_frame, step_energy, step_max_force, step_forces
             nonlocal step_max_force_constrained
             nonlocal current_scf, prev_E_KS, step_initial_etot
@@ -578,6 +592,7 @@ class SiestaParser(TrajectoryParser):
                 max_force   = step_max_force,
                 max_force_constrained = step_max_force_constrained,
                 scf_history = list(current_scf) if current_scf else None,
+                in_progress = in_progress,
             ))
             step_frame = None
             step_energy = None
@@ -1314,7 +1329,26 @@ class SiestaParser(TrajectoryParser):
         # can't materialize -- drop it with the frame.
         if active is not None and active.name == "coords":
             step_frame = None
-        commit()
+
+        # EOF in-progress detection: when the file ends with a real
+        # structure echo AND SCF cycles but NO canonical step-end
+        # signal (no ``siesta: E_KS(eV) = ...`` for this step, no
+        # forces emitted yet), the step is mid-flight.  SIESTA 5.4.2
+        # writes the input-coordinate echo as an ``outcoor:`` block
+        # BEFORE the first SCF, so a freshly-started run has
+        # step_frame populated AND current_scf populated AND
+        # step_energy=None -- which is the exact in-progress
+        # signature.  Without this flag, the EOF-flushed frame
+        # would surface in the trajectory slider as a "real" geom
+        # step 0 during the first SCF cycle, leaking SCF-in-progress
+        # state into the completed-frame UI.
+        eof_in_progress = (
+            run_state == "ongoing"
+            and bool(step_frame)
+            and bool(current_scf)
+            and step_energy is None
+        )
+        commit(in_progress=eof_in_progress)
 
         # In-progress SCF visibility: when the run is still active
         # (no End-of-run / fatal marker) and we have buffered SCF

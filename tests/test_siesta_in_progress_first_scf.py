@@ -125,3 +125,91 @@ def test_empty_preamble_does_not_emit_in_progress_frame():
     render and a phantom frame would mislead the inspector."""
     traj = _parse(_EMPTY_PREAMBLE_ONLY)
     assert len(traj.frames) == 0
+
+
+# SIESTA 5.4.2 emits the input-coordinate echo as an ``outcoor:``
+# block BEFORE the first SCF cycle (the "Atomic coordinates (Ang)"
+# table seen in fresh stage3 runs).  A run that's still in its
+# FIRST SCF cycle therefore has BOTH a structure (from the input
+# echo) AND SCF data in flight.  The parser commits the structure
+# at EOF -- but the resulting Frame must be flagged ``in_progress``
+# because SCF for that step hasn't converged yet.  Without the
+# flag, the Results-tab inspector renders the frame as a completed
+# step in the trajectory slider and the user sees a misleading
+# "step 0" with mid-flight SCF data attached.
+_INPUT_ECHO_THEN_FIRST_SCF = dedent("""\
+    Running on 4 procs
+
+       Parallelisations: MPI, OpenMP
+
+    new_DM -- step:     1
+
+    outcoor: Atomic coordinates (Ang):
+        0.000000  0.000000  0.000000  1  1  Au
+        1.500000  0.000000  0.000000  1  2  Au
+
+    InitMesh: MESH = 64 x 64 x 64
+    Setting up quadratic distribution...
+
+         iscf     Eharris(eV)        E_KS(eV)     FreeEng(eV)     dDmax    Ef(eV) dHmax(eV)
+       scf:    1  -804530.375542  -806879.348347  -806879.548695  2.563389 -1.342666 43.436793
+       timer: Routine,Calls,Time,% = IterSCF        1      43.217  37.03
+    """)
+
+
+def test_input_echo_outcoor_before_first_scf_marks_frame_in_progress():
+    """The GPU-stage3-run0 regression: SIESTA 5.4.2 writes the input-
+    coordinate echo before the first SCF, so step_frame IS populated
+    at EOF (212 real atoms, not the X placeholder).  The frame still
+    needs to be ``in_progress=True`` because step_energy is None
+    (canonical ``siesta: E_KS(eV) = ...`` only comes after SCF
+    converges), and the user would otherwise see a misleading "real
+    step 0" in the trajectory slider while watching the first SCF
+    cycle run."""
+    traj = _parse(_INPUT_ECHO_THEN_FIRST_SCF)
+    assert len(traj.frames) == 1
+    f = traj.frames[0]
+    assert f.in_progress is True, (
+        "EOF-committed frame with structure echo + in-flight SCF "
+        "must be flagged in_progress; otherwise the JS slider "
+        "treats it as a completed geom step and renders stale "
+        "mid-SCF energy/forces"
+    )
+    # Structure IS the real input echo, NOT the X placeholder; the
+    # Results inspector still hides the trajectory viewer based on
+    # in_progress=True, but the structure data is real and could
+    # be used by future passes that want to show "this is the
+    # geometry currently being SCF'd".
+    assert len(f.structure.elements) == 2
+    assert f.structure.elements == ["Au", "Au"]
+    # SCF data is attached.
+    assert f.scf_history is not None
+    assert len(f.scf_history) == 1
+    # And the iter-1 timer snapshot survived through to the cycle dict.
+    assert f.scf_history[0].get("cumulative_walltime_s") == 43.217
+
+
+def test_committed_step_with_e_ks_stays_completed():
+    """Negative case: a step that emitted the canonical ``E_KS`` line
+    (i.e. SCF converged + final energy written) AND has SCF data in
+    the buffer should NOT be flagged in-progress at EOF -- the step
+    is mathematically complete, only the next outcoor is missing."""
+    body = dedent("""\
+        Running on 4 procs
+
+        new_DM -- step:     1
+
+        outcoor: Atomic coordinates (Ang):
+            0.000000  0.000000  0.000000  1  1  Au
+
+             iscf     Eharris(eV)        E_KS(eV)     FreeEng(eV)     dDmax    Ef(eV) dHmax(eV)
+           scf:    1  -804530.375542  -806879.348347  -806879.548695  2.563389 -1.342666 43.436793
+
+        siesta: E_KS(eV) =        -806879.348347
+        """)
+    traj = _parse(body)
+    assert len(traj.frames) == 1
+    assert traj.frames[0].in_progress is False, (
+        "E_KS was emitted; the step is mathematically complete "
+        "even without the next outcoor.  in_progress should be False."
+    )
