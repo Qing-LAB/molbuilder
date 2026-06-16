@@ -897,7 +897,7 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         # were enabled.  The run-wrapper detects ``Diag.ELPA.GPU``
         # via ``_fdf_requests_gpu`` and auto-routes the job into the
         # molbuilder-siesta-gpu env.
-        out.append("Diag.Algorithm     ELPA-1STAGE")
+        out.append(f"Diag.Algorithm     {cfg.elpa_algorithm}")
         out.append("Diag.ELPA.GPU      .true.")
     out.append("")
 

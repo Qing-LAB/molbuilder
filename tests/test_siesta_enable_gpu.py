@@ -112,6 +112,53 @@ def test_render_fdf_emits_gpu_keyword_when_enabled():
     assert "Diag.ELPA.GPU      .true." in fdf
 
 
+def test_render_fdf_emits_diag_algorithm_with_gpu():
+    """When GPU is on, the generator MUST also emit ``Diag.Algorithm
+    ELPA-1STAGE`` -- the GPU keyword alone is silently ignored unless
+    SIESTA is routing through ELPA.  Confirmed against SIESTA source
+    at Src/diag_option.F90:213-225 (default ScaLAPACK path) and the
+    user-visible failure: nvidia-smi at 0% utilisation while SCF is
+    iterating happily on CPU."""
+    cfg = SiestaConfig(enable_gpu=True)
+    fdf = render_fdf(_mk_struct(), cfg)
+    assert "Diag.Algorithm     ELPA-1STAGE" in fdf
+
+
+def test_render_fdf_elpa_algorithm_choice_propagates():
+    """The user can switch the ELPA solver variant via the
+    ``elpa_algorithm`` field (default ELPA-1STAGE -> ELPA-2STAGE for
+    benchmarking or CPU-tuned configs).  Pin that the choice flows
+    through to the rendered keyword."""
+    cfg = SiestaConfig(enable_gpu=True, elpa_algorithm="ELPA-2STAGE")
+    fdf = render_fdf(_mk_struct(), cfg)
+    assert "Diag.Algorithm     ELPA-2STAGE" in fdf
+    assert "Diag.Algorithm     ELPA-1STAGE" not in fdf
+
+
+def test_render_fdf_omits_diag_algorithm_without_gpu():
+    """When GPU is off, leave Diag.Algorithm OUT entirely so SIESTA
+    falls through to its default Divide-and-Conquer ScaLAPACK path
+    (which is the right CPU recipe).  The elpa_algorithm field
+    setting is ignored in this case."""
+    cfg = SiestaConfig(enable_gpu=False, elpa_algorithm="ELPA-2STAGE")
+    fdf = render_fdf(_mk_struct(), cfg)
+    assert "Diag.Algorithm" not in fdf
+
+
+def test_elpa_algorithm_field_metadata():
+    """Pin the form-schema metadata so the UI renders this as a
+    dropdown (not a free-text field) with the correct two choices."""
+    field = SiestaConfig.__dataclass_fields__["elpa_algorithm"]
+    md = field.metadata
+    assert md["section"] == "Parallel execution"
+    assert md["workflow_group"] == "budget"
+    assert md["choices"] == ("ELPA-1STAGE", "ELPA-2STAGE")
+    assert md["engine_key"] == "Diag.Algorithm"
+    # Default matches the GPU-preferred variant.
+    default_field = SiestaConfig().elpa_algorithm
+    assert default_field == "ELPA-1STAGE"
+
+
 # --------------------------------------------------------------------- #
 #  L1: _fdf_requests_gpu detector                                        #
 # --------------------------------------------------------------------- #
