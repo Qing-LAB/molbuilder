@@ -444,6 +444,16 @@ _HOST = Recipe(
         "flask", "click", "plotly",
         "authlib", "python-cas",
         "pytest", "pyflakes",
+        # NUMA control tool.  Used by the host-side advisor
+        # (``molbuilder envs advise siesta-gpu``) to detect whether
+        # NUMA pinning is possible: its can_numa_pin property only
+        # returns True when ``numactl`` is on PATH.  Without it the
+        # advisor would honestly report "numa-pin: OFF (numactl not
+        # installed)" even on dual-socket boxes where pinning would
+        # help.  Tiny package (~200 KB); installed by default so the
+        # advisor's reading matches what the GPU env's wrapper will
+        # actually do at runtime.
+        "numactl",
     ),
     pip_packages=("PeptideBuilder", "pubchempy"),
     verify_argv=("python", "-c",
@@ -462,6 +472,12 @@ _PYSCF = Recipe(
     conda_packages=(
         "python=3.12", "pip",
         "pyscf", "pyscf-dispersion", "geometric",
+        # NUMA control tool (mirrors molbuilder-siesta-gpu).  PySCF
+        # uses threaded BLAS that benefits from socket-local pinning
+        # on dual-socket boxes -- ``numactl --cpunodebind`` wraps the
+        # Python invocation cleanly.  Not yet auto-wired by molbuilder
+        # for PySCF jobs but present so future tuning has the tool.
+        "numactl",
     ),
     pip_packages=("pyscf-properties",),
     verify_argv=("python", "-c",
@@ -480,7 +496,14 @@ _SIESTA = Recipe(
     # Build string `=mpi_openmpi_*` is load-bearing -- pins real-MPI
     # variant (the `nompi_*` variant silently runs serial under
     # mpirun).  See README_install.md § "molbuilder-siesta".
-    conda_packages=("siesta=5.4.2=mpi_openmpi_*",),
+    #
+    # ``numactl`` ships in this env so the run-wrapper's NUMA-pin
+    # branch (``--cpunodebind=$_gpu_numa`` on dual-socket boxes)
+    # finds the binary after ``conda activate molbuilder-siesta``.
+    # See molbuilder.runwrap._gpu_runtime_defaults_block for the
+    # full policy + cross-check against the host advisor's
+    # HostProbe.can_numa_pin.
+    conda_packages=("siesta=5.4.2=mpi_openmpi_*", "numactl"),
     verify_argv=("siesta", "--version"),
     verify_expect_contains="siesta",
 )
@@ -987,6 +1010,16 @@ _SIESTA_GPU = Recipe(
         f"gfortran_linux-64={_GCC_VERSION}",
         "cmake>=3.30", "ninja", "make", "git", "m4",
         "pkg-config",
+        # NUMA control tool.  Critical for GPU mode on multi-socket
+        # boxes: the run-wrapper's _gpu_runtime_defaults_block wraps
+        # mpirun in ``numactl --cpunodebind=$_gpu_numa --membind=$_gpu_numa``
+        # to pin all ranks to the GPU-proximate socket.  Without it,
+        # the 3-condition AND in _numa_pinned fails and ranks spread
+        # across sockets, paying UPI/QPI crossing latency on every
+        # cudaMemcpy.  Mirrors the host-side dependency added to the
+        # ``molbuilder`` recipe so the advisor's reading matches the
+        # wrapper's runtime behaviour.
+        "numactl",
         # Autotools chain.  ELPA's build invokes ``libtool`` directly
         # (via its ``nvcc_wrap`` script) when compiling the NVIDIA-GPU
         # .cu kernels into .lo objects.  Without these, the build dies
