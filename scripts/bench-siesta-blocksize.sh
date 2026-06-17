@@ -139,7 +139,7 @@ edit_fdf() {
 }
 
 results_csv="$PROJ/bench-results-$(date +%Y%m%d-%H%M%S).csv"
-echo "blocksize,scf_iters_done,avg_s_per_iter,first_iter_s" > "$results_csv"
+echo "blocksize,scf_iters_done,avg_s_per_iter,first_iter_s,effective_bs" > "$results_csv"
 
 for bs in "${BSS[@]}"; do
     benchdir="$PROJ/bench-bs${bs}"
@@ -173,8 +173,20 @@ for bs in "${BSS[@]}"; do
     walltime=$((end_epoch - start_epoch))
 
     n_done=$(grep -cE '^   scf:' "$out" 2>/dev/null || echo 0)
-    first=$(grep -E 'timer:.*IterSCF' "$out" 2>/dev/null | head -1 | awk '{print $5}')
+    # SIESTA's timer line format:
+    #   timer: Routine,Calls,Time,% = IterSCF   1   54.187   39.48
+    # field $4=IterSCF, $5=calls, $6=time(s), $7=%.  An earlier
+    # version grabbed $5 (calls) and reported "1" as if it were
+    # seconds, which made the avg-iter formula wrong.
+    first=$(grep -E 'timer:.*IterSCF' "$out" 2>/dev/null | head -1 | awk '{print $6}')
     [ -z "$first" ] && first="?"
+    # Sanity check: did the BlockSize edit actually take effect?
+    # SIESTA echoes the effective BlockSize in the .out as
+    # "redata: BlockSize" or in diag: lines.
+    effective_bs=$(grep -iE 'BlockSize' "$out" 2>/dev/null \
+                   | grep -vE 'auto|comment' \
+                   | head -1 | awk '{for(i=1;i<=NF;i++) if($i ~ /^[0-9]+$/) {print $i; break}}')
+    [ -z "$effective_bs" ] && effective_bs="?"
     if [ "$n_done" -gt 1 ]; then
         # Trust wall - first-iter cost as the "steady-state" cost
         # over n_done - 1 iters.  Rough; SIESTA's own timer is more
@@ -189,8 +201,15 @@ for bs in "${BSS[@]}"; do
     else
         iter_cost="?"
     fi
-    echo "BlockSize=$bs : iters=$n_done first=${first}s avg/iter=${iter_cost}s wall=${walltime}s"
-    echo "$bs,$n_done,$iter_cost,$first" >> "$results_csv"
+    # Surface the effective BlockSize so the user can confirm the
+    # edit actually applied (silent BlockSize mismatch was a real
+    # script bug on 2026-06-16).
+    bs_check=""
+    if [ "$effective_bs" != "?" ] && [ "$effective_bs" != "$bs" ]; then
+        bs_check=" [WARN effective=$effective_bs]"
+    fi
+    echo "BlockSize=$bs : iters=$n_done first=${first}s avg/iter=${iter_cost}s wall=${walltime}s${bs_check}"
+    echo "$bs,$n_done,$iter_cost,$first,$effective_bs" >> "$results_csv"
 done
 
 
