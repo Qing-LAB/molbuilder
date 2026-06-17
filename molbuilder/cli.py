@@ -34,6 +34,7 @@ import click
 
 from .diagnostics import initialize as _initialize_diagnostics
 from .envs._cli import envs_group
+from .bench._cli import bench_group
 from .runtime_config import RuntimeConfigError, get_tls, read_config
 from .structure import Structure
 
@@ -312,6 +313,12 @@ def cli() -> None:
 # doctor + install live under molbuilder/envs/; the CLI surface is a
 # self-contained click group registered here as a single sub-group.
 cli.add_command(envs_group)
+
+# `molbuilder bench ...`  (siesta-gpu sweep over BENCH-MARKS).
+# Reads the BENCH-MARKS block emitted by the generator (Step 2a) and
+# runs short SIESTA jobs across a handful of (np, omp, BlockSize)
+# combinations.  See molbuilder/bench/.
+cli.add_command(bench_group)
 
 
 # --------------------------------------------------------------------- #
