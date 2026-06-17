@@ -330,8 +330,25 @@
         // server work + wasted client bandwidth.  Expanding restarts
         // polling AND triggers an immediate first sample so the
         // sparklines re-populate without a 1 s wait.
+        // results-state-contract.md § 9: the monitor exports its
+        // current height as --monitor-height on :root so scroll
+        // containers can reserve space (scroll-padding-bottom).
+        // CSS defines two named-height tokens; this function picks
+        // which one is active.  See system-load-monitor.css :root.
+        function updateMonitorHeightVar(collapsed) {
+            try {
+                document.documentElement.style.setProperty(
+                    "--monitor-height",
+                    collapsed
+                        ? "var(--monitor-height-collapsed)"
+                        : "var(--monitor-height-expanded)"
+                );
+            } catch (_) { /* ignore; CSS fallback is the collapsed value */ }
+        }
+
         function applyCollapsed(collapsed) {
             userClosed = !!collapsed;
+            updateMonitorHeightVar(collapsed);
             if (collapsed) {
                 root.classList.add("is-collapsed");
                 toggle.setAttribute("aria-pressed", "true");
@@ -352,10 +369,18 @@
                 catch (_) { /* private mode; ignore */ }
                 applyCollapsed(next);
             });
-            var saved = "0";
-            try { saved = sessionStorage.getItem(STORAGE_KEY_COLLAPSED) || "0"; }
+            // results-state-contract.md § 9: COLLAPSED BY DEFAULT
+            // on first visit.  Users opt in to the expanded strip;
+            // it doesn't opt them in.  The expanded strip otherwise
+            // overlays the bottom 48px of plots on every fresh
+            // /results visit -- the bug that prompted the layout
+            // contract.  ``saved === "0"`` is explicit-opt-in to
+            // expanded; missing key OR explicit "1" -> collapsed.
+            var saved = null;
+            try { saved = sessionStorage.getItem(STORAGE_KEY_COLLAPSED); }
             catch (_) { /* ignore */ }
-            applyCollapsed(saved === "1");
+            var startCollapsed = (saved === null) ? true : (saved !== "0");
+            applyCollapsed(startCollapsed);
         } else {
             // No toggle button mounted -- default to polling.
             startTimer();

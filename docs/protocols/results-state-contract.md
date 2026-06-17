@@ -620,18 +620,14 @@ tests for the actual reset-on-Refresh fix live in the existing
 
 ---
 
-## 13. Open question for review
-
-**`uiPrefs` persistence key.** Today `hideFrozen` is in
-sessionStorage; spectra's broadening lives in DOM only.
-Proposed: sessionStorage for ALL `uiPrefs`, single key
-`molbuilder.results.uiPrefs.v1` holding a JSON dict.
-Alternative: `localStorage` (survives browser restart) — more
-convenient but conflicts with per-tab independence (two
-`/results` tabs shouldn't share prefs).
-**Reviewer answer needed before PR 2.**
+## 13. Settled decisions
 
 ### Implementation-time decisions (already settled in this doc)
+
+- **`uiPrefs` persistence.** sessionStorage, single key
+  `molbuilder.results.uiPrefs.v1` holding a JSON dict.
+  Decided 2026-06-17 by user. Per-tab; two `/results` tabs stay
+  independent. Survives intra-tab navigation; dies with the tab.
 
 - **`firstFit` (trajectory).** `viewState`. Per-file, reset on
   file-switch.

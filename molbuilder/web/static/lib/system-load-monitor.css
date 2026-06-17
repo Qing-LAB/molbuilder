@@ -3,7 +3,36 @@
  * Polled + drawn by lib/system-load-monitor.js.  Compact, dark, semi-
  * transparent so it doesn't pull focus from the main content but is
  * always glanceable while a long job runs.
+ *
+ * Layout invariant (results-state-contract.md § 9):
+ *   1. The monitor exports its current height as --monitor-height on
+ *      :root.  JS updates it on collapse/expand.
+ *   2. Scroll containers (body + .results-main) reserve that height
+ *      via scroll-padding-bottom so content can scroll past the
+ *      monitor instead of disappearing under it.
+ *   3. The strip itself uses pointer-events: none so clicks on plots
+ *      beneath the strip pass through; only .system-load-toggle stays
+ *      clickable.  Prevents "I can't reach this plot legend" reports.
+ *   4. Collapsed BY DEFAULT on first visit (JS-side change).  Users
+ *      opt in to the expanded strip.
  */
+
+:root {
+    /* Default = collapsed height.  JS bumps to --monitor-height-expanded
+     * when the user opens the strip; the default value here matches the
+     * toggle-only height (toggle pill ~20px + 4px padding). */
+    --monitor-height-collapsed: 24px;
+    --monitor-height-expanded:  48px;
+    --monitor-height: var(--monitor-height-collapsed);
+}
+
+/* Scroll-past compensation lives in the per-page stylesheet that
+ * owns the scroll container.  The monitor mounts only on /results
+ * today (88aba08), so results/style.css:.results-main reserves
+ * --monitor-height there.  When the monitor goes global again,
+ * add a ``body { scroll-padding-bottom: var(--monitor-height); }``
+ * rule to lib/page-shell.css and a matching pin in
+ * tests/test_monitor_layout_invariant.py. */
 
 #system-load-monitor {
     position: fixed;
@@ -23,7 +52,12 @@
     font-size: 12px;
     font-family: var(--font-mono, "Menlo", "Consolas", monospace);
     line-height: 1.2;
-    pointer-events: auto;
+    /* Pointer-events: none on the strip so clicks pass through to the
+     * plots beneath.  The toggle re-enables itself below.  Without
+     * this rule the bottom 48px of the viewport intercepted clicks
+     * on Plotly hover-tooltips and the rightmost plot legend
+     * (audit § Layout, 2026-06-17). */
+    pointer-events: none;
 }
 
 #system-load-monitor[hidden] {
@@ -46,6 +80,11 @@
     font-family: inherit;
     cursor: pointer;
     line-height: 1;
+    /* Re-enable clicks for the toggle even though the parent monitor
+     * has pointer-events: none.  Same pattern for the strip cells
+     * when expanded: cells need to be hover-able for sparkline-
+     * tooltip readouts even if we don't add the tooltip today. */
+    pointer-events: auto;
 }
 
 .system-load-toggle:hover,
@@ -58,6 +97,12 @@
     display: flex;
     gap: var(--space-4, 16px);
     flex: 1;
+    /* Strip is informational; no click handlers today.  Keep clicks
+     * passing through to plot legends beneath -- the primary fix for
+     * the audit § Layout report.  When we eventually add hover
+     * tooltips on sparklines, switch this back to ``auto`` and add
+     * a hover-region affordance that doesn't trap plot clicks. */
+    pointer-events: none;
 }
 
 .system-load-cell {
