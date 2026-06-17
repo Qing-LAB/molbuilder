@@ -140,6 +140,16 @@
     </div>
   </section>
 
+  {# Bundle-for-next-stage card (Step 3 PR-E, task #492).
+     Sits below the inspector host as a sibling section -- per
+     bundle-contract.md § 7 + the results-tab inspector contract,
+     each inspector owns ``#inspector-host`` exclusively, so the
+     Bundle UI mounts here at the page level instead of inside
+     any single inspector.  The card is always visible; clicking
+     submit with no useful inputs surfaces an actionable 400 from
+     the endpoint. #}
+  {% include "_bundle_handoff_panel.html" %}
+
   {# System-load monitor lives INSIDE the results-main flow so it
      stays within the Results-tab panel and never overlaps plots /
      inspector content.  Foldable; collapse stops polling.  Pre-

@@ -1,0 +1,59 @@
+{#- Bundle-for-next-stage card.  Step 3 PR-E (task #492).
+
+    POSTs to /api/results/bundle (see results.py).  Fields are
+    pre-filled from the projects-sidebar's current cursor when
+    available; the user confirms or edits before clicking Bundle.
+    The card surfaces the bundle's ``final_coords_from`` and the
+    diagnostic ``notes`` so the user sees the "NOT converged
+    geometry" warnings before sending the bundle to the next tab.
+
+    Contract: ``docs/protocols/bundle-contract.md`` §§ 5.2 + 7.
+    JS:       ``lib/results/bundle-handoff.js``. -#}
+<link rel="stylesheet" href="{{ url_for('static', filename='lib/results/bundle-handoff.css') }}">
+<section class="bundle-handoff-card" aria-label="Bundle for next stage">
+  <header class="bundle-handoff-header">
+    <h2 class="bundle-handoff-title">Bundle for next stage</h2>
+    <p class="bundle-handoff-sub">
+      Fuse the final structure (<code>.XV</code> or
+      <code>_optimized.xyz</code>) with the labels carried by the
+      generating <code>.fdf</code>/<code>.py</code>, then write
+      <code>.xyz</code>&nbsp;+&nbsp;<code>.molstruct.json</code> the next
+      tab can load directly.
+    </p>
+  </header>
+
+  <form class="bundle-handoff-form" id="bundle-handoff-form" novalidate>
+    <label class="bundle-handoff-field">
+      <span class="label">Run dir</span>
+      <input type="text" name="run_dir" placeholder="/abs/path/to/finished/run/dir" required>
+      <span class="hint">SIESTA: <code>.fdf</code>+<code>.XV</code>.  PySCF: <code>.py</code>+<code>&lt;JOB&gt;_optimized.xyz</code>.</span>
+    </label>
+
+    <label class="bundle-handoff-field">
+      <span class="label">Target dir</span>
+      <input type="text" name="target_dir" placeholder="/abs/path/where/the/bundle/lands" required>
+      <span class="hint">Created if it doesn't exist.  Defaults to the run dir.</span>
+    </label>
+
+    <label class="bundle-handoff-field">
+      <span class="label">Stem</span>
+      <input type="text" name="stem" placeholder="handoff" required
+             pattern="[A-Za-z0-9._-]{1,64}"
+             title="Letters, digits, dot, underscore, dash; 1–64 chars">
+      <span class="hint">Files land at <code>&lt;target_dir&gt;/&lt;stem&gt;.xyz</code> + <code>.molstruct.json</code>.</span>
+    </label>
+
+    <label class="bundle-handoff-overwrite">
+      <input type="checkbox" name="overwrite">
+      <span>Overwrite existing <code>.xyz</code> / <code>.molstruct.json</code> at this stem</span>
+    </label>
+
+    <div class="bundle-handoff-actions">
+      <button type="submit" class="bundle-handoff-submit">Bundle</button>
+      <span class="bundle-handoff-status" data-status></span>
+    </div>
+  </form>
+
+  <output class="bundle-handoff-result" data-result hidden></output>
+</section>
+<script src="{{ url_for('static', filename='lib/results/bundle-handoff.js') }}"></script>
