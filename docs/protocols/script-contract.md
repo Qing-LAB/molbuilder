@@ -220,6 +220,11 @@ v3). This document does NOT duplicate the schema; it cites it.
   sidecar that may also be present in the directory (in-body wins;
   sidecar is the fallback for plain `.xyz` loads and for `.fdf` /
   `.py` files generated before this contract existed).
+- The **load-side contract** that materialises the in-body block
+  back into a `Structure` (so the next workflow stage can consume
+  it) lives in [`bundle-contract.md`](bundle-contract.md) — see its
+  §§ 4–5 for the run-bundle assembler and § 7 for the
+  projects-sidebar storage integration.
 
 ### 4.5 ENGINE BODY
 
@@ -315,3 +320,6 @@ Given a file conforming to this contract:
 - Generator entry points: `molbuilder/siesta/input.py::render_fdf`,
   `molbuilder/pyscf/input.py::render_script`,
   `molbuilder/runwrap.py::render_run_wrapper`
+- Bundle / load-side contract: [`bundle-contract.md`](bundle-contract.md);
+  extract primitives `molbuilder/script_contract.py::extract_script_source`
+  + assembler `molbuilder/script_bundle.py::assemble_from_run_dir`.

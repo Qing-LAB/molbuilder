@@ -14,10 +14,12 @@ different:
   ``AtomicCoordinatesFormat`` directive.  Read for fallback when
   ``.XV`` is missing (run died before first XV write).
 
-Both return a :class:`molbuilder.structure.Structure`.  Cell vectors
-when present land on ``Structure.lattice`` (Å); positions are always
-in Å regardless of the source's native unit (Bohr → Å conversion
-done here).
+Both return a :class:`molbuilder.structure.Structure`.  Positions are
+always in Å regardless of the source's native unit (Bohr → Å done
+here).  Cell vectors are computed internally for Fractional /
+ScaledCartesian re-projection, but ``Structure`` is geometry-only
+today (no ``lattice`` field) — they're not surfaced on the returned
+object.
 
 Bundle-contract reference: ``docs/protocols/bundle-contract.md § 4.1``.
 """
@@ -67,9 +69,10 @@ def read_xv(path: Union[str, Path]) -> Structure:
     survives across re-orderings of the species block; the species
     index requires a matching ``.fdf``.
 
-    Positions and cell come back in Å.  Velocities are discarded
-    (bundle handoff is geometry-only; downstream re-render starts a
-    fresh MD if needed).
+    Positions come back in Å.  Velocities are discarded (bundle
+    handoff is geometry-only; downstream re-render starts a fresh
+    MD if needed).  Cell vectors are read but NOT surfaced on the
+    returned Structure -- the dataclass is geometry-only today.
     """
     p = Path(path)
     text = p.read_text(encoding="utf-8", errors="replace")
@@ -187,12 +190,24 @@ def _block_re(name: str) -> re.Pattern[str]:
 _BLOCK_SPECIES = _block_re("ChemicalSpeciesLabel")
 _BLOCK_COORDS  = _block_re("AtomicCoordinatesAndAtomicSpecies")
 _BLOCK_CELL    = _block_re("LatticeVectors")
+# LatticeConstant: per the SIESTA manual the unit is OPTIONAL and
+# defaults to Bohr when omitted.  Make the unit group optional so
+# bare ``LatticeConstant 5.0`` parses; the per-unit branch below
+# applies the Bohr default when group(2) is None.
 _LATTICE_CONSTANT_RE = re.compile(
-    r"^\s*LatticeConstant\s+([0-9.eE+\-]+)\s+(\w+)\s*$",
+    r"^\s*LatticeConstant\s+([0-9.eE+\-]+)(?:\s+(\w+))?\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
 _COORD_FMT_RE = re.compile(
     r"^\s*AtomicCoordinatesFormat\s+(\w+)\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+# SystemLabel directive: SIESTA writes ``<SystemLabel>.XV`` (and other
+# output files), which is NOT the same as the .fdf basename when the
+# generator emits stage-suffixed filenames (``h2-stage2.fdf``) over a
+# single SystemLabel (``h2``).  Used by script_bundle to find .XV.
+_SYSTEM_LABEL_RE = re.compile(
+    r"^\s*SystemLabel\s+(\S+)\s*$",
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -253,6 +268,20 @@ def _parse_species_block(text: str) -> List[str]:
     return species  # type: ignore[return-value]
 
 
+def extract_system_label(text: str) -> Optional[str]:
+    """Return the ``SystemLabel`` directive value from a ``.fdf`` body,
+    or ``None`` when no recognisable line is present.
+
+    SIESTA writes ``<SystemLabel>.XV`` and other output files keyed
+    on this label, NOT on the ``.fdf`` basename.  The bundle layer
+    uses this to find the .XV file when the .fdf basename
+    differs from the SystemLabel (stage-suffixed runs, hand-renamed
+    files, etc.).
+    """
+    m = _SYSTEM_LABEL_RE.search(text)
+    return m.group(1) if m else None
+
+
 def read_fdf_initial_coords(text_or_path: Union[str, Path]) -> Structure:
     """Read the AtomicCoordinatesAndAtomicSpecies block of a ``.fdf``
     and return a :class:`Structure`.
@@ -270,9 +299,10 @@ def read_fdf_initial_coords(text_or_path: Union[str, Path]) -> Structure:
       * ``Fractional`` / ``ScaledByLatticeVectors``   — Å = fractional · cell_vectors
 
     Reads cell vectors from ``LatticeVectors`` (+ optional
-    ``LatticeConstant`` scale) and lands them on ``Structure.lattice``.
-    Returns a Structure with no lattice (cell=None) when no cell
-    block is present, matching the ``Structure.from_xyz`` behavior.
+    ``LatticeConstant`` scale) but does NOT surface them on the
+    returned Structure -- the dataclass is geometry-only today.
+    The cell is used internally to project Fractional /
+    ScaledCartesian coords back to Å.
     """
     # Type-based dispatch: Path -> read file; str -> treat as fdf
     # body text directly.  Older "if str-and-file-exists then read"
@@ -308,7 +338,9 @@ def read_fdf_initial_coords(text_or_path: Union[str, Path]) -> Structure:
     lc_m = _LATTICE_CONSTANT_RE.search(text)
     if lc_m:
         lc_val  = float(lc_m.group(1))
-        lc_unit = lc_m.group(2).lower()
+        # Unit is optional in the .fdf grammar; per the SIESTA manual
+        # the default is Bohr when omitted.
+        lc_unit = (lc_m.group(2) or "bohr").lower()
         if lc_unit.startswith("ang"):
             lc_ang = lc_val
         elif lc_unit.startswith("bohr"):
@@ -393,4 +425,5 @@ __all__ = [
     "SiestaFdfStructureError",
     "read_xv",
     "read_fdf_initial_coords",
+    "extract_system_label",
 ]

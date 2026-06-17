@@ -530,7 +530,11 @@ def extract_provenance_dict(text: str) -> Optional[Dict[str, str]]:
         m = _PROVENANCE_KV_RE.match(raw)
         if m:
             out[m.group("key")] = m.group("val")
-    return out or None
+    # Distinguish "block present, no parseable k/v" (return {}) from
+    # "block absent" (return None) per bundle-contract.md § 5.1's
+    # ``None`` vs empty-dict semantics.  The earlier ``out or None``
+    # collapsed both states.
+    return out
 
 
 # --------------------------------------------------------------------- #

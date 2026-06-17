@@ -82,7 +82,7 @@ class RunBundle:
 
 - `structure.n_atoms` MUST equal the source script's
   `atom-metadata.n_atoms_total`.  Mismatch is an error, not a
-  silent reconciliation (Section 8).
+  silent reconciliation (§ 9).
 - `regions` and `frozen_atoms` indices are 0-based, matching
   `molstruct_json` schema v3 and `Structure.regions`.
 - `user_custom_lines` carries the inner lines of the USER-CUSTOM
@@ -108,8 +108,8 @@ Per engine, in priority order — first hit wins:
 
 | Source | Mark | When chosen |
 |---|---|---|
-| `<stem>.XV`              | `"xv"`           | converged geometry-opt or any run that wrote `.XV` |
-| `.fdf` initial coords    | `"fdf-initial"`  | `.XV` missing — bundle still emits, but `notes` records the fallback |
+| `<SystemLabel>.XV`       | `"xv"`           | converged geometry-opt or any run that wrote `.XV`.  `SystemLabel` is extracted from the in-body `SystemLabel` directive of the chosen `.fdf`, NOT derived from the `.fdf` basename — molbuilder emits stage-suffixed filenames (`h2-stage2.fdf`) over a single SystemLabel (`h2`), so the `.XV` lives at `h2.XV`.  Falls back to `<fdf-basename>.XV` and then to a single `*.XV` glob match. |
+| `.fdf` initial coords    | `"fdf-initial"`  | none of the above resolved — bundle still emits, but `notes` records the fallback as "NOT converged geometry". |
 
 > **Deferred.** A `<stem>.out` stdout-parsed final-coords source is a
 > possible future addition (mark would be `"stdout"`) for runs that
@@ -135,7 +135,8 @@ Per engine, in priority order — first hit wins:
 In-body ATOM-METADATA in the source script is the authoritative
 label source.  Where bundle assembly is initiated from a `.xyz`
 load path with a sibling generated script AND a `.molstruct.json`
-sidecar, **in-body wins over sidecar** (Section 6).
+sidecar, **in-body wins over sidecar** (see § 4.2 below; same rule
+asserted in `script-contract.md` § 4.4).
 
 ### 4.3 Conflict policy
 
@@ -301,21 +302,47 @@ loader a clean "this sidecar is stale" detector.
 
 ### 7.5 Sidebar refresh
 
-The PR-E web endpoint MUST emit a ``files-changed`` event for the
-target directory after a successful write so the sidebar re-lists
-without a manual refresh.  Mirrors the existing pattern in
-``/api/files/save`` (sidebar § 4.4 + C4).  The two files land as a
-single sidecar-paired entry per the sidebar's structure↔sidecar
-display rule.
+The PR-E client-side caller (the Bundle button's POST handler)
+MUST trigger a sidebar refresh of ``target_dir`` after the response
+lands, so the user sees the new pair without manual interaction.
+The projects-sidebar has no server→client event bus today; the
+refresh is client-driven via the public API:
+
+* When ``target_dir`` is the current cursor: the standard write
+  path (``projects.writeFile`` C4) auto-refreshes after every
+  mutation per sidebar § 4.4 row 4 — so a bundle written to the
+  current cursor needs no explicit call IF the endpoint routes
+  through writeFile.
+* When ``target_dir`` is elsewhere (a sibling project, a sub-dir
+  not currently open): explicit ``projects.refresh(target_dir)``
+  after the POST resolves.  Sidebar will re-list and the two
+  bundle files land as a single structure↔sidecar paired entry.
+
+Rationale: PR-E's UX promise is "click Bundle, see the result in
+the sidebar."  Without the refresh, the user has to navigate
+away and back; the sidebar's auto-refresh covers the common case
+but the cross-dir case needs the explicit call.
 
 ### 7.6 Lock model
 
-``write_bundle_as_handoff`` does NOT take a lock.  The sidebar's
-``with_lock`` model is for **read-modify-write** cycles on a single
-sidecar (sidecar-contract.md § 5).  Bundle materialization is a
-fresh write — there's no pre-existing sidecar to read.  Concurrent
-bundle writes to the same ``<target>/<stem>`` are a user error and
-``overwrite=False`` is the guard.
+``write_bundle_as_handoff`` does NOT take a lock.  The sidecar
+``with_lock`` model (defined in `molbuilder/parsers/molstruct_json.py::with_lock`,
+context discussion in `projects-sidebar.md § 8`) is for
+**read-modify-write** cycles on an existing sidecar.  Bundle
+materialization is a fresh write — there's no pre-existing
+sidecar to read.  Concurrent bundle writes to the same
+``<target>/<stem>`` are a user error and ``overwrite=False`` is
+the guard.
+
+The sidebar's lock is per-browser-tab (client-side); the backend
+does NOT enforce mutual exclusion.  Two browser tabs writing
+the same ``<target>/<stem>`` concurrently can both pass the
+``overwrite=False`` existence check before either writes.  The
+per-file atomic-rename pattern (`_atomic_write_text` uses
+PID-and-monotonic-ns suffixes on its tmp name) keeps each write
+internally consistent, but the pair could land mixed (.xyz from
+A + sidecar from B).  PR-E SHOULD warn the user before submitting
+a bundle to a stem that already exists in the target.
 
 ## 8. Versioning
 
@@ -356,7 +383,9 @@ Test pyramid placement:
   / `.opt.xyz`).
 - **L3** (`test_script_bundle.py`):  full round-trip — emit script
   → assemble → write_bundle_as_handoff → re-load via existing .xyz
-  load path → labels recovered.
+  load path → labels recovered.  Verified for both SIESTA
+  (`<JOB>_optimized.xyz` derived from the in-body SystemLabel,
+  not from the .fdf basename) and PySCF (`<JOB>_optimized.xyz`).
 - **L2** (`test_web.py`):  companion `.fdf` next to `.xyz` wins
   over `.molstruct.json` sidecar in the build endpoint flow.
 
@@ -375,7 +404,8 @@ Test pyramid placement:
 - Sidecar format: `molbuilder/parsers/molstruct_json.py` (schema v3).
 - Sidecar contract: [`sidecar-contract.md`](sidecar-contract.md).
 - `Structure` model: `molbuilder/structure.py`.
-- SIESTA `.XV` reader: `molbuilder/parsers/siesta.py` (TBD — added in PR-B).
+- SIESTA `.XV` + `.fdf` initial-coords readers: `molbuilder/parsers/siesta_struct.py` (`read_xv`, `read_fdf_initial_coords`, `extract_system_label`).
+- PySCF `_optimized.xyz` + `.py` initial-coords readers: `molbuilder/parsers/pyscf_struct.py` (`read_optimized_xyz`, `read_py_initial_coords`, `extract_pyscf_job`).
 - Sidecar-apply current entry: `molbuilder/web/blueprints/_shared.py::apply_sidecar_if_possible`.
 
 ## 13. Process

@@ -130,7 +130,7 @@ def _assemble_siesta(run_dir: Path, fdf_paths: list[Path]) -> RunBundle:
     # Local imports keep the module's import-time graph thin.
     from molbuilder import script_contract as _sc
     from molbuilder.parsers.siesta_struct import (
-        read_xv, read_fdf_initial_coords,
+        read_xv, read_fdf_initial_coords, extract_system_label,
         SiestaXVError, SiestaFdfStructureError,
     )
 
@@ -180,32 +180,64 @@ def _assemble_siesta(run_dir: Path, fdf_paths: list[Path]) -> RunBundle:
             f"{source.schema_version} is older than v3; re-render the "
             f"source script with current molbuilder.")
 
-    # Final-coords source: same stem .XV preferred, fdf-initial last.
-    xv_path = fdf_path.with_suffix(".XV")
+    # Final-coords source: <SystemLabel>.XV preferred, fdf-initial last.
+    # SIESTA names output files by the in-body SystemLabel directive,
+    # NOT by the .fdf basename.  molbuilder's own generator emits
+    # stage-suffixed .fdf names (``h2-stage2.fdf``) over a single
+    # SystemLabel (``h2``), so ``.with_suffix(".XV")`` would miss the
+    # real ``h2.XV``.  Try in priority: SystemLabel-derived ->
+    # basename-derived -> any single *.XV glob (handles renamed files).
+    system_label = extract_system_label(fdf_text)
+    xv_candidates: list[Path] = []
+    if system_label is not None:
+        xv_candidates.append(run_dir / f"{system_label}.XV")
+    xv_candidates.append(fdf_path.with_suffix(".XV"))
+    xv_path: Optional[Path] = None
+    for cand in xv_candidates:
+        if cand.exists():
+            xv_path = cand
+            break
+    if xv_path is None:
+        glob_hits = sorted(run_dir.glob("*.XV"))
+        if len(glob_hits) == 1:
+            xv_path = glob_hits[0]
+            notes.append(
+                f"no SystemLabel-derived .XV found; picked "
+                f"{xv_path.name} (the only *.XV in the run dir).")
+        elif len(glob_hits) > 1:
+            notes.append(
+                f"multiple *.XV in run_dir ({[p.name for p in glob_hits]}) "
+                f"and SystemLabel ({system_label!r}) doesn't disambiguate "
+                f"-- falling back to .fdf initial coords.")
     structure = None
     final_coords_from: Literal["xv", "fdf-initial"] = "fdf-initial"
-    if xv_path.exists():
+    if xv_path is not None:
         try:
             structure = read_xv(xv_path)
             final_coords_from = "xv"
         except SiestaXVError as exc:
+            # XV file exists but is unreadable.  Combine the two
+            # warnings so the user sees BOTH the parse-error reason
+            # AND the loud "this is not converged geometry" call-out
+            # in a single note (pre-fix the second half was suppressed
+            # because the xv-exists branch took `pass`).
             notes.append(
-                f"{xv_path.name}: {exc}; falling back to .fdf initial "
-                f"coords.")
+                f"{xv_path.name}: {exc}; falling back to "
+                f".fdf initial coords -- NOT converged geometry.  "
+                f"Re-run if you need optimized coords.")
     if structure is None:
         try:
             structure = read_fdf_initial_coords(fdf_text)
         except SiestaFdfStructureError as exc:
+            xv_name = xv_path.name if xv_path else "<SystemLabel>.XV"
             raise BundleError(
-                f"could not read final coords from {xv_path.name} OR "
+                f"could not read final coords from {xv_name} OR "
                 f"initial coords from {fdf_path.name}: {exc}") from exc
-        if xv_path.exists():
-            pass  # fallback note already in notes
-        else:
+        if xv_path is None:
             notes.append(
-                f"no {xv_path.name} in run dir; bundle reflects "
-                f"initial-coords from {fdf_path.name} -- NOT converged "
-                f"geometry.  Re-run if you need optimized coords.")
+                f"no .XV in run dir; bundle reflects initial-coords "
+                f"from {fdf_path.name} -- NOT converged geometry.  "
+                f"Re-run if you need optimized coords.")
 
     # Atom-count consistency check.  Only meaningful when the source
     # script DID carry an atom-metadata block (the unlabeled case is
@@ -312,9 +344,13 @@ def _assemble_pyscf(run_dir: Path, py_paths: list[Path]) -> RunBundle:
             structure = read_optimized_xyz(opt_path)
             final_coords_from = "py-opt"
         except (ValueError, OSError) as exc:
+            # Same shape as the SIESTA fix above: combine the
+            # parse-error reason with the loud "NOT converged
+            # geometry" warning so the user sees both.
             notes.append(
                 f"{opt_path.name}: {exc}; falling back to .py initial "
-                f"coords.")
+                f"coords -- NOT converged geometry.  Re-run if you "
+                f"need optimized coords.")
     if structure is None:
         try:
             structure = read_py_initial_coords(py_text)
@@ -418,15 +454,18 @@ def _atomic_write_text(path: Path, text: str) -> None:
     """Write ``text`` to ``path`` atomically (tmp + rename) so a
     partial write never leaves a half-XYZ on disk.
 
-    Mirrors :func:`molstruct_json.save`'s pattern: same parent-dir
-    tempfile, same fsync-before-replace.  Imported as a helper here
-    rather than re-using molstruct_json's because that function
-    serialises a dict, not arbitrary text.
+    Tmp filename is unique per writer (PID + monotonic-ns) so two
+    concurrent writers to the same final path don't collide on the
+    same tmp file (a deterministic ``<path>.tmp`` would let writer
+    B's open(...) truncate writer A's in-flight bytes before either
+    finishes, and the os.replace would commit a mix).
     """
-    import os
+    import os, time
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp = path.with_suffix(
+        path.suffix + f".{os.getpid()}.{time.monotonic_ns()}.tmp"
+    )
     try:
         with open(tmp, "w", encoding="utf-8") as fh:
             fh.write(text)

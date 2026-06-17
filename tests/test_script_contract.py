@@ -482,6 +482,21 @@ def test_extract_provenance_dict_returns_none_when_block_missing():
     assert sc.extract_provenance_dict("SystemLabel siesta\n") is None
 
 
+def test_extract_provenance_dict_returns_empty_dict_for_present_but_empty():
+    """Audit IMPORTANT 10: present-but-empty PROVENANCE returns ``{}``,
+    NOT ``None``.  Pre-fix the function used ``out or None`` which
+    collapsed "block present, no parseable k/v" into "block absent",
+    contradicting bundle-contract.md § 5.1's None-vs-empty semantics."""
+    text = (
+        "# === molbuilder provenance BEGIN ===\n"
+        "# === molbuilder provenance END ===\n"
+        "SystemLabel anything\n"
+    )
+    got = sc.extract_provenance_dict(text)
+    assert got == {}, f"expected empty dict, got {got!r}"
+    assert got is not None
+
+
 def test_extract_provenance_dict_handles_no_defaults_section():
     block = sc.emit_provenance(
         generator_version="vX",

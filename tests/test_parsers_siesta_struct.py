@@ -166,6 +166,46 @@ def test_read_fdf_initial_coords_unknown_format():
     assert "unsupported" in str(exc.value).lower()
 
 
+def test_read_fdf_initial_coords_lattice_constant_default_unit_is_bohr():
+    """Per the SIESTA manual, ``LatticeConstant`` without an explicit
+    unit means Bohr.  Pre-fix the regex required a unit and silently
+    failed to match ``LatticeConstant 10.0``; cell scale was then
+    raw Å, off by 0.529 ×.  Audit BLOCKER 1."""
+    text = (
+        "%block ChemicalSpeciesLabel\n"
+        "    1    1    H\n"
+        "%endblock ChemicalSpeciesLabel\n"
+        "LatticeConstant  10.0\n"
+        "%block LatticeVectors\n"
+        "  1.0 0.0 0.0\n"
+        "  0.0 1.0 0.0\n"
+        "  0.0 0.0 1.0\n"
+        "%endblock LatticeVectors\n"
+        "AtomicCoordinatesFormat Fractional\n"
+        "%block AtomicCoordinatesAndAtomicSpecies\n"
+        "  0.5 0.0 0.0    1\n"
+        "%endblock AtomicCoordinatesAndAtomicSpecies\n"
+    )
+    s = read_fdf_initial_coords(text)
+    # 0.5 fractional in a 10 Bohr cube → 5 Bohr = 5 × 0.5291772108 Å.
+    np.testing.assert_allclose(s.positions[0, 0], 5.0 * _BOHR, atol=1e-9)
+
+
+def test_extract_system_label_finds_canonical_directive():
+    from molbuilder.parsers.siesta_struct import extract_system_label
+    assert extract_system_label("SystemLabel h2\nBlockSize 64\n") == "h2"
+
+
+def test_extract_system_label_handles_indented_and_mixed_case():
+    from molbuilder.parsers.siesta_struct import extract_system_label
+    assert extract_system_label("   systemlabel  my-job\n") == "my-job"
+
+
+def test_extract_system_label_returns_none_when_absent():
+    from molbuilder.parsers.siesta_struct import extract_system_label
+    assert extract_system_label("# no SystemLabel here\n") is None
+
+
 def test_read_fdf_initial_coords_fractional_uses_lattice():
     """Fractional needs LatticeVectors + projection.  Atom at frac
     [0.5, 0, 0] in a 10×10×10 Å box → 5 Å."""

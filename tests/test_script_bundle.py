@@ -178,6 +178,47 @@ def test_assemble_from_run_dir_siesta_with_xv(tmp_path):
     assert bundle.source_script.name == "h2.fdf"
 
 
+def test_assemble_from_run_dir_siesta_uses_system_label_for_xv(tmp_path):
+    """Audit BLOCKER 3: SIESTA writes ``<SystemLabel>.XV``, not
+    ``<basename>.XV``.  When the .fdf basename has a stage suffix
+    that the SystemLabel doesn't (the molbuilder generator's
+    convention), the bundle must find the .XV via SystemLabel."""
+    # .fdf named with a stage suffix the SystemLabel doesn't have.
+    (tmp_path / "h2-stage2.fdf").write_text(
+        "SystemLabel h2\n"
+        + _h2_fdf_text(
+            atom_md_block=_atom_md(
+                regions={"L-electrode": [0]},
+                n_atoms_total=2,
+            ),
+        )
+    )
+    # .XV named after SystemLabel, NOT the .fdf basename.
+    (tmp_path / "h2.XV").write_text(_h2_xv_text())
+    bundle = sb.assemble_from_run_dir(tmp_path)
+    assert bundle.final_coords_from == "xv"
+    import numpy as np
+    np.testing.assert_allclose(
+        bundle.structure.positions[1, 0], 1.5 * _BOHR, atol=1e-9,
+    )
+
+
+def test_assemble_from_run_dir_siesta_xv_unreadable_warn_combined(tmp_path):
+    """Audit IMPORTANT 5: when .XV exists but read_xv fails, the
+    fallback note MUST loudly say 'NOT converged geometry' so the
+    user knows the bundle is initial-coords-only.  Pre-fix the
+    second half of the message was suppressed."""
+    (tmp_path / "h2.fdf").write_text(_h2_fdf_text())
+    (tmp_path / "h2.XV").write_text("garbage that cannot be parsed\n")
+    bundle = sb.assemble_from_run_dir(tmp_path)
+    assert bundle.final_coords_from == "fdf-initial"
+    combined = "\n".join(bundle.notes)
+    assert "NOT converged geometry" in combined
+    # Original parse-error reason also present, so the user can
+    # diagnose what went wrong with the .XV file.
+    assert "h2.XV" in combined
+
+
 def test_assemble_from_run_dir_siesta_fdf_initial_fallback(tmp_path):
     """No .XV -> bundle falls back to .fdf initial coords + notes."""
     (tmp_path / "h2.fdf").write_text(_h2_fdf_text())
@@ -288,6 +329,18 @@ def test_assemble_from_run_dir_pyscf_with_optimized_xyz(tmp_path):
     assert bundle.regions == {"R-electrode": [1]}
     assert bundle.frozen_atoms == [0]
     assert bundle.source_script.name == "h2.py"
+
+
+def test_assemble_from_run_dir_pyscf_opt_xyz_unreadable_warn_combined(tmp_path):
+    """Mirror of the SIESTA "XV unreadable" test: when the
+    <JOB>_optimized.xyz exists but is malformed, the fallback note
+    must say 'NOT converged geometry'.  Audit IMPORTANT 6."""
+    (tmp_path / "h2.py").write_text(_h2_py_text())
+    (tmp_path / "h2-test_optimized.xyz").write_text("not actually xyz\n")
+    bundle = sb.assemble_from_run_dir(tmp_path)
+    assert bundle.final_coords_from == "py-initial"
+    combined = "\n".join(bundle.notes)
+    assert "NOT converged geometry" in combined
 
 
 def test_assemble_from_run_dir_pyscf_initial_fallback(tmp_path):
