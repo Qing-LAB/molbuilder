@@ -1,0 +1,429 @@
+"""Pin the spectra inspector's state-contract surface (PR 3).
+
+Mirror of tests/test_results_state_contract_js.py for the trajectory
+inspector.  PR 3 brings spectra into the same bucketed state +
+transition() framework that trajectory's PR 2 / PR 2.1 / PR 2.2 /
+PR 2.3 land:
+
+* Bucketed state (fileState, viewState, uiPrefs, lifecycle, derived)
+* transition() orchestrator with LOADING / LOADED / WATCHING /
+  ERROR / IDLE / APPLY branches
+* File-identity guard at watchTick + loadByPath resolution
+* Refresh listener wired once at mount via _wireRefreshListener
+* fileState writes go SOLELY through transition('APPLY')
+
+The trajectory contract file lives next to this one; both inspectors
+mirror the same skeleton so a future Transport inspector can follow
+the same template.
+"""
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+import pytest
+
+
+_STATIC = (Path(__file__).resolve().parent.parent
+           / "molbuilder" / "web" / "static")
+_LIB = _STATIC / "lib"
+
+
+@pytest.fixture(scope="module")
+def core_body():
+    return (_LIB / "spectra" / "core.js").read_text()
+
+
+# --------------------------------------------------------------------- #
+#  Spectra: bucketed state shape                                        #
+# --------------------------------------------------------------------- #
+
+
+class TestBucketedStateShape:
+    """``state`` carries the same five buckets as trajectory + a
+    ``machine`` field.  Form / calculation fields (schema, lastScript,
+    ...) stay at the top level of ``state`` outside the buckets;
+    they're owned by a different (workspace) contract."""
+
+    def test_state_has_machine_field(self, core_body):
+        assert re.search(
+            r"machine\s*:\s*[\"']IDLE[\"']",
+            core_body,
+        ), ("spectra/core.js state object no longer initializes "
+            "machine to 'IDLE'.  The state machine has no resting "
+            "state; the contract § 2 transitions table has no "
+            "starting point.")
+
+    @pytest.mark.parametrize("bucket", [
+        "fileState", "viewState", "uiPrefs", "lifecycle", "derived",
+    ])
+    def test_state_carries_each_bucket(self, core_body, bucket):
+        m = re.search(r"const\s+state\s*=\s*\{", core_body)
+        assert m is not None, "state literal not found"
+        window = core_body[m.end(): m.end() + 6000]
+        assert re.search(
+            r"^\s+" + bucket + r"\s*:\s*\{", window, re.MULTILINE,
+        ), (f"spectra/core.js state object no longer carries the "
+            f"``{bucket}`` bucket.  PR 3 mirrors trajectory's "
+            f"five-bucket partition.")
+
+
+class TestBackcompatAliases:
+    """Existing render code throughout spectra/core.js reads the
+    legacy flat shape (state.results, state.selectedMode,
+    state.modeFilter, state.watchPath, etc.).  PR 3 keeps those
+    surfaces working via Object.defineProperty getter/setter aliases
+    that route to the bucketed canonical home -- same pattern as
+    trajectory's PR 2."""
+
+    def test_alias_helper_present(self, core_body):
+        assert re.search(
+            r"function\s+_wireBackcompatAliases",
+            core_body,
+        ), ("spectra/core.js no longer defines the "
+            "_wireBackcompatAliases IIFE.  Legacy render code "
+            "breaks.")
+
+    @pytest.mark.parametrize("flat,bucket", [
+        ("results",        "fileState"),
+        ("selectedMode",   "viewState"),
+        ("modeFilter",     "uiPrefs"),
+        ("sortColumn",     "uiPrefs"),
+        ("sortDir",        "uiPrefs"),
+        ("broadeningFWHM", "uiPrefs"),
+        ("animAmplitude",  "uiPrefs"),
+        ("animSpeed",      "uiPrefs"),
+        ("watchTimer",     "lifecycle"),
+        ("watchInFlight",  "lifecycle"),
+        ("watchAbort",     "lifecycle"),
+        ("loadAbort",      "lifecycle"),
+        ("renderAbort",    "lifecycle"),
+        ("watchErrors",    "lifecycle"),
+    ])
+    def test_each_legacy_field_aliased(self, core_body, flat, bucket):
+        assert re.search(
+            r"alias\s*\(\s*[\"']" + flat + r"[\"']\s*,\s*[\"']"
+            + bucket + r"[\"']\s*\)",
+            core_body,
+        ), (f"spectra/core.js no longer aliases ``state.{flat}`` to "
+            f"``state.{bucket}.{flat}``.")
+
+    def test_watchPath_aliased_to_fileState_path(self, core_body):
+        """Legacy ``state.watchPath`` is renamed to ``state.fileState.
+        path`` per contract § 7 spectra mapping.  Old code reading
+        watchPath via the alias gets the canonical value."""
+        assert "watchPath" in core_body, (
+            "spectra/core.js doesn't reference watchPath at all.  "
+            "Either the alias is missing or this test is stale.")
+        assert re.search(
+            r"\"watchPath\"\s*,\s*\{[^}]*get:[^}]*fileState\.path",
+            core_body, re.DOTALL,
+        ), ("spectra/core.js no longer aliases watchPath to "
+            "fileState.path.  Legacy code reading state.watchPath "
+            "gets stale data; the contract § 7 mapping is broken.")
+
+
+# --------------------------------------------------------------------- #
+#  Spectra: transition() orchestrator                                   #
+# --------------------------------------------------------------------- #
+
+
+class TestTransitionOrchestrator:
+    """``transition(target, payload)`` is the SINGLE entry-point for
+    state-machine transitions.  Mirrors trajectory's transition()."""
+
+    def test_transition_function_exists(self, core_body):
+        assert re.search(
+            r"function\s+transition\s*\(\s*target\s*,\s*payload\s*\)",
+            core_body,
+        ), ("spectra/core.js no longer defines the transition() "
+            "orchestrator.")
+
+    @pytest.mark.parametrize("state_name", [
+        "LOADING", "IDLE", "LOADED", "WATCHING", "ERROR", "APPLY",
+    ])
+    def test_each_branch_present(self, core_body, state_name):
+        m = re.search(
+            r"if\s*\(\s*target\s*===\s*[\"']" + state_name
+            + r"[\"']\s*\)\s*\{",
+            core_body,
+        )
+        assert m is not None, (
+            f"spectra/core.js transition() has no '{state_name}' "
+            f"branch.  Per contract § 2 all six targets MUST be "
+            f"implemented.")
+
+    def test_transition_loading_bumps_fetchSeq(self, core_body):
+        m = re.search(
+            r"if\s*\(\s*target\s*===\s*[\"']LOADING[\"']\s*\)\s*\{"
+            r"(.+?)return\s*;",
+            core_body, re.DOTALL,
+        )
+        assert m is not None
+        body = m.group(1)
+        assert re.search(r"fetchSeq\s*\+\+", body), (
+            "transition('LOADING') doesn't increment fetchSeq.  "
+            "File-identity guard is broken.")
+
+    def test_transition_loading_aborts_controllers(self, core_body):
+        m = re.search(
+            r"if\s*\(\s*target\s*===\s*[\"']LOADING[\"']\s*\)\s*\{"
+            r"(.+?)return\s*;",
+            core_body, re.DOTALL,
+        )
+        assert m is not None
+        body = m.group(1)
+        assert "loadAbort" in body and "watchAbort" in body, (
+            "transition('LOADING') doesn't abort both controllers.")
+        assert "abort()" in body
+
+    def test_transition_idle_clears_filestate(self, core_body):
+        m = re.search(
+            r"if\s*\(\s*target\s*===\s*[\"']IDLE[\"']\s*\)\s*\{"
+            r"(.+?)return\s*;",
+            core_body, re.DOTALL,
+        )
+        assert m is not None
+        body = m.group(1)
+        assert "fileState.path" in body and "= null" in body
+        assert "fileState.results" in body
+
+    def test_transition_watching_starts_timer(self, core_body):
+        m = re.search(
+            r"if\s*\(\s*target\s*===\s*[\"']WATCHING[\"']\s*\)\s*\{"
+            r"(.+?)return\s*;",
+            core_body, re.DOTALL,
+        )
+        assert m is not None
+        body = m.group(1)
+        assert re.search(r"setInterval\s*\(\s*watchTick", body), (
+            "transition('WATCHING') doesn't start the watchTick "
+            "interval.  Contract § 3 matrix row 'fetch resolved, "
+            "run ongoing' violated.")
+
+    def test_transition_loaded_stops_timer(self, core_body):
+        m = re.search(
+            r"if\s*\(\s*target\s*===\s*[\"']LOADED[\"']\s*\)\s*\{"
+            r"(.+?)return\s*;",
+            core_body, re.DOTALL,
+        )
+        assert m is not None
+        body = m.group(1)
+        assert "clearInterval" in body, (
+            "transition('LOADED') doesn't clear the watchTimer.  "
+            "A finished run keeps polling forever.")
+
+    def test_transition_apply_writes_filestate(self, core_body):
+        """PR 2.3 (trajectory) + PR 3 (spectra): APPLY is the
+        SINGLE canonical fileState writer."""
+        m = re.search(
+            r"if\s*\(\s*target\s*===\s*[\"']APPLY[\"']\s*\)\s*\{"
+            r"(.+?)return\s*;",
+            core_body, re.DOTALL,
+        )
+        assert m is not None, (
+            "spectra/core.js transition() has no APPLY branch.")
+        body = m.group(1)
+        for field in ("path", "results"):
+            assert f"state.fileState.{field}" in body, (
+                f"transition('APPLY') no longer writes "
+                f"state.fileState.{field}.")
+
+
+# --------------------------------------------------------------------- #
+#  renderResults routes fileState writes through transition('APPLY')    #
+# --------------------------------------------------------------------- #
+
+
+class TestRenderResultsUsesTransition:
+    """renderResults MUST route its state.results writes through
+    transition('APPLY', {results}) -- the contract § 2 violation
+    closure mirrors trajectory's PR 2.3 fix for applyNewData."""
+
+    def test_no_direct_state_results_writes_in_renderResults(self, core_body):
+        m = re.search(
+            r"function\s+renderResults\s*\(\s*results\s*\)\s*\{(.+?)\n\s{4}\}",
+            core_body, re.DOTALL,
+        )
+        assert m is not None, "renderResults not found"
+        body = m.group(1)
+        # No direct ``state.results = ...`` (alias bypass route).
+        assert not re.search(r"\bstate\.results\s*=", body), (
+            "renderResults still writes state.results directly.  "
+            "PR 3 routes these through transition('APPLY', {results}); "
+            "the regression brings back the contract § 2 'sole-"
+            "writer' violation.")
+        # At least one transition('APPLY', ...) call.
+        assert re.search(
+            r"transition\s*\(\s*[\"']APPLY[\"']", body,
+        ), ("renderResults has no transition('APPLY') call.  Where "
+            "are the fileState writes going?")
+
+
+# --------------------------------------------------------------------- #
+#  File-identity guard at fetch resolution                              #
+# --------------------------------------------------------------------- #
+
+
+class TestFileIdentityGuard:
+    """Every async fetch resolution MUST compare its captured
+    ``mySeq`` against the live ``state.lifecycle.fetchSeq``."""
+
+    def test_loadByPath_captures_fetchSeq(self, core_body):
+        m = re.search(
+            r"async\s+function\s+loadByPath\s*\(\s*\)\s*\{(.+?)\n\s{4}\}",
+            core_body, re.DOTALL,
+        )
+        assert m is not None
+        body = m.group(1)
+        assert re.search(
+            r"transition\s*\(\s*[\"']LOADING[\"'].*?"
+            r"mySeq\s*=\s*state\.lifecycle\.fetchSeq",
+            body, re.DOTALL,
+        ), ("loadByPath no longer captures mySeq after "
+            "transition('LOADING').  File-identity guard broken.")
+        assert re.search(
+            r"state\.lifecycle\.fetchSeq\s*!==\s*mySeq",
+            body,
+        ), ("loadByPath fetch-resolution path doesn't check "
+            "fetchSeq.  Late responses can apply to wrong file.")
+
+    def test_watchTick_guards_fetch_resolution(self, core_body):
+        m = re.search(
+            r"async\s+function\s+watchTick\s*\(\s*\)\s*\{(.+?)\n\s{4}\}",
+            core_body, re.DOTALL,
+        )
+        assert m is not None
+        body = m.group(1)
+        assert "mySeq" in body and "fetchSeq" in body, (
+            "watchTick no longer carries a fetchSeq guard.  A tick "
+            "in-flight at file-switch can land on the new file's "
+            "view with stale data.")
+
+
+# --------------------------------------------------------------------- #
+#  Refresh listener wired ONCE at mount                                 #
+# --------------------------------------------------------------------- #
+
+
+class TestRefreshListenerWiredOnce:
+    """PR 3: the EVENT_REFRESH_REQUESTED listener is wired ONCE at
+    mount via _wireRefreshListener.  Pre-PR-3 spectra didn't listen
+    for the event at all -- file-picker Refresh fired into the
+    void."""
+
+    def test_wire_function_exists(self, core_body):
+        assert re.search(
+            r"function\s+_wireRefreshListener\s*\(\s*\)",
+            core_body,
+        ), ("spectra/core.js doesn't define _wireRefreshListener.  "
+            "Refresh button is unwired -- contract § 5 violated.")
+
+    def test_wire_function_called_at_mount(self, core_body):
+        """Called BEFORE the mount return so it fires exactly once
+        per mount."""
+        assert "_wireRefreshListener();" in core_body, (
+            "_wireRefreshListener is defined but never called.  "
+            "Refresh button is unwired.")
+
+    def test_refresh_handler_calls_loadByPath(self, core_body):
+        """Refresh handler MUST call loadByPath (the same code path
+        as Load-once / file-switch).  Per contract § 5 Refresh =
+        file-switch with current path."""
+        m = re.search(
+            r"function\s+_wireRefreshListener\s*\(\s*\)\s*\{(.+?)\n\s{4}\}",
+            core_body, re.DOTALL,
+        )
+        assert m is not None
+        body = m.group(1)
+        assert "loadByPath" in body, (
+            "_wireRefreshListener doesn't call loadByPath.  Refresh "
+            "would skip the LOADING reset matrix.")
+
+
+# --------------------------------------------------------------------- #
+#  loadByPath + dispose route through transition()                      #
+# --------------------------------------------------------------------- #
+
+
+class TestEntryPointsRouteThroughTransition:
+    """The public entry points (loadByPath, startWatch, stopWatch,
+    dispose) MUST route state mutations through transition()."""
+
+    def test_loadByPath_calls_transition_loading(self, core_body):
+        m = re.search(
+            r"async\s+function\s+loadByPath\s*\(\s*\)\s*\{(.+?)\n\s{4}\}",
+            core_body, re.DOTALL,
+        )
+        assert m is not None
+        body = m.group(1)
+        assert re.search(
+            r"transition\s*\(\s*[\"']LOADING[\"']", body,
+        ), ("loadByPath doesn't call transition('LOADING').  The "
+            "reset matrix isn't run; scfPollHistory-equivalent for "
+            "spectra (watchErrors, fetchSeq) leaks across loads.")
+
+    def test_startWatch_calls_transition_loading(self, core_body):
+        m = re.search(
+            r"function\s+startWatch\s*\(\s*\)\s*\{(.+?)\n\s{4}\}",
+            core_body, re.DOTALL,
+        )
+        assert m is not None
+        body = m.group(1)
+        assert re.search(
+            r"transition\s*\(\s*[\"']LOADING[\"']", body,
+        ), ("startWatch doesn't call transition('LOADING') first.  "
+            "A previous file's fileState leaks into the new watch.")
+
+    def test_dispose_calls_transition_idle(self, core_body):
+        # The dispose handler is in the return-object literal.
+        m = re.search(
+            r"dispose\s*\(\s*\)\s*\{(.+?)\n\s{8}\}",
+            core_body, re.DOTALL,
+        )
+        assert m is not None, "dispose method not found"
+        body = m.group(1)
+        assert re.search(
+            r"transition\s*\(\s*[\"']IDLE[\"']", body,
+        ), ("dispose doesn't call transition('IDLE').  fileState "
+            "leaks across remounts; the audit § 1 'dispose leaks "
+            "state.data' bug class is back for spectra.")
+
+
+# --------------------------------------------------------------------- #
+#  _settlePostLoad (post-fetch state transitioner)                      #
+# --------------------------------------------------------------------- #
+
+
+class TestSettlePostLoad:
+    """Spectra's _settlePostLoad helper checks allPhasesComplete +
+    transitions to LOADED or WATCHING based on the startWatch flag.
+    Mirrors trajectory's helper of the same name."""
+
+    def test_helper_exists(self, core_body):
+        assert re.search(
+            r"function\s+_settlePostLoad\s*\(\s*startWatch\s*\)",
+            core_body,
+        ), ("spectra/core.js doesn't define _settlePostLoad.")
+
+    def test_helper_called_from_loadByPath(self, core_body):
+        m = re.search(
+            r"async\s+function\s+loadByPath\s*\(\s*\)\s*\{(.+?)\n\s{4}\}",
+            core_body, re.DOTALL,
+        )
+        assert m is not None
+        body = m.group(1)
+        assert "_settlePostLoad(false)" in body, (
+            "loadByPath doesn't call _settlePostLoad(false).  Load-"
+            "once doesn't transition to LOADED.")
+
+    def test_helper_called_from_watchTick(self, core_body):
+        m = re.search(
+            r"async\s+function\s+watchTick\s*\(\s*\)\s*\{(.+?)\n\s{4}\}",
+            core_body, re.DOTALL,
+        )
+        assert m is not None
+        body = m.group(1)
+        assert "_settlePostLoad(true)" in body, (
+            "watchTick doesn't call _settlePostLoad(true).  "
+            "allPhasesComplete handling won't transition to LOADED.")

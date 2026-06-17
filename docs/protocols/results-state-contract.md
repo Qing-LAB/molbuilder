@@ -515,29 +515,53 @@ Fixes per-iter clock on Refresh, stale readout, odd-Etot, plot
 memoization. Pre-existing 64 trajectory tests must still pass; new
 contract tests in § 12 pin the state matrix.
 
-### PR 3 — Spectra state-machine refactor
+### PR 3 — Spectra state-machine refactor (SHIPPED)
 
-Mirror PR 2 in `lib/spectra/core.js`:
-- Steps 1-4 (bucketed state, `transition()`, Refresh wiring,
-  dispose) per PR 2.
-- Step 5: file-identity guard at watchTick + loadByPath
-  resolution (Invariant 1). Retire `state.watchPath` in favor of
-  `state.fileState.path` (§ 7 spectra notes).
-- Step 6: `plottableFrames()` not needed for spectra (no
-  per-frame plot); Invariant 2 applies in PR 4 (parser side
-  only).
-- Step 7: snapshot signature for `renderResults`,
-  `renderSpectrumChart`, `renderModesTable`, `renderESPanel`,
-  `renderModeViewer` (Invariant 3).
-- Step 8: Plotly ladder per § 8 — `renderSpectrumChart` becomes
-  `.restyle()` for bar-height-only updates (preserves zoom).
+Mirror PR 2 + PR 2.1 + PR 2.2 + PR 2.3 (trajectory's actual
+shipped shape) in `lib/spectra/core.js`.  **Shipped 2026-06-17.**
 
-Module-level structure-text vars (`_loadedStructureText`, etc.)
-get `TODO(state-contract)` comments; dispose clears them; full
-ownership moves to a future workspace contract per § 11.
+**What landed:**
+- Bucketed state (fileState / viewState / uiPrefs / lifecycle /
+  derived) + machine field; backward-compat aliases for legacy
+  flat reads.
+- `transition()` orchestrator with LOADING / IDLE / LOADED /
+  WATCHING / ERROR / APPLY branches.
+- `transition('APPLY', {path?, results?})` is the SINGLE
+  canonical `fileState` writer; `renderResults` routes its
+  `state.results` writes through it (mirrors trajectory PR 2.3).
+- File-identity guard at watchTick + loadByPath fetch resolution
+  via `state.lifecycle.fetchSeq` (Invariant 1).
+- `state.watchPath` retired in favor of `state.fileState.path`;
+  the legacy name lives only as a backward-compat alias getter.
+- `_wireRefreshListener()` wired ONCE at mount.  Pre-PR-3 spectra
+  did NOT listen for `EVENT_REFRESH_REQUESTED` at all -- the
+  file picker's Refresh button fired into the void for spectra
+  mounts.  PR 3 closes that gap.
+- `_settlePostLoad(startWatch)` helper decides post-load
+  transition: Load-once -> LOADED; watchTick -> LOADED if
+  `allPhasesComplete` else WATCHING.  Spectra has NO 2-tick
+  buffer (unlike trajectory): `allPhasesComplete` is a sticky
+  monotonic flag (phase markers progress forward through
+  "running" -> "complete" and never flap back).  One "complete"
+  tick is sufficient.
+- `dispose()` routes through `transition('IDLE')` -- closes the
+  "dispose leaks fileState" bug class for spectra too.
 
-Fixes mode-pick-during-watchTick race (Invariant 1), Plotly
-zoom-reset on activity update (§ 8), `watchPath`/DOM divergence.
+**Deferred (matches trajectory's deferred list):**
+- Snapshot-signature conversion (Invariant 3) -- not load-bearing
+  today; render is synchronous.
+- Plotly `.restyle()` ladder for bar-height-only updates --
+  perf/zoom-state polish, not correctness.
+- Form-state buckets for `_loadedStructureText`, `_formDirty`,
+  `_committedStructureFile`, etc. -- workspace contract owns
+  these; dispose now clears via `transition('IDLE')` cleanup.
+
+**uiPrefs status:** unlike trajectory's empty bucket, spectra's
+`uiPrefs` is populated from day one with `modeFilter`,
+`sortColumn`, `sortDir`, `broadeningFWHM`, `animAmplitude`,
+`animSpeed`.  The sessionStorage roundtrip
+(`molbuilder.results.spectra.uiPrefs.v1`) is still TODO; today
+the values reset to defaults on every mount.
 
 ### PR 4 — Parser `in_progress` + server cache
 

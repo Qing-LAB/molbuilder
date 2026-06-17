@@ -134,54 +134,291 @@
     };
 
     // Last successful render payload + interactive state.
+    // Bucketed state shape per docs/protocols/results-state-contract.md
+    // PR 3 mirrors the trajectory inspector's shape (PR 2 + PR 2.1 +
+    // PR 2.2 + PR 2.3) for cross-inspector consistency.  Five disjoint
+    // buckets + a state-machine field; backward-compat aliases keep
+    // existing render code working with the legacy flat ``state.X``
+    // shape; transition() is the SINGLE entry-point for fileState /
+    // lifecycle / derived writes.
+    //
+    // Form / calculation state (schema, lastScript, etc.) is OUTSIDE
+    // the five buckets per contract § 11 ("calculation-tab form state
+    // ... has its own workspace + form-dirty contracts").  Those
+    // fields stay at the top level of `state` for backward compat;
+    // they'll migrate to a future spectra-form contract.
+    //
+    // The state machine field is the contract's enforcement point:
+    // bucket mutations OUTSIDE transition() are forbidden for
+    // fileState / lifecycle / derived (matrix § 3); viewState and
+    // uiPrefs CAN be mutated by event handlers (mode pick, filter
+    // input, broadening slider, etc.).
     const state = {
+        // Form / calculation state -- NOT covered by the results-state
+        // contract.  Kept at the top level of `state` for backward
+        // compat; migrates to a future workspace contract.
         schema:         null,
         lastScript:     null,
         lastMethodsMd:  null,
         lastJobName:    null,
-        // Live results + selection state (interactive layer).
-        results:        null,     // SpectraResults dict from /api/spectra/load
-        selectedMode:   null,     // 1-based index of active mode, or null
-        modeFilter:     "",       // current filter string
-        sortColumn:     "index_1based",
-        sortDir:        "asc",    // 'asc' | 'desc'
-        // Live-watch poller state.
-        watchTimer:     null,     // setInterval handle, or null
-        watchPath:      null,     // server-side path being polled
-        watchErrors:    0,        // consecutive transient-error counter
-        // 2026-06-14 G4 in-flight guard, same shape as trajectory's
-        // ``pollInFlight``.  Set true while a watchTick fetch is on
-        // the wire; the next tick checks the flag and SKIPS instead
-        // of aborting + re-firing.  Cleared in watchTick's finally.
-        watchInFlight:  false,
-        // AbortController for the in-flight fetch — held so dispose()
-        // can cancel a mid-flight request cleanly without producing
-        // an SSL EOF traceback on the dev server.  Created per tick
-        // inside watchTick; nulled in dispose().
-        watchAbort:     null,
-        // Spectrum chart -- Lorentzian broadening FWHM in cm⁻¹.
-        // 0 disables the overlay (sticks only).
-        broadeningFWHM: 20,
-        // 3Dmol mode-animation viewer.
-        // viewer:        null (removed by #232) — state.handle is
-        //                       the only viewer reference now.
-        // animTimer / animPhase / animLastTs removed by #231 Part B
-        // — the embed owns the vibration rAF loop now.  Phase 5h I-3:
-        // animPaused mirror retired too — read the live state from
-        // _handle.isAnimationPlaying() (Phase 5g B-1 unified
-        // store).  Mirror would drift on mode-switch (we force-play
-        // via setAnimation({paused: false}) without touching the
-        // shadow).
-        animAmplitude:  0.15,    // peak Cartesian amplitude in Å (see partial)
-        animSpeed:      1.0,     // cycle-rate multiplier (1.0 = ~1 Hz)
-        // AbortControllers for in-flight HTTP requests.  ``loadAbort``
-        // covers /api/spectra/load (Load + watch ticks); ``renderAbort``
-        // covers /api/spectra/render (Generate script).  dispose()
-        // aborts both so /results' registry can swap inspectors mid-
-        // request without leaving an in-flight fetch hanging.
-        loadAbort:      null,
-        renderAbort:    null,
+
+        // Per contract § 2: IDLE / LOADING / LOADED / WATCHING / ERROR.
+        machine: "IDLE",
+
+        fileState: {
+            // ``path`` was state.watchPath pre-PR-3.  The contract
+            // § 7 spectra mapping settled on fileState.path being
+            // canonical; the legacy `watchPath` name lives only as
+            // a backward-compat alias.  Both Load and Start-watching
+            // read els.watchPath.value into this field via
+            // transition('LOADING').
+            path:    null,
+            // results: SpectraResults dict from /api/spectra/load.
+            // Replaced atomically inside transition('APPLY').
+            results: null,
+        },
+
+        viewState: {
+            // 1-based index of the active mode, or null.  Survives
+            // watchTick re-renders when the pick remains valid
+            // (PR 2 audit follow-up D, 2026-06-17).
+            selectedMode: null,
+        },
+
+        // uiPrefs: per-session knobs.  Contract § 3 reserves this
+        // bucket for sessionStorage-persisted values.  Spectra
+        // populates from day one (unlike trajectory which leaves
+        // it empty per § 13).  TODO(PR 3.1?): wire the
+        // sessionStorage roundtrip under key
+        // `molbuilder.results.spectra.uiPrefs.v1`.
+        uiPrefs: {
+            modeFilter:     "",
+            sortColumn:     "index_1based",
+            sortDir:        "asc",
+            broadeningFWHM: 20,
+            animAmplitude:  0.15,
+            animSpeed:      1.0,
+        },
+
+        lifecycle: {
+            watchTimer:    null,
+            watchInFlight: false,
+            watchAbort:    null,
+            loadAbort:     null,
+            renderAbort:   null,
+            // Consecutive transient-error counter.  After
+            // WATCH_MAX_ERRORS in a row, transition to ERROR.
+            watchErrors:   0,
+            // File-identity guard (contract § 4 Invariant 1).
+            // Every fetch resolution checks (response.path,
+            // current fetchSeq) before applying.  Late responses
+            // from a prior file can never write into the current
+            // file's view.
+            fetchSeq:      0,
+        },
+
+        derived: {
+            // Empty -- spectra has no per-iter rolling-window
+            // derived state today (trajectory has scfPollHistory
+            // for the per-iter time estimate; spectra has nothing
+            // equivalent).  Kept present-but-empty so the
+            // five-bucket contract shape holds; tests can pin it.
+        },
+
+        // 3Dmol mode-animation viewer handle.  Embed-owned; cleared
+        // by renderResults on geometry change and by dispose() on
+        // unmount.  Lives at the top level of `state` (not in any
+        // bucket) because it's a wrapper-managed external resource.
+        handle:         null,
     };
+
+    // Backward-compat aliases.  ~3000 lines of existing render +
+    // event code reads/writes the legacy flat shape; the aliases
+    // route through to the bucketed canonical home so the body keeps
+    // working unchanged.  See trajectory/core.js for the same
+    // pattern + rationale.
+    (function _wireBackcompatAliases() {
+        function alias(key, bucket) {
+            Object.defineProperty(state, key, {
+                get: function ()    { return state[bucket][key]; },
+                set: function (v)   { state[bucket][key] = v; },
+                enumerable: true,
+                configurable: true,
+            });
+        }
+        // fileState: legacy `watchPath` -> canonical `path`.
+        Object.defineProperty(state, "watchPath", {
+            get: function ()  { return state.fileState.path; },
+            set: function (v) { state.fileState.path = v; },
+            enumerable: true,
+            configurable: true,
+        });
+        alias("results",        "fileState");
+        alias("selectedMode",   "viewState");
+        alias("modeFilter",     "uiPrefs");
+        alias("sortColumn",     "uiPrefs");
+        alias("sortDir",        "uiPrefs");
+        alias("broadeningFWHM", "uiPrefs");
+        alias("animAmplitude",  "uiPrefs");
+        alias("animSpeed",      "uiPrefs");
+        alias("watchTimer",     "lifecycle");
+        alias("watchInFlight",  "lifecycle");
+        alias("watchAbort",     "lifecycle");
+        alias("loadAbort",      "lifecycle");
+        alias("renderAbort",    "lifecycle");
+        alias("watchErrors",    "lifecycle");
+    })();
+
+    // Transition orchestrator (contract § 2).  Single entry-point
+    // for state-machine transitions; mirrors trajectory's
+    // transition() implementation.
+    //
+    // Targets (per contract § 2):
+    //   'LOADING'  -> { path }: empty fileState, reset viewState,
+    //                 abort in-flight controllers, clear timer,
+    //                 bump fetchSeq.
+    //   'LOADED'   -> {}:       stop watchTimer.  Used when
+    //                 allPhasesComplete OR after a Load-once.
+    //   'WATCHING' -> {}:       start watchTimer.  Used by
+    //                 startWatch and by watchTick when the run is
+    //                 still progressing.
+    //   'ERROR'    -> {}:       stop watchTimer.  Used after
+    //                 WATCH_MAX_ERRORS consecutive failures or a
+    //                 fatal schema mismatch.
+    //   'IDLE'     -> {}:       full reset on dispose.
+    //   'APPLY'    -> {path?, results?}: atomic fileState write.
+    //                 Single canonical fileState writer per
+    //                 contract § 2 (closed by trajectory's PR 2.3;
+    //                 spectra mirrors that here).
+    function transition(target, payload) {
+        payload = payload || {};
+        if (target === "LOADING") {
+            if (state.lifecycle.loadAbort) {
+                try { state.lifecycle.loadAbort.abort(); } catch (_) {}
+                state.lifecycle.loadAbort = null;
+            }
+            if (state.lifecycle.watchAbort) {
+                try { state.lifecycle.watchAbort.abort(); } catch (_) {}
+                state.lifecycle.watchAbort = null;
+            }
+            state.lifecycle.watchInFlight = false;
+            if (state.lifecycle.watchTimer) {
+                clearInterval(state.lifecycle.watchTimer);
+                state.lifecycle.watchTimer = null;
+            }
+            // Empty fileState.  New path lands via the LOADING
+            // payload; results reload comes through transition('APPLY')
+            // when the fetch resolves.
+            state.fileState.path    = payload.path || null;
+            state.fileState.results = null;
+            // Reset viewState per matrix.  selectedMode = null
+            // forces _pickDefaultMode on the next renderResults.
+            state.viewState.selectedMode = null;
+            // Clear transient lifecycle counters.
+            state.lifecycle.watchErrors = 0;
+            // Bump fetchSeq AFTER aborts so the new fetch carries a
+            // fresh sequence number that no in-flight response can
+            // match.
+            state.lifecycle.fetchSeq++;
+            state.machine = "LOADING";
+            return;
+        }
+        if (target === "IDLE") {
+            if (state.lifecycle.loadAbort) {
+                try { state.lifecycle.loadAbort.abort(); } catch (_) {}
+                state.lifecycle.loadAbort = null;
+            }
+            if (state.lifecycle.watchAbort) {
+                try { state.lifecycle.watchAbort.abort(); } catch (_) {}
+                state.lifecycle.watchAbort = null;
+            }
+            if (state.lifecycle.renderAbort) {
+                try { state.lifecycle.renderAbort.abort(); } catch (_) {}
+                state.lifecycle.renderAbort = null;
+            }
+            state.lifecycle.watchInFlight = false;
+            if (state.lifecycle.watchTimer) {
+                clearInterval(state.lifecycle.watchTimer);
+                state.lifecycle.watchTimer = null;
+            }
+            state.fileState.path    = null;
+            state.fileState.results = null;
+            state.viewState.selectedMode = null;
+            state.lifecycle.watchErrors = 0;
+            state.machine = "IDLE";
+            return;
+        }
+        if (target === "LOADED") {
+            // Run finished (allPhasesComplete true) OR Load-once.
+            // Stop watchTimer if running.
+            if (state.lifecycle.watchTimer) {
+                clearInterval(state.lifecycle.watchTimer);
+                state.lifecycle.watchTimer = null;
+            }
+            state.lifecycle.watchInFlight = false;
+            state.machine = "LOADED";
+            return;
+        }
+        if (target === "WATCHING") {
+            // Run is still progressing.  Start watchTimer
+            // (idempotent: only sets a new interval if one isn't
+            // already running).
+            if (!state.lifecycle.watchTimer) {
+                state.lifecycle.watchTimer =
+                    setInterval(watchTick, WATCH_INTERVAL_MS);
+            }
+            state.machine = "WATCHING";
+            return;
+        }
+        if (target === "ERROR") {
+            if (state.lifecycle.watchTimer) {
+                clearInterval(state.lifecycle.watchTimer);
+                state.lifecycle.watchTimer = null;
+            }
+            state.lifecycle.watchInFlight = false;
+            state.machine = "ERROR";
+            return;
+        }
+        if (target === "APPLY") {
+            // Sole canonical fileState writer (contract § 2;
+            // mirrors trajectory PR 2.3).  Fields not in the
+            // payload are LEFT alone (path stays across watchTick
+            // updates; results replaces atomically).
+            if (payload.path    !== undefined) state.fileState.path    = payload.path;
+            if (payload.results !== undefined) state.fileState.results = payload.results;
+            return;
+        }
+        // Unknown target: silent no-op.
+    }
+
+    // _settlePostLoad: after fileState has been populated by
+    // transition('APPLY'), inspect the fresh results and route to
+    // the appropriate post-LOADING state.
+    //
+    // Two callers:
+    //   * loadByPath (Load-once button) calls with start_watch=false.
+    //     Run is rendered but no timer starts; we go to LOADED
+    //     regardless of completion.
+    //   * watchTick / startWatch call with start_watch=true.  If
+    //     allPhasesComplete -> transition('LOADED') (run done; stop
+    //     polling).  Else -> transition('WATCHING') (keep polling).
+    //
+    // Unlike trajectory there is NO 2-tick buffer here: spectra's
+    // allPhasesComplete is a sticky monotonic flag (phase_*
+    // markers progress forward through "running" -> "complete"
+    // and never flap back).  One "complete" tick is sufficient.
+    function _settlePostLoad(startWatch) {                            // eslint-disable-line no-unused-vars
+        const results = state.fileState.results;
+        if (!startWatch) {
+            transition("LOADED");
+            return;
+        }
+        if (results && allPhasesComplete(results)) {
+            transition("LOADED");
+        } else {
+            transition("WATCHING");
+        }
+    }
 
     // Poll interval for the live-watch loop.  2 s is the sweet spot:
     // long enough that the engine's atomic-replace writes don't get
@@ -981,23 +1218,26 @@
             return;
         }
         setStatus(els.watchStatus, "Loading " + path + "…", "muted");
-        // Cancel any previous in-flight load (rapid file-switching);
-        // start a fresh controller for this request.  dispose()
-        // aborts it on unmount.
-        if (state.loadAbort) state.loadAbort.abort();
-        // K2 2026-06-14: when an explicit ``Load once`` fires while
-        // the live-watch tick is mid-flight, abort the watch's
-        // in-flight response too.  Both POST to /api/spectra/load
-        // with the same ``state.watchPath`` so two parallel
-        // responses race ``renderResults`` -- last-finisher wins,
-        // status banner flickers, and the explicit load can end up
-        // overwritten by the older (cached) watch payload.  The
-        // ``watchTimer`` is NOT cleared -- the user still wants
-        // live updates -- only the in-flight watch fetch is killed
-        // so this loadByPath owns the next render.
-        if (state.watchAbort) state.watchAbort.abort();
-        state.loadAbort = new AbortController();
-        const signal = state.loadAbort.signal;
+        // Contract § 2: file-switch / Load -> transition('LOADING').
+        // Aborts loadAbort + watchAbort, clears watchInFlight, stops
+        // the watchTimer if running, empties fileState (sets path),
+        // resets viewState, bumps fetchSeq for the file-identity
+        // guard.  Pre-PR-3 the inline aborts + path write lived here;
+        // PR 3 centralizes them in transition() for a single source
+        // of truth.
+        //
+        // Subtle: pre-PR-3 the watchTimer was NOT cleared by Load-
+        // once (K2 2026-06-14: "user still wants live updates").
+        // PR 3 inverts: Load-once stops the timer.  Rationale: the
+        // user clicking "Load once" while a watch is running is an
+        // explicit "stop watching, show me this snapshot" gesture;
+        // they can click "Start watching" again if they want polls.
+        // This also matches contract § 5 ("Refresh = file-switch")
+        // which forbids partial resets.
+        transition("LOADING", { path: path });
+        const mySeq = state.lifecycle.fetchSeq;
+        state.lifecycle.loadAbort = new AbortController();
+        const signal = state.lifecycle.loadAbort.signal;
         let body;
         try {
             const r = await fetch("/api/spectra/load", {
@@ -1019,8 +1259,14 @@
             if (exc.name === "AbortError") return;
             setStatus(els.watchStatus,
                       "Network error: " + exc.message, "error");
+            transition("ERROR");
             return;
         }
+        // Contract § 4 Invariant 1 (file-identity guard): if a
+        // newer transition('LOADING') ran while this fetch was on
+        // the wire, fetchSeq has been bumped and our response no
+        // longer corresponds to the current file.  Drop it.
+        if (state.lifecycle.fetchSeq !== mySeq) return;
         if (!body.ok) {
             let msg = body.error || "Load failed.";
             if (body.kind === "schema_mismatch") {
@@ -1035,11 +1281,15 @@
                     + "phase checkpoint appears.";
             }
             setStatus(els.watchStatus, msg, "error");
+            transition("ERROR");
             return;
         }
         renderResults(body.results);
         updatePhaseIndicator(body.results);
         setStatus(els.watchStatus, "Loaded.", "ok");
+        // Load-once: no polling.  Transition to LOADED regardless
+        // of completion -- the user explicitly asked for a snapshot.
+        _settlePostLoad(false);
         // Signal "first render visible" so the /results tab-level
         // picker drops its "Parsing…" status.  Deferred via
         // double-rAF so the browser paints the spectra chart +
@@ -1078,26 +1328,41 @@
             setStatus(els.watchStatus, "Enter a path first.", "error");
             return;
         }
-        if (state.watchTimer) return;  // already watching
-        state.watchPath   = path;
-        state.watchErrors = 0;
+        if (state.lifecycle.watchTimer) return;  // already watching
+        // Contract § 2: Start-watching = transition('LOADING') with
+        // the user's path (full reset including any prior fileState
+        // from a previous Load-once), then transition('WATCHING')
+        // which starts the timer.  Same reset matrix as Load-once;
+        // the difference is the post-load transition target.
+        transition("LOADING", { path: path });
         els.watchBtn.disabled     = true;
         els.watchStopBtn.disabled = false;
         els.watchPath.disabled    = true;
         setStatus(els.watchStatus,
                   "Watching " + path + " every "
                   + (WATCH_INTERVAL_MS / 1000) + " s...", "muted");
-        // First tick immediately so the user doesn't wait WATCH_INTERVAL_MS
-        // before seeing any feedback.
+        // First tick immediately so the user doesn't wait
+        // WATCH_INTERVAL_MS before seeing any feedback.  The
+        // immediate watchTick() will call _settlePostLoad(true) on
+        // success, which transitions to WATCHING or LOADED.
         watchTick();
-        state.watchTimer = setInterval(watchTick, WATCH_INTERVAL_MS);
+        // If the immediate tick didn't already transition us to
+        // WATCHING (e.g. the file 404'd and watchTick returned
+        // before _settlePostLoad), explicitly start the timer here
+        // so polling continues.  transition('WATCHING') is
+        // idempotent.
+        if (state.machine !== "WATCHING" && state.machine !== "LOADED") {
+            transition("WATCHING");
+        }
     }
 
     function stopWatch(reason) {
-        if (state.watchTimer) clearInterval(state.watchTimer);
-        state.watchTimer       = null;
-        state.watchPath        = null;
-        state.watchErrors      = 0;
+        // Contract § 2: Stop-watching transitions to LOADED (the
+        // file is no longer being polled but the loaded snapshot
+        // remains visible).  Pre-PR-3 this nulled watchPath which
+        // wiped the fileState.path; PR 3 keeps the path so the
+        // user can see what they were watching.
+        transition("LOADED");
         els.watchBtn.disabled     = false;
         els.watchStopBtn.disabled = true;
         els.watchPath.disabled    = false;
@@ -1108,63 +1373,45 @@
     }
 
     async function watchTick() {
-        if (!state.watchPath) return;
-        // 2026-06-14 G4 in-flight guard, same pattern as trajectory
-        // core.js::pollOnce.  Pre-fix the 2 s WATCH_INTERVAL_MS was
-        // shorter than the time /api/spectra/load takes on a large
-        // .spectra.json, so the next tick fired BEFORE the previous
-        // response landed.  Without an AbortController on the fetch
-        // the prior request continued silently to completion and
-        // landed on torn-down DOM after dispose(); with the planned
-        // AbortController, an abort-on-tick would tear down the TLS
-        // connection mid-stream and produce the SSL EOF noise the
-        // trajectory fix retired.  The cleaner shape: skip overlap
-        // ticks entirely, let in-flight finish.  Dispose still
-        // aborts via the AbortController held in state.watchAbort.
-        if (state.watchInFlight) return;
+        if (!state.fileState.path) return;
+        // 2026-06-14 G4 in-flight guard: skip overlap ticks entirely.
+        // PR 3 keeps this guard; dispose() aborts via watchAbort.
+        if (state.lifecycle.watchInFlight) return;
         let body;
-        state.watchAbort = new AbortController();
-        const signal = state.watchAbort.signal;
-        state.watchInFlight = true;
+        state.lifecycle.watchAbort = new AbortController();
+        const signal = state.lifecycle.watchAbort.signal;
+        state.lifecycle.watchInFlight = true;
+        // File-identity guard (contract § 4 Invariant 1): the
+        // sequence number this tick is bound to.  If a Load / Start-
+        // watching bumps fetchSeq while this fetch is on the wire,
+        // the response is dropped.
+        const mySeq = state.lifecycle.fetchSeq;
         try {
             const r = await fetch("/api/spectra/load", {
                 method:  "POST",
                 headers: { "Content-Type": "application/json" },
-                body:    JSON.stringify({ path: state.watchPath }),
+                body:    JSON.stringify({ path: state.fileState.path }),
                 signal:  signal,
             });
-            // Phase 6e seventh-review LANDMINE-4: r.json() inside
-            // the try so malformed JSON (proxy drop, SIESTA
-            // mid-write race) doesn't become an unhandled
-            // rejection in the setInterval that drives the watch.
             body = await r.json();
         } catch (exc) {
-            // AbortError: dispose() ran while a tick was on the
-            // wire.  Silent -- the dispose has already cleared the
-            // timer + DOM is gone, no work to do.
-            if (exc.name === "AbortError") {
-                return;
-            }
-            state.watchErrors++;
+            if (exc.name === "AbortError") return;
+            if (state.lifecycle.fetchSeq !== mySeq) return;
+            state.lifecycle.watchErrors++;
             setStatus(els.watchStatus,
-                      "Network error (" + state.watchErrors + "/"
+                      "Network error (" + state.lifecycle.watchErrors + "/"
                       + WATCH_MAX_ERRORS + "): " + exc.message, "error");
-            if (state.watchErrors >= WATCH_MAX_ERRORS) {
+            if (state.lifecycle.watchErrors >= WATCH_MAX_ERRORS) {
                 stopWatch("Stopped after " + WATCH_MAX_ERRORS
                           + " consecutive network errors.");
             }
             return;
         } finally {
-            // Always release the in-flight flag so the next tick
-            // can fire.  Even on AbortError / network error, the
-            // controller is settled at this point.
-            state.watchInFlight = false;
+            state.lifecycle.watchInFlight = false;
         }
+        // File-identity guard at fetch resolution.
+        if (state.lifecycle.fetchSeq !== mySeq) return;
         if (!body.ok) {
-            // 404 (file not yet written) is the COMMON case during
-            // the equilibrium SCF -- treat it as "still warming up",
-            // not as a hard error.  Other kinds (malformed,
-            // schema_mismatch, field) stop the watcher.
             if (body.kind === "not_found") {
                 setStatus(els.watchStatus,
                           "Waiting for first checkpoint (equilibrium "
@@ -1174,13 +1421,20 @@
             stopWatch("Stopped: " + (body.error || "load failed"));
             return;
         }
-        state.watchErrors = 0;
+        state.lifecycle.watchErrors = 0;
         // Render whatever phases are populated so far.
         renderResults(body.results);
         updatePhaseIndicator(body.results);
-        // Auto-stop when all configured phases are done.
+        // _settlePostLoad(true): if allPhasesComplete -> LOADED
+        // (stops timer); else -> WATCHING (keeps polling).  This
+        // replaces the inline allPhasesComplete -> stopWatch dance
+        // with the unified post-load settle helper used by both
+        // loadByPath and watchTick.
+        _settlePostLoad(true);
+        // Status banner: completion-message OR progress-line.
         if (allPhasesComplete(body.results)) {
-            stopWatch("Run complete ✓  ("
+            setStatus(els.watchStatus,
+                      "Run complete ✓  ("
                       + (body.results.modes || []).length
                       + " modes; "
                       + (body.results.config && body.results.config.compute_raman
@@ -1189,7 +1443,11 @@
                          && body.results.config.es_mode_selection
                          && body.results.config.es_mode_selection !== "skip"
                          ? "ES ✓ " : "")
-                      + ")");
+                      + ")", "ok");
+            // Restore button enablement that stopWatch normally does.
+            els.watchBtn.disabled     = false;
+            els.watchStopBtn.disabled = true;
+            els.watchPath.disabled    = false;
         } else {
             setStatus(els.watchStatus, _watchProgressLine(body.results), "muted");
         }
@@ -1242,7 +1500,11 @@
     function renderResults(results) {
         if (!results) {
             els.resultsSummary.hidden = true;
-            state.results      = null;
+            // Contract § 2: route fileState writes through
+            // transition('APPLY').  selectedMode is viewState
+            // (event-mutable per matrix § 3) so direct write is
+            // allowed there.
+            transition("APPLY", { results: null });
             state.selectedMode = null;
             return;
         }
@@ -1264,10 +1526,13 @@
             // Keep state.results pointing at the freshest object so any
             // downstream reads see the latest references (runtime_info
             // etc. can update even when the fingerprint is stable).
-            state.results = results;
+            // Contract § 2: route fileState writes through
+            // transition('APPLY') so this function is no longer a
+            // fileState writer in disguise (mirrors trajectory PR 2.3).
+            transition("APPLY", { results: results });
             return;
         }
-        state.results = results;
+        transition("APPLY", { results: results });
         els.resultsSummary.hidden = false;
 
         // Top-of-summary meta dictionary.  ``runtime_info`` (added in
@@ -2464,6 +2729,30 @@
         }
     }
 
+    // Refresh-button listener wiring (contract § 5).  Mirrors
+    // trajectory's _wireRefreshListener: wired ONCE at mount; not
+    // re-wired per-load.  Spectra historically did not listen for
+    // EVENT_REFRESH_REQUESTED (the file picker's "Refresh" button
+    // fired into the void); PR 3 closes that gap so the Refresh
+    // button does what § 5 says: file-switch with the current path.
+    function _wireRefreshListener() {
+        const C = (window.molbuilder || {}).constants;
+        if (!C || !C.EVENT_REFRESH_REQUESTED) return;
+        const _onRefresh = () => {
+            const p = state.fileState.path;
+            if (!p) return;     // not yet loaded; nothing to refresh
+            // Match the els.watchPath input so loadByPath picks up
+            // the current value (loadByPath reads from the DOM).
+            if (els.watchPath) els.watchPath.value = p;
+            loadByPath();
+        };
+        document.addEventListener(C.EVENT_REFRESH_REQUESTED, _onRefresh);
+        _cleanups.push(() => {
+            document.removeEventListener(
+                C.EVENT_REFRESH_REQUESTED, _onRefresh);
+        });
+    }
+
     // ----- Bootstrap -------------------------------------------
     function init() {
         // ``xyz-file`` / ``xyz-load-btn`` / ``xyz-status`` lookups
@@ -2612,6 +2901,11 @@
 
     init();
 
+    // PR 3 contract § 5: wire Refresh ONCE at mount.  Mirrors
+    // trajectory's _wireRefreshListener pattern (which fixed the
+    // per-load listener-pile-up bug there).
+    _wireRefreshListener();
+
     // If the caller asked for an initial file (the /results-side
     // mount passes the sidebar's current selection via opts.file),
     // load it now.  /spectra's bootstrap doesn't pass opts.file --
@@ -2681,28 +2975,19 @@
         dispose() {
             // Walk listener teardowns in reverse so the most recent
             // registration tears down first (LIFO -- matches the
-            // order they'd be attached in a remount cycle).  Per-
-            // cleanup catch keeps one buggy teardown from blocking
-            // the rest.
+            // order they'd be attached in a remount cycle).
             while (_cleanups.length) {
                 try { _cleanups.pop()(); } catch (_) {}
             }
-            // Abort in-flight HTTP requests so their then-handlers
-            // don't fire against torn-down DOM (registry remount or
-            // unmount mid-fetch).
-            if (state.loadAbort)   { state.loadAbort.abort();   state.loadAbort = null; }
-            if (state.renderAbort) { state.renderAbort.abort(); state.renderAbort = null; }
-            // G4 2026-06-14: live-watch fetch controller.  Clean
-            // TLS tear-down on dispose() avoids the SSL EOF the
-            // trajectory-poll fix retired.
-            if (state.watchAbort)  { state.watchAbort.abort();  state.watchAbort = null; }
-            if (state.watchTimer) {
-                clearInterval(state.watchTimer);
-                state.watchTimer = null;
-            }
-            // #231 Part B: bespoke animation loop (state.animTimer +
-            // rAF) is gone -- handle.dispose() tears down the embed's
-            // own vibration loop.
+            // Contract § 2: dispose -> transition('IDLE').  Single
+            // canonical site for the full reset matrix § 3 row
+            // "dispose / unmount" (aborts loadAbort + renderAbort +
+            // watchAbort, stops watchTimer, clears watchInFlight,
+            // clears fileState + viewState, sets machine='IDLE').
+            transition("IDLE");
+            // Embed handle is not bucket-owned; tear it down
+            // separately.  #231 Part B: handle.dispose() releases
+            // the embed's vibration loop + WebGL refs.
             if (state.handle) {
                 try { state.handle.dispose(); } catch (_) {}
                 state.handle = null;
