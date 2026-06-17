@@ -476,26 +476,33 @@ mutated array breaks the diff.
 
 ## 9. Layout invariant (the monitor panel)
 
-`#system-load-monitor` uses `position: fixed; bottom: 0` and
-overlaps content. The contract:
+The system-load monitor (`#system-load-monitor`) lives INSIDE the
+results-tab page flow — it is NOT a fixed overlay.  The contract:
 
-- The monitor's collapsed height is the FLOOR; nothing in the
-  scrollable container area MAY have layout that places it under
-  the monitor.
-- Implementation: `body` (or the results-main scroll container)
-  gets `scroll-padding-bottom: var(--monitor-height)`. The monitor
-  reports its current height (collapsed vs expanded) via a CSS
-  custom property `--monitor-height` it sets on `:root`.
+- The monitor mounts INSIDE `<main class="results-main">` (after
+  the last inspector section).  It scrolls with content and
+  takes its own height naturally; never overlaps plots, the file
+  picker, or inspector cards.
 - The monitor is COLLAPSED BY DEFAULT on first visit
-  (`system-load-monitor.js:358`'s `applyCollapsed("0")` becomes
-  `applyCollapsed("1")`). Users opt in to the expanded strip; it
-  does not opt them in.
-- When expanded but not hovered, the monitor's region uses
-  `pointer-events: none` on the backdrop so clicks pass through to
-  plots beneath. The strip itself stays clickable.
+  (`system-load-monitor.js`'s sessionStorage default treats a
+  missing key as collapsed).  Users opt in to the expanded strip;
+  it does not opt them in.
+- Foldable via the `≡` toggle.  Collapse stops polling
+  (`applyCollapsed` calls `stopTimer`); expand restarts it.
+- No `position: fixed`, no `bottom: 0`, no scroll-padding
+  reservation on `.results-main`, no `pointer-events: none` on
+  the strip.  The `--monitor-height` CSS variable family used by
+  the prior overlay design was retired in PR 5.
 
 This is a CSS-only fix and can ship independently of the state
 refactor.
+
+**Design history.** PR 1 (2026-06-17) used `position: fixed; bottom:
+0` with `pointer-events: none` + scroll-padding-bottom compensation
+on `.results-main`.  Users reported the overlay STILL read as
+"blocking" content even with the overlap defenses.  PR 5
+(2026-06-17 follow-up) moved the monitor in-flow; the prior overlay
+design is retired entirely.
 
 ---
 
@@ -503,11 +510,23 @@ refactor.
 
 Four PRs in order:
 
-### PR 1 — Monitor panel CSS (small, no risk)
+### PR 1 — Monitor panel CSS (SHIPPED, superseded by PR 5)
 
-Files: `styles/system-load-monitor.css`, `lib/system-load-monitor.js`.
-Changes per § 9. Test: L1 CSS-pin that `body` has
-`scroll-padding-bottom` and that `:root --monitor-height` is set.
+Files: `lib/system-load-monitor.css`, `lib/system-load-monitor.js`.
+**Shipped 2026-06-17, superseded by PR 5 the same day.**  PR 1's
+`position: fixed; bottom: 0` + `scroll-padding-bottom` design
+didn't convince users that the strip "wasn't in the way"; PR 5
+moved the monitor inside `.results-main` per § 9 above.
+
+### PR 5 — Monitor panel in-flow (SHIPPED)
+
+Files: `lib/system-load-monitor.css`, `lib/system-load-monitor.js`,
+`results/style.css`, `web/templates/results.html`,
+`tests/test_monitor_layout_invariant.py`.  **Shipped 2026-06-17.**
+Monitor now scrolls with the page; foldable via `≡`; collapse
+stops polling.  L1 tests pin that `#system-load-monitor` has no
+`position: fixed`, that `.results-main` no longer references
+`--monitor-height`, and that the include lives inside `<main>`.
 
 ### PR 2 — Trajectory state-machine refactor
 
