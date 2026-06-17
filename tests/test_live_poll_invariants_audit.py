@@ -157,7 +157,8 @@ class TestSpectraResultsFingerprintGuard:
 
     def test_resultsFingerprint_includes_loadbearing_fields(self, core_body):
         """The fingerprint MUST cover atom count, mode count, per-mode
-        ES presence, all three phase markers, and the selected mode.
+        ES presence, all three phase markers, the selected mode, AND
+        the per-mode activity values + frequencies (Fix C, 2026-06-17).
         Drop any of these and the early-return mis-fires (or
         spuriously bails when the user-visible state actually
         changed)."""
@@ -178,6 +179,14 @@ class TestSpectraResultsFingerprintGuard:
             "n_atoms_total",
             "modes.length",
             "esBits",
+            # Fix C 2026-06-17: activity + frequency sums must be in
+            # the fingerprint so chart bar heights refresh when
+            # activities populate mid-phase (same mode count, same
+            # phase markers).  Pre-fix, Raman activities landed
+            # without firing renderResults -> bars stayed at 0.
+            "_freqSum",
+            'raman_activity_a4_amu',
+            'ir_intensity_km_mol',
             "phase_frequencies",
             "phase_raman",
             "phase_es",
@@ -190,7 +199,8 @@ class TestSpectraResultsFingerprintGuard:
             f"early-return either spuriously fires (user-visible "
             f"change ignored) or fails to fire (live-watch redraws "
             f"every 2s, resetting camera).  See design.md "
-            f"2026-06-12 entry on audit #352 follow-up.")
+            f"2026-06-12 entry on audit #352 follow-up + "
+            f"2026-06-17 Fix C (Raman/IR activities).")
 
     def test_renderResults_bails_when_fingerprints_match(self, core_body):
         """The early-return must compare prevFp to newFp and skip the
@@ -738,3 +748,156 @@ class TestTrajectoryInspectorClaimsOptimXyz:
             "`_optim.xyz` to a PySCF bucket.  The files will still "
             "show in the picker but under a generic header, hiding "
             "their engine provenance from the user.")
+
+
+# --------------------------------------------------------------------- #
+#  Trajectory: SCF fingerprint augments noNewContent guard (Fix A)      #
+# --------------------------------------------------------------------- #
+
+
+class TestTrajectoryScfFingerprintGuard:
+    """The noNewContent geometry-only guard prevents camera reset on
+    same-data ticks (the 2026-06-12 fix), but pre-2026-06-17 it ALSO
+    suppressed makePlots() when SCF iterations were appended to the
+    in-flight CG step.  Fix A: add ``_scfFingerprint`` helper and
+    include ``scfChanged`` in the makePlots trigger condition so
+    SCF energy / dDmax / residual plots refresh mid-step.
+
+    Pin both the helper definition AND its use in the noNewContent
+    branch.  A future refactor that removes either re-introduces the
+    plot-starvation bug class."""
+
+    @pytest.fixture(scope="class")
+    def core_body(self):
+        return (_LIB / "trajectory" / "core.js").read_text()
+
+    def test_scfFingerprint_helper_exists(self, core_body):
+        assert re.search(
+            r"function\s+_scfFingerprint\s*\(\s*data\s*\)",
+            core_body,
+        ), ("trajectory/core.js::_scfFingerprint helper is gone; "
+            "the noNewContent branch can no longer detect new SCF "
+            "iterations and the plot-starvation bug returns.")
+
+    def test_scfFingerprint_reads_scf_history(self, core_body):
+        """The fingerprint MUST inspect data.scf_history (not
+        data.frames or data.runtime_info).  Without it the helper
+        can't see the in-step iter growth that's the bug's signal."""
+        m = re.search(
+            r"function\s+_scfFingerprint\s*\([^)]*\)\s*\{(.+?)^\s*\}",
+            core_body, re.DOTALL | re.MULTILINE,
+        )
+        assert m is not None, "fingerprint body shape changed"
+        body = m.group(1)
+        assert "scf_history" in body, (
+            "trajectory/core.js::_scfFingerprint no longer reads "
+            "data.scf_history; it cannot detect intra-step SCF "
+            "growth and the plot-starvation bug returns.")
+
+    def test_noNewContent_triggers_makePlots_on_scfChanged(self, core_body):
+        """In the noNewContent branch the makePlots() call MUST fire
+        on either runStateChanged OR scfChanged.  Drop scfChanged and
+        the plot-starvation bug returns."""
+        # Locate the noNewContent branch body.
+        m = re.search(
+            r"if\s*\(\s*noNewContent\s*\)\s*\{(.+?)return\s*;\s*\}",
+            core_body, re.DOTALL,
+        )
+        assert m is not None, "noNewContent block shape changed"
+        body = m.group(1)
+        assert "scfChanged" in body, (
+            "trajectory/core.js::applyNewData noNewContent branch "
+            "no longer derives scfChanged; SCF plots will starve on "
+            "same-geometry ticks during a live run.")
+        assert re.search(
+            r"if\s*\(\s*runStateChanged\s*\|\|\s*scfChanged\s*\)"
+            r"\s*makePlots\s*\(\s*\)",
+            body,
+        ), ("trajectory/core.js noNewContent branch no longer calls "
+            "makePlots when scfChanged is true; the SCF plots will "
+            "stay frozen mid-CG-step (the original 2026-06-17 Fix "
+            "A bug).")
+
+
+# --------------------------------------------------------------------- #
+#  Trajectory: POLL_MS cadence pin (Fix B)                              #
+# --------------------------------------------------------------------- #
+
+
+class TestTrajectoryPollCadence:
+    """POLL_MS sets the live-watch tick rate.  History: 15 s -> 60 s
+    on 2026-06-14 to silence SSL noise, dropped back to 15 s on
+    2026-06-17 (Fix B) because the in-flight guard alone is
+    sufficient -- and 60 s lagged live SCF runs whose iters complete
+    in 13-24 s.  Pin 15 s so a future "raise it back to 60 to silence
+    log noise" PR is forced to confront the trade-off."""
+
+    @pytest.fixture(scope="class")
+    def core_body(self):
+        return (_LIB / "trajectory" / "core.js").read_text()
+
+    def test_poll_ms_is_15_seconds(self, core_body):
+        assert re.search(
+            r"const\s+POLL_MS\s*=\s*15000\s*;",
+            core_body,
+        ), ("trajectory/core.js::POLL_MS is no longer 15000 ms.  "
+            "Bumping it back to 60 s makes live SCF plots lag the "
+            "on-disk state by 1-4 iters on a typical workload.  "
+            "See 2026-06-17 Fix B for the cadence/in-flight-guard "
+            "trade-off; the in-flight guard handles the original "
+            "SSL noise without a cadence bump.")
+
+
+# --------------------------------------------------------------------- #
+#  Spectra: preserve user's mode selection across re-renders (Fix D)    #
+# --------------------------------------------------------------------- #
+
+
+class TestSpectraPreserveSelectedMode:
+    """Pre-Fix-D every renderResults call unconditionally re-ran
+    _pickDefaultMode, silently overwriting the user's mode selection
+    every watchTick.  Fix D: only auto-pick when the prior selection
+    is null or no longer present in the new modes list.
+
+    Pin the priorStillValid gate so a future "simplify" refactor that
+    drops it re-introduces the user-mode-clobbered bug."""
+
+    @pytest.fixture(scope="class")
+    def core_body(self):
+        return (_LIB / "spectra" / "core.js").read_text()
+
+    def test_renderResults_checks_priorStillValid(self, core_body):
+        """The renderResults function MUST gate the _pickDefaultMode
+        call on a priorStillValid check, not call it unconditionally."""
+        # Locate the renderResults body's auto-pick region.
+        assert "priorStillValid" in core_body, (
+            "spectra/core.js::renderResults no longer derives "
+            "priorStillValid; every render now clobbers the user's "
+            "selectedMode (the 2026-06-17 Fix D bug returns).")
+        # The actual gate: only call _pickDefaultMode when the prior
+        # selection is invalid.
+        assert re.search(
+            r"if\s*\(\s*!priorStillValid\s*\)\s*\{[^}]*?_pickDefaultMode",
+            core_body, re.DOTALL,
+        ), ("spectra/core.js::renderResults no longer gates "
+            "_pickDefaultMode on !priorStillValid -- the user's "
+            "mode selection is overwritten on every watchTick.")
+
+    def test_priorStillValid_checks_index_1based_membership(self, core_body):
+        """priorStillValid must verify the prior selection's
+        index_1based is still present in results.modes, not just
+        that prior is non-null (a stale index from a previous file
+        would pass that weaker test)."""
+        m = re.search(
+            r"const\s+priorStillValid\s*=(.+?);",
+            core_body, re.DOTALL,
+        )
+        assert m is not None, (
+            "spectra/core.js no longer defines priorStillValid as a "
+            "single expression; the test can't pin its semantics.")
+        body = m.group(1)
+        assert "index_1based" in body and "prior" in body, (
+            "spectra/core.js::priorStillValid no longer compares "
+            "the prior index to results.modes[].index_1based; a "
+            "stale index from a previous file may pass the gate "
+            "and the user sees garbled ES data.")

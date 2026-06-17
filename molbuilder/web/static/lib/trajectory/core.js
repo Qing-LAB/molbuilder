@@ -100,19 +100,23 @@
     function mountInspector(rootEl, opts) {
     opts = opts || {};
 
-    // Poll cadence (2026-06-14 relax from 15 s -> 60 s):
-    // ``/api/watch/data`` for a multi-stage / multi-MB trajectory
-    // routinely exceeded 15 s of server-side parsing, so the next
-    // tick fired BEFORE the previous response landed.  Pre-fix the
-    // overlap was masked by an unconditional ``pollAbort.abort()``
-    // at the top of ``pollOnce`` -- which tore down the TLS
-    // connection mid-response and surfaced as ``SSL: UNEXPECTED_
-    // EOF_WHILE_READING`` lines in the server log.  Bumping the
-    // cadence is the easier half of the fix; the in-flight guard
-    // in ``pollOnce`` is the other half (overlapping ticks now
-    // SKIP instead of aborting the in-flight request, so legitimate
-    // slow responses can complete instead of generating noise).
-    const POLL_MS = 60000;
+    // Poll cadence: 15 s.
+    //
+    // History: 15 s -> 60 s on 2026-06-14 (commit 6da01ce) to silence
+    // ``SSL: UNEXPECTED_EOF_WHILE_READING`` noise from overlapping
+    // ticks aborting in-flight TLS connections.  The G4 fix paired
+    // that bump with an in-flight guard in ``pollOnce`` (overlapping
+    // ticks now SKIP instead of aborting).
+    //
+    // 2026-06-17 Fix B: drop back to 15 s.  60 s was overcorrection --
+    // the in-flight guard alone is sufficient to prevent the SSL
+    // noise (the TLS teardown was the symptom, ``abort()`` mid-flight
+    // was the cause, and that's gone).  Users watching a live SIESTA
+    // SCF run see iterations complete in 13-24 s on the standard
+    // workstation; 60 s polling means 1-4 iterations slip between
+    // polls and the plot lags the on-disk state.  15 s restores the
+    // original responsiveness without re-introducing the SSL bug.
+    const POLL_MS = 15000;
 
     // Inside-partial lookup: scoped to the inspector's root element
     // (i.e., the #inspector-host on /results after the adapter has
@@ -2258,6 +2262,39 @@
         return true;
     }
 
+    function _scfFingerprint(data) {
+        // Compact stable string over the SCF-history fields that
+        // makePlots/renderScfProgress branch on.  Used by
+        // applyNewData's noNewContent guard to detect "same geometry
+        // but SCF iterations grew within the in-flight step" -- the
+        // case where the geometry-only guard would otherwise leave
+        // the SCF energy / dDmax / residual plots frozen mid-run.
+        //
+        // Cheap fingerprint shape: ``<num_steps>/<iters_in_last_step>/
+        // <last_cycle_etot>``.  All three pieces flip when the parser
+        // appends a new cycle to scf_history[lastStep], so equality
+        // means "nothing new to plot" on this axis.
+        if (!data || !Array.isArray(data.scf_history)
+                  || !data.scf_history.length) {
+            return "";
+        }
+        const hist = data.scf_history;
+        const last = hist[hist.length - 1];
+        if (!Array.isArray(last) || !last.length) {
+            return hist.length + "/0/";
+        }
+        const tail = last[last.length - 1] || {};
+        // Energy field varies by engine: PySCF "etot" / SIESTA
+        // "eharris" (early iters before total energy is meaningful)
+        // / SIESTA "etot" (steady iters).  Any of them flipping
+        // counts as new data.
+        const e = (tail.etot != null) ? tail.etot
+                : (tail.eharris != null) ? tail.eharris
+                : (tail.energy != null) ? tail.energy
+                : "";
+        return hist.length + "/" + last.length + "/" + e;
+    }
+
     function applyNewData(r) {
         // Decide poll path: strict-tail-append (cheap; keeps playback
         // running) vs full rebuild (structure changed or frames
@@ -2306,15 +2343,28 @@
             // (these can flip from "ongoing" → "finished" /
             // "errored" on a follow-up poll even with no new frames),
             // then bail before touching the model / animation /
-            // plots.  Plots rebuilt only if the run-state changed.
+            // plots.  Plots rebuilt only if the run-state changed
+            // OR the SCF history for the in-flight step grew.
+            //
+            // 2026-06-17 Fix A: during a CG step, SCF iterations get
+            // appended to ``scf_history[lastStep]`` without the frame
+            // count, atom count, lattice, or run_state changing.  The
+            // geometry-only guard above correctly preserves camera /
+            // playback (the original 2026-06-12 fix), but conflating
+            // "same geometry" with "nothing to plot" left the SCF
+            // energy / dDmax / residual plots frozen until a new CG
+            // frame landed.  ``_scfFingerprint`` adds the missing
+            // axis: per-step iter count + last cycle's energy.
             state.mtime = r.mtime;
             const runStateChanged =
                 oldData.run_state !== r.data.run_state
              || oldData.error_message !== r.data.error_message;
+            const scfChanged =
+                _scfFingerprint(oldData) !== _scfFingerprint(r.data);
             state.data = r.data;
             _renderRuntimeInfo(state.data.runtime_info);
             _renderParseWarnings(state.data.parse_warnings);
-            if (runStateChanged) makePlots();
+            if (runStateChanged || scfChanged) makePlots();
             return;
         }
 

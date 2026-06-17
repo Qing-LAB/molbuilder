@@ -1329,8 +1329,23 @@
         // Auto-select the highest-Raman-activity real mode so the
         // ES panel comes up populated (if any mode has ES).  If no
         // mode has ES, fall back to the lowest-index real mode.
+        //
+        // 2026-06-17 Fix D: preserve the user's existing selection if
+        // it's still valid in the new modes list.  Pre-fix every
+        // renderResults call (including every live-watch tick that
+        // passed the fingerprint guard) unconditionally overwrote
+        // state.selectedMode via _pickDefaultMode -- so a user
+        // browsing mode 5 would have their pick silently reset to
+        // the auto-default the moment a new mode finished ES.  Only
+        // auto-pick when the prior selection is null OR no longer
+        // exists in the current modes list.
         if (results.modes && results.modes.length) {
-            state.selectedMode = _pickDefaultMode(results.modes, anyES);
+            const prior = state.selectedMode;
+            const priorStillValid = (prior != null) && results.modes.some(
+                m => m.index_1based === prior);
+            if (!priorStillValid) {
+                state.selectedMode = _pickDefaultMode(results.modes, anyES);
+            }
         } else {
             state.selectedMode = null;
         }
@@ -1361,14 +1376,49 @@
         // change here means "user-visible viewer state needs to update".
         // Stable string makes equality cheap — bail without rerendering
         // when the live-watch poll returned an unchanged snapshot.
+        //
+        // 2026-06-17 Fix C: include per-mode Raman + IR activity values
+        // and frequencies.  Pre-fix the fingerprint covered modes.length
+        // + ES bits + phase markers only; when Raman activities
+        // populated mid-phase (same mode count, phase still "running",
+        // no ES flip) the fingerprint was identical -> renderResults
+        // bailed -> the spectrum chart bar heights never refreshed
+        // until either modes grew or a phase marker changed.  Bar
+        // heights ARE what the user is watching; treating them as
+        // "no change" was the bug.
+        //
+        // ``actBits`` is a folded checksum (sum of activity values
+        // truncated to 3 decimals).  Sum is order-stable because we
+        // walk modes[] in index order, and 3-decimal precision keeps
+        // the string short while catching real activity changes.
         const modes = results.modes || [];
         const esBits = modes.map(m => m.electronic_structure ? "1" : "0").join("");
+        function _actSum(field) {
+            let s = 0;
+            for (const m of modes) {
+                const v = m[field];
+                if (v != null && Number.isFinite(v)) s += v;
+            }
+            return s.toFixed(3);
+        }
+        function _freqSum() {
+            let s = 0;
+            for (const m of modes) {
+                const v = m.frequency_cm1;
+                if (v != null && Number.isFinite(v)) s += v;
+            }
+            return s.toFixed(2);
+        }
         return [
             results.n_atoms_total,
             modes.length,
             esBits,
+            _freqSum(),
+            _actSum("raman_activity_a4_amu"),
+            _actSum("ir_intensity_km_mol"),
             results.phase_frequencies || "",
             results.phase_raman || "",
+            results.phase_ir || "",
             results.phase_es || "",
             selectedMode == null ? "-" : String(selectedMode),
         ].join("|");
