@@ -41,18 +41,22 @@ an atom-metadata block; only `.fdf` and `.py` do).
 
 ## 3. File structure
 
-Reserved blocks appear in this order, top to bottom. **Every block
-is optional.** A file without any of them is still a valid engine
-input; tools that need a specific block refuse cleanly when it is
-missing rather than guessing.
+Reserved blocks appear in this order, top to bottom. **Every
+reserved block is optional;** a file without any of them is still
+a valid engine input. ENGINE BODY is not a "reserved block" — it
+is the actual engine content, and is always present (a file
+without it would not be a script at all).
+
+Tools that need a specific reserved block refuse cleanly when it
+is missing rather than guessing.
 
 ```
-1. HEADER          (optional)
-2. PROVENANCE      (optional)
-3. BENCH-MARKS     (optional;  .fdf and .py only)
-4. ATOM-METADATA   (optional;  .fdf and .py only)
+1. HEADER          (reserved, optional)
+2. PROVENANCE      (reserved, optional)
+3. BENCH-MARKS     (reserved, optional;  .fdf and .py only)
+4. ATOM-METADATA   (reserved, optional;  .fdf and .py only)
 5. ENGINE BODY     (always present — the actual engine content)
-6. USER-CUSTOM     (optional)
+6. USER-CUSTOM     (reserved, optional)
 ```
 
 ### Block markers
@@ -195,12 +199,22 @@ v3). This document does NOT duplicate the schema; it cites it.
   emitted** in the in-body block. Rationale: the metadata and the
   coordinates are written by the same generator pass, so they
   cannot drift apart by construction; a hash would be tautological.
-- `regions` and `frozen_atoms` may be empty / missing (no labels
-  assigned); empty atom-metadata is still valid.
-- The block is optional. When present, downstream code (TranSIESTA
-  generator, re-render, etc.) reads from it and ignores any
-  `.molstruct.json` sidecar that may also be present in the
-  directory (in-body wins; sidecar is a fallback for plain `.xyz`).
+- **Emission rule:** the generator emits this block ONLY when
+  `regions` or `frozen_atoms` is non-empty. A file with no label
+  metadata at generation time has no atom-metadata block at all
+  (not a block with empty arrays).  Rationale: an empty in-body
+  block would suppress a later `.molstruct.json` sidecar via the
+  in-body-wins rule below, even though the user had no labels
+  when they generated and only added them after.  Absence is the
+  honest signal that this generation had no labels.
+- `regions` and `frozen_atoms` may individually be empty when the
+  block is present (e.g., the user assigned regions but no frozen
+  atoms). At least one must be non-empty for the block to exist.
+- When present, downstream code (TranSIESTA generator, re-render,
+  etc.) reads from this block and ignores any `.molstruct.json`
+  sidecar that may also be present in the directory (in-body wins;
+  sidecar is the fallback for plain `.xyz` loads and for `.fdf` /
+  `.py` files generated before this contract existed).
 
 ### 4.5 ENGINE BODY
 
@@ -238,9 +252,12 @@ content byte-for-byte in the new output.
 
 ## 5. Versioning
 
-Each structured block carries its own version tag (`version v1` in
-BENCH-MARKS, `format: molstruct-json/v3` in ATOM-METADATA, etc.).
-PROVENANCE and HEADER are free-form and unversioned.
+Structured blocks carry their own version tag (`version v1` in
+BENCH-MARKS, `format: molstruct-json/v3` in ATOM-METADATA).
+PROVENANCE has structured key/value content but no version tag —
+its keys are additive and forward-compatible (new keys may be
+added; old parsers ignore unknown keys). HEADER is genuinely
+free-form prose and not parsed.
 
 **Rules:**
 - Generator emits the current version of each block.
