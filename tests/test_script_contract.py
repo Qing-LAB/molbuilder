@@ -214,6 +214,22 @@ def test_emit_atom_metadata_omits_structure_hash():
     assert "structure_hash" not in block
 
 
+def test_emit_atom_metadata_honors_created_by_and_created_at():
+    """Audit fix 2026-06-16: callers (render_fdf / render_script)
+    pass a specific ``created_by`` for traceability AND a real
+    ``created_at`` timestamp.  Pin both."""
+    block = sc.emit_atom_metadata(
+        regions={"r": [0]},
+        frozen_atoms=[],
+        n_atoms_total=1,
+        created_by="molbuilder render_fdf",
+        created_at="2026-06-16T17:00:00-07:00",
+    )
+    payload = _atom_metadata_payload(block)
+    assert payload["created_by"] == "molbuilder render_fdf"
+    assert payload["created_at"] == "2026-06-16T17:00:00-07:00"
+
+
 # --------------------------------------------------------------------- #
 #  emit_user_custom_placeholder                                         #
 # --------------------------------------------------------------------- #

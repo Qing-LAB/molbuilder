@@ -785,6 +785,8 @@ def render_script(struct: Structure,
         regions=dict(getattr(struct, "regions", {}) or {}),
         frozen_atoms=list(getattr(struct, "frozen_atoms", []) or []),
         n_atoms_total=int(struct.n_atoms),
+        created_by="molbuilder render_script",
+        created_at=_sc.generated_at_now(),
     )
     _engine_body = "\n".join(out)
     _user_custom = _sc.emit_user_custom_placeholder()

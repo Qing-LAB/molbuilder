@@ -76,6 +76,17 @@ class BenchField:
 
 # Static field list for SIESTA .fdf.  PySCF and future engines get
 # their own list when their bench subcommands land.
+#
+# Anchor caveat (caught 2026-06-16 post-2a audit): the
+# ``MD.NumCGsteps`` anchor is only emitted by ``siesta/input.py``
+# when ``cfg.relax_type == "CG"``.  For Broyden the engine body
+# carries ``MD.NumBroydenSteps``; for FIRE, ``MD.NumFIRESteps``;
+# etc.  Step 4 (molbuilder bench siesta-gpu) must either:
+#   * select the correct anchor per ``cfg.relax_type``, OR
+#   * filter SIESTA_BENCH_FIELDS by which anchors are actually
+#     present in the engine body before emitting BENCH-MARKS.
+# Today the bench would silently fail to find the anchor on
+# non-CG runs.  Tracked under task #486.
 SIESTA_BENCH_FIELDS: List[BenchField] = [
     BenchField("BlockSize",        "BlockSize",        "pow2",  (16, 256)),
     BenchField("MaxSCFIterations", "MaxSCFIterations", "int"),
