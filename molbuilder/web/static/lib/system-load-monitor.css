@@ -1,45 +1,45 @@
-/* System-load monitor -- in-flow strip inside the Results-tab panel.
+/* System-load monitor -- in-flow card inside the Results-tab panel.
  *
- * Polled + drawn by lib/system-load-monitor.js.  Compact, dark, semi-
- * transparent so it doesn't pull focus from the main content but is
- * always glanceable while a long job runs.
+ * Polled + drawn by lib/system-load-monitor.js.  Sits at the bottom
+ * of .results-main as a self-contained card; collapsible via the
+ * ``≡`` toggle (collapse stops polling).  See
+ * docs/protocols/results-state-contract.md § 9 for the layout
+ * contract.
  *
- * Layout (PR 5, 2026-06-17 user-report-2):
- *   1. The monitor mounts INSIDE ``.results-main`` (the page's flow
- *      container).  It scrolls with content; never overlaps plots /
- *      inspector cards / file-picker.
- *   2. Pre-PR-5 it was outside ``<main>`` with ``position: fixed;
- *      bottom: 0`` + a scroll-padding-bottom compensation on the
- *      scroll container.  Even with pointer-events: none on the
- *      strip, the visual overlay still confused users into asking
- *      "why does this take screen real estate".  The in-flow shape
- *      eliminates the problem class entirely.
- *   3. Foldable via the ``≡`` toggle.  Collapsed state stops
- *      polling (the JS clears the timer + aborts in-flight fetch).
- *   4. Collapsed BY DEFAULT on first visit (sessionStorage key
- *      missing => collapsed).  Users opt in to the expanded strip.
+ * Visual model (PR 5.1, 2026-06-17):
+ *   * Card-shape: bordered + rounded + standard inspector-card padding.
+ *     Reads as a distinct UI element in the page's flex column rather
+ *     than the floating overlay it used to be.
+ *   * Header row: title ("Server load") on the left, ``≡`` toggle on
+ *     the right.  Always visible -- when collapsed, just the header
+ *     remains so the user can re-open without hunting for a hidden
+ *     button.
+ *   * Cells wrap on narrow viewports via ``flex-wrap`` so a 1200 px
+ *     results-main doesn't overflow when GPU + VRAM + GPU-BW are all
+ *     present (5 cells × ~200 px ~= 1000 px, fits; on phones the
+ *     wider cells hide via the @media block at the bottom).
+ *   * Value column widths trimmed (was 12em / 13.5em, now 9em / 10em)
+ *     so the row breathes without forcing horizontal scroll.
+ *
+ * Pre-PR-5 this lived outside ``<main>`` with ``position: fixed;
+ * bottom: 0``; PR 5 (commit 716173f) moved it in-flow.  PR 5.1 polishes
+ * the in-flow visual after the user reported it "looks broken".
  */
 
 #system-load-monitor {
-    /* In-flow inside .results-main.  No ``position: fixed``; the
-     * strip occupies its own row in the page's flex column. */
     display: flex;
-    align-items: center;
-    gap: var(--space-3, 12px);
-    padding: 6px 12px;
-    background: var(--surface-elevated, rgba(20, 24, 28, 0.92));
+    flex-direction: column;
+    gap: var(--space-sm, 8px);
+    padding: var(--space-sm, 8px) var(--space-md, 12px);
+    background: var(--surface-elevated, rgba(20, 24, 28, 0.55));
     color: var(--text-primary, #e7e7e7);
     border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
-    border-radius: 6px;
+    border-radius: 8px;
     font-size: 12px;
     font-family: var(--font-mono, "Menlo", "Consolas", monospace);
     line-height: 1.2;
-    /* Margin-top: keep the monitor a hair separated from the inspector
-     * card above so it reads as a distinct UI element.  Auto pushes
-     * it to the bottom of the flex column when there's slack space.
-     * margin-top: auto would push it past short content; use a fixed
-     * gap instead so the page lays out predictably regardless of
-     * inspector height. */
+    /* Spacing from the inspector card above.  Sits at the bottom of
+     * the .results-main flex column. */
     margin-top: var(--space-md, 16px);
 }
 
@@ -47,19 +47,42 @@
     display: none;
 }
 
+/* When collapsed, hide the strip but keep the header so the toggle
+ * remains reachable.  Cell strip simply disappears via the same
+ * .is-collapsed class as before. */
 #system-load-monitor.is-collapsed .system-load-strip {
     display: none;
 }
+#system-load-monitor.is-collapsed {
+    /* Collapsed card is just the header row; trim its vertical gap
+     * so it shrinks to a compact pill-height. */
+    gap: 0;
+    padding-block: 6px;
+}
 
-/* The toggle is always visible -- a tiny pill in the bottom-left that
- * the user can grab to bring the strip back when collapsed. */
+/* Header row: title + toggle.  Always visible. */
+.system-load-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-sm, 8px);
+}
+
+.system-load-title {
+    color: var(--text-secondary, #a4a4a4);
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-size: 11px;
+}
+
 .system-load-toggle {
     background: transparent;
     color: inherit;
     border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.18));
     border-radius: 4px;
     padding: 2px 8px;
-    font-size: 12px;
+    font-size: 13px;
     font-family: inherit;
     cursor: pointer;
     line-height: 1;
@@ -73,20 +96,16 @@
 
 .system-load-strip {
     display: flex;
-    gap: var(--space-4, 16px);
-    flex: 1;
-    /* In-flow strip: pointer-events default (auto).  Pre-PR-5 the
-     * strip was pointer-events: none so clicks passed through the
-     * fixed overlay to plots beneath; that rule is moot now that
-     * the monitor lives inside the page flow. */
+    flex-wrap: wrap;
+    gap: var(--space-md, 12px) var(--space-lg, 18px);
 }
 
 .system-load-cell {
     /* Each cell sets its own --load-* tokens so the sparkline canvas
      * can pick stroke colors via getComputedStyle.  Tokens fall back
      * to safe defaults if the CSS variables aren't defined on this
-     * page (defensive — the load monitor mounts on every tab,
-     * including ones whose own token set is independent). */
+     * page (defensive — the load monitor mounts on tabs whose own
+     * token set is independent). */
     --load-ok:   var(--ok,   #4ad991);
     --load-warn: var(--warn, #f0c040);
     --load-bad:  var(--bad,  #ef5b5b);
@@ -98,9 +117,9 @@
 }
 
 .system-load-cell[hidden] {
-    display: none;          /* defensive against any future CSS rule that
-                               competes with the [hidden] attribute --
-                               same § 3.1 trap doc warns about. */
+    /* defensive against any future CSS rule that competes with the
+     * [hidden] attribute -- same § 3.1 trap doc warns about. */
+    display: none;
 }
 
 .system-load-cell .label {
@@ -110,22 +129,24 @@
 }
 
 .system-load-cell .value {
-    /* "100%  ~10.0/20 cores" is wider than the original "100%" --
-     * give the CPU cell room to breathe without re-flowing the strip
-     * each tick.  RAM uses similar width with "100% 252.0/252.0 GB". */
-    min-width: 12em;
+    /* Trimmed from 12em (PR 5.1).  The longest string we render is
+     * "100% 252.0/252.0 GB" (RAM) at ~9em in monospace.  9em fits
+     * with breathing room; below this the value text overlaps the
+     * sparkline canvas border. */
+    min-width: 9em;
     text-align: right;
     font-variant-numeric: tabular-nums;
 }
 
-/* Tighter CPU/RAM cells -- their value strings are predictable widths. */
+/* CPU/RAM: their value strings are the widest predictably; give them
+ * a touch more so the strip doesn't reflow per tick. */
 .system-load-cell[data-metric="cpu"] .value,
 .system-load-cell[data-metric="ram"] .value {
-    min-width: 13.5em;
+    min-width: 10em;
 }
 
-/* GPU / GPU BW cells: value is just "100%" so they don't need
- * the full 12em.  Tightens the strip when GPU is on. */
+/* GPU / GPU BW: value is just "100%" so they don't need the full
+ * width.  Tightens the strip when GPU is on. */
 .system-load-cell[data-metric="gpu"] .value,
 .system-load-cell[data-metric="gpubw"] .value {
     min-width: 3.5em;
@@ -133,25 +154,21 @@
 
 .system-load-cell canvas.spark {
     display: block;
-    /* width / height set as HTML attributes (120 / 32) on the canvas
-     * element so the bitmap matches the drawing buffer; the CSS rules
-     * only control DOM layout. */
+    /* Bitmap dims come from the canvas HTML attributes (120 / 32);
+     * CSS rules only control DOM layout. */
     border-left: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
     padding-left: 6px;
 }
 
-/* Phone widths: drop the wider GPU-mem cell, shrink sparklines.
- * The cells use min-width so they don't squeeze the label text.
- * 480 px chosen to match the established mobile breakpoint in
- * the rest of the app. */
+/* Phone widths: drop the wider GPU-mem cell, shrink sparklines.  480
+ * px matches the mobile breakpoint elsewhere in the app. */
 @media (max-width: 480px) {
     #system-load-monitor {
         font-size: 11px;
-        gap: 6px;
-        padding: 4px 8px;
+        padding: 6px 10px;
     }
     .system-load-strip {
-        gap: 10px;
+        gap: 8px 12px;
     }
     .system-load-cell canvas.spark {
         width: 60px;

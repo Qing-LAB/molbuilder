@@ -17,8 +17,15 @@
     tabs. -#}
 <link rel="stylesheet" href="{{ url_for('static', filename='lib/system-load-monitor.css') }}">
 <aside id="system-load-monitor" aria-label="Server load monitor">
-  <button class="system-load-toggle" type="button"
-          aria-pressed="false" title="Hide server load">≡</button>
+  {# PR 5.1: header row with title + toggle.  Title makes the
+     in-flow card legible ("this is the server-load widget, not a
+     random row of numbers") and the toggle sits on the right where
+     it's reachable when the strip is collapsed. #}
+  <div class="system-load-header">
+    <span class="system-load-title">Server load</span>
+    <button class="system-load-toggle" type="button"
+            aria-pressed="false" title="Hide server load">≡</button>
+  </div>
   <div class="system-load-strip">
     <div class="system-load-cell" data-metric="cpu" title="Aggregate CPU utilization (psutil.cpu_percent)">
       <span class="label">CPU</span>
