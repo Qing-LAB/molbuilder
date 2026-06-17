@@ -22,7 +22,8 @@ def test_point_parse_plain_triplet():
     assert p.np == 4 and p.omp == 2 and p.bs == 64
     assert p.diag == DIAG_1STAGE
     assert p.pin is True
-    assert p.slug == "np4_omp2_bz64_1s_p1"
+    assert p.gpu is True
+    assert p.slug == "np4_omp2_bz64_1s_p1_gpu"
 
 
 def test_point_parse_keyed_triplet():
@@ -30,35 +31,53 @@ def test_point_parse_keyed_triplet():
     assert p.np == 10 and p.omp == 1 and p.bs == 64
     assert p.diag == DIAG_1STAGE
     assert p.pin is True
+    assert p.gpu is True
 
 
 def test_point_parse_plain_quadruplet_diag_alias():
     p = Point.parse("4,2,64,2s")
     assert p.diag == DIAG_2STAGE
     assert p.pin is True
-    assert p.slug == "np4_omp2_bz64_2s_p1"
+    assert p.gpu is True
+    assert p.slug == "np4_omp2_bz64_2s_p1_gpu"
 
 
 def test_point_parse_keyed_quadruplet():
     p = Point.parse("np=4,omp=2,bs=64,diag=ELPA-2STAGE")
     assert p.diag == DIAG_2STAGE
     assert p.pin is True
+    assert p.gpu is True
 
 
 def test_point_parse_plain_quintuplet_pin_alias():
     p = Point.parse("20,1,64,1s,nopin")
     assert p.pin is False
-    assert p.slug == "np20_omp1_bz64_1s_p0"
+    assert p.gpu is True
+    assert p.slug == "np20_omp1_bz64_1s_p0_gpu"
 
 
 def test_point_parse_keyed_quintuplet():
     p = Point.parse("np=10,omp=2,bs=64,diag=2s,pin=false")
     assert p.np == 10 and p.omp == 2 and p.pin is False
+    assert p.gpu is True
+
+
+def test_point_parse_plain_sextuplet_gpu_alias():
+    p = Point.parse("20,1,64,1s,nopin,cpu")
+    assert p.pin is False and p.gpu is False
+    assert p.slug == "np20_omp1_bz64_1s_p0_cpu"
+
+
+def test_point_parse_keyed_sextuplet():
+    p = Point.parse("np=20,omp=1,bs=64,diag=1s,pin=nopin,gpu=false")
+    assert p.gpu is False
 
 
 def test_point_parse_rejects_bad_arity():
     with pytest.raises(ValueError):
         Point.parse("4,2")
+    with pytest.raises(ValueError):
+        Point.parse("4,2,64,1s,nopin,gpu,extra")
 
 
 def test_point_parse_rejects_bad_pin():
@@ -66,35 +85,49 @@ def test_point_parse_rejects_bad_pin():
         Point.parse("4,2,64,1s,bogus")
 
 
-def test_default_points_match_design():
-    """Pin the 18-point default sweep (9 base shapes × ELPA-1/2STAGE).
+def test_point_parse_rejects_bad_gpu():
+    with pytest.raises(ValueError):
+        Point.parse("4,2,64,1s,pin,maybe")
 
-    Run-order: most aggressive first (all-cores, biggest blocks).
+
+def test_default_points_match_design():
+    """Pin the 22-point default sweep (11 base shapes × ELPA-1/2STAGE).
+
+    Run-order: CPU baseline FIRST (per user request 2026-06-16), then
+    most aggressive GPU configs.  Last point is the host-bound stress.
     """
-    quints = [(p.np, p.omp, p.bs, p.diag, p.pin) for p in DEFAULT_POINTS]
+    sextuples = [
+        (p.np, p.omp, p.bs, p.diag, p.pin, p.gpu) for p in DEFAULT_POINTS
+    ]
     base_shapes = [
-        # all-physical-cores cross-socket (pin=False)
-        (20, 1,  64, False),
-        (10, 2,  64, False),
-        # max single-socket, biggest blocks (pin=True)
-        (10, 1, 256, True),
-        (10, 1, 128, True),
-        (10, 1,  64, True),
-        # 4-ranks-per-GPU anchor, big-to-small block
-        (4, 2,  128, True),
-        (4, 2,   64, True),
-        (4, 2,   32, True),
+        # CPU baseline first (np=20 all cores, GPU off).
+        (20, 1,  64, False, False),
+        # All-cores cross-socket (pin=False), GPU on.
+        (20, 1, 256, False, True),
+        (20, 1,  64, False, True),
+        (10, 2,  64, False, True),
+        # Pinned to GPU socket: max-rank single-socket, biggest blocks.
+        (10, 1, 256, True,  True),
+        (10, 1, 128, True,  True),
+        (10, 1,  64, True,  True),
+        # 4-ranks-per-GPU anchor, big-to-small block.
+        (4, 2,  128, True,  True),
+        (4, 2,   64, True,  True),
+        (4, 2,   32, True,  True),
         # host-bound stress test
-        (2, 5,   64, True),
+        (2, 5,   64, True,  True),
     ]
     expected = [
-        (np, omp, bs, diag, pin)
-        for (np, omp, bs, pin) in base_shapes
+        (np, omp, bs, diag, pin, gpu)
+        for (np, omp, bs, pin, gpu) in base_shapes
         for diag in (DIAG_1STAGE, DIAG_2STAGE)
     ]
-    assert quints == expected
-    # 9 shapes × 2 diag = 18.
-    assert len(DEFAULT_POINTS) == 18
+    assert sextuples == expected
+    assert len(DEFAULT_POINTS) == 22
+    # CPU baseline really is point 1 (or point 2 -- it's paired with
+    # its 2STAGE twin).  Both must be at the top.
+    assert DEFAULT_POINTS[0].gpu is False
+    assert DEFAULT_POINTS[1].gpu is False
 
 
 # --------------------------------------------------------------------- #

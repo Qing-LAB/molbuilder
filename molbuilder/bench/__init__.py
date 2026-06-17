@@ -34,9 +34,28 @@ DIAG_1STAGE = "ELPA-1STAGE"
 DIAG_2STAGE = "ELPA-2STAGE"
 
 
+_BOOL_TRUE  = ("pin", "p1", "true", "1", "yes", "on",  "gpu")
+_BOOL_FALSE = ("nopin", "p0", "false", "0", "no", "off", "cpu")
+
+
+def _parse_bool_axis(label: str, raw: str,
+                     true_aliases: Tuple[str, ...] = _BOOL_TRUE,
+                     false_aliases: Tuple[str, ...] = _BOOL_FALSE) -> bool:
+    v = raw.lower()
+    if v in true_aliases:
+        return True
+    if v in false_aliases:
+        return False
+    raise ValueError(
+        f"bad {label} value: {raw!r} "
+        f"(want {'/'.join(true_aliases[:3])} or "
+        f"{'/'.join(false_aliases[:3])})"
+    )
+
+
 @dataclass(frozen=True)
 class Point:
-    """One (mpi_np, omp, BlockSize, Diag.Algorithm, pin) test point.
+    """One (mpi_np, omp, BlockSize, Diag.Algorithm, pin, gpu) test point.
 
     ``pin=True``  -- bind to the GPU-proximate NUMA node (default,
                      matches the wrapper as generated).  np * omp must
@@ -44,34 +63,43 @@ class Point:
     ``pin=False`` -- strip the numactl wrap so MPI ranks can span
                      sockets.  Needed to use all physical cores
                      when np * omp exceeds one socket's core count.
+    ``gpu=True``  -- ``Diag.ELPA.GPU .true.`` (default; matches the
+                     siesta-gpu wrapper's expected solver path).
+    ``gpu=False`` -- ``Diag.ELPA.GPU .false.`` -- CPU baseline.  Same
+                     algorithm, same matrix layout, just runs the
+                     ELPA solver on the host.
     """
     np: int
     omp: int
     bs: int
     diag: str = DIAG_1STAGE  # default matches typical generator output
     pin: bool = True
+    gpu: bool = True
 
     @property
     def slug(self) -> str:
         # Diag tag: "1s" or "2s" keeps the directory name short.
         d = "2s" if "2" in self.diag else "1s"
         p = "p1" if self.pin else "p0"
-        return f"np{self.np}_omp{self.omp}_bz{self.bs}_{d}_{p}"
+        g = "gpu" if self.gpu else "cpu"
+        return f"np{self.np}_omp{self.omp}_bz{self.bs}_{d}_{p}_{g}"
 
     @classmethod
     def parse(cls, s: str) -> "Point":
-        """Parse "4,2,64" / "4,2,64,2stage" / "20,1,64,1s,nopin" /
-        "np=4,omp=2,bs=64,diag=ELPA-2STAGE,pin=true".
+        """Parse 3- to 6-token forms.
 
-        Three-token form uses default diag (ELPA-1STAGE) + default
-        pin (True).  Four tokens pin diag; five also pin the NUMA
-        pin axis.  Pin values: "pin"/"nopin", "p1"/"p0",
-        "true"/"false", "1"/"0", "yes"/"no".
+        Plain: "np,omp,bs[,diag[,pin[,gpu]]]"  e.g. "20,1,256,1s,nopin,cpu".
+        Keyed: "np=4,omp=2,bs=64,diag=ELPA-1STAGE,pin=true,gpu=false".
+
+        Token aliases:
+          diag -- "1s"/"2s" or "ELPA-1STAGE"/"ELPA-2STAGE".
+          pin  -- pin/nopin, p1/p0, true/false, 1/0, yes/no.
+          gpu  -- gpu/cpu, true/false, 1/0, yes/no.
         """
         parts = [p.strip() for p in s.split(",")]
-        if len(parts) not in (3, 4, 5):
+        if len(parts) not in (3, 4, 5, 6):
             raise ValueError(
-                f"need 3, 4, or 5 comma-separated values, got: {s!r}"
+                f"need 3-6 comma-separated values, got: {s!r}"
             )
         vals: List[str] = [(p.split("=", 1)[1] if "=" in p else p)
                            for p in parts]
@@ -87,21 +115,11 @@ class Point:
                     f"bad diag value: {vals[3]!r} "
                     f"(want 1stage/2stage/ELPA-1STAGE/ELPA-2STAGE)"
                 )
-        pin = True
-        if len(vals) == 5:
-            v = vals[4].lower()
-            if v in ("nopin", "p0", "false", "0", "no", "off"):
-                pin = False
-            elif v in ("pin", "p1", "true", "1", "yes", "on"):
-                pin = True
-            else:
-                raise ValueError(
-                    f"bad pin value: {vals[4]!r} "
-                    f"(want pin/nopin/p1/p0/true/false)"
-                )
+        pin = True if len(vals) < 5 else _parse_bool_axis("pin", vals[4])
+        gpu = True if len(vals) < 6 else _parse_bool_axis("gpu", vals[5])
         return cls(
             np=int(vals[0]), omp=int(vals[1]), bs=int(vals[2]),
-            diag=diag, pin=pin,
+            diag=diag, pin=pin, gpu=gpu,
         )
 
 
@@ -114,27 +132,39 @@ class Point:
 # 2 sockets × 10 physical cores = 20 cores; GPU on NUMA node 0.
 # pin=True rows respect np*omp <= 10 (single-socket budget);
 # pin=False rows let mpirun --map-by package span both sockets.
-_BASE_SHAPES: List[Tuple[int, int, int, bool]] = [
-    # Most aggressive first: all-physical-cores, biggest blocks, max
-    # parallelism.  Run-order chosen so the most interesting result
-    # arrives early -- a stalled bench still gives signal.
-    # All physical cores, cross-socket (no NUMA pin).
-    (20, 1,  64, False),   # every physical core gets one rank
-    (10, 2,  64, False),   # 10 ranks × 2 OMP spread across sockets
+_BASE_SHAPES: List[Tuple[int, int, int, bool, bool]] = [
+    # (np, omp, bs, pin, gpu)
+    #
+    # CPU-only baseline FIRST: same layout as the all-cores GPU
+    # winner but with Diag.ELPA.GPU=.false.  Quantifies what the
+    # GPU is actually buying us on this workload before anything
+    # GPU-tuned runs.  Always-first per user request 2026-06-16.
+    (20, 1,  64, False, False),   # CPU baseline (20 cores, ELPA on host)
+    # Most aggressive GPU configs next: biggest blocks, max
+    # parallelism.  Run-order chosen so the most interesting GPU
+    # result arrives early -- a stalled bench still gives signal.
+    #
+    # All physical cores, cross-socket (no NUMA pin), GPU on.
+    # 2026-06-16: np=20 cross-socket measured 24% faster than
+    # np=10 pin=GPU on 212-atom Au-BDT.  Pushing bs=256 here too
+    # because with ProcessorY=4 it now has enough column tiles.
+    (20, 1, 256, False, True),    # push BS on the winning all-cores config
+    (20, 1,  64, False, True),    # all-cores GPU baseline
+    (10, 2,  64, False, True),    # 10 ranks × 2 OMP spread across sockets
     # Pinned to GPU socket: max-rank single-socket, biggest blocks.
-    (10, 1, 256, True),    # np10 + biggest block
-    (10, 1, 128, True),    # np10 + bigger block
-    (10, 1,  64, True),    # max single-socket parallelism
+    (10, 1, 256, True,  True),    # np10 + biggest block (ProcessorY=2 -> coarse)
+    (10, 1, 128, True,  True),    # np10 + bigger block
+    (10, 1,  64, True,  True),    # max single-socket parallelism
     # ELPA published 4-ranks-per-GPU anchor, big-to-small block.
-    (4, 2,  128, True),    # bigger-block baseline
-    (4, 2,   64, True),    # ELPA published 4 ranks/GPU anchor
-    (4, 2,   32, True),    # smaller-block baseline
+    (4, 2,  128, True,  True),    # bigger-block baseline
+    (4, 2,   64, True,  True),    # ELPA published 4 ranks/GPU anchor
+    (4, 2,   32, True,  True),    # smaller-block baseline
     # Least aggressive last (host-bound stress test).
-    (2, 5,   64, True),    # fewer ranks, more OMP
+    (2, 5,   64, True,  True),    # fewer ranks, more OMP
 ]
 DEFAULT_POINTS: List[Point] = [
-    Point(np, omp, bs, diag, pin)
-    for (np, omp, bs, pin) in _BASE_SHAPES
+    Point(np, omp, bs, diag, pin, gpu)
+    for (np, omp, bs, pin, gpu) in _BASE_SHAPES
     for diag in (DIAG_1STAGE, DIAG_2STAGE)
 ]
 
@@ -414,6 +444,9 @@ def _prepare_point_dir(project_dir: Path, basename: str,
     # Write modified .fdf
     modified = override_field_value(fdf_text, "BlockSize", str(point.bs))
     modified = override_field_value(modified, "Diag.Algorithm", point.diag)
+    modified = override_field_value(
+        modified, "Diag.ELPA.GPU", ".true." if point.gpu else ".false.",
+    )
     modified = force_max_scf_iters(modified, iters)
     modified = disable_md(modified)
     (point_dir / f"{basename}.fdf").write_text(modified, encoding="utf-8")
@@ -504,7 +537,7 @@ def write_results_csv(results: List[PointResult],
     with csv.open("w", encoding="utf-8") as fh:
         fh.write(
             "point,req_np,eff_np,req_omp,eff_omp,req_bs,eff_bs,"
-            "req_diag,eff_diag,req_pin,"
+            "req_diag,eff_diag,req_pin,req_gpu,"
             "iters,first_iter_s,avg_iter_s,wall_s,error\n"
         )
         for r in results:
@@ -515,6 +548,7 @@ def write_results_csv(results: List[PointResult],
                 f"{r.point.bs},{r.effective_bs if r.effective_bs else ''},"
                 f"{r.point.diag},{r.effective_diag or ''},"
                 f"{'gpu-socket' if r.point.pin else 'all-cores'},"
+                f"{'on' if r.point.gpu else 'off'},"
                 f"{r.iters_done},"
                 f"{r.first_iter_s if r.first_iter_s else ''},"
                 f"{r.avg_iter_s if r.avg_iter_s else ''},"

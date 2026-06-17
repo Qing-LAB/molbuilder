@@ -115,22 +115,25 @@ def cmd_siesta_gpu(project_dir: str,
     click.echo(f"sweep     : {len(points)} points")
     for i, p in enumerate(points, 1):
         pin_tag = "pin=GPU-socket" if p.pin else "pin=none (all cores)"
+        gpu_tag = "GPU on" if p.gpu else "CPU only"
         click.echo(
             f"            {i}. np={p.np}  omp={p.omp}  bs={p.bs}  "
-            f"diag={p.diag}  {pin_tag}"
+            f"diag={p.diag}  {pin_tag}  {gpu_tag}"
         )
     click.echo("")
 
     bench_root = proj / f"{basename}.bench"
     bench_root.mkdir(exist_ok=True)
     results = []
+    csv = bench_root / "results.csv"
 
     # Run each point sequentially -- they share the GPU.
     for i, point in enumerate(points, 1):
         pin_tag = "pinned" if point.pin else "all-cores"
+        gpu_tag = "gpu" if point.gpu else "cpu"
         click.echo(
             f"---- [{i}/{len(points)}] np={point.np} omp={point.omp} "
-            f"bs={point.bs} diag={point.diag} {pin_tag} ----"
+            f"bs={point.bs} diag={point.diag} {pin_tag} {gpu_tag} ----"
         )
         point_dir = _prepare_point_dir(
             proj, basename, fdf_text, runsh_text, point, iters, cold,
@@ -141,6 +144,9 @@ def cmd_siesta_gpu(project_dir: str,
             quiet=not verbose,
         )
         results.append(result)
+        # Re-write the full CSV after every point so a killed bench
+        # still leaves an up-to-date results.csv on disk.
+        write_results_csv(results, bench_root)
         click.echo(
             f"     iters={result.iters_done} "
             f"first={result.first_iter_s} s "
@@ -151,10 +157,8 @@ def cmd_siesta_gpu(project_dir: str,
                    and result.effective_bs != point.bs)
                else "")
             + (f" [{result.error}]" if result.error else "")
+            + f"  -> {csv.name}"
         )
-
-    # Write CSV.
-    csv = write_results_csv(results, bench_root)
 
     # Print sorted summary.
     ranked = sorted(
