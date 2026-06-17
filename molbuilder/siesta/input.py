@@ -1203,7 +1203,68 @@ def render_fdf(struct: Structure, config: Optional["SiestaConfig"] = None,
         "# SaveDeltaRho        .true.",
         "# SaveElectrostaticPotential  .true.",
     ]
-    return "\n".join(out) + "\n"
+    # ----- Wrap engine body with script-contract blocks -----
+    # See docs/protocols/script-contract.md.  Per-emission rules:
+    #   - PROVENANCE: always emitted (cheap, always meaningful).
+    #   - BENCH-MARKS: always emitted for .fdf.  The MD.NumCGsteps
+    #     anchor is only valid for relax_type=CG; other choices
+    #     emit a different keyword (MD.NumBroydenSteps, ...).  Bench
+    #     tooling refuses anchor-not-found cases cleanly.
+    #   - ATOM-METADATA: emit_atom_metadata returns None when both
+    #     regions and frozen_atoms are empty -- per the contract's
+    #     emission rule, absence is the honest signal.
+    #   - USER-CUSTOM placeholder: empty in 2a; Step 2b adds the
+    #     round-trip preservation of user edits.
+    from .. import script_contract as _sc
+    _provenance = _sc.emit_provenance(
+        generator_version=_sc.molbuilder_git_sha(),
+        generated_at=_sc.generated_at_now(),
+        resolved_defaults={
+            "enable_gpu": str(bool(cfg.enable_gpu)).lower(),
+            "BlockSize": (
+                f"auto -> {block_size}" if cfg.parallel_block_size is None
+                else f"user-set -> {block_size}"
+            ),
+            "mpi_np": (
+                "auto" if cfg.mpi_np is None else str(cfg.mpi_np)
+            ),
+            "omp_threads": (
+                "auto" if cfg.omp_threads is None else str(cfg.omp_threads)
+            ),
+        },
+    )
+    _bench_marks = _sc.emit_bench_marks(
+        metadata={
+            "n_atoms":        struct.n_atoms,
+            "n_orbitals_est": 10 * struct.n_atoms,
+            "gpu_mode":       str(bool(cfg.enable_gpu)).lower(),
+        },
+        fields=_sc.SIESTA_BENCH_FIELDS,
+        defaults={
+            "BlockSize":         block_size,
+            "MaxSCFIterations":  cfg.max_scf_iter,
+            "MD.NumCGsteps":     cfg.relax_steps,
+            "MeshCutoff":        cfg.mesh_cutoff,
+        },
+    )
+    _atom_metadata = _sc.emit_atom_metadata(
+        regions=dict(getattr(struct, "regions", {}) or {}),
+        frozen_atoms=list(getattr(struct, "frozen_atoms", []) or []),
+        n_atoms_total=int(struct.n_atoms),
+    )
+    _engine_body = "\n".join(out)
+    _user_custom = _sc.emit_user_custom_placeholder()
+    _top_blocks = [_provenance, _bench_marks]
+    if _atom_metadata is not None:
+        _top_blocks.append(_atom_metadata)
+    return (
+        "\n\n".join(_top_blocks)
+        + "\n\n"
+        + _engine_body
+        + "\n\n"
+        + _user_custom
+        + "\n"
+    )
 
 
 # --------------------------------------------------------------------- #

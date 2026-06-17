@@ -761,7 +761,44 @@ def render_script(struct: Structure,
     if v:
         out += _emit_troubleshooting_block(cfg)
 
-    return "\n".join(out) + "\n"
+    # ----- Wrap engine body with script-contract blocks -----
+    # See docs/protocols/script-contract.md.  PROVENANCE always
+    # emitted.  BENCH-MARKS deferred until PySCF bench lands (the
+    # contract allows it; we just don't have a static field list
+    # yet).  ATOM-METADATA emitted only when regions/frozen_atoms
+    # are non-empty.  USER-CUSTOM placeholder for round-trip in 2b.
+    from .. import script_contract as _sc
+    _provenance = _sc.emit_provenance(
+        generator_version=_sc.molbuilder_git_sha(),
+        generated_at=_sc.generated_at_now(),
+        resolved_defaults={
+            "use_gpu":       str(bool(getattr(cfg, "use_gpu", False))).lower(),
+            "density_fit":   str(bool(getattr(cfg, "density_fit", True))).lower(),
+            "threads": (
+                "auto" if getattr(cfg, "threads", None) is None
+                else str(cfg.threads)
+            ),
+            "max_memory_mb": str(int(getattr(cfg, "max_memory_mb", 4000))),
+        },
+    )
+    _atom_metadata = _sc.emit_atom_metadata(
+        regions=dict(getattr(struct, "regions", {}) or {}),
+        frozen_atoms=list(getattr(struct, "frozen_atoms", []) or []),
+        n_atoms_total=int(struct.n_atoms),
+    )
+    _engine_body = "\n".join(out)
+    _user_custom = _sc.emit_user_custom_placeholder()
+    _top_blocks = [_provenance]
+    if _atom_metadata is not None:
+        _top_blocks.append(_atom_metadata)
+    return (
+        "\n\n".join(_top_blocks)
+        + "\n\n"
+        + _engine_body
+        + "\n\n"
+        + _user_custom
+        + "\n"
+    )
 
 
 def _emit_preopt_block(cfg: PySCFConfig, charge: int, v: bool) -> List[str]:

@@ -1811,8 +1811,42 @@ def render_run_wrapper(script_path: Path, *,
     # user will actually see so they don't go hunting for the
     # wrong filename after the first run.  BOMB-6 fix.
     _ext = ".pyscf.log" if suffix == ".py" else ".out"
+    # ----- Script-contract PROVENANCE block -----
+    # See docs/protocols/script-contract.md.  PROVENANCE only for the
+    # wrapper -- no BENCH-MARKS (wrapper-side parameters are overridden
+    # via existing env vars per the contract) and no ATOM-METADATA
+    # (lives in the engine input file, not the wrapper).
+    #
+    # For PySCF (.py) wrappers, mpi_np is meaningless (PySCF is OMP-
+    # only) and must not surface as a per-call value -- the
+    # test_render_pyscf_ignores_mpi_np invariant (same wrapper text
+    # regardless of mpi_np input) is the contract here.
+    from . import script_contract as _sc
+    _is_pyscf = suffix == ".py"
+    _resolved_defaults = {
+        "target_env":    target_env,
+        "omp_threads": (
+            "auto" if omp_threads is None else str(omp_threads)
+        ),
+        "max_memory_mb": (
+            "n/a" if max_memory_mb is None else str(max_memory_mb)
+        ),
+    }
+    if _is_pyscf:
+        _resolved_defaults["mpi_np"] = "n/a (PySCF is OMP-only)"
+    else:
+        _resolved_defaults["mpi_np"] = (
+            "auto" if mpi_np is None else str(mpi_np)
+        )
+    _provenance = _sc.emit_provenance(
+        generator_version=_sc.molbuilder_git_sha(),
+        generated_at=_sc.generated_at_now(),
+        resolved_defaults=_resolved_defaults,
+    )
+    _user_custom = _sc.emit_user_custom_placeholder()
     return (
         f"#!/usr/bin/env bash\n"
+        f"{_provenance}\n"
         f"#\n"
         f"# molbuilder run-wrapper -- {description}\n"
         f"# Script: {script_name}\n"
@@ -1854,6 +1888,7 @@ def render_run_wrapper(script_path: Path, *,
         f"{env_activation}"
         f"{env_prefix}"
         f"{launch_block}"
+        f"\n{_user_custom}\n"
     )
 
 
