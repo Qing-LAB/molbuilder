@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 # Python 3.8+ doesn't have typing.Literal until 3.8 but we target 3.10+.
 from typing import Literal
@@ -60,10 +60,10 @@ class RunBundle:
     * ``source_script``: absolute path to the .fdf / .py that fed
       extraction.
     * ``source_engine``: ``"siesta"`` for .fdf, ``"pyscf"`` for .py.
-    * ``final_coords_from``: ``"xv"`` (SIESTA .XV), ``"fdf-initial"``
-      (.fdf initial coords fallback when .XV missing),
-      ``"py-log"`` (PySCF optimized geometry source), ``"py-initial"``
-      (.py initial mol.atom fallback).
+    * ``final_coords_from``: ``"xv"`` (SIESTA ``.XV``),
+      ``"fdf-initial"`` (.fdf initial coords fallback when .XV
+      missing), ``"py-opt"`` (PySCF ``<JOB>_optimized.xyz``),
+      ``"py-initial"`` (.py mol.atom block fallback).
     * ``notes``: non-fatal diagnostics.  Always a (possibly empty)
       list; never ``None``.
     """
@@ -78,7 +78,7 @@ class RunBundle:
     source_script:     Path
     source_engine:     Literal["siesta", "pyscf"]
     final_coords_from: Literal["xv", "fdf-initial",
-                               "py-log", "py-initial"]
+                               "py-opt", "py-initial"]
     notes:             List[str] = field(default_factory=list)
 
 
@@ -114,12 +114,7 @@ def assemble_from_run_dir(run_dir: Path) -> RunBundle:
         raise BundleError(
             f"no engine script (.fdf or .py) in {run_dir}")
     if py_paths:
-        # PR-C territory; surface a clear error until PR-C lands.
-        raise BundleError(
-            f"{run_dir.name} is a PySCF run (.py source script); "
-            f"PySCF assembly lands in task #490 (PR-C).  PR-B handles "
-            f"SIESTA only.")
-
+        return _assemble_pyscf(run_dir, py_paths)
     return _assemble_siesta(run_dir, fdf_paths)
 
 
@@ -233,6 +228,124 @@ def _assemble_siesta(run_dir: Path, fdf_paths: list[Path]) -> RunBundle:
         provenance=source.provenance or {},
         source_script=fdf_path.resolve(),
         source_engine="siesta",
+        final_coords_from=final_coords_from,
+        notes=notes,
+    )
+
+
+def _assemble_pyscf(run_dir: Path, py_paths: list[Path]) -> RunBundle:
+    """PySCF branch of assemble_from_run_dir.
+
+    Mirrors :func:`_assemble_siesta` for the PySCF engine.  Final
+    coords come from ``<JOB>_optimized.xyz`` (preferred) or the
+    ``.py`` ``mol = gto.M(atom = '''...''')`` block (fallback).
+    """
+    from molbuilder import script_contract as _sc
+    from molbuilder.parsers.pyscf_struct import (
+        read_optimized_xyz, read_py_initial_coords, extract_pyscf_job,
+        PyscfStructureError,
+    )
+
+    notes: list[str] = []
+
+    if len(py_paths) > 1:
+        chosen, chosen_n = None, -1
+        for cand in py_paths:
+            try:
+                txt = cand.read_text(encoding="utf-8", errors="replace")
+            except OSError:
+                continue
+            md = _sc.extract_atom_metadata_dict(txt)
+            if md is not None and isinstance(md.get("n_atoms_total"), int):
+                n = int(md["n_atoms_total"])
+            else:
+                try:
+                    n = len(read_py_initial_coords(txt).elements)
+                except PyscfStructureError:
+                    n = -1
+            if n > chosen_n or (n == chosen_n and cand.name < (chosen.name if chosen else "")):
+                chosen, chosen_n = cand, n
+        if chosen is None:
+            raise BundleError(
+                f"none of the .py files in {run_dir} were readable.")
+        py_path = chosen
+        notes.append(
+            f"multiple .py in run_dir; picked {py_path.name} "
+            f"(largest by atom count: {chosen_n}).")
+    else:
+        py_path = py_paths[0]
+
+    py_text = py_path.read_text(encoding="utf-8", errors="replace")
+    source = _sc.extract_script_source(py_text)
+    notes.extend(source.notes)
+    if source.schema_version is not None and source.schema_version < 3:
+        raise BundleError(
+            f"{py_path.name}: atom-metadata schema_version "
+            f"{source.schema_version} is older than v3; re-render the "
+            f"source script with current molbuilder.")
+
+    # Final-coords source: <JOB>_optimized.xyz preferred, py-initial last.
+    structure = None
+    final_coords_from: Literal["py-opt", "py-initial"] = "py-initial"
+    job = extract_pyscf_job(py_text)
+    opt_path: Optional[Path] = None
+    if job:
+        cand = run_dir / f"{job}_optimized.xyz"
+        if cand.exists():
+            opt_path = cand
+    if opt_path is None:
+        # Fallback: glob for any *_optimized.xyz in the dir.  The
+        # JOB-derived path is preferred (deterministic); the glob
+        # rescues cases where the script was edited after generation
+        # and the JOB literal drifted from the file naming.
+        candidates = sorted(run_dir.glob("*_optimized.xyz"))
+        if len(candidates) == 1:
+            opt_path = candidates[0]
+        elif len(candidates) > 1:
+            notes.append(
+                f"multiple *_optimized.xyz in run_dir "
+                f"({[c.name for c in candidates]}); JOB literal in "
+                f"{py_path.name} doesn't disambiguate -- falling back "
+                f"to py-initial coords.")
+    if opt_path is not None:
+        try:
+            structure = read_optimized_xyz(opt_path)
+            final_coords_from = "py-opt"
+        except (ValueError, OSError) as exc:
+            notes.append(
+                f"{opt_path.name}: {exc}; falling back to .py initial "
+                f"coords.")
+    if structure is None:
+        try:
+            structure = read_py_initial_coords(py_text)
+        except PyscfStructureError as exc:
+            raise BundleError(
+                f"could not read final coords from {opt_path.name if opt_path else '<JOB>_optimized.xyz'} "
+                f"OR initial coords from {py_path.name}: {exc}") from exc
+        if opt_path is None:
+            notes.append(
+                f"no <JOB>_optimized.xyz in run dir; bundle reflects "
+                f"initial-coords from {py_path.name} -- NOT converged "
+                f"geometry.  Re-run if you need optimized coords.")
+
+    atom_md = _sc.extract_atom_metadata_dict(py_text)
+    if atom_md is not None and isinstance(atom_md.get("n_atoms_total"), int):
+        n_md = int(atom_md["n_atoms_total"])
+        if n_md != len(structure.elements):
+            raise BundleError(
+                f"atom-metadata n_atoms_total ({n_md}) does not match "
+                f"final structure atom count ({len(structure.elements)}). "
+                f"The script and the final coords likely come from "
+                f"different runs; re-render or clean the run dir.")
+
+    return RunBundle(
+        structure=structure,
+        regions=source.regions or {},
+        frozen_atoms=source.frozen_atoms or [],
+        user_custom_lines=source.user_custom_lines or [],
+        provenance=source.provenance or {},
+        source_script=py_path.resolve(),
+        source_engine="pyscf",
         final_coords_from=final_coords_from,
         notes=notes,
     )

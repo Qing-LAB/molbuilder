@@ -238,13 +238,160 @@ def test_assemble_from_run_dir_errors_when_both_engines_present(tmp_path):
     assert "ambiguous" in str(exc.value).lower()
 
 
-def test_assemble_from_run_dir_pyscf_still_deferred(tmp_path):
-    """PR-C lands PySCF.  Until then, surface a clear error citing
-    the follow-on task."""
-    (tmp_path / "h2.py").write_text("# pyscf placeholder\n")
+# --------------------------------------------------------------------- #
+#  assemble_from_run_dir -- PySCF branch (PR-C)                         #
+# --------------------------------------------------------------------- #
+
+
+def _h2_py_text(*, with_atom_md: bool = True) -> str:
+    """Minimal molbuilder-style PySCF script.  Same shape as the
+    pyscf generator emits (JOB literal + gto.M atom block)."""
+    base = (
+        'JOB = "h2-test"\n'
+        "from pyscf import gto\n"
+        "mol = gto.M(\n"
+        "    atom = '''\n"
+        "    H    0.00000000    0.00000000    0.00000000\n"
+        "    H    0.74000000    0.00000000    0.00000000\n"
+        "    ''',\n"
+        "    basis = 'def2-SVP',\n"
+        ")\n"
+    )
+    if with_atom_md:
+        base += _atom_md(regions={"R-electrode": [1]}, frozen=[0], n_atoms_total=2)
+    return base
+
+
+def _h2_optimized_xyz(disp: float = 0.80) -> str:
+    """Final converged geometry as PySCF would have written.
+    Default disp differs from the .py initial (0.74) so tests can
+    tell which path the bundle took."""
+    return (
+        "2\n"
+        "Optimized geometry (PySCF)\n"
+        f"H 0.0 0.0 0.0\n"
+        f"H {disp} 0.0 0.0\n"
+    )
+
+
+def test_assemble_from_run_dir_pyscf_with_optimized_xyz(tmp_path):
+    """Common case: .py + <JOB>_optimized.xyz.  Bundle reflects
+    the converged geom from .xyz, with labels from the .py."""
+    (tmp_path / "h2.py").write_text(_h2_py_text())
+    (tmp_path / "h2-test_optimized.xyz").write_text(_h2_optimized_xyz(0.80))
+    bundle = sb.assemble_from_run_dir(tmp_path)
+    assert bundle.source_engine == "pyscf"
+    assert bundle.final_coords_from == "py-opt"
+    # 0.80 from _optimized.xyz, NOT 0.74 from .py initial.
+    import numpy as np
+    np.testing.assert_allclose(bundle.structure.positions[1, 0], 0.80)
+    assert bundle.regions == {"R-electrode": [1]}
+    assert bundle.frozen_atoms == [0]
+    assert bundle.source_script.name == "h2.py"
+
+
+def test_assemble_from_run_dir_pyscf_initial_fallback(tmp_path):
+    """No <JOB>_optimized.xyz -> .py initial-coords fallback + note."""
+    (tmp_path / "h2.py").write_text(_h2_py_text())
+    bundle = sb.assemble_from_run_dir(tmp_path)
+    assert bundle.final_coords_from == "py-initial"
+    import numpy as np
+    np.testing.assert_allclose(bundle.structure.positions[1, 0], 0.74)
+    assert any("not converged geometry" in n.lower() or "initial-coords" in n.lower()
+               for n in bundle.notes)
+
+
+def test_assemble_from_run_dir_pyscf_glob_fallback_when_job_missing(tmp_path):
+    """If the .py has no JOB literal but exactly one *_optimized.xyz
+    exists, fall back to the glob match.  Documents the lenient
+    branch in bundle-contract.md § 4.1 PySCF table."""
+    # Drop the JOB line from the canonical script.
+    text = _h2_py_text().replace('JOB = "h2-test"\n', "# no JOB line\n")
+    (tmp_path / "h2.py").write_text(text)
+    (tmp_path / "anywhere_optimized.xyz").write_text(_h2_optimized_xyz(0.90))
+    bundle = sb.assemble_from_run_dir(tmp_path)
+    assert bundle.final_coords_from == "py-opt"
+    import numpy as np
+    np.testing.assert_allclose(bundle.structure.positions[1, 0], 0.90)
+
+
+def test_assemble_from_run_dir_pyscf_multiple_optimized_falls_back(tmp_path):
+    """Multiple *_optimized.xyz + JOB doesn't pick: the glob is
+    ambiguous, so the bundle falls back to .py initial + records
+    the ambiguity in notes."""
+    text = _h2_py_text().replace('JOB = "h2-test"\n', "# no JOB line\n")
+    (tmp_path / "h2.py").write_text(text)
+    (tmp_path / "a_optimized.xyz").write_text(_h2_optimized_xyz(0.80))
+    (tmp_path / "b_optimized.xyz").write_text(_h2_optimized_xyz(0.90))
+    bundle = sb.assemble_from_run_dir(tmp_path)
+    assert bundle.final_coords_from == "py-initial"
+    assert any("multiple *_optimized.xyz" in n for n in bundle.notes)
+
+
+def test_assemble_from_run_dir_pyscf_n_atoms_mismatch(tmp_path):
+    """ATOM-METADATA n_atoms_total != _optimized.xyz atom count
+    -> BundleError, same as the SIESTA branch."""
+    py_text = _h2_py_text(with_atom_md=False) + _atom_md(
+        regions={"x": [0]}, n_atoms_total=99,
+    )
+    (tmp_path / "h2.py").write_text(py_text)
+    (tmp_path / "h2-test_optimized.xyz").write_text(_h2_optimized_xyz())
     with pytest.raises(sb.BundleError) as exc:
         sb.assemble_from_run_dir(tmp_path)
-    assert "PR-C" in str(exc.value) or "#490" in str(exc.value)
+    assert "n_atoms_total" in str(exc.value)
+
+
+def test_assemble_from_run_dir_pyscf_no_labels(tmp_path):
+    """No ATOM-METADATA -> empty regions/frozen, bundle assembles."""
+    (tmp_path / "h2.py").write_text(_h2_py_text(with_atom_md=False))
+    (tmp_path / "h2-test_optimized.xyz").write_text(_h2_optimized_xyz())
+    bundle = sb.assemble_from_run_dir(tmp_path)
+    assert bundle.regions == {}
+    assert bundle.frozen_atoms == []
+    assert bundle.final_coords_from == "py-opt"
+
+
+def test_assemble_from_run_dir_pyscf_handwritten_script_errors(tmp_path):
+    """A non-molbuilder .py without the triple-quoted atom block
+    raises BundleError so the user knows to re-render."""
+    (tmp_path / "h2.py").write_text(
+        'JOB = "weird"\n'
+        "from pyscf import gto\n"
+        "mol = gto.M(atom = [['H', (0,0,0)], ['H', (0.74,0,0)]], basis='sto-3g')\n"
+    )
+    with pytest.raises(sb.BundleError) as exc:
+        sb.assemble_from_run_dir(tmp_path)
+    assert "triple-quoted" in str(exc.value)
+
+
+def test_assemble_from_run_dir_picks_largest_py_among_multiple(tmp_path):
+    """Mirror of the SIESTA-staged-run test, for .py.  Two .py files,
+    pick the one with the larger atom-metadata n_atoms_total."""
+    (tmp_path / "h2-stage1.py").write_text(
+        _h2_py_text(with_atom_md=False) + _atom_md(
+            regions={"small": [0]}, n_atoms_total=2,
+        )
+    )
+    # Build a 50-atom .py with matching atom-md.
+    big_lines = "\n".join(
+        f"    H    {i*1.0:.3f}    0.0    0.0" for i in range(50)
+    )
+    big_py = (
+        'JOB = "h2_big"\n'
+        "from pyscf import gto\n"
+        "mol = gto.M(\n"
+        "    atom = '''\n"
+        + big_lines + "\n"
+        "    ''',\n"
+        "    basis = 'def2-SVP',\n"
+        ")\n"
+        + _atom_md(regions={"big": list(range(50))}, n_atoms_total=50)
+    )
+    (tmp_path / "h2-stage2.py").write_text(big_py)
+    bundle = sb.assemble_from_run_dir(tmp_path)
+    assert bundle.source_script.name == "h2-stage2.py"
+    assert bundle.regions == {"big": list(range(50))}
+    assert any("multiple .py" in n for n in bundle.notes)
 
 
 def test_assemble_from_run_dir_picks_largest_fdf_among_multiple(tmp_path):

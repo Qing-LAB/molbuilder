@@ -74,7 +74,7 @@ class RunBundle:
     source_script:     Path                            # which .fdf / .py
     source_engine:     Literal["siesta", "pyscf"]
     final_coords_from: Literal["xv", "fdf-initial",
-                               "py-log", "py-initial"]
+                               "py-opt", "py-initial"]
     notes:             List[str]                       # diagnostics
 ```
 
@@ -92,7 +92,7 @@ class RunBundle:
 - `source_script` is the absolute path that fed extraction.
 - `final_coords_from` is load-bearing: tools and audit logs need
   to know whether the bundle reflects a converged optimization
-  (`"xv"`, `"py-log"`) or fell back to initial coords because the
+  (`"xv"`, `"py-opt"`) or fell back to initial coords because the
   optimization output was missing (`"fdf-initial"`, `"py-initial"`).
 - `notes` carries non-fatal diagnostics: schema-version mismatch,
   fallback-to-initial-coords reason, missing-PROVENANCE.  Never
@@ -121,9 +121,14 @@ Per engine, in priority order — first hit wins:
 
 | Source | Mark | When chosen |
 |---|---|---|
-| `<stem>.opt.xyz`       | `"py-log"`       | molbuilder-pyscf optimizer writes this on success |
-| pyscf log final-geom   | `"py-log"`       | parse the log if `.opt.xyz` absent |
-| `.py` initial `mol.atom`| `"py-initial"`   | both above missing — same fallback semantics |
+| `<JOB>_optimized.xyz`     | `"py-opt"`        | molbuilder-pyscf optimizer writes this on geom-opt success.  `JOB` literal extracted from `JOB = "..."` line of the `.py`.  When `JOB` extraction fails AND exactly one `*_optimized.xyz` exists, the glob match is used. |
+| `.py` `mol = gto.M(atom = '''…''')`| `"py-initial"`    | `<JOB>_optimized.xyz` missing — bundle still emits, but `notes` records the fallback.  Only the molbuilder generator's whitespace-delimited atom-block format is recognised; hand-written PySCF scripts using list-of-tuple format must be re-rendered through molbuilder first. |
+
+> **Deferred.** A pyscf-log stdout-parse final-coords source is a
+> possible future addition for runs that died after geom-opt
+> convergence but before the `_optimized.xyz` write.  Not in PR-C;
+> the `_save_xyz` call in the generated script is reliable enough
+> that this is a rare edge case.
 
 ### 4.2 Labels
 
